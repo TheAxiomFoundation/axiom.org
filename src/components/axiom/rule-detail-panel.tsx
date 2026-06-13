@@ -21,6 +21,12 @@ import {
   type InlineReference,
 } from "@/lib/axiom/inline-references";
 
+function humaniseSlug(citationPath: string): string {
+  const last = citationPath.split("/").filter(Boolean).pop() ?? citationPath;
+  const words = last.replace(/[-_]+/g, " ").trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 export function RuleDetailPanel({
   document,
   rule,
@@ -65,10 +71,30 @@ export function RuleDetailPanel({
   }, [encoding, rule.citation_path, rule.id]);
   /* v8 ignore stop */
 
-  const docKind =
-    document.jurisdiction === "us" || document.jurisdiction.startsWith("us-")
+  const docKind = rule.doc_type
+    ? rule.doc_type.charAt(0).toUpperCase() + rule.doc_type.slice(1)
+    : document.jurisdiction === "us" || document.jurisdiction.startsWith("us-")
       ? "Code"
       : "Statute";
+  // Synthesised policy/guidance pages have a raw citation path (e.g.
+  // "uk/policy/govuk/…") instead of a real citation. Humanise the last
+  // slug for the headline and demote the path to a mono line under it.
+  // Exact equality with the citation path avoids false positives on
+  // formatted citations that contain slashes (e.g. "UKSI 2013/376").
+  const citationIsPath =
+    document.citation === (rule.citation_path ?? document.citationPath);
+  const displayTitle = citationIsPath
+    ? humaniseSlug(document.citation)
+    : document.citation;
+  // Hide the subtitle when it's just the opening of the source text
+  // shown directly below (synthesised pages derive it that way).
+  const sourceText = (rule.body ?? document.body ?? "").replace(/\s+/g, " ").trim();
+  const subtitleIsRedundant =
+    !!document.title &&
+    sourceText.length > 0 &&
+    sourceText.startsWith(
+      document.title.replace(/…$/, "").replace(/\s+/g, " ").trim()
+    );
   const subsectionStatus =
     document.isRepealed
       ? "Repealed provision"
@@ -82,7 +108,7 @@ export function RuleDetailPanel({
     <div className="flex flex-col h-full">
       {/* Header */}
       <header className="px-8 py-6 border-b border-[var(--color-rule)] bg-[var(--color-paper-elevated)]">
-        <div className="flex items-start gap-4">
+        <div className="max-w-[720px] mx-auto flex items-start gap-4">
           {onBack && (
             <button
               type="button"
@@ -129,23 +155,29 @@ export function RuleDetailPanel({
               )}
             </div>
             <h1 className="heading-section text-[var(--color-ink)] m-0 break-words">
-              {document.citation}
+              {displayTitle}
             </h1>
-            <p
-              className="mt-3 text-[1.05rem] leading-snug text-[var(--color-ink-secondary)]"
-              style={{ fontFamily: "var(--f-serif)" }}
-            >
-              {document.title}
-            </p>
+            {citationIsPath && (
+              <code className="mt-2 block font-mono text-xs text-[var(--color-ink-muted)] break-all">
+                {document.citation}
+              </code>
+            )}
+            {!subtitleIsRedundant && (
+              <p
+                className="mt-3 text-[1.05rem] leading-snug text-[var(--color-ink-secondary)]"
+                style={{ fontFamily: "var(--f-serif)" }}
+              >
+                {document.title}
+              </p>
+            )}
           </div>
         </div>
       </header>
 
-      {/* Hero reader + rail */}
+      {/* Source, then encoding, then references — one reading column */}
       <main className="flex-1 overflow-y-auto">
-        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px] min-h-0">
-          {/* Source: the hero reading column */}
-          <article className="px-8 py-8 overflow-y-auto">
+        <article className="px-8 py-8">
+          <div className="max-w-[720px] mx-auto">
             <div className="eyebrow mb-6">Source</div>
             {heroSlot ? (
               heroSlot({ outgoingRefs: outgoingWithInferred })
@@ -155,33 +187,33 @@ export function RuleDetailPanel({
                 outgoingRefs={outgoingWithInferred}
               />
             )}
-          </article>
+          </div>
+        </article>
 
-          {/* Rail: encoding + citation graph.
-              On xl+ we pin the rail so the encoding stays in view while
-              the source scrolls — the whole "prove faithfulness" story
-              depends on both being visible together. */}
-          <aside className="border-t xl:border-t-0 xl:border-l border-[var(--color-rule)] bg-[var(--color-paper)] xl:sticky xl:top-0 xl:self-start xl:max-h-screen xl:overflow-y-auto">
-            <section className="px-6 py-8">
-              <div className="eyebrow mb-6">Encoding</div>
-              <RuleSpecTab
-                encoding={encoding}
-                loading={loading}
-                jurisdiction={document.jurisdiction}
-                citationPath={rule.citation_path}
-                isRepealed={document.isRepealed}
+        <section className="px-8 py-8 border-t border-[var(--color-rule)]">
+          <div className="max-w-[720px] mx-auto">
+            <div className="eyebrow mb-6">Encoding</div>
+            <RuleSpecTab
+              encoding={encoding}
+              loading={loading}
+              jurisdiction={document.jurisdiction}
+              citationPath={rule.citation_path}
+              isRepealed={document.isRepealed}
+              sourceText={rule.body ?? document.body}
+            />
+          </div>
+        </section>
+
+        {(outgoingWithInferred.length > 0 || incoming.length > 0) && (
+          <section className="px-8 py-8 border-t border-[var(--color-rule)]">
+            <div className="max-w-[720px] mx-auto">
+              <ReferencesPanel
+                outgoing={outgoingWithInferred}
+                incoming={incoming}
               />
-            </section>
-            {(outgoingWithInferred.length > 0 || incoming.length > 0) && (
-              <section className="px-6 pb-8 border-t border-[var(--color-rule)] pt-8">
-                <ReferencesPanel
-                  outgoing={outgoingWithInferred}
-                  incoming={incoming}
-                />
-              </section>
-            )}
-          </aside>
-        </div>
+            </div>
+          </section>
+        )}
       </main>
 
       {/* Agent logs drawer */}

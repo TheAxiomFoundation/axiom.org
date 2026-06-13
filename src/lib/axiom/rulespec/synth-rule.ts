@@ -83,10 +83,13 @@ function pickHeading(
   firstRuleName: string | null
 ): string {
   if (summary) {
+    // Literal-block (``|-``) summaries carry hard wraps at the source
+    // line width, so collapse all whitespace before sentence-splitting
+    // — otherwise the heading ends mid-sentence at the first wrap.
     // Split on sentence-end punctuation followed by whitespace (so
-    // ``6.2`` in a number doesn't terminate the heading) or on a
-    // newline.
-    const firstSentence = summary.split(/[.!?]\s|\n/, 1)[0]?.trim();
+    // ``6.2`` in a number doesn't terminate the heading).
+    const normalised = summary.replace(/\s+/g, " ").trim();
+    const firstSentence = normalised.split(/[.!?]\s/, 1)[0]?.trim();
     if (firstSentence && firstSentence.length <= 120) return firstSentence;
     if (firstSentence) return firstSentence.slice(0, 117).trimEnd() + "…";
   }

@@ -21,6 +21,7 @@ vi.mock('@/hooks/use-encoding', () => ({
 // in isolation.
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), back: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
 }))
 
 vi.mock('@/lib/axiom/resolver', () => ({
@@ -184,7 +185,7 @@ describe('RuleSpecTab', () => {
     // The fixture's rulespec_content is not valid RuleSpec, so the raw
     // block renders instead of structured cards.
     expect(screen.getByText('RuleSpec encoding')).toBeInTheDocument()
-    expect(screen.getByText('Shown source')).toBeInTheDocument()
+    expect(screen.getByText(/Encoded in/)).toBeInTheDocument()
   })
 
   it('renders module summary plus one card per rule with the YAML and source link', () => {
@@ -218,6 +219,14 @@ rules:
         jurisdiction="us"
       />
     )
+    // The per-rule raw YAML sits behind a small toggle — open them.
+    container
+      .querySelectorAll<HTMLButtonElement>(
+        'article[id^="rule-"] button[aria-expanded="false"]'
+      )
+      .forEach((btn) => {
+        if (btn.textContent?.includes('YAML')) fireEvent.click(btn)
+      })
     expect(
       screen.getByText(/imposes a payroll tax/i)
     ).toBeInTheDocument()
@@ -246,8 +255,7 @@ rules:
         jurisdiction="us"
       />
     )
-    expect(screen.getByText(/canonical repository encoding/i)).toBeInTheDocument()
-    expect(screen.getByText('View on GitHub')).toBeInTheDocument()
+    expect(screen.getByText('view on GitHub')).toBeInTheDocument()
     expect(screen.queryByText('90')).not.toBeInTheDocument()
   })
 
@@ -276,7 +284,7 @@ rules:
         jurisdiction="uk"
       />
     )
-    const link = screen.getByText('View canonical repo file').closest('a')
+    const link = screen.getByText('view canonical repo file').closest('a')
     expect(link).toHaveAttribute(
       'href',
       'https://github.com/TheAxiomFoundation/rulespec-uk/blob/main/legislation/uksi/2013/376/regulation/36/3/single-under-25.yaml'
@@ -512,6 +520,36 @@ describe('RuleDetailPanel', () => {
       />
     )
     expect(screen.getByText('NY')).toBeInTheDocument()
+  })
+
+  it('humanises slug citations and suppresses the redundant subtitle', () => {
+    const path = 'uk/policy/govuk/disability-living-allowance'
+    render(
+      <RuleDetailPanel
+        document={makeDoc({
+          citation: path,
+          citationPath: path,
+          jurisdiction: 'uk',
+          title: 'Disability living allowance for children…',
+          body: 'Disability living allowance for children as described by GOV.UK guidance.',
+          subsections: [],
+        })}
+        rule={makeRule({
+          jurisdiction: 'uk',
+          doc_type: 'policy',
+          citation_path: path,
+          body: 'Disability living allowance for children as described by GOV.UK guidance.',
+        })}
+      />
+    )
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+      'Disability living allowance'
+    )
+    expect(screen.getByText(path)).toBeInTheDocument()
+    expect(screen.getByText('Policy')).toBeInTheDocument()
+    expect(
+      screen.queryByText('Disability living allowance for children…')
+    ).not.toBeInTheDocument()
   })
 
   it('shows source and encoding side by side', () => {

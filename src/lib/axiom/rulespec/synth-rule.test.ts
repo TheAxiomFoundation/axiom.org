@@ -70,6 +70,26 @@ rules:
     );
   });
 
+  it("joins hard-wrapped literal-block summaries instead of stopping at the first line", async () => {
+    mockFetchEncodedFile.mockResolvedValue({
+      filePath: "policies/govuk/disability-living-allowance.yaml",
+      content: `format: rulespec/v1
+module:
+  summary: |-
+    Disability living allowance for children as described by GOV.UK guidance: a
+    weekly amount for a child under 16.
+rules: []
+`,
+    });
+    const out = await synthesiseRuleFromCitationPath(
+      "uk",
+      "uk/policy/govuk/disability-living-allowance"
+    );
+    expect(out?.heading).toBe(
+      "Disability living allowance for children as described by GOV.UK guidance: a weekly amount for a child under 16."
+    );
+  });
+
   it("falls back to the first rule's name when there is no summary", async () => {
     mockFetchEncodedFile.mockResolvedValue({
       filePath: "statutes/26/3101/a.yaml",

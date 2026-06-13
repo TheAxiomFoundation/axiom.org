@@ -230,7 +230,7 @@ function RuleTreeView({
           />
         </div>
         <SiblingStrip rule={leafRule} onNavigate={onNavigateHref} />
-        <div className="min-h-[calc(100vh-200px)] mt-4 border border-[var(--color-rule)] rounded-md overflow-hidden bg-[var(--color-paper-elevated)]">
+        <div className="min-h-[calc(100vh-200px)] mt-4 max-w-[880px] mx-auto border border-[var(--color-rule)] rounded-md overflow-hidden bg-[var(--color-paper-elevated)]">
           <RuleDetailPanel
             document={doc}
             rule={leafRule}
@@ -332,7 +332,7 @@ function RuleTreeView({
             Loading...
           </div>
         ) : (
-          <div className="mt-4 mb-6 border border-[var(--color-rule)] rounded-md overflow-hidden bg-[var(--color-paper-elevated)]">
+          <div className="mt-4 mb-6 max-w-[880px] mx-auto border border-[var(--color-rule)] rounded-md overflow-hidden bg-[var(--color-paper-elevated)]">
             <RuleDetailPanel
               document={currentRuleDoc}
               rule={currentRuleDetail}

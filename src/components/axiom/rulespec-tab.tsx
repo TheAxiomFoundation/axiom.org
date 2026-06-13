@@ -8,9 +8,11 @@ import {
   dumpRuleYaml,
   parseRuleSpec,
   parseRuleSpecTests,
+  tokenizeFormula,
   type RuleSpecDoc,
   type RuleSpecRule,
   type RuleSpecTestCase,
+  type RuleSpecVersion,
 } from "@/lib/axiom/rulespec/doc";
 import { cachedRawFetch } from "@/lib/axiom/rulespec/raw-cache";
 import {
@@ -37,6 +39,7 @@ export function RuleSpecTab({
   jurisdiction,
   citationPath,
   isRepealed,
+  sourceText,
 }: {
   encoding: RuleEncodingData | null;
   loading: boolean;
@@ -47,6 +50,10 @@ export function RuleSpecTab({
    *  the source corpus has materialized child provisions. */
   citationPath?: string | null;
   isRepealed?: boolean;
+  /** Body text already shown in the Source section above. When the
+   *  module summary is the same prose (common for synthesised policy
+   *  pages), the encoding section skips it instead of repeating it. */
+  sourceText?: string | null;
 }) {
   const tests = useRuleSpecTests(encoding, jurisdiction);
   const descendants = useEncodedDescendants(
@@ -109,31 +116,28 @@ export function RuleSpecTab({
 
   const docHasContent =
     !!doc && (doc.rules.length > 0 || !!doc.module.summary);
+  const summaryRepeatsSource =
+    !!doc?.module.summary &&
+    !!sourceText &&
+    softUnwrap(doc.module.summary).trim() === softUnwrap(sourceText).trim();
 
   return (
     <div className="space-y-8">
-      <SourceHeader
-        filePath={encoding.file_path}
-        description={sourceDescription}
-        gitHubUrl={gitHubUrl}
-        isGitHub={isGitHub}
-      />
-
       {scores && !isGitHub && <ScoresBlock scores={scores} />}
 
       {docHasContent ? (
         <>
-          {doc!.module.summary && (
+          {doc!.module.summary && !summaryRepeatsSource && (
             <Summary text={doc!.module.summary} />
           )}
           {doc!.rules.length > 0 && (
-            <div className="space-y-6">
-              <div className="eyebrow">Rules</div>
+            <div>
               {doc!.rules.map((rule) => (
-                <RuleCard
+                <RuleBlock
                   key={rule.name}
                   rule={rule}
                   tests={testsByRule.get(rule.name) ?? []}
+                  localNames={localNames}
                 />
               ))}
             </div>
@@ -141,6 +145,12 @@ export function RuleSpecTab({
           {doc!.parseErrors.length > 0 && (
             <ParseErrorsBlock errors={doc!.parseErrors} />
           )}
+          <ProvenanceFooter
+            filePath={encoding.file_path}
+            description={isGitHub ? null : sourceDescription}
+            gitHubUrl={gitHubUrl}
+            isGitHub={isGitHub}
+          />
         </>
       ) : (
         // Couldn't parse it as RuleSpec — show the raw YAML so a
@@ -156,6 +166,12 @@ export function RuleSpecTab({
             {doc?.parseErrors.length ? (
               <ParseErrorsBlock errors={doc.parseErrors} />
             ) : null}
+            <ProvenanceFooter
+              filePath={encoding.file_path}
+              description={isGitHub ? null : sourceDescription}
+              gitHubUrl={gitHubUrl}
+              isGitHub={isGitHub}
+            />
           </div>
         )
       )}
@@ -167,36 +183,42 @@ export function RuleSpecTab({
 // Sub-components
 // ----------------------------------------------------------------------------
 
-function SourceHeader({
+function ProvenanceFooter({
   filePath,
   description,
   gitHubUrl,
   isGitHub,
 }: {
   filePath: string;
-  description: string;
+  /** Extra caveat line, e.g. for stored encoder runs that may differ
+   *  from the repository file. Null when no caveat is needed. */
+  description: string | null;
   gitHubUrl: string | null;
   isGitHub: boolean;
 }) {
   return (
-    <div>
-      <div className="eyebrow mb-3">Shown source</div>
-      <code className="block font-mono text-xs text-[var(--color-accent)] break-all">
-        {filePath}
-      </code>
-      <p className="mt-2 text-xs text-[var(--color-ink-muted)] leading-relaxed">
-        {description}
+    <div className="pt-4 border-t border-[var(--color-rule-subtle)]">
+      <p className="m-0 font-mono text-[11px] text-[var(--color-ink-muted)] break-all">
+        Encoded in <code className="text-[var(--color-ink-secondary)]">{filePath}</code>
+        {gitHubUrl && (
+          <>
+            {" · "}
+            <a
+              href={gitHubUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-baseline gap-1 text-[var(--color-accent)] no-underline hover:underline focus-visible:underline"
+            >
+              <GitHubMark />
+              {isGitHub ? "view on GitHub" : "view canonical repo file"}
+            </a>
+          </>
+        )}
       </p>
-      {gitHubUrl && (
-        <a
-          href={gitHubUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-3 inline-flex items-center gap-1.5 font-mono text-xs text-[var(--color-accent)] no-underline hover:underline focus-visible:underline"
-        >
-          <GitHubMark />
-          {isGitHub ? "View on GitHub" : "View canonical repo file"}
-        </a>
+      {description && (
+        <p className="mt-1 m-0 text-[11px] text-[var(--color-ink-muted)] leading-relaxed">
+          {description}
+        </p>
       )}
     </div>
   );
@@ -243,76 +265,230 @@ function Summary({ text }: { text: string }) {
         className="text-sm leading-relaxed text-[var(--color-ink-secondary)] whitespace-pre-line"
         style={{ fontFamily: "var(--f-serif)" }}
       >
-        {text}
+        {softUnwrap(text)}
       </p>
     </section>
   );
 }
 
-function RuleCard({
+/**
+ * Literal-block (``|-``) YAML summaries carry hard wraps at the source
+ * line width. Join single newlines into spaces so the prose reflows,
+ * but keep blank lines as paragraph breaks.
+ */
+export function softUnwrap(text: string): string {
+  return text
+    .split(/\n{2,}/)
+    .map((para) => para.replace(/\s*\n\s*/g, " ").trim())
+    .join("\n\n");
+}
+
+/**
+ * A rule as one always-visible "worksheet" entry: name, kind,
+ * effective-dated formulas rendered as readable conditionals with
+ * cross-linked identifiers, then provenance and small footnote
+ * toggles for the raw YAML and tests. No disclosure — the encoding
+ * is the content of the page, not an appendix.
+ */
+function RuleBlock({
   rule,
   tests,
+  localNames,
 }: {
   rule: RuleSpecRule;
   tests: RuleSpecTestCase[];
+  localNames: Set<string>;
 }) {
   const anchor = `rule-${rule.name}`;
-  const yamlBlock = useMemo(() => dumpRuleYaml(rule), [rule]);
   const meta = ruleMeta(rule);
+  const versions = rule.versions.filter((v) => v.formula);
   return (
     <article
       id={anchor}
-      className="border border-[var(--color-rule)] rounded-md bg-[var(--color-paper-elevated)] p-4 scroll-mt-8"
+      className="py-6 border-t border-[var(--color-rule-subtle)] first:border-t-0 first:pt-0 last:pb-0 scroll-mt-8"
     >
-      <header className="mb-3">
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div>
-            <h3 className="m-0 font-mono text-sm font-semibold text-[var(--color-ink)] break-all">
-              {ruleTitle(rule)}
-            </h3>
-            <code className="mt-1 block font-mono text-[11px] text-[var(--color-ink-muted)] break-all">
-              #{rule.name}
-            </code>
-          </div>
-          {rule.kind && (
-            <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-ink-muted)]">
-              {humanizeKind(rule.kind)}
-            </span>
-          )}
-        </div>
-        {meta.length > 0 && (
-          <dl className="mt-3 grid grid-cols-1 gap-1.5 text-[11px]">
-            {meta.map(({ label, value, href }) => (
-              <div key={label} className="flex gap-2 min-w-0">
-                <dt className="w-20 shrink-0 font-mono uppercase tracking-wider text-[var(--color-ink-muted)]">
-                  {label}
-                </dt>
-                <dd className="m-0 min-w-0 font-mono text-[var(--color-ink-secondary)] break-all">
-                  {href ? (
-                    <a
-                      href={href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[var(--color-accent)] no-underline hover:underline"
-                    >
-                      {value}
-                    </a>
-                  ) : (
-                    value
-                  )}
-                </dd>
-              </div>
-            ))}
-          </dl>
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h3 className="m-0 font-mono text-sm font-semibold break-all">
+          <a
+            href={`#${anchor}`}
+            className="text-[var(--color-ink)] hover:text-[var(--color-accent)] transition-colors"
+            // Inline because the global ``a`` underline is unlayered
+            // and outranks the ``no-underline`` utility.
+            style={{ textDecoration: "none" }}
+          >
+            {ruleTitle(rule)}
+          </a>
+        </h3>
+        {rule.kind && (
+          <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-ink-muted)]">
+            {humanizeKind(rule.kind)}
+          </span>
         )}
-      </header>
-      <ExpandableCode
-        code={yamlBlock}
-        language="yaml"
-        label={rule.name}
-      />
-      {tests.length > 0 && <TestsBlock tests={tests} />}
+      </div>
+      {versions.length > 0 && (
+        <div className="mt-3 space-y-3">
+          {versions.map((v, i) => (
+            <div key={i}>
+              {versionDateLabel(v, versions.length) && (
+                <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-[var(--color-ink-muted)]">
+                  {versionDateLabel(v, versions.length)}
+                </div>
+              )}
+              <FormulaView
+                formula={v.formula!}
+                localNames={localNames}
+                selfName={rule.name}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+      {meta.length > 0 && (
+        <dl className="mt-3 grid grid-cols-1 gap-1 text-[11px]">
+          {meta.map(({ label, value, href }) => (
+            <div key={label} className="flex gap-2 min-w-0">
+              <dt className="w-20 shrink-0 font-mono uppercase tracking-wider text-[var(--color-ink-muted)]">
+                {label}
+              </dt>
+              <dd className="m-0 min-w-0 font-mono text-[var(--color-ink-secondary)] break-all">
+                {href ? (
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[var(--color-accent)] no-underline hover:underline"
+                  >
+                    {value}
+                  </a>
+                ) : (
+                  value
+                )}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      <div className="mt-3 flex flex-col gap-2">
+        {tests.length > 0 && <TestsBlock tests={tests} />}
+        <YamlBlock rule={rule} />
+      </div>
     </article>
+  );
+}
+
+/**
+ * Display-only pretty-print: insert a line break before each ``else``
+ * in long single-line conditionals so they read as branch-per-line.
+ * Pure whitespace insertion — token text is never altered.
+ */
+export function formatFormulaForDisplay(formula: string): string {
+  const trimmed = formula.trim();
+  if (trimmed.includes("\n") || trimmed.length <= 60) return trimmed;
+  return trimmed.replace(/\s+else\b/g, "\nelse");
+}
+
+function versionDateLabel(
+  v: RuleSpecVersion,
+  count: number
+): string | null {
+  if (v.effective_from && v.effective_to) {
+    return `${v.effective_from} → ${v.effective_to}`;
+  }
+  // A lone sentinel start date ("0001-01-01") on a single version
+  // just means "always" — no label needed.
+  if (v.effective_from && (count > 1 || v.effective_from > "1900-01-01")) {
+    return `from ${v.effective_from}`;
+  }
+  return count > 1 ? "all dates" : null;
+}
+
+const FORMULA_KEYWORDS = new Set([
+  "if",
+  "else",
+  "and",
+  "or",
+  "not",
+  "in",
+  "is",
+]);
+
+function FormulaView({
+  formula,
+  localNames,
+  selfName,
+}: {
+  formula: string;
+  localNames: Set<string>;
+  selfName: string;
+}) {
+  const segments = tokenizeFormula(formatFormulaForDisplay(formula));
+  return (
+    <pre
+      className="font-mono text-[13px] leading-relaxed whitespace-pre-wrap break-words"
+      // Inline styles because the global ``pre`` rule in tokens.css is
+      // unlayered and outranks Tailwind utility classes.
+      style={{
+        margin: 0,
+        padding: "0.125rem 0 0.125rem 1rem",
+        background: "transparent",
+        border: "none",
+        borderLeft: "2px solid var(--color-rule)",
+        borderRadius: 0,
+        overflow: "visible",
+        color: "var(--color-ink-secondary)",
+      }}
+    >
+      <code>
+        {segments.map((seg, i) => {
+          if (
+            seg.isIdentifier &&
+            seg.text !== selfName &&
+            localNames.has(seg.text)
+          ) {
+            return (
+              <a
+                key={i}
+                href={`#rule-${seg.text}`}
+                className="text-[var(--color-accent)] no-underline hover:underline"
+              >
+                {seg.text}
+              </a>
+            );
+          }
+          if (!seg.isIdentifier && FORMULA_KEYWORDS.has(seg.text)) {
+            return (
+              <span key={i} className="font-semibold text-[var(--color-ink)]">
+                {seg.text}
+              </span>
+            );
+          }
+          return <span key={i}>{seg.text}</span>;
+        })}
+      </code>
+    </pre>
+  );
+}
+
+function YamlBlock({ rule }: { rule: RuleSpecRule }) {
+  const [open, setOpen] = useState(false);
+  const yamlBlock = useMemo(() => dumpRuleYaml(rule), [rule]);
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-2 text-[11px] font-mono uppercase tracking-wider text-[var(--color-ink-muted)] cursor-pointer bg-transparent p-0 border-0 hover:text-[var(--color-accent)]"
+        aria-expanded={open}
+      >
+        <span aria-hidden="true">{open ? "▼" : "▶"}</span>
+        YAML
+      </button>
+      {open && (
+        <div className="mt-3">
+          <ExpandableCode code={yamlBlock} language="yaml" label={rule.name} />
+        </div>
+      )}
+    </div>
   );
 }
 

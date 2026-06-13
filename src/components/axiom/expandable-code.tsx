@@ -14,8 +14,13 @@ interface ExpandableCodeProps {
   label?: string;
 }
 
+// Inline previews keep ``whitespace-pre`` (no wrapping): RuleSpec YAML
+// is indentation-heavy, and wrapping it inside the narrow rail turns
+// every line into an unreadable stack. Long lines scroll horizontally
+// instead, and the preview is height-capped — the overlay is the
+// full-reading surface.
 const INLINE_CODE_CLASS =
-  "p-4 bg-[var(--color-code-bg)] border border-[var(--color-rule)] rounded-md overflow-x-auto text-xs text-[var(--color-code-text)] leading-relaxed whitespace-pre-wrap break-words";
+  "p-4 bg-[var(--color-code-bg)] border border-[var(--color-rule)] rounded-md overflow-auto max-h-80 text-xs text-[var(--color-code-text)] leading-relaxed whitespace-pre";
 
 const OVERLAY_CODE_CLASS =
   "p-6 bg-[var(--color-code-bg)] overflow-auto text-sm text-[var(--color-code-text)] leading-relaxed whitespace-pre-wrap break-words h-full";
