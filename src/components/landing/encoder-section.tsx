@@ -8,6 +8,27 @@ interface TerminalLine {
   delay: number;
 }
 
+/**
+ * Every line below is a real record, not a dramatisation.
+ *
+ * The run: rulespec-us `us/.axiom/encoding-manifests/statutes/26/32/c/2.json`
+ * — run_id ac6c2c0a, `tool: axiom-encode encode --apply`, 2026-06-29. Its
+ * recorded sha256 for statutes/26/32/c/2.yaml matches the file on
+ * rulespec-us main byte-for-byte, so this manifest describes what currently
+ * ships. The import on 26 USC 112 and the four test cases come from the
+ * applied files themselves.
+ *
+ * The oracle record: axiom-oracles `conformance/detail/us-pe.json`, suite
+ * `fiit-ecps`. It is deliberately rendered as a separate, labelled block —
+ * the suite is the standing federal income tax comparison covering twelve
+ * policies (EITC among them), NOT output of this encode run, and NOT an
+ * EITC-only measurement. Per axiom-oracles `scoreboard.py`, a policy row
+ * inherits its suite report's totals, so attributing 3,881,635 to EITC alone
+ * would misstate what was measured.
+ *
+ * If these artifacts move, update this transcript or drop it. Do not let it
+ * drift into an illustration.
+ */
 const LINES: TerminalLine[] = [
   {
     delay: 0,
@@ -15,7 +36,7 @@ const LINES: TerminalLine[] = [
       <>
         <span className="text-[#86efac]">$ </span>
         <span className="text-[#fafaf9] font-medium">
-          axiom encode &quot;26 USC 32&quot;
+          axiom-encode encode &quot;26 USC 32(c)(2)&quot; --apply
         </span>
       </>
     ),
@@ -30,10 +51,10 @@ const LINES: TerminalLine[] = [
       <>
         <span className="font-semibold text-[#fbbf24]">[axiom]</span>
         <span className="text-[#a8a29e]">
-          {" "}Loading 26 USC 32...
+          {" "}26 USC 32(c)(2){" "}
         </span>
         <span className="text-[#fafaf9] font-medium">
-          {" "}81,247 characters
+          &mdash; definition of &ldquo;earned income&rdquo;
         </span>
       </>
     ),
@@ -42,104 +63,120 @@ const LINES: TerminalLine[] = [
     delay: 0.9,
     content: (
       <>
-        <span className="font-semibold text-[#fbbf24]">[axiom]</span>
+        <span className="font-semibold text-[#fdba74]">[encode]</span>
         <span className="text-[#a8a29e]">
-          {" "}14 subsections extracted
+          {" "}drafting RuleSpec from corpus text
         </span>
       </>
     ),
   },
   {
     delay: 1.2,
-    content: <span className="text-[rgba(255,255,255,0.35)]">&nbsp;</span>,
-  },
-  {
-    delay: 1.4,
     content: (
       <>
         <span className="font-semibold text-[#fdba74]">[encode]</span>
         <span className="text-[#a8a29e]">
-          {" "}Wave 1: (a) (b) (c) (d) (f) (h) (i) (j) (m) (n)
-        </span>
-      </>
-    ),
-  },
-  {
-    delay: 1.7,
-    content: (
-      <>
-        <span className="font-semibold text-[#fdba74]">[encode]</span>
-        <span className="text-[#a8a29e]">
-          {" "}Wave 2: (e) (g) (k) (l)
-        </span>
-        <span className="text-[rgba(255,255,255,0.35)]">
-          {" "}&mdash; depends on wave 1
-        </span>
-      </>
-    ),
-  },
-  {
-    delay: 2.1,
-    content: (
-      <>
-        <span className="font-semibold text-[#fdba74]">[encode]</span>
-        <span className="inline-block text-[#fdba74]">
-          {" "}████████████████████
+          {" "}import resolved{" "}
         </span>
         <span className="text-[#fafaf9] font-medium">
-          {" "}14/14 complete
+          us:statutes/26/112
+        </span>
+        <span className="text-[rgba(255,255,255,0.35)]">
+          {" "}&mdash; combat-zone pay election
         </span>
       </>
     ),
   },
   {
-    delay: 2.5,
+    delay: 1.6,
     content: <span className="text-[rgba(255,255,255,0.35)]">&nbsp;</span>,
   },
   {
-    delay: 2.7,
+    delay: 1.8,
     content: (
       <>
-        <span className="font-semibold text-[#a78bfa]">[validate]</span>
-        <span className="text-[#a8a29e]"> CI:           </span>
-        <span className="text-[#86efac]">14/14 passed</span>
+        <span className="font-semibold text-[#a78bfa]">[apply]</span>
+        <span className="text-[#a8a29e]"> </span>
+        <span className="text-[#fafaf9] font-medium">
+          statutes/26/32/c/2.yaml
+        </span>
       </>
     ),
   },
   {
-    delay: 3.0,
+    delay: 2.0,
     content: (
       <>
-        <span className="font-semibold text-[#a78bfa]">[validate]</span>
-        <span className="text-[#a8a29e]"> PolicyEngine: </span>
-        <span className="text-[#86efac]">14/14 match</span>
+        <span className="font-semibold text-[#a78bfa]">[apply]</span>
+        <span className="text-[#a8a29e]"> </span>
+        <span className="text-[#fafaf9] font-medium">
+          statutes/26/32/c/2.test.yaml
+        </span>
+        <span className="text-[rgba(255,255,255,0.35)]">
+          {" "}&mdash; 4 cases
+        </span>
       </>
     ),
   },
   {
-    delay: 3.3,
+    delay: 2.3,
     content: (
       <>
-        <span className="font-semibold text-[#a78bfa]">[validate]</span>
-        <span className="text-[#a8a29e]"> TAXSIM:       </span>
-        <span className="text-[#86efac]">14/14 match</span>
+        <span className="font-semibold text-[#a78bfa]">[apply]</span>
+        <span className="text-[#a8a29e]"> proof validation required, signed </span>
+        <span className="text-[#fafaf9] font-medium">hmac-sha256</span>
       </>
     ),
   },
   {
-    delay: 3.6,
-    content: <span className="text-[rgba(255,255,255,0.35)]">&nbsp;</span>,
-  },
-  {
-    delay: 3.8,
+    delay: 2.6,
     content: (
       <>
         <span className="font-semibold text-[#86efac]">[done]</span>
         <span className="text-[#86efac]">
-          {" "}14 RuleSpec files written to{" "}
+          {" "}run ac6c2c0a &mdash; 2 files written to{" "}
         </span>
-        <span className="text-[#fafaf9] font-medium">
-          rulespec-us/statutes/26/32/*.yaml
+        <span className="text-[#fafaf9] font-medium">rulespec-us</span>
+      </>
+    ),
+  },
+];
+
+/**
+ * Rendered under a rule, with its own heading, so it can never read as the
+ * encode run's output. See the block comment above LINES.
+ */
+const ORACLE_LINES: TerminalLine[] = [
+  {
+    delay: 3.1,
+    content: (
+      <>
+        <span className="font-semibold text-[#a78bfa]">[oracles]</span>
+        <span className="text-[#a8a29e]"> PolicyEngine </span>
+        <span className="text-[#fafaf9] font-medium">3,881,635</span>
+        <span className="text-[#a8a29e]"> comparisons</span>
+      </>
+    ),
+  },
+  {
+    delay: 3.4,
+    content: (
+      <>
+        <span className="font-semibold text-[#a78bfa]">[oracles]</span>
+        <span className="text-[#a8a29e]"> raw match </span>
+        <span className="text-[#86efac]">99.5159%</span>
+      </>
+    ),
+  },
+  {
+    delay: 3.7,
+    content: (
+      <>
+        <span className="font-semibold text-[#a78bfa]">[oracles]</span>
+        <span className="text-[#a8a29e]"> unexplained </span>
+        <span className="text-[#86efac]">0</span>
+        <span className="text-[rgba(255,255,255,0.35)]">
+          {" "}&mdash; 16,660 attributed upstream
         </span>
       </>
     ),
@@ -172,10 +209,52 @@ function Terminal() {
             axiom &mdash; zsh
           </span>
         </div>
-        <div className="px-5 py-4 font-mono text-[0.82rem] leading-[1.8] overflow-x-auto min-h-[320px]">
+        <div
+          data-testid="encoder-terminal"
+          className="px-5 py-4 font-mono text-[0.82rem] leading-[1.8] overflow-x-auto min-h-[320px]"
+        >
           {LINES.map((line, i) => (
             <div
               key={i}
+              className="whitespace-pre"
+              style={
+                visible
+                  ? {
+                      opacity: 0,
+                      animation: `terminal-reveal 0.3s var(--ease-out) ${line.delay}s forwards`,
+                    }
+                  : { opacity: 0 }
+              }
+            >
+              {line.content}
+            </div>
+          ))}
+
+          {/*
+            The oracle record is a separate artifact from the run above: the
+            standing federal income tax suite comparison, not this encode's
+            output. The rule and caption keep that distinction on screen.
+          */}
+          <div
+            className="mt-5 pt-3 border-t border-[rgba(255,255,255,0.1)]"
+            style={
+              visible
+                ? {
+                    opacity: 0,
+                    animation: `terminal-reveal 0.3s var(--ease-out) 2.9s forwards`,
+                  }
+                : { opacity: 0 }
+            }
+          >
+            <span className="text-[rgba(255,255,255,0.4)] text-[0.72rem] tracking-wide">
+              standing oracle record &mdash; federal income tax suite
+              (fiit-ecps), covering EITC among 12 policies
+            </span>
+          </div>
+
+          {ORACLE_LINES.map((line, i) => (
+            <div
+              key={`oracle-${i}`}
               className="whitespace-pre"
               style={
                 visible
@@ -235,7 +314,7 @@ export function EncoderSection() {
               n: "01",
               label: "Read",
               body:
-                "Pull the statute. Walk the subsection tree. Plan the dependency graph between siblings.",
+                "Pull the statute. Walk the subsection tree. Resolve the citations each subsection depends on.",
             },
             {
               n: "02",

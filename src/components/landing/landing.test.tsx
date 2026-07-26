@@ -65,7 +65,9 @@ describe('Landing sections', () => {
     expect(
       screen.getByRole('heading', { name: /encoded automatically/i }),
     ).toBeInTheDocument()
-    expect(screen.getByText(/axiom encode "26 USC 32"/i)).toBeInTheDocument()
+    expect(
+      screen.getByText(/axiom-encode encode "26 USC 32\(c\)\(2\)" --apply/i),
+    ).toBeInTheDocument()
     for (const step of ['Read', 'Encode', 'Verify']) {
       expect(screen.getByRole('heading', { name: step })).toBeInTheDocument()
     }
@@ -83,6 +85,41 @@ describe('Landing sections', () => {
     expect(text).not.toMatch(/human (sign|review|oversight|approv)/i)
     expect(text).not.toMatch(/human-in-the-loop/i)
     expect(text).not.toMatch(/experts? (verify|review|check)/i)
+  })
+
+  // Regression guard for issue #137. The transcript previously asserted a run
+  // that never happened: a fabricated `axiom` binary, dependency "waves" the
+  // pipeline has no notion of, and 14/14 oracle results against a path holding
+  // two rule files. Anything on this list is a claim we cannot substantiate,
+  // so failing loudly beats shipping it again.
+  it('makes no unsubstantiated claims in the encoder transcript', () => {
+    render(<EncoderSection />)
+    // Scoped to the transcript: the surrounding prose may legitimately name
+    // TAXSIM as an oracle Axiom compares against. What it may not do is
+    // report TAXSIM results for a statute no committed suite covers.
+    const text = screen.getByTestId('encoder-terminal').textContent ?? ''
+
+    // The binary is `axiom-encode`; `axiom encode` does not exist.
+    expect(text).not.toMatch(/(?<!-)\baxiom encode\b/i)
+    // `encode` takes one citation. There is no wave orchestration.
+    expect(text).not.toMatch(/wave/i)
+    // 26 USC 32 has two encoded rule files on rulespec-us main, not fourteen.
+    expect(text).not.toMatch(/14\/14|14 subsections|14 RuleSpec/i)
+    // No committed TAXSIM conformance artifact covers 26 USC 32.
+    expect(text).not.toMatch(/TAXSIM/i)
+  })
+
+  it('attributes the oracle record to its suite, not to this encode run', () => {
+    render(<EncoderSection />)
+    const text = screen.getByTestId('encoder-terminal').textContent ?? ''
+
+    // The figure is the fiit-ecps suite total, shared across the 12 policies
+    // that suite covers. Presenting it as an EITC-only or run-specific
+    // measurement would misstate what was compared.
+    expect(text).toMatch(/3,881,635/)
+    expect(text).toMatch(/standing oracle record/i)
+    expect(text).toMatch(/fiit-ecps/i)
+    expect(text).toMatch(/12 policies/i)
   })
 
   it('renders the applications section with four use cases', () => {
