@@ -1,3 +1,4 @@
+import { DISPLAY_ACRONYMS } from "@/lib/display-acronyms";
 import type {
   Country,
   LegalId,
@@ -284,11 +285,10 @@ function programLabel(programId: string, jurisdiction: string): string {
 }
 
 function humanizeProgram(value: string): string {
-  const acronyms = new Set(["snap", "tanf", "wic", "ssi", "eitc", "ctc", "uc"]);
   return value
     .split(/[-_]/)
     .filter(Boolean)
-    .map((word) => (acronyms.has(word) ? word.toUpperCase() : word.charAt(0).toUpperCase() + word.slice(1)))
+    .map((word) => (DISPLAY_ACRONYMS.has(word) ? word.toUpperCase() : word.charAt(0).toUpperCase() + word.slice(1)))
     .join(" ");
 }
 

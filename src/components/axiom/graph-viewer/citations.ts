@@ -4,6 +4,8 @@
  * the same way wherever the user encounters them.
  */
 
+import { DISPLAY_ACRONYMS } from "@/lib/display-acronyms";
+
 const JURISDICTION_LABELS: Record<string, string> = {
   us: "Federal",
   "us-al": "Alabama", "us-ak": "Alaska", "us-az": "Arizona", "us-ar": "Arkansas",
@@ -232,24 +234,16 @@ function normalizeAxiomAppSegments(
   return rest;
 }
 
-/** Acronyms that must stay upper-case when a snake_case rule name is
- *  humanized ("cdcc" → "CDCC", "snap_agi_limit" → "SNAP AGI Limit"). */
-const RULE_NAME_ACRONYMS = new Set([
-  "cdcc", "snap", "tanf", "wic", "ssi", "eitc", "ctc", "agi", "magi",
-  "cola", "usda", "irs", "fpl", "abawd", "uc", "dcf", "dss", "hhs",
-  "dor", "dpa", "apa", "ess", "ssn", "itin", "amt", "fica", "cfr", "lcwra",
-  "dc", "ebt", "leap", "sme", "smed", "ssp",
-]);
-
 /** Humanize a snake_case rule name or dash-slug document segment:
- *  title-case words, acronyms upper-cased. Doors, tooltips, and
- *  policy-document fallbacks lead with this. */
+ *  title-case words, acronyms upper-cased (per the shared
+ *  DISPLAY_ACRONYMS registry). Doors, tooltips, and policy-document
+ *  fallbacks lead with this. */
 export function humanizeRuleName(name: string): string {
   return name
     .split(/[-_\s]+/)
     .filter(Boolean)
     .map((word) =>
-      RULE_NAME_ACRONYMS.has(word.toLowerCase())
+      DISPLAY_ACRONYMS.has(word.toLowerCase())
         ? word.toUpperCase()
         : word.charAt(0).toUpperCase() + word.slice(1),
     )

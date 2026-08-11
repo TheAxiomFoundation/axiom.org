@@ -289,6 +289,9 @@ export function jurisdictionDisplay(jurisdiction: string): string {
 }
 
 export function humanizeIdentifier(value: string): string {
+  // Jurisdiction-identifier casing only — EU/UN are geography, not the
+  // program vocabulary in src/lib/display-acronyms.ts (where "un" or "eu"
+  // inside a rule fragment would be an ordinary word, not an acronym).
   const acronyms = new Set(["us", "uk", "eu", "un", "dc"]);
 
   return value

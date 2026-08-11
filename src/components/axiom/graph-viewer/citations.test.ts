@@ -145,6 +145,10 @@ describe("humanizeRuleName", () => {
     expect(humanizeRuleName("lcwra_element_amount")).toBe(
       "LCWRA Element Amount",
     );
+    // Tokens the shared DISPLAY_ACRONYMS registry folded in from the other
+    // humanizers' retired sets now render here too.
+    expect(humanizeRuleName("us_citizen_status")).toBe("US Citizen Status");
+    expect(humanizeRuleName("aca_premium_credit")).toBe("ACA Premium Credit");
     expect(humanizeRuleName("snap_standard_deduction_48_states_dc")).toBe(
       "SNAP Standard Deduction 48 States DC",
     );
