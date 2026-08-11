@@ -24,7 +24,7 @@ const BUILD = [
   {
     n: "03",
     title: "The Encoder",
-    desc: "An AI-assisted pipeline that reads source law, drafts encodings subsection by subsection, and logs every decision with its provenance.",
+    desc: "An AI-driven pipeline that reads source law, drafts encodings subsection by subsection, and logs every decision with its provenance.",
     // Held back for now — the /encoder page link returns later.
     href: null,
   },
