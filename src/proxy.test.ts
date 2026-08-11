@@ -27,6 +27,17 @@ describe("proxy", () => {
       ["/us/statute", "/axiom/v2/us/statute"],
       ["/us", "/axiom/v2/us"],
       ["/us/policy/usda/snap", "/axiom/v2/us/policy/usda/snap"],
+      // UK billing authorities are named rather than coded, so their
+      // slugs run past the two-letter subdivision shape.
+      ["/uk-wigan", "/axiom/v2/uk-wigan"],
+      [
+        "/uk-bath-and-north-east-somerset",
+        "/axiom/v2/uk-bath-and-north-east-somerset",
+      ],
+      [
+        "/uk-wigan/manual/council-tax-reduction-scheme-2026-2027",
+        "/axiom/v2/uk-wigan/manual/council-tax-reduction-scheme-2026-2027",
+      ],
       // Jurisdictions without citation paths stay on the v1 tree
       // browser, which navigates by provision_id.
       ["/ca", "/axiom/ca"],

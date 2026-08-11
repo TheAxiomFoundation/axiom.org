@@ -108,6 +108,10 @@ export const JURISDICTIONS_SEED: Jurisdiction[] = [
  * page rather than the landing. Matches the "us-XX" pattern (two
  * lower-case letters) and assumes citation_path navigation, which
  * every ingested state jurisdiction currently uses.
+ *
+ * UK local authorities are derived rather than listed: there are 296
+ * billing authorities and their council tax reduction schemes land
+ * weekly, so a hand-maintained slug list would be stale on arrival.
  */
 export function synthesiseJurisdiction(slug: string): Jurisdiction | null {
   if (/^us-[a-z]{2}$/.test(slug)) {
@@ -117,5 +121,37 @@ export function synthesiseJurisdiction(slug: string): Jurisdiction | null {
       hasCitationPaths: true,
     };
   }
+  if (isUkLocalAuthoritySlug(slug)) {
+    return {
+      slug,
+      label: ukLocalAuthorityLabel(slug),
+      hasCitationPaths: true,
+    };
+  }
   return null;
 }
+
+export function isUkLocalAuthoritySlug(slug: string): boolean {
+  return /^uk-[a-z][a-z0-9]*(-[a-z0-9]+)*$/.test(slug);
+}
+
+/** "uk-bristol-city-of" -> "Bristol, City of"; "uk-st-helens" -> "St Helens". */
+export function ukLocalAuthorityLabel(slug: string): string {
+  const words = slug.slice(3).split("-");
+  const cityOf =
+    words.length > 2 &&
+    words[words.length - 2] === "city" &&
+    words[words.length - 1] === "of";
+  const name = (cityOf ? words.slice(0, -2) : words)
+    .map((word) => (UK_LOWERCASE_WORDS.has(word) ? word : titleCase(word)))
+    .join(" ");
+  return cityOf ? `${name}, City of` : name;
+}
+
+function titleCase(word: string): string {
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
+// Conjunctions and prepositions stay lower case inside authority names
+// ("Bath and North East Somerset", "Newcastle upon Tyne").
+const UK_LOWERCASE_WORDS = new Set(["and", "upon", "on", "of", "under", "le"]);
