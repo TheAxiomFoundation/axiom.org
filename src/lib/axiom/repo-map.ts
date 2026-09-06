@@ -26,7 +26,29 @@
  * directory there yet just resolves to an empty file listing, so the
  * UI degrades gracefully into "Not yet encoded" without a hard-coded
  * allow-list that drifts as new states are encoded.
+ *
+ * Two questions this module answers, kept deliberately apart because
+ * conflating them shipped a bug in both directions:
+ *
+ *  1. **Which countries does the app *present*?** — ``RULESPEC_FAMILIES``
+ *     / ``RULESPEC_COUNTRY_SLUGS``. Every family the map knows,
+ *     including one whose repo is still a gated pilot: the landing
+ *     shows it as a country tile marked pending, which is how a reader
+ *     learns work is under way.
+ *  2. **Which repos does the app *read*?** — ``RULESPEC_REPOS`` and the
+ *     ``getRuleSpecRepoLocation`` gate below. Only families registered
+ *     ``app_visibility = "public"``. A gated repo resolves to ``null``
+ *     here, so every URL builder and every runtime reader that funnels
+ *     through the location refuses to list or serve its encodings.
+ *
+ * ``RULESPEC_COUNTRY_SLUGS`` used to be derived from ``RULESPEC_REPOS``,
+ * which made (1) a consequence of (2): a gated country silently lost
+ * its tile and fell through to the "Other" chip row with no pending
+ * label. Deriving both from the family table fixes that without making
+ * a pilot repo readable.
  */
+
+import type { AppVisibility } from "./registry-visibility";
 
 const GITHUB_ORG = "TheAxiomFoundation";
 
@@ -43,56 +65,146 @@ export interface RuleSpecRepoLocation {
 }
 
 /**
- * Repos that hold exactly one jurisdiction with the buckets at the
- * repo root (no jurisdiction-directory prefix). Mirrors
- * ``jurisdictionFromRepoName`` in ``scripts/sync-rulespec-index.mjs``.
+ * One country family: the country-level slug, the repo its encodings
+ * live in, that repo's layout, and the ``app_visibility`` the repo
+ * declares in its ``.axiom/registry.toml``.
  */
-const ROOT_LAYOUT_REPO_JURISDICTIONS: Readonly<Record<string, string>> =
-  Object.freeze({
-    "rulespec-ca": "ca",
-  });
+export interface RuleSpecFamily {
+  /** Country-level jurisdiction slug — ``us``, ``ca``, ``il``. */
+  slug: string;
+  /** GitHub repo holding the family's encodings. */
+  repo: string;
+  /**
+   * ``true`` when the repo holds exactly one jurisdiction with the
+   * buckets at the repo root (``rulespec-ca``) — no jurisdiction-dir
+   * prefix, and so no ``<slug>-…`` sub-jurisdiction resolves to it.
+   * Mirrors ``jurisdictionFromRepoName`` in
+   * ``scripts/sync-rulespec-index.mjs``.
+   */
+  rootLayout?: boolean;
+  /**
+   * The repo's registered ``app_visibility``, mirroring its
+   * ``.axiom/registry.toml``. ``experimental`` repos are *presented*
+   * (a pending country tile on the landing) but never *read*: the
+   * location resolver below returns ``null`` for them, which is the
+   * same gate ``discoverRoots()`` applies to the search index.
+   * Promoting a repo is a two-key change — flip the marker in the
+   * rulespec repo AND this entry; ``scripts/check-rulespec-drift.mjs``
+   * fails when the two disagree.
+   */
+  appVisibility: AppVisibility;
+}
+
+/**
+ * Every country family the app knows, in landing-display order.
+ * Adding a country is one entry here plus a ``jurisdictions-seed.ts``
+ * label (``repo-map.test.ts`` fails the PR when the two disagree).
+ */
+export const RULESPEC_FAMILIES: readonly RuleSpecFamily[] = Object.freeze([
+  { slug: "us", repo: "rulespec-us", appVisibility: "public" },
+  { slug: "uk", repo: "rulespec-uk", appVisibility: "public" },
+  { slug: "be", repo: "rulespec-be", appVisibility: "public" },
+  { slug: "ca", repo: "rulespec-ca", rootLayout: true, appVisibility: "public" },
+  { slug: "nz", repo: "rulespec-nz", appVisibility: "public" },
+  // Israel — ISO 3166-1 ``il``, jurisdiction-dir monorepo (``il/``),
+  // same layout as NZ. Distinct from Illinois (``us-il``), which the
+  // ``us`` entry above claims first. rulespec-il is a bounded pilot
+  // carrying ``app_visibility = "experimental"``, so it is presented
+  // as a pending country and read by nothing.
+  { slug: "il", repo: "rulespec-il", appVisibility: "experimental" },
+] as const);
+
+/**
+ * The family a jurisdiction slug belongs to — the country itself
+ * (``uk``) or one of its sub-jurisdictions (``uk-kingston-upon-thames``).
+ * Root-layout repos hold a single jurisdiction, so no ``<slug>-…``
+ * prefix resolves to them.
+ *
+ * This is the *family* map, deliberately ungated: it answers "whose
+ * encodings would these be?", which the landing tile and
+ * ``check-rulespec-drift.mjs`` both need for repos the app cannot yet
+ * read. Use ``getRuleSpecRepoLocation`` (or
+ * ``ruleSpecReadLocation`` in ``rulespec/visibility.ts``) to answer
+ * "may the app read this?".
+ */
+export function ruleSpecFamilyForJurisdiction(
+  jurisdiction: string
+): RuleSpecFamily | null {
+  for (const family of RULESPEC_FAMILIES) {
+    if (jurisdiction === family.slug) return family;
+    if (!family.rootLayout && jurisdiction.startsWith(`${family.slug}-`)) {
+      return family;
+    }
+  }
+  return null;
+}
 
 /**
  * The jurisdiction a root-layout repo holds, or ``null`` for
  * jurisdiction-dir monorepos.
  */
 export function ruleSpecRepoRootJurisdiction(repo: string): string | null {
-  return ROOT_LAYOUT_REPO_JURISDICTIONS[repo] ?? null;
+  const family = RULESPEC_FAMILIES.find((f) => f.repo === repo);
+  return family?.rootLayout ? family.slug : null;
 }
 
-function repoForJurisdiction(jurisdiction: string): string | null {
-  if (jurisdiction === "us" || jurisdiction.startsWith("us-")) {
-    return "rulespec-us";
-  }
-  if (jurisdiction === "uk" || jurisdiction.startsWith("uk-")) {
-    return "rulespec-uk";
-  }
-  if (jurisdiction === "be" || jurisdiction.startsWith("be-")) {
-    return "rulespec-be";
-  }
-  if (jurisdiction === "ca") {
-    return "rulespec-ca";
-  }
-  if (jurisdiction === "nz" || jurisdiction.startsWith("nz-")) {
-    return "rulespec-nz";
-  }
-  return null;
+/**
+ * The registered ``app_visibility`` for a jurisdiction's family, or
+ * ``null`` when no family claims the slug. Presentation surfaces use
+ * this to say *why* a country tile is pending ("encoding in progress")
+ * rather than just that it has no rules.
+ */
+export function ruleSpecFamilyAppVisibility(
+  jurisdiction: string
+): AppVisibility | null {
+  return ruleSpecFamilyForJurisdiction(jurisdiction)?.appVisibility ?? null;
 }
 
+/** The registered ``app_visibility`` for a repo, or ``null`` if unknown. */
+export function ruleSpecRepoAppVisibility(repo: string): AppVisibility | null {
+  return RULESPEC_FAMILIES.find((f) => f.repo === repo)?.appVisibility ?? null;
+}
+
+/**
+ * Whether the app may read a jurisdiction's encodings at all: it has a
+ * family, and that family's repo is registered ``public``. Fail-closed
+ * — an unknown repo is not readable.
+ */
+export function isAppReadableJurisdiction(jurisdiction: string): boolean {
+  return ruleSpecFamilyAppVisibility(jurisdiction) === "public";
+}
+
+/** Whether a repo is one the app reads encodings from. */
+export function isRuleSpecRepoInAppReadList(repo: string): boolean {
+  return ruleSpecRepoAppVisibility(repo) === "public";
+}
+
+/**
+ * The repo a jurisdiction's encodings live in, regardless of whether
+ * the app may read them. See ``ruleSpecFamilyForJurisdiction``.
+ */
 export function getRuleSpecRepoForJurisdiction(
   jurisdiction: string
 ): string | null {
-  return repoForJurisdiction(jurisdiction);
+  return ruleSpecFamilyForJurisdiction(jurisdiction)?.repo ?? null;
 }
 
+/**
+ * Where to read a jurisdiction's encodings — **gated**. Returns
+ * ``null`` both for a slug no family claims and for one whose family
+ * is registered ``app_visibility = "experimental"``, so every URL
+ * builder below and every runtime reader that funnels through it
+ * refuses a gated pilot repo without a network round trip. The live
+ * ``.axiom/registry.toml`` check layered on top of this lives in
+ * ``rulespec/visibility.ts``.
+ */
 export function getRuleSpecRepoLocation(
   jurisdiction: string
 ): RuleSpecRepoLocation | null {
-  const repo = repoForJurisdiction(jurisdiction);
-  if (!repo) return null;
-  const prefix =
-    ruleSpecRepoRootJurisdiction(repo) === jurisdiction ? "" : jurisdiction;
-  return { repo, prefix };
+  const family = ruleSpecFamilyForJurisdiction(jurisdiction);
+  if (!family || family.appVisibility !== "public") return null;
+  const prefix = family.rootLayout ? "" : jurisdiction;
+  return { repo: family.repo, prefix };
 }
 
 /** Join a location's prefix onto a bucket-rooted path (no leading slash). */
@@ -112,6 +224,19 @@ export function ruleSpecRawFileUrl(
 ): string | null {
   const loc = getRuleSpecRepoLocation(jurisdiction);
   if (!loc) return null;
+  return ruleSpecRawFileUrlForLocation(loc, bucketRootedPath);
+}
+
+/**
+ * ``ruleSpecRawFileUrl`` for a location a caller already resolved —
+ * used by the request-time readers, which resolve through the gated
+ * ``ruleSpecReadLocation`` and would otherwise re-resolve (and
+ * re-check) the same jurisdiction.
+ */
+export function ruleSpecRawFileUrlForLocation(
+  loc: RuleSpecRepoLocation,
+  bucketRootedPath: string
+): string {
   return `https://raw.githubusercontent.com/${GITHUB_ORG}/${loc.repo}/main/${prefixedPath(loc, bucketRootedPath)}`;
 }
 
@@ -171,26 +296,27 @@ export function ruleSpecRepoRootTreeApiUrl(repo: string): string {
   return `https://api.github.com/repos/${GITHUB_ORG}/${repo}/git/trees/main`;
 }
 
-/** The monorepos the Axiom app reads encodings from. */
-export const RULESPEC_REPOS = [
-  "rulespec-us",
-  "rulespec-uk",
-  "rulespec-be",
-  "rulespec-ca",
-  "rulespec-nz",
-] as const;
+/**
+ * The **read list**: monorepos the Axiom app lists and serves
+ * encodings from. Gated pilot repos are absent, which is also what
+ * ``scripts/check-rulespec-drift.mjs`` asserts against discovery —
+ * discovery skips ``app_visibility = "experimental"`` repos, so an
+ * entry here for a gated repo would fail the drift check.
+ */
+export const RULESPEC_REPOS: readonly string[] = RULESPEC_FAMILIES.filter(
+  (family) => family.appVisibility === "public"
+).map((family) => family.repo);
 
 /**
- * Country-level (family-root) slugs, one per published repo, in
- * display order. Derived from ``RULESPEC_REPOS`` — the registered root
- * jurisdiction for root-layout repos, the repo-name suffix otherwise —
- * so the tile ordering, search picker, and stats grouping all follow a
- * new family entry automatically instead of each keeping its own copy
- * of the list.
+ * The **presentation list**: country-level (family-root) slugs in
+ * landing-display order, including families whose repo is still gated.
+ * A gated country renders as a real country tile marked pending —
+ * separate from ``RULESPEC_REPOS`` on purpose, because deriving this
+ * from the read list dropped a pending country out of the country row
+ * and into the anonymous "Other" chips.
  */
-export const RULESPEC_COUNTRY_SLUGS: readonly string[] = RULESPEC_REPOS.map(
-  (repo) =>
-    ruleSpecRepoRootJurisdiction(repo) ?? repo.replace(/^rulespec-/, "")
+export const RULESPEC_COUNTRY_SLUGS: readonly string[] = RULESPEC_FAMILIES.map(
+  (family) => family.slug
 );
 
 /**

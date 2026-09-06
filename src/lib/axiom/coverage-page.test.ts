@@ -17,14 +17,18 @@ import { getCoverageData, _resetCoverageCache } from "./coverage-page";
  *  yields the result queued for that call of from(). */
 function chainFor(
   mock: ReturnType<typeof vi.fn>,
-  perCall: (callIndex: number) => { data: unknown; error: unknown; count?: number }
+  perCall: (callIndex: number) => { data: unknown; error: unknown; count?: number },
+  notCalls?: unknown[][]
 ) {
   let call = 0;
   mock.mockImplementation(() => {
     const result = perCall(call++);
     const self: Record<string, unknown> = {};
     for (const method of ["select", "is", "eq", "not", "order", "range", "limit"]) {
-      self[method] = () => self;
+      self[method] = (...args: unknown[]) => {
+        if (method === "not") notCalls?.push(args);
+        return self;
+      };
     }
     self.then = (
       resolve: (value: unknown) => unknown,
@@ -129,6 +133,36 @@ describe("getCoverageData", () => {
       provisionCount: 4000,
     });
     expect(data?.jurisdictions[1].documentTotal).toBe(1);
+  });
+
+  it("leaves a gated pilot family out of the published census", async () => {
+    // A leaked or pre-gating rulespec_files row must not put Israel on
+    // the coverage table with an encoding count — nothing else on the
+    // site can open those files.
+    mockCorpusRpc.mockResolvedValue({ data: STATS, error: null });
+    chainFor(mockCorpusFrom, () => ({ data: [], error: null, count: 0 }));
+    const notCalls: unknown[][] = [];
+    chainFor(
+      mockEncodingsFrom,
+      () => ({
+        data: [
+          { jurisdiction: "us" },
+          { jurisdiction: "il" },
+          { jurisdiction: "il-tlv" },
+        ],
+        error: null,
+      }),
+      notCalls
+    );
+
+    const data = await getCoverageData();
+
+    expect(data?.jurisdictions.map((j) => j.slug)).toEqual(["us", "nz"]);
+    expect(data?.totals.encodingFiles).toBe(1);
+    // Excluded in the query as well, so the sweep's page bound is spent
+    // on rows the census may actually count.
+    expect(notCalls).toContainEqual(["citation_path", "like", "il/%"]);
+    expect(notCalls).toContainEqual(["citation_path", "like", "il-%"]);
   });
 
   it("tolerates an encodings mirror outage", async () => {

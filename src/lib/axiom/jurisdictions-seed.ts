@@ -42,6 +42,8 @@ export const JURISDICTIONS_SEED: Jurisdiction[] = [
   },
   { slug: "ca", label: "Canada", hasCitationPaths: false },
   { slug: "nz", label: "New Zealand", hasCitationPaths: true },
+  // Israel — ISO 3166-1 ``il``. Distinct from Illinois (``us-il``).
+  { slug: "il", label: "Israel", hasCitationPaths: true },
 
   // US states + DC + territories
   { slug: "us-al", label: "Alabama", hasCitationPaths: true },

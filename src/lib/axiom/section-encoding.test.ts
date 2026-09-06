@@ -165,6 +165,12 @@ function mirrorChain(
     mirrorQueryCalls.push({ kind, method: "in", args });
     return self;
   };
+  // Visibility exclusion — a filter, not a router: it must not change
+  // which canned result the chain resolves to.
+  self.not = (...args: unknown[]) => {
+    mirrorQueryCalls.push({ kind, method: "not", args });
+    return self;
+  };
   for (const method of ["order", "limit"]) {
     self[method] = (...args: unknown[]) => {
       mirrorQueryCalls.push({ kind, method, args });
@@ -482,6 +488,18 @@ describe("getSectionEncoding", () => {
           "module_citation_path, file_path, rule_name, is_module_source, atom_kinds, rank, rule_yaml",
           { count: "exact" },
         ],
+      },
+      // Gated families are excluded before the exact count is taken,
+      // so the reported overflow describes only showable rules.
+      {
+        kind: "ruleCitations",
+        method: "not",
+        args: ["module_citation_path", "like", "il/%"],
+      },
+      {
+        kind: "ruleCitations",
+        method: "not",
+        args: ["module_citation_path", "like", "il-%"],
       },
       {
         kind: "ruleCitations",
@@ -940,5 +958,128 @@ describe("ancestor walk-up (request deeper than the encoded file)", () => {
     const result = await getSectionEncoding("rule-1", "us/statute/26/32/a");
     expect(result.encoding).toBeNull();
     expect(result.encodingRootPath).toBeNull();
+  });
+});
+
+describe("registered app_visibility gate", () => {
+  beforeEach(() => {
+    getRuleEncodingMock.mockReset();
+    findEncodedDescendantsMock.mockReset();
+    fetchEncodedFileMock.mockReset();
+    mirrorFromMock.mockReset();
+    mirrorQueryCalls.length = 0;
+    configureMirror();
+  });
+
+  const ISRAEL_SECTION = "il/statute/income-tax-ordinance/section-121";
+
+  it("serves nothing for a gated family, even with a populated mirror row", async () => {
+    // The defect this pins: the mirror is a second store for the same
+    // encodings the GitHub readers already refuse, and it had no
+    // visibility gate at all — so a leaked or pre-gating row served
+    // rulespec-il's YAML through the reader.
+    mirrorRows([
+      {
+        citation_path: ISRAEL_SECTION,
+        file_path: "statutes/income-tax-ordinance/section-121.yaml",
+        raw_yaml: ruleYaml("income_tax_liability", "פקודת מס הכנסה 121"),
+      },
+    ]);
+    getRuleEncodingMock.mockResolvedValue(
+      encodingRow(
+        "statutes/income-tax-ordinance/section-121.yaml",
+        ruleYaml("income_tax_liability", "פקודת מס הכנסה 121"),
+      ),
+    );
+
+    const result = await getSectionEncoding("rule-il", ISRAEL_SECTION);
+
+    expect(result).toEqual({
+      encoding: null,
+      encodingRootPath: null,
+      fileAnchors: {},
+      ruleFiles: {},
+      citedByFiles: [],
+      citedByOverflow: 0,
+    });
+    // Refused before any read — the mirror, the materialized citation
+    // index, and the legacy encoding_runs/GitHub fallback alike.
+    expect(mirrorFromMock).not.toHaveBeenCalled();
+    expect(getRuleEncodingMock).not.toHaveBeenCalled();
+    expect(findEncodedDescendantsMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps a gated family's module off a public provision's page", async () => {
+    // rule_citations is keyed by the CITED provision, so a gated
+    // pilot module citing a US provision would otherwise render in
+    // that section's "Encoded from this provision" group.
+    configureMirror({
+      ruleCitations: {
+        data: [
+          ruleCitationRow({
+            moduleCitationPath: `${ISRAEL_SECTION}/credits`,
+            ruleName: "israel_credit_points",
+            rank: 0,
+          }),
+          ruleCitationRow({
+            moduleCitationPath: "us/policy/usda/snap/fy-2026-cola",
+            ruleName: "snap_benefit",
+            rank: 0,
+          }),
+        ],
+        error: null,
+        count: 2,
+      },
+    });
+
+    const result = await getSectionEncoding("rule-1", SECTION);
+
+    expect(result.citedByFiles.map((file) => file.citationPath)).toEqual([
+      "us/policy/usda/snap/fy-2026-cola",
+    ]);
+    // The exclusion is in the query as well, so the exact count the
+    // overflow figure is derived from never included the gated rows.
+    expect(
+      mirrorQueryCalls.filter((call) => call.method === "not"),
+    ).toEqual([
+      {
+        kind: "ruleCitations",
+        method: "not",
+        args: ["module_citation_path", "like", "il/%"],
+      },
+      {
+        kind: "ruleCitations",
+        method: "not",
+        args: ["module_citation_path", "like", "il-%"],
+      },
+    ]);
+  });
+
+  it("drops a gated module from the whole-file cited-by fallback", async () => {
+    configureMirror({
+      ruleCitations: { data: null, error: { message: "no table" }, count: null },
+      citedByFallback: {
+        data: [
+          {
+            citation_path: `${ISRAEL_SECTION}/credits`,
+            file_path: "statutes/income-tax-ordinance/section-121/credits.yaml",
+            raw_yaml: citedByYaml(["israel_credit_points"], SECTION),
+          },
+          {
+            citation_path: "us/policy/usda/snap/fy-2026-cola",
+            file_path: "policies/usda/snap/fy-2026-cola.yaml",
+            raw_yaml: citedByYaml(["snap_benefit"], SECTION),
+          },
+        ],
+        error: null,
+        count: 2,
+      },
+    });
+
+    const result = await getSectionEncoding("rule-1", SECTION);
+
+    expect(result.citedByFiles.map((file) => file.citationPath)).toEqual([
+      "us/policy/usda/snap/fy-2026-cola",
+    ]);
   });
 });

@@ -9,7 +9,10 @@ import {
   type Program,
   type ProgramAnchor,
 } from "@/lib/axiom/programs";
-import { gitHubApiHeaders } from "@/lib/axiom/repo-map";
+import {
+  gitHubApiHeaders,
+  ruleSpecRepoAppVisibility,
+} from "@/lib/axiom/repo-map";
 import { parseTreeEntries, type EncodedFile } from "@/lib/axiom/rulespec/repo-listing";
 import {
   parseRuleSpec,
@@ -24,6 +27,11 @@ import {
   type TokenImplication,
 } from "@/lib/axiom/search-lexicon";
 import { fetchIndexedRuleSpecCandidates } from "@/lib/axiom/rulespec-index";
+import {
+  isGatedJurisdiction,
+  readableJurisdictionHints,
+  withoutGatedRows,
+} from "@/lib/axiom/rulespec/index-visibility";
 
 export interface AxiomSearchOptions {
   jurisdiction?: string;
@@ -517,19 +525,29 @@ function fiscalYearBoost(file: EncodedFile): number {
  * List candidate files for scoring — from the database index when it
  * is populated (one query, YAML included), otherwise by crawling the
  * rulespec-* repos on GitHub at request time.
+ *
+ * Both branches are gated on the registered ``app_visibility``: the
+ * crawl through ``rootsFromRepo`` below, and the index rows through
+ * ``rulespec/index-visibility.ts``. The filter is repeated here rather
+ * than trusted to the index reader because this is the single funnel
+ * every encoded search passes through — a future candidate source
+ * wired in beside these two inherits the gate instead of re-opening
+ * the hole.
  */
 async function listEncodedFileCandidates(
   tokens: string[],
   hintedJurisdictions: Set<string>,
   bucket: string | null
 ): Promise<EncodedFileCandidate[]> {
+  const readableHints = readableJurisdictionHints(hintedJurisdictions);
+  if (readableHints === null) return [];
   const indexed = await fetchIndexedRuleSpecCandidates(
     tokens,
-    hintedJurisdictions,
+    new Set(readableHints),
     bucket
   );
   if (indexed !== null) {
-    return indexed.map((row) => ({
+    return withoutGatedRows(indexed, (row) => row.citationPath).map((row) => ({
       filePath: row.filePath,
       citationPath: row.citationPath,
       bucket: row.bucket,
@@ -539,16 +557,22 @@ async function listEncodedFileCandidates(
   }
 
   const roots = await discoverRuleSpecSearchRoots();
-  const candidateRoots =
-    hintedJurisdictions.size > 0
-      ? roots.filter((root) => hintedJurisdictions.has(root.jurisdiction))
+  const hintedRoots =
+    readableHints.length > 0
+      ? roots.filter((root) => readableHints.includes(root.jurisdiction))
       : roots;
-  return dedupeEncodedFileCandidates(
-    (
-      await Promise.all(
-        candidateRoots.map((root) => listEncodedFileCandidatesFromRoot(root))
-      )
-    ).flat()
+  const candidateRoots = hintedRoots.filter(
+    (root) => !isGatedJurisdiction(root.jurisdiction)
+  );
+  return withoutGatedRows(
+    dedupeEncodedFileCandidates(
+      (
+        await Promise.all(
+          candidateRoots.map((root) => listEncodedFileCandidatesFromRoot(root))
+        )
+      ).flat()
+    ),
+    (file) => file.citationPath
   );
 }
 
@@ -824,6 +848,13 @@ async function rootsFromRepo(repo: GitHubRepo): Promise<RuleSpecSearchRoot[]> {
   // Archived repos are read-only parked lanes, never app surfaces —
   // same skip the index sync applies (scripts/lib/rulespec-discovery.mjs).
   if (repo.archived) return [];
+  // A repo the app itself registers as gated is skipped without asking
+  // GitHub. ``fetchAppVisibility`` below fails OPEN (a hiccup must not
+  // hide a live country), which is right for repos the map doesn't
+  // know but would leak a registered pilot the one time raw.github is
+  // unreachable. Unregistered repos still discover normally, so a new
+  // country needs no repo-map entry to become searchable.
+  if (ruleSpecRepoAppVisibility(repo.name) === "experimental") return [];
   if ((await fetchAppVisibility(repo)) === "experimental") return [];
   const tree = await githubJson<GitHubTreeResponse>(
     `https://api.github.com/repos/${GITHUB_ORG}/${repo.name}/git/trees/${repo.default_branch}`

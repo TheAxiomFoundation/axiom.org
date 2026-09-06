@@ -257,6 +257,103 @@ rules:
     });
   });
 
+  it("never searches a repo the app registers as a gated pilot", async () => {
+    // rulespec-il is public on GitHub and holds an il/ tree, but its
+    // .axiom/registry.toml gates it and repo-map.ts registers that
+    // gate. fetchAppVisibility fails OPEN by design, so the registered
+    // check has to be the one that holds when raw.githubusercontent is
+    // unreachable — otherwise a pilot encoding becomes searchable the
+    // one time GitHub hiccups.
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes("/orgs/TheAxiomFoundation/repos")) {
+        return jsonResponse([
+          { name: "rulespec-il", default_branch: "main" },
+        ]);
+      }
+      if (url.includes("/.axiom/registry.toml")) {
+        // The fail-open path: the marker cannot be read at all.
+        return Promise.resolve(new Response("nope", { status: 500 }));
+      }
+      if (url.endsWith("/repos/TheAxiomFoundation/rulespec-il/git/trees/main")) {
+        return jsonResponse(tree([{ path: "il", type: "tree" }]));
+      }
+      if (url.includes("/rulespec-il/git/trees/main:il?recursive=1")) {
+        return jsonResponse(
+          tree([{ path: "statutes/income-tax-ordinance/section-121.yaml" }])
+        );
+      }
+      return jsonResponse(tree([]));
+    });
+
+    expect(await searchEncodedRuleSpecs("income tax")).toEqual([]);
+    expect(
+      mockFetch.mock.calls.some(([url]: [string]) =>
+        String(url).includes("rulespec-il/git/trees")
+      )
+    ).toBe(false);
+  });
+
+  it("never serves a gated pilot's row out of the populated search index", async () => {
+    // The index is the PRIMARY search source; the GitHub crawl above is
+    // only its fallback. A row for rulespec-il — left by a sync that ran
+    // before the repo was gated, or by one whose marker read failed —
+    // used to come straight back with the pilot's formula in it.
+    mockFetchIndexedCandidates.mockResolvedValue([
+      {
+        filePath: "statutes/income-tax-ordinance/section-121.yaml",
+        citationPath: "il/statute/income-tax-ordinance/section-121",
+        bucket: "statutes",
+        jurisdiction: "il",
+        rawYaml: [
+          "format: rulespec/v1",
+          "module:",
+          "  summary: Israeli income tax rate schedule.",
+          "rules:",
+          "- name: income_tax_liability",
+          "  kind: derived",
+          "  versions:",
+          "  - effective_from: '2025-01-01'",
+          "    formula: taxable_income * 0.47",
+        ].join("\n"),
+      },
+    ]);
+
+    expect(await searchEncodedRuleSpecs("income tax")).toEqual([]);
+    // Scoping the search AT Israel is refused too, and without paying
+    // for a GitHub crawl of the same repo.
+    expect(
+      await searchEncodedRuleSpecs("income tax", { jurisdiction: "il" })
+    ).toEqual([]);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("still serves a public jurisdiction's index rows beside a gated one", async () => {
+    // The gate is a deny-list on registered-experimental families, not
+    // an allow-list: rows for jurisdictions with no repo-map family at
+    // all (the gh/ng case) must keep flowing.
+    mockFetchIndexedCandidates.mockResolvedValue([
+      {
+        filePath: "statutes/income-tax-ordinance/section-121.yaml",
+        citationPath: "il/statute/income-tax-ordinance/section-121",
+        bucket: "statutes",
+        jurisdiction: "il",
+        rawYaml: "format: rulespec/v1\nrules: []\n",
+      },
+      {
+        filePath: "statutes/income-tax-act/section-8.yaml",
+        citationPath: "gh/statute/income-tax-act/section-8",
+        bucket: "statutes",
+        jurisdiction: "gh",
+        rawYaml: "format: rulespec/v1\nrules: []\n",
+      },
+    ]);
+
+    const hits = await searchEncodedRuleSpecs("income tax act section");
+    expect(hits.map((hit) => hit.citationPath)).toEqual([
+      "gh/statute/income-tax-act/section-8",
+    ]);
+  });
+
   it("returns empty grouped results for blank queries without hitting backends", async () => {
     const results = await searchAxiom("   ");
 

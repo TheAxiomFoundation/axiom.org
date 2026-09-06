@@ -21,6 +21,26 @@ describe("getLandingJurisdictions", () => {
     }
   });
 
+  it("surfaces Israel as a pending country before its encodings land", () => {
+    // il has a repo family (rulespec-il) but no corpus rows yet, so the
+    // landing renders it as a dimmed "pending" tile rather than hiding
+    // it — the same path nz took. Illinois (us-il) is a separate slug
+    // and keeps its own state tile.
+    const jurisdictions = getLandingJurisdictions();
+    const slugs = jurisdictions.map((jurisdiction) => jurisdiction.slug);
+
+    expect(slugs).toContain("il");
+    expect(slugs).toContain("us-il");
+    expect(jurisdictions.find((j) => j.slug === "il")).toEqual({
+      slug: "il",
+      label: "Israel",
+      hasCitationPaths: true,
+    });
+    expect(jurisdictions.find((j) => j.slug === "us-il")?.label).toBe(
+      "Illinois"
+    );
+  });
+
   it("keeps US territories hidden until stats confirm they exist", () => {
     const uncountedSlugs = getLandingJurisdictions().map(
       (jurisdiction) => jurisdiction.slug

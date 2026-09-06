@@ -816,6 +816,26 @@ describe('supabase lib', () => {
       const result = await getRuleEncoding('github:')
       expect(result).toBeNull()
     })
+
+    it('refuses the GitHub fallback for a repo the app must not read', async () => {
+      // rulespec-il is mapped (Israel gets a pending landing tile) but
+      // gated app_visibility = "experimental". The rule-detail rail
+      // must not serve its pilot YAML before promotion, so the
+      // fallback fetcher never leaves the process.
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: async () => 'format: rulespec/v1\n',
+      })
+      vi.stubGlobal('fetch', fetchMock)
+
+      const result = await getRuleEncoding(
+        'github:il/statute/income-tax-ordinance/section-121'
+      )
+      expect(result).toBeNull()
+      expect(fetchMock).not.toHaveBeenCalled()
+      vi.unstubAllGlobals()
+    })
   })
 
   describe('searchRules', () => {
@@ -1148,6 +1168,45 @@ describe('supabase lib', () => {
         ])
       )
       expect(result?.jurisdictions_count).toBeGreaterThanOrEqual(6)
+    })
+
+    it('never counts a gated pilot family from the encodings index', async () => {
+      // The landing tile count is a database read like any other. A
+      // leaked rulespec_files row would have lit Israel's tile with a
+      // rule count and a live /il link while every reader on the site
+      // refuses to serve those files.
+      const stats = {
+        provisions_count: 658899,
+        references_count: 148604,
+        jurisdictions_count: 1,
+        jurisdictions: [{ jurisdiction: 'us', count: 467993 }],
+      }
+      mockRpc.mockResolvedValue({ data: stats, error: null })
+      mockListEncodedFiles.mockResolvedValue([])
+
+      const countedJurisdictions: string[] = []
+      mockFrom.mockImplementation((table: string) => {
+        const eq = vi.fn((_column: string, jurisdiction: string) => {
+          if (table === 'rulespec_files') countedJurisdictions.push(jurisdiction)
+          return Promise.resolve(
+            table === 'rulespec_files'
+              ? { count: 42, error: null }
+              : { count: 0, error: null }
+          )
+        })
+        const select = vi.fn().mockReturnValue({ eq })
+        return { select }
+      })
+
+      const result = await getAxiomStats()
+
+      expect(countedJurisdictions).not.toContain('il')
+      // Illinois is a US state, not Israel — it must still be counted.
+      expect(countedJurisdictions).toContain('us-il')
+      expect(
+        result?.jurisdictions?.some((j) => j.jurisdiction === 'il')
+      ).toBe(false)
+      expect(mockListEncodedFiles).not.toHaveBeenCalledWith('il')
     })
 
     it('keeps Belgium counts from the bootstrap seed when GitHub RuleSpec listing is unavailable', async () => {

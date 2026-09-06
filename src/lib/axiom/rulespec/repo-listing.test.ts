@@ -212,6 +212,72 @@ describe("listEncodedFiles", () => {
     );
   });
 
+  it("lists nothing from a mapped repo the app must not read", async () => {
+    // rulespec-il is mapped as a family (so Israel gets a pending
+    // landing tile) but carries app_visibility = "experimental" in its
+    // .axiom/registry.toml, and discoverRoots() skips gated repos.
+    // Before the gate landed here, the same mapping made a pilot YAML
+    // listable and servable through the runtime readers while the
+    // search index and the drift check still excluded it — pilot
+    // encodings browsable before promotion.
+    const fetchMock = vi.fn().mockImplementation(async (url: string) =>
+      url.endsWith("/.axiom/registry.toml")
+        ? {
+            ok: true,
+            status: 200,
+            text: async () => '[registry]\napp_visibility = "experimental"\n',
+          }
+        : {
+            ok: true,
+            json: async () => ({
+              tree: [
+                {
+                  path: "statutes/income-tax-ordinance/section-121.yaml",
+                  type: "blob",
+                },
+              ],
+            }),
+          }
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(await listEncodedFiles("il")).toEqual([]);
+    expect(await findEncodedDescendants("il/statute/income-tax-ordinance")).toEqual(
+      []
+    );
+    // The registered gate is synchronous and fails closed, so the
+    // gated repo is never even asked about.
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("lists nothing from a listed repo that has gated itself upstream", async () => {
+    // The live half of the gate: a repo on the read list that flips its
+    // own marker between app deploys stops being listable immediately,
+    // the same contract discoverRoots() keeps.
+    const fetchMock = vi.fn().mockImplementation(async (url: string) =>
+      url.endsWith("/.axiom/registry.toml")
+        ? {
+            ok: true,
+            status: 200,
+            text: async () => '[registry]\napp_visibility = "experimental"\n',
+          }
+        : {
+            ok: true,
+            json: async () => ({
+              tree: [{ path: "statutes/income-tax-act-2007/CD-1.yaml", type: "blob" }],
+            }),
+          }
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(await listEncodedFiles("nz")).toEqual([]);
+    expect(
+      fetchMock.mock.calls.map(([url]: [string]) => url)
+    ).toEqual([
+      "https://raw.githubusercontent.com/TheAxiomFoundation/rulespec-nz/main/.axiom/registry.toml",
+    ]);
+  });
+
   it("lists a root-layout repo from its whole tree, skipping repo plumbing", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -320,6 +386,56 @@ describe("listRuleSpecJurisdictions", () => {
     expect(await listRuleSpecJurisdictions()).toEqual([]);
   });
 
+  it("skips a jurisdiction directory whose family the app must not read", async () => {
+    // A gated family's directory appearing inside a repo the app does
+    // read must not reach the encoded index — the index would name a
+    // jurisdiction whose files listEncodedFiles then refuses to serve.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(async (url: string) => ({
+        ok: true,
+        json: async () =>
+          url.includes("rulespec-us")
+            ? {
+                tree: [
+                  { path: "us", type: "tree" },
+                  { path: "il", type: "tree" },
+                ],
+              }
+            : { tree: [] },
+      }))
+    );
+    expect(await listRuleSpecJurisdictions()).toEqual(["us"]);
+  });
+
+  it("skips a repo that has gated itself upstream", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(async (url: string) => {
+        if (url.endsWith("/.axiom/registry.toml")) {
+          return url.includes("rulespec-uk")
+            ? {
+                ok: true,
+                status: 200,
+                text: async () => '[registry]\napp_visibility = "experimental"\n',
+              }
+            : { ok: false, status: 404 };
+        }
+        return {
+          ok: true,
+          json: async () => ({
+            tree: [
+              { path: url.includes("rulespec-uk") ? "uk" : "us", type: "tree" },
+            ],
+          }),
+        };
+      })
+    );
+    const slugs = await listRuleSpecJurisdictions();
+    expect(slugs).toContain("us");
+    expect(slugs).not.toContain("uk");
+  });
+
   it("tolerates a repo whose tree request fails", async () => {
     vi.stubGlobal(
       "fetch",
@@ -388,6 +504,42 @@ describe("fetchEncodedFile", () => {
       vi.fn().mockRejectedValue(new Error("dns"))
     );
     expect(await fetchEncodedFile("us/statute/26/3101/a")).toBeNull();
+  });
+
+  it("refuses to serve a YAML from a repo the app must not read", async () => {
+    // Holding an exact citation path is not a way around the gate: the
+    // pilot encoding stays unservable until rulespec-il is promoted.
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => "format: rulespec/v1\n",
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(
+      await fetchEncodedFile("il/statute/income-tax-ordinance/section-121")
+    ).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses to serve a YAML from a listed repo that has gated itself", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string) =>
+      url.endsWith("/.axiom/registry.toml")
+        ? {
+            ok: true,
+            status: 200,
+            text: async () => '[registry]\napp_visibility = "experimental"\n',
+          }
+        : { ok: true, status: 200, text: async () => "format: rulespec/v1\n" }
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(await fetchEncodedFile("nz/statute/income-tax-act-2007/CD-1")).toBeNull();
+    expect(
+      fetchMock.mock.calls.map(([url]: [string]) => url)
+    ).toEqual([
+      "https://raw.githubusercontent.com/TheAxiomFoundation/rulespec-nz/main/.axiom/registry.toml",
+    ]);
   });
 });
 

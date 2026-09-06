@@ -21,7 +21,7 @@ interface BuilderResult {
  */
 function fakeBuilder(result: BuilderResult) {
   const builder: Record<string, unknown> = {};
-  for (const method of ["select", "textSearch", "limit", "in", "eq"]) {
+  for (const method of ["select", "textSearch", "limit", "in", "eq", "not"]) {
     builder[method] = vi.fn(() => builder);
   }
   builder.then = (resolve: (value: BuilderResult) => unknown) =>
@@ -37,6 +37,16 @@ const ROW = {
   bucket: "policies",
   jurisdiction: "us-co",
   raw_yaml: "format: rulespec/v1",
+};
+
+/** A row for the gated Israel pilot, as a sync that ran before the
+ *  repo was gated (or whose marker read failed) would have left it. */
+const ISRAEL_ROW = {
+  file_path: "statutes/income-tax-ordinance/section-121.yaml",
+  citation_path: "il/statute/income-tax-ordinance/section-121",
+  bucket: "statutes",
+  jurisdiction: "il",
+  raw_yaml: "format: rulespec/v1\nrules:\n  - name: income_tax\n",
 };
 
 describe("fetchIndexedRuleSpecCandidates", () => {
@@ -97,12 +107,20 @@ describe("fetchIndexedRuleSpecCandidates", () => {
 
   it("distinguishes an unpopulated index (null) from a true no-match ([])", async () => {
     // No matches, but the table has rows → genuine empty result.
+    const probe = fakeBuilder({ count: 42, error: null });
     mockFrom
       .mockReturnValueOnce(fakeBuilder({ data: [], error: null }))
-      .mockReturnValueOnce(fakeBuilder({ count: 42, error: null }));
+      .mockReturnValueOnce(probe);
     expect(
       await fetchIndexedRuleSpecCandidates(["zzz"], new Set(), null)
     ).toEqual([]);
+    // The populated-ness probe counts only rows this reader may return,
+    // so an index holding nothing but gated rows still reads as empty
+    // and the caller falls back instead of answering authoritatively.
+    expect(probe.not.mock.calls).toEqual([
+      ["citation_path", "like", "il/%"],
+      ["citation_path", "like", "il-%"],
+    ]);
 
     // No matches and the table is empty → index not synced yet.
     mockFrom
@@ -111,6 +129,54 @@ describe("fetchIndexedRuleSpecCandidates", () => {
     expect(
       await fetchIndexedRuleSpecCandidates(["zzz"], new Set(), null)
     ).toBeNull();
+  });
+
+  it("refuses a populated index row for a gated pilot family", async () => {
+    // The defect this pins: the index reader had no visibility gate at
+    // all, so one leaked row made rulespec-il's YAML searchable while
+    // getRuleSpecRepoLocation("il") still returned null.
+    const builder = fakeBuilder({ data: [ISRAEL_ROW, ROW], error: null });
+    mockFrom.mockReturnValue(builder);
+
+    const result = await fetchIndexedRuleSpecCandidates(
+      ["income", "tax"],
+      new Set(),
+      null
+    );
+
+    expect(result?.map((row) => row.citationPath)).toEqual([ROW.citation_path]);
+    // …and the row is excluded in the query too, so a gated pilot
+    // cannot eat the candidate window and starve real results.
+    expect(builder.not.mock.calls).toEqual([
+      ["citation_path", "like", "il/%"],
+      ["citation_path", "like", "il-%"],
+    ]);
+  });
+
+  it("answers empty — without querying — when every hint is gated", async () => {
+    // ``null`` would mean "the index cannot answer" and send the caller
+    // off to crawl GitHub for exactly the rows it must not serve.
+    const result = await fetchIndexedRuleSpecCandidates(
+      ["income", "tax"],
+      new Set(["il"]),
+      null
+    );
+
+    expect(result).toEqual([]);
+    expect(mockFrom).not.toHaveBeenCalled();
+  });
+
+  it("drops only the gated hints from a mixed hint set", async () => {
+    const builder = fakeBuilder({ data: [ROW], error: null });
+    mockFrom.mockReturnValue(builder);
+
+    await fetchIndexedRuleSpecCandidates(
+      ["snap"],
+      new Set(["us-co", "il"]),
+      null
+    );
+
+    expect(builder.in).toHaveBeenCalledWith("jurisdiction", ["us-co"]);
   });
 
   it("returns null when the client throws entirely", async () => {

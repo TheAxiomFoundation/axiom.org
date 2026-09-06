@@ -1,14 +1,14 @@
 import {
-  getRuleSpecRepoForJurisdiction,
-  getRuleSpecRepoLocation,
   gitHubApiHeaders,
-  ruleSpecRawFileUrl,
+  isAppReadableJurisdiction,
+  ruleSpecRawFileUrlForLocation,
   ruleSpecRepoRootJurisdiction,
   ruleSpecRepoRootTreeApiUrl,
   ruleSpecRepoSubtreeApiUrl,
   RULESPEC_REPOS,
 } from "@/lib/axiom/repo-map";
 import { cachedRawFetch } from "./raw-cache";
+import { isRuleSpecRepoReadable, ruleSpecReadLocation } from "./visibility";
 
 /**
  * Fetch the list of RuleSpec encoding files in a jurisdiction's
@@ -94,7 +94,11 @@ const REVALIDATE_SECONDS = 600;
 export async function listEncodedFiles(
   jurisdiction: string
 ): Promise<EncodedFile[]> {
-  const loc = getRuleSpecRepoLocation(jurisdiction);
+  // ``ruleSpecReadLocation`` — not ``getRuleSpecRepoLocation`` — so a
+  // repo the app maps but must not read (``app_visibility =
+  // "experimental"``) lists nothing, the same gate ``discoverRoots()``
+  // applies to the search index.
+  const loc = await ruleSpecReadLocation(jurisdiction);
   if (!loc) return [];
   const body = await fetchTree(
     ruleSpecRepoSubtreeApiUrl(loc.repo, loc.prefix)
@@ -115,7 +119,11 @@ export async function listEncodedFiles(
  */
 export async function listRuleSpecJurisdictions(): Promise<string[]> {
   const trees = await Promise.all(
-    RULESPEC_REPOS.map((repo) => fetchTree(ruleSpecRepoRootTreeApiUrl(repo)))
+    RULESPEC_REPOS.map(async (repo) =>
+      (await isRuleSpecRepoReadable(repo))
+        ? fetchTree(ruleSpecRepoRootTreeApiUrl(repo))
+        : null
+    )
   );
   const slugs = new Set<string>();
   for (const [index, body] of trees.entries()) {
@@ -127,7 +135,10 @@ export async function listRuleSpecJurisdictions(): Promise<string[]> {
       if (entry.type !== "tree") continue;
       if (rootJurisdiction) {
         if (RULESPEC_BUCKETS.has(entry.path)) slugs.add(rootJurisdiction);
-      } else if (getRuleSpecRepoForJurisdiction(entry.path)) {
+      } else if (isAppReadableJurisdiction(entry.path)) {
+        // A gated family's directory inside a repo the app *does* read
+        // is still not listable — the index must not name a
+        // jurisdiction whose files it would refuse to serve.
         slugs.add(entry.path);
       }
     }
@@ -282,8 +293,11 @@ export async function fetchEncodedFile(
   const jurisdiction = parts[0];
   const filePath = citationPathToFilePath(citationPath);
   if (!filePath) return null;
-  const url = ruleSpecRawFileUrl(jurisdiction, filePath);
-  if (!url) return null;
+  // Same gate as the listing: a gated repo's YAML is not servable even
+  // when a caller already holds its citation path.
+  const loc = await ruleSpecReadLocation(jurisdiction);
+  if (!loc) return null;
+  const url = ruleSpecRawFileUrlForLocation(loc, filePath);
   const res = await cachedRawFetch(url, {
     next: { revalidate: REVALIDATE_SECONDS },
   } as RequestInit);

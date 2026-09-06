@@ -39,6 +39,7 @@ import {
   githubJson,
 } from "./lib/rulespec-discovery.mjs";
 import { citationPathSetsForFile } from "./lib/source-citation-paths.mjs";
+import { indexableRoots } from "./lib/indexable-roots.mjs";
 
 const RAW_FETCH_CONCURRENCY = 8;
 const UPSERT_CHUNK_SIZE = 100;
@@ -178,11 +179,26 @@ const incomplete = {
   rawFiles: 0,
   invalidFiles: 0,
 };
-const roots = await discoverRoots(() => {
+const discovered = await discoverRoots(() => {
   incomplete.discoveryTrees += 1;
 });
-if (roots.length === 0) incomplete.emptyDiscovery = true;
-console.log(`${roots.length} jurisdiction roots discovered`);
+if (discovered.length === 0) incomplete.emptyDiscovery = true;
+console.log(`${discovered.length} jurisdiction roots discovered`);
+
+// Second, synchronous gate on top of discovery's marker read, which
+// fails open: a family the app registers app_visibility="experimental"
+// is never indexed, even when its .axiom/registry.toml could not be
+// fetched. See scripts/lib/indexable-roots.mjs.
+const roots = indexableRoots(discovered, (root) =>
+  console.log(
+    `skip ${root.repo}:${root.prefix ?? ""}: app registers "${root.jurisdiction}" app_visibility=experimental`,
+  ),
+);
+if (roots.length < discovered.length) {
+  console.log(
+    `${discovered.length - roots.length} root(s) withheld by the app read list`,
+  );
+}
 
 const seen = new Set();
 const files = [];

@@ -1,4 +1,8 @@
 import { supabaseCorpus, supabaseEncodings } from "@/lib/supabase";
+import {
+  excludeGatedRows,
+  isGatedJurisdiction,
+} from "@/lib/axiom/rulespec/index-visibility";
 import { JURISDICTIONS_SEED } from "@/lib/axiom/jurisdictions-seed";
 
 /**
@@ -147,9 +151,12 @@ async function loadRootDocCounts(
 async function loadEncodingCounts(): Promise<Map<string, number> | null> {
   const counts = new Map<string, number>();
   for (let page = 0; page < MAX_SWEEP_PAGES; page++) {
-    const { data, error } = await supabaseEncodings
-      .from("rulespec_files")
-      .select("jurisdiction")
+    // ``excludeGatedRows`` filters on ``citation_path``; PostgREST
+    // filters columns that are not in the projection, so the sweep
+    // still selects only the jurisdiction it counts.
+    const { data, error } = await excludeGatedRows(
+      supabaseEncodings.from("rulespec_files").select("jurisdiction"),
+    )
       // \_ keeps the underscore literal (LIKE treats bare _ as "any").
       .not("file_path", "ilike", "%\\_pipeline.yaml")
       .not("raw_yaml", "ilike", "%status: deferred%")
@@ -161,6 +168,8 @@ async function loadEncodingCounts(): Promise<Map<string, number> | null> {
     const rows = (data ?? []) as Array<{ jurisdiction: string | null }>;
     for (const row of rows) {
       if (!row.jurisdiction) continue;
+      // A gated pilot family is not part of the published census.
+      if (isGatedJurisdiction(row.jurisdiction)) continue;
       counts.set(row.jurisdiction, (counts.get(row.jurisdiction) ?? 0) + 1);
     }
     if (rows.length < SWEEP_PAGE_SIZE) return counts;

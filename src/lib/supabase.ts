@@ -1,11 +1,13 @@
 import { createClient } from '@supabase/supabase-js'
 import { getLandingJurisdictions } from '@/lib/axiom/landing-jurisdictions'
 import {
-  getRuleSpecRepoForJurisdiction,
-  ruleSpecRawFileUrl,
+  isAppReadableJurisdiction,
+  ruleSpecRawFileUrlForLocation,
 } from '@/lib/axiom/repo-map'
+import { isGatedJurisdiction } from '@/lib/axiom/rulespec/index-visibility'
 import { cachedRawFetch } from '@/lib/axiom/rulespec/raw-cache'
 import { listEncodedFiles } from '@/lib/axiom/rulespec/repo-listing'
+import { ruleSpecReadLocation } from '@/lib/axiom/rulespec/visibility'
 
 // Supabase configuration
 /* v8 ignore start -- env-dependent module initialization */
@@ -365,17 +367,21 @@ export function candidatePaths(
 }
 
 // Fetch RuleSpec content from GitHub rulespec-us repo (fallback for hand-written encodings)
-/* v8 ignore start -- network fetch to GitHub, tested via integration */
 async function fetchRuleSpecFromGitHub(
   candidates: string[],
   jurisdiction: string
 ): Promise<RuleEncodingData | null> {
+  // The same visibility gate the encoded listing applies: a repo the
+  // app maps but must not read (``app_visibility = "experimental"``)
+  // serves nothing, even to a caller holding an exact citation path.
+  const loc = await ruleSpecReadLocation(jurisdiction)
+  if (!loc) return null
+  /* v8 ignore start -- network fetch to GitHub, tested via integration */
   for (const filePath of candidates) {
     // ``filePath`` is bucket-rooted (``statutes/26/32.yaml``); the
-    // helper injects the monorepo jurisdiction-dir prefix and returns
-    // null when the jurisdiction has no published repo.
-    const url = ruleSpecRawFileUrl(jurisdiction, filePath)
-    if (!url) return null
+    // helper injects the monorepo jurisdiction-dir prefix the layout
+    // requires.
+    const url = ruleSpecRawFileUrlForLocation(loc, filePath)
     const res = await cachedRawFetch(url, { next: { revalidate: 3600 } } as RequestInit)
     if (!res.ok) continue
     return {
@@ -758,6 +764,13 @@ async function getRuleSpecJurisdictionCounts(
 ): Promise<AxiomJurisdictionCount[]> {
   const rows = await Promise.all(
     jurisdictions.map(async (jurisdiction) => {
+      // A gated pilot family is never counted from the index. A leaked
+      // or pre-gating row would otherwise light its landing tile with
+      // a rule count and a live link to a page that serves nothing —
+      // the GitHub fallback below has refused it since
+      // isGitHubRuleSpecStatsFallbackJurisdiction.
+      if (isGatedJurisdiction(jurisdiction)) return null
+
       const { count, error } = await supabaseEncodings
         .from('rulespec_files')
         .select('citation_path', { count: 'exact', head: true })
@@ -810,12 +823,14 @@ async function getRuleSpecGitHubJurisdictionCounts(
 }
 
 function isGitHubRuleSpecStatsFallbackJurisdiction(jurisdiction: string) {
-  // Any jurisdiction with a published rulespec-* repo can have its tile
-  // count derived from the repo listing when the corpus stats and the
-  // rulespec_files index have no row for it. Derived from the repo map
-  // rather than a per-country allowlist so new jurisdictions (Canada,
-  // and whatever comes next) light up without editing this file.
-  return getRuleSpecRepoForJurisdiction(jurisdiction) !== null
+  // Any jurisdiction the app may READ can have its tile count derived
+  // from the repo listing when the corpus stats and the rulespec_files
+  // index have no row for it. Derived from the repo map rather than a
+  // per-country allowlist so new jurisdictions (Canada, and whatever
+  // comes next) light up without editing this file — but a mapped
+  // repo that is still gated must stay at a pending tile, not report
+  // a count nothing else on the site can open.
+  return isAppReadableJurisdiction(jurisdiction)
 }
 
 const BELGIUM_RULESPEC_BOOTSTRAP_COUNTS: Readonly<Record<string, number>> =

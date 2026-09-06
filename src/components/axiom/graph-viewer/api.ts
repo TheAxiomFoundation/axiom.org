@@ -21,6 +21,7 @@ const COUNTRY_LABELS: Record<string, string> = {
   nz: "New Zealand",
   be: "Belgium",
   ca: "Canada",
+  il: "Israel",
 };
 
 interface ApiPackage {

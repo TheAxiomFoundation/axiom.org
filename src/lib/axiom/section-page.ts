@@ -14,6 +14,7 @@ import {
 import { getProvisionByCitationPath } from "@/lib/axiom/navigation-index/read";
 import type { NavigationNodeRow } from "@/lib/axiom/navigation-index/types";
 import { parseRuleSpec } from "@/lib/axiom/rulespec/doc";
+import { isGatedJurisdiction } from "@/lib/axiom/rulespec/index-visibility";
 import {
   getProvisionCoverage,
   type ProvisionProgramCoverage,
@@ -712,6 +713,10 @@ export async function rulespecSourceCitationPath(
   slug: string,
   ruleSegments: string[],
 ): Promise<string | null> {
+  // Same registered-visibility refusal the section reader makes: a
+  // gated pilot family's module must not attest a corpus home through
+  // the mirror when its YAML is unreadable everywhere else.
+  if (isGatedJurisdiction(slug)) return null;
   for (let end = ruleSegments.length; end >= 3; end--) {
     const candidate = [slug, ...ruleSegments.slice(0, end)].join("/");
     const { data, error } = await supabaseEncodings
