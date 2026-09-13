@@ -8,7 +8,9 @@
    measures the height chain. It also holds the tour to the notice's
    boundary: above 820px the first tour card must open, and under the
    notice (820px and below) none may — the tour once gated on the
-   site's 767px phone breakpoint, so 768–820px showed both.
+   site's 767px phone breakpoint, so 768–820px showed both. Each width
+   is watched through the tour's whole auto-start window, so a card
+   that would open late (an anchor that never lands) is still seen.
 
      bun scripts/graph-viewport-check.mjs                  # http://localhost:3742
      bun scripts/graph-viewport-check.mjs --url https://axiom.org
@@ -16,98 +18,30 @@
 
    Exit 0 when every viewport passes, 1 otherwise. Uses Playwright's
    Chromium like scripts/capture-demo-posters.mjs (one-time setup:
-   `bunx playwright install chromium`). */
+   `bunx playwright install chromium`). The measurement lives in
+   graph-viewport-check.lib.ts, where graph-viewport-check.test.ts
+   drives it with a fake browser on a virtual clock. */
 import { chromium } from "playwright";
+import { checkViewports, DEFAULT_PATH, MIN_CANVAS_PX } from "./graph-viewport-check.lib.ts";
 
 const args = new Map();
 for (let i = 2; i < process.argv.length; i += 2) {
   args.set(process.argv[i].replace(/^--/, ""), process.argv[i + 1]);
 }
 const base = (args.get("url") ?? "http://localhost:3742").replace(/\/$/, "");
-const path =
-  args.get("path") ?? "/app?compose=il%3Astatutes%2Fincome-tax-ordinance%2Fsection-121";
-const url = base + path;
-
-/* Widths straddle the two breakpoints that shape the canvas: 900px
-   (styles.css's stacked layout, where the collapse lived) and 820px
-   (plane.css's small-screen notice, which is also the Plane's tour
-   gate — src/components/axiom/graph-viewer/plane-breakpoints.ts). */
-const VIEWPORTS = [
-  { width: 1400, height: 900 },
-  { width: 940, height: 971 },
-  { width: 901, height: 971 },
-  { width: 900, height: 971 },
-  { width: 821, height: 900 },
-  { width: 820, height: 900 },
-  { width: 640, height: 900 },
-  { width: 390, height: 844 },
-];
-const MIN_CANVAS_PX = 300;
+const url = base + (args.get("path") ?? DEFAULT_PATH);
 
 const browser = await chromium.launch();
-
-let failed = false;
-const rows = [];
+let result;
 try {
-  for (const viewport of VIEWPORTS) {
-    const context = await browser.newContext({ viewport });
-    const page = await context.newPage();
-    page.on("pageerror", (e) => console.log("PAGE ERROR:", e.message));
-    await page.goto(url, { waitUntil: "networkidle", timeout: 90_000 });
-    await page.waitForSelector(".react-flow__node", { timeout: 90_000 });
-    // The first tour card follows the nodes by an anchor poll: wait
-    // for it, or for the notice under which none may open, then let
-    // the fit-view settle.
-    await page
-      .waitForFunction(
-        () => {
-          const notice = document.querySelector(".small-screen-notice");
-          return (
-            !!document.querySelector(".driver-popover") ||
-            (!!notice && getComputedStyle(notice).position === "fixed")
-          );
-        },
-        undefined,
-        { timeout: 15_000 },
-      )
-      .catch(() => {});
-    await page.waitForTimeout(1200);
-    const measured = await page.evaluate(() => {
-      const h = (sel) => document.querySelector(sel)?.offsetHeight ?? null;
-      const notice = document.querySelector(".small-screen-notice");
-      return {
-        root: h(".graph-viewer-root"),
-        shell: h(".graph-viewer-root .app-shell"),
-        panel: h(".graph-viewer-root .viewer-panel"),
-        wrap: h(".graph-viewer-root .irg-wrap"),
-        canvas: h(".graph-viewer-root .irg-canvas"),
-        flow: h(".graph-viewer-root .react-flow"),
-        nodes: document.querySelectorAll(".react-flow__node").length,
-        noticeShown: notice ? getComputedStyle(notice).position === "fixed" : false,
-        tourShown: !!document.querySelector(".driver-popover"),
-      };
-    });
-    await context.close();
-    const ok =
-      measured.nodes > 0 &&
-      (measured.canvas ?? 0) >= MIN_CANVAS_PX &&
-      (measured.flow ?? 0) >= MIN_CANVAS_PX &&
-      // Above the boundary the tour opens; under the notice it must not.
-      measured.tourShown !== measured.noticeShown;
-    if (!ok) failed = true;
-    rows.push({
-      viewport: `${viewport.width}×${viewport.height}`,
-      ...measured,
-      result: ok ? "ok" : "FAIL",
-    });
-  }
+  result = await checkViewports(browser, url);
 } finally {
   await browser.close();
 }
 
 console.log(url);
-console.table(rows);
-if (failed) {
+console.table(result.rows);
+if (result.failed) {
   console.error(
     `FAIL: a canvas measured under ${MIN_CANVAS_PX}px, rendered no nodes, or the tour disagreed with the small-screen notice (open under it, or missing above it) — see the table.`,
   );

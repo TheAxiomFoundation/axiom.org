@@ -69,13 +69,20 @@ Two checks guard this:
   running server (`--url https://axiom.org` for production) and fails
   when the canvas is under 300px, renders no nodes, or the tour
   disagrees with the notice: a tour popover open while the notice is
-  up, or none open above the boundary. Run it by hand after touching
-  any of the three sheets or the tour, and look at 900px, 821px, 820px
-  and 640px: at 900×971 and 821×900 the graph fills the panel under the
-  controls row with the first tour card centred (`tourShown: true`); at
-  820×900 and 640×900 the notice covers a canvas that is still laid out
-  underneath, with no tour card (`noticeShown: true`, `tourShown:
-  false`, and a full-height `canvas`).
+  up, or none open above the boundary. It watches each width through
+  the tour's whole auto-start window (the anchor wait plus one poll,
+  from `tour/tour-timing.ts`, plus a margin), because a tour whose
+  anchor never lands opens that late, and a shorter watch would miss a
+  card opening under the notice. The measurement lives in
+  `scripts/graph-viewport-check.lib.ts`; `graph-viewport-check.test.ts`
+  drives it with a fake browser on a virtual clock and fails it when a
+  card opens at the fallback under the notice. Run the script by hand
+  after touching any of the three sheets or the tour, and look at
+  900px, 821px, 820px and 640px: at 900×971 and 821×900 the graph fills
+  the panel under the controls row with the first tour card centred
+  (`tourShown: true`); at 820×900 and 640×900 the notice covers a
+  canvas that is still laid out underneath, with no tour card
+  (`noticeShown: true`, `tourShown: false`, and a full-height `canvas`).
 
 Cross-repo tracking:
 [rulespec-graph-viewer#17](https://github.com/TheAxiomFoundation/rulespec-graph-viewer/issues/17).

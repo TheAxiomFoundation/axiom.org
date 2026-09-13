@@ -10,6 +10,7 @@ import {
   type TourSurface,
 } from "./tour-state";
 import { trackAxiomEvent } from "@/lib/analytics";
+import { ANCHOR_POLL_MS, ANCHOR_WAIT_MS } from "./tour-timing";
 
 export type TourStep = {
   /** CSS selector to spotlight; omit for a centered, un-anchored step. */
@@ -42,11 +43,6 @@ export type TourStep = {
    *  wait for it at highlight time. */
   deferred?: boolean;
 };
-
-/** How long to wait for the first anchored element — the Plane's DOM
- *  appears well after mount (ssr:false + corpus fetch). */
-const ANCHOR_WAIT_MS = 8000;
-const ANCHOR_POLL_MS = 250;
 
 /** Below this width a tour never auto-starts: the site's phone
  *  breakpoint, where popovers are cramped and the replay pill is

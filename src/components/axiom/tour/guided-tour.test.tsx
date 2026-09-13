@@ -26,6 +26,7 @@ import {
   type TourStep,
 } from "./guided-tour";
 import { tourSeenKey } from "./tour-state";
+import { ANCHOR_POLL_MS, ANCHOR_WAIT_MS } from "./tour-timing";
 import { mediaStub } from "@/test/media-stub";
 
 /** An element driver's visibility check accepts: present + painted. */
@@ -43,8 +44,8 @@ const lastConfig = () => capturedConfigs[capturedConfigs.length - 1]!;
 /** Past the anchor poll's first two ticks — enough for an ungated
  *  tour to have started. */
 const ANCHOR_SETTLE_MS = 600;
-/** Past the whole anchor wait (8s in guided-tour.tsx). */
-const PAST_ANCHOR_WAIT_MS = 9_000;
+/** Past the whole anchor wait and the tick that follows it. */
+const PAST_ANCHOR_WAIT_MS = ANCHOR_WAIT_MS + 2 * ANCHOR_POLL_MS;
 
 const PLANE_QUERY = "(max-width: 820px)";
 
@@ -89,6 +90,36 @@ describe("GuidedTour", () => {
     });
     expect(window.localStorage.getItem(tourSeenKey("graph"))).toBe("1");
     expect(onEnd).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it("an anchor that never lands: the tour starts on the first tick past the wait", async () => {
+    /* The fallback that scripts/graph-viewport-check.lib.ts watches
+       for — a tour can open this late, so an observer that stops
+       looking sooner cannot say no tour opened. */
+    vi.useFakeTimers();
+    anchoredElement("anchor-a");
+    render(
+      <GuidedTour
+        surface="graph"
+        steps={[
+          ...steps,
+          {
+            element: '[data-testid="anchor-never"]',
+            title: "Late",
+            description: "never lands",
+          },
+        ]}
+      />,
+    );
+    await act(async () => {
+      vi.advanceTimersByTime(ANCHOR_WAIT_MS);
+    });
+    expect(driverMock).not.toHaveBeenCalled();
+    await act(async () => {
+      vi.advanceTimersByTime(ANCHOR_POLL_MS);
+    });
+    expect(tourMock.drive).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
   });
 
