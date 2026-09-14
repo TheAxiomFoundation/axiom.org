@@ -488,6 +488,12 @@ export function StackSystemPage() {
               inspection into distinct layers so each can be audited, improved,
               and replaced without collapsing the whole system into one tool.
             </p>
+            <p className="mt-6 border-l-2 border-[var(--color-accent)] pl-5 font-body text-[1rem] leading-relaxed text-[var(--color-ink-secondary)]">
+              For the implemented core and encoder path, and the remaining
+              admission and publication work, see the {" "}
+              <Link href="/docs/#core-execution">current execution architecture</Link>.
+              {" "}The map below provides the broader system context.
+            </p>
           </div>
 
           <div className="rounded-md border border-[var(--color-rule)] bg-[linear-gradient(135deg,rgba(192,80,0,0.08),rgba(12,12,12,0.02))] p-8 mb-10">

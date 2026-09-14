@@ -3,11 +3,17 @@ import {
   getRuleSpecRepoForJurisdiction,
   getRuleSpecRepoLocation,
   gitHubApiHeaders,
+  isAppReadableJurisdiction,
+  isRuleSpecRepoInAppReadList,
+  ruleSpecFamilyAppVisibility,
+  ruleSpecFamilyForJurisdiction,
   ruleSpecRawFileUrl,
+  ruleSpecRawFileUrlForLocation,
   ruleSpecBlobUrl,
   ruleSpecRepoTreeUrl,
   ruleSpecRepoSubtreeApiUrl,
   ruleSpecRepoRootTreeApiUrl,
+  RULESPEC_FAMILIES,
   RULESPEC_REPOS,
   RULESPEC_COUNTRY_SLUGS,
 } from "./repo-map";
@@ -20,14 +26,26 @@ import { JURISDICTIONS_SEED } from "./jurisdictions-seed";
  * encodings invisible to the app.
  */
 describe("RULESPEC_COUNTRY_SLUGS", () => {
-  it("derives one country slug per published repo", () => {
-    expect(RULESPEC_COUNTRY_SLUGS).toEqual(["us", "uk", "be", "ca", "nz"]);
-    expect(RULESPEC_COUNTRY_SLUGS).toHaveLength(RULESPEC_REPOS.length);
+  it("lists one country slug per family, gated repos included", () => {
+    // Presentation, not the read list: every family the map knows gets
+    // a country tile, including a country whose repo is still a gated
+    // pilot (it renders as "pending" rather than vanishing).
+    expect(RULESPEC_COUNTRY_SLUGS).toEqual([
+      "us",
+      "uk",
+      "be",
+      "ca",
+      "nz",
+      "il",
+    ]);
+    expect(RULESPEC_COUNTRY_SLUGS).toHaveLength(RULESPEC_FAMILIES.length);
   });
 
   it("maps every country slug back to its repo", () => {
     for (const [i, slug] of RULESPEC_COUNTRY_SLUGS.entries()) {
-      expect(getRuleSpecRepoForJurisdiction(slug)).toBe(RULESPEC_REPOS[i]);
+      expect(getRuleSpecRepoForJurisdiction(slug)).toBe(
+        RULESPEC_FAMILIES[i].repo
+      );
     }
   });
 
@@ -38,6 +56,65 @@ describe("RULESPEC_COUNTRY_SLUGS", () => {
         slug
       );
     }
+  });
+
+  it("is every family's slug, whatever its visibility", () => {
+    // The defect this pins: RULESPEC_COUNTRY_SLUGS used to be
+    // RULESPEC_REPOS.map(...), so a mapped-but-gated country was
+    // missing from the country row and fell through to the anonymous
+    // "Other" chips with no pending label at all. Every family is
+    // public today; the gated case is covered with a synthetic family
+    // in rulespec-visibility-states.test.ts.
+    expect(RULESPEC_COUNTRY_SLUGS).toEqual(RULESPEC_FAMILIES.map((f) => f.slug));
+    expect(RULESPEC_COUNTRY_SLUGS).toContain("il");
+    expect(RULESPEC_REPOS).toContain("rulespec-il");
+  });
+});
+
+describe("RULESPEC_REPOS", () => {
+  it("is the listed set: public families only, rulespec-il included since 2026-09-07", () => {
+    // rulespec-il went public on 2026-09-07 ("similar treatment to
+    // Belgium"): its registry marker and this entry were flipped
+    // together, the two-key change scripts/check-rulespec-drift.mjs
+    // enforces.
+    expect(RULESPEC_REPOS).toEqual([
+      "rulespec-us",
+      "rulespec-uk",
+      "rulespec-be",
+      "rulespec-ca",
+      "rulespec-nz",
+      "rulespec-il",
+    ]);
+    for (const repo of RULESPEC_REPOS) {
+      expect(isRuleSpecRepoInAppReadList(repo)).toBe(true);
+    }
+    expect(isRuleSpecRepoInAppReadList("rulespec-nowhere")).toBe(false);
+  });
+});
+
+describe("family visibility", () => {
+  it("reports the registered app_visibility for a slug and its children", () => {
+    expect(ruleSpecFamilyAppVisibility("us")).toBe("public");
+    expect(ruleSpecFamilyAppVisibility("us-ny")).toBe("public");
+    expect(ruleSpecFamilyAppVisibility("il")).toBe("public");
+    expect(ruleSpecFamilyAppVisibility("il-tlv")).toBe("public");
+    expect(ruleSpecFamilyAppVisibility("fr")).toBeNull();
+  });
+
+  it("reads every public family and nothing outside a family", () => {
+    expect(isAppReadableJurisdiction("us")).toBe(true);
+    expect(isAppReadableJurisdiction("ca")).toBe(true);
+    expect(isAppReadableJurisdiction("il")).toBe(true);
+    expect(isAppReadableJurisdiction("fr")).toBe(false);
+  });
+
+  it("resolves the Israel family", () => {
+    expect(ruleSpecFamilyForJurisdiction("il")).toEqual({
+      slug: "il",
+      repo: "rulespec-il",
+      appVisibility: "public",
+    });
+    expect(getRuleSpecRepoForJurisdiction("il")).toBe("rulespec-il");
   });
 });
 
@@ -61,10 +138,22 @@ describe("getRuleSpecRepoForJurisdiction", () => {
       "be-dg": "rulespec-be",
       ca: "rulespec-ca",
       nz: "rulespec-nz",
+      il: "rulespec-il",
     };
     for (const [slug, repo] of Object.entries(expected)) {
       expect(getRuleSpecRepoForJurisdiction(slug)).toBe(repo);
     }
+  });
+
+  it("keeps Israel (il) and Illinois (us-il) on separate families", () => {
+    // ``il`` is ISO 3166-1 Israel; Illinois is the ``us-il`` state slug.
+    // A prefix mix-up here would route Illinois encodings at rulespec-il.
+    expect(getRuleSpecRepoForJurisdiction("il")).toBe("rulespec-il");
+    expect(getRuleSpecRepoForJurisdiction("us-il")).toBe("rulespec-us");
+    expect(getRuleSpecRepoLocation("us-il")).toEqual({
+      repo: "rulespec-us",
+      prefix: "us-il",
+    });
   });
 
   it("returns null for jurisdictions outside a published repo family", () => {
@@ -92,6 +181,30 @@ describe("getRuleSpecRepoLocation", () => {
       repo: "rulespec-be",
       prefix: "be-bru",
     });
+  });
+
+  it("locates the Israel family like any public one", () => {
+    expect(getRuleSpecRepoLocation("il")).toEqual({ repo: "rulespec-il", prefix: "il" });
+    expect(getRuleSpecRepoLocation("il-tlv")).toEqual({
+      repo: "rulespec-il",
+      prefix: "il-tlv",
+    });
+    expect(getRuleSpecRepoLocation("fr")).toBeNull();
+  });
+
+  it("keeps the layout Israel will use once the pilot is promoted", () => {
+    // rulespec-il is scaffolded like rulespec-nz: buckets under
+    // ``il/``. Flipping the family entry to "public" is the whole
+    // promotion, so pin the shape the flip will produce.
+    expect(
+      ruleSpecRawFileUrlForLocation(
+        { repo: "rulespec-il", prefix: "il" },
+        "statutes/income-tax-ordinance/section-121.yaml"
+      )
+    ).toBe(
+      "https://raw.githubusercontent.com/TheAxiomFoundation/rulespec-il/main/il/statutes/income-tax-ordinance/section-121.yaml"
+    );
+    expect(ruleSpecFamilyForJurisdiction("il")?.rootLayout).toBeUndefined();
   });
 
   it("returns an empty prefix for root-layout single-jurisdiction repos", () => {

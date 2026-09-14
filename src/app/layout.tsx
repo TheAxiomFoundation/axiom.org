@@ -35,8 +35,8 @@ export const metadata: Metadata = {
   openGraph: {
     url: "./",
     title: "Axiom Foundation",
-    // Post-launch share copy — the Message House top line (launch repo,
-    // Message-House.md). Keep in sync if the house changes.
+    // Post-launch share copy — the Message House top line (ops repo,
+    // comms/Message-House.md). Keep in sync if the house changes.
     description:
       "The rules that decide who gets food assistance, health coverage, and tax credits live in closed code that no one can check — the Axiom Foundation publishes them in the open: cited, computable, and verified.",
     // Official brand share card (axiom-brand png/social/og-paper-full.png,

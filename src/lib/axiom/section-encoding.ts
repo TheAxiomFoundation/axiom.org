@@ -11,6 +11,11 @@ import {
 } from "@/lib/axiom/rulespec/repo-listing";
 import { ruleCitationRows } from "@/lib/axiom/rulespec/source-citations";
 import { parseRuleSpec } from "@/lib/axiom/rulespec/doc";
+import {
+  excludeGatedRows,
+  isGatedCitationPath,
+  withoutGatedRows,
+} from "@/lib/axiom/rulespec/index-visibility";
 
 /**
  * Section-level encoding assembly for the v2 reader.
@@ -438,7 +443,7 @@ async function listMirrorFiles(
       file_path: string;
       raw_yaml: string | null;
     }>;
-    return rows
+    return withoutGatedRows(rows, (row) => row.citation_path)
       .filter((row) => row.raw_yaml && row.raw_yaml.trim().length > 0)
       .map((row) => ({
         citationPath: row.citation_path,
@@ -489,12 +494,19 @@ async function listRuleCitations(
   citationPath: string,
 ): Promise<RuleCitationLookup> {
   try {
-    const query = supabaseEncodings
-      .from("rule_citations")
-      .select(
-        "module_citation_path, file_path, rule_name, is_module_source, atom_kinds, rank, rule_yaml",
-        { count: "exact" },
-      )
+    // A gated family's module must not surface as a citing rule on a
+    // public provision's page. Excluded in the query so the exact
+    // count — and therefore the reported overflow — describes only
+    // rules the reader may actually show.
+    const query = excludeGatedRows(
+      supabaseEncodings
+        .from("rule_citations")
+        .select(
+          "module_citation_path, file_path, rule_name, is_module_source, atom_kinds, rank, rule_yaml",
+          { count: "exact" },
+        ),
+      "module_citation_path",
+    )
       .eq("citation_path", citationPath)
       .order("rank", { ascending: true })
       .order("module_citation_path", { ascending: true })
@@ -518,7 +530,10 @@ async function listRuleCitations(
       rank: number;
       rule_yaml: string;
     }>;
-    const rows = sourceRows.map<RuleCitationRecord>((row) => ({
+    const rows = withoutGatedRows(
+      sourceRows,
+      (row) => row.module_citation_path,
+    ).map<RuleCitationRecord>((row) => ({
       moduleCitationPath: row.module_citation_path,
       filePath: row.file_path,
       ruleName: row.rule_name,
@@ -555,9 +570,11 @@ async function listRuleCitations(
 async function listCitedByFiles(citationPath: string): Promise<CitedByLookup> {
   try {
     const result = await withTimeout(
-      supabaseEncodings
-        .from("rulespec_files")
-        .select("citation_path, file_path, raw_yaml", { count: "exact" })
+      excludeGatedRows(
+        supabaseEncodings
+          .from("rulespec_files")
+          .select("citation_path, file_path, raw_yaml", { count: "exact" }),
+      )
         .contains("value_citation_paths", [citationPath])
         .order("citation_path", { ascending: true })
         .limit(MAX_SECTION_FILES),
@@ -570,7 +587,7 @@ async function listCitedByFiles(citationPath: string): Promise<CitedByLookup> {
       file_path: string;
       raw_yaml: string | null;
     }>;
-    const files = rows
+    const files = withoutGatedRows(rows, (row) => row.citation_path)
       .filter((row) => row.raw_yaml && row.raw_yaml.trim().length > 0)
       .map((row) => ({
         citationPath: row.citation_path,
@@ -658,7 +675,7 @@ async function findAncestorFile(
       file_path: string;
       raw_yaml: string | null;
     }>;
-    const best = rows
+    const best = withoutGatedRows(rows, (row) => row.citation_path)
       .filter((row) => row.raw_yaml && row.raw_yaml.trim().length > 0)
       .sort((a, b) => b.citation_path.length - a.citation_path.length)[0];
     return best
@@ -677,6 +694,15 @@ export async function getSectionEncoding(
   rootId: string,
   citationPath: string,
 ): Promise<SectionEncoding> {
+  // A provision in a family the app registers ``app_visibility =
+  // "experimental"`` is refused outright — mirror rows, cited-by rows,
+  // ancestor probe, and the legacy ``encoding_runs``/GitHub fallback
+  // alike. The GitHub readers have refused it since
+  // ``ruleSpecReadLocation``; the mirror is the same encoding served
+  // from a different store, so it answers the same way.
+  if (isGatedCitationPath(citationPath)) {
+    return emptyResult(null, citationPath);
+  }
   const [mirror, indexedCitations] = await Promise.all([
     listMirrorFiles(citationPath),
     listRuleCitations(citationPath),

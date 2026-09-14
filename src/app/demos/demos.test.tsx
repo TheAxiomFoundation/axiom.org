@@ -18,7 +18,7 @@ describe('DemosPage', () => {
     // Closing CTA still points into the app.
     expect(screen.getByText(/the axiom app/i).closest('a')).toHaveAttribute(
       'href',
-      'https://app.axiom-foundation.org',
+      'https://axiom.org/app',
     )
     // Axiom local link rides below the gallery.
     expect(

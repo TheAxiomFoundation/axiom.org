@@ -33,6 +33,10 @@ describe("StackPage", () => {
       "href",
       "/docs"
     );
+    expect(screen.getByRole("link", { name: /current execution architecture/i })).toHaveAttribute(
+      "href",
+      "/docs/#core-execution"
+    );
   });
 
   it("switches layer detail panels", () => {

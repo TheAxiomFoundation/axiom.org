@@ -240,7 +240,7 @@ export function PlanningModelPage() {
             provision-level increment every figure below counts — for
             example,{" "}
             <a
-              href="https://app.axiom-foundation.org/us/statute/26/24"
+              href="https://axiom.org/us/statute/26/24"
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -248,7 +248,7 @@ export function PlanningModelPage() {
             </a>{" "}
             (the child tax credit) or{" "}
             <a
-              href="https://app.axiom-foundation.org/us-co/regulation/10-ccr-2506-1/4.110"
+              href="https://axiom.org/us-co/regulation/10-ccr-2506-1/4.110"
               target="_blank"
               rel="noopener noreferrer"
             >

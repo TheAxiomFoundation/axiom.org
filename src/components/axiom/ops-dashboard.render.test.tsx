@@ -283,4 +283,26 @@ describe("OpsDashboard", () => {
       screen.getByText("2026-08-04-dk-full-parity-tier1")
     ).toBeInTheDocument();
   });
+
+  it("names Israel from the jurisdictions seed, not a dashboard-local entry", () => {
+    // JURISDICTION_NAMES spreads JURISDICTIONS_SEED, so seeding "il"
+    // labels the ops surfaces too — no second copy to drift.
+    render(
+      <OpsDashboard
+        initialStatus={status({})}
+        encodingError={null}
+        queues={[]}
+        recentScopes={[
+          {
+            jurisdiction: "il",
+            document_class: "statute",
+            version: "2026-09-06-il-pilot",
+            synced_at: "2026-09-06T00:00:00Z",
+          },
+        ]}
+      />
+    );
+    expect(screen.getByText("Israel")).toBeInTheDocument();
+    expect(screen.queryByText("il")).not.toBeInTheDocument();
+  });
 });

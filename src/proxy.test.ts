@@ -7,14 +7,32 @@ function request(url: string, host: string): NextRequest {
 }
 
 describe("proxy", () => {
-  it("rewrites app host paths into the Axiom app route", () => {
+  it("redirects app host paths to the same path on the canonical host", () => {
+    // axiom.org serves the app; the old app host only forwards there.
     const response = proxy(
       request("https://app.axiom-foundation.org/us/statute/7", "app.axiom-foundation.org")
     );
 
-    expect(response.headers.get("x-middleware-rewrite")).toBe(
-      "https://app.axiom-foundation.org/axiom/v2/us/statute/7"
-    );
+    expect(response.status).toBe(308);
+    expect(response.headers.get("location")).toBe("https://axiom.org/us/statute/7");
+  });
+
+  it("redirects app routes on the old host to their canonical axiom.org form", () => {
+    for (const [path, expected] of [
+      ["/encoded/il", "https://axiom.org/encoded/il"],
+      ["/search?q=credit", "https://axiom.org/search?q=credit"],
+      ["/app?program=us-co/co-snap", "https://axiom.org/app?program=us-co/co-snap"],
+      ["/graph", "https://axiom.org/app"],
+      ["/graph/?x=1", "https://axiom.org/app?x=1"],
+      ["/axiom/graph/", "https://axiom.org/app"],
+      ["/ops", "https://axiom.org/axiom/ops"],
+    ] as const) {
+      const response = proxy(
+        request(`https://app.axiom-foundation.org${path}`, "app.axiom-foundation.org")
+      );
+      expect(response.status).toBe(308);
+      expect(response.headers.get("location")).toBe(expected);
+    }
   });
 
   it("routes every jurisdiction-rooted path to the v2 surface", () => {
@@ -32,14 +50,9 @@ describe("proxy", () => {
       ["/ca", "/axiom/ca"],
       ["/ca/statute/act/1", "/axiom/ca/statute/act/1"],
     ] as const) {
-      const response = proxy(
-        request(
-          `https://app.axiom-foundation.org${path}`,
-          "app.axiom-foundation.org"
-        )
-      );
+      const response = proxy(request(`https://axiom.org${path}`, "axiom.org"));
       expect(response.headers.get("x-middleware-rewrite")).toBe(
-        `https://app.axiom-foundation.org${expected}`
+        `https://axiom.org${expected}`
       );
     }
   });
@@ -53,48 +66,76 @@ describe("proxy", () => {
     );
   });
 
-  it("redirects site /axiom paths to the clean app subdomain URL", () => {
+  it("redirects site /axiom citation paths to the bare canonical path", () => {
     const response = proxy(
       request("https://axiom.org/axiom/us/statute/7", "axiom.org")
     );
 
     expect(response.status).toBe(308);
-    expect(response.headers.get("location")).toBe(
-      "https://app.axiom-foundation.org/us/statute/7"
-    );
+    expect(response.headers.get("location")).toBe("https://axiom.org/us/statute/7");
   });
 
-  it("redirects site /axiom root to the clean app subdomain root", () => {
-    const response = proxy(
-      request("https://axiom.org/axiom", "axiom.org")
-    );
-
-    expect(response.status).toBe(308);
-    expect(response.headers.get("location")).toBe(
-      "https://app.axiom-foundation.org/"
-    );
+  it("redirects site /axiom root and graph to /app", () => {
+    for (const path of ["/axiom", "/axiom/graph"]) {
+      const response = proxy(request(`https://axiom.org${path}`, "axiom.org"));
+      expect(response.status).toBe(308);
+      expect(response.headers.get("location")).toBe("https://axiom.org/app");
+    }
   });
 
-  it("redirects explicit app host /axiom paths without double-prefixing", () => {
+  it("serves the ops dashboard under its /axiom mount in place", () => {
+    const response = proxy(request("https://axiom.org/axiom/ops", "axiom.org"));
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+  });
+
+  it("routes the encoded-rules index links and search at their bare path on every host", () => {
+    // The index at /axiom/encoded links each row to /encoded/<citation>
+    // (src/app/axiom/encoded/page.tsx); those resolve like citation paths.
+    for (const [url, host, expected] of [
+      ["https://axiom.org/encoded/us/statute/26/3101/a", "axiom.org", "https://axiom.org/axiom/encoded/us/statute/26/3101/a"],
+      ["https://axiom.org/encoded/il", "axiom.org", "https://axiom.org/axiom/encoded/il"],
+      ["https://axiom.org/search?q=credit", "axiom.org", "https://axiom.org/axiom/search?q=credit"],
+      ["http://localhost:4944/encoded/il", "localhost:4944", "http://localhost:4944/axiom/encoded/il"],
+    ] as const) {
+      const response = proxy(request(url, host));
+      expect(response.headers.get("x-middleware-rewrite")).toBe(expected);
+    }
+    // The mounted form is not a second public URL for them.
+    for (const [path, expected] of [
+      ["/axiom/encoded/il", "https://axiom.org/encoded/il"],
+      ["/axiom/search?q=credit", "https://axiom.org/search?q=credit"],
+    ] as const) {
+      const response = proxy(request(`https://axiom.org${path}`, "axiom.org"));
+      expect(response.status).toBe(308);
+      expect(response.headers.get("location")).toBe(expected);
+    }
+  });
+
+  it("normalizes trailing-slash graph aliases to /app with their query", () => {
+    for (const path of ["/graph/", "/graph/?x=1", "/axiom/graph/", "/axiom/graph/?x=1", "/app/", "/app/?x=1"]) {
+      const response = proxy(request(`https://axiom.org${path}`, "axiom.org"));
+      expect(response.status).toBe(308);
+      const query = path.includes("?") ? "?x=1" : "";
+      expect(response.headers.get("location")).toBe(`https://axiom.org/app${query}`);
+    }
+  });
+
+  it("redirects explicit app host /axiom paths to the canonical host without double-prefixing", () => {
     const response = proxy(
       request("https://app.axiom-foundation.org/axiom/us/statute/7", "app.axiom-foundation.org")
     );
 
     expect(response.status).toBe(308);
-    expect(response.headers.get("location")).toBe(
-      "https://app.axiom-foundation.org/us/statute/7"
-    );
+    expect(response.headers.get("location")).toBe("https://axiom.org/us/statute/7");
   });
 
-  it("redirects explicit app host /axiom root without double-prefixing", () => {
+  it("redirects explicit app host /axiom root to the canonical graph", () => {
     const response = proxy(
       request("https://app.axiom-foundation.org/axiom", "app.axiom-foundation.org")
     );
 
     expect(response.status).toBe(308);
-    expect(response.headers.get("location")).toBe(
-      "https://app.axiom-foundation.org/"
-    );
+    expect(response.headers.get("location")).toBe("https://axiom.org/app");
   });
 
   it("bypasses framework and API paths on the app host", () => {
@@ -124,24 +165,22 @@ describe("proxy", () => {
     expect(response.headers.get("x-middleware-next")).toBe("1");
   });
 
-  it("rewrites the app host root into the graph (the Plane is the app)", () => {
+  it("redirects the app host root to the canonical graph (the Plane is the app)", () => {
     const response = proxy(
       request("https://app.axiom-foundation.org/", "app.axiom-foundation.org")
     );
 
-    expect(response.headers.get("x-middleware-rewrite")).toBe(
-      "https://app.axiom-foundation.org/axiom/graph"
-    );
+    expect(response.status).toBe(308);
+    expect(response.headers.get("location")).toBe("https://axiom.org/app");
   });
 
-  it("rewrites the ops dashboard into the Axiom app route", () => {
+  it("redirects the ops dashboard on the old host to its /axiom mount", () => {
     const response = proxy(
       request("https://app.axiom-foundation.org/ops", "app.axiom-foundation.org")
     );
 
-    expect(response.headers.get("x-middleware-rewrite")).toBe(
-      "https://app.axiom-foundation.org/axiom/ops"
-    );
+    expect(response.status).toBe(308);
+    expect(response.headers.get("location")).toBe("https://axiom.org/axiom/ops");
   });
 
   it("rewrites jurisdiction paths on localhost into the Axiom app route", () => {
@@ -270,9 +309,9 @@ describe("proxy", () => {
   it("rewrites /app to the in-app viewer on every host", () => {
     for (const [url, host, expected] of [
       [
-        "https://app.axiom-foundation.org/app?program=us-co/co-snap",
-        "app.axiom-foundation.org",
-        "https://app.axiom-foundation.org/axiom/graph?program=us-co/co-snap",
+        "https://axiom.org/app?program=us-co/co-snap",
+        "axiom.org",
+        "https://axiom.org/axiom/graph?program=us-co/co-snap",
       ],
       [
         "http://localhost:4944/app?compose=us:statutes/7/2017/a",

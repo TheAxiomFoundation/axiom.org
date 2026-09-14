@@ -21,7 +21,7 @@ const SURFACES = [
   ["workflow", "https://co-snap-workflow-checker.vercel.app/"],
   ["chatbot", "https://axiom.org/chatbot"],
   ["snap", "https://axiom-co-snap.vercel.app/"],
-  ["app", "https://app.axiom-foundation.org"],
+  ["app", "https://axiom.org/app"],
 ];
 
 const outDir = path.join(

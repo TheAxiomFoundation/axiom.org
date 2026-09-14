@@ -80,7 +80,7 @@ function okResponse(body: unknown) {
 function latestSearchUrl(): URL {
   const latest = mockFetch.mock.calls.at(-1)?.[0];
   if (typeof latest !== "string") throw new Error("fetch URL missing");
-  return new URL(latest, "https://app.axiom-foundation.org");
+  return new URL(latest, "https://axiom.org");
 }
 
 describe("AxiomSearch", () => {

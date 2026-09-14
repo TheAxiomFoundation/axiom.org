@@ -54,7 +54,37 @@ vi.mock("@/lib/tree-data", () => ({
     })),
 }));
 
-import { getSectionPageData, resolveSection } from "./section-page";
+import {
+  getSectionPageData,
+  resolveSection,
+  rulespecSourceCitationPath,
+} from "./section-page";
+
+
+// A synthetic gated ("xg") family: with every real family public, the
+// gate has no live instance to test against.
+vi.mock("@/lib/axiom/rulespec-families", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/axiom/rulespec-families")>();
+  return {
+    ...actual,
+    RULESPEC_FAMILIES: Object.freeze([
+      ...actual.RULESPEC_FAMILIES,
+      { slug: "xg", repo: "rulespec-xg", appVisibility: "experimental" },
+    ]),
+  };
+});
+vi.mock("@/lib/axiom/jurisdictions-seed", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/axiom/jurisdictions-seed")>();
+  return {
+    ...actual,
+    JURISDICTIONS_SEED: [
+      ...actual.JURISDICTIONS_SEED,
+      { slug: "xg", label: "Xgated", hasCitationPaths: true },
+    ],
+  };
+});
 
 /** Chainable query stub: every builder method returns the chain, the
  *  chain is thenable, and maybeSingle resolves the same result. */
@@ -637,5 +667,51 @@ describe("resolveSection policy-adjacent fallbacks (#191)", () => {
     expect(
       await resolveSection(["us-zz", "policy", "nowhere", "at-all"])
     ).toBeNull();
+  });
+});
+
+describe("rulespecSourceCitationPath", () => {
+  it("reads a module's attested corpus home out of the mirror", async () => {
+    encodingsFromMock.mockImplementation(() =>
+      chain({
+        data: [
+          {
+            raw_yaml:
+              "module:\n  source_verification:\n    corpus_citation_path: us/statute/26/32\n",
+          },
+        ],
+        error: null,
+      })
+    );
+
+    expect(
+      await rulespecSourceCitationPath("us", ["policy", "irs", "notice"])
+    ).toBe("us/statute/26/32");
+  });
+
+  it("refuses the mirror for a gated pilot family", async () => {
+    // Same registered-visibility refusal getSectionEncoding makes: a
+    // gated family's YAML is unreadable everywhere else, so it must not
+    // attest a corpus home through the index either.
+    encodingsFromMock.mockImplementation(() =>
+      chain({
+        data: [
+          {
+            raw_yaml:
+              "module:\n  source_verification:\n    corpus_citation_path: xg/statute/income-tax-ordinance/section-121\n",
+          },
+        ],
+        error: null,
+      })
+    );
+
+    expect(
+      await rulespecSourceCitationPath("xg", [
+        "statute",
+        "income-tax-ordinance",
+        "section-121",
+      ])
+    ).toBeNull();
+    expect(encodingsFromMock).not.toHaveBeenCalled();
   });
 });

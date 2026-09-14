@@ -65,6 +65,38 @@ describe("JurisdictionPicker", () => {
     expect(screen.getByText("2,000 rules")).toBeInTheDocument();
   });
 
+  it("labels Israel and Illinois from their distinct seed slugs", async () => {
+    const counts = new Map([
+      ["il", 42],
+      ["us-il", 7],
+    ]);
+    mockGetJurisdictionCounts.mockResolvedValue(counts);
+
+    render(<JurisdictionPicker />);
+
+    await waitFor(() =>
+      expect(screen.queryByText("Loading...")).not.toBeInTheDocument()
+    );
+
+    expect(screen.getByText("Israel")).toBeInTheDocument();
+    expect(screen.getByText("42 rules")).toBeInTheDocument();
+    expect(screen.getByText("Illinois")).toBeInTheDocument();
+    expect(screen.getByText("7 rules")).toBeInTheDocument();
+  });
+
+  it("hides Israel until its pilot corpus is ingested", async () => {
+    mockGetJurisdictionCounts.mockResolvedValue(new Map([["us", 50000]]));
+
+    render(<JurisdictionPicker />);
+
+    await waitFor(() =>
+      expect(screen.queryByText("Loading...")).not.toBeInTheDocument()
+    );
+
+    expect(screen.getByText("US Federal")).toBeInTheDocument();
+    expect(screen.queryByText("Israel")).not.toBeInTheDocument();
+  });
+
   it("filters out jurisdictions with zero rules", async () => {
     const counts = new Map([
       ["us", 50000],

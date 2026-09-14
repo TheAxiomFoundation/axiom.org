@@ -1,3 +1,29 @@
+
+
+// A synthetic gated ("xg") family: with every real family public, the
+// gate has no live instance to test against.
+vi.mock("@/lib/axiom/rulespec-families", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/axiom/rulespec-families")>();
+  return {
+    ...actual,
+    RULESPEC_FAMILIES: Object.freeze([
+      ...actual.RULESPEC_FAMILIES,
+      { slug: "xg", repo: "rulespec-xg", appVisibility: "experimental" },
+    ]),
+  };
+});
+vi.mock("@/lib/axiom/jurisdictions-seed", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/axiom/jurisdictions-seed")>();
+  return {
+    ...actual,
+    JURISDICTIONS_SEED: [
+      ...actual.JURISDICTIONS_SEED,
+      { slug: "xg", label: "Xgated", hasCitationPaths: true },
+    ],
+  };
+});
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Use vi.hoisted to create mock functions that are available during vi.mock hoisting
@@ -816,6 +842,269 @@ describe('supabase lib', () => {
       const result = await getRuleEncoding('github:')
       expect(result).toBeNull()
     })
+
+    it('refuses the GitHub fallback for a repo the app must not read', async () => {
+      // rulespec-xg is mapped (Israel gets a pending landing tile) but
+      // gated app_visibility = "experimental". The rule-detail rail
+      // must not serve its pilot YAML before promotion, so the
+      // fallback fetcher never leaves the process.
+      //
+      // Since the registered gate moved to the top of getRuleEncoding
+      // (below), a gated family now short-circuits BEFORE the fallback
+      // — so this case pins the end-state promise and no longer
+      // exercises ``fetchRuleSpecFromGitHub``'s own location guard.
+      // The two cases after it keep that guard pinned.
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: async () => 'format: rulespec/v1\n',
+      })
+      vi.stubGlobal('fetch', fetchMock)
+
+      const result = await getRuleEncoding(
+        'github:xg/statute/income-tax-ordinance/section-121'
+      )
+      expect(result).toBeNull()
+      expect(fetchMock).not.toHaveBeenCalled()
+      vi.unstubAllGlobals()
+    })
+
+    it('refuses the GitHub fallback for a jurisdiction the repo map does not claim', async () => {
+      // ``fetchRuleSpecFromGitHub``'s own guard, reached by a route the
+      // registered gate deliberately lets through: the gate is a
+      // DENY-list on registered experimental families, so a slug no
+      // family claims passes it. ``ruleSpecReadLocation`` then answers
+      // null and nothing leaves the process.
+      const fetchMock = vi.fn()
+      vi.stubGlobal('fetch', fetchMock)
+      mockFrom.mockImplementation(() =>
+        mockEncodingRunsChain({ data: [], error: null })
+      )
+
+      expect(await getRuleEncoding('github:zz/statute/1')).toBeNull()
+      expect(fetchMock).not.toHaveBeenCalled()
+      vi.unstubAllGlobals()
+    })
+
+    it('refuses the GitHub fallback for a mapped repo that gates itself upstream', async () => {
+      // The LIVE half of the two-layer gate, which no other case in
+      // this file reaches through getRuleEncoding: rulespec-us is
+      // registered public, so only its own .axiom/registry.toml can
+      // close it. The registry read happens; the YAML read does not.
+      const fetchMock = vi.fn().mockImplementation((url: string) =>
+        Promise.resolve(
+          url.endsWith('/.axiom/registry.toml')
+            ? {
+                ok: true,
+                status: 200,
+                text: async () =>
+                  '[registry]\napp_visibility = "experimental"\n',
+              }
+            : { ok: true, status: 200, text: async () => 'format: rulespec/v1\n' }
+        )
+      )
+      vi.stubGlobal('fetch', fetchMock)
+      mockFrom.mockImplementation((table: string) => {
+        if (table === 'current_provisions') {
+          return {
+            select: () => ({
+              eq: () => ({
+                single: () =>
+                  Promise.resolve({
+                    data: {
+                      citation_path: 'us/statute/26/1',
+                      jurisdiction: 'us',
+                      rulespec_path: null,
+                      has_rulespec: true,
+                    },
+                    error: null,
+                  }),
+              }),
+            }),
+          }
+        }
+        return mockEncodingRunsChain({ data: [], error: null })
+      })
+
+      expect(await getRuleEncoding('rule-us-self-gated')).toBeNull()
+      const urls = fetchMock.mock.calls.map((call: unknown[]) => call[0])
+      expect(urls).toEqual([
+        'https://raw.githubusercontent.com/TheAxiomFoundation/rulespec-us/main/.axiom/registry.toml',
+      ])
+      vi.unstubAllGlobals()
+    })
+
+    // ---- Registered ``app_visibility`` gate, BEFORE the run lookup ----
+    // The test above only proves the GitHub *fallback* refuses a gated
+    // family. That fallback is the last step of ``getRuleEncoding``: a
+    // populated ``encoding_runs`` row returns first, so a row left by a
+    // run that predates the gate (or by an encoder pointed at the pilot
+    // repo) served pilot YAML through the legacy rail while
+    // ``getSectionEncoding`` refused the same provision. These cases
+    // pin the gate at the top, where neither id form can reach the
+    // table.
+
+    /** A populated pilot run row — content, not telemetry. */
+    const ISRAEL_RUN_ROW = {
+      id: 'enc-il',
+      citation: 'xg/statute/income-tax-ordinance/section-121',
+      session_id: 'sess-il',
+      file_path: 'statutes/income-tax-ordinance/section-121.yaml',
+      rulespec_content: 'format: rulespec/v1\nmodule:\n  name: il.pilot\n',
+      final_scores: null,
+    }
+
+    /**
+     * ``current_provisions`` + populated ``encoding_runs``, recording
+     * every table the reader actually touched.
+     */
+    function mockPopulatedRun(
+      provision: {
+        citation_path: string | null
+        jurisdiction: string
+      },
+      row: Record<string, unknown> = ISRAEL_RUN_ROW
+    ): string[] {
+      const tables: string[] = []
+      mockFrom.mockImplementation((table: string) => {
+        tables.push(table)
+        if (table === 'current_provisions') {
+          return {
+            select: () => ({
+              eq: () => ({
+                single: () =>
+                  Promise.resolve({
+                    data: { ...provision, rulespec_path: null, has_rulespec: true },
+                    error: null,
+                  }),
+              }),
+            }),
+          }
+        }
+        return mockEncodingRunsChain({ data: [row], error: null })
+      })
+      return tables
+    }
+
+    it('refuses a populated encoding_runs row for a gated family (corpus provision id)', async () => {
+      const fetchMock = vi.fn()
+      vi.stubGlobal('fetch', fetchMock)
+      const tables = mockPopulatedRun({
+        citation_path: 'xg/statute/income-tax-ordinance/section-121',
+        jurisdiction: 'xg',
+      })
+
+      const result = await getRuleEncoding('rule-il')
+
+      expect(result).toBeNull()
+      // Gated BEFORE the lookup — the run table is never queried, so a
+      // bounded window or an RLS slip cannot leak the row either.
+      expect(tables).toEqual(['current_provisions'])
+      expect(fetchMock).not.toHaveBeenCalled()
+      vi.unstubAllGlobals()
+    })
+
+    it('refuses a populated encoding_runs row for a gated family (github: id)', async () => {
+      const fetchMock = vi.fn()
+      vi.stubGlobal('fetch', fetchMock)
+      const tables: string[] = []
+      mockFrom.mockImplementation((table: string) => {
+        tables.push(table)
+        return mockEncodingRunsChain({ data: [ISRAEL_RUN_ROW], error: null })
+      })
+
+      const result = await getRuleEncoding(
+        'github:xg/statute/income-tax-ordinance/section-121'
+      )
+
+      expect(result).toBeNull()
+      expect(tables).toEqual([])
+      expect(fetchMock).not.toHaveBeenCalled()
+      vi.unstubAllGlobals()
+    })
+
+    it('refuses a gated family sub-jurisdiction synth id', async () => {
+      const tables: string[] = []
+      mockFrom.mockImplementation((table: string) => {
+        tables.push(table)
+        return mockEncodingRunsChain({ data: [ISRAEL_RUN_ROW], error: null })
+      })
+
+      // ``il-tlv`` has no family entry of its own; it inherits the
+      // Israel family's experimental marker.
+      const result = await getRuleEncoding('github:xg-tlv/statute/arnona/section-1')
+      expect(result).toBeNull()
+      expect(tables).toEqual([])
+    })
+
+    it('refuses a row whose citation path is gated even when its jurisdiction column is not', async () => {
+      // The column is the corpus row's own claim; the citation path is
+      // what every candidate below is built from. Disagreement fails
+      // closed on either side.
+      const tables = mockPopulatedRun({
+        citation_path: 'xg/statute/income-tax-ordinance/section-121',
+        jurisdiction: 'us',
+      })
+
+      expect(await getRuleEncoding('rule-mislabelled')).toBeNull()
+      expect(tables).toEqual(['current_provisions'])
+    })
+
+    it('refuses a row whose jurisdiction column is gated even when its citation path is not', async () => {
+      const tables = mockPopulatedRun({
+        citation_path: 'us/statute/26/1',
+        jurisdiction: 'xg',
+      })
+
+      expect(await getRuleEncoding('rule-mislabelled-2')).toBeNull()
+      expect(tables).toEqual(['current_provisions'])
+    })
+
+    it('still serves a populated encoding_runs row for a family the app reads', async () => {
+      // The control for the four refusals above: same harness, same
+      // populated row, ungated family — the gate denies exactly the
+      // registered experimental families and nothing else.
+      const tables = mockPopulatedRun(
+        { citation_path: 'us/statute/26/1', jurisdiction: 'us' },
+        {
+          id: 'enc-us',
+          citation: '26 USC 1',
+          session_id: 'sess-us',
+          file_path: 'statutes/26/1.yaml',
+          rulespec_content: 'format: rulespec/v1\nmodule:\n  name: us.tax\n',
+          final_scores: null,
+        }
+      )
+
+      const result = await getRuleEncoding('rule-us')
+      expect(result?.encoding_run_id).toBe('enc-us')
+      expect(result?.rulespec_content).toContain('us.tax')
+      expect(tables).toEqual(['current_provisions', 'encoding_runs'])
+    })
+
+    it('still serves a populated encoding_runs row for an ungated synth id', async () => {
+      const tables: string[] = []
+      mockFrom.mockImplementation((table: string) => {
+        tables.push(table)
+        return mockEncodingRunsChain({
+          data: [
+            {
+              id: 'enc-us-synth',
+              citation: 'us/statute/26/3101/a',
+              session_id: null,
+              file_path: 'statutes/26/3101/a.yaml',
+              rulespec_content: 'format: rulespec/v1\n',
+              final_scores: null,
+            },
+          ],
+          error: null,
+        })
+      })
+
+      const result = await getRuleEncoding('github:us/statute/26/3101/a')
+      expect(result?.encoding_run_id).toBe('enc-us-synth')
+      expect(tables).toEqual(['encoding_runs'])
+    })
   })
 
   describe('searchRules', () => {
@@ -1148,6 +1437,45 @@ describe('supabase lib', () => {
         ])
       )
       expect(result?.jurisdictions_count).toBeGreaterThanOrEqual(6)
+    })
+
+    it('never counts a gated pilot family from the encodings index', async () => {
+      // The landing tile count is a database read like any other. A
+      // leaked rulespec_files row would have lit Israel's tile with a
+      // rule count and a live /il link while every reader on the site
+      // refuses to serve those files.
+      const stats = {
+        provisions_count: 658899,
+        references_count: 148604,
+        jurisdictions_count: 1,
+        jurisdictions: [{ jurisdiction: 'us', count: 467993 }],
+      }
+      mockRpc.mockResolvedValue({ data: stats, error: null })
+      mockListEncodedFiles.mockResolvedValue([])
+
+      const countedJurisdictions: string[] = []
+      mockFrom.mockImplementation((table: string) => {
+        const eq = vi.fn((_column: string, jurisdiction: string) => {
+          if (table === 'rulespec_files') countedJurisdictions.push(jurisdiction)
+          return Promise.resolve(
+            table === 'rulespec_files'
+              ? { count: 42, error: null }
+              : { count: 0, error: null }
+          )
+        })
+        const select = vi.fn().mockReturnValue({ eq })
+        return { select }
+      })
+
+      const result = await getAxiomStats()
+
+      expect(countedJurisdictions).not.toContain('xg')
+      // Illinois is a US state, not Israel — it must still be counted.
+      expect(countedJurisdictions).toContain('us-il')
+      expect(
+        result?.jurisdictions?.some((j) => j.jurisdiction === 'xg')
+      ).toBe(false)
+      expect(mockListEncodedFiles).not.toHaveBeenCalledWith('xg')
     })
 
     it('keeps Belgium counts from the bootstrap seed when GitHub RuleSpec listing is unavailable', async () => {

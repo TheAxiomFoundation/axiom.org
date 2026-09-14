@@ -6,6 +6,11 @@ import {
 } from "@/lib/tree-data";
 import { loadTreeNodes } from "@/lib/axiom/tree-node-loader";
 import { supabaseEncodings, type Rule } from "@/lib/supabase";
+import {
+  excludeGatedRows,
+  isGatedCitationPath,
+  withoutGatedRows,
+} from "@/lib/axiom/rulespec/index-visibility";
 
 /**
  * Data assembly for v2 browse pages — the levels above a section
@@ -47,11 +52,15 @@ async function getEncodedCounts(
   nodes: TreeNode[]
 ): Promise<Record<string, number>> {
   const prefix = segments.join("/");
+  // Coverage marks for a gated pilot family would advertise encodings
+  // no page on the site can open — the same refusal the section reader
+  // and the encoded search now make.
+  if (isGatedCitationPath(prefix)) return {};
   try {
     const result = await Promise.race([
-      supabaseEncodings
-        .from("rulespec_files")
-        .select("citation_path")
+      excludeGatedRows(
+        supabaseEncodings.from("rulespec_files").select("citation_path"),
+      )
         .like("citation_path", `${prefix}/%`)
         .limit(ENCODED_COUNT_SCAN_LIMIT),
       new Promise<null>((resolve) =>
@@ -59,7 +68,10 @@ async function getEncodedCounts(
       ),
     ]);
     if (!result || result.error) return {};
-    const paths = ((result.data ?? []) as Array<{ citation_path: string }>)
+    const paths = withoutGatedRows(
+      (result.data ?? []) as Array<{ citation_path: string }>,
+      (row) => row.citation_path,
+    )
       .map((row) => row.citation_path)
       .filter(Boolean);
     const counts: Record<string, number> = {};

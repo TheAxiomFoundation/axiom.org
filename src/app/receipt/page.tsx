@@ -21,9 +21,19 @@ export const metadata: Metadata = {
 // The package homepage — receipt is an auxiliary open-source package for
 // anyone shipping agent-produced records, not an Axiom-internal tool. Axiom's
 // own usage appears once, as provenance. Copy stays close to the package
-// README (the claims are its claims); no version numbers on the page so
-// nothing drifts between releases.
-const provides: { mod: string; what: string; pending?: boolean }[] = [
+// README (the claims are its claims); no version numbers in the page's own
+// copy, so nothing drifts between releases — the one version it shows is the
+// demo's, and that comes out of the captured run itself.
+//
+// The list follows the package docstring's own three groups: modules that
+// arrived by extraction behind a byte-equivalence gate, the two the docstring
+// calls "also shipped" (composition over those, adding no cryptography and no
+// anchors of their own), and machinery still pending extraction.
+const provides: {
+  mod: string;
+  what: string;
+  status?: "pending" | "composed";
+}[] = [
   {
     mod: "receipt.release_chain",
     what: "Append-only hash-chained manifests over record sets: enumerated genesis, content-addressed links, immutable-prefix verification.",
@@ -49,13 +59,23 @@ const provides: { mod: string; what: string; pending?: boolean }[] = [
     what: "Workflow-provenance verification with self-anchoring enforcement epochs and a full-history sweep over every protected-tree commit.",
   },
   {
+    mod: "receipt.corpus",
+    status: "composed",
+    what: "Closed-world binding of a record tree to its witnessed journal: every content file present is bound, and every bound file is present.",
+  },
+  {
+    mod: "receipt.verify",
+    status: "composed",
+    what: "The spanning command behind receipt verify: history, custody, binding and declaration over the tree one commit names, stopping at the first refusal.",
+  },
+  {
     mod: "receipt.ratchet",
-    pending: true,
+    status: "pending",
     what: "Shrink-only exception registries recomputed from live state; an excused failure that starts passing is an error until removed.",
   },
   {
     mod: "receipt.chronology",
-    pending: true,
+    status: "pending",
     what: "Record-vs-event ordering tiers: does witnessed time prove the record existed before the event it predicts or observes?",
   },
 ];
@@ -92,7 +112,7 @@ export default function ReceiptPage() {
         {/* Install — the whole adoption story is two commands */}
         <Reveal as="section" className="mb-16">
           <pre className="m-0 rounded-md border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] p-5 font-mono text-[0.9rem] leading-relaxed text-[var(--color-ink)] overflow-x-auto">
-            {"pip install receipt\nreceipt verify"}
+            {"pip install receipt\nreceipt verify --spec verification/spec.py --commit HEAD"}
           </pre>
           <p className="mt-3 font-mono text-[0.72rem] uppercase tracking-wider text-[var(--color-ink-muted)]">
             on PyPI as{" "}
@@ -135,7 +155,8 @@ export default function ReceiptPage() {
             When an encoding is wrong, the discipline is to fix the pipeline
             and re-encode — never edit the published file by hand. The record
             shows which path a change took: pick one below and read the
-            verdict.
+            verdict. It is a verdict about the tree the named commit carries,
+            never about whatever a working directory happens to hold.
           </p>
           <VerifyDemo />
         </Reveal>
@@ -150,9 +171,11 @@ export default function ReceiptPage() {
               >
                 <p className="m-0 font-mono text-[0.85rem] text-[var(--color-ink)]">
                   {item.mod}
-                  {item.pending && (
+                  {item.status && (
                     <span className="ml-2 font-mono text-[0.62rem] uppercase tracking-wider text-[var(--color-ink-muted)]">
-                      pending extraction
+                      {item.status === "pending"
+                        ? "pending extraction"
+                        : "composed, not extracted"}
                     </span>
                   )}
                 </p>
@@ -184,11 +207,14 @@ export default function ReceiptPage() {
             behind a byte-equivalence gate: the extracted verifier must
             reproduce the source verifier&apos;s verdict, pass and fail alike,
             on the live production chain before any system consumes the
-            package. The observation ledger runs on it in production today,
-            with differential harnesses re-proving equivalence on every
-            package change; adoption by the Axiom corpus is underway. We built
-            it because we needed it. We publish it because everyone shipping
-            agent-produced records will.
+            package. What <code>receipt verify</code> adds on top is
+            composition, not a fourth extraction: it spans those modules and
+            reports their verdicts, contributing no cryptography and no trust
+            anchors of its own. The observation ledger runs on it in
+            production today, with differential harnesses re-proving
+            equivalence on every package change; adoption by the Axiom corpus
+            is underway. We built it because we needed it. We publish it
+            because everyone shipping agent-produced records will.
           </p>
           <p className="mt-4 font-mono text-[0.72rem] uppercase tracking-wider text-[var(--color-ink-muted)]">
             Axiom&apos;s own records carry them:{" "}
