@@ -20,7 +20,7 @@ import { BaseEdge, SmoothStepEdge, useReactFlow, type EdgeProps } from "@xyflow/
 import "@xyflow/react/dist/style.css";
 import dagre from "dagre";
 import { graphFitViewport, MAX_GRAPH_ZOOM } from "./zoom-bounds";
-import { upstreamIds, upstreamNodeIds } from "./focus-layout";
+import { dependencySubgraph, upstreamIds, upstreamNodeIds } from "./focus-layout";
 import type { DashboardSpec, ParameterRule, TraceNode } from "./types";
 import {
   evalAst,
@@ -51,6 +51,10 @@ interface Props {
   selectedOutputIds?: Set<string>;
   /** When true, show evaluated values + verdict colors. False = pure structure. */
   showValues?: boolean;
+  /** The host is already displaying the graph-loading indicator. */
+  suppressLoadingIndicator?: boolean;
+  /** Restrict the canvas to the selected node and its dependencies. */
+  nodeScoped?: boolean;
   /**
    * Parameter rules from the program graph. When a formula references a
    * bare name that resolves to one of these, the resulting node renders
@@ -118,6 +122,8 @@ export function InteractiveRuleGraph({
   exposedInputIds,
   selectedOutputIds,
   showValues = false,
+  suppressLoadingIndicator = false,
+  nodeScoped = false,
   parameterRules,
   dissect = "auto",
   collapsed: controlledCollapsed,
@@ -198,7 +204,7 @@ export function InteractiveRuleGraph({
   // hides secondary chrome, near shows full cards.
   const [lod, setLod] = useState<"near" | "mid" | "far">("near");
   const lodTimer = useRef<number | null>(null);
-  const [upstreamDepth, setUpstreamDepth] = useState<number>(1);
+  const [upstreamDepth, setUpstreamDepth] = useState<number>(Infinity);
   const [layoutFocusId, setLayoutFocusId] = useState<string | null>(null);
   const [frameRequest, setFrameRequest] = useState<{ mode: "all" | "upstream"; nonce: number } | null>(null);
   const requestFrame = (mode: "all" | "upstream", id: string | null = pinnedLegalId) => {
@@ -286,12 +292,17 @@ export function InteractiveRuleGraph({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [sizeHintsKey],
   );
+  const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
+  useEffect(() => {
+    if (pinnedLegalId) setLastSelectedId(pinnedLegalId);
+  }, [pinnedLegalId]);
+  const scopeId = pinnedLegalId ?? lastSelectedId ?? spec.outputs[0]?.legalId ?? null;
   const baseGraph = useMemo(
     () =>
       buildGraph(
         spec,
         traces,
-        collapsed,
+        nodeScoped ? new Set<string>() : collapsed,
         exposedInputIds,
         showValues,
         detail,
@@ -307,6 +318,7 @@ export function InteractiveRuleGraph({
     [
       spec,
       traces,
+      nodeScoped,
       collapsed,
       exposedInputIds,
       showValues,
@@ -320,7 +332,13 @@ export function InteractiveRuleGraph({
   );
 
   const focusedIds = useMemo(() => upstreamIds(baseGraph.nodes, baseGraph.edges, layoutFocusId, upstreamDepth), [baseGraph, layoutFocusId, upstreamDepth]);
-  const { nodes, edges } = baseGraph;
+  const { nodes, edges } = useMemo(() => {
+    if (!nodeScoped) return baseGraph;
+    const scoped = dependencySubgraph(baseGraph.nodes, baseGraph.edges, scopeId, upstreamDepth);
+    // Lay out only this dependency tree, without gaps left by other outputs.
+    layout(scoped.nodes, scoped.edges, stageAspectOf(wrapRef.current), sizeHints);
+    return scoped;
+  }, [baseGraph, nodeScoped, scopeId, upstreamDepth, sizeHints]);
 
   // URL restoration, relationship navigation and canvas clicks share a camera
   // destination. Keep it pending while the graph and its measurements arrive.
@@ -591,7 +609,7 @@ export function InteractiveRuleGraph({
   if (!fontsReady) {
     return (
       <div ref={wrapRef} className="irg-wrap">
-        <GraphLoading label="Preparing graph…" />
+        {!suppressLoadingIndicator && <GraphLoading label="Preparing graph…" />}
       </div>
     );
   }
@@ -625,7 +643,7 @@ export function InteractiveRuleGraph({
                   <option value="3">3 levels</option>
                   <option value="4">4 levels</option>
                   <option value="5">5 levels</option>
-                  <option value="Infinity">All levels</option>
+                  <option value="Infinity">Full depth</option>
                 </select>
                 <button type="button" className="irg-toolbar-btn" aria-label="Increase dependency depth" disabled={!Number.isFinite(upstreamDepth)} onClick={() => changeDepth(upstreamDepth >= 5 ? Infinity : upstreamDepth + 1)}>+</button>
               </div>

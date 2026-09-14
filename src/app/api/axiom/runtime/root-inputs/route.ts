@@ -16,10 +16,11 @@ export async function GET(request: Request) {
     );
   }
   const { status, body } = await runtimeProxyGet(
-    `/runtime/root-inputs?root=${encodeURIComponent(root)}`
+    `/runtime/root-inputs?root=${encodeURIComponent(root)}`,
+    { timeoutMs: 20_000, fresh: true }
   );
   return NextResponse.json(body, {
     status,
-    headers: { "cache-control": "public, max-age=300" },
+    headers: { "cache-control": status === 200 ? "public, max-age=300" : "no-store" },
   });
 }

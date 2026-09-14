@@ -7,6 +7,7 @@ import type { ProgramGraph, RuleNode } from "./types";
 import { resolveLogicIdentifier } from "./rule-logic";
 import { rememberRule } from "./library-state";
 import { RuleBody } from "@/components/axiom/rule-body";
+import { RuleSpecPreview } from "./rulespec-preview";
 import type { WorkspaceSource } from "@/lib/axiom/workspace-source";
 
 export type WorkspaceView = "read" | "structure" | "run" | "map";
@@ -42,8 +43,9 @@ function SourceReader({ rule, id, consumers }: { rule?: RuleNode; id: string; co
   }, [href, attempt]);
   return <section className="workspace-reader" aria-label="Source provision">
     {href ? <>
-      <div className="workspace-source-toolbar"><span>{source?.heading ?? "Source provision"}</span><a href={href} target="_blank" rel="noreferrer">Open source <ArrowRight size={14} /></a>{source?.officialUrl && <a href={source.officialUrl} target="_blank" rel="noreferrer">Official source <ArrowRight size={14} /></a>}</div>
-      {error ? <p role="alert">Could not load this provision. <button onClick={() => setAttempt((value) => value + 1)}>Try again</button> or open the source above.</p> : !source ? <p className="workspace-source-loading" role="status"><LoaderCircle size={18} aria-hidden="true" />Loading source provision…</p> : <>
+      <div className="workspace-source-toolbar"><span>{source?.heading ?? "Source provision"}</span>{source?.officialUrl && <a href={source.officialUrl} target="_blank" rel="noreferrer">Official source <ArrowRight size={14} /></a>}</div>
+      {error ? <p role="alert">Could not load this provision. <button onClick={() => setAttempt((value) => value + 1)}>Try again</button>.</p> : !source ? <p className="workspace-source-loading" role="status"><LoaderCircle size={18} aria-hidden="true" />Loading source provision…</p> : <>
+        {source.origin === "official-live" && <p className="workspace-source-date">Current official source text; may differ from the version used for encoding.</p>}
         {source.effectiveDate && <p className="workspace-source-date">Effective {source.effectiveDate}</p>}
         {source.blocks.length > 1 && <nav className="workspace-source-sections" aria-label="Source subsections">{source.blocks.filter((block) => block.heading).map((block) => <a key={block.anchor} href={`#source-${block.anchor}`}>{block.heading}</a>)}</nav>}
         <article className="workspace-source-text">{source.blocks.map((block) => <section key={block.anchor} id={`source-${block.anchor}`} data-focused={source.focusAnchor === block.anchor || undefined}>
@@ -53,20 +55,29 @@ function SourceReader({ rule, id, consumers }: { rule?: RuleNode; id: string; co
         {source.truncated && <p role="status">This provision is partially loaded. Open the source to explore further subsections.</p>}
       </>}
     </> : <p>No source provision is available for this item in the loaded graph.</p>}
-    {rule?.formula && <section className="workspace-formula" aria-label="Encoded formula"><h2>Encoded formula</h2><pre>{rule.formula}</pre></section>}
+    <RuleSpecPreview key={rule?.fileLegalId ?? id.split("#")[0]} root={rule?.fileLegalId ?? id.split("#")[0]} />
   </section>;
 }
 
-export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, onViewChange, scopeLabel, truncated, runReady, scenario, graphControls, valueOf, hasRun, stale }: {
+export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, onViewChange, scopeLabel, truncated, runReady, scenario, graphControls, onOverview, valueOf, hasRun, stale }: {
   graph: ProgramGraph; rootTarget?: string; selectedId: string; onSelect: (id: string) => void;
   view: WorkspaceView; onViewChange: (view: WorkspaceView) => void;
   scopeLabel: string; truncated: boolean; runReady: boolean; scenario: ReactNode;
   graphControls?: ReactNode;
+  onOverview?: () => void;
   valueOf: (id: string) => unknown; hasRun: boolean; stale: boolean;
 }) {
   const [activeDependency, setActiveDependency] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [history, setHistory] = useState<string[]>([]);
+  const lastView = useRef(view);
+  const [returnView, setReturnView] = useState<WorkspaceView | null>(null);
+  useEffect(() => {
+    if (lastView.current !== view) {
+      setReturnView(lastView.current);
+      lastView.current = view;
+    }
+  }, [view]);
   const [navigatorOpen, setNavigatorOpen] = useState(false);
   const searchButtonRef = useRef<HTMLButtonElement>(null);
   const closeSearch = () => {
@@ -123,8 +134,8 @@ export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, o
   const roots = [...new Set([...graph.terminalOutputs, ...graph.ownOutputs])].filter((id) => entries.has(id));
   return <div className="rule-workspace">
     <nav className="workspace-views" aria-label="Workspace views">
-      <button className="workspace-graph-button" aria-current={view === "map" ? "page" : undefined} onClick={() => changeView("map")}><Network size={16} />Full graph</button>
-      {([ ["read", "Read", BookOpen], ["structure", "Relationships", GitBranch], ["run", "Run", Play] ] as const).map(([mode, title, Icon]) =>
+      <button className="workspace-graph-button" aria-current={view === "map" ? "page" : undefined} onClick={() => changeView("map")}><Network size={16} />Graph</button>
+      {([ ["read", "Read", BookOpen], ["structure", "Relationships", GitBranch], ["run", "Run", Play] ] as const).filter(([mode]) => mode !== "run" || runReady).map(([mode, title, Icon]) =>
         <button key={mode} aria-current={view === mode ? "page" : undefined} onClick={() => changeView(mode)}><Icon size={16} />{title}</button>)}
       {truncated && <small className="workspace-partial">Partial graph</small>}
       <div className="workspace-nav-finder" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); closeSearch(); } }} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setNavigatorOpen(false); }}>
@@ -138,7 +149,10 @@ export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, o
       </div>
     </nav>
     <div className="workspace-subject">
-      <button className="workspace-button" disabled={!history.length} aria-label="Back to previous rule" onClick={() => { const previous = history.at(-1); if (previous) { saveLocation(previous, view); onSelect(previous); setHistory((current) => current.slice(0, -1)); } }}><ArrowLeft size={16} /> Back</button>
+      <div className="workspace-return-actions">
+        {onOverview && <button type="button" className="workspace-button" data-testid="back-to-overview" onClick={onOverview} title="Back to the corpus overview">Overview</button>}
+      <button className="workspace-button" disabled={!history.length && !returnView} aria-label="Back to previous rule" onClick={() => { if (returnView) { lastView.current = returnView; changeView(returnView); setReturnView(null); return; } const previous = history.at(-1); if (previous) { saveLocation(previous, view); onSelect(previous); setHistory((current) => current.slice(0, -1)); } }}><ArrowLeft size={16} /> Back</button>
+      </div>
       <div><h1>{label(selectedId)}</h1>
         <p className="workspace-citation">{rule?.source ? humanizeSource(rule.source) : "Source not specified"}</p>
       </div>
@@ -147,7 +161,7 @@ export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, o
     {view !== "run" && hasRun && stale && <p className="workspace-stale" role="status">Inputs have changed since the last run. Run again to update the results.</p>}
     {view === "read" && <SourceReader key={selectedId} rule={rule} id={selectedId} consumers={consumers} />}
     {view === "structure" && <section className="workspace-structure" aria-label="Immediate dependencies">
-      <div className="workspace-section-heading"><h2>Direct relationships</h2><span>{hasRun ? <>Selected result: <strong>{value(selectedId)}</strong>{stale ? " · Previous run" : ""}</> : "Select a connected rule to follow it"}</span></div>
+      <div className="workspace-section-heading"><h2>Direct relationships</h2>{hasRun && <span>Selected result: <strong>{value(selectedId)}</strong>{stale ? " · Previous run" : ""}</span>}</div>
       <RelationshipDiagram activeId={activeDependency}><div className={`workspace-neighborhood ${dependencies.length ? "has-dependencies" : ""} ${consumers.length ? "has-consumers" : ""}`} key={selectedId}>
         <NeighborColumn title="Built from" ids={dependencies} entries={entries} label={label} onSelect={navigate} hasRun={hasRun} value={value} activeId={activeDependency} onHighlight={setActiveDependency} empty="No dependencies recorded in this scope." />
         <div className="workspace-anchor" data-relationship-anchor><span className="relationship-caption">Selected rule</span><h3>{label(selectedId)}</h3>
@@ -158,7 +172,7 @@ export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, o
           <button onClick={() => changeView("read")}>Read this rule <ArrowRight size={14} /></button></div>
         <NeighborColumn title="Used by" ids={consumers.map((item) => item.legalId)} entries={entries} label={label} onSelect={navigate} hasRun={hasRun} value={value} activeId={activeDependency} onHighlight={setActiveDependency} empty="No consumers recorded in this scope." />
       </div></RelationshipDiagram>
-      <p className="workspace-footnote">Choose a neighbor to follow its dependencies. Shared rules keep the same identity throughout this scope.{truncated ? " This graph is partial; additional relationships may exist." : ""}</p>
+      {truncated && <p className="workspace-footnote">This graph is partial; additional relationships may exist.</p>}
     </section>}
     {view === "run" && <section className="workspace-run" aria-label="Scenario workspace"><div className="workspace-section-heading"><h2>Household scenario</h2><span>Runs the selected outputs in this scope</span></div>{runReady ? scenario : <p role="status">Execution is not available for this scope. You can still read and explore its rules.</p>}</section>}
   </div>;

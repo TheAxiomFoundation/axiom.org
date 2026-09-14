@@ -29,7 +29,6 @@ export function CorpusLibrary({ modules, active, mode, onModeChange, onPick, cou
 }) {
   const [query, setQuery] = useState("");
   const [jurisdiction, setJurisdiction] = useState("all");
-  const [capability, setCapability] = useState("all");
   const [limit, setLimit] = useState(40);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [recent, setRecent] = useState<RecentRule[]>([]);
@@ -51,13 +50,13 @@ export function CorpusLibrary({ modules, active, mode, onModeChange, onPick, cou
     });
     return () => cancelAnimationFrame(frame);
   }, [active]);
-  useEffect(() => { setLimit(40); }, [query, jurisdiction, capability, country]);
+  useEffect(() => { setLimit(40); }, [query, jurisdiction, country]);
   const entries = useMemo(() => libraryEntries(modules ?? []), [modules]);
   const byTarget = useMemo(() => new Map(entries.map((entry) => [entry.module.target, entry])), [entries]);
   const jurisdictions = [...new Set(entries.map((entry) => entry.module.jurisdiction))].sort((a, b) => jurisdictionLabel(a).localeCompare(jurisdictionLabel(b)));
   const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  const filtered = entries.filter((entry) => (jurisdiction === "all" || entry.module.jurisdiction === jurisdiction) && (capability !== "run" || runs[entry.module.target]?.available) && tokens.every((token) => /^\d+$/.test(token) ? (entry.haystack.match(/\d+/g)?.some((number) => number === token) ?? false) : entry.haystack.includes(token)));
-  const filteredModules = useMemo(() => filtered.map((entry) => entry.module), [entries, query, jurisdiction, capability, runs]);
+  const filtered = entries.filter((entry) => (jurisdiction === "all" || entry.module.jurisdiction === jurisdiction) && tokens.every((token) => /^\d+$/.test(token) ? (entry.haystack.match(/\d+/g)?.some((number) => number === token) ?? false) : entry.haystack.includes(token)));
+  const filteredModules = useMemo(() => filtered.map((entry) => entry.module), [entries, query, jurisdiction, runs]);
   const recentHere = recent.filter((item) => byTarget.has(item.target)).slice(0, 3);
   const starters = Object.keys(STARTERS).flatMap((target) => byTarget.has(target) ? [byTarget.get(target)!] : []);
   const open = (target: string, item?: RecentRule) => {
@@ -65,30 +64,29 @@ export function CorpusLibrary({ modules, active, mode, onModeChange, onPick, cou
     onPick(target, item);
     window.scrollTo(0, 0);
   };
-  const reset = () => { setQuery(""); setJurisdiction("all"); setCapability("all"); };
+  const reset = () => { setQuery(""); setJurisdiction("all"); };
   return <div className="corpus-library" hidden={!active}>
-    <header className="library-brand"><a href="/">Axiom</a><span>Law library</span><a href="/coverage">About the coverage <ArrowRight size={14} /></a></header>
-    {!query && jurisdiction === "all" && capability === "all" && <section className="library-resume" aria-label={recentHere.length ? "Continue exploring" : "Start exploring"}>
+    <header className="library-brand"><a href="/" aria-label="Axiom home"><img src="/logos/axiom-foundation.svg" alt="Axiom Foundation" /></a></header>
+    {!query && jurisdiction === "all" && <section className="library-resume" aria-label={recentHere.length ? "Continue exploring" : "Start exploring"}>
       <div className="library-section-head"><h2>{recentHere.length ? <><Clock3 size={16} /> Continue exploring</> : "Start exploring"}</h2></div>
       <div className="library-starts">{recentHere.length ? recentHere.map((item) => <button key={item.target} onClick={() => open(item.target, item)}><small>{byTarget.get(item.target)?.citation}</small><strong>{item.title}</strong><span>Open graph <ArrowRight size={16} /></span></button>) : starters.map((entry) => <button key={entry.module.target} onClick={() => open(entry.module.target)}><small>{entry.citation}</small><strong>{entry.title}</strong><span>{STARTERS[entry.module.target]!.description}</span><ArrowRight size={16} /></button>)}</div>
     </section>}
     <section className="library-browse" aria-label="Browse the library">
-      <label className="library-search"><Search size={18} /><input type="search" aria-label="Search the law library" placeholder="Search topics, rules, or citations" value={query} onChange={(event) => setQuery(event.target.value)} />{query && <button type="button" onClick={() => setQuery("")}>Clear</button>}</label>
+
 
       <div className="library-toolbar">
-      <div className="library-section-head"><h2>{query ? "Search results" : "Browse the library"} <span aria-live="polite">{modules ? filtered.length.toLocaleString() : "…"} provisions</span></h2><div className="library-view-switch" aria-label="Library view"><button aria-pressed={mode === "list"} onClick={() => onModeChange("list")}><List size={16} /> List</button><button aria-pressed={mode === "field"} onClick={() => onModeChange("field")}><Network size={16} /> Map</button></div></div>
-      <button className="library-filter-toggle" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(!filtersOpen)}><SlidersHorizontal size={16} /> Filters{jurisdiction !== "all" || capability !== "all" ? " · Active" : ""}</button>
+      <div className="library-section-head"><label className="library-search"><Search size={18} /><input type="search" aria-label="Search the law library" placeholder="Search topics, rules, or citations" value={query} onChange={(event) => setQuery(event.target.value)} />{query && <button type="button" onClick={() => setQuery("")}>Clear</button>}</label><div className="library-view-switch" aria-label="Library view"><button aria-pressed={mode === "list"} onClick={() => onModeChange("list")}><List size={16} /> List</button><button aria-pressed={mode === "field"} onClick={() => onModeChange("field")}><Network size={16} /> Map</button></div></div>
+      <button className="library-filter-toggle" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(!filtersOpen)}><SlidersHorizontal size={16} /> Filters{jurisdiction !== "all" ? " · Active" : ""}</button>
         <aside className={`library-filters ${filtersOpen ? "is-open" : ""}`} aria-label="Filter provisions">
           {countries.length > 1 && <label>Country<select value={country} onChange={(event) => { setJurisdiction("all"); onCountryChange(event.target.value); }}>{countries.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>}
           <label>Jurisdiction<select value={jurisdiction} onChange={(event) => setJurisdiction(event.target.value)}><option value="all">All jurisdictions</option>{jurisdictions.map((id) => <option key={id} value={id}>{jurisdictionLabel(id)}</option>)}</select></label>
-          <label>Available actions<select value={capability} onChange={(event) => setCapability(event.target.value)}><option value="all">All provisions</option><option value="run">Can run a scenario</option></select></label>
-          {(query || jurisdiction !== "all" || capability !== "all") && <button onClick={reset}>Clear filters and search</button>}
+          {(query || jurisdiction !== "all") && <button onClick={reset}>Clear filters and search</button>}
         </aside>
       </div>
       <div className="library-columns">
 
         <div className="library-content" ref={contentRef} tabIndex={0} aria-label={mode === "field" ? "Corpus map" : "Provision results"}>
-          {!modules ? <p role="status">Loading the law library…</p> : !filtered.length ? <div className="library-empty"><Search size={24} /><h3>No matching provisions</h3><p>{capability === "run" ? "No matching provisions have a recent successful run check. Browse all provisions to read and explore them." : "Try fewer words, another jurisdiction, or a citation such as 26 USC 32."}</p><button onClick={reset}>Show all provisions</button></div> : mode === "field" ? <><div className="library-map"><CorpusField onPick={(target) => open(target)} frame={false} country={country} suppliedModules={filteredModules} /></div></> : <>
+          {!modules ? <p role="status">Loading the law library…</p> : !filtered.length ? <div className="library-empty"><Search size={24} /><h3>No matching provisions</h3><p>Try fewer words, another jurisdiction, or a citation such as 26 USC 32.</p><button onClick={reset}>Show all provisions</button></div> : mode === "field" ? <><div className="library-map"><CorpusField onPick={(target) => open(target)} frame={false} country={country} suppliedModules={filteredModules} /></div></> : <>
             <div className="library-results">{filtered.slice(0, limit).map((entry) => <button className="library-row" key={entry.module.target} onClick={() => open(entry.module.target)}><BookOpen size={18} aria-hidden /><div><strong>{entry.title}</strong><p>{entry.title === entry.citation ? jurisdictionLabel(entry.module.jurisdiction) : `${jurisdictionLabel(entry.module.jurisdiction)} · ${entry.citation}`}</p><span className="library-actions">{entry.module.ruleCount.toLocaleString()} rules <span>·</span> {entry.module.importCount.toLocaleString()} imports{runs[entry.module.target]?.available && <><span>·</span><em>Run available</em></>}</span></div><ArrowRight size={18} aria-hidden /></button>)}</div>
             {filtered.length > limit && <button className="library-more" onClick={() => setLimit((current) => current + 40)}>Show 40 more <span>{Math.min(limit, filtered.length)} of {filtered.length.toLocaleString()}</span></button>}
           </>}

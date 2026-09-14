@@ -16,6 +16,7 @@ function Harness({ data = graph }: { data?: ProgramGraph }) {
 describe("rule workspace", () => {
   beforeEach(() => {
     window.history.replaceState({}, "", "/");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
     vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
   });
   it("keeps shared dependencies and relation edges without duplicating a dependency", () => {
@@ -46,11 +47,13 @@ describe("rule workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Show 12 more · 14 hidden" }));
     expect(screen.getByRole("button", { name: /Rule Dep 10 /i })).toBeInTheDocument();
   });
-  it("keeps the formula in Read without a separate Logic tab", () => {
+  it("shows the RuleSpec file in Read instead of the formula snippet", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ filePath: "test.yaml", content: "format: rulespec/v1\nrules: []" }) } as Response));
     render(<Harness data={{ ...graph, rules: [{ ...rule("result"), formula: "2 * 3" }] }} />);
     expect(screen.queryByRole("button", { name: "Logic", exact: true })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Read", exact: true }));
-    expect(screen.getByText("2 * 3")).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "RuleSpec YAML" })).toHaveTextContent("format: rulespec/v1");
+    expect(screen.queryByRole("region", { name: "Encoded formula" })).not.toBeInTheDocument();
   });
   it("connects formula operands to their dependencies and follows them", () => {
     render(<Harness data={{ ...graph, rules: [{ ...rule("result", ["shared"]), formula: "shared + 1" }, rule("shared")] }} />);
@@ -60,13 +63,20 @@ describe("rule workspace", () => {
     fireEvent.click(operand);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Shared");
   });
-  it("offers scope search and explains unavailable execution", () => {
+  it("returns from Read to the graph with the same selected node", () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByRole("button", { name: "Graph" }));
+    fireEvent.click(screen.getByRole("button", { name: "Read", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Back to previous rule" }));
+    expect(screen.getByRole("button", { name: "Graph" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Result");
+  });
+  it("offers scope search and hides unavailable execution", () => {
     render(<Harness />);
     fireEvent.click(screen.getByRole("button", { name: "Find a rule" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Search this scope" }), { target: { value: "other" } });
     fireEvent.click(screen.getByRole("button", { name: "Other Rule" }));
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Other");
-    fireEvent.click(screen.getByRole("button", { name: "Run", exact: true }));
-    expect(screen.getByText(/Execution is not available/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Run", exact: true })).not.toBeInTheDocument();
   });
 });

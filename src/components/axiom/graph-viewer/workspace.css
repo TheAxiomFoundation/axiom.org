@@ -46,6 +46,8 @@ body:has(.has-workspace) .nav-bar { display: none; }
 .workspace-views button:last-child { margin-left: auto; }
 .workspace-subject { display: flex; align-items: flex-start; gap: 24px; padding: 32px 0; border-bottom: 1px solid var(--color-rule); }
 .workspace-subject > div:nth-child(2) { flex: 1; min-width: 0; }
+.workspace-return-actions { display: flex; align-items: center; gap: 6px; flex: none; }
+.workspace-return-actions .workspace-button { font-size: 12px; padding: 7px 9px; }
 .workspace-subject h1 { font-size: clamp(24px, 2.5vw, 36px); line-height: 1.2; font-weight: 500; margin: 8px 0 12px; overflow-wrap: anywhere; }
 .workspace-eyebrow { margin: 0; }
 .workspace-citation { margin: 0; font-size: 14px; color: var(--color-ink-secondary); overflow-wrap: anywhere; }
@@ -331,7 +333,7 @@ body:has(.has-workspace) .nav-bar { display: none; }
 .workspace-search-popover p { margin: 0; padding: 10px 12px; font-size: 12px; color: var(--color-ink-secondary); }
 
 .graph-viewer-root .loading-state { display: grid; place-items: center; height: 100%; min-height: 220px; box-sizing: border-box; border: 0; background: transparent; padding: 24px; }
-.graph-loading-visual { display: flex; flex: 1; flex-direction: column; justify-content: center; align-items: center; gap: 16px; min-height: 220px; color: var(--color-ink-secondary); }
+.graph-loading-visual { position: fixed; inset: 0; z-index: 31; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 16px; pointer-events: none; color: var(--color-ink-secondary); }
 .graph-loading-visual svg { max-width: 100%; overflow: visible; }
 .graph-loading-visual svg path { stroke: var(--color-rule); stroke-width: 1.5; }
 .graph-loading-visual svg rect, .graph-loading-visual svg circle { fill: var(--color-paper); stroke: color-mix(in srgb, var(--color-accent) 30%, var(--color-rule)); stroke-width: 1.5; }
@@ -370,3 +372,21 @@ body:has(.has-workspace) .nav-bar { display: none; }
 @media (min-width: 761px) and (max-width: 1100px) {
   .graph-viewer-root.has-workspace .workspace-run .run-columns { grid-template-columns: 1fr; }
 }
+
+.workspace-rulespec { margin-top: 24px; min-width: 0; }
+.workspace-rulespec h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.workspace-rulespec .workspace-source-toolbar > span { font-family: var(--font-mono), monospace; font-size: 12px; overflow-wrap: anywhere; }
+.workspace-rulespec-code { max-height: 60dvh; overflow: auto; border: 1px solid var(--color-rule); border-radius: 6px; background: var(--color-code-bg); }
+.workspace-rulespec-code pre { margin: 0; padding: 16px; font-size: 12px; line-height: 1.65; white-space: pre; }
+/* Keep this file preview legible independently of the surrounding law reader. */
+.graph-viewer-root .workspace-rulespec-code pre,
+.graph-viewer-root .workspace-rulespec-code code,
+.graph-viewer-root .workspace-rulespec-code .token { color: #e8e4db; text-shadow: none; }
+.graph-viewer-root .workspace-rulespec-code .token.comment { color: #aba89f; }
+.graph-viewer-root .workspace-rulespec-code .token.string,
+.graph-viewer-root .workspace-rulespec-code .token.scalar { color: #b7d9b1; }
+.graph-viewer-root .workspace-rulespec-code .token.number,
+.graph-viewer-root .workspace-rulespec-code .token.boolean { color: #8dcac8; }
+.graph-viewer-root .workspace-rulespec-code .token.key,
+.graph-viewer-root .workspace-rulespec-code .token.atrule,
+.graph-viewer-root .workspace-rulespec-code .token.keyword { color: #e5bf82; }

@@ -262,8 +262,7 @@ export function GraphViewerApp({
       nonce: (current?.nonce ?? 0) + 1,
     }));
   };
-  // Clicking preserves every node and its position. Only the camera moves,
-  // smoothly framing the selected lineage in the existing program graph.
+  // Clicking makes this node the root of the visible dependency graph.
   const focusNode = (data: IrgNodeData) => {
     setInspected(data);
     if ("legalId" in data && data.legalId) {
@@ -1667,56 +1666,38 @@ export function GraphViewerApp({
     };
   }, [composeFocus]);
 
-  // Feature-detect run-by-root once per composed view: one probe run
-  // with default facts. 200/422/429 mean the deployment understands
-  // the `{ root }` shape (even if this subtree is refused); 400/404
-  // mean the endpoint isn't there yet — keep the affordance hidden.
+  // Compilation capability is independent of whether an empty household can
+  // produce a result. The input catalog compiles without executing a scenario.
   useEffect(() => {
     setComposeRunReady(null);
     setRunBlocked(null);
     if (!composeFocus) return;
     let cancelled = false;
     const root = fileLegalIdOf(composeFocus);
-    fetch("/api/axiom/runtime/calculate", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ root, facts: {}, variables: [] }),
-      signal: AbortSignal.timeout(30_000),
-    })
-      .then(async (response) => {
+    fetchRootInputs(root)
+      .then(() => {
         if (cancelled) return;
-        if (response.status === 422) {
-          rememberRunCapability(root, false);
-          // The endpoint exists but declines this subtree — show the
-          // affordance AND the honest blocked state up front.
-          let payload: { message?: string | null } = {};
-          try {
-            payload = await response.json();
-          } catch {
-            // Anonymous refusal.
-          }
-          if (!cancelled) {
-            setRunBlocked(
-              payload.message ??
-                "the engine declined this computation without a message.",
-            );
-            setComposeRunReady(true);
-          }
-          return;
-        }
-        if (response.ok) rememberRunCapability(root, true);
-        setComposeRunReady(response.ok || response.status === 429);
+        rememberRunCapability(root, true);
+        setComposeRunReady(true);
       })
       .catch(() => {
-        if (!cancelled) setComposeRunReady(false);
+        // Unavailability is not evidence that the encoding cannot execute.
+        // Leave it unknown so a transient outage does not poison the cache.
+        if (!cancelled) setComposeRunReady(null);
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [composeFocus]);
+    return () => { cancelled = true; };
+  }, [composeFocus, reloadNonce]);
   // The run affordance exists in compose mode only once the probe
   // confirms the API can execute a composed root.
-  const runAffordanceReady = !composeFocus || composeRunReady === true;
+  const runAffordanceReady = !runBlocked && (!composeFocus || composeRunReady === true);
+  useEffect(() => {
+    if (workspaceView === "run" && (runBlocked || (composeFocus && composeRunReady === false))) {
+      setWorkspaceView("map");
+      const url = new URL(window.location.href);
+      url.searchParams.set("view", "map");
+      window.history.replaceState(window.history.state, "", url);
+    }
+  }, [workspaceView, runBlocked, composeFocus, composeRunReady]);
 
   const outputRules = useMemo(
     () => rankOutputRules(graph, { includeLeaves: composeFocus != null }),
@@ -2572,7 +2553,7 @@ export function GraphViewerApp({
               row ABOVE the plane, flush with the plane's left edge —
               compose AND program views, every host (/axiom overlay,
               standalone /axiom/graph, /app). */}
-          {launcher === "closed" && (
+          {launcher === "closed" && (!graph || loading || graph.rules.length === 0) && (
             <button
               type="button"
               className="back-to-overview"
@@ -2666,6 +2647,7 @@ export function GraphViewerApp({
         </div>
         {graph && !loading && graph.rules.length > 0 && launcher === "closed" && (
           <RuleWorkspace
+            onOverview={backToOverview}
             key={composeFocus ?? (program ? programKey(program) : "workspace")}
             graph={graph}
             rootTarget={composeFocus ? fileLegalIdOf(composeFocus) : undefined}
@@ -2680,7 +2662,7 @@ export function GraphViewerApp({
             scopeLabel={composeFocus ? humanizeCitation(fileLegalIdOf(composeFocus)) : effectiveProgram?.displayName ?? "Program"}
             truncated={composedTruncated}
             runReady={runAffordanceReady}
-            scenario={<>{scenarioFlowUI}{runBlocked && <p role="status">{runBlocked}</p>}</>}
+            scenario={scenarioFlowUI}
             graphControls={<div className="graph-controls-slot" ref={setGraphControlsSlot} />}
             valueOf={(id) => liveTraces.valueOf(id)}
             hasRun={Boolean(runResult)}
@@ -2712,19 +2694,11 @@ export function GraphViewerApp({
               {runError}
             </div>
           )}
-          {/* A refused subtree announces itself even with the panel
-              closed — silence would read as "runnable". */}
-          {runBlocked && !runPanelOpen && !running && (
-            <div className="run-blocked run-blocked-floating" role="status">
-              <strong>This subtree can&rsquo;t execute yet</strong>
-              <span>{runBlocked}</span>
-            </div>
-          )}
           <div
-            className={`graph-veil ${veiled ? "is-on" : ""}`}
-            aria-hidden={!veiled}
+            className={`graph-veil ${veiled && !loading && !error ? "is-on" : ""}`}
+            aria-hidden={!veiled || loading || Boolean(error)}
           >
-            {veiled && <GraphLoading label="Arranging the graph…" />}
+            {veiled && !loading && !error && <GraphLoading label="Arranging the graph…" />}
           </div>
           {error && (
             <div className="status error">
@@ -2773,6 +2747,8 @@ export function GraphViewerApp({
           ) : workspaceView !== "map" && !graphMounted ? null : spec && Object.keys(structureTraces).length > 0 ? (
             <InputEditContext.Provider value={inputEditCtx}>
             <InteractiveRuleGraph
+              nodeScoped
+              suppressLoadingIndicator={veiled || Boolean(error)}
               spec={spec}
               traces={liveTraces.traces}
               showValues={Boolean(runResult)}
@@ -3500,17 +3476,6 @@ export function GraphViewerApp({
                 </div>
               </section>
             ) : null}
-            {"legalId" in inspected &&
-            inspected.legalId &&
-            inspected.kind !== "input" ? (
-              <button
-                type="button"
-                className="node-inspector-link"
-                onClick={() => isolateAt(inspected.legalId)}
-              >
-                Isolate this rule
-              </button>
-            ) : null}
             {"kind" in inspected &&
             inspected.kind === "input" &&
             input &&
@@ -3525,39 +3490,13 @@ export function GraphViewerApp({
               </button>
             ) : null}
             {lawHref ? (
-              <button
-                type="button"
-                className="node-inspector-link"
-                data-testid="read-the-law"
-                onClick={() => {
-                  // Encodings can be one level deeper than the corpus
-                  // provisions (…/2014/e/6/A vs …/e/6) — resolve to the
-                  // nearest existing page instead of opening a 404. But
-                  // when the resolved row is just an ancestor of the
-                  // cited path, keep the deep path: the reader resolves
-                  // it itself and focuses the cited subsection.
-                  // Carry the rule's identity so the reader can spotlight
-                  // the card you came from in its encodings rail.
-                  const ruleParam = lawTarget?.ruleName
-                    ? `&rule=${encodeURIComponent(lawTarget.ruleName)}`
-                    : "";
-                  void fetch(`/api/axiom/resolve${lawHref}`)
-                    .then((response) =>
-                      response.ok ? response.json() : null,
-                    )
-                    .then((resolved: { href?: string | null } | null) => {
-                      const href = resolved?.href ?? null;
-                      const target =
-                        href && !lawHref.startsWith(href) ? href : lawHref;
-                      setLawPopup(`${target}?embed=1${ruleParam}`);
-                    })
-                    .catch(() =>
-                      setLawPopup(`${lawHref}?embed=1${ruleParam}`),
-                    );
-                }}
-              >
-                Read the law →
-              </button>
+              <button type="button" className="node-inspector-link" data-testid="read-the-law" onClick={() => {
+                setWorkspaceView("read");
+                const url = new URL(window.location.href);
+                url.searchParams.set("view", "read");
+                if ("legalId" in inspected && inspected.legalId) url.searchParams.set("selection", inspected.legalId);
+                window.history.replaceState(window.history.state, "", url);
+              }}>Read the law →</button>
             ) : null}
           </section>
             );

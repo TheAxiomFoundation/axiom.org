@@ -1,13 +1,13 @@
 .graph-viewer-root.has-workspace .app-shell[hidden], .corpus-library[hidden] { display: none !important; }
 .corpus-library { max-width: 1360px; margin: 0 auto; padding: 24px 48px 64px; color: var(--color-ink); }
 .corpus-library button, .corpus-library input, .corpus-library select { font: inherit; color: inherit; }
+.corpus-library [data-testid="corpus-field-reset"] { font-size: 10px; line-height: 1; font-weight: 500; color: var(--color-ink-secondary); }
 .corpus-library button { cursor: pointer; }
 .corpus-library button:focus-visible, .corpus-library a:focus-visible, .corpus-library input:focus-visible, .corpus-library select:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 4px; }
 .library-brand { display: flex; align-items: center; gap: 20px; padding-bottom: 24px; border-bottom: 1px solid var(--color-rule); }
 .library-brand a { text-decoration: none; color: inherit; display: flex; gap: 8px; align-items: center; }
-.library-brand a:first-child { font-size: 24px; letter-spacing: -.04em; }
-.library-brand > span { border-left: 1px solid var(--color-rule); padding-left: 20px; font-size: 13px; color: var(--color-ink-secondary); }
-.library-brand a:last-child { margin-left: auto; font-size: 12px; color: var(--color-ink-secondary); }
+.library-brand img { display: block; height: 32px; width: auto; }
+.library-brand h1 { border-left: 1px solid var(--color-rule); padding-left: 20px; margin: 0; font-size: 1.35rem; font-weight: 300; letter-spacing: .02em; line-height: 1.2; color: var(--color-ink); }
 .library-intro { padding: 52px 0 38px; max-width: 780px; }
 .library-eyebrow { font: 11px var(--f-mono, monospace); color: var(--color-accent); letter-spacing: .12em; }
 .library-intro h1 { font-family: var(--font-newsreader, Georgia), Georgia, serif; font-size: clamp(36px, 4vw, 52px); line-height: 1.06; font-weight: 400; letter-spacing: -.025em; margin: 18px 0; }
@@ -60,8 +60,7 @@
 @media (max-width: 760px) {
   .corpus-library { padding: 20px; }
   .library-brand { gap: 12px; }
-  .library-brand > span { padding-left: 12px; }
-  .library-brand a:last-child { font-size: 11px; }
+  .library-brand h1 { padding-left: 12px; }
   .library-intro { padding: 32px 0; }
   .library-starts { grid-template-columns: 1fr; }
   .library-section-head { gap: 12px; align-items: flex-start; }
@@ -160,18 +159,25 @@ body:has(.corpus-library:not([hidden])) { overflow: hidden; }
   .library-browse > .library-section-head, .library-browse > .library-search { margin-bottom: 8px; }
 }
 .library-columns { align-items: stretch; }
+.library-results { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); column-gap: 20px; align-content: start; }
+.library-results .library-row { min-width: 0; box-sizing: border-box; padding: 14px 10px; gap: 10px; }
+.library-results .library-row strong { font-size: 14px; line-height: 1.4; }
+.library-results .library-row p { margin: 5px 0; }
+.library-results .library-row > svg { width: 15px; height: 15px; }
 
 /* One compact collection toolbar leaves the remaining height to the map. */
 .library-toolbar { flex: none; position: relative; margin-bottom: 12px; }
 .library-toolbar .library-section-head { margin-bottom: 0; }
+.library-toolbar .library-search { flex: 1; min-width: 0; height: 34px; box-sizing: border-box; margin: 0; padding: 5px 10px; }
+.library-toolbar .library-search input { font-size: 13px; padding: 0; }
 @media (min-width: 761px) {
-  .library-toolbar { display: flex; align-items: center; gap: 16px; }
+  .library-toolbar { display: flex; align-items: flex-end; gap: 16px; }
   .library-toolbar .library-section-head { flex: 1; min-width: 0; gap: 12px; }
-  .library-toolbar h2 { font-size: 14px; gap: 8px; flex-wrap: wrap; }
   .library-toolbar .library-view-switch { flex: none; }
-  .library-toolbar .library-filters { display: flex; flex-direction: row; align-items: center; gap: 10px; padding: 0; }
+  .library-toolbar .library-view-switch button { height: 34px; box-sizing: border-box; padding: 6px 12px; }
+  .library-toolbar .library-filters { display: flex; flex-direction: row; align-items: flex-end; gap: 10px; padding: 0; }
   .library-toolbar .library-filters label { gap: 3px; font-size: 10px; }
-  .library-toolbar .library-filters select { width: 140px; padding: 6px 8px; font-size: 12px; }
+  .library-toolbar .library-filters select { width: 140px; height: 34px; box-sizing: border-box; padding: 6px 8px; font-size: 12px; }
   .library-toolbar .library-filters > button { max-width: 90px; font-size: 11px; }
 }
 @media (max-width: 760px) {

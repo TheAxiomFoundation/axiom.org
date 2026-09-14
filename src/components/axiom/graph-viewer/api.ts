@@ -133,7 +133,7 @@ export async function fetchComposedGraph(focus: string): Promise<ComposedGraph> 
   // `v` versions the browser cache: bump when the graph SHAPE changes
   // (relation kinds, v2) so stale cached graphs can't poison runs.
   const url = `${trimSlash(API_BASE)}/graph/compose?focus=${encodeURIComponent(focus)}&v=2`;
-  const response = await fetch(url);
+  const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) {
     throw new Error(`compose request failed (${response.status}): ${await response.text()}`);
   }
@@ -166,7 +166,7 @@ export interface RootInputSlot {
 // heuristics when the subtree doesn't compile.
 export async function fetchRootInputs(root: string): Promise<RootInputSlot[]> {
   const url = `${trimSlash(API_BASE)}/runtime/root-inputs?root=${encodeURIComponent(root)}`;
-  const response = await fetch(url);
+  const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) {
     throw new Error(`root-inputs request failed (${response.status})`);
   }

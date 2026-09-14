@@ -1148,9 +1148,9 @@ export function CorpusField({
             type="button"
             data-testid="corpus-field-reset"
             onClick={resetView}
-            className="absolute right-3 top-3 z-20 inline-flex min-h-9 items-center gap-2 rounded-md border border-[var(--color-rule)] bg-[var(--color-paper)] px-3 py-2 font-sans text-xs font-medium normal-case tracking-normal text-[var(--color-ink-secondary)] transition-colors hover:bg-[var(--color-paper-elevated)] hover:text-[var(--color-ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
+            className="absolute right-2 top-2 z-20 inline-flex h-6 items-center gap-1 rounded border border-[var(--color-rule)] bg-[var(--color-paper)] px-1.5 py-0 font-sans text-[10px] font-medium normal-case tracking-normal text-[var(--color-ink-secondary)] transition-colors hover:bg-[var(--color-paper-elevated)] hover:text-[var(--color-ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
           >
-            <Scan size={15} aria-hidden="true" /> Whole corpus
+            <Scan size={12} aria-hidden="true" /> Whole corpus
           </button>
         )}
       </div>

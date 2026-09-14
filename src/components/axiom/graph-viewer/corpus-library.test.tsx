@@ -23,7 +23,7 @@ describe("law library", () => {
   it("never infers executable capability from size and shares filters with the map", () => {
     rememberRunCapability(modules[0]!.target, true);
     const { rerender } = render(<CorpusLibrary {...props} />);
-    fireEvent.change(screen.getByLabelText("Available actions"), { target: { value: "run" } });
+    fireEvent.change(screen.getByLabelText("Jurisdiction"), { target: { value: "us" } });
     expect(screen.getByText("Run available")).toBeInTheDocument();
     expect(screen.queryByText("SNAP Eligibility")).not.toBeInTheDocument();
     rerender(<CorpusLibrary {...props} mode="field" />);
@@ -45,10 +45,10 @@ describe("law library", () => {
     rerender(<CorpusLibrary {...props} active />);
     expect(screen.getByRole("searchbox")).toHaveValue("Colorado");
   });
-  it("explains an empty capability filter and resets it", () => {
+  it("explains an empty search and resets it", () => {
     render(<CorpusLibrary {...props} />);
-    fireEvent.change(screen.getByLabelText("Available actions"), { target: { value: "run" } });
-    expect(screen.getByText(/No matching provisions have a recent successful run check/)).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "no matching rule" } });
+    expect(screen.getByText("No matching provisions")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Show all provisions" }));
     expect(screen.getByText("SNAP Eligibility")).toBeInTheDocument();
   });

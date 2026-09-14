@@ -91,3 +91,12 @@ export function focusLayout(nodes: Node[], focus: Set<string>, edges: Edge[] = [
   }
   return nodes.map((node) => positions.get(node.id)!);
 }
+
+/** Node navigation never exposes unrelated siblings from the loaded artifact. */
+export function dependencySubgraph(nodes: Node[], edges: Edge[], legalId: string | null, maxDepth = Infinity): { nodes: Node[]; edges: Edge[] } {
+  const ids = upstreamIds(nodes, edges, legalId, maxDepth);
+  return {
+    nodes: nodes.filter(node => ids.has(node.id)).map(node => ({ ...node, position: { ...node.position } })),
+    edges: edges.filter(edge => ids.has(edge.source) && ids.has(edge.target)).map(edge => ({ ...edge })),
+  };
+}

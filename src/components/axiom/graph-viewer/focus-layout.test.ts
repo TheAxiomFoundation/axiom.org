@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Node, Edge } from "@xyflow/react";
-import { focusLayout, upstreamIds } from "./focus-layout";
+import { dependencySubgraph, focusLayout, upstreamIds } from "./focus-layout";
 const nodes: Node[] = [
  {id:"a",position:{x:0,y:0},width:240,height:90,data:{legalId:"a",kind:"input"}},
  {id:"b",position:{x:0,y:150},width:240,height:90,data:{legalId:"b",kind:"input"}},
@@ -45,5 +45,30 @@ describe("focus and context layout",()=>{
  it("returns deterministically to the original compact arrangement",()=>{
   expect(focusLayout(nodes,new Set())).toEqual(focusLayout(nodes,new Set()));
   expect(focusLayout([],new Set())).toEqual([]);
+ });
+});
+
+describe("selected-node graph scope", () => {
+ it("shows only a standalone selected parameter", () => {
+  const result = dependencySubgraph(nodes, [], "b");
+  expect(result.nodes.map(n => n.id)).toEqual(["b"]);
+  expect(result.edges).toEqual([]);
+ });
+ it("includes dependencies but excludes sibling outputs and consumers", () => {
+  const result = dependencySubgraph(nodes, edges, "c");
+  expect(result.nodes.map(n => n.id)).toEqual(["a", "c"]);
+  expect(result.edges.map(e => e.id)).toEqual(["ac"]);
+  expect(dependencySubgraph(nodes, edges, "a").nodes.map(n => n.id)).toEqual(["a"]);
+ });
+ it("limits depth and restores the full tree without mutating the loaded graph", () => {
+  const links = [...edges, {id:"ba",source:"b",target:"a"}];
+  expect(dependencySubgraph(nodes, links, "c", 1).nodes.map(n=>n.id)).toEqual(["a","c"]);
+  const full = dependencySubgraph(nodes, links, "c");
+  expect(full.nodes.map(n=>n.id)).toEqual(["a","b","c"]);
+  full.nodes[0]!.position.x = 999;
+  expect(nodes[0]!.position.x).toBe(0);
+ });
+ it("never falls back to the entire artifact for an unknown selection", () => {
+  expect(dependencySubgraph(nodes, edges, "missing").nodes).toEqual([]);
  });
 });

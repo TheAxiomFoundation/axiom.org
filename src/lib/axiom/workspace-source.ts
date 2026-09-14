@@ -1,6 +1,7 @@
 import type { RuleReference } from "@/lib/supabase";
 
 export interface WorkspaceSource {
+  origin?: "official-live";
   citationPath: string;
   heading: string | null;
   officialUrl: string | null;
