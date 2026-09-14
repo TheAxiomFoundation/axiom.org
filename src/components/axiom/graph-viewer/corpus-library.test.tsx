@@ -1,10 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CorpusLibrary, libraryEntries } from "./corpus-library";
 import { readRecentRules, readRunCapabilities, rememberRule, rememberRunCapability } from "./library-state";
 import type { CorpusModule } from "@/lib/axiom/corpus-field";
 
-vi.mock("@/components/axiom/corpus-field", () => ({ CorpusField: ({ suppliedModules }: { suppliedModules: CorpusModule[] }) => <div data-testid="filtered-map">{suppliedModules.map((item) => item.target).join(",")}</div> }));
+vi.mock("@/components/axiom/corpus-field", () => ({ CorpusField: ({ suppliedModules, onPick }: { suppliedModules: CorpusModule[]; onPick: (target: string) => void }) => <><button onClick={() => onPick(suppliedModules[0]!.target)}>Pick first</button><div data-testid="filtered-map">{suppliedModules.map((item) => item.target).join(",")}</div></> }));
 const modules: CorpusModule[] = [
   { target: "us:statutes/26/32", jurisdiction: "us", bucket: "statutes", ruleCount: 24, linkedRuleCount: 24, importCount: 2, headlineRule: "eitc" },
   { target: "us-co:regulations/10/4", jurisdiction: "us-co", bucket: "regulations", ruleCount: 90, linkedRuleCount: 90, importCount: 0, headlineRule: "snap_eligibility" },
@@ -66,5 +66,49 @@ describe("library browser storage", () => {
     expect(readRecentRules()).toEqual([]);
     localStorage.setItem("axiom-library-runs-v1", JSON.stringify({ [modules[0]!.target]: { available: true, checkedAt: Date.now() - 86400001 } }));
     expect(readRunCapabilities()).toEqual({});
+  });
+});
+
+describe("library toolbar, paging, and map picks", () => {
+  it("clears the search, switches views, toggles filters, and changes country", () => {
+    const { container } = render(<CorpusLibrary {...props} countries={[{ id: "us", label: "United States" }, { id: "uk", label: "United Kingdom" }]} />);
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Colorado" } });
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(screen.getByRole("searchbox")).toHaveValue("");
+    fireEvent.click(screen.getByRole("button", { name: /Map/ }));
+    expect(props.onModeChange).toHaveBeenCalledWith("field");
+    fireEvent.click(screen.getByRole("button", { name: /List/ }));
+    expect(props.onModeChange).toHaveBeenCalledWith("list");
+    // library.css hides the toggle at desktop widths, so it has no accessible name here.
+    const toggle = container.querySelector<HTMLButtonElement>(".library-filter-toggle")!;
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    fireEvent.change(screen.getByLabelText("Jurisdiction"), { target: { value: "us-co" } });
+    expect(toggle).toHaveTextContent("Active");
+    fireEvent.change(screen.getByLabelText("Country"), { target: { value: "uk" } });
+    expect(props.onCountryChange).toHaveBeenCalledWith("uk");
+    expect(screen.getByLabelText("Jurisdiction")).toHaveValue("all");
+  });
+  it("opens a starter, a result row, and pages through long lists", () => {
+    const many = Array.from({ length: 45 }, (_, index) => ({ ...modules[1]!, target: `us-co:regulations/10/${index}`, headlineRule: `rule_${index}` }));
+    render(<CorpusLibrary {...props} modules={[...modules, ...many]} />);
+    fireEvent.click(within(screen.getByRole("region", { name: "Start exploring" })).getByRole("button", { name: /Earned income tax credit/ }));
+    expect(props.onPick).toHaveBeenLastCalledWith(modules[0]!.target, undefined);
+    fireEvent.click(screen.getByRole("button", { name: /Earned income tax credit.*24 rules/ }));
+    expect(props.onPick).toHaveBeenLastCalledWith(modules[0]!.target, undefined);
+    expect(screen.queryByText("SNAP Eligibility")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Show 40 more/ }));
+    expect(screen.getByText("SNAP Eligibility")).toBeInTheDocument();
+  });
+  it("forwards a map pick and restores the list's scroll position on return", () => {
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { callback(0); return 1; });
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    const { rerender } = render(<CorpusLibrary {...props} mode="field" />);
+    fireEvent.click(screen.getByRole("button", { name: "Pick first" }));
+    expect(props.onPick).toHaveBeenLastCalledWith(modules[0]!.target, undefined);
+    rerender(<CorpusLibrary {...props} mode="field" active={false} />);
+    rerender(<CorpusLibrary {...props} mode="field" active />);
+    expect(window.scrollTo).toHaveBeenCalledWith(0, 0);
+    vi.unstubAllGlobals();
   });
 });
