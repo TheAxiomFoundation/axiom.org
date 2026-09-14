@@ -15,10 +15,11 @@ export async function GET(request: Request) {
     );
   }
   const { status, body } = await runtimeProxyGet(
-    `/graph/compose?focus=${encodeURIComponent(focus)}`
+    `/graph/compose?focus=${encodeURIComponent(focus)}`,
+    { timeoutMs: 20000, fresh: true },
   );
   return NextResponse.json(body, {
     status,
-    headers: { "cache-control": "public, max-age=300" },
+    headers: { "cache-control": status >= 200 && status < 300 ? "public, max-age=300" : "no-store" },
   });
 }

@@ -1,0 +1,217 @@
+"use client";
+
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { ArrowLeft, ArrowRight, BookOpen, GitBranch, LoaderCircle, Network, Play, Search, X } from "lucide-react";
+import { axiomAppUrlForCitation, humanizeRuleName, humanizeSource, readableLawTarget } from "./citations";
+import type { ProgramGraph, RuleNode } from "./types";
+import { resolveLogicIdentifier } from "./rule-logic";
+import { rememberRule } from "./library-state";
+import { RuleBody } from "@/components/axiom/rule-body";
+import { RuleSpecPreview } from "./rulespec-preview";
+import type { WorkspaceSource } from "@/lib/axiom/workspace-source";
+
+export type WorkspaceView = "read" | "structure" | "run" | "map";
+type Entry = { legalId: string; name: string; kind: string; dtype?: string | null; unit?: string | null };
+
+export function neighborhood(graph: ProgramGraph, id: string) {
+  const rule = graph.rules.find((item) => item.legalId === id);
+  const dependencies = [...new Set([...(rule?.ruleDeps ?? []), ...(rule?.inputDeps ?? []), ...(rule?.relationDeps ?? [])])];
+  const consumers = graph.rules.filter((item) =>
+    [...item.ruleDeps, ...item.inputDeps, ...item.relationDeps].includes(id));
+  return { rule, dependencies, consumers };
+}
+
+function SourceReader({ rule, id, consumers }: { rule?: RuleNode; id: string; consumers: RuleNode[] }) {
+  const target = readableLawTarget({ legalId: id, ruleSource: rule?.source ?? null, citation: rule?.source ?? null, curatedCitation: rule?.source ?? null, isQuestion: !rule, consumers });
+  const href = target ? axiomAppUrlForCitation(target.fileLegalId, target.citation) : null;
+  const [source, setSource] = useState<WorkspaceSource | null>(null);
+  const [error, setError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (!href) return;
+    const controller = new AbortController();
+    setSource(null);
+    setError(false);
+    void fetch(`/api/axiom/source${href}`, { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Source unavailable");
+        return response.json() as Promise<WorkspaceSource>;
+      })
+      .then((data) => { if (!controller.signal.aborted) setSource(data); })
+      .catch(() => { if (!controller.signal.aborted) setError(true); });
+    return () => controller.abort();
+  }, [href, attempt]);
+  return <section className="workspace-reader" aria-label="Source provision">
+    {href ? <>
+      <div className="workspace-source-toolbar"><span>{source?.heading ?? "Source provision"}</span>{source?.officialUrl && <a href={source.officialUrl} target="_blank" rel="noreferrer">Official source <ArrowRight size={14} /></a>}</div>
+      {error ? <p role="alert">Could not load this provision. <button onClick={() => setAttempt((value) => value + 1)}>Try again</button>.</p> : !source ? <p className="workspace-source-loading" role="status"><LoaderCircle size={18} aria-hidden="true" />Loading source provision…</p> : <>
+        {source.origin === "official-live" && <p className="workspace-source-date">Current official source text; may differ from the version used for encoding.</p>}
+        {source.effectiveDate && <p className="workspace-source-date">Effective {source.effectiveDate}</p>}
+        {source.blocks.length > 1 && <nav className="workspace-source-sections" aria-label="Source subsections">{source.blocks.filter((block) => block.heading).map((block) => <a key={block.anchor} href={`#source-${block.anchor}`}>{block.heading}</a>)}</nav>}
+        <article className="workspace-source-text">{source.blocks.map((block) => <section key={block.anchor} id={`source-${block.anchor}`} data-focused={source.focusAnchor === block.anchor || undefined}>
+          {block.heading && <h2>{block.heading}</h2>}
+          <RuleBody body={block.body} refs={block.refs} citationPath={block.citationPath} />
+        </section>)}{!source.blocks.length && <p>No provision text is available for this source.</p>}</article>
+        {source.truncated && <p role="status">This provision is partially loaded. Open the source to explore further subsections.</p>}
+      </>}
+    </> : <p>No source provision is available for this item in the loaded graph.</p>}
+    <RuleSpecPreview key={rule?.fileLegalId ?? id.split("#")[0]} root={rule?.fileLegalId ?? id.split("#")[0]} />
+  </section>;
+}
+
+export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, onViewChange, scopeLabel, truncated, runReady, scenario, graphControls, onOverview, valueOf, hasRun, stale }: {
+  graph: ProgramGraph; rootTarget?: string; selectedId: string; onSelect: (id: string) => void;
+  view: WorkspaceView; onViewChange: (view: WorkspaceView) => void;
+  scopeLabel: string; truncated: boolean; runReady: boolean; scenario: ReactNode;
+  graphControls?: ReactNode;
+  onOverview?: () => void;
+  valueOf: (id: string) => unknown; hasRun: boolean; stale: boolean;
+}) {
+  const [activeDependency, setActiveDependency] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [history, setHistory] = useState<string[]>([]);
+  const lastView = useRef(view);
+  const [returnView, setReturnView] = useState<WorkspaceView | null>(null);
+  useEffect(() => {
+    if (lastView.current !== view) {
+      setReturnView(lastView.current);
+      lastView.current = view;
+    }
+  }, [view]);
+  const [navigatorOpen, setNavigatorOpen] = useState(false);
+  const searchButtonRef = useRef<HTMLButtonElement>(null);
+  const closeSearch = () => {
+    setNavigatorOpen(false);
+    requestAnimationFrame(() => searchButtonRef.current?.focus());
+  };
+  const entries = useMemo(() => new Map<string, Entry>([
+    ...graph.rules.map((rule) => [rule.legalId, { ...rule, kind: rule.kind === "parameter" ? "Parameter" : "Rule" }] as const),
+    ...graph.inputs.map((input) => [input.legalId, { ...input, kind: "Input" }] as const),
+    ...graph.relations.map((relation) => [relation.legalId, { ...relation, kind: "Relation" }] as const),
+  ]), [graph]);
+  const navigationRef = useRef({ onSelect, onViewChange });
+  navigationRef.current = { onSelect, onViewChange };
+  useEffect(() => {
+    const restore = () => {
+      const params = new URLSearchParams(window.location.search);
+      const selection = params.get("selection");
+      if (selection && entries.has(selection)) navigationRef.current.onSelect(selection);
+      const mode = params.get("view");
+      if (mode === "read" || mode === "structure" || mode === "run" || mode === "map") navigationRef.current.onViewChange(mode);
+    };
+    restore();
+    window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
+  }, [entries]);
+  const saveLocation = (id: string, mode: WorkspaceView) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("selection", id);
+    url.searchParams.set("view", mode);
+    window.history.replaceState(window.history.state, "", url);
+  };
+  const changeView = (mode: WorkspaceView) => {
+    saveLocation(selectedId, mode);
+    onViewChange(mode);
+  };
+  const { rule, dependencies, consumers } = useMemo(() => neighborhood(graph, selectedId), [graph, selectedId]);
+  useEffect(() => {
+    const entry = entries.get(selectedId);
+    if (rootTarget && entry) rememberRule({ target: rootTarget, selection: selectedId, title: humanizeRuleName(entry.name), view: view === "run" ? "structure" : view });
+  }, [rootTarget, selectedId, view, entries]);
+  const label = (id: string) => humanizeRuleName(entries.get(id)?.name ?? id.split("#").pop() ?? id);
+  const navigate = (id: string) => {
+    if (id === selectedId || !entries.has(id)) return;
+    setHistory((current) => [...current, selectedId]);
+    saveLocation(id, view);
+    onSelect(id);
+    setNavigatorOpen(false);
+  };
+  const value = (id: string) => {
+    const raw = valueOf(id);
+    return raw === undefined || raw === null ? "Not evaluated" : typeof raw === "boolean" ? raw ? "True" : "False" : String(raw);
+  };
+  const results = [...entries.values()].filter((entry) => `${label(entry.legalId)} ${entry.legalId}`.toLowerCase().includes(query.toLowerCase()));
+  const roots = [...new Set([...graph.terminalOutputs, ...graph.ownOutputs])].filter((id) => entries.has(id));
+  return <div className="rule-workspace">
+    <nav className="workspace-views" aria-label="Workspace views">
+      <button className="workspace-graph-button" aria-current={view === "map" ? "page" : undefined} onClick={() => changeView("map")}><Network size={16} />Graph</button>
+      {([ ["read", "Read", BookOpen], ["structure", "Relationships", GitBranch], ["run", "Run", Play] ] as const).filter(([mode]) => mode !== "run" || runReady).map(([mode, title, Icon]) =>
+        <button key={mode} aria-current={view === mode ? "page" : undefined} onClick={() => changeView(mode)}><Icon size={16} />{title}</button>)}
+      {truncated && <small className="workspace-partial">Partial graph</small>}
+      <div className="workspace-nav-finder" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); closeSearch(); } }} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setNavigatorOpen(false); }}>
+        {navigatorOpen ? <>
+          <label className="workspace-nav-search-field"><Search size={16} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Find a rule…" aria-label="Search this scope" /><button type="button" aria-label="Close rule search" onClick={closeSearch}><X size={16} /></button></label>
+          <section className="workspace-search-popover" aria-label="Find a rule in this scope">
+            <div className="workspace-search-results">{(query ? results.map((entry) => entry.legalId) : roots).slice(0, 50).map((id) => <button key={id} aria-label={`${label(id)} ${entries.get(id)?.kind}`} onClick={() => { navigate(id); closeSearch(); }}><span>{label(id)}</span><small>{entries.get(id)?.kind}</small></button>)}</div>
+            {query && <p>{results.length} matches{results.length > 50 ? " · Showing the first 50; refine your search" : ""}</p>}
+          </section>
+        </> : <button ref={searchButtonRef} className="workspace-nav-search" onClick={() => setNavigatorOpen(true)} aria-expanded={false}><Search size={16} /> Find a rule</button>}
+      </div>
+    </nav>
+    <div className="workspace-subject">
+      <div className="workspace-return-actions">
+        {onOverview && <button type="button" className="workspace-button" data-testid="back-to-overview" onClick={onOverview} title="Back to the corpus overview">Overview</button>}
+      <button className="workspace-button" disabled={!history.length && !returnView} aria-label="Back to previous rule" onClick={() => { if (returnView) { lastView.current = returnView; changeView(returnView); setReturnView(null); return; } const previous = history.at(-1); if (previous) { saveLocation(previous, view); onSelect(previous); setHistory((current) => current.slice(0, -1)); } }}><ArrowLeft size={16} /> Back</button>
+      </div>
+      <div><h1>{label(selectedId)}</h1>
+        <p className="workspace-citation">{rule?.source ? humanizeSource(rule.source) : "Source not specified"}</p>
+      </div>
+      {graphControls}
+    </div>
+    {view !== "run" && hasRun && stale && <p className="workspace-stale" role="status">Inputs have changed since the last run. Run again to update the results.</p>}
+    {view === "read" && <SourceReader key={selectedId} rule={rule} id={selectedId} consumers={consumers} />}
+    {view === "structure" && <section className="workspace-structure" aria-label="Immediate dependencies">
+      <div className="workspace-section-heading"><h2>Direct relationships</h2>{hasRun && <span>Selected result: <strong>{value(selectedId)}</strong>{stale ? " · Previous run" : ""}</span>}</div>
+      <RelationshipDiagram activeId={activeDependency}><div className={`workspace-neighborhood ${dependencies.length ? "has-dependencies" : ""} ${consumers.length ? "has-consumers" : ""}`} key={selectedId}>
+        <NeighborColumn title="Built from" ids={dependencies} entries={entries} label={label} onSelect={navigate} hasRun={hasRun} value={value} activeId={activeDependency} onHighlight={setActiveDependency} empty="No dependencies recorded in this scope." />
+        <div className="workspace-anchor" data-relationship-anchor><span className="relationship-caption">Selected rule</span><h3>{label(selectedId)}</h3>
+          {rule?.formula ? <section className="relationship-formula"><h4>How these values combine</h4><pre tabIndex={0} aria-label="Formula with linked dependencies">{rule.formula.split(/([A-Za-z_]\w*)/).map((token, index) => {
+            const id = resolveLogicIdentifier(token, dependencies, entries);
+            return id ? <button key={index} className={activeDependency === id ? "is-highlighted" : undefined} title={label(id)} onMouseEnter={() => setActiveDependency(id)} onMouseLeave={() => setActiveDependency(null)} onFocus={() => setActiveDependency(id)} onBlur={() => setActiveDependency(null)} onClick={() => navigate(id)}>{token}</button> : token;
+          })}</pre></section> : <p className="relationship-caption">No formula is available for this item.</p>}
+          <button onClick={() => changeView("read")}>Read this rule <ArrowRight size={14} /></button></div>
+        <NeighborColumn title="Used by" ids={consumers.map((item) => item.legalId)} entries={entries} label={label} onSelect={navigate} hasRun={hasRun} value={value} activeId={activeDependency} onHighlight={setActiveDependency} empty="No consumers recorded in this scope." />
+      </div></RelationshipDiagram>
+      {truncated && <p className="workspace-footnote">This graph is partial; additional relationships may exist.</p>}
+    </section>}
+    {view === "run" && <section className="workspace-run" aria-label="Scenario workspace"><div className="workspace-section-heading"><h2>Household scenario</h2><span>Runs the selected outputs in this scope</span></div>{runReady ? scenario : <p role="status">Execution is not available for this scope. You can still read and explore its rules.</p>}</section>}
+  </div>;
+}
+
+function NeighborColumn({ title, ids, entries, label, onSelect, hasRun, value, empty, activeId, onHighlight }: {
+  title: string; ids: string[]; entries: Map<string, Entry>; label: (id: string) => string; onSelect: (id: string) => void; hasRun: boolean; value: (id: string) => string; empty: string; activeId: string | null; onHighlight: (id: string | null) => void;
+}) {
+  const [limit, setLimit] = useState(6);
+  return <div className="workspace-neighbors" data-relationship-side={title === "Built from" ? "left" : "right"}><h3>{title}</h3>{ids.slice(0, limit).map((id) => <button key={id} data-neighbor-id={id} className={activeId === id ? "is-highlighted" : undefined} onMouseEnter={() => onHighlight(id)} onMouseLeave={() => onHighlight(null)} onFocus={() => onHighlight(id)} onBlur={() => onHighlight(null)} aria-label={`${entries.get(id)?.kind ?? "Outside loaded scope"} ${label(id)}${hasRun ? ` ${value(id)}` : ""}`} disabled={!entries.has(id)} onClick={() => onSelect(id)}><small>{entries.get(id)?.kind ?? "Outside loaded scope"}{entries.get(id)?.dtype ? ` · ${entries.get(id)?.dtype}` : ""}</small><span>{label(id)}</span>{hasRun && <strong>{value(id)}</strong>}<ArrowRight size={14} aria-hidden="true" /></button>)}{!ids.length && <p>{empty}</p>}{ids.length > limit && <button className="workspace-more" onClick={() => setLimit((current) => current + 12)}>Show {Math.min(12, ids.length - limit)} more · {ids.length - limit} hidden</button>}</div>;
+}
+
+function RelationshipDiagram({ children, activeId }: { children: ReactNode; activeId: string | null }) {
+  const container = useRef<HTMLDivElement>(null);
+  const markerId = useId();
+  const [paths, setPaths] = useState<{ id: string; d: string }[]>([]);
+  useEffect(() => {
+    const el = container.current;
+    if (!el) return;
+    const measure = () => {
+      const bounds = el.getBoundingClientRect();
+      const anchor = el.querySelector("[data-relationship-anchor]")?.getBoundingClientRect();
+      if (!anchor) return;
+      const cy = anchor.top + anchor.height / 2 - bounds.top;
+      setPaths([...el.querySelectorAll<HTMLElement>("[data-neighbor-id]")].map((row) => {
+        const r = row.getBoundingClientRect();
+        const left = row.closest("[data-relationship-side]")?.getAttribute("data-relationship-side") === "left";
+        const startX = (left ? r.right : anchor.right) - bounds.left;
+        const endX = (left ? anchor.left : r.left) - bounds.left;
+        const startY = left ? r.top + r.height / 2 - bounds.top : cy;
+        const endY = left ? cy : r.top + r.height / 2 - bounds.top;
+        const mid = (startX + endX) / 2;
+        return { id: row.dataset.neighborId!, d: `M ${startX} ${startY} H ${mid} V ${endY} H ${endX}` };
+      }));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [children]);
+  return <div className="relationship-diagram" ref={container}><svg className="relationship-wires" aria-hidden="true"><defs><marker id={markerId} viewBox="0 0 8 8" refX="8" refY="4" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0 L8 4 L0 8" fill="currentColor" /></marker></defs>{paths.map((path, index) => <path key={`${path.id}-${index}`} d={path.d} className={activeId === path.id ? "is-highlighted" : undefined} markerEnd={`url(#${markerId})`} />)}</svg>{children}</div>;
+}

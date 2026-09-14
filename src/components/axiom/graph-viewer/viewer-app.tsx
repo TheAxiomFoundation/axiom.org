@@ -1,5 +1,7 @@
 "use client";
 
+import { ResultExplanation } from "./result-explanation";
+import { GraphLoading } from "./graph-loading";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   InputEditContext,
@@ -17,13 +19,13 @@ import {
   readableLawTarget,
 } from "./citations";
 import { InspectorMiniGraph } from "./inspector-mini-graph";
-import {
-  PlaneTour,
-  TOUR_EXAMPLE_TARGET,
-} from "@/components/axiom/tour/plane-tour";
 import "./styles.css";
 import "./graph-styles.css";
 import "./plane.css";
+import "./workspace.css";
+import { RuleWorkspace, type WorkspaceView } from "./rule-workspace";
+import { CorpusLibrary } from "./corpus-library";
+import { rememberRunCapability, type RecentRule } from "./library-state";
 import {
   countriesFromPrograms,
   PREFERRED_DEFAULT_PROGRAM_KEY,
@@ -40,13 +42,6 @@ import {
   programRefFromSummary,
 } from "./api";
 import type { Country, DashboardSpec, LegalId, ParameterRule, ProgramGraph, ProgramRef, ProgramSummary, RuleNode, TraceNode } from "./types";
-import { SubtreeDoors, SubtreeSearch } from "./subtree-picker";
-import {
-  ALL_STATES,
-  JURISDICTION_SCOPES,
-  statesInModules,
-  type JurisdictionScope,
-} from "./list-entries";
 import {
   composeRootOutput,
   filterStandaloneRules,
@@ -58,7 +53,6 @@ import {
   storeLauncherMode,
   type LauncherMode,
 } from "./launcher-mode";
-import { CorpusField } from "@/components/axiom/corpus-field";
 import { loadCorpusModules } from "@/lib/axiom/corpus-live";
 import type { CorpusModule } from "@/lib/axiom/corpus-field";
 
@@ -70,6 +64,9 @@ export function GraphViewerApp({
    *  journey instead of navigating. Omitted on standalone routes. */
   onBackToOverview?: () => void;
 } = {}) {
+  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("map");
+  const [graphMounted, setGraphMounted] = useState(false);
+  useEffect(() => { if (workspaceView === "map") setGraphMounted(true); }, [workspaceView]);
   const [allPrograms, setAllPrograms] = useState<ProgramSummary[]>([]);
   // The launcher's corpus: every subtree the mirror serves (live,
   // with the committed snapshot as ballast) — the picker searches
@@ -77,37 +74,13 @@ export function GraphViewerApp({
   const [corpusModules, setCorpusModules] = useState<CorpusModule[] | null>(
     null,
   );
-  // The launcher tour's closing step presents one real subtree: the
-  // field camera glides to it (spotlight), the CTA opens it.
-  const [tourSpotlight, setTourSpotlight] = useState<string | null>(null);
-  const tourExampleReady =
-    corpusModules?.some((m) => m.target === TOUR_EXAMPLE_TARGET) ?? false;
-  // Field ⇄ List: the launcher opens on the open-world field by
-  // default; the list picker is the alternate mode. Persisted.
+  // The searchable library and corpus map share a persisted view choice.
   const [launcherMode, setLauncherMode] = useState<LauncherMode>(() =>
     readLauncherMode(),
   );
-  // Live view for callbacks the tour captured at start — the mode
-  // can flip mid-tour, and a stale closure would offer the field's
-  // spotlight with the field unmounted.
-  const launcherModeRef = useRef(launcherMode);
-  launcherModeRef.current = launcherMode;
   const pickLauncherMode = (mode: LauncherMode) => {
     setLauncherMode(mode);
     storeLauncherMode(mode);
-  };
-  // One query, two surfaces: the top-right search's dropdown AND the
-  // list mode's full corpus list filter live on the same string.
-  const [launcherQuery, setLauncherQuery] = useState("");
-  // List mode's jurisdiction scope: All · Nationwide (us) · States
-  // (us-XX). Composes with the text search.
-  const [listScope, setListScope] = useState<JurisdictionScope>("all");
-  // Under States, one state may be picked (ALL_STATES = every state);
-  // leaving the States scope forgets the pick.
-  const [listState, setListState] = useState<string>(ALL_STATES);
-  const pickListScope = (scope: JurisdictionScope) => {
-    setListScope(scope);
-    if (scope !== "states") setListState(ALL_STATES);
   };
   const [country, setCountry] = useState<Country>(() => initialCountry());
   const [program, setProgram] = useState<ProgramRef | null>(null);
@@ -171,17 +144,19 @@ export function GraphViewerApp({
     legalId: string;
     nonce: number;
     immediate?: boolean;
+    readable?: boolean;
   } | null>(null);
   // immediate: the canvas layout is at rest (a plain card click) — no
   // relayout is coming, so the flight starts without the settle hold.
   // soft: a relayout IS coming, but it's a small unfold — glide
   // through its commit instead of hard-cutting.
-  const flyTo = (legalId: string, immediate = false, soft = false) =>
+  const flyTo = (legalId: string, immediate = false, soft = false, readable = false) =>
     setFlyTarget((current) => ({
       legalId,
       nonce: (current?.nonce ?? 0) + 1,
       immediate,
       soft,
+      readable,
     }));
   const savedSelection = useRef<{
     outputs: LegalId[];
@@ -287,16 +262,17 @@ export function GraphViewerApp({
       nonce: (current?.nonce ?? 0) + 1,
     }));
   };
-  // A click opens the card's info and glides the camera to it — the
-  // graph itself stays exactly as drawn (no re-dissection; that's the
-  // double-click lens).
+  // Clicking makes this node the root of the visible dependency graph.
   const focusNode = (data: IrgNodeData) => {
     setInspected(data);
+    if ("legalId" in data && data.legalId) {
+      const url = new URL(window.location.href);
+      url.searchParams.set("selection", data.legalId);
+      url.searchParams.set("view", "map");
+      window.history.replaceState(window.history.state, "", url);
+    }
     trackNodeOpened(data.kind);
-    const legalId = "legalId" in data && data.legalId ? data.legalId : null;
-    if (!legalId) return;
-    if (data.kind !== "output" && data.kind !== "ruleRef") return;
-    flyTo(legalId, true);
+    // The graph coordinates selection layout and camera as one transition.
   };
   const lensFocusId = lensTrail[lensTrail.length - 1] ?? null;
   // The sidebar is isolation's home — a pane click may clear the
@@ -305,7 +281,9 @@ export function GraphViewerApp({
     if (lensFocusId && !inspected) inspectRule(lensFocusId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lensFocusId, inspected]);
+  const [explanationOpen, setExplanationOpen] = useState(false);
   const [runResult, setRunResult] = useState<{
+    submittedFacts?: Record<string, unknown>;
     outputs: Record<string, number | string | boolean | null>;
     trace: Array<{
       variable: string;
@@ -385,7 +363,7 @@ export function GraphViewerApp({
   // clicked (its size tracks the dependency count).
   useEffect(() => {
     window.dispatchEvent(new Event("axiom:tour-rehighlight"));
-  }, [lawPopup, launcherMode, listScope, listState, inspected]);
+  }, [lawPopup, launcherMode, inspected]);
   // Opening the run sheet is engaging, not touring — the sheet is
   // dense, interactive, and a tour card floating over it would cover
   // its own Run button. End any active tour.
@@ -689,7 +667,9 @@ export function GraphViewerApp({
   // Compose mode for exactly that root, the URL rewritten to the
   // canonical ?compose= deep link (replaceState — the viewer never
   // grows its own history entries).
-  const enterComposeMode = (target: string) => {
+  const enterComposeMode = (target: string, recent?: RecentRule) => {
+    setWorkspaceView("map");
+    setGraphMounted(false);
     // A backdrop program may have parked an opening flight while the
     // launcher was up — that summit belongs to the OLD graph.
     pendingOpeningRef.current = null;
@@ -704,6 +684,12 @@ export function GraphViewerApp({
       url.searchParams.set("compose", target);
       url.searchParams.delete("program");
       url.searchParams.delete("focus");
+      url.searchParams.delete("selection");
+      url.searchParams.delete("view");
+      if (recent) {
+        url.searchParams.set("selection", recent.selection);
+        url.searchParams.set("view", "map");
+      }
       window.history.replaceState({}, "", url.toString());
     }
     veilFor(1800);
@@ -716,6 +702,8 @@ export function GraphViewerApp({
   // lands on the launcher too. (The graph state resets; the backdrop
   // program re-defaults exactly like a cold arrival.)
   const exitToLauncher = () => {
+    setWorkspaceView("map");
+    setGraphMounted(false);
     pendingOpeningRef.current = null;
     setProgram(null);
     setGraph(null);
@@ -737,12 +725,12 @@ export function GraphViewerApp({
       url.searchParams.delete("compose");
       url.searchParams.delete("program");
       url.searchParams.delete("focus");
+      url.searchParams.delete("selection");
+      url.searchParams.delete("view");
       window.history.replaceState({}, "", url.toString());
     }
-    // "Overview" IS the field — land there even if the visitor's
-    // persisted launcher preference is the list (their stored
-    // preference is untouched; the next cold arrival honors it).
-    setLauncherMode("field");
+    // Return to the visitor’s preferred corpus entry view.
+    setLauncherMode(readLauncherMode());
     setLauncher("open");
     launcherRef.current = "open";
   };
@@ -1356,7 +1344,8 @@ export function GraphViewerApp({
           vintage: { engine_release: string };
         } | null;
       };
-      setRunResult(data);
+      setRunResult({ ...data, submittedFacts: { ...scenario } });
+      setExplanationOpen(false);
       trackRun("ok");
     } catch (err) {
       if (err instanceof Error && err.name === "RunBlockedError") {
@@ -1650,7 +1639,21 @@ export function GraphViewerApp({
           ? [root, ...picked.filter((id) => id !== root)]
           : picked;
         graphJustLoaded.current = true;
-        setSelectedOutputs(ordered);
+        // A ?focus= deep link names one rule inside the composed law.
+        // It opens as a LENS on that rule — the same state an in-app
+        // isolation produces (and writes to the URL), so a reload or a
+        // shared link lands with the "← Map" crumb that brings the
+        // whole section back. Scoping the selection silently would
+        // leave the rest of the section unreachable.
+        const focus = pendingFocusRef.current;
+        if (focus && rulesById.has(focus)) {
+          pendingFocusRef.current = null;
+          savedSelection.current = { outputs: ordered, folded: new Set() };
+          setLensTrail([focus]);
+          setSelectedOutputs([focus]);
+        } else {
+          setSelectedOutputs(ordered);
+        }
       })
       .catch((err) => {
         if (!cancelled) setError(String(err));
@@ -1663,54 +1666,38 @@ export function GraphViewerApp({
     };
   }, [composeFocus]);
 
-  // Feature-detect run-by-root once per composed view: one probe run
-  // with default facts. 200/422/429 mean the deployment understands
-  // the `{ root }` shape (even if this subtree is refused); 400/404
-  // mean the endpoint isn't there yet — keep the affordance hidden.
+  // Compilation capability is independent of whether an empty household can
+  // produce a result. The input catalog compiles without executing a scenario.
   useEffect(() => {
     setComposeRunReady(null);
     setRunBlocked(null);
     if (!composeFocus) return;
     let cancelled = false;
     const root = fileLegalIdOf(composeFocus);
-    fetch("/api/axiom/runtime/calculate", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ root, facts: {}, variables: [] }),
-      signal: AbortSignal.timeout(30_000),
-    })
-      .then(async (response) => {
+    fetchRootInputs(root)
+      .then(() => {
         if (cancelled) return;
-        if (response.status === 422) {
-          // The endpoint exists but declines this subtree — show the
-          // affordance AND the honest blocked state up front.
-          let payload: { message?: string | null } = {};
-          try {
-            payload = await response.json();
-          } catch {
-            // Anonymous refusal.
-          }
-          if (!cancelled) {
-            setRunBlocked(
-              payload.message ??
-                "the engine declined this computation without a message.",
-            );
-            setComposeRunReady(true);
-          }
-          return;
-        }
-        setComposeRunReady(response.ok || response.status === 429);
+        rememberRunCapability(root, true);
+        setComposeRunReady(true);
       })
       .catch(() => {
-        if (!cancelled) setComposeRunReady(false);
+        // Unavailability is not evidence that the encoding cannot execute.
+        // Leave it unknown so a transient outage does not poison the cache.
+        if (!cancelled) setComposeRunReady(null);
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [composeFocus]);
+    return () => { cancelled = true; };
+  }, [composeFocus, reloadNonce]);
   // The run affordance exists in compose mode only once the probe
   // confirms the API can execute a composed root.
-  const runAffordanceReady = !composeFocus || composeRunReady === true;
+  const runAffordanceReady = !runBlocked && (!composeFocus || composeRunReady === true);
+  useEffect(() => {
+    if (workspaceView === "run" && (runBlocked || (composeFocus && composeRunReady === false))) {
+      setWorkspaceView("map");
+      const url = new URL(window.location.href);
+      url.searchParams.set("view", "map");
+      window.history.replaceState(window.history.state, "", url);
+    }
+  }, [workspaceView, runBlocked, composeFocus, composeRunReady]);
 
   const outputRules = useMemo(
     () => rankOutputRules(graph, { includeLeaves: composeFocus != null }),
@@ -1997,7 +1984,16 @@ export function GraphViewerApp({
   useEffect(() => {
     if (!graphJustLoaded.current || selectedOutputs.length === 0) return;
     graphJustLoaded.current = false;
-    const summit = summitOutput ?? selectedOutputs[0];
+    // The summit only counts when it's on the canvas: a ?focus= view
+    // scoped to one rule opens on that rule, not on a terminal the
+    // selection left out.
+    const linkedId = new URL(window.location.href).searchParams.get("selection");
+    const linkedRule = linkedId && graph?.rules.some((rule) => rule.legalId === linkedId);
+    const linkedInput = linkedId && graph?.inputs.some((input) => input.legalId === linkedId);
+    const summit = linkedId && (linkedRule || linkedInput) ? linkedId :
+      summitOutput && selectedOutputs.includes(summitOutput)
+        ? summitOutput
+        : selectedOutputs[0];
     if (launcherRef.current === "open") {
       // Never move the camera behind the launcher — it reads as a
       // random zoom through the backdrop. Fly when the fade ends.
@@ -2012,7 +2008,8 @@ export function GraphViewerApp({
     }));
     // The opening card: whatever the flight lands on — the summit
     // when the graph names one, else the root-first selection.
-    inspectRule(summit);
+    if (linkedInput && summit === linkedId) inspectInput(summit);
+    else inspectRule(summit);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedOutputs, summitOutput]);
 
@@ -2022,7 +2019,9 @@ export function GraphViewerApp({
     const key =
       Object.keys(structureTraces).sort().join("|") +
       "::" +
-      (lensTrail.length > 0 ? "always" : "auto");
+      // A lens shows the chain the user asked for — it folds only
+      // when the subtree is genuinely large, same rule as the map.
+      "auto";
     if (foldedInitialized.current !== key) {
       foldedInitialized.current = key;
       if (restoreFoldedRef.current) {
@@ -2037,12 +2036,7 @@ export function GraphViewerApp({
         surveyRef.current = false;
         setFolded((current) => (current.size === 0 ? current : new Set()));
       } else {
-        setFolded(
-          initialCollapse(
-            structureTraces,
-            lensTrail.length > 0 ? "always" : "auto",
-          ),
-        );
+        setFolded(initialCollapse(structureTraces, "auto"));
       }
     }
   }, [structureTraces, lensTrail.length]);
@@ -2235,13 +2229,14 @@ export function GraphViewerApp({
     return (
       <>
         <div className="run-columns">
-          <div className="run-col">
-            <p className="run-section-label">Inputs</p>
+          <details className="run-col run-catalog" open>
+            <summary>Choose facts <span>{inputCatalog.length} available inputs</span></summary>
             <input
               type="search"
               className="run-overview-search"
               value={runBrowseSearch}
               onChange={(event) => setRunBrowseSearch(event.target.value)}
+              aria-label="Search available household facts"
               placeholder={`Search ${inputCatalog.length} inputs...`}
             />
             <div className="run-picker-list">
@@ -2301,9 +2296,9 @@ export function GraphViewerApp({
                   <div className="output-empty">No inputs match.</div>
                 )}
             </div>
-          </div>
-          <div className="run-col">
-            <p className="run-section-label">Your answers</p>
+          </details>
+          <div className="run-col run-answers">
+            <p className="run-section-label">Household facts</p>
             {/* Members are a compose-mode contract (run-by-root
                 `people`); package-program runs have no channel for
                 them, so the strip never renders there. */}
@@ -2511,8 +2506,7 @@ export function GraphViewerApp({
                     </button>
                   )}
                   <p className="run-hint">
-                    Or pick inputs on the left — unanswered ones use this
-                    program's default values.
+                    Choose facts from the catalog to build your household. Only values you enter override the engine’s defaults.
                   </p>
                 </>
               )}
@@ -2520,12 +2514,14 @@ export function GraphViewerApp({
           </div>
         </div>
         <div className="run-actions">
+          <p className="run-assumptions">{Object.keys(scenario).length + Object.values(memberScenario).reduce((count, answers) => count + Object.keys(answers).length, 0)} household inputs answered · unanswered inputs use engine defaults</p>
           <button
             type="button"
             className="run-button"
+            disabled={running}
             onClick={() => launchRun()}
           >
-            {running ? "Running — show the graph" : "Run it all"}
+            {running ? "Running…" : "Run scenario"}
           </button>
         </div>
         {runError && <p className="run-error">{runError}</p>}
@@ -2534,189 +2530,30 @@ export function GraphViewerApp({
   })();
 
   return (
-    <div className="graph-viewer-root">
-    <PlaneTour
-      stage={launcher === "closed" ? "subgraph" : "launcher"}
-      onOpenExample={
-        tourExampleReady ? () => enterComposeMode(TOUR_EXAMPLE_TARGET) : undefined
-      }
-      // The spotlight lives in the corpus FIELD — with the list
-      // launcher persisted, offering it would anchor the closing step
-      // to an element that never mounts (a ~2s driver stall, then a
-      // floating popover about a spotlight nobody sees).
-      // Gated LIVE inside the callback: the tour captures it at
-      // start, and the user can flip to the list view mid-tour.
-      onSpotlightExample={
-        tourExampleReady
-          ? (on) =>
-              setTourSpotlight(
-                on && launcherModeRef.current === "field"
-                  ? TOUR_EXAMPLE_TARGET
-                  : null,
-              )
-          : undefined
-      }
-      onCloseLawPopup={() => setLawPopup(null)}
-      onCloseRunPanel={() => setRunPanelOpen(false)}
+    <div className="graph-viewer-root has-workspace" data-workspace-view={workspaceView} data-graph-mounted={graphMounted}>
+    <CorpusLibrary
+      modules={corpusModules}
+      active={launcher === "open"}
+      mode={launcherMode}
+      onModeChange={pickLauncherMode}
+      onPick={enterComposeMode}
+      country={country}
+      countries={countries.map((id) => ({ id, label: countryLabel(id) }))}
+      onCountryChange={setCountry}
     />
-    {/* Desktop-only for now — a phone gets an honest notice instead
-        of a broken layout. */}
-    <div className="small-screen-notice" role="note">
-      <strong>The Plane needs a bigger screen.</strong>
-      <p>
-        This is a full law-graph workbench — open it on a laptop or
-        desktop for now.
-      </p>
-    </div>
-    {launcher !== "closed" && (
-      <div
-        className={`plane-launcher ${launcher === "leaving" ? "is-leaving" : ""} ${
-          launcherMode === "field" ? "is-field" : ""
-        }`}
-        role="dialog"
-        aria-label="Pick a provision to open"
-      >
-        {corpusModules ? (
-          <>
-            {launcherMode === "field" ? (
-              /* The first view IS the field: the same open world the
-                 landing mounts, full-bleed — pan, zoom, motifs,
-                 doors; picking calls straight into compose mode. */
-              <div className="launcher-field-stage" data-testid="launcher-field">
-                <CorpusField
-                  onPick={enterComposeMode}
-                  frame={false}
-                  spotlight={tourSpotlight}
-                  country={country}
-                />
-              </div>
-            ) : (
-              <div className="plane-launcher-inner has-picker launcher-list">
-                <SubtreeDoors
-                  modules={corpusModules}
-                  onPick={enterComposeMode}
-                  query={launcherQuery}
-                  scope={country === "us" ? listScope : "all"}
-                  state={listState}
-                />
-              </div>
-            )}
-            {/* Compact control cluster, top right: search + mode. */}
-            <div className="launcher-controls" data-testid="launcher-controls">
-              <SubtreeSearch
-                modules={corpusModules}
-                onPick={enterComposeMode}
-                compact
-                query={launcherQuery}
-                onQueryChange={setLauncherQuery}
-              />
-              {/* Nationwide / State scope, list mode only — composes
-                  with the text search over the same list. */}
-              {launcherMode === "list" && country === "us" && (
-                <div
-                  className="picker-mode-toggle picker-scope-toggle"
-                  role="tablist"
-                  aria-label="Which corpora to list"
-                >
-                  {JURISDICTION_SCOPES.map((scope) => (
-                    <button
-                      key={scope.id}
-                      type="button"
-                      role="tab"
-                      data-testid={`list-scope-${scope.id}`}
-                      aria-selected={listScope === scope.id}
-                      className={listScope === scope.id ? "is-active" : ""}
-                      onClick={() => pickListScope(scope.id)}
-                    >
-                      {scope.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {/* Under States, narrow to ONE state — real names from
-                  the citations map, only states the corpus carries. */}
-              {launcherMode === "list" && country === "us" && listScope === "states" && (
-                <select
-                  className="list-state-select"
-                  data-testid="list-state-select"
-                  value={listState}
-                  onChange={(event) => setListState(event.target.value)}
-                  aria-label="Narrow to one state"
-                >
-                  <option value={ALL_STATES}>All states</option>
-                  {statesInModules(corpusModules).map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              )}
-              <div
-                className="picker-mode-toggle"
-                role="tablist"
-                aria-label="How to browse the corpus"
-              >
-                <button
-                  type="button"
-                  role="tab"
-                  data-testid="launcher-mode-field"
-                  aria-selected={launcherMode === "field"}
-                  className={launcherMode === "field" ? "is-active" : ""}
-                  onClick={() => pickLauncherMode("field")}
-                >
-                  Field
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  data-testid="launcher-mode-list"
-                  aria-selected={launcherMode === "list"}
-                  className={launcherMode === "list" ? "is-active" : ""}
-                  onClick={() => pickLauncherMode("list")}
-                >
-                  List
-                </button>
-              </div>
-              {/* Country door: pick a country to leave the overview and
-                  land on its executable program graph. The same
-                  registry-derived list as the graph header's switch. */}
-              {countries.length > 1 && (
-                <select
-                  className="list-state-select"
-                  data-testid="launcher-country-switch"
-                  value={country}
-                  onChange={(event) => {
-                    setComposeFocus(null);
-                    setCountry(event.target.value);
-                  }}
-                  aria-label="Scope the overview to a country"
-                >
-                  {countries.map((option) => (
-                    <option key={option} value={option}>
-                      {countryLabel(option)}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-          </>
-        ) : (
-          <p className="plane-launcher-loading">Loading the corpus…</p>
-        )}
-      </div>
-    )}
-    <main className="app-shell no-sidebar">
+    <main className="app-shell no-sidebar" hidden={launcher === "open"}>
 
       <section className="viewer-panel">
         {/* The picker and the field are the ways IN; inside a
             subgraph the canvas itself is the navigation — no program
             dropdown, no in-subtree search box. */}
         <div className="top-controls">
+          <a className="workspace-brand" href="/" aria-label="Axiom home"><img src="/logos/axiom-foundation.svg" alt="Axiom Foundation" /></a>
           {/* The way back to the field overview: the frame's own slim
               row ABOVE the plane, flush with the plane's left edge —
               compose AND program views, every host (/axiom overlay,
               standalone /axiom/graph, /app). */}
-          {launcher === "closed" && (
+          {launcher === "closed" && (!graph || loading || graph.rules.length === 0) && (
             <button
               type="button"
               className="back-to-overview"
@@ -2727,6 +2564,7 @@ export function GraphViewerApp({
               ← Overview
             </button>
           )}
+          {graph && launcher === "closed" && <span className="workspace-breadcrumb-scope">{composeFocus ? humanizeCitation(fileLegalIdOf(composeFocus)) : effectiveProgram?.displayName ?? "Program"}</span>}
           {/* Composed views carry no header line at all — the graph
               is its own label. Program views keep their coordinates. */}
           {!composeFocus && countries.length > 1 && (
@@ -2775,10 +2613,6 @@ export function GraphViewerApp({
                   : "Loading graph"}
             </span>
           )}
-          {/* The graph's own controls (detail level, expand/collapse,
-              fullscreen) portal into this slot — same frame row, right
-              side, never covered by canvas popups. */}
-          <div className="graph-controls-slot" ref={setGraphControlsSlot} />
           {/* The primary action ends the row it belongs to. It sits
               IN the flex line with the graph's controls rather than
               floating over the canvas beside it — one band, one
@@ -2803,7 +2637,7 @@ export function GraphViewerApp({
               className={`run-toggle ${resultsStale ? "is-stale" : ""}`}
               data-tour="run-scenario"
               disabled={running}
-              onClick={() => setRunPanelOpen((open) => !open)}
+              onClick={() => setWorkspaceView("run")}
               aria-expanded={runPanelOpen}
               title="Answer the household's questions and execute the law"
             >
@@ -2811,7 +2645,33 @@ export function GraphViewerApp({
             </button>
           ) : null}
         </div>
+        {graph && !loading && graph.rules.length > 0 && launcher === "closed" && (
+          <RuleWorkspace
+            onOverview={backToOverview}
+            key={composeFocus ?? (program ? programKey(program) : "workspace")}
+            graph={graph}
+            rootTarget={composeFocus ? fileLegalIdOf(composeFocus) : undefined}
+            selectedId={(inspected && "legalId" in inspected && inspected.legalId) || summitOutput || graph.terminalOutputs[0] || graph.rules[0]!.legalId}
+            onSelect={(id) => {
+              if (walkRuleById.has(id)) inspectRule(id);
+              else if (walkInputById.has(id)) inspectInput(id);
+              else setInspected({ kind: "ruleRef", label: graph.relations.find((item) => item.legalId === id)?.name ?? id, legalId: id, canExpand: false, isParameter: false, isOutput: false, verdictCls: "", value: "", isExpanded: false, showValues: false, meta: { kindLine: "Relation", legalId: id } });
+            }}
+            view={workspaceView}
+            onViewChange={(view) => { if (view === "map" && !graphMounted) flyTo("*", true); setWorkspaceView(view); setRunPanelOpen(false); }}
+            scopeLabel={composeFocus ? humanizeCitation(fileLegalIdOf(composeFocus)) : effectiveProgram?.displayName ?? "Program"}
+            truncated={composedTruncated}
+            runReady={runAffordanceReady}
+            scenario={scenarioFlowUI}
+            graphControls={<div className="graph-controls-slot" ref={setGraphControlsSlot} />}
+            valueOf={(id) => liveTraces.valueOf(id)}
+            hasRun={Boolean(runResult)}
+            stale={resultsStale}
+          />
+        )}
         <div
+          aria-hidden={workspaceView !== "map" && graphMounted ? true : undefined}
+          inert={workspaceView !== "map" && graphMounted}
           className={`graph-stage ${runResult ? "plane-live" : ""} ${
             planeFresh ? "plane-fresh" : ""
           }`}
@@ -2834,51 +2694,12 @@ export function GraphViewerApp({
               {runError}
             </div>
           )}
-          {/* A refused subtree announces itself even with the panel
-              closed — silence would read as "runnable". */}
-          {runBlocked && !runPanelOpen && !running && (
-            <div className="run-blocked run-blocked-floating" role="status">
-              <strong>This subtree can&rsquo;t execute yet</strong>
-              <span>{runBlocked}</span>
-            </div>
-          )}
           <div
-            className={`graph-veil ${veiled ? "is-on" : ""}`}
-            aria-hidden={!veiled}
+            className={`graph-veil ${veiled && !loading && !error ? "is-on" : ""}`}
+            aria-hidden={!veiled || loading || Boolean(error)}
           >
-            <span>Laying out the graph…</span>
+            {veiled && !loading && !error && <GraphLoading label="Arranging the graph…" />}
           </div>
-          {runPanelOpen && (
-            <div
-              className="run-panel"
-              role="dialog"
-              aria-modal="true"
-              aria-label="Run this law"
-              onClick={() => setRunPanelOpen(false)}
-            >
-              <div onClick={(event) => event.stopPropagation()}>
-                <div className="run-panel-head">
-                  <h2>Run {effectiveProgram?.displayName ?? "this law"}</h2>
-                  <button
-                    type="button"
-                    className="results-close"
-                    onClick={() => setRunPanelOpen(false)}
-                    aria-label="Close"
-                  >
-                    ×
-                  </button>
-                </div>
-                {scenarioFlowUI}
-                {runBlocked && (
-                  <div className="run-blocked" role="status">
-                    <strong>This subtree can&rsquo;t execute yet</strong>
-                    <span>{runBlocked}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
           {error && (
             <div className="status error">
               {error}
@@ -2896,9 +2717,8 @@ export function GraphViewerApp({
           )}
 
           {loading ? (
-            <div className="loading-state" role="status" aria-live="polite">
-              <span className="loading-spinner" aria-hidden="true" />
-              <span>Loading graph...</span>
+            <div className="loading-state">
+              <GraphLoading />
             </div>
           ) : graph && graph.rules.length === 0 && !composeFocus ? (
             // The certified-serving API answers 200 with no rules when
@@ -2924,15 +2744,17 @@ export function GraphViewerApp({
                 </div>
               );
             })()
-          ) : spec && Object.keys(structureTraces).length > 0 ? (
+          ) : workspaceView !== "map" && !graphMounted ? null : spec && Object.keys(structureTraces).length > 0 ? (
             <InputEditContext.Provider value={inputEditCtx}>
             <InteractiveRuleGraph
+              nodeScoped
+              suppressLoadingIndicator={veiled || Boolean(error)}
               spec={spec}
               traces={liveTraces.traces}
               showValues={Boolean(runResult)}
               executionActive={Boolean(runResult)}
               executedLegalIds={effectiveExecuted}
-              dissect={lensFocusId ? "always" : "auto"}
+              dissect="auto"
               collapsed={folded}
               onCollapsedChange={setFolded}
               flyTo={flyTarget}
@@ -2958,17 +2780,19 @@ export function GraphViewerApp({
         {/* One right-docked panel is the execution home: run results on
             top, the selected node's card below, sharing one scroll —
             nothing floats over the graph itself. */}
-        {(runResult || inspected) && (
+        {(workspaceView === "run" || (workspaceView === "map" && (runResult || inspected))) && (
           <aside
             ref={execPanelRef}
             className="exec-panel"
             aria-label="Run results and node details"
           >
+        {workspaceView === "run" && !runResult && <section className="results-sheet"><h2>Scenario result</h2><p>{running ? "Calculating…" : "Run your scenario to see the result here."}</p></section>}
         {runResult && (
           <section className="results-sheet" role="status">
+            {workspaceView === "run" && resultsStale && <p className="workspace-stale">Inputs have changed. Run again to update this result.</p>}
             <div className="results-head">
               <div>
-                <span className="results-eyebrow">Executed</span>
+                <span className="results-eyebrow">Scenario result · select the result to explain it</span>
                 <strong>{effectiveProgram?.displayName ?? "Program"}</strong>
               </div>
               <button
@@ -2992,12 +2816,12 @@ export function GraphViewerApp({
                       type="button"
                       className="results-cell"
                       disabled={!rule}
-                      title={rule ? "See this on the canvas" : undefined}
+                      title={rule ? "Explain this result" : undefined}
                       onClick={() => {
                         if (!rule) return;
-                        if (inScopeIds.has(rule.legalId))
-                          flyFromIndex(rule.legalId);
-                        else expandLensTo(rule.legalId);
+                        inspectRule(rule.legalId);
+                        setWorkspaceView("run");
+                        setExplanationOpen(true);
                       }}
                     >
                       <span className="results-label">{humanize(name)}</span>
@@ -3014,7 +2838,11 @@ export function GraphViewerApp({
                 );
               })()}
             </div>
-            <div className="results-adjust" aria-label="Adjust and run again">
+            {workspaceView === "run" && graph && resultHeadline?.legalId && <>
+              <button className="workspace-button" aria-expanded={explanationOpen} onClick={() => setExplanationOpen((open) => !open)}>{explanationOpen ? "Close explanation" : "Explain this result"}</button>
+              {explanationOpen && <ResultExplanation key={resultHeadline.legalId} graph={graph} run={runResult} rootId={resultHeadline.legalId} stale={resultsStale} onRead={(id) => { inspectRule(id); setWorkspaceView("read"); const url = new URL(window.location.href); url.searchParams.set("selection", id); url.searchParams.set("view", "read"); window.history.replaceState(window.history.state, "", url); }} />}
+            </>}
+            {workspaceView !== "run" && <div className="results-adjust" aria-label="Adjust and run again">
               {(() => {
                 // Every SELECTED input, editable in place: typed values
                 // show as themselves, untouched picks show their
@@ -3142,13 +2970,14 @@ export function GraphViewerApp({
                   type="button"
                   className="results-edit-inputs"
                   disabled={running}
-                  onClick={() => setRunPanelOpen(true)}
+                  onClick={() => { setWorkspaceView("run"); document.querySelector(".workspace-run")?.scrollIntoView({ block: "start", behavior: "instant" }); }}
                   title="Reopen the full input list to add or change answers"
                 >
                   Edit inputs
                 </button>
               </div>
             </div>
+            }
             {/* Only when something was answered — a run on pure defaults
                 needs no caption; the headline says it all. */}
             {Object.keys(scenario).length > 0 && (
@@ -3158,7 +2987,7 @@ export function GraphViewerApp({
             )}
           </section>
         )}
-        {inspected &&
+        {inspected && workspaceView === "map" &&
           (() => {
             const legalId =
               "legalId" in inspected && inspected.legalId
@@ -3258,11 +3087,26 @@ export function GraphViewerApp({
                 ×
               </button>
             </div>
-            {lensTrail.length > 1 && (
+            {/* A click can land here on its own (a chain too wide to
+                frame isolates itself), so the way back must be in
+                plain sight from the first level: the map, then every
+                isolation step. */}
+            {lensTrail.length > 0 && (
               <nav
                 className="lens-bar lens-bar-docked"
                 aria-label="Isolation trail"
               >
+                <button
+                  type="button"
+                  className="lens-crumb lens-crumb-map"
+                  onClick={() => {
+                    closeLens();
+                    setInspected(null);
+                  }}
+                  title="Leave isolation and show the whole map"
+                >
+                  ← Map
+                </button>
                 {lensTrail.map((id, index) => (
                   <button
                     type="button"
@@ -3533,9 +3377,7 @@ export function GraphViewerApp({
                 );
               })()
             ) : null}
-            {/* Provenance and typing, tucked behind a disclosure —
-                the mini graph and the actions are the working surface;
-                Source/Status/Entity/Period/Unit are reference. */}
+            {/* Reference details and formula stay visible beside the graph. */}
             {citation ||
             rule?.certificationStatus ||
             rule?.certificateId ||
@@ -3543,8 +3385,8 @@ export function GraphViewerApp({
             rule?.period ||
             rule?.unit ||
             ("hiddenCount" in inspected && inspected.hiddenCount) ? (
-              <details className="node-inspector-code">
-                <summary>Details</summary>
+              <section className="node-inspector-code" aria-label="Details">
+                <h3>Details</h3>
                 <dl className="node-inspector-meta">
                   {citation ? (
                     <>
@@ -3624,26 +3466,15 @@ export function GraphViewerApp({
                     </>
                   ) : null}
                 </dl>
-              </details>
+              </section>
             ) : null}
             {formula && rule?.kind !== "parameter" ? (
-              <details className="node-inspector-code">
-                <summary>Formula</summary>
+              <section className="node-inspector-code" aria-label="Formula">
+                <h3>Formula</h3>
                 <div className="node-inspector-code-body">
                   <FormulaPretty source={formula} />
                 </div>
-              </details>
-            ) : null}
-            {"legalId" in inspected &&
-            inspected.legalId &&
-            inspected.kind !== "input" ? (
-              <button
-                type="button"
-                className="node-inspector-link"
-                onClick={() => isolateAt(inspected.legalId)}
-              >
-                Isolate this rule
-              </button>
+              </section>
             ) : null}
             {"kind" in inspected &&
             inspected.kind === "input" &&
@@ -3659,39 +3490,13 @@ export function GraphViewerApp({
               </button>
             ) : null}
             {lawHref ? (
-              <button
-                type="button"
-                className="node-inspector-link"
-                data-testid="read-the-law"
-                onClick={() => {
-                  // Encodings can be one level deeper than the corpus
-                  // provisions (…/2014/e/6/A vs …/e/6) — resolve to the
-                  // nearest existing page instead of opening a 404. But
-                  // when the resolved row is just an ancestor of the
-                  // cited path, keep the deep path: the reader resolves
-                  // it itself and focuses the cited subsection.
-                  // Carry the rule's identity so the reader can spotlight
-                  // the card you came from in its encodings rail.
-                  const ruleParam = lawTarget?.ruleName
-                    ? `&rule=${encodeURIComponent(lawTarget.ruleName)}`
-                    : "";
-                  void fetch(`/api/axiom/resolve${lawHref}`)
-                    .then((response) =>
-                      response.ok ? response.json() : null,
-                    )
-                    .then((resolved: { href?: string | null } | null) => {
-                      const href = resolved?.href ?? null;
-                      const target =
-                        href && !lawHref.startsWith(href) ? href : lawHref;
-                      setLawPopup(`${target}?embed=1${ruleParam}`);
-                    })
-                    .catch(() =>
-                      setLawPopup(`${lawHref}?embed=1${ruleParam}`),
-                    );
-                }}
-              >
-                Read the law →
-              </button>
+              <button type="button" className="node-inspector-link" data-testid="read-the-law" onClick={() => {
+                setWorkspaceView("read");
+                const url = new URL(window.location.href);
+                url.searchParams.set("view", "read");
+                if ("legalId" in inspected && inspected.legalId) url.searchParams.set("selection", inspected.legalId);
+                window.history.replaceState(window.history.state, "", url);
+              }}>Read the law →</button>
             ) : null}
           </section>
             );

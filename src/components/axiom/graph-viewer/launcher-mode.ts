@@ -1,8 +1,8 @@
 /**
  * The launcher's two ways to pick a subtree: the open-world corpus
- * FIELD (default — the same component the /axiom landing mounts) or
- * the LIST picker (search + computed doors). The choice persists per
- * browser; unknown/absent stored values fall back to the field.
+ * FIELD (the same component the /axiom landing mounts) or
+ * the LIST picker. The choice persists per
+ * browser; unknown/absent stored values fall back to the map.
  */
 
 export type LauncherMode = "field" | "list";

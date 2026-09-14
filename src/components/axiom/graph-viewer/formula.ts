@@ -35,7 +35,7 @@ const KEYWORDS = new Set([
   "true", "false", "True", "False", "None", "in", "is",
 ]);
 
-function tokenize(src: string): Tok[] {
+function tokenize(src: string, strict = false): Tok[] {
   const out: Tok[] = [];
   let i = 0;
   while (i < src.length) {
@@ -55,6 +55,7 @@ function tokenize(src: string): Tok[] {
     if (/\d/.test(c)) {
       let j = i;
       while (j < src.length && /[\d.]/.test(src[j]!)) j++;
+      if (strict && !/^\d+(?:\.\d+)?$/.test(src.slice(i, j))) throw new Error("Unsupported number");
       out.push({ kind: "num", text: src.slice(i, j) });
       i = j;
       continue;
@@ -78,6 +79,7 @@ function tokenize(src: string): Tok[] {
     if (c === "]") { out.push({ kind: "rbracket", text: "]" }); i++; continue; }
     if (c === ",") { out.push({ kind: "comma", text: "," }); i++; continue; }
     if (c === ":") { out.push({ kind: "colon", text: ":" }); i++; continue; }
+    if (strict) throw new Error("Unsupported character");
     i++;
   }
   out.push({ kind: "eof", text: "" });
@@ -274,6 +276,25 @@ export function parseFormula(src: string): AstNode {
   } catch (e) {
     return { kind: "error", text: String(e) };
   }
+}
+
+/** Only return a diagram when the entire expression is representable. */
+export function parseFormulaStrict(src: string): AstNode | null {
+  try {
+    if (!src.trim() || src.length > 12000) return null;
+    const tokens = tokenize(src, true);
+    if (tokens.length > 1200) return null;
+    const parser = new Parser(tokens);
+    const ast = parser.parseExpr();
+    if (!parser.match("eof")) return null;
+    const valid = (value: unknown): boolean => {
+      if (typeof value === "number") return Number.isFinite(value);
+      if (!value || typeof value !== "object") return true;
+      if ("kind" in value && value.kind === "error") return false;
+      return Object.values(value).every(valid);
+    };
+    return valid(ast) ? ast : null;
+  } catch { return null; }
 }
 
 // ─────────────────────────────────────────────────────────────────────────

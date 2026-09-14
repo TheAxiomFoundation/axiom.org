@@ -975,3 +975,9 @@ body:has(.embed-page) {
   --ring: #92400e;
   --radius: 0.25rem;
 }
+
+/* The graph view is a full-height stage: a footer below it only adds
+   a scroll that yanks the canvas off screen mid-pan. Hide it there. */
+body:has(.graph-viewer-root) > footer {
+  display: none;
+}

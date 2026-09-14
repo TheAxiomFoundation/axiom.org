@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import dynamic from "next/dynamic";
+import { Scan } from "lucide-react";
 import {
   humanizeCitation,
   humanizeRuleName,
@@ -120,11 +121,14 @@ export function CorpusField({
   frame = true,
   spotlight = null,
   country = "us",
+  suppliedModules,
 }: {
   /** Which country family's subtrees the field shows ("us", "be").
    *  Hosts with a country switch pass their selection; the landing
    *  keeps the US default. */
   country?: string;
+  /** A host-filtered collection, shared with its list and search. */
+  suppliedModules?: CorpusModule[];
   /** Embedded mode (the viewer's launcher): picking a subtree calls
    *  this instead of pushState + mounting the compose viewer overlay
    *  — the host is already the viewer. Omitted on the /axiom landing,
@@ -141,7 +145,8 @@ export function CorpusField({
   const embedded = Boolean(onPick);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [modules, setModules] = useState<CorpusModule[] | null>(null);
+  const [loadedModules, setModules] = useState<CorpusModule[] | null>(null);
+  const modules = suppliedModules ?? loadedModules;
   const [source, setSource] = useState<CorpusSource>("snapshot");
   const [hovered, setHovered] = useState<FieldDot | null>(null);
   // The camera. A ref mirrors the state so rAF animation frames and
@@ -176,6 +181,7 @@ export function CorpusField({
   );
 
   useEffect(() => {
+    if (suppliedModules) return;
     let cancelled = false;
     // Live mirror first, committed snapshot as ballast — the field is
     // never empty just because the API is down.
@@ -194,7 +200,7 @@ export function CorpusField({
     return () => {
       cancelled = true;
     };
-  }, [country]);
+  }, [country, suppliedModules]);
 
   // Doors are computed from the census — the largest / most intricate
   // subtrees, capped per jurisdiction — and labeled by citation.
@@ -1142,9 +1148,9 @@ export function CorpusField({
             type="button"
             data-testid="corpus-field-reset"
             onClick={resetView}
-            className="absolute right-2 top-2 z-20 rounded border border-[var(--color-rule)] bg-[var(--color-paper)] px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-[var(--color-ink-secondary)] shadow-sm transition-colors hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+            className="absolute right-2 top-2 z-20 inline-flex h-6 items-center gap-1 rounded border border-[var(--color-rule)] bg-[var(--color-paper)] px-1.5 py-0 font-sans text-[10px] font-medium normal-case tracking-normal text-[var(--color-ink-secondary)] transition-colors hover:bg-[var(--color-paper-elevated)] hover:text-[var(--color-ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
           >
-            ⌂ whole corpus
+            <Scan size={12} aria-hidden="true" /> Whole corpus
           </button>
         )}
       </div>

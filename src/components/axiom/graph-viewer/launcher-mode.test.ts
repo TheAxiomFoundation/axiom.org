@@ -12,12 +12,12 @@ describe("launcher mode preference", () => {
     window.localStorage.clear();
   });
 
-  it("defaults to the field", () => {
+  it("defaults to the corpus map", () => {
     expect(DEFAULT_LAUNCHER_MODE).toBe("field");
     expect(readLauncherMode()).toBe("field");
   });
 
-  it("parses only known modes, everything else falls back to the field", () => {
+  it("parses only known modes, everything else falls back to the map", () => {
     expect(parseLauncherMode("list")).toBe("list");
     expect(parseLauncherMode("field")).toBe("field");
     expect(parseLauncherMode("constellation")).toBe("field");

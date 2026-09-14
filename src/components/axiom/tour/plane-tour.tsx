@@ -18,9 +18,9 @@ function launcherSteps(
 ): TourStep[] {
   return [
     {
-      title: "Welcome to the graph",
+      title: "Explore encoded law",
       description:
-        "Each entry here is a provision-rooted subtree: a provision and the interconnected rules encoded from it. Pan and zoom to explore the corpus.",
+        "Search or browse provisions to open a rule workspace. Switch to Field for a map of the corpus.",
     },
     {
       element: '[data-testid="launcher-controls"]',

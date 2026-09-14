@@ -298,7 +298,8 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  padding: 24px;
+  /* The canvas is the page: a slim gutter, not a mat around it. */
+  padding: 12px 12px 12px;
 }
 
 .graph-viewer-root .graph-stage{

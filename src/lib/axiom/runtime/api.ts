@@ -125,7 +125,8 @@ async function runtimeGet<T>(path: string): Promise<T | null> {
  * verbatim (the viewer client parses it), the key stays server-side.
  */
 export async function runtimeProxyGet(
-  path: string
+  path: string,
+  options: { timeoutMs?: number; fresh?: boolean } = {},
 ): Promise<{ status: number; body: unknown }> {
   if (!isRuntimeApiConfigured()) {
     return {
@@ -137,8 +138,8 @@ export async function runtimeProxyGet(
   try {
     const response = await fetch(`${apiBase()}${path}`, {
       headers: key ? { "x-api-key": key } : undefined,
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      next: { revalidate: REVALIDATE_SECONDS },
+      signal: AbortSignal.timeout(options.timeoutMs ?? REQUEST_TIMEOUT_MS),
+      ...(options.fresh ? { cache: "no-store" as const } : { next: { revalidate: REVALIDATE_SECONDS } }),
     });
     return { status: response.status, body: await response.json() };
   } catch {
