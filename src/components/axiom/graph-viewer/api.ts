@@ -134,7 +134,10 @@ export async function fetchComposedGraph(focus: string): Promise<ComposedGraph> 
   // `v` versions the browser cache: bump when the graph SHAPE changes
   // (relation kinds, v2) so stale cached graphs can't poison runs.
   const url = `${trimSlash(API_BASE)}/graph/compose?focus=${encodeURIComponent(focus)}&v=2`;
-  const response = await fetch(url);
+  const response = await fetch(url, { cache: "no-cache" });
+  if (response.status === 404) {
+    throw new Error("This encoding is not available in the graph viewer yet.");
+  }
   if (!response.ok) {
     throw new Error(`compose request failed (${response.status}): ${await response.text()}`);
   }

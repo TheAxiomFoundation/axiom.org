@@ -11,14 +11,17 @@ export async function GET(request: Request) {
   if (!focus || !FOCUS_RE.test(focus)) {
     return NextResponse.json(
       { status: "error", error: { code: "invalid_focus" } },
-      { status: 400 }
+      { status: 400 },
     );
   }
   const { status, body } = await runtimeProxyGet(
-    `/graph/compose?focus=${encodeURIComponent(focus)}`
+    `/graph/compose?focus=${encodeURIComponent(focus)}`,
+    { fresh: true },
   );
   return NextResponse.json(body, {
     status,
-    headers: { "cache-control": "public, max-age=300" },
+    headers: {
+      "cache-control": status === 200 ? "public, max-age=300" : "no-store",
+    },
   });
 }
