@@ -390,3 +390,6 @@ body:has(.has-workspace) .nav-bar { display: none; }
 .graph-viewer-root .workspace-rulespec-code .token.key,
 .graph-viewer-root .workspace-rulespec-code .token.atrule,
 .graph-viewer-root .workspace-rulespec-code .token.keyword { color: #e5bf82; }
+
+/* Hover is suppressed in JS; clicks must remain usable during camera travel. */
+.graph-viewer-root.has-workspace .irg-wrap.is-moving .react-flow__node { pointer-events: auto !important; }

@@ -212,6 +212,7 @@ export function InteractiveRuleGraph({
     setFrameRequest((previous) => ({ mode, nonce: (previous?.nonce ?? 0) + 1 }));
   };
   const changeDepth = (depth: number) => {
+    setScopeId(pinnedLegalId ?? scopeId);
     setUpstreamDepth(depth);
     requestFrame(pinnedLegalId ? "upstream" : "all");
   };
@@ -292,11 +293,12 @@ export function InteractiveRuleGraph({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [sizeHintsKey],
   );
-  const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
-  useEffect(() => {
-    if (pinnedLegalId) setLastSelectedId(pinnedLegalId);
-  }, [pinnedLegalId]);
-  const scopeId = pinnedLegalId ?? lastSelectedId ?? spec.outputs[0]?.legalId ?? null;
+  // Opening a graph defines its scope; inspecting another node only moves
+  // the camera. Explicit depth changes may choose a new scope.
+  const [scopeId, setScopeId] = useState<string | null>(() => {
+    const linked = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("selection");
+    return linked ?? pinnedLegalId ?? spec.outputs[0]?.legalId ?? null;
+  });
   const baseGraph = useMemo(
     () =>
       buildGraph(
@@ -334,24 +336,34 @@ export function InteractiveRuleGraph({
   const focusedIds = useMemo(() => upstreamIds(baseGraph.nodes, baseGraph.edges, layoutFocusId, upstreamDepth), [baseGraph, layoutFocusId, upstreamDepth]);
   const { nodes, edges } = useMemo(() => {
     if (!nodeScoped) return baseGraph;
-    const scoped = dependencySubgraph(baseGraph.nodes, baseGraph.edges, scopeId, upstreamDepth);
+    const root = baseGraph.nodes.some(node => node.data.legalId === scopeId) ? scopeId : spec.outputs[0]?.legalId ?? null;
+    const scoped = dependencySubgraph(baseGraph.nodes, baseGraph.edges, root, upstreamDepth);
     // Lay out only this dependency tree, without gaps left by other outputs.
     layout(scoped.nodes, scoped.edges, stageAspectOf(wrapRef.current), sizeHints);
     return scoped;
   }, [baseGraph, nodeScoped, scopeId, upstreamDepth, sizeHints]);
 
-  // URL restoration, relationship navigation and canvas clicks share a camera
-  // destination. Keep it pending while the graph and its measurements arrive.
+  const lastCameraSelection = useRef<string | null>(null);
+  const focusSelection = (id: string) => {
+    const ids = upstreamIds(nodes, edges, id, upstreamDepth);
+    const viewport = graphFitViewport(nodes.filter(node => ids.has(node.id)), canvasSize.width, canvasSize.height);
+    if (!viewport || !flowRef.current) return;
+    lastCameraSelection.current = id;
+    void flowRef.current.setViewport(viewport, {
+      duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 500,
+      interpolate: "linear",
+      ease: (t: number) => 1 - Math.pow(1 - t, 3),
+    });
+  };
   useEffect(() => {
     if (!flyTo) return;
-    setLayoutFocusId(flyTo.legalId === "*" ? null : flyTo.legalId);
-    setFrameRequest((previous) => ({ mode: flyTo.legalId === "*" ? "all" : "upstream", nonce: (previous?.nonce ?? 0) + 1 }));
+    if (flyTo.legalId === "*") requestFrame("all");
+    else focusSelection(flyTo.legalId);
   }, [flyTo]);
   useEffect(() => {
-    if (!pinnedLegalId) return;
-    setLayoutFocusId(pinnedLegalId);
-    setFrameRequest((previous) => ({ mode: "upstream", nonce: (previous?.nonce ?? 0) + 1 }));
-  }, [pinnedLegalId]);
+    if (pinnedLegalId && pinnedLegalId !== lastCameraSelection.current) focusSelection(pinnedLegalId);
+    if (!pinnedLegalId) lastCameraSelection.current = null;
+  }, [pinnedLegalId, nodes, canvasSize]);
 
   const fitViewport = useMemo(() => graphFitViewport(nodes, canvasSize.width, canvasSize.height), [nodes, canvasSize]);
   const minGraphZoom = fitViewport?.zoom ?? .01;
@@ -725,7 +737,7 @@ export function InteractiveRuleGraph({
             wrapRef.current?.style.setProperty("--edge-weight", String(Math.min(1.25, .6 + zoom * .65)));
           }}
           onMove={(_event, viewport) => {
-            setZoomPercent(Math.round(viewport.zoom * 100));
+
             wrapRef.current?.style.setProperty("--edge-scale", String(1 / viewport.zoom));
             wrapRef.current?.style.setProperty("--edge-weight", String(Math.min(1.25, .6 + viewport.zoom * .65)));
             if (!moveBusy.current) {
@@ -736,6 +748,7 @@ export function InteractiveRuleGraph({
             if (moveEndTimer.current)
               window.clearTimeout(moveEndTimer.current);
             moveEndTimer.current = window.setTimeout(() => {
+              setZoomPercent(Math.round(viewport.zoom * 100));
               moveBusy.current = false;
               wrapRef.current?.classList.remove("is-moving");
             }, 180);
@@ -788,25 +801,25 @@ export function InteractiveRuleGraph({
               return;
             }
             if (data.kind === "ruleRef") {
-              if (action === "collapse" && data.canExpand) {
+              if (!nodeScoped && action === "collapse" && data.canExpand) {
                 toggleCollapse(data.legalId);
                 return;
               }
             }
             if (data.kind === "output") {
-              if (action === "collapse" && data.canExpand) {
+              if (!nodeScoped && action === "collapse" && data.canExpand) {
                 toggleCollapse(data.legalId);
                 return;
               }
             }
             if (!actionEl) {
+              if ("legalId" in data && data.legalId) focusSelection(data.legalId);
               onInspect?.(data);
-              if ("legalId" in data && data.legalId) requestFrame("upstream", data.legalId);
             }
           }}
         >
           <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="#e7e5e4" />
-          {!frameRequest && <FlyToController
+          {!nodeScoped && !frameRequest && <FlyToController
             target={flyTo ?? null}
             layoutSig={layoutSig}
             nodes={displayNodes}

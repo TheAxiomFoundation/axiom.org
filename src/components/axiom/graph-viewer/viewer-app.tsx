@@ -2747,6 +2747,7 @@ export function GraphViewerApp({
           ) : workspaceView !== "map" && !graphMounted ? null : spec && Object.keys(structureTraces).length > 0 ? (
             <InputEditContext.Provider value={inputEditCtx}>
             <InteractiveRuleGraph
+              key={composeFocus ?? (program ? programKey(program) : "workspace")}
               nodeScoped
               suppressLoadingIndicator={veiled || Boolean(error)}
               spec={spec}
