@@ -3,6 +3,7 @@ import { searchRules, type SearchHit } from "@/lib/supabase";
 import {
   EXTRA_JURISDICTION_LABELS,
   JURISDICTIONS_SEED,
+  jurisdictionLabel,
 } from "@/lib/axiom/jurisdictions-seed";
 import {
   findPrograms,
@@ -1067,7 +1068,7 @@ function compactFormula(formula: string): string {
 }
 
 function jurisdictionLabelFor(slug: string): string {
-  return JURISDICTION_BY_SLUG.get(slug)?.label ?? EXTRA_JURISDICTION_LABELS[slug] ?? titleise(slug);
+  return jurisdictionLabel(slug);
 }
 
 function titleise(value: string): string {

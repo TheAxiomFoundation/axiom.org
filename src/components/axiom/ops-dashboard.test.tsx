@@ -304,6 +304,14 @@ describe("classifyLiveRun", () => {
     ).toBe("stale");
   });
 
+  it("drops a dead run off the docket after a day", () => {
+    const dead = liveRun({ last_heartbeat_at: "2026-08-08T00:00:00Z" });
+    expect(classifyLiveRun(dead, now)).toBe("expired");
+    expect(
+      classifyLiveRun(dead, Date.parse("2026-08-08T12:00:00Z"))
+    ).toBe("stale");
+  });
+
   it("keeps finished rows for an hour, then expires them", () => {
     const finished = liveRun({
       status: "completed",

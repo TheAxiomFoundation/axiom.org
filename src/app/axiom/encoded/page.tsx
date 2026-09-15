@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { JURISDICTIONS_SEED } from "@/lib/axiom/jurisdictions-seed";
+import { jurisdictionLabel } from "@/lib/axiom/jurisdictions-seed";
 import {
   getRuleSpecRepoLocation,
   ruleSpecRepoTreeUrl,
@@ -24,7 +24,7 @@ interface JurisdictionGroup {
 }
 
 function labelForSlug(slug: string): string {
-  return JURISDICTIONS_SEED.find((j) => j.slug === slug)?.label ?? slug;
+  return jurisdictionLabel(slug);
 }
 
 async function loadGroups(): Promise<JurisdictionGroup[]> {

@@ -24,9 +24,64 @@ import type { Jurisdiction } from "@/lib/tree-data";
 export const EXTRA_JURISDICTION_LABELS: Readonly<Record<string, string>> =
   Object.freeze({
     nz: "New Zealand",
-    dk: "Denmark",
     "uk-kingston-upon-thames": "Kingston upon Thames",
   });
+
+/** ISO 3166-1 country names, from the runtime's own CLDR data. Absent on
+ *  runtimes built without Intl (nothing we deploy to), in which case
+ *  unseeded countries fall through to the humanized slug. */
+const REGION_NAMES: Intl.DisplayNames | null = (() => {
+  try {
+    return new Intl.DisplayNames(["en"], { type: "region", fallback: "none" });
+  } catch {
+    return null;
+  }
+})();
+
+function countryName(code: string): string | null {
+  if (!REGION_NAMES || !/^[a-z]{2}$/i.test(code)) return null;
+  try {
+    return REGION_NAMES.of(code.toUpperCase()) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** "kingston-upon-thames" → "Kingston Upon Thames"; short codes stay
+ *  uppercase ("by" → "BY") since they are almost always ISO subdivisions. */
+function humanizeSlug(slug: string): string {
+  return slug
+    .split("-")
+    .filter(Boolean)
+    .map((part) =>
+      part.length <= 3
+        ? part.toUpperCase()
+        : part.charAt(0).toUpperCase() + part.slice(1)
+    )
+    .join(" ");
+}
+
+/**
+ * Display name for any jurisdiction slug the encoders, corpus, or mirrors
+ * may produce — including countries nobody has seeded yet. Curated names
+ * win (``us`` is "US Federal", not "United States"); otherwise the
+ * two-letter country code resolves through ISO 3166 (``de`` → "Germany",
+ * ``et`` → "Ethiopia"); a subdivision under a known country reads
+ * "Germany · BY"; anything else is humanized rather than leaked raw.
+ */
+export function jurisdictionLabel(slug: string): string {
+  const trimmed = slug.trim().toLowerCase();
+  if (!trimmed) return slug;
+  const seeded =
+    JURISDICTIONS_SEED.find((j) => j.slug === trimmed)?.label ??
+    EXTRA_JURISDICTION_LABELS[trimmed];
+  if (seeded) return seeded;
+  const [country, ...rest] = trimmed.split("-");
+  const name = countryName(country);
+  if (!name) return humanizeSlug(trimmed);
+  if (rest.length === 0) return name;
+  return `${name} · ${humanizeSlug(rest.join("-"))}`;
+}
 
 export const JURISDICTIONS_SEED: Jurisdiction[] = [
   // Federal / non-US

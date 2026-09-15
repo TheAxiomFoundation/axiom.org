@@ -15,10 +15,7 @@ import {
   parseCitation,
   sectionWithinDocument,
 } from "@/lib/axiom/ops-citations";
-import {
-  EXTRA_JURISDICTION_LABELS,
-  JURISDICTIONS_SEED,
-} from "@/lib/axiom/jurisdictions-seed";
+import { jurisdictionLabel } from "@/lib/axiom/jurisdictions-seed";
 import type { EncodingQueueSummary } from "@/lib/axiom/encoding-queues";
 import type { RecentCorpusScope } from "@/lib/corpus-status";
 import {
@@ -46,6 +43,11 @@ const POLL_INTERVAL_MS = 30_000;
 const CLOCK_TICK_MS = 15_000;
 /** A running row whose heartbeat is older than this means the encoder died. */
 const STALE_HEARTBEAT_MS = 2 * 60 * 1000;
+/** A dead run stays on the docket as "stalled" this long, then drops off.
+ *  CI jobs that get cancelled or time out never write a final status, so
+ *  without this their rows would sit on the board for the whole live
+ *  window (a week). */
+const STALE_EXPIRY_MS = 24 * 60 * 60 * 1000;
 /** Finished runs stay on the docket this long. */
 const FINISHED_WINDOW_MS = 60 * 60 * 1000;
 const LEDGER_DOCUMENT_LIMIT = 10;
@@ -65,7 +67,9 @@ export function classifyLiveRun(
 ): LiveRunState {
   const heartbeatMs = Date.parse(run.last_heartbeat_at);
   if (run.status === "running") {
-    return referenceMs - heartbeatMs > STALE_HEARTBEAT_MS ? "stale" : "running";
+    const silentFor = referenceMs - heartbeatMs;
+    if (silentFor > STALE_EXPIRY_MS) return "expired";
+    return silentFor > STALE_HEARTBEAT_MS ? "stale" : "running";
   }
   const finishedMs = run.finished_at ? Date.parse(run.finished_at) : heartbeatMs;
   return referenceMs - finishedMs <= FINISHED_WINDOW_MS ? "finished" : "expired";
@@ -303,8 +307,7 @@ function RecentlyIngested({
               <div className="min-w-0">
                 <p className="text-sm text-foreground">
                   <span className="font-medium">
-                    {JURISDICTION_NAMES[scope.jurisdiction] ??
-                      scope.jurisdiction}
+                    {jurisdictionLabel(scope.jurisdiction)}
                   </span>{" "}
                   <span className="text-muted-foreground">
                     {pluralizeDocumentClass(scope.document_class)}
@@ -654,19 +657,6 @@ function FinishedRunEntry({
   );
 }
 
-const JURISDICTION_NAMES: Record<string, string> = {
-  ...Object.fromEntries(
-    JURISDICTIONS_SEED.map((jurisdiction) => [
-      jurisdiction.slug,
-      jurisdiction.label,
-    ])
-  ),
-  ...EXTRA_JURISDICTION_LABELS,
-  // Jurisdictions the encoders report on that the corpus seed doesn't
-  // carry yet.
-  dk: "Denmark",
-};
-
 function normalizedForComparison(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
@@ -720,7 +710,7 @@ function sectionLabelForCitation(
 function jurisdictionName(citation: string | null): string | null {
   if (!citation) return null;
   const { scope } = parseCitation(citation);
-  return JURISDICTION_NAMES[scope] ?? null;
+  return scope ? jurisdictionLabel(scope) : null;
 }
 
 /**
@@ -932,7 +922,7 @@ function DocumentRows({
         <TableCell colSpan={5} className="px-0 pt-4 pb-1.5">
           <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-0.5">
             <span className="text-sm font-semibold text-[var(--color-ink)]">
-              {JURISDICTION_NAMES[scope] ?? scope ?? "Unknown"}
+              {scope ? jurisdictionLabel(scope) : "Unknown"}
               {documentLabel && (
                 <span className="font-normal"> — {documentLabel}</span>
               )}
