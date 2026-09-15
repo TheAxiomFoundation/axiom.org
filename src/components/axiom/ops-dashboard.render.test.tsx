@@ -13,6 +13,7 @@ const NOW = Date.parse("2026-08-11T12:00:00Z");
 function run(overrides: Partial<EncodingStatusRun>): EncodingStatusRun {
   return {
     id: "run-1",
+    graph_available: true,
     timestamp: "2026-08-11T10:00:00Z",
     citation: "us:statutes/26/24",
     total_duration_ms: 1000,

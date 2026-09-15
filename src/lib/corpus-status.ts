@@ -1,3 +1,4 @@
+import { availableGraphCitations } from "@/lib/axiom/ops-graph-availability";
 import { createHash, createHmac } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -210,6 +211,8 @@ export interface SourceDiscoveryReport {
 }
 
 export interface EncodingStatusRun {
+  /** True only after the graph serving API confirms a viewable graph. */
+  graph_available?: boolean;
   id: string;
   timestamp: string;
   citation: string | null;
@@ -1091,14 +1094,17 @@ async function readEncodingStatusFromSupabase(
     ).catch(() => [] as LiveEncodingRun[]),
   ]);
 
-  const citationMetadata = await readCitationMetadata(
-    config,
-    [
-      ...latestRuns.map((run) => run.citation),
-      ...liveRuns.map((run) => run.citation),
-    ],
-    fetchOptions
-  );
+  const [citationMetadata, graphCitations] = await Promise.all([
+    readCitationMetadata(
+      config,
+      [
+        ...latestRuns.map((run) => run.citation),
+        ...liveRuns.map((run) => run.citation),
+      ],
+      fetchOptions
+    ),
+    availableGraphCitations(latestRuns),
+  ]);
 
   const resolvedRunCount =
     runCount == null ? latestRuns.length : Math.max(runCount, latestRuns.length);
@@ -1116,7 +1122,10 @@ async function readEncodingStatusFromSupabase(
     issue_run_count: resolvedIssueRunCount,
     active_session_count: activeSessionCount,
     earliest_run_at: stringOrNull(earliestRuns[0]?.timestamp),
-    latest_runs: latestRuns,
+    latest_runs: latestRuns.map((run) => ({
+      ...run,
+      graph_available: run.citation != null && graphCitations.has(run.citation),
+    })),
     latest_sessions: latestSessions,
     latest_source_counts: summarizeLatestSources(latestRuns),
     live_runs: liveRuns,

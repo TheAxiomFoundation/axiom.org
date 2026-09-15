@@ -19,6 +19,7 @@ import {
 function run(overrides: Partial<EncodingStatusRun>): EncodingStatusRun {
   return {
     id: "run",
+    graph_available: true,
     timestamp: "2026-07-01T00:00:00Z",
     citation: null,
     total_duration_ms: 0,
@@ -332,6 +333,11 @@ describe("graphUrlForSection", () => {
     expect(
       graphUrlForSection("26 USC 1(j)(2)", run({ id: "a" }))
     ).toBe("/app?compose=us%3Astatutes%2F26%2F1");
+  });
+
+  it("does not link a successful attempt until the graph API confirms availability", () => {
+    expect(graphUrlForSection("de:statutes/bgb/126/absatz-1/inhalt", run({ graph_available: false }))).toBeNull();
+    expect(graphUrlForSection("us:statutes/26/24", run({ graph_available: undefined }))).toBeNull();
   });
 
   it("never links live-board completions, failures, or unparseable citations", () => {

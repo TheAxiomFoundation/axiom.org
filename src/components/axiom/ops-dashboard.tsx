@@ -814,22 +814,17 @@ interface SectionRow {
   attempts: number;
   lastAt: string;
   status: "completed" | "in progress" | "flagged";
-  /** Rule-graph deep link — set only when the encoding is verifiably in the
-   *  mirror (recorded history), so the link always renders a graph. */
+  /** Rule-graph deep link, enabled only when the serving API confirms a graph. */
   graphUrl: string | null;
 }
 
-/**
- * Graph link for a section whose encoding has landed. Live-board
- * completions stay unlinked — the applied RuleSpec may still be in an
- * unmerged PR, so composing its graph could come up empty; once a manifest
- * sync records the run, the row upgrades to linked automatically.
- */
+/** A completed attempt is not enough: its graph must also be available to serve. */
 export function graphUrlForSection(
   citation: string,
   latest: LedgerRun,
 ): string | null {
-  if (latest.live || latest.has_issues) return null;
+  if (latest.live || latest.has_issues || latest.graph_available !== true)
+    return null;
   const { section, document } = corpusPathsForCitation(citation);
   const path = section ?? document;
   if (!path) return null;
