@@ -20,6 +20,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadSheets, resolveStyle, type StyleRule, type Viewport } from "./css-cascade";
+import { PLANE_SMALL_SCREEN_MAX_WIDTH, PLANE_SMALL_SCREEN_QUERY } from "./plane-breakpoints";
 
 const here = join(process.cwd(), "src/components/axiom/graph-viewer");
 
@@ -50,6 +51,7 @@ type Chain = {
   notice: HTMLElement;
   minimap: HTMLElement;
   toolbar: HTMLElement;
+  replay: HTMLElement;
 };
 
 /* The compose view's element chain as viewer-app.tsx and
@@ -62,6 +64,7 @@ function mountChain(): Chain {
     return el;
   };
   const root = make("div", "graph-viewer-root");
+  const replay = make("button", "axiom-tour-replay");
   const notice = make("div", "small-screen-notice");
   const shell = make("main", "app-shell no-sidebar");
   const panel = make("section", "viewer-panel");
@@ -81,9 +84,9 @@ function mountChain(): Chain {
   stage.appendChild(wrap);
   panel.append(controls, stage);
   shell.appendChild(panel);
-  root.append(notice, shell);
+  root.append(replay, notice, shell);
   document.body.appendChild(root);
-  return { root, shell, panel, stage, wrap, canvas, flow, notice, minimap, toolbar };
+  return { root, shell, panel, stage, wrap, canvas, flow, notice, minimap, toolbar, replay };
 }
 
 const VIEWPORTS: Array<Viewport & { label: string }> = [
@@ -190,6 +193,45 @@ describe("phone layout", () => {
     for (const width of [821, 900, 1400]) {
       const winners = resolveStyle(rules, chain.notice, { width, height: 900 });
       expect(winners.get("position")?.value, `${width}px`).not.toBe("fixed");
+    }
+  });
+
+  it("draws the notice's boundary from the number the tour reads", () => {
+    /* plane.css cannot import plane-breakpoints.ts; this is the seam
+       that keeps the two numbers one. Move the notice and this fails
+       until the constant moves with it — and with it the tour gate,
+       which once sat at the site's 767px breakpoint, so 768–820px
+       showed the notice with a tour card floating over it. */
+    const chain = mountChain();
+    const atBoundary = resolveStyle(rules, chain.notice, {
+      width: PLANE_SMALL_SCREEN_MAX_WIDTH,
+      height: 900,
+    }).get("position");
+    expect(atBoundary).toMatchObject({
+      value: "fixed",
+      sheet: "plane.css",
+      media: [PLANE_SMALL_SCREEN_QUERY],
+    });
+    const above = resolveStyle(rules, chain.notice, {
+      width: PLANE_SMALL_SCREEN_MAX_WIDTH + 1,
+      height: 900,
+    }).get("position");
+    expect(above?.value).not.toBe("fixed");
+  });
+
+  it("hides the tour's replay pill wherever the notice covers the canvas", () => {
+    const chain = mountChain();
+    for (const width of [820, 640, 390]) {
+      expect(
+        resolveStyle(rules, chain.replay, { width, height: 900 }).get("display"),
+        `${width}px`,
+      ).toMatchObject({ value: "none", sheet: "plane.css", media: [PLANE_SMALL_SCREEN_QUERY] });
+    }
+    for (const width of [821, 900, 1400]) {
+      expect(
+        resolveStyle(rules, chain.replay, { width, height: 900 }).get("display")?.value,
+        `${width}px`,
+      ).not.toBe("none");
     }
   });
 

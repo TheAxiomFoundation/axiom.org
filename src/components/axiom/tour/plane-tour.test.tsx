@@ -20,9 +20,12 @@ const { driverMock, tourMock, capturedConfigs } = vi.hoisted(() => {
 vi.mock("driver.js", () => ({ driver: driverMock }));
 vi.mock("driver.js/dist/driver.css", () => ({}));
 
+import { PLANE_SMALL_SCREEN_QUERY } from "@/components/axiom/graph-viewer/plane-breakpoints";
+import { DEFAULT_SMALL_SCREEN_QUERY } from "./guided-tour";
 import { PlaneTour, TOUR_EXAMPLE_TARGET } from "./plane-tour";
 import { ReaderTour } from "./reader-tour";
 import { tourSeenKey } from "./tour-state";
+import { mediaStub } from "@/test/media-stub";
 
 function visible(testid: string): HTMLElement {
   const el = document.createElement("div");
@@ -46,6 +49,44 @@ describe("PlaneTour", () => {
 
   it("names the EITC as the example subtree", () => {
     expect(TOUR_EXAMPLE_TARGET).toBe("us:statutes/26/32");
+  });
+
+  it("both stages count a small screen where plane.css shows its notice", () => {
+    // plane.css's notice covers the canvas at 820px and below; a tour
+    // card over that notice would point at nodes nobody can see.
+    expect(PLANE_SMALL_SCREEN_QUERY).toBe("(max-width: 820px)");
+    const matchMedia = vi.spyOn(window, "matchMedia");
+    const { rerender } = render(<PlaneTour stage="launcher" />);
+    expect(matchMedia).toHaveBeenCalledWith(PLANE_SMALL_SCREEN_QUERY);
+    expect(matchMedia).not.toHaveBeenCalledWith(DEFAULT_SMALL_SCREEN_QUERY);
+    matchMedia.mockClear();
+    rerender(<PlaneTour stage="subgraph" />);
+    expect(matchMedia).toHaveBeenCalledWith(PLANE_SMALL_SCREEN_QUERY);
+    expect(matchMedia).not.toHaveBeenCalledWith(DEFAULT_SMALL_SCREEN_QUERY);
+    matchMedia.mockRestore();
+  });
+
+  it("ends the running tour when the window narrows under the boundary", () => {
+    window.sessionStorage.setItem(tourSeenKey("subgraph"), "1");
+    const stub = mediaStub({ [PLANE_SMALL_SCREEN_QUERY]: false });
+    const matchMedia = vi
+      .spyOn(window, "matchMedia")
+      .mockImplementation(stub.impl);
+    const ended = vi.fn();
+    window.addEventListener("axiom:tour-end", ended);
+    const { unmount } = render(<PlaneTour stage="subgraph" />);
+    // Still wide: nothing.
+    stub.set(PLANE_SMALL_SCREEN_QUERY, false);
+    expect(ended).not.toHaveBeenCalled();
+    // Narrowed under the notice: the host event GuidedTour listens for.
+    stub.set(PLANE_SMALL_SCREEN_QUERY, true);
+    expect(ended).toHaveBeenCalledTimes(1);
+    // The listener goes with the mount.
+    unmount();
+    stub.set(PLANE_SMALL_SCREEN_QUERY, true);
+    expect(ended).toHaveBeenCalledTimes(1);
+    window.removeEventListener("axiom:tour-end", ended);
+    matchMedia.mockRestore();
   });
 
   it("launcher stage: spotlight starts on leaving step 2, CTA opens the example", () => {
@@ -111,6 +152,14 @@ describe("ReaderTour", () => {
     document.body.innerHTML = "";
     capturedConfigs.length = 0;
     driverMock.mockClear();
+  });
+
+  it("keeps the site's phone breakpoint as its small-screen gate", () => {
+    const matchMedia = vi.spyOn(window, "matchMedia");
+    render(<ReaderTour />);
+    expect(matchMedia).toHaveBeenCalledWith(DEFAULT_SMALL_SCREEN_QUERY);
+    expect(matchMedia).not.toHaveBeenCalledWith(PLANE_SMALL_SCREEN_QUERY);
+    matchMedia.mockRestore();
   });
 
   it("tours the reading surfaces that exist on the page", () => {

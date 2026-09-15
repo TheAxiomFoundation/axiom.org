@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
 import { GuidedTour, type TourStep } from "./guided-tour";
+import { PLANE_SMALL_SCREEN_QUERY } from "@/components/axiom/graph-viewer/plane-breakpoints";
 
 /** The subtree the launcher tour's closing CTA opens — the EITC
  *  (26 USC § 32), the corpus's most recognizable program. Opening it
@@ -133,7 +135,10 @@ function subgraphSteps(
  * The Plane's tours, staged by what's on screen: the launcher gets
  * the welcome tour (once per browser), an open subgraph gets its own
  * (once per session). One mount, so the replay "?" always replays
- * the tour for the view you're in.
+ * the tour for the view you're in. Both stages count a small screen
+ * the way plane.css does — at 820px and below the notice covers the
+ * canvas, so no tour starts there, and one already running ends when
+ * the window narrows into that range.
  */
 export function PlaneTour({
   stage,
@@ -156,18 +161,35 @@ export function PlaneTour({
   /** Same for the run sheet. */
   onCloseRunPanel?: () => void;
 }) {
+  // The notice slides over the canvas as the window narrows into the
+  // small-screen range; a tour still running under it would point at
+  // nodes nobody can see. End it the way the viewer ends a tour when
+  // the run sheet opens — through the host event GuidedTour listens
+  // for — so the reader's tour, which has no such notice, keeps its
+  // own behaviour.
+  useEffect(() => {
+    const smallScreen = window.matchMedia(PLANE_SMALL_SCREEN_QUERY);
+    const onChange = (event: MediaQueryListEvent) => {
+      if (event.matches) window.dispatchEvent(new Event("axiom:tour-end"));
+    };
+    smallScreen.addEventListener("change", onChange);
+    return () => smallScreen.removeEventListener("change", onChange);
+  }, []);
+
   return stage === "subgraph" ? (
     // No onEnd cleanup: someone who opens the law or the run sheet
     // during its step and then exits the tour means to keep using it.
     <GuidedTour
       surface="subgraph"
       steps={subgraphSteps(onCloseLawPopup, onCloseRunPanel)}
+      smallScreenQuery={PLANE_SMALL_SCREEN_QUERY}
     />
   ) : (
     <GuidedTour
       surface="graph"
       steps={launcherSteps(onOpenExample, onSpotlightExample)}
       onEnd={onSpotlightExample ? () => onSpotlightExample(false) : undefined}
+      smallScreenQuery={PLANE_SMALL_SCREEN_QUERY}
     />
   );
 }

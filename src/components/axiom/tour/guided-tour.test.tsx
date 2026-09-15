@@ -20,8 +20,14 @@ const { driverMock, tourMock, capturedConfigs } = vi.hoisted(() => {
 vi.mock("driver.js", () => ({ driver: driverMock }));
 vi.mock("driver.js/dist/driver.css", () => ({}));
 
-import { GuidedTour, type TourStep } from "./guided-tour";
+import {
+  DEFAULT_SMALL_SCREEN_QUERY,
+  GuidedTour,
+  type TourStep,
+} from "./guided-tour";
 import { tourSeenKey } from "./tour-state";
+import { ANCHOR_POLL_MS, ANCHOR_WAIT_MS } from "./tour-timing";
+import { mediaStub } from "@/test/media-stub";
 
 /** An element driver's visibility check accepts: present + painted. */
 function anchoredElement(testid: string): HTMLElement {
@@ -34,6 +40,14 @@ function anchoredElement(testid: string): HTMLElement {
 }
 
 const lastConfig = () => capturedConfigs[capturedConfigs.length - 1]!;
+
+/** Past the anchor poll's first two ticks — enough for an ungated
+ *  tour to have started. */
+const ANCHOR_SETTLE_MS = 600;
+/** Past the whole anchor wait and the tick that follows it. */
+const PAST_ANCHOR_WAIT_MS = ANCHOR_WAIT_MS + 2 * ANCHOR_POLL_MS;
+
+const PLANE_QUERY = "(max-width: 820px)";
 
 describe("GuidedTour", () => {
   beforeEach(() => {
@@ -64,7 +78,7 @@ describe("GuidedTour", () => {
     render(<GuidedTour surface="graph" steps={steps} onEnd={onEnd} />);
     expect(driverMock).not.toHaveBeenCalled();
     await act(async () => {
-      vi.advanceTimersByTime(600);
+      vi.advanceTimersByTime(ANCHOR_SETTLE_MS);
     });
     expect(driverMock).toHaveBeenCalledTimes(1);
     expect(tourMock.drive).toHaveBeenCalledTimes(1);
@@ -77,6 +91,110 @@ describe("GuidedTour", () => {
     expect(window.localStorage.getItem(tourSeenKey("graph"))).toBe("1");
     expect(onEnd).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
+  });
+
+  it("an anchor that never lands: the tour starts on the first tick past the wait", async () => {
+    /* The fallback that scripts/graph-viewport-check.lib.ts watches
+       for — a tour can open this late, so an observer that stops
+       looking sooner cannot say no tour opened. */
+    vi.useFakeTimers();
+    anchoredElement("anchor-a");
+    render(
+      <GuidedTour
+        surface="graph"
+        steps={[
+          ...steps,
+          {
+            element: '[data-testid="anchor-never"]',
+            title: "Late",
+            description: "never lands",
+          },
+        ]}
+      />,
+    );
+    await act(async () => {
+      vi.advanceTimersByTime(ANCHOR_WAIT_MS);
+    });
+    expect(driverMock).not.toHaveBeenCalled();
+    await act(async () => {
+      vi.advanceTimersByTime(ANCHOR_POLL_MS);
+    });
+    expect(tourMock.drive).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it("gates auto-start on the site's phone breakpoint by default", async () => {
+    vi.useFakeTimers();
+    const matchMedia = vi.spyOn(window, "matchMedia");
+    anchoredElement("anchor-a");
+    render(<GuidedTour surface="graph" steps={steps} />);
+    expect(DEFAULT_SMALL_SCREEN_QUERY).toBe("(max-width: 767px)");
+    expect(matchMedia).toHaveBeenCalledWith(DEFAULT_SMALL_SCREEN_QUERY);
+    await act(async () => {
+      vi.advanceTimersByTime(ANCHOR_SETTLE_MS);
+    });
+    expect(tourMock.drive).toHaveBeenCalledTimes(1);
+    matchMedia.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it("a surface can widen its small-screen range: no auto-start inside it", async () => {
+    vi.useFakeTimers();
+    // 800px wide: past the phone breakpoint, inside the Plane's range.
+    const stub = mediaStub({ [PLANE_QUERY]: true });
+    const matchMedia = vi
+      .spyOn(window, "matchMedia")
+      .mockImplementation(stub.impl);
+    anchoredElement("anchor-a");
+    render(
+      <GuidedTour surface="graph" steps={steps} smallScreenQuery={PLANE_QUERY} />,
+    );
+    await act(async () => {
+      vi.advanceTimersByTime(ANCHOR_SETTLE_MS);
+    });
+    expect(driverMock).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem(tourSeenKey("graph"))).toBeNull();
+    matchMedia.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it("re-checks the gate as the anchors settle: a window narrowed during the wait gets no tour", async () => {
+    vi.useFakeTimers();
+    const stub = mediaStub({ [PLANE_QUERY]: false });
+    const matchMedia = vi
+      .spyOn(window, "matchMedia")
+      .mockImplementation(stub.impl);
+    // Wide at mount, anchor still loading (the Plane's graph fetch).
+    render(
+      <GuidedTour surface="graph" steps={steps} smallScreenQuery={PLANE_QUERY} />,
+    );
+    await act(async () => {
+      vi.advanceTimersByTime(ANCHOR_SETTLE_MS);
+    });
+    expect(driverMock).not.toHaveBeenCalled();
+    // The window narrows under the boundary, then the anchor lands.
+    stub.set(PLANE_QUERY, true);
+    anchoredElement("anchor-a");
+    await act(async () => {
+      vi.advanceTimersByTime(PAST_ANCHOR_WAIT_MS);
+    });
+    expect(driverMock).not.toHaveBeenCalled();
+    // Not a dismissal: the next wide visit still gets the tour.
+    expect(window.localStorage.getItem(tourSeenKey("graph"))).toBeNull();
+    matchMedia.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it("the host's tour-end event ends a running tour", () => {
+    window.localStorage.setItem(tourSeenKey("graph"), "1");
+    anchoredElement("anchor-a");
+    render(<GuidedTour surface="graph" steps={steps} />);
+    fireEvent.click(screen.getByRole("button", { name: /replay/i }));
+    tourMock.isActive.mockReturnValue(true);
+    act(() => {
+      window.dispatchEvent(new Event("axiom:tour-end"));
+    });
+    expect(tourMock.destroy).toHaveBeenCalledTimes(1);
   });
 
   it("never auto-starts when already seen; the ? button replays", () => {

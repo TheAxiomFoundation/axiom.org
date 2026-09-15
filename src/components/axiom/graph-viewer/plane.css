@@ -3340,7 +3340,10 @@
   width: fit-content;
 }
 
-/* Desktop-only notice: shown instead of a broken layout on phones. */
+/* Desktop-only notice: shown instead of a broken layout on phones.
+   The width is the Plane's small-screen boundary — the same number
+   plane-breakpoints.ts exports for the tour, which must not start
+   under this notice (canvas-height.test.ts holds the two together). */
 .graph-viewer-root .small-screen-notice {
   display: none;
 }
@@ -3362,6 +3365,11 @@
     margin: 0;
     max-width: 34ch;
     color: var(--color-ink-secondary);
+  }
+  /* No tour to replay under the notice (tour.css hides the pill only
+     from the site's 767px phone breakpoint down). */
+  .graph-viewer-root .axiom-tour-replay {
+    display: none;
   }
 }
 
