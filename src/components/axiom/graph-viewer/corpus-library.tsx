@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, BookOpen, Clock3, List, Network, Search, SlidersHorizontal } from "lucide-react";
+import { ArrowRight, BookOpen, Clock3, LoaderCircle, List, Network, Search, SlidersHorizontal } from "lucide-react";
 import { CorpusField } from "@/components/axiom/corpus-field";
 import type { CorpusModule } from "@/lib/axiom/corpus-field";
 import { humanizeCitation, humanizeRuleName, jurisdictionLabel } from "./citations";
@@ -86,7 +86,9 @@ export function CorpusLibrary({ modules, active, mode, onModeChange, onPick, cou
       <div className="library-columns">
 
         <div className="library-content" ref={contentRef} tabIndex={0} aria-label={mode === "field" ? "Corpus map" : "Provision results"}>
-          {!modules ? <p role="status">Loading the law library…</p> : !filtered.length ? <div className="library-empty"><Search size={24} /><h3>No matching provisions</h3><p>Try fewer words, another jurisdiction, or a citation such as 26 USC 32.</p><button onClick={reset}>Show all provisions</button></div> : mode === "field" ? <><div className="library-map"><CorpusField onPick={(target) => open(target)} frame={false} country={country} suppliedModules={filteredModules} /></div></> : <>
+          {!modules ? <div className="library-loading" role="status" aria-live="polite">
+            <div className="library-loading-card"><LoaderCircle size={28} aria-hidden="true" /><span>Loading the law library…</span></div>
+          </div> : !filtered.length ? <div className="library-empty"><Search size={24} /><h3>No matching provisions</h3><p>Try fewer words, another jurisdiction, or a citation such as 26 USC 32.</p><button onClick={reset}>Show all provisions</button></div> : mode === "field" ? <><div className="library-map"><CorpusField onPick={(target) => open(target)} frame={false} country={country} suppliedModules={filteredModules} /></div></> : <>
             <div className="library-results">{filtered.slice(0, limit).map((entry) => <button className="library-row" key={entry.module.target} onClick={() => open(entry.module.target)}><BookOpen size={18} aria-hidden /><div><strong>{entry.title}</strong><p>{entry.title === entry.citation ? jurisdictionLabel(entry.module.jurisdiction) : `${jurisdictionLabel(entry.module.jurisdiction)} · ${entry.citation}`}</p><span className="library-actions">{entry.module.ruleCount.toLocaleString()} rules <span>·</span> {entry.module.importCount.toLocaleString()} imports{runs[entry.module.target]?.available && <><span>·</span><em>Run available</em></>}</span></div><ArrowRight size={18} aria-hidden /></button>)}</div>
             {filtered.length > limit && <button className="library-more" onClick={() => setLimit((current) => current + 40)}>Show 40 more <span>{Math.min(limit, filtered.length)} of {filtered.length.toLocaleString()}</span></button>}
           </>}
