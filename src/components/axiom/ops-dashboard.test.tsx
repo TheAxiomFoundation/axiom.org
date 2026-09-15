@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { EncodingStatusRun, LiveEncodingRun } from "@/lib/corpus-status";
 import {
   classifyLiveRun,
+  documentIdentifier,
   graphUrlForSection,
   groupRunsByDocument,
   mergeLiveRunsIntoHistory,
@@ -355,5 +356,16 @@ describe("relativeTime", () => {
     expect(relativeTime("2026-08-10T03:00:00Z", now)).toBe("9h ago");
     expect(relativeTime("2026-08-01T12:00:00Z", now)).toBe("9d ago");
     expect(relativeTime("2026-05-01T12:00:00Z", now)).toBe("May 1, 2026");
+  });
+});
+
+describe("documentIdentifier", () => {
+  it("keeps untitled documents distinct without a naming dictionary", () => {
+    expect(documentIdentifier("de:statute/bgb")).toBe("BGB");
+    expect(documentIdentifier("de:statute/sgb-9-2018")).toBe("SGB-9-2018");
+    expect(documentIdentifier("de:guidance/bzst-dakg-2025/a-19-2")).toBe(
+      "BZST-DAKG-2025 · A-19-2",
+    );
+    expect(documentIdentifier("Pub. L. 117-169")).toBe("Pub. L. 117-169");
   });
 });

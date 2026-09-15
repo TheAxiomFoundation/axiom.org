@@ -13,6 +13,7 @@ import {
   type R2Config,
   type SupabaseRestConfig,
   getRecentCorpusScopes,
+  getEncodingStatus,
 } from "./corpus-status";
 
 const stateReport = {
@@ -214,6 +215,58 @@ describe("corpus status helpers", () => {
       })
     ).toBe(
       "https://example.supabase.co/rest/v1/encoding_runs?select=id%2Ctimestamp&order=timestamp.desc&limit=12"
+    );
+  });
+
+  it("resolves document roots from parent metadata across different path depths", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.supabase.co");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon-key");
+    const roots = [
+      "us/guidance/agency/publication",
+      "us/guidance/agency/office/other-publication",
+    ];
+    const citations = roots.map((root) => root.replace("/", ":") + "/page-1");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = new URL(String(input));
+        if (
+          url.pathname.endsWith("/encoding_runs") &&
+          url.searchParams.get("select")?.includes("citation")
+        ) {
+          return Promise.resolve(
+            jsonResponse(
+              citations.map((citation, i) => ({ id: String(i), citation })),
+            ),
+          );
+        }
+        if (url.pathname.endsWith("/current_provisions")) {
+          return Promise.resolve(
+            jsonResponse(
+              roots.flatMap((root, i) => [
+                {
+                  citation_path: root,
+                  heading: `Official publication ${i}`,
+                  parent_id: null,
+                },
+                {
+                  citation_path: `${root}/page-1`,
+                  heading: "Page 1",
+                  parent_id: `root-${i}`,
+                },
+              ]),
+            ),
+          );
+        }
+        return Promise.resolve(jsonResponse([], { contentRange: "0-0/0" }));
+      }),
+    );
+    const result = await getEncodingStatus({ fresh: true });
+    expect(result.value?.citation_document_paths).toEqual(
+      Object.fromEntries(citations.map((citation, i) => [citation, roots[i]])),
+    );
+    expect(result.value?.citation_labels?.[roots[1]]).toBe(
+      "Official publication 1",
     );
   });
 
@@ -705,10 +758,10 @@ function mockStatusFetch(input: RequestInfo | URL) {
     }
 
     if (url.pathname.endsWith("/current_provisions")) {
-      if (url.searchParams.get("select") === "citation_path,heading") {
+      if (url.searchParams.get("select") === "citation_path,heading,parent_id") {
         return Promise.resolve(
           jsonResponse([
-            { citation_path: "us-ms/statute/27-7-5", heading: "Rate of tax" },
+            { citation_path: "us-ms/statute/27-7-5", heading: "Rate of tax", parent_id: null },
             { citation_path: null, heading: "orphan heading" },
             { citation_path: "us-ms/statute/27-7-5", heading: "duplicate" },
           ])

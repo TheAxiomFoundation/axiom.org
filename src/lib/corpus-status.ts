@@ -284,6 +284,8 @@ export interface EncodingOpsStatus {
    *  (`us/statute/26` → "INTERNAL REVENUE CODE") for the citations that
    *  appear in latest_runs and live_runs. Best-effort. */
   citation_labels?: Record<string, string>;
+  /** Confirmed source-document roots, keyed by the original run citation. */
+  citation_document_paths?: Record<string, string>;
 }
 
 export interface RulespecRepoLatestCommit {
@@ -1089,7 +1091,7 @@ async function readEncodingStatusFromSupabase(
     ).catch(() => [] as LiveEncodingRun[]),
   ]);
 
-  const citationLabels = await readCitationLabels(
+  const citationMetadata = await readCitationMetadata(
     config,
     [
       ...latestRuns.map((run) => run.citation),
@@ -1118,7 +1120,8 @@ async function readEncodingStatusFromSupabase(
     latest_sessions: latestSessions,
     latest_source_counts: summarizeLatestSources(latestRuns),
     live_runs: liveRuns,
-    citation_labels: citationLabels,
+    citation_labels: citationMetadata.labels,
+    citation_document_paths: citationMetadata.documentPaths,
   };
 }
 
@@ -1163,20 +1166,29 @@ const CITATION_LABEL_LOOKUP_LIMIT = 200;
  * nodes. Best-effort: label coverage is partial and a lookup failure never
  * takes down the encoding status.
  */
-async function readCitationLabels(
+async function readCitationMetadata(
   config: SupabaseRestConfig,
   citations: Array<string | null>,
-  options: SupabaseFetchOptions
-): Promise<Record<string, string>> {
+  options: SupabaseFetchOptions,
+): Promise<{
+  labels: Record<string, string>;
+  documentPaths: Record<string, string>;
+}> {
   const paths = new Set<string>();
   for (const citation of citations) {
     if (!citation) continue;
-    for (const path of corpusLookupPathsForCitation(citation)) {
-      paths.add(path);
+    const ancestors = corpusLookupPathsForCitation(citation);
+    // Include shallower ancestors too: source-document depth varies by corpus.
+    const deepest = ancestors.at(-1);
+    if (deepest) {
+      const segments = deepest.split("/");
+      for (let depth = 3; depth <= segments.length; depth++) {
+        paths.add(segments.slice(0, depth).join("/"));
+      }
     }
   }
   const list = [...paths].slice(0, CITATION_LABEL_LOOKUP_LIMIT);
-  if (list.length === 0) return {};
+  if (list.length === 0) return { labels: {}, documentPaths: {} };
 
   const rows = await readSupabaseRows<{ path: string; label: string | null }>(
     config,
@@ -1189,7 +1201,7 @@ async function readCitationLabels(
       path: `in.(${list.map((p) => `"${p}"`).join(",")})`,
       limit: String(CITATION_LABEL_LOOKUP_LIMIT),
     },
-    options
+    options,
   ).catch(() => [] as Array<{ path: string; label: string | null }>);
 
   const labels: Record<string, string> = {};
@@ -1198,36 +1210,46 @@ async function readCitationLabels(
     if (label) labels[row.path] = label;
   }
 
-  // Navigation nodes lag behind the provision table for freshly ingested
-  // documents — fall back to the provisions' own headings for anything the
-  // navigation index couldn't name.
-  const missing = list.filter((path) => !labels[path]);
-  if (missing.length > 0) {
-    const provisionRows = await readSupabaseRows<{
-      citation_path: string | null;
-      heading: string | null;
-    }>(
-      config,
-      "corpus",
-      "current_provisions",
-      {
-        select: "citation_path,heading",
-        citation_path: `in.(${missing.map((p) => `"${p}"`).join(",")})`,
-        limit: String(CITATION_LABEL_LOOKUP_LIMIT),
-      },
-      options
-    ).catch(
-      () => [] as Array<{ citation_path: string | null; heading: string | null }>
-    );
-    for (const row of provisionRows) {
-      const heading = row.heading?.trim();
-      if (heading && row.citation_path && !labels[row.citation_path]) {
-        labels[row.citation_path] = heading;
-      }
-    }
-  }
+  // Source roots have no parent. Unlike a fixed path depth, this distinguishes
+  // agency folders from actual documents, regardless of the corpus layout.
+  const provisions = await readSupabaseRows<{
+    citation_path: string | null;
+    heading: string | null;
+    parent_id: string | null;
+  }>(
+    config,
+    "corpus",
+    "current_provisions",
+    {
+      select: "citation_path,heading,parent_id",
+      citation_path: `in.(${list.map((p) => `"${p}"`).join(",")})`,
+      limit: String(CITATION_LABEL_LOOKUP_LIMIT),
+    },
+    options,
+  ).catch(() => []);
 
-  return labels;
+  const roots = new Set<string>();
+  const provisionLabels = new Set<string>();
+  for (const row of provisions) {
+    if (!row.citation_path) continue;
+    const heading = row.heading?.trim();
+    if (heading && !provisionLabels.has(row.citation_path)) {
+      labels[row.citation_path] = heading;
+      provisionLabels.add(row.citation_path);
+    }
+    if (row.parent_id === null) roots.add(row.citation_path);
+  }
+  const documentPaths: Record<string, string> = {};
+  for (const citation of citations) {
+    if (!citation) continue;
+    const leaf = corpusLookupPathsForCitation(citation).at(-1);
+    if (!leaf) continue;
+    const root = [...roots]
+      .filter((path) => leaf === path || leaf.startsWith(`${path}/`))
+      .sort((a, b) => b.length - a.length)[0];
+    if (root) documentPaths[citation] = root;
+  }
+  return { labels, documentPaths };
 }
 
 async function readCorpusStatsFromSupabase(): Promise<CorpusStats> {
