@@ -189,41 +189,12 @@ export function GraphViewerApp({
     setSelectedOutputs([target]);
     inspectRule(target);
   };
-  // Clicking an Index entry must land on the canvas even when the
-  // target sits inside a folded branch: unfold its ancestry first,
-  // then fly — the camera chases the relayout to where it settles.
+  // The relationship diagram selects an already expanded graph node. Do
+  // not mutate folds here: that rebuilds the canvas during the camera flight.
   const flyFromIndex = (legalId: string) => {
-    // The trace tree is a DAG unrolled — the target can sit on
-    // several paths, and the renderer may materialize any of them.
-    // Unfold every ancestor on every path (the target itself keeps
-    // its own fold state). Worked out up front: when every ancestor
-    // is already open there is no fold update, no relayout — and the
-    // flight goes immediately instead of waiting out the relayout
-    // grace period.
-    const toUnfold = new Set<string>();
-    const unfold = (node: TraceNode): boolean => {
-      let viaChild = false;
-      for (const child of node.children ?? []) {
-        if (unfold(child)) viaChild = true;
-      }
-      if (viaChild && folded.has(node.legalId)) toUnfold.add(node.legalId);
-      return viaChild || node.legalId === legalId;
-    };
-    for (const id of selectedOutputs) {
-      const root = structureTraces[id];
-      if (root) unfold(root);
-    }
-    if (toUnfold.size > 0) {
-      setFolded((current) => {
-        const next = new Set(current);
-        for (const id of toUnfold) next.delete(id);
-        return next;
-      });
-    }
-    flyTo(legalId, toUnfold.size === 0, toUnfold.size > 0);
-    // An Index click is a card click: open the info sheet, which also
-    // pins the path highlight until it closes.
-    inspectRule(legalId);
+    flyTo(legalId, true);
+    if (walkInputById.has(legalId)) inspectInput(legalId);
+    else inspectRule(legalId);
   };
   const inspectRule = (legalId: string) => {
     const rule = walkRuleById.get(legalId);
