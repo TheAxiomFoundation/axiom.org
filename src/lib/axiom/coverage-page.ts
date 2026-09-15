@@ -72,10 +72,18 @@ let cached: { at: number; value: CoverageData } | null = null;
  *  pulling the published total down with it. */
 let lastGoodDocCounts = new Map<string, Record<string, number>>();
 
+/** Last successfully swept encoding-file counts per jurisdiction. Same
+ *  contract as the document counts: a failed sweep (the mirror's
+ *  ``raw_yaml`` scan is the page's costliest query, and it times out
+ *  while a corpus release is being published or activated against the
+ *  same database) keeps these rather than publishing zero encodings. */
+let lastGoodEncodingCounts: Map<string, number> | null = null;
+
 /** Test hook: module-level cache must reset between tests. */
 export function _resetCoverageCache() {
   cached = null;
   lastGoodDocCounts = new Map();
+  lastGoodEncodingCounts = null;
 }
 
 /** Test hook: expire the result cache but keep the last good counts,
@@ -194,20 +202,14 @@ async function loadRootDocCounts(
 async function loadEncodingCounts(): Promise<Map<string, number> | null> {
   const counts = new Map<string, number>();
   for (let page = 0; page < MAX_SWEEP_PAGES; page++) {
-    // ``excludeGatedRows`` filters on ``citation_path``; PostgREST
-    // filters columns that are not in the projection, so the sweep
-    // still selects only the jurisdiction it counts.
-    const { data, error } = await excludeGatedRows(
-      supabaseEncodings.from("rulespec_files").select("jurisdiction"),
-    )
-      // \_ keeps the underscore literal (LIKE treats bare _ as "any").
-      .not("file_path", "ilike", "%\\_pipeline.yaml")
-      .not("raw_yaml", "ilike", "%status: deferred%")
-      .not("bucket", "eq", "programs")
-      .not("file_path", "ilike", "%euromod%")
-      .order("jurisdiction", { ascending: true })
-      .range(page * SWEEP_PAGE_SIZE, (page + 1) * SWEEP_PAGE_SIZE - 1);
-    if (error) return null;
+    // One retry per page, as for the document counts: the failures seen
+    // in production are timeouts under database load, not persistent
+    // errors.
+    const result =
+      (await loadEncodingSweepPage(page)) ??
+      (await loadEncodingSweepPage(page));
+    if (!result) return null;
+    const { data } = result;
     const rows = (data ?? []) as Array<{ jurisdiction: string | null }>;
     for (const row of rows) {
       if (!row.jurisdiction) continue;
@@ -223,6 +225,24 @@ async function loadEncodingCounts(): Promise<Map<string, number> | null> {
   return counts;
 }
 
+/** One page of the mirror sweep; ``null`` when the query errored. */
+async function loadEncodingSweepPage(page: number) {
+  // ``excludeGatedRows`` filters on ``citation_path``; PostgREST
+  // filters columns that are not in the projection, so the sweep
+  // still selects only the jurisdiction it counts.
+  const result = await excludeGatedRows(
+    supabaseEncodings.from("rulespec_files").select("jurisdiction"),
+  )
+    // \_ keeps the underscore literal (LIKE treats bare _ as "any").
+    .not("file_path", "ilike", "%\\_pipeline.yaml")
+    .not("raw_yaml", "ilike", "%status: deferred%")
+    .not("bucket", "eq", "programs")
+    .not("file_path", "ilike", "%euromod%")
+    .order("jurisdiction", { ascending: true })
+    .range(page * SWEEP_PAGE_SIZE, (page + 1) * SWEEP_PAGE_SIZE - 1);
+  return result.error ? null : result;
+}
+
 /**
  * Assemble the page data. Returns null only when the corpus stats
  * backbone is unavailable; per-jurisdiction failures degrade to
@@ -232,11 +252,16 @@ export async function getCoverageData(): Promise<CoverageData | null> {
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
     return cached.value;
   }
-  const [stats, encodingCounts] = await Promise.all([
+  const [stats, sweptEncodingCounts] = await Promise.all([
     loadCorpusStats(),
     loadEncodingCounts(),
   ]);
   if (!stats) return null;
+  if (sweptEncodingCounts) lastGoodEncodingCounts = sweptEncodingCounts;
+  // A failed sweep falls back to the last good counts; only a cold
+  // process with no history publishes zero, and it does not cache it.
+  const encodingCounts = sweptEncodingCounts ?? lastGoodEncodingCounts;
+  const degraded = sweptEncodingCounts === null;
 
   const provisionBySlug = new Map(
     (stats.jurisdictions ?? []).map((j) => [j.jurisdiction, j.count]),
@@ -314,6 +339,6 @@ export async function getCoverageData(): Promise<CoverageData | null> {
       .sort((a, b) => b.count - a.count),
     jurisdictions,
   };
-  cached = { at: Date.now(), value: data };
+  if (!degraded) cached = { at: Date.now(), value: data };
   return data;
 }

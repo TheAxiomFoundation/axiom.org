@@ -219,6 +219,56 @@ describe("getCoverageData", () => {
     const data = await getCoverageData();
     expect(data?.totals.encodingFiles).toBe(0);
     expect(data?.jurisdictions.map((j) => j.slug)).toEqual(["us", "nz"]);
+    // The first page was retried once before the sweep gave up.
+    expect(mockEncodingsFrom).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries a failed sweep page once before giving up", async () => {
+    mockCorpusRpc.mockResolvedValue({ data: STATS, error: null });
+    chainFor(mockCorpusFrom, () => ({ data: [], error: null, count: 0 }));
+    chainFor(mockEncodingsFrom, (i) =>
+      i === 0
+        ? { data: null, error: { message: "statement timeout" } }
+        : { data: [{ jurisdiction: "us" }, { jurisdiction: "us" }], error: null },
+    );
+
+    const data = await getCoverageData();
+    expect(data?.totals.encodingFiles).toBe(2);
+    expect(mockEncodingsFrom).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the last good encoding counts through a mirror outage and does not cache the degraded result", async () => {
+    mockCorpusRpc.mockResolvedValue({ data: STATS, error: null });
+    chainFor(mockCorpusFrom, () => ({ data: [], error: null, count: 0 }));
+    chainFor(mockEncodingsFrom, () => ({
+      data: [{ jurisdiction: "us" }, { jurisdiction: "us" }, { jurisdiction: "nz" }],
+      error: null,
+    }));
+    expect((await getCoverageData())?.totals.encodingFiles).toBe(3);
+
+    // The 10-minute revalidation lands while a corpus release is being
+    // published: every sweep page times out.
+    _expireCoverageCache();
+    chainFor(mockEncodingsFrom, () => ({
+      data: null,
+      error: { message: "statement timeout" },
+    }));
+    const degraded = await getCoverageData();
+    expect(degraded?.totals.encodingFiles).toBe(3);
+    expect(
+      degraded?.jurisdictions.map((j) => [j.slug, j.encodingFileCount]),
+    ).toEqual([
+      ["us", 2],
+      ["nz", 1],
+    ]);
+
+    // The degraded assembly is not held for the cache window: the next
+    // request sweeps again and picks up the recovered mirror.
+    chainFor(mockEncodingsFrom, () => ({
+      data: [{ jurisdiction: "us" }],
+      error: null,
+    }));
+    expect((await getCoverageData())?.totals.encodingFiles).toBe(1);
   });
 
   it("counts root documents from the grouped RPC when it exists", async () => {
