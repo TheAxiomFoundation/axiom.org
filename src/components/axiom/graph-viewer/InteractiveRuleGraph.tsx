@@ -212,7 +212,6 @@ export function InteractiveRuleGraph({
     setFrameRequest((previous) => ({ mode, nonce: (previous?.nonce ?? 0) + 1 }));
   };
   const changeDepth = (depth: number) => {
-    setScopeId(pinnedLegalId ?? scopeId);
     setUpstreamDepth(depth);
     requestFrame(pinnedLegalId ? "upstream" : "all");
   };
@@ -294,8 +293,8 @@ export function InteractiveRuleGraph({
     [sizeHintsKey],
   );
   // Opening a graph defines its scope; inspecting another node only moves
-  // the camera. Explicit depth changes may choose a new scope.
-  const [scopeId, setScopeId] = useState<string | null>(() => {
+  // the camera. Depth controls highlighting and framing, never topology.
+  const [scopeId] = useState<string | null>(() => {
     const linked = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("selection");
     return linked ?? pinnedLegalId ?? spec.outputs[0]?.legalId ?? null;
   });
@@ -337,11 +336,11 @@ export function InteractiveRuleGraph({
   const { nodes, edges } = useMemo(() => {
     if (!nodeScoped) return baseGraph;
     const root = baseGraph.nodes.some(node => node.data.legalId === scopeId) ? scopeId : spec.outputs[0]?.legalId ?? null;
-    const scoped = dependencySubgraph(baseGraph.nodes, baseGraph.edges, root, upstreamDepth);
+    const scoped = dependencySubgraph(baseGraph.nodes, baseGraph.edges, root, Infinity);
     // Lay out only this dependency tree, without gaps left by other outputs.
     layout(scoped.nodes, scoped.edges, stageAspectOf(wrapRef.current), sizeHints);
     return scoped;
-  }, [baseGraph, nodeScoped, scopeId, upstreamDepth, sizeHints]);
+  }, [baseGraph, nodeScoped, scopeId, sizeHints]);
 
   const lastCameraSelection = useRef<string | null>(null);
   const focusSelection = (id: string) => {
