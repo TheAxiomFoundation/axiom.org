@@ -393,3 +393,13 @@ body:has(.has-workspace) .nav-bar { display: none; }
 
 /* Hover is suppressed in JS; clicks must remain usable during camera travel. */
 .graph-viewer-root.has-workspace .irg-wrap.is-moving .react-flow__node { pointer-events: auto !important; }
+
+/* Run is a single-stage workspace: inputs first, then the calculated result. */
+.graph-viewer-root.has-workspace[data-workspace-view="run"][data-run-stage="result"] .workspace-run { display: none; }
+.graph-viewer-root.has-workspace[data-workspace-view="run"] .workspace-run,
+.graph-viewer-root.has-workspace[data-workspace-view="run"] .exec-panel { grid-column: 1 / -1; width: 100%; box-sizing: border-box; }
+.graph-viewer-root.has-workspace[data-workspace-view="run"] .exec-panel { max-width: none; }
+.graph-viewer-root.has-workspace[data-workspace-view="run"] .results-sheet { max-width: 1100px; margin-inline: auto; width: 100%; box-sizing: border-box; }
+@media (min-width: 761px) {
+  .graph-viewer-root.has-workspace[data-workspace-view="run"] .viewer-panel { grid-template-columns: minmax(0, 1fr); }
+}

@@ -253,6 +253,7 @@ export function GraphViewerApp({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lensFocusId, inspected]);
   const [explanationOpen, setExplanationOpen] = useState(false);
+  const [editingRunInputs, setEditingRunInputs] = useState(false);
   const [runResult, setRunResult] = useState<{
     submittedFacts?: Record<string, unknown>;
     outputs: Record<string, number | string | boolean | null>;
@@ -1316,6 +1317,7 @@ export function GraphViewerApp({
         } | null;
       };
       setRunResult({ ...data, submittedFacts: { ...scenario } });
+      setEditingRunInputs(false);
       setExplanationOpen(false);
       trackRun("ok");
     } catch (err) {
@@ -2501,7 +2503,7 @@ export function GraphViewerApp({
   })();
 
   return (
-    <div className="graph-viewer-root has-workspace" data-workspace-view={workspaceView} data-graph-mounted={graphMounted}>
+    <div className="graph-viewer-root has-workspace" data-workspace-view={workspaceView} data-run-stage={runResult && !editingRunInputs ? "result" : "inputs"} data-graph-mounted={graphMounted}>
     <CorpusLibrary
       modules={corpusModules}
       active={launcher === "open"}
@@ -2752,7 +2754,7 @@ export function GraphViewerApp({
         {/* One right-docked panel is the execution home: run results on
             top, the selected node's card below, sharing one scroll —
             nothing floats over the graph itself. */}
-        {(workspaceView === "run" || (workspaceView === "map" && (runResult || inspected))) && (
+        {((workspaceView === "run" && runResult && !editingRunInputs) || (workspaceView === "map" && (runResult || inspected))) && (
           <aside
             ref={execPanelRef}
             className="exec-panel"
@@ -2767,6 +2769,7 @@ export function GraphViewerApp({
                 <span className="results-eyebrow">Scenario result · select the result to explain it</span>
                 <strong>{effectiveProgram?.displayName ?? "Program"}</strong>
               </div>
+              {workspaceView === "run" && <button type="button" className="workspace-button" onClick={() => setEditingRunInputs(true)}>Edit inputs</button>}
               <button
                 type="button"
                 className="results-close"
@@ -2942,7 +2945,7 @@ export function GraphViewerApp({
                   type="button"
                   className="results-edit-inputs"
                   disabled={running}
-                  onClick={() => { setWorkspaceView("run"); document.querySelector(".workspace-run")?.scrollIntoView({ block: "start", behavior: "instant" }); }}
+                  onClick={() => { setEditingRunInputs(true); setWorkspaceView("run"); document.querySelector(".workspace-run")?.scrollIntoView({ block: "start", behavior: "instant" }); }}
                   title="Reopen the full input list to add or change answers"
                 >
                   Edit inputs
