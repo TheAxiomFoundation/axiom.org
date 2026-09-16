@@ -403,3 +403,13 @@ body:has(.has-workspace) .nav-bar { display: none; }
 @media (min-width: 761px) {
   .graph-viewer-root.has-workspace[data-workspace-view="run"] .viewer-panel { grid-template-columns: minmax(0, 1fr); }
 }
+
+.result-graph-preview { display: flex; flex-direction: column; gap: 12px; width: min(320px, 100%); margin: 24px 0 0 auto; padding: 16px; border: 1px solid var(--color-rule); border-radius: 10px; background: var(--color-paper-elevated, #fff); color: var(--color-ink); cursor: pointer; text-align: left; }
+.result-graph-preview:hover { border-color: var(--color-accent); }
+.result-graph-preview:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+.result-graph-preview svg { width: 100%; height: auto; }
+.result-graph-preview path { fill: none; stroke: var(--color-rule); stroke-width: 1.5; }
+.result-graph-preview rect { fill: var(--color-paper); stroke: var(--color-rule); }
+.result-graph-preview .result-graph-root { fill: #fff5e9; stroke: var(--color-accent); }
+.result-graph-preview text { fill: var(--color-ink-secondary); font: 9px sans-serif; }
+.result-graph-preview > span { display: flex; justify-content: space-between; font-size: 13px; color: var(--color-accent); }

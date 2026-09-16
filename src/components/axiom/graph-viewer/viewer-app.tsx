@@ -1,5 +1,6 @@
 "use client";
 
+import { ResultGraphPreview } from "./result-graph-preview";
 import { ResultExplanation } from "./result-explanation";
 import { GraphLoading } from "./graph-loading";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -2766,7 +2767,7 @@ export function GraphViewerApp({
             {workspaceView === "run" && resultsStale && <p className="workspace-stale">Inputs have changed. Run again to update this result.</p>}
             <div className="results-head">
               <div>
-                <span className="results-eyebrow">Scenario result · select the result to explain it</span>
+                <span className="results-eyebrow">Scenario result</span>
                 <strong>{effectiveProgram?.displayName ?? "Program"}</strong>
               </div>
               {workspaceView === "run" && <button type="button" className="workspace-button" onClick={() => setEditingRunInputs(true)}>Edit inputs</button>}
@@ -2787,18 +2788,7 @@ export function GraphViewerApp({
                 const value = runResult.outputs[name];
                 const rule = headlineId ? walkRuleById.get(headlineId) : undefined;
                 return (
-                    <button
-                      type="button"
-                      className="results-cell"
-                      disabled={!rule}
-                      title={rule ? "Explain this result" : undefined}
-                      onClick={() => {
-                        if (!rule) return;
-                        inspectRule(rule.legalId);
-                        setWorkspaceView("run");
-                        setExplanationOpen(true);
-                      }}
-                    >
+                    <div className="results-cell">
                       <span className="results-label">{humanize(name)}</span>
                       <span className="results-value">
                         {typeof value === "boolean"
@@ -2809,12 +2799,23 @@ export function GraphViewerApp({
                             ? value.toLocaleString("en-US", { maximumFractionDigits: 6 })
                             : String(value ?? "—")}
                       </span>
-                    </button>
+                    </div>
                 );
               })()}
             </div>
             {workspaceView === "run" && graph && resultHeadline?.legalId && <>
               <button className="workspace-button" aria-expanded={explanationOpen} onClick={() => setExplanationOpen((open) => !open)}>{explanationOpen ? "Close explanation" : "Explain this result"}</button>
+              <ResultGraphPreview graph={graph} rootId={resultHeadline.legalId} onOpen={() => {
+                const id = resultHeadline.legalId!;
+                inspectRule(id);
+                setWorkspaceView("map");
+                flyTo(id, true);
+                const url = new URL(window.location.href);
+                url.searchParams.set("selection", id);
+                url.searchParams.set("view", "map");
+                url.hash = "";
+                window.history.pushState(window.history.state, "", url);
+              }} />
               {explanationOpen && <ResultExplanation key={resultHeadline.legalId} graph={graph} run={runResult} rootId={resultHeadline.legalId} stale={resultsStale} onRead={(id) => { inspectRule(id); setWorkspaceView("read"); const url = new URL(window.location.href); url.searchParams.set("selection", id); url.searchParams.set("view", "read"); window.history.replaceState(window.history.state, "", url); }} />}
             </>}
             {workspaceView !== "run" && <div className="results-adjust" aria-label="Adjust and run again">
