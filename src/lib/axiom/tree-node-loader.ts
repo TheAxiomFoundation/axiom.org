@@ -1,5 +1,6 @@
 import type { Rule } from "@/lib/supabase";
 import type { TreeNode } from "@/lib/tree-data";
+import { DISPLAY_ACRONYMS } from "@/lib/display-acronyms";
 import {
   listEncodedFiles,
   type EncodedFile,
@@ -689,12 +690,11 @@ function formatRulespecOnlyNodeLabel(segs: string[], segment: string): string {
 }
 
 function formatRulespecOnlySegment(segment: string): string {
-  const acronyms = new Set(["fns", "irs", "usda", "snap", "fy", "cola"]);
   return segment
     .split(/[-_]/)
     .filter(Boolean)
     .map((part) =>
-      acronyms.has(part.toLowerCase())
+      DISPLAY_ACRONYMS.has(part.toLowerCase())
         ? part.toUpperCase()
         : /^fy\d+$/i.test(part)
           ? part.toUpperCase()
