@@ -14,6 +14,7 @@ import {
   type SectionProvision,
   mapRulesToDeepPath,
   joinedSegmentPaths,
+  splitNycrrSectionPath,
   docTypeCrosswalk,
   encodingPathCandidates,
   splitRootBodyAroundChildren,
@@ -539,5 +540,18 @@ describe("splitRootBodyAroundChildren", () => {
     ];
     const { flush } = splitRootBodyAroundChildren(parent, children);
     expect(flush).toBeNull();
+  });
+});
+
+
+describe("splitNycrrSectionPath", () => {
+  it("resolves dotted New York section citations while preserving subsections", () => {
+    expect(splitNycrrSectionPath(["us-ny", "regulation", "18-nycrr", "387.9"])).toEqual(["us-ny", "regulation", "18-nycrr", "387", "9"]);
+    expect(splitNycrrSectionPath(["us-ny", "regulation", "18-nycrr", "387.10", "a"])).toEqual(["us-ny", "regulation", "18-nycrr", "387", "10", "a"]);
+  });
+  it("leaves canonical paths and other numbering systems alone", () => {
+    expect(splitNycrrSectionPath(["us-ny", "regulation", "18-nycrr", "387", "9"])).toBeNull();
+    expect(splitNycrrSectionPath(["us-or", "statute", "315.264"])).toBeNull();
+    expect(splitNycrrSectionPath(["us-co", "regulation", "10-ccr", "4.410"])).toBeNull();
   });
 });
