@@ -1,8 +1,11 @@
+import { clearReaderCache } from "./reader-cache";
 import { useState } from "react";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { neighborhood, RuleWorkspace, type WorkspaceView } from "./rule-workspace";
 import type { ProgramGraph, RuleNode } from "./types";
+
+beforeEach(() => clearReaderCache());
 
 const rule = (id: string, deps: string[] = []): RuleNode => ({ legalId: id, name: id, fileLegalId: "test", kind: null, entity: null, dtype: null, period: null, unit: null, source: null, ruleDeps: deps, inputDeps: [], relationDeps: [] });
 const graph: ProgramGraph = { rules: [rule("result", ["shared", "missing"]), rule("shared"), rule("other", ["shared"])], inputs: [], relations: [], ownOutputs: ["result"], terminalOutputs: ["result"] };
@@ -47,12 +50,12 @@ describe("rule workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Show 12 more · 14 hidden" }));
     expect(screen.getByRole("button", { name: /Rule Dep 10 /i })).toBeInTheDocument();
   });
-  it("shows the RuleSpec file in Read instead of the formula snippet", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ filePath: "test.yaml", content: "format: rulespec/v1\nrules: []" }) } as Response));
+  it("shows only the selected RuleSpec definition in Read", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ filePath: "test.yaml", content: "format: rulespec/v1\nrules:\n  - name: result\n    kind: derived\n  - name: sibling\n    kind: input" }) } as Response));
     render(<Harness data={{ ...graph, rules: [{ ...rule("result"), formula: "2 * 3" }] }} />);
     expect(screen.queryByRole("button", { name: "Logic", exact: true })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Read", exact: true }));
-    expect(await screen.findByRole("region", { name: "RuleSpec YAML" })).toHaveTextContent("format: rulespec/v1");
+    expect(await screen.findByRole("region", { name: "RuleSpec YAML" })).toHaveTextContent("name: result");
     expect(screen.queryByRole("region", { name: "Encoded formula" })).not.toBeInTheDocument();
   });
   it("connects formula operands to their dependencies and follows them", () => {
@@ -101,6 +104,25 @@ describe("rule workspace: source reader and pointer affordances", () => {
   beforeEach(() => {
     window.history.replaceState({}, "", "/");
     vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+  });
+  it("waits for both responses and reuses them when reopening", async () => {
+    let finish!: (value: unknown) => void;
+    const fetcher = vi.fn((url: string) => url.includes("/api/axiom/source")
+      ? Promise.resolve({ ok: true, json: async () => source })
+      : new Promise(resolve => { finish = resolve; }));
+    vi.stubGlobal("fetch", fetcher);
+    const first = render(<SourcedHarness />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(screen.queryByText("Text A")).not.toBeInTheDocument();
+    await act(async () => { finish({ ok: true, json: async () => ({ content: "rules:\n  - name: result\n    kind: derived\n" }) }); });
+    expect(screen.getByText("Text A")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "RuleSpec YAML" })).toHaveTextContent("name: result");
+    first.unmount();
+    render(<SourcedHarness />);
+    expect(screen.queryByRole("status", { name: "Loading rule" })).not.toBeInTheDocument();
+    await act(async () => { await Promise.resolve(); });
+    expect(fetcher).toHaveBeenCalledTimes(2);
   });
   it("renders the fetched provision with its subsections, date, and partial notice", async () => {
     const fetcher = vi.fn((url: string) => Promise.resolve(url.includes("/api/axiom/source") ? { ok: true, json: async () => source } : { ok: false }));

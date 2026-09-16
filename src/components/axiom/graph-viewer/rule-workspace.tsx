@@ -7,6 +7,7 @@ import type { ProgramGraph, RuleNode } from "./types";
 import { resolveLogicIdentifier } from "./rule-logic";
 import { rememberRule } from "./library-state";
 import { RuleBody } from "@/components/axiom/rule-body";
+import { peekReader, readReader } from "./reader-cache";
 import { RuleSpecPreview } from "./rulespec-preview";
 import type { WorkspaceSource } from "@/lib/axiom/workspace-source";
 
@@ -24,23 +25,39 @@ export function neighborhood(graph: ProgramGraph, id: string) {
 function SourceReader({ rule, id, consumers }: { rule?: RuleNode; id: string; consumers: RuleNode[] }) {
   const target = readableLawTarget({ legalId: id, ruleSource: rule?.source ?? null, citation: rule?.source ?? null, curatedCitation: rule?.source ?? null, isQuestion: !rule, consumers });
   const href = target ? axiomAppUrlForCitation(target.fileLegalId, target.citation) : null;
-  const [source, setSource] = useState<WorkspaceSource | null>(null);
+  const root = rule?.fileLegalId ?? id.split("#")[0];
+  const sourceUrl = href ? `/api/axiom/source${href}` : null;
+  const encodingUrl = `/api/axiom/rulespec?root=${encodeURIComponent(root)}`;
+  const cachedSource = sourceUrl ? peekReader(sourceUrl) as WorkspaceSource | undefined : null;
+  const cachedEncoding = peekReader(encodingUrl) as { content: string } | undefined;
+  const [source, setSource] = useState<WorkspaceSource | null>(cachedSource ?? null);
+  const [definition, setDefinition] = useState<string | null>(cachedEncoding?.content ?? null);
   const [error, setError] = useState(false);
+  const [definitionError, setDefinitionError] = useState(false);
+  const [pending, setPending] = useState(!cachedEncoding || (sourceUrl !== null && !cachedSource));
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    if (!href) return;
-    const controller = new AbortController();
-    setSource(null);
+    let cancelled = false;
+    setPending(!peekReader(encodingUrl) || (sourceUrl !== null && !peekReader(sourceUrl)));
     setError(false);
-    void fetch(`/api/axiom/source${href}`, { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("Source unavailable");
-        return response.json() as Promise<WorkspaceSource>;
-      })
-      .then((data) => { if (!controller.signal.aborted) setSource(data); })
-      .catch(() => { if (!controller.signal.aborted) setError(true); });
-    return () => controller.abort();
-  }, [href, attempt]);
+    setDefinitionError(false);
+    void Promise.allSettled([
+      sourceUrl ? readReader(sourceUrl) : Promise.resolve(null),
+      readReader(encodingUrl),
+    ]).then(([law, encoding]) => {
+      if (cancelled) return;
+      setSource(law.status === "fulfilled" ? law.value as WorkspaceSource | null : null);
+      setError(law.status === "rejected");
+      const content = encoding.status === "fulfilled" ? (encoding.value as { content?: unknown })?.content : undefined;
+      setDefinition(typeof content === "string" ? content : null);
+      setDefinitionError(typeof content !== "string");
+      setPending(false);
+    });
+    return () => { cancelled = true; };
+  }, [sourceUrl, encodingUrl, attempt]);
+  if (pending) return <section className="workspace-reader-loading" role="status" aria-label="Loading rule">
+    <LoaderCircle size={26} aria-hidden="true" /><span>Loading rule…</span>
+  </section>;
   return <section className="workspace-reader" aria-label="Source provision">
     {href ? <>
       <div className="workspace-source-toolbar"><span>{source?.heading ?? "Source provision"}</span>{source?.officialUrl && <a href={source.officialUrl} target="_blank" rel="noreferrer">Official source <ArrowRight size={14} /></a>}</div>
@@ -55,7 +72,7 @@ function SourceReader({ rule, id, consumers }: { rule?: RuleNode; id: string; co
         {source.truncated && <p role="status">This provision is partially loaded. Open the source to explore further subsections.</p>}
       </>}
     </> : <p>No source provision is available for this item in the loaded graph.</p>}
-    <RuleSpecPreview key={rule?.fileLegalId ?? id.split("#")[0]} root={rule?.fileLegalId ?? id.split("#")[0]} />
+    {definitionError ? <p role="alert">Could not load this node’s definition. <button onClick={() => setAttempt(value => value + 1)}>Try again</button></p> : definition !== null && <RuleSpecPreview content={definition} nodeId={id} />}
   </section>;
 }
 
