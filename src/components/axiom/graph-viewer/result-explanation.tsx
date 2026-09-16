@@ -40,9 +40,9 @@ export function ResultExplanation({ graph, run, rootId, stale, onRead }: { graph
   const label = humanizeRuleName(entries.get(id)?.name ?? id);
   const evidence = recordedEvidence(graph, run, id);
   return <section className="result-explanation" aria-label="Result explanation">
-    <div className="workspace-section-heading"><h2>Explain this result</h2>{trail.length > 1 && <button className="workspace-button" onClick={() => setTrail((items) => items.slice(0, -1))}>Back to previous calculation</button>}</div>
+    <div className="workspace-section-heading"><h2>Result explanation</h2>{trail.length > 1 && <button className="workspace-button" onClick={() => setTrail((items) => items.slice(0, -1))}>Back to previous calculation</button>}</div>
     {stale && <p role="status">Inputs have changed. This explanation uses the previous run.</p>}
-    <h3>{label} <strong>{format(evidence?.value)}</strong></h3>
+    <h3 className="result-summary"><span>{label}</span><strong>{format(evidence?.value)}</strong></h3>
     {!evidence && <p>This value was not reported in this run.</p>}
     <table className="explanation-values"><thead><tr><th>Dependency</th><th>Value</th><th>Evidence</th></tr></thead><tbody>{dependencies.map((dep) => {
       const item = recordedEvidence(graph, run, dep);

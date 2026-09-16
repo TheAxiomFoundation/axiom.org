@@ -253,7 +253,6 @@ export function GraphViewerApp({
     if (lensFocusId && !inspected) inspectRule(lensFocusId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lensFocusId, inspected]);
-  const [explanationOpen, setExplanationOpen] = useState(false);
   const [editingRunInputs, setEditingRunInputs] = useState(false);
   const [runResult, setRunResult] = useState<{
     submittedFacts?: Record<string, unknown>;
@@ -1319,7 +1318,6 @@ export function GraphViewerApp({
       };
       setRunResult({ ...data, submittedFacts: { ...scenario } });
       setEditingRunInputs(false);
-      setExplanationOpen(false);
       trackRun("ok");
     } catch (err) {
       if (err instanceof Error && err.name === "RunBlockedError") {
@@ -2780,7 +2778,7 @@ export function GraphViewerApp({
                 ×
               </button>
             </div>
-            <div className="results-grid">
+            {workspaceView !== "run" && <div className="results-grid">
               {(() => {
                 // The cell is a door to its node on the canvas.
                 if (!resultHeadline) return null;
@@ -2802,9 +2800,9 @@ export function GraphViewerApp({
                     </div>
                 );
               })()}
-            </div>
+            </div>}
             {workspaceView === "run" && graph && resultHeadline?.legalId && <>
-              <button className="workspace-button" aria-expanded={explanationOpen} onClick={() => setExplanationOpen((open) => !open)}>{explanationOpen ? "Close explanation" : "Explain this result"}</button>
+              {<ResultExplanation key={resultHeadline.legalId} graph={graph} run={runResult} rootId={resultHeadline.legalId} stale={resultsStale} onRead={(id) => { inspectRule(id); setWorkspaceView("read"); const url = new URL(window.location.href); url.searchParams.set("selection", id); url.searchParams.set("view", "read"); window.history.replaceState(window.history.state, "", url); }} />}
               <ResultGraphPreview graph={graph} rootId={resultHeadline.legalId} onOpen={() => {
                 const id = resultHeadline.legalId!;
                 inspectRule(id);
@@ -2816,7 +2814,6 @@ export function GraphViewerApp({
                 url.hash = "";
                 window.history.pushState(window.history.state, "", url);
               }} />
-              {explanationOpen && <ResultExplanation key={resultHeadline.legalId} graph={graph} run={runResult} rootId={resultHeadline.legalId} stale={resultsStale} onRead={(id) => { inspectRule(id); setWorkspaceView("read"); const url = new URL(window.location.href); url.searchParams.set("selection", id); url.searchParams.set("view", "read"); window.history.replaceState(window.history.state, "", url); }} />}
             </>}
             {workspaceView !== "run" && <div className="results-adjust" aria-label="Adjust and run again">
               {(() => {
