@@ -105,6 +105,26 @@ describe("rule workspace: source reader and pointer affordances", () => {
     window.history.replaceState({}, "", "/");
     vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
   });
+  it("opens source references inside Read and restores the original source on Back", async () => {
+    window.history.replaceState({}, "", "/app?compose=us%3Astatutes%2F26%2F32&view=read");
+    const originalUrl = window.location.href;
+    const path = "us-ny/regulation/18-nycrr/387.10";
+    const linkedSource = { ...source, blocks: [{ anchor: "root", heading: null, body: "section 387.10", citationPath: source.citationPath, refs: [{ direction: "outgoing", citation_text: "section 387.10", pattern_kind: "section", confidence: 1, start_offset: 0, end_offset: 13, other_citation_path: path, other_provision_id: "resolved", other_heading: null, target_resolved: true }] }] };
+    vi.stubGlobal("fetch", vi.fn((url: string) => Promise.resolve({ ok: true, json: async () => url.includes("/rulespec?") ? { content: "rules:\n  - name: result\n    kind: derived\n" } : url.endsWith(path) ? { ...source, heading: "Income limits", blocks: [{ anchor: "root", body: "Referenced income limits", refs: [] }] } : linkedSource })));
+    render(<SourcedHarness />);
+    const link = await screen.findByRole("link", { name: "section 387.10" });
+    expect(link.getAttribute("href")).toContain("/app?");
+    fireEvent.click(link);
+    expect(await screen.findByText("Referenced income limits")).toBeInTheDocument();
+    expect(new URLSearchParams(window.location.search).get("source")).toBe(path);
+    expect(screen.queryByRole("region", { name: "RuleSpec YAML" })).not.toBeInTheDocument();
+    act(() => {
+      window.history.replaceState({}, "", originalUrl);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    expect(await screen.findByRole("link", { name: "section 387.10" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "RuleSpec YAML" })).toBeInTheDocument();
+  });
   it("waits for both responses and reuses them when reopening", async () => {
     let finish!: (value: unknown) => void;
     const fetcher = vi.fn((url: string) => url.includes("/api/axiom/source")

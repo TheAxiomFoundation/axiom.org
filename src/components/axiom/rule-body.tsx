@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { createContext, useContext, useEffect, useRef } from "react";
 import type { MutableRefObject, ReactNode } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -30,6 +30,11 @@ import {
  * wrapper around the matching byte range and a scroll-into-view on
  * mount so the reader lands on the exact citing passage.
  */
+
+export const CitationNavigationContext = createContext<null | {
+  href: (path: string) => string;
+  open: (path: string) => void;
+}>(null);
 
 interface RuleBodyProps {
   body: string;
@@ -362,7 +367,8 @@ function Citation({
           ref.citation_text
         )}`
       : "";
-  const href = `${hrefPrefix}/${ref.other_citation_path}${markQuery}`;
+  const navigation = useContext(CitationNavigationContext);
+  const href = navigation?.href(ref.other_citation_path) ?? `${hrefPrefix}/${ref.other_citation_path}${markQuery}`;
   const title = ref.inferred
     ? `Inferred link to ${ref.other_citation_path}`
     : ref.target_resolved
@@ -374,6 +380,11 @@ function Citation({
   return (
     <Link
       href={href}
+      onClick={navigation ? (event) => {
+        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        navigation.open(ref.other_citation_path);
+      } : undefined}
       className={classes}
       title={title}
       {...(ref.target_resolved && { "data-cite": ref.other_citation_path })}

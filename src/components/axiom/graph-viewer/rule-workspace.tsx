@@ -6,7 +6,7 @@ import { axiomAppUrlForCitation, humanizeRuleName, humanizeSource, readableLawTa
 import type { ProgramGraph, RuleNode } from "./types";
 import { resolveLogicIdentifier } from "./rule-logic";
 import { rememberRule } from "./library-state";
-import { RuleBody } from "@/components/axiom/rule-body";
+import { CitationNavigationContext, RuleBody } from "@/components/axiom/rule-body";
 import { peekReader, readReader } from "./reader-cache";
 import { RuleSpecPreview } from "./rulespec-preview";
 import type { WorkspaceSource } from "@/lib/axiom/workspace-source";
@@ -24,7 +24,25 @@ export function neighborhood(graph: ProgramGraph, id: string) {
 
 function SourceReader({ rule, id, consumers }: { rule?: RuleNode; id: string; consumers: RuleNode[] }) {
   const target = readableLawTarget({ legalId: id, ruleSource: rule?.source ?? null, citation: rule?.source ?? null, curatedCitation: rule?.source ?? null, isQuestion: !rule, consumers });
-  const href = target ? axiomAppUrlForCitation(target.fileLegalId, target.citation) : null;
+  const [reference, setReference] = useState<string | null>(() => new URLSearchParams(window.location.search).get("source"));
+  useEffect(() => {
+    const restore = () => setReference(new URLSearchParams(window.location.search).get("source"));
+    window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
+  }, []);
+  const referenceHref = (path: string) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("source", path);
+    url.searchParams.set("view", "read");
+    url.hash = "";
+    return `${url.pathname}${url.search}`;
+  };
+  const openReference = (path: string) => {
+    window.history.pushState(window.history.state, "", referenceHref(path));
+    setPending(true);
+    setReference(path);
+  };
+  const href = reference ? `/${reference.replace(/^\/+/, "")}` : target ? axiomAppUrlForCitation(target.fileLegalId, target.citation) : null;
   const root = rule?.fileLegalId ?? id.split("#")[0];
   const sourceUrl = href ? `/api/axiom/source${href}` : null;
   const encodingUrl = `/api/axiom/rulespec?root=${encodeURIComponent(root)}`;
@@ -43,7 +61,7 @@ function SourceReader({ rule, id, consumers }: { rule?: RuleNode; id: string; co
     setDefinitionError(false);
     void Promise.allSettled([
       sourceUrl ? readReader(sourceUrl) : Promise.resolve(null),
-      readReader(encodingUrl),
+      reference ? Promise.resolve(null) : readReader(encodingUrl),
     ]).then(([law, encoding]) => {
       if (cancelled) return;
       setSource(law.status === "fulfilled" ? law.value as WorkspaceSource | null : null);
@@ -54,25 +72,25 @@ function SourceReader({ rule, id, consumers }: { rule?: RuleNode; id: string; co
       setPending(false);
     });
     return () => { cancelled = true; };
-  }, [sourceUrl, encodingUrl, attempt]);
+  }, [sourceUrl, encodingUrl, attempt, reference]);
   if (pending) return <section className="workspace-reader-loading" role="status" aria-label="Loading rule">
     <LoaderCircle size={26} aria-hidden="true" /><span>Loading rule…</span>
   </section>;
   return <section className="workspace-reader" aria-label="Source provision">
     {href ? <>
-      <div className="workspace-source-toolbar"><span>{source?.heading ?? "Source provision"}</span>{source?.officialUrl && <a href={source.officialUrl} target="_blank" rel="noreferrer">Official source <ArrowRight size={14} /></a>}</div>
+      <div className="workspace-source-toolbar">{reference && <button onClick={() => window.history.back()}><ArrowLeft size={14} /> Back</button>}<span>{source?.heading ?? "Source provision"}</span>{source?.officialUrl && <a href={source.officialUrl} target="_blank" rel="noreferrer">Official source <ArrowRight size={14} /></a>}</div>
       {error ? <p role="alert">Could not load this provision. <button onClick={() => setAttempt((value) => value + 1)}>Try again</button>.</p> : !source ? <p className="workspace-source-loading" role="status"><LoaderCircle size={18} aria-hidden="true" />Loading source provision…</p> : <>
         {source.origin === "official-live" && <p className="workspace-source-date">Current official source text; may differ from the version used for encoding.</p>}
         {source.effectiveDate && <p className="workspace-source-date">Effective {source.effectiveDate}</p>}
         {source.blocks.length > 1 && <nav className="workspace-source-sections" aria-label="Source subsections">{source.blocks.filter((block) => block.heading).map((block) => <a key={block.anchor} href={`#source-${block.anchor}`}>{block.heading}</a>)}</nav>}
-        <article className="workspace-source-text">{source.blocks.map((block) => <section key={block.anchor} id={`source-${block.anchor}`} data-focused={source.focusAnchor === block.anchor || undefined}>
+        <CitationNavigationContext.Provider value={{ href: referenceHref, open: openReference }}><article className="workspace-source-text">{source.blocks.map((block) => <section key={block.anchor} id={`source-${block.anchor}`} data-focused={source.focusAnchor === block.anchor || undefined}>
           {block.heading && <h2>{block.heading}</h2>}
           <RuleBody body={block.body} refs={block.refs} citationPath={block.citationPath} />
-        </section>)}{!source.blocks.length && <p>No provision text is available for this source.</p>}</article>
+        </section>)}{!source.blocks.length && <p>No provision text is available for this source.</p>}</article></CitationNavigationContext.Provider>
         {source.truncated && <p role="status">This provision is partially loaded. Open the source to explore further subsections.</p>}
       </>}
     </> : <p>No source provision is available for this item in the loaded graph.</p>}
-    {definitionError ? <p role="alert">Could not load this node’s definition. <button onClick={() => setAttempt(value => value + 1)}>Try again</button></p> : definition !== null && <RuleSpecPreview content={definition} nodeId={id} />}
+    {!reference && (definitionError ? <p role="alert">Could not load this node’s definition. <button onClick={() => setAttempt(value => value + 1)}>Try again</button></p> : definition !== null && <RuleSpecPreview content={definition} nodeId={id} />)}
   </section>;
 }
 
@@ -122,6 +140,7 @@ export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, o
   }, [entries]);
   const saveLocation = (id: string, mode: WorkspaceView) => {
     const url = new URL(window.location.href);
+    url.searchParams.delete("source");
     url.searchParams.set("selection", id);
     url.searchParams.set("view", mode);
     window.history.replaceState(window.history.state, "", url);
