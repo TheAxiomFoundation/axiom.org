@@ -421,3 +421,24 @@ body:has(.has-workspace) .nav-bar { display: none; }
 .workspace-reader-loading { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; min-height: 340px; width: 100%; color: var(--color-ink-secondary); font: 14px/1.5 var(--f-sans, sans-serif); }
 .workspace-reader-loading svg { color: var(--color-accent); animation: workspace-source-spin .9s linear infinite; }
 @media (prefers-reduced-motion: reduce) { .workspace-reader-loading svg { animation: none; } }
+
+/* Source typography uses preserved paragraph/table boundaries, never rewrites text. */
+.workspace-source-text { width: 100%; max-width: 1100px; }
+.workspace-source-text .source-prose { color: var(--color-ink); font-size: 16px; line-height: 1.85; white-space: normal; }
+.workspace-source-text .source-prose p { max-width: 72ch; margin-block: 0 1.1em; }
+.workspace-source-text .source-prose p[data-clause] { padding-left: 1.6em; text-indent: -1.6em; }
+.workspace-source-text .source-prose p[data-source-note] { border-top: 1px solid var(--color-rule); padding-top: 14px; margin-top: 24px; color: var(--color-ink-secondary); font-size: 13px; }
+.workspace-source-text > section { padding: 24px 0; }
+.workspace-source-text > section + section { border-top: 1px solid var(--color-rule); }
+.workspace-source-text h2 { margin-bottom: 16px; font-size: 21px; line-height: 1.4; }
+.workspace-source-sections { gap: 8px; padding: 12px 0 20px; }
+.workspace-source-sections a { padding: 6px 10px; border: 1px solid var(--color-rule); border-radius: 5px; text-decoration: none; }
+.workspace-source-sections a:hover { background: var(--color-paper-elevated); border-color: var(--color-accent); }
+.workspace-source-text .source-table-scroll { margin: 20px 0 28px; border: 1px solid var(--color-rule); border-radius: 8px; max-width: 100%; }
+.workspace-source-text .source-table-scroll:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+.workspace-source-text table { margin: 0; font-size: 14px; line-height: 1.5; }
+.workspace-source-text th { padding: 13px 16px; background: var(--color-paper-elevated, #fff); color: var(--color-ink); font: 600 13px/1.5 var(--f-sans, sans-serif); text-transform: none; letter-spacing: normal; min-width: 100px; }
+.workspace-source-text td { padding: 11px 16px; color: var(--color-ink); }
+.workspace-source-text tbody tr:nth-child(even) { background: color-mix(in srgb, var(--color-rule) 16%, transparent); }
+.workspace-source-text [data-numeric] { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media (max-width: 760px) { .workspace-source-text .source-prose { font-size: 15px; } .workspace-source-text th, .workspace-source-text td { padding: 10px 12px; } }

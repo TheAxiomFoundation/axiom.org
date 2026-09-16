@@ -516,6 +516,8 @@ function renderTextBlock({
         return (
           <p
             key={`${paragraph.lines[0].start}-${paragraph.lines.at(-1)?.end}`}
+            data-source-note={paragraph.startsWithSource || undefined}
+            data-clause={/^\s*\([a-zA-Z0-9]+\)/.test(paragraph.lines[0].text) || undefined}
             className={`m-0 whitespace-pre-wrap ${
               index === 0 ? "" : paragraph.startsWithSource ? "mt-7" : "mt-5"
             }`}
@@ -644,7 +646,7 @@ export function RuleBody({
   return (
     <div
       {...(testId && { "data-testid": testId })}
-      className="text-[0.95rem] text-[var(--color-ink-secondary)] leading-[1.8] whitespace-pre-wrap"
+      className="source-prose text-[0.95rem] text-[var(--color-ink-secondary)] leading-[1.8] whitespace-pre-wrap"
       style={{ fontFamily: "var(--f-serif)" }}
     >
       {blocks.map((block, blockIndex) => {
@@ -657,10 +659,17 @@ export function RuleBody({
             hrefPrefix,
           });
         }
+        const numericColumns = block.headers.map((_, column) => {
+          const values = block.rows.map(row => row[column]?.text.trim() ?? "").filter(Boolean);
+          return values.length > 0 && values.every(value => /^(?:[$€£]?\s*-?\d[\d,]*(?:\.\d+)?\s*%?|[—–-])$/.test(value));
+        });
         return (
           <div
             key={`table-${blockIndex}`}
-            className="my-5 overflow-x-auto whitespace-normal"
+            className="source-table-scroll my-5 overflow-x-auto whitespace-normal"
+            role="region"
+            aria-label="Source table"
+            tabIndex={0}
           >
             <table className="w-full min-w-[520px] border-collapse text-sm leading-normal font-sans">
               <thead>
@@ -669,6 +678,7 @@ export function RuleBody({
                     <th
                       key={index}
                       scope="col"
+                      data-numeric={numericColumns[index] || undefined}
                       className="px-3 py-2 text-left align-bottom font-mono text-[11px] uppercase tracking-wider text-[var(--color-ink-muted)] font-normal"
                     >
                       {header.text}
@@ -685,6 +695,7 @@ export function RuleBody({
                     {row.map((cell, cellIndex) => (
                       <td
                         key={cellIndex}
+                        data-numeric={numericColumns[cellIndex] || undefined}
                         className="px-3 py-2 align-top text-[var(--color-ink-secondary)]"
                       >
                         {cell.start === cell.end
