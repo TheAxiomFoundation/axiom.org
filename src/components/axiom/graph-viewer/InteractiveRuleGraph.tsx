@@ -349,9 +349,9 @@ export function InteractiveRuleGraph({
     if (!viewport || !flowRef.current) return;
     lastCameraSelection.current = id;
     void flowRef.current.setViewport(viewport, {
-      duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 500,
+      duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 750,
       interpolate: "linear",
-      ease: (t: number) => 1 - Math.pow(1 - t, 3),
+      ease: (t: number) => t * t * (3 - 2 * t),
     });
   };
   useEffect(() => {
