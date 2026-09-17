@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { runtimeProxyGet } from "@/lib/axiom/runtime/api";
+import { cachedCompose } from "@/lib/axiom/runtime/compose-cache";
 
 const FOCUS_RE = /^[a-z]{2}(?:-[a-z]{2,3})?:[\w./–-]+(?:#[\w-]+)?$/;
 
@@ -14,10 +14,7 @@ export async function GET(request: Request) {
       { status: 400 }
     );
   }
-  const { status, body } = await runtimeProxyGet(
-    `/graph/compose?focus=${encodeURIComponent(focus)}`,
-    { timeoutMs: 20000, fresh: true },
-  );
+  const { status, body } = await cachedCompose(focus);
   return NextResponse.json(body, {
     status,
     headers: { "cache-control": status >= 200 && status < 300 ? "public, max-age=300" : "no-store" },

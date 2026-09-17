@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, BookOpen, Clock3, List, Network, Search, SlidersHorizontal } from "lucide-react";
 import { LibraryBubbles } from "./library-bubbles";
 import type { CorpusModule } from "@/lib/axiom/corpus-field";
@@ -28,6 +28,8 @@ export function CorpusLibrary({ modules, active, mode, onModeChange, onPick, cou
   onPick: (target: string, recent?: RecentRule) => void; country: string; countries: Array<{ id: string; label: string }>; onCountryChange: (country: string) => void;
 }) {
   const [query, setQuery] = useState("");
+  const [searchLevel, setSearchLevel] = useState("jurisdictions");
+  const changeSearchLevel = useCallback((level: string) => { setSearchLevel(level); setQuery(""); }, []);
   const [jurisdiction, setJurisdiction] = useState("all");
   const [limit, setLimit] = useState(40);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -56,7 +58,7 @@ export function CorpusLibrary({ modules, active, mode, onModeChange, onPick, cou
   const jurisdictions = [...new Set(entries.map((entry) => entry.module.jurisdiction))].sort((a, b) => jurisdictionLabel(a).localeCompare(jurisdictionLabel(b)));
   const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const filtered = entries.filter((entry) => (jurisdiction === "all" || entry.module.jurisdiction === jurisdiction) && tokens.every((token) => /^\d+$/.test(token) ? (entry.haystack.match(/\d+/g)?.some((number) => number === token) ?? false) : entry.haystack.includes(token)));
-  const filteredModules = useMemo(() => filtered.map((entry) => entry.module), [entries, query, jurisdiction, runs]);
+  const mapModules = useMemo(() => (modules ?? []).filter(module => jurisdiction === "all" || module.jurisdiction === jurisdiction), [modules, jurisdiction]);
   const recentHere = recent.filter((item) => byTarget.has(item.target)).slice(0, 3);
   const starters = Object.keys(STARTERS).flatMap((target) => byTarget.has(target) ? [byTarget.get(target)!] : []);
   const open = (target: string, item?: RecentRule) => {
@@ -75,7 +77,7 @@ export function CorpusLibrary({ modules, active, mode, onModeChange, onPick, cou
 
 
       <div className="library-toolbar">
-      <div className="library-section-head"><label className="library-search"><Search size={18} /><input type="search" aria-label="Search the law library" placeholder="Search topics, rules, or citations" value={query} onChange={(event) => setQuery(event.target.value)} />{query && <button type="button" onClick={() => setQuery("")}>Clear</button>}</label><div className="library-view-switch" aria-label="Library view"><button aria-pressed={mode === "list"} onClick={() => onModeChange("list")}><List size={16} /> List</button><button aria-pressed={mode === "field"} onClick={() => onModeChange("field")}><Network size={16} /> Map</button></div></div>
+      <div className="library-section-head"><label className="library-search"><Search size={18} /><input type="search" aria-label="Search the law library" placeholder={mode === "field" ? `Search ${searchLevel}` : "Search topics, rules, or citations"} value={query} onChange={(event) => setQuery(event.target.value)} />{query && <button type="button" onClick={() => setQuery("")}>Clear</button>}</label><div className="library-view-switch" aria-label="Library view"><button aria-pressed={mode === "list"} onClick={() => onModeChange("list")}><List size={16} /> List</button><button aria-pressed={mode === "field"} onClick={() => onModeChange("field")}><Network size={16} /> Map</button></div></div>
       <button className="library-filter-toggle" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(!filtersOpen)}><SlidersHorizontal size={16} /> Filters{jurisdiction !== "all" ? " · Active" : ""}</button>
         <aside className={`library-filters ${filtersOpen ? "is-open" : ""}`} aria-label="Filter provisions">
           {countries.length > 1 && <label>Country<select value={country} onChange={(event) => { setJurisdiction("all"); onCountryChange(event.target.value); }}>{countries.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>}
@@ -101,7 +103,7 @@ export function CorpusLibrary({ modules, active, mode, onModeChange, onPick, cou
               <circle className="library-loading-halo" cx="160" cy="100" r="26" />
               <rect className="library-loading-hub" x="140" y="82" width="40" height="36" rx="10" />
             </svg>
-          </div> : !filtered.length ? <div className="library-empty"><Search size={24} /><h3>No matching provisions</h3><p>Try fewer words, another jurisdiction, or a citation such as 26 USC 32.</p><button onClick={reset}>Show all provisions</button></div> : mode === "field" ? <><div className="library-map"><LibraryBubbles onPick={(target) => open(target)} modules={filteredModules} /></div></> : <>
+          </div> : !(mode === "field" ? mapModules.length : filtered.length) ? <div className="library-empty"><Search size={24} /><h3>No matching provisions</h3><p>Try fewer words, another jurisdiction, or a citation such as 26 USC 32.</p><button onClick={reset}>Show all provisions</button></div> : mode === "field" ? <><div className="library-map"><LibraryBubbles onPick={(target) => open(target)} modules={mapModules} query={query} onLevelChange={changeSearchLevel} /></div></> : <>
             <div className="library-results">{filtered.slice(0, limit).map((entry) => <button className="library-row" key={entry.module.target} onClick={() => open(entry.module.target)}><BookOpen size={18} aria-hidden /><div><strong>{entry.title}</strong><p>{entry.title === entry.citation ? jurisdictionLabel(entry.module.jurisdiction) : `${jurisdictionLabel(entry.module.jurisdiction)} · ${entry.citation}`}</p><span className="library-actions">{entry.module.ruleCount.toLocaleString()} rules <span>·</span> {entry.module.importCount.toLocaleString()} imports{runs[entry.module.target]?.available && <><span>·</span><em>Run available</em></>}</span></div><ArrowRight size={18} aria-hidden /></button>)}</div>
             {filtered.length > limit && <button className="library-more" onClick={() => setLimit((current) => current + 40)}>Show 40 more <span>{Math.min(limit, filtered.length)} of {filtered.length.toLocaleString()}</span></button>}
           </>}

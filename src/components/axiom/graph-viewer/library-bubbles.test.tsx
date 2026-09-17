@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { LibraryBubbles, sourceGroup } from "./library-bubbles";
 import type { CorpusModule } from "@/lib/axiom/corpus-field";
+vi.mock("./source-atlas", () => ({ SourceAtlas: ({ modules: suppliedModules, onPick }: { modules: CorpusModule[]; onPick: (target: string) => void }) => <div aria-label="Source node clusters">{suppliedModules.map(module => <button key={module.target} onClick={() => onPick(module.target)}>{module.target}</button>)}</div> }));
 const modules: CorpusModule[] = [21, 32].map(section => ({ target: `us:statutes/26/${section}`, jurisdiction: "us", bucket: "statutes", ruleCount: 30, linkedRuleCount: 30, importCount: 0 }));
 describe("layered library", () => {
  it("groups a shared code title without calling each section a document", () => {
@@ -14,7 +15,8 @@ describe("layered library", () => {
   render(<LibraryBubbles modules={modules} onPick={onPick} />);
   fireEvent.click(screen.getByRole("button", { name: /2 provisions, explore/ }));
   fireEvent.click(screen.getByRole("button", { name: /US Code · Title 26, 2 provisions, explore/ }));
-  fireEvent.click(screen.getByRole("button", { name: /26 USC § 21, 1 provision, open graph/ }));
+  expect(screen.getByLabelText("Source node clusters")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "us:statutes/26/21" }));
   expect(onPick).toHaveBeenCalledWith("us:statutes/26/21");
   fireEvent.click(screen.getByRole("button", { name: "All jurisdictions" }));
   expect(screen.getByRole("button", { name: /2 provisions, explore/ })).toBeInTheDocument();
@@ -26,4 +28,30 @@ describe("layered library", () => {
   rerender(<LibraryBubbles modules={[modules[0]!]} onPick={vi.fn()} />);
   expect(screen.getByRole("button", { name: "All jurisdictions" })).toHaveAttribute("aria-current", "page");
  });
+ it("filters source types without changing the selected jurisdiction", () => {
+  vi.stubGlobal("matchMedia", () => ({ matches: true }));
+  const policy = { ...modules[0]!, target: "us:policies/irs/manual", bucket: "policies" };
+  render(<LibraryBubbles modules={[...modules, policy]} onPick={vi.fn()} />);
+  fireEvent.click(screen.getByRole("button", { name: /3 provisions, explore/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Policies" }));
+  expect(screen.queryByRole("button", { name: /US Code · Title 26/ })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Policies · IRS · Manual/ })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "All types" }));
+  expect(screen.getByRole("button", { name: /US Code · Title 26/ })).toBeInTheDocument();
+ });
+
+ it("searches within the open source without returning to the map", () => {
+  vi.stubGlobal("matchMedia", () => ({ matches: true }));
+  const onPick = vi.fn();
+  const { rerender } = render(<LibraryBubbles modules={modules} onPick={onPick} />);
+  fireEvent.click(screen.getByRole("button", { name: /2 provisions, explore/ }));
+  fireEvent.click(screen.getByRole("button", { name: /US Code · Title 26, 2 provisions, explore/ }));
+  rerender(<LibraryBubbles modules={modules} onPick={onPick} query="32" />);
+  expect(screen.queryByRole("button", { name: "us:statutes/26/21" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "us:statutes/26/32" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "US Code · Title 26" })).toHaveAttribute("aria-current", "page");
+  rerender(<LibraryBubbles modules={modules} onPick={onPick} query="unmatched" />);
+  expect(screen.getByText(/No matches in this source/)).toBeInTheDocument();
+ });
+
 });
