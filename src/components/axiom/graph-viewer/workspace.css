@@ -461,3 +461,12 @@ body:has(.has-workspace) .nav-bar { display: none; }
 .result-formula-details > summary { cursor: pointer; font-size: 13px; font-weight: 500; }
 .result-formula-details[open] > summary { margin-bottom: 20px; }
 @media (max-width: 760px) { .result-review-grid { grid-template-columns: minmax(0, 1fr); gap: 0; } }
+/* Keep the explanation and first supporting values visible together. */
+.result-explanation { padding: 12px 0; margin-top: 10px; }
+.result-explanation .result-summary { padding: 12px 16px; margin: 10px 0 14px; }
+.result-explanation .result-summary > strong { font-size: 28px; }
+.result-reason { padding-bottom: 12px; }
+.result-reason h4 { margin-bottom: 6px; }
+.result-reason p { margin-bottom: 8px; font-size: 14px; line-height: 1.5; }
+.result-review-section { padding-top: 12px; }
+.result-section-note { margin-bottom: 10px; }
