@@ -70,11 +70,11 @@ export const WHAT_WE_DO: readonly DoCard[] = [
  * Licence URLs for the fine-print line under "What we do". The split is real
  * and verified against the repos — the `rulespec-*` jurisdiction repos carry
  * CC BY 4.0, while the engine, encoder, oracles, and this site carry
- * Apache-2.0. The PDF states the same thing; keep them in step.
+ * MIT. The PDF states the same thing; keep them in step.
  */
 export const LICENSE_LINKS = {
   encodings: "https://creativecommons.org/licenses/by/4.0/",
-  code: "https://www.apache.org/licenses/LICENSE-2.0",
+  code: "https://opensource.org/license/mit",
 } as const;
 
 export const WHAT_WE_ENABLE_INTRO =
