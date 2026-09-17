@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, BookOpen, Clock3, LoaderCircle, List, Network, Search, SlidersHorizontal } from "lucide-react";
+import { ArrowRight, BookOpen, Clock3, List, Network, Search, SlidersHorizontal } from "lucide-react";
 import { CorpusField } from "@/components/axiom/corpus-field";
 import type { CorpusModule } from "@/lib/axiom/corpus-field";
 import { humanizeCitation, humanizeRuleName, jurisdictionLabel } from "./citations";
@@ -86,8 +86,21 @@ export function CorpusLibrary({ modules, active, mode, onModeChange, onPick, cou
       <div className="library-columns">
 
         <div className="library-content" ref={contentRef} tabIndex={0} aria-label={mode === "field" ? "Corpus map" : "Provision results"}>
-          {!modules ? <div className="library-loading" role="status" aria-live="polite">
-            <div className="library-loading-card"><LoaderCircle size={28} aria-hidden="true" /><span>Loading the law library…</span></div>
+          {!modules ? <div className="library-loading" role="status" aria-label="Loading the law library" aria-live="polite">
+            <svg className="library-loading-network" viewBox="0 0 320 200" width="320" height="200" fill="none" aria-hidden="true">
+              <g className="library-loading-wires">
+                <path d="M56 44H110Q126 44 126 60V100H156M56 100H156M56 156H110Q126 156 126 140V100M164 100H194Q210 100 210 84V56H264M210 100V144H264" />
+              </g>
+              <g className="library-loading-nodes">
+                <rect x="24" y="32" width="48" height="24" rx="7" />
+                <rect x="24" y="88" width="48" height="24" rx="7" />
+                <rect x="24" y="144" width="48" height="24" rx="7" />
+                <rect x="248" y="44" width="48" height="24" rx="7" />
+                <rect x="248" y="132" width="48" height="24" rx="7" />
+              </g>
+              <circle className="library-loading-halo" cx="160" cy="100" r="26" />
+              <rect className="library-loading-hub" x="140" y="82" width="40" height="36" rx="10" />
+            </svg>
           </div> : !filtered.length ? <div className="library-empty"><Search size={24} /><h3>No matching provisions</h3><p>Try fewer words, another jurisdiction, or a citation such as 26 USC 32.</p><button onClick={reset}>Show all provisions</button></div> : mode === "field" ? <><div className="library-map"><CorpusField onPick={(target) => open(target)} frame={false} country={country} suppliedModules={filteredModules} /></div></> : <>
             <div className="library-results">{filtered.slice(0, limit).map((entry) => <button className="library-row" key={entry.module.target} onClick={() => open(entry.module.target)}><BookOpen size={18} aria-hidden /><div><strong>{entry.title}</strong><p>{entry.title === entry.citation ? jurisdictionLabel(entry.module.jurisdiction) : `${jurisdictionLabel(entry.module.jurisdiction)} · ${entry.citation}`}</p><span className="library-actions">{entry.module.ruleCount.toLocaleString()} rules <span>·</span> {entry.module.importCount.toLocaleString()} imports{runs[entry.module.target]?.available && <><span>·</span><em>Run available</em></>}</span></div><ArrowRight size={18} aria-hidden /></button>)}</div>
             {filtered.length > limit && <button className="library-more" onClick={() => setLimit((current) => current + 40)}>Show 40 more <span>{Math.min(limit, filtered.length)} of {filtered.length.toLocaleString()}</span></button>}

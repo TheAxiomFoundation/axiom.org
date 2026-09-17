@@ -187,8 +187,21 @@ body:has(.corpus-library:not([hidden])) { overflow: hidden; }
 }
 
 /* Keep loading centered in the available results surface, below the toolbar. */
-.library-loading { display: grid; place-items: center; width: 100%; height: 100%; min-height: 280px; padding: 24px; box-sizing: border-box; }
-.library-loading-card { display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 30px 40px; max-width: 100%; border: 1px solid var(--color-rule); border-radius: 12px; background: var(--color-paper-elevated, #fff); color: var(--color-ink-secondary); font: 13px/1.5 var(--f-sans, sans-serif); text-align: center; }
-.library-loading-card svg { flex: none; color: var(--color-accent); animation: library-loading-spin 1s linear infinite; }
-@keyframes library-loading-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .library-loading-card svg { animation: none; } }
+/* Keep the loading state in the same canvas area as the ready library. */
+.library-loading { display: grid; place-items: center; width: 100%; height: 100%; min-height: 220px; padding: 24px; box-sizing: border-box; }
+.library-loading-network { display: block; max-width: 100%; height: auto; color: var(--color-accent); overflow: visible; }
+.library-loading-wires { stroke: currentColor; stroke-width: 1.5; opacity: .22; stroke-dasharray: 5 7; animation: library-wire-flow 3s linear infinite; }
+.library-loading-nodes rect { fill: var(--color-paper); stroke: currentColor; stroke-width: 1.5; animation: library-node-glow 2.4s ease-in-out infinite; }
+.library-loading-nodes rect:nth-child(2) { animation-delay: .2s; }
+.library-loading-nodes rect:nth-child(3) { animation-delay: .4s; }
+.library-loading-nodes rect:nth-child(4) { animation-delay: .8s; }
+.library-loading-nodes rect:nth-child(5) { animation-delay: 1s; }
+.library-loading-hub { fill: var(--color-paper); stroke: currentColor; stroke-width: 2; }
+.library-loading-halo { fill: currentColor; transform-origin: 160px 100px; animation: library-halo 2.4s ease-out infinite; }
+@keyframes library-wire-flow { to { stroke-dashoffset: -48; } }
+@keyframes library-node-glow { 0%, 100% { opacity: .3; } 50% { opacity: .85; } }
+@keyframes library-halo { 0% { transform: scale(.8); opacity: .16; } 100% { transform: scale(1.6); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .library-loading-wires, .library-loading-nodes rect, .library-loading-halo { animation: none; }
+  .library-loading-halo { opacity: .1; }
+}
