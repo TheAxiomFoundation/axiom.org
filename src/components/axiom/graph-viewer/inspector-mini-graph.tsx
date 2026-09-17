@@ -16,8 +16,8 @@ export type MiniGraphNode = {
 
 /**
  * The inspector's local lens: the selected rule in the middle, what it
- * is built from on the right, what uses it on the left — the same
- * right-to-left flow as the canvas, shrunk to one hop. Wires converge
+ * is built from on the left, what uses it on the right — the same
+ * left-to-right flow as the canvas, shrunk to one hop. Wires converge
  * into the center card; when a run is live every card carries its
  * value, so the panel reads as the arithmetic of this one rule.
  * Everything is always fully visible — no internal scrolling.
@@ -52,24 +52,24 @@ export function InspectorMiniGraph({
         const el = cardRefs.current.get(`dep:${node.id}`);
         if (!el) continue;
         const b = el.getBoundingClientRect();
-        const x = b.left - rootBox.left;
+        const x = b.right - rootBox.left;
         const y = b.top - rootBox.top + b.height / 2;
-        const bend = (x - cRight) / 2;
+        const bend = (cLeft - x) / 2;
         paths.push({
           key: `dep:${node.id}`,
-          d: `M ${x} ${y} C ${x - bend} ${y}, ${cRight + bend} ${cy}, ${cRight} ${cy}`,
+          d: `M ${x} ${y} C ${x + bend} ${y}, ${cLeft - bend} ${cy}, ${cLeft} ${cy}`,
         });
       }
       for (const node of consumers) {
         const el = cardRefs.current.get(`use:${node.id}`);
         if (!el) continue;
         const b = el.getBoundingClientRect();
-        const x = b.right - rootBox.left;
+        const x = b.left - rootBox.left;
         const y = b.top - rootBox.top + b.height / 2;
-        const bend = (cLeft - x) / 2;
+        const bend = (x - cRight) / 2;
         paths.push({
           key: `use:${node.id}`,
-          d: `M ${cLeft} ${cy} C ${cLeft - bend} ${cy}, ${x + bend} ${y}, ${x} ${y}`,
+          d: `M ${cRight} ${cy} C ${cRight + bend} ${cy}, ${x - bend} ${y}, ${x} ${y}`,
         });
       }
       setSize({ w: rootBox.width, h: rootBox.height });
@@ -118,7 +118,7 @@ export function InspectorMiniGraph({
   );
 
   return (
-    <div className={`mini-graph ${consumers.length ? "has-consumers" : "is-terminal"}`} data-tour="mini-graph" ref={rootRef}>
+    <div className="mini-graph" data-tour="mini-graph" ref={rootRef}>
       <svg
         className="mini-graph-wires"
         width={size.w}

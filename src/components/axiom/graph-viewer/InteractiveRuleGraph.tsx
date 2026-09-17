@@ -1394,17 +1394,17 @@ function FlyToController({
 }
 
 const HandleSource = () => (
-  <Handle type="source" position={Position.Left} className="irg-handle" />
+  <Handle type="source" position={Position.Right} className="irg-handle" />
 );
 /** Outputs only receive edges (from the left); no source handle. */
 const HandleTarget = () => (
-  <Handle type="target" position={Position.Right} className="irg-handle" />
+  <Handle type="target" position={Position.Left} className="irg-handle" />
 );
 /** Intermediate nodes both receive and emit. */
 const HandleBoth = () => (
   <>
-    <Handle type="target" position={Position.Right} className="irg-handle" />
-    <Handle type="source" position={Position.Left} className="irg-handle" />
+    <Handle type="target" position={Position.Left} className="irg-handle" />
+    <Handle type="source" position={Position.Right} className="irg-handle" />
   </>
 );
 
@@ -1907,10 +1907,8 @@ const RAIL_RADIUS = 12;
 const RoundedSmoothStep = (props: EdgeProps) => {
   const { sourceX, sourceY, targetX, targetY, markerEnd, style } = props;
   const dy = targetY - sourceY;
-  const direction = props.sourcePosition === Position.Left ? -1 : 1;
-  const distance = (targetX - sourceX) * direction;
   if (
-    distance > RAIL_OFFSET + RAIL_RADIUS + 6 &&
+    targetX - sourceX > RAIL_OFFSET + RAIL_RADIUS + 6 &&
     Math.abs(dy) >= RAIL_RADIUS * 2
   ) {
     const data = props.data as
@@ -1918,20 +1916,20 @@ const RoundedSmoothStep = (props: EdgeProps) => {
       | undefined;
     const route = data?.route ?? "target";
     const offset = data?.railOffset ?? RAIL_OFFSET;
-    const rail = route === "source" ? sourceX + direction * offset : targetX - direction * offset;
+    const rail = route === "source" ? sourceX + offset : targetX - offset;
     const dir = dy > 0 ? 1 : -1;
     const path =
       `M ${sourceX},${sourceY} ` +
-      `L ${rail - direction * RAIL_RADIUS},${sourceY} ` +
+      `L ${rail - RAIL_RADIUS},${sourceY} ` +
       `Q ${rail},${sourceY} ${rail},${sourceY + dir * RAIL_RADIUS} ` +
       `L ${rail},${targetY - dir * RAIL_RADIUS} ` +
-      `Q ${rail},${targetY} ${rail + direction * RAIL_RADIUS},${targetY} ` +
+      `Q ${rail},${targetY} ${rail + RAIL_RADIUS},${targetY} ` +
       `L ${targetX},${targetY}`;
     return (
       <BaseEdge id={props.id} path={path} markerEnd={markerEnd} style={style} />
     );
   }
-  if (distance > RAIL_OFFSET && Math.abs(dy) < RAIL_RADIUS * 2) {
+  if (targetX - sourceX > RAIL_OFFSET && Math.abs(dy) < RAIL_RADIUS * 2) {
     // Near-level: one gentle S instead of a micro-staircase.
     const midX = (sourceX + targetX) / 2;
     const path =
@@ -2744,7 +2742,7 @@ function layout(
   const sizes = new Map(nodes.map((n) => [n.id, nodeSize(n, hints)]));
   const run = (ranksep: number, nodesep: number) => {
     const g = new dagre.graphlib.Graph();
-    g.setGraph({ rankdir: "RL", nodesep, ranksep, marginx: 24, marginy: 24 });
+    g.setGraph({ rankdir: "LR", nodesep, ranksep, marginx: 24, marginy: 24 });
     g.setDefaultEdgeLabel(() => ({}));
     // Leaves that feed the same rule go into dagre two at a time as
     // one wide box, so the tower of questions is half as tall; after

@@ -473,13 +473,3 @@ body:has(.has-workspace) .nav-bar { display: none; }
 
 .result-blockers { list-style: none; padding: 0; margin: 12px 0; display: grid; gap: 8px; }
 .result-blockers li { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; padding: 12px 14px; border-left: 2px solid var(--color-accent); background: var(--color-paper); font-size: 13px; line-height: 1.5; }
-
-/* Match the canvas: results on the left, dependencies on the right. */
-.graph-viewer-root .mini-graph-consumers { grid-column: 1; grid-row: 1; }
-.graph-viewer-root .mini-graph-mid { grid-column: 2; grid-row: 1; }
-.graph-viewer-root .mini-graph-deps { grid-column: 3; grid-row: 1; }
-
-.graph-viewer-root .mini-graph.is-terminal { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-.graph-viewer-root .mini-graph.is-terminal .mini-graph-consumers { display: none; }
-.graph-viewer-root .mini-graph.is-terminal .mini-graph-mid { grid-column: 1; }
-.graph-viewer-root .mini-graph.is-terminal .mini-graph-deps { grid-column: 2; }
