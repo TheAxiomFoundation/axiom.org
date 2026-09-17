@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { ProgramGraph } from "./types";
 import { humanizeRuleName } from "./citations";
+import { parseFormulaStrict, type AstNode } from "./formula";
+import { resolveLogicIdentifier } from "./rule-logic";
 import { RuleLogic } from "./rule-logic";
 
 export type ExplanationRun = {
@@ -51,9 +53,57 @@ export function relevantInputs(graph: ProgramGraph, root: string): string[] {
   return result;
 }
 
+type ResultBlocker = { id: string; explanation: string };
+
+/** Explain only false required checks supported by recorded scalar evidence.
+ * An AND needs only one false operand; unknown checks remain unknown. ORs,
+ * aggregates, decimal arithmetic and per-entity conditions are not guessed. */
+export function resultBlockers(graph: ProgramGraph, run: ExplanationRun, id: string): ResultBlocker[] {
+  const rule = graph.rules.find(item => item.legalId === id);
+  const ast = rule?.formula ? parseFormulaStrict(rule.formula) : null;
+  const result = recordedEvidence(graph, run, id)?.value;
+  const zero = result === 0 || typeof result === "string" && /^-?0(?:\.0+)?$/.test(result);
+  const condition = zero && ast?.kind === "ifElse" && ast.else_.kind === "number" && ast.else_.value === 0
+    ? ast.cond : result === false ? ast : null;
+  if (!condition || !rule) return [];
+  const deps = [...rule.ruleDeps, ...rule.inputDeps, ...rule.relationDeps];
+  const entries = new Map([...graph.rules, ...graph.inputs, ...graph.relations].map(item => [item.legalId, item]));
+  const resolve = (node: AstNode) => node.kind === "ident" ? resolveLogicIdentifier(node.name, deps, entries) : undefined;
+  const label = (key: string) => humanizeRuleName(entries.get(key)?.name ?? key);
+  const integer = (value: unknown): number | undefined => {
+    const number = typeof value === "number" ? value : typeof value === "string" && /^-?\d+(?:\.0+)?$/.test(value) ? Number(value) : NaN;
+    return Number.isSafeInteger(number) ? number : undefined;
+  };
+  const checks = (node: AstNode): ResultBlocker[] => {
+    if (node.kind === "logical" && node.op === "and") return [...checks(node.left), ...checks(node.right)];
+    const key = resolve(node);
+    if (key && recordedEvidence(graph, run, key)?.value === false) return [{ id: key, explanation: `${label(key)} is false; this check must be true.` }];
+    if (node.kind === "unary" && node.op === "not") {
+      const key = resolve(node.operand);
+      if (key && recordedEvidence(graph, run, key)?.value === true) return [{ id: key, explanation: `${label(key)} is true; this check requires it to be false.` }];
+    }
+    if (node.kind === "comparison" && node.right.kind === "number") {
+      const key = resolve(node.left);
+      const value = key ? integer(recordedEvidence(graph, run, key)?.value) : undefined;
+      const threshold = integer(node.right.value);
+      if (key && value !== undefined && threshold !== undefined) {
+        const pass = { "==": value === threshold, "!=": value !== threshold, "<": value < threshold, "<=": value <= threshold, ">": value > threshold, ">=": value >= threshold }[node.op];
+        const required = { "==": "equal to", "!=": "different from", "<": "less than", "<=": "at most", ">": "greater than", ">=": "at least" }[node.op];
+        if (!pass) return [{ id: key, explanation: `${label(key)} is ${value}; it must be ${required} ${threshold}.` }];
+      }
+    }
+    return [];
+  };
+  return [...new Map(checks(condition).map(item => [item.id, item])).values()];
+}
+
 export function resultReason(graph: ProgramGraph, run: ExplanationRun, id: string): string {
   const evidence = recordedEvidence(graph, run, id);
   if (evidence?.value === null || evidence?.value === undefined) return "This run did not report a value for this node. That does not establish whether it was computed.";
+  const blockers = resultBlockers(graph, run, id);
+  if (blockers.length) return evidence.value === false
+    ? "This condition requires every check below to pass. The recorded values show these checks are not satisfied."
+    : "This formula returns zero when a required condition is not met. The recorded values show these checks are not satisfied.";
   const rule = graph.rules.find(rule => rule.legalId === id);
   const multiply = /^\s*([a-zA-Z_]\w*)\s*\*\s*([a-zA-Z_]\w*)\s*$/.exec(rule?.formula ?? "");
   const isZero = (value: unknown) => value === 0 || (typeof value === "string" && /^-?0(?:\.0+)?$/.test(value));
@@ -68,7 +118,7 @@ export function resultReason(graph: ProgramGraph, run: ExplanationRun, id: strin
       if (zero) return `${humanizeRuleName(zero.name)} is zero. Multiplying it by the other recorded factor gives zero.`;
     }
   }
-  if (isZero(evidence.value)) return "The engine returned zero. Review the recorded values below; zero alone does not establish ineligibility or identify which input caused it.";
+  if (isZero(evidence.value)) return "The result is zero, but the run did not report enough supported evidence to explain its cause.";
   if (evidence.value === false) return "The engine returned false for this condition. Follow its dependencies to inspect the supporting values.";
   return "This is the recorded result for the last run. Follow its dependencies to inspect the supporting values.";
 }
@@ -87,12 +137,13 @@ export function ResultExplanation({ graph, run, rootId, stale, onRead, onGraph, 
   const label = humanizeRuleName(entries.get(id)?.name ?? id);
   const evidence = recordedEvidence(graph, run, id);
   const inputs = relevantInputs(graph, id);
+  const blockers = resultBlockers(graph, run, id);
   const follow = (next: string) => { setTrail(items => [...items, next]); setShowAllInputs(false); };
   return <section ref={sectionRef} className="result-explanation" aria-label="Result explanation">
     <div className="workspace-section-heading"><h2>Result explanation</h2>{trail.length > 1 && <button className="workspace-button" onClick={() => setTrail((items) => items.slice(0, -1))}>Back to previous calculation</button>}</div>
     {stale && <p role="status">Inputs have changed. This explanation uses the previous run.</p>}
     <h3 className="result-summary"><span>{label}</span><strong>{format(evidence?.value)}</strong></h3>
-    <div className="result-reason"><h4>Why this result</h4><p>{resultReason(graph, run, id)}</p>{onGraph && <button className="workspace-button" onClick={() => onGraph(id)}>Follow in graph →</button>}</div>
+    <div className="result-reason"><h4>Why this result</h4><p>{resultReason(graph, run, id)}</p>{blockers.length > 0 && <ul className="result-blockers">{blockers.map(blocker => <li key={blocker.id}><span>{blocker.explanation}</span><button className="workspace-button" onClick={() => follow(blocker.id)}>Inspect this check →</button></li>)}</ul>}{onGraph && <button className="workspace-button" onClick={() => onGraph(id)}>Follow in graph →</button>}</div>
     <div className="result-review-grid">
       <section className="result-review-section" aria-label="Calculation values"><h4>Calculation values</h4>
         <p className="result-section-note">Select a value to follow its dependencies.</p>

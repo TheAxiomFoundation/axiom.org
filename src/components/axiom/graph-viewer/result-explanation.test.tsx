@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
-import { recordedEvidence, relevantInputs, resultReason, ResultExplanation, type ExplanationRun } from "./result-explanation";
+import { recordedEvidence, relevantInputs, resultReason, resultBlockers, ResultExplanation, type ExplanationRun } from "./result-explanation";
 import type { ProgramGraph, RuleNode } from "./types";
 const rule = (legalId: string): RuleNode => ({ legalId, name: legalId.split("#").at(-1)!, fileLegalId: "law", kind: "derived", entity: null, dtype: null, period: null, unit: null, source: null, ruleDeps: [], inputDeps: [], relationDeps: [] });
 const graph: ProgramGraph = { rules: [{...rule("law#result"), ruleDeps:["law#condition","law#missing"], formula:"if condition: 5 else: 0"},rule("law#condition")], inputs:[],relations:[],ownOutputs:[],terminalOutputs:[] };
@@ -54,7 +54,7 @@ describe("focused result review", () => {
  it("explains zero multiplication only when both factors are recorded", () => {
   const data = { ...graph, rules: [{ ...rule("law#result"), formula: "expenses * rate", ruleDeps: ["law#expenses", "law#rate"] }, rule("law#expenses"), rule("law#rate")] };
   expect(resultReason(data, { outputs: { result: "0.00", expenses: "0", rate: "0.2" }, trace: [] }, "law#result")).toContain("Expenses is zero");
-  expect(resultReason(data, { outputs: { result: 0, expenses: 0 }, trace: [] }, "law#result")).toContain("zero alone does not establish");
+  expect(resultReason(data, { outputs: { result: 0, expenses: 0 }, trace: [] }, "law#result")).toContain("did not report enough supported evidence");
   expect(resultReason(data, { outputs: {}, trace: [] }, "law#result")).toContain("did not report a value");
  });
  it("collects relevant inputs through shared and cyclic dependencies without artifact siblings", () => {
@@ -68,5 +68,25 @@ describe("focused result review", () => {
   expect(onGraph).toHaveBeenCalledWith("law#result");
   fireEvent.click(screen.getByRole("button", { name: "Edit inputs" }));
   expect(onEditInputs).toHaveBeenCalledOnce();
+ });
+});
+
+
+describe("recorded eligibility blockers", () => {
+ const data: ProgramGraph = { ...graph, rules: [{ ...rule("law#result"), formula: "if claim_ok and qualifying_count >= 1: min(potential, tax) else: 0", ruleDeps: ["law#claim_ok", "law#qualifying_count"] }, rule("law#claim_ok"), rule("law#qualifying_count")] };
+ it("explains CDCC-style zero results from failed required checks", () => {
+  const result = resultBlockers(data, { outputs: { result: 0, claim_ok: false, qualifying_count: "0" }, trace: [] }, "law#result");
+  expect(result.map(item => item.id)).toEqual(["law#claim_ok", "law#qualifying_count"]);
+  expect(result[1]!.explanation).toContain("must be at least 1");
+ });
+ it("does not invent missing, per-entity or successful blockers", () => {
+  expect(resultBlockers(data, { outputs: { result: 0 }, trace: [] }, "law#result")).toEqual([]);
+  expect(resultBlockers(data, { outputs: { result: 0, claim_ok: true, qualifying_count: 2 }, trace: [] }, "law#result")).toEqual([]);
+  expect(resultBlockers(data, { outputs: { result: 0, qualifying_count: { household: 0 } }, trace: [] }, "law#result")).toEqual([]);
+ });
+ it("does not blame a false alternative in an OR or an inactive branch", () => {
+  const either = { ...data, rules: [{ ...data.rules[0]!, formula: "if claim_ok or qualifying_count >= 1: 5 else: 0" }, ...data.rules.slice(1)] };
+  expect(resultBlockers(either, { outputs: { result: 0, claim_ok: false }, trace: [] }, "law#result")).toEqual([]);
+  expect(resultBlockers(data, { outputs: { result: 5, claim_ok: false }, trace: [] }, "law#result")).toEqual([]);
  });
 });

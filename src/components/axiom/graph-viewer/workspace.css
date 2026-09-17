@@ -470,3 +470,6 @@ body:has(.has-workspace) .nav-bar { display: none; }
 .result-reason p { margin-bottom: 8px; font-size: 14px; line-height: 1.5; }
 .result-review-section { padding-top: 12px; }
 .result-section-note { margin-bottom: 10px; }
+
+.result-blockers { list-style: none; padding: 0; margin: 12px 0; display: grid; gap: 8px; }
+.result-blockers li { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; padding: 12px 14px; border-left: 2px solid var(--color-accent); background: var(--color-paper); font-size: 13px; line-height: 1.5; }
