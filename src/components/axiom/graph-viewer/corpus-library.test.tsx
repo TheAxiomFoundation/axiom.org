@@ -4,7 +4,7 @@ import { CorpusLibrary, libraryEntries } from "./corpus-library";
 import { readRecentRules, readRunCapabilities, rememberRule, rememberRunCapability } from "./library-state";
 import type { CorpusModule } from "@/lib/axiom/corpus-field";
 
-vi.mock("@/components/axiom/corpus-field", () => ({ CorpusField: ({ suppliedModules, onPick }: { suppliedModules: CorpusModule[]; onPick: (target: string) => void }) => <><button onClick={() => onPick(suppliedModules[0]!.target)}>Pick first</button><div data-testid="filtered-map">{suppliedModules.map((item) => item.target).join(",")}</div></> }));
+vi.mock("./library-bubbles", () => ({ LibraryBubbles: ({ modules: suppliedModules, onPick }: { modules: CorpusModule[]; onPick: (target: string) => void }) => <><button onClick={() => onPick(suppliedModules[0]!.target)}>Pick first</button><div data-testid="filtered-map">{suppliedModules.map((item) => item.target).join(",")}</div></> }));
 const modules: CorpusModule[] = [
   { target: "us:statutes/26/32", jurisdiction: "us", bucket: "statutes", ruleCount: 24, linkedRuleCount: 24, importCount: 2, headlineRule: "eitc" },
   { target: "us-co:regulations/10/4", jurisdiction: "us-co", bucket: "regulations", ruleCount: 90, linkedRuleCount: 90, importCount: 0, headlineRule: "snap_eligibility" },
