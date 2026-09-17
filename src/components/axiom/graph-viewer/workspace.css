@@ -442,3 +442,22 @@ body:has(.has-workspace) .nav-bar { display: none; }
 .workspace-source-text tbody tr:nth-child(even) { background: color-mix(in srgb, var(--color-rule) 16%, transparent); }
 .workspace-source-text [data-numeric] { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 @media (max-width: 760px) { .workspace-source-text .source-prose { font-size: 15px; } .workspace-source-text th, .workspace-source-text td { padding: 10px 12px; } }
+
+.result-reason { padding: 0 2px 24px; max-width: 76ch; }
+.result-explanation h4 { font: 600 14px/1.5 var(--f-sans, sans-serif); margin: 0 0 10px; color: var(--color-ink); }
+.result-reason p { font-size: 15px; line-height: 1.65; margin: 0 0 14px; }
+.result-review-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; }
+.result-review-section { min-width: 0; border-top: 1px solid var(--color-rule); padding: 20px 0; }
+.result-section-note { font-size: 12px; line-height: 1.6; color: var(--color-ink-secondary); margin: 0 0 16px; }
+.result-dependencies { display: grid; gap: 8px; }
+.result-dependency { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 16px; padding: 14px; border: 1px solid var(--color-rule); border-radius: 7px; background: var(--color-paper-elevated); color: var(--color-ink); text-align: left; font: inherit; cursor: pointer; }
+.result-dependency:hover:not(:disabled) { border-color: var(--color-accent); }
+.result-dependency span, .result-input button { font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.result-dependency strong, .result-input strong { font-size: 14px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; max-width: 24ch; }
+.result-dependency small, .result-input small { grid-column: 1 / -1; font-size: 11px; color: var(--color-ink-secondary); }
+.result-input { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 16px; padding: 12px 0; border-bottom: 1px solid var(--color-rule); }
+.result-input button { padding: 0; background: none; border: 0; color: inherit; text-align: left; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.result-formula-details { border-top: 1px solid var(--color-rule); padding: 18px 0; }
+.result-formula-details > summary { cursor: pointer; font-size: 13px; font-weight: 500; }
+.result-formula-details[open] > summary { margin-bottom: 20px; }
+@media (max-width: 760px) { .result-review-grid { grid-template-columns: minmax(0, 1fr); gap: 0; } }

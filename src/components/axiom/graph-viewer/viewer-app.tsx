@@ -2802,7 +2802,12 @@ export function GraphViewerApp({
               })()}
             </div>}
             {workspaceView === "run" && graph && resultHeadline?.legalId && <>
-              {<ResultExplanation key={resultHeadline.legalId} graph={graph} run={runResult} rootId={resultHeadline.legalId} stale={resultsStale} onRead={(id) => { inspectRule(id); setWorkspaceView("read"); const url = new URL(window.location.href); url.searchParams.set("selection", id); url.searchParams.set("view", "read"); window.history.replaceState(window.history.state, "", url); }} />}
+              {<ResultExplanation key={resultHeadline.legalId} graph={graph} run={runResult} rootId={resultHeadline.legalId} stale={resultsStale} onEditInputs={() => setEditingRunInputs(true)} onGraph={(id) => {
+                inspectRule(id); setWorkspaceView("map"); flyTo(id, true);
+                const url = new URL(window.location.href);
+                url.searchParams.set("selection", id); url.searchParams.set("view", "map"); url.searchParams.delete("source"); url.hash = "";
+                window.history.pushState(window.history.state, "", url);
+              }} onRead={(id) => { inspectRule(id); setWorkspaceView("read"); const url = new URL(window.location.href); url.searchParams.set("selection", id); url.searchParams.set("view", "read"); window.history.replaceState(window.history.state, "", url); }} />}
               <ResultGraphPreview graph={graph} rootId={resultHeadline.legalId} onOpen={() => {
                 const id = resultHeadline.legalId!;
                 inspectRule(id);
