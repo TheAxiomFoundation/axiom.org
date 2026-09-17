@@ -123,6 +123,30 @@
     {
       "source": "/local/:path(.*)",
       "destination": "https://axiom-local-pi.vercel.app/local/:path(.*)"
+    },
+    {
+      "source": "/philanthropy",
+      "destination": "https://axiom-philanthropy.vercel.app/philanthropy"
+    },
+    {
+      "source": "/philanthropy/:path(.*)",
+      "destination": "https://axiom-philanthropy.vercel.app/philanthropy/:path(.*)"
+    },
+    {
+      "source": "/government",
+      "destination": "https://axiom-government.vercel.app/government"
+    },
+    {
+      "source": "/government/:path(.*)",
+      "destination": "https://axiom-government.vercel.app/government/:path(.*)"
+    },
+    {
+      "source": "/advisors",
+      "destination": "https://axiom-advisors.vercel.app/advisors"
+    },
+    {
+      "source": "/advisors/:path(.*)",
+      "destination": "https://axiom-advisors.vercel.app/advisors/:path(.*)"
     }
   ],
   "redirects": [
