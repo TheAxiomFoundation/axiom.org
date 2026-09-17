@@ -70,8 +70,8 @@ export default function PrivacyPage() {
                 github.com/TheAxiomFoundation
               </a>
               . Our code &mdash; the engines,
-              tooling, and this site &mdash; is released under the Apache
-              License 2.0, and the published RuleSpec encodings are licensed
+              tooling, and this site &mdash; is released under the MIT
+              License, and the published RuleSpec encodings are licensed
               under Creative Commons Attribution 4.0 (CC BY 4.0). Both permit
               commercial use, modification, and redistribution with
               attribution.

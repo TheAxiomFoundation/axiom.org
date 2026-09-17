@@ -71,7 +71,7 @@ describe('Overview page', () => {
       'href',
       LICENSE_LINKS.encodings,
     )
-    expect(screen.getByRole('link', { name: /apache 2\.0/i })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /^mit$/i })).toHaveAttribute(
       'href',
       LICENSE_LINKS.code,
     )
