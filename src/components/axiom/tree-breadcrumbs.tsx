@@ -10,7 +10,8 @@ interface TreeBreadcrumbsProps {
 }
 
 /**
- * In production the app lives at ``app.axiom-foundation.org`` and the
+ * In production the app lives on ``axiom.org`` (its retired host
+ * redirects there) and the
  * proxy rewrites ``/`` to ``/axiom``, so the breadcrumb's "Axiom"
  * root pointing at ``/`` lands on the app overview. On localhost the
  * dev server serves both the marketing site and the app off the same

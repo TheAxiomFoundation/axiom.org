@@ -59,8 +59,8 @@ const APPLICATIONS = [
     actor: "for the public",
     demo: {
       label: "Explore the law",
-      href: "https://app.axiom-foundation.org",
-      src: "https://app.axiom-foundation.org",
+      href: "https://axiom.org/app",
+      src: "https://axiom.org/app",
       poster: "/demo-posters/app.png",
     },
   },

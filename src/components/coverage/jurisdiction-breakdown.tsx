@@ -21,6 +21,7 @@ const COUNTRY_LABELS: Record<string, string> = {
   canada: "Canada",
   nz: "New Zealand",
   il: "Israel",
+  dk: "Denmark",
 };
 
 /** "us-co" → "us"; "canada" → "canada". */
@@ -44,12 +45,26 @@ export function JurisdictionBreakdown({
     return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]));
   }, [jurisdictions]);
 
+  // Grouped by country, the national row first in each group, then
+  // its sub-jurisdictions by name — so "US Federal" leads the states
+  // instead of filing under U, and the All view reads as countries
+  // rather than one alphabet of states, councils and regions.
   const rows = useMemo(
     () =>
       jurisdictions
         .filter((j) => country === null || countryOf(j.slug) === country)
         .slice()
-        .sort((a, b) => a.label.localeCompare(b.label)),
+        .sort((a, b) => {
+          const ca = countryOf(a.slug);
+          const cb = countryOf(b.slug);
+          if (ca !== cb) {
+            return countryLabel(ca).localeCompare(countryLabel(cb));
+          }
+          const na = a.slug === ca ? 0 : 1;
+          const nb = b.slug === cb ? 0 : 1;
+          if (na !== nb) return na - nb;
+          return a.label.localeCompare(b.label);
+        }),
     [jurisdictions, country]
   );
 

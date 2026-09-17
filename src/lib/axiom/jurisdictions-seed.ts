@@ -24,6 +24,7 @@ import type { Jurisdiction } from "@/lib/tree-data";
 export const EXTRA_JURISDICTION_LABELS: Readonly<Record<string, string>> =
   Object.freeze({
     nz: "New Zealand",
+    dk: "Denmark",
     "uk-kingston-upon-thames": "Kingston upon Thames",
   });
 

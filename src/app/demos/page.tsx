@@ -117,7 +117,7 @@ export default async function DemosPage({ searchParams }: PageProps) {
             </span>{" "}
             &mdash; explore it in{" "}
             <a
-              href="https://app.axiom-foundation.org"
+              href="https://axiom.org/app"
               className="text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] no-underline"
             >
               the Axiom app

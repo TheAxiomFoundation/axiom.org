@@ -13,7 +13,7 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 
-const BASE = process.argv[2] ?? "https://app.axiom-foundation.org";
+const BASE = process.argv[2] ?? "https://axiom.org";
 const SNAPSHOT = new URL(
   "../src/lib/axiom/corpus-subtrees.json",
   import.meta.url,

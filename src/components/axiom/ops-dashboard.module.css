@@ -1,0 +1,271 @@
+.dashboard {
+  background: var(--color-paper);
+  color: var(--color-ink);
+}
+
+.header {
+  padding: 16px 0 30px;
+}
+
+.eyebrow {
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+}
+
+.header h1 {
+  margin-top: 14px;
+  font-size: clamp(32px, 4vw, 48px);
+  letter-spacing: -0.04em;
+  line-height: 1.12;
+}
+
+.header > p:last-child {
+  line-height: 1.7;
+}
+
+.docket {
+  margin-top: 24px;
+  border-radius: 16px;
+  background: var(--color-code-bg);
+  border: 1px solid var(--color-rule-strong);
+  box-shadow: 0 8px 24px #1c19170a;
+  overflow-wrap: anywhere;
+}
+
+.docketMeta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 20px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #ffffff20;
+  color: var(--color-code-comment);
+  font-size: 11px;
+}
+
+.docketMeta > span:first-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.runGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.runEntry {
+  padding: 18px;
+  border: 1px solid #ffffff14;
+  background: #ffffff05;
+  border-radius: 10px;
+  min-width: 0;
+}
+
+.runEntry > p:nth-child(2) {
+  font-family: inherit;
+  font-style: normal;
+  line-height: 1.6;
+  margin-top: 8px;
+}
+
+.runEntry > p:last-child {
+  margin-top: 12px;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 24px;
+  align-items: start;
+  margin-top: 32px;
+}
+
+.ledgerOnly {
+  margin-top: 32px;
+}
+
+.sidebar {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+}
+
+.supportCard {
+  border-radius: 14px;
+  background: var(--color-paper-elevated);
+  --card-spacing: 22px;
+  box-shadow: none;
+}
+
+.cardTitle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 16px;
+  font-weight: 550;
+  letter-spacing: -0.02em;
+}
+
+.cardTitle svg {
+  color: var(--color-accent);
+}
+
+.supportCard [data-slot="card-description"] {
+  font-size: 12px;
+  line-height: 1.7;
+  margin-top: 6px;
+}
+
+.supportCard li {
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+
+.ledger {
+  min-width: 0;
+  border: 1px solid var(--color-rule);
+  border-radius: 14px;
+  background: var(--color-paper-elevated);
+  overflow: hidden;
+}
+
+.ledger > p {
+  padding: 12px 24px 32px;
+  line-height: 1.8;
+}
+
+.ledgerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 24px;
+}
+
+.ledgerHeader h2 {
+  font-size: 24px;
+  letter-spacing: -0.035em;
+  margin-top: 7px;
+  font-weight: 500;
+}
+
+.ledgerHeader div > p:last-child {
+  font-size: 12px;
+  color: var(--color-ink-muted);
+  margin-top: 5px;
+}
+
+.ledgerTable {
+  font-size: 12px;
+  min-width: 620px;
+}
+
+.ledgerTable th {
+  height: 40px;
+  background: var(--color-paper);
+}
+
+.ledgerTable th:first-child {
+  padding-left: 24px;
+  width: 21%;
+}
+
+.ledgerTable th:last-child,
+.ledgerTable td:last-child {
+  padding-right: 24px;
+}
+
+.ledgerTable td {
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+
+.ledgerTable .documentBand {
+  padding: 16px 24px;
+  background: var(--color-paper);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.documentBand > div > span:first-child {
+  font-size: 12px;
+}
+
+.documentBand > div > span:last-child {
+  font-size: 10px;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 7px;
+  border-radius: 5px;
+  font-size: 10px;
+  border: 1px solid transparent;
+}
+
+.completed {
+  background: color-mix(in srgb, var(--color-success) 8%, transparent);
+  border-color: color-mix(in srgb, var(--color-success) 16%, transparent);
+}
+
+.inprogress,
+.flagged {
+  background: color-mix(in srgb, var(--color-accent) 9%, transparent);
+  border-color: color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+
+.dashboard a:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 4px;
+  border-radius: 2px;
+}
+
+@media (max-width: 1100px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .sidebar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .header {
+    padding-top: 0;
+  }
+
+  .sidebar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ledgerHeader {
+    padding: 20px;
+    align-items: start;
+  }
+  .ledgerHeader h2 {
+    font-size: 22px;
+  }
+}
+
+.supportCard [data-slot="card-header"] {
+  border-color: var(--color-rule);
+}
+
+.ledgerTable .jurisdictionBand {
+  padding: 16px 24px;
+  background: var(--color-paper-elevated);
+  border-top: 1px solid var(--color-rule);
+  color: var(--color-accent);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}

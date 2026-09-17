@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Activity, ArrowDownToLine, ListOrdered } from "lucide-react";
+import styles from "./ops-dashboard.module.css";
 import type {
   CorpusStatusArtifact,
   EncodingOpsStatus,
@@ -61,14 +63,18 @@ type LiveRunState = "running" | "stale" | "finished" | "expired";
 
 export function classifyLiveRun(
   run: LiveEncodingRun,
-  referenceMs: number
+  referenceMs: number,
 ): LiveRunState {
   const heartbeatMs = Date.parse(run.last_heartbeat_at);
   if (run.status === "running") {
     return referenceMs - heartbeatMs > STALE_HEARTBEAT_MS ? "stale" : "running";
   }
-  const finishedMs = run.finished_at ? Date.parse(run.finished_at) : heartbeatMs;
-  return referenceMs - finishedMs <= FINISHED_WINDOW_MS ? "finished" : "expired";
+  const finishedMs = run.finished_at
+    ? Date.parse(run.finished_at)
+    : heartbeatMs;
+  return referenceMs - finishedMs <= FINISHED_WINDOW_MS
+    ? "finished"
+    : "expired";
 }
 
 export type LedgerRun = EncodingStatusRun & {
@@ -103,7 +109,7 @@ export interface DocumentGroup {
  */
 export function mergeLiveRunsIntoHistory(
   history: EncodingStatusRun[],
-  liveRuns: LiveEncodingRun[]
+  liveRuns: LiveEncodingRun[],
 ): LedgerRun[] {
   const seen = new Set(history.map((run) => run.id));
   const merged: LedgerRun[] = [...history];
@@ -134,11 +140,17 @@ export function mergeLiveRunsIntoHistory(
 
 // Both plural (corpus paths) and singular (live-run citations) forms occur.
 
-export function groupRunsByDocument(runs: LedgerRun[]): DocumentGroup[] {
+export function groupRunsByDocument(
+  runs: LedgerRun[],
+  documentPaths: Record<string, string> = {},
+): DocumentGroup[] {
   const groups = new Map<string, DocumentGroup & { sections: Set<string> }>();
   for (const run of runs) {
     if (!run.citation) continue;
-    const key = documentKeyFromCitation(run.citation);
+    const documentPath = documentPaths[run.citation];
+    const key = documentPath
+      ? documentPath.replace("/", ":")
+      : documentKeyFromCitation(run.citation);
     const group = groups.get(key) ?? {
       key,
       runs: [],
@@ -160,7 +172,7 @@ export function groupRunsByDocument(runs: LedgerRun[]): DocumentGroup[] {
   return [...groups.values()]
     .map(({ sections, ...group }) => {
       const runs = group.runs.sort((a, b) =>
-        b.timestamp.localeCompare(a.timestamp)
+        b.timestamp.localeCompare(a.timestamp),
       );
       // A section is in progress while its most recent attempt failed —
       // the fleet retries until it passes, so old failures under a newer
@@ -172,7 +184,7 @@ export function groupRunsByDocument(runs: LedgerRun[]): DocumentGroup[] {
         if (!latestBySection.has(section)) latestBySection.set(section, run);
         attemptsBySection.set(
           section,
-          (attemptsBySection.get(section) ?? 0) + 1
+          (attemptsBySection.get(section) ?? 0) + 1,
         );
       }
       let inProgressSectionCount = 0;
@@ -225,31 +237,32 @@ export function OpsDashboard({
 
   // Before the first client tick, measure "ago" against the payload's own
   // refresh stamp so server and client render identical text.
-  const referenceMs =
-    nowMs ?? (status ? Date.parse(status.refreshed_at) : 0);
+  const referenceMs = nowMs ?? (status ? Date.parse(status.refreshed_at) : 0);
 
   const documents = useMemo(
     () =>
       groupRunsByDocument(
         mergeLiveRunsIntoHistory(
           status?.latest_runs ?? [],
-          status?.live_runs ?? []
-        )
+          status?.live_runs ?? [],
+        ),
+        status?.citation_document_paths,
       ),
-    [status]
+    [status],
   );
   const labels = status?.citation_labels ?? {};
 
   return (
-    <div className="min-h-screen pt-28 pb-16">
-      <div className="max-w-[960px] mx-auto px-6 md:px-8">
-        <header>
+    <div className={`${styles.dashboard} min-h-screen pt-28 pb-16`}>
+      <div className="max-w-[1440px] mx-auto px-5 md:px-10">
+        <header className={styles.header}>
+          <p className={styles.eyebrow}>Axiom / Operations</p>
           <h1 className="heading-section text-[var(--color-ink)]">
             Encoding operations
           </h1>
           <p className="mt-3 max-w-[640px] text-sm md:text-base text-[var(--color-ink-secondary)]">
-            What Axiom is encoding right now, the newest encodings by
-            document, and how far the corpus has come.
+            From source law to executable rules. Follow the fleet, explore
+            recent encodings, and see what’s next.
           </p>
         </header>
 
@@ -260,15 +273,27 @@ export function OpsDashboard({
           labels={labels}
         />
 
-        <LatestEncodings
-          documents={documents}
-          referenceMs={referenceMs}
-          labels={labels}
-        />
-
-        <div className="mt-14 grid gap-12 md:grid-cols-2 md:gap-10">
-          <RecentlyIngested scopes={recentScopes} referenceMs={referenceMs} />
-          <QueuedWork queues={queues} />
+        <div
+          className={
+            queues.length || recentScopes.length
+              ? styles.workspace
+              : styles.ledgerOnly
+          }
+        >
+          <LatestEncodings
+            documents={documents}
+            referenceMs={referenceMs}
+            labels={labels}
+          />
+          {(queues.length > 0 || recentScopes.length > 0) && (
+            <aside className={styles.sidebar} aria-label="Corpus pipeline">
+              <QueuedWork queues={queues} />
+              <RecentlyIngested
+                scopes={recentScopes}
+                referenceMs={referenceMs}
+              />
+            </aside>
+          )}
         </div>
       </div>
     </div>
@@ -286,9 +311,14 @@ function RecentlyIngested({
 }) {
   if (scopes.length === 0) return null;
   return (
-    <Card>
+    <Card className={styles.supportCard}>
       <CardHeader className="border-b [.border-b]:pb-4">
-        <CardTitle>Recently ingested</CardTitle>
+        <CardTitle>
+          <h2 className={styles.cardTitle}>
+            <ArrowDownToLine size={17} aria-hidden />
+            Recently ingested
+          </h2>
+        </CardTitle>
         <CardDescription>
           The newest additions to the signed corpus release.
         </CardDescription>
@@ -340,9 +370,14 @@ function pluralizeDocumentClass(documentClass: string): string {
 function QueuedWork({ queues }: { queues: EncodingQueueSummary[] }) {
   if (queues.length === 0) return null;
   return (
-    <Card>
+    <Card className={styles.supportCard}>
       <CardHeader className="border-b [.border-b]:pb-4">
-        <CardTitle>Queued work</CardTitle>
+        <CardTitle>
+          <h2 className={styles.cardTitle}>
+            <ListOrdered size={17} aria-hidden />
+            Queued work
+          </h2>
+        </CardTitle>
         <CardDescription>
           Durable encoding queues awaiting dispatch.
         </CardDescription>
@@ -367,7 +402,9 @@ function QueueRow({ queue }: { queue: EncodingQueueSummary }) {
   return (
     <div>
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
-        <h3 className="font-mono text-sm text-foreground">{queue.queueId}</h3>
+        <h3 className="font-mono text-sm text-foreground break-all">
+          {queue.queueId}
+        </h3>
         <p className="text-xs tabular-nums text-muted-foreground">
           {dispositioned.toLocaleString("en-US")} of{" "}
           {queue.total.toLocaleString("en-US")} dispositioned
@@ -413,17 +450,17 @@ function DocketBand({
 }) {
   const liveRuns = status?.live_runs ?? [];
   const running = liveRuns.filter(
-    (run) => classifyLiveRun(run, referenceMs) === "running"
+    (run) => classifyLiveRun(run, referenceMs) === "running",
   );
   const stale = liveRuns.filter(
-    (run) => classifyLiveRun(run, referenceMs) === "stale"
+    (run) => classifyLiveRun(run, referenceMs) === "stale",
   );
   const finished = liveRuns
     .filter((run) => classifyLiveRun(run, referenceMs) === "finished")
     .sort((a, b) =>
       (b.finished_at ?? b.last_heartbeat_at).localeCompare(
-        a.finished_at ?? a.last_heartbeat_at
-      )
+        a.finished_at ?? a.last_heartbeat_at,
+      ),
     );
   const lastRun = status?.latest_runs[0] ?? null;
   // The newest closed live-board row can be fresher than recorded history
@@ -433,21 +470,28 @@ function DocketBand({
       .filter((run) => run.status !== "running")
       .sort((a, b) =>
         (b.finished_at ?? b.last_heartbeat_at).localeCompare(
-          a.finished_at ?? a.last_heartbeat_at
-        )
+          a.finished_at ?? a.last_heartbeat_at,
+        ),
       )[0] ?? null;
   const newestLiveAt = newestLive
     ? (newestLive.finished_at ?? newestLive.last_heartbeat_at)
     : null;
   const idleShowsLive =
     newestLive != null &&
-    (lastRun?.timestamp == null || (newestLiveAt as string) > lastRun.timestamp);
+    (lastRun?.timestamp == null ||
+      (newestLiveAt as string) > lastRun.timestamp);
 
   return (
     <section
       aria-label="Live encoding activity"
-      className="mt-8 rounded-lg bg-[var(--color-code-bg)] text-[var(--color-code-text)] p-6 md:p-8 overflow-x-auto"
+      className={`${styles.docket} text-[var(--color-code-text)] p-6 md:p-8`}
     >
+      <div className={styles.docketMeta}>
+        <span>
+          <Activity size={15} aria-hidden />
+          Fleet activity
+        </span>
+      </div>
       {status == null ? (
         <p className="font-mono text-sm text-[var(--color-code-comment)]">
           Encoding telemetry is unavailable{error ? ` — ${error}` : ""}. The
@@ -459,7 +503,7 @@ function DocketBand({
             dotClass="bg-[var(--color-code-function)] animate-pulse motion-reduce:animate-none"
             label={`Encoding now — ${machineCount(running)}`}
           />
-          <ul className="mt-5 space-y-5">
+          <ul className={styles.runGrid}>
             {running.map((run) => (
               <LiveRunEntry
                 key={run.id}
@@ -478,7 +522,7 @@ function DocketBand({
               finished.length === 1 ? "" : "s"
             } finished in the last hour`}
           />
-          <ul className="mt-5 space-y-5">
+          <ul className={styles.runGrid}>
             {finished.slice(0, 3).map((run) => (
               <FinishedRunEntry
                 key={run.id}
@@ -562,7 +606,6 @@ function DocketBand({
           the last hour
         </p>
       )}
-
     </section>
   );
 }
@@ -597,8 +640,8 @@ function LiveRunEntry({
   stale?: boolean;
 }) {
   return (
-    <li>
-      <p className="font-mono text-base md:text-xl leading-snug">
+    <li className={styles.runEntry}>
+      <p className="font-mono text-base leading-snug">
         <Citation citation={run.citation} surface="dark" />
       </p>
       <CitationLabelLine
@@ -631,8 +674,8 @@ function FinishedRunEntry({
   const failed = run.status === "failed";
 
   return (
-    <li>
-      <p className="font-mono text-base md:text-xl leading-snug">
+    <li className={styles.runEntry}>
+      <p className="font-mono text-base leading-snug">
         <Citation citation={run.citation} surface="dark" />
       </p>
       <CitationLabelLine
@@ -659,17 +702,14 @@ const JURISDICTION_NAMES: Record<string, string> = {
     JURISDICTIONS_SEED.map((jurisdiction) => [
       jurisdiction.slug,
       jurisdiction.label,
-    ])
+    ]),
   ),
   ...EXTRA_JURISDICTION_LABELS,
   // Jurisdictions the encoders report on that the corpus seed doesn't
   // carry yet.
   dk: "Denmark",
+  de: "Germany",
 };
-
-function normalizedForComparison(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
-}
 
 /**
  * The label at one lookup path, unless it merely echoes the path's own
@@ -679,20 +719,18 @@ function normalizedForComparison(value: string): string {
 function meaningfulLabelAt(
   paths: string[],
   index: number,
-  labels: Record<string, string>
+  labels: Record<string, string>,
 ): string | null {
   const label = labels[paths[index]];
   if (!label) return null;
   const segment = paths[index].split("/").pop() ?? "";
-  return normalizedForComparison(label) === normalizedForComparison(segment)
-    ? null
-    : label;
+  return label.trim().toLowerCase() === segment.toLowerCase() ? null : label;
 }
 
 /** Deepest meaningfully-named node, the document itself included. */
 function deepestLabelForCitation(
   citation: string | null,
-  labels: Record<string, string>
+  labels: Record<string, string>,
 ): string | null {
   if (!citation) return null;
   const paths = corpusLookupPathsForCitation(citation);
@@ -706,7 +744,7 @@ function deepestLabelForCitation(
 /** Deepest meaningfully-named node below the document itself. */
 function sectionLabelForCitation(
   citation: string | null,
-  labels: Record<string, string>
+  labels: Record<string, string>,
 ): string | null {
   if (!citation) return null;
   const paths = corpusLookupPathsForCitation(citation);
@@ -762,9 +800,8 @@ function CitationLabelLine({
 }
 
 function machineCount(runs: LiveEncodingRun[]): string {
-  const machines = new Set(
-    runs.map((run) => run.runner?.hostname ?? run.id)
-  ).size;
+  const machines = new Set(runs.map((run) => run.runner?.hostname ?? run.id))
+    .size;
   return machines === 1 ? "1 machine" : `${machines} machines`;
 }
 
@@ -777,22 +814,17 @@ interface SectionRow {
   attempts: number;
   lastAt: string;
   status: "completed" | "in progress" | "flagged";
-  /** Rule-graph deep link — set only when the encoding is verifiably in the
-   *  mirror (recorded history), so the link always renders a graph. */
+  /** Rule-graph deep link, enabled only when the serving API confirms a graph. */
   graphUrl: string | null;
 }
 
-/**
- * Graph link for a section whose encoding has landed. Live-board
- * completions stay unlinked — the applied RuleSpec may still be in an
- * unmerged PR, so composing its graph could come up empty; once a manifest
- * sync records the run, the row upgrades to linked automatically.
- */
+/** A completed attempt is not enough: its graph must also be available to serve. */
 export function graphUrlForSection(
   citation: string,
-  latest: LedgerRun
+  latest: LedgerRun,
 ): string | null {
-  if (latest.live || latest.has_issues) return null;
+  if (latest.live || latest.has_issues || latest.graph_available !== true)
+    return null;
   const { section, document } = corpusPathsForCitation(citation);
   const path = section ?? document;
   if (!path) return null;
@@ -807,7 +839,7 @@ export function graphUrlForSection(
  */
 export function sectionRowsForGroup(
   group: DocumentGroup,
-  labels: Record<string, string>
+  labels: Record<string, string>,
 ): SectionRow[] {
   const bySection = new Map<string, LedgerRun[]>();
   for (const run of group.runs) {
@@ -821,7 +853,15 @@ export function sectionRowsForGroup(
   return [...bySection.entries()]
     .map(([citation, runs]) => {
       const latest = runs[0];
-      const section = sectionWithinDocument(citation, group.key);
+      const documentPath = corpusPathForDocumentKey(group.key);
+      const { scope, segments } = parseCitation(citation);
+      const citationPath = [scope, ...segments].join("/");
+      const section =
+        documentPath && citationPath === documentPath
+          ? "(document)"
+          : documentPath && citationPath.startsWith(`${documentPath}/`)
+            ? citationPath.slice(documentPath.length + 1)
+            : sectionWithinDocument(citation, group.key);
       const isDocumentLevel = section === "(document)";
       return {
         citation,
@@ -844,6 +884,18 @@ export function sectionRowsForGroup(
     .sort((a, b) => b.lastAt.localeCompare(a.lastAt));
 }
 
+/** Preserve recency within each jurisdiction; newest jurisdiction appears first. */
+export function groupDocumentsByJurisdiction(documents: DocumentGroup[]) {
+  const jurisdictions = new Map<string, DocumentGroup[]>();
+  for (const document of documents) {
+    const scope = parseCitation(document.key).scope;
+    const group = jurisdictions.get(scope) ?? [];
+    group.push(document);
+    jurisdictions.set(scope, group);
+  }
+  return [...jurisdictions.entries()];
+}
+
 function LatestEncodings({
   documents,
   referenceMs,
@@ -854,11 +906,13 @@ function LatestEncodings({
   labels: Record<string, string>;
 }) {
   return (
-    <section aria-label="Latest encodings" className="mt-12">
-      <div className="border-b border-[var(--color-rule)] pb-3">
-        <h2 className="heading-sub text-[var(--color-ink)]">
-          Latest encodings
-        </h2>
+    <section aria-label="Latest encodings" className={styles.ledger}>
+      <div className={styles.ledgerHeader}>
+        <div>
+          <p className={styles.eyebrow}>Encoding ledger</p>
+          <h2>Latest encodings</h2>
+          <p>Recent activity, grouped by jurisdiction and document.</p>
+        </div>
       </div>
       {documents.length === 0 ? (
         <p className="mt-4 text-sm text-[var(--color-ink-secondary)]">
@@ -866,7 +920,7 @@ function LatestEncodings({
           reports one.
         </p>
       ) : (
-        <Table className="text-xs">
+        <Table className={styles.ledgerTable}>
           <TableHeader>
             <TableRow className="border-b border-[var(--color-rule)] hover:bg-transparent">
               <TableHead className="h-8 w-[34%] px-0 font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]">
@@ -886,19 +940,41 @@ function LatestEncodings({
               </TableHead>
             </TableRow>
           </TableHeader>
-          {documents.slice(0, LEDGER_DOCUMENT_LIMIT).map((group) => (
-            <DocumentRows
-              key={group.key}
-              group={group}
-              referenceMs={referenceMs}
-              labels={labels}
-            />
+          {groupDocumentsByJurisdiction(
+            documents.slice(0, LEDGER_DOCUMENT_LIMIT),
+          ).map(([scope, groups]) => (
+            <TableBody key={scope}>
+              <TableRow className="hover:bg-transparent">
+                <TableHead
+                  colSpan={5}
+                  scope="rowgroup"
+                  className={styles.jurisdictionBand}
+                >
+                  {JURISDICTION_NAMES[scope] ??
+                    (scope || "Other jurisdictions")}
+                </TableHead>
+              </TableRow>
+              {groups.map((group) => (
+                <DocumentRows
+                  key={group.key}
+                  group={group}
+                  referenceMs={referenceMs}
+                  labels={labels}
+                />
+              ))}
+            </TableBody>
           ))}
         </Table>
       )}
     </section>
   );
 }
+
+const STATUS_CLASS = {
+  completed: styles.completed,
+  "in progress": styles.inprogress,
+  flagged: styles.flagged,
+};
 
 const STATUS_DOT: Record<"completed" | "in progress" | "flagged", string> = {
   completed: "bg-[var(--color-success)]",
@@ -907,9 +983,7 @@ const STATUS_DOT: Record<"completed" | "in progress" | "flagged", string> = {
 };
 
 /**
- * One law as a table band: a document line (jurisdiction, name, path)
- * ruled underneath, then its sections indented beneath it — compact
- * statute-paper rows, hairline rules only.
+ * One law as a tinted document band followed by its section rows.
  */
 function DocumentRows({
   group,
@@ -922,23 +996,21 @@ function DocumentRows({
 }) {
   const rows = sectionRowsForGroup(group, labels);
   const documentLabel = documentGroupLabel(group, labels);
-  const colon = group.key.indexOf(":");
-  const scope = colon > 0 ? group.key.slice(0, colon) : "";
-  const rest = colon > 0 ? group.key.slice(colon + 1) : group.key;
 
   return (
-    <TableBody>
+    <>
       <TableRow className="border-b border-[var(--color-rule)] hover:bg-transparent">
-        <TableCell colSpan={5} className="px-0 pt-4 pb-1.5">
+        <TableCell colSpan={5} className={styles.documentBand}>
           <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-0.5">
-            <span className="text-sm font-semibold text-[var(--color-ink)]">
-              {JURISDICTION_NAMES[scope] ?? scope ?? "Unknown"}
-              {documentLabel && (
-                <span className="font-normal"> — {documentLabel}</span>
-              )}
-            </span>
-            <span className="font-mono text-[11px] text-[var(--color-ink-muted)]">
-              {rest}
+            <span
+              className="text-sm font-semibold text-[var(--color-ink)]"
+              title={
+                documentLabel
+                  ? undefined
+                  : "Document identifier; source title not yet indexed"
+              }
+            >
+              {documentLabel ?? documentIdentifier(group.key)}
             </span>
           </div>
         </TableCell>
@@ -966,54 +1038,51 @@ function DocumentRows({
             {row.label && row.label !== documentLabel ? row.label : ""}
           </TableCell>
           <TableCell className="px-2 py-1.5 align-baseline whitespace-nowrap">
-            <span
-              aria-hidden
-              className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${STATUS_DOT[row.status]}`}
-            />
-            <span className="text-[var(--color-ink-secondary)]">
-              {row.status}
+            <span className={`${styles.status} ${STATUS_CLASS[row.status]}`}>
+              <span
+                aria-hidden
+                className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${STATUS_DOT[row.status]}`}
+              />
+              <span className="text-[var(--color-ink-secondary)]">
+                {row.status}
+              </span>
             </span>
           </TableCell>
           <TableCell className="px-2 py-1.5 text-right align-baseline font-mono tabular-nums text-[var(--color-ink-muted)]">
-            {row.attempts > 1 ? row.attempts : ""}
+            {row.attempts}
           </TableCell>
           <TableCell className="px-0 py-1.5 text-right align-baseline whitespace-nowrap text-[var(--color-ink-muted)]">
             {relativeTime(row.lastAt, referenceMs)}
           </TableCell>
         </TableRow>
       ))}
-    </TableBody>
+    </>
   );
 }
 
-/**
- * Label for a whole document group. When the document node itself has no
- * label but every run in the group sits under the same next segment (e.g. all
- * of `106-cmr`'s runs are in chapter `704`), that shared child's label still
- * identifies the group accurately.
- */
+/** A readable identifier, never an invented title, while metadata is absent. */
+export function documentIdentifier(key: string): string {
+  const { scope, segments } = parseCitation(key);
+  if (!scope || segments.length < 2) return key;
+  return segments
+    .slice(1)
+    .map((segment) => {
+      // Preserve identifiers and their punctuation; only make short code tokens
+      // readable as acronyms. No jurisdiction- or document-specific names.
+      return segment.replace(/[a-z]+/gi, (token) =>
+        token.length <= 4 ? token.toUpperCase() : token,
+      );
+    })
+    .join(" · ");
+}
+
+/** Only the document's own metadata can supply its title. */
 function documentGroupLabel(
   group: DocumentGroup,
-  labels: Record<string, string>
+  labels: Record<string, string>,
 ): string | null {
   const documentPath = corpusPathForDocumentKey(group.key);
-  if (documentPath) {
-    const label = meaningfulLabelAt([documentPath], 0, labels);
-    if (label) return label;
-  }
-
-  const childPaths = new Set<string>();
-  for (const run of group.runs) {
-    if (!run.citation) return null;
-    const { scope, segments, documentDepth } = parseCitation(run.citation);
-    if (!scope || segments.length <= documentDepth) return null;
-    childPaths.add(
-      [scope, ...segments.slice(0, documentDepth + 1)].join("/")
-    );
-  }
-  if (childPaths.size !== 1) return null;
-  const [childPath] = childPaths;
-  return meaningfulLabelAt([childPath], 0, labels);
+  return documentPath ? labels[documentPath]?.trim() || null : null;
 }
 
 /* ── Citation rendering — law as code ── */
@@ -1099,5 +1168,3 @@ function formatUtcDate(value: string): string {
     year: "numeric",
   });
 }
-
-

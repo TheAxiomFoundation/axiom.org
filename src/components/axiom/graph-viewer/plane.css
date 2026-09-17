@@ -444,6 +444,25 @@
   background: var(--color-paper);
 }
 
+/* The canvas hangs from a chain of percentage heights: root (100vh
+   above) → .app-shell → .viewer-panel → .graph-stage → .irg-wrap →
+   .irg-canvas → React Flow's inline height:100%. Below 900px the
+   scoped upstream sheet (styles.css) sets the shell and the panel to
+   height:auto for a stacked side-panel layout this app no longer
+   renders; the percentages then resolve against auto, .irg-wrap
+   shrinks to its 2px of border, and the graph disappears while its
+   nodes still sit in the DOM. Its 70vh floor for .irg-wrap never
+   reaches the page either: this sheet loads last and re-pins
+   .irg-wrap to min-height:0. Keep the chain whole at every width —
+   the ≤820px notice above covers the canvas on phones, but the
+   canvas beneath it stays laid out. */
+@media (max-width: 900px) {
+  .graph-viewer-root .app-shell,
+  .graph-viewer-root .viewer-panel {
+    height: 100%;
+  }
+}
+
 /* The side panel gained a fourth block (Scenario); the upstream grid
    declared rows for three, which overlapped Outputs and Scenario. */
 .graph-viewer-root .side-panel {

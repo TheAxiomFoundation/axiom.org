@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { EncodingStatusRun, LiveEncodingRun } from "@/lib/corpus-status";
 import {
   classifyLiveRun,
+  documentIdentifier,
   graphUrlForSection,
   groupRunsByDocument,
   mergeLiveRunsIntoHistory,
@@ -18,6 +19,7 @@ import {
 function run(overrides: Partial<EncodingStatusRun>): EncodingStatusRun {
   return {
     id: "run",
+    graph_available: true,
     timestamp: "2026-07-01T00:00:00Z",
     citation: null,
     total_duration_ms: 0,
@@ -333,6 +335,11 @@ describe("graphUrlForSection", () => {
     ).toBe("/app?compose=us%3Astatutes%2F26%2F1");
   });
 
+  it("does not link a successful attempt until the graph API confirms availability", () => {
+    expect(graphUrlForSection("de:statutes/bgb/126/absatz-1/inhalt", run({ graph_available: false }))).toBeNull();
+    expect(graphUrlForSection("us:statutes/26/24", run({ graph_available: undefined }))).toBeNull();
+  });
+
   it("never links live-board completions, failures, or unparseable citations", () => {
     const live = run({ id: "a" }) as ReturnType<typeof run> & {
       live?: boolean;
@@ -355,5 +362,16 @@ describe("relativeTime", () => {
     expect(relativeTime("2026-08-10T03:00:00Z", now)).toBe("9h ago");
     expect(relativeTime("2026-08-01T12:00:00Z", now)).toBe("9d ago");
     expect(relativeTime("2026-05-01T12:00:00Z", now)).toBe("May 1, 2026");
+  });
+});
+
+describe("documentIdentifier", () => {
+  it("keeps untitled documents distinct without a naming dictionary", () => {
+    expect(documentIdentifier("de:statute/bgb")).toBe("BGB");
+    expect(documentIdentifier("de:statute/sgb-9-2018")).toBe("SGB-9-2018");
+    expect(documentIdentifier("de:guidance/bzst-dakg-2025/a-19-2")).toBe(
+      "BZST-DAKG-2025 · A-19-2",
+    );
+    expect(documentIdentifier("Pub. L. 117-169")).toBe("Pub. L. 117-169");
   });
 });
