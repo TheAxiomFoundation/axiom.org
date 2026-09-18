@@ -301,7 +301,12 @@ export async function runCalculateRoot(request: {
         "content-type": "application/json",
         ...(key ? { "x-api-key": key } : {}),
       },
-      body: JSON.stringify(request),
+      body: JSON.stringify(request.people ? {
+        root: request.root,
+        facts: request.facts,
+        variables: request.variables,
+        household: { people: { person_1: {}, ...request.people } },
+      } : request),
       signal: AbortSignal.timeout(CALCULATE_TIMEOUT_MS),
       cache: "no-store",
     });

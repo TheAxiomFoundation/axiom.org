@@ -2,10 +2,9 @@
 
 import { humanizeRuleName } from "./citations";
 import { resolveLogicIdentifier } from "./rule-logic";
+import { parseFormulaStrict, type AstNode } from "./formula";
 
-/** Substitute only scalar evidence. Strings, member collections and missing values
- * retain their identifiers so they cannot masquerade as scalar calculations. */
-export function RecordedFormula({ formula, dependencies, entries, valueOf, hasRun, onSelect, activeId, onHighlight }: {
+type Props = {
   formula: string;
   dependencies: string[];
   entries: Map<string, { legalId: string; name: string }>;
@@ -14,17 +13,53 @@ export function RecordedFormula({ formula, dependencies, entries, valueOf, hasRu
   onSelect: (id: string) => void;
   activeId?: string | null;
   onHighlight?: (id: string | null) => void;
-}) {
-  // Keep quoted strings, qualified names, numbers and function names intact.
-  const tokens = formula.match(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b|[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*|[\s\S]/g) ?? [formula];
-  return <pre className="recorded-formula" aria-label={hasRun ? "Formula with recorded values" : "Formula with linked dependencies"}>{tokens.map((token, index) => {
-    const id = /^[A-Za-z_]\w*$/.test(token) && !tokens.slice(index + 1).join("").trimStart().startsWith("(") ? resolveLogicIdentifier(token, dependencies, entries) : undefined;
-    if (!id) return token;
-    const raw = hasRun ? valueOf(id) : undefined;
-    const scalar = typeof raw === "boolean" || (typeof raw === "number" && Number.isFinite(raw)) || (typeof raw === "string" && /^-?\d+(?:\.\d+)?$/.test(raw));
-    const label = humanizeRuleName(entries.get(id)!.name);
-    const text = scalar ? String(raw) : token;
-    const hint = `${label}${hasRun ? scalar ? ` = ${text}` : " · No scalar value reported" : ""}`;
-    return <button type="button" key={index} title={hint} aria-label={hasRun ? hint : token} className={activeId === id ? "is-highlighted" : undefined} onMouseEnter={() => onHighlight?.(id)} onMouseLeave={() => onHighlight?.(null)} onFocus={() => onHighlight?.(id)} onBlur={() => onHighlight?.(null)} onClick={() => onSelect(id)}>{text}</button>;
-  })}</pre>;
+};
+const comparison = { "==": "equals", "!=": "does not equal", ">": "is greater than", ">=": "is at least", "<": "is less than", "<=": "is at most" };
+const arithmetic = { "+": "Add", "-": "Subtract", "*": "Multiply", "/": "Divide" };
+const symbols = { "+": "+", "-": "−", "*": "×", "/": "÷" };
+function showValue(raw: unknown): string {
+  if (raw === null || raw === undefined) return "Not reported";
+  if (typeof raw === "boolean") return raw ? "true" : "false";
+  if (typeof raw === "object") return Object.entries(raw).map(([name, value]) => `${humanizeRuleName(name)}: ${showValue(value)}`).join(" · ");
+  return String(raw);
+}
+function Expression({ node, context }: {node: AstNode; context: Props}) {
+  const child = (part: AstNode, key?: number) => <Expression key={key} node={part} context={context} />;
+  if (node.kind === "ident") {
+    const id = resolveLogicIdentifier(node.name, context.dependencies, context.entries);
+    const raw = id && context.hasRun ? context.valueOf(id) : undefined;
+    const label = humanizeRuleName(id ? context.entries.get(id)!.name : node.name);
+    const value = showValue(raw);
+    const hint = `${label}${context.hasRun ? raw === undefined || raw === null ? " · No scalar value reported" : ` = ${value}` : ""}`;
+    return <button type="button" className={`formula-reference ${context.activeId === id ? "is-highlighted" : ""}`} title={node.name} aria-label={context.hasRun ? hint : node.name} disabled={!id} onMouseEnter={() => id && context.onHighlight?.(id)} onMouseLeave={() => context.onHighlight?.(null)} onFocus={() => id && context.onHighlight?.(id)} onBlur={() => context.onHighlight?.(null)} onClick={() => id && context.onSelect(id)}>
+      <span className="formula-reference-name">{label}</span>
+      {context.hasRun && <span className={`formula-reference-value ${raw === undefined || raw === null ? "is-missing" : ""}`}>{value}</span>}
+    </button>;
+  }
+  if (node.kind === "number" || node.kind === "bool") return <span className="formula-constant">{String(node.value)}</span>;
+  if (node.kind === "logical") {
+    const parts: AstNode[] = [];
+    const collect = (part: AstNode) => { if (part.kind === "logical" && part.op === node.op) {collect(part.left); collect(part.right);} else parts.push(part); };
+    collect(node);
+    return <section className="formula-group"><h5>{node.op === "and" ? "All of these must be true" : "Any of these must be true"}</h5><ol className="formula-conditions">{parts.map((part, index) => <li key={index}>{child(part)}</li>)}</ol></section>;
+  }
+  if (node.kind === "ifElse") return <div className="formula-branches"><section><h5>If</h5>{child(node.cond)}</section><section><h5>Then return</h5>{child(node.then)}</section><section><h5>Otherwise return</h5>{child(node.else_)}</section></div>;
+  if (node.kind === "comparison") return <div className="formula-comparison">{child(node.left)}<span className="formula-operation-label">{comparison[node.op]}</span>{child(node.right)}</div>;
+  if (node.kind === "arith") return <section className="formula-group"><h5>{arithmetic[node.op]}</h5><div className="formula-math">{child(node.left)}<span className="formula-operation-label">{symbols[node.op]}</span>{child(node.right)}</div></section>;
+  if (node.kind === "unary") return <div className="formula-unary"><span className="formula-operation-label">{node.op === "not" ? "Not" : "Negate"}</span>{child(node.operand)}</div>;
+  if (node.kind === "call") {
+    if (node.name === "count_where" && node.args.length === 2) return <section className="formula-group"><h5>Count matching members</h5><div className="formula-count"><span>From</span>{child(node.args[0])}<span>Where true</span>{child(node.args[1])}</div></section>;
+    const title = node.name === "min" ? "Take the minimum" : node.name === "max" ? "Take the maximum" : node.name;
+    return <section className="formula-group"><h5>{title}</h5><ol className="formula-conditions">{node.args.map((arg, index) => <li key={index}>{child(arg)}</li>)}</ol></section>;
+  }
+  if (node.kind === "index") return <section className="formula-group"><h5>Look up</h5>{child(node.target)}<span className="formula-operation-label">at index</span>{child(node.index)}</section>;
+  return <pre>{node.text}</pre>;
+}
+
+/** The written formula remains authoritative; values annotate references, never replace their identity. */
+export function RecordedFormula(props: Props) {
+  const ast = parseFormulaStrict(props.formula);
+  return <div className="readable-formula" aria-label={props.hasRun ? "Formula with recorded values" : "Formula with linked dependencies"}>
+    {ast ? <><Expression node={ast} context={props} /><details className="formula-source"><summary>Exact formula</summary><pre>{props.formula}</pre></details></> : <pre className="formula-source-fallback">{props.formula}</pre>}
+  </div>;
 }

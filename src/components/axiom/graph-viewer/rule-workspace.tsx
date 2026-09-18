@@ -4,6 +4,8 @@ import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode }
 import { ArrowLeft, ArrowRight, BookOpen, GitBranch, LoaderCircle, Network, Play, Search, X } from "lucide-react";
 import { axiomAppUrlForCitation, humanizeRuleName, humanizeSource, readableLawTarget } from "./citations";
 import type { ProgramGraph, RuleNode } from "./types";
+import { MemberCountBreakdown } from "./member-count-breakdown";
+import type { ExplanationRun } from "./result-explanation";
 import { RecordedFormula } from "./recorded-formula";
 import { rememberRule } from "./library-state";
 import { CitationNavigationContext, RuleBody } from "@/components/axiom/rule-body";
@@ -94,13 +96,14 @@ function SourceReader({ rule, id, consumers }: { rule?: RuleNode; id: string; co
   </section>;
 }
 
-export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, onViewChange, scopeLabel, truncated, runReady, scenario, graphControls, onOverview, valueOf, hasRun, stale, renderInput, onRun, running }: {
+export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, onViewChange, scopeLabel, truncated, runReady, scenario, graphControls, onOverview, valueOf, hasRun, stale, renderInput, onRun, running, members = [], run = null }: {
   graph: ProgramGraph; rootTarget?: string; selectedId: string; onSelect: (id: string) => void;
   view: WorkspaceView; onViewChange: (view: WorkspaceView) => void;
   scopeLabel: string; truncated: boolean; runReady: boolean; scenario: ReactNode;
   graphControls?: ReactNode;
-  renderInput?: (id: string) => ReactNode;
+  renderInput?: (id: string, member?: string | null) => ReactNode;
   onRun?: () => void; running?: boolean;
+  members?: string[]; run?: ExplanationRun | null;
   onOverview?: () => void;
   valueOf: (id: string) => unknown; hasRun: boolean; stale: boolean;
 }) {
@@ -199,18 +202,32 @@ export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, o
     {view !== "run" && hasRun && stale && <p className="workspace-stale" role="status">Inputs have changed since the last run. Run again to update the results.</p>}
     {view === "read" && <SourceReader key={selectedId} rule={rule} id={selectedId} consumers={consumers} />}
     {view === "structure" && <section className="workspace-structure" aria-label="Immediate dependencies">
-      <div className="workspace-section-heading"><h2>Direct relationships</h2>{onRun && runReady && <button className="workspace-button" disabled={running} onClick={onRun}>{running ? "Running…" : hasRun ? "Run again" : "Run household"}</button>}{hasRun && <span>Selected result: <strong>{value(selectedId)}</strong>{stale ? " · Previous run" : ""}</span>}</div>
+      <div className="workspace-section-heading"><h2>Direct relationships</h2>{onRun && runReady && <button className="workspace-button" disabled={running} onClick={onRun}>{running ? "Running…" : hasRun ? "Run again" : "Run household"}</button>}</div>
       <RelationshipDiagram activeId={activeDependency}><div className={`workspace-neighborhood ${dependencies.length ? "has-dependencies" : ""} ${consumers.length ? "has-consumers" : ""}`} key={selectedId}>
         <NeighborColumn title="Built from" ids={dependencies} entries={entries} label={label} onSelect={navigate} hasRun={hasRun} value={value} activeId={activeDependency} onHighlight={setActiveDependency} renderInput={renderInput} empty="No dependencies recorded in this scope." />
-        <div className="workspace-anchor" data-relationship-anchor><span className="relationship-caption">Selected rule</span><h3>{label(selectedId)}</h3>{renderInput?.(selectedId)}
+        <div className="workspace-anchor" data-relationship-anchor><span className="relationship-caption">Selected rule</span><h3>{label(selectedId)}</h3>
+          <SelectedNodeResult name={label(selectedId)} value={valueOf(selectedId)} hasRun={hasRun} stale={stale} running={running} entity={rule?.entity} unit={rule?.unit} />
+          {renderInput?.(selectedId)}
           {rule?.formula ? <section className="relationship-formula"><h4>How these values combine</h4><RecordedFormula formula={rule.formula} dependencies={dependencies} entries={entries} valueOf={valueOf} hasRun={hasRun} onSelect={navigate} activeId={activeDependency} onHighlight={setActiveDependency} /></section> : <p className="relationship-caption">No formula is available for this item.</p>}
           <button onClick={() => changeView("read")}>Read this rule <ArrowRight size={14} /></button></div>
         <NeighborColumn title="Used by" ids={consumers.map((item) => item.legalId)} entries={entries} label={label} onSelect={navigate} hasRun={hasRun} value={value} activeId={activeDependency} onHighlight={setActiveDependency} empty="No consumers recorded in this scope." />
       </div></RelationshipDiagram>
+      <MemberCountBreakdown graph={graph} selectedId={selectedId} members={members} run={run} stale={stale} renderInput={renderInput} valueOf={valueOf} onSelect={navigate} />
       {truncated && <p className="workspace-footnote">This graph is partial; additional relationships may exist.</p>}
     </section>}
     {view === "run" && <section className="workspace-run" aria-label="Scenario workspace"><div className="workspace-section-heading"><h2>Household scenario</h2><span>Runs the selected outputs in this scope</span></div>{runReady ? scenario : <p role="status">Execution is not available for this scope. You can still read and explore its rules.</p>}</section>}
   </div>;
+}
+
+function SelectedNodeResult({ name, value, hasRun, stale, running, entity, unit }: {
+  name: string; value: unknown; hasRun: boolean; stale: boolean; running?: boolean; entity?: string | null; unit?: string | null;
+}) {
+  const format = (raw: unknown): string => raw === null || raw === undefined ? "Not reported" : typeof raw === "boolean" ? raw ? "True" : "False" : String(raw);
+  const instances = value !== null && typeof value === "object" ? Object.entries(value) : null;
+  return <section className="relationship-result" aria-label={`Result for ${name}`} aria-live="polite">
+    <div className="relationship-result-heading"><span>{hasRun ? stale ? "Previous result" : "Result" : "Result"}</span>{entity && <small>{humanizeRuleName(entity.replace(/([a-z])([A-Z])/g, "$1 $2"))}</small>}</div>
+    {running ? <p className="relationship-result-status">Calculating…</p> : !hasRun ? <p className="relationship-result-status">Run household to calculate</p> : instances ? <dl className="relationship-result-instances">{instances.map(([id, result]) => <div key={id}><dt>{humanizeRuleName(id)}</dt><dd>{format(result)}{unit && ` ${unit}`}</dd></div>)}</dl> : <strong className={`relationship-result-value ${value === undefined || value === null ? "is-missing" : ""}`}>{format(value)}{unit && value !== undefined && value !== null && <small>{unit}</small>}</strong>}
+  </section>;
 }
 
 function NeighborColumn({ title, ids, entries, label, onSelect, hasRun, value, empty, activeId, onHighlight, renderInput }: {

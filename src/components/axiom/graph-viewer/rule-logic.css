@@ -50,3 +50,24 @@
 .recorded-formula button { display: inline; font: inherit; color: var(--axiom-green, #176b42); background: rgba(23,107,66,.07); border: 0; border-bottom: 1px dotted currentColor; border-radius: 3px; padding: 1px 4px; cursor: pointer; }
 .recorded-formula button:hover, .recorded-formula button:focus-visible, .recorded-formula button.is-highlighted { background: rgba(23,107,66,.17); outline: 2px solid rgba(23,107,66,.35); outline-offset: 1px; }
 .mini-graph-card.is-highlighted { outline: 2px solid #438261; outline-offset: 2px; background: #eff7f1; }
+
+.readable-formula { display: flex; flex-direction: column; gap: 14px; font: 13px/1.5 var(--font-geist-sans, sans-serif); min-width: 0; }
+.readable-formula h5 { font: inherit; font-size: 12px; font-weight: 600; margin: 0 0 9px; color: var(--color-ink-secondary); }
+.readable-formula .formula-reference, .workspace-anchor .readable-formula .formula-reference { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-width: 0; text-align: left; font: inherit; padding: 8px 10px; border: 1px solid var(--color-rule); border-radius: 5px; color: var(--color-ink); background: var(--color-paper); cursor: pointer; }
+.readable-formula .formula-reference:hover, .readable-formula .formula-reference:focus-visible, .readable-formula .formula-reference.is-highlighted { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+.formula-reference-name { overflow-wrap: anywhere; }
+.formula-reference-value { flex-shrink: 0; max-width: 48%; overflow-wrap: anywhere; font: 600 12px/1.5 monospace; padding: 2px 7px; border-radius: 4px; background: rgba(23,107,66,.08); }
+.formula-reference-value.is-missing { color: var(--color-ink-secondary); background: transparent; font-weight: 400; font-family: inherit; }
+.formula-conditions { list-style: none; margin: 0; padding: 0 0 0 12px; border-left: 2px solid var(--color-rule); display: flex; flex-direction: column; gap: 9px; }
+.formula-conditions li { min-width: 0; }
+.formula-group { min-width: 0; }
+.formula-branches { display: flex; flex-direction: column; gap: 16px; }
+.formula-branches > section { padding-left: 12px; border-left: 2px solid var(--color-rule); }
+.formula-comparison, .formula-math, .formula-unary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.formula-operation-label { font-size: 12px; color: var(--color-ink-secondary); }
+.formula-constant { font: 600 14px/1.5 monospace; }
+.formula-count { display: grid; gap: 7px; }
+.formula-count > span { font-size: 11px; color: var(--color-ink-secondary); }
+.formula-source { margin-top: 6px; border-top: 1px solid var(--color-rule); padding-top: 10px; }
+.formula-source summary { cursor: pointer; font-size: 11px; color: var(--color-ink-secondary); }
+.readable-formula pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.6 monospace; margin: 8px 0 0; }

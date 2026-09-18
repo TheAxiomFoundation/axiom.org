@@ -259,6 +259,7 @@ export function GraphViewerApp({
   const [editingRunInputs, setEditingRunInputs] = useState(false);
   const [runResult, setRunResult] = useState<{
     submittedFacts?: Record<string, unknown>;
+    submittedPersonIds?: Record<string, string>;
     outputs: Record<string, number | string | boolean | null>;
     trace: Array<{
       variable: string;
@@ -1319,7 +1320,7 @@ export function GraphViewerApp({
           vintage: { engine_release: string };
         } | null;
       };
-      setRunResult({ ...data, submittedFacts: { ...scenario } });
+      setRunResult({ ...data, submittedFacts: { ...scenario }, submittedPersonIds: Object.fromEntries(["person_1", ...extraMembers].map((id, index) => [id, `person:1:${index + 1}`])) });
       setEditingRunInputs(false);
       trackRun("ok");
     } catch (err) {
@@ -2383,12 +2384,14 @@ export function GraphViewerApp({
             runReady={runAffordanceReady}
             onRun={() => void runScenario()}
             running={running}
-            renderInput={(id) => {
+            members={extraMembers}
+            run={runResult}
+            renderInput={(id, selectedMember) => {
               const input = graph.inputs.find(item => item.legalId === id);
               if (!input || !(input.name in inputMeta.dtypes)) return null;
               const name = input.name;
               const fallback = inputMeta.defaults[name];
-              const members = input.entity === "Person" ? [null, ...extraMembers] : [null];
+              const members = selectedMember !== undefined ? [selectedMember] : input.entity === "Person" ? [null, ...extraMembers] : [null];
               return <div className="relationship-inputs">{members.map(member => {
                 const draft = member ? memberScenario[member]?.[name] : scenario[name];
                 const effective = draft ?? fallback;
@@ -3227,12 +3230,12 @@ export function GraphViewerApp({
               <section className="node-inspector-code" aria-label="Formula">
                 <h3>Formula</h3>
                 <div className="node-inspector-code-body">
-                  {runResult && graph && rule ? <RecordedFormula
+                  {graph && rule ? <RecordedFormula
                     formula={formula}
                     dependencies={[...rule.ruleDeps, ...rule.inputDeps, ...rule.relationDeps]}
                     entries={new Map([...graph.rules, ...graph.inputs, ...graph.relations].map((entry) => [entry.legalId, entry]))}
                     valueOf={(id) => inputAwareEvidence(graph, runResult, id, inputMeta.defaults)}
-                    hasRun={true}
+                    hasRun={Boolean(runResult)}
                     activeId={formulaDependency}
                     onHighlight={setFormulaDependency}
                     onSelect={(id) => { flyFromIndex(id); if (walkInputById.has(id)) inspectInput(id); else inspectRule(id); }}

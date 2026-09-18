@@ -9,8 +9,9 @@ import { RuleLogic } from "./rule-logic";
 
 export type ExplanationRun = {
   outputs: Record<string, unknown>;
-  trace: Array<{ variable: string; value: unknown; instances?: Array<{ entity_id: string; value: unknown }> }>;
+  trace: Array<{ variable: string; value: unknown; instances?: Array<{ entity_id: string; value: unknown }>; dependencies?: Array<{ variable: string; entity_id: string; value: unknown }> }>;
   submittedFacts?: Record<string, unknown>;
+  submittedPersonIds?: Record<string, string>;
 };
 
 export function recordedEvidence(graph: ProgramGraph, run: ExplanationRun, id: string): { value: unknown; origin: string } | undefined {
@@ -19,6 +20,7 @@ export function recordedEvidence(graph: ProgramGraph, run: ExplanationRun, id: s
   const unique = all.filter((item) => item.legalId.split("#").at(-1) === fragment).length === 1;
   const trace = run.trace.find((item) => item.variable === id) ?? (unique ? run.trace.find((item) => item.variable === fragment) : undefined);
   const key = Object.hasOwn(run.outputs, id) ? id : unique && Object.hasOwn(run.outputs, fragment) ? fragment : undefined;
+  if (trace?.instances?.length) return { value: Object.fromEntries(trace.instances.map(item => [Object.entries(run.submittedPersonIds ?? {}).find(([, engineId]) => engineId === item.entity_id)?.[0] ?? item.entity_id, item.value])), origin: "Recorded by engine" };
   if (key) return { value: run.outputs[key], origin: "Returned result" };
   if (trace) return { value: trace.instances?.length ? Object.fromEntries(trace.instances.map((item) => [item.entity_id, item.value])) : trace.value, origin: "Recorded by engine" };
   const input = graph.inputs.find((item) => item.legalId === id);

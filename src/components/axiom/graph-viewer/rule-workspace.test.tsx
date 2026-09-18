@@ -219,3 +219,19 @@ it("edits a dependency and reruns without leaving Relationships", () => {
   fireEvent.click(screen.getByRole("button", {name: "Run again"}));
   expect(onRun).toHaveBeenCalledOnce();
 });
+
+it("shows the selected boolean result inside its own named result panel", () => {
+  window.history.replaceState({}, "", "/");
+  render(<Harness />);
+  const result = screen.getByRole("region", {name: "Result for Result"});
+  expect(within(result).getByText("False")).toBeInTheDocument();
+  expect(screen.queryByText(/Selected result:/)).not.toBeInTheDocument();
+});
+it("keeps per-entity results distinct and labels stale values", () => {
+  render(<RuleWorkspace graph={graph} selectedId="result" onSelect={vi.fn()} view="structure" onViewChange={vi.fn()} scopeLabel="Test" truncated={false} runReady scenario={null} hasRun stale valueOf={() => ({person_1: false, person_2: true})} />);
+  const result = screen.getByRole("region", {name: "Result for Result"});
+  expect(within(result).getByText("Previous result")).toBeInTheDocument();
+  expect(within(result).getByText("Person 1")).toBeInTheDocument();
+  expect(within(result).getByText("Person 2")).toBeInTheDocument();
+  expect(within(result).getByText("True")).toBeInTheDocument();
+});
