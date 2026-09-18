@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
-import { recordedEvidence, relevantInputs, resultReason, resultBlockers, ResultExplanation, type ExplanationRun } from "./result-explanation";
+import { inputAwareEvidence, recordedEvidence, relevantInputs, resultReason, resultBlockers, ResultExplanation, type ExplanationRun } from "./result-explanation";
 import type { ProgramGraph, RuleNode } from "./types";
 const rule = (legalId: string): RuleNode => ({ legalId, name: legalId.split("#").at(-1)!, fileLegalId: "law", kind: "derived", entity: null, dtype: null, period: null, unit: null, source: null, ruleDeps: [], inputDeps: [], relationDeps: [] });
 const graph: ProgramGraph = { rules: [{...rule("law#result"), ruleDeps:["law#condition","law#missing"], formula:"if condition: 5 else: 0"},rule("law#condition")], inputs:[],relations:[],ownOutputs:[],terminalOutputs:[] };
@@ -89,4 +89,14 @@ describe("recorded eligibility blockers", () => {
   expect(resultBlockers(either, { outputs: { result: 0, claim_ok: false }, trace: [] }, "law#result")).toEqual([]);
   expect(resultBlockers(data, { outputs: { result: 5, claim_ok: false }, trace: [] }, "law#result")).toEqual([]);
  });
+});
+
+it("uses declared input defaults only when evidence is absent", () => {
+ const data = { ...graph, inputs: [{legalId: "law#input.flag", name: "flag", fileLegalId: "law"}, {legalId: "law#input.amount", name: "amount", fileLegalId: "law"}] };
+ const defaults = { flag: false, amount: 0, missing: 0 };
+ expect(inputAwareEvidence(data, run, "law#input.flag", defaults)).toBe(false);
+ expect(inputAwareEvidence(data, run, "law#input.amount", defaults)).toBe(0);
+ expect(inputAwareEvidence(data, {...run, submittedFacts: {amount: 25}}, "law#input.amount", defaults)).toBe(25);
+ expect(inputAwareEvidence(data, run, "law#missing", defaults)).toBeUndefined();
+ expect(inputAwareEvidence(data, run, "law#input.flag", {})).toBeUndefined();
 });

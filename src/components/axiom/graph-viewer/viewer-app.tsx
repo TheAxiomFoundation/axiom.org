@@ -2,7 +2,7 @@
 
 import { ResultGraphPreview } from "./result-graph-preview";
 import { RecordedFormula } from "./recorded-formula";
-import { ResultExplanation, recordedEvidence } from "./result-explanation";
+import { ResultExplanation, inputAwareEvidence } from "./result-explanation";
 import { GraphLoading } from "./graph-loading";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -2636,9 +2636,38 @@ export function GraphViewerApp({
             scopeLabel={composeFocus ? humanizeCitation(fileLegalIdOf(composeFocus)) : effectiveProgram?.displayName ?? "Program"}
             truncated={composedTruncated}
             runReady={runAffordanceReady}
+            onRun={() => void runScenario()}
+            running={running}
+            renderInput={(id) => {
+              const input = graph.inputs.find(item => item.legalId === id);
+              if (!input || !(input.name in inputMeta.dtypes)) return null;
+              const name = input.name;
+              const fallback = inputMeta.defaults[name];
+              const members = input.entity === "Person" ? [null, ...extraMembers] : [null];
+              return <div className="relationship-inputs">{members.map(member => {
+                const draft = member ? memberScenario[member]?.[name] : scenario[name];
+                const effective = draft ?? fallback;
+                const change = (next: number | boolean | undefined) => {
+                  const update = (current: Record<string, number | boolean>) => {
+                    const result = { ...current };
+                    if (next === undefined) delete result[name]; else result[name] = next;
+                    return result;
+                  };
+                  if (member) setMemberScenario(current => ({ ...current, [member]: update(current[member] ?? {}) }));
+                  else setScenario(update);
+                };
+                return <label key={member ?? "household"}><span>{members.length > 1 ? member ? memberLabel(member) : "Person 1" : humanize(name)}</span>
+                  {inputMeta.dtypes[name] === "bool" ? <select disabled={running} value={effective === true ? "true" : effective === false ? "false" : ""} onChange={event => change(event.target.value === "" ? undefined : event.target.value === "true")}>
+                    {typeof effective !== "boolean" && <option value="">—</option>}<option value="false">false</option><option value="true">true</option>
+                  </select> : inputMeta.options?.[name] ? <select disabled={running} value={typeof effective === "number" ? effective : ""} onChange={event => change(event.target.value === "" ? undefined : Number(event.target.value))}>
+                    {typeof effective !== "number" && <option value="">—</option>}{inputMeta.options[name]!.map(option => <option key={option} value={option}>{enumOptionLabel(name, option)}</option>)}
+                  </select> : <input disabled={running} type="number" step="any" value={typeof effective === "number" ? effective : ""} onChange={event => change(event.target.value === "" ? undefined : event.target.valueAsNumber)} />}
+                </label>;
+              })}</div>;
+            }}
             scenario={scenarioFlowUI}
             graphControls={<div className="graph-controls-slot" ref={setGraphControlsSlot} />}
-            valueOf={(id) => runResult && graph ? recordedEvidence(graph, runResult, id)?.value : undefined}
+            valueOf={(id) => graph ? inputAwareEvidence(graph, runResult, id, inputMeta.defaults) : undefined}
             hasRun={Boolean(runResult)}
             stale={resultsStale}
           />
@@ -3262,7 +3291,7 @@ export function GraphViewerApp({
             consumers.length > 0 ? (
               (() => {
                 const miniValue = (id: string): string | null => {
-                  const raw = runResult && graph ? recordedEvidence(graph, runResult, id)?.value : undefined;
+                  const raw = graph ? inputAwareEvidence(graph, runResult, id, inputMeta.defaults) : undefined;
                   if (raw === undefined || raw === null) return null;
                   if (typeof raw === "boolean")
                     return raw ? "✓ true" : "✗ false";
@@ -3315,8 +3344,8 @@ export function GraphViewerApp({
                       (runResult
                         ? typeof fallback === "number" ||
                           typeof fallback === "boolean"
-                          ? `default — ${String(fallback)}`
-                          : "default"
+                          ? String(fallback)
+                          : "Not reported"
                         : null),
                     valueTone:
                       answered === null && runResult
@@ -3457,7 +3486,7 @@ export function GraphViewerApp({
                     formula={formula}
                     dependencies={[...rule.ruleDeps, ...rule.inputDeps, ...rule.relationDeps]}
                     entries={new Map([...graph.rules, ...graph.inputs, ...graph.relations].map((entry) => [entry.legalId, entry]))}
-                    valueOf={(id) => recordedEvidence(graph, runResult, id)?.value}
+                    valueOf={(id) => inputAwareEvidence(graph, runResult, id, inputMeta.defaults)}
                     hasRun={true}
                     activeId={formulaDependency}
                     onHighlight={setFormulaDependency}

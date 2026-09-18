@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, ArrowRight, BookOpen, GitBranch, LoaderCircle, Network, Play, Search, X } from "lucide-react";
 import { axiomAppUrlForCitation, humanizeRuleName, humanizeSource, readableLawTarget } from "./citations";
 import type { ProgramGraph, RuleNode } from "./types";
@@ -94,11 +94,13 @@ function SourceReader({ rule, id, consumers }: { rule?: RuleNode; id: string; co
   </section>;
 }
 
-export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, onViewChange, scopeLabel, truncated, runReady, scenario, graphControls, onOverview, valueOf, hasRun, stale }: {
+export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, onViewChange, scopeLabel, truncated, runReady, scenario, graphControls, onOverview, valueOf, hasRun, stale, renderInput, onRun, running }: {
   graph: ProgramGraph; rootTarget?: string; selectedId: string; onSelect: (id: string) => void;
   view: WorkspaceView; onViewChange: (view: WorkspaceView) => void;
   scopeLabel: string; truncated: boolean; runReady: boolean; scenario: ReactNode;
   graphControls?: ReactNode;
+  renderInput?: (id: string) => ReactNode;
+  onRun?: () => void; running?: boolean;
   onOverview?: () => void;
   valueOf: (id: string) => unknown; hasRun: boolean; stale: boolean;
 }) {
@@ -197,10 +199,10 @@ export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, o
     {view !== "run" && hasRun && stale && <p className="workspace-stale" role="status">Inputs have changed since the last run. Run again to update the results.</p>}
     {view === "read" && <SourceReader key={selectedId} rule={rule} id={selectedId} consumers={consumers} />}
     {view === "structure" && <section className="workspace-structure" aria-label="Immediate dependencies">
-      <div className="workspace-section-heading"><h2>Direct relationships</h2>{hasRun && <span>Selected result: <strong>{value(selectedId)}</strong>{stale ? " · Previous run" : ""}</span>}</div>
+      <div className="workspace-section-heading"><h2>Direct relationships</h2>{onRun && runReady && <button className="workspace-button" disabled={running} onClick={onRun}>{running ? "Running…" : hasRun ? "Run again" : "Run household"}</button>}{hasRun && <span>Selected result: <strong>{value(selectedId)}</strong>{stale ? " · Previous run" : ""}</span>}</div>
       <RelationshipDiagram activeId={activeDependency}><div className={`workspace-neighborhood ${dependencies.length ? "has-dependencies" : ""} ${consumers.length ? "has-consumers" : ""}`} key={selectedId}>
-        <NeighborColumn title="Built from" ids={dependencies} entries={entries} label={label} onSelect={navigate} hasRun={hasRun} value={value} activeId={activeDependency} onHighlight={setActiveDependency} empty="No dependencies recorded in this scope." />
-        <div className="workspace-anchor" data-relationship-anchor><span className="relationship-caption">Selected rule</span><h3>{label(selectedId)}</h3>
+        <NeighborColumn title="Built from" ids={dependencies} entries={entries} label={label} onSelect={navigate} hasRun={hasRun} value={value} activeId={activeDependency} onHighlight={setActiveDependency} renderInput={renderInput} empty="No dependencies recorded in this scope." />
+        <div className="workspace-anchor" data-relationship-anchor><span className="relationship-caption">Selected rule</span><h3>{label(selectedId)}</h3>{renderInput?.(selectedId)}
           {rule?.formula ? <section className="relationship-formula"><h4>How these values combine</h4><RecordedFormula formula={rule.formula} dependencies={dependencies} entries={entries} valueOf={valueOf} hasRun={hasRun} onSelect={navigate} activeId={activeDependency} onHighlight={setActiveDependency} /></section> : <p className="relationship-caption">No formula is available for this item.</p>}
           <button onClick={() => changeView("read")}>Read this rule <ArrowRight size={14} /></button></div>
         <NeighborColumn title="Used by" ids={consumers.map((item) => item.legalId)} entries={entries} label={label} onSelect={navigate} hasRun={hasRun} value={value} activeId={activeDependency} onHighlight={setActiveDependency} empty="No consumers recorded in this scope." />
@@ -211,11 +213,11 @@ export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, o
   </div>;
 }
 
-function NeighborColumn({ title, ids, entries, label, onSelect, hasRun, value, empty, activeId, onHighlight }: {
-  title: string; ids: string[]; entries: Map<string, Entry>; label: (id: string) => string; onSelect: (id: string) => void; hasRun: boolean; value: (id: string) => string; empty: string; activeId: string | null; onHighlight: (id: string | null) => void;
+function NeighborColumn({ title, ids, entries, label, onSelect, hasRun, value, empty, activeId, onHighlight, renderInput }: {
+  title: string; ids: string[]; entries: Map<string, Entry>; label: (id: string) => string; onSelect: (id: string) => void; hasRun: boolean; value: (id: string) => string; empty: string; activeId: string | null; onHighlight: (id: string | null) => void; renderInput?: (id: string) => ReactNode;
 }) {
   const [limit, setLimit] = useState(6);
-  return <div className="workspace-neighbors" data-relationship-side={title === "Built from" ? "left" : "right"}><h3>{title}</h3>{ids.slice(0, limit).map((id) => <button key={id} data-neighbor-id={id} className={activeId === id ? "is-highlighted" : undefined} onMouseEnter={() => onHighlight(id)} onMouseLeave={() => onHighlight(null)} onFocus={() => onHighlight(id)} onBlur={() => onHighlight(null)} aria-label={`${entries.get(id)?.kind ?? "Outside loaded scope"} ${label(id)}${hasRun ? ` ${value(id)}` : ""}`} disabled={!entries.has(id)} onClick={() => onSelect(id)}><small>{entries.get(id)?.kind ?? "Outside loaded scope"}{entries.get(id)?.dtype ? ` · ${entries.get(id)?.dtype}` : ""}</small><span>{label(id)}</span>{hasRun && <strong>{value(id)}</strong>}<ArrowRight size={14} aria-hidden="true" /></button>)}{!ids.length && <p>{empty}</p>}{ids.length > limit && <button className="workspace-more" onClick={() => setLimit((current) => current + 12)}>Show {Math.min(12, ids.length - limit)} more · {ids.length - limit} hidden</button>}</div>;
+  return <div className="workspace-neighbors" data-relationship-side={title === "Built from" ? "left" : "right"}><h3>{title}</h3>{ids.slice(0, limit).map((id) => <Fragment key={id}><button data-neighbor-id={id} className={activeId === id ? "is-highlighted" : undefined} onMouseEnter={() => onHighlight(id)} onMouseLeave={() => onHighlight(null)} onFocus={() => onHighlight(id)} onBlur={() => onHighlight(null)} aria-label={`${entries.get(id)?.kind ?? "Outside loaded scope"} ${label(id)}${hasRun ? ` ${value(id)}` : ""}`} disabled={!entries.has(id)} onClick={() => onSelect(id)}><small>{entries.get(id)?.kind ?? "Outside loaded scope"}{entries.get(id)?.dtype ? ` · ${entries.get(id)?.dtype}` : ""}</small><span>{label(id)}</span>{hasRun && <strong>{value(id)}</strong>}<ArrowRight size={14} aria-hidden="true" /></button>{renderInput?.(id)}</Fragment>)}{!ids.length && <p>{empty}</p>}{ids.length > limit && <button className="workspace-more" onClick={() => setLimit((current) => current + 12)}>Show {Math.min(12, ids.length - limit)} more · {ids.length - limit} hidden</button>}</div>;
 }
 
 function RelationshipDiagram({ children, activeId }: { children: ReactNode; activeId: string | null }) {

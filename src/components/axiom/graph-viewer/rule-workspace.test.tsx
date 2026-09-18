@@ -208,3 +208,14 @@ describe("rule workspace: source reader and pointer affordances", () => {
     expect(screen.getByRole("button", { name: "Read" })).toHaveAttribute("aria-current", "page");
   });
 });
+
+it("edits a dependency and reruns without leaving Relationships", () => {
+  const onRun = vi.fn(), onSelect = vi.fn(), onEdit = vi.fn();
+  const data = { ...graph, rules: [{...rule("result"), inputDeps: ["input.amount"]}], inputs: [{legalId: "input.amount", name: "amount", fileLegalId: "test"}] };
+  render(<RuleWorkspace graph={data} selectedId="result" onSelect={onSelect} view="structure" onViewChange={vi.fn()} scopeLabel="Test" truncated={false} runReady scenario={null} hasRun stale={false} valueOf={() => 0} onRun={onRun} renderInput={id => id === "input.amount" ? <label>Amount<input type="number" defaultValue={0} onChange={event => onEdit(Number(event.target.value))} /></label> : null} />);
+  fireEvent.change(screen.getByRole("spinbutton", {name: "Amount"}), {target: {value: "500"}});
+  expect(onEdit).toHaveBeenCalledWith(500);
+  expect(onSelect).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", {name: "Run again"}));
+  expect(onRun).toHaveBeenCalledOnce();
+});

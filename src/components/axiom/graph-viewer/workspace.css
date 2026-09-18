@@ -473,3 +473,9 @@ body:has(.has-workspace) .nav-bar { display: none; }
 
 .result-blockers { list-style: none; padding: 0; margin: 12px 0; display: grid; gap: 8px; }
 .result-blockers li { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; padding: 12px 14px; border-left: 2px solid var(--color-accent); background: var(--color-paper); font-size: 13px; line-height: 1.5; }
+
+.relationship-inputs { margin: -9px 0 12px; padding: 10px 12px; border: 1px solid var(--color-rule); border-radius: 0 0 6px 6px; background: var(--color-paper-elevated); }
+.relationship-inputs label { display: flex; align-items: center; gap: 12px; margin: 4px 0; font-size: 12px; }
+.relationship-inputs label span { flex: 1; }
+.relationship-inputs input, .relationship-inputs select { width: 100px; min-width: 0; padding: 6px 8px; border: 1px solid var(--color-rule); border-radius: 4px; color: var(--color-ink); background: var(--color-paper); font: inherit; }
+.workspace-anchor .relationship-inputs { margin: 0 0 16px; border-radius: 6px; }

@@ -27,6 +27,15 @@ export function recordedEvidence(graph: ProgramGraph, run: ExplanationRun, id: s
   return undefined;
 }
 
+/** Registry defaults apply only to inputs, never to an unreported calculation. */
+export function inputAwareEvidence(graph: ProgramGraph, run: ExplanationRun | null, id: string, defaults: Record<string, unknown>): unknown {
+  const evidence = run ? recordedEvidence(graph, run, id)?.value : undefined;
+  if (evidence !== undefined && evidence !== null) return evidence;
+  const input = graph.inputs.find(item => item.legalId === id);
+  if (!input) return evidence;
+  return defaults[input.name] ?? defaults[input.name.replace(/^input\./, "")];
+}
+
 function format(value: unknown): string {
   if (value === undefined || value === null) return "Not reported";
   if (typeof value === "boolean") return value ? "True" : "False";
