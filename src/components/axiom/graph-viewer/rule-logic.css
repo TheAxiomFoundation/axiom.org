@@ -44,3 +44,9 @@
  .logic-arguments li { padding-left:0; }
  .logic-calculation { padding:12px 0 24px; }
 }
+
+/* Shared scenario formula: values stay attached to the named dependency. */
+.recorded-formula { white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.9 var(--font-geist-mono, monospace); margin: 0; }
+.recorded-formula button { display: inline; font: inherit; color: var(--axiom-green, #176b42); background: rgba(23,107,66,.07); border: 0; border-bottom: 1px dotted currentColor; border-radius: 3px; padding: 1px 4px; cursor: pointer; }
+.recorded-formula button:hover, .recorded-formula button:focus-visible, .recorded-formula button.is-highlighted { background: rgba(23,107,66,.17); outline: 2px solid rgba(23,107,66,.35); outline-offset: 1px; }
+.mini-graph-card.is-highlighted { outline: 2px solid #438261; outline-offset: 2px; background: #eff7f1; }

@@ -30,7 +30,7 @@ describe("rule workspace", () => {
   });
   it("walks a relationship and returns to the previous selection", () => {
     render(<Harness />);
-    fireEvent.click(screen.getByRole("button", { name: /Rule Shared Not evaluated/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Rule Shared Not reported/i }));
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Shared");
     expect(new URLSearchParams(window.location.search).get("selection")).toBe("shared");
     fireEvent.click(screen.getByRole("button", { name: "Back to previous rule" }));
@@ -53,23 +53,23 @@ describe("rule workspace", () => {
   it("shows only the selected RuleSpec definition in Read", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ filePath: "test.yaml", content: "format: rulespec/v1\nrules:\n  - name: result\n    kind: derived\n  - name: sibling\n    kind: input" }) } as Response));
     render(<Harness data={{ ...graph, rules: [{ ...rule("result"), formula: "2 * 3" }] }} />);
-    expect(screen.queryByRole("button", { name: "Logic", exact: true })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Read", exact: true }));
+    expect(screen.queryByRole("button", { name: "Logic" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Read" }));
     expect(await screen.findByRole("region", { name: "RuleSpec YAML" })).toHaveTextContent("name: result");
     expect(screen.queryByRole("region", { name: "Encoded formula" })).not.toBeInTheDocument();
   });
   it("connects formula operands to their dependencies and follows them", () => {
     render(<Harness data={{ ...graph, rules: [{ ...rule("result", ["shared"]), formula: "shared + 1" }, rule("shared")] }} />);
-    const operand = screen.getByRole("button", { name: "shared", exact: true });
+    const operand = screen.getByRole("button", { name: "Shared · No scalar value reported" });
     fireEvent.focus(operand);
-    expect(screen.getByRole("button", { name: "Rule Shared Not evaluated" })).toHaveClass("is-highlighted");
+    expect(screen.getByRole("button", { name: "Rule Shared Not reported" })).toHaveClass("is-highlighted");
     fireEvent.click(operand);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Shared");
   });
   it("returns from Read to the graph with the same selected node", () => {
     render(<Harness />);
     fireEvent.click(screen.getByRole("button", { name: "Graph" }));
-    fireEvent.click(screen.getByRole("button", { name: "Read", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Read" }));
     fireEvent.click(screen.getByRole("button", { name: "Back to previous rule" }));
     expect(screen.getByRole("button", { name: "Graph" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Result");
@@ -80,7 +80,7 @@ describe("rule workspace", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Search this scope" }), { target: { value: "other" } });
     fireEvent.click(screen.getByRole("button", { name: "Other Rule" }));
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Other");
-    expect(screen.queryByRole("button", { name: "Run", exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Run" })).not.toBeInTheDocument();
   });
 });
 
@@ -188,7 +188,7 @@ describe("rule workspace: source reader and pointer affordances", () => {
   it("highlights a dependency from the formula and from the neighbor column, then opens Read", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
     render(<SourcedHarness view="structure" />);
-    const operand = screen.getByRole("button", { name: "shared", exact: true });
+    const operand = screen.getByRole("button", { name: "Shared = 1" });
     const neighbor = screen.getByRole("button", { name: /^Rule Shared/ });
     fireEvent.mouseEnter(operand);
     expect(neighbor).toHaveClass("is-highlighted");
@@ -205,6 +205,6 @@ describe("rule workspace: source reader and pointer affordances", () => {
     fireEvent.blur(neighbor);
     expect(operand).not.toHaveClass("is-highlighted");
     fireEvent.click(screen.getByRole("button", { name: /Read this rule/ }));
-    expect(screen.getByRole("button", { name: "Read", exact: true })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: "Read" })).toHaveAttribute("aria-current", "page");
   });
 });

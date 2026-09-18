@@ -536,3 +536,13 @@ body:has(.corpus-library:not([hidden])) { overflow: hidden; }
 .source-atlas-gallery-node:hover { border-color: var(--color-accent); background: color-mix(in srgb,var(--color-accent) 4%,var(--color-paper)); }
 .source-atlas-gallery-node:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 @media(prefers-reduced-motion: reduce) { .source-atlas-gallery-node { transition: none; } }
+
+.library-belgium-map .library-state-label { font-size: 16px; }
+.belgium-jurisdiction-callout { cursor: pointer; }
+.belgium-jurisdiction-callout > path { fill: none; stroke: var(--color-accent); stroke-width: 1; opacity: .5; }
+.belgium-jurisdiction-callout > circle { fill: var(--color-accent); }
+.belgium-jurisdiction-callout rect { fill: var(--color-paper); stroke: var(--color-rule); }
+.belgium-jurisdiction-callout text { font-size: 13px; fill: var(--color-ink); }
+.belgium-jurisdiction-callout:hover rect, .belgium-jurisdiction-callout:focus-visible rect { stroke: var(--color-accent); fill: color-mix(in srgb,var(--color-accent) 8%,var(--color-paper)); }
+.belgium-jurisdiction-callout[aria-disabled="true"] { opacity: .35; cursor: default; }
+.belgium-map-attribution { position: absolute; bottom: 4px; right: 8px; color: var(--color-ink-secondary); font-size: 9px; }

@@ -1,7 +1,8 @@
 "use client";
 
 import { ResultGraphPreview } from "./result-graph-preview";
-import { ResultExplanation } from "./result-explanation";
+import { RecordedFormula } from "./recorded-formula";
+import { ResultExplanation, recordedEvidence } from "./result-explanation";
 import { GraphLoading } from "./graph-loading";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -113,6 +114,7 @@ export function GraphViewerApp({
   // (edits never fire the engine by themselves).
   const [resultsStale, setResultsStale] = useState(false);
   const ranScenarioKey = useRef<string | null>(null);
+  const [formulaDependency, setFormulaDependency] = useState<string | null>(null);
   const [inspected, setInspected] = useState<IrgNodeData | null>(null);
   // The inspector shares the exec panel's scroll with the results
   // section — bring it into view when a node is picked, or its card
@@ -2636,7 +2638,7 @@ export function GraphViewerApp({
             runReady={runAffordanceReady}
             scenario={scenarioFlowUI}
             graphControls={<div className="graph-controls-slot" ref={setGraphControlsSlot} />}
-            valueOf={(id) => liveTraces.valueOf(id)}
+            valueOf={(id) => runResult && graph ? recordedEvidence(graph, runResult, id)?.value : undefined}
             hasRun={Boolean(runResult)}
             stale={resultsStale}
           />
@@ -3260,7 +3262,7 @@ export function GraphViewerApp({
             consumers.length > 0 ? (
               (() => {
                 const miniValue = (id: string): string | null => {
-                  const raw = liveTraces.valueOf(id);
+                  const raw = runResult && graph ? recordedEvidence(graph, runResult, id)?.value : undefined;
                   if (raw === undefined || raw === null) return null;
                   if (typeof raw === "boolean")
                     return raw ? "✓ true" : "✗ false";
@@ -3291,7 +3293,7 @@ export function GraphViewerApp({
                     // truth for answered ones; unanswered ones ran on
                     // their registry default, and the run says so.
                     const fromScenario =
-                      bareName in scenario ? scenario[bareName] : undefined;
+                      runResult?.submittedFacts?.[bareName];
                     const format = (raw: number | boolean) =>
                       typeof raw === "boolean"
                         ? raw
@@ -3301,7 +3303,7 @@ export function GraphViewerApp({
                     const fallback = inputMeta.defaults[bareName];
                     const answered =
                       miniValue(depId) ??
-                      (fromScenario !== undefined
+                      ((typeof fromScenario === "number" || typeof fromScenario === "boolean")
                         ? format(fromScenario)
                         : null);
                     return {
@@ -3343,6 +3345,7 @@ export function GraphViewerApp({
                 }));
                 return (
                   <InspectorMiniGraph
+                    activeId={formulaDependency}
                     center={{
                       label: humanize(
                         "label" in inspected ? (inspected.label ?? "") : "",
@@ -3450,7 +3453,16 @@ export function GraphViewerApp({
               <section className="node-inspector-code" aria-label="Formula">
                 <h3>Formula</h3>
                 <div className="node-inspector-code-body">
-                  <FormulaPretty source={formula} />
+                  {runResult && graph && rule ? <RecordedFormula
+                    formula={formula}
+                    dependencies={[...rule.ruleDeps, ...rule.inputDeps, ...rule.relationDeps]}
+                    entries={new Map([...graph.rules, ...graph.inputs, ...graph.relations].map((entry) => [entry.legalId, entry]))}
+                    valueOf={(id) => recordedEvidence(graph, runResult, id)?.value}
+                    hasRun={true}
+                    activeId={formulaDependency}
+                    onHighlight={setFormulaDependency}
+                    onSelect={(id) => { flyFromIndex(id); if (walkInputById.has(id)) inspectInput(id); else inspectRule(id); }}
+                  /> : <FormulaPretty source={formula} />}
                 </div>
               </section>
             ) : null}

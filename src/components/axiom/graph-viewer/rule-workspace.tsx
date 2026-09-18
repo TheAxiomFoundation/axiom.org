@@ -4,7 +4,7 @@ import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "rea
 import { ArrowLeft, ArrowRight, BookOpen, GitBranch, LoaderCircle, Network, Play, Search, X } from "lucide-react";
 import { axiomAppUrlForCitation, humanizeRuleName, humanizeSource, readableLawTarget } from "./citations";
 import type { ProgramGraph, RuleNode } from "./types";
-import { resolveLogicIdentifier } from "./rule-logic";
+import { RecordedFormula } from "./recorded-formula";
 import { rememberRule } from "./library-state";
 import { CitationNavigationContext, RuleBody } from "@/components/axiom/rule-body";
 import { peekReader, readReader } from "./reader-cache";
@@ -164,7 +164,7 @@ export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, o
   };
   const value = (id: string) => {
     const raw = valueOf(id);
-    return raw === undefined || raw === null ? "Not evaluated" : typeof raw === "boolean" ? raw ? "True" : "False" : String(raw);
+    return raw === undefined || raw === null ? "Not reported" : typeof raw === "boolean" ? raw ? "True" : "False" : String(raw);
   };
   const results = [...entries.values()].filter((entry) => `${label(entry.legalId)} ${entry.legalId}`.toLowerCase().includes(query.toLowerCase()));
   const roots = [...new Set([...graph.terminalOutputs, ...graph.ownOutputs])].filter((id) => entries.has(id));
@@ -201,10 +201,7 @@ export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, o
       <RelationshipDiagram activeId={activeDependency}><div className={`workspace-neighborhood ${dependencies.length ? "has-dependencies" : ""} ${consumers.length ? "has-consumers" : ""}`} key={selectedId}>
         <NeighborColumn title="Built from" ids={dependencies} entries={entries} label={label} onSelect={navigate} hasRun={hasRun} value={value} activeId={activeDependency} onHighlight={setActiveDependency} empty="No dependencies recorded in this scope." />
         <div className="workspace-anchor" data-relationship-anchor><span className="relationship-caption">Selected rule</span><h3>{label(selectedId)}</h3>
-          {rule?.formula ? <section className="relationship-formula"><h4>How these values combine</h4><pre tabIndex={0} aria-label="Formula with linked dependencies">{rule.formula.split(/([A-Za-z_]\w*)/).map((token, index) => {
-            const id = resolveLogicIdentifier(token, dependencies, entries);
-            return id ? <button key={index} className={activeDependency === id ? "is-highlighted" : undefined} title={label(id)} onMouseEnter={() => setActiveDependency(id)} onMouseLeave={() => setActiveDependency(null)} onFocus={() => setActiveDependency(id)} onBlur={() => setActiveDependency(null)} onClick={() => navigate(id)}>{token}</button> : token;
-          })}</pre></section> : <p className="relationship-caption">No formula is available for this item.</p>}
+          {rule?.formula ? <section className="relationship-formula"><h4>How these values combine</h4><RecordedFormula formula={rule.formula} dependencies={dependencies} entries={entries} valueOf={valueOf} hasRun={hasRun} onSelect={navigate} activeId={activeDependency} onHighlight={setActiveDependency} /></section> : <p className="relationship-caption">No formula is available for this item.</p>}
           <button onClick={() => changeView("read")}>Read this rule <ArrowRight size={14} /></button></div>
         <NeighborColumn title="Used by" ids={consumers.map((item) => item.legalId)} entries={entries} label={label} onSelect={navigate} hasRun={hasRun} value={value} activeId={activeDependency} onHighlight={setActiveDependency} empty="No consumers recorded in this scope." />
       </div></RelationshipDiagram>

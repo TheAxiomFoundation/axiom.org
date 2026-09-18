@@ -6,7 +6,7 @@ import { sourceDisplayHeading } from "@/lib/axiom/workspace-source";
 export async function POST(request: Request) {
   let paths: unknown;
   try { ({ paths } = await request.json()); } catch { return NextResponse.json({ error: "Invalid request" }, { status: 400 }); }
-  if (!Array.isArray(paths) || !paths.length || paths.length > 40 || paths.some(path => typeof path !== "string" || path.length > 600 || !/^[a-z]{2}(?:-[a-z]{2})?\/[a-z]+\/[\w./()-]+$/i.test(path))) {
+  if (!Array.isArray(paths) || !paths.length || paths.length > 40 || paths.some(path => typeof path !== "string" || path.length > 600 || !/^[a-z]{2}(?:-[a-z]{2,3})?\/[a-z]+\/[\w./()-]+$/i.test(path))) {
     return NextResponse.json({ error: "Invalid citation paths" }, { status: 400 });
   }
   try {

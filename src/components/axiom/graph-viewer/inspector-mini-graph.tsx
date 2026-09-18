@@ -24,9 +24,11 @@ export type MiniGraphNode = {
  */
 export function InspectorMiniGraph({
   center,
+  activeId,
   deps,
   consumers,
 }: {
+  activeId?: string | null;
   center: { label: string; value: string | null };
   deps: MiniGraphNode[];
   consumers: MiniGraphNode[];
@@ -102,7 +104,7 @@ export function InspectorMiniGraph({
         if (el) cardRefs.current.set(`${side}:${node.id}`, el);
         else cardRefs.current.delete(`${side}:${node.id}`);
       }}
-      className={`mini-graph-card ${node.kind === "question" ? "is-question" : ""}`}
+      className={`mini-graph-card ${activeId === node.id ? "is-highlighted" : ""} ${node.kind === "question" ? "is-question" : ""}`}
       title={node.hint}
       onClick={node.onClick}
     >

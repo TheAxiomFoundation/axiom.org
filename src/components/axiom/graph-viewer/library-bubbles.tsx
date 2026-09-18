@@ -5,6 +5,7 @@ import { useId, useEffect, useMemo, useRef, useState, type CSSProperties } from 
 import type { CorpusModule } from "@/lib/axiom/corpus-field";
 import { humanizeCitation, humanizeRuleName, jurisdictionLabel } from "./citations";
 
+import { BelgiumMap } from "./belgium-map";
 import { SourceAtlas } from "./source-atlas";
 import states from "./us-state-paths.json";
 import nationPath from "./us-nation-path.json";
@@ -104,6 +105,7 @@ export function LibraryBubbles({ modules, onPick, query = "", onLevelChange }: {
       return tokens.every(token => text.includes(token));
     });
   }, [allGroups, query]);
+  const showBelgium = !path.length && allGroups.some(group => group.id === "be" || group.id.startsWith("be-"));
   const showMap = !path.length && allGroups.some(group => group.id === "us" || group.id.startsWith("us-"));
   const stateCoverage = useMemo(() => {
     const counts = new Map<string, number>();
@@ -115,7 +117,7 @@ export function LibraryBubbles({ modules, onPick, query = "", onLevelChange }: {
   const federalCount = stateCoverage.counts.get("us") ?? 0;
   const federalStrength = federalCount ? 12 + 68 * Math.sqrt(federalCount / stateCoverage.max) : 0;
   const shown = groups;
-  const packed = useMemo(() => packGroups(!showMap && path.length === 0 ? groups : []), [groups, showMap, path.length]);
+  const packed = useMemo(() => packGroups(!showMap && !showBelgium && path.length === 0 ? groups : []), [groups, showMap, showBelgium, path.length]);
   const transition = (update: () => void, origin?: Element) => {
     if (moving) return;
     const layer = surface.current?.firstElementChild;
@@ -146,7 +148,7 @@ export function LibraryBubbles({ modules, onPick, query = "", onLevelChange }: {
     <div className="library-bubble-bar"><nav aria-label="Library location"><button onClick={() => back(0)} disabled={moving} aria-current={!path.length ? "page" : undefined}>All jurisdictions</button>{path.map((part, index) => <span key={part.id}><span aria-hidden="true"> / </span><button disabled={moving} onClick={() => back(index + 1)} aria-current={index === path.length - 1 ? "page" : undefined}>{part.label}</button></span>)}</nav></div>
     {path.length === 1 && <div className="library-document-filter" role="group" aria-label="Document type">{["all", ...shelves].map(kind => <button key={kind} type="button" aria-pressed={documentType === kind} disabled={moving} onClick={() => setDocumentType(kind)}>{kind === "all" ? "All types" : humanizeRuleName(kind)}</button>)}</div>}
     <div className="library-bubble-surface" ref={surface} aria-busy={moving}>
-      {!groups.length ? <div className="library-level-empty">No matches in this {path.length === 0 ? "country" : path.length === 1 ? "jurisdiction" : "source"}. Try another search.</div> : showMap ? <div className="library-country-map">
+      {!groups.length ? <div className="library-level-empty">No matches in this {path.length === 0 ? "country" : path.length === 1 ? "jurisdiction" : "source"}. Try another search.</div> : showBelgium ? <BelgiumMap groups={groups} modules={modules} moving={moving} onEnter={enter} /> : showMap ? <div className="library-country-map">
         <svg viewBox="-65 0 1220 630" aria-label="United States jurisdictions">
           {groups.find(group => group.id === "us") && <g className="library-federal-boundary" style={{ "--federal-coverage": `${federalStrength}%` } as CSSProperties} data-dark={federalStrength >= 52} role="button" tabIndex={moving ? -1 : 0} aria-label={`Federal, ${groups.find(group => group.id === "us")!.modules.length} provisions, explore`} aria-disabled={moving} onClick={event => enter(groups.find(group => group.id === "us")!, event.currentTarget)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); enter(groups.find(group => group.id === "us")!, event.currentTarget); } }}>
             <path className="library-federal-boundary-hit" d={nationPath} />

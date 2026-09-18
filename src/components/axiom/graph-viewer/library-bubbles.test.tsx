@@ -54,4 +54,18 @@ describe("layered library", () => {
   expect(screen.getByText(/No matches in this source/)).toBeInTheDocument();
  });
 
+ it("opens Belgium regions through sources to their provision graphs", () => {
+  vi.stubGlobal("matchMedia", () => ({ matches: true }));
+  const belgium: CorpusModule[] = ["be", "be-vlg", "be-wal", "be-bru", "be-dg"].map(jurisdiction => ({ ...modules[0]!, jurisdiction, target: `${jurisdiction}:statutes/family_benefits/eligibility` }));
+  const onPick = vi.fn();
+  render(<LibraryBubbles modules={belgium} onPick={onPick} />);
+  expect(screen.getByLabelText("Belgium jurisdictions")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Federal, 1 encoded provisions" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "German-speaking Community, 1 encoded provisions" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Flanders, 1 encoded provisions" }));
+  fireEvent.click(screen.getByRole("button", { name: /Statutes · Family Benefits, 1 provisions, explore/ }));
+  fireEvent.click(screen.getByRole("button", { name: "be-vlg:statutes/family_benefits/eligibility" }));
+  expect(onPick).toHaveBeenCalledWith("be-vlg:statutes/family_benefits/eligibility");
+ });
+
 });
