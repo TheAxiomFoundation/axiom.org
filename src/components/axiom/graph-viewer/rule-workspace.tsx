@@ -222,11 +222,12 @@ export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, o
 function SelectedNodeResult({ name, value, hasRun, stale, running, entity, unit }: {
   name: string; value: unknown; hasRun: boolean; stale: boolean; running?: boolean; entity?: string | null; unit?: string | null;
 }) {
+  if (!hasRun && !running) return null;
   const format = (raw: unknown): string => raw === null || raw === undefined ? "Not reported" : typeof raw === "boolean" ? raw ? "True" : "False" : String(raw);
   const instances = value !== null && typeof value === "object" ? Object.entries(value) : null;
   return <section className="relationship-result" aria-label={`Result for ${name}`} aria-live="polite">
-    <div className="relationship-result-heading"><span>{hasRun ? stale ? "Previous result" : "Result" : "Result"}</span>{entity && <small>{humanizeRuleName(entity.replace(/([a-z])([A-Z])/g, "$1 $2"))}</small>}</div>
-    {running ? <p className="relationship-result-status">Calculating…</p> : !hasRun ? <p className="relationship-result-status">Run household to calculate</p> : instances ? <dl className="relationship-result-instances">{instances.map(([id, result]) => <div key={id}><dt>{humanizeRuleName(id)}</dt><dd>{format(result)}{unit && ` ${unit}`}</dd></div>)}</dl> : <strong className={`relationship-result-value ${value === undefined || value === null ? "is-missing" : ""}`}>{format(value)}{unit && value !== undefined && value !== null && <small>{unit}</small>}</strong>}
+    <div className="relationship-result-heading"><span>{stale ? "Previous result" : "Result"}</span>{entity && <small>{humanizeRuleName(entity.replace(/([a-z])([A-Z])/g, "$1 $2"))}</small>}</div>
+    {running ? <p className="relationship-result-status">Calculating…</p> : instances ? <dl className="relationship-result-instances">{instances.map(([id, result]) => <div key={id}><dt>{humanizeRuleName(id)}</dt><dd>{format(result)}{unit && ` ${unit}`}</dd></div>)}</dl> : <strong className={`relationship-result-value ${value === undefined || value === null ? "is-missing" : ""}`}>{format(value)}{unit && value !== undefined && value !== null && <small>{unit}</small>}</strong>}
   </section>;
 }
 
