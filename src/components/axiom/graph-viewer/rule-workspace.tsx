@@ -167,10 +167,13 @@ export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, o
     onSelect(id);
     setNavigatorOpen(false);
   };
-  const value = (id: string) => {
-    const raw = valueOf(id);
-    return raw === undefined || raw === null ? "Not reported" : typeof raw === "boolean" ? raw ? "True" : "False" : String(raw);
+  const formatValue = (raw: unknown): string => {
+    if (raw === undefined || raw === null) return "Not reported";
+    if (typeof raw === "boolean") return raw ? "True" : "False";
+    if (typeof raw === "object") return Object.entries(raw).map(([entity, result]) => `${humanizeRuleName(entity)}: ${formatValue(result)}`).join(" · ");
+    return String(raw);
   };
+  const value = (id: string) => formatValue(valueOf(id));
   const results = [...entries.values()].filter((entry) => `${label(entry.legalId)} ${entry.legalId}`.toLowerCase().includes(query.toLowerCase()));
   const roots = [...new Set([...graph.terminalOutputs, ...graph.ownOutputs])].filter((id) => entries.has(id));
   return <div className="rule-workspace">

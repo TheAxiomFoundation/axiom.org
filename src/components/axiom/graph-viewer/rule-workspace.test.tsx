@@ -233,5 +233,7 @@ it("keeps per-entity results distinct and labels stale values", () => {
   expect(within(result).getByText("Previous result")).toBeInTheDocument();
   expect(within(result).getByText("Person 1")).toBeInTheDocument();
   expect(within(result).getByText("Person 2")).toBeInTheDocument();
+  expect(screen.getByRole("button", {name: "Rule Shared Person 1: False · Person 2: True"})).toBeInTheDocument();
+  expect(screen.queryByText("[object Object]")).not.toBeInTheDocument();
   expect(within(result).getByText("True")).toBeInTheDocument();
 });
