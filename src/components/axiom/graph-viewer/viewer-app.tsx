@@ -1,5 +1,6 @@
 "use client";
 
+import { HouseholdComposer } from "./household-composer";
 import { ResultGraphPreview } from "./result-graph-preview";
 import { RecordedFormula } from "./recorded-formula";
 import { ResultExplanation, inputAwareEvidence } from "./result-explanation";
@@ -2193,300 +2194,44 @@ export function GraphViewerApp({
   // One scenario flow, two homes: the launcher's middle screen and
   // the sidebar panel render the same staged UI.
   const scenarioFlowUI = (() => {
-    // Start empty: pick levers on the left, they pop up on the right
-    // ready for values; unpicked ones fall to the law's defaults.
-    const active = selectedLevers ?? [];
-    const query = runBrowseSearch.trim().toLowerCase();
-    const activeFields = allScenarioFields.filter((field) =>
-      active.includes(field.name),
-    );
     return (
       <>
-        <div className="run-columns">
-          <details className="run-col run-catalog" open>
-            <summary>Choose facts <span>{inputCatalog.length} available inputs</span></summary>
-            <input
-              type="search"
-              className="run-overview-search"
-              value={runBrowseSearch}
-              onChange={(event) => setRunBrowseSearch(event.target.value)}
-              aria-label="Search available household facts"
-              placeholder={`Search ${inputCatalog.length} inputs...`}
-            />
-            <div className="run-picker-list">
-              {outlineView.map((root, index) => (
-                    <InputOutlineBranch
-                      key={root.id}
-                      node={root}
-                      depth={0}
-                      pathKey={root.id}
-                      defaultOpen={index === 0}
-                      searching={!!query}
-                      openOverrides={outlineOpen}
-                      onToggle={(key, fallback) =>
-                        setOutlineOpen((current) => {
-                          const next = new Map(current);
-                          next.set(key, !(current.get(key) ?? fallback));
-                          return next;
-                        })
-                      }
-                      // One input, many doorways: a shared input is
-                      // still ONE answer — adding from any branch
-                      // adds it once, and every occurrence leaves
-                      // the picker together.
-                      onAdd={(name) =>
-                        setSelectedLevers(
-                          active.includes(name) ? active : [...active, name],
-                        )
-                      }
-                    />
-              ))}
-              {inputCatalog.length === 0 &&
-                (graph?.inputs.length ?? 0) > 0 && (
-                  <div className="output-empty">
-                    The input registry didn't load.{" "}
-                    <button
-                      type="button"
-                      className="status-retry"
-                      onClick={() => setReloadNonce((n) => n + 1)}
-                    >
-                      Retry
-                    </button>
-                  </div>
-                )}
-              {inputCatalog.length === 0 &&
-                (graph?.inputs.length ?? 0) === 0 && (
-                  <div className="output-empty">
-                    This program asks no questions — it runs on defaults.
-                  </div>
-                )}
-              {inputCatalog.length > 0 &&
-                inputCatalog.filter(
-                  (input) =>
-                    !active.includes(input.name) &&
-                    (!query ||
-                      humanize(input.name).toLowerCase().includes(query)),
-                ).length === 0 && (
-                  <div className="output-empty">No inputs match.</div>
-                )}
-            </div>
-          </details>
-          <div className="run-col run-answers">
-            <p className="run-section-label">Household facts</p>
-            {/* Members are a compose-mode contract (run-by-root
-                `people`); package-program runs have no channel for
-                them, so the strip never renders there. */}
-            {composeFocus &&
-              (extraMembers.length > 0 ||
-                activeFields.some((field) => field.entity === "Person")) && (
-              <div className="scenario-members">
-                <span className="scenario-members-label">Household</span>
-                <span className="scenario-member-chip">Person 1</span>
-                {extraMembers.map((member) => (
-                  <span key={member} className="scenario-member-chip">
-                    {memberLabel(member)}
-                    <button
-                      type="button"
-                      aria-label={`Remove ${memberLabel(member)}`}
-                      onClick={() => {
-                        setExtraMembers((current) =>
-                          current.filter((id) => id !== member),
-                        );
-                        setMemberScenario((current) => {
-                          const { [member]: _gone, ...rest } = current;
-                          return rest;
-                        });
-                      }}
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-                {/* Ids reuse the lowest free slot and stop at
-                    person_12 — the proxy's member-id bound; minting
-                    past it would silently drop the member's answers. */}
-                {extraMembers.length < 11 && (
-                  <button
-                    type="button"
-                    className="scenario-member-add"
-                    onClick={() =>
-                      setExtraMembers((current) => {
-                        const used = new Set(
-                          current.map((id) => Number(id.split("_")[1])),
-                        );
-                        let next = 2;
-                        while (used.has(next)) next += 1;
-                        return next > 12
-                          ? current
-                          : [...current, `person_${next}`];
-                      })
-                    }
-                  >
-                    ＋ Add person
-                  </button>
-                )}
-              </div>
-            )}
-            <div className="scenario-fields">
-              {activeFields.map((field) => {
-                const removeField = () => {
-                  setSelectedLevers(
-                    active.filter((name) => name !== field.name),
-                  );
-                  setScenario((current) => {
-                    const { [field.name]: _gone, ...rest } = current;
-                    return rest;
-                  });
-                  setMemberScenario((current) =>
-                    Object.fromEntries(
-                      Object.entries(current).map(([id, answers]) => {
-                        const { [field.name]: _gone, ...rest } = answers;
-                        return [id, rest];
-                      }),
-                    ),
-                  );
-                };
-                // A Person-level question with members present becomes
-                // a uniform stack: title row, then one identical
-                // label-beside-box row per member (Person 1 included).
-                if (field.entity === "Person" && extraMembers.length > 0) {
-                  return (
-                    <div key={field.name} className="scenario-field">
-                      <span className="scenario-field-title">
-                        {humanize(field.label)}
-                        <button
-                          type="button"
-                          className="scenario-field-remove"
-                          aria-label={`Remove ${humanize(field.label)}`}
-                          onClick={removeField}
-                        >
-                          ×
-                        </button>
-                      </span>
-                      <div className="scenario-member-rows">
-                        {[null, ...extraMembers].map((member) => (
-                          <label
-                            key={member ?? "person_1"}
-                            className="scenario-member-row"
-                          >
-                            <span className="scenario-field-member">
-                              {member ? memberLabel(member) : "Person 1"}
-                            </span>
-                            <AnswerControl
-                              name={field.name}
-                              value={
-                                member
-                                  ? memberScenario[member]?.[field.name]
-                                  : scenario[field.name]
-                              }
-                              meta={inputMeta}
-                              selectClassName="scenario-field-select"
-                              placeholder={`e.g. ${field.sample}`}
-                              onChange={(next) =>
-                                member
-                                  ? setMemberScenario((current) => {
-                                      const answers = {
-                                        ...(current[member] ?? {}),
-                                      };
-                                      if (next === undefined) {
-                                        delete answers[field.name];
-                                      } else {
-                                        answers[field.name] = next;
-                                      }
-                                      return { ...current, [member]: answers };
-                                    })
-                                  : setScenario((current) => {
-                                      if (next === undefined) {
-                                        const {
-                                          [field.name]: _gone,
-                                          ...rest
-                                        } = current;
-                                        return rest;
-                                      }
-                                      return {
-                                        ...current,
-                                        [field.name]: next,
-                                      };
-                                    })
-                              }
-                            />
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                }
-                return (
-                  <label key={field.name} className="scenario-field">
-                    <span>{humanize(field.label)}</span>
-                    <span className="scenario-field-controls">
-                      <AnswerControl
-                        name={field.name}
-                        value={scenario[field.name]}
-                        meta={inputMeta}
-                        selectClassName="scenario-field-select"
-                        placeholder={`e.g. ${field.sample}`}
-                        onChange={(next) =>
-                          setScenario((current) => {
-                            if (next === undefined) {
-                              const { [field.name]: _gone, ...rest } = current;
-                              return rest;
-                            }
-                            return { ...current, [field.name]: next };
-                          })
-                        }
-                      />
-                      <button
-                        type="button"
-                        className="scenario-field-remove"
-                        aria-label={`Remove ${humanize(field.label)}`}
-                        onClick={removeField}
-                      >
-                        ×
-                      </button>
-                    </span>
-                  </label>
-                );
-              })}
-              {activeFields.length === 0 && (
-                <>
-                  {inputCatalog.some(
-                    (input) => input.name in CURATED_SAMPLES,
-                  ) && (
-                    <button
-                      type="button"
-                      className="run-sample"
-                      onClick={() => {
-                        // One click to a runnable household: the curated
-                        // starter values this package understands.
-                        const starters = inputCatalog.filter(
-                          (input) => input.name in CURATED_SAMPLES,
-                        );
-                        setSelectedLevers(starters.map((input) => input.name));
-                        // Merge under any answers already typed on the
-                        // canvas — a sample never overwrites the user.
-                        setScenario((current) => ({
-                          ...Object.fromEntries(
-                            starters.map((input) => [
-                              input.name,
-                              CURATED_SAMPLES[input.name]!,
-                            ]),
-                          ),
-                          ...current,
-                        }));
-                      }}
-                    >
-                      Start from a sample household
-                    </button>
-                  )}
-                  <p className="run-hint">
-                    Choose facts from the catalog to build your household. Only values you enter override the engine’s defaults.
-                  </p>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
+        <HouseholdComposer
+          fields={allScenarioFields}
+          members={extraMembers}
+          canAddPeople={Boolean(composeFocus)}
+          running={running}
+          onAddPerson={() => setExtraMembers(current => {
+            const used = new Set(current);
+            for (let index = 2; index <= 12; index++) if (!used.has(`person_${index}`)) return [...current, `person_${index}`];
+            return current;
+          })}
+          onRemovePerson={member => {
+            setExtraMembers(current => current.filter(id => id !== member));
+            setMemberScenario(current => {
+              const { [member]: removed, ...rest } = current;
+              return rest;
+            });
+          }}
+          renderControl={(field, member) => <AnswerControl
+            name={field.name}
+            value={member ? memberScenario[member]?.[field.name] : scenario[field.name]}
+            meta={inputMeta}
+            selectClassName="scenario-field-select"
+            inputClassName="scenario-field-input"
+            plainDefaults
+            onChange={next => {
+              const update = (current: Record<string, number | boolean>) => {
+                const result = { ...current };
+                if (next === undefined) delete result[field.name]; else result[field.name] = next;
+                return result;
+              };
+              if (member) setMemberScenario(current => ({...current, [member]: update(current[member] ?? {})}));
+              else setScenario(update);
+            }}
+          />}
+        />
+        {inputCatalog.length === 0 && (graph?.inputs.length ?? 0) > 0 && <button type="button" className="status-retry" onClick={() => setReloadNonce(n => n + 1)}>Retry loading inputs</button>}
         <div className="run-actions">
           <p className="run-assumptions">{Object.keys(scenario).length + Object.values(memberScenario).reduce((count, answers) => count + Object.keys(answers).length, 0)} household inputs answered · unanswered inputs use engine defaults</p>
           <button
@@ -3897,6 +3642,7 @@ function AnswerControl({
   selectClassName,
   inputClassName,
   placeholder,
+  plainDefaults = false,
 }: {
   name: string;
   value: number | boolean | undefined;
@@ -3909,6 +3655,7 @@ function AnswerControl({
   selectClassName?: string;
   inputClassName?: string;
   placeholder?: string;
+  plainDefaults?: boolean;
 }) {
   const dtype = meta.dtypes[name];
   const fallback = meta.defaults[name];
@@ -3930,7 +3677,7 @@ function AnswerControl({
           )
         }
       >
-        <option value="">default — {String(presumed)}</option>
+        <option value="">{plainDefaults ? String(presumed) : `default — ${String(presumed)}`}</option>
         <option value={String(!presumed)}>{String(!presumed)}</option>
       </select>
     );
@@ -3954,7 +3701,7 @@ function AnswerControl({
           )
         }
       >
-        <option value="">default — {enumOptionLabel(name, presumed)}</option>
+        <option value="">{plainDefaults ? enumOptionLabel(name, presumed) : `default — ${enumOptionLabel(name, presumed)}`}</option>
         {domain
           .filter((option) => option !== presumed)
           .map((option) => (
@@ -3971,7 +3718,7 @@ function AnswerControl({
       className={inputClassName}
       step={dtype === "integer" ? 1 : "any"}
       placeholder={placeholder}
-      value={typeof value === "number" ? String(value) : ""}
+      value={typeof value === "number" ? String(value) : plainDefaults && typeof fallback === "number" ? String(fallback) : ""}
       onChange={(event) =>
         onChange(
           event.target.value === ""
