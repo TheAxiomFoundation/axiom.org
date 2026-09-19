@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   composeRootOutput,
   filterStandaloneRules,
+  focusedComposeRule,
 } from "./compose-filter";
 import type { ProgramGraph, RuleNode } from "./types";
 
@@ -159,5 +160,60 @@ describe("composeRootOutput (root-first selection)", () => {
 
   it("returns null for an empty graph", () => {
     expect(composeRootOutput(graph([]))).toBeNull();
+  });
+});
+
+describe("focusedComposeRule", () => {
+  // 26 USC 24(d): the non-refundable credit consumes the refundable
+  // one, so the summit (largest closure) is non_refundable_ctc even
+  // when the reader asked for refundable_ctc.
+  const refundable = rule({
+    legalId: "us:statutes/26/24/d#refundable_ctc",
+    name: "refundable_ctc",
+    fileLegalId: "us:statutes/26/24/d",
+    ruleDeps: ["us:statutes/26/24/d#ctc_refundable_cap"],
+  });
+  const cap = rule({
+    legalId: "us:statutes/26/24/d#ctc_refundable_cap",
+    name: "ctc_refundable_cap",
+    fileLegalId: "us:statutes/26/24/d",
+  });
+  const nonRefundable = rule({
+    legalId: "us:statutes/26/24/d#non_refundable_ctc",
+    name: "non_refundable_ctc",
+    fileLegalId: "us:statutes/26/24/d",
+    ruleDeps: [refundable.legalId],
+  });
+  const g = graph([cap, refundable, nonRefundable], [
+    refundable.legalId,
+    nonRefundable.legalId,
+  ]);
+
+  it("names the rule a #fragment focus points at", () => {
+    expect(focusedComposeRule(g, "us:statutes/26/24/d#refundable_ctc")).toBe(
+      "us:statutes/26/24/d#refundable_ctc",
+    );
+  });
+
+  it("never matches by suffix", () => {
+    // "#refundable_ctc" is a suffix of "#non_refundable_ctc"; only the
+    // exact legal id counts.
+    expect(focusedComposeRule(g, "us:statutes/26/24/d#undable_ctc")).toBeNull();
+    expect(
+      focusedComposeRule(g, "us:statutes/26/24/d#refundable_ctc"),
+    ).not.toBe(nonRefundable.legalId);
+  });
+
+  it("ignores a file-level focus (compose already scopes the file)", () => {
+    expect(focusedComposeRule(g, "us:statutes/26/24/d")).toBeNull();
+  });
+
+  it("ignores a rule the composed graph does not carry", () => {
+    expect(focusedComposeRule(g, "us:statutes/26/24/d#missing")).toBeNull();
+    expect(focusedComposeRule(g, null)).toBeNull();
+  });
+
+  it("is what the opening flight needs: the summit is the consumer", () => {
+    expect(composeRootOutput(g)).toBe(nonRefundable.legalId);
   });
 });

@@ -1,4 +1,4 @@
-import type { ProgramGraph, RuleNode } from "./types";
+import type { LegalId, ProgramGraph, RuleNode } from "./types";
 
 /**
  * Isolated-node filter for composed graphs: a rule with zero deps
@@ -84,4 +84,21 @@ export function composeRootOutput(graph: ProgramGraph): string | null {
     }
   }
   return best;
+}
+
+/**
+ * The rule a ``?focus=`` deep link names inside a composed graph:
+ * ``us:statutes/26/24/d#refundable_ctc`` is that rule's legal id when
+ * the composed (already filtered) graph carries it, else null. The
+ * match is exact — a fragment never selects by suffix, so
+ * ``#refundable_ctc`` can't land on ``#non_refundable_ctc``. A focus
+ * without a ``#`` fragment names a file; compose mode already scopes
+ * to the file, so there is nothing further to select.
+ */
+export function focusedComposeRule(
+  graph: ProgramGraph,
+  focus: string | null,
+): LegalId | null {
+  if (!focus || !focus.includes("#")) return null;
+  return graph.rules.some((rule) => rule.legalId === focus) ? focus : null;
 }
