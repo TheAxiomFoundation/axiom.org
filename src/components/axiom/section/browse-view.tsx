@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { BrowsePageData } from "@/lib/axiom/browse-page";
+import type { BrowsePageData, EncodedEntry } from "@/lib/axiom/browse-page";
 import { TrackView } from "@/components/axiom/track-view";
 import {
   sourceCreditForJurisdiction,
@@ -173,6 +173,86 @@ function SourceCreditNote({ credit }: { credit: SourceCredit }) {
         )
       )}
     </p>
+  );
+}
+
+/** "worker-with-children" → "Worker with children". */
+function humanizeSlug(slug: string): string {
+  const words = slug.replace(/[-_]+/g, " ").trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** The part of an encoded path below its title, as a reader names
+ *  it: "section-121" → "§ 121", "section-36a" → "§ 36a". Null when
+ *  the tail is prose (a composed pipeline's slug). */
+function sectionKey(entry: EncodedEntry): string | null {
+  const tail = entry.citationPath.split("/").slice(3);
+  if (tail.length === 0) return null;
+  const [first, ...rest] = tail;
+  const section = first.match(/^section-(\d[\w.]*)$/i);
+  const head = section ? `§ ${section[1]}` : /^\d/.test(first) ? `§ ${first}` : null;
+  if (!head) return null;
+  return rest.length > 0 ? `${head}(${rest.join(")(")})` : head;
+}
+
+/** Every encoded provision in a small jurisdiction, one click from
+ *  its root, grouped under the instrument each belongs to. */
+function EncodedList({ entries }: { entries: EncodedEntry[] }) {
+  const groups: Array<{ group: string; items: EncodedEntry[] }> = [];
+  for (const entry of entries) {
+    const last = groups.at(-1);
+    if (last && last.group === entry.group) last.items.push(entry);
+    else groups.push({ group: entry.group, items: [entry] });
+  }
+  return (
+    <section data-testid="encoded-list" className="mt-12">
+      <h2 className="font-mono text-[11px] uppercase tracking-wider text-[var(--color-ink-muted)]">
+        <span className="text-[var(--color-accent)]">∀</span> Encoded so far ·{" "}
+        {entries.length}
+      </h2>
+      {groups.map(({ group, items }) => (
+        <div key={group} className="mt-5">
+          <h3
+            dir="auto"
+            className="text-lg text-[var(--color-ink)]"
+            style={{ fontFamily: "var(--f-serif)" }}
+          >
+            {items[0].groupHeading ??
+              (group === "composed" ? "Composed pipelines" : humanizeSlug(group))}
+          </h3>
+          <ol className="mt-2 border-t border-[var(--color-rule)]">
+            {items.map((entry) => {
+              const key = sectionKey(entry);
+              const slug = entry.citationPath.split("/").at(-1) ?? "";
+              return (
+                <li
+                  key={entry.citationPath}
+                  className="border-b border-[var(--color-rule)]"
+                >
+                  <Link
+                    href={`/${entry.citationPath}`}
+                    title={entry.citationPath}
+                    className="group flex items-baseline gap-3 py-2.5 no-underline sm:gap-4"
+                  >
+                    {key && (
+                      <span className="w-16 shrink-0 font-mono text-[12px] text-[var(--color-ink-muted)] group-hover:text-[var(--color-accent)] transition-colors">
+                        {key}
+                      </span>
+                    )}
+                    <span
+                      dir="auto"
+                      className="min-w-0 flex-1 truncate text-[15px] text-[var(--color-ink-secondary)] group-hover:text-[var(--color-ink)] transition-colors"
+                    >
+                      {entry.heading ?? humanizeSlug(slug)}
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      ))}
+    </section>
   );
 }
 
@@ -371,6 +451,9 @@ export function BrowseView({ data }: { data: BrowsePageData }) {
           });
           })()}
         </ol>
+      )}
+      {isRoot && data.encodedEntries && data.encodedEntries.length > 0 && (
+        <EncodedList entries={data.encodedEntries} />
       )}
       {(data.hasMore || data.page > 0) && (
         <nav

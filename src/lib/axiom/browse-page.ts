@@ -5,7 +5,11 @@ import {
   type TreeNode,
 } from "@/lib/tree-data";
 import { loadTreeNodes } from "@/lib/axiom/tree-node-loader";
-import { supabaseEncodings, type Rule } from "@/lib/supabase";
+import {
+  supabaseCorpus,
+  supabaseEncodings,
+  type Rule,
+} from "@/lib/supabase";
 import {
   excludeGatedRows,
   isGatedCitationPath,
@@ -34,11 +38,33 @@ export interface BrowsePageData {
    * bare ∀ mark.
    */
   encodedCounts: Record<string, number>;
+  /**
+   * Every encoded provision in the jurisdiction, listed on its root
+   * page when there are few enough to read (a pilot's dozen, not
+   * rulespec-us's thousands). Without it a small jurisdiction's
+   * encodings sit several clicks deep in a full table of contents.
+   * Absent at other depths and above ENCODED_LIST_MAX.
+   */
+  encodedEntries?: EncodedEntry[];
   /** True when the level has more children than one page shows. */
   hasMore: boolean;
   page: number;
 }
 
+/** One encoded provision on a jurisdiction root's list. */
+export interface EncodedEntry {
+  citationPath: string;
+  /** The provision's own heading, in the law's language. Null when
+   *  the corpus has no row (composed pipelines) or the lookup failed. */
+  heading: string | null;
+  /** Title-level segment the entry sits under ("income-tax-ordinance"). */
+  group: string;
+  /** That title's heading, when the corpus has one. */
+  groupHeading: string | null;
+}
+
+/** A root lists its encodings only up to this many. */
+export const ENCODED_LIST_MAX = 24;
 const ENCODED_COUNT_SCAN_LIMIT = 3000;
 const ENCODED_COUNT_TIMEOUT_MS = 3000;
 
@@ -47,15 +73,25 @@ const ENCODED_COUNT_TIMEOUT_MS = 3000;
  * segment. Uses each node's canonical citation path where known so
  * deep containers with flattened children still count correctly.
  */
-async function getEncodedCounts(
+interface EncodedScan {
+  counts: Record<string, number>;
+  /** Every encoded citation path under the prefix; complete only
+   *  when `truncated` is false. */
+  paths: string[];
+  truncated: boolean;
+}
+
+const EMPTY_SCAN: EncodedScan = { counts: {}, paths: [], truncated: false };
+
+async function scanEncoded(
   segments: string[],
   nodes: TreeNode[]
-): Promise<Record<string, number>> {
+): Promise<EncodedScan> {
   const prefix = segments.join("/");
   // Coverage marks for a gated pilot family would advertise encodings
   // no page on the site can open — the same refusal the section reader
   // and the encoded search now make.
-  if (isGatedCitationPath(prefix)) return {};
+  if (isGatedCitationPath(prefix)) return EMPTY_SCAN;
   try {
     const result = await Promise.race([
       excludeGatedRows(
@@ -67,7 +103,8 @@ async function getEncodedCounts(
         setTimeout(() => resolve(null), ENCODED_COUNT_TIMEOUT_MS)
       ),
     ]);
-    if (!result || result.error) return {};
+    if (!result || result.error) return EMPTY_SCAN;
+    const scanned = (result.data ?? []).length;
     const paths = withoutGatedRows(
       (result.data ?? []) as Array<{ citation_path: string }>,
       (row) => row.citation_path,
@@ -84,10 +121,52 @@ async function getEncodedCounts(
       ).length;
       if (count > 0) counts[node.segment] = count;
     }
-    return counts;
+    return { counts, paths, truncated: scanned >= ENCODED_COUNT_SCAN_LIMIT };
   } catch {
-    return {};
+    return EMPTY_SCAN;
   }
+}
+
+/**
+ * The root page's list of encodings, with each provision's heading
+ * and its title's heading from the corpus. One `in` lookup, under the
+ * same timeout as the scan; a failed lookup still lists the paths.
+ */
+async function getEncodedEntries(paths: string[]): Promise<EncodedEntry[]> {
+  const unique = Array.from(new Set(paths)).sort((a, b) =>
+    a.localeCompare(b, undefined, { numeric: true })
+  );
+  const groupPath = (path: string) => path.split("/").slice(0, 3).join("/");
+  const lookups = Array.from(new Set([...unique, ...unique.map(groupPath)]));
+  const headings = new Map<string, string>();
+  try {
+    const result = await Promise.race([
+      supabaseCorpus
+        .from("current_provisions")
+        .select("citation_path,heading")
+        .in("citation_path", lookups),
+      new Promise<null>((resolve) =>
+        setTimeout(() => resolve(null), ENCODED_COUNT_TIMEOUT_MS)
+      ),
+    ]);
+    if (result && !result.error) {
+      for (const row of (result.data ?? []) as Array<{
+        citation_path: string;
+        heading: string | null;
+      }>) {
+        const heading = row.heading?.trim();
+        if (heading) headings.set(row.citation_path, heading);
+      }
+    }
+  } catch {
+    // Headings are decoration: the list still renders from the paths.
+  }
+  return unique.map((citationPath) => ({
+    citationPath,
+    heading: headings.get(citationPath) ?? null,
+    group: citationPath.split("/")[2] ?? "",
+    groupHeading: headings.get(groupPath(citationPath)) ?? null,
+  }));
 }
 
 /** Repo plumbing files (release scopes, bulk manifests) that the
@@ -217,9 +296,16 @@ export async function getBrowsePageData(
     });
 
   const nodes = dedupeBySegment(positioned.filter((n) => !isPlumbingNode(n)));
-  const encodedCounts = await getEncodedCounts(segments, nodes).catch(
-    () => ({}) as Record<string, number>
-  );
+  const scan = await scanEncoded(segments, nodes).catch(() => EMPTY_SCAN);
+  const listsEncodings =
+    segments.length === 1 &&
+    page === 0 &&
+    !scan.truncated &&
+    scan.paths.length > 0 &&
+    scan.paths.length <= ENCODED_LIST_MAX;
+  const encodedEntries = listsEncodings
+    ? await getEncodedEntries(scan.paths)
+    : undefined;
 
   return {
     segments,
@@ -227,7 +313,8 @@ export async function getBrowsePageData(
     breadcrumbs: buildBreadcrumbs(segments),
     currentRule: result.currentRule ?? null,
     nodes,
-    encodedCounts,
+    encodedCounts: scan.counts,
+    ...(encodedEntries ? { encodedEntries } : {}),
     hasMore: result.hasMore,
     page,
   };
