@@ -176,8 +176,11 @@ function SourceCreditNote({ credit }: { credit: SourceCredit }) {
   );
 }
 
-/** "worker-with-children" → "Worker with children". */
+/** "worker-with-children" → "Worker with children". A slug with no
+ *  letters is a number in the source's own notation ("4005-10") and
+ *  stays as written. */
 function humanizeSlug(slug: string): string {
+  if (!/[A-Za-z]/.test(slug)) return slug;
   const words = slug.replace(/[-_]+/g, " ").trim();
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
@@ -189,21 +192,38 @@ function sectionKey(entry: EncodedEntry): string | null {
   const tail = entry.citationPath.split("/").slice(3);
   if (tail.length === 0) return null;
   const [first, ...rest] = tail;
-  const section = first.match(/^section-(\d[\w.]*)$/i);
-  const head = section ? `§ ${section[1]}` : /^\d/.test(first) ? `§ ${first}` : null;
+  // A bare section number ("32", "36a", "54.403") — not a prose slug
+  // that happens to start with a digit ("2026_resident_zero_liability").
+  const section =
+    first.match(/^section-(\d[\dA-Za-z.]*)$/i) ??
+    first.match(/^(\d[\d.]*[A-Za-z]{0,2})$/);
+  const head = section ? `§ ${section[1]}` : null;
   if (!head) return null;
   return rest.length > 0 ? `${head}(${rest.join(")(")})` : head;
+}
+
+/** A title the corpus has no heading for, named from its path. */
+function groupFallbackName(group: string): string {
+  const slug = group.split("/").at(-1) ?? "";
+  if (slug === "composed") return "Composed pipelines";
+  // Acronym-length segments read as initialisms (CMS, AAC), as the
+  // browse loader names synthesized containers.
+  if (/^[a-z]{2,5}$/i.test(slug)) return slug.toUpperCase();
+  return humanizeSlug(slug);
 }
 
 /** Every encoded provision in a small jurisdiction, one click from
  *  its root, grouped under the instrument each belongs to. */
 function EncodedList({ entries }: { entries: EncodedEntry[] }) {
-  const groups: Array<{ group: string; items: EncodedEntry[] }> = [];
+  // Keyed, not run-length: the grouping must not depend on the
+  // loader's sort keeping each title's entries adjacent.
+  const byGroup = new Map<string, EncodedEntry[]>();
   for (const entry of entries) {
-    const last = groups.at(-1);
-    if (last && last.group === entry.group) last.items.push(entry);
-    else groups.push({ group: entry.group, items: [entry] });
+    const items = byGroup.get(entry.group);
+    if (items) items.push(entry);
+    else byGroup.set(entry.group, [entry]);
   }
+  const groups = Array.from(byGroup, ([group, items]) => ({ group, items }));
   return (
     <section data-testid="encoded-list" className="mt-12">
       <h2 className="font-mono text-[11px] uppercase tracking-wider text-[var(--color-ink-muted)]">
@@ -211,14 +231,16 @@ function EncodedList({ entries }: { entries: EncodedEntry[] }) {
         {entries.length}
       </h2>
       {groups.map(({ group, items }) => (
-        <div key={group} className="mt-5">
+        <div key={group} className="mt-6">
+          <p className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-ink-muted)]">
+            {group.split("/")[1] ?? ""}
+          </p>
           <h3
             dir="auto"
-            className="text-lg text-[var(--color-ink)]"
+            className="mt-0.5 text-lg text-[var(--color-ink)]"
             style={{ fontFamily: "var(--f-serif)" }}
           >
-            {items[0].groupHeading ??
-              (group === "composed" ? "Composed pipelines" : humanizeSlug(group))}
+            {items[0].groupHeading ?? groupFallbackName(group)}
           </h3>
           <ol className="mt-2 border-t border-[var(--color-rule)]">
             {items.map((entry) => {

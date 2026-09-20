@@ -57,7 +57,9 @@ export interface EncodedEntry {
   /** The provision's own heading, in the law's language. Null when
    *  the corpus has no row (composed pipelines) or the lookup failed. */
   heading: string | null;
-  /** Title-level segment the entry sits under ("income-tax-ordinance"). */
+  /** Citation path of the title the entry sits under
+   *  ("il/statute/income-tax-ordinance"). The whole path, not the
+   *  last segment: statute/26 and regulation/26 are two groups. */
   group: string;
   /** That title's heading, when the corpus has one. */
   groupHeading: string | null;
@@ -164,7 +166,7 @@ async function getEncodedEntries(paths: string[]): Promise<EncodedEntry[]> {
   return unique.map((citationPath) => ({
     citationPath,
     heading: headings.get(citationPath) ?? null,
-    group: citationPath.split("/")[2] ?? "",
+    group: groupPath(citationPath),
     groupHeading: headings.get(groupPath(citationPath)) ?? null,
   }));
 }

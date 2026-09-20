@@ -179,19 +179,19 @@ describe("getBrowsePageData", () => {
       {
         citationPath: "il/statute/composed/net-pipeline",
         heading: null,
-        group: "composed",
+        group: "il/statute/composed",
         groupHeading: null,
       },
       {
         citationPath: "il/statute/income-tax-ordinance/section-36a",
         heading: null,
-        group: "income-tax-ordinance",
+        group: "il/statute/income-tax-ordinance",
         groupHeading: "פקודת מס הכנסה [נוסח חדש]",
       },
       {
         citationPath: "il/statute/income-tax-ordinance/section-121",
         heading: "שיעור המס ליחיד",
-        group: "income-tax-ordinance",
+        group: "il/statute/income-tax-ordinance",
         groupHeading: "פקודת מס הכנסה [נוסח חדש]",
       },
     ]);
@@ -212,7 +212,7 @@ describe("getBrowsePageData", () => {
       {
         citationPath: "il/statute/income-tax-ordinance/section-121",
         heading: null,
-        group: "income-tax-ordinance",
+        group: "il/statute/income-tax-ordinance",
         groupHeading: null,
       },
     ]);
