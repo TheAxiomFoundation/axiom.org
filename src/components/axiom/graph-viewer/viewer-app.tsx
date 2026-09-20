@@ -699,6 +699,10 @@ export function GraphViewerApp({
     // A backdrop program may have parked an opening flight while the
     // launcher was up — that summit belongs to the OLD graph.
     pendingOpeningRef.current = null;
+    // An inbound ?focus= belonged to the arrival view; it must not lead a
+    // later composed view that happens to carry the rule (the URL loses
+    // the param below, so the selection must lose it too).
+    pendingFocusRef.current = null;
     setProgram(null);
     setGraph(null);
     setSelectedOutputs([]);
@@ -723,6 +727,7 @@ export function GraphViewerApp({
   // program re-defaults exactly like a cold arrival.)
   const exitToLauncher = () => {
     pendingOpeningRef.current = null;
+    pendingFocusRef.current = null;
     setProgram(null);
     setGraph(null);
     setSelectedOutputs([]);
