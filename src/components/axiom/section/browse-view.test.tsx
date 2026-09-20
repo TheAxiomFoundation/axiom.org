@@ -56,6 +56,46 @@ describe("BrowseView", () => {
     );
   });
 
+  it("credits the Open Law Book on Israel browse pages", () => {
+    render(
+      <BrowseView
+        data={makeData({
+          segments: ["il"],
+          page: 0,
+          jurisdictionLabel: "Israel",
+          breadcrumbs: [{ label: "Axiom", href: "/" }],
+          nodes: [
+            {
+              segment: "statute",
+              label: "Statutes",
+              hasChildren: true,
+              childCount: 2,
+              nodeType: "container",
+            },
+          ],
+        })}
+      />
+    );
+    // One child reads "1 collection", not "1 collections".
+    expect(screen.getByText(/^1 collection$/)).toBeInTheDocument();
+    const credit = screen.getByTestId("source-credit");
+    expect(credit).toHaveTextContent("ספר החוקים הפתוח");
+    expect(credit).toHaveTextContent("Reshumot");
+    expect(screen.getByRole("link", { name: "Open Law Book" })).toHaveAttribute(
+      "href",
+      "https://he.wikisource.org/wiki/ספר_החוקים_הפתוח"
+    );
+    expect(screen.getByRole("link", { name: "Hasadna" })).toHaveAttribute(
+      "href",
+      "https://www.hasadna.org.il/openlaw/"
+    );
+  });
+
+  it("adds no source credit where the publisher is official", () => {
+    render(<BrowseView data={makeData()} />);
+    expect(screen.queryByTestId("source-credit")).not.toBeInTheDocument();
+  });
+
   it("shows the empty state and the has-more note", () => {
     render(<BrowseView data={makeData({ nodes: [], hasMore: false })} />);
     expect(

@@ -516,6 +516,10 @@ function renderTextBlock({
         return (
           <p
             key={`${paragraph.lines[0].start}-${paragraph.lines.at(-1)?.end}`}
+            // Provision text sets its own base direction: a Hebrew
+            // paragraph lays out right-to-left, so its designator
+            // and punctuation land on the correct side.
+            dir="auto"
             className={`m-0 whitespace-pre-wrap ${
               index === 0 ? "" : paragraph.startsWithSource ? "mt-7" : "mt-5"
             }`}
@@ -669,7 +673,8 @@ export function RuleBody({
                     <th
                       key={index}
                       scope="col"
-                      className="px-3 py-2 text-left align-bottom font-mono text-[11px] uppercase tracking-wider text-[var(--color-ink-muted)] font-normal"
+                      dir="auto"
+                      className="px-3 py-2 text-start align-bottom font-mono text-[11px] uppercase tracking-wider text-[var(--color-ink-muted)] font-normal"
                     >
                       {header.text}
                     </th>
@@ -685,6 +690,7 @@ export function RuleBody({
                     {row.map((cell, cellIndex) => (
                       <td
                         key={cellIndex}
+                        dir="auto"
                         className="px-3 py-2 align-top text-[var(--color-ink-secondary)]"
                       >
                         {cell.start === cell.end

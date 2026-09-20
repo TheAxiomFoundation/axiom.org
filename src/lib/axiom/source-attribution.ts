@@ -1,0 +1,92 @@
+/**
+ * How the app names the place a provision's text came from.
+ *
+ * Most jurisdictions are ingested from a government publisher, so the
+ * reader's link says "Official source". Israel is ingested from the
+ * Open Law Book (ספר החוקים הפתוח), a volunteer consolidation on Hebrew
+ * Wikisource. Israel publishes law officially in Reshumot, amendment
+ * by amendment, with no consolidated text; the Knesset's National
+ * Legislation Database links to the Open Law Book for the consolidated
+ * version (https://www.hasadna.org.il/openlaw/, and rulespec-il
+ * docs/sources-and-provenance.md). Calling that link "official" would
+ * be false, and it would hide the people whose work the text is — so
+ * a non-official source carries its own name and a credit.
+ *
+ * The corpus row exposes only `source_url`, so the link label keys on
+ * the URL's host. A host that is not listed here keeps the
+ * "Official source" label.
+ */
+
+export interface SourceCreditLink {
+  text: string;
+  href: string;
+}
+
+export interface SourceCredit {
+  /** Link label in the reader header, in place of "Official source". */
+  linkLabel: string;
+  /** One-line tooltip on that link. */
+  linkTitle: string;
+  /** Credit sentence parts for browse pages: plain strings and links,
+   *  rendered in order. */
+  credit: ReadonlyArray<string | SourceCreditLink>;
+}
+
+export const OFFICIAL_SOURCE_LABEL = "Official source";
+
+const OPEN_LAW_BOOK: SourceCredit = {
+  linkLabel: "Open Law Book (Hebrew Wikisource)",
+  linkTitle:
+    "ספר החוקים הפתוח, a volunteer consolidation. The official publication is Reshumot.",
+  credit: [
+    "The Hebrew text comes from the ",
+    {
+      text: "Open Law Book",
+      href: "https://he.wikisource.org/wiki/ספר_החוקים_הפתוח",
+    },
+    " (ספר החוקים הפתוח), a volunteer project of ",
+    { text: "Hasadna", href: "https://www.hasadna.org.il/openlaw/" },
+    " on Hebrew Wikisource. The Knesset’s National Legislation Database links to it for the consolidated text of each law. Israel publishes each amendment officially in Reshumot.",
+  ],
+};
+
+/** Source hosts that are not an official government publication. */
+const CREDIT_BY_HOST: Readonly<Record<string, SourceCredit>> = {
+  "he.wikisource.org": OPEN_LAW_BOOK,
+};
+
+/** Jurisdictions whose whole corpus comes from one such source. */
+const CREDIT_BY_JURISDICTION: Readonly<Record<string, SourceCredit>> = {
+  il: OPEN_LAW_BOOK,
+};
+
+function hostOf(sourceUrl: string): string | null {
+  try {
+    return new URL(sourceUrl).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+/** The credit for a provision's source link, or null when the link
+ *  goes to an official publisher (or cannot be parsed). */
+export function sourceCreditForUrl(
+  sourceUrl: string | null | undefined
+): SourceCredit | null {
+  if (!sourceUrl) return null;
+  const host = hostOf(sourceUrl);
+  return host ? (CREDIT_BY_HOST[host] ?? null) : null;
+}
+
+/** The label for a provision's source link. */
+export function sourceLinkLabel(sourceUrl: string | null | undefined): string {
+  return sourceCreditForUrl(sourceUrl)?.linkLabel ?? OFFICIAL_SOURCE_LABEL;
+}
+
+/** The credit a jurisdiction's browse pages carry, or null. */
+export function sourceCreditForJurisdiction(
+  jurisdiction: string | null | undefined
+): SourceCredit | null {
+  if (!jurisdiction) return null;
+  return CREDIT_BY_JURISDICTION[jurisdiction.toLowerCase()] ?? null;
+}

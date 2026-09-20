@@ -27,6 +27,10 @@ import {
   ruleGraphFocus,
 } from "@/lib/axiom/runtime/graph-links";
 import { formatLegalCitation } from "@/lib/axiom/citation/format";
+import {
+  sourceCreditForUrl,
+  sourceLinkLabel,
+} from "@/lib/axiom/source-attribution";
 
 /**
  * Server-rendered reading column for a section and its full
@@ -518,6 +522,7 @@ function ChunkBlock({
           {chunk.designator}
         </Link>
         <span
+          dir="auto"
           className="min-w-0 truncate text-[15px] text-[var(--color-ink)]"
           style={{ fontFamily: "var(--f-serif)" }}
         >
@@ -627,6 +632,7 @@ export function SectionReader({
         <header className="border-b border-[var(--color-rule)] pb-5">
           {heading && (
             <h1
+              dir="auto"
               className="text-2xl font-semibold text-[var(--color-ink)]"
               style={{ fontFamily: "var(--f-serif)" }}
             >
@@ -641,9 +647,12 @@ export function SectionReader({
                 href={data.root.source_url}
                 target="_blank"
                 rel="noreferrer"
+                // A volunteer consolidation is not an official
+                // publication: it carries its own name.
+                title={sourceCreditForUrl(data.root.source_url)?.linkTitle}
                 className="underline decoration-[var(--color-rule)] underline-offset-2 hover:text-[var(--color-ink)] transition-colors"
               >
-                Official source
+                {sourceLinkLabel(data.root.source_url)}
               </a>
             )}
           </div>

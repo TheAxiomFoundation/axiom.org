@@ -35,6 +35,7 @@ function TocList({
           <a
             href={`#${entry.anchor}`}
             aria-current={active === entry.anchor ? "location" : undefined}
+            dir="auto"
             className={`block truncate rounded-sm px-2 py-1 text-[0.8rem] leading-snug transition-colors ${
               active === entry.anchor
                 ? "bg-[var(--color-surface-raised,rgba(0,0,0,0.05))] text-[var(--color-ink)] font-medium"

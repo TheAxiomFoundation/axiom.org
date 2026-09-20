@@ -98,6 +98,43 @@ describe("SectionReader", () => {
     document.body.innerHTML = "";
   });
 
+  it("names a volunteer consolidation instead of calling it official", () => {
+    const sourceUrl =
+      "https://he.wikisource.org/wiki/%D7%A4%D7%A7%D7%95%D7%93%D7%AA_%D7%9E%D7%A1_%D7%94%D7%9B%D7%A0%D7%A1%D7%94";
+    render(
+      <SectionReader
+        data={makeData({
+          citationPath: "il/statute/income-tax-ordinance/section-121",
+          root: {
+            ...ROOT,
+            jurisdiction: "il",
+            citation_path: "il/statute/income-tax-ordinance/section-121",
+            source_url: sourceUrl,
+          },
+        })}
+      />
+    );
+    const link = screen.getByText("Open Law Book (Hebrew Wikisource)");
+    expect(link).toHaveAttribute("href", sourceUrl);
+    expect(link).toHaveAttribute(
+      "title",
+      expect.stringContaining("Reshumot")
+    );
+    expect(screen.queryByText("Official source")).not.toBeInTheDocument();
+  });
+
+  it("lets the heading set its own base direction", () => {
+    render(
+      <SectionReader
+        data={makeData({ root: { ...ROOT, heading: "שיעור המס ליחיד" } })}
+      />
+    );
+    expect(screen.getByRole("heading", { level: 1 })).toHaveAttribute(
+      "dir",
+      "auto"
+    );
+  });
+
   it("renders header, chunks, chips, TOC, and neighbors", () => {
     render(<SectionReader data={makeData()} />);
     expect(screen.getByText("Earned income")).toBeInTheDocument();

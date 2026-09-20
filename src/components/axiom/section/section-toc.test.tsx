@@ -39,6 +39,15 @@ describe("SectionToc", () => {
     document.body.innerHTML = "";
   });
 
+  it("lets Hebrew labels set their own base direction", () => {
+    render(
+      <SectionToc
+        entries={[{ anchor: "a", label: "(א) שיעור המס", children: [] }]}
+      />
+    );
+    expect(screen.getByText("(א) שיעור המס")).toHaveAttribute("dir", "auto");
+  });
+
   it("renders nothing for empty entries", () => {
     const { container } = render(<SectionToc entries={[]} />);
     expect(container.firstChild).toBeNull();

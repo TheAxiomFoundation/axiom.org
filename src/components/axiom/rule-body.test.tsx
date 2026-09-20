@@ -73,6 +73,22 @@ describe("RuleBody", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("lets each paragraph set its own base direction", () => {
+    // Hebrew provisions must lay out right-to-left; dir="auto" picks
+    // the direction from the first strong character, so "(א) המס…"
+    // reads RTL and English text is unchanged.
+    const hebrew = "(א) המס על הכנסתו החייבת של יחיד בשנת המס יהיה כלהלן:";
+    const { container } = render(
+      <RuleBody body={`${hebrew}\n\nAn English paragraph.`} refs={[]} />
+    );
+    const paragraphs = Array.from(container.querySelectorAll("p"));
+    expect(paragraphs).toHaveLength(2);
+    for (const paragraph of paragraphs) {
+      expect(paragraph).toHaveAttribute("dir", "auto");
+    }
+    expect(paragraphs[0]).toHaveTextContent(hebrew);
+  });
+
   it("splices a single citation into the body as a link", () => {
     const body = "See 42 U.S.C. 9902(2) for definitions.";
     const start = body.indexOf("42 U.S.C. 9902(2)");
