@@ -50,6 +50,7 @@ import {
 import {
   composeRootOutput,
   filterStandaloneRules,
+  focusedComposeRule,
 } from "./compose-filter";
 import { buildRunRequestBody, scenarioKey } from "./run-request";
 import { trackAxiomEvent } from "@/lib/analytics";
@@ -334,6 +335,11 @@ export function GraphViewerApp({
     string | null
   >(() => initialParam("program"));
   const pendingFocusRef = useRef<string | null>(initialParam("focus"));
+  // A composed deep link's ?focus=<rule> names the opening card. The
+  // compose load sets it and the opening flight consumes it once —
+  // the summit is the graph's largest root regardless of selection,
+  // so the flight has to be told.
+  const openingRuleRef = useRef<string | null>(null);
   // The entry launcher: a cold arrival (no deep link) opens with
   // "what law do you want to run?" instead of a bare canvas. Picking
   // a program dissolves the launcher into the graph.
@@ -693,6 +699,10 @@ export function GraphViewerApp({
     // A backdrop program may have parked an opening flight while the
     // launcher was up — that summit belongs to the OLD graph.
     pendingOpeningRef.current = null;
+    // An inbound ?focus= belonged to the arrival view; it must not lead a
+    // later composed view that happens to carry the rule (the URL loses
+    // the param below, so the selection must lose it too).
+    pendingFocusRef.current = null;
     setProgram(null);
     setGraph(null);
     setSelectedOutputs([]);
@@ -717,6 +727,7 @@ export function GraphViewerApp({
   // program re-defaults exactly like a cold arrival.)
   const exitToLauncher = () => {
     pendingOpeningRef.current = null;
+    pendingFocusRef.current = null;
     setProgram(null);
     setGraph(null);
     setSelectedOutputs([]);
@@ -1649,8 +1660,25 @@ export function GraphViewerApp({
         const ordered = root
           ? [root, ...picked.filter((id) => id !== root)]
           : picked;
+        // ?focus=us:statutes/26/24/d#refundable_ctc beside ?compose=
+        // names the rule the reader came for: lead the selection with
+        // it and land the opening flight there, not on the subtree's
+        // summit (often a sibling — the non-refundable credit that
+        // consumes the refundable one).
+        const focused = focusedComposeRule(
+          filteredGraph,
+          pendingFocusRef.current,
+        );
+        if (focused) {
+          pendingFocusRef.current = null;
+          openingRuleRef.current = focused;
+        }
         graphJustLoaded.current = true;
-        setSelectedOutputs(ordered);
+        setSelectedOutputs(
+          focused
+            ? [focused, ...ordered.filter((id) => id !== focused)]
+            : ordered,
+        );
       })
       .catch((err) => {
         if (!cancelled) setError(String(err));
@@ -1997,7 +2025,9 @@ export function GraphViewerApp({
   useEffect(() => {
     if (!graphJustLoaded.current || selectedOutputs.length === 0) return;
     graphJustLoaded.current = false;
-    const summit = summitOutput ?? selectedOutputs[0];
+    const summit =
+      openingRuleRef.current ?? summitOutput ?? selectedOutputs[0];
+    openingRuleRef.current = null;
     if (launcherRef.current === "open") {
       // Never move the camera behind the launcher — it reads as a
       // random zoom through the backdrop. Fly when the fade ends.
