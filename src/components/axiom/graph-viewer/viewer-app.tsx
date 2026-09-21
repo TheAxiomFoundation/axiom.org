@@ -1,7 +1,6 @@
 "use client";
 
 import { HouseholdComposer } from "./household-composer";
-import { ResultGraphPreview } from "./result-graph-preview";
 import { RecordedFormula } from "./recorded-formula";
 import { ResultExplanation, inputAwareEvidence } from "./result-explanation";
 import { GraphLoading } from "./graph-loading";
@@ -257,6 +256,7 @@ export function GraphViewerApp({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lensFocusId, inspected]);
   const [editingRunInputs, setEditingRunInputs] = useState(false);
+  const [explanationTrail, setExplanationTrail] = useState<string[]>([]);
   const [runResult, setRunResult] = useState<{
     submittedFacts?: Record<string, unknown>;
     submittedPersonIds?: Record<string, string>;
@@ -313,12 +313,13 @@ export function GraphViewerApp({
   const [selectedLevers, setSelectedLevers] = useState<string[] | null>(null);
   // The runtime's input registry: every settable input, its dtype
   // and default — the single source of truth for answer controls.
-  // `options` holds closed numeric domains (table keys, equality-
-  // literal sets like filing_status ∈ {0,1,2}) rendered as selects.
+  // `options` and labels come from explicit enum metadata.
   const [inputMeta, setInputMeta] = useState<{
     dtypes: Record<string, string>;
     defaults: Record<string, unknown>;
     options?: Record<string, number[]>;
+    optionLabels?: Record<string, Record<number, string>>;
+    presentation?: Record<string, { category?: string; order?: number; label?: string }>;
   }>({ dtypes: {}, defaults: {} });
   // Bumped by Retry buttons — re-fires the program load effect after
   // a transient graph/registry failure.
@@ -1063,14 +1064,17 @@ export function GraphViewerApp({
     () =>
       inputCatalog.map((input) => ({
         name: input.name,
-        label: input.name,
+        label: inputMeta.presentation?.[input.name]?.label ?? input.name,
+        category: inputMeta.presentation?.[input.name]?.category,
+        order: inputMeta.presentation?.[input.name]?.order,
         sample: input.sample,
         entity: input.entity,
       })),
-    [inputCatalog],
+    [inputCatalog, inputMeta.presentation],
   );
 
   const allScenarioFields = scenarioFields;
+  useEffect(() => { setExplanationTrail([]); }, [composeFocus, program?.programId]);
 
   useEffect(() => {
     // A program switch is a clean slate: every piece of state that
@@ -1542,23 +1546,12 @@ export function GraphViewerApp({
         const defaults: Record<string, unknown> = {};
         for (const input of filteredGraph.inputs) {
           if (input.name in dtypes) continue;
-          // The mirror carries no dtypes; a boolean sample or a
-          // predicate-shaped name gets a checkbox, the rest numbers.
-          dtypes[input.name] =
-            typeof input.sample === "boolean" ||
-            /^(?:is|has|have|was|are|does|do|meets|qualifies|entitled|eligible|receives|received|treated)_/.test(
-              input.name,
-            )
-              ? "bool"
-              : "number";
+          // Until runtime metadata arrives, use only the sample's actual type.
+          dtypes[input.name] = typeof input.sample === "boolean" ? "bool" : "number";
           defaults[input.name] = input.sample;
         }
         setInputMeta({ dtypes, defaults });
-        // The runtime's input catalog carries the REAL dtypes, inferred
-        // from the compiled artifact — a mid-name predicate like
-        // taxpayer_married_at_close_of_taxable_year is a checkbox, not
-        // a 0/1 number box. It lands async and overrides the heuristics
-        // above; a subtree that doesn't compile just keeps them.
+        // Runtime metadata supplies input types, choices and presentation.
         fetchRootInputs(fileLegalIdOf(composeFocus))
           .then((slots) => {
             if (cancelled || slots.length === 0) return;
@@ -1567,8 +1560,11 @@ export function GraphViewerApp({
                 dtypes: { ...current.dtypes },
                 defaults: { ...current.defaults },
                 options: { ...current.options },
+                optionLabels: { ...current.optionLabels },
+                presentation: { ...current.presentation },
               };
               for (const slot of slots) {
+                merged.presentation[slot.name] = { label: slot.label, category: slot.category, order: slot.order };
                 if (slot.dtype === "bool") {
                   merged.dtypes[slot.name] = "bool";
                   merged.defaults[slot.name] = Boolean(slot.default);
@@ -1576,14 +1572,12 @@ export function GraphViewerApp({
                   merged.dtypes[slot.name] =
                     slot.dtype === "integer" ? "integer" : "number";
                   merged.defaults[slot.name] = Number(slot.default) || 0;
-                  // A closed numeric domain becomes a select — table
-                  // keys, or the literal set the statute distinguishes
-                  // (filing_status ∈ {0,1,2}).
-                  const numeric = (slot.values ?? []).filter(
-                    (value): value is number => typeof value === "number",
-                  );
-                  if (numeric.length > 0 && numeric.length === slot.values?.length) {
-                    merged.options[slot.name] = numeric;
+                  // Only explicit metadata defines the full set of choices.
+                  delete merged.options[slot.name];
+                  delete merged.optionLabels[slot.name];
+                  if (slot.choices?.length) {
+                    merged.options[slot.name] = slot.choices.map(choice => choice.value);
+                    merged.optionLabels[slot.name] = Object.fromEntries(slot.choices.map(choice => [choice.value, choice.label]));
                   }
                 }
                 // text/date slots can't travel the run wire (facts are
@@ -2367,6 +2361,8 @@ export function GraphViewerApp({
         </div>
         {graph && !loading && graph.rules.length > 0 && launcher === "closed" && (
           <RuleWorkspace
+            explanationTrail={explanationTrail}
+            onExplanationTrailChange={setExplanationTrail}
             onOverview={backToOverview}
             key={composeFocus ?? (program ? programKey(program) : "workspace")}
             graph={graph}
@@ -2378,7 +2374,15 @@ export function GraphViewerApp({
               else setInspected({ kind: "ruleRef", label: graph.relations.find((item) => item.legalId === id)?.name ?? id, legalId: id, canExpand: false, isParameter: false, isOutput: false, verdictCls: "", value: "", isExpanded: false, showValues: false, meta: { kindLine: "Relation", legalId: id } });
             }}
             view={workspaceView}
-            onViewChange={(view) => { if (view === "map" && !graphMounted) flyTo("*", true); setWorkspaceView(view); setRunPanelOpen(false); }}
+            onViewChange={(view) => {
+              if (view === workspaceView) return;
+              if (view === "map") {
+                const target = (inspected && "legalId" in inspected && inspected.legalId) || summitOutput || graph.terminalOutputs[0] || graph.rules[0]!.legalId;
+                flyTo(target, true);
+              }
+              setWorkspaceView(view);
+              setRunPanelOpen(false);
+            }}
             scopeLabel={composeFocus ? humanizeCitation(fileLegalIdOf(composeFocus)) : effectiveProgram?.displayName ?? "Program"}
             truncated={composedTruncated}
             runReady={runAffordanceReady}
@@ -2408,7 +2412,7 @@ export function GraphViewerApp({
                   {inputMeta.dtypes[name] === "bool" ? <select disabled={running} value={effective === true ? "true" : effective === false ? "false" : ""} onChange={event => change(event.target.value === "" ? undefined : event.target.value === "true")}>
                     {typeof effective !== "boolean" && <option value="">—</option>}<option value="false">false</option><option value="true">true</option>
                   </select> : inputMeta.options?.[name] ? <select disabled={running} value={typeof effective === "number" ? effective : ""} onChange={event => change(event.target.value === "" ? undefined : Number(event.target.value))}>
-                    {typeof effective !== "number" && <option value="">—</option>}{inputMeta.options[name]!.map(option => <option key={option} value={option}>{enumOptionLabel(name, option)}</option>)}
+                    {typeof effective !== "number" && <option value="">—</option>}{inputMeta.options[name]!.map(option => <option key={option} value={option}>{inputMeta.optionLabels?.[name]?.[option] ?? String(option)}</option>)}
                   </select> : <input disabled={running} type="number" step="any" value={typeof effective === "number" ? effective : ""} onChange={event => change(event.target.value === "" ? undefined : event.target.valueAsNumber)} />}
                 </label>;
               })}</div>;
@@ -2545,9 +2549,8 @@ export function GraphViewerApp({
             <div className="results-head">
               <div>
                 <span className="results-eyebrow">Scenario result</span>
-                <strong>{effectiveProgram?.displayName ?? "Program"}</strong>
+                {workspaceView !== "run" && <strong>{effectiveProgram?.displayName ?? "Program"}</strong>}
               </div>
-              {workspaceView === "run" && <button type="button" className="workspace-button" onClick={() => setEditingRunInputs(true)}>Edit inputs</button>}
               <button
                 type="button"
                 className="results-close"
@@ -2581,23 +2584,17 @@ export function GraphViewerApp({
               })()}
             </div>}
             {workspaceView === "run" && graph && resultHeadline?.legalId && <>
-              {<ResultExplanation key={resultHeadline.legalId} graph={graph} run={runResult} rootId={resultHeadline.legalId} stale={resultsStale} onEditInputs={() => setEditingRunInputs(true)} onGraph={(id) => {
+              {<ResultExplanation trail={explanationTrail} onTrailChange={setExplanationTrail} key={resultHeadline.legalId} graph={graph} run={runResult} rootId={resultHeadline.legalId} stale={resultsStale} onEditInputs={() => setEditingRunInputs(true)} onRelationships={(id) => {
+                inspectRule(id); setWorkspaceView("structure"); setRunPanelOpen(false);
+                const url = new URL(window.location.href);
+                url.searchParams.set("selection", id); url.searchParams.set("view", "structure"); url.searchParams.delete("source"); url.hash = "";
+                window.history.replaceState(window.history.state, "", url);
+              }} onGraph={(id) => {
                 inspectRule(id); setWorkspaceView("map"); flyTo(id, true);
                 const url = new URL(window.location.href);
                 url.searchParams.set("selection", id); url.searchParams.set("view", "map"); url.searchParams.delete("source"); url.hash = "";
                 window.history.pushState(window.history.state, "", url);
               }} onRead={(id) => { inspectRule(id); setWorkspaceView("read"); const url = new URL(window.location.href); url.searchParams.set("selection", id); url.searchParams.set("view", "read"); window.history.replaceState(window.history.state, "", url); }} />}
-              <ResultGraphPreview graph={graph} rootId={resultHeadline.legalId} onOpen={() => {
-                const id = resultHeadline.legalId!;
-                inspectRule(id);
-                setWorkspaceView("map");
-                flyTo(id, true);
-                const url = new URL(window.location.href);
-                url.searchParams.set("selection", id);
-                url.searchParams.set("view", "map");
-                url.hash = "";
-                window.history.pushState(window.history.state, "", url);
-              }} />
             </>}
             {workspaceView !== "run" && <div className="results-adjust" aria-label="Adjust and run again">
               {(() => {
@@ -2735,13 +2732,6 @@ export function GraphViewerApp({
               </div>
             </div>
             }
-            {/* Only when something was answered — a run on pure defaults
-                needs no caption; the headline says it all. */}
-            {Object.keys(scenario).length > 0 && (
-              <p className="results-note">
-                {`${Object.keys(scenario).length} of ${inputCatalog.length} inputs answered · rest on defaults`}
-              </p>
-            )}
           </section>
         )}
         {inspected && workspaceView === "map" &&
@@ -3607,27 +3597,6 @@ function InputOutlineBranch({
   );
 }
 
-// Labels for encoding conventions whose raw values would read as
-// magic numbers. filing_status is the rulespec-us convention: 1 joint,
-// 2 married filing separately, everything else not a married filing.
-// The encoder's filing-status enum, decoded by the rulespecs that
-// distinguish every arm (standard-deduction: 4 takes the joint
-// amount, 3 the head-of-household amount, 0 the unmarried amount).
-const FILING_STATUS_LABELS: Record<number, string> = {
-  0: "0 — unmarried individual",
-  1: "1 — joint return",
-  2: "2 — married filing separately",
-  3: "3 — head of household",
-  4: "4 — surviving spouse",
-};
-
-function enumOptionLabel(inputName: string, option: number): string {
-  if (/(^|_)filing_status$/.test(inputName)) {
-    return FILING_STATUS_LABELS[option] ?? String(option);
-  }
-  return String(option);
-}
-
 /**
  * The one control for answering a scenario input, typed by the input
  * registry: bools are a three-way select (default — X / true / false)
@@ -3653,6 +3622,8 @@ function AnswerControl({
     dtypes: Record<string, string>;
     defaults: Record<string, unknown>;
     options?: Record<string, number[]>;
+    optionLabels?: Record<string, Record<number, string>>;
+    presentation?: Record<string, { category?: string; order?: number; label?: string }>;
   };
   onChange: (value: number | boolean | undefined) => void;
   selectClassName?: string;
@@ -3704,12 +3675,12 @@ function AnswerControl({
           )
         }
       >
-        <option value="">{plainDefaults ? enumOptionLabel(name, presumed) : `default — ${enumOptionLabel(name, presumed)}`}</option>
+        <option value="">{plainDefaults ? (meta.optionLabels?.[name]?.[presumed] ?? String(presumed)) : `default — ${(meta.optionLabels?.[name]?.[presumed] ?? String(presumed))}`}</option>
         {domain
           .filter((option) => option !== presumed)
           .map((option) => (
             <option key={option} value={String(option)}>
-              {enumOptionLabel(name, option)}
+              {(meta.optionLabels?.[name]?.[option] ?? String(option))}
             </option>
           ))}
       </select>

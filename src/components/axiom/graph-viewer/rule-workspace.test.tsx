@@ -70,7 +70,7 @@ describe("rule workspace", () => {
     render(<Harness />);
     fireEvent.click(screen.getByRole("button", { name: "Graph" }));
     fireEvent.click(screen.getByRole("button", { name: "Read" }));
-    fireEvent.click(screen.getByRole("button", { name: "Back to previous rule" }));
+    fireEvent.click(screen.getByRole("button", { name: "Back to previous view" }));
     expect(screen.getByRole("button", { name: "Graph" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Result");
   });
@@ -237,3 +237,75 @@ it("keeps per-entity results distinct and labels stale values", () => {
   expect(screen.queryByText("[object Object]")).not.toBeInTheDocument();
   expect(within(result).getByText("True")).toBeInTheDocument();
 });
+
+it("returns to the library when Back is pressed on a newly opened graph", () => {
+  window.history.replaceState({}, "", "/app?compose=test");
+  const onOverview = vi.fn();
+  render(<RuleWorkspace graph={graph} selectedId="result" onSelect={vi.fn()} view="map" onViewChange={vi.fn()} onOverview={onOverview} scopeLabel="Test" truncated={false} runReady={false} scenario={null} hasRun={false} stale={false} valueOf={() => undefined} />);
+  const back = screen.getByRole("button", {name: "Back to library"});
+  expect(back).toBeEnabled();
+  fireEvent.click(back);
+  expect(onOverview).toHaveBeenCalledOnce();
+});
+
+it("steps backward through result checks, views and external node selections in order", () => {
+  function NavigationHarness() {
+    const [id, setId] = useState("result");
+    const [view, setView] = useState<WorkspaceView>("run");
+    const [trail, setTrail] = useState<string[]>([]);
+    return <>
+      <button onClick={() => setTrail(["result", "shared"])}>Inspect result check</button>
+      <button onClick={() => { setId("shared"); setView("map"); }}>Follow check in graph</button>
+      <button onClick={() => setId("other")}>Select graph neighbor</button>
+      <output aria-label="navigation state">{JSON.stringify({id,view,trail})}</output>
+      <RuleWorkspace graph={graph} selectedId={id} onSelect={setId} view={view} onViewChange={setView} explanationTrail={trail} onExplanationTrailChange={setTrail} scopeLabel="Test" truncated={false} runReady scenario={<p>Results</p>} valueOf={() => 0} hasRun stale={false} />
+    </>;
+  }
+  render(<NavigationHarness />);
+  fireEvent.click(screen.getByRole("button", {name:"Inspect result check"}));
+  fireEvent.click(screen.getByRole("button", {name:"Follow check in graph"}));
+  fireEvent.click(screen.getByRole("button", {name:"Select graph neighbor"}));
+  fireEvent.click(screen.getByRole("button", {name:"Back to previous rule"}));
+  expect(screen.getByLabelText("navigation state")).toHaveTextContent(JSON.stringify({id:"shared",view:"map",trail:["result","shared"]}));
+  fireEvent.click(screen.getByRole("button", {name:"Back to previous view"}));
+  expect(screen.getByLabelText("navigation state")).toHaveTextContent(JSON.stringify({id:"result",view:"run",trail:["result","shared"]}));
+  fireEvent.click(screen.getByRole("button", {name:"Back to previous rule"}));
+  expect(screen.getByLabelText("navigation state")).toHaveTextContent(JSON.stringify({id:"result",view:"run",trail:[]}));
+  expect(screen.getByRole("button", {name:"Back to previous rule"})).toBeDisabled();
+});
+
+it("highlights Run again only while a previous result needs recalculating", () => {
+ const props = {graph, selectedId:"result", onSelect:vi.fn(), view:"structure" as const, onViewChange:vi.fn(), scopeLabel:"Test", truncated:false, runReady:true, scenario:null, valueOf:()=>false, hasRun:true, onRun:vi.fn()};
+ const {rerender} = render(<RuleWorkspace {...props} stale={false} />);
+ expect(screen.getByRole("button", {name:"Run again"})).not.toHaveClass("workspace-run-needed");
+ rerender(<RuleWorkspace {...props} stale />);
+ const button = screen.getByRole("button", {name:"Run again"});
+ expect(button).toHaveClass("workspace-run-needed");
+ fireEvent.click(button);
+ expect(props.onRun).toHaveBeenCalledOnce();
+ rerender(<RuleWorkspace {...props} stale running />);
+ expect(screen.getByRole("button", {name:"Running…"})).toBeDisabled();
+ expect(screen.getByRole("button", {name:"Running…"})).not.toHaveClass("workspace-run-needed");
+ rerender(<RuleWorkspace {...props} stale={false} />);
+ expect(screen.getByRole("button", {name:"Run again"})).not.toHaveClass("workspace-run-needed");
+});
+
+it("shows the selected parameter's declared constant even without a run", () => {
+ const data = {...graph, rules:[{...rule("age_limit"), kind:"parameter", formula:"13"}]};
+ render(<RuleWorkspace graph={data} selectedId="age_limit" onSelect={vi.fn()} view="structure" onViewChange={vi.fn()} scopeLabel="Test" truncated={false} runReady={false} scenario={null} hasRun={false} stale={false} valueOf={() => undefined} />);
+ const panel = screen.getByRole("region", {name:"Result for Age Limit"});
+ expect(within(panel).getByText("Parameter value")).toBeInTheDocument();
+ expect(within(panel).getByText("13")).toBeInTheDocument();
+ expect(within(panel).queryByText("Not reported")).not.toBeInTheDocument();
+});
+
+ it("does not navigate or rewrite the URL when the active Graph tab is clicked", () => {
+  const onViewChange = vi.fn();
+  render(<RuleWorkspace graph={graph} selectedId="result" onSelect={vi.fn()} view="map" onViewChange={onViewChange} scopeLabel="Test" truncated={false} runReady={false} scenario={null} hasRun={false} stale={false} valueOf={() => undefined} />);
+  onViewChange.mockClear();
+  const replace = vi.spyOn(window.history, "replaceState");
+  fireEvent.click(screen.getByRole("button", {name:"Graph"}));
+  expect(onViewChange).not.toHaveBeenCalled();
+  expect(replace).not.toHaveBeenCalled();
+  replace.mockRestore();
+ });

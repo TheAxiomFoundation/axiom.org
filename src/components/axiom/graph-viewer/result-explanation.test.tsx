@@ -18,10 +18,10 @@ describe("execution evidence", () => {
  });
  it("shows missing evidence and stale state without inventing branch decisions", () => {
   render(<ResultExplanation graph={graph} run={run} rootId="law#result" stale onRead={vi.fn()} />);
-  expect(screen.getByText("False")).toBeInTheDocument();
+  expect(screen.getByText(/Condition is false/)).toBeInTheDocument();
   expect(screen.getByText(/previous run/)).toBeInTheDocument();
-  expect(screen.getAllByText("Not reported").length).toBeGreaterThan(0);
-  expect(screen.getByText(/does not report branch decisions/)).toBeInTheDocument();
+  expect(screen.queryByRole("region", {name:"Calculation trace"})).not.toBeInTheDocument();
+  expect(screen.getByText(/not a complete causal trace/)).toBeInTheDocument();
  });
 });
 
@@ -34,19 +34,17 @@ describe("explanation navigation", () => {
   expect(screen.getByRole("heading", { level: 3 })).toHaveTextContent("Person 1: False · Person 2: True");
   unmount();
  });
- it("follows a dependency from the table or the formula and returns", () => {
-  const onRead = vi.fn();
-  render(<ResultExplanation graph={graph} run={run} rootId="law#result" stale={false} onRead={onRead} />);
-  fireEvent.click(screen.getByRole("button", { name: "Inspect Condition" }));
-  expect(screen.getByRole("heading", { level: 3 })).toHaveTextContent("Condition");
-  fireEvent.click(screen.getByRole("button", { name: "Back to previous calculation" }));
-  expect(screen.getByRole("heading", { level: 3 })).toHaveTextContent("Result");
-  fireEvent.click(screen.getByText("Formula and source"));
-  fireEvent.click(screen.getByRole("button", { name: "Condition" }));
-  expect(screen.getByRole("heading", { level: 3 })).toHaveTextContent("Condition");
-  fireEvent.click(screen.getByRole("button", { name: "Read source provision" }));
-  expect(onRead).toHaveBeenCalledWith("law#condition");
+ it("links the result and failed checks to the existing relationships view", () => {
+  const onRelationships = vi.fn();
+  render(<ResultExplanation graph={graph} run={run} rootId="law#result" stale={false} onRead={vi.fn()} onRelationships={onRelationships} />);
+  fireEvent.click(screen.getByRole("button", {name:"View relationships for Condition"}));
+  expect(onRelationships).toHaveBeenLastCalledWith("law#condition");
+  fireEvent.click(screen.getByRole("button", {name:"View result relationships →"}));
+  expect(onRelationships).toHaveBeenLastCalledWith("law#result");
+  expect(screen.queryByText("Formula and source")).not.toBeInTheDocument();
+  expect(screen.queryByRole("region", {name:"Calculation trace"})).not.toBeInTheDocument();
  });
+
 });
 
 
@@ -62,10 +60,11 @@ describe("focused result review", () => {
   expect(relevantInputs(data, "law#result")).toEqual(["law#age"]);
  });
  it("opens the current calculation in the graph and offers input editing", () => {
-  const onGraph = vi.fn(), onEditInputs = vi.fn();
-  render(<ResultExplanation graph={graph} run={run} rootId="law#result" stale={false} onRead={vi.fn()} onGraph={onGraph} onEditInputs={onEditInputs} />);
-  fireEvent.click(screen.getByRole("button", { name: /Follow in graph/ }));
-  expect(onGraph).toHaveBeenCalledWith("law#result");
+  const onRelationships = vi.fn(), onEditInputs = vi.fn();
+  render(<ResultExplanation graph={graph} run={run} rootId="law#result" stale={false} onRead={vi.fn()} onRelationships={onRelationships} onEditInputs={onEditInputs} />);
+  fireEvent.click(screen.getByRole("button", { name: /View result relationships/ }));
+  expect(onRelationships).toHaveBeenCalledWith("law#result");
+  fireEvent.click(screen.getByText("Inputs to review", {selector:"summary"}));
   fireEvent.click(screen.getByRole("button", { name: "Edit inputs" }));
   expect(onEditInputs).toHaveBeenCalledOnce();
  });
@@ -99,4 +98,36 @@ it("uses declared input defaults only when evidence is absent", () => {
  expect(inputAwareEvidence(data, {...run, submittedFacts: {amount: 25}}, "law#input.amount", defaults)).toBe(25);
  expect(inputAwareEvidence(data, run, "law#missing", defaults)).toBeUndefined();
  expect(inputAwareEvidence(data, run, "law#input.flag", {})).toBeUndefined();
+});
+
+it("uses literal parameter values without inventing calculation results", () => {
+ const data = {...graph, rules: [
+  {...rule("law#age_limit"), kind:"parameter", formula:"13"},
+  {...rule("law#rate"), kind:"parameter", formula:"0.1234567890123456789"},
+  {...rule("law#disabled"), kind:"parameter", formula:"false"},
+  {...rule("law#expression"), kind:"parameter", formula:"rate * 2"},
+  {...rule("law#calculation"), formula:"13"},
+ ]};
+ expect(inputAwareEvidence(data, run, "law#age_limit", {})).toBe("13");
+ expect(inputAwareEvidence(data, null, "law#rate", {})).toBe("0.1234567890123456789");
+ expect(inputAwareEvidence(data, null, "law#disabled", {})).toBe(false);
+ expect(inputAwareEvidence(data, run, "law#expression", {})).toBeUndefined();
+ expect(inputAwareEvidence(data, run, "law#calculation", {})).toBeUndefined();
+ expect(inputAwareEvidence(data, {outputs:{age_limit:12},trace:[]}, "law#age_limit", {})).toBe(12);
+});
+
+it("shows top-level amounts and supporting values for a successful result", () => {
+ const data = {...graph, rules:[
+  {...rule("law#cdcc"), ruleDeps:["law#potential", "law#tax", "law#claim_ok"], formula:"if claim_ok: min(potential, tax) else: 0"},
+  {...rule("law#potential"), ruleDeps:["law#rate"], inputDeps:["law#expenses"]},
+  rule("law#tax"), rule("law#claim_ok"), {...rule("law#rate"), kind:"parameter", formula:"0.2"},
+ ], inputs:[{legalId:"law#expenses", name:"expenses", fileLegalId:"law"}]};
+ const onRelationships = vi.fn();
+ render(<ResultExplanation graph={data} run={{outputs:{cdcc:1500,potential:1800,tax:1500,claim_ok:true},trace:[],submittedFacts:{expenses:9000}}} rootId="law#cdcc" stale={false} onRead={vi.fn()} onRelationships={onRelationships} />);
+ expect(screen.getByRole("region", {name:"Calculation overview"})).toHaveTextContent("Potential1800");
+ expect(screen.getByRole("region", {name:"Calculation overview"})).toHaveTextContent("Expenses9000");
+ expect(screen.getByRole("region", {name:"Calculation overview"})).toHaveTextContent("Tax1500");
+ expect(screen.queryByText(/This is the recorded result for the last run/)).not.toBeInTheDocument();
+ fireEvent.click(screen.getAllByRole("button", {name:/Explore relationships/})[0]!);
+ expect(onRelationships).toHaveBeenCalledWith("law#potential");
 });

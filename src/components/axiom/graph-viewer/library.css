@@ -368,10 +368,10 @@ body:has(.corpus-library:not([hidden])) { overflow: hidden; }
 .library-federal-label-subtitle { font-size: 12px; font-weight: 400; }
 .library-state-label { font-size: 12px; font-weight: 500; letter-spacing: 0; }
 
-.library-source-groups { display: flex; flex-direction: column; gap: 16px; width: 100%; height: 100%; min-height: 0; padding: 12px; box-sizing: border-box; animation: library-layer-arrive .5s ease both; }
-.library-source-group { display: flex; flex-direction: column; gap: 8px; min-height: 0; flex-basis: 0; }
+.library-source-groups { display: flex; flex-direction: column; gap: 20px; width: 100%; height: 100%; min-height: 0; overflow-y: auto; padding: 12px; box-sizing: border-box; animation: library-layer-arrive .5s ease both; }
+.library-source-group { display: flex; flex-direction: column; gap: 8px; flex: none; }
 .library-source-group h3 { flex: none; margin: 0; font-size: 11px; font-weight: 500; color: var(--color-ink-secondary); }
-.library-source-group .library-source-tiles { flex: 1; min-height: 0; height: auto; padding: 0; grid-template-columns: repeat(4,minmax(0,1fr)); grid-auto-rows: minmax(0,1fr); align-content: stretch; animation: none; }
+.library-source-group .library-source-tiles { flex: none; min-height: 0; height: auto; padding: 0; grid-template-columns: repeat(4,minmax(0,1fr)); grid-auto-rows: minmax(0,1fr); align-content: stretch; animation: none; }
 .library-source-group .library-source-tile { max-height: 52px; }
 @media(max-width:760px) { .library-source-group .library-source-tiles { grid-template-columns: repeat(3,minmax(0,1fr)); } .library-source-groups { gap: 10px; padding: 8px; } }
 @media(prefers-reduced-motion: reduce) { .library-source-groups { animation: none; } }
@@ -546,3 +546,10 @@ body:has(.corpus-library:not([hidden])) { overflow: hidden; }
 .belgium-jurisdiction-callout:hover rect, .belgium-jurisdiction-callout:focus-visible rect { stroke: var(--color-accent); fill: color-mix(in srgb,var(--color-accent) 8%,var(--color-paper)); }
 .belgium-jurisdiction-callout[aria-disabled="true"] { opacity: .35; cursor: default; }
 .belgium-map-attribution { position: absolute; bottom: 4px; right: 8px; color: var(--color-ink-secondary); font-size: 9px; }
+
+.source-atlas-gallery-art { position: relative; }
+.atlas-preview-refresh { position: absolute; bottom: 7px; right: 8px; display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 500; line-height: 1; padding: 5px 7px; border: 1px solid var(--color-rule); border-radius: 999px; color: var(--color-ink-secondary); background: var(--color-paper); box-shadow: 0 1px 4px rgb(0 0 0 / 4%); pointer-events: none; }
+.atlas-preview-refresh svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.5; opacity: .65; }
+.atlas-preview-refresh.is-updating svg { color: var(--color-accent); stroke-dasharray: 23 12; stroke-linecap: round; animation: atlas-refresh-turn 1.3s linear infinite; }
+@keyframes atlas-refresh-turn { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .atlas-preview-refresh.is-updating svg { animation: none; } }

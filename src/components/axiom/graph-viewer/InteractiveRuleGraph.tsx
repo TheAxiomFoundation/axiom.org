@@ -204,7 +204,10 @@ export function InteractiveRuleGraph({
   // hides secondary chrome, near shows full cards.
   const [lod, setLod] = useState<"near" | "mid" | "far">("near");
   const lodTimer = useRef<number | null>(null);
-  const [upstreamDepth, setUpstreamDepth] = useState<number>(Infinity);
+  // Start with a readable direct-dependency frame; depth never removes nodes.
+  const [openingOverview, setOpeningOverview] = useState(true);
+  const [flowReady, setFlowReady] = useState(false);
+  const [upstreamDepth, setUpstreamDepth] = useState<number>(1);
   const [layoutFocusId, setLayoutFocusId] = useState<string | null>(null);
   const [frameRequest, setFrameRequest] = useState<{ mode: "all" | "upstream"; nonce: number } | null>(null);
   const requestFrame = (mode: "all" | "upstream", id: string | null = pinnedLegalId) => {
@@ -343,23 +346,24 @@ export function InteractiveRuleGraph({
   }, [baseGraph, nodeScoped, scopeId, sizeHints]);
 
   const lastCameraSelection = useRef<string | null>(null);
-  const focusSelection = (id: string) => {
+  const focusSelection = (id: string, duration = 750) => {
     const ids = upstreamIds(nodes, edges, id, upstreamDepth);
     const viewport = graphFitViewport(nodes.filter(node => ids.has(node.id)), canvasSize.width, canvasSize.height);
     if (!viewport || !flowRef.current) return;
     lastCameraSelection.current = id;
     void flowRef.current.setViewport(viewport, {
-      duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 750,
+      duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : duration,
       interpolate: "linear",
       ease: (t: number) => t * t * (3 - 2 * t),
     });
   };
   useEffect(() => {
-    if (!flyTo) return;
+    if (!flyTo || openingOverview) return;
     if (flyTo.legalId === "*") requestFrame("all");
     else focusSelection(flyTo.legalId);
   }, [flyTo]);
   useEffect(() => {
+    if (openingOverview) return;
     if (pinnedLegalId && pinnedLegalId !== lastCameraSelection.current) focusSelection(pinnedLegalId);
     if (!pinnedLegalId) lastCameraSelection.current = null;
   }, [pinnedLegalId, nodes, canvasSize]);
@@ -367,7 +371,21 @@ export function InteractiveRuleGraph({
   const fitViewport = useMemo(() => graphFitViewport(nodes, canvasSize.width, canvasSize.height), [nodes, canvasSize]);
   const minGraphZoom = fitViewport?.zoom ?? .01;
   useEffect(() => {
-    if (!frameRequest || (frameRequest.mode === "upstream" && !focusedIds.size)) return;
+    if (!openingOverview || !flowReady || !fontsReady || !fitViewport || !nodes.length) return;
+    const flow = flowRef.current;
+    if (!flow) return;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    void flow.setViewport(fitViewport, { duration: 0 });
+    const timer = window.setTimeout(() => {
+      const target = pinnedLegalId ?? scopeId ?? spec.outputs[0]?.legalId;
+      if (target) focusSelection(target, 1100);
+      setOpeningOverview(false);
+    }, reducedMotion ? 0 : 500);
+    return () => window.clearTimeout(timer);
+  }, [openingOverview, flowReady, fontsReady, fitViewport, nodes, pinnedLegalId, scopeId]);
+
+  useEffect(() => {
+    if (openingOverview || !frameRequest || (frameRequest.mode === "upstream" && !focusedIds.size)) return;
     const visible = frameRequest.mode === "upstream" && focusedIds.size ? nodes.filter((node) => focusedIds.has(node.id)) : nodes;
     const viewport = graphFitViewport(visible, canvasSize.width, canvasSize.height);
     if (viewport) void flowRef.current?.setViewport(viewport, { duration: 600, interpolate: "smooth" });
@@ -455,12 +473,12 @@ export function InteractiveRuleGraph({
   );
   // A selection keeps its path at every zoom level until explicitly cleared.
   // Hover previews apply only when no node is selected.
-  const activeHighlightId = pinnedNodeId ?? highlightNodeId ?? hoverNodeId;
+  const activeHighlightId = pinnedNodeId ?? highlightNodeId ?? hoverNodeId ?? nodeIdForLegalId(scopeId);
 
   const lineageOf = useCallback((startId: string): Set<string> => upstreamNodeIds(nodes, edges, startId, upstreamDepth), [nodes, edges, upstreamDepth]);
   const highlightSet = useMemo(
-    () => (activeHighlightId ? lineageOf(activeHighlightId) : null),
-    [activeHighlightId, lineageOf],
+    () => openingOverview ? new Set(nodes.map(node => node.id)) : (activeHighlightId ? lineageOf(activeHighlightId) : null),
+    [openingOverview, nodes, activeHighlightId, lineageOf],
   );
   // The pinned card's lineage is what a click frames: the camera
   // fits the whole highlighted chain, not just the card, so the
@@ -731,6 +749,7 @@ export function InteractiveRuleGraph({
           proOptions={{ hideAttribution: true }}
           onInit={(flow) => {
             flowRef.current = flow;
+            setFlowReady(true);
             const zoom = flow.getViewport().zoom;
             wrapRef.current?.style.setProperty("--edge-scale", String(1 / zoom));
             wrapRef.current?.style.setProperty("--edge-weight", String(Math.min(1.25, .6 + zoom * .65)));

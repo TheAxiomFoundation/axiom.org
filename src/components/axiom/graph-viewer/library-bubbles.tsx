@@ -1,7 +1,7 @@
 "use client";
 
 import { createPortal } from "react-dom";
-import { useId, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useId, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { CorpusModule } from "@/lib/axiom/corpus-field";
 import { humanizeCitation, humanizeRuleName, jurisdictionLabel } from "./citations";
 
@@ -72,14 +72,31 @@ function packGroups(groups: Group[]) {
   return { placed, left, top, width: width || 1, height: height || 1 };
 }
 
-export function LibraryBubbles({ modules, onPick, query = "", onLevelChange }: { modules: CorpusModule[]; onPick: (target: string) => void; query?: string; onLevelChange?: (level: string) => void }) {
+export function LibraryBubbles({ modules, onPick, query = "", onLevelChange, scopeKey = "" }: { scopeKey?: string; modules: CorpusModule[]; onPick: (target: string) => void; query?: string; onLevelChange?: (level: string) => void }) {
   const [path, setPath] = useState<Array<{ id: string; label: string }>>([]);
   const previewId = useId();
-  const [sourcePreview, setSourcePreview] = useState<{ group: Group; x: number; y: number } | null>(null);
+  const [sourcePreview, setSourcePreview] = useState<{ group: Group; rect: DOMRect } | null>(null);
+  const previewElement = useRef<HTMLDivElement>(null);
+  const [previewPosition, setPreviewPosition] = useState({ x: 12, y: 12 });
+  useLayoutEffect(() => {
+    if (!sourcePreview || !previewElement.current) return;
+    const { width, height } = previewElement.current.getBoundingClientRect();
+    const { rect } = sourcePreview;
+    const below = rect.bottom + 8;
+    const above = rect.top - height - 8;
+    const y = below + height <= window.innerHeight - 12 ? below : above;
+    setPreviewPosition({ x: Math.max(12, Math.min(rect.left, window.innerWidth - width - 12)), y: Math.max(12, Math.min(y, window.innerHeight - height - 12)) });
+  }, [sourcePreview]);
+  useEffect(() => {
+    if (!sourcePreview) return;
+    const close = () => setSourcePreview(null);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => { window.removeEventListener("scroll", close, true); window.removeEventListener("resize", close); };
+  }, [sourcePreview]);
   const previewSource = (group: Group, element: HTMLButtonElement) => {
     const rect = element.getBoundingClientRect();
-    const width = Math.min(320, window.innerWidth - 24);
-    setSourcePreview({ group, x: Math.max(12, Math.min(rect.left, window.innerWidth - width - 12)), y: rect.bottom + 300 < window.innerHeight ? rect.bottom + 8 : Math.max(12, rect.top - 296) });
+    setSourcePreview({ group, rect });
   };
   const [hoveredState, setHoveredState] = useState<string | null>(null);
   const [documentType, setDocumentType] = useState("all");
@@ -89,8 +106,9 @@ export function LibraryBubbles({ modules, onPick, query = "", onLevelChange }: {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const animation = useRef<Animation | null>(null);
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); animation.current?.cancel(); }, []);
-  // Filtering/searching changes the available universe; never leave a stale drill-down.
-  useEffect(() => { setPath([]); setDocumentType("all"); setMoving(false); if (timer.current) clearTimeout(timer.current); animation.current?.cancel(); }, [modules]);
+  // Only an explicit country/jurisdiction filter change resets navigation.
+  // Returning from a graph refreshes modules but must keep the source and search.
+  useEffect(() => { setPath([]); setDocumentType("all"); setMoving(false); if (timer.current) clearTimeout(timer.current); animation.current?.cancel(); }, [scopeKey]);
   useEffect(() => { onLevelChange?.(path.length === 0 ? "jurisdictions" : path.length === 1 ? "sources in " + path[0]!.label : "provisions in " + path[1]!.label); }, [path, onLevelChange]);
   const allGroups = useMemo(() => {
     if (!path.length) return groupModules(modules, module => ({ id: module.jurisdiction, label: jurisdictionLabel(module.jurisdiction) }));
@@ -185,7 +203,7 @@ export function LibraryBubbles({ modules, onPick, query = "", onLevelChange }: {
         {(documentType === "all" ? shelves : [documentType]).map(kind => {
           const sources = visibleSources.filter(group => group.id.split("/")[0] === kind);
           if (!sources.length) return null;
-          return <section className="library-source-group" key={kind} aria-label={humanizeRuleName(kind)} style={{ flexGrow: Math.ceil(sources.length / 4) } as CSSProperties}>
+          return <section className="library-source-group" key={kind} aria-label={humanizeRuleName(kind)}>
             {documentType === "all" && <h3>{humanizeRuleName(kind)}</h3>}
             <div className="library-source-tiles">{sources.map(group => <button className="library-source-tile" key={group.id} disabled={moving} onMouseEnter={event => previewSource(group, event.currentTarget)} onMouseLeave={() => setSourcePreview(null)} onFocus={event => previewSource(group, event.currentTarget)} onBlur={() => setSourcePreview(null)} onKeyDown={event => { if (event.key === "Escape") setSourcePreview(null); }} aria-describedby={sourcePreview?.group.id === group.id ? previewId : undefined} aria-label={`${group.label}, ${group.modules.length} provisions, explore`} onClick={event => enter(group, event.currentTarget)}>
               <strong>{sourceTitle(group)}</strong>{sourceTitle(group) !== group.label && group.id.startsWith("statutes/") && <small>{group.label}</small>}
@@ -198,7 +216,7 @@ export function LibraryBubbles({ modules, onPick, query = "", onLevelChange }: {
       </div>}
     </div>
 
-    {sourcePreview && createPortal(<div id={previewId} role="tooltip" className="library-source-preview" style={{ left: sourcePreview.x, top: sourcePreview.y }}>
+    {sourcePreview && createPortal(<div ref={previewElement} id={previewId} role="tooltip" className="library-source-preview" style={{ left: previewPosition.x, top: previewPosition.y }}>
       <strong>{sourceTitle(sourcePreview.group)}</strong>
       <p>{sourcePreview.group.label}</p>
       <div className="library-source-preview-count">{sourcePreview.group.modules.length.toLocaleString()} <span>encoded provisions</span></div>

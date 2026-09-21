@@ -89,6 +89,8 @@ export async function fetchProgramGraph(program: ProgramRef): Promise<ProgramGra
 export interface InputMeta {
   dtypes: Record<string, string>;
   defaults: Record<string, unknown>;
+  options?: Record<string, number[]>;
+  optionLabels?: Record<string, Record<number, string>>;
 }
 export async function fetchInputMeta(program: ProgramRef): Promise<InputMeta> {
   const url = `${trimSlash(API_BASE)}/runtime/packages/${encodeURIComponent(
@@ -102,20 +104,26 @@ export async function fetchInputMeta(program: ProgramRef): Promise<InputMeta> {
         package?: {
           entities?: Array<{
             entity: string;
-            inputs?: Array<{ name: string; dtype?: string; default?: unknown }>;
+            inputs?: Array<{ name: string; dtype?: string; default?: unknown; choices?: Array<{ value: number; label: string }> }>;
           }>;
         };
       };
     };
     const dtypes: Record<string, string> = {};
     const defaults: Record<string, unknown> = {};
+    const options: Record<string, number[]> = {};
+    const optionLabels: Record<string, Record<number, string>> = {};
     for (const entity of json.data?.package?.entities ?? []) {
       for (const input of entity.inputs ?? []) {
         dtypes[input.name] = input.dtype ?? "number";
         defaults[input.name] = input.default;
+        if (input.choices?.length) {
+          options[input.name] = input.choices.map(choice => choice.value);
+          optionLabels[input.name] = Object.fromEntries(input.choices.map(choice => [choice.value, choice.label]));
+        }
       }
     }
-    return { dtypes, defaults };
+    return { dtypes, defaults, options, optionLabels };
   } catch {
     return { dtypes: {}, defaults: {} };
   }
@@ -156,8 +164,12 @@ export interface RootInputSlot {
   dtype: string;
   default: string | number | boolean;
   entity: string;
-  /** Closed value domain (table keys or the equality-literal set the
-   *  statute distinguishes), when the artifact defines one. */
+  category?: string;
+  order?: number;
+  label?: string;
+  /** Explicit complete enum declaration, including display labels. */
+  choices?: Array<{ value: number; label: string }>;
+  /** Legacy inferred suggestions; not a complete enum declaration. */
   values?: Array<number | string>;
 }
 

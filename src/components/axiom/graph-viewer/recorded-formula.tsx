@@ -15,7 +15,6 @@ type Props = {
   onHighlight?: (id: string | null) => void;
 };
 const comparison = { "==": "equals", "!=": "does not equal", ">": "is greater than", ">=": "is at least", "<": "is less than", "<=": "is at most" };
-const arithmetic = { "+": "Add", "-": "Subtract", "*": "Multiply", "/": "Divide" };
 const symbols = { "+": "+", "-": "−", "*": "×", "/": "÷" };
 function showValue(raw: unknown): string {
   if (raw === null || raw === undefined) return "Not reported";
@@ -23,7 +22,7 @@ function showValue(raw: unknown): string {
   if (typeof raw === "object") return Object.entries(raw).map(([name, value]) => `${humanizeRuleName(name)}: ${showValue(value)}`).join(" · ");
   return String(raw);
 }
-function Expression({ node, context }: {node: AstNode; context: Props}) {
+function Expression({ node, context, compact = false }: {node: AstNode; context: Props; compact?: boolean}) {
   const child = (part: AstNode, key?: number) => <Expression key={key} node={part} context={context} />;
   if (node.kind === "ident") {
     const id = resolveLogicIdentifier(node.name, context.dependencies, context.entries);
@@ -45,9 +44,22 @@ function Expression({ node, context }: {node: AstNode; context: Props}) {
   }
   if (node.kind === "ifElse") return <div className="formula-branches"><section><h5>If</h5>{child(node.cond)}</section><section><h5>Then return</h5>{child(node.then)}</section><section><h5>Otherwise return</h5>{child(node.else_)}</section></div>;
   if (node.kind === "comparison") return <div className="formula-comparison">{child(node.left)}<span className="formula-operation-label">{comparison[node.op]}</span>{child(node.right)}</div>;
-  if (node.kind === "arith") return <section className="formula-group"><h5>{arithmetic[node.op]}</h5><div className="formula-math">{child(node.left)}<span className="formula-operation-label">{symbols[node.op]}</span>{child(node.right)}</div></section>;
+  if (node.kind === "arith") {
+    // Flatten only the left-associated sum: preserve explicit right-hand grouping.
+    if (node.op === "+" && !compact) {
+      const terms: AstNode[] = [];
+      const collect = (part: AstNode) => {
+        if (part.kind === "arith" && part.op === "+") { collect(part.left); terms.push(part.right); }
+        else terms.push(part);
+      };
+      collect(node);
+      return <section className="formula-sum"><h5>Sum of</h5><ol>{terms.map((term, index) => <li key={index}><span className="formula-sum-sign" aria-hidden="true">{index ? "+" : ""}</span><Expression node={term} context={context} compact /></li>)}</ol></section>;
+    }
+    return <span className="formula-inline-math"><span className="formula-punctuation">(</span><Expression node={node.left} context={context} compact /><span className="formula-operation-label">{symbols[node.op]}</span><Expression node={node.right} context={context} compact /><span className="formula-punctuation">)</span></span>;
+  }
   if (node.kind === "unary") return <div className="formula-unary"><span className="formula-operation-label">{node.op === "not" ? "Not" : "Negate"}</span>{child(node.operand)}</div>;
   if (node.kind === "call") {
+    if (compact) return <span className="formula-inline-call"><span className="formula-function-name">{node.name}</span><span className="formula-punctuation">(</span>{node.args.map((arg, index) => <span className="formula-inline-argument" key={index}>{index > 0 && <span className="formula-punctuation">, </span>}<Expression node={arg} context={context} compact /></span>)}<span className="formula-punctuation">)</span></span>;
     if (node.name === "count_where" && node.args.length === 2) return <section className="formula-group"><h5>Count matching members</h5><div className="formula-count"><span>From</span>{child(node.args[0])}<span>Where true</span>{child(node.args[1])}</div></section>;
     const title = node.name === "min" ? "Take the minimum" : node.name === "max" ? "Take the maximum" : node.name;
     return <section className="formula-group"><h5>{title}</h5><ol className="formula-conditions">{node.args.map((arg, index) => <li key={index}>{child(arg)}</li>)}</ol></section>;

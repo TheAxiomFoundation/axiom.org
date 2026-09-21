@@ -5,7 +5,6 @@ import type { ProgramGraph } from "./types";
 import { humanizeRuleName } from "./citations";
 import { parseFormulaStrict, type AstNode } from "./formula";
 import { resolveLogicIdentifier } from "./rule-logic";
-import { RuleLogic } from "./rule-logic";
 
 export type ExplanationRun = {
   outputs: Record<string, unknown>;
@@ -29,12 +28,24 @@ export function recordedEvidence(graph: ProgramGraph, run: ExplanationRun, id: s
   return undefined;
 }
 
-/** Registry defaults apply only to inputs, never to an unreported calculation. */
+/** Only literal parameter declarations are values; do not evaluate expressions or
+ * choose a period/version on behalf of the runtime. Preserve decimal precision. */
+export function declaredParameterValue(graph: ProgramGraph, id: string): unknown {
+  const rule = graph.rules.find(item => item.legalId === id);
+  if (rule?.kind !== "parameter") return undefined;
+  const literal = rule.formula?.trim();
+  if (!literal) return undefined;
+  if (/^(?:true|false)$/i.test(literal)) return literal.toLowerCase() === "true";
+  if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(literal)) return literal;
+  return undefined;
+}
+
+/** Declared constants/defaults never stand in for unreported calculations. */
 export function inputAwareEvidence(graph: ProgramGraph, run: ExplanationRun | null, id: string, defaults: Record<string, unknown>): unknown {
   const evidence = run ? recordedEvidence(graph, run, id)?.value : undefined;
   if (evidence !== undefined && evidence !== null) return evidence;
   const input = graph.inputs.find(item => item.legalId === id);
-  if (!input) return evidence;
+  if (!input) return declaredParameterValue(graph, id) ?? evidence;
   return defaults[input.name] ?? defaults[input.name.replace(/^input\./, "")];
 }
 
@@ -134,50 +145,69 @@ export function resultReason(graph: ProgramGraph, run: ExplanationRun, id: strin
   return "This is the recorded result for the last run. Follow its dependencies to inspect the supporting values.";
 }
 
-export function ResultExplanation({ graph, run, rootId, stale, onRead, onGraph, onEditInputs }: { graph: ProgramGraph; run: ExplanationRun; rootId: string; stale: boolean; onRead: (id: string) => void; onGraph?: (id: string) => void; onEditInputs?: () => void }) {
-  const [trail, setTrail] = useState<string[]>([rootId]);
+function ResultOverview({ graph, run, id, onRelationships }: { graph: ProgramGraph; run: ExplanationRun; id: string; onRelationships?: (id: string) => void }) {
+  const rule = graph.rules.find(item => item.legalId === id);
+  const ids = [...new Set([...(rule?.ruleDeps ?? []), ...(rule?.inputDeps ?? []), ...(rule?.relationDeps ?? [])])];
+  const entries = new Map([...graph.rules, ...graph.inputs, ...graph.relations].map(item => [item.legalId, item]));
+  const label = (key: string) => humanizeRuleName(entries.get(key)?.name.replace(/^input\./, "") ?? key);
+  const value = (key: string) => recordedEvidence(graph, run, key)?.value ?? declaredParameterValue(graph, key);
+  if (!ids.length) return null;
+  return <section className="result-overview" aria-label="Calculation overview"><h4>Calculation overview</h4>
+    <div className="result-overview-grid">{ids.map(key => {
+      const dependency = graph.rules.find(item => item.legalId === key);
+      const children = [...new Set([...(dependency?.ruleDeps ?? []), ...(dependency?.inputDeps ?? [])])].filter(child => child !== id && child !== key && value(child) !== undefined && value(child) !== null);
+      const raw = value(key);
+      return <article className="result-overview-item" key={key}>
+        <div className="result-overview-value"><span>{label(key)}</span><strong>{format(raw)}</strong></div>
+        {dependency?.kind === "parameter" && !recordedEvidence(graph, run, key) && <small>Declared parameter</small>}
+        {children.length > 0 && <dl>{children.slice(0, 3).map(child => <div key={child}><dt>{label(child)}</dt><dd>{format(value(child))}</dd></div>)}</dl>}
+        {onRelationships && <button className="result-overview-link" onClick={() => onRelationships(key)}>Explore relationships{children.length > 3 ? ` · ${children.length - 3} more values` : ""} →</button>}
+      </article>;
+    })}</div>
+  </section>;
+}
+
+export function ResultExplanation({ graph, run, rootId, stale, onRead, onGraph, onRelationships, onEditInputs, trail: controlledTrail, onTrailChange }: { trail?: string[]; onTrailChange?: (trail: string[]) => void; graph: ProgramGraph; run: ExplanationRun; rootId: string; stale: boolean; onRead: (id: string) => void; onGraph?: (id: string) => void; onRelationships?: (id: string) => void; onEditInputs?: () => void }) {
+  const [localTrail, setLocalTrail] = useState<string[]>([rootId]);
+  const trail = controlledTrail?.length ? controlledTrail : localTrail;
+  const setTrail = (update: (items: string[]) => string[]) => {
+    const next = update(trail);
+    if (onTrailChange) onTrailChange(next);
+    else setLocalTrail(next);
+  };
   const [showAllInputs, setShowAllInputs] = useState(false);
   const id = trail.at(-1)!;
   const sectionRef = useRef<HTMLElement>(null);
   useEffect(() => {
     sectionRef.current?.closest(".exec-panel")?.scrollTo?.({ top: 0, behavior: "smooth" });
   }, [id]);
-  const rule = graph.rules.find((item) => item.legalId === id);
   const entries = new Map([...graph.rules, ...graph.inputs, ...graph.relations].map((item) => [item.legalId, item]));
-  const dependencies = [...new Set([...(rule?.ruleDeps ?? []), ...(rule?.inputDeps ?? []), ...(rule?.relationDeps ?? [])])];
   const label = humanizeRuleName(entries.get(id)?.name ?? id);
   const evidence = recordedEvidence(graph, run, id);
   const inputs = relevantInputs(graph, id);
   const blockers = resultBlockers(graph, run, id);
-  const follow = (next: string) => { setTrail(items => [...items, next]); setShowAllInputs(false); };
   return <section ref={sectionRef} className="result-explanation" aria-label="Result explanation">
-    <div className="workspace-section-heading"><h2>Result explanation</h2>{trail.length > 1 && <button className="workspace-button" onClick={() => setTrail((items) => items.slice(0, -1))}>Back to previous calculation</button>}</div>
+    <div className="workspace-section-heading result-explanation-heading"><h2>Result explanation</h2>{!onTrailChange && trail.length > 1 && <button className="workspace-button" onClick={() => setTrail((items) => items.slice(0, -1))}>Back to previous calculation</button>}</div>
     {stale && <p role="status">Inputs have changed. This explanation uses the previous run.</p>}
     <h3 className="result-summary"><span>{label}</span><strong>{format(evidence?.value)}</strong></h3>
-    <div className="result-reason"><h4>Why this result</h4><p>{resultReason(graph, run, id)}</p>{blockers.length > 0 && <ul className="result-blockers">{blockers.map(blocker => <li key={blocker.id}><span>{blocker.explanation}</span><button className="workspace-button" onClick={() => follow(blocker.id)}>Inspect this check →</button></li>)}</ul>}{onGraph && <button className="workspace-button" onClick={() => onGraph(id)}>Follow in graph →</button>}</div>
-    <div className="result-review-grid">
-      <section className="result-review-section" aria-label="Calculation values"><h4>Calculation values</h4>
-        <p className="result-section-note">Select a value to follow its dependencies.</p>
-        <div className="result-dependencies">{dependencies.map(dep => {
-          const item = recordedEvidence(graph, run, dep);
-          return <button className="result-dependency" aria-label={`Inspect ${humanizeRuleName(entries.get(dep)?.name ?? dep.split("#").at(-1)!)}`} key={dep} disabled={!entries.has(dep)} onClick={() => follow(dep)}><span>{humanizeRuleName(entries.get(dep)?.name ?? dep.split("#").at(-1)!)}</span><strong>{format(item?.value)}</strong><small>{item?.origin ?? "No execution evidence"}</small></button>;
-        })}</div>
-        {!dependencies.length && <p>No further dependencies are recorded for this item.</p>}
-      </section>
-      <section className="result-review-section" aria-label="Inputs to review"><div className="workspace-section-heading"><h4>Inputs to review</h4>{onEditInputs && <button className="workspace-button" onClick={onEditInputs}>Edit inputs</button>}</div>
+    {(blockers.length > 0 || !evidence || evidence.value === 0 || evidence.value === false) && <div className="result-reason"><h4>{blockers.length ? "Failed required checks" : "Recorded result"}</h4>
+      <p className="result-reason-description">{blockers.length ? "Recorded values checked against the displayed formula; not a complete causal trace." : resultReason(graph, run, id)}</p>
+    </div>}
+    <ResultOverview graph={graph} run={run} id={id} onRelationships={onRelationships} />
+    {blockers.length > 0 && <ul className="result-blockers">{blockers.map(blocker => <li key={blocker.id}>
+      <span>{blocker.explanation}</span>
+      {onRelationships && <button className="workspace-button" onClick={() => onRelationships(blocker.id)} aria-label={`View relationships for ${humanizeRuleName(entries.get(blocker.id)?.name ?? blocker.id)}`}>View relationships →</button>}
+    </li>)}</ul>}
+    <div className="result-primary-actions">{onEditInputs && <button className="workspace-button" onClick={onEditInputs}>Edit inputs</button>}{onRelationships && <button className="workspace-button result-relationships-link" onClick={() => onRelationships(id)}>View result relationships →</button>}</div>
+      <details className="result-review-section result-input-review"><summary>Inputs to review</summary><section aria-label="Inputs to review"><div className="workspace-section-heading"><h4>Inputs to review</h4></div>
         <p className="result-section-note">Inputs connected to this calculation. Some may belong to branches that were not used.</p>
         <div className="result-inputs">{(showAllInputs ? inputs : inputs.slice(0, 6)).map(inputId => {
           const item = recordedEvidence(graph, run, inputId);
-          return <div className="result-input" key={inputId}><button onClick={() => follow(inputId)}>{humanizeRuleName(entries.get(inputId)?.name.replace(/^input\./, "") ?? inputId)}</button><strong>{format(item?.value)}</strong><small>{item?.origin ?? "Value and default use not reported"}</small></div>;
+          return <div className="result-input" key={inputId}><span>{humanizeRuleName(entries.get(inputId)?.name.replace(/^input\./, "") ?? inputId)}</span><strong>{format(item?.value)}</strong>{item && <small>{item.origin}</small>}</div>;
         })}</div>
         {!inputs.length && <p>No input dependencies are recorded for this node.</p>}
         {inputs.length > 6 && <button className="workspace-button" onClick={() => setShowAllInputs(value => !value)}>{showAllInputs ? "Show fewer inputs" : `Show all ${inputs.length} inputs`}</button>}
-      </section>
-    </div>
-    <details className="result-formula-details"><summary>Formula and source</summary>
-      <RuleLogic key={id} formula={rule?.formula} resultName={label} selectedId={id} dependencies={dependencies} entries={entries} onSelect={follow} hasRun={false} value={(next) => format(recordedEvidence(graph, run, next)?.value)} />
-      <p className="logic-note">The formula describes the calculation. The engine does not report branch decisions or intermediate expression values.</p>
-      <button className="workspace-button" onClick={() => onRead(id)}>Read source provision</button>
-    </details>
+      </section></details>
+
   </section>;
 }

@@ -47,7 +47,13 @@ export function loadAtlasGraph(target: string, signal: AbortSignal): Promise<Mod
   if (existing && existing.expires > Date.now()) return Promise.resolve(existing.graph);
   const task = queue.catch(() => {}).then(async () => {
     if (signal.aborted) throw new DOMException("Aborted", "AbortError");
-    if (Date.now() < nextRequestAt) throw new Error("Preview refresh deferred");
+    const delay = nextRequestAt - Date.now();
+    if (delay > 0) await new Promise<void>((resolve, reject) => {
+      const abort = () => { clearTimeout(timer); reject(new DOMException("Aborted", "AbortError")); };
+      const timer = setTimeout(() => { signal.removeEventListener("abort", abort); resolve(); }, delay);
+      signal.addEventListener("abort", abort, { once: true });
+    });
+    if (signal.aborted) throw new DOMException("Aborted", "AbortError");
     nextRequestAt = Date.now() + 2000;
     return fetchAtlasGraph(target, signal);
   });

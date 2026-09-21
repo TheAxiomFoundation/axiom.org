@@ -16,3 +16,12 @@ it.each([422,429,502,503])('does not cache a failed capability check (%s)',async
  expect(response.status).toBe(status);
  expect(response.headers.get('cache-control')).toBe('no-store');
 });
+it('preserves declared metadata without inventing choices for inferred values', async () => {
+ const declared = {name:'declared_status',entity:'Person',dtype:'integer',default:7,choices:[{value:7,label:'Declared A'},{value:9,label:'Declared B'}],category:'Declared category',order:2};
+ const inferred = {name:'filing_status',entity:'TaxUnit',dtype:'integer',default:0,values:[0,1,2]};
+ vi.mocked(runtimeProxyGet).mockResolvedValue({status:200,body:{status:'ok',data:{inputs:[declared,inferred]}}});
+ const response = await GET(request());
+ const inputs = (await response.json()).data.inputs;
+ expect(inputs).toEqual([declared,inferred]);
+ expect(inputs[1].choices).toBeUndefined();
+});

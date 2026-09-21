@@ -28,3 +28,13 @@ it("keeps names beside values and preserves nested condition structure", () => {
  expect(screen.getByText("Take the minimum")).toBeInTheDocument();
  expect(screen.getAllByRole("button", {name: "Amount = 10"})[0]).toHaveTextContent("Amount10");
 });
+
+it("formats a bracket-style sum as separate terms without nested operation headings", () => {
+ render(<RecordedFormula formula="amount * min(missing, 10) + amount * max(0, min(missing, 20) - 10) + amount * max(0, missing - 20)" entries={entries} dependencies={[...entries.keys()]} hasRun={false} valueOf={() => undefined} onSelect={() => {}} />);
+ expect(screen.getAllByRole("heading", {name:"Sum of"})).toHaveLength(1);
+ expect(screen.getAllByRole("listitem")).toHaveLength(3);
+ expect(screen.queryByRole("heading", {name:"Multiply"})).not.toBeInTheDocument();
+ expect(screen.queryByRole("heading", {name:"Add"})).not.toBeInTheDocument();
+ expect(screen.getAllByText("max")).toHaveLength(2);
+ expect(screen.getByText("Exact formula")).toBeInTheDocument();
+});

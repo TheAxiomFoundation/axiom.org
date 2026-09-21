@@ -21,12 +21,31 @@ describe("layered library", () => {
   fireEvent.click(screen.getByRole("button", { name: "All jurisdictions" }));
   expect(screen.getByRole("button", { name: /2 provisions, explore/ })).toBeInTheDocument();
  });
- it("resets a drill-down when the search or filters change", () => {
+ it("resets a drill-down when the explicit library scope changes", () => {
   vi.stubGlobal("matchMedia", () => ({ matches: true }));
   const { rerender } = render(<LibraryBubbles modules={modules} onPick={vi.fn()} />);
   fireEvent.click(screen.getByRole("button", { name: /2 provisions, explore/ }));
-  rerender(<LibraryBubbles modules={[modules[0]!]} onPick={vi.fn()} />);
+  rerender(<LibraryBubbles modules={[modules[0]!]} scopeKey="us:us" onPick={vi.fn()} />);
   expect(screen.getByRole("button", { name: "All jurisdictions" })).toHaveAttribute("aria-current", "page");
+ });
+ it("preserves the source, document filter and search when returning from a graph refresh", () => {
+  vi.stubGlobal("matchMedia", () => ({ matches: true }));
+  const onPick = vi.fn();
+  const onLevelChange = vi.fn();
+  const { rerender } = render(<LibraryBubbles modules={modules} onPick={onPick} onLevelChange={onLevelChange} />);
+  fireEvent.click(screen.getByRole("button", { name: /2 provisions, explore/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Statutes" }));
+  fireEvent.click(screen.getByRole("button", { name: /US Code · Title 26, 2 provisions, explore/ }));
+  rerender(<LibraryBubbles modules={modules} onPick={onPick} query="32" onLevelChange={onLevelChange} />);
+  fireEvent.click(screen.getByRole("button", { name: "us:statutes/26/32" }));
+  onLevelChange.mockClear();
+  rerender(<LibraryBubbles modules={modules.map(module => ({ ...module }))} onPick={onPick} query="32" onLevelChange={onLevelChange} />);
+  expect(screen.getByRole("button", { name: "US Code · Title 26" })).toHaveAttribute("aria-current", "page");
+  expect(screen.getByRole("button", { name: "us:statutes/26/32" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "us:statutes/26/21" })).not.toBeInTheDocument();
+  expect(onLevelChange).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Federal" }));
+  expect(screen.getByRole("button", { name: "Statutes" })).toHaveAttribute("aria-pressed", "true");
  });
  it("filters source types without changing the selected jurisdiction", () => {
   vi.stubGlobal("matchMedia", () => ({ matches: true }));
