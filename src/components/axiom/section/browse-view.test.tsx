@@ -31,6 +31,7 @@ function makeData(overrides: Partial<BrowsePageData> = {}): BrowsePageData {
     ],
     encodedCounts: {},
     hasMore: false,
+    page: 0,
     ...overrides,
   };
 }
@@ -89,6 +90,38 @@ describe("BrowseView", () => {
       "href",
       "https://www.hasadna.org.il/openlaw/"
     );
+  });
+
+  it("lets Hebrew headings and row labels set their own direction", () => {
+    const title = "פקודת מס הכנסה [נוסח חדש]";
+    render(
+      <BrowseView
+        data={makeData({
+          segments: ["il", "statute"],
+          page: 0,
+          jurisdictionLabel: "Israel",
+          currentRule: null,
+          breadcrumbs: [
+            { label: "Axiom", href: "/" },
+            { label: "Israel", href: "/il" },
+            { label: "Statutes", href: "/il/statute" },
+          ],
+          nodes: [
+            {
+              segment: "income-tax-ordinance",
+              label: title,
+              hasChildren: true,
+              nodeType: "title",
+            },
+          ],
+        })}
+      />
+    );
+    expect(screen.getByRole("heading", { level: 1 })).toHaveAttribute(
+      "dir",
+      "auto"
+    );
+    expect(screen.getByText(title)).toHaveAttribute("dir", "auto");
   });
 
   it("adds no source credit where the publisher is official", () => {

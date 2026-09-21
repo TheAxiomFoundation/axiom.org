@@ -48,6 +48,16 @@ describe("SectionToc", () => {
     expect(screen.getByText("(א) שיעור המס")).toHaveAttribute("dir", "auto");
   });
 
+  it("takes one direction for the outline and nests from that side", () => {
+    const { container } = render(<SectionToc entries={ENTRIES} />);
+    const lists = container.querySelectorAll("ol");
+    expect(lists[0]).toHaveAttribute("dir", "auto");
+    // Nested lists inherit, and indent with a logical margin.
+    expect(lists[1]).not.toHaveAttribute("dir");
+    expect(lists[1].className).toContain("ms-3");
+    expect(lists[1].className).not.toContain("ml-3");
+  });
+
   it("renders nothing for empty entries", () => {
     const { container } = render(<SectionToc entries={[]} />);
     expect(container.firstChild).toBeNull();

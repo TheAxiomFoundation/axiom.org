@@ -46,7 +46,7 @@ const OPEN_LAW_BOOK: SourceCredit = {
     },
     " (ספר החוקים הפתוח), a volunteer project of ",
     { text: "Hasadna", href: "https://www.hasadna.org.il/openlaw/" },
-    " on Hebrew Wikisource. The Knesset’s National Legislation Database links to it for the consolidated text of each law. Israel publishes each amendment officially in Reshumot.",
+    " on Hebrew Wikisource. The Knesset’s National Legislation Database links to it for consolidated text. Israel publishes each amendment officially in Reshumot.",
   ],
 };
 
@@ -55,8 +55,14 @@ const CREDIT_BY_HOST: Readonly<Record<string, SourceCredit>> = {
   "he.wikisource.org": OPEN_LAW_BOOK,
 };
 
-/** Jurisdictions whose whole corpus comes from one such source. */
-const CREDIT_BY_JURISDICTION: Readonly<Record<string, SourceCredit>> = {
+/**
+ * Jurisdiction families whose whole corpus comes from one such source.
+ * Nothing enforces "whole": on 2026-09-21 all 1,435 `il` rows in
+ * `corpus.current_provisions` carried a he.wikisource.org source_url
+ * and none carried another host or none. An ingest from a second
+ * source must revisit this entry.
+ */
+const CREDIT_BY_FAMILY: Readonly<Record<string, SourceCredit>> = {
   il: OPEN_LAW_BOOK,
 };
 
@@ -88,5 +94,8 @@ export function sourceCreditForJurisdiction(
   jurisdiction: string | null | undefined
 ): SourceCredit | null {
   if (!jurisdiction) return null;
-  return CREDIT_BY_JURISDICTION[jurisdiction.toLowerCase()] ?? null;
+  // A sub-jurisdiction inherits its family's credit ("il-tlv" → "il"),
+  // as the visibility gate inherits the family marker.
+  const family = jurisdiction.toLowerCase().split("-")[0];
+  return CREDIT_BY_FAMILY[family] ?? null;
 }

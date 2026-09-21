@@ -513,7 +513,7 @@ function ChunkBlock({
       id={chunk.anchor}
       className={`group scroll-mt-24 ${focused ? FOCUSED_SUBSECTION_CLASS : ""}`}
     >
-      <h2 className="mt-7 flex items-baseline gap-2">
+      <h2 dir="auto" className="mt-7 flex items-baseline gap-2">
         <Link
           href={`/${data.citationPath}/${chunk.anchor}`}
           className="font-mono text-sm text-[var(--color-ink-muted)] hover:text-[var(--color-accent)] transition-colors"
@@ -522,7 +522,6 @@ function ChunkBlock({
           {chunk.designator}
         </Link>
         <span
-          dir="auto"
           className="min-w-0 truncate text-[15px] text-[var(--color-ink)]"
           style={{ fontFamily: "var(--f-serif)" }}
         >
@@ -566,7 +565,9 @@ function NeighborNav({ data }: { data: SectionPageData }) {
           rel="prev"
           className="max-w-[45%] truncate text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)] transition-colors"
         >
-          ← {data.prev.label}
+          {/* The arrows are page chrome and keep their side; <bdi>
+              isolates a Hebrew label so it cannot reorder them. */}
+          ← <bdi>{data.prev.label}</bdi>
         </Link>
       ) : (
         <span />
@@ -577,7 +578,7 @@ function NeighborNav({ data }: { data: SectionPageData }) {
           rel="next"
           className="max-w-[45%] truncate text-right text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)] transition-colors"
         >
-          {data.next.label} →
+          <bdi>{data.next.label}</bdi> →
         </Link>
       ) : (
         <span />

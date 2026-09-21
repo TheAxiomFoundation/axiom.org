@@ -198,6 +198,7 @@ export function BrowseView({ data }: { data: BrowsePageData }) {
       <header className="mb-8">
         <Breadcrumbs data={data} />
         <h1
+          dir="auto"
           className="mt-5 text-[2.4rem] leading-[1.1] font-semibold text-[var(--color-ink)]"
           style={{ fontFamily: "var(--f-serif)" }}
         >
@@ -242,6 +243,7 @@ export function BrowseView({ data }: { data: BrowsePageData }) {
               >
                 <span className="flex items-baseline justify-between gap-4">
                   <span
+                    dir="auto"
                     className="text-xl text-[var(--color-ink)] group-hover:text-[var(--color-accent)] transition-colors"
                     style={{ fontFamily: "var(--f-serif)" }}
                   >
@@ -329,6 +331,7 @@ export function BrowseView({ data }: { data: BrowsePageData }) {
                     </span>
                   )}
                   <span
+                    dir="auto"
                     className={`min-w-0 truncate text-[15px] text-[var(--color-ink-secondary)] group-hover:text-[var(--color-ink)] transition-colors ${
                       hasGutter && !showKey ? "ml-[3.25rem] sm:ml-[4.5rem]" : ""
                     }`}

@@ -380,6 +380,10 @@ describe("RuleBody", () => {
 
     const table = screen.getByRole("table");
     expect(table).toBeInTheDocument();
+    // One direction for the whole table; cells inherit it, so a lone
+    // Latin cell in a Hebrew table cannot flip out of its column.
+    expect(table).toHaveAttribute("dir", "auto");
+    expect(table.querySelector("th[dir], td[dir]")).toBeNull();
     expect(
       screen.getByRole("columnheader", {
         name: "In the case of an eligible individual with:",

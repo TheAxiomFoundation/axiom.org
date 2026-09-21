@@ -69,7 +69,21 @@ describe("sourceCreditForJurisdiction", () => {
     expect(sentence).toContain("Reshumot");
     // The consolidation is never described as the official text.
     expect(sentence).not.toMatch(/official (source|text|consolidation)/i);
+    // Hasadna's page describes links between the two projects, not
+    // coverage of every law: the sentence must not claim "each law".
+    expect(sentence).not.toMatch(/each law|every law|all laws/i);
+    expect(sentence).toContain("links to it for consolidated text.");
     expect(sourceCreditForJurisdiction("IL")).toBe(credit);
+  });
+
+  it("lets a sub-jurisdiction inherit its family's credit", () => {
+    expect(sourceCreditForJurisdiction("il-tlv")).toBe(
+      sourceCreditForJurisdiction("il")
+    );
+    // A family with no entry stays uncredited, and a lookalike slug
+    // does not match on a prefix.
+    expect(sourceCreditForJurisdiction("us-il")).toBeNull();
+    expect(sourceCreditForJurisdiction("ilx")).toBeNull();
   });
 
   it("returns null for jurisdictions ingested from official publishers", () => {

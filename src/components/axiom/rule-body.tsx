@@ -666,14 +666,20 @@ export function RuleBody({
             key={`table-${blockIndex}`}
             className="my-5 overflow-x-auto whitespace-normal"
           >
-            <table className="w-full min-w-[520px] border-collapse text-sm leading-normal font-sans">
+            {/* One direction for the whole table, taken from its first
+                strong character: a Hebrew table orders its columns
+                right-to-left and no single Latin cell ("NIS") flips
+                out of its column. */}
+            <table
+              dir="auto"
+              className="w-full min-w-[520px] border-collapse text-sm leading-normal font-sans"
+            >
               <thead>
                 <tr className="border-b border-[var(--color-rule)]">
                   {block.headers.map((header, index) => (
                     <th
                       key={index}
                       scope="col"
-                      dir="auto"
                       className="px-3 py-2 text-start align-bottom font-mono text-[11px] uppercase tracking-wider text-[var(--color-ink-muted)] font-normal"
                     >
                       {header.text}
@@ -690,7 +696,6 @@ export function RuleBody({
                     {row.map((cell, cellIndex) => (
                       <td
                         key={cellIndex}
-                        dir="auto"
                         className="px-3 py-2 align-top text-[var(--color-ink-secondary)]"
                       >
                         {cell.start === cell.end

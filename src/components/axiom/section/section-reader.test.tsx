@@ -123,6 +123,35 @@ describe("SectionReader", () => {
     expect(screen.queryByText("Official source")).not.toBeInTheDocument();
   });
 
+  it("isolates Hebrew neighbor labels so the arrows keep their side", () => {
+    render(
+      <SectionReader
+        data={makeData({
+          prev: { citationPath: "il/statute/ito/section-120b", label: "הצמדה" },
+          next: {
+            citationPath: "il/statute/ito/section-121b",
+            label: "מס נוסף על הכנסות גבוהות",
+          },
+        })}
+      />
+    );
+    const prev = screen.getByText("הצמדה");
+    expect(prev.tagName).toBe("BDI");
+    expect(prev.closest("a")).toHaveAttribute(
+      "href",
+      "/il/statute/ito/section-120b"
+    );
+    expect(screen.getByText("מס נוסף על הכנסות גבוהות").tagName).toBe("BDI");
+  });
+
+  it("sets a chunk heading's direction on the row, not the label", () => {
+    render(<SectionReader data={makeData()} />);
+    const row = screen.getByTitle("Open us/statute/26/32/a").closest("h2");
+    expect(row).toHaveAttribute("dir", "auto");
+    // The label inherits, so designator and label stay adjacent.
+    expect(row?.querySelector("span")).not.toHaveAttribute("dir");
+  });
+
   it("lets the heading set its own base direction", () => {
     render(
       <SectionReader
@@ -162,8 +191,9 @@ describe("SectionReader", () => {
       within(encodings).getByText(/§ 32 \(a\)\(b\) · derived/),
     ).toBeInTheDocument();
     // Prev/next.
-    expect(screen.getByText(/§ 31/)).toHaveAttribute("rel", "prev");
-    expect(screen.getByText(/§ 33/)).toHaveAttribute("rel", "next");
+    // The label sits in a <bdi> inside the link.
+    expect(screen.getByText(/§ 31/).closest("a")).toHaveAttribute("rel", "prev");
+    expect(screen.getByText(/§ 33/).closest("a")).toHaveAttribute("rel", "next");
   });
 
   it("keeps section-and-below breadcrumbs in v2, ancestors in v1", () => {
