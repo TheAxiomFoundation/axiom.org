@@ -1,0 +1,44 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { SUITE_LINES } from "./lines";
+
+/** PROTOTYPE (suite-mock): on /suite the site footer (which describes
+ *  the rules program only) gives way to one that lists the five lines. */
+export function FooterGate({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  if (!pathname?.startsWith("/suite")) return <>{children}</>;
+
+  return (
+    <footer className="relative z-10 border-t border-[var(--color-rule)] px-8 py-14">
+      <div className="mx-auto grid max-w-[1280px] gap-10 md:grid-cols-[1.2fr_2fr]">
+        <div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logos/axiom-wordmark-bare.svg" alt="Axiom" className="h-[26px] w-auto" />
+          <p className="serif-italic mt-4 text-[1.05rem] text-[var(--color-ink)]">
+            Show the work. For all.
+          </p>
+        </div>
+        <ul className="grid gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
+          {SUITE_LINES.map((line) => (
+            <li key={line.slug}>
+              <Link href={`/suite/${line.slug}`} className="no-underline">
+                <span className="flex items-center gap-2 font-body text-[0.98rem] text-[var(--color-ink)]">
+                  <span aria-hidden className="h-1.5 w-1.5 rounded-full" style={{ background: line.hue }} />
+                  {line.name}
+                </span>
+                <span className="mt-1 block font-mono text-[0.6rem] uppercase tracking-[0.16em] text-[var(--color-ink-muted)]">
+                  today: {line.today.name}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <p className="mx-auto mt-12 max-w-[1280px] font-mono text-[0.6rem] uppercase tracking-[0.16em] text-[var(--color-ink-muted)]">
+        Prototype of an alternate naming universe &middot; not public, not a plan
+      </p>
+    </footer>
+  );
+}

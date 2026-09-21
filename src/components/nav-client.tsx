@@ -20,6 +20,9 @@ interface NavClientProps {
 export function NavClient({ baseUrl, appUrl }: NavClientProps) {
   const pathname = usePathname();
 
+  // PROTOTYPE (suite-mock): the /suite mock carries its own nav.
+  if (pathname?.startsWith("/suite")) return null;
+
   return (
     <Nav
       pathname={pathname}

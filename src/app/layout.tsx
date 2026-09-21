@@ -10,6 +10,7 @@ import { GoogleAnalytics } from "@/components/google-analytics";
 import { PostHogProvider } from "@/components/posthog-provider";
 import { SITE_URL, axiomAppHref } from "@/lib/urls";
 import { UPDATES_URL } from "@/lib/launch";
+import { FooterGate } from "@/components/suite/footer-gate";
 
 const mono = JetBrains_Mono({
   subsets: ["latin"],
@@ -80,7 +81,10 @@ export default function RootLayout({
               them once the page scrolls to it. */}
           <main className="relative z-20">{children}</main>
         </CommandPaletteProvider>
-        <Footer renderLink={Link} appUrl={axiomAppHref()} updatesUrl={UPDATES_URL} />
+        {/* PROTOTYPE (suite-mock): /suite swaps in its own footer. */}
+        <FooterGate>
+          <Footer renderLink={Link} appUrl={axiomAppHref()} updatesUrl={UPDATES_URL} />
+        </FooterGate>
       </body>
     </html>
   );
