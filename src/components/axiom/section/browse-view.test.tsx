@@ -31,6 +31,7 @@ function makeData(overrides: Partial<BrowsePageData> = {}): BrowsePageData {
     ],
     encodedCounts: {},
     hasMore: false,
+    page: 0,
     ...overrides,
   };
 }
@@ -54,6 +55,78 @@ describe("BrowseView", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
       "Statute"
     );
+  });
+
+  it("credits the Open Law Book on Israel browse pages", () => {
+    render(
+      <BrowseView
+        data={makeData({
+          segments: ["il"],
+          page: 0,
+          jurisdictionLabel: "Israel",
+          breadcrumbs: [{ label: "Axiom", href: "/" }],
+          nodes: [
+            {
+              segment: "statute",
+              label: "Statutes",
+              hasChildren: true,
+              childCount: 2,
+              nodeType: "doc_type",
+            },
+          ],
+        })}
+      />
+    );
+    // One child reads "1 collection", not "1 collections".
+    expect(screen.getByText(/^1 collection$/)).toBeInTheDocument();
+    const credit = screen.getByTestId("source-credit");
+    expect(credit).toHaveTextContent("ספר החוקים הפתוח");
+    expect(credit).toHaveTextContent("Reshumot");
+    expect(screen.getByRole("link", { name: "Open Law Book" })).toHaveAttribute(
+      "href",
+      "https://he.wikisource.org/wiki/ספר_החוקים_הפתוח"
+    );
+    expect(screen.getByRole("link", { name: "Hasadna" })).toHaveAttribute(
+      "href",
+      "https://www.hasadna.org.il/openlaw/"
+    );
+  });
+
+  it("lets Hebrew headings and row labels set their own direction", () => {
+    const title = "פקודת מס הכנסה [נוסח חדש]";
+    render(
+      <BrowseView
+        data={makeData({
+          segments: ["il", "statute"],
+          page: 0,
+          jurisdictionLabel: "Israel",
+          currentRule: null,
+          breadcrumbs: [
+            { label: "Axiom", href: "/" },
+            { label: "Israel", href: "/il" },
+            { label: "Statutes", href: "/il/statute" },
+          ],
+          nodes: [
+            {
+              segment: "income-tax-ordinance",
+              label: title,
+              hasChildren: true,
+              nodeType: "title",
+            },
+          ],
+        })}
+      />
+    );
+    expect(screen.getByRole("heading", { level: 1 })).toHaveAttribute(
+      "dir",
+      "auto"
+    );
+    expect(screen.getByText(title)).toHaveAttribute("dir", "auto");
+  });
+
+  it("adds no source credit where the publisher is official", () => {
+    render(<BrowseView data={makeData()} />);
+    expect(screen.queryByTestId("source-credit")).not.toBeInTheDocument();
   });
 
   it("shows the empty state and the has-more note", () => {

@@ -516,6 +516,10 @@ function renderTextBlock({
         return (
           <p
             key={`${paragraph.lines[0].start}-${paragraph.lines.at(-1)?.end}`}
+            // Provision text sets its own base direction: a Hebrew
+            // paragraph lays out right-to-left, so its designator
+            // and punctuation land on the correct side.
+            dir="auto"
             className={`m-0 whitespace-pre-wrap ${
               index === 0 ? "" : paragraph.startsWithSource ? "mt-7" : "mt-5"
             }`}
@@ -660,6 +664,14 @@ export function RuleBody({
         return (
           <div
             key={`table-${blockIndex}`}
+            // One direction for the whole block, taken from its first
+            // strong character: a Hebrew table orders its columns
+            // right-to-left and no single Latin cell ("NIS") flips out
+            // of its column. It sits on the scroll container, not the
+            // table, because the initial scroll offset belongs to the
+            // container: a narrow screen opens an RTL table at its
+            // first column, not its last.
+            dir="auto"
             className="my-5 overflow-x-auto whitespace-normal"
           >
             <table className="w-full min-w-[520px] border-collapse text-sm leading-normal font-sans">
@@ -669,7 +681,7 @@ export function RuleBody({
                     <th
                       key={index}
                       scope="col"
-                      className="px-3 py-2 text-left align-bottom font-mono text-[11px] uppercase tracking-wider text-[var(--color-ink-muted)] font-normal"
+                      className="px-3 py-2 text-start align-bottom font-mono text-[11px] uppercase tracking-wider text-[var(--color-ink-muted)] font-normal"
                     >
                       {header.text}
                     </th>

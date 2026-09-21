@@ -1,6 +1,10 @@
 import Link from "next/link";
 import type { BrowsePageData } from "@/lib/axiom/browse-page";
 import { TrackView } from "@/components/axiom/track-view";
+import {
+  sourceCreditForJurisdiction,
+  type SourceCredit,
+} from "@/lib/axiom/source-attribution";
 
 /** Source labels arrive in every shape — ALL-CAPS USC title names,
  *  section headings leaking into title rows. Title-case the shouty
@@ -145,6 +149,33 @@ const ENCODED_MARK = (
   </span>
 );
 
+/** Names the text source where it is not an official publisher, and
+ *  credits the people who maintain it. */
+function SourceCreditNote({ credit }: { credit: SourceCredit }) {
+  return (
+    <p
+      data-testid="source-credit"
+      className="mt-4 text-[13px] leading-relaxed text-[var(--color-ink-muted)]"
+    >
+      {credit.credit.map((part, index) =>
+        typeof part === "string" ? (
+          <span key={index}>{part}</span>
+        ) : (
+          <a
+            key={index}
+            href={part.href}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[var(--color-ink-secondary)] underline decoration-[var(--color-rule)] underline-offset-2 hover:text-[var(--color-ink)] transition-colors"
+          >
+            {part.text}
+          </a>
+        )
+      )}
+    </p>
+  );
+}
+
 export function BrowseView({ data }: { data: BrowsePageData }) {
   const heading =
     data.currentRule?.heading?.trim() ||
@@ -156,6 +187,7 @@ export function BrowseView({ data }: { data: BrowsePageData }) {
   const isRoot = depth === 1;
   const noun = childNoun(depth, data.nodes[0]?.segment);
   const encodedCount = data.nodes.filter((n) => n.hasRuleSpec).length;
+  const sourceCredit = sourceCreditForJurisdiction(data.segments[0]);
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 pt-24 pb-16">
@@ -166,6 +198,7 @@ export function BrowseView({ data }: { data: BrowsePageData }) {
       <header className="mb-8">
         <Breadcrumbs data={data} />
         <h1
+          dir="auto"
           className="mt-5 text-[2.4rem] leading-[1.1] font-semibold text-[var(--color-ink)]"
           style={{ fontFamily: "var(--f-serif)" }}
         >
@@ -173,7 +206,8 @@ export function BrowseView({ data }: { data: BrowsePageData }) {
         </h1>
         {data.nodes.length > 0 && !data.hasMore && data.page === 0 && (
           <p className="mt-3 font-mono text-[11px] uppercase tracking-wider text-[var(--color-ink-muted)]">
-            {data.nodes.length} {noun}
+            {data.nodes.length}{" "}
+            {data.nodes.length === 1 ? noun.replace(/s$/, "") : noun}
             {encodedCount > 0 && (
               <>
                 {" "}· <span className="text-[var(--color-accent)]">∀</span>{" "}
@@ -182,6 +216,7 @@ export function BrowseView({ data }: { data: BrowsePageData }) {
             )}
           </p>
         )}
+        {sourceCredit && <SourceCreditNote credit={sourceCredit} />}
       </header>
 
       {data.nodes.length === 0 ? (
@@ -208,6 +243,7 @@ export function BrowseView({ data }: { data: BrowsePageData }) {
               >
                 <span className="flex items-baseline justify-between gap-4">
                   <span
+                    dir="auto"
                     className="text-xl text-[var(--color-ink)] group-hover:text-[var(--color-accent)] transition-colors"
                     style={{ fontFamily: "var(--f-serif)" }}
                   >
@@ -295,6 +331,7 @@ export function BrowseView({ data }: { data: BrowsePageData }) {
                     </span>
                   )}
                   <span
+                    dir="auto"
                     className={`min-w-0 truncate text-[15px] text-[var(--color-ink-secondary)] group-hover:text-[var(--color-ink)] transition-colors ${
                       hasGutter && !showKey ? "ml-[3.25rem] sm:ml-[4.5rem]" : ""
                     }`}

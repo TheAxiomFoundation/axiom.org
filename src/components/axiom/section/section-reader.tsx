@@ -27,6 +27,11 @@ import {
   ruleGraphFocus,
 } from "@/lib/axiom/runtime/graph-links";
 import { formatLegalCitation } from "@/lib/axiom/citation/format";
+import {
+  sourceCreditForUrl,
+  sourceLinkLabel,
+} from "@/lib/axiom/source-attribution";
+import { baseDirection } from "@/lib/axiom/text-direction";
 
 /**
  * Server-rendered reading column for a section and its full
@@ -509,7 +514,13 @@ function ChunkBlock({
       id={chunk.anchor}
       className={`group scroll-mt-24 ${focused ? FOCUSED_SUBSECTION_CLASS : ""}`}
     >
-      <h2 className="mt-7 flex items-baseline gap-2">
+      {/* The row follows the chunk's text, not its designator: "(1)"
+          is all weak characters, so auto alone would leave a Hebrew
+          chunk's heading row left-to-right. */}
+      <h2
+        dir={baseDirection(`${chunk.label} ${chunk.text}`) ?? "auto"}
+        className="mt-7 flex items-baseline gap-2"
+      >
         <Link
           href={`/${data.citationPath}/${chunk.anchor}`}
           className="font-mono text-sm text-[var(--color-ink-muted)] hover:text-[var(--color-accent)] transition-colors"
@@ -561,7 +572,9 @@ function NeighborNav({ data }: { data: SectionPageData }) {
           rel="prev"
           className="max-w-[45%] truncate text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)] transition-colors"
         >
-          ← {data.prev.label}
+          {/* The arrows are page chrome and keep their side; <bdi>
+              isolates a Hebrew label so it cannot reorder them. */}
+          ← <bdi>{data.prev.label}</bdi>
         </Link>
       ) : (
         <span />
@@ -572,7 +585,7 @@ function NeighborNav({ data }: { data: SectionPageData }) {
           rel="next"
           className="max-w-[45%] truncate text-right text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)] transition-colors"
         >
-          {data.next.label} →
+          <bdi>{data.next.label}</bdi> →
         </Link>
       ) : (
         <span />
@@ -627,6 +640,7 @@ export function SectionReader({
         <header className="border-b border-[var(--color-rule)] pb-5">
           {heading && (
             <h1
+              dir="auto"
               className="text-2xl font-semibold text-[var(--color-ink)]"
               style={{ fontFamily: "var(--f-serif)" }}
             >
@@ -641,9 +655,12 @@ export function SectionReader({
                 href={data.root.source_url}
                 target="_blank"
                 rel="noreferrer"
+                // A volunteer consolidation is not an official
+                // publication: it carries its own name.
+                title={sourceCreditForUrl(data.root.source_url)?.linkTitle}
                 className="underline decoration-[var(--color-rule)] underline-offset-2 hover:text-[var(--color-ink)] transition-colors"
               >
-                Official source
+                {sourceLinkLabel(data.root.source_url)}
               </a>
             )}
           </div>
