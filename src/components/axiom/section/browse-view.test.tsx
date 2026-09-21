@@ -71,7 +71,7 @@ describe("BrowseView", () => {
               label: "Statutes",
               hasChildren: true,
               childCount: 2,
-              nodeType: "container",
+              nodeType: "doc_type",
             },
           ],
         })}
