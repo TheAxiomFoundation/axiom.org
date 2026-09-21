@@ -31,7 +31,9 @@ function TocList({
   return (
     // The list takes one direction from its first label, and nesting
     // indents from that side (ms-, not ml-): a Hebrew outline nests
-    // from the right.
+    // from the right. The anchors carry no dir of their own: the auto
+    // scan skips text under a descendant that has one, so a dir on
+    // every anchor would leave the list nothing to read and pin it LTR.
     <ol
       {...(depth === 0 && { dir: "auto" })}
       className={depth === 0 ? "space-y-1" : "mt-1 ms-3 space-y-1"}
@@ -41,7 +43,6 @@ function TocList({
           <a
             href={`#${entry.anchor}`}
             aria-current={active === entry.anchor ? "location" : undefined}
-            dir="auto"
             className={`block truncate rounded-sm px-2 py-1 text-[0.8rem] leading-snug transition-colors ${
               active === entry.anchor
                 ? "bg-[var(--color-surface-raised,rgba(0,0,0,0.05))] text-[var(--color-ink)] font-medium"

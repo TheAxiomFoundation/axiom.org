@@ -147,9 +147,34 @@ describe("SectionReader", () => {
   it("sets a chunk heading's direction on the row, not the label", () => {
     render(<SectionReader data={makeData()} />);
     const row = screen.getByTitle("Open us/statute/26/32/a").closest("h2");
-    expect(row).toHaveAttribute("dir", "auto");
+    // Decided by the chunk's own text, so a numeric designator cannot
+    // leave a Hebrew chunk's row left-to-right.
+    expect(row).toHaveAttribute("dir", "ltr");
     // The label inherits, so designator and label stay adjacent.
     expect(row?.querySelector("span")).not.toHaveAttribute("dir");
+  });
+
+  it("gives a Hebrew chunk with a numeric designator a right-to-left row", () => {
+    render(
+      <SectionReader
+        data={makeData({
+          bodyChunks: [
+            {
+              anchor: "1",
+              designator: "(1)",
+              label: "(1)",
+              text: "(1) על כל שקל חדש מ־301,200 השקלים החדשים הראשונים – 31%;",
+              start: 0,
+            },
+          ],
+          toc: [{ anchor: "1", label: "(1)", children: [] }],
+          encodedRules: [],
+        })}
+      />
+    );
+    expect(
+      screen.getByTitle("Open us/statute/26/32/1").closest("h2")
+    ).toHaveAttribute("dir", "rtl");
   });
 
   it("lets the heading set its own base direction", () => {

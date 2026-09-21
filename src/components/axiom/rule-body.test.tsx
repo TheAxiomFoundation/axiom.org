@@ -380,9 +380,12 @@ describe("RuleBody", () => {
 
     const table = screen.getByRole("table");
     expect(table).toBeInTheDocument();
-    // One direction for the whole table; cells inherit it, so a lone
-    // Latin cell in a Hebrew table cannot flip out of its column.
-    expect(table).toHaveAttribute("dir", "auto");
+    // One direction for the whole block, on the scroll container; the
+    // table and its cells inherit it, so a lone Latin cell in a Hebrew
+    // table cannot flip out of its column and the scroll starts at the
+    // first column.
+    expect(table.parentElement).toHaveAttribute("dir", "auto");
+    expect(table).not.toHaveAttribute("dir");
     expect(table.querySelector("th[dir], td[dir]")).toBeNull();
     expect(
       screen.getByRole("columnheader", {

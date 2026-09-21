@@ -31,6 +31,7 @@ import {
   sourceCreditForUrl,
   sourceLinkLabel,
 } from "@/lib/axiom/source-attribution";
+import { baseDirection } from "@/lib/axiom/text-direction";
 
 /**
  * Server-rendered reading column for a section and its full
@@ -513,7 +514,13 @@ function ChunkBlock({
       id={chunk.anchor}
       className={`group scroll-mt-24 ${focused ? FOCUSED_SUBSECTION_CLASS : ""}`}
     >
-      <h2 dir="auto" className="mt-7 flex items-baseline gap-2">
+      {/* The row follows the chunk's text, not its designator: "(1)"
+          is all weak characters, so auto alone would leave a Hebrew
+          chunk's heading row left-to-right. */}
+      <h2
+        dir={baseDirection(`${chunk.label} ${chunk.text}`) ?? "auto"}
+        className="mt-7 flex items-baseline gap-2"
+      >
         <Link
           href={`/${data.citationPath}/${chunk.anchor}`}
           className="font-mono text-sm text-[var(--color-ink-muted)] hover:text-[var(--color-accent)] transition-colors"

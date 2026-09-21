@@ -664,16 +664,17 @@ export function RuleBody({
         return (
           <div
             key={`table-${blockIndex}`}
+            // One direction for the whole block, taken from its first
+            // strong character: a Hebrew table orders its columns
+            // right-to-left and no single Latin cell ("NIS") flips out
+            // of its column. It sits on the scroll container, not the
+            // table, because the initial scroll offset belongs to the
+            // container: a narrow screen opens an RTL table at its
+            // first column, not its last.
+            dir="auto"
             className="my-5 overflow-x-auto whitespace-normal"
           >
-            {/* One direction for the whole table, taken from its first
-                strong character: a Hebrew table orders its columns
-                right-to-left and no single Latin cell ("NIS") flips
-                out of its column. */}
-            <table
-              dir="auto"
-              className="w-full min-w-[520px] border-collapse text-sm leading-normal font-sans"
-            >
+            <table className="w-full min-w-[520px] border-collapse text-sm leading-normal font-sans">
               <thead>
                 <tr className="border-b border-[var(--color-rule)]">
                   {block.headers.map((header, index) => (

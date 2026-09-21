@@ -17,6 +17,8 @@
  * "Official source" label.
  */
 
+import { ruleSpecFamilyForJurisdiction } from "@/lib/axiom/repo-map";
+
 export interface SourceCreditLink {
   text: string;
   href: string;
@@ -94,8 +96,10 @@ export function sourceCreditForJurisdiction(
   jurisdiction: string | null | undefined
 ): SourceCredit | null {
   if (!jurisdiction) return null;
-  // A sub-jurisdiction inherits its family's credit ("il-tlv" → "il"),
-  // as the visibility gate inherits the family marker.
-  const family = jurisdiction.toLowerCase().split("-")[0];
-  return CREDIT_BY_FAMILY[family] ?? null;
+  // A sub-jurisdiction inherits its family's credit ("il-tlv" → "il")
+  // by the app's own family resolution, so the credit and the
+  // visibility gate can never disagree about which family a slug is in
+  // (a root-layout family such as "ca" does not adopt "ca-on").
+  const family = ruleSpecFamilyForJurisdiction(jurisdiction.toLowerCase());
+  return family ? (CREDIT_BY_FAMILY[family.slug] ?? null) : null;
 }
