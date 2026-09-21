@@ -31,7 +31,7 @@ function Formerly({ line }: { line: SuiteLine }) {
 const SPECIMENS: { where: string; text: string }[] = [
   {
     where: "A news clause",
-    text: "…would cost $317 billion over ten years, according to Axiom, a nonprofit that models tax and benefit law.",
+    text: "…would cost $317 billion over ten years, according to the Axiom Institute, a nonprofit that builds open models of law and policy.",
   },
   {
     where: "A methods section",
