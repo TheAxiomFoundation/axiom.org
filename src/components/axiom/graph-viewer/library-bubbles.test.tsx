@@ -79,9 +79,9 @@ describe("layered library", () => {
   const onPick = vi.fn();
   render(<LibraryBubbles modules={belgium} onPick={onPick} />);
   expect(screen.getByLabelText("Belgium jurisdictions")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Federal, 1 encoded provisions" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "German-speaking Community, 1 encoded provisions" })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Flanders, 1 encoded provisions" }));
+  expect(screen.getByRole("button", { name: "Federal, 1 encoded provision" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "German-speaking Community, 1 encoded provision" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Flanders, 1 encoded provision" }));
   fireEvent.click(screen.getByRole("button", { name: /Statutes · Family Benefits, 1 provisions, explore/ }));
   fireEvent.click(screen.getByRole("button", { name: "be-vlg:statutes/family_benefits/eligibility" }));
   expect(onPick).toHaveBeenCalledWith("be-vlg:statutes/family_benefits/eligibility");

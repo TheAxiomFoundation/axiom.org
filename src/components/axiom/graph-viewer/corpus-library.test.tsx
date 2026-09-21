@@ -18,7 +18,7 @@ describe("law library", () => {
     render(<CorpusLibrary {...props} />);
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Colorado SNAP" } });
     expect(screen.getByText("SNAP Eligibility")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Earned income tax credit.*24 rules/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Earned income tax credit.*26 USC/ })).not.toBeInTheDocument();
   });
   it("never infers executable capability from size and shares filters with the map", () => {
     rememberRunCapability(modules[0]!.target, true);
@@ -32,7 +32,7 @@ describe("law library", () => {
   it("matches complete citation numbers rather than numeric substrings", () => {
     render(<CorpusLibrary {...props} modules={[...modules, { ...modules[0]!, target: "us:statutes/26/3231", headlineRule: "railroad_compensation" }]} />);
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "26 USC 32" } });
-    expect(screen.getByRole("button", { name: /Earned income tax credit.*24 rules/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Earned income tax credit.*26 USC/ })).toBeInTheDocument();
     expect(screen.queryByText("Railroad Compensation")).not.toBeInTheDocument();
   });
   it("preserves filters on a round trip and resumes the stored rule and view", () => {
@@ -94,7 +94,7 @@ describe("library toolbar, paging, and map picks", () => {
     render(<CorpusLibrary {...props} modules={[...modules, ...many]} />);
     fireEvent.click(within(screen.getByRole("region", { name: "Start exploring" })).getByRole("button", { name: /Earned income tax credit/ }));
     expect(props.onPick).toHaveBeenLastCalledWith(modules[0]!.target, undefined);
-    fireEvent.click(screen.getByRole("button", { name: /Earned income tax credit.*24 rules/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Earned income tax credit.*26 USC/ }));
     expect(props.onPick).toHaveBeenLastCalledWith(modules[0]!.target, undefined);
     expect(screen.queryByText("SNAP Eligibility")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Show 40 more/ }));
@@ -111,4 +111,14 @@ describe("library toolbar, paging, and map picks", () => {
     expect(window.scrollTo).toHaveBeenCalledWith(0, 0);
     vi.unstubAllGlobals();
   });
+});
+
+it("groups the list by jurisdiction with the country-level law first and no count or icon clutter", () => {
+ render(<CorpusLibrary {...props} modules={[modules[0]!, {...modules[1]!,headlineRule:"a_colorado_rule"}]} />);
+ const groups=screen.getAllByRole("region",{name:/provisions$/});
+ expect(groups[0]).toHaveAccessibleName("Federal provisions");
+ expect(screen.getByLabelText("Jurisdiction")).toHaveValue("all");
+ expect(screen.queryByText(/24 rules/)).not.toBeInTheDocument();
+ expect(screen.queryByText(/2 imports/)).not.toBeInTheDocument();
+ expect(groups[0]!.querySelector("svg")).toBeNull();
 });

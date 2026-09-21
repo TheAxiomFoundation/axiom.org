@@ -1,13 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, BookOpen, Clock3, List, Network, Search, SlidersHorizontal } from "lucide-react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { ArrowRight, Clock3, Search, SlidersHorizontal } from "lucide-react";
+import { LibrarySearchResults } from "./library-search-results";
 import { LibraryBubbles } from "./library-bubbles";
 import type { CorpusModule } from "@/lib/axiom/corpus-field";
 import { humanizeCitation, humanizeRuleName, jurisdictionLabel } from "./citations";
 import { LIBRARY_EVENT, readRecentRules, readRunCapabilities, type RecentRule, type RunCapability } from "./library-state";
 import type { LauncherMode } from "./launcher-mode";
 import "./library.css";
+
+const MemoizedLibraryBubbles = memo(LibraryBubbles);
 
 const STARTERS: Record<string, { title: string; description: string }> = {
   "us:statutes/26/32": { title: "Earned income tax credit", description: "Explore eligibility, qualifying children, and the credit calculation." },
@@ -28,8 +31,7 @@ export function CorpusLibrary({ modules, active, mode, onModeChange, onPick, cou
   onPick: (target: string, recent?: RecentRule) => void; country: string; countries: Array<{ id: string; label: string }>; onCountryChange: (country: string) => void;
 }) {
   const [query, setQuery] = useState("");
-  const [searchLevel, setSearchLevel] = useState("jurisdictions");
-  const changeSearchLevel = useCallback((level: string) => { setSearchLevel(level); setQuery(""); }, []);
+  const broadSearch = mode === "field" && Boolean(query.trim());
   const [jurisdiction, setJurisdiction] = useState("all");
   const [limit, setLimit] = useState(40);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -58,14 +60,21 @@ export function CorpusLibrary({ modules, active, mode, onModeChange, onPick, cou
   const jurisdictions = [...new Set(entries.map((entry) => entry.module.jurisdiction))].sort((a, b) => jurisdictionLabel(a).localeCompare(jurisdictionLabel(b)));
   const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const filtered = entries.filter((entry) => (jurisdiction === "all" || entry.module.jurisdiction === jurisdiction) && tokens.every((token) => /^\d+$/.test(token) ? (entry.haystack.match(/\d+/g)?.some((number) => number === token) ?? false) : entry.haystack.includes(token)));
+  const orderedList = [...filtered].sort((a, b) => {
+    const aNational = a.module.jurisdiction === country;
+    const bNational = b.module.jurisdiction === country;
+    return Number(bNational) - Number(aNational) || jurisdictionLabel(a.module.jurisdiction).localeCompare(jurisdictionLabel(b.module.jurisdiction)) || a.title.localeCompare(b.title);
+  });
+  const listGroups = Map.groupBy(orderedList.slice(0, limit), entry => entry.module.jurisdiction);
+  const documentLabel = (bucket: string) => ({statutes:"Statute",regulations:"Regulation",policies:"Policy",guidance:"Guidance"}[bucket] ?? humanizeRuleName(bucket));
   const mapModules = useMemo(() => (modules ?? []).filter(module => jurisdiction === "all" || module.jurisdiction === jurisdiction), [modules, jurisdiction]);
   const recentHere = recent.filter((item) => byTarget.has(item.target)).slice(0, 3);
   const starters = Object.keys(STARTERS).flatMap((target) => byTarget.has(target) ? [byTarget.get(target)!] : []);
-  const open = (target: string, item?: RecentRule) => {
+  const open = useCallback((target: string, item?: RecentRule) => {
     scrollPosition.current = contentRef.current?.scrollTop ?? 0;
     onPick(target, item);
     window.scrollTo(0, 0);
-  };
+  }, [onPick]);
   const reset = () => { setQuery(""); setJurisdiction("all"); };
   return <div className="corpus-library" hidden={!active}>
     <header className="library-brand"><a href="/" aria-label="Axiom home"><img src="/logos/axiom-foundation.svg" alt="Axiom Foundation" /></a></header>
@@ -77,7 +86,7 @@ export function CorpusLibrary({ modules, active, mode, onModeChange, onPick, cou
 
 
       <div className="library-toolbar">
-      <div className="library-section-head"><label className="library-search"><Search size={18} /><input type="search" aria-label="Search the law library" placeholder={mode === "field" ? `Search ${searchLevel}` : "Search topics, rules, or citations"} value={query} onChange={(event) => setQuery(event.target.value)} />{query && <button type="button" onClick={() => setQuery("")}>Clear</button>}</label><div className="library-view-switch" aria-label="Library view"><button aria-pressed={mode === "list"} onClick={() => onModeChange("list")}><List size={16} /> List</button><button aria-pressed={mode === "field"} onClick={() => onModeChange("field")}><Network size={16} /> Map</button></div></div>
+      <div className="library-section-head"><label className="library-search"><Search size={18} /><input type="search" aria-label="Search the law library" placeholder="Search topics, rules, or citations" value={query} onChange={(event) => setQuery(event.target.value)} />{query && <button type="button" onClick={() => setQuery("")}>Clear</button>}</label><div className="library-view-switch" aria-label="Library view"><button aria-pressed={mode === "list"} onClick={() => onModeChange("list")}>List</button><button aria-pressed={mode === "field"} onClick={() => onModeChange("field")}>Map</button></div></div>
       <button className="library-filter-toggle" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(!filtersOpen)}><SlidersHorizontal size={16} /> Filters{jurisdiction !== "all" ? " · Active" : ""}</button>
         <aside className={`library-filters ${filtersOpen ? "is-open" : ""}`} aria-label="Filter provisions">
           {countries.length > 1 && <label>Country<select value={country} onChange={(event) => { setJurisdiction("all"); onCountryChange(event.target.value); }}>{countries.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>}
@@ -88,6 +97,8 @@ export function CorpusLibrary({ modules, active, mode, onModeChange, onPick, cou
       <div className="library-columns">
 
         <div className="library-content" ref={contentRef} tabIndex={0} aria-label={mode === "field" ? "Corpus map" : "Provision results"}>
+          {broadSearch && <LibrarySearchResults availableTargets={entries.map(entry => entry.module.target)} query={query} local={entries.filter(entry => tokens.every(token=>entry.haystack.includes(token))).map(entry=>({target:entry.module.target,title:entry.title}))} onPick={target=>open(target)} />}
+          <div hidden={broadSearch} className="library-browse-surface">
           {!modules ? <div className="library-loading" role="status" aria-label="Loading the law library" aria-live="polite">
             <svg className="library-loading-network" viewBox="0 0 320 200" width="320" height="200" fill="none" aria-hidden="true">
               <g className="library-loading-wires">
@@ -103,10 +114,18 @@ export function CorpusLibrary({ modules, active, mode, onModeChange, onPick, cou
               <circle className="library-loading-halo" cx="160" cy="100" r="26" />
               <rect className="library-loading-hub" x="140" y="82" width="40" height="36" rx="10" />
             </svg>
-          </div> : !(mode === "field" ? mapModules.length : filtered.length) ? <div className="library-empty"><Search size={24} /><h3>No matching provisions</h3><p>Try fewer words, another jurisdiction, or a citation such as 26 USC 32.</p><button onClick={reset}>Show all provisions</button></div> : mode === "field" ? <><div className="library-map"><LibraryBubbles scopeKey={`${country}:${jurisdiction}`} onPick={(target) => open(target)} modules={mapModules} query={query} onLevelChange={changeSearchLevel} /></div></> : <>
-            <div className="library-results">{filtered.slice(0, limit).map((entry) => <button className="library-row" key={entry.module.target} onClick={() => open(entry.module.target)}><BookOpen size={18} aria-hidden /><div><strong>{entry.title}</strong><p>{entry.title === entry.citation ? jurisdictionLabel(entry.module.jurisdiction) : `${jurisdictionLabel(entry.module.jurisdiction)} · ${entry.citation}`}</p><span className="library-actions">{entry.module.ruleCount.toLocaleString()} rules <span>·</span> {entry.module.importCount.toLocaleString()} imports{runs[entry.module.target]?.available && <><span>·</span><em>Run available</em></>}</span></div><ArrowRight size={18} aria-hidden /></button>)}</div>
+          </div> : !(mode === "field" ? mapModules.length : filtered.length) ? <div className="library-empty"><Search size={24} /><h3>No matching provisions</h3><p>Try fewer words, another jurisdiction, or a citation such as 26 USC 32.</p><button onClick={reset}>Show all provisions</button></div> : mode === "field" ? <><div className="library-map"><MemoizedLibraryBubbles scopeKey={`${country}:${jurisdiction}`} onPick={open} modules={mapModules} query="" /></div></> : <>
+            <div className="library-document-list">{[...listGroups].map(([id, rows]) => <section key={id} aria-label={`${jurisdictionLabel(id)} provisions`}>
+              <h3>{jurisdictionLabel(id)}</h3>
+              <div className="library-document-columns" aria-hidden="true"><span>Rule</span><span>Citation</span><span>Source type</span></div>
+              {rows.map(entry => <button className="library-document-row" key={entry.module.target} onClick={() => open(entry.module.target)}>
+                <span className="library-document-title"><strong>{entry.title}</strong>{runs[entry.module.target]?.available && <small>Run available</small>}</span>
+                <span className="library-document-citation">{entry.citation}</span><span className="library-document-type">{documentLabel(entry.module.bucket)}</span>
+              </button>)}
+            </section>)}</div>
             {filtered.length > limit && <button className="library-more" onClick={() => setLimit((current) => current + 40)}>Show 40 more <span>{Math.min(limit, filtered.length)} of {filtered.length.toLocaleString()}</span></button>}
           </>}
+          </div>
         </div>
       </div>
     </section>

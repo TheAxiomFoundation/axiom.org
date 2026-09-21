@@ -172,7 +172,7 @@ export function LibraryBubbles({ modules, onPick, query = "", onLevelChange, sco
             <path className="library-federal-boundary-hit" d={nationPath} />
             <path className="library-federal-boundary-line" d={nationPath} />
             <g className="library-federal-boundary-label"><rect x={355} y={7} width={212} height={34} rx={5} /><text x={461} y={25}><tspan className="library-federal-label-title">Federal</tspan><tspan className="library-federal-label-subtitle"> · Nationwide law ↗</tspan></text><path d="M461 41V70L440 82" /></g>
-            <g className="library-federal-tooltip" aria-hidden="true"><rect x={579} y={0} width={174} height={52} rx={6} /><text className="library-federal-tooltip-count" x={593} y={21}>{federalCount.toLocaleString()}</text><text className="library-federal-tooltip-caption" x={593} y={39}>encoded provisions</text></g>
+            <g className="library-federal-tooltip" aria-hidden="true"><rect x={579} y={0} width={174} height={52} rx={6} /><text className="library-federal-tooltip-count" x={593} y={21}>{federalCount.toLocaleString()}</text><text className="library-federal-tooltip-caption" x={593} y={39}>{federalCount === 1 ? "encoded provision" : "encoded provisions"}</text></g>
           </g>}
           {/* Preprojected Census boundaries from us-atlas v3 (ISC); Alaska and Hawaii are insets. */}
           {states.map(state => {
@@ -180,7 +180,7 @@ export function LibraryBubbles({ modules, onPick, query = "", onLevelChange, sco
             const coverage = stateCoverage.counts.get(`us-${state.code.toLowerCase()}`) ?? 0;
             // Square-root scale keeps smaller collections visible beside the largest.
             const strength = coverage ? 12 + 68 * Math.sqrt(coverage / stateCoverage.max) : 0;
-            return <g key={state.code} className="library-state-group" onMouseEnter={() => setHoveredState(state.code)} onMouseLeave={() => setHoveredState(null)} onFocus={() => setHoveredState(state.code)} onBlur={() => setHoveredState(null)}><path style={{ "--state-coverage": `${strength}%` } as CSSProperties} d={state.path} className="library-state" data-available={!!group} role="button" tabIndex={group && !moving ? 0 : -1} aria-label={`${state.name}, ${coverage.toLocaleString()} encoded provisions`} aria-disabled={!group || moving} onClick={event => { if (group) enter(group, event.currentTarget); }} onKeyDown={event => { if (group && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); enter(group, event.currentTarget); } }}></path>{!["RI", "DC", "DE", "MD", "CT", "MA", "NJ"].includes(state.code) && <text x={state.x} y={state.y} className="library-state-label" data-dark={!!group && strength >= 52}>{state.code}</text>}</g>;
+            return <g key={state.code} className="library-state-group" onMouseEnter={() => setHoveredState(state.code)} onMouseLeave={() => setHoveredState(null)} onFocus={() => setHoveredState(state.code)} onBlur={() => setHoveredState(null)}><path style={{ "--state-coverage": `${strength}%` } as CSSProperties} d={state.path} className="library-state" data-available={!!group} role="button" tabIndex={group && !moving ? 0 : -1} aria-label={`${state.name}, ${coverage.toLocaleString()} encoded provision${coverage === 1 ? "" : "s"}`} aria-disabled={!group || moving} onClick={event => { if (group) enter(group, event.currentTarget); }} onKeyDown={event => { if (group && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); enter(group, event.currentTarget); } }}></path>{!["RI", "DC", "DE", "MD", "CT", "MA", "NJ"].includes(state.code) && <text x={state.x} y={state.y} className="library-state-label" data-dark={!!group && strength >= 52}>{state.code}</text>}</g>;
           })}
           {["MA", "RI", "CT", "NJ", "DE", "MD", "DC"].map((code, index) => {
             const state = states.find(state => state.code === code)!;
@@ -193,7 +193,7 @@ export function LibraryBubbles({ modules, onPick, query = "", onLevelChange, sco
             const count = stateCoverage.counts.get(`us-${hoveredState.toLowerCase()}`) ?? 0;
             const x = Math.max(-45, Math.min(955, state.x - 85));
             const y = state.y < 100 ? state.y + 22 : state.y - 85;
-            return <g className="library-state-tooltip" transform={`translate(${x},${y})`} aria-hidden="true"><rect width={180} height={66} rx={6} /><text x={12} y={20} className="library-state-tooltip-name">{state.name}</text><text x={12} y={44} className="library-state-tooltip-count">{count.toLocaleString()}<tspan className="library-state-tooltip-unit"> encoded provisions</tspan></text></g>;
+            return <g className="library-state-tooltip" transform={`translate(${x},${y})`} aria-hidden="true"><rect width={180} height={66} rx={6} /><text x={12} y={20} className="library-state-tooltip-name">{state.name}</text><text x={12} y={44} className="library-state-tooltip-count">{count.toLocaleString()}<tspan className="library-state-tooltip-unit">{count === 1 ? " encoded provision" : " encoded provisions"}</tspan></text></g>;
           })()}
         </svg>
         <div className="library-coverage-key" aria-label="Jurisdiction shading: number of encoded provisions, square-root scale"><span>Encoded provisions</span><div><span>0</span><i aria-hidden="true" /><span>{stateCoverage.max.toLocaleString()}</span></div></div>
@@ -219,7 +219,7 @@ export function LibraryBubbles({ modules, onPick, query = "", onLevelChange, sco
     {sourcePreview && createPortal(<div ref={previewElement} id={previewId} role="tooltip" className="library-source-preview" style={{ left: previewPosition.x, top: previewPosition.y }}>
       <strong>{sourceTitle(sourcePreview.group)}</strong>
       <p>{sourcePreview.group.label}</p>
-      <div className="library-source-preview-count">{sourcePreview.group.modules.length.toLocaleString()} <span>encoded provisions</span></div>
+      <div className="library-source-preview-count">{sourcePreview.group.modules.length.toLocaleString()} <span>{sourcePreview.group.modules.length === 1 ? "encoded provision" : "encoded provisions"}</span></div>
       <h4>Includes</h4>
       <ul>{[...sourcePreview.group.modules].sort((a, b) => Number(!!a.presumed) - Number(!!b.presumed) || b.ruleCount - a.ruleCount).slice(0, 3).map(module => <li key={module.target}><span>{module.headlineRule ? humanizeRuleName(module.headlineRule) : humanizeCitation(module.target)}</span>{!module.presumed && <b>{module.ruleCount.toLocaleString()} nodes</b>}</li>)}</ul>
       {sourcePreview.group.modules.length > 3 && <div className="library-source-preview-more"><span aria-hidden="true">···</span> {sourcePreview.group.modules.length - 3} more</div>}
