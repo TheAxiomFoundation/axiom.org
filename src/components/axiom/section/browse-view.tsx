@@ -176,47 +176,106 @@ function SourceCreditNote({ credit }: { credit: SourceCredit }) {
   );
 }
 
-/** "worker-with-children" → "Worker with children". A slug with no
- *  letters is a number in the source's own notation ("4005-10") and
- *  stays as written. */
+/**
+ * A lowercase word slug as words: "worker-with-children" → "Worker
+ * with children"; a lone short token as an initialism: "bgb" → "BGB".
+ * Anything else is the source's own notation and stays as written: a
+ * number ("4005-10"), or a designator with capitals ("CD-1").
+ */
 function humanizeSlug(slug: string): string {
-  if (!/[A-Za-z]/.test(slug)) return slug;
-  const words = slug.replace(/[-_]+/g, " ").trim();
+  // A lone short token is an initialism far more often than a word
+  // in these paths (bgb, snap, tanf, chip).
+  if (/^[a-z]{2,4}$/.test(slug)) return slug.toUpperCase();
+  if (!/^[a-z0-9]+([-_][a-z0-9]+)*$/.test(slug) || !/[a-z]{3}/.test(slug)) {
+    return slug;
+  }
+  const words = slug.replace(/[-_]+/g, " ");
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-/** The part of an encoded path below its title, as a reader names
- *  it: "section-121" → "§ 121", "section-36a" → "§ 36a". Null when
- *  the tail is prose (a composed pipeline's slug). */
-function sectionKey(entry: EncodedEntry): string | null {
-  const tail = entry.citationPath.split("/").slice(3);
-  if (tail.length === 0) return null;
-  const [first, ...rest] = tail;
-  // A bare section number ("32", "36a", "54.403") — not a prose slug
-  // that happens to start with a digit ("2026_resident_zero_liability").
-  const section =
-    first.match(/^section-(\d[\dA-Za-z.]*)$/i) ??
-    first.match(/^(\d[\d.]*[A-Za-z]{0,2})$/);
-  const head = section ? `§ ${section[1]}` : null;
-  if (!head) return null;
-  return rest.length > 0 ? `${head}(${rest.join(")(")})` : head;
+/** An entry's path below its group, as segments. */
+function entryTail(entry: EncodedEntry): string[] {
+  return entry.citationPath === entry.group
+    ? []
+    : entry.citationPath.slice(entry.group.length + 1).split("/");
 }
 
-/** A title the corpus has no heading for, named from its path. */
+/** Path words that introduce a provision number, and how a reader
+ *  writes each. */
+const NUMBER_MARKERS: Readonly<Record<string, string>> = {
+  section: "§",
+  regulation: "reg.",
+  article: "art.",
+};
+const SECTION_NUMBER_RE = /^\d[\d.]*[A-Za-z]{0,2}$/;
+const SUBDIVISION_RE = /^[0-9A-Za-z]{1,4}$/;
+
+/**
+ * The entry's place in its instrument, as a reader cites it:
+ * "section-121" → "§ 121", "32/a" → "§ 32(a)", "regulation/22/1/b" →
+ * "reg. 22(1)(b)". Null unless the whole tail reads as a number with
+ * short subdivisions — a year-led path ("2013/376/regulation/22") or
+ * a prose slug that starts with a digit is not a section number.
+ */
+function sectionKey(entry: EncodedEntry): string | null {
+  const tail = entryTail(entry);
+  if (tail.length === 0) return null;
+  let mark = "§";
+  let tokens = tail;
+  const marker = NUMBER_MARKERS[tail[0].toLowerCase()];
+  const joined = tail[0].match(/^section-(\d[\dA-Za-z.]*)$/i);
+  if (marker && tail.length > 1) {
+    mark = marker;
+    tokens = tail.slice(1);
+  } else if (joined) {
+    tokens = [joined[1], ...tail.slice(1)];
+  }
+  const [number, ...subdivisions] = tokens;
+  if (!SECTION_NUMBER_RE.test(number)) return null;
+  if (!subdivisions.every((part) => SUBDIVISION_RE.test(part))) return null;
+  return `${mark} ${number}${subdivisions.map((part) => `(${part})`).join("")}`;
+}
+
+/** What a row says when the corpus has no heading for it. */
+function entryFallbackLabel(entry: EncodedEntry): string {
+  const tail = entryTail(entry);
+  const last = tail.at(-1) ?? entry.citationPath.split("/").at(-1) ?? "";
+  const words = humanizeSlug(last);
+  // A readable last segment names the row. Otherwise show the whole
+  // tail as written, not its last letter ("…/22/1/b/i" is not "I").
+  return words !== last || tail.length <= 1 ? words : tail.join("/");
+}
+
+/** A group the corpus has no heading for, named from its path. */
 function groupFallbackName(group: string): string {
-  const slug = group.split("/").at(-1) ?? "";
+  const [, docType, ...rest] = group.split("/");
+  const slug = rest.at(-1);
+  // An entry shallow enough to group under its doc type.
+  if (!slug) return displayDocType(docType ?? "");
   if (slug === "composed") return "Composed pipelines";
+  // The finding list on this page names a bare-number volume "Title 26".
+  if (
+    rest.length === 1 &&
+    /^\d/.test(slug) &&
+    (docType === "statute" || docType === "regulation")
+  ) {
+    return `Title ${slug}`;
+  }
   // Acronym-length segments read as initialisms (CMS, AAC), as the
   // browse loader names synthesized containers.
   if (/^[a-z]{2,5}$/i.test(slug)) return slug.toUpperCase();
   return humanizeSlug(slug);
 }
 
+function displayDocType(docType: string): string {
+  return docType.charAt(0).toUpperCase() + docType.slice(1);
+}
+
 /** Every encoded provision in a small jurisdiction, one click from
  *  its root, grouped under the instrument each belongs to. */
 function EncodedList({ entries }: { entries: EncodedEntry[] }) {
   // Keyed, not run-length: the grouping must not depend on the
-  // loader's sort keeping each title's entries adjacent.
+  // loader's sort keeping each instrument's entries adjacent.
   const byGroup = new Map<string, EncodedEntry[]>();
   for (const entry of entries) {
     const items = byGroup.get(entry.group);
@@ -230,50 +289,61 @@ function EncodedList({ entries }: { entries: EncodedEntry[] }) {
         <span className="text-[var(--color-accent)]">∀</span> Encoded so far ·{" "}
         {entries.length}
       </h2>
-      {groups.map(({ group, items }) => (
-        <div key={group} className="mt-6">
-          <p className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-ink-muted)]">
-            {group.split("/")[1] ?? ""}
-          </p>
-          <h3
-            dir="auto"
-            className="mt-0.5 text-lg text-[var(--color-ink)]"
-            style={{ fontFamily: "var(--f-serif)" }}
-          >
-            {items[0].groupHeading ?? groupFallbackName(group)}
-          </h3>
-          <ol className="mt-2 border-t border-[var(--color-rule)]">
-            {items.map((entry) => {
-              const key = sectionKey(entry);
-              const slug = entry.citationPath.split("/").at(-1) ?? "";
-              return (
-                <li
-                  key={entry.citationPath}
-                  className="border-b border-[var(--color-rule)]"
-                >
-                  <Link
-                    href={`/${entry.citationPath}`}
-                    title={entry.citationPath}
-                    className="group flex items-baseline gap-3 py-2.5 no-underline sm:gap-4"
+      {groups.map(({ group, items }) => {
+        const [, docType, ...rest] = group.split("/");
+        return (
+          <div key={group} className="mt-6" data-testid="encoded-group">
+            {/* The doc type is the eyebrow — unless it is the group. */}
+            {rest.length > 0 && (
+              <p className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-ink-muted)]">
+                {docType}
+              </p>
+            )}
+            <h3
+              dir="auto"
+              className="mt-0.5 text-lg text-[var(--color-ink)]"
+              style={{ fontFamily: "var(--f-serif)" }}
+            >
+              {items[0].groupHeading ?? groupFallbackName(group)}
+            </h3>
+            <ol className="mt-2 border-t border-[var(--color-rule)]">
+              {items.map((entry) => {
+                const key = sectionKey(entry);
+                // A keyed row with no heading says its key and nothing
+                // else: "§ 36a  Section 36a" would say it twice.
+                const label =
+                  entry.heading ?? (key ? null : entryFallbackLabel(entry));
+                return (
+                  <li
+                    key={entry.citationPath}
+                    className="border-b border-[var(--color-rule)]"
                   >
-                    {key && (
-                      <span className="w-16 shrink-0 font-mono text-[12px] text-[var(--color-ink-muted)] group-hover:text-[var(--color-accent)] transition-colors">
-                        {key}
-                      </span>
-                    )}
-                    <span
-                      dir="auto"
-                      className="min-w-0 flex-1 truncate text-[15px] text-[var(--color-ink-secondary)] group-hover:text-[var(--color-ink)] transition-colors"
+                    <Link
+                      href={`/${entry.citationPath}`}
+                      title={entry.citationPath}
+                      className="group flex items-baseline gap-3 py-2.5 no-underline sm:gap-4"
                     >
-                      {entry.heading ?? humanizeSlug(slug)}
-                    </span>
-                  </Link>
-                </li>
-              );
-            })}
-          </ol>
-        </div>
-      ))}
+                      {key && (
+                        <span className="min-w-16 shrink-0 whitespace-nowrap font-mono text-[12px] text-[var(--color-ink-muted)] group-hover:text-[var(--color-accent)] transition-colors">
+                          {key}
+                        </span>
+                      )}
+                      {label && (
+                        <span
+                          dir="auto"
+                          className="min-w-0 flex-1 truncate text-[15px] text-[var(--color-ink-secondary)] group-hover:text-[var(--color-ink)] transition-colors"
+                        >
+                          {label}
+                        </span>
+                      )}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+        );
+      })}
     </section>
   );
 }

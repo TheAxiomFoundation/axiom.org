@@ -57,18 +57,52 @@ export interface EncodedEntry {
   /** The provision's own heading, in the law's language. Null when
    *  the corpus has no row (composed pipelines) or the lookup failed. */
   heading: string | null;
-  /** Citation path of the title the entry sits under
-   *  ("il/statute/income-tax-ordinance"). The whole path, not the
-   *  last segment: statute/26 and regulation/26 are two groups. */
+  /**
+   * Citation path of the instrument the entry sits under: the
+   * shallowest ancestor of three or more segments that the corpus
+   * gives a heading ("il/statute/income-tax-ordinance",
+   * "uk/legislation/uksi/2013/376"). Instruments sit at different
+   * depths in different jurisdictions, so the depth comes from the
+   * corpus, not from a fixed segment count. With no such heading it
+   * falls back to the first three segments, and an entry that is
+   * itself that shallow groups under its doc type ("de/statute").
+   * Always the whole path: statute/26 and regulation/26 are two groups.
+   */
   group: string;
-  /** That title's heading, when the corpus has one. */
+  /** That instrument's heading, when the corpus has one. */
   groupHeading: string | null;
 }
 
 /** A root lists its encodings only up to this many. */
 export const ENCODED_LIST_MAX = 24;
 const ENCODED_COUNT_SCAN_LIMIT = 3000;
-const ENCODED_COUNT_TIMEOUT_MS = 3000;
+/** One budget for everything the mirror and corpus add to a browse
+ *  page. The page blocks on it (no Suspense boundary here), so the
+ *  scan and the heading lookup share it rather than getting one each. */
+const ENCODED_BUDGET_MS = 3000;
+/** Deepest ancestor asked about when locating an entry's instrument. */
+const GROUP_ANCESTOR_MAX_SEGMENTS = 6;
+
+/** Race a query against what is left of the budget; null on timeout.
+ *  The timer is cleared whichever side wins. */
+async function within<T>(
+  query: PromiseLike<T>,
+  deadline: number
+): Promise<T | null> {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) return null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      Promise.resolve(query),
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), remaining);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 /**
  * One mirror range-scan for the browsed prefix, aggregated per child
@@ -77,8 +111,8 @@ const ENCODED_COUNT_TIMEOUT_MS = 3000;
  */
 interface EncodedScan {
   counts: Record<string, number>;
-  /** Every encoded citation path under the prefix; complete only
-   *  when `truncated` is false. */
+  /** Every distinct encoded citation path under the prefix; complete
+   *  only when `truncated` is false. */
   paths: string[];
   truncated: boolean;
 }
@@ -87,7 +121,8 @@ const EMPTY_SCAN: EncodedScan = { counts: {}, paths: [], truncated: false };
 
 async function scanEncoded(
   segments: string[],
-  nodes: TreeNode[]
+  nodes: TreeNode[],
+  deadline: number
 ): Promise<EncodedScan> {
   const prefix = segments.join("/");
   // Coverage marks for a gated pilot family would advertise encodings
@@ -95,24 +130,31 @@ async function scanEncoded(
   // and the encoded search now make.
   if (isGatedCitationPath(prefix)) return EMPTY_SCAN;
   try {
-    const result = await Promise.race([
+    const result = await within(
       excludeGatedRows(
         supabaseEncodings.from("rulespec_files").select("citation_path"),
       )
         .like("citation_path", `${prefix}/%`)
         .limit(ENCODED_COUNT_SCAN_LIMIT),
-      new Promise<null>((resolve) =>
-        setTimeout(() => resolve(null), ENCODED_COUNT_TIMEOUT_MS)
-      ),
-    ]);
+      deadline
+    );
     if (!result || result.error) return EMPTY_SCAN;
+    // Truncation is a property of the query, so it is measured on the
+    // raw rows, before the client-side gate and the dedupe.
     const scanned = (result.data ?? []).length;
-    const paths = withoutGatedRows(
-      (result.data ?? []) as Array<{ citation_path: string }>,
-      (row) => row.citation_path,
-    )
-      .map((row) => row.citation_path)
-      .filter(Boolean);
+    // The mirror has shipped duplicate rows per path (the
+    // axiom-corpus#400 class). Distinct paths feed both the coverage
+    // marks and the list, so the two can never disagree on one page.
+    const paths = Array.from(
+      new Set(
+        withoutGatedRows(
+          (result.data ?? []) as Array<{ citation_path: string }>,
+          (row) => row.citation_path,
+        )
+          .map((row) => row.citation_path)
+          .filter(Boolean)
+      )
+    );
     const counts: Record<string, number> = {};
     for (const node of nodes) {
       const childPrefix =
@@ -129,28 +171,43 @@ async function scanEncoded(
   }
 }
 
+/** Proper ancestors of a path that could be its instrument: three
+ *  segments and up, shallowest first. */
+function groupCandidates(citationPath: string): string[] {
+  const segments = citationPath.split("/");
+  const deepest = Math.min(segments.length - 1, GROUP_ANCESTOR_MAX_SEGMENTS);
+  const candidates: string[] = [];
+  for (let length = 3; length <= deepest; length++) {
+    candidates.push(segments.slice(0, length).join("/"));
+  }
+  return candidates;
+}
+
 /**
- * The root page's list of encodings, with each provision's heading
- * and its title's heading from the corpus. One `in` lookup, under the
- * same timeout as the scan; a failed lookup still lists the paths.
+ * The root page's list of encodings: each provision's heading, and the
+ * instrument it belongs to, from one corpus `in` lookup inside what is
+ * left of the page's budget. A failed or late lookup still lists the
+ * paths, grouped by their first three segments.
  */
-async function getEncodedEntries(paths: string[]): Promise<EncodedEntry[]> {
-  const unique = Array.from(new Set(paths)).sort((a, b) =>
+async function getEncodedEntries(
+  paths: string[],
+  deadline: number
+): Promise<EncodedEntry[]> {
+  const sorted = [...paths].sort((a, b) =>
     a.localeCompare(b, undefined, { numeric: true })
   );
-  const groupPath = (path: string) => path.split("/").slice(0, 3).join("/");
-  const lookups = Array.from(new Set([...unique, ...unique.map(groupPath)]));
+  const lookups = Array.from(
+    new Set([...sorted, ...sorted.flatMap(groupCandidates)])
+  );
   const headings = new Map<string, string>();
   try {
-    const result = await Promise.race([
+    const result = await within(
       supabaseCorpus
         .from("current_provisions")
         .select("citation_path,heading")
         .in("citation_path", lookups),
-      new Promise<null>((resolve) =>
-        setTimeout(() => resolve(null), ENCODED_COUNT_TIMEOUT_MS)
-      ),
-    ]);
+      deadline
+    );
     if (result && !result.error) {
       for (const row of (result.data ?? []) as Array<{
         citation_path: string;
@@ -163,12 +220,19 @@ async function getEncodedEntries(paths: string[]): Promise<EncodedEntry[]> {
   } catch {
     // Headings are decoration: the list still renders from the paths.
   }
-  return unique.map((citationPath) => ({
-    citationPath,
-    heading: headings.get(citationPath) ?? null,
-    group: groupPath(citationPath),
-    groupHeading: headings.get(groupPath(citationPath)) ?? null,
-  }));
+  return sorted.map((citationPath) => {
+    const candidates = groupCandidates(citationPath);
+    const group =
+      candidates.find((candidate) => headings.has(candidate)) ??
+      candidates[0] ??
+      citationPath.split("/").slice(0, 2).join("/");
+    return {
+      citationPath,
+      heading: headings.get(citationPath) ?? null,
+      group,
+      groupHeading: headings.get(group) ?? null,
+    };
+  });
 }
 
 /** Repo plumbing files (release scopes, bulk manifests) that the
@@ -298,7 +362,10 @@ export async function getBrowsePageData(
     });
 
   const nodes = dedupeBySegment(positioned.filter((n) => !isPlumbingNode(n)));
-  const scan = await scanEncoded(segments, nodes).catch(() => EMPTY_SCAN);
+  const deadline = Date.now() + ENCODED_BUDGET_MS;
+  const scan = await scanEncoded(segments, nodes, deadline).catch(
+    () => EMPTY_SCAN
+  );
   const listsEncodings =
     segments.length === 1 &&
     page === 0 &&
@@ -306,7 +373,7 @@ export async function getBrowsePageData(
     scan.paths.length > 0 &&
     scan.paths.length <= ENCODED_LIST_MAX;
   const encodedEntries = listsEncodings
-    ? await getEncodedEntries(scan.paths)
+    ? await getEncodedEntries(scan.paths, deadline)
     : undefined;
 
   return {
