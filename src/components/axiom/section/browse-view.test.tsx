@@ -159,13 +159,17 @@ describe("BrowseView", () => {
     expect(screen.getByText("Composed pipelines")).toBeInTheDocument();
     // Each row links straight to the provision.
     const row = screen.getByText("שיעור המס ליחיד");
-    expect(row).toHaveAttribute("dir", "auto");
     expect(row.closest("a")).toHaveAttribute("href", `/${ito}/section-121`);
+    // The row, not the label, carries the direction: a Hebrew row puts
+    // its key beside the heading on the right.
+    expect(row.closest("a")).toHaveAttribute("dir", "rtl");
+    expect(row).not.toHaveAttribute("dir");
     expect(screen.getByText("§ 121")).toBeInTheDocument();
     // A keyed row with no heading says its key once, not "Section 36a" too.
     const bare = screen.getByText("§ 36a").closest("a");
     expect(bare).toHaveAttribute("href", `/${ito}/section-36a`);
     expect(bare).toHaveTextContent(/^§ 36a$/);
+    expect(bare).toHaveAttribute("dir", "ltr");
     // No heading and no key: the slug, made readable.
     expect(
       screen.getByText("Worker with children net").closest("a")
@@ -226,6 +230,12 @@ describe("BrowseView", () => {
               "uk/legislation/uksi/2006/213/regulation/4/b/i",
               "uk/legislation/uksi"
             ),
+            // A two-letter subdivision uppercases cleanly ("II"), which
+            // is exactly why it must not be taken for the row's name.
+            entry(
+              "uk/legislation/uksi/2006/213/regulation/4/b/ii",
+              "uk/legislation/uksi"
+            ),
             entry(
               "ca/statute/rsc-1985/c-1-5th-supp/3/1",
               "ca/statute/rsc-1985"
@@ -238,6 +248,8 @@ describe("BrowseView", () => {
     expect(screen.getByText("§ 3ZA(3)")).toBeInTheDocument();
     expect(screen.queryByText(/§ 20\d\d/)).not.toBeInTheDocument();
     expect(screen.queryByText("I")).not.toBeInTheDocument();
+    expect(screen.queryByText("II")).not.toBeInTheDocument();
+    expect(screen.getByText("2006/213/regulation/4/b/ii")).toBeInTheDocument();
     expect(screen.getByText("2006/213/regulation/4/b/i")).toBeInTheDocument();
     expect(screen.getByText("c-1-5th-supp/3/1")).toBeInTheDocument();
     expect(screen.getByText("UKSI")).toBeInTheDocument();

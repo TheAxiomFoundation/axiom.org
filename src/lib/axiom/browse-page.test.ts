@@ -254,10 +254,11 @@ describe("getBrowsePageData", () => {
       // An entry that shallow groups under its doc type, not under itself.
       "de/statute/bgb": ["de/statute", null],
     });
-    // Candidates stop at six segments and never include the path itself
-    // as its own ancestor.
-    expect(asked[0]).toContain("uk/legislation/uksi/2013/376/regulation");
-    expect(asked[0]).not.toContain("uk/legislation/uksi/2013/376/regulation/22/1");
+    // Candidates run from three segments to five — the instrument's
+    // depth — and never reach down into the provision's own path.
+    expect(asked[0]).toContain("uk/legislation/uksi");
+    expect(asked[0]).toContain("uk/legislation/uksi/2013/376");
+    expect(asked[0]).not.toContain("uk/legislation/uksi/2013/376/regulation");
     expect(asked[0]).not.toContain("uk/legislation");
   });
 
@@ -281,11 +282,24 @@ describe("getBrowsePageData", () => {
   it("gives the scan and the heading lookup one shared time budget", async () => {
     vi.useFakeTimers();
     try {
-      encodedCountRows({
-        data: [{ citation_path: "il/statute/income-tax-ordinance/section-121" }],
-        error: null,
+      // The scan takes 2 of the 3 seconds…
+      encodingsFromMock.mockImplementation(() => {
+        const self: Record<string, unknown> = {};
+        for (const method of ["select", "like", "limit", "not", "order"]) {
+          self[method] = () => self;
+        }
+        self.then = (resolve: (value: unknown) => unknown) =>
+          new Promise((done) => setTimeout(done, 2000))
+            .then(() => ({
+              data: [
+                { citation_path: "il/statute/income-tax-ordinance/section-121" },
+              ],
+              error: null,
+            }))
+            .then(resolve);
+        return self;
       });
-      // A corpus that never answers.
+      // …and the corpus never answers.
       corpusFromMock.mockImplementation(() => {
         const self: Record<string, unknown> = {};
         self.select = () => self;
@@ -293,16 +307,59 @@ describe("getBrowsePageData", () => {
         self.then = () => new Promise(() => {});
         return self;
       });
-      const pending = getBrowsePageData(["il"]);
-      // The whole page resolves inside one 3-second budget, not two.
-      await vi.advanceTimersByTimeAsync(3000);
+      let settled = false;
+      const pending = getBrowsePageData(["il"]).then((data) => {
+        settled = true;
+        return data;
+      });
+      await vi.advanceTimersByTimeAsync(2999);
+      expect(settled).toBe(false);
+      // One shared budget ends at 3000. With a budget each, the lookup
+      // would hold the page until 5000.
+      await vi.advanceTimersByTimeAsync(1);
+      expect(settled).toBe(true);
       const data = (await pending) as BrowsePageData;
       expect(data.encodedEntries?.map((entry) => entry.heading)).toEqual([null]);
-      // Whichever side wins, no timer is left running.
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("clears its timer as soon as the query wins", async () => {
+    vi.useFakeTimers();
+    try {
+      encodedCountRows({
+        data: [{ citation_path: "il/statute/income-tax-ordinance/section-121" }],
+        error: null,
+      });
+      await getBrowsePageData(["il"]);
+      // Both queries answered at once; no 3-second timer is left armed.
       expect(vi.getTimerCount()).toBe(0);
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("groups three-segment provisions under their doc type", async () => {
+    // Connecticut sections sit at three segments (us-ct/statute/17b-112),
+    // so they have no ancestor to group under. One "Statute" group is
+    // the decided shape, not an accident.
+    encodedCountRows({
+      data: [
+        { citation_path: "us-ct/statute/17b-112" },
+        { citation_path: "us-ct/statute/12-700" },
+        // A bare doc type is not a provision and never lists.
+        { citation_path: "us-ct/statute" },
+      ],
+      error: null,
+    });
+    const data = (await getBrowsePageData(["us-ct"])) as BrowsePageData;
+    expect(
+      data.encodedEntries?.map((entry) => [entry.citationPath, entry.group])
+    ).toEqual([
+      ["us-ct/statute/12-700", "us-ct/statute"],
+      ["us-ct/statute/17b-112", "us-ct/statute"],
+    ]);
   });
 
   it("lists nothing for a large jurisdiction, below the root, or on later pages", async () => {

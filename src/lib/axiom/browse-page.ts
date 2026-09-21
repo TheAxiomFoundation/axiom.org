@@ -67,6 +67,12 @@ export interface EncodedEntry {
    * falls back to the first three segments, and an entry that is
    * itself that shallow groups under its doc type ("de/statute").
    * Always the whole path: statute/26 and regulation/26 are two groups.
+   *
+   * "Shallowest" is safe only while collection containers above the
+   * instrument have no headed corpus row. Checked 2026-09-21:
+   * uk/legislation/uksi, ca/statute/rsc-1985, us-ak/regulation/aac and
+   * us-ak/policy/cms have no row at all. A corpus that starts heading
+   * them would put a whole collection in one group.
    */
   group: string;
   /** That instrument's heading, when the corpus has one. */
@@ -80,8 +86,14 @@ const ENCODED_COUNT_SCAN_LIMIT = 3000;
  *  page. The page blocks on it (no Suspense boundary here), so the
  *  scan and the heading lookup share it rather than getting one each. */
 const ENCODED_BUDGET_MS = 3000;
-/** Deepest ancestor asked about when locating an entry's instrument. */
-const GROUP_ANCESTOR_MAX_SEGMENTS = 6;
+/**
+ * Deepest ancestor asked about when locating an entry's instrument.
+ * Five reaches the deepest instrument in the corpus today (a UK
+ * statutory instrument, uk/legislation/uksi/2013/376) and keeps the
+ * one `in` lookup short: 24 entries in 24 different deep instruments
+ * ask about under a hundred paths.
+ */
+const GROUP_ANCESTOR_MAX_SEGMENTS = 5;
 
 /** Race a query against what is left of the budget; null on timeout.
  *  The timer is cleared whichever side wins. */
@@ -193,9 +205,11 @@ async function getEncodedEntries(
   paths: string[],
   deadline: number
 ): Promise<EncodedEntry[]> {
-  const sorted = [...paths].sort((a, b) =>
-    a.localeCompare(b, undefined, { numeric: true })
-  );
+  // A mirror row that names a bare doc type ("il/statute") is not a
+  // provision; it would list as a row named after its own group.
+  const sorted = paths
+    .filter((path) => path.split("/").length >= 3)
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   const lookups = Array.from(
     new Set([...sorted, ...sorted.flatMap(groupCandidates)])
   );

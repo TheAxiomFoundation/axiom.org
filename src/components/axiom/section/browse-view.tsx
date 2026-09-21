@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { BrowsePageData, EncodedEntry } from "@/lib/axiom/browse-page";
 import { TrackView } from "@/components/axiom/track-view";
+import { baseDirection } from "@/lib/axiom/text-direction";
 import {
   sourceCreditForJurisdiction,
   type SourceCredit,
@@ -207,6 +208,9 @@ const NUMBER_MARKERS: Readonly<Record<string, string>> = {
   regulation: "reg.",
   article: "art.",
 };
+// Deliberately no hyphen: Connecticut's "17b-112" reads as a plain
+// label, because a hyphen is also how manual sections ("4005-10") and
+// prose slugs ("45-470-gross-income") are written.
 const SECTION_NUMBER_RE = /^\d[\d.]*[A-Za-z]{0,2}$/;
 const SUBDIVISION_RE = /^[0-9A-Za-z]{1,4}$/;
 
@@ -240,10 +244,12 @@ function sectionKey(entry: EncodedEntry): string | null {
 function entryFallbackLabel(entry: EncodedEntry): string {
   const tail = entryTail(entry);
   const last = tail.at(-1) ?? entry.citationPath.split("/").at(-1) ?? "";
-  const words = humanizeSlug(last);
-  // A readable last segment names the row. Otherwise show the whole
-  // tail as written, not its last letter ("…/22/1/b/i" is not "I").
-  return words !== last || tail.length <= 1 ? words : tail.join("/");
+  // A last segment names the row when it is the whole tail, or when it
+  // reads as a name: several words, or one of five letters or more.
+  // Otherwise show the tail as written — the last step of
+  // "…/regulation/4/b/ii" is a subdivision, not a row called "II".
+  const readsAsName = /[-_]/.test(last) || last.length >= 5;
+  return tail.length <= 1 || readsAsName ? humanizeSlug(last) : tail.join("/");
 }
 
 /** A group the corpus has no heading for, named from its path. */
@@ -321,6 +327,11 @@ function EncodedList({ entries }: { entries: EncodedEntry[] }) {
                     <Link
                       href={`/${entry.citationPath}`}
                       title={entry.citationPath}
+                      // The row takes the heading's direction, as the
+                      // reader's chunk rows do: a Hebrew row puts its
+                      // key on the right, beside the heading, instead
+                      // of stranding it across the column.
+                      dir={label ? (baseDirection(label) ?? "ltr") : "ltr"}
                       className="group flex items-baseline gap-3 py-2.5 no-underline sm:gap-4"
                     >
                       {key && (
@@ -329,10 +340,7 @@ function EncodedList({ entries }: { entries: EncodedEntry[] }) {
                         </span>
                       )}
                       {label && (
-                        <span
-                          dir="auto"
-                          className="min-w-0 flex-1 truncate text-[15px] text-[var(--color-ink-secondary)] group-hover:text-[var(--color-ink)] transition-colors"
-                        >
+                        <span className="min-w-0 flex-1 truncate text-[15px] text-[var(--color-ink-secondary)] group-hover:text-[var(--color-ink)] transition-colors">
                           {label}
                         </span>
                       )}
