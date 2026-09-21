@@ -11,7 +11,7 @@ export async function GET(request: Request) {
   if (!focus || !FOCUS_RE.test(focus)) {
     return NextResponse.json(
       { status: "error", error: { code: "invalid_focus" } },
-      { status: 400 }
+      { status: 400 },
     );
   }
   const { status, body } = await cachedCompose(focus);

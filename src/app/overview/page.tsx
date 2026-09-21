@@ -88,7 +88,7 @@ export default function OverviewPage() {
           </div>
           {/* Same claim as the PDF's fine print under the three steps. The two
               licences differ by artefact and both are linked rather than
-              asserted — the corpus repos are CC BY 4.0, the code Apache-2.0. */}
+              asserted — the corpus repos are CC BY 4.0, the code MIT. */}
           <p className="serif-italic text-sm text-[var(--color-ink-muted)] leading-relaxed mt-6 mb-0">
             Encodings are published under{" "}
             <a
@@ -104,7 +104,7 @@ export default function OverviewPage() {
               target="_blank"
               rel="noopener noreferrer"
             >
-              Apache 2.0
+              MIT
             </a>{" "}
             &mdash; free to use, modify, and redistribute, with attribution.
           </p>
