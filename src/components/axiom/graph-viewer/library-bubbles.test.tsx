@@ -88,3 +88,66 @@ describe("layered library", () => {
  });
 
 });
+
+it("shows source contents on hover and focus, and dismisses previews as context changes", () => {
+ vi.stubGlobal("matchMedia", () => ({ matches: true }));
+ const items = [21,22,24,32].map((section, index) => ({ ...modules[0]!, target: `us:statutes/26/${section}`, headlineRule: `example_rule_${section}`, ruleCount: index + 1 }));
+ render(<LibraryBubbles modules={items} onPick={vi.fn()} />);
+ fireEvent.keyDown(screen.getByRole("button", {name:/Federal, 4 provisions/}), { key: "Enter" });
+ const source = screen.getByRole("button", {name:/US Code · Title 26, 4 provisions/});
+ fireEvent.mouseEnter(source);
+ expect(screen.getByRole("tooltip")).toHaveTextContent("Includes");
+ expect(screen.getByRole("tooltip")).toHaveTextContent("Example Rule 32");
+ expect(screen.getByRole("tooltip")).toHaveTextContent("1 more");
+ expect(screen.getByRole("tooltip").querySelectorAll("li")).toHaveLength(3);
+ fireEvent.mouseLeave(source);
+ expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+ fireEvent.focus(source);
+ expect(screen.getByRole("tooltip")).toBeInTheDocument();
+ fireEvent.keyDown(source, {key:"Escape"});
+ expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+ fireEvent.focus(source);
+ fireEvent.blur(source);
+ expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+ fireEvent.mouseEnter(source);
+ fireEvent.scroll(window);
+ expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+});
+
+it("supports state keyboard navigation, hover counts, and small-state callouts", () => {
+ vi.stubGlobal("matchMedia", () => ({ matches: true }));
+ const items = ["us-ca", "us-dc", "us-pr"].map(jurisdiction => ({...modules[0]!, jurisdiction, target:`${jurisdiction}:statutes/example`}));
+ render(<LibraryBubbles modules={items} onPick={vi.fn()} />);
+ const california = screen.getByRole("button", {name:"California, 1 encoded provision"});
+ fireEvent.mouseEnter(california.parentElement!);
+ expect(document.querySelector(".library-state-tooltip")).toHaveTextContent("1 encoded provision");
+ fireEvent.mouseLeave(california.parentElement!);
+ expect(document.querySelector(".library-state-tooltip")).toBeNull();
+ fireEvent.focus(california);
+ fireEvent.blur(california);
+ fireEvent.keyDown(california, {key:"Enter"});
+ expect(screen.getByRole("button", {name:"California"})).toHaveAttribute("aria-current", "page");
+ fireEvent.click(screen.getByRole("button", {name:"All jurisdictions"}));
+ const dc = screen.getByRole("button", {name:"Washington, D.C."});
+ fireEvent.mouseEnter(dc);
+ expect(document.querySelector(".library-state-tooltip")).toHaveTextContent("1 encoded provision");
+ fireEvent.mouseLeave(dc);
+ fireEvent.focus(dc);
+ fireEvent.blur(dc);
+ fireEvent.click(dc);
+ expect(screen.getByRole("button", {name:"D.C."})).toHaveAttribute("aria-current", "page");
+});
+
+it("packs jurisdictions without a map and opens their source shelves", () => {
+ vi.stubGlobal("matchMedia", () => ({ matches: true }));
+ const items = ["ca", "ca-on", "gb"].map(jurisdiction => ({...modules[0]!, jurisdiction, target:`${jurisdiction}:statutes/example`}));
+ render(<LibraryBubbles modules={items} onPick={vi.fn()} />);
+ const bubbles = document.querySelectorAll<HTMLButtonElement>(".library-bubble");
+ expect(bubbles).toHaveLength(3);
+ for (const bubble of bubbles) {
+  expect(bubble.style.left).not.toContain("NaN");
+  expect(parseFloat(bubble.style.width)).toBeGreaterThan(0);
+ }
+ fireEvent.click(bubbles[0]!);
+ expect(screen.getByRole("group", {name:"Document type"})).toBeInTheDocument();
+});
