@@ -5,7 +5,11 @@ import {
   type TreeNode,
 } from "@/lib/tree-data";
 import { loadTreeNodes } from "@/lib/axiom/tree-node-loader";
-import { supabaseEncodings, type Rule } from "@/lib/supabase";
+import {
+  supabaseCorpus,
+  supabaseEncodings,
+  type Rule,
+} from "@/lib/supabase";
 import {
   excludeGatedRows,
   isGatedCitationPath,
@@ -34,46 +38,135 @@ export interface BrowsePageData {
    * bare ∀ mark.
    */
   encodedCounts: Record<string, number>;
+  /**
+   * Every encoded provision in the jurisdiction, listed on its root
+   * page when there are few enough to read (a pilot's dozen, not
+   * rulespec-us's thousands). Without it a small jurisdiction's
+   * encodings sit several clicks deep in a full table of contents.
+   * Absent at other depths and above ENCODED_LIST_MAX.
+   */
+  encodedEntries?: EncodedEntry[];
   /** True when the level has more children than one page shows. */
   hasMore: boolean;
   page: number;
 }
 
+/** One encoded provision on a jurisdiction root's list. */
+export interface EncodedEntry {
+  citationPath: string;
+  /** The provision's own heading, in the law's language. Null when
+   *  the corpus has no row (composed pipelines) or the lookup failed. */
+  heading: string | null;
+  /**
+   * Citation path of the instrument the entry sits under: the
+   * shallowest ancestor of three or more segments that the corpus
+   * gives a heading ("il/statute/income-tax-ordinance",
+   * "uk/legislation/uksi/2013/376"). Instruments sit at different
+   * depths in different jurisdictions, so the depth comes from the
+   * corpus, not from a fixed segment count. With no such heading it
+   * falls back to the first three segments, and an entry that is
+   * itself that shallow groups under its doc type ("de/statute").
+   * Always the whole path: statute/26 and regulation/26 are two groups.
+   *
+   * "Shallowest" is safe only while collection containers above the
+   * instrument have no headed corpus row. Checked 2026-09-21:
+   * uk/legislation/uksi, ca/statute/rsc-1985, us-ak/regulation/aac and
+   * us-ak/policy/cms have no row at all. A corpus that starts heading
+   * them would put a whole collection in one group.
+   */
+  group: string;
+  /** That instrument's heading, when the corpus has one. */
+  groupHeading: string | null;
+}
+
+/** A root lists its encodings only up to this many. */
+export const ENCODED_LIST_MAX = 24;
 const ENCODED_COUNT_SCAN_LIMIT = 3000;
-const ENCODED_COUNT_TIMEOUT_MS = 3000;
+/** One budget for everything the mirror and corpus add to a browse
+ *  page. The page blocks on it (no Suspense boundary here), so the
+ *  scan and the heading lookup share it rather than getting one each. */
+const ENCODED_BUDGET_MS = 3000;
+/**
+ * Deepest ancestor asked about when locating an entry's instrument.
+ * Five reaches the deepest instrument in the corpus today (a UK
+ * statutory instrument, uk/legislation/uksi/2013/376) and keeps the
+ * one `in` lookup short: 24 entries in 24 different deep instruments
+ * ask about under a hundred paths.
+ */
+const GROUP_ANCESTOR_MAX_SEGMENTS = 5;
+
+/** Race a query against what is left of the budget; null on timeout.
+ *  The timer is cleared whichever side wins. */
+async function within<T>(
+  query: PromiseLike<T>,
+  deadline: number
+): Promise<T | null> {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) return null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      Promise.resolve(query),
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), remaining);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 /**
  * One mirror range-scan for the browsed prefix, aggregated per child
  * segment. Uses each node's canonical citation path where known so
  * deep containers with flattened children still count correctly.
  */
-async function getEncodedCounts(
+interface EncodedScan {
+  counts: Record<string, number>;
+  /** Every distinct encoded citation path under the prefix; complete
+   *  only when `truncated` is false. */
+  paths: string[];
+  truncated: boolean;
+}
+
+const EMPTY_SCAN: EncodedScan = { counts: {}, paths: [], truncated: false };
+
+async function scanEncoded(
   segments: string[],
-  nodes: TreeNode[]
-): Promise<Record<string, number>> {
+  nodes: TreeNode[],
+  deadline: number
+): Promise<EncodedScan> {
   const prefix = segments.join("/");
   // Coverage marks for a gated pilot family would advertise encodings
   // no page on the site can open — the same refusal the section reader
   // and the encoded search now make.
-  if (isGatedCitationPath(prefix)) return {};
+  if (isGatedCitationPath(prefix)) return EMPTY_SCAN;
   try {
-    const result = await Promise.race([
+    const result = await within(
       excludeGatedRows(
         supabaseEncodings.from("rulespec_files").select("citation_path"),
       )
         .like("citation_path", `${prefix}/%`)
         .limit(ENCODED_COUNT_SCAN_LIMIT),
-      new Promise<null>((resolve) =>
-        setTimeout(() => resolve(null), ENCODED_COUNT_TIMEOUT_MS)
-      ),
-    ]);
-    if (!result || result.error) return {};
-    const paths = withoutGatedRows(
-      (result.data ?? []) as Array<{ citation_path: string }>,
-      (row) => row.citation_path,
-    )
-      .map((row) => row.citation_path)
-      .filter(Boolean);
+      deadline
+    );
+    if (!result || result.error) return EMPTY_SCAN;
+    // Truncation is a property of the query, so it is measured on the
+    // raw rows, before the client-side gate and the dedupe.
+    const scanned = (result.data ?? []).length;
+    // The mirror has shipped duplicate rows per path (the
+    // axiom-corpus#400 class). Distinct paths feed both the coverage
+    // marks and the list, so the two can never disagree on one page.
+    const paths = Array.from(
+      new Set(
+        withoutGatedRows(
+          (result.data ?? []) as Array<{ citation_path: string }>,
+          (row) => row.citation_path,
+        )
+          .map((row) => row.citation_path)
+          .filter(Boolean)
+      )
+    );
     const counts: Record<string, number> = {};
     for (const node of nodes) {
       const childPrefix =
@@ -84,10 +177,76 @@ async function getEncodedCounts(
       ).length;
       if (count > 0) counts[node.segment] = count;
     }
-    return counts;
+    return { counts, paths, truncated: scanned >= ENCODED_COUNT_SCAN_LIMIT };
   } catch {
-    return {};
+    return EMPTY_SCAN;
   }
+}
+
+/** Proper ancestors of a path that could be its instrument: three
+ *  segments and up, shallowest first. */
+function groupCandidates(citationPath: string): string[] {
+  const segments = citationPath.split("/");
+  const deepest = Math.min(segments.length - 1, GROUP_ANCESTOR_MAX_SEGMENTS);
+  const candidates: string[] = [];
+  for (let length = 3; length <= deepest; length++) {
+    candidates.push(segments.slice(0, length).join("/"));
+  }
+  return candidates;
+}
+
+/**
+ * The root page's list of encodings: each provision's heading, and the
+ * instrument it belongs to, from one corpus `in` lookup inside what is
+ * left of the page's budget. A failed or late lookup still lists the
+ * paths, grouped by their first three segments.
+ */
+async function getEncodedEntries(
+  paths: string[],
+  deadline: number
+): Promise<EncodedEntry[]> {
+  // A mirror row that names a bare doc type ("il/statute") is not a
+  // provision; it would list as a row named after its own group.
+  const sorted = paths
+    .filter((path) => path.split("/").length >= 3)
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  const lookups = Array.from(
+    new Set([...sorted, ...sorted.flatMap(groupCandidates)])
+  );
+  const headings = new Map<string, string>();
+  try {
+    const result = await within(
+      supabaseCorpus
+        .from("current_provisions")
+        .select("citation_path,heading")
+        .in("citation_path", lookups),
+      deadline
+    );
+    if (result && !result.error) {
+      for (const row of (result.data ?? []) as Array<{
+        citation_path: string;
+        heading: string | null;
+      }>) {
+        const heading = row.heading?.trim();
+        if (heading) headings.set(row.citation_path, heading);
+      }
+    }
+  } catch {
+    // Headings are decoration: the list still renders from the paths.
+  }
+  return sorted.map((citationPath) => {
+    const candidates = groupCandidates(citationPath);
+    const group =
+      candidates.find((candidate) => headings.has(candidate)) ??
+      candidates[0] ??
+      citationPath.split("/").slice(0, 2).join("/");
+    return {
+      citationPath,
+      heading: headings.get(citationPath) ?? null,
+      group,
+      groupHeading: headings.get(group) ?? null,
+    };
+  });
 }
 
 /** Repo plumbing files (release scopes, bulk manifests) that the
@@ -217,9 +376,19 @@ export async function getBrowsePageData(
     });
 
   const nodes = dedupeBySegment(positioned.filter((n) => !isPlumbingNode(n)));
-  const encodedCounts = await getEncodedCounts(segments, nodes).catch(
-    () => ({}) as Record<string, number>
+  const deadline = Date.now() + ENCODED_BUDGET_MS;
+  const scan = await scanEncoded(segments, nodes, deadline).catch(
+    () => EMPTY_SCAN
   );
+  const listsEncodings =
+    segments.length === 1 &&
+    page === 0 &&
+    !scan.truncated &&
+    scan.paths.length > 0 &&
+    scan.paths.length <= ENCODED_LIST_MAX;
+  const encodedEntries = listsEncodings
+    ? await getEncodedEntries(scan.paths, deadline)
+    : undefined;
 
   return {
     segments,
@@ -227,7 +396,8 @@ export async function getBrowsePageData(
     breadcrumbs: buildBreadcrumbs(segments),
     currentRule: result.currentRule ?? null,
     nodes,
-    encodedCounts,
+    encodedCounts: scan.counts,
+    ...(encodedEntries ? { encodedEntries } : {}),
     hasMore: result.hasMore,
     page,
   };
