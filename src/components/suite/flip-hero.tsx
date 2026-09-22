@@ -41,8 +41,8 @@ export function FlipHero() {
   }, [i, paused]);
 
   const card = CARDS[i];
-  // Widest subject sets the slot so the sentence never reflows.
-  const widest = CARDS.reduce((a, b) => (a.subject.length >= b.subject.length ? a : b)).subject;
+  // The slot takes the current subject's width; the subject changes while
+  // it is invisible (mid-flip), so "for all." moves only while nothing shows.
 
   return (
     <section className="relative z-1 px-8 pb-16 pt-20">
@@ -59,12 +59,11 @@ export function FlipHero() {
           onBlur={() => setPaused(false)}
           aria-live="polite"
         >
-          <span className="relative inline-grid align-baseline" style={{ perspective: "900px" }}>
-            {/* Invisible widest subject holds the width. */}
-            <span aria-hidden className="invisible col-start-1 row-start-1 whitespace-nowrap">{widest}</span>
+          <span className="relative inline-block align-baseline" style={{ perspective: "900px" }} data-flip-slot>
             <Link
               href={`/suite/${card.slug}`}
-              className="col-start-1 row-start-1 whitespace-nowrap no-underline"
+              className="whitespace-nowrap no-underline"
+              data-flip-subject
               style={{
                 color: card.hue,
                 display: "inline-block",
