@@ -126,7 +126,7 @@ async function runtimeGet<T>(path: string): Promise<T | null> {
  */
 export async function runtimeProxyGet(
   path: string,
-  options: { fresh?: boolean } = {}
+  options: { timeoutMs?: number; fresh?: boolean } = {},
 ): Promise<{ status: number; body: unknown }> {
   if (!isRuntimeApiConfigured()) {
     return {
@@ -138,10 +138,8 @@ export async function runtimeProxyGet(
   try {
     const response = await fetch(`${apiBase()}${path}`, {
       headers: key ? { "x-api-key": key } : undefined,
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      ...(options.fresh
-        ? { cache: "no-store" as const }
-        : { next: { revalidate: REVALIDATE_SECONDS } }),
+      signal: AbortSignal.timeout(options.timeoutMs ?? REQUEST_TIMEOUT_MS),
+      ...(options.fresh ? { cache: "no-store" as const } : { next: { revalidate: REVALIDATE_SECONDS } }),
     });
     return { status: response.status, body: await response.json() };
   } catch {
@@ -303,7 +301,12 @@ export async function runCalculateRoot(request: {
         "content-type": "application/json",
         ...(key ? { "x-api-key": key } : {}),
       },
-      body: JSON.stringify(request),
+      body: JSON.stringify(request.people ? {
+        root: request.root,
+        facts: request.facts,
+        variables: request.variables,
+        household: { people: { person_1: {}, ...request.people } },
+      } : request),
       signal: AbortSignal.timeout(CALCULATE_TIMEOUT_MS),
       cache: "no-store",
     });

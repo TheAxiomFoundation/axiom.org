@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { createContext, useContext, useEffect, useRef } from "react";
 import type { MutableRefObject, ReactNode } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -30,6 +30,11 @@ import {
  * wrapper around the matching byte range and a scroll-into-view on
  * mount so the reader lands on the exact citing passage.
  */
+
+export const CitationNavigationContext = createContext<null | {
+  href: (path: string) => string;
+  open: (path: string) => void;
+}>(null);
 
 interface RuleBodyProps {
   body: string;
@@ -362,7 +367,8 @@ function Citation({
           ref.citation_text
         )}`
       : "";
-  const href = `${hrefPrefix}/${ref.other_citation_path}${markQuery}`;
+  const navigation = useContext(CitationNavigationContext);
+  const href = navigation?.href(ref.other_citation_path) ?? `${hrefPrefix}/${ref.other_citation_path}${markQuery}`;
   const title = ref.inferred
     ? `Inferred link to ${ref.other_citation_path}`
     : ref.target_resolved
@@ -374,6 +380,11 @@ function Citation({
   return (
     <Link
       href={href}
+      onClick={navigation ? (event) => {
+        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        navigation.open(ref.other_citation_path);
+      } : undefined}
       className={classes}
       title={title}
       {...(ref.target_resolved && { "data-cite": ref.other_citation_path })}
@@ -516,9 +527,8 @@ function renderTextBlock({
         return (
           <p
             key={`${paragraph.lines[0].start}-${paragraph.lines.at(-1)?.end}`}
-            // Provision text sets its own base direction: a Hebrew
-            // paragraph lays out right-to-left, so its designator
-            // and punctuation land on the correct side.
+            data-source-note={paragraph.startsWithSource || undefined}
+            data-clause={/^\s*\([a-zA-Z0-9]+\)/.test(paragraph.lines[0].text) || undefined}
             dir="auto"
             className={`m-0 whitespace-pre-wrap ${
               index === 0 ? "" : paragraph.startsWithSource ? "mt-7" : "mt-5"
@@ -648,7 +658,7 @@ export function RuleBody({
   return (
     <div
       {...(testId && { "data-testid": testId })}
-      className="text-[0.95rem] text-[var(--color-ink-secondary)] leading-[1.8] whitespace-pre-wrap"
+      className="source-prose text-[0.95rem] text-[var(--color-ink-secondary)] leading-[1.8] whitespace-pre-wrap"
       style={{ fontFamily: "var(--f-serif)" }}
     >
       {blocks.map((block, blockIndex) => {
@@ -661,18 +671,18 @@ export function RuleBody({
             hrefPrefix,
           });
         }
+        const numericColumns = block.headers.map((_, column) => {
+          const values = block.rows.map(row => row[column]?.text.trim() ?? "").filter(Boolean);
+          return values.length > 0 && values.every(value => /^(?:[$€£]?\s*-?\d[\d,]*(?:\.\d+)?\s*%?|[—–-])$/.test(value));
+        });
         return (
           <div
             key={`table-${blockIndex}`}
-            // One direction for the whole block, taken from its first
-            // strong character: a Hebrew table orders its columns
-            // right-to-left and no single Latin cell ("NIS") flips out
-            // of its column. It sits on the scroll container, not the
-            // table, because the initial scroll offset belongs to the
-            // container: a narrow screen opens an RTL table at its
-            // first column, not its last.
+            className="source-table-scroll my-5 overflow-x-auto whitespace-normal"
+            role="region"
+            aria-label="Source table"
+            tabIndex={0}
             dir="auto"
-            className="my-5 overflow-x-auto whitespace-normal"
           >
             <table className="w-full min-w-[520px] border-collapse text-sm leading-normal font-sans">
               <thead>
@@ -681,6 +691,7 @@ export function RuleBody({
                     <th
                       key={index}
                       scope="col"
+                      data-numeric={numericColumns[index] || undefined}
                       className="px-3 py-2 text-start align-bottom font-mono text-[11px] uppercase tracking-wider text-[var(--color-ink-muted)] font-normal"
                     >
                       {header.text}
@@ -697,6 +708,7 @@ export function RuleBody({
                     {row.map((cell, cellIndex) => (
                       <td
                         key={cellIndex}
+                        data-numeric={numericColumns[cellIndex] || undefined}
                         className="px-3 py-2 align-top text-[var(--color-ink-secondary)]"
                       >
                         {cell.start === cell.end

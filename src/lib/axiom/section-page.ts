@@ -747,6 +747,14 @@ export async function rulespecSourceCitationPath(
   return null;
 }
 
+/** NYCRR citations write part.section, while corpus paths split those numbers. */
+export function splitNycrrSectionPath(segments: string[]): string[] | null {
+  const [jurisdiction, kind, title, section, ...tail] = segments;
+  if (jurisdiction !== "us-ny" || kind !== "regulation" || !/^\d+-nycrr$/.test(title ?? "")) return null;
+  const match = /^(\d+)\.(\d+[a-z]?)$/i.exec(section ?? "");
+  return match ? [jurisdiction, kind, title!, match[1]!, match[2]!, ...tail] : null;
+}
+
 export async function resolveSection(
   segments: string[],
 ): Promise<SectionResolution | null> {
@@ -766,6 +774,13 @@ export async function resolveSection(
   // The corpus is mostly section-granular, so subsection URLs
   // (…/26/32/a) resolve to their section with a focus anchor.
   let root = await getProvisionByCitationPath(requestedPath).catch(() => null);
+  if (!root) {
+    const splitPath = splitNycrrSectionPath([slug, ...ruleSegments]);
+    if (splitPath) {
+      const alias = await resolveSection(splitPath);
+      if (alias) return { ...alias, requestedPath };
+    }
+  }
   let citationPath = requestedPath;
   let focusAnchor: string | null = null;
   let synthetic = false;

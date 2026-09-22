@@ -193,7 +193,8 @@
 }
 .graph-viewer-root .exec-panel {
   position: absolute;
-  top: 104px;
+  /* Controls row + the panel's 12px gutter; 12px inside the frame. */
+  top: 92px;
   right: 24px;
   z-index: 13;
   /* Wide enough for the inspector mini graph's three columns to wrap
@@ -488,6 +489,22 @@
    fades the new scene in — one perceived change, never jump-then-pan. */
 .graph-viewer-root .irg-scene-cut .react-flow__viewport {
   animation: irg-scene-fade 340ms var(--ease-out, ease-out);
+}
+/* A card that joins the canvas (a lens opening, a door unfolding)
+   fades in beside the ones sliding into place, instead of popping.
+   The viewer tags it .irg-entering for one frame; the transition
+   carries it to its resting opacity when the tag drops. */
+.graph-viewer-root .irg-canvas .react-flow__node {
+  transition: opacity 320ms var(--ease-out, ease-out);
+}
+.graph-viewer-root .irg-canvas .react-flow__node.irg-entering {
+  opacity: 0;
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .graph-viewer-root .irg-canvas .react-flow__node {
+    transition: none;
+  }
 }
 /* A run landing is the SAME scene gaining light, not a scope change —
    the full blackout would read as a blink, but a RAW cut shows every
@@ -1780,8 +1797,8 @@
 .graph-viewer-root .plane-switch {
   position: absolute;
   top: 2px;
-  /* flush with the graph box's right edge (the canvas sits 24px in) */
-  right: 24px;
+  /* flush with the graph box's right edge (the canvas sits 12px in) */
+  right: 12px;
   z-index: 15;
   display: inline-flex;
   align-items: center;

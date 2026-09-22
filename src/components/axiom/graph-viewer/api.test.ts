@@ -11,7 +11,7 @@ describe("root input readiness", () => {
     await expect(fetchRootInputs("us:statutes/26/21")).resolves.toEqual(inputs);
     expect(fetcher).toHaveBeenCalledExactlyOnceWith(
       "/api/axiom/runtime/root-inputs?root=us%3Astatutes%2F26%2F21",
-      { signal: expect.any(AbortSignal) },
+      { cache: "no-store", signal: expect.any(AbortSignal) },
     );
   });
   it("accepts a valid root with no external inputs", async () => {

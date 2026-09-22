@@ -2650,7 +2650,8 @@
      than getting flex-centered into the dashed border when the height
      budget is tight. */
   justify-content: flex-start;
-  padding: 12px 14px;
+  /* Matches labelledNodeSize()'s horizontal padding (32px). */
+  padding: 14px 16px;
   border-radius: 4px;
   border: 1px solid var(--color-rule);
   background: var(--color-paper-elevated);
@@ -2679,7 +2680,7 @@
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--color-ink-muted);
-  margin-bottom: 2px;
+  margin-bottom: 5px;
 }
 
 .graph-viewer-root .irg-status{
@@ -2872,14 +2873,16 @@
   font-family: var(--f-mono);
   font-size: 11px;
   font-weight: 500;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
   color: var(--color-ink);
   /* Wrap full identifiers across lines so nothing is truncated. The node's
-     dagre size is computed to match — see labelledNodeSize() in TS. */
+     dagre size is computed to match — see labelledNodeSize() in TS:
+     the card picks its width so the title takes two lines at most,
+     and LABEL_LINE_PX mirrors this line height. */
   white-space: normal;
   overflow-wrap: break-word;
   word-break: break-word;
-  line-height: 16px;
+  line-height: 17px;
 }
 
 .graph-viewer-root .irg-op-label{
@@ -2922,8 +2925,8 @@
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--color-accent);
-  margin-top: 6px;
-  padding: 4px 6px 2px;
+  margin-top: 8px;
+  padding: 5px 6px 2px;
   border-top: 1px solid var(--color-rule-subtle);
   border-radius: 0 0 3px 3px;
   margin-left: -6px;
@@ -3017,8 +3020,21 @@
  
 .graph-viewer-root .irg-input{
   border-radius: 22px;
-  padding-left: 20px;
-  padding-right: 20px;
+  /* Matches labelledNodeSize(): 10px vertical, 20px horizontal. */
+  padding: 10px 20px;
+}
+/* The question's state, as a dot on the title line. */
+.graph-viewer-root .irg-q-dot{
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  vertical-align: 1px;
+  background: currentColor;
+}
+.graph-viewer-root .irg-input.is-answered .irg-q-dot{
+  color: var(--color-accent);
 }
 
 .graph-viewer-root .irg-input.irg-input-user{

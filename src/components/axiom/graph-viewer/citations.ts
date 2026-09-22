@@ -52,7 +52,7 @@ const READABLE_BUCKETS = Object.keys(KIND_SINGULAR).join("|");
 
 const READABLE_FILE = new RegExp(`:(?:${READABLE_BUCKETS})/`);
 const READABLE_SOURCE = new RegExp(
-  `^[a-z]{2}(?:-[a-z]{2})?:(?:${READABLE_BUCKETS})/`
+  `^[a-z]{2}(?:-[a-z]{2,3})?:(?:${READABLE_BUCKETS})/`
 );
 
 /** True when a file legal id ("us:policies/usda/snap/fy-2026-cola")
@@ -211,11 +211,11 @@ export function humanizeCitation(fileLegalId: string): string {
  * untouched.
  */
 export function humanizeSource(source: string): string {
-  if (/^[a-z]{2}(?:-[a-z]{2})?:/.test(source)) {
+  if (/^[a-z]{2}(?:-[a-z]{2,3})?:/.test(source)) {
     return humanizeCitation(source.split("#")[0] ?? source);
   }
   const pathish = source.match(
-    /^([a-z]{2}(?:-[a-z]{2})?)\/(statutes?|regulations?|polic(?:y|ies)|guidance|manual)\/(.+)$/,
+    /^([a-z]{2}(?:-[a-z]{2,3})?)\/(statutes?|regulations?|polic(?:y|ies)|guidance|manual)\/(.+)$/,
   );
   if (pathish) {
     const bucket = pathish[2]!.startsWith("statute")

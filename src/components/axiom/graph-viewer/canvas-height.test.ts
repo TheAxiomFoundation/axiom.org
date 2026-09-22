@@ -104,8 +104,12 @@ afterEach(() => {
 });
 
 describe("viewer stylesheet order", () => {
-  it("loads the scoped upstream sheets first and the app's own plane.css last", () => {
-    expect(viewerSheetOrder()).toEqual(["styles.css", "graph-styles.css", "plane.css"]);
+  it("loads the scoped upstream sheets first, then plane.css, then the workspace sheet", () => {
+    // workspace.css intentionally overrides plane.css under .has-workspace
+    // (it replaces the percentage height chain with an explicit stage
+    // height), so it must come last; plane.css must still follow both
+    // upstream sheets so its height-chain fix wins outside the workspace.
+    expect(viewerSheetOrder()).toEqual(["styles.css", "graph-styles.css", "plane.css", "workspace.css"]);
   });
 });
 

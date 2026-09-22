@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import dynamic from "next/dynamic";
+import { Scan } from "lucide-react";
 import {
   humanizeCitation,
   humanizeRuleName,
@@ -120,11 +121,17 @@ export function CorpusField({
   frame = true,
   spotlight = null,
   country = "us",
+  suppliedModules,
+  spread = false,
 }: {
   /** Which country family's subtrees the field shows ("us", "be").
    *  Hosts with a country switch pass their selection; the landing
    *  keeps the US default. */
   country?: string;
+  /** A host-filtered collection, shared with its list and search. */
+  suppliedModules?: CorpusModule[];
+  /** Distribute a source’s provisions over the canvas without jurisdiction bubbles. */
+  spread?: boolean;
   /** Embedded mode (the viewer's launcher): picking a subtree calls
    *  this instead of pushState + mounting the compose viewer overlay
    *  — the host is already the viewer. Omitted on the /axiom landing,
@@ -141,7 +148,8 @@ export function CorpusField({
   const embedded = Boolean(onPick);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [modules, setModules] = useState<CorpusModule[] | null>(null);
+  const [loadedModules, setModules] = useState<CorpusModule[] | null>(null);
+  const modules = suppliedModules ?? loadedModules;
   const [source, setSource] = useState<CorpusSource>("snapshot");
   const [hovered, setHovered] = useState<FieldDot | null>(null);
   // The camera. A ref mirrors the state so rAF animation frames and
@@ -176,6 +184,7 @@ export function CorpusField({
   );
 
   useEffect(() => {
+    if (suppliedModules) return;
     let cancelled = false;
     // Live mirror first, committed snapshot as ballast — the field is
     // never empty just because the API is down.
@@ -194,7 +203,7 @@ export function CorpusField({
     return () => {
       cancelled = true;
     };
-  }, [country]);
+  }, [country, suppliedModules]);
 
   // Doors are computed from the census — the largest / most intricate
   // subtrees, capped per jurisdiction — and labeled by citation.
@@ -219,8 +228,22 @@ export function CorpusField({
     if (!modules) return [null, 0] as const;
     const startedAt = performance.now();
     const built = buildFieldLayout(modules, highlightLabels ?? undefined);
+    if (spread && built.dots.length) {
+      const columns = Math.ceil(Math.sqrt(built.dots.length * FIELD_WIDTH / FIELD_HEIGHT / 1.45));
+      const rows = Math.ceil(built.dots.length / columns);
+      const cellW = (FIELD_WIDTH - 40) / columns;
+      const cellH = (FIELD_HEIGHT - 40) / rows;
+      const maxRules = Math.max(1, ...built.dots.map(dot => dot.ruleCount));
+      built.dots.forEach((dot, index) => {
+        dot.x = 20 + (index % columns + .5) * cellW;
+        dot.y = 20 + (Math.floor(index / columns) + .34) * cellH;
+        dot.r = Math.min(cellW * .4, cellH * .30) * (.88 + .12 * Math.sqrt(dot.ruleCount / maxRules));
+        dot.highlightLabel = null;
+      });
+      built.clusters = [];
+    }
     return [built, performance.now() - startedAt] as const;
-  }, [modules, highlightLabels]);
+  }, [modules, highlightLabels, spread]);
   // The hard invariant, surfaced: zero intersecting footprint pairs
   // (checked once per layout, never per frame) — and the document
   // grouping, measurable: median inter-family vs intra-family
@@ -415,12 +438,12 @@ export function CorpusField({
       // the doors, source rings, and the hovered dot carry the
       // hierarchy. Hover restores full presence.
       const alpha =
-        dot === hovered ? 0.95 : dot.highlightLabel ? 0.9 : 0.5;
+        dot === hovered ? 0.95 : dot.highlightLabel ? 0.9 : spread ? 0.8 : 0.5;
       if (shape.kind === "true") {
         const { nodes, edges } = shape.motif;
         ctx.globalAlpha = alpha;
         ctx.strokeStyle = dot.color;
-        ctx.lineWidth = 0.4 / k;
+        ctx.lineWidth = (spread ? 0.7 : 0.4) / k;
         if (edges.length > 0) {
           // One path per module — a single stroke call keeps ~7.4k
           // edges cheap at far zoom.
@@ -497,8 +520,7 @@ export function CorpusField({
       // fallbacks only much closer), not already named by a door.
       if (
         !dot.highlightLabel &&
-        dot.r * pxPerUnit >= labelMinPx(dot) &&
-        dotEarnsLabel(dot)
+        (spread || (dot.r * pxPerUnit >= labelMinPx(dot) && dotEarnsLabel(dot)))
       ) {
         labelCandidates.push(dot);
       }
@@ -529,9 +551,9 @@ export function CorpusField({
           b.r - a.r
       );
       for (const dot of sorted) {
-        if (labelsDrawn >= 160) break;
+        if (!spread && labelsDrawn >= 160) break;
         const isHeadline = dot.headlineRule !== null;
-        if (!isHeadline && fallbackLabelsDrawn >= FALLBACK_LABELS_PER_FRAME) {
+        if (!spread && !isHeadline && fallbackLabelsDrawn >= FALLBACK_LABELS_PER_FRAME) {
           continue;
         }
         let entry = cache.get(dot.target);
@@ -553,16 +575,43 @@ export function CorpusField({
           };
           cache.set(dot.target, entry);
         }
-        const w = entry.widthCss / pxPerUnit;
+        let label = entry.text;
+        let secondLine = "";
+        let w = entry.widthCss / pxPerUnit;
+        if (spread) {
+          const columns = Math.ceil(Math.sqrt(layout.dots.length * FIELD_WIDTH / FIELD_HEIGHT / 1.45));
+          const available = (FIELD_WIDTH - 40) / columns - 12;
+          if (w > available) {
+            const rows = Math.ceil(layout.dots.length / columns);
+            const canWrap = ((FIELD_HEIGHT - 40) / rows) * pxPerUnit > 75;
+            if (canWrap) {
+              const words = label.split(" ");
+              label = words.shift() ?? "";
+              while (words.length && ctx.measureText(`${label} ${words[0]}`).width <= available) label += ` ${words.shift()}`;
+              secondLine = words.join(" ");
+              if (ctx.measureText(secondLine).width > available) {
+                while (secondLine.length > 1 && ctx.measureText(secondLine + "…").width > available) secondLine = secondLine.slice(0, -1);
+                secondLine += "…";
+              }
+            }
+            if (ctx.measureText(label).width > available) {
+              while (label.length > 1 && ctx.measureText(label + "…").width > available) label = label.slice(0, -1);
+              label += "…";
+            }
+            w = Math.max(ctx.measureText(label).width, ctx.measureText(secondLine).width);
+          }
+        }
         const x = dot.x;
-        const y = dot.y + dot.r + 2 / k;
+        const spreadRows = spread ? Math.ceil(layout.dots.length / Math.ceil(Math.sqrt(layout.dots.length * FIELD_WIDTH / FIELD_HEIGHT / 1.45))) : 1;
+        const y = spread ? dot.y + ((FIELD_HEIGHT - 40) / spreadRows) * .32 + 3 / k : dot.y + dot.r + 2 / k;
         const collides = placed.some(
           (p) =>
             Math.abs(p.y - y) < lineH * 1.7 &&
             Math.abs(p.x - x) < (p.w + w) / 2 + fontField * 3
         );
         if (collides) continue;
-        ctx.fillText(entry.text, x, y);
+        ctx.fillText(label, x, y);
+        if (secondLine) ctx.fillText(secondLine, x, y + lineH);
         placed.push({ x, y, w });
         labelsDrawn += 1;
         if (isHeadline) headlineLabelsDrawn += 1;
@@ -590,7 +639,7 @@ export function CorpusField({
       host.dataset.labelsFallback = String(fallbackLabelsDrawn);
       host.dataset.frameMs = (performance.now() - frameStartedAt).toFixed(2);
     }
-  }, [layout, hovered, transform]);
+  }, [layout, hovered, transform, spread]);
 
   useEffect(() => {
     draw();
@@ -953,7 +1002,7 @@ export function CorpusField({
         <canvas
           ref={canvasRef}
           role="img"
-          aria-label="Map of the encoded legal corpus: every provision-rooted subtree, clustered by jurisdiction. Drag to pan, scroll to zoom, click a subtree to open its rule graph."
+          aria-label={spread ? "Provisions in this source. Drag to pan, scroll to zoom, select a provision to open its rule graph." : "Map of the encoded legal corpus: every provision-rooted subtree, clustered by jurisdiction. Drag to pan, scroll to zoom, click a subtree to open its rule graph."}
           className="absolute inset-0 h-full w-full"
           style={{
             cursor: hovered ? "pointer" : isZoomed ? "grab" : "default",
@@ -1142,9 +1191,9 @@ export function CorpusField({
             type="button"
             data-testid="corpus-field-reset"
             onClick={resetView}
-            className="absolute right-2 top-2 z-20 rounded border border-[var(--color-rule)] bg-[var(--color-paper)] px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-[var(--color-ink-secondary)] shadow-sm transition-colors hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+            className="absolute right-2 top-2 z-20 inline-flex h-6 items-center gap-1 rounded border border-[var(--color-rule)] bg-[var(--color-paper)] px-1.5 py-0 font-sans text-[10px] font-medium normal-case tracking-normal text-[var(--color-ink-secondary)] transition-colors hover:bg-[var(--color-paper-elevated)] hover:text-[var(--color-ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
           >
-            ⌂ whole corpus
+            <Scan size={12} aria-hidden="true" /> Whole corpus
           </button>
         )}
       </div>

@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { GraphLoading } from "./graph-loading";
 import {
   Background,
   BackgroundVariant,
@@ -11,12 +12,15 @@ import {
   ReactFlow,
   ReactFlowProvider,
   type Edge,
+  type ReactFlowInstance,
   type Node,
   type NodeProps,
 } from "@xyflow/react";
 import { BaseEdge, SmoothStepEdge, useReactFlow, type EdgeProps } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import dagre from "dagre";
+import { graphFitViewport, MAX_GRAPH_ZOOM } from "./zoom-bounds";
+import { inputContextSubgraph, dependencySubgraph, upstreamIds, upstreamNodeIds } from "./focus-layout";
 import type { DashboardSpec, ParameterRule, TraceNode } from "./types";
 import {
   evalAst,
@@ -47,6 +51,10 @@ interface Props {
   selectedOutputIds?: Set<string>;
   /** When true, show evaluated values + verdict colors. False = pure structure. */
   showValues?: boolean;
+  /** The host is already displaying the graph-loading indicator. */
+  suppressLoadingIndicator?: boolean;
+  /** Restrict the canvas to the selected node and its dependencies. */
+  nodeScoped?: boolean;
   /**
    * Parameter rules from the program graph. When a formula references a
    * bare name that resolves to one of these, the resulting node renders
@@ -66,6 +74,7 @@ interface Props {
     nonce: number;
     immediate?: boolean;
     soft?: boolean;
+    readable?: boolean;
   } | null;
   /** Run mode: the execution layer is live — executed nodes lift,
    *  the rest recede, the camera flies the executed path. */
@@ -113,6 +122,8 @@ export function InteractiveRuleGraph({
   exposedInputIds,
   selectedOutputIds,
   showValues = false,
+  suppressLoadingIndicator = false,
+  nodeScoped = false,
   parameterRules,
   dissect = "auto",
   collapsed: controlledCollapsed,
@@ -168,6 +179,9 @@ export function InteractiveRuleGraph({
   //   visible — opt-in for when the user wants to inspect arithmetic.
   const [detail, setDetail] = useState<"operators" | "wires">("wires");
   const wrapRef = useRef<HTMLDivElement>(null);
+  const flowRef = useRef<Pick<ReactFlowInstance, "getViewport" | "setViewport" | "zoomTo"> | null>(null);
+  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+  const [zoomPercent, setZoomPercent] = useState(100);
   const [isFullscreen, setIsFullscreen] = useState(false);
   // Execution dissects its own path: nodes the run computed unfold
   // so the machinery that actually ran is visible, while untouched
@@ -190,6 +204,20 @@ export function InteractiveRuleGraph({
   // hides secondary chrome, near shows full cards.
   const [lod, setLod] = useState<"near" | "mid" | "far">("near");
   const lodTimer = useRef<number | null>(null);
+  // Start with a readable direct-dependency frame; depth never removes nodes.
+  const [openingOverview, setOpeningOverview] = useState(true);
+  const [flowReady, setFlowReady] = useState(false);
+  const [upstreamDepth, setUpstreamDepth] = useState<number>(1);
+  const [layoutFocusId, setLayoutFocusId] = useState<string | null>(null);
+  const [frameRequest, setFrameRequest] = useState<{ mode: "all" | "upstream"; nonce: number } | null>(null);
+  const requestFrame = (mode: "all" | "upstream", id: string | null = pinnedLegalId) => {
+    setLayoutFocusId(mode === "all" ? null : id);
+    setFrameRequest((previous) => ({ mode, nonce: (previous?.nonce ?? 0) + 1 }));
+  };
+  const changeDepth = (depth: number) => {
+    setUpstreamDepth(depth);
+    requestFrame(pinnedLegalId ? "upstream" : "all");
+  };
   // While the camera moves, hover is inert: a cursor incidentally
   // crossing cards mid-flight must not flicker highlights.
   const moveBusy = useRef(false);
@@ -247,38 +275,54 @@ export function InteractiveRuleGraph({
     [setCollapsed],
   );
 
-  const collapseAll = useCallback(() => {
-    // Best-effort: collapse every rule mentioned in the trace tree. Computed
-    // each time so it reflects the current spec/trace.
-    const all = new Set<string>();
-    for (const t of Object.values(traces)) {
-      collectRuleIds(t, all);
-    }
-    setCollapsed(all);
-  }, [traces, setCollapsed]);
-
-  const expandAll = useCallback(
-    () => setCollapsed(new Set()),
-    [setCollapsed],
-  );
-
   const canExposeInputs = !!onExposeInput;
-  const { nodes, edges } = useMemo(
+  // Which question cards will carry an answer box, a members line or
+  // a default chip — the layout reserves room only for rows that
+  // render. Keyed as a string so the memo only re-lays-out when the
+  // set of rows actually changes, not on every keystroke's new Set.
+  const editCtx = useContext(InputEditContext);
+  const sizeHintsKey = [
+    editCtx.onChange ? Object.keys(editCtx.values).sort().join(",") : "",
+    [...editCtx.answered].sort().join(","),
+    Object.keys(editCtx.memberValues ?? {}).sort().join(","),
+  ].join("|");
+  const sizeHints = useMemo<SizeHints>(
+    () => ({
+      answerable: new Set(editCtx.onChange ? Object.keys(editCtx.values) : []),
+      answered: new Set(editCtx.answered),
+      members: new Set(Object.keys(editCtx.memberValues ?? {})),
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sizeHintsKey],
+  );
+  // Opening a graph defines its scope; inspecting another node only moves
+  // the camera. Depth controls highlighting and framing, never topology.
+  const [scopeId] = useState<string | null>(() => {
+    const linked = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("selection");
+    return linked ?? pinnedLegalId ?? spec.outputs[0]?.legalId ?? null;
+  });
+  const baseGraph = useMemo(
     () =>
       buildGraph(
         spec,
         traces,
-        collapsed,
+        nodeScoped ? new Set<string>() : collapsed,
         exposedInputIds,
         showValues,
         detail,
         canExposeInputs,
         parameterRules,
         selectedOutputIds,
+        // The canvas's shape steers how far apart the columns sit —
+        // read at build time; the wrap is mounted by the time fonts
+        // are ready (the loading shell shares the ref).
+        stageAspectOf(wrapRef.current),
+        sizeHints,
       ),
     [
       spec,
       traces,
+      nodeScoped,
       collapsed,
       exposedInputIds,
       showValues,
@@ -287,8 +331,89 @@ export function InteractiveRuleGraph({
       parameterRules,
       selectedOutputIds,
       fontsReady,
+      sizeHints,
     ],
   );
+
+  const focusedIds = useMemo(() => upstreamIds(baseGraph.nodes, baseGraph.edges, layoutFocusId, upstreamDepth), [baseGraph, layoutFocusId, upstreamDepth]);
+  const { nodes, edges } = useMemo(() => {
+    if (!nodeScoped) return baseGraph;
+    const root = baseGraph.nodes.some(node => node.data.legalId === scopeId) ? scopeId : spec.outputs[0]?.legalId ?? null;
+    const inputRoot = baseGraph.nodes.some(node => node.data.legalId === root && node.data.kind === "input");
+    const scoped = inputRoot ? inputContextSubgraph(baseGraph.nodes, baseGraph.edges, root) : dependencySubgraph(baseGraph.nodes, baseGraph.edges, root, Infinity);
+    // Lay out only this dependency tree, without gaps left by other outputs.
+    layout(scoped.nodes, scoped.edges, stageAspectOf(wrapRef.current), sizeHints);
+    return scoped;
+  }, [baseGraph, nodeScoped, scopeId, sizeHints]);
+
+  const lastCameraSelection = useRef<string | null>(null);
+  const focusSelection = (id: string, duration = 750) => {
+    const ids = nodes.some(node => node.data.legalId === id && node.data.kind === "input")
+      ? new Set(inputContextSubgraph(nodes, edges, id).nodes.map(node => node.id))
+      : upstreamIds(nodes, edges, id, upstreamDepth);
+    const viewport = graphFitViewport(nodes.filter(node => ids.has(node.id)), canvasSize.width, canvasSize.height);
+    if (!viewport || !flowRef.current) return;
+    lastCameraSelection.current = id;
+    void flowRef.current.setViewport(viewport, {
+      duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : duration,
+      interpolate: "linear",
+      ease: (t: number) => t * t * (3 - 2 * t),
+    });
+  };
+  useEffect(() => {
+    if (!flyTo || openingOverview) return;
+    if (flyTo.legalId === "*") requestFrame("all");
+    else focusSelection(flyTo.legalId);
+  }, [flyTo]);
+  useEffect(() => {
+    if (openingOverview) return;
+    if (pinnedLegalId && pinnedLegalId !== lastCameraSelection.current) focusSelection(pinnedLegalId);
+    if (!pinnedLegalId) lastCameraSelection.current = null;
+  }, [pinnedLegalId, nodes, canvasSize]);
+
+  const fitViewport = useMemo(() => graphFitViewport(nodes, canvasSize.width, canvasSize.height), [nodes, canvasSize]);
+  const minGraphZoom = fitViewport?.zoom ?? .01;
+  useEffect(() => {
+    if (!openingOverview || !flowReady || !fontsReady || !fitViewport || !nodes.length) return;
+    const flow = flowRef.current;
+    if (!flow) return;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    void flow.setViewport(fitViewport, { duration: 0 });
+    const timer = window.setTimeout(() => {
+      const target = pinnedLegalId ?? scopeId ?? spec.outputs[0]?.legalId;
+      if (target) focusSelection(target, 1100);
+      setOpeningOverview(false);
+    }, reducedMotion ? 0 : 500);
+    return () => window.clearTimeout(timer);
+  }, [openingOverview, flowReady, fontsReady, fitViewport, nodes, pinnedLegalId, scopeId]);
+
+  useEffect(() => {
+    if (openingOverview || !frameRequest || (frameRequest.mode === "upstream" && !focusedIds.size)) return;
+    const visible = frameRequest.mode === "upstream" && focusedIds.size ? nodes.filter((node) => focusedIds.has(node.id)) : nodes;
+    const viewport = graphFitViewport(visible, canvasSize.width, canvasSize.height);
+    if (viewport) void flowRef.current?.setViewport(viewport, { duration: 600, interpolate: "smooth" });
+  }, [frameRequest, nodes, focusedIds, canvasSize]);
+  useEffect(() => {
+    if (!fontsReady) return;
+    const canvas = wrapRef.current?.querySelector(".irg-canvas");
+    if (!canvas) return;
+    const update = () => setCanvasSize({ width: canvas.clientWidth, height: canvas.clientHeight });
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, [fontsReady]);
+  useEffect(() => {
+    const flow = flowRef.current;
+    if (!flow || !fitViewport) return;
+    const current = flow.getViewport();
+    if (current.zoom < fitViewport.zoom - .0001) void flow.setViewport(fitViewport);
+    else if (current.zoom > MAX_GRAPH_ZOOM) void flow.zoomTo(MAX_GRAPH_ZOOM);
+  }, [fitViewport]);
+  const stepZoom = (factor: number) => {
+    const flow = flowRef.current;
+    if (flow) void flow.zoomTo(Math.max(minGraphZoom, Math.min(MAX_GRAPH_ZOOM, flow.getViewport().zoom * factor)), { duration: 200 });
+  };
 
   // Pre-compute the incoming and outgoing edge maps once per build. We use
   // these to BFS both directions from any hovered node and find its full
@@ -349,60 +474,27 @@ export function InteractiveRuleGraph({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [nodes, hoverLegalId],
   );
-  // Canvas hover wins while moving, then an Index hover, then the
-  // pin that lasts while the info card is open.
-  const activeHighlightId = highlightNodeId ?? hoverNodeId ?? pinnedNodeId;
+  // A selection keeps its path at every zoom level until explicitly cleared.
+  // Hover previews apply only when no node is selected.
+  const activeHighlightId = pinnedNodeId ?? highlightNodeId ?? hoverNodeId ?? nodeIdForLegalId(scopeId);
 
-  const highlightSet = useMemo(() => {
-    if (!activeHighlightId) return null;
-    const startKind = kindById.get(activeHighlightId);
-    if (!startKind) return null;
-
-    const seen = new Set<string>([activeHighlightId]);
-    const walkAll = (start: string, adj: Map<string, string[]>) => {
-      const queue = [start];
-      while (queue.length > 0) {
-        const cur = queue.shift()!;
-        for (const next of adj.get(cur) ?? []) {
-          if (!seen.has(next)) {
-            seen.add(next);
-            queue.push(next);
-          }
-        }
-      }
-    };
-
-    if (startKind === "operator" || startKind === "ifGate") {
-      const isPassthrough = (k: IrgNodeData["kind"] | undefined) =>
-        k === "operator" || k === "ifGate";
-      const walkThrough = (start: string, adj: Map<string, string[]>) => {
-        const queue = [start];
-        while (queue.length > 0) {
-          const cur = queue.shift()!;
-          for (const next of adj.get(cur) ?? []) {
-            if (seen.has(next)) continue;
-            seen.add(next);
-            if (isPassthrough(kindById.get(next))) queue.push(next);
-            // else: variable — included, but we don't recurse past it.
-          }
-        }
-      };
-      walkThrough(activeHighlightId, adjacency.incoming);
-      walkThrough(activeHighlightId, adjacency.outgoing);
-      return seen;
-    }
-
-    if (startKind === "input") {
-      // Inputs flow rightward — descendants are the only meaningful chain.
-      walkAll(activeHighlightId, adjacency.outgoing);
-      return seen;
-    }
-
-    // Outputs and intermediate sub-rules: ancestors only — the chain
-    // that contributes to the hovered node.
-    walkAll(activeHighlightId, adjacency.incoming);
-    return seen;
-  }, [activeHighlightId, adjacency, kindById]);
+  const lineageOf = useCallback((startId: string): Set<string> => {
+    const node = nodes.find(item => item.id === startId);
+    return node?.data.kind === "input"
+      ? new Set(inputContextSubgraph(nodes, edges, String(node.data.legalId)).nodes.map(item => item.id))
+      : upstreamNodeIds(nodes, edges, startId, upstreamDepth);
+  }, [nodes, edges, upstreamDepth]);
+  const highlightSet = useMemo(
+    () => openingOverview ? new Set(nodes.map(node => node.id)) : (activeHighlightId ? lineageOf(activeHighlightId) : null),
+    [openingOverview, nodes, activeHighlightId, lineageOf],
+  );
+  // The pinned card's lineage is what a click frames: the camera
+  // fits the whole highlighted chain, not just the card, so the
+  // shape of what feeds it (or what it feeds) is on screen at once.
+  const pinnedFrame = useMemo(
+    () => (pinnedNodeId ? lineageOf(pinnedNodeId) : null),
+    [pinnedNodeId, lineageOf],
+  );
 
   // Apply the highlight by tagging each node and edge with a className
   // reflecting whether it's on the lineage. CSS handles the dim/emphasize
@@ -464,9 +556,15 @@ export function InteractiveRuleGraph({
   }, [edges, executedIds]);
 
 
+  // Cards that survive a rebuild glide from where they were to where
+  // the new layout puts them; the wires follow because the positions
+  // React Flow sees are the tweened ones.
+  const { positions: tweened, entering } = useLayoutTween(nodes, wrapRef);
   const displayNodes = useMemo(() => {
     let out = nodes.map((n) => {
       const d = n.data as IrgNodeData;
+      const slid = tweened?.get(n.id);
+      if (slid) n = { ...n, position: slid };
       const legalId =
         "legalId" in d && d.legalId ? d.legalId : ("meta" in d ? d.meta?.legalId : undefined);
       const bucket = legalId?.split(":")[1]?.split("/")[0];
@@ -481,6 +579,7 @@ export function InteractiveRuleGraph({
         // The card whose info panel is open — run mode keeps it lit
         // even when the execution layer would recede it.
         n.id === pinnedNodeId ? "irg-inspected" : "",
+        entering?.has(n.id) ? "irg-entering" : "",
       ]
         .filter(Boolean)
         .join(" ");
@@ -507,7 +606,7 @@ export function InteractiveRuleGraph({
         highlightSet.has(n.id) ? "irg-rf-on-path" : "irg-rf-dimmed"
       }`.trim(),
     }));
-  }, [nodes, highlightSet, executionActive, executedIds, pinnedNodeId]);
+  }, [nodes, tweened, entering, highlightSet, executionActive, executedIds, pinnedNodeId]);
 
   const displayEdges = useMemo(() => {
     let out = edges;
@@ -533,20 +632,21 @@ export function InteractiveRuleGraph({
 
   // Coarse geometry fingerprint — changes whenever a relayout moves
   // nodes, which is what the survey camera needs to chase.
+  // From the target layout, not the sliding positions — a tween's
+  // every frame would otherwise read as a fresh relayout and restart
+  // the camera each time.
   const layoutSig = useMemo(
     () =>
-      displayNodes.length +
+      nodes.length +
       ":" +
-      Math.round(
-        displayNodes.reduce((sum, n) => sum + n.position.x + n.position.y, 0),
-      ),
-    [displayNodes],
+      Math.round(nodes.reduce((sum, n) => sum + n.position.x + n.position.y, 0)),
+    [nodes],
   );
 
   if (!fontsReady) {
     return (
       <div ref={wrapRef} className="irg-wrap">
-        <div className="irg-loading">Preparing graph…</div>
+        {!suppressLoadingIndicator && <GraphLoading label="Preparing graph…" />}
       </div>
     );
   }
@@ -566,6 +666,24 @@ export function InteractiveRuleGraph({
           const controlsBar = (
         <div className={`irg-controls-bar ${slot ? "irg-controls-inline" : ""}`}>
           <div className="irg-toolbar">
+            <div className="irg-zoom-controls" aria-label="Graph zoom">
+              <button type="button" className="irg-toolbar-btn" onClick={() => stepZoom(1 / 1.25)} disabled={zoomPercent <= Math.round(minGraphZoom * 100)} aria-label="Zoom out">−</button>
+              <span aria-label="Zoom level">{zoomPercent}%</span>
+              <button type="button" className="irg-toolbar-btn" onClick={() => stepZoom(1.25)} disabled={zoomPercent >= MAX_GRAPH_ZOOM * 100} aria-label="Zoom in">+</button>
+            </div>
+              <div className="irg-depth-control" role="group" aria-label="Dependency depth">
+                <span>Depth</span>
+                <button type="button" className="irg-toolbar-btn" aria-label="Decrease dependency depth" disabled={upstreamDepth === 1} onClick={() => changeDepth(Number.isFinite(upstreamDepth) ? upstreamDepth - 1 : 5)}>−</button>
+                <select aria-label="Dependency depth" value={String(upstreamDepth)} onChange={(event) => changeDepth(Number(event.target.value))}>
+                  <option value="1">1 level</option>
+                  <option value="2">2 levels</option>
+                  <option value="3">3 levels</option>
+                  <option value="4">4 levels</option>
+                  <option value="5">5 levels</option>
+                  <option value="Infinity">Full depth</option>
+                </select>
+                <button type="button" className="irg-toolbar-btn" aria-label="Increase dependency depth" disabled={!Number.isFinite(upstreamDepth)} onClick={() => changeDepth(upstreamDepth >= 5 ? Infinity : upstreamDepth + 1)}>+</button>
+              </div>
             <div className="irg-toolbar-segment" role="tablist" aria-label="Detail level">
               <button
                 type="button"
@@ -588,22 +706,6 @@ export function InteractiveRuleGraph({
                 Wires only
               </button>
             </div>
-            <button
-              type="button"
-              className="irg-toolbar-btn"
-              onClick={expandAll}
-              title="Expand every sub-rule inline"
-            >
-              Expand all
-            </button>
-            <button
-              type="button"
-              className="irg-toolbar-btn"
-              onClick={collapseAll}
-              title="Collapse every sub-rule into a clickable terminal"
-            >
-              Collapse all
-            </button>
           </div>
           <button
             type="button"
@@ -646,11 +748,24 @@ export function InteractiveRuleGraph({
           edgeTypes={EDGE_TYPES}
           elevateEdgesOnSelect={false}
           fitView
-          fitViewOptions={{ padding: 0.2, minZoom: 0.3, maxZoom: 1.4 }}
-          minZoom={0.01}
-          maxZoom={2}
+          // The first view is the whole map. A zoom floor here cut tall
+          // graphs off at the bottom with nothing to say so — a tower of
+          // questions needs ~0.1 to fit a laptop canvas.
+          fitViewOptions={{ padding: 0.1, minZoom: minGraphZoom, maxZoom: MAX_GRAPH_ZOOM }}
+          minZoom={minGraphZoom}
+          maxZoom={MAX_GRAPH_ZOOM}
           proOptions={{ hideAttribution: true }}
+          onInit={(flow) => {
+            flowRef.current = flow;
+            setFlowReady(true);
+            const zoom = flow.getViewport().zoom;
+            wrapRef.current?.style.setProperty("--edge-scale", String(1 / zoom));
+            wrapRef.current?.style.setProperty("--edge-weight", String(Math.min(1.25, .6 + zoom * .65)));
+          }}
           onMove={(_event, viewport) => {
+
+            wrapRef.current?.style.setProperty("--edge-scale", String(1 / viewport.zoom));
+            wrapRef.current?.style.setProperty("--edge-weight", String(Math.min(1.25, .6 + viewport.zoom * .65)));
             if (!moveBusy.current) {
               moveBusy.current = true;
               setHighlightNodeId(null);
@@ -659,6 +774,7 @@ export function InteractiveRuleGraph({
             if (moveEndTimer.current)
               window.clearTimeout(moveEndTimer.current);
             moveEndTimer.current = window.setTimeout(() => {
+              setZoomPercent(Math.round(viewport.zoom * 100));
               moveBusy.current = false;
               wrapRef.current?.classList.remove("is-moving");
             }, 180);
@@ -699,12 +815,6 @@ export function InteractiveRuleGraph({
           }}
           onNodeMouseLeave={() => setHighlightNodeId(null)}
           onPaneClick={() => onPaneClear?.()}
-          onNodeDoubleClick={(_e, node) => {
-            const data = node.data as IrgNodeData;
-            if ("legalId" in data && data.legalId && data.kind !== "input") {
-              onLens?.(data.legalId);
-            }
-          }}
           onNodeClick={(e, node) => {
             const data = node.data as IrgNodeData;
             const target = e.target as HTMLElement;
@@ -717,26 +827,30 @@ export function InteractiveRuleGraph({
               return;
             }
             if (data.kind === "ruleRef") {
-              if (action === "collapse" && data.canExpand) {
+              if (!nodeScoped && action === "collapse" && data.canExpand) {
                 toggleCollapse(data.legalId);
                 return;
               }
             }
             if (data.kind === "output") {
-              if (action === "collapse" && data.canExpand) {
+              if (!nodeScoped && action === "collapse" && data.canExpand) {
                 toggleCollapse(data.legalId);
                 return;
               }
             }
-            if (!actionEl) onInspect?.(data);
+            if (!actionEl) {
+              if ("legalId" in data && data.legalId) focusSelection(data.legalId);
+              onInspect?.(data);
+            }
           }}
         >
           <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="#e7e5e4" />
-          <FlyToController
+          {!nodeScoped && !frameRequest && <FlyToController
             target={flyTo ?? null}
             layoutSig={layoutSig}
             nodes={displayNodes}
-          />
+            frame={pinnedFrame}
+          />}
 
           <GraphMiniMap />
         </ReactFlow>
@@ -890,21 +1004,140 @@ function flightDuration(
   return Math.min(1700, Math.max(600, Math.round(screenDistance * 0.6)));
 }
 
+/** How long a relayout slide takes. The camera glides for the same
+ *  span so both arrive together. */
+const TWEEN_MS = 480;
+/** Below this share of surviving cards the new layout is a different
+ *  scene, not a rearrangement — cut to it instead of sliding a few
+ *  stragglers across a canvas of strangers. */
+const TWEEN_MIN_SURVIVORS = 0.3;
+
+/**
+ * Slide surviving cards from their previous positions to the new
+ * layout's. Returns the in-flight positions (by id) while sliding,
+ * null at rest. Marks the wrap with data-tweening for the duration so
+ * the scene-cut fade stays out of the way and the camera glides.
+ */
+function useLayoutTween(
+  nodes: Node[],
+  wrapRef: React.RefObject<HTMLDivElement | null>,
+): {
+  positions: Map<string, { x: number; y: number }> | null;
+  /** Cards that just joined the canvas — rendered transparent for
+   *  one frame so their opacity transition fades them in. A class and
+   *  a timer, not a CSS animation: a hidden document's animation
+   *  clock never advances, and the cards would stay invisible. */
+  entering: Set<string> | null;
+} {
+  const previous = useRef<Map<string, { x: number; y: number }>>(new Map());
+  const [override, setOverride] = useState<Map<
+    string,
+    { x: number; y: number }
+  > | null>(null);
+  const [entering, setEntering] = useState<Set<string> | null>(null);
+  useLayoutEffect(() => {
+    const before = previous.current;
+    const after = new Map(
+      nodes.map((n) => [n.id, { x: n.position.x, y: n.position.y }]),
+    );
+    previous.current = after;
+    if (before.size === 0 || nodes.length === 0) return;
+    const fresh = new Set(nodes.filter((n) => !before.has(n.id)).map((n) => n.id));
+    // Always resettled here: a lens rebuilds the graph twice in quick
+    // succession (selection, then fold state), and a stale tag from
+    // the first pass would keep cards transparent for good.
+    setEntering(fresh.size > 0 ? fresh : null);
+    if (fresh.size > 0) window.setTimeout(() => setEntering(null), 30);
+    let survivors = 0;
+    const movers: Array<{
+      id: string;
+      from: { x: number; y: number };
+      to: { x: number; y: number };
+    }> = [];
+    for (const n of nodes) {
+      const was = before.get(n.id);
+      if (!was) continue;
+      survivors++;
+      if (Math.abs(was.x - n.position.x) > 0.5 || Math.abs(was.y - n.position.y) > 0.5) {
+        movers.push({ id: n.id, from: was, to: { ...n.position } });
+      }
+    }
+    // The enter tag's timer is never cancelled by a later rebuild —
+    // that rebuild resets the tag state itself, above.
+    if (movers.length === 0 || survivors < nodes.length * TWEEN_MIN_SURVIVORS) {
+      return;
+    }
+    const wrap = wrapRef.current;
+    wrap?.setAttribute("data-tweening", "1");
+    const start = performance.now();
+    const ease = (t: number) => 1 - Math.pow(1 - t, 3);
+    let frame: number | null = null;
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      if (frame !== null) cancelAnimationFrame(frame);
+      wrap?.removeAttribute("data-tweening");
+      setOverride(null);
+    };
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / TWEEN_MS);
+      if (t >= 1) {
+        finish();
+        return;
+      }
+      const k = ease(t);
+      const at = new Map<string, { x: number; y: number }>();
+      for (const m of movers) {
+        at.set(m.id, {
+          x: m.from.x + (m.to.x - m.from.x) * k,
+          y: m.from.y + (m.to.y - m.from.y) * k,
+        });
+      }
+      setOverride(at);
+      frame = requestAnimationFrame(tick);
+    };
+    // First frame before paint: the cards start where they were.
+    tick(start);
+    // A hidden canvas never gets a frame — land the cards anyway.
+    const safety = window.setTimeout(finish, TWEEN_MS + 150);
+    return () => {
+      window.clearTimeout(safety);
+      finish();
+    };
+  }, [nodes, wrapRef]);
+  return { positions: override, entering };
+}
+
+/** A selected subtree must remain readable. If its full extent cannot fit
+ *  at this scale, focus its selected node and leave the rest available to pan. */
+const FRAME_MIN_ZOOM = 0.8;
+/** Zoom ceiling for framing: a three-card lineage shouldn't fill
+ *  the screen with one giant card. */
+const FRAME_MAX_ZOOM = 1.1;
+const FRAME_PADDING = 0.12;
 function FlyToController({
   target,
   layoutSig,
   nodes,
+  frame,
 }: {
   target: {
     legalId: string;
     nonce: number;
     immediate?: boolean;
     soft?: boolean;
+    readable?: boolean;
   } | null;
   layoutSig: string;
   nodes: Node[];
+  /** Node ids to keep in view around the target — the pinned
+   *  lineage. Null frames nothing: the camera just centers. */
+  frame: Set<string> | null;
 }) {
   const flow = useReactFlow();
+  const frameRef = useRef(frame);
+  frameRef.current = frame;
   const last = useRef(0);
   const chaseUntil = useRef(0);
   const chaseId = useRef<string | null>(null);
@@ -912,6 +1145,7 @@ function FlyToController({
   const faded = useRef(false);
   const immediate = useRef(false);
   const soft = useRef(false);
+  const readable = useRef(false);
   const [armed, setArmed] = useState(0);
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
@@ -930,6 +1164,7 @@ function FlyToController({
     chaseId.current = target.legalId;
     immediate.current = Boolean(target.immediate);
     soft.current = Boolean(target.soft);
+    readable.current = Boolean(target.readable);
     cutMode.current = false;
     faded.current = false;
     chaseUntil.current = Date.now() + (target.legalId === "*" ? 10_000 : 8_000);
@@ -941,46 +1176,208 @@ function FlyToController({
     setArmed((tick) => tick + 1);
   }, [target]);
   const lastSigChangeAt = useRef(0);
-  const centerOf = (id: string) => {
-    const match = nodesRef.current.find(
-      (node) =>
-        (node.data as IrgNodeData & { legalId?: string }).legalId === id,
+  /** Move the camera to a viewport. Animated moves run on frames; a
+   *  backgrounded or hidden canvas gets none, and the camera would
+   *  sit at its start forever. If the viewport hasn't budged by the
+   *  time the flight should be over, land it outright. */
+  const land = (
+    target: { x: number; y: number; zoom: number },
+    opts: { duration: number; interpolate?: "smooth" | "linear" },
+  ) => {
+    const from = flow.getViewport();
+    void flow.setViewport(target, opts);
+    if (opts.duration <= 0) return;
+    window.setTimeout(() => {
+      const now = flow.getViewport();
+      const stalled =
+        Math.abs(now.x - from.x) < 0.5 &&
+        Math.abs(now.y - from.y) < 0.5 &&
+        Math.abs(now.zoom - from.zoom) < 1e-4;
+      const arrived =
+        Math.abs(now.x - target.x) < 0.5 &&
+        Math.abs(now.y - target.y) < 0.5 &&
+        Math.abs(now.zoom - target.zoom) < 1e-4;
+      if (stalled && !arrived) void flow.setViewport(target);
+    }, opts.duration + 150);
+  };
+  /** The viewport that puts a layout point at the canvas center. */
+  const viewportAt = (cx: number, cy: number, zoom: number) => {
+    const canvas = document.querySelector<HTMLElement>(
+      ".graph-viewer-root .irg-canvas",
     );
+    const cw = canvas?.clientWidth ?? window.innerWidth;
+    const ch = canvas?.clientHeight ?? window.innerHeight;
+    return { x: cw / 2 - cx * zoom, y: ch / 2 - cy * zoom, zoom };
+  };
+  /** Fit the whole map from the layout's own geometry. React Flow's
+   *  fitView needs every card measured first, and right after a
+   *  graph swap (leaving a lens) nothing is — it fits empty bounds
+   *  and lands at max zoom on nothing. The layout already knows each
+   *  card's box, so the viewport is plain arithmetic. */
+  const fitAll = (opts: {
+    duration: number;
+    interpolate?: "smooth" | "linear";
+  }) => {
+    const all = nodesRef.current;
+    const canvas = document.querySelector<HTMLElement>(
+      ".graph-viewer-root .irg-canvas",
+    );
+    const cw = canvas?.clientWidth ?? 0;
+    const ch = canvas?.clientHeight ?? 0;
+    if (all.length === 0 || cw === 0 || ch === 0) {
+      void flow.fitView({ ...opts, padding: 0.1, minZoom: 0.01 });
+      return;
+    }
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const node of all) {
+      const w = node.measured?.width ?? node.width ?? 220;
+      const h = node.measured?.height ?? node.height ?? 90;
+      minX = Math.min(minX, node.position.x);
+      minY = Math.min(minY, node.position.y);
+      maxX = Math.max(maxX, node.position.x + w);
+      maxY = Math.max(maxY, node.position.y + h);
+    }
+    const pad = 0.1;
+    const bw = Math.max(1, maxX - minX);
+    const bh = Math.max(1, maxY - minY);
+    const zoom = Math.min(
+      MAX_GRAPH_ZOOM,
+      Math.max(0.01, Math.min(cw / (bw * (1 + 2 * pad)), ch / (bh * (1 + 2 * pad)))),
+    );
+    land(
+      {
+        x: (cw - bw * zoom) / 2 - minX * zoom,
+        y: (ch - bh * zoom) / 2 - minY * zoom,
+        zoom,
+      },
+      opts,
+    );
+  };
+  const nodeFor = (legalId: string) =>
+    nodesRef.current.find(
+      (node) =>
+        (node.data as IrgNodeData & { legalId?: string }).legalId === legalId,
+    ) ?? null;
+  const centerOf = (id: string) => {
+    const match = nodeFor(id);
     if (!match) return null;
     return {
-      x: match.position.x + (match.measured?.width ?? 220) / 2,
-      y: match.position.y + (match.measured?.height ?? 90) / 2,
+      x: match.position.x + (match.measured?.width ?? match.width ?? 220) / 2,
+      y: match.position.y + (match.measured?.height ?? match.height ?? 90) / 2,
     };
+  };
+  /** Move the camera to a card. With a pinned lineage around it, fit
+   *  the whole chain — the answer to "what does this depend on?" is
+   *  the shape, and a card-tight zoom cut it off at the screen edge.
+   *  A chain too big to read even at the floor zoom anchors on the
+   *  card instead, zoomed out to the floor. */
+  const moveTo = (
+    legalId: string,
+    opts: { duration: number; interpolate?: "smooth" | "linear" },
+  ) => {
+    const minZoom = readable.current ? FRAME_MIN_ZOOM : 0.06;
+    const anchor = nodeFor(legalId);
+    if (!anchor) return false;
+    const ids = frameRef.current;
+    const members =
+      ids && ids.size > 1 && ids.has(anchor.id)
+        ? nodesRef.current.filter((node) => ids.has(node.id))
+        : null;
+    // The execution panel docks over the canvas's right edge; the
+    // region it covers doesn't count as "in view". Fit into what's
+    // left and slide the target left by half the covered width.
+    const canvas = document.querySelector<HTMLElement>(
+      ".graph-viewer-root .irg-canvas",
+    );
+    const panel = document.querySelector<HTMLElement>(
+      ".graph-viewer-root .exec-panel",
+    );
+    let covered = 0;
+    if (canvas && panel) {
+      const cr = canvas.getBoundingClientRect();
+      const pr = panel.getBoundingClientRect();
+      const overlapsRows = pr.bottom > cr.top && pr.top < cr.bottom;
+      if (overlapsRows) {
+        covered = Math.max(
+          0,
+          Math.min(cr.right, pr.right) - Math.max(cr.left, pr.left),
+        );
+      }
+    }
+    const shiftFor = (zoom: number) => covered / 2 / zoom;
+    if (members) {
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (const node of members) {
+        const w = node.measured?.width ?? node.width ?? 220;
+        const h = node.measured?.height ?? node.height ?? 90;
+        minX = Math.min(minX, node.position.x);
+        minY = Math.min(minY, node.position.y);
+        maxX = Math.max(maxX, node.position.x + w);
+        maxY = Math.max(maxY, node.position.y + h);
+      }
+      const cw = (canvas?.clientWidth ?? 0) - covered;
+      const ch = canvas?.clientHeight ?? 0;
+      const fitZoom =
+        cw > 0 && ch > 0
+          ? Math.min(
+              cw / ((maxX - minX) * (1 + 2 * FRAME_PADDING)),
+              ch / ((maxY - minY) * (1 + 2 * FRAME_PADDING)),
+            )
+          : 0;
+      if (fitZoom >= minZoom) {
+        // Center on the chain's box at the zoom that fits it — one
+        // setCenter, the same primitive every other flight uses.
+        const zoom = Math.min(FRAME_MAX_ZOOM, fitZoom);
+        land(
+          viewportAt((minX + maxX) / 2 + shiftFor(zoom), (minY + maxY) / 2, zoom),
+          opts,
+        );
+        return true;
+      }
+      const center = centerOf(legalId)!;
+      land(
+        viewportAt(center.x + shiftFor(minZoom), center.y, minZoom),
+        opts,
+      );
+      return true;
+    }
+    const center = centerOf(legalId)!;
+    const zoom = Math.min(Math.max(flow.getViewport().zoom, 0.9), 1.2);
+    land(viewportAt(center.x + shiftFor(zoom), center.y, zoom), opts);
+    return true;
   };
   const cutTo = () => {
     if (!chaseId.current || Date.now() > chaseUntil.current) return;
     // A soft chase glides through the relayout's commit (small unfolds
     // like clicking a question in the flow panel); a hard cut is for
-    // scene-scale changes.
-    const duration = soft.current ? 500 : 0;
+    // scene-scale changes — unless the cards themselves are sliding
+    // into the new layout, in which case the camera glides with them.
+    const wrapEl = document.querySelector<HTMLElement>(
+      ".graph-viewer-root .irg-wrap",
+    );
+    const sliding = wrapEl?.hasAttribute("data-tweening") ?? false;
+    const duration = soft.current ? 500 : sliding ? TWEEN_MS : 0;
     if (chaseId.current === "*") {
-      void flow.fitView({ duration, padding: 0.1, minZoom: 0.01 });
-    } else {
-      const center = centerOf(chaseId.current);
-      if (!center) return;
-      void flow.setCenter(center.x, center.y, {
-        duration,
-        zoom: Math.min(Math.max(flow.getViewport().zoom, 0.9), 1.2),
-      });
+      fitAll({ duration });
+    } else if (!moveTo(chaseId.current, { duration })) {
+      return;
     }
     cutMode.current = true;
     // Keep the chase briefly alive so a second measured layout pass
     // re-cuts to the final geometry, then let it die.
     chaseUntil.current = Date.now() + 700;
-    if (!faded.current && !soft.current) {
+    if (!faded.current && !soft.current && !sliding) {
       faded.current = true;
-      const wrap = document.querySelector<HTMLElement>(
-        ".graph-viewer-root .irg-wrap",
-      );
-      if (wrap) {
-        wrap.classList.remove("irg-scene-cut");
-        void wrap.offsetWidth;
-        wrap.classList.add("irg-scene-cut");
+      if (wrapEl) {
+        wrapEl.classList.remove("irg-scene-cut");
+        void wrapEl.offsetWidth;
+        wrapEl.classList.add("irg-scene-cut");
       }
     }
   };
@@ -1003,20 +1400,14 @@ function FlyToController({
     const timer = window.setTimeout(() => {
       if (cutMode.current || !chaseId.current) return;
       if (chaseId.current === "*") {
-        void flow.fitView({
-          duration: 900,
-          padding: 0.1,
-          minZoom: 0.01,
-          interpolate: "smooth",
-        });
+        fitAll({ duration: 900, interpolate: "smooth" });
         return;
       }
       const center = centerOf(chaseId.current);
       if (center) {
-        void flow.setCenter(center.x, center.y, {
+        moveTo(chaseId.current, {
           duration: flightDuration(flow, center.x, center.y),
           interpolate: "smooth",
-          zoom: Math.min(Math.max(flow.getViewport().zoom, 0.9), 1.2),
         });
         // The destination is reached — later unrelated relayouts must
         // not yank the camera back.
@@ -1391,10 +1782,22 @@ const InputNode = ({ data }: NodeProps) => {
       className={`irg-node irg-input irg-input-${d.source} ${d.canExpose ? "irg-can-expose" : ""} ${isAnswered ? "is-answered" : ""}`}
     >
       <HandleSource />
-      <div className="irg-eyebrow">
-        Question · <span className={`irg-status irg-status-${d.source}`}>{d.source === "user" ? "asked" : "not asked"}</span>
+      {/* No eyebrow row on a question — the pill shape already says
+          "question", and the state lives in a dot beside the title.
+          One line less per card is the tower's biggest saving. */}
+      <div className="irg-label irg-q-title">
+        <span
+          className={`irg-q-dot irg-status-${d.source}`}
+          title={
+            isAnswered
+              ? "Question · answered"
+              : d.source === "user"
+                ? "Question · asked"
+                : "Question · not asked"
+          }
+        />
+        {softBreak(humanizeLabel(d.label))}
       </div>
-      <div className="irg-label">{softBreak(humanizeLabel(d.label))}</div>
       <InlineAnswer legalId={d.legalId} />
       <MemberAnswers name={inputName} />
       {!answerPopulated && d.showValues && d.value && (
@@ -1613,6 +2016,8 @@ function buildGraph(
   canExposeInputs: boolean = false,
   parameterRules?: ParameterRule[],
   selectedOutputIds?: Set<string>,
+  stageAspect?: number,
+  sizeHints?: SizeHints,
 ): BuildResult {
   // Index parameter rules by bare name so the formula walker can resolve
   // identifiers that aren't in the trace (parameters get inlined as
@@ -1653,7 +2058,10 @@ function buildGraph(
     const isExpanded = !collapsed.has(binding.legalId);
     const canExpand = Boolean(outputTrace.formula);
     if (!nodeIds.has(outputId)) {
-      const id = nextId();
+      // The dedup key IS the id: a card keeps its identity across
+      // rebuilds, so a re-dissection (entering a lens, unfolding a
+      // door) can slide it to its new place instead of remounting it.
+      const id = outputId;
       nodeIds.set(outputId, id);
       outputNodeIdByLegalId.set(binding.legalId, id);
       nodes.push({
@@ -1736,11 +2144,11 @@ function buildGraph(
   // edges are merged.
   if (detail === "wires") {
     const result = collapseOperators(nodes, edges);
-    layout(result.nodes, result.edges);
+    layout(result.nodes, result.edges, stageAspect, sizeHints);
     return result;
   }
 
-  layout(nodes, edges);
+  layout(nodes, edges, stageAspect, sizeHints);
   return { nodes, edges };
 }
 
@@ -2243,7 +2651,8 @@ function ensureNode(
   spec: { type: keyof typeof NODE_TYPES; data: IrgNodeData },
 ): string {
   if (ctx.nodeIds.has(dedupKey)) return ctx.nodeIds.get(dedupKey)!;
-  const id = ctx.nextId();
+  // Stable across rebuilds — see the output node's comment.
+  const id = dedupKey;
   ctx.nodeIds.set(dedupKey, id);
   ctx.nodes.push({
     id,
@@ -2264,7 +2673,7 @@ function addEdge(ctx: WalkCtx, source: string, target: string, cls: string) {
     target,
     type: "smoothstep",
     className: edgeClass(cls),
-    markerEnd: { type: MarkerType.ArrowClosed, color: edgeColorVar(cls) },
+    markerEnd: { type: MarkerType.ArrowClosed, color: edgeColorVar(cls), markerUnits: "userSpaceOnUse", width: 12, height: 12 },
     style: { strokeWidth: cls === "pass" || cls === "fail" ? 2 : 1.5 },
   });
 }
@@ -2285,7 +2694,7 @@ function addEdgeWithLabel(
     type: "smoothstep",
     label,
     className: edgeClass(cls),
-    markerEnd: { type: MarkerType.ArrowClosed, color: edgeColorVar(cls) },
+    markerEnd: { type: MarkerType.ArrowClosed, color: edgeColorVar(cls), markerUnits: "userSpaceOnUse", width: 12, height: 12 },
     style: { strokeWidth: cls === "pass" || cls === "fail" ? 2 : 1.5 },
     labelStyle: { fontFamily: "var(--f-mono)", fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase" },
     labelBgStyle: { fill: "var(--color-paper-elevated)", stroke: "var(--color-rule)" },
@@ -2312,44 +2721,212 @@ function edgeColorVar(cls: string): string {
 // Layout (dagre)
 // ─────────────────────────────────────────────────────────────────────────
 
-function layout(nodes: Node[], edges: Edge[]) {
+/** What a question card will actually render besides its title, so
+ *  the layout reserves room for exactly those rows and no more. Keyed
+ *  by the input's bare registry name. */
+type SizeHints = {
+  /** Inputs whose card carries an inline answer box (run mode). */
+  answerable: ReadonlySet<string>;
+  /** Inputs the user has answered — no "default" chip on those. */
+  answered: ReadonlySet<string>;
+  /** Inputs with a per-member answers line. */
+  members: ReadonlySet<string>;
+};
+const NO_HINTS: SizeHints = {
+  answerable: new Set(),
+  answered: new Set(),
+  members: new Set(),
+};
+
+/** Bare registry name of an input node: `#input.<name>` in package
+ *  graphs, `#<name>` in composed ones. */
+function inputNameOf(legalId: string): string | null {
+  const fragment = legalId.split("#").pop() ?? "";
+  return fragment.startsWith("input.")
+    ? fragment.slice("input.".length)
+    : fragment || null;
+}
+
+/** The canvas's width / height, or the default when it isn't measurable. */
+function stageAspectOf(el: HTMLElement | null): number {
+  if (!el) return DEFAULT_STAGE_ASPECT;
+  const { clientWidth, clientHeight } = el;
+  if (clientWidth < 200 || clientHeight < 200) return DEFAULT_STAGE_ASPECT;
+  return Math.min(2.6, Math.max(0.8, clientWidth / clientHeight));
+}
+
+/** Stage aspect (width / height) when the canvas can't be measured —
+ *  a typical laptop viewport. */
+const DEFAULT_STAGE_ASPECT = 1.6;
+
+function layout(
+  nodes: Node[],
+  edges: Edge[],
+  stageAspect = DEFAULT_STAGE_ASPECT,
+  hints: SizeHints = NO_HINTS,
+) {
   const dense = nodes.length > 250;
+  const sizes = new Map(nodes.map((n) => [n.id, nodeSize(n, hints)]));
   const run = (ranksep: number, nodesep: number) => {
     const g = new dagre.graphlib.Graph();
     g.setGraph({ rankdir: "LR", nodesep, ranksep, marginx: 24, marginy: 24 });
     g.setDefaultEdgeLabel(() => ({}));
-    for (const n of nodes) g.setNode(n.id, nodeSize(n));
-    for (const e of edges) g.setEdge(e.source, e.target);
+    // Leaves that feed the same rule go into dagre two at a time as
+    // one wide box, so the tower of questions is half as tall; after
+    // the layout the box splits into a staggered pair (see pairLeaves).
+    const pairs = pairLeaves(nodes, edges, sizes, nodesep);
+    const memberOf = new Map<string, LeafPair>();
+    for (const pair of pairs) {
+      memberOf.set(pair.a, pair);
+      memberOf.set(pair.b, pair);
+      g.setNode(pair.id, { width: pair.width, height: pair.height });
+    }
+    for (const n of nodes) {
+      if (!memberOf.has(n.id)) g.setNode(n.id, sizes.get(n.id)!);
+    }
+    const seenEdges = new Set<string>();
+    for (const e of edges) {
+      const source = memberOf.get(e.source)?.id ?? e.source;
+      const target = memberOf.get(e.target)?.id ?? e.target;
+      const key = `${source}→${target}`;
+      if (seenEdges.has(key)) continue;
+      seenEdges.add(key);
+      g.setEdge(source, target);
+    }
     dagre.layout(g);
+    let minX = Infinity;
+    let maxX = -Infinity;
     let minY = Infinity;
     let maxY = -Infinity;
+    let maxRank = 0;
+    const place = (n: Node, x: number, y: number, w: number, h: number, rank: number) => {
+      n.position = { x, y };
+      (n as Node).width = w;
+      (n as Node).height = h;
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x + w);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y + h);
+      maxRank = Math.max(maxRank, rank);
+    };
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    for (const pair of pairs) {
+      const info = g.node(pair.id);
+      if (!info) continue;
+      const rank = (info as { rank?: number }).rank ?? 0;
+      const left = info.x - info.width / 2;
+      const top = info.y - info.height / 2;
+      const a = byId.get(pair.a)!;
+      const b = byId.get(pair.b)!;
+      const sa = sizes.get(pair.a)!;
+      const sb = sizes.get(pair.b)!;
+      place(a, left, top, sa.width, sa.height, rank);
+      place(b, left + sa.width + PAIR_GAP, top + pair.pitch / 2, sb.width, sb.height, rank);
+    }
     for (const n of nodes) {
+      if (memberOf.has(n.id)) continue;
       const info = g.node(n.id);
       if (!info) continue;
-      n.position = {
-        x: info.x - info.width / 2,
-        y: info.y - info.height / 2,
-      };
-      (n as Node).width = info.width;
-      (n as Node).height = info.height;
-      minY = Math.min(minY, n.position.y);
-      maxY = Math.max(maxY, n.position.y + info.height);
+      const rank = (info as { rank?: number }).rank ?? 0;
+      place(n, info.x - info.width / 2, info.y - info.height / 2, info.width, info.height, rank);
     }
-    return maxY - minY;
+    return { width: maxX - minX, height: maxY - minY, aisles: maxRank };
   };
-  // Tall towers need wider aisles: when the layout runs long top to
-  // bottom, pull the columns further apart so the rails and lanes
-  // have room — gently, scaled to the height.
-  const baseRank = dense ? 68 : 92;
-  const baseNode = dense ? 14 : 24;
-  const height = run(baseRank, baseNode);
-  const stretch = Math.min(1.7, Math.max(1, height / 4200));
-  if (stretch > 1.08) {
-    run(Math.round(baseRank * stretch), baseNode + 2);
+  // First pass at the tightest comfortable spacing, then widen the
+  // aisles toward the stage's shape: a graph that fits by height on
+  // a wide screen leaves both wings of the canvas empty while its
+  // columns crowd the middle. Spread the columns until the layout's
+  // aspect approaches the stage's, within a cap — aisles wider than
+  // this read as disconnected columns, not one graph.
+  const baseRank = dense ? 120 : 160;
+  const baseNode = dense ? 36 : 48;
+  const first = run(baseRank, baseNode);
+  const maxRank = dense ? 220 : 300;
+  if (first.aisles > 0 && first.height > 0) {
+    const wanted = stageAspect * first.height;
+    if (wanted > first.width) {
+      // Each aisle between adjacent ranks gets an equal share of the
+      // missing width; dagre's ranksep is exactly that aisle.
+      const extraPerAisle = (wanted - first.width) / first.aisles;
+      const ranksep = Math.min(maxRank, Math.round(baseRank + extraPerAisle));
+      if (ranksep - baseRank >= 12) run(ranksep, baseNode);
+    }
   }
 
   packComponents(nodes, edges);
   chooseEdgeRoutes(nodes, edges);
+}
+
+/** Gutter between the two cards of a staggered pair. */
+const PAIR_GAP = 44;
+/** A rule needs at least this many private leaves before they pair
+ *  up — two questions side by side read as a grid only once there
+ *  are a few rows of them. */
+const PAIR_MIN_GROUP = 4;
+
+type LeafPair = {
+  id: string;
+  a: string;
+  b: string;
+  width: number;
+  height: number;
+  /** Row pitch the stagger is built on: the taller card plus the
+   *  layout's node gap. B sits half a pitch below A. */
+  pitch: number;
+};
+
+/**
+ * Pair up leaves (cards with nothing feeding them) that feed the same
+ * rule. Each pair becomes one dagre box two cards wide; after layout
+ * the left card A sits at the box's top and the right card B half a
+ * pitch lower. The stagger is what keeps A's wire clean: it leaves A
+ * at mid-height and runs right to the rail, and B's top edge starts
+ * below that line — the wire passes through the gap above B, never
+ * through a card. Two columns is the limit: a third column would put
+ * cards in the way of the outer column's wires.
+ */
+function pairLeaves(
+  nodes: Node[],
+  edges: Edge[],
+  sizes: Map<string, { width: number; height: number }>,
+  nodesep: number,
+): LeafPair[] {
+  const hasIncoming = new Set(edges.map((e) => e.target));
+  const primaryTarget = new Map<string, string>();
+  for (const e of edges) {
+    if (!primaryTarget.has(e.source)) primaryTarget.set(e.source, e.target);
+  }
+  const groups = new Map<string, Node[]>();
+  for (const n of nodes) {
+    const kind = (n.data as IrgNodeData).kind;
+    if (kind === "operator" || kind === "ifGate" || kind === "literal") continue;
+    if (hasIncoming.has(n.id)) continue;
+    const target = primaryTarget.get(n.id);
+    if (!target) continue;
+    const group = groups.get(target);
+    if (group) group.push(n);
+    else groups.set(target, [n]);
+  }
+  const pairs: LeafPair[] = [];
+  for (const group of groups.values()) {
+    if (group.length < PAIR_MIN_GROUP) continue;
+    for (let i = 0; i + 1 < group.length; i += 2) {
+      const a = group[i]!;
+      const b = group[i + 1]!;
+      const sa = sizes.get(a.id)!;
+      const sb = sizes.get(b.id)!;
+      const pitch = Math.max(sa.height, sb.height) + nodesep;
+      pairs.push({
+        id: `pair:${a.id}:${b.id}`,
+        a: a.id,
+        b: b.id,
+        width: sa.width + PAIR_GAP + sb.width,
+        height: Math.max(sa.height, pitch / 2 + sb.height),
+        pitch,
+      });
+    }
+  }
+  return pairs;
 }
 
 /**
@@ -2515,7 +3092,7 @@ function packComponents(nodes: Node[], edges: Edge[]) {
   }
   if (groups.size < 2) return;
 
-  const GAP = 140;
+  const GAP = 220;
   const boxes = [...groups.values()].map((members) => {
     let minX = Infinity;
     let minY = Infinity;
@@ -2563,14 +3140,14 @@ function packComponents(nodes: Node[], edges: Edge[]) {
  * accordingly. The width stays fixed (so columns stay aligned in the LR
  * layout) but tall/wrappy labels push the box vertically.
  */
-function nodeSize(n: Node): { width: number; height: number } {
+function nodeSize(n: Node, hints: SizeHints): { width: number; height: number } {
   const data = n.data as IrgNodeData;
   const labelText = "label" in data ? data.label : "";
   switch (data.kind) {
     case "output":
     case "input":
     case "ruleRef":
-      return labelledNodeSize(labelText, data, 220);
+      return labelledNodeSize(labelText, data, hints);
     case "ifGate":
       return { width: 140, height: 76 };
     case "operator":
@@ -2578,15 +3155,61 @@ function nodeSize(n: Node): { width: number; height: number } {
     case "literal":
       return { width: 80, height: 40 };
     case "unknown":
-      return labelledNodeSize(labelText, data, 200, /* small */ true);
+      return labelledNodeSize(labelText, data, hints, /* small */ true);
   }
 }
 
-/** Estimate height for a label-bearing node by guessing line wrap. */
+/* Heights of the optional rows a card may stack under its title —
+   each mirrors the CSS of the element it stands for. */
+const ROW_VALUE = 24; // .irg-value: 13px display line + 4px margin (+ rounding)
+const ROW_ACTION = 26; // .irg-action: border + 5/2 padding + 8px margin
+const ROW_ANSWER = 34; // .irg-answer: 26px number box + 6px margin
+const ROW_MEMBERS = 20; // .irg-members: one 10px mono line + 4px margin
+const ROW_DEFAULT_CHIP = 26; // .irg-default-chip: pill + 6px margin
+
+/** The rows a card renders below its title, in px — the same
+ *  conditions the node components branch on, so a card's box is the
+ *  size of what it shows: a bare question is a title in a pill, a
+ *  live one grows for its answer box. */
+function extraRowsPx(data: IrgNodeData, hints: SizeHints): number {
+  let px = 0;
+  switch (data.kind) {
+    case "input": {
+      const name = inputNameOf(data.legalId);
+      const answerable = Boolean(name && hints.answerable.has(name));
+      const answered = Boolean(name && hints.answered.has(name));
+      if (answerable) px += ROW_ANSWER;
+      if (name && hints.members.has(name)) px += ROW_MEMBERS;
+      if (data.showValues && data.value) px += ROW_VALUE;
+      if (data.showValues && answerable && !answered) px += ROW_DEFAULT_CHIP;
+      if (data.canExpose || data.source === "user") px += ROW_ACTION;
+      return px;
+    }
+    case "output":
+    case "ruleRef": {
+      if (data.showValues && data.value) px += ROW_VALUE;
+      if (data.canExpand && !data.isExpanded) px += ROW_ACTION;
+      return px;
+    }
+    default:
+      return px;
+  }
+}
+
+/** One width for every titled card. Columns read as columns and the
+ *  eye compares cards by height alone — a mix of widths looked like
+ *  noise. Wide enough for most titles in two lines and for the
+ *  question eyebrow ("Question · not asked") on one. */
+const CARD_WIDTH = 240;
+/** The label's line height in px — must match `.irg-label`. */
+const LABEL_LINE_PX = 17;
+
+/** Size a label-bearing node: pick the card width from its title,
+ *  then measure the wrapped title for the height. */
 function labelledNodeSize(
   label: string,
   data: IrgNodeData,
-  width: number,
+  hints: SizeHints,
   small = false,
 ): { width: number; height: number } {
   // Measure the actual rendered height of the label by inserting it
@@ -2597,30 +3220,28 @@ function labelledNodeSize(
   // Per-kind horizontal padding must match CSS or the measured wrap
   // points will diverge from the rendered ones. Inputs get extra side
   // padding because their pill shape eats into the corners.
-  const horizontalPaddingPx = data.kind === "input" ? 40 : 28;
-  const usableWidth = width - horizontalPaddingPx;
-  const labelBlockHeight = label
-    ? measureLabelHeight(softBreak(humanizeLabel(label)), usableWidth)
-    : 16;
+  // Padding plus the borders — the 3px source seam on the left and
+  // 1px on the right. Measuring a hair narrower than the paint can
+  // only round UP to an extra line, never leave the card short. A
+  // question's title also shares its first line with the state dot
+  // (8px + 8px gap).
+  const horizontalPaddingPx = (data.kind === "input" ? 40 + 16 : 32) + 4;
+  const text = label ? softBreak(humanizeLabel(label)) : "";
+  const width = CARD_WIDTH;
+  const labelBlockHeight = text
+    ? measureLabelHeight(text, width - horizontalPaddingPx)
+    : LABEL_LINE_PX;
 
-  // Per-kind chrome (padding + eyebrow + value/action rows). Generous
-  // buffers since these are still estimated — but their content is
-  // small and predictable so error here is bounded.
-  let chrome: number;
-  if (small) {
-    chrome = 50;
-  } else if (data.kind === "input") {
-    chrome = 110; // padding + eyebrow + inline answer + divider row
-  } else if (data.kind === "output") {
-    const outputRows = data.canExpand ? 1 : 0;
-    chrome = 50 + outputRows * 22;
-  } else if (data.kind === "ruleRef") {
-    const actionRows = data.canExpand ? 1 : 0;
-    chrome = 50 + actionRows * 22;
-  } else {
-    chrome = 56;
-  }
-  return { width, height: chrome + labelBlockHeight };
+  // Chrome every titled card carries: padding top and bottom, the
+  // eyebrow line and its 5px margin (steps and results only — a
+  // question has no eyebrow and 10px padding), plus a small buffer
+  // since the rows below are estimates. Then only the rows this card
+  // will actually render.
+  const chrome = small ? 56 : data.kind === "input" ? 32 : 58;
+  return {
+    width,
+    height: chrome + labelBlockHeight + extraRowsPx(data, hints),
+  };
 }
 
 /**
@@ -2640,8 +3261,8 @@ function getMeasureEl(): HTMLDivElement {
     "Geist Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
   el.style.fontSize = "11px";
   el.style.fontWeight = "500";
-  el.style.lineHeight = "16px";
-  el.style.letterSpacing = "0.04em";
+  el.style.lineHeight = `${LABEL_LINE_PX}px`;
+  el.style.letterSpacing = "0.02em";
   el.style.whiteSpace = "normal";
   el.style.overflowWrap = "anywhere";
   el.style.wordBreak = "break-word";
@@ -2786,13 +3407,6 @@ function flattenTrace(traces: Record<string, TraceNode>): Map<string, TraceNode>
   }
   for (const t of Object.values(traces)) walk(t);
   return out;
-}
-
-/** Walk the trace recursively and accumulate every rule legal ID. Used by
- *  "Collapse all" — we need to know what to add to the collapsed set. */
-function collectRuleIds(t: TraceNode, out: Set<string>): void {
-  if (t.dtype !== "input" && t.formula) out.add(t.legalId);
-  for (const c of t.children ?? []) collectRuleIds(c, out);
 }
 
 function flattenLogical(node: AstNode, op: "and" | "or"): AstNode[] {

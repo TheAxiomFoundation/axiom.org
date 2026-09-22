@@ -707,3 +707,14 @@ describe("RuleBody", () => {
     });
   });
 });
+
+it("marks numeric columns and legal clauses without changing their text", () => {
+  searchParamsRef.current = new URLSearchParams();
+  const body = "(a) Original clause wording.\n\n| Household | Limit |\n| --- | --- |\n| One person | $1,200 |\n| Two people | $2,400 |";
+  render(<RuleBody body={body} refs={[]} />);
+  expect(screen.getByText("(a) Original clause wording.").closest("p")).toHaveAttribute("data-clause", "true");
+  expect(screen.getByRole("columnheader", { name: "Limit" })).toHaveAttribute("data-numeric", "true");
+  expect(screen.getByRole("cell", { name: "$1,200" })).toHaveAttribute("data-numeric", "true");
+  expect(screen.getByRole("columnheader", { name: "Household" })).not.toHaveAttribute("data-numeric");
+  expect(screen.getByRole("region", { name: "Source table" })).toHaveAttribute("tabindex", "0");
+});

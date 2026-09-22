@@ -1,3 +1,4 @@
+import { compositionReadiness } from "@/lib/axiom/runtime/composition-readiness";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const {
@@ -38,6 +39,16 @@ describe("POST /api/axiom/runtime/calculate (run-by-root)", () => {
     runCalculateRootMock.mockReset();
     isConfiguredMock.mockReset();
     isConfiguredMock.mockReturnValue(true);
+  });
+
+  it("preserves long encoding input and trace names for every person and reports rejected keys", async () => {
+    const name = "last_enacted_appropriation_act_maximum_federal_pell_grant_applicable_to_award_year";
+    const variable = "us:statutes/20/1070a/b/5#" + "long_".repeat(40);
+    runCalculateRootMock.mockResolvedValue({kind:"ok",result:{outputs:{total:7060},trace:[]}});
+    const response = await POST(post({root:"us:statutes/20/1070a/b/5",facts:{[name]:6000,"invalid-key":1},people:{person_2:{[name]:5000}},variables:[variable]}));
+    expect(response.status).toBe(200);
+    expect(runCalculateRootMock).toHaveBeenCalledWith({root:"us:statutes/20/1070a/b/5",facts:{[name]:6000},people:{person_2:{[name]:5000}},variables:[variable]});
+    expect(await response.json()).toMatchObject({applied:[name],dropped:["invalid-key"]});
   });
 
   it("passes the root shape through and returns the run envelope", async () => {
@@ -202,4 +213,16 @@ describe("POST /api/axiom/runtime/calculate (run-by-root)", () => {
     expect(data.applied).toEqual(["household_size"]);
     expect(runCalculateRootMock).not.toHaveBeenCalled();
   });
+});
+
+vi.mock("@/lib/axiom/runtime/composition-readiness", () => ({compositionReadiness:vi.fn().mockResolvedValue("ready")}));
+it("refuses unsupported composition before executing flat facts", async () => {
+ isConfiguredMock.mockReturnValue(true);
+ _resetRunRouteState();
+ vi.mocked(compositionReadiness).mockResolvedValueOnce("relationships_unsupported");
+ runCalculateRootMock.mockClear();
+ const response = await POST(post({root:"us:statutes/26/22",facts:{payment_amount:1000}}));
+ expect(response.status).toBe(422);
+ expect(await response.json()).toEqual({error:"relationships_unsupported"});
+ expect(runCalculateRootMock).not.toHaveBeenCalled();
 });
