@@ -129,11 +129,11 @@ export const SUITE_LINES: SuiteLine[] = [
     hue: "#3E7A5E",
     hueDark: "#5FA588",
     noun: "synthetic economy",
-    forAll: "The economy in miniature, for all.",
+    forAll: "The economy in miniature.",
     headline:
       "A nation is millions of people, households, and firms. We build a synthetic one that stands in for them all.",
     body:
-      "A stack for constructing calibrated synthetic microdata from public survey and administrative data: realistic enough to model tax and benefit policy for everyone, private by construction, and improved in the open.",
+      "The synthetic households, firms and flows the simulator runs on: calibrated microdata built from public survey and administrative data, realistic enough to model tax and benefit policy for everyone, private by construction, and improved in the open.",
     figure: {
       value: "15 Sep 2026",
       label: "latest US release",
