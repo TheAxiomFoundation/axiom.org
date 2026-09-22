@@ -529,6 +529,7 @@ function renderTextBlock({
             key={`${paragraph.lines[0].start}-${paragraph.lines.at(-1)?.end}`}
             data-source-note={paragraph.startsWithSource || undefined}
             data-clause={/^\s*\([a-zA-Z0-9]+\)/.test(paragraph.lines[0].text) || undefined}
+            dir="auto"
             className={`m-0 whitespace-pre-wrap ${
               index === 0 ? "" : paragraph.startsWithSource ? "mt-7" : "mt-5"
             }`}
@@ -681,6 +682,7 @@ export function RuleBody({
             role="region"
             aria-label="Source table"
             tabIndex={0}
+            dir="auto"
           >
             <table className="w-full min-w-[520px] border-collapse text-sm leading-normal font-sans">
               <thead>
@@ -690,7 +692,7 @@ export function RuleBody({
                       key={index}
                       scope="col"
                       data-numeric={numericColumns[index] || undefined}
-                      className="px-3 py-2 text-left align-bottom font-mono text-[11px] uppercase tracking-wider text-[var(--color-ink-muted)] font-normal"
+                      className="px-3 py-2 text-start align-bottom font-mono text-[11px] uppercase tracking-wider text-[var(--color-ink-muted)] font-normal"
                     >
                       {header.text}
                     </th>

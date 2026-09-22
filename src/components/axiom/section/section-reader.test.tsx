@@ -98,6 +98,97 @@ describe("SectionReader", () => {
     document.body.innerHTML = "";
   });
 
+  it("names a volunteer consolidation instead of calling it official", () => {
+    const sourceUrl =
+      "https://he.wikisource.org/wiki/%D7%A4%D7%A7%D7%95%D7%93%D7%AA_%D7%9E%D7%A1_%D7%94%D7%9B%D7%A0%D7%A1%D7%94";
+    render(
+      <SectionReader
+        data={makeData({
+          citationPath: "il/statute/income-tax-ordinance/section-121",
+          root: {
+            ...ROOT,
+            jurisdiction: "il",
+            citation_path: "il/statute/income-tax-ordinance/section-121",
+            source_url: sourceUrl,
+          },
+        })}
+      />
+    );
+    const link = screen.getByText("Open Law Book (Hebrew Wikisource)");
+    expect(link).toHaveAttribute("href", sourceUrl);
+    expect(link).toHaveAttribute(
+      "title",
+      expect.stringContaining("Reshumot")
+    );
+    expect(screen.queryByText("Official source")).not.toBeInTheDocument();
+  });
+
+  it("isolates Hebrew neighbor labels so the arrows keep their side", () => {
+    render(
+      <SectionReader
+        data={makeData({
+          prev: { citationPath: "il/statute/ito/section-120b", label: "הצמדה" },
+          next: {
+            citationPath: "il/statute/ito/section-121b",
+            label: "מס נוסף על הכנסות גבוהות",
+          },
+        })}
+      />
+    );
+    const prev = screen.getByText("הצמדה");
+    expect(prev.tagName).toBe("BDI");
+    expect(prev.closest("a")).toHaveAttribute(
+      "href",
+      "/il/statute/ito/section-120b"
+    );
+    expect(screen.getByText("מס נוסף על הכנסות גבוהות").tagName).toBe("BDI");
+  });
+
+  it("sets a chunk heading's direction on the row, not the label", () => {
+    render(<SectionReader data={makeData()} />);
+    const row = screen.getByTitle("Open us/statute/26/32/a").closest("h2");
+    // Decided by the chunk's own text, so a numeric designator cannot
+    // leave a Hebrew chunk's row left-to-right.
+    expect(row).toHaveAttribute("dir", "ltr");
+    // The label inherits, so designator and label stay adjacent.
+    expect(row?.querySelector("span")).not.toHaveAttribute("dir");
+  });
+
+  it("gives a Hebrew chunk with a numeric designator a right-to-left row", () => {
+    render(
+      <SectionReader
+        data={makeData({
+          bodyChunks: [
+            {
+              anchor: "1",
+              designator: "(1)",
+              label: "(1)",
+              text: "(1) על כל שקל חדש מ־301,200 השקלים החדשים הראשונים – 31%;",
+              start: 0,
+            },
+          ],
+          toc: [{ anchor: "1", label: "(1)", children: [] }],
+          encodedRules: [],
+        })}
+      />
+    );
+    expect(
+      screen.getByTitle("Open us/statute/26/32/1").closest("h2")
+    ).toHaveAttribute("dir", "rtl");
+  });
+
+  it("lets the heading set its own base direction", () => {
+    render(
+      <SectionReader
+        data={makeData({ root: { ...ROOT, heading: "שיעור המס ליחיד" } })}
+      />
+    );
+    expect(screen.getByRole("heading", { level: 1 })).toHaveAttribute(
+      "dir",
+      "auto"
+    );
+  });
+
   it("renders header, chunks, chips, TOC, and neighbors", () => {
     render(<SectionReader data={makeData()} />);
     expect(screen.getByText("Earned income")).toBeInTheDocument();
@@ -125,8 +216,9 @@ describe("SectionReader", () => {
       within(encodings).getByText(/§ 32 \(a\)\(b\) · derived/),
     ).toBeInTheDocument();
     // Prev/next.
-    expect(screen.getByText(/§ 31/)).toHaveAttribute("rel", "prev");
-    expect(screen.getByText(/§ 33/)).toHaveAttribute("rel", "next");
+    // The label sits in a <bdi> inside the link.
+    expect(screen.getByText(/§ 31/).closest("a")).toHaveAttribute("rel", "prev");
+    expect(screen.getByText(/§ 33/).closest("a")).toHaveAttribute("rel", "next");
   });
 
   it("keeps section-and-below breadcrumbs in v2, ancestors in v1", () => {
