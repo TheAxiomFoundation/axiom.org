@@ -637,10 +637,9 @@ export function GraphViewerApp({
   );
   const [composedFiles, setComposedFiles] = useState<LegalId[]>([]);
   const [composedTruncated, setComposedTruncated] = useState(false);
-  // Run-by-root, feature-detected: the API is gaining POST /calculate
-  // with `{ root, facts }`. Until the probe confirms the deployment
-  // answers that shape, compose mode shows no run affordance at all —
-  // the graph is fully browsable either way. null = probing.
+  // Run-by-root is available after the runtime compiles the input
+  // catalog. The source graph stays browseable if compilation fails.
+  // null = checking the catalog.
   const [composeRunReady, setComposeRunReady] = useState<boolean | null>(
     null,
   );
@@ -1155,7 +1154,7 @@ export function GraphViewerApp({
 
   const runScenario = async () => {
     if (!effectiveProgram || running) return;
-    // Compose mode runs only through the feature-detected root shape.
+    // Compose mode runs only after input-catalog compilation succeeds.
     if (composeFocus && composeRunReady !== true) return;
     // Executing a run outgrows the tour — end it rather than talking
     // over the results.
@@ -1567,6 +1566,8 @@ export function GraphViewerApp({
   // Compose mode: fetch the on-demand graph for the focus legal id. The
   // server narrows ownOutputs to the focus rule when a #fragment is given.
   useEffect(() => {
+    setComposeRunReady(null);
+    setRunBlocked(null);
     if (!composeFocus) return;
     let cancelled = false;
     setLoading(true);
@@ -1604,10 +1605,12 @@ export function GraphViewerApp({
         // from the compiled artifact — a mid-name predicate like
         // taxpayer_married_at_close_of_taxable_year is a checkbox, not
         // a 0/1 number box. It lands async and overrides the heuristics
-        // above; a subtree that doesn't compile just keeps them.
+        // above. Its compile result also controls the Run affordance.
         fetchRootInputs(fileLegalIdOf(composeFocus))
           .then((slots) => {
-            if (cancelled || slots.length === 0) return;
+            if (cancelled) return;
+            setComposeRunReady(true);
+            if (slots.length === 0) return;
             setInputMeta((current) => {
               const merged = {
                 dtypes: { ...current.dtypes },
@@ -1638,8 +1641,14 @@ export function GraphViewerApp({
               return merged;
             });
           })
-          .catch(() => {
-            // Catalog unavailable — heuristics carry the panel.
+          .catch((error: unknown) => {
+            if (cancelled) return;
+            setComposeRunReady(false);
+            setRunBlocked(
+              error instanceof Error
+                ? error.message
+                : "The runtime could not check this source. Try again later.",
+            );
           });
         const rulesById = new Map(
           filteredGraph.rules.map((rule) => [rule.legalId, rule]),
@@ -1691,53 +1700,8 @@ export function GraphViewerApp({
     };
   }, [composeFocus]);
 
-  // Feature-detect run-by-root once per composed view: one probe run
-  // with default facts. 200/422/429 mean the deployment understands
-  // the `{ root }` shape (even if this subtree is refused); 400/404
-  // mean the endpoint isn't there yet — keep the affordance hidden.
-  useEffect(() => {
-    setComposeRunReady(null);
-    setRunBlocked(null);
-    if (!composeFocus) return;
-    let cancelled = false;
-    const root = fileLegalIdOf(composeFocus);
-    fetch("/api/axiom/runtime/calculate", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ root, facts: {}, variables: [] }),
-      signal: AbortSignal.timeout(30_000),
-    })
-      .then(async (response) => {
-        if (cancelled) return;
-        if (response.status === 422) {
-          // The endpoint exists but declines this subtree — show the
-          // affordance AND the honest blocked state up front.
-          let payload: { message?: string | null } = {};
-          try {
-            payload = await response.json();
-          } catch {
-            // Anonymous refusal.
-          }
-          if (!cancelled) {
-            setRunBlocked(
-              payload.message ??
-                "the engine declined this computation without a message.",
-            );
-            setComposeRunReady(true);
-          }
-          return;
-        }
-        setComposeRunReady(response.ok || response.status === 429);
-      })
-      .catch(() => {
-        if (!cancelled) setComposeRunReady(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [composeFocus]);
-  // The run affordance exists in compose mode only once the probe
-  // confirms the API can execute a composed root.
+  // Browsing only loads source and input catalogs. Actual household
+  // calculations begin when the user explicitly runs a scenario.
   const runAffordanceReady = !composeFocus || composeRunReady === true;
 
   const outputRules = useMemo(

@@ -166,18 +166,33 @@ export interface RootInputSlot {
 
 // Input catalog for a compose-on-demand subtree: dtypes and screening
 // defaults the runtime inferred from the compiled artifact. The run
-// panel types its controls from this; callers fall back to name-shape
-// heuristics when the subtree doesn't compile.
+// panel types its controls from this. A successful catalog establishes
+// compile readiness, not household/scenario correctness.
 export async function fetchRootInputs(root: string): Promise<RootInputSlot[]> {
   const url = `${trimSlash(API_BASE)}/runtime/root-inputs?root=${encodeURIComponent(root)}`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`root-inputs request failed (${response.status})`);
-  }
-  const json = (await response.json()) as {
+  const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+  const json = await response.json().catch(() => null) as {
     data?: { inputs?: RootInputSlot[] };
-  };
-  return json.data?.inputs ?? [];
+    error?: { code?: string; message?: string };
+  } | null;
+  if (!response.ok) {
+    const reason = json?.error;
+    const fallback: Record<string, string> = {
+      invalid_root: "This source identifier is not supported by the runtime.",
+      root_not_found: "This source is not available in the runtime's serving catalog.",
+      composition_root: "This source assembles a program and cannot run as an individual provision.",
+      composition_in_closure: "This source depends on a program assembly that cannot run as an individual provision.",
+    };
+    throw new Error(
+      (typeof reason?.message === "string" && reason.message.trim()) ||
+      fallback[reason?.code ?? ""] ||
+      `The runtime could not check this source (${response.status}). Try again later.`,
+    );
+  }
+  if (!Array.isArray(json?.data?.inputs)) {
+    throw new Error("The runtime returned an incomplete input catalog. Try again later.");
+  }
+  return json.data.inputs;
 }
 
 export function displayNameForProgram(program: ProgramSummary | ProgramRef): string {
