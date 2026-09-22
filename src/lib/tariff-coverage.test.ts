@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { COVERAGE_COPY, coverageStatusWord, displayStatus, linesSha256, partitionRateLines, rateLineClass, type TariffLine } from "./tariff-coverage";
+import { COVERAGE_COPY, coverageStatusWord, displayStatus, linesSha256, partitionRateLines, rateLineClass, rateLineClassNote, type TariffLine } from "./tariff-coverage";
 
 const line = (path: string, generalDisposition: string, column2Disposition: string): TariffLine => ({
   hts10: path.replace(/\D/g, "").padEnd(10, "0"), displayCode: path, description: "", generalRate: "", column2Rate: "",
@@ -16,7 +16,7 @@ describe("tariff coverage vocabulary", () => {
 
   it("keeps every scope note short and counts only where the ledger gives one", () => {
     for (const [family, copy] of Object.entries(COVERAGE_COPY)) {
-      expect(copy.note.length, family).toBeLessThanOrEqual(160);
+      expect(copy.note.length, family).toBeLessThanOrEqual(200);
       expect(copy.note.split("{count}").length, family).toBeLessThanOrEqual(2);
     }
   });
@@ -33,6 +33,14 @@ describe("rate line partition", () => {
     expect(rateLineClass(line("0101.30.00.00", "empty", "ad_valorem"))).toBe("partially encoded");
     expect(rateLineClass(line("9802.00.20.00", "free", "free"))).toBe("partially encoded");
     expect(rateLineClass({ generalDisposition: "free", column2Disposition: "free", citations: [] })).toBe("encoded");
+  });
+
+  it("says which columns the chapter compositions carry", () => {
+    expect(rateLineClassNote(line("0101.21.00", "free", "ad_valorem"))).toBe("Both columns are ad valorem or Free, and the chapter composition carries both rates.");
+    expect(rateLineClassNote(line("2203.00.00", "free", "specific"))).toBe("The column 2 rate is specific, so it is not applied; the chapter composition carries the general rate.");
+    expect(rateLineClassNote(line("0101.30.00.00", "empty", "ad_valorem"))).toBe("The general rate is empty, so it is not applied; the chapter composition carries the column 2 rate.");
+    expect(rateLineClassNote(line("0201.10.05", "compound", "conditional"))).toBe("The general rate is compound and the column 2 rate is conditional, so they are not applied.");
+    expect(rateLineClassNote(line("9802.00.20.00", "free", "free"))).toBe("9802 lines need a partial-value duty base, which is not applied.");
   });
 
   it("returns citation paths without the leading slash, digested like the ledger", () => {

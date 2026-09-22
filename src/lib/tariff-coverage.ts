@@ -4,11 +4,12 @@ import { createHash } from "node:crypto";
 // the pinned rulespec-us commit and the certificate's closure ledger) and by
 // the tariff pages (which render the verified copy from the artifact).
 
-export type TariffLine = { hts10: string; displayCode: string; description: string; generalRate: string; column2Rate: string; generalDisposition: string; column2Disposition: string; citations: { field: string; path: string; excerpt: string }[]; memberships: { family: string; explanation: string; citationPath: string }[]; canada338Warning: boolean };
+export type Membership = { family: string; explanation: string; citationPath: string };
+export type TariffLine = { hts10: string; displayCode: string; description: string; generalRate: string; column2Rate: string; generalDisposition: string; column2Disposition: string; citations: { field: string; path: string; excerpt: string }[]; memberships: Membership[]; canada338Warning: boolean };
 
 export type CoverageStatus = "encoded" | "partially encoded" | "pending" | "excluded";
 export type CoverageRow = { family: string; status: CoverageStatus; note: string; ledgerFamily: string; ledgerRoot: string; count: number };
-export type IncidenceTable = { module: string | null; note: string; family: string; status: CoverageStatus; lineCount: number; detail?: string };
+export type IncidenceTable = { module: string | null; note: string; family: string; status: CoverageStatus; subdivisions: string[]; lineCount: number; suffixOnlyLineCount: number; detail?: string };
 
 export type TariffArtifact = {
   metadata: {
@@ -22,25 +23,25 @@ export type TariffArtifact = {
   lines: TariffLine[];
 };
 
-// Machine-checkable facts behind a scope note, asserted at the rulespec pin:
-// files that must exist, path prefixes and patterns that must match nothing,
-// rules a module must define, imports a module must declare, and rules no
-// module may define (so the compositions can only take them as inputs).
+// Machine-checkable facts behind a scope note, asserted at the rulespec pin.
+// `chapters` applies to every generated chapter composition: each must import
+// the overlays, define the rules, sum the stack terms into
+// schedule_statutory_stack, reference the inputs and not define the names in
+// notDefined. `undefinedRules` must be defined by no module anywhere, so the
+// compositions can only take them as entry inputs.
 export type CoverageEvidence = {
   present?: string[];
   absent?: string[];
   absentMatching?: string;
+  fileContains?: { path: string; text: string }[];
   rules?: { module: string; rules: string[] }[];
-  imports?: { module: string; imports: string[] }[];
+  chapters?: { imports?: string[]; rules?: string[]; stackTerms?: string[]; references?: string[]; notDefined?: string[] };
   undefinedRules?: string[];
 };
 
 const INCIDENCE = "us/policies/usitc/us-tariff-incidence/generated";
 const OVERLAYS = "us/policies/usitc/us-tariff-duty/overlays";
 const LINES = "us/policies/usitc/us-tariff-duty/lines/generated";
-// Chapter 22 stands in for the 100 generated chapter compositions, which the
-// generator emits from one template.
-const CHAPTER = "us/policies/cbp/us-tariff-schedule/generated/ch22/ch22.yaml";
 const WITNESS = "us/policies/cbp/us-tariff-duty/composition.yaml";
 const overlay = (path: string) => `us:policies/usitc/us-tariff-duty/overlays/${path}`;
 
@@ -49,17 +50,18 @@ const overlay = (path: string) => `us:policies/usitc/us-tariff-duty/overlays/${p
 // The status always comes from the ledger; this map supplies the label and a
 // scope note whose clauses the evidence checks at the rulespec pin. "{count}"
 // is replaced with the ledger's count. The build fails if the ledger and this
-// map name different families.
+// map name different families. Where a note differs from the ledger's own
+// reason string, the note follows the encoded rules.
 export const COVERAGE_COPY: Record<string, { label: string; note: string; evidence?: CoverageEvidence }> = {
   "fully-computable-rate-bearing-lines": {
     label: "Ad valorem and Free rate lines",
     note: "{count} lines outside 9802 whose general and column 2 rates are both ad valorem or Free. Each rate cites its Rev. 15 text.",
-    evidence: { present: [`${LINES}/GENERATED-MANIFEST.json`] },
+    evidence: { fileContains: [{ path: `${LINES}/GENERATED-MANIFEST.json`, text: `"snapshot_label": "2026HTSRev15"` }] },
   },
   "non-ad-valorem-or-partial-value-rate-bearing-lines": {
     label: "Other rate lines, including 9802",
-    note: "{count} lines with a specific, compound, component, conditional, or empty rate in either column, plus 9802. The rate text is cited but not applied.",
-    evidence: { present: [`${LINES}/ch98.yaml`] },
+    note: "{count} lines where a column is specific, compound, component, conditional, or empty, plus 9802. Those columns and 9802 partial-value bases are not applied.",
+    evidence: { chapters: { rules: ["mfn_ad_valorem_rate"], stackTerms: ["mfn_ad_valorem_rate"] } },
   },
   "non-rate-structural-rows": {
     label: "Schedule rows without a rate",
@@ -71,25 +73,39 @@ export const COVERAGE_COPY: Record<string, { label: string; note: string; eviden
   },
   "section-232-metal-instruments": {
     label: "Section 232 steel and aluminum",
-    note: "Steel and aluminum rates are composed; membership is an entry input. The note 16 and 19 tables list the covered lines.",
+    note: "Steel and aluminum rates are composed; membership is an entry input. The incidence tables cover only some note 16 and 19 subdivisions.",
     evidence: {
       present: [`${INCIDENCE}/note16-232-steel.yaml`, `${INCIDENCE}/note19-232-aluminum.yaml`],
-      rules: [{ module: CHAPTER, rules: ["section_232_steel_component_rate", "section_232_aluminum_component_rate", "schedule_statutory_stack"] }],
-      imports: [{ module: CHAPTER, imports: [overlay("section-232-aluminum/general-rate")] }],
+      chapters: {
+        imports: [overlay("section-232-aluminum/general-rate"), overlay("section-232-aluminum/rev12-consolidation")],
+        stackTerms: ["section_232_steel_component_rate", "section_232_aluminum_component_rate"],
+        references: ["entry_is_section_232_steel", "entry_is_section_232_aluminum"],
+      },
       undefinedRules: ["entry_is_section_232_steel", "entry_is_section_232_aluminum"],
     },
   },
   "section-232-non-metal-annexes": {
-    label: "Section 232 non-metal annexes",
-    note: "Autos and parts, copper, semiconductors, medium- and heavy-duty vehicles, and wood are not encoded.",
-    evidence: { absentMatching: "^us/policies/(usitc|cbp)/.*(auto|copper|semiconductor|vehicle|truck|wood|lumber|timber)" },
+    label: "Section 232 autos, copper, semiconductors, vehicles, and wood",
+    note: "Those proclamation annexes are not encoded. The consolidated 9903.82.02 rate, which also names copper articles, is composed; copper membership is not.",
+    evidence: {
+      absentMatching: "^us/policies/(usitc|cbp)/.*(auto|copper|semiconductor|vehicle|truck|wood|lumber|timber)",
+      rules: [{ module: `${OVERLAYS}/section-232-aluminum/rev12-consolidation.yaml`, rules: ["section_232_non_excepted_aluminum_steel_copper_derivative_articles_additional_duty_rate"] }],
+      chapters: {
+        imports: [overlay("section-232-aluminum/rev12-consolidation")],
+        references: ["section_232_non_excepted_aluminum_steel_copper_derivative_articles_additional_duty_rate"],
+      },
+    },
   },
   "china-301-original-2018-actions": {
-    label: "Section 301 China lists 1–4A (2018 actions)",
-    note: "The 2018 notices are not in the corpus. Headings 9903.88.03 and 9903.88.15 are composed; list membership (note 20 table) is an entry input.",
+    label: "Section 301 China lists 1–4A (2018–2019 actions)",
+    note: "The 2018 and 2019 notices are not in the corpus. Headings 9903.88.03 and 9903.88.15 are composed; list membership is an entry input.",
     evidence: {
       present: [`${INCIDENCE}/note20-china-301.yaml`],
-      imports: [{ module: CHAPTER, imports: [overlay("china-301/list-1-9903-88-03"), overlay("china-301/list-4a-9903-88-15")] }],
+      chapters: {
+        imports: [overlay("china-301/list-1-9903-88-03"), overlay("china-301/list-4a-9903-88-15")],
+        stackTerms: ["china_section_301_component_rate"],
+        references: ["entry_is_china_301_list123", "entry_is_china_301_list4a"],
+      },
       undefinedRules: ["entry_is_china_301_list123", "entry_is_china_301_list4a"],
     },
   },
@@ -98,7 +114,7 @@ export const COVERAGE_COPY: Record<string, { label: string; note: string; eviden
     note: "Heading 9903.91.01's rate is composed, but no note 31 membership table exists; membership is an entry input.",
     evidence: {
       absent: [`${INCIDENCE}/note31`],
-      imports: [{ module: CHAPTER, imports: [overlay("china-301/2024-action-9903-91-01")] }],
+      chapters: { imports: [overlay("china-301/2024-action-9903-91-01")], stackTerms: ["china_section_301_component_rate"], references: ["entry_is_china_301_2024_action"] },
       undefinedRules: ["entry_is_china_301_2024_action"],
     },
   },
@@ -107,8 +123,7 @@ export const COVERAGE_COPY: Record<string, { label: string; note: string; eviden
     note: "Heading 9903.05.01's rate is composed, but no note 50 table exists; which articles it covers is an entry input.",
     evidence: {
       absent: [`${INCIDENCE}/note50`],
-      rules: [{ module: CHAPTER, rules: ["brazil_section_301_component_rate"] }],
-      imports: [{ module: CHAPTER, imports: [overlay("section-301/brazil-9903-05-01")] }],
+      chapters: { imports: [overlay("section-301/brazil-9903-05-01")], stackTerms: ["brazil_section_301_component_rate"], references: ["entry_is_brazil_301_listed"] },
       undefinedRules: ["entry_is_brazil_301_listed"],
     },
   },
@@ -117,9 +132,7 @@ export const COVERAGE_COPY: Record<string, { label: string; note: string; eviden
     note: "Country tiers for headings 9903.05.20–9903.05.84 are composed, but no note 52 table exists; which articles are covered is an entry input.",
     evidence: {
       absent: [`${INCIDENCE}/note52`],
-      present: [`${OVERLAYS}/section-301/forced-labor-algeria-9903-05-20.yaml`],
-      rules: [{ module: CHAPTER, rules: ["forced_labor_section_301_component_rate"] }],
-      imports: [{ module: CHAPTER, imports: [overlay("section-301/forced-labor-presidential-action")] }],
+      chapters: { imports: [overlay("section-301/forced-labor-presidential-action")], stackTerms: ["forced_labor_section_301_component_rate"], references: ["entry_is_forced_labor_301_listed"] },
       undefinedRules: ["entry_is_forced_labor_301_listed"],
     },
   },
@@ -127,26 +140,22 @@ export const COVERAGE_COPY: Record<string, { label: string; note: string; eviden
     label: "Section 301 China solar (heading 9903.91.02)",
     note: "The heading's rate is composed, but no membership table exists; membership is an entry input.",
     evidence: {
-      rules: [{ module: CHAPTER, rules: ["ch22_solar_china_section_301_additional_duty_rate", "china_section_301_component_rate"] }],
+      chapters: { stackTerms: ["china_section_301_component_rate"], references: ["entry_is_china_301_solar"] },
+      rules: [{ module: "us/policies/cbp/us-tariff-schedule/generated/ch85/ch85.yaml", rules: ["ch85_solar_china_section_301_additional_duty_rate"] }],
       undefinedRules: ["entry_is_china_301_solar"],
     },
   },
   "section-201-proclamation-10339": {
     label: "Section 201 solar safeguard (note 18)",
-    note: "The safeguard has expired, so it is composed as a zero rate. The note 18 table lists the covered lines.",
-    evidence: {
-      present: [`${INCIDENCE}/note18-201-solar.yaml`],
-      rules: [{ module: CHAPTER, rules: ["section_201_component_rate"] }],
-      undefinedRules: ["entry_is_section_201_cspv"],
-    },
+    note: "The safeguard has expired, so it is composed as a zero rate.",
+    evidence: { chapters: { stackTerms: ["section_201_component_rate"] } },
   },
   "section-122-proclamation-11012": {
     label: "Section 122 surcharge (note 2(aa))",
-    note: "The 10 percent surcharge is composed for Feb. 24 – July 23, 2026. Exemption is an entry input; the note 2(aa) tables list the exempt scopes.",
+    note: "The 10 percent surcharge is composed for Feb. 24 – July 23, 2026. Exemption is an entry input; the incidence table covers only some note 2(aa) subdivisions.",
     evidence: {
       present: [`${INCIDENCE}/note2aa-122-exemptions.yaml`],
-      rules: [{ module: CHAPTER, rules: ["section_122_component_rate"] }],
-      imports: [{ module: CHAPTER, imports: [overlay("section-122/proclamation")] }],
+      chapters: { imports: [overlay("section-122/proclamation")], stackTerms: ["section_122_component_rate"], references: ["entry_is_section_122_exempt"] },
       undefinedRules: ["entry_is_section_122_exempt"],
     },
   },
@@ -154,22 +163,25 @@ export const COVERAGE_COPY: Record<string, { label: string; note: string; eviden
     label: "IEEPA fentanyl and reciprocal duties",
     note: "Fentanyl, reciprocal, and Brazil headings are composed. Under Executive Order 14389, the rules apply zero from Feb. 20, 2026.",
     evidence: {
-      rules: [{ module: CHAPTER, rules: ["ieepa_component_rate"] }],
-      imports: [{ module: CHAPTER, imports: [overlay("ieepa/fentanyl-china-9903-01-24"), overlay("ieepa/reciprocal-baseline-9903-01-25"), overlay("ieepa/brazil-9903-01-77"), overlay("ieepa/termination")] }],
+      chapters: {
+        imports: [overlay("ieepa/fentanyl-china-9903-01-24"), overlay("ieepa/reciprocal-baseline-9903-01-25"), overlay("ieepa/brazil-9903-01-77"), overlay("ieepa/termination")],
+        stackTerms: ["ieepa_component_rate"],
+      },
     },
   },
   "section-338-instruments": {
     label: "Section 338 Canada (note 51)",
-    note: "Heading 9903.03.12 is composed only for the witness beer entry, HTS 2203.00.00.30. The note 51 product list is not encoded.",
+    note: "Heading 9903.03.12 is composed. The witness composition applies it only to HTS 2203.00.00.30; the chapter compositions take that line flag as an entry input. The note 51 list is not encoded.",
     evidence: {
       absent: [`${INCIDENCE}/note51`, `${OVERLAYS}/section-338`],
-      rules: [{ module: CHAPTER, rules: ["section_338_component_rate"] }, { module: WITNESS, rules: ["entry_is_line_d", "section_338_component_rate"] }],
+      rules: [{ module: WITNESS, rules: ["entry_is_line_d", "section_338_component_rate"] }],
+      chapters: { stackTerms: ["section_338_component_rate"], references: ["entry_is_line_d"], notDefined: ["entry_is_line_d"] },
     },
   },
   "historical-vintages": {
     label: "Historical schedule vintages",
-    note: "Only the Rev. 15 codified state is reproduced; earlier schedule and instrument versions are not.",
-    evidence: { present: [`${LINES}/GENERATED-MANIFEST.json`] },
+    note: "The ledger covers only the Rev. 15 codified state; earlier schedule vintages are not reproduced.",
+    evidence: { fileContains: [{ path: `${LINES}/GENERATED-MANIFEST.json`, text: `"snapshot_label": "2026HTSRev15"` }] },
   },
 };
 
@@ -214,11 +226,29 @@ export function displayStatus(status: string) {
 // statutory columns are ad valorem or Free and it is not a 9802 partial-value
 // line; every other rate line is partially encoded.
 const COMPUTABLE_DISPOSITIONS = new Set(["ad_valorem", "free"]);
+type RateLineFields = Pick<TariffLine, "generalDisposition" | "column2Disposition" | "citations">;
 
-export function rateLineClass(line: Pick<TariffLine, "generalDisposition" | "column2Disposition" | "citations">): "encoded" | "partially encoded" {
-  const path = line.citations[0]?.path ?? "";
+function is9802(line: RateLineFields) {
+  return Boolean(line.citations[0]?.path.split("/").at(-1)?.startsWith("9802"));
+}
+
+export function rateLineClass(line: RateLineFields): "encoded" | "partially encoded" {
   const computable = COMPUTABLE_DISPOSITIONS.has(line.generalDisposition) && COMPUTABLE_DISPOSITIONS.has(line.column2Disposition);
-  return computable && !path.split("/").at(-1)?.startsWith("9802") ? "encoded" : "partially encoded";
+  return computable && !is9802(line) ? "encoded" : "partially encoded";
+}
+
+// Says which column the chapter compositions carry and which they do not: a
+// generated rate cell exists only for an ad valorem or Free column.
+export function rateLineClassNote(line: RateLineFields) {
+  if (is9802(line)) return "9802 lines need a partial-value duty base, which is not applied.";
+  const columns = [["general", line.generalDisposition], ["column 2", line.column2Disposition]] as const;
+  const word = (disposition: string) => disposition.replace("_", " ");
+  const carried = columns.filter(([, disposition]) => COMPUTABLE_DISPOSITIONS.has(disposition));
+  const missing = columns.filter(([, disposition]) => !COMPUTABLE_DISPOSITIONS.has(disposition));
+  if (!missing.length) return "Both columns are ad valorem or Free, and the chapter composition carries both rates.";
+  const missingText = missing.map(([column, disposition]) => `the ${column} rate is ${word(disposition)}`).join(" and ");
+  const carriedText = carried.length ? `; the chapter composition carries the ${carried[0][0]} rate.` : ".";
+  return `${missingText.charAt(0).toUpperCase()}${missingText.slice(1)}, so ${missing.length === 1 ? "it is" : "they are"} not applied${carriedText}`;
 }
 
 export function partitionRateLines(lines: TariffLine[]) {

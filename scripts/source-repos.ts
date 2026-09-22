@@ -7,11 +7,13 @@ export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 export type SourceRepo = { path: string; available: boolean };
 
+// The build dates the tariff encodings from history, so a shallow clone that
+// merely contains the pinned commit does not count.
 export function hasCommit(repo: string, commit: string) {
   if (!existsSync(repo)) return false;
   try {
     execFileSync("git", ["-C", repo, "cat-file", "-e", `${commit}^{commit}`], { stdio: "ignore" });
-    return true;
+    return execFileSync("git", ["-C", repo, "rev-parse", "--is-shallow-repository"], { encoding: "utf8" }).trim() === "false";
   } catch {
     return false;
   }

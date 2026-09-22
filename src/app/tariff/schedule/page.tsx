@@ -1,8 +1,14 @@
 import type { Metadata } from "next";
 import { ScheduleBrowser } from "@/components/tariff/schedule-browser";
 import { TariffStatusBlock } from "@/components/tariff/status-block";
-import { displayStatus } from "@/lib/tariff-coverage";
+import { displayStatus, type IncidenceTable } from "@/lib/tariff-coverage";
 import { getTariffMetadata } from "@/lib/tariff-schedule";
+
+function incidenceSummary(table: IncidenceTable) {
+  const lines = `${table.lineCount.toLocaleString("en-US")} rate ${table.lineCount === 1 ? "line" : "lines"}`;
+  const suffix = table.suffixOnlyLineCount ? `, ${table.suffixOnlyLineCount.toLocaleString("en-US")} of them through statistical numbers only` : "";
+  return `subdivisions ${table.subdivisions.join(", ")}; ${lines}${suffix}`;
+}
 
 export const metadata: Metadata = { title: "Tariff schedule and coverage browser — Axiom Foundation", description: "Search cited U.S. tariff schedule rates and inspect the current, incomplete encoding coverage." };
 export default function TariffSchedulePage() {
@@ -14,7 +20,7 @@ export default function TariffSchedulePage() {
     <nav aria-label="Data downloads and corrections" className="mt-7 flex flex-wrap gap-4 font-mono text-xs"><a className="text-[var(--color-accent)] underline" href="/downloads/tariff-schedule.json" download>Download JSON</a><a className="text-[var(--color-accent)] underline" href="/downloads/tariff-schedule.csv" download>Download CSV</a><a className="text-[var(--color-accent)] underline" href="https://github.com/TheAxiomFoundation/rulespec-us/issues">Changelog and corrections</a></nav>
     <section aria-labelledby="family-coverage" className="mt-10">
       <h2 id="family-coverage" className="heading-section">Coverage by action family</h2>
-      <p className="mt-3 max-w-[800px] font-body text-sm leading-relaxed text-[var(--color-ink-secondary)]">Each status is the certificate&apos;s closure-ledger decision, and counts come from the same ledger. The build checks each note&apos;s file, rule, and import claims against rulespec-us {tariff.rulespecCommit.slice(0, 10)}.</p>
+      <p className="mt-3 max-w-[800px] font-body text-sm leading-relaxed text-[var(--color-ink-secondary)]">Each status and count is the certificate&apos;s closure-ledger decision. The scope notes follow the encoded rules: where a note says a rate is composed or membership is an entry input, the build checks it in all 100 chapter compositions at rulespec-us {tariff.rulespecCommit.slice(0, 10)}. For the Brazil, note 52, China 2024, and China solar families, the ledger&apos;s stated reason (not fed into the final composition) disagrees with those rules; the statuses agree.</p>
       <div className="mt-4 overflow-x-auto border-y border-[var(--color-rule)]">
         <table className="w-full min-w-[680px] border-collapse text-left text-sm">
           <thead><tr className="font-mono text-xs uppercase tracking-wider text-[var(--color-ink-muted)]"><th className="py-3 pr-5">Action family</th><th className="py-3 pr-5">Status</th><th className="py-3">Scope note</th></tr></thead>
@@ -24,9 +30,9 @@ export default function TariffSchedulePage() {
     </section>
     <section aria-labelledby="incidence-tables" className="mt-10">
       <h2 id="incidence-tables" className="heading-section">Incidence tables behind line memberships</h2>
-      <p className="mt-3 max-w-[800px] font-body text-sm leading-relaxed text-[var(--color-ink-secondary)]">Line pages show a membership only from a table at the build pin. The compositions take membership as an entry input; these tables list the lines each note names.</p>
+      <p className="mt-3 max-w-[800px] font-body text-sm leading-relaxed text-[var(--color-ink-secondary)]">Line pages show a membership only from a table at the build pin, and each table encodes only the subdivisions listed. The compositions take membership as an entry input rather than reading these tables.</p>
       <ul className="mt-4 grid gap-2 pl-5 text-sm text-[var(--color-ink-secondary)]">
-        {tariff.incidenceTables.map((table) => <li key={table.note}><strong className="text-[var(--color-ink)]">{table.note}, {table.family}</strong> — {table.module ? `${table.lineCount.toLocaleString("en-US")} ${table.lineCount === 1 ? "line" : "lines"}` : table.detail}</li>)}
+        {tariff.incidenceTables.map((table) => <li key={table.note}><strong className="text-[var(--color-ink)]">{table.note}, {table.family}</strong> — {table.module ? incidenceSummary(table) : table.detail}</li>)}
       </ul>
     </section>
     <ScheduleBrowser />

@@ -47,6 +47,7 @@ describe("tariff schedule and coverage browser", () => {
     expect(within(table).getAllByRole("row")).toHaveLength(tariff.coverageFamilies.length + 1);
     expect(within(table).getByRole("rowheader", { name: "Section 338 Canada (note 51)" })).toBeInTheDocument();
     expect(screen.queryByText(/pending merge/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/the ledger's stated reason \(not fed into the final composition\) disagrees with those rules/)).toBeInTheDocument();
   });
 
   it("names the incidence tables and the missing ones", () => {
@@ -54,6 +55,9 @@ describe("tariff schedule and coverage browser", () => {
     const list = screen.getByRole("heading", { name: /incidence tables behind line memberships/i }).closest("section")!;
     for (const table of tariff.incidenceTables) expect(within(list).getByText(`${table.note}, ${table.family}`)).toBeInTheDocument();
     expect(within(list).getAllByText(/No table at the build pin/)).toHaveLength(4);
+    const steel = within(list).getByText("U.S. note 16, Section 232 steel").closest("li")!;
+    expect(steel).toHaveTextContent("subdivisions 16(c)(iii), 16(c)(iv), 16(c)(vii), 16(c)(x), 16(c)(xi); 735 rate lines, 30 of them through statistical numbers only");
+    expect(within(list).getByText("U.S. note 18, Section 201 solar").closest("li")).toHaveTextContent("subdivisions 18(c)(i); 1 rate line");
   });
 
   it("keeps the Section 338 notice to what the corpus and encodings show", () => {

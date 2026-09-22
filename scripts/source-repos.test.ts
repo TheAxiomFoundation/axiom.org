@@ -38,6 +38,16 @@ describe("locateSourceRepo", () => {
     expect(locate(worktree).path).toBe(join(org, "rulespec-us"));
   });
 
+  it("rejects a shallow clone, whose history cannot date the encodings", () => {
+    const shallow = join(org, "shallow", "rulespec-us");
+    mkdirSync(join(org, "shallow"), { recursive: true });
+    git(join(org, "rulespec-us"), "-c", "user.email=test@example.com", "-c", "user.name=test", "commit", "-q", "--allow-empty", "-m", "second");
+    execFileSync("git", ["clone", "-q", "--depth", "1", `file://${join(org, "rulespec-us")}`, shallow]);
+    const head = git(shallow, "rev-parse", "HEAD");
+    expect(hasCommit(shallow, head)).toBe(false);
+    expect(hasCommit(join(org, "rulespec-us"), head)).toBe(true);
+  });
+
   it("reports an unavailable pin instead of guessing", () => {
     const missing = locateSourceRepo({ envVar: "SOURCE_REPOS_TEST_UNSET", names: ["axiom-oracles"], commit: pinned, from: worktree });
     expect(missing.available).toBe(false);

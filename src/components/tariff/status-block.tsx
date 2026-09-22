@@ -26,7 +26,7 @@ export function TariffStatusBlock() {
         </ul>
       </details>
       <p className="mt-5 mb-0 font-mono text-xs leading-relaxed text-[var(--color-ink-muted)]">
-        Built from rulespec-us {metadata.rulespecCommit.slice(0, 10)} (source commit dated {date}; tariff encodings last changed {metadata.tariffEncodingsChangedAt.slice(0, 10)}), whose tariff encodings are identical to the certificate&apos;s evaluated commit {metadata.certificateRulespecCommit.slice(0, 10)}; rate text from axiom-corpus scope {metadata.corpusRelease} at {metadata.corpusCommit.slice(0, 10)}, which is not yet in a signed corpus release; page generated {generated}. Freshness is the source commit date, not a monitoring guarantee.
+        Built from rulespec-us {metadata.rulespecCommit.slice(0, 10)} (source commit dated {date}; tariff encodings last changed on main {metadata.tariffEncodingsChangedAt.slice(0, 10)}), whose tariff encodings are identical to the certificate&apos;s evaluated commit {metadata.certificateRulespecCommit.slice(0, 10)}; rate text from axiom-corpus scope {metadata.corpusRelease} at {metadata.corpusCommit.slice(0, 10)}, which is not yet in a signed corpus release; page generated {generated}. Freshness is the source commit date, not a monitoring guarantee.
       </p>
       <p className="mt-2 mb-0 font-mono text-xs leading-relaxed text-[var(--color-ink-muted)]">
         Certificate SHA-256: {certificate.sha256}, from axiom-oracles {CERTIFICATE_COMMIT.slice(0, 10)}
