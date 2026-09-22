@@ -32,7 +32,14 @@ export function LinePage({ line }: { line: SuiteLine }) {
                 {line.cta}
                 <ArrowRightIcon className="h-5 w-5" />
               </a>
-              <Link href="/suite" className="btn-outline">
+              {line.deep ? (
+                line.deep.href.startsWith("/") ? (
+                  <Link href={line.deep.href} className="btn-outline">{line.deep.label}</Link>
+                ) : (
+                  <a href={line.deep.href} className="btn-outline">{line.deep.label}</a>
+                )
+              ) : null}
+              <Link href="/suite" className="font-body text-[0.95rem] text-[var(--color-ink-secondary)]">
                 All of Axiom
               </Link>
             </div>

@@ -21,6 +21,8 @@ export interface SuiteLine {
   features: { title: string; body: string }[];
   snapshot?: { heading: string; note: string; rows: string[][] };
   cta: string;
+  /** A product-depth page inside the mock, where one exists. */
+  deep?: { label: string; href: string };
 }
 
 export const SUITE_LINES: SuiteLine[] = [
@@ -63,6 +65,7 @@ export const SUITE_LINES: SuiteLine[] = [
       },
     ],
     cta: "Explore the law",
+    deep: { label: "Browse the encoded law", href: "https://axiom.org/us" },
   },
   {
     slug: "records",
@@ -112,6 +115,7 @@ export const SUITE_LINES: SuiteLine[] = [
       ],
     },
     cta: "Browse the record",
+    deep: { label: "The journal, in the mock", href: "/suite/records/journal" },
   },
   {
     slug: "microcosm",
@@ -153,6 +157,7 @@ export const SUITE_LINES: SuiteLine[] = [
       },
     ],
     cta: "See how it works",
+    deep: { label: "Latest release, in the mock", href: "/suite/microcosm/release" },
   },
   {
     slug: "simulator",
@@ -192,6 +197,7 @@ export const SUITE_LINES: SuiteLine[] = [
       ],
     },
     cta: "Enter the simulator",
+    deep: { label: "The calculator, in the mock", href: "/suite/simulator/app" },
   },
   {
     slug: "forecasts",
@@ -236,6 +242,7 @@ export const SUITE_LINES: SuiteLine[] = [
       ],
     },
     cta: "Read the forecast log",
+    deep: { label: "The log, in the mock", href: "/suite/forecasts/log" },
   },
 ];
 

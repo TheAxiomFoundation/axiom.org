@@ -1,0 +1,165 @@
+{
+ "as_of": "2026-09-22",
+ "release_id": "populace-us-2024-spm-20260915",
+ "updated_at": "2026-09-15T07:06:21+00:00",
+ "repo": "policyengine/populace-us",
+ "n_records": 57240,
+ "n_nonzero": 48096,
+ "n_targets": 5659,
+ "fraction_within_10pct": 0.9568828414914295,
+ "effective_sample_size": 9174.432030037513,
+ "realized_max_weight_ratio": 4.991926921573188,
+ "top_1pct_weight_share": 0.11271231274435356,
+ "initial_loss": 0.34787628054618835,
+ "final_loss": 0.01768391632283638,
+ "weight_entity": "household",
+ "method": "adam",
+ "epochs": 6000,
+ "loss_trajectory": [
+  0.34787628054618835,
+  0.08661118149757385,
+  0.05928519368171692,
+  0.03420770913362503,
+  0.02876931056380272,
+  0.026071421802043915,
+  0.024422476068139076,
+  0.02327309176325798,
+  0.0224195197224617,
+  0.021688226610422134,
+  0.021145835518836975,
+  0.02067030407488346,
+  0.020331040024757385,
+  0.020030492916703224,
+  0.019745800644159317,
+  0.0195787250995636,
+  0.01941521465778351,
+  0.0192584078758955,
+  0.019099002704024315,
+  0.018974343314766884,
+  0.018650369718670845,
+  0.01838727295398712,
+  0.018240904435515404,
+  0.01815173774957657,
+  0.018062008544802666,
+  0.01801617071032524,
+  0.017947759479284286,
+  0.017863627523183823,
+  0.017897313460707664,
+  0.017873814329504967,
+  0.017867470160126686,
+  0.017845317721366882,
+  0.017819005995988846,
+  0.01778278313577175,
+  0.017773358151316643,
+  0.017775658518075943,
+  0.01777283288538456,
+  0.01775226555764675,
+  0.017739394679665565,
+  0.01776096411049366,
+  0.0177143644541502,
+  0.017746519297361374,
+  0.017709892243146896,
+  0.017748786136507988,
+  0.017716508358716965,
+  0.017691561952233315,
+  0.017682068049907684,
+  0.01767507940530777,
+  0.017748046666383743,
+  0.01767209731042385,
+  0.017679154872894287,
+  0.017694814130663872,
+  0.017720434814691544,
+  0.01769266091287136,
+  0.017687199637293816,
+  0.017701972275972366,
+  0.017689118161797523,
+  0.017697803676128387,
+  0.017680155113339424,
+  0.017666546627879143
+ ],
+ "release_type": "source_enrichment",
+ "compatible_model_packages": [
+  {
+   "basis": "publisher_claim",
+   "declared_by": "Max Ghenis via Claude, 2026-09-15: same H5 bytes as populace-us-2024-spm-20260909; native loader path, role variable and dataset pin unchanged across 2.0.x\u20132.2.x; see PolicyEngine/policyengine-us#9467",
+   "name": "policyengine-us",
+   "specifier": ">=2.0.0,<2.3"
+  }
+ ],
+ "compatible_core_packages": [
+  {
+   "name": "policyengine-core",
+   "specifier": "==3.32.5"
+  }
+ ],
+ "default_datasets": {
+  "national": "populace_us_2024"
+ },
+ "data_package": {
+  "name": "microcosm-data",
+  "version": "0.1.0"
+ },
+ "build": {
+  "build_id": "populace-us-2024-spm-20260915",
+  "calibration": {
+   "diagnostics_schema_version": 5,
+   "diagnostics_sha256": "870449b44e86b13b25bcea1a57f0e7af37f4d4db18be815eea3acdf9fe6eb40e",
+   "mode": "inherited",
+   "parent_build_id": "populace-us-2024-buildp-sparse-rmloss100-cae8640-20260728T011454Z"
+  },
+  "code": {
+   "git_commit": "743683b0e121378e93c9b426cd9c79d41d29595b",
+   "git_dirty": false,
+   "repository": "https://github.com/PolicyEngine/microcosm",
+   "runtime": {
+    "h5py": "3.16.0",
+    "hdf5": "2.0.0",
+    "microcosm-data": "0.1.0",
+    "numpy": "2.4.6",
+    "pandas": "3.0.3",
+    "python": "3.14.4",
+    "tables": "3.11.1"
+   },
+   "source_files_sha256": {
+    "packages/microcosm-build/src/microcosm/build/us_runtime/education_assistance_source.py": "e259e3fce64fdcab62953f79a1aa41719f81c64c7c5dc1a63f8b1e493ff5f83a",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/spm_role_source.py": "a6cb7a9d9da95e584570b5d8d9a5fafed6334532e490cdd970805217872d6541",
+    "packages/microcosm-data/src/microcosm/data/contract.py": "0aac12b95586a6924ef8f03cedf4fe80a9a933892fcb4ab23dda0eb65db6159c",
+    "packages/microcosm-data/src/microcosm/data/h5_enrichment.py": "60d1f747bc21d17c892a16abd78f1cf33699a96f26425a2e79b4db9d037ab323",
+    "packages/microcosm-data/src/microcosm/data/source_enrichment.py": "14a63acb510fb43c79a917761b1ed3e7f4b11c08ebf586a8750afb461784f2cd",
+    "tools/build_us_spm_role_enrichment.py": "93f2ddaa4682d090125629c6e6b56f54d06509ecabfab7bece2c31e8be6c2493"
+   }
+  },
+  "dataset": {
+   "filename": "populace_us_2024.h5",
+   "sha256": "6496cc4393d4d3c6574f76eca231de5898c803b9067645591fd5c4d3e65aee84"
+  },
+  "release_type": "source_enrichment",
+  "staging": {
+   "enabled": false,
+   "reason": "local source-enrichment candidate; no calibration"
+  }
+ },
+ "coverage_summary": {
+  "hard_target": {
+   "families": 10,
+   "package_aliases": 41,
+   "covered_package_aliases": 25,
+   "missing_package_aliases": 0,
+   "reviewed_excluded_package_aliases": 16
+  },
+  "validation_only": {
+   "families": 6,
+   "activated_families": 0
+  },
+  "source_gap": {
+   "families": 6,
+   "missing_source_packages": 11
+  }
+ },
+ "hard_target_families": 10,
+ "gate": {
+  "name": "us_source_coverage",
+  "passed": true,
+  "failures": []
+ }
+}
