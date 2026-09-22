@@ -593,10 +593,9 @@ export function GraphViewerApp({
   );
   const [composedFiles, setComposedFiles] = useState<LegalId[]>([]);
   const [composedTruncated, setComposedTruncated] = useState(false);
-  // Run-by-root, feature-detected: the API is gaining POST /calculate
-  // with `{ root, facts }`. Until the probe confirms the deployment
-  // answers that shape, compose mode shows no run affordance at all —
-  // the graph is fully browsable either way. null = probing.
+  // Run-by-root is available after the runtime compiles the input
+  // catalog. The source graph stays browseable if compilation fails.
+  // null = checking the catalog.
   const [composeRunReady, setComposeRunReady] = useState<boolean | null>(
     null,
   );
@@ -1124,7 +1123,7 @@ export function GraphViewerApp({
 
   const runScenario = async () => {
     if (!effectiveProgram || running) return;
-    // Compose mode runs only through the feature-detected root shape.
+    // Compose mode runs only after input-catalog compilation succeeds.
     if (composeFocus && composeRunReady !== true) return;
     // Executing a run outgrows the tour — end it rather than talking
     // over the results.
@@ -1537,6 +1536,8 @@ export function GraphViewerApp({
   // Compose mode: fetch the on-demand graph for the focus legal id. The
   // server narrows ownOutputs to the focus rule when a #fragment is given.
   useEffect(() => {
+    setComposeRunReady(null);
+    setRunBlocked(null);
     if (!composeFocus) return;
     let cancelled = false;
     setLoading(true);
@@ -1566,7 +1567,8 @@ export function GraphViewerApp({
         // Runtime metadata supplies input types, choices and presentation.
         fetchRootInputs(fileLegalIdOf(composeFocus))
           .then((slots) => {
-            if (cancelled || slots.length === 0) return;
+            if (cancelled) return;
+            if (slots.length === 0) return;
             setInputMeta((current) => {
               const merged = {
                 dtypes: { ...current.dtypes },
@@ -1598,9 +1600,7 @@ export function GraphViewerApp({
               return merged;
             });
           })
-          .catch(() => {
-            // Catalog unavailable — heuristics carry the panel.
-          });
+          .catch(() => { /* The independent readiness probe controls Run. */ });
         const rulesById = new Map(
           filteredGraph.rules.map((rule) => [rule.legalId, rule]),
         );
