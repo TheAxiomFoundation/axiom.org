@@ -347,7 +347,7 @@ export function InteractiveRuleGraph({
   }, [baseGraph, nodeScoped, scopeId, sizeHints]);
 
   const lastCameraSelection = useRef<string | null>(null);
-  const focusSelection = (id: string, duration = 750) => {
+  const focusSelection = (id: string, duration = 950) => {
     const ids = nodes.some(node => node.data.legalId === id && node.data.kind === "input")
       ? new Set(inputContextSubgraph(nodes, edges, id).nodes.map(node => node.id))
       : upstreamIds(nodes, edges, id, upstreamDepth);
@@ -391,7 +391,7 @@ export function InteractiveRuleGraph({
     if (openingOverview || !frameRequest || (frameRequest.mode === "upstream" && !focusedIds.size)) return;
     const visible = frameRequest.mode === "upstream" && focusedIds.size ? nodes.filter((node) => focusedIds.has(node.id)) : nodes;
     const viewport = graphFitViewport(visible, canvasSize.width, canvasSize.height);
-    if (viewport) void flowRef.current?.setViewport(viewport, { duration: 600, interpolate: "smooth" });
+    if (viewport) void flowRef.current?.setViewport(viewport, { duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 950, interpolate: "linear", ease: (t: number) => t * t * (3 - 2 * t) });
   }, [frameRequest, nodes, focusedIds, canvasSize]);
   useEffect(() => {
     if (!fontsReady) return;
@@ -407,12 +407,12 @@ export function InteractiveRuleGraph({
     const flow = flowRef.current;
     if (!flow || !fitViewport) return;
     const current = flow.getViewport();
-    if (current.zoom < fitViewport.zoom - .0001) void flow.setViewport(fitViewport);
+    if (current.zoom < fitViewport.zoom - .0001) void flow.setViewport(fitViewport, { duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 500, interpolate: "linear" });
     else if (current.zoom > MAX_GRAPH_ZOOM) void flow.zoomTo(MAX_GRAPH_ZOOM);
   }, [fitViewport]);
   const stepZoom = (factor: number) => {
     const flow = flowRef.current;
-    if (flow) void flow.zoomTo(Math.max(minGraphZoom, Math.min(MAX_GRAPH_ZOOM, flow.getViewport().zoom * factor)), { duration: 200 });
+    if (flow) void flow.zoomTo(Math.max(minGraphZoom, Math.min(MAX_GRAPH_ZOOM, flow.getViewport().zoom * factor)), { duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 350 });
   };
 
   // Pre-compute the incoming and outgoing edge maps once per build. We use

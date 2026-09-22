@@ -627,3 +627,12 @@ body:has(.has-workspace) .nav-bar { display: none; }
 .result-calculation-inputs dl > div { display: grid; grid-template-columns: 1fr auto; gap: 12px; padding: 4px 0; }
 .result-calculation-inputs dd { margin: 0; font-variant-numeric: tabular-nums; }
 .result-calculation-table small { display: block; font-size: 11px; color: var(--color-ink-secondary); }
+
+/* Keep workspace changes calm without moving text or changing panel geometry. */
+.workspace-reader, .workspace-structure, .workspace-run, .results-sheet {
+  animation: workspace-panel-arrive 280ms cubic-bezier(.2,.65,.3,1) both;
+}
+@keyframes workspace-panel-arrive { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .workspace-reader, .workspace-structure, .workspace-run, .results-sheet { animation: none; }
+}

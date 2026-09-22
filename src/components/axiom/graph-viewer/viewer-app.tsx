@@ -53,8 +53,7 @@ import {
 import { buildRunRequestBody, scenarioKey } from "./run-request";
 import { trackAxiomEvent } from "@/lib/analytics";
 import {
-  readLauncherMode,
-  storeLauncherMode,
+  DEFAULT_LAUNCHER_MODE,
   type LauncherMode,
 } from "./launcher-mode";
 import { loadCorpusModules } from "@/lib/axiom/corpus-live";
@@ -78,13 +77,12 @@ export function GraphViewerApp({
   const [corpusModules, setCorpusModules] = useState<CorpusModule[] | null>(
     null,
   );
-  // The searchable library and corpus map share a persisted view choice.
+  // Every new visit starts on the map; switching views stays local to this visit.
   const [launcherMode, setLauncherMode] = useState<LauncherMode>(() =>
-    readLauncherMode(),
+    DEFAULT_LAUNCHER_MODE,
   );
   const pickLauncherMode = (mode: LauncherMode) => {
     setLauncherMode(mode);
-    storeLauncherMode(mode);
   };
   const [country, setCountry] = useState<Country>(() => initialCountry());
   const [program, setProgram] = useState<ProgramRef | null>(null);
@@ -717,8 +715,7 @@ export function GraphViewerApp({
       url.searchParams.delete("view");
       window.history.replaceState({}, "", url.toString());
     }
-    // Return to the visitor’s preferred corpus entry view.
-    setLauncherMode(readLauncherMode());
+    // Preserve the current visit’s view when returning from a graph.
     setLauncher("open");
     launcherRef.current = "open";
   };
