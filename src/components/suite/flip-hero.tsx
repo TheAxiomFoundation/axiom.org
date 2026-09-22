@@ -11,6 +11,7 @@ import { ArrowRightIcon } from "@/components/icons";
 const CARDS = [
   { slug: "rules", subject: "Computable law", hue: "#B45309" },
   { slug: "records", subject: "Official statistics", hue: "#33547D" },
+  { slug: "microcosm", subject: "The economy in miniature", hue: "#3E7A5E" },
   { slug: "simulator", subject: "Policy simulations", hue: "#2C7A7B" },
   { slug: "forecasts", subject: "Scored forecasts", hue: "#A94E80" },
 ];
