@@ -20,8 +20,7 @@ export function FooterGate({ children }: { children: React.ReactNode }) {
             Show the work. For all.
           </p>
           <p className="mt-3 max-w-[340px] font-body text-[0.85rem] leading-relaxed text-[var(--color-ink-muted)]">
-            The Axiom Institute is a nonprofit that builds open models of law
-            and policy.
+            The Axiom Institute builds open models of law and policy.
           </p>
         </div>
         <ul className="grid gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -32,17 +31,11 @@ export function FooterGate({ children }: { children: React.ReactNode }) {
                   <span aria-hidden className="h-1.5 w-1.5 rounded-full" style={{ background: line.hue }} />
                   {line.name}
                 </span>
-                <span className="mt-1 block font-mono text-[0.6rem] uppercase tracking-[0.16em] text-[var(--color-ink-muted)]">
-                  today: {line.today.name}
-                </span>
               </Link>
             </li>
           ))}
         </ul>
       </div>
-      <p className="mx-auto mt-12 max-w-[1280px] font-mono text-[0.6rem] uppercase tracking-[0.16em] text-[var(--color-ink-muted)]">
-        Prototype of an alternate naming universe &middot; not public, not a plan
-      </p>
     </footer>
   );
 }

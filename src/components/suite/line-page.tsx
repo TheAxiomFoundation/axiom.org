@@ -57,10 +57,6 @@ export function LinePage({ line }: { line: SuiteLine }) {
             </div>
           ) : null}
         </div>
-        <p className="mx-auto mt-10 max-w-[1280px] font-mono text-[0.62rem] uppercase tracking-[0.16em] text-[var(--color-ink-muted)] [overflow-wrap:anywhere]">
-          In today&apos;s universe this is {line.today.name} at{" "}
-          {line.today.domain}; the button opens the live site
-        </p>
       </section>
 
       <section

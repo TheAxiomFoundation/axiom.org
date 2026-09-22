@@ -5,6 +5,7 @@
  * in `figure.source` on the same day. Nothing here is a plan.
  */
 export const SUITE_AS_OF = "21 Sep 2026";
+export const SUITE_DEPTH_AS_OF = "22 Sep 2026";
 
 export interface SuiteLine {
   slug: "rules" | "records" | "microcosm" | "simulator" | "forecasts";
@@ -32,7 +33,7 @@ export const SUITE_LINES: SuiteLine[] = [
     today: { name: "Axiom", domain: "axiom.org", href: "https://axiom.org" },
     hue: "#B45309",
     hueDark: "#D97706",
-    noun: "rules",
+    noun: "executable law",
     forAll: "Computable law for all.",
     headline: "Computable law for all.",
     body:
@@ -77,11 +78,11 @@ export const SUITE_LINES: SuiteLine[] = [
     },
     hue: "#33547D",
     hueDark: "#7CA1D6",
-    noun: "records",
+    noun: "official statistics, as first printed",
     forAll: "The official record for all.",
     headline: "A record of what official sources printed, and when.",
     body:
-      "Source-backed facts: the numbers government statistical agencies actually published, kept at first print, with provenance, revision history, and a stable address for every fact. Values are recorded as published, never reconciled, imputed, or modeled.",
+      "The numbers government statistical agencies published, kept at first print, with provenance, revision history, and a stable address for every fact. Records keeps each value as published; it never reconciles, imputes, or models one.",
     figure: {
       value: "39,173",
       label: "source-backed facts in the store",
@@ -90,7 +91,7 @@ export const SUITE_LINES: SuiteLine[] = [
     features: [
       {
         title: "Journal",
-        body: "An append-only log of accepted facts, each with its first-print date and the date it was accepted.",
+        body: "An append-only log of accepted facts, each with its first-print date and its acceptance date.",
       },
       {
         title: "Store",
@@ -127,8 +128,8 @@ export const SUITE_LINES: SuiteLine[] = [
     },
     hue: "#3E7A5E",
     hueDark: "#5FA588",
-    noun: "synthetic population",
-    forAll: "A population that stands in for all.",
+    noun: "synthetic economy",
+    forAll: "The economy in miniature, for all.",
     headline:
       "A nation is millions of people, households, and firms. We build a synthetic one that stands in for them all.",
     body:
@@ -174,7 +175,7 @@ export const SUITE_LINES: SuiteLine[] = [
     headline:
       "Free, open-source tax and benefit analysis. Model policy reforms across all 50 states.",
     body:
-      "Free, open-source tools to understand tax and benefit policies. Calculate your taxes and benefits, or analyze policy reforms. Trusted by researchers, governments, and benefit platforms.",
+      "Free, open-source tools to understand tax and benefit policies. Calculate your taxes and benefits, or analyze policy reforms.",
     figure: {
       value: "69,571",
       label: "downloads of policyengine-us last month",
@@ -184,7 +185,7 @@ export const SUITE_LINES: SuiteLine[] = [
       { title: "Research", body: "Analysis of enacted and proposed reforms, with the code behind every number." },
       { title: "Model", body: "Rules, parameters, variables, data, calibration and validation, all browsable." },
       { title: "API", body: "The same model behind a web API for benefit platforms and researchers." },
-      { title: "Python", body: "pip install policyengine-us. The package name does not change in this universe." },
+      { title: "Python", body: "pip install policyengine-us" },
     ],
     snapshot: {
       heading: "Latest research",
@@ -213,7 +214,7 @@ export const SUITE_LINES: SuiteLine[] = [
     forAll: "Forecasts scored for all to see.",
     headline: "Open forecasts of public outcomes, scored against reality.",
     body:
-      "Calibrated, open forecasts of the statistics and policies that shape public life: every prediction published with its full chain of reasoning, and scored against the record when the official numbers arrive. The track record is the product.",
+      "Calibrated, open forecasts of the statistics and policies that shape public life. Every prediction carries its full chain of reasoning and gets scored against the record when the official number arrives. The track record is the product.",
     figure: {
       value: "326",
       label: "forecasts on the log",

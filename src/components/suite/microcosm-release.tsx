@@ -31,7 +31,7 @@ export function MicrocosmRelease() {
             <span className="font-mono text-[0.55em] tracking-normal">{m.release_id}</span>
           </h1>
           <p className="mt-4 max-w-[720px] font-body text-[1.05rem] leading-relaxed text-[var(--color-ink-secondary)]">
-            A synthetic economy in miniature: {m.n_records.toLocaleString()} synthetic households, weighted so that {m.n_targets.toLocaleString()} published totals come out right. No real person or firm appears in it. Published {fmtDate(m.updated_at)} on Hugging Face as <span className="font-mono text-[0.9em]">{m.repo}</span>.
+            The economy in miniature: {m.n_records.toLocaleString()} synthetic households, weighted so that {m.n_targets.toLocaleString()} published totals come out right. No real person or firm appears in it. Published {fmtDate(m.updated_at)} on Hugging Face as <span className="font-mono text-[0.9em]">{m.repo}</span>.
           </p>
           <div className="mt-8 grid max-w-[1000px] grid-cols-2 gap-6 sm:grid-cols-4">
             {[
@@ -72,7 +72,7 @@ export function MicrocosmRelease() {
             ))}
           </dl>
         </div>
-        <p className="mx-auto mt-10 max-w-[1280px] font-mono text-[0.58rem] uppercase tracking-[0.16em] text-[var(--color-ink-muted)]">prototype &middot; figures from the release&apos;s own manifests, read {m.as_of} &middot; the dataset is still published under the name populace-us; in today&apos;s universe this is Microcosm</p>
+        <p className="mx-auto mt-10 max-w-[1280px] font-mono text-[0.58rem] uppercase tracking-[0.16em] text-[var(--color-ink-muted)]">Source: the release manifests on Hugging Face, read {m.as_of}</p>
       </section>
     </>
   );

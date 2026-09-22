@@ -27,7 +27,7 @@ export function SimulatorApp() {
               Axiom Simulator <span className="serif-italic text-[0.6em] text-[var(--color-ink-secondary)]">formerly PolicyEngine</span>
             </h1>
             <p className="mt-3 max-w-[640px] font-body text-[0.98rem] leading-relaxed text-[var(--color-ink-secondary)]">
-              Same model, same team, same license. Package names, imports, the API host and every URL are unchanged.
+              Same model, same team, same license. Package names, imports, the API host and every URL stay as they are.
             </p>
           </div>
           <div className="card-edition max-w-[520px] p-4">
@@ -42,15 +42,14 @@ export function SimulatorApp() {
         <div className="mx-auto max-w-[1280px] pt-6">
           <div className="relative overflow-hidden rounded border border-[var(--color-rule)] bg-white" style={{ height: 820 }}>
             {!blocked ? (
-              <iframe title="The live PolicyEngine household calculator, framed by the prototype" src={APP} onLoad={() => setLoaded(true)} className="h-full w-full border-0" />
+              <iframe title="Household calculator" src={APP} onLoad={() => setLoaded(true)} className="h-full w-full border-0" />
             ) : null}
             {(!loaded || blocked) ? (
               <div className="absolute inset-0 flex items-center justify-center p-8 text-center font-body text-[0.95rem] text-[var(--color-ink-secondary)]" style={{ background: "var(--color-paper)" }}>
-                {blocked ? "The live app did not load inside this frame here. Open it at policyengine.org/us/household; in this universe it would answer at axiom.org/simulator." : "Loading the live app…"}
+                {blocked ? "The calculator did not load here. Open it at policyengine.org/us/household." : "Loading the calculator…"}
               </div>
             ) : null}
           </div>
-          <p className="mt-4 font-mono text-[0.58rem] uppercase tracking-[0.16em] text-[var(--color-ink-muted)]">prototype &middot; the frame shows the real policyengine.org app, unchanged &middot; only the chrome around it is the mock</p>
         </div>
       </section>
     </>

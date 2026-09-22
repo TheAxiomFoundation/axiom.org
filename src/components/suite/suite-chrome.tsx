@@ -12,9 +12,7 @@ export function SuiteChrome() {
   return (
     <header className="sticky top-0 z-40">
       <div className="bg-[var(--color-ink)] px-4 py-1.5 text-center font-mono text-[0.62rem] uppercase tracking-[0.14em] text-[var(--color-paper)]">
-        Prototype &middot; one Axiom brand across all five programs &middot;
-        not public, not a plan &middot; copy and figures read from each
-        program&apos;s live site, {SUITE_AS_OF}
+        Prototype &middot; not public &middot; figures read from each program&apos;s live site, {SUITE_AS_OF} and 22 Sep 2026
       </div>
       <nav
         aria-label="Axiom suite"

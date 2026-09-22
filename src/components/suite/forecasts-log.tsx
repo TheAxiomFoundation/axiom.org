@@ -37,7 +37,7 @@ export function ForecastsLog() {
             Every forecast, logged before the number and scored after it.
           </h1>
           <p className="mt-4 max-w-[680px] font-body text-[1.05rem] leading-relaxed text-[var(--color-ink-secondary)]">
-            Headline forecasts of official statistics, with the source and the rule each one resolves against. Resolved forecasts show the observed value and the score, hits and misses alike.
+            Headline forecasts of official statistics, each with the source and the rule it resolves against. A resolved forecast shows the observed value and the score.
           </p>
           <div className="mt-8 grid max-w-[900px] grid-cols-2 gap-6 sm:grid-cols-4">
             {[
@@ -53,7 +53,7 @@ export function ForecastsLog() {
             ))}
           </div>
           <p className="mt-6 font-mono text-[0.6rem] uppercase tracking-[0.16em] text-[var(--color-ink-muted)]">
-            data: app.thesisinstitute.org/log.json, read {FORECASTS_AS_OF} &middot; one headline run per question; other runs and non-headline agents omitted from this table
+            Source: app.thesisinstitute.org/log.json, read {FORECASTS_AS_OF}. One headline run per question.
           </p>
         </div>
       </section>

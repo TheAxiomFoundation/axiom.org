@@ -33,7 +33,7 @@ function IntervalChart({ f }: { f: Forecast }) {
 export function ForecastDetail({ f }: { f: Forecast }) {
   const st = statusOf(f);
   const s = f.score;
-  const verdict = st === "scored" ? (s?.interval80Covered ? "Inside the 80% interval." : "Outside the 80% interval. A miss, on the record.") : st === "awaiting" ? "Past its resolution date; awaiting the official number." : "Open. The official number has not been published.";
+  const verdict = st === "scored" ? (s?.interval80Covered ? "Inside the 80% interval." : "Outside the 80% interval. A miss, on the record.") : st === "awaiting" ? "Past its resolution date; the official number has not arrived." : "Open until the official number arrives.";
   return (
     <>
       <section className="relative z-1 px-8 pb-10 pt-16">
@@ -84,7 +84,7 @@ export function ForecastDetail({ f }: { f: Forecast }) {
         <div className="mx-auto mt-10 max-w-[1280px]">
           <p className="font-mono text-[0.58rem] uppercase tracking-[0.16em] text-[var(--color-ink-muted)]">resolution rule</p>
           <p className="mt-2 max-w-[900px] font-body text-[0.9rem] leading-relaxed text-[var(--color-ink-secondary)]">{f.resolutionRule || "—"}</p>
-          <p className="mt-8 font-mono text-[0.58rem] uppercase tracking-[0.16em] text-[var(--color-ink-muted)]">prototype &middot; data from app.thesisinstitute.org, read {FORECASTS_AS_OF} &middot; in today&apos;s universe this is Thesis</p>
+          <p className="mt-8 font-mono text-[0.58rem] uppercase tracking-[0.16em] text-[var(--color-ink-muted)]">Source: app.thesisinstitute.org, read {FORECASTS_AS_OF}</p>
         </div>
       </section>
     </>

@@ -21,7 +21,7 @@ export function RecordsJournal() {
             What official sources printed, and when: an append-only journal.
           </h1>
           <p className="mt-4 max-w-[680px] font-body text-[1.05rem] leading-relaxed text-[var(--color-ink-secondary)]">
-            Each line is a value as first published by a statistical agency, with the date it was observed and the date the journal accepted it. Lines are never edited; a later print gets a later line.
+            Each line records a value as a statistical agency first published it, with the date observed and the date accepted. The journal never edits a line; a later print gets a later line.
           </p>
           <div className="mt-8 grid max-w-[900px] grid-cols-2 gap-6 sm:grid-cols-4">
             {[
@@ -37,7 +37,7 @@ export function RecordsJournal() {
             ))}
           </div>
           <p className="mt-6 font-mono text-[0.6rem] uppercase tracking-[0.16em] text-[var(--color-ink-muted)]">
-            data: chronicle.institute/api/journal, read {AS_OF}{PINS && typeof (PINS as { lineCount?: number }).lineCount === "number" ? ` · pinned line count ${(PINS as { lineCount?: number }).lineCount}` : ""} &middot; the store of 39,173 parsed facts is not shown here
+            Source: chronicle.institute/api/journal, read {AS_OF}
           </p>
         </div>
       </section>
