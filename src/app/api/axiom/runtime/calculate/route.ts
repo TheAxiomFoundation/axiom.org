@@ -1,3 +1,4 @@
+import { compositionReadiness } from "@/lib/axiom/runtime/composition-readiness";
 import { NextResponse } from "next/server";
 import {
   getRuntimePackage,
@@ -103,6 +104,8 @@ export async function POST(request: Request) {
     if (typeof root !== "string" || !ROOT_RE.test(root)) {
       return NextResponse.json({ error: "invalid_root" }, { status: 400 });
     }
+    const readiness = await compositionReadiness(root);
+    if (readiness !== "ready") return NextResponse.json({error:readiness}, {status:readiness === "relationships_unsupported" ? 422 : 503, headers:{"cache-control":"no-store"}});
     const { sanitized: facts, rejected: droppedFacts } = sanitizeValues(
       body.facts
     );

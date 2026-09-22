@@ -1,3 +1,4 @@
+import { compositionReadiness } from "@/lib/axiom/runtime/composition-readiness";
 import { NextResponse } from "next/server";
 import { runtimeProxyGet } from "@/lib/axiom/runtime/api";
 
@@ -19,6 +20,10 @@ export async function GET(request: Request) {
     `/runtime/root-inputs?root=${encodeURIComponent(root)}`,
     { timeoutMs: 20_000, fresh: true }
   );
+  if (status === 200) {
+    const readiness = await compositionReadiness(root);
+    if (readiness !== "ready") return NextResponse.json({status:"error", error:{code:readiness}}, {status:readiness === "relationships_unsupported" ? 422 : 503, headers:{"cache-control":"no-store"}});
+  }
   return NextResponse.json(body, {
     status,
     headers: { "cache-control": status === 200 ? "public, max-age=300" : "no-store" },

@@ -1665,7 +1665,12 @@ export function GraphViewerApp({
         rememberRunCapability(root, true);
         setComposeRunReady(true);
       })
-      .catch(() => {
+      .catch((error) => {
+        if (!cancelled && error instanceof Error && error.name === "RunUnavailableError") {
+          rememberRunCapability(root, false);
+          setComposeRunReady(false);
+          return;
+        }
         // Unavailability is not evidence that the encoding cannot execute.
         // Leave it unknown so a transient outage does not poison the cache.
         if (!cancelled) setComposeRunReady(null);

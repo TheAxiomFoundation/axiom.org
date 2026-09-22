@@ -184,7 +184,9 @@ export async function fetchRootInputs(root: string): Promise<RootInputSlot[]> {
   const url = `${trimSlash(API_BASE)}/runtime/root-inputs?root=${encodeURIComponent(root)}`;
   const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) {
-    throw new Error(`root-inputs request failed (${response.status})`);
+    const error = new Error(`root-inputs request failed (${response.status})`);
+    if (response.status === 422) error.name = "RunUnavailableError";
+    throw error;
   }
   const json = (await response.json()) as {
     data?: { inputs?: RootInputSlot[] };

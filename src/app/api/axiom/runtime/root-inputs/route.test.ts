@@ -1,3 +1,4 @@
+import { compositionReadiness } from "@/lib/axiom/runtime/composition-readiness";
 import { beforeEach, expect, it, vi } from 'vitest';
 import { GET } from './route';
 import { runtimeProxyGet } from '@/lib/axiom/runtime/api';
@@ -24,4 +25,13 @@ it('preserves declared metadata without inventing choices for inferred values', 
  const inputs = (await response.json()).data.inputs;
  expect(inputs).toEqual([declared,inferred]);
  expect(inputs[1].choices).toBeUndefined();
+});
+
+vi.mock("@/lib/axiom/runtime/composition-readiness", () => ({compositionReadiness:vi.fn().mockResolvedValue("ready")}));
+it('does not advertise Run for unsupported relationship scopes', async () => {
+ vi.mocked(runtimeProxyGet).mockResolvedValue({status:200,body:{status:'ok',data:{inputs:[]}}});
+ vi.mocked(compositionReadiness).mockResolvedValueOnce('relationships_unsupported');
+ const response = await GET(request());
+ expect(response.status).toBe(422);
+ expect(response.headers.get('cache-control')).toBe('no-store');
 });
