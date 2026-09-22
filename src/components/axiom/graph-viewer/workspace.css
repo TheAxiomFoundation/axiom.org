@@ -594,3 +594,36 @@ body:has(.has-workspace) .nav-bar { display: none; }
 .formula-inline-math .formula-operation-label { display: inline; margin: 0 5px; }
 .formula-punctuation { color: var(--color-ink-secondary); }
 .formula-function-name { font-family: var(--f-mono, monospace); font-size: 12px; margin-right: 3px; }
+
+/* Encoding-backed node details: readable summary, inspectable complete fields. */
+.node-metadata { padding: 16px 0; min-width: 0; border-top: 1px solid var(--border, #deded8); }
+.node-metadata h3, .node-metadata h4 { margin: 0 0 10px; font-size: 13px; font-weight: 600; }
+.node-metadata-description { margin: 0 0 14px; font-size: 14px; line-height: 1.6; white-space: pre-line; }
+.node-metadata-description small { display: block; margin-top: 4px; opacity: .6; font-size: 11px; }
+.node-metadata dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 12px 24px; margin: 0 0 14px; }
+.node-metadata dt { font-size: 11px; opacity: .65; margin-bottom: 3px; }
+.node-metadata dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.node-metadata details { margin-top: 14px; }
+.node-metadata summary { cursor: pointer; font-size: 12px; }
+.node-metadata pre { max-height: 320px; overflow: auto; padding: 12px; background: #f1f2ed; color: #25352c; font-size: 11px; line-height: 1.6; border-radius: 5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.node-metadata-note, .node-metadata-dates p { font-size: 12px; line-height: 1.5; margin: 8px 0; }
+.node-metadata-loading { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; opacity: .7; }
+.node-metadata-loading svg { animation: spin 1s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .node-metadata-loading svg { animation: none; } }
+
+.result-entity-context { display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 0; }
+.result-entity-context label { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.result-entity-context select { border: 1px solid var(--color-rule); border-radius: 5px; padding: 6px 28px 6px 10px; background: var(--color-paper, #fafaf7); color: inherit; }
+.result-calculation-table { overflow-x: auto; }
+.result-calculation-table table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.5; }
+.result-calculation-table th, .result-calculation-table td { text-align: left; padding: 11px 12px; border-bottom: 1px solid var(--color-rule); vertical-align: top; }
+.result-calculation-table thead th { font-size: 11px; color: var(--color-ink-secondary); font-weight: 500; }
+.result-calculation-table tbody th { width: 68%; font-weight: 400; }
+.result-calculation-value { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.result-calculation-table .result-overview-link { margin: 0; white-space: nowrap; }
+.result-calculation-inputs { margin-top: 5px; font-size: 12px; }
+.result-calculation-inputs summary { cursor: pointer; color: var(--color-ink-secondary); }
+.result-calculation-inputs dl { margin: 8px 0 0; padding-left: 12px; border-left: 2px solid var(--color-rule); }
+.result-calculation-inputs dl > div { display: grid; grid-template-columns: 1fr auto; gap: 12px; padding: 4px 0; }
+.result-calculation-inputs dd { margin: 0; font-variant-numeric: tabular-nums; }
+.result-calculation-table small { display: block; font-size: 11px; color: var(--color-ink-secondary); }

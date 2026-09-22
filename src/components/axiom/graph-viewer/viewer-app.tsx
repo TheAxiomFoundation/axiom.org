@@ -1,4 +1,5 @@
 "use client";
+import { NodeMetadata } from "./node-metadata";
 
 import { HouseholdComposer } from "./household-composer";
 import { RecordedFormula } from "./recorded-formula";
@@ -3139,96 +3140,7 @@ export function GraphViewerApp({
               })()
             ) : null}
             {/* Reference details and formula stay visible beside the graph. */}
-            {citation ||
-            rule?.certificationStatus ||
-            rule?.certificateId ||
-            (rule?.entity ?? input?.entity) ||
-            rule?.period ||
-            rule?.unit ||
-            ("hiddenCount" in inspected && inspected.hiddenCount) ? (
-              <section className="node-inspector-code" aria-label="Details">
-                <h3>Details</h3>
-                <dl className="node-inspector-meta">
-                  {citation ? (
-                    <>
-                      <dt>Source</dt>
-                      <dd>
-                        {(meta?.sourceUrl ?? rule?.sourceUrl) ? (
-                          <a
-                            href={(meta?.sourceUrl ?? rule?.sourceUrl) as string}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            {citation} ↗
-                          </a>
-                        ) : (
-                          citation
-                        )}
-                      </dd>
-                    </>
-                  ) : null}
-                  {rule?.certificationStatus ? (
-                    <>
-                      {/* The four-status launch taxonomy: certification is a
-                          status, not a gate — the queue is public on every
-                          node. */}
-                      <dt>Status</dt>
-                      <dd>
-                        {rule.certificationStatus === "certified"
-                          ? "Certified"
-                          : rule.certificationStatus === "validated"
-                            ? "Validated, not certified"
-                            : rule.certificationStatus === "pending"
-                              ? "Pending — not yet encoded"
-                              : rule.incompleteByDeclaration
-                                ? "Encoded, incomplete by declaration"
-                                : "Encoded"}
-                      </dd>
-                    </>
-                  ) : null}
-                  {rule?.certificateId ? (
-                    <>
-                      {/* The verifier certificate is why this node is
-                          visible at all — show it, truncated, full id on
-                          hover. */}
-                      <dt>Certificate</dt>
-                      <dd
-                        className="node-inspector-mono"
-                        title={rule.certificateId}
-                      >
-                        {rule.certificateId.length > 28
-                          ? `${rule.certificateId.slice(0, 28)}…`
-                          : rule.certificateId}
-                      </dd>
-                    </>
-                  ) : null}
-                  {(rule?.entity ?? input?.entity) ? (
-                    <>
-                      <dt>Entity</dt>
-                      <dd>{humanize((rule?.entity ?? input?.entity) as string)}</dd>
-                    </>
-                  ) : null}
-                  {rule?.period ? (
-                    <>
-                      <dt>Period</dt>
-                      <dd>{rule.period}</dd>
-                    </>
-                  ) : null}
-                  {rule?.unit ? (
-                    <>
-                      <dt>Unit</dt>
-                      <dd>{rule.unit}</dd>
-                    </>
-                  ) : null}
-                  {"hiddenCount" in inspected && inspected.hiddenCount ? (
-                    <>
-                      <dt>Contains</dt>
-                      <dd>{inspected.hiddenCount} rules</dd>
-                    </>
-                  ) : null}
-                </dl>
-              </section>
-            ) : null}
+            {legalId && <NodeMetadata key={legalId} id={legalId} entry={rule ?? input ?? graph?.relations.find(item => item.legalId === legalId) ?? {}} />}
             {formula && rule?.kind !== "parameter" ? (
               <section className="node-inspector-code" aria-label="Formula">
                 <h3>Formula</h3>

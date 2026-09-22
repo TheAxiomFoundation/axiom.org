@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Node, Edge } from "@xyflow/react";
-import { dependencySubgraph, focusLayout, upstreamIds } from "./focus-layout";
+import { inputContextSubgraph, dependencySubgraph, focusLayout, upstreamIds } from "./focus-layout";
 const nodes: Node[] = [
  {id:"a",position:{x:0,y:0},width:240,height:90,data:{legalId:"a",kind:"input"}},
  {id:"b",position:{x:0,y:150},width:240,height:90,data:{legalId:"b",kind:"input"}},
@@ -71,4 +71,12 @@ describe("selected-node graph scope", () => {
  it("never falls back to the entire artifact for an unknown selection", () => {
   expect(dependencySubgraph(nodes, edges, "missing").nodes).toEqual([]);
  });
+});
+
+it("input deep links retain consumers and their other dependencies, not unrelated roots", () => {
+ const links = [...edges, {id:"bc",source:"b",target:"c"}];
+ expect(inputContextSubgraph(nodes,links,"a").nodes.map(node => node.id)).toEqual(["a","b","c"]);
+ expect(inputContextSubgraph(nodes,links,"a").edges.map(edge => edge.id)).toEqual(["ac","bc"]);
+ expect(inputContextSubgraph(nodes,links,"missing").nodes).toEqual([]);
+ expect(inputContextSubgraph(nodes,[...links,{id:"ca",source:"c",target:"a"}],"a").nodes).toHaveLength(3);
 });

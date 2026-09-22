@@ -31,7 +31,9 @@ describe("explanation navigation", () => {
   expect(recordedEvidence(withInput, { ...run, submittedFacts: { age: 30 } }, "law#age")).toEqual({ value: 30, origin: "Submitted input" });
   expect(recordedEvidence(withInput, run, "law#age")).toBeUndefined();
   const { unmount } = render(<ResultExplanation graph={graph} run={{ ...run, trace: [{ variable: "condition", value: null, instances: [{ entity_id: "person_1", value: false }, { entity_id: "person_2", value: true }] }] }} rootId="law#condition" stale={false} onRead={vi.fn()} />);
-  expect(screen.getByRole("heading", { level: 3 })).toHaveTextContent("Person 1: False · Person 2: True");
+  expect(screen.getByRole("heading", { level: 3 })).toHaveTextContent("False");
+  fireEvent.change(screen.getByRole("combobox"), {target:{value:"person_2"}});
+  expect(screen.getByRole("heading", {level:3})).toHaveTextContent("True");
   unmount();
  });
  it("links the result and failed checks to the existing relationships view", () => {
@@ -124,10 +126,34 @@ it("shows top-level amounts and supporting values for a successful result", () =
  ], inputs:[{legalId:"law#expenses", name:"expenses", fileLegalId:"law"}]};
  const onRelationships = vi.fn();
  render(<ResultExplanation graph={data} run={{outputs:{cdcc:1500,potential:1800,tax:1500,claim_ok:true},trace:[],submittedFacts:{expenses:9000}}} rootId="law#cdcc" stale={false} onRead={vi.fn()} onRelationships={onRelationships} />);
- expect(screen.getByRole("region", {name:"Calculation overview"})).toHaveTextContent("Potential1800");
+ expect(screen.getByRole("row", {name:/Potential/})).toHaveTextContent("1800");
  expect(screen.getByRole("region", {name:"Calculation overview"})).toHaveTextContent("Expenses9000");
  expect(screen.getByRole("region", {name:"Calculation overview"})).toHaveTextContent("Tax1500");
  expect(screen.queryByText(/This is the recorded result for the last run/)).not.toBeInTheDocument();
  fireEvent.click(screen.getAllByRole("button", {name:/Explore relationships/})[0]!);
  expect(onRelationships).toHaveBeenCalledWith("law#potential");
+});
+
+it("keeps person and tax-unit selections independent, preserving shared constants and missing values", () => {
+ const data: ProgramGraph = {...graph, rules:[
+  {...rule("law#result"), entity:"Person", ruleDeps:["law#check", "law#limit", "law#income"]},
+  {...rule("law#check"), entity:"Person"},
+  {...rule("law#limit"), kind:"parameter", formula:"1000"},
+  {...rule("law#income"), entity:"TaxUnit"},
+ ]};
+ const trace = [
+  {variable:"result",value:null,instances:[{entity_id:"person_1",value:100},{entity_id:"person_2",value:200}]},
+  {variable:"check",value:null,instances:[{entity_id:"person_1",value:false}]},
+  {variable:"income",value:null,instances:[{entity_id:"unit_1",value:3000},{entity_id:"unit_2",value:4000}]},
+ ];
+ render(<ResultExplanation graph={data} run={{outputs:{},trace}} rootId="law#result" stale={false} onRead={vi.fn()}/>);
+ expect(screen.getByRole("row",{name:/Check/})).toHaveTextContent("False");
+ fireEvent.change(screen.getByRole("combobox",{name:"Selected Person"}),{target:{value:"person_2"}});
+ expect(screen.getByRole("heading",{level:3})).toHaveTextContent("200");
+ expect(screen.getByRole("row",{name:/Check/})).toHaveTextContent("Not reported");
+ expect(screen.getByRole("row",{name:/Limit/})).toHaveTextContent("1000");
+ expect(screen.getByRole("row",{name:/Income/})).toHaveTextContent("3000");
+ fireEvent.change(screen.getByRole("combobox",{name:/Selected Tax/}),{target:{value:"unit_2"}});
+ expect(screen.getByRole("row",{name:/Income/})).toHaveTextContent("4000");
+ expect(screen.getByRole("heading",{level:3})).toHaveTextContent("200");
 });

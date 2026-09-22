@@ -10,6 +10,7 @@ import { RecordedFormula } from "./recorded-formula";
 import { rememberRule } from "./library-state";
 import { CitationNavigationContext, RuleBody } from "@/components/axiom/rule-body";
 import { peekReader, readReader } from "./reader-cache";
+import { NodeMetadata } from "./node-metadata";
 import { RuleSpecPreview } from "./rulespec-preview";
 import type { WorkspaceSource } from "@/lib/axiom/workspace-source";
 
@@ -230,6 +231,7 @@ export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, o
           <button onClick={() => changeView("read")}>Read this rule <ArrowRight size={14} /></button></div>
         <NeighborColumn title="Used by" ids={consumers.map((item) => item.legalId)} entries={entries} label={label} onSelect={navigate} hasRun={hasRun} value={value} activeId={activeDependency} onHighlight={setActiveDependency} empty="No consumers recorded in this scope." />
       </div></RelationshipDiagram>
+      <NodeMetadata key={selectedId} id={selectedId} entry={rule ?? graph.inputs.find(item => item.legalId === selectedId) ?? graph.relations.find(item => item.legalId === selectedId) ?? {}} />
       <MemberCountBreakdown graph={graph} selectedId={selectedId} members={members} run={run} stale={stale} renderInput={renderInput} valueOf={valueOf} onSelect={navigate} />
       {truncated && <p className="workspace-footnote">This graph is partial; additional relationships may exist.</p>}
     </section>}

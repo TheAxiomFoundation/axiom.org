@@ -100,3 +100,19 @@ export function dependencySubgraph(nodes: Node[], edges: Edge[], legalId: string
     edges: edges.filter(edge => ids.has(edge.source) && ids.has(edge.target)).map(edge => ({ ...edge })),
   };
 }
+
+/** Inputs have no upstream tree. Keep the computations they feed, including
+ * those computations' other dependencies, without pulling in unrelated roots. */
+export function inputContextSubgraph(nodes: Node[], edges: Edge[], legalId: string | null): { nodes: Node[]; edges: Edge[] } {
+  const starts = nodes.filter(node => node.data.legalId === legalId);
+  const downstream = new Set(starts.map(node => node.id));
+  const outgoing = new Map<string, string[]>();
+  for (const edge of edges) outgoing.set(edge.source, [...(outgoing.get(edge.source) ?? []), edge.target]);
+  const queue = [...downstream];
+  for (let i = 0; i < queue.length; i++) for (const next of outgoing.get(queue[i]!) ?? []) {
+    if (!downstream.has(next)) { downstream.add(next); queue.push(next); }
+  }
+  const ids = new Set<string>();
+  for (const id of downstream) for (const upstream of upstreamNodeIds(nodes, edges, id)) ids.add(upstream);
+  return { nodes: nodes.filter(node => ids.has(node.id)).map(node => ({...node, position:{...node.position}})), edges: edges.filter(edge => ids.has(edge.source) && ids.has(edge.target)).map(edge => ({...edge})) };
+}

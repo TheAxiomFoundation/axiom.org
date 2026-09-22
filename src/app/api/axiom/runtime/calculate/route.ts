@@ -22,7 +22,7 @@ function sanitizeValues(raw: unknown): {
     for (const [key, value] of Object.entries(
       raw as Record<string, unknown>
     )) {
-      if (!INPUT_NAME_RE.test(key)) continue;
+      if (!INPUT_NAME_RE.test(key)) { rejected.push(key); continue; }
       if (
         (typeof value !== "number" && typeof value !== "boolean") ||
         (typeof value === "number" && !Number.isFinite(value))
@@ -38,12 +38,12 @@ function sanitizeValues(raw: unknown): {
 }
 
 const SLUG_RE = /^[a-z0-9-]{1,64}$/;
-const INPUT_NAME_RE = /^[a-z0-9_]{1,80}$/;
+const INPUT_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]{0,511}$/;
 // Additional household members: person_2 … person_12 (person_1 IS
 // the flat facts). Bounded so a hostile request can't fan out.
 const MEMBER_ID_RE = /^person_(?:[2-9]|1[0-2])$/;
 const MAX_MEMBERS = 11;
-const VARIABLE_RE = /^[\w.:#/–-]{1,140}$/;
+const VARIABLE_RE = /^[\w.:#/–-]{1,1024}$/;
 // A file legal id: `us:statutes/7/2014/e/6/A` — no #fragment; run-by-root
 // roots a whole subtree, not a single rule.
 const ROOT_RE = /^[a-z]{2}(?:-[a-z]{2,3})?:[\w./–-]{1,200}$/;

@@ -20,7 +20,7 @@ import { BaseEdge, SmoothStepEdge, useReactFlow, type EdgeProps } from "@xyflow/
 import "@xyflow/react/dist/style.css";
 import dagre from "dagre";
 import { graphFitViewport, MAX_GRAPH_ZOOM } from "./zoom-bounds";
-import { dependencySubgraph, upstreamIds, upstreamNodeIds } from "./focus-layout";
+import { inputContextSubgraph, dependencySubgraph, upstreamIds, upstreamNodeIds } from "./focus-layout";
 import type { DashboardSpec, ParameterRule, TraceNode } from "./types";
 import {
   evalAst,
@@ -339,7 +339,8 @@ export function InteractiveRuleGraph({
   const { nodes, edges } = useMemo(() => {
     if (!nodeScoped) return baseGraph;
     const root = baseGraph.nodes.some(node => node.data.legalId === scopeId) ? scopeId : spec.outputs[0]?.legalId ?? null;
-    const scoped = dependencySubgraph(baseGraph.nodes, baseGraph.edges, root, Infinity);
+    const inputRoot = baseGraph.nodes.some(node => node.data.legalId === root && node.data.kind === "input");
+    const scoped = inputRoot ? inputContextSubgraph(baseGraph.nodes, baseGraph.edges, root) : dependencySubgraph(baseGraph.nodes, baseGraph.edges, root, Infinity);
     // Lay out only this dependency tree, without gaps left by other outputs.
     layout(scoped.nodes, scoped.edges, stageAspectOf(wrapRef.current), sizeHints);
     return scoped;
@@ -347,7 +348,9 @@ export function InteractiveRuleGraph({
 
   const lastCameraSelection = useRef<string | null>(null);
   const focusSelection = (id: string, duration = 750) => {
-    const ids = upstreamIds(nodes, edges, id, upstreamDepth);
+    const ids = nodes.some(node => node.data.legalId === id && node.data.kind === "input")
+      ? new Set(inputContextSubgraph(nodes, edges, id).nodes.map(node => node.id))
+      : upstreamIds(nodes, edges, id, upstreamDepth);
     const viewport = graphFitViewport(nodes.filter(node => ids.has(node.id)), canvasSize.width, canvasSize.height);
     if (!viewport || !flowRef.current) return;
     lastCameraSelection.current = id;
@@ -475,7 +478,12 @@ export function InteractiveRuleGraph({
   // Hover previews apply only when no node is selected.
   const activeHighlightId = pinnedNodeId ?? highlightNodeId ?? hoverNodeId ?? nodeIdForLegalId(scopeId);
 
-  const lineageOf = useCallback((startId: string): Set<string> => upstreamNodeIds(nodes, edges, startId, upstreamDepth), [nodes, edges, upstreamDepth]);
+  const lineageOf = useCallback((startId: string): Set<string> => {
+    const node = nodes.find(item => item.id === startId);
+    return node?.data.kind === "input"
+      ? new Set(inputContextSubgraph(nodes, edges, String(node.data.legalId)).nodes.map(item => item.id))
+      : upstreamNodeIds(nodes, edges, startId, upstreamDepth);
+  }, [nodes, edges, upstreamDepth]);
   const highlightSet = useMemo(
     () => openingOverview ? new Set(nodes.map(node => node.id)) : (activeHighlightId ? lineageOf(activeHighlightId) : null),
     [openingOverview, nodes, activeHighlightId, lineageOf],
