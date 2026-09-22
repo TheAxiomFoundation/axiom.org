@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 export type TariffLine = { hts10: string; displayCode: string; description: string; generalRate: string; column2Rate: string; generalDisposition: string; column2Disposition: string; citations: { field: string; path: string; excerpt: string }[]; memberships: { family: string; explanation: string; citationPath: string }[]; canada338Warning: boolean };
-export const tariffMetadata = { rulespecCommit: "c55778119c0dd208a5ea3366092a17d0b0392c8b", corpusRelease: "2026-08-09-usitc-hts-2026-rev15-full-schedule", certificateSha256: "7b6de59a83d37829f7c8a247722538fd1b3a35689337b591c900e7bf709caf18", builtAt: "2026-08-18T19:47:42.000Z" };
+export const tariffMetadata = { rulespecCommit: "c55778119c0dd208a5ea3366092a17d0b0392c8b", corpusRelease: "2026-08-09-usitc-hts-2026-rev15-full-schedule", builtAt: "2026-08-18T19:47:42.000Z" };
 let cachedLines: TariffLine[] | undefined;
 export function getTariffLines() {
   if (!cachedLines) cachedLines = JSON.parse(readFileSync(resolve(process.cwd(), "public/downloads/tariff-schedule.json"), "utf8")).lines;
@@ -12,9 +12,6 @@ export function getTariffLines() {
 export function findTariffLine(hts10: string) {
   return getTariffLines().find((line) => line.hts10 === hts10.replace(/\D/g, ""));
 }
-
-export const certificateUrl =
-  "https://raw.githubusercontent.com/TheAxiomFoundation/axiom-oracles/main/certificates/us-tariff-duty.json";
 
 export const coverageFamilies = [
   ["Rated schedule lines except 9802", "Encoded", "General and column 2 schedule fields."],
