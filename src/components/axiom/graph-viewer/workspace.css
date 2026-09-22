@@ -636,3 +636,18 @@ body:has(.has-workspace) .nav-bar { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .workspace-reader, .workspace-structure, .workspace-run, .results-sheet { animation: none; }
 }
+
+/* Keep the entire workspace measurable under one opening screen. */
+.workspace-opening {
+  position: fixed; inset: 0; z-index: 80;
+  display: grid; place-items: center; background: var(--color-paper);
+}
+.graph-viewer-root .app-shell[data-opening="true"] {
+  opacity: 0; pointer-events: none;
+}
+.graph-viewer-root .app-shell[data-opening="false"] {
+  opacity: 1; transition: opacity 320ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .graph-viewer-root .app-shell[data-opening] { transition: none; }
+}

@@ -53,6 +53,8 @@ interface Props {
   showValues?: boolean;
   /** The host is already displaying the graph-loading indicator. */
   suppressLoadingIndicator?: boolean;
+  /** Initial layout and overview viewport are ready to reveal together. */
+  onReady?: () => void;
   /** Restrict the canvas to the selected node and its dependencies. */
   nodeScoped?: boolean;
   /**
@@ -123,6 +125,7 @@ export function InteractiveRuleGraph({
   selectedOutputIds,
   showValues = false,
   suppressLoadingIndicator = false,
+  onReady,
   nodeScoped = false,
   parameterRules,
   dissect = "auto",
@@ -205,6 +208,8 @@ export function InteractiveRuleGraph({
   const [lod, setLod] = useState<"near" | "mid" | "far">("near");
   const lodTimer = useRef<number | null>(null);
   // Start with a readable direct-dependency frame; depth never removes nodes.
+  const readyCallback = useRef(onReady);
+  readyCallback.current = onReady;
   const [openingOverview, setOpeningOverview] = useState(true);
   const [flowReady, setFlowReady] = useState(false);
   const [upstreamDepth, setUpstreamDepth] = useState<number>(1);
@@ -379,12 +384,23 @@ export function InteractiveRuleGraph({
     if (!flow) return;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     void flow.setViewport(fitViewport, { duration: 0 });
-    const timer = window.setTimeout(() => {
+    let timer: number | undefined;
+    let secondFrame = 0;
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => {
+        readyCallback.current?.();
+        timer = window.setTimeout(() => {
       const target = pinnedLegalId ?? scopeId ?? spec.outputs[0]?.legalId;
       if (target) focusSelection(target, 1100);
       setOpeningOverview(false);
-    }, reducedMotion ? 0 : 500);
-    return () => window.clearTimeout(timer);
+        }, reducedMotion ? 0 : 650);
+      });
+    });
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      cancelAnimationFrame(secondFrame);
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
   }, [openingOverview, flowReady, fontsReady, fitViewport, nodes, pinnedLegalId, scopeId]);
 
   useEffect(() => {
