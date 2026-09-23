@@ -10,6 +10,7 @@ import { GoogleAnalytics } from "@/components/google-analytics";
 import { PostHogProvider } from "@/components/posthog-provider";
 import { SITE_URL, axiomAppHref } from "@/lib/urls";
 import { UPDATES_URL } from "@/lib/launch";
+import { DEFAULT_SHARE_IMAGE } from "@/lib/share";
 
 const mono = JetBrains_Mono({
   subsets: ["latin"],
@@ -39,9 +40,7 @@ export const metadata: Metadata = {
     // comms/Message-House.md). Keep in sync if the house changes.
     description:
       "The rules that decide who gets food assistance, health coverage, and tax credits live in closed code that no one can check — the Axiom Foundation publishes them in the open: cited, computable, and verified.",
-    // Official brand share card (axiom-brand png/social/og-paper-full.png,
-    // 1200×630, w350 lockup on paper).
-    images: ["/og-image.png"],
+    images: [DEFAULT_SHARE_IMAGE],
   },
   twitter: {
     site: "@AxiomFdn",

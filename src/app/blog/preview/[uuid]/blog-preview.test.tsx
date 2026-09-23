@@ -29,6 +29,7 @@ const DRAFT = {
   featureImageCaption: null,
   readingTime: 1,
   html: '<p>Still being written.</p>',
+  updatedAt: null,
   authors: [],
   status: 'draft',
 }

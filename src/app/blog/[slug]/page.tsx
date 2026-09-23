@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { PostArticle } from "@/components/blog/post-article";
 import { getBlogPost } from "@/lib/ghost";
+import { DEFAULT_SHARE_IMAGE, SITE_NAME } from "@/lib/share";
 
 export async function generateMetadata({
   params,
@@ -14,16 +15,28 @@ export async function generateMetadata({
   return {
     title: `${post.title} — Axiom Foundation`,
     description: post.excerpt ?? undefined,
-    openGraph: post.featureImage
-      ? {
-          images: [
+    // Next merges metadata per top-level key, so this block replaces the
+    // root layout's openGraph wholesale: it restates the url and brand
+    // card rather than inheriting them. The url resolves against the
+    // layout's metadataBase, like its canonical.
+    openGraph: {
+      type: "article",
+      url: "./",
+      siteName: SITE_NAME,
+      title: post.title,
+      description: post.excerpt ?? undefined,
+      publishedTime: post.publishedAt ?? undefined,
+      modifiedTime: post.updatedAt ?? undefined,
+      authors: post.authors.length > 0 ? post.authors : undefined,
+      images: post.featureImage
+        ? [
             {
               url: post.featureImage,
               alt: post.featureImageAlt ?? undefined,
             },
-          ],
-        }
-      : undefined,
+          ]
+        : [DEFAULT_SHARE_IMAGE],
+    },
   };
 }
 
