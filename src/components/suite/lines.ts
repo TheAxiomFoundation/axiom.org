@@ -356,12 +356,16 @@ function asSimulations(line: Omit<SuiteLine, "forAll">): Omit<SuiteLine, "forAll
     ...line,
     name: "Axiom Simulations",
     noun: "microsimulation and synthetic data",
-    body: `${line.body} Its synthetic population, Microcosm, is published as open data.`,
+    body:
+      "Free, open-source tools to understand tax and benefit policies: the Axiom Simulator, to calculate taxes and benefits or analyze reforms, and Microcosm, a synthetic population of households and firms published as open data.",
     // The population's calibration becomes the line's check.
     figure: MICROCOSM.figure,
+    // Products inside a line: a generic noun takes the house name (Axiom
+    // Simulator); a distinctive name stands alone (Microcosm, PolicyBench).
     inside: {
-      heading: "The data",
+      heading: "Products",
       items: [
+        { title: "Axiom Simulator", body: line.body, href: "/suite/simulator/app" },
         { title: "Microcosm", body: MICROCOSM.body, href: "/suite/microcosm/release" },
       ],
     },
