@@ -16,12 +16,11 @@ export function FooterGate({ children }: { children: React.ReactNode }) {
         <div>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logos/axiom-wordmark-bare.svg" alt="Axiom" className="h-[26px] w-auto" />
-          <p className="serif-italic mt-4 text-[1.05rem] text-[var(--color-ink)]">
-            Show the work. For all.
-          </p>
-          <p className="mt-3 max-w-[340px] font-body text-[0.85rem] leading-relaxed text-[var(--color-ink-muted)]">
-            The Axiom Institute builds open models of law and policy.
-          </p>
+          {pathname !== "/suite" && (
+            <p className="mt-4 max-w-[340px] font-body text-[0.85rem] leading-relaxed text-[var(--color-ink-muted)]">
+              The Axiom Institute builds open models of law and policy.
+            </p>
+          )}
         </div>
         <ul className="grid gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
           {SUITE_LINES.map((line) => (

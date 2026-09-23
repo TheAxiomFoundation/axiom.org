@@ -15,10 +15,14 @@ export interface SuiteLine {
   hue: string;
   hueDark: string;
   noun: string;
+  /** The line's subject in the homepage flip card ("{subject} for all."). */
+  subject: string;
+  /** Derived from `subject`, so the flip card and every tagline agree. */
   forAll: string;
   headline: string;
   body: string;
-  figure?: { value: string; label: string; source: string };
+  /** How the line is checked, where a real number exists; `asOf` when read on a different day. */
+  figure?: { value: string; label: string; source: string; asOf?: string };
   features: { title: string; body: string }[];
   snapshot?: { heading: string; note: string; rows: string[][] };
   cta: string;
@@ -26,7 +30,7 @@ export interface SuiteLine {
   deep?: { label: string; href: string };
 }
 
-export const SUITE_LINES: SuiteLine[] = [
+const LINES: Omit<SuiteLine, "forAll">[] = [
   {
     slug: "rules",
     name: "Axiom Rules",
@@ -34,14 +38,17 @@ export const SUITE_LINES: SuiteLine[] = [
     hue: "#B45309",
     hueDark: "#D97706",
     noun: "executable law",
-    forAll: "Computable law for all.",
+    subject: "Computable law",
     headline: "Computable law for all.",
     body:
       "Open, machine-readable encodings of the world's rules, starting with tax and benefit policy. Cited, time-aware, and executable, so anyone can run, audit, or reform them.",
+    // Sum of the dashboard's per-engine household counts, leaving out
+    // PolicyEngine (Axiom Simulator here, so not an outside check).
     figure: {
-      value: "4,796",
-      label: "RuleSpec encodings",
-      source: "axiom.org/coverage",
+      value: "424,363",
+      label: "households checked against five outside engines",
+      source: "axiom.org/oracles",
+      asOf: "22 Sep 2026",
     },
     features: [
       {
@@ -79,7 +86,7 @@ export const SUITE_LINES: SuiteLine[] = [
     hue: "#33547D",
     hueDark: "#7CA1D6",
     noun: "official statistics, as first printed",
-    forAll: "The official record for all.",
+    subject: "Official statistics",
     headline: "A record of what official sources printed, and when.",
     body:
       "The numbers government statistical agencies published, kept at first print, with provenance, revision history, and a stable address for every fact. Records keeps each value as published; it never reconciles, imputes, or models one.",
@@ -129,15 +136,16 @@ export const SUITE_LINES: SuiteLine[] = [
     hue: "#3E7A5E",
     hueDark: "#5FA588",
     noun: "synthetic economy",
-    forAll: "The economy in miniature, for all.",
+    subject: "Synthetic households",
     headline:
       "A nation is millions of people, households, and firms. We build a synthetic one that stands in for them all.",
     body:
       "Synthetic households, firms and the flows between them, calibrated to public totals from survey and administrative data: realistic enough to model tax and benefit policy for everyone, or to stand in for a population wherever one is needed, private by construction, and improved in the open.",
     figure: {
-      value: "15 Sep 2026",
-      label: "latest US release",
+      value: "95.7%",
+      label: "of 5,659 published targets hit within 10%",
       source: "huggingface.co/datasets/policyengine/populace-us",
+      asOf: "22 Sep 2026",
     },
     features: [
       {
@@ -171,7 +179,7 @@ export const SUITE_LINES: SuiteLine[] = [
     hue: "#2C7A7B",
     hueDark: "#4FD1C5",
     noun: "microsimulation model",
-    forAll: "Policy analysis for all.",
+    subject: "Policy simulations",
     headline:
       "Free, open-source tax and benefit analysis. Model policy reforms across all 50 states.",
     body:
@@ -211,14 +219,15 @@ export const SUITE_LINES: SuiteLine[] = [
     hue: "#A94E80",
     hueDark: "#C96B9C",
     noun: "scored forecasts",
-    forAll: "Forecasts scored for all to see.",
+    subject: "Scored forecasts",
     headline: "Open forecasts of public outcomes, scored against reality.",
     body:
       "Calibrated, open forecasts of the statistics and policies that shape public life. Every prediction carries its full chain of reasoning and gets scored against the record when the official number arrives. The track record is the product.",
     figure: {
-      value: "326",
-      label: "forecasts on the log",
+      value: "37 of 47",
+      label: "resolved forecasts inside their 80% interval",
       source: "app.thesisinstitute.org/log.json",
+      asOf: "22 Sep 2026",
     },
     features: [
       {
@@ -246,6 +255,11 @@ export const SUITE_LINES: SuiteLine[] = [
     deep: { label: "The log, in the mock", href: "/suite/forecasts/log" },
   },
 ];
+
+export const SUITE_LINES: SuiteLine[] = LINES.map((line) => ({
+  ...line,
+  forAll: `${line.subject} for all.`,
+}));
 
 export function suiteLine(slug: string): SuiteLine | undefined {
   return SUITE_LINES.find((line) => line.slug === slug);

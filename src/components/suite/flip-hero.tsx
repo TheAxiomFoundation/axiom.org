@@ -1,39 +1,54 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowRightIcon } from "@/components/icons";
+import { SUITE_LINES } from "./lines";
 
 /** PROTOTYPE (suite-mock): the founder's flip-card hero. One sentence,
  *  "{what it is} for all", and the subject cycles through the five lines
  *  in that line's hue. Pauses on hover or focus, and does not animate
- *  when the visitor prefers reduced motion (the first card stays). */
-const CARDS = [
-  { slug: "rules", subject: "Computable law", hue: "#B45309" },
-  { slug: "records", subject: "Official statistics", hue: "#33547D" },
-  { slug: "microcosm", subject: "The economy in miniature", hue: "#3E7A5E" },
-  { slug: "simulator", subject: "Policy simulations", hue: "#2C7A7B" },
-  { slug: "forecasts", subject: "Scored forecasts", hue: "#A94E80" },
-];
+ *  when the visitor prefers reduced motion (the first card stays).
+ *  The slot glides to the next subject's measured width across the whole
+ *  flip, clipped at its sides, so "for all." slides instead of jumping. */
+const CARDS = SUITE_LINES.map(({ slug, subject, hue }) => ({ slug, subject, hue }));
 const HOLD_MS = 2200;
 const FLIP_MS = 520;
+const GLIDE = "cubic-bezier(0.65, 0, 0.35, 1)";
 
 export function FlipHero() {
   const [i, setI] = useState(0);
+  // The card the slot is sized for: the next one from the moment a flip starts.
+  const [target, setTarget] = useState(0);
   const [flipping, setFlipping] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [widths, setWidths] = useState<number[] | null>(null);
   const reduced = useRef(false);
+  const measure = useRef<(HTMLSpanElement | null)[]>([]);
 
   useEffect(() => {
     reduced.current = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   }, []);
 
+  // The headline size follows the viewport, so widths are re-read on resize
+  // and once the display font has loaded.
+  useLayoutEffect(() => {
+    const read = () =>
+      setWidths(measure.current.map((el) => (el ? el.getBoundingClientRect().width : 0)));
+    read();
+    document.fonts?.ready.then(read);
+    window.addEventListener("resize", read);
+    return () => window.removeEventListener("resize", read);
+  }, []);
+
   useEffect(() => {
     if (paused || reduced.current) return;
+    const next = (i + 1) % CARDS.length;
     const t = setTimeout(() => {
+      setTarget(next);
       setFlipping(true);
       setTimeout(() => {
-        setI((n) => (n + 1) % CARDS.length);
+        setI(next);
         setFlipping(false);
       }, FLIP_MS / 2);
     }, HOLD_MS);
@@ -41,8 +56,6 @@ export function FlipHero() {
   }, [i, paused]);
 
   const card = CARDS[i];
-  // The slot takes the current subject's width; the subject changes while
-  // it is invisible (mid-flip), so "for all." moves only while nothing shows.
 
   return (
     <section className="relative z-1 px-8 pb-16 pt-20">
@@ -55,7 +68,16 @@ export function FlipHero() {
           onBlur={() => setPaused(false)}
           aria-live="polite"
         >
-          <span className="relative inline-block align-baseline" style={{ perspective: "900px" }} data-flip-slot>
+          <span
+            className="relative inline-block align-baseline"
+            style={{
+              width: widths ? widths[target] : undefined,
+              transition: `width ${FLIP_MS}ms ${GLIDE}`,
+              clipPath: "inset(-0.4em 0 -0.4em 0)",
+              perspective: "900px",
+            }}
+            data-flip-slot
+          >
             <Link
               href={`/suite/${card.slug}`}
               className="whitespace-nowrap no-underline"
@@ -73,10 +95,22 @@ export function FlipHero() {
             </Link>
           </span>{" "}
           <span className="whitespace-nowrap">for all.</span>
+          {CARDS.map((c, n) => (
+            <span
+              key={c.slug}
+              ref={(el) => {
+                measure.current[n] = el;
+              }}
+              aria-hidden
+              className="pointer-events-none invisible absolute left-0 top-0 whitespace-nowrap"
+            >
+              {c.subject}
+            </span>
+          ))}
         </h1>
 
         <p className="mt-6 max-w-[600px] text-pretty font-body text-[1.1rem] leading-relaxed text-[var(--color-ink-secondary)]">
-          Open, executable implementations of government rules and records, and the models that run on them.
+          The Axiom Institute builds open models of law and policy.
         </p>
         <div className="mt-8 flex flex-wrap items-center gap-4">
           <Link href="/suite/rules" className="btn-primary">

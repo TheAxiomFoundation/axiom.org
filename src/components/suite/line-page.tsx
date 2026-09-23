@@ -52,7 +52,7 @@ export function LinePage({ line }: { line: SuiteLine }) {
               <div className="mt-3 font-mono text-[0.62rem] uppercase leading-relaxed tracking-[0.16em] text-[var(--color-ink-muted)] [overflow-wrap:anywhere]">
                 {line.figure.label}
                 <br />
-                {line.figure.source} &middot; {SUITE_AS_OF}
+                {line.figure.source} &middot; {line.figure.asOf ?? SUITE_AS_OF}
               </div>
             </div>
           ) : null}

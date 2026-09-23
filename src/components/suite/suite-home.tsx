@@ -30,7 +30,7 @@ export function SuiteHome() {
 
       <section id="lines" className="relative z-1 px-8 pb-24">
         <div className="mx-auto max-w-[1280px]">
-          {/* Rules leads: the law is what every other line computes on. */}
+          {/* Rules leads the page. */}
           <Link
             href={`/suite/${rules.slug}`}
             className="card-edition group no-underline min-w-0 mb-5 grid gap-10 p-8 transition-transform duration-300 hover:-translate-y-1 md:grid-cols-[1.4fr_1fr] md:p-10"
@@ -40,9 +40,6 @@ export function SuiteHome() {
               <h2 className="mt-3 font-display text-[clamp(1.8rem,3vw,2.6rem)] font-light leading-tight tracking-[-0.01em] text-[var(--color-ink)]">
                 {rules.name}
               </h2>
-              <p className="serif-italic mt-1 text-[1.15rem] text-[var(--color-ink)]">
-                {rules.forAll}
-              </p>
               <p className="mt-4 max-w-[560px] font-body text-[1rem] leading-relaxed text-[var(--color-ink-secondary)]">
                 {rules.body}
               </p>
@@ -67,9 +64,6 @@ export function SuiteHome() {
                 <h2 className="mt-3 font-display text-[1.7rem] font-light leading-tight tracking-[-0.01em] text-[var(--color-ink)]">
                   {line.name}
                 </h2>
-                <p className="serif-italic mt-1 text-[1.05rem] text-[var(--color-ink)]">
-                  {line.forAll}
-                </p>
                 <p className="mt-3 flex-1 font-body text-[0.95rem] leading-relaxed text-[var(--color-ink-secondary)]">
                   {line.body}
                 </p>

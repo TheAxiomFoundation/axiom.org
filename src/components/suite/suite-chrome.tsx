@@ -54,9 +54,6 @@ export function SuiteChrome() {
               );
             })}
           </ul>
-          <span className="ml-auto hidden serif-italic text-[0.95rem] text-[var(--color-ink-muted)] md:inline">
-            for all
-          </span>
         </div>
       </nav>
     </header>
