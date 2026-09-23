@@ -53,8 +53,7 @@ import {
 import { buildRunRequestBody, scenarioKey } from "./run-request";
 import { trackAxiomEvent } from "@/lib/analytics";
 import {
-  readLauncherMode,
-  storeLauncherMode,
+  DEFAULT_LAUNCHER_MODE,
   type LauncherMode,
 } from "./launcher-mode";
 import { loadCorpusModules } from "@/lib/axiom/corpus-live";
@@ -78,13 +77,12 @@ export function GraphViewerApp({
   const [corpusModules, setCorpusModules] = useState<CorpusModule[] | null>(
     null,
   );
-  // The searchable library and corpus map share a persisted view choice.
+  // Every new visit starts on the map; switching views stays local to this visit.
   const [launcherMode, setLauncherMode] = useState<LauncherMode>(() =>
-    readLauncherMode(),
+    DEFAULT_LAUNCHER_MODE,
   );
   const pickLauncherMode = (mode: LauncherMode) => {
     setLauncherMode(mode);
-    storeLauncherMode(mode);
   };
   const [country, setCountry] = useState<Country>(() => initialCountry());
   const [program, setProgram] = useState<ProgramRef | null>(null);
@@ -357,15 +355,7 @@ export function GraphViewerApp({
   const graphJustLoaded = useRef(false);
   const surveyPendingRef = useRef(false);
   const pendingOpeningRef = useRef<string | null>(null);
-  // While a big selection lays out, the canvas hides behind a paper
-  // veil — the map is composed off-stage and revealed once, whole.
-  const [veiled, setVeiled] = useState(false);
-  const veilTimer = useRef<number | null>(null);
-  const veilFor = (ms: number) => {
-    setVeiled(true);
-    if (veilTimer.current) window.clearTimeout(veilTimer.current);
-    veilTimer.current = window.setTimeout(() => setVeiled(false), ms);
-  };
+  const [readyGraphKey, setReadyGraphKey] = useState<string | null>(null);
   // The scenario runner belongs to the "Run a scenario" journey only —
   // survey and rule journeys keep a quieter sidebar.
   const [scenarioMode, setScenarioMode] = useState(false);
@@ -438,10 +428,8 @@ export function GraphViewerApp({
     // so its one-time layout stall hits a still screen.
     if (outputRules.length === 0) {
       surveyPendingRef.current = true;
-      veilFor(2400);
       return;
     }
-    veilFor(1500);
     applySurvey();
   };
   const beginScenario = () => {
@@ -665,6 +653,7 @@ export function GraphViewerApp({
     setSelectedOutputs([]);
     setComposedFiles([]);
     setComposedTruncated(false);
+    setReadyGraphKey(null);
     setComposeFocus(target);
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
@@ -679,7 +668,6 @@ export function GraphViewerApp({
       }
       window.history.replaceState({}, "", url.toString());
     }
-    veilFor(1800);
     dismissLauncher();
   };
 
@@ -717,8 +705,7 @@ export function GraphViewerApp({
       url.searchParams.delete("view");
       window.history.replaceState({}, "", url.toString());
     }
-    // Return to the visitor’s preferred corpus entry view.
-    setLauncherMode(readLauncherMode());
+    // Preserve the current visit’s view when returning from a graph.
     setLauncher("open");
     launcherRef.current = "open";
   };
@@ -2262,6 +2249,11 @@ export function GraphViewerApp({
     );
   })();
 
+  const graphKey = composeFocus ?? (program ? programKey(program) : "workspace");
+  const openingWorkspace = launcher !== "open" && !error && (
+    (!graph && (programsLoading || Boolean(composeFocus))) || loading || (workspaceView === "map" && spec && Object.keys(structureTraces).length > 0 && readyGraphKey !== graphKey)
+  );
+
   return (
     <div className="graph-viewer-root has-workspace" data-workspace-view={workspaceView} data-run-stage={runResult && !editingRunInputs ? "result" : "inputs"} data-graph-mounted={graphMounted}>
     <CorpusLibrary
@@ -2274,7 +2266,8 @@ export function GraphViewerApp({
       countries={countries.map((id) => ({ id, label: countryLabel(id) }))}
       onCountryChange={setCountry}
     />
-    <main className="app-shell no-sidebar" hidden={launcher === "open"}>
+    {openingWorkspace && <div className="workspace-opening"><GraphLoading /></div>}
+    <main className="app-shell no-sidebar" data-opening={Boolean(openingWorkspace)} aria-hidden={openingWorkspace ? true : undefined} inert={Boolean(openingWorkspace)} hidden={launcher === "open"}>
 
       <section className="viewer-panel">
         {/* The picker and the field are the ways IN; inside a
@@ -2468,12 +2461,6 @@ export function GraphViewerApp({
               {runError}
             </div>
           )}
-          <div
-            className={`graph-veil ${veiled && !loading && !error ? "is-on" : ""}`}
-            aria-hidden={!veiled || loading || Boolean(error)}
-          >
-            {veiled && !loading && !error && <GraphLoading label="Arranging the graph…" />}
-          </div>
           {error && (
             <div className="status error">
               {error}
@@ -2491,9 +2478,7 @@ export function GraphViewerApp({
           )}
 
           {loading ? (
-            <div className="loading-state">
-              <GraphLoading />
-            </div>
+            <div className="loading-state" />
           ) : graph && graph.rules.length === 0 && !composeFocus ? (
             // The certified-serving API answers 200 with no rules when
             // a program's artifact exists but nothing in it is
@@ -2523,7 +2508,8 @@ export function GraphViewerApp({
             <InteractiveRuleGraph
               key={composeFocus ?? (program ? programKey(program) : "workspace")}
               nodeScoped
-              suppressLoadingIndicator={veiled || Boolean(error)}
+              suppressLoadingIndicator
+              onReady={() => setReadyGraphKey(graphKey)}
               spec={spec}
               traces={liveTraces.traces}
               showValues={Boolean(runResult)}
