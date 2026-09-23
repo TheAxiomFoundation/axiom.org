@@ -21,9 +21,12 @@ export function LinePage({ line }: { line: SuiteLine }) {
             <h1 className="mt-2 text-balance font-display text-[clamp(2rem,3.6vw,3.1rem)] font-light leading-[1.05] tracking-[-0.02em] text-[var(--color-ink)]">
               {line.headline}
             </h1>
-            <p className="serif-italic mt-4 text-[1.2rem] text-[var(--color-ink)]">
-              {line.forAll}
-            </p>
+            {/* Rules' headline already is its tagline; say it once. */}
+            {line.forAll !== line.headline ? (
+              <p className="serif-italic mt-4 text-[1.2rem] text-[var(--color-ink)]">
+                {line.forAll}
+              </p>
+            ) : null}
             <p className="mt-4 max-w-[680px] text-pretty font-body text-[1.05rem] leading-relaxed text-[var(--color-ink-secondary)]">
               {line.body}
             </p>
@@ -76,6 +79,33 @@ export function LinePage({ line }: { line: SuiteLine }) {
           ))}
         </div>
       </section>
+
+      {line.benchmarks ? (
+        <section className="relative z-1 border-t border-[var(--color-rule)] px-8 py-16">
+          <div className="mx-auto max-w-[1280px]">
+            <h2 className="heading-section mb-6">Benchmarks</h2>
+            <div className="grid gap-5 md:grid-cols-3">
+              {line.benchmarks.map((b) => {
+                const inner = (
+                  <>
+                    <h3 className="font-display text-[1.2rem] font-normal text-[var(--color-ink)]">{b.title}</h3>
+                    <p className="mt-2 font-body text-[0.95rem] leading-relaxed text-[var(--color-ink-secondary)]">{b.body}</p>
+                  </>
+                );
+                return b.href ? (
+                  <a key={b.title} href={b.href} className="card-edition no-underline p-6" style={{ borderTop: `3px solid ${line.hue}` }}>
+                    {inner}
+                  </a>
+                ) : (
+                  <div key={b.title} className="card-edition p-6" style={{ borderTop: `3px solid ${line.hue}` }}>
+                    {inner}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       {line.snapshot ? (
         <section className="relative z-1 border-t border-[var(--color-rule)] px-8 py-16">

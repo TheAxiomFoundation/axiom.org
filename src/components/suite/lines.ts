@@ -23,12 +23,48 @@ export interface SuiteLine {
   body: string;
   /** How the line is checked, where a real number exists; `asOf` when read on a different day. */
   figure?: { value: string; label: string; source: string; asOf?: string };
-  features: { title: string; body: string }[];
+  features: { title: string; body: string; href?: string }[];
+  /** Benchmarks of AI on this line's subject, where the line hosts them. */
+  benchmarks?: { title: string; body: string; href?: string }[];
   snapshot?: { heading: string; note: string; rows: string[][]; asOf?: string };
   cta: string;
   /** A product-depth page inside the mock, where one exists. */
   deep?: { label: string; href: string };
 }
+
+/** The three benchmarks of AI on law. Copy is each benchmark's own live site
+ *  (policybench.org, encodebench.org) or repo description (PolicyBench Draft,
+ *  private), read 2026-09-23. */
+const BENCHMARKS = [
+  {
+    title: "PolicyBench",
+    body: "Testing how accurately language models calculate household taxes and benefits: 39 models, 100 households, 18 outputs each, graded against Axiom Simulator reference outputs.",
+    href: "https://policybench.org",
+  },
+  {
+    title: "EncodeBench",
+    body: "Can a model write the law as code? Statutes turned into cited, executable rules, scored by deterministic gates: the encoding compiles, passes CI, and contains no number the source text doesn't.",
+    href: "https://encodebench.org",
+  },
+  {
+    title: "PolicyBench Draft",
+    body: "Can a model do the Office of Legislative Counsel's work? Deterministic evals over real congressional bill XML. Private preview, 52 cases.",
+  },
+];
+
+const POLICYBENCH_TOP_FIVE = {
+  heading: "PolicyBench, top five",
+  note: "as shown on policybench.org, snapshot 5 Sep 2026",
+  asOf: "23 Sep 2026",
+  rows: [
+    ["Rank", "Model", "Exact match"],
+    ["1", "GPT-5.6 Sol", "89.2%"],
+    ["2", "GPT-6 Astra", "88.0%"],
+    ["3", "Claude Fable 5.1", "86.9%"],
+    ["4", "Kimi K3", "86.7%"],
+    ["5", "GPT-5.6 Luna", "84.6%"],
+  ],
+};
 
 const LINES: Omit<SuiteLine, "forAll">[] = [
   {
@@ -280,39 +316,34 @@ const LINES: Omit<SuiteLine, "forAll">[] = [
       source: "policybench.org",
       asOf: "23 Sep 2026",
     },
-    features: [
-      {
-        title: "PolicyBench",
-        body: "Testing how accurately language models calculate household taxes and benefits: 39 models, 100 households, 18 outputs each, graded against Axiom Simulator reference outputs.",
-      },
-      {
-        title: "EncodeBench",
-        body: "Can a model write the law as code? Statutes turned into cited, executable rules, scored by deterministic gates: the encoding compiles, passes CI, and contains no number the source text doesn't.",
-      },
-      {
-        title: "PolicyBench Draft",
-        body: "Can a model do the Office of Legislative Counsel's work? Deterministic evals over real congressional bill XML. Private preview, 52 cases.",
-      },
-    ],
-    snapshot: {
-      heading: "PolicyBench, top five",
-      note: "as shown on policybench.org, snapshot 5 Sep 2026",
-      asOf: "23 Sep 2026",
-      rows: [
-        ["Rank", "Model", "Exact match"],
-        ["1", "GPT-5.6 Sol", "89.2%"],
-        ["2", "GPT-6 Astra", "88.0%"],
-        ["3", "Claude Fable 5.1", "86.9%"],
-        ["4", "Kimi K3", "86.7%"],
-        ["5", "GPT-5.6 Luna", "84.6%"],
-      ],
-    },
+    features: BENCHMARKS,
+    snapshot: POLICYBENCH_TOP_FIVE,
     cta: "See the board",
     deep: { label: "EncodeBench", href: "https://encodebench.org" },
   },
 ];
 
-export const SUITE_LINES: SuiteLine[] = LINES.map((line) => ({
+/** Two answers to "where does PolicyBench live?": its own Axiom Evals line
+ *  (default), or inside Axiom Rules, where each line hosts the benchmarks of
+ *  AI on its own subject (NEXT_PUBLIC_SUITE_VARIANT=pb-in-rules). */
+export const SUITE_VARIANT =
+  process.env.NEXT_PUBLIC_SUITE_VARIANT === "pb-in-rules" ? "pb-in-rules" : "evals-line";
+
+const VARIANT_LINES: Omit<SuiteLine, "forAll">[] =
+  SUITE_VARIANT === "pb-in-rules"
+    ? LINES.filter((line) => line.slug !== "evals").map((line) =>
+        line.slug === "rules"
+          ? {
+              ...line,
+              body: `${line.body} Its benchmarks test how well AI models compute the law, write it as code, and draft it.`,
+              benchmarks: BENCHMARKS,
+              snapshot: POLICYBENCH_TOP_FIVE,
+            }
+          : line,
+      )
+    : LINES;
+
+export const SUITE_LINES: SuiteLine[] = VARIANT_LINES.map((line) => ({
   ...line,
   forAll: `${line.subject} for all.`,
 }));
