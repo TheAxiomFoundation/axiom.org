@@ -65,9 +65,9 @@ describe('Landing sections', () => {
     ).toBeInTheDocument()
     // The illustrated journey replaces the terminal animation.
     expect(screen.queryByText(/axiom encode/i)).not.toBeInTheDocument()
-    // The continuous drawing has an accessible description.
+    // The 3D scene has an accessible text description.
     expect(
-      screen.getByRole('img', { name: /a continuous journey: title 7 leaves the shelf/i }),
+      screen.getByText(/A three-dimensional law library/i),
     ).toBeInTheDocument()
     // The Read / Encode / Verify step cards stay removed.
     for (const step of ['Read', 'Encode', 'Verify']) {
