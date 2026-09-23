@@ -32,8 +32,7 @@ export function EncoderSection() {
           </p>
         </Reveal>
 
-        {/* The journey film, scrubbed by scroll — replaces the old
-            terminal animation. */}
+        {/* A continuous scene: the same source volume becomes a graph. */}
         <IllustratedJourney />
 
         <Reveal
