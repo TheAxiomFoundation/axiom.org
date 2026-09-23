@@ -1,6 +1,6 @@
 import { ArrowRightIcon } from "@/components/icons";
 import { axiomAppHref } from "@/lib/urls";
-import { JourneyScrolly } from "./journey-scrolly";
+import { IllustratedJourney } from "./illustrated-journey";
 import { Reveal } from "./reveal";
 
 export function EncoderSection() {
@@ -34,7 +34,7 @@ export function EncoderSection() {
 
         {/* The journey film, scrubbed by scroll — replaces the old
             terminal animation. */}
-        <JourneyScrolly />
+        <IllustratedJourney />
 
         <Reveal
           as="p"
