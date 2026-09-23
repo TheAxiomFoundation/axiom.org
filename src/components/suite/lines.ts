@@ -8,7 +8,7 @@ export const SUITE_AS_OF = "21 Sep 2026";
 export const SUITE_DEPTH_AS_OF = "22 Sep 2026";
 
 export interface SuiteLine {
-  slug: "rules" | "records" | "microcosm" | "simulator" | "forecasts";
+  slug: "rules" | "records" | "microcosm" | "simulator" | "forecasts" | "evals";
   name: string;
   /** What the program is called today, and where it lives. */
   today: { name: string; domain: string; href: string };
@@ -24,7 +24,7 @@ export interface SuiteLine {
   /** How the line is checked, where a real number exists; `asOf` when read on a different day. */
   figure?: { value: string; label: string; source: string; asOf?: string };
   features: { title: string; body: string }[];
-  snapshot?: { heading: string; note: string; rows: string[][] };
+  snapshot?: { heading: string; note: string; rows: string[][]; asOf?: string };
   cta: string;
   /** A product-depth page inside the mock, where one exists. */
   deep?: { label: string; href: string };
@@ -253,6 +253,62 @@ const LINES: Omit<SuiteLine, "forAll">[] = [
     },
     cta: "Read the forecast log",
     deep: { label: "The log, in the mock", href: "/suite/forecasts/log" },
+  },
+  {
+    // Founder's question (2026-09-23): what would an Axiom Evals line look
+    // like with PolicyBench as one of several benchmarks? Benchmark copy and
+    // figures are each benchmark's own live site (policybench.org,
+    // encodebench.org) or repo description (PolicyBench Draft, private);
+    // the headline and body are written for the mock.
+    slug: "evals",
+    name: "Axiom Evals",
+    today: {
+      name: "PolicyBench",
+      domain: "policybench.org",
+      href: "https://policybench.org",
+    },
+    hue: "#6B4E9B",
+    hueDark: "#A78BDA",
+    noun: "benchmarks of AI on law",
+    subject: "AI benchmarks",
+    headline: "Can a model compute the law, write it, and draft it?",
+    body:
+      "Benchmarks that test AI models on the law itself: calculating a household's taxes and benefits, turning a statute into executable rules, and doing a legislative drafter's work. Headline scores come from deterministic checks against a reference.",
+    figure: {
+      value: "89.2%",
+      label: "best exact-match score among 39 models on PolicyBench",
+      source: "policybench.org",
+      asOf: "23 Sep 2026",
+    },
+    features: [
+      {
+        title: "PolicyBench",
+        body: "Testing how accurately language models calculate household taxes and benefits: 39 models, 100 households, 18 outputs each, graded against Axiom Simulator reference outputs.",
+      },
+      {
+        title: "EncodeBench",
+        body: "Can a model write the law as code? Statutes turned into cited, executable rules, scored by deterministic gates: the encoding compiles, passes CI, and contains no number the source text doesn't.",
+      },
+      {
+        title: "PolicyBench Draft",
+        body: "Can a model do the Office of Legislative Counsel's work? Deterministic evals over real congressional bill XML. Private preview, 52 cases.",
+      },
+    ],
+    snapshot: {
+      heading: "PolicyBench, top five",
+      note: "as shown on policybench.org, snapshot 5 Sep 2026",
+      asOf: "23 Sep 2026",
+      rows: [
+        ["Rank", "Model", "Exact match"],
+        ["1", "GPT-5.6 Sol", "89.2%"],
+        ["2", "GPT-6 Astra", "88.0%"],
+        ["3", "Claude Fable 5.1", "86.9%"],
+        ["4", "Kimi K3", "86.7%"],
+        ["5", "GPT-5.6 Luna", "84.6%"],
+      ],
+    },
+    cta: "See the board",
+    deep: { label: "EncodeBench", href: "https://encodebench.org" },
   },
 ];
 

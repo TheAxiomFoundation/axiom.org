@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { SUITE_AS_OF, SUITE_LINES } from "./lines";
+import { SUITE_LINES } from "./lines";
 
 /** Prototype banner + the suite's own nav: the wordmark, then the five
  *  lines. The site's normal nav is suppressed on /suite (nav-client). */
@@ -12,7 +12,7 @@ export function SuiteChrome() {
   return (
     <header className="sticky top-0 z-40">
       <div className="bg-[var(--color-ink)] px-4 py-1.5 text-center font-mono text-[0.62rem] uppercase tracking-[0.14em] text-[var(--color-paper)]">
-        Prototype &middot; not public &middot; figures read from each program&apos;s live site, {SUITE_AS_OF} and 22 Sep 2026
+        Prototype &middot; not public &middot; figures read from each program&apos;s live site, 21&ndash;23 Sep 2026
       </div>
       <nav
         aria-label="Axiom suite"

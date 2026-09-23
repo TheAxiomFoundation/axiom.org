@@ -82,7 +82,7 @@ export function LinePage({ line }: { line: SuiteLine }) {
           <div className="mx-auto max-w-[1280px]">
             <h2 className="heading-section mb-2">{line.snapshot.heading}</h2>
             <p className="mb-6 font-mono text-[0.62rem] uppercase tracking-[0.16em] text-[var(--color-ink-muted)] [overflow-wrap:anywhere]">
-              {line.snapshot.note} &middot; {SUITE_AS_OF}
+              {line.snapshot.note} &middot; read {line.snapshot.asOf ?? SUITE_AS_OF}
             </p>
             <div className="overflow-x-auto">
               <table className="w-full border-collapse text-left font-body text-[0.95rem]">

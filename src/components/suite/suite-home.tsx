@@ -21,8 +21,38 @@ function Figure({ line, large = false }: { line: SuiteLine; large?: boolean }) {
   );
 }
 
+/** A full-width card: the page opens with Rules (the reference) and closes
+ *  with Evals (the tests graded against it). */
+function WideCard({ line, className = "" }: { line: SuiteLine; className?: string }) {
+  return (
+    <Link
+      href={`/suite/${line.slug}`}
+      className={`card-edition group no-underline min-w-0 grid gap-10 p-8 transition-transform duration-300 hover:-translate-y-1 md:grid-cols-[1.4fr_1fr] md:p-10 ${className}`}
+      style={{ borderTop: `3px solid ${line.hue}` }}
+    >
+      <div>
+        <h2 className="mt-3 font-display text-[clamp(1.8rem,3vw,2.6rem)] font-light leading-tight tracking-[-0.01em] text-[var(--color-ink)]">
+          {line.name}
+        </h2>
+        <p className="mt-4 max-w-[560px] font-body text-[1rem] leading-relaxed text-[var(--color-ink-secondary)]">
+          {line.body}
+        </p>
+        <span className="mt-6 inline-flex items-center gap-2 font-body text-[0.95rem] text-[var(--color-accent-hover)]">
+          {line.cta}
+          <ArrowRightIcon className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+        </span>
+      </div>
+      <div className="flex items-end md:justify-end">
+        <Figure line={line} large />
+      </div>
+    </Link>
+  );
+}
+
 export function SuiteHome() {
-  const [rules, ...others] = SUITE_LINES;
+  const [rules, ...rest] = SUITE_LINES;
+  const evals = rest.find((line) => line.slug === "evals");
+  const others = rest.filter((line) => line.slug !== "evals");
 
   return (
     <>
@@ -30,28 +60,7 @@ export function SuiteHome() {
 
       <section id="lines" className="relative z-1 px-8 pb-24">
         <div className="mx-auto max-w-[1280px]">
-          {/* Rules leads the page. */}
-          <Link
-            href={`/suite/${rules.slug}`}
-            className="card-edition group no-underline min-w-0 mb-5 grid gap-10 p-8 transition-transform duration-300 hover:-translate-y-1 md:grid-cols-[1.4fr_1fr] md:p-10"
-            style={{ borderTop: `3px solid ${rules.hue}` }}
-          >
-            <div>
-              <h2 className="mt-3 font-display text-[clamp(1.8rem,3vw,2.6rem)] font-light leading-tight tracking-[-0.01em] text-[var(--color-ink)]">
-                {rules.name}
-              </h2>
-              <p className="mt-4 max-w-[560px] font-body text-[1rem] leading-relaxed text-[var(--color-ink-secondary)]">
-                {rules.body}
-              </p>
-              <span className="mt-6 inline-flex items-center gap-2 font-body text-[0.95rem] text-[var(--color-accent-hover)]">
-                {rules.cta}
-                <ArrowRightIcon className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-              </span>
-            </div>
-            <div className="flex items-end md:justify-end">
-              <Figure line={rules} large />
-            </div>
-          </Link>
+          <WideCard line={rules} className="mb-5" />
 
           <div className="grid gap-5 md:grid-cols-2">
             {others.map((line) => (
@@ -74,6 +83,8 @@ export function SuiteHome() {
               </Link>
             ))}
           </div>
+
+          {evals ? <WideCard line={evals} className="mt-5" /> : null}
         </div>
       </section>
 
