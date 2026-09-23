@@ -12,12 +12,40 @@ export const CERTIFICATE_SHA256 = "7b6de59a83d37829f7c8a247722538fd1b3a35689337b
 export const EXPECTED_LINE_COUNT = 13_790;
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-function siblingRepo(name: string) {
-  const candidates = [resolve(ROOT, "..", name), resolve(ROOT, "../../..", name)];
-  return candidates.find(existsSync) ?? candidates[0];
+export function siblingRepo(name: string, root = ROOT) {
+  const candidates = [resolve(root, "..", name), resolve(root, "../../..", name)];
+  return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
 }
-const RULESPEC = process.env.RULESPEC_US_PATH ?? siblingRepo("_b1wt/rulespec-us");
-const CORPUS = process.env.AXIOM_CORPUS_PATH ?? siblingRepo("axiom-corpus-b1-full");
+
+export type SourcePin = { repo: string; envVar: string; path: string; commit: string };
+export type SourcePins = { rulespec: SourcePin; corpus: SourcePin };
+
+// The one resolution of both pinned source checkouts. buildArtifact reads
+// SOURCE_PINS and the regeneration test's skip guard asks pinsAvailable()
+// about the same object, so "available" always means "the build can run".
+export function resolveSourcePins(env: Record<string, string | undefined> = process.env, root = ROOT): SourcePins {
+  return {
+    rulespec: { repo: "rulespec-us", envVar: "RULESPEC_US_PATH", path: env.RULESPEC_US_PATH ?? siblingRepo("_b1wt/rulespec-us", root), commit: RULESPEC_COMMIT },
+    corpus: { repo: "axiom-corpus", envVar: "AXIOM_CORPUS_PATH", path: env.AXIOM_CORPUS_PATH ?? siblingRepo("axiom-corpus-b1-full", root), commit: CORPUS_COMMIT },
+  };
+}
+export const SOURCE_PINS = resolveSourcePins();
+
+// One reason per pin the build cannot read; empty when every pin resolves.
+export function unavailablePins(pins: SourcePins = SOURCE_PINS) {
+  return [pins.rulespec, pins.corpus].flatMap(({ repo, envVar, path, commit }) => {
+    if (!existsSync(path)) return [`${repo} checkout not found at ${path} (set ${envVar})`];
+    try {
+      const resolved = execFileSync("git", ["-C", path, "rev-parse", "--verify", "--quiet", `${commit}^{commit}`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+      if (resolved.trim() === commit) return [];
+    } catch {
+      // rev-parse exits nonzero when the commit is absent or path is not a repository.
+    }
+    return [`${repo} commit ${commit} not found in ${path} (set ${envVar})`];
+  });
+}
+export function pinsAvailable(pins: SourcePins = SOURCE_PINS) { return unavailablePins(pins).length === 0; }
+
 const OUT_PUBLIC_JSON = resolve(ROOT, "public/downloads/tariff-schedule.json");
 const OUT_CSV = resolve(ROOT, "public/downloads/tariff-schedule.csv");
 
@@ -52,7 +80,7 @@ function git(repo: string, ...args: string[]) {
   return execFileSync("git", ["-C", repo, ...args], { encoding: "utf8", maxBuffer: 128 * 1024 * 1024 });
 }
 function show(repo: string, commit: string, path: string) { return git(repo, "show", `${commit}:${path}`); }
-function parseModule(path: string): Module { return yaml.load(show(RULESPEC, RULESPEC_COMMIT, path)) as Module; }
+function parseModule(rulespec: string, path: string): Module { return yaml.load(show(rulespec, RULESPEC_COMMIT, path)) as Module; }
 function values(rule?: Rule) { return rule?.versions?.[0]?.values ?? {}; }
 function code10(value: string | number) { return String(value).replace(/\D/g, "").padStart(10, "0"); }
 function citationCode10(value: string) { return value.replace(/\D/g, "").padEnd(10, "0"); }
@@ -84,9 +112,9 @@ export function renderMembershipExplanation(fileKey: string, rule: Rule, atom: A
   return `${copy.label}${subdivision ? ` — U.S. note ${subdivision}` : ""}${page ? `, page ${page}` : ""}`;
 }
 
-function loadCorpus() {
+function loadCorpus(corpusRepo: string) {
   const path = `data/corpus/provisions/us/statute/${CORPUS_RELEASE}.jsonl`;
-  const text = show(CORPUS, CORPUS_COMMIT, path);
+  const text = show(corpusRepo, CORPUS_COMMIT, path);
   const records = new Map<string, { body: string; citation_path: string }>();
   for (const raw of text.trim().split("\n")) {
     const row = JSON.parse(raw);
@@ -95,15 +123,16 @@ function loadCorpus() {
   return records;
 }
 
-export function buildArtifact() {
-  if (git(RULESPEC, "rev-parse", `${RULESPEC_COMMIT}^{commit}`).trim() !== RULESPEC_COMMIT) throw new Error("rulespec pin unavailable");
-  if (git(CORPUS, "rev-parse", `${CORPUS_COMMIT}^{commit}`).trim() !== CORPUS_COMMIT) throw new Error("corpus pin unavailable");
-  const corpus = loadCorpus();
+export function buildArtifact(pins: SourcePins = SOURCE_PINS) {
+  const missing = unavailablePins(pins);
+  if (missing.length) throw new Error(`tariff schedule sources unavailable: ${missing.join("; ")}`);
+  const rulespec = pins.rulespec.path;
+  const corpus = loadCorpus(pins.corpus.path);
   const lines = new Map<string, TariffLine>();
-  const chapterPaths = git(RULESPEC, "ls-tree", "-r", "--name-only", RULESPEC_COMMIT, "--", "us/policies/usitc/us-tariff-duty/lines/generated")
+  const chapterPaths = git(rulespec, "ls-tree", "-r", "--name-only", RULESPEC_COMMIT, "--", "us/policies/usitc/us-tariff-duty/lines/generated")
     .trim().split("\n").filter((p) => /\/ch\d+[a-z]?\.yaml$/.test(p));
   for (const path of chapterPaths) {
-    const mod = parseModule(path); const rules = mod.rules ?? [];
+    const mod = parseModule(rulespec, path); const rules = mod.rules ?? [];
     const bySuffix = (suffix: string) => rules.find((r) => r.name.endsWith(suffix));
     const gr = bySuffix("_general_rate"), cr = bySuffix("_column2_rate");
     const gd = bySuffix("_general_disposition"), cd = bySuffix("_column2_disposition");
@@ -131,7 +160,7 @@ export function buildArtifact() {
   }
   const incidenceFiles = ["note16-232-steel", "note18-201-solar", "note19-232-aluminum", "note20-china-301", "note2aa-122-exemptions"];
   for (const filename of incidenceFiles) {
-    const key = filename.split("-")[0]; const mod = parseModule(`us/policies/usitc/us-tariff-incidence/generated/${filename}.yaml`);
+    const key = filename.split("-")[0]; const mod = parseModule(rulespec, `us/policies/usitc/us-tariff-incidence/generated/${filename}.yaml`);
     for (const rule of mod.rules ?? []) for (const member of Object.keys(values(rule))) {
       const prefix = String(member).padStart(String(member).length % 2 ? String(member).length + 1 : String(member).length, "0");
       const atom = rule.metadata?.proof?.atoms?.find((a) => code10(a.source?.excerpt ?? "").startsWith(prefix)) ?? rule.metadata?.proof?.atoms?.[0];
@@ -141,7 +170,7 @@ export function buildArtifact() {
   }
   const sorted = [...lines.values()].sort((a, b) => a.hts10.localeCompare(b.hts10));
   if (sorted.length !== EXPECTED_LINE_COUNT) throw new Error(`expected ${EXPECTED_LINE_COUNT} lines, got ${sorted.length}`);
-  const builtAt = new Date(Number(git(RULESPEC, "show", "-s", "--format=%ct", RULESPEC_COMMIT).trim()) * 1000).toISOString();
+  const builtAt = new Date(Number(git(rulespec, "show", "-s", "--format=%ct", RULESPEC_COMMIT).trim()) * 1000).toISOString();
   const artifact = { metadata: { schema: "axiom.tariff_schedule.v1", rulespecCommit: RULESPEC_COMMIT, corpusCommit: CORPUS_COMMIT, corpusRelease: CORPUS_RELEASE, certificateSha256: CERTIFICATE_SHA256, builtAt, lineCount: sorted.length, coverageFamilies: COVERAGE_FAMILIES }, lines: sorted };
   return artifact;
 }
