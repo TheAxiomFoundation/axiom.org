@@ -4,9 +4,9 @@ Branch: `codex/illustrated-encoding-journey`.
 
 ## Story and continuity
 
-One Three.js scene covers the complete sequence: library, extracted volume, open provision, lifted passage becoming a rule, failed comparison and correction, connected dependencies/programs, and a pullback to the wider corpus. The source book and the rule persist as the camera moves. Scrolling backward reverses the same scene state.
+One Three.js scene covers the complete sequence: library, extracted volume, open provision, lifted passage becoming a rule, failed comparison and correction, connected dependencies/programs, and a pullback to the wider corpus. The lifted passage becomes the digital rule as the physical library fades away. Scrolling backward reverses the same scene state.
 
-The opening uses a hinged clothbound book and curved reading page. The highlighted passage lifts into a plaque; its two faces blend into the RuleSpec representation. Verification changes the coefficient from 0.03 to 0.30 before repeating comparison and review. At graph scale the formula blends into a simpler name/citation face. Lines connect card edges behind their text. The library recedes through atmospheric depth as the graph grows.
+The opening uses a hinged clothbound book and curved reading page. The highlighted passage lifts into a plaque; its two faces blend into the RuleSpec representation. Verification changes the coefficient from 0.03 to 0.30 before repeating comparison and review. At graph scale the formula blends into a simpler name/citation face. Lines connect card edges behind their text. A dark digital grid replaces the library, with a brief stream of data points connecting paper to code. The book fades out once the rule has taken shape; the source citation remains on the digital rule.
 
 This is an illustrative sequence, not a live execution trace. The formula is simplified. The program relationships and wider graph illustrate reuse and unfinished coverage; they are not presented as live counts or verified dependency data.
 

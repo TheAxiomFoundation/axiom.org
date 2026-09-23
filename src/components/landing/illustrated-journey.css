@@ -65,7 +65,7 @@
   line-height: 1.6;
   margin: 13px 0 0;
   color: #7d6b53;
-  max-width: 340px;
+  max-width: 300px;
 }
 .ij-source {
   position: absolute;
@@ -488,4 +488,64 @@
   .ij-legend p {
     font-size: 12px;
   }
+}
+/* The UI follows the scene from warm paper into a digital workspace. */
+.ij-stage {
+  --ij-digital: 0;
+}
+.ij-caption h3 {
+  color: color-mix(in srgb, #3c3227, #edf4f1 calc(var(--ij-digital) * 100%));
+}
+.ij-caption p {
+  color: color-mix(in srgb, #7d6b53, #aac6c8 calc(var(--ij-digital) * 100%));
+}
+.ij-kicker,
+.ij-navigation button[aria-current] {
+  color: color-mix(in srgb, #9b4c28, #9cdbd0 calc(var(--ij-digital) * 100%));
+}
+.ij-vignette {
+  opacity: calc(1 - var(--ij-digital));
+}
+.ij-footer,
+.ij-navigation button {
+  color: color-mix(in srgb, #907b5f, #9cb6bd calc(var(--ij-digital) * 100%));
+}
+.ij-progress {
+  background: color-mix(
+    in srgb,
+    #a45c33,
+    #77c5bc calc(var(--ij-digital) * 100%)
+  );
+}
+.ij-navigation {
+  border-color: color-mix(
+    in srgb,
+    #cfc1aa,
+    #365560 calc(var(--ij-digital) * 100%)
+  );
+}
+.ij-insight {
+  background: color-mix(
+    in srgb,
+    #faf6eb,
+    #18323d calc(var(--ij-digital) * 100%)
+  );
+  color: color-mix(in srgb, #61543d, #d8e8e7 calc(var(--ij-digital) * 100%));
+  border-color: color-mix(
+    in srgb,
+    #a88753,
+    #66b8ad calc(var(--ij-digital) * 100%)
+  );
+}
+.ij-insight > span,
+.ij-insight small,
+.ij-legend p {
+  color: color-mix(in srgb, #98794e, #a8c7c8 calc(var(--ij-digital) * 100%));
+}
+.ij-check-panel.has-failure strong,
+.ij-check-panel.has-failure .ij-gates {
+  color: #e7a184;
+}
+.ij-gates .is-done {
+  color: #85c4ae;
 }

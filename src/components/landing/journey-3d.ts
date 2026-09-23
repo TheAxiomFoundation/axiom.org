@@ -394,13 +394,14 @@ export function createJourneyScene(
   });
   const ruleTexture = (correct: boolean) =>
     texture(1024, 820, (ctx) => {
-      cloth(ctx, 1024, 820, "#304a3e");
+      ctx.fillStyle = "#102936";
+      ctx.fillRect(0, 0, 1024, 820);
       ctx.fillStyle = "#b9c6ad";
       ctx.font = "23px monospace";
-      ctx.fillText("RULESPEC / SNAP", 70, 83);
+      ctx.fillText("rulespec / snap.allotment", 70, 83);
       ctx.fillStyle = "#f5e7c9";
-      ctx.font = "77px Georgia";
-      ctx.fillText("Allotment", 70, 185);
+      ctx.font = "64px monospace";
+      ctx.fillText("snap_allotment", 70, 185);
       ctx.strokeStyle = "#83957a";
       ctx.beginPath();
       ctx.moveTo(70, 229);
@@ -408,7 +409,7 @@ export function createJourneyScene(
       ctx.stroke();
       ctx.fillStyle = "#c3cfb9";
       ctx.font = "26px monospace";
-      ctx.fillText("Household · Money · Month", 70, 288);
+      ctx.fillText("Household → Money / Month", 70, 288);
       ctx.fillStyle = "#f3eedb";
       ctx.font = "43px monospace";
       ctx.fillText("max(0, tfp −", 70, 410);
@@ -433,12 +434,13 @@ export function createJourneyScene(
   const wrongRule = ruleTexture(false),
     correctRule = ruleTexture(true);
   const graphRule = texture(1024, 820, (ctx) => {
-    cloth(ctx, 1024, 820, "#304a3e");
+    ctx.fillStyle = "#102936";
+    ctx.fillRect(0, 0, 1024, 820);
     ctx.fillStyle = "#b9c6ad";
     ctx.font = "44px monospace";
     ctx.fillText("SHARED RULE", 75, 125);
     ctx.fillStyle = "#f5e7c9";
-    ctx.font = "130px Georgia";
+    ctx.font = "118px monospace";
     ctx.fillText("SNAP", 75, 320);
     ctx.fillText("allotment", 75, 475);
     ctx.fillStyle = "#dfc798";
@@ -447,7 +449,7 @@ export function createJourneyScene(
   });
   const rule = new THREE.Group();
   scene.add(rule);
-  const ruleEdge = material("#b89b63");
+  const ruleEdge = material("#589d9c");
   const ruleBody = cube(rule, [1, 1, 0.06], [0, 0, 0], ruleEdge);
   const quoteMat = own(
     new THREE.MeshBasicMaterial({
@@ -492,7 +494,7 @@ export function createJourneyScene(
   scene.add(network);
   const connectionMat = own(
     new THREE.LineBasicMaterial({
-      color: "#927b4e",
+      color: "#76b6b5",
       transparent: true,
       opacity: 0,
       fog: false,
@@ -507,7 +509,7 @@ export function createJourneyScene(
   scene.add(connections);
   function labelTexture(title: string, kind: string, citation: string) {
     return texture(640, 320, (ctx) => {
-      ctx.fillStyle = "#f5eedc";
+      ctx.fillStyle = "#e0efed";
       ctx.fillRect(0, 0, 640, 320);
       ctx.strokeStyle = "#b5a17c";
       ctx.lineWidth = 2;
@@ -629,6 +631,56 @@ export function createJourneyScene(
     curvePoint = new THREE.Vector3();
   const cameraStart = new THREE.Vector3(),
     lookStart = new THREE.Vector3();
+  // The physical library gives way to a digital workspace in the same scene.
+  const isolateMaterials = (group: THREE.Object3D) => {
+    const cache = new Map<THREE.Material, THREE.Material>();
+    group.traverse((object) => {
+      if (!(object instanceof THREE.Mesh)) return;
+      const clone = (source: THREE.Material) => {
+        if (source === highlightMat) return source;
+        if (!cache.has(source)) {
+          const copy = own(source.clone());
+          copy.transparent = true;
+          cache.set(source, copy);
+        }
+        return cache.get(source)!;
+      };
+      object.material = Array.isArray(object.material)
+        ? object.material.map(clone)
+        : clone(object.material);
+    });
+    return [...cache.values()];
+  };
+  const librarySurfaces = isolateMaterials(shelving),
+    bookSurfaces = isolateMaterials(book);
+  const digitalGrid = new THREE.GridHelper(80, 64, "#559b9f", "#396371");
+  own(digitalGrid.geometry);
+  own(digitalGrid.material);
+  digitalGrid.material.transparent = true;
+  digitalGrid.material.depthWrite = false;
+  digitalGrid.position.set(0, -3.55, 6);
+  scene.add(digitalGrid);
+  const analogColor = new THREE.Color("#e8e2d6"),
+    digitalColor = new THREE.Color("#10222d"),
+    backgroundColor = new THREE.Color();
+  const dataGeo = own(new THREE.BufferGeometry());
+  dataGeo.setAttribute(
+    "position",
+    new THREE.BufferAttribute(new Float32Array(120 * 3), 3),
+  );
+  const dataMat = own(
+    new THREE.PointsMaterial({
+      color: "#91e3d3",
+      size: 0.027,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      fog: false,
+    }),
+  );
+  const dataPoints = new THREE.Points(dataGeo, dataMat);
+  dataPoints.frustumCulled = false;
+  scene.add(dataPoints);
   let target = 0,
     current = 0,
     frame = 0,
@@ -659,6 +711,17 @@ export function createJourneyScene(
     const lift = smooth((progress - 0.32) / 0.125),
       connect = smooth((progress - 0.715) / 0.1),
       wide = smooth((progress - 0.875) / 0.125);
+    const digital = smooth((progress - 0.335) / 0.13),
+      leaveBook = smooth((progress - 0.45) / 0.11);
+    backgroundColor.copy(analogColor).lerp(digitalColor, digital);
+    renderer.setClearColor(backgroundColor);
+    (scene.fog as THREE.Fog).color.copy(backgroundColor);
+    librarySurfaces.forEach((surface) => (surface.opacity = 1 - digital));
+    bookSurfaces.forEach((surface) => (surface.opacity = 1 - leaveBook));
+    book.visible = leaveBook < 1;
+    digitalGrid.visible = digital > 0;
+    digitalGrid.material.opacity = digital * 0.3;
+    host.parentElement?.style.setProperty("--ij-digital", String(digital));
     book.scale.setScalar(1);
     book.position.set(
       lerp(-0.2, lerp(-1.1, 0, open), pull),
@@ -688,7 +751,7 @@ export function createJourneyScene(
       lerp(1.0, 0.7, pull),
       lerp(0, 6.9, pull),
     );
-    highlightMat.opacity = focus * 0.23 * (1 - lift * 0.65);
+    highlightMat.opacity = focus * 0.23 * (1 - lift * 0.65) * (1 - leaveBook);
     cameraStart.copy(camera.position);
     lookStart.copy(targetLook);
     if (progress > 0.3) {
@@ -806,7 +869,7 @@ export function createJourneyScene(
     const leftPort = rule.position
       .clone()
       .add(new THREE.Vector3((-ruleBody.scale.x * rule.scale.x) / 2, 0, 0));
-    wire(sourcePosition, leftPort, lift);
+    wire(sourcePosition, leftPort, lift * (1 - leaveBook));
     nodes.forEach((node, i) => {
       const input = i < 3,
         near = node.position.clone(),
@@ -841,13 +904,31 @@ export function createJourneyScene(
       (scene.fog as THREE.Fog).near = lerp(10, wideDistance - 18, wide);
       (scene.fog as THREE.Fog).far = lerp(23, wideDistance - 1, wide);
     }
-    floor.opacity = 1 - wide;
+    floor.opacity = (1 - wide) * (1 - digital);
     registry.visible = wide > 0;
     registeredMat.opacity = wide;
     pendingMat.opacity = wide * 0.45;
     fieldLineMat.opacity = wide * 0.42;
     // The library remains behind the scene, but does not compete with the wider network.
-    shelving.visible = true;
+    shelving.visible = digital < 1;
+    const dataBuffer = dataGeo.attributes.position;
+    for (let i = 0; i < 120; i++) {
+      const t = Math.max(0, Math.min(1, (lift * 1.7 - i / 120) * 1.4));
+      const x = lerp(sourcePosition.x, rule.position.x, t),
+        y = lerp(sourcePosition.y, rule.position.y, t);
+      dataBuffer.setXYZ(
+        i,
+        x + Math.sin(i * 2.4) * 0.12 * (1 - t),
+        y +
+          Math.sin(t * Math.PI) * (0.6 + (i % 7) * 0.045) +
+          ((i % 5) - 2) * 0.025,
+        lerp(sourcePosition.z, rule.position.z, t) + 0.13,
+      );
+    }
+    dataBuffer.needsUpdate = true;
+    dataMat.opacity =
+      smooth(lift * 4) * (1 - smooth((lift - 0.72) / 0.28)) * 0.8;
+
     camera.lookAt(targetLook);
     renderer.render(scene, camera);
     renderCount++;
