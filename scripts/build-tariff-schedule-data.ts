@@ -12,7 +12,7 @@ export const CERTIFICATE_SHA256 = "7b6de59a83d37829f7c8a247722538fd1b3a35689337b
 export const EXPECTED_LINE_COUNT = 13_790;
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-export function siblingRepo(name: string, root = ROOT) {
+function siblingRepo(name: string, root = ROOT) {
   const candidates = [resolve(root, "..", name), resolve(root, "../../..", name)];
   return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
 }
@@ -21,8 +21,10 @@ export type SourcePin = { repo: string; envVar: string; path: string; commit: st
 export type SourcePins = { rulespec: SourcePin; corpus: SourcePin };
 
 // The one resolution of both pinned source checkouts. buildArtifact reads
-// SOURCE_PINS and the regeneration test's skip guard asks pinsAvailable()
-// about the same object, so "available" always means "the build can run".
+// SOURCE_PINS, refuses when unavailablePins() names a reason, and builds
+// from each pin's path and commit; the regeneration test's skip guard asks
+// pinsAvailable() about the same object, so it skips exactly when the build
+// would refuse.
 export function resolveSourcePins(env: Record<string, string | undefined> = process.env, root = ROOT): SourcePins {
   return {
     rulespec: { repo: "rulespec-us", envVar: "RULESPEC_US_PATH", path: env.RULESPEC_US_PATH ?? siblingRepo("_b1wt/rulespec-us", root), commit: RULESPEC_COMMIT },
@@ -31,12 +33,21 @@ export function resolveSourcePins(env: Record<string, string | undefined> = proc
 }
 export const SOURCE_PINS = resolveSourcePins();
 
+// git honors GIT_DIR and its relatives over -C, and hooks and `git rebase -x`
+// run from a linked worktree export GIT_DIR, which would point every call at
+// the calling repository instead of the pin. Drop what
+// `git rev-parse --local-env-vars` lists except the caller's -c config
+// (GIT_CONFIG_PARAMETERS, GIT_CONFIG_COUNT), as git does when it runs a
+// command in a submodule.
+const REPO_LOCAL_GIT_ENV = ["GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_CONFIG", "GIT_OBJECT_DIRECTORY", "GIT_DIR", "GIT_WORK_TREE", "GIT_IMPLICIT_WORK_TREE", "GIT_GRAFT_FILE", "GIT_INDEX_FILE", "GIT_NO_REPLACE_OBJECTS", "GIT_REPLACE_REF_BASE", "GIT_PREFIX", "GIT_SHALLOW_FILE", "GIT_COMMON_DIR"];
+function gitEnv() { const env = { ...process.env }; for (const key of REPO_LOCAL_GIT_ENV) delete env[key]; return env; }
+
 // One reason per pin the build cannot read; empty when every pin resolves.
 export function unavailablePins(pins: SourcePins = SOURCE_PINS) {
   return [pins.rulespec, pins.corpus].flatMap(({ repo, envVar, path, commit }) => {
     if (!existsSync(path)) return [`${repo} checkout not found at ${path} (set ${envVar})`];
     try {
-      const resolved = execFileSync("git", ["-C", path, "rev-parse", "--verify", "--quiet", `${commit}^{commit}`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+      const resolved = execFileSync("git", ["-C", path, "rev-parse", "--verify", "--quiet", `${commit}^{commit}`], { encoding: "utf8", env: gitEnv(), stdio: ["ignore", "pipe", "ignore"] });
       if (resolved.trim() === commit) return [];
     } catch {
       // rev-parse exits nonzero when the commit is absent or path is not a repository.
@@ -77,10 +88,10 @@ export const COVERAGE_FAMILIES = [
 ] as const;
 
 function git(repo: string, ...args: string[]) {
-  return execFileSync("git", ["-C", repo, ...args], { encoding: "utf8", maxBuffer: 128 * 1024 * 1024 });
+  return execFileSync("git", ["-C", repo, ...args], { encoding: "utf8", maxBuffer: 128 * 1024 * 1024, env: gitEnv() });
 }
-function show(repo: string, commit: string, path: string) { return git(repo, "show", `${commit}:${path}`); }
-function parseModule(rulespec: string, path: string): Module { return yaml.load(show(rulespec, RULESPEC_COMMIT, path)) as Module; }
+function show(pin: SourcePin, path: string) { return git(pin.path, "show", `${pin.commit}:${path}`); }
+function parseModule(rulespec: SourcePin, path: string): Module { return yaml.load(show(rulespec, path)) as Module; }
 function values(rule?: Rule) { return rule?.versions?.[0]?.values ?? {}; }
 function code10(value: string | number) { return String(value).replace(/\D/g, "").padStart(10, "0"); }
 function citationCode10(value: string) { return value.replace(/\D/g, "").padEnd(10, "0"); }
@@ -112,9 +123,9 @@ export function renderMembershipExplanation(fileKey: string, rule: Rule, atom: A
   return `${copy.label}${subdivision ? ` — U.S. note ${subdivision}` : ""}${page ? `, page ${page}` : ""}`;
 }
 
-function loadCorpus(corpusRepo: string) {
+function loadCorpus(corpusPin: SourcePin) {
   const path = `data/corpus/provisions/us/statute/${CORPUS_RELEASE}.jsonl`;
-  const text = show(corpusRepo, CORPUS_COMMIT, path);
+  const text = show(corpusPin, path);
   const records = new Map<string, { body: string; citation_path: string }>();
   for (const raw of text.trim().split("\n")) {
     const row = JSON.parse(raw);
@@ -126,10 +137,10 @@ function loadCorpus(corpusRepo: string) {
 export function buildArtifact(pins: SourcePins = SOURCE_PINS) {
   const missing = unavailablePins(pins);
   if (missing.length) throw new Error(`tariff schedule sources unavailable: ${missing.join("; ")}`);
-  const rulespec = pins.rulespec.path;
-  const corpus = loadCorpus(pins.corpus.path);
+  const { rulespec } = pins;
+  const corpus = loadCorpus(pins.corpus);
   const lines = new Map<string, TariffLine>();
-  const chapterPaths = git(rulespec, "ls-tree", "-r", "--name-only", RULESPEC_COMMIT, "--", "us/policies/usitc/us-tariff-duty/lines/generated")
+  const chapterPaths = git(rulespec.path, "ls-tree", "-r", "--name-only", "--full-tree", rulespec.commit, "--", "us/policies/usitc/us-tariff-duty/lines/generated")
     .trim().split("\n").filter((p) => /\/ch\d+[a-z]?\.yaml$/.test(p));
   for (const path of chapterPaths) {
     const mod = parseModule(rulespec, path); const rules = mod.rules ?? [];
@@ -170,8 +181,8 @@ export function buildArtifact(pins: SourcePins = SOURCE_PINS) {
   }
   const sorted = [...lines.values()].sort((a, b) => a.hts10.localeCompare(b.hts10));
   if (sorted.length !== EXPECTED_LINE_COUNT) throw new Error(`expected ${EXPECTED_LINE_COUNT} lines, got ${sorted.length}`);
-  const builtAt = new Date(Number(git(rulespec, "show", "-s", "--format=%ct", RULESPEC_COMMIT).trim()) * 1000).toISOString();
-  const artifact = { metadata: { schema: "axiom.tariff_schedule.v1", rulespecCommit: RULESPEC_COMMIT, corpusCommit: CORPUS_COMMIT, corpusRelease: CORPUS_RELEASE, certificateSha256: CERTIFICATE_SHA256, builtAt, lineCount: sorted.length, coverageFamilies: COVERAGE_FAMILIES }, lines: sorted };
+  const builtAt = new Date(Number(git(rulespec.path, "show", "-s", "--format=%ct", rulespec.commit).trim()) * 1000).toISOString();
+  const artifact = { metadata: { schema: "axiom.tariff_schedule.v1", rulespecCommit: rulespec.commit, corpusCommit: pins.corpus.commit, corpusRelease: CORPUS_RELEASE, certificateSha256: CERTIFICATE_SHA256, builtAt, lineCount: sorted.length, coverageFamilies: COVERAGE_FAMILIES }, lines: sorted };
   return artifact;
 }
 
