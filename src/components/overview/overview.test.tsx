@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
 
-import OverviewPage from '@/app/overview/page'
+import OverviewPage, { metadata } from '@/app/overview/page'
 import { WhatWeEnable } from '@/components/overview/what-we-enable'
 import { SubscribeLink } from '@/components/overview/subscribe-link'
 import {
@@ -140,5 +140,22 @@ describe('Overview page', () => {
     expect(SUBSCRIBE_URL).toContain('list-manage.com/subscribe')
     // Opens off-site, so it needs the tab-nabbing guard.
     expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'))
+  })
+})
+
+describe('Overview share card', () => {
+  // A page-level openGraph replaces the root layout's wholesale, so the
+  // block restates type, url, site name and the brand card.
+  it('sets a complete openGraph and leaves twitter to the layout', () => {
+    expect(metadata.openGraph).toEqual({
+      type: 'website',
+      url: './',
+      siteName: 'Axiom Foundation',
+      title: 'The Axiom Foundation — overview',
+      description:
+        "Open, cited, verified encodings of the world's rules, starting with tax and benefit policy.",
+      images: ['/og-image.png'],
+    })
+    expect(metadata).not.toHaveProperty('twitter')
   })
 })

@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { render, screen } from '@testing-library/react'
 import IariwWorkshopPage, { metadata } from './page'
 
@@ -51,5 +53,30 @@ describe('IariwWorkshopPage', () => {
   it('is indexable with a descriptive title', () => {
     expect(metadata.title).toMatch(/workshop/i)
     expect(metadata.robots).toBeUndefined()
+  })
+
+  // A page-level openGraph or twitter block replaces the root layout's
+  // wholesale: the event card restates type, url and site name, and
+  // leaves twitter to the layout so twitter:site survives.
+  it('sets a complete share card with the event image', () => {
+    expect(metadata.openGraph).toEqual({
+      type: 'website',
+      url: './',
+      siteName: 'Axiom Foundation',
+      images: [
+        {
+          url: 'https://axiom.org/events/iariw-2026-og2.png',
+          width: 2400,
+          height: 1350,
+        },
+      ],
+    })
+    expect(metadata).not.toHaveProperty('twitter')
+  })
+
+  it('ships the share image it points at', () => {
+    expect(
+      existsSync(join(process.cwd(), 'public/events/iariw-2026-og2.png')),
+    ).toBe(true)
   })
 })

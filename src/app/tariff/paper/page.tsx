@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { DEFAULT_SHARE_IMAGE, SITE_NAME } from "@/lib/share";
 
 /**
  * Shelled wrapper for the tariff rules working paper — the manuscript
@@ -48,10 +49,15 @@ export const metadata: Metadata = {
   title: "Executable tariff law — working paper — Axiom Foundation",
   description:
     "Deterministic derivations and conformance for the 2025–26 trade shock: 13,790 rated lines encoded as cited rules, reconciled against Yale Budget Lab's tracker across 9.9 million cells with zero unexplained mismatches; the machine-checked certificate's current verdict is no, with the remaining encoding named inside it.",
+  // This block replaces the root layout's openGraph wholesale, and
+  // without an images key the share card had no image; it names the
+  // brand card itself. og:description falls back to the description.
   openGraph: {
     type: "article",
     title: "Executable tariff law — working paper",
     url: "https://axiom.org/tariff/paper",
+    siteName: SITE_NAME,
+    images: [DEFAULT_SHARE_IMAGE],
   },
 };
 

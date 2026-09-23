@@ -1,7 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import ReceiptPage from "./page";
+import { SITE_URL } from "@/lib/urls";
+import ReceiptPage, { metadata } from "./page";
 
 // The module list mirrors the package's own docstring: the six extracted
 // modules render plainly, the two the docstring calls "also shipped" — new
@@ -60,5 +61,23 @@ describe("receipt package page", () => {
     expect(hrefs).toContain("https://github.com/TheAxiomFoundation/receipt");
     expect(hrefs).toContain("/receipt/api/");
     expect(hrefs).toContain("/receipts");
+  });
+});
+
+describe("receipt package share card", () => {
+  // The sibling opengraph-image.tsx supplies the image. An explicit
+  // images key here would take precedence over it, so the block
+  // carries everything else and no images.
+  it("sets a complete openGraph that leaves the image to opengraph-image", () => {
+    expect(metadata.openGraph).toEqual({
+      type: "website",
+      siteName: "Axiom Foundation",
+      title: "receipt — verifiable custody of agent-produced records",
+      description:
+        "Anyone can verify, offline, that an agent-produced record was never changed, backdated, or deleted. One command over a clone; trust anchors live in the verifier's own code.",
+      url: `${SITE_URL}/receipt`,
+    });
+    expect(metadata.openGraph).not.toHaveProperty("images");
+    expect(metadata).not.toHaveProperty("twitter");
   });
 });
