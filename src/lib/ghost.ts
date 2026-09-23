@@ -19,6 +19,10 @@ export interface BlogPostSummary {
   excerpt: string | null;
   publishedAt: string | null;
   featureImage: string | null;
+  /** Ghost's per-image alt text; null means the cover is decorative. */
+  featureImageAlt: string | null;
+  /** Ghost's cover caption. HTML (e.g. a photo credit), not plain text. */
+  featureImageCaption: string | null;
   readingTime: number | null;
 }
 
@@ -38,6 +42,8 @@ interface GhostPost {
   excerpt?: string | null;
   published_at?: string | null;
   feature_image?: string | null;
+  feature_image_alt?: string | null;
+  feature_image_caption?: string | null;
   reading_time?: number | null;
   html?: string | null;
   authors?: Array<{ name?: string | null }> | null;
@@ -80,6 +86,9 @@ function toSummary(post: GhostPost): BlogPostSummary {
     excerpt: post.custom_excerpt ?? post.excerpt ?? null,
     publishedAt: post.published_at ?? null,
     featureImage: post.feature_image ?? null,
+    // An empty string means "none" too, so callers need one check.
+    featureImageAlt: post.feature_image_alt || null,
+    featureImageCaption: post.feature_image_caption || null,
     readingTime: post.reading_time ?? null,
   };
 }
@@ -88,7 +97,7 @@ function toSummary(post: GhostPost): BlogPostSummary {
 export async function getBlogPosts(): Promise<BlogPostSummary[]> {
   const data = await ghostGet("posts", {
     fields:
-      "slug,title,custom_excerpt,excerpt,published_at,feature_image,reading_time",
+      "slug,title,custom_excerpt,excerpt,published_at,feature_image,feature_image_alt,feature_image_caption,reading_time",
     order: "published_at desc",
     limit: "100",
   });
@@ -108,6 +117,8 @@ function toPost(post: GhostPost): BlogPost {
 
 /** One post with its rendered HTML, or null when absent/unconfigured. */
 export async function getBlogPost(slug: string): Promise<BlogPost | null> {
+  // No `fields` filter, so the slug endpoint's default response
+  // carries feature_image_alt and feature_image_caption.
   const data = await ghostGet(`posts/slug/${encodeURIComponent(slug)}`, {
     include: "authors",
   });

@@ -15,7 +15,14 @@ export async function generateMetadata({
     title: `${post.title} — Axiom Foundation`,
     description: post.excerpt ?? undefined,
     openGraph: post.featureImage
-      ? { images: [{ url: post.featureImage }] }
+      ? {
+          images: [
+            {
+              url: post.featureImage,
+              alt: post.featureImageAlt ?? undefined,
+            },
+          ],
+        }
       : undefined,
   };
 }

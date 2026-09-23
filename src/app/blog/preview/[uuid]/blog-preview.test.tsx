@@ -25,6 +25,8 @@ const DRAFT = {
   excerpt: null,
   publishedAt: null,
   featureImage: null,
+  featureImageAlt: null,
+  featureImageCaption: null,
   readingTime: 1,
   html: '<p>Still being written.</p>',
   authors: [],
@@ -40,6 +42,20 @@ describe('Blog preview page', () => {
     expect(screen.getByText(/draft preview — not published/i)).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /test post/i })).toBeInTheDocument()
     expect(screen.getByText(/still being written/i)).toBeInTheDocument()
+  })
+
+  it('renders the draft cover with its Ghost alt text', async () => {
+    vi.mocked(getDraftPreview).mockResolvedValue({
+      ...DRAFT,
+      featureImage: 'https://example.com/draft-cover.png',
+      featureImageAlt: 'Sepia illustration of a caseworker reading a letter.',
+    })
+    render(await BlogPreviewPage({ params }))
+    expect(
+      screen.getByRole('img', {
+        name: 'Sepia illustration of a caseworker reading a letter.',
+      })
+    ).toHaveAttribute('src', 'https://example.com/draft-cover.png')
   })
 
   it('calls notFound for an unknown uuid', async () => {
