@@ -24,8 +24,8 @@ export interface SuiteLine {
   /** How the line is checked, where a real number exists; `asOf` when read on a different day. */
   figure?: { value: string; label: string; source: string; asOf?: string };
   features: { title: string; body: string; href?: string }[];
-  /** Benchmarks of AI on this line's subject, where the line hosts them. */
-  benchmarks?: { title: string; body: string; href?: string }[];
+  /** Named products the line hosts (PolicyBench in Rules; Microcosm in Simulations). */
+  inside?: { heading: string; items: { title: string; body: string; href?: string }[] };
   snapshot?: { heading: string; note: string; rows: string[][]; asOf?: string };
   cta: string;
   /** A product-depth page inside the mock, where one exists. */
@@ -323,25 +323,59 @@ const LINES: Omit<SuiteLine, "forAll">[] = [
   },
 ];
 
-/** Two answers to "where does PolicyBench live?": its own Axiom Evals line
- *  (default), or inside Axiom Rules, where each line hosts the benchmarks of
- *  AI on its own subject (NEXT_PUBLIC_SUITE_VARIANT=pb-in-rules). */
-export const SUITE_VARIANT =
-  process.env.NEXT_PUBLIC_SUITE_VARIANT === "pb-in-rules" ? "pb-in-rules" : "evals-line";
+/** Three answers to the family's shape (NEXT_PUBLIC_SUITE_VARIANT):
+ *  - evals-line (default): six lines, PolicyBench in its own Axiom Evals line.
+ *  - pb-in-rules: five lines; each line hosts the benchmarks of AI on its own
+ *    subject, so Rules holds PolicyBench, EncodeBench and PolicyBench Draft.
+ *  - four-lines: Rules, Records, Simulations, Forecasts. Microcosm folds into
+ *    Simulations as its named dataset (Nikhil, 2026-09-23: the finished
+ *    product is the simulated open data; Max: aging the population is itself
+ *    a simulation). Benchmarks stay in Rules. */
+export const SUITE_VARIANT: "evals-line" | "pb-in-rules" | "four-lines" =
+  process.env.NEXT_PUBLIC_SUITE_VARIANT === "pb-in-rules"
+    ? "pb-in-rules"
+    : process.env.NEXT_PUBLIC_SUITE_VARIANT === "four-lines"
+      ? "four-lines"
+      : "evals-line";
+
+const MICROCOSM = LINES.find((line) => line.slug === "microcosm")!;
+
+function withBenchmarksInRules(line: Omit<SuiteLine, "forAll">): Omit<SuiteLine, "forAll"> {
+  if (line.slug !== "rules") return line;
+  return {
+    ...line,
+    body: `${line.body} Its benchmarks test how well AI models compute the law, write it as code, and draft it.`,
+    inside: { heading: "Benchmarks", items: BENCHMARKS },
+    snapshot: POLICYBENCH_TOP_FIVE,
+  };
+}
+
+function asSimulations(line: Omit<SuiteLine, "forAll">): Omit<SuiteLine, "forAll"> {
+  if (line.slug !== "simulator") return line;
+  return {
+    ...line,
+    name: "Axiom Simulations",
+    noun: "microsimulation and synthetic data",
+    body: `${line.body} Its synthetic population, Microcosm, is published as open data.`,
+    // The population's calibration becomes the line's check.
+    figure: MICROCOSM.figure,
+    inside: {
+      heading: "The data",
+      items: [
+        { title: "Microcosm", body: MICROCOSM.body, href: "/suite/microcosm/release" },
+      ],
+    },
+  };
+}
 
 const VARIANT_LINES: Omit<SuiteLine, "forAll">[] =
-  SUITE_VARIANT === "pb-in-rules"
-    ? LINES.filter((line) => line.slug !== "evals").map((line) =>
-        line.slug === "rules"
-          ? {
-              ...line,
-              body: `${line.body} Its benchmarks test how well AI models compute the law, write it as code, and draft it.`,
-              benchmarks: BENCHMARKS,
-              snapshot: POLICYBENCH_TOP_FIVE,
-            }
-          : line,
-      )
-    : LINES;
+  SUITE_VARIANT === "evals-line"
+    ? LINES
+    : SUITE_VARIANT === "pb-in-rules"
+      ? LINES.filter((line) => line.slug !== "evals").map(withBenchmarksInRules)
+      : LINES.filter((line) => line.slug !== "evals" && line.slug !== "microcosm")
+          .map(withBenchmarksInRules)
+          .map(asSimulations);
 
 export const SUITE_LINES: SuiteLine[] = VARIANT_LINES.map((line) => ({
   ...line,

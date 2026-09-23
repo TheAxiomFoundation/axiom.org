@@ -80,12 +80,12 @@ export function LinePage({ line }: { line: SuiteLine }) {
         </div>
       </section>
 
-      {line.benchmarks ? (
+      {line.inside ? (
         <section className="relative z-1 border-t border-[var(--color-rule)] px-8 py-16">
           <div className="mx-auto max-w-[1280px]">
-            <h2 className="heading-section mb-6">Benchmarks</h2>
+            <h2 className="heading-section mb-6">{line.inside.heading}</h2>
             <div className="grid gap-5 md:grid-cols-3">
-              {line.benchmarks.map((b) => {
+              {line.inside.items.map((b) => {
                 const inner = (
                   <>
                     <h3 className="font-display text-[1.2rem] font-normal text-[var(--color-ink)]">{b.title}</h3>

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowRightIcon } from "@/components/icons";
-import { SUITE_LINES, type SuiteLine } from "./lines";
+import { SUITE_LINES, SUITE_VARIANT, type SuiteLine } from "./lines";
 import { FlipHero } from "./flip-hero";
 
 function Figure({ line, large = false }: { line: SuiteLine; large?: boolean }) {
@@ -49,7 +49,46 @@ function WideCard({ line, className = "" }: { line: SuiteLine; className?: strin
   );
 }
 
+function LineCard({ line }: { line: SuiteLine }) {
+  return (
+    <Link
+      href={`/suite/${line.slug}`}
+      className="card-edition group no-underline min-w-0 flex flex-col p-7 transition-transform duration-300 hover:-translate-y-1"
+      style={{ borderTop: `3px solid ${line.hue}` }}
+    >
+      <h2 className="mt-3 font-display text-[1.7rem] font-light leading-tight tracking-[-0.01em] text-[var(--color-ink)]">
+        {line.name}
+      </h2>
+      <p className="mt-3 flex-1 font-body text-[0.95rem] leading-relaxed text-[var(--color-ink-secondary)]">
+        {line.body}
+      </p>
+      <div className="mt-6 flex min-w-0 items-end justify-between gap-6">
+        <Figure line={line} />
+        <ArrowRightIcon className="h-5 w-5 shrink-0 text-[var(--color-ink-muted)] transition-transform group-hover:translate-x-1" />
+      </div>
+    </Link>
+  );
+}
+
 export function SuiteHome() {
+  if (SUITE_VARIANT === "four-lines") {
+    // Nav order (Rules, Records, Simulations, Forecasts) filled by column:
+    // the left column is what the law and the statistics say, the right
+    // column is what the models estimate from them. No labels.
+    return (
+      <>
+        <FlipHero />
+        <section id="lines" className="relative z-1 px-8 pb-24">
+          <div className="mx-auto grid max-w-[1280px] gap-5 md:grid-flow-col md:grid-cols-2 md:grid-rows-2">
+            {SUITE_LINES.map((line) => (
+              <LineCard key={line.slug} line={line} />
+            ))}
+          </div>
+        </section>
+      </>
+    );
+  }
+
   const [rules, ...rest] = SUITE_LINES;
   const evals = rest.find((line) => line.slug === "evals");
   const others = rest.filter((line) => line.slug !== "evals");

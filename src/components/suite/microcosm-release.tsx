@@ -1,5 +1,6 @@
 import data from "./data/microcosm.json";
 import { fmtDate, pct } from "./format";
+import { SUITE_VARIANT } from "./lines";
 
 type M = typeof data;
 const m = data as M;
@@ -24,8 +25,8 @@ export function MicrocosmRelease() {
       <section className="relative z-1 px-8 pb-10 pt-16">
         <div className="mx-auto max-w-[1280px]">
           <span className="kicker mb-6 inline-flex items-center">
-            <span aria-hidden className="mr-2 inline-block h-2 w-2 rounded-full" style={{ background: "#3E7A5E" }} />
-            Axiom Microcosm &middot; latest US release
+            <span aria-hidden className="mr-2 inline-block h-2 w-2 rounded-full" style={{ background: SUITE_VARIANT === "four-lines" ? "#2C7A7B" : "#3E7A5E" }} />
+            {SUITE_VARIANT === "four-lines" ? "Axiom Simulations · Microcosm" : "Axiom Microcosm"} &middot; latest US release
           </span>
           <h1 className="mt-2 font-display text-[clamp(2rem,3.6vw,3.1rem)] font-light leading-[1.05] tracking-[-0.02em] text-[var(--color-ink)]">
             <span className="font-mono text-[0.55em] tracking-normal">{m.release_id}</span>
