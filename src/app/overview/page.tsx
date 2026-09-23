@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { axiomAppHref } from "@/lib/urls";
+import { DEFAULT_SHARE_IMAGE } from "@/lib/share";
 import { ArrowRightIcon } from "@/components/icons";
 import { WhatWeEnable } from "@/components/overview/what-we-enable";
 import { SubscribeLink } from "@/components/overview/subscribe-link";
@@ -24,7 +25,7 @@ export const metadata: Metadata = {
     title: "The Axiom Foundation — overview",
     description:
       "Open, cited, verified encodings of the world's rules, starting with tax and benefit policy.",
-    images: ["/og-image.png"],
+    images: [DEFAULT_SHARE_IMAGE],
   },
 };
 

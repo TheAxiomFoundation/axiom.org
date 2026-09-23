@@ -724,12 +724,14 @@ canvas[aria-hidden] {
 .blog-prose h3 {
   font-size: 1.2rem;
 }
-.blog-prose a {
+.blog-prose a,
+.blog-cover figcaption a {
   color: var(--color-accent);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
-.blog-prose a:hover {
+.blog-prose a:hover,
+.blog-cover figcaption a:hover {
   color: var(--color-accent-hover, var(--color-accent));
 }
 .blog-prose img {
@@ -741,8 +743,12 @@ canvas[aria-hidden] {
 .blog-prose figure {
   margin: 2em 0;
 }
-.blog-prose figcaption {
+/* The cover caption (Ghost's feature_image_caption) sits outside the
+   prose block, so it sets the prose leading itself to match. */
+.blog-prose figcaption,
+.blog-cover figcaption {
   margin-top: 0.6em;
+  line-height: 1.75;
   font-family: var(--f-mono);
   font-size: 0.72rem;
   letter-spacing: 0.08em;
