@@ -5,9 +5,9 @@ import { ArrowLeft, ArrowRight, BookOpen, GitBranch, LoaderCircle, Network, Play
 import { axiomAppUrlForCitation, humanizeRuleName, humanizeSource, readableLawTarget } from "./citations";
 import type { ProgramGraph, RuleNode } from "./types";
 import { MemberCountBreakdown } from "./member-count-breakdown";
-import { declaredParameterValue, type ExplanationRun } from "./result-explanation";
+import { declaredParameterValue, recordedTableRow, type ExplanationRun } from "./result-explanation";
 import { RecordedFormula } from "./recorded-formula";
-import { lookedUpTableRow, ParameterTableView } from "./parameter-table";
+import { ParameterTableView } from "./parameter-table";
 import { rememberRule } from "./library-state";
 import { CitationNavigationContext, RuleBody } from "@/components/axiom/rule-body";
 import { peekReader, readReader } from "./reader-cache";
@@ -233,7 +233,7 @@ export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, o
         <NeighborColumn title="Built from" ids={dependencies} entries={entries} label={label} onSelect={navigate} hasRun={hasRun} value={value} activeId={activeDependency} onHighlight={setActiveDependency} renderInput={renderInput} empty="No dependencies recorded in this scope." />
         <div className="workspace-anchor" data-relationship-anchor><span className="relationship-caption">Selected rule</span><h3>{label(selectedId)}</h3>
           {rule?.table
-            ? <ParameterTableView table={rule.table} unit={rule.unit} selectedKey={hasRun ? lookedUpTableRow(graph, selectedId, valueOf)?.key : null} stale={stale} />
+            ? <ParameterTableView table={rule.table} unit={rule.unit} selectedKey={hasRun && run ? recordedTableRow(graph, run, selectedId)?.key : null} stale={stale} />
             : <SelectedNodeResult name={label(selectedId)} value={valueOf(selectedId) ?? declaredParameterValue(graph, selectedId)} parameter={rule?.kind === "parameter"} hasRun={hasRun} stale={stale} running={running} entity={rule?.entity} unit={rule?.unit} />}
           {renderInput?.(selectedId)}
           {rule?.formula ? <section className="relationship-formula"><h4>How these values combine</h4><RecordedFormula formula={rule.formula} dependencies={dependencies} entries={entries} valueOf={valueOf} hasRun={hasRun} onSelect={navigate} activeId={activeDependency} onHighlight={setActiveDependency} /></section> : !rule?.table && <p className="relationship-caption">No formula is available for this item.</p>}

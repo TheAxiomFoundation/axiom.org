@@ -41,6 +41,14 @@ export function declaredParameterValue(graph: ProgramGraph, id: string): unknown
   return undefined;
 }
 
+/** The row a run used from a table parameter, read from the index value
+ * the run RECORDED (traced, returned or submitted). Never from a site-side
+ * default: an unanswered input takes the package's own value in the
+ * engine, which the viewer can't see, so a guess would mark the wrong row. */
+export function recordedTableRow(graph: ProgramGraph, run: ExplanationRun, id: string) {
+  return lookedUpTableRow(graph, id, (indexId) => indexId === id ? undefined : recordedEvidence(graph, run, indexId)?.value);
+}
+
 /** Declared constants/defaults never stand in for unreported calculations.
  * A table parameter's value is the row its recorded index selected. */
 export function inputAwareEvidence(graph: ProgramGraph, run: ExplanationRun | null, id: string, defaults: Record<string, unknown>): unknown {
@@ -48,7 +56,7 @@ export function inputAwareEvidence(graph: ProgramGraph, run: ExplanationRun | nu
   if (evidence !== undefined && evidence !== null) return evidence;
   const input = graph.inputs.find(item => item.legalId === id);
   if (!input) {
-    const row = run ? lookedUpTableRow(graph, id, (indexId) => indexId === id ? undefined : inputAwareEvidence(graph, run, indexId, defaults)) : null;
+    const row = run ? recordedTableRow(graph, run, id) : null;
     return declaredParameterValue(graph, id) ?? row?.value ?? evidence;
   }
   return defaults[input.name] ?? defaults[input.name.replace(/^input\./, "")];
@@ -190,7 +198,7 @@ export function ResultExplanation({ graph, run, rootId, stale, onRead, onGraph, 
     const entry = entries.get(key);
     return entry && "entity" in entry && entry.entity ? entry.entity : "Entity";
   };
-  const rawValue = (key: string): unknown => recordedEvidence(graph, run, key)?.value ?? declaredParameterValue(graph, key) ?? lookedUpTableRow(graph, key, (indexId) => indexId === key ? undefined : rawValue(indexId))?.value;
+  const rawValue = (key: string): unknown => recordedEvidence(graph, run, key)?.value ?? declaredParameterValue(graph, key) ?? recordedTableRow(graph, run, key)?.value;
   const instanceMap = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
   const entityGroups = new Map<string, Set<string>>();
   const relevant = new Set<string>();

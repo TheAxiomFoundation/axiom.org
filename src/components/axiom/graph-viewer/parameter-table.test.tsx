@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { lookedUpTableRow, ParameterTableView, tableIndexId, tableRowFor } from "./parameter-table";
-import { inputAwareEvidence, type ExplanationRun } from "./result-explanation";
+import { inputAwareEvidence, recordedTableRow, type ExplanationRun } from "./result-explanation";
 import type { ParameterTable, ProgramGraph, RuleNode } from "./types";
 
 const FILE = "us-ny:statutes/NYC/11-1701";
@@ -49,6 +49,30 @@ describe("table parameter lookup", () => {
     expect(inputAwareEvidence(graph, null, baseTax.legalId, {})).toBeUndefined();
     // Scalar parameters keep their declared literal.
     expect(inputAwareEvidence(graph, run, `${FILE}#first_ceiling`, {})).toBe("21600");
+  });
+});
+
+describe("table rows need a recorded index", () => {
+  // CO SNAP: the allotment table is keyed by an input. Unanswered, the
+  // engine takes the package's own household (two people → $546), which
+  // the viewer can't see — its default of 1 would mark the $298 row.
+  const allotment = rule("snap_maximum_allotment_table", {
+    kind: "parameter", formula: null,
+    table: { indexedBy: "household_size", rows: [{ key: "1", value: 298 }, { key: "2", value: 546 }, { key: "3", value: 785 }], rowCount: 3 },
+  });
+  const snap: ProgramGraph = {
+    rules: [allotment], relations: [], ownOutputs: [], terminalOutputs: [],
+    inputs: [{ legalId: `${FILE}#input.household_size`, name: "household_size", fileLegalId: FILE }],
+  };
+  it("never picks a row from a site-side default", () => {
+    const unanswered: ExplanationRun = { outputs: {}, trace: [], submittedFacts: {} };
+    expect(inputAwareEvidence(snap, unanswered, allotment.legalId, { household_size: 1 })).toBeUndefined();
+    expect(recordedTableRow(snap, unanswered, allotment.legalId)).toBeNull();
+  });
+  it("picks the row an answered input selects", () => {
+    const answered: ExplanationRun = { outputs: {}, trace: [], submittedFacts: { household_size: 3 } };
+    expect(inputAwareEvidence(snap, answered, allotment.legalId, { household_size: 1 })).toBe(785);
+    expect(recordedTableRow(snap, answered, allotment.legalId)?.key).toBe("3");
   });
 });
 
