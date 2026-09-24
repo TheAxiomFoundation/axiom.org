@@ -4,6 +4,7 @@ import { NodeMetadata } from "./node-metadata";
 import { HouseholdComposer } from "./household-composer";
 import { RecordedFormula } from "./recorded-formula";
 import { ResultExplanation, inputAwareEvidence } from "./result-explanation";
+import { lookedUpTableRow, ParameterTableView } from "./parameter-table";
 import { GraphLoading } from "./graph-loading";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -2097,6 +2098,13 @@ export function GraphViewerApp({
         executed.add(node.legalId);
       }
       let value: unknown = ranValue ?? scenarioValue;
+      // The engine traces no parameters: a table shows the row the
+      // run's recorded index picked.
+      if (value === undefined && node.ruleKind === "parameter" && graph) {
+        value = lookedUpTableRow(graph, node.legalId, (id) =>
+          inputAwareEvidence(graph, runResult, id, inputMeta.defaults),
+        )?.value;
+      }
       const next: TraceNode = {
         ...node,
         value:
@@ -2134,7 +2142,7 @@ export function GraphViewerApp({
       executed,
       valueOf,
     };
-  }, [structureTraces, runResult, debouncedScenario]);
+  }, [structureTraces, runResult, debouncedScenario, graph, inputMeta.defaults]);
 
   useEffect(() => {
     if (!runResult) return;
@@ -3132,6 +3140,14 @@ export function GraphViewerApp({
               })()
             ) : null}
             {/* Reference details and formula stay visible beside the graph. */}
+            {graph && legalId && rule?.table && (
+              <ParameterTableView
+                table={rule.table}
+                unit={rule.unit}
+                selectedKey={runResult ? lookedUpTableRow(graph, legalId, (id) => inputAwareEvidence(graph, runResult, id, inputMeta.defaults))?.key : null}
+                stale={resultsStale}
+              />
+            )}
             {legalId && <NodeMetadata key={legalId} id={legalId} entry={rule ?? input ?? graph?.relations.find(item => item.legalId === legalId) ?? {}} />}
             {formula && rule?.kind !== "parameter" ? (
               <section className="node-inspector-code" aria-label="Formula">

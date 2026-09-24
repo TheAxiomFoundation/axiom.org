@@ -7,6 +7,7 @@ import type { ProgramGraph, RuleNode } from "./types";
 import { MemberCountBreakdown } from "./member-count-breakdown";
 import { declaredParameterValue, type ExplanationRun } from "./result-explanation";
 import { RecordedFormula } from "./recorded-formula";
+import { lookedUpTableRow, ParameterTableView } from "./parameter-table";
 import { rememberRule } from "./library-state";
 import { CitationNavigationContext, RuleBody } from "@/components/axiom/rule-body";
 import { peekReader, readReader } from "./reader-cache";
@@ -189,7 +190,13 @@ export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, o
     if (typeof raw === "object") return Object.entries(raw).map(([entity, result]) => `${humanizeRuleName(entity)}: ${formatValue(result)}`).join(" · ");
     return String(raw);
   };
-  const value = (id: string) => formatValue(valueOf(id));
+  const value = (id: string) => {
+    const raw = valueOf(id);
+    // A table the run's index doesn't single out (one row per member, or
+    // no recorded index) is still declared law, not a missing result.
+    const table = graph.rules.find((item) => item.legalId === id)?.table;
+    return (raw === undefined || raw === null) && table ? `Table · ${table.rowCount} rows` : formatValue(raw);
+  };
   const results = [...entries.values()].filter((entry) => `${label(entry.legalId)} ${entry.legalId}`.toLowerCase().includes(query.toLowerCase()));
   const roots = [...new Set([...graph.terminalOutputs, ...graph.ownOutputs])].filter((id) => entries.has(id));
   return <div className="rule-workspace">
@@ -225,9 +232,11 @@ export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, o
       <RelationshipDiagram activeId={activeDependency}><div className={`workspace-neighborhood ${dependencies.length ? "has-dependencies" : ""} ${consumers.length ? "has-consumers" : ""}`} key={selectedId}>
         <NeighborColumn title="Built from" ids={dependencies} entries={entries} label={label} onSelect={navigate} hasRun={hasRun} value={value} activeId={activeDependency} onHighlight={setActiveDependency} renderInput={renderInput} empty="No dependencies recorded in this scope." />
         <div className="workspace-anchor" data-relationship-anchor><span className="relationship-caption">Selected rule</span><h3>{label(selectedId)}</h3>
-          <SelectedNodeResult name={label(selectedId)} value={valueOf(selectedId) ?? declaredParameterValue(graph, selectedId)} parameter={rule?.kind === "parameter"} hasRun={hasRun} stale={stale} running={running} entity={rule?.entity} unit={rule?.unit} />
+          {rule?.table
+            ? <ParameterTableView table={rule.table} unit={rule.unit} selectedKey={hasRun ? lookedUpTableRow(graph, selectedId, valueOf)?.key : null} stale={stale} />
+            : <SelectedNodeResult name={label(selectedId)} value={valueOf(selectedId) ?? declaredParameterValue(graph, selectedId)} parameter={rule?.kind === "parameter"} hasRun={hasRun} stale={stale} running={running} entity={rule?.entity} unit={rule?.unit} />}
           {renderInput?.(selectedId)}
-          {rule?.formula ? <section className="relationship-formula"><h4>How these values combine</h4><RecordedFormula formula={rule.formula} dependencies={dependencies} entries={entries} valueOf={valueOf} hasRun={hasRun} onSelect={navigate} activeId={activeDependency} onHighlight={setActiveDependency} /></section> : <p className="relationship-caption">No formula is available for this item.</p>}
+          {rule?.formula ? <section className="relationship-formula"><h4>How these values combine</h4><RecordedFormula formula={rule.formula} dependencies={dependencies} entries={entries} valueOf={valueOf} hasRun={hasRun} onSelect={navigate} activeId={activeDependency} onHighlight={setActiveDependency} /></section> : !rule?.table && <p className="relationship-caption">No formula is available for this item.</p>}
           <button onClick={() => changeView("read")}>Read this rule <ArrowRight size={14} /></button></div>
         <NeighborColumn title="Used by" ids={consumers.map((item) => item.legalId)} entries={entries} label={label} onSelect={navigate} hasRun={hasRun} value={value} activeId={activeDependency} onHighlight={setActiveDependency} empty="No consumers recorded in this scope." />
       </div></RelationshipDiagram>

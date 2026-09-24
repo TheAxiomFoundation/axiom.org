@@ -5,6 +5,7 @@ import type { ProgramGraph } from "./types";
 import { humanizeRuleName } from "./citations";
 import { parseFormulaStrict, type AstNode } from "./formula";
 import { resolveLogicIdentifier } from "./rule-logic";
+import { lookedUpTableRow } from "./parameter-table";
 
 export type ExplanationRun = {
   outputs: Record<string, unknown>;
@@ -40,12 +41,16 @@ export function declaredParameterValue(graph: ProgramGraph, id: string): unknown
   return undefined;
 }
 
-/** Declared constants/defaults never stand in for unreported calculations. */
+/** Declared constants/defaults never stand in for unreported calculations.
+ * A table parameter's value is the row its recorded index selected. */
 export function inputAwareEvidence(graph: ProgramGraph, run: ExplanationRun | null, id: string, defaults: Record<string, unknown>): unknown {
   const evidence = run ? recordedEvidence(graph, run, id)?.value : undefined;
   if (evidence !== undefined && evidence !== null) return evidence;
   const input = graph.inputs.find(item => item.legalId === id);
-  if (!input) return declaredParameterValue(graph, id) ?? evidence;
+  if (!input) {
+    const row = run ? lookedUpTableRow(graph, id, (indexId) => indexId === id ? undefined : inputAwareEvidence(graph, run, indexId, defaults)) : null;
+    return declaredParameterValue(graph, id) ?? row?.value ?? evidence;
+  }
   return defaults[input.name] ?? defaults[input.name.replace(/^input\./, "")];
 }
 
@@ -185,7 +190,7 @@ export function ResultExplanation({ graph, run, rootId, stale, onRead, onGraph, 
     const entry = entries.get(key);
     return entry && "entity" in entry && entry.entity ? entry.entity : "Entity";
   };
-  const rawValue = (key: string) => recordedEvidence(graph, run, key)?.value ?? declaredParameterValue(graph, key);
+  const rawValue = (key: string): unknown => recordedEvidence(graph, run, key)?.value ?? declaredParameterValue(graph, key) ?? lookedUpTableRow(graph, key, (indexId) => indexId === key ? undefined : rawValue(indexId))?.value;
   const instanceMap = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
   const entityGroups = new Map<string, Set<string>>();
   const relevant = new Set<string>();

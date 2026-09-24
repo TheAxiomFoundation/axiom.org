@@ -91,6 +91,9 @@ export interface RuleNode {
   inputDeps: string[];
   relationDeps: string[];
   formula?: string | null;
+  // A parameter encoded as a lookup table (null formula): one value per
+  // row, the row picked by the run's value of `indexedBy`.
+  table?: ParameterTable;
   // The verifier certificate that makes this node servable at all —
   // present on rules from the certified-serving API.
   certificateId?: string;
@@ -98,6 +101,19 @@ export interface RuleNode {
   certificationStatus?: "certified" | "validated" | "encoded" | "pending" | string;
   // "Encoded, incomplete by declaration" — the module self-reports gaps.
   incompleteByDeclaration?: boolean;
+}
+
+export interface ParameterTableRow {
+  key: string;
+  value: string | number | boolean;
+}
+
+export interface ParameterTable {
+  // The rule or input whose value selects the row, when declared.
+  indexedBy: string | null;
+  // In key order; large tables arrive in part (rowCount is the full size).
+  rows: ParameterTableRow[];
+  rowCount: number;
 }
 
 export interface InputNode {
