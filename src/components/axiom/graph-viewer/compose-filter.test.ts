@@ -152,10 +152,27 @@ describe("composeRootOutput (root-first selection)", () => {
     expect(composeRootOutput(g)).toBe("f#cdcc");
   });
 
-  it("breaks closure-size ties deterministically", () => {
-    const g = graph([leafA, leafB]);
-    expect(composeRootOutput(g)).toBe("f#floor");
+  it("breaks closure-size ties by declaration order", () => {
+    expect(composeRootOutput(graph([leafA, leafB]))).toBe("f#rate");
     expect(composeRootOutput(graph([leafB, leafA]))).toBe("f#floor");
+  });
+
+  it("opens parallel filing-status rules on the first one declared", () => {
+    // NYC § 11-1701 declares one tax per filing status, each with the
+    // same closure shape. The header names the first; the canvas must
+    // draw it too, not the alphabetically earlier head-of-household.
+    const statuses = ["joint_or_surviving_spouse", "head_of_household", "other_resident"];
+    const rules = statuses.flatMap((status) => [
+      rule({ legalId: `nyc#${status}_rate`, name: `${status}_rate` }),
+      rule({
+        legalId: `nyc#subdivision_a_${status}_tax`,
+        name: `subdivision_a_${status}_tax`,
+        ruleDeps: [`nyc#${status}_rate`],
+      }),
+    ]);
+    expect(composeRootOutput(graph(rules))).toBe(
+      "nyc#subdivision_a_joint_or_surviving_spouse_tax",
+    );
   });
 
   it("returns null for an empty graph", () => {

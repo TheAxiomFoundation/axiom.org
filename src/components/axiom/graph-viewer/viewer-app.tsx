@@ -451,8 +451,8 @@ export function GraphViewerApp({
     [graph],
   );
   // How much law rolls up into a rule: the size of its dependency
-  // closure. One ranking, asked twice — once to pick the summit of
-  // the graph, once to pick the headline of a run.
+  // closure — the measure that picks the headline of a run, the same
+  // one composeRootOutput uses to pick the summit of the graph.
   const closureSizeOf = useMemo(
     () => (legalId: string) => {
       const seen = new Set<string>();
@@ -470,20 +470,17 @@ export function GraphViewerApp({
   );
   // The summit: the terminal result with the deepest dependency
   // closure — the box the whole law rolls up into (Allotment,
-  // Benefit). The easiest handhold for a first look.
-  const summitOutput = useMemo(() => {
-    if (!graph) return null;
-    let best: string | null = null;
-    let bestSize = -1;
-    for (const id of graph.terminalOutputs) {
-      const size = closureSizeOf(id);
-      if (size > bestSize) {
-        bestSize = size;
-        best = id;
-      }
-    }
-    return best;
-  }, [graph, closureSizeOf]);
+  // Benefit). The easiest handhold for a first look. It is the same
+  // pick that leads a composed selection — the canvas scopes to
+  // selectedOutputs[0] while the header names the summit, so two
+  // rankings would draw one rule under another's title.
+  const summitOutput = useMemo(
+    () =>
+      graph && graph.terminalOutputs.length > 0
+        ? composeRootOutput(graph)
+        : null,
+    [graph],
+  );
   const consumersOf = (legalId: string) =>
     (graph?.rules ?? []).filter(
       (rule) =>
