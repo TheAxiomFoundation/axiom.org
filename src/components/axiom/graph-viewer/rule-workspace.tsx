@@ -8,6 +8,7 @@ import { MemberCountBreakdown } from "./member-count-breakdown";
 import { declaredParameterValue, recordedTableRow, type ExplanationRun } from "./result-explanation";
 import { RecordedFormula } from "./recorded-formula";
 import { ParameterTableView } from "./parameter-table";
+import { arrive, EMPTY_TRAIL, loadTrail, locationHref, pushStep, replaceStep, saveTrail, type Trail, type TrailLocation } from "./workspace-trail";
 import { rememberRule } from "./library-state";
 import { CitationNavigationContext, RuleBody } from "@/components/axiom/rule-body";
 import { peekReader, readReader } from "./reader-cache";
@@ -112,28 +113,59 @@ export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, o
 }) {
   const [activeDependency, setActiveDependency] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  type Location = { id: string; view: WorkspaceView; trail: string[] };
-  const [history, setHistory] = useState<Location[]>([]);
-  const previousLocation = useRef<Location>({ id: selectedId, view, trail: explanationTrail });
-  const trailKey = JSON.stringify(explanationTrail);
+  // Every step — a new rule, view, or explanation drill-down — is a
+  // browser history entry (workspace-trail.ts), so the browser's back and
+  // forward walk exactly what the Back button walks, and both survive a
+  // reload. The URL is written here and only here: a navigation that
+  // rewrote the URL in place first made the entry it left point at where
+  // it went.
+  const storageKey = rootTarget ?? (typeof window === "undefined" ? "app" : new URLSearchParams(window.location.search).get("program") ?? "app");
+  const [trail, setTrail] = useState<Trail>(EMPTY_TRAIL);
+  const trailRef = useRef(trail);
+  const commitTrail = (next: Trail) => {
+    trailRef.current = next;
+    setTrail(next);
+    saveTrail(storageKey, next);
+  };
+  const previousLocation = useRef<TrailLocation>({ id: selectedId, view, trail: explanationTrail });
+  const explanationKey = JSON.stringify(explanationTrail);
+  // Only the user's own input makes a step: a move that follows a
+  // click, tap or key within moments. The graph settling on load (the
+  // opening pick, then a linked selection) or a run landing seconds
+  // later moves the selection too; those replace the current entry
+  // instead of stacking entries the user never visited.
+  const lastInputAt = useRef(Number.NEGATIVE_INFINITY);
+  useEffect(() => {
+    const mark = () => { lastInputAt.current = performance.now(); };
+    const kinds = ["pointerdown", "keydown", "click"] as const;
+    for (const kind of kinds) window.addEventListener(kind, mark, true);
+    return () => {
+      for (const kind of kinds) window.removeEventListener(kind, mark, true);
+    };
+  }, []);
   useEffect(() => {
     const next = { id: selectedId, view, trail: explanationTrail };
     const previous = previousLocation.current;
-    if (previous.id !== next.id || previous.view !== next.view || JSON.stringify(previous.trail) !== trailKey) {
-      setHistory(items => [...items, previous]);
-      previousLocation.current = next;
+    if (previous.id === next.id && previous.view === next.view && JSON.stringify(previous.trail) === explanationKey) return;
+    previousLocation.current = next;
+    const byUser = performance.now() - lastInputAt.current < 1500;
+    lastInputAt.current = Number.NEGATIVE_INFINITY;
+    const entry = { ...next, url: locationHref(next, window.location.href) };
+    // Leaving a run the engine now refuses is a correction, not a step:
+    // recording it would bounce Back straight into the refused view.
+    const correction = previous.view === "run" && next.view === "map" && !runReady && previous.id === next.id;
+    if (!byUser || correction) {
+      window.history.replaceState(window.history.state, "", entry.url);
+      commitTrail(replaceStep(trailRef.current, entry));
+      return;
     }
-  }, [selectedId, view, trailKey]);
+    window.history.pushState(window.history.state, "", entry.url);
+    commitTrail(pushStep(trailRef.current, entry));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, view, explanationKey]);
   const back = () => {
-    const previous = history.at(-1);
-    if (!previous) { onOverview?.(); return; }
-    // Update the observed location first so restoring does not create a new step.
-    previousLocation.current = previous;
-    setHistory(items => items.slice(0, -1));
-    saveLocation(previous.id, previous.view);
-    onSelect(previous.id);
-    onViewChange(previous.view);
-    onExplanationTrailChange?.(previous.trail);
+    if (!trail.past.length) { onOverview?.(); return; }
+    window.history.back();
   };
   const [navigatorOpen, setNavigatorOpen] = useState(false);
   const searchButtonRef = useRef<HTMLButtonElement>(null);
@@ -146,30 +178,39 @@ export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, o
     ...graph.inputs.map((input) => [input.legalId, { ...input, kind: "Input" }] as const),
     ...graph.relations.map((relation) => [relation.legalId, { ...relation, kind: "Relation" }] as const),
   ]), [graph]);
-  const navigationRef = useRef({ onSelect, onViewChange });
-  navigationRef.current = { onSelect, onViewChange };
+  const navigationRef = useRef({ onSelect, onViewChange, onExplanationTrailChange, runReady });
+  navigationRef.current = { onSelect, onViewChange, onExplanationTrailChange, runReady };
   useEffect(() => {
-    const restore = () => {
+    // Arriving on an entry (load, reload, back, forward): take the
+    // trail's location for it without recording a new step. An entry
+    // the trail doesn't know (a fresh link) starts a fresh trail there.
+    const restore = (fromStorage: boolean) => {
+      const { trail: arrived, entry } = arrive(fromStorage ? loadTrail(storageKey) : trailRef.current, window.location.href);
       const params = new URLSearchParams(window.location.search);
-      const selection = params.get("selection");
-      if (selection && entries.has(selection)) navigationRef.current.onSelect(selection);
-      const mode = params.get("view");
-      if (mode === "read" || mode === "structure" || mode === "run" || mode === "map") navigationRef.current.onViewChange(mode);
+      const selection = entry?.id ?? params.get("selection");
+      const requested = entry?.view ?? params.get("view");
+      const mode = requested === "run" && !navigationRef.current.runReady ? "map" : requested;
+      const current = previousLocation.current;
+      const target: TrailLocation = {
+        id: selection && entries.has(selection) ? selection : current.id,
+        view: mode === "read" || mode === "structure" || mode === "run" || mode === "map" ? mode : current.view,
+        trail: entry?.trail ?? current.trail,
+      };
+      previousLocation.current = target;
+      lastInputAt.current = Number.NEGATIVE_INFINITY;
+      commitTrail(entry ? arrived : { past: [], current: { ...target, url: window.location.href }, future: [] });
+      if (target.id !== current.id) navigationRef.current.onSelect(target.id);
+      if (target.view !== current.view) navigationRef.current.onViewChange(target.view);
+      if (JSON.stringify(target.trail) !== JSON.stringify(current.trail)) navigationRef.current.onExplanationTrailChange?.(target.trail);
     };
-    restore();
-    window.addEventListener("popstate", restore);
-    return () => window.removeEventListener("popstate", restore);
+    restore(true);
+    const onPop = () => restore(false);
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entries]);
-  const saveLocation = (id: string, mode: WorkspaceView) => {
-    const url = new URL(window.location.href);
-    url.searchParams.delete("source");
-    url.searchParams.set("selection", id);
-    url.searchParams.set("view", mode);
-    window.history.replaceState(window.history.state, "", url);
-  };
   const changeView = (mode: WorkspaceView) => {
     if (mode === view) return;
-    saveLocation(selectedId, mode);
     onViewChange(mode);
   };
   const { rule, dependencies, consumers } = useMemo(() => neighborhood(graph, selectedId), [graph, selectedId]);
@@ -180,7 +221,6 @@ export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, o
   const label = (id: string) => humanizeRuleName(entries.get(id)?.name ?? id.split("#").pop() ?? id);
   const navigate = (id: string) => {
     if (id === selectedId || !entries.has(id)) return;
-    saveLocation(id, view);
     onSelect(id);
     setNavigatorOpen(false);
   };
@@ -218,7 +258,7 @@ export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, o
     <div className="workspace-subject">
       <div className="workspace-return-actions">
         {onOverview && <button type="button" className="workspace-button" data-testid="back-to-overview" onClick={onOverview} title="Back to the corpus overview">Overview</button>}
-      <button className="workspace-button" disabled={!history.length && !onOverview} aria-label={history.at(-1)?.view !== undefined && history.at(-1)?.view !== view ? "Back to previous view" : history.length ? "Back to previous rule" : onOverview ? "Back to library" : "Back to previous rule"} onClick={back}><ArrowLeft size={16} /> Back</button>
+      <button className="workspace-button" disabled={!trail.past.length && !onOverview} aria-label={trail.past.at(-1)?.view !== undefined && trail.past.at(-1)?.view !== view ? "Back to previous view" : trail.past.length ? "Back to previous rule" : onOverview ? "Back to library" : "Back to previous rule"} onClick={back}><ArrowLeft size={16} /> Back</button>
       </div>
       <div><h1>{label(selectedId)}</h1>
         <p className="workspace-citation">{rule?.source ? humanizeSource(rule.source) : "Source not specified"}</p>

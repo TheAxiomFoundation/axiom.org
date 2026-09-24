@@ -239,13 +239,8 @@ export function GraphViewerApp({
   };
   // Clicking makes this node the root of the visible dependency graph.
   const focusNode = (data: IrgNodeData) => {
+    // The workspace records the step (URL + history) as the selection lands.
     setInspected(data);
-    if ("legalId" in data && data.legalId) {
-      const url = new URL(window.location.href);
-      url.searchParams.set("selection", data.legalId);
-      url.searchParams.set("view", "map");
-      window.history.replaceState(window.history.state, "", url);
-    }
     trackNodeOpened(data.kind);
     // The graph coordinates selection layout and camera as one transition.
   };
@@ -1406,7 +1401,8 @@ export function GraphViewerApp({
       lensSyncedToUrl.current = false;
     }
     if (url.toString() !== window.location.href) {
-      window.history.replaceState({}, "", url.toString());
+      // Keep the entry's state: it carries the workspace's steps.
+      window.history.replaceState(window.history.state, "", url.toString());
     }
   }, [program, lensFocusId, composeFocus, requestedProgramKey, launcher]);
 
@@ -1675,9 +1671,6 @@ export function GraphViewerApp({
   useEffect(() => {
     if (workspaceView === "run" && (runBlocked || (composeFocus && composeRunReady === false))) {
       setWorkspaceView("map");
-      const url = new URL(window.location.href);
-      url.searchParams.set("view", "map");
-      window.history.replaceState(window.history.state, "", url);
     }
   }, [workspaceView, runBlocked, composeFocus, composeRunReady]);
 
@@ -2606,15 +2599,9 @@ export function GraphViewerApp({
             {workspaceView === "run" && graph && resultHeadline?.legalId && <>
               {<ResultExplanation trail={explanationTrail} onTrailChange={setExplanationTrail} key={resultHeadline.legalId} graph={graph} run={runResult} rootId={resultHeadline.legalId} stale={resultsStale} onEditInputs={() => setEditingRunInputs(true)} onRelationships={(id) => {
                 inspectRule(id); setWorkspaceView("structure"); setRunPanelOpen(false);
-                const url = new URL(window.location.href);
-                url.searchParams.set("selection", id); url.searchParams.set("view", "structure"); url.searchParams.delete("source"); url.hash = "";
-                window.history.replaceState(window.history.state, "", url);
               }} onGraph={(id) => {
                 inspectRule(id); setWorkspaceView("map"); flyTo(id, true);
-                const url = new URL(window.location.href);
-                url.searchParams.set("selection", id); url.searchParams.set("view", "map"); url.searchParams.delete("source"); url.hash = "";
-                window.history.pushState(window.history.state, "", url);
-              }} onRead={(id) => { inspectRule(id); setWorkspaceView("read"); const url = new URL(window.location.href); url.searchParams.set("selection", id); url.searchParams.set("view", "read"); window.history.replaceState(window.history.state, "", url); }} />}
+              }} onRead={(id) => { inspectRule(id); setWorkspaceView("read"); }} />}
             </>}
             {workspaceView !== "run" && <div className="results-adjust" aria-label="Adjust and run again">
               {(() => {
@@ -3186,13 +3173,7 @@ export function GraphViewerApp({
               </button>
             ) : null}
             {lawHref ? (
-              <button type="button" className="node-inspector-link" data-testid="read-the-law" onClick={() => {
-                setWorkspaceView("read");
-                const url = new URL(window.location.href);
-                url.searchParams.set("view", "read");
-                if ("legalId" in inspected && inspected.legalId) url.searchParams.set("selection", inspected.legalId);
-                window.history.replaceState(window.history.state, "", url);
-              }}>Read the law →</button>
+              <button type="button" className="node-inspector-link" data-testid="read-the-law" onClick={() => setWorkspaceView("read")}>Read the law →</button>
             ) : null}
           </section>
             );
