@@ -451,8 +451,8 @@ export function GraphViewerApp({
     [graph],
   );
   // How much law rolls up into a rule: the size of its dependency
-  // closure. One ranking, asked twice — once to pick the summit of
-  // the graph, once to pick the headline of a run.
+  // closure — the measure that picks the headline of a run, the same
+  // one composeRootOutput uses to pick the summit of the graph.
   const closureSizeOf = useMemo(
     () => (legalId: string) => {
       const seen = new Set<string>();
@@ -470,20 +470,17 @@ export function GraphViewerApp({
   );
   // The summit: the terminal result with the deepest dependency
   // closure — the box the whole law rolls up into (Allotment,
-  // Benefit). The easiest handhold for a first look.
-  const summitOutput = useMemo(() => {
-    if (!graph) return null;
-    let best: string | null = null;
-    let bestSize = -1;
-    for (const id of graph.terminalOutputs) {
-      const size = closureSizeOf(id);
-      if (size > bestSize) {
-        bestSize = size;
-        best = id;
-      }
-    }
-    return best;
-  }, [graph, closureSizeOf]);
+  // Benefit). The easiest handhold for a first look. It is the same
+  // pick that leads a composed selection — the canvas scopes to
+  // selectedOutputs[0] while the header names the summit, so two
+  // rankings would draw one rule under another's title.
+  const summitOutput = useMemo(
+    () =>
+      graph && graph.terminalOutputs.length > 0
+        ? composeRootOutput(graph)
+        : null,
+    [graph],
+  );
   const consumersOf = (legalId: string) =>
     (graph?.rules ?? []).filter(
       (rule) =>
@@ -1895,12 +1892,16 @@ export function GraphViewerApp({
       .sort((a, b) => b.size - a.size || a.name.localeCompare(b.name));
     // A lens narrows the question: answer the graph on screen. If the
     // run computed nothing inside it, the whole-run summit still beats
-    // an empty panel.
-    const onCanvas = ranked.find(
-      (entry) => entry.legalId && inScopeIds.has(entry.legalId),
-    );
+    // an empty panel. The summit leads when it's in scope: parallel
+    // rules tie on closure size (NYC's per-filing-status taxes), and the
+    // name order above would headline a sibling the canvas doesn't draw.
+    const inScope = (entry: (typeof ranked)[number]) =>
+      Boolean(entry.legalId && inScopeIds.has(entry.legalId));
+    const onCanvas =
+      ranked.find((entry) => entry.legalId === summitOutput && inScope(entry)) ??
+      ranked.find(inScope);
     return onCanvas ?? ranked[0] ?? null;
-  }, [runResult, ruleByFragment, closureSizeOf, inScopeIds]);
+  }, [runResult, ruleByFragment, closureSizeOf, inScopeIds, summitOutput]);
 
   // Take me there — wherever "there" is: in-scope results fly in
   // place; out-of-scope results leave the lens and re-root on the
