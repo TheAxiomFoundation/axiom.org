@@ -3,8 +3,8 @@ import { NodeMetadata } from "./node-metadata";
 
 import { HouseholdComposer } from "./household-composer";
 import { RecordedFormula } from "./recorded-formula";
-import { ResultExplanation, inputAwareEvidence } from "./result-explanation";
-import { lookedUpTableRow, ParameterTableView } from "./parameter-table";
+import { ResultExplanation, inputAwareEvidence, recordedTableRow } from "./result-explanation";
+import { ParameterTableView } from "./parameter-table";
 import { GraphLoading } from "./graph-loading";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -51,7 +51,7 @@ import {
   filterStandaloneRules,
   focusedComposeRule,
 } from "./compose-filter";
-import { buildRunRequestBody, scenarioKey } from "./run-request";
+import { buildRunRequestBody, mergeRunBatches, scenarioKey, traceRootIds, TRACE_BATCH_SIZE, type RunPayload } from "./run-request";
 import { trackAxiomEvent } from "@/lib/analytics";
 import {
   DEFAULT_LAUNCHER_MODE,
@@ -1131,7 +1131,7 @@ export function GraphViewerApp({
       const byId = new Map((graph?.rules ?? []).map((r) => [r.legalId, r]));
       const visited = new Set<string>();
       const walk = (id: string) => {
-        if (visited.has(id) || reachable.size > 160) return;
+        if (visited.has(id) || reachable.size >= 2 * TRACE_BATCH_SIZE) return;
         visited.add(id);
         const rule = byId.get(id);
         if (!rule) return;
@@ -1139,9 +1139,9 @@ export function GraphViewerApp({
         for (const dep of rule.ruleDeps) walk(dep);
       };
       // Every run computes the outermost layer and everything in
-      // between: trace from the terminal results regardless of what
-      // the canvas currently selects.
-      const traceRoots = (graph?.terminalOutputs ?? []).filter((id) =>
+      // between: trace from the graph's tops regardless of what the
+      // canvas currently selects.
+      const traceRoots = (graph ? traceRootIds(graph) : []).filter((id) =>
         walkRuleById.has(id),
       );
       for (const id of traceRoots) walk(id);
@@ -1243,9 +1243,14 @@ export function GraphViewerApp({
       const ordered = [...reachable].sort(
         (a, b) => Number(isUnitScoped(b)) - Number(isUnitScoped(a)),
       );
-      const bareNames = [
+      const allNames = [
         ...new Set(ordered.map((id) => id.split("#").pop() ?? id)),
-      ].slice(0, 96);
+      ];
+      const bareNames = allNames.slice(0, TRACE_BATCH_SIZE);
+      // Past the per-request cap, a second batch lights the rest (CO
+      // SNAP traces 115 rules). Best effort: its failure never costs
+      // the primary run.
+      const overflowNames = allNames.slice(TRACE_BATCH_SIZE, 2 * TRACE_BATCH_SIZE);
       const tryVariables = async (variables: string[]) => {
         lastRunRequest.current = requestBody(variables);
         const result = await attempt(variables);
@@ -1308,18 +1313,20 @@ export function GraphViewerApp({
         }
         response = bare;
       }
-      const data = (await response.json()) as {
-        outputs: Record<string, number | string | boolean | null>;
-        trace: Array<{
-      variable: string;
-      value: unknown;
-      instances?: Array<{ entity_id: string; value: unknown }>;
-    }>;
+      let data = (await response.json()) as RunPayload & {
         provenance?: {
           ledger_id: string;
           vintage: { engine_release: string };
         } | null;
       };
+      if (overflowNames.length > 0) {
+        try {
+          const extra = await attempt(overflowNames);
+          if (extra.ok) data = mergeRunBatches(data, (await extra.json()) as RunPayload);
+        } catch {
+          // Rate limited or refused: the primary batch stands alone.
+        }
+      }
       setRunResult({ ...data, submittedFacts: { ...scenario }, submittedPersonIds: Object.fromEntries(["person_1", ...extraMembers].map((id, index) => [id, `person:1:${index + 1}`])) });
       setEditingRunInputs(false);
       trackRun("ok");
@@ -2101,9 +2108,7 @@ export function GraphViewerApp({
       // The engine traces no parameters: a table shows the row the
       // run's recorded index picked.
       if (value === undefined && node.ruleKind === "parameter" && graph) {
-        value = lookedUpTableRow(graph, node.legalId, (id) =>
-          inputAwareEvidence(graph, runResult, id, inputMeta.defaults),
-        )?.value;
+        value = recordedTableRow(graph, runResult, node.legalId)?.value;
       }
       const next: TraceNode = {
         ...node,
@@ -2142,7 +2147,7 @@ export function GraphViewerApp({
       executed,
       valueOf,
     };
-  }, [structureTraces, runResult, debouncedScenario, graph, inputMeta.defaults]);
+  }, [structureTraces, runResult, debouncedScenario, graph]);
 
   useEffect(() => {
     if (!runResult) return;
@@ -3144,7 +3149,7 @@ export function GraphViewerApp({
               <ParameterTableView
                 table={rule.table}
                 unit={rule.unit}
-                selectedKey={runResult ? lookedUpTableRow(graph, legalId, (id) => inputAwareEvidence(graph, runResult, id, inputMeta.defaults))?.key : null}
+                selectedKey={runResult ? recordedTableRow(graph, runResult, legalId)?.key : null}
                 stale={resultsStale}
               />
             )}
