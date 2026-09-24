@@ -303,15 +303,21 @@ export function parseFormulaStrict(src: string): AstNode | null {
 
 export type EvalValue = number | boolean | string | null;
 
+/** A parameter's lookup table: one value per key, in key order. */
+export interface EvalTable {
+  rows: Array<{ key: string; value: string | number | boolean }>;
+}
+
 /**
  * Evaluate the AST against a lookup that resolves named identifiers to
  * concrete values (typically pulled from the engine's trace). Returns null
- * for sub-expressions we can't compute (table lookups, count_where without
- * member-level data, missing identifiers).
+ * for sub-expressions we can't compute (table lookups without the table's
+ * rows, count_where without member-level data, missing identifiers).
  */
 export function evalAst(
   ast: AstNode,
   lookup: (name: string) => EvalValue,
+  lookupTable?: (name: string) => EvalTable | null | undefined,
 ): EvalValue {
   switch (ast.kind) {
     case "ident":
@@ -321,23 +327,23 @@ export function evalAst(
     case "bool":
       return ast.value;
     case "logical": {
-      const l = evalAst(ast.left, lookup);
-      const r = evalAst(ast.right, lookup);
+      const l = evalAst(ast.left, lookup, lookupTable);
+      const r = evalAst(ast.right, lookup, lookupTable);
       if (l === null || r === null) return null;
       const lb = toBool(l);
       const rb = toBool(r);
       return ast.op === "and" ? lb && rb : lb || rb;
     }
     case "unary": {
-      const v = evalAst(ast.operand, lookup);
+      const v = evalAst(ast.operand, lookup, lookupTable);
       if (v === null) return null;
       if (ast.op === "not") return !toBool(v);
       if (ast.op === "-" && typeof v === "number") return -v;
       return null;
     }
     case "comparison": {
-      const l = evalAst(ast.left, lookup);
-      const r = evalAst(ast.right, lookup);
+      const l = evalAst(ast.left, lookup, lookupTable);
+      const r = evalAst(ast.right, lookup, lookupTable);
       if (l === null || r === null) return null;
       if (ast.op === "==") return l === r;
       if (ast.op === "!=") return l !== r;
@@ -353,8 +359,8 @@ export function evalAst(
       return null;
     }
     case "arith": {
-      const l = evalAst(ast.left, lookup);
-      const r = evalAst(ast.right, lookup);
+      const l = evalAst(ast.left, lookup, lookupTable);
+      const r = evalAst(ast.right, lookup, lookupTable);
       if (typeof l !== "number" || typeof r !== "number") return null;
       switch (ast.op) {
         case "+": return l + r;
@@ -365,12 +371,12 @@ export function evalAst(
       return null;
     }
     case "ifElse": {
-      const c = evalAst(ast.cond, lookup);
+      const c = evalAst(ast.cond, lookup, lookupTable);
       if (c === null) return null;
-      return toBool(c) ? evalAst(ast.then, lookup) : evalAst(ast.else_, lookup);
+      return toBool(c) ? evalAst(ast.then, lookup, lookupTable) : evalAst(ast.else_, lookup, lookupTable);
     }
     case "call": {
-      const args = ast.args.map((a) => evalAst(a, lookup));
+      const args = ast.args.map((a) => evalAst(a, lookup, lookupTable));
       switch (ast.name) {
         case "min":
           return args.every((a) => typeof a === "number")
@@ -399,10 +405,19 @@ export function evalAst(
       // count_where / sum_where / etc. need member-level data we don't have here.
       return null;
     }
-    case "index":
-      // Table lookup (e.g. snap_max_allotment_table[5]) — engine resolves it,
-      // we can't (we don't have the table data on the client).
-      return null;
+    case "index": {
+      // Table lookup (e.g. snap_max_allotment_table[5]): resolvable when the
+      // caller has the table's rows; otherwise only the engine knows.
+      const table = ast.target.kind === "ident" ? lookupTable?.(ast.target.name) : null;
+      const key = table ? evalAst(ast.index, lookup, lookupTable) : null;
+      if (!table || key === null || typeof key === "boolean") return null;
+      const row =
+        table.rows.find((item) => item.key === String(key)) ??
+        (String(key).trim() === ""
+          ? undefined
+          : table.rows.find((item) => item.key.trim() !== "" && Number(item.key) === Number(key)));
+      return row ? row.value : null;
+    }
     case "error":
       return null;
   }

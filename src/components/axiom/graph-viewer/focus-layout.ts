@@ -116,3 +116,18 @@ export function inputContextSubgraph(nodes: Node[], edges: Edge[], legalId: stri
   for (const id of downstream) for (const upstream of upstreamNodeIds(nodes, edges, id)) ids.add(upstream);
   return { nodes: nodes.filter(node => ids.has(node.id)).map(node => ({...node, position:{...node.position}})), edges: edges.filter(edge => ids.has(edge.source) && ids.has(edge.target)).map(edge => ({...edge})) };
 }
+
+/** The root whose tree the canvas draws for a requested node: the first
+ *  output (outputs lead with the summit) whose dependency tree holds it,
+ *  so an intermediate rule opens inside the tree that uses it. An input
+ *  keeps its own context view; a node no output reaches is its own root. */
+export function scopeRootFor(nodes: Node[], edges: Edge[], outputIds: string[], requested: string | null): string | null {
+  const fallback = outputIds.find((id) => nodes.some((node) => node.data.legalId === id)) ?? null;
+  const target = requested ? nodes.find((node) => node.data.legalId === requested) : undefined;
+  if (!target || !requested) return fallback;
+  if (target.data.kind === "input") return requested;
+  for (const output of outputIds) {
+    if (output === requested || upstreamIds(nodes, edges, output).has(target.id)) return output;
+  }
+  return requested;
+}

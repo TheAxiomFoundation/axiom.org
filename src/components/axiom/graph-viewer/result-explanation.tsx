@@ -46,6 +46,15 @@ export function declaredParameterValue(graph: ProgramGraph, id: string): unknown
  * default: an unanswered input takes the package's own value in the
  * engine, which the viewer can't see, so a guess would mark the wrong row. */
 export function recordedTableRow(graph: ProgramGraph, run: ExplanationRun, id: string) {
+  // "Used by this run" also needs a reader the run computed: a table whose
+  // readers the engine refused (NYC's subdivision B, in force from 2027)
+  // was never looked up, whatever row its index would pick.
+  const readers = graph.rules.filter((rule) => rule.ruleDeps.includes(id));
+  const read = readers.some((rule) => {
+    const value = recordedEvidence(graph, run, rule.legalId)?.value;
+    return value !== undefined && value !== null;
+  });
+  if (!read) return null;
   return lookedUpTableRow(graph, id, (indexId) => indexId === id ? undefined : recordedEvidence(graph, run, indexId)?.value);
 }
 
