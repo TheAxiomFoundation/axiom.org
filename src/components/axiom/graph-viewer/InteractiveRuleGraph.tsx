@@ -402,7 +402,10 @@ export function InteractiveRuleGraph({
     }
     if (pinnedLegalId && pinnedLegalId !== lastCameraSelection.current) focusSelection(pinnedLegalId);
     if (!pinnedLegalId) lastCameraSelection.current = null;
-  }, [pinnedLegalId, nodes, canvasSize]);
+    // Re-run when the opening flight ends: a selection made during it
+    // (or while the page sat in a background tab, where the flight
+    // waits on animation frames) still re-scopes afterwards.
+  }, [pinnedLegalId, nodes, canvasSize, openingOverview]);
 
   const fitViewport = useMemo(() => graphFitViewport(nodes, canvasSize.width, canvasSize.height), [nodes, canvasSize]);
   const minGraphZoom = fitViewport?.zoom ?? .01;
