@@ -10,11 +10,16 @@ const APP_HOST = "app.axiom-foundation.org";
 // (``/us/statute/26/3101``) don't 404. Marketing routes (``/``,
 // ``/about``, ``/format`` …) are not in this list and pass through
 // unchanged so the dev server can also serve the marketing site.
-// Any two-letter jurisdiction slug (optionally state-suffixed) plus
-// the legacy "canada" alias. Hardcoding a jurisdiction list here
-// silently 404'd every newer corpus jurisdiction (nz, be, de, …).
-// No marketing route uses a two-letter root segment.
-const APP_ROOT_PREFIX_RE = /^\/(?:[a-z]{2}(?:-[a-z]{2})?|canada)(?:\/|$)/;
+// Any two-letter jurisdiction slug with an optional subdivision
+// suffix, plus the legacy "canada" alias. Hardcoding a jurisdiction
+// list here silently 404'd every newer corpus jurisdiction (nz, be,
+// de, …). The suffix takes more than two characters because UK
+// billing authorities are named rather than coded ("uk-wigan",
+// "uk-bath-and-north-east-somerset"); a two-letter-only suffix sent
+// every council page to the marketing landing.
+// No marketing route uses a two-letter first segment.
+const APP_ROOT_PREFIX_RE =
+  /^\/(?:[a-z]{2}(?:-[a-z0-9]+)*|canada)(?:\/|$)/;
 
 // Jurisdictions whose corpus rows navigate by provision_id rather
 // than citation_path (plus the legacy "canada" alias). The v2
