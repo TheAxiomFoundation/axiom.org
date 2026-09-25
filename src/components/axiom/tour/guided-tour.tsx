@@ -10,6 +10,7 @@ import {
   type TourSurface,
 } from "./tour-state";
 import { trackAxiomEvent } from "@/lib/analytics";
+import { ANCHOR_POLL_MS, ANCHOR_WAIT_MS } from "./tour-timing";
 
 export type TourStep = {
   /** CSS selector to spotlight; omit for a centered, un-anchored step. */
@@ -43,10 +44,12 @@ export type TourStep = {
   deferred?: boolean;
 };
 
-/** How long to wait for the first anchored element — the Plane's DOM
- *  appears well after mount (ssr:false + corpus fetch). */
-const ANCHOR_WAIT_MS = 8000;
-const ANCHOR_POLL_MS = 250;
+/** Below this width a tour never auto-starts: the site's phone
+ *  breakpoint, where popovers are cramped and the replay pill is
+ *  hidden (tour.css). A surface whose own small-screen rule sits
+ *  elsewhere passes its query instead — the Plane's is 820px, where
+ *  its notice covers the canvas. */
+export const DEFAULT_SMALL_SCREEN_QUERY = "(max-width: 767px)";
 
 function stepVisible(selector: string): boolean {
   const el = document.querySelector(selector);
@@ -56,20 +59,27 @@ function stepVisible(selector: string): boolean {
 /**
  * One-time guided tour for a surface, plus its replay affordance (a
  * quiet "?" pinned bottom-left). Auto-runs on first visit only —
- * never inside the embed iframe, never on small screens — and steps
- * whose anchor is absent or hidden are dropped rather than shown
- * floating in space.
+ * never inside the embed iframe, never on small screens (the
+ * surface's `smallScreenQuery`) — and steps whose anchor is absent or
+ * hidden are dropped rather than shown floating in space.
  */
 export function GuidedTour({
   surface,
   steps,
   onEnd,
+  smallScreenQuery = DEFAULT_SMALL_SCREEN_QUERY,
 }: {
   surface: TourSurface;
   steps: TourStep[];
   /** Runs when the tour tears down, however it ends — undoes anything
    *  a step's onEnter set in motion (e.g. the field spotlight). */
   onEnd?: () => void;
+  /** The viewport range where this surface counts as a small screen:
+   *  no auto-start inside it, checked at mount and again on every
+   *  anchor poll, since the anchors can take seconds to land and the
+   *  window can narrow meanwhile. Defaults to the site's phone
+   *  breakpoint. */
+  smallScreenQuery?: string;
 }) {
   const activeRef = useRef<ReturnType<typeof driver> | null>(null);
   const stepsRef = useRef(steps);
@@ -189,7 +199,8 @@ export function GuidedTour({
   useEffect(() => {
     if (hasSeenTour(surface)) return;
     if (window.self !== window.top) return;
-    if (window.matchMedia("(max-width: 767px)").matches) return;
+    const smallScreen = window.matchMedia(smallScreenQuery);
+    if (smallScreen.matches) return;
     if (new URLSearchParams(window.location.search).get("embed") === "1")
       return;
     const anchors = stepsRef.current
@@ -203,6 +214,12 @@ export function GuidedTour({
     // xl) counts as settled; the visibility filter drops it at start.
     let waited = 0;
     const timer = window.setInterval(() => {
+      // Narrowed into the small-screen range while the anchors were
+      // loading: a small screen now, whatever it was at mount.
+      if (smallScreen.matches) {
+        window.clearInterval(timer);
+        return;
+      }
       const allSettled = anchors.every((sel) => document.querySelector(sel));
       if (
         (allSettled || waited >= ANCHOR_WAIT_MS) &&
@@ -216,7 +233,7 @@ export function GuidedTour({
       if (waited > ANCHOR_WAIT_MS) window.clearInterval(timer);
     }, ANCHOR_POLL_MS);
     return () => window.clearInterval(timer);
-  }, [start, surface]);
+  }, [smallScreenQuery, start, surface]);
 
   // App-state changes can invalidate the active step's anchor (the
   // law popup opening over its own trigger). The host dispatches

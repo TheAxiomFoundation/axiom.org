@@ -32,24 +32,57 @@ Flow's inline `height: 100%`. A `height: auto` anywhere in that chain
 collapses everything below it to 0px while the nodes stay in the DOM.
 `styles.css` does exactly that below 900px (its stacked side-panel layout,
 which this app no longer renders); `plane.css` restores the chain in its
-own `≤900px` block. Below 820px `plane.css` also shows the
-`.small-screen-notice` over the canvas.
+own `≤900px` block.
+
+Three widths shape the Plane, and they must agree on what a visitor sees:
+
+- **≤900px** — the upstream sheet's stacked layout. `plane.css` restores
+  `height: 100%` on the shell and the panel, so the chain stays whole and
+  the graph fills the panel; the rest of that upstream block still
+  applies (the panel's padding drops from 24px to 16px and its overflow
+  turns visible), so the insets are tighter than on a desktop.
+- **≤820px** — the Plane's small-screen boundary. `plane.css` shows the
+  `.small-screen-notice` over the canvas and hides the tour's replay
+  pill; `plane-breakpoints.ts` exports the same number, and
+  `plane-tour.tsx` hands it to `GuidedTour` as its `smallScreenQuery`,
+  so no tour starts under the notice (the gate is checked at mount and
+  again on every anchor poll, since the anchors follow the graph fetch
+  by seconds), and `PlaneTour` ends a running tour through the host's
+  `axiom:tour-end` event if the window narrows into this range. Before
+  that, the tour gated on the site's 767px breakpoint, and 768–820px
+  showed the notice with a tour card floating over it.
+- **≤767px** — the site's phone breakpoint: `tour.css` hides the replay
+  pill and `GuidedTour`'s default gate suppresses the reader's tour.
 
 Two checks guard this:
 
 - `canvas-height.test.ts` (Vitest) resolves the real sheets, in load
   order, for the real element chain at eight widths from 1400px to 390px
-  and asserts no link resolves to `auto`. `css-cascade.ts` is the small
-  resolver behind it (media queries, specificity, source order — the part
-  of the cascade jsdom does not evaluate).
+  and asserts no link resolves to `auto`; it also pins the notice block's
+  media query to `PLANE_SMALL_SCREEN_QUERY` and the replay pill to
+  `display: none` wherever the notice shows. `css-cascade.ts` is the
+  small resolver behind it (media queries, specificity, source order —
+  the part of the cascade jsdom does not evaluate). `plane-tour.test.tsx`
+  checks that both tour stages read that same query.
 - `bun scripts/graph-viewport-check.mjs` measures the rendered chain in
   headless Chromium (Playwright's, as the poster capture uses) against a
   running server (`--url https://axiom.org` for production) and fails
-  when the canvas is under 300px or renders no nodes. Run it by hand after touching any of the three sheets: the
-  expected picture at 900×971 is the graph filling the panel under the
-  controls row; at 640×900 and 390×844 the notice covers a canvas that is
-  still laid out underneath (the table shows `noticeShown: true` with a
-  full-height `canvas`).
+  when the canvas is under 300px, renders no nodes, or the tour
+  disagrees with the notice: a tour popover open while the notice is
+  up, or none open above the boundary. It watches each width through
+  the tour's whole auto-start window (the anchor wait plus one poll,
+  from `tour/tour-timing.ts`, plus a margin), because a tour whose
+  anchor never lands opens that late, and a shorter watch would miss a
+  card opening under the notice. The measurement lives in
+  `scripts/graph-viewport-check.lib.ts`; `graph-viewport-check.test.ts`
+  drives it with a fake browser on a virtual clock and fails it when a
+  card opens at the fallback under the notice. Run the script by hand
+  after touching any of the three sheets or the tour, and look at
+  900px, 821px, 820px and 640px: at 900×971 and 821×900 the graph fills
+  the panel under the controls row with the first tour card centred
+  (`tourShown: true`); at 820×900 and 640×900 the notice covers a
+  canvas that is still laid out underneath, with no tour card
+  (`noticeShown: true`, `tourShown: false`, and a full-height `canvas`).
 
 Cross-repo tracking:
 [rulespec-graph-viewer#17](https://github.com/TheAxiomFoundation/rulespec-graph-viewer/issues/17).
