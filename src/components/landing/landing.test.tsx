@@ -58,18 +58,16 @@ describe('Landing sections', () => {
     ).toBeNull()
   })
 
-  it('renders the encoder section with the journey film', () => {
+  it('renders the encoder section with the illustrated journey', () => {
     render(<EncoderSection />)
     expect(
       screen.getByRole('heading', { name: /statutes encoded and verified/i }),
     ).toBeInTheDocument()
-    // The terminal animation gave way to the journey film (scroll-
-    // scrubbed on wide viewports, self-running elsewhere).
+    // The illustrated journey replaces the terminal animation.
     expect(screen.queryByText(/axiom encode/i)).not.toBeInTheDocument()
-    // The journey opens on the reading-room act (the film crossfades
-    // in after it).
+    // The 3D scene has an accessible text description.
     expect(
-      screen.getByRole('img', { name: /a law library: five bays/i }),
+      screen.getByText(/A three-dimensional law library/i),
     ).toBeInTheDocument()
     // The Read / Encode / Verify step cards stay removed.
     for (const step of ['Read', 'Encode', 'Verify']) {
