@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Node, Edge } from "@xyflow/react";
-import { inputContextSubgraph, dependencySubgraph, focusLayout, upstreamIds } from "./focus-layout";
+import { inputContextSubgraph, dependencySubgraph, focusLayout, scopeRootFor, upstreamIds } from "./focus-layout";
 const nodes: Node[] = [
  {id:"a",position:{x:0,y:0},width:240,height:90,data:{legalId:"a",kind:"input"}},
  {id:"b",position:{x:0,y:150},width:240,height:90,data:{legalId:"b",kind:"input"}},
@@ -79,4 +79,30 @@ it("input deep links retain consumers and their other dependencies, not unrelate
  expect(inputContextSubgraph(nodes,links,"a").edges.map(edge => edge.id)).toEqual(["ac","bc"]);
  expect(inputContextSubgraph(nodes,links,"missing").nodes).toEqual([]);
  expect(inputContextSubgraph(nodes,[...links,{id:"ca",source:"c",target:"a"}],"a").nodes).toHaveLength(3);
+});
+
+describe("scopeRootFor", () => {
+  // summit ← band ← income; sibling ← income; a standalone rule.
+  const node = (id: string, kind = "ruleRef"): Node => ({ id, position: { x: 0, y: 0 }, data: { legalId: id, kind } });
+  const graphNodes = [node("summit", "output"), node("band"), node("income", "input"), node("sibling", "output"), node("lonely")];
+  const graphEdges: Edge[] = [
+    { id: "b-s", source: "band", target: "summit" },
+    { id: "i-b", source: "income", target: "band" },
+    { id: "i-x", source: "income", target: "sibling" },
+  ];
+  const outputs = ["summit", "sibling"];
+  it("opens an intermediate rule inside the output tree that uses it", () => {
+    expect(scopeRootFor(graphNodes, graphEdges, outputs, "band")).toBe("summit");
+  });
+  it("re-roots on another output when the node is that output", () => {
+    expect(scopeRootFor(graphNodes, graphEdges, outputs, "sibling")).toBe("sibling");
+  });
+  it("keeps an input's own context view, and roots unreachable nodes on themselves", () => {
+    expect(scopeRootFor(graphNodes, graphEdges, outputs, "income")).toBe("income");
+    expect(scopeRootFor(graphNodes, graphEdges, outputs, "lonely")).toBe("lonely");
+  });
+  it("falls back to the first drawn output", () => {
+    expect(scopeRootFor(graphNodes, graphEdges, outputs, null)).toBe("summit");
+    expect(scopeRootFor(graphNodes, graphEdges, outputs, "missing")).toBe("summit");
+  });
 });

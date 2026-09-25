@@ -1734,6 +1734,7 @@ export function GraphViewerApp({
           unit: rule.unit,
           dtype: rule.dtype,
           formula: rule.formula,
+          table: rule.table,
         })),
     [graph],
   );

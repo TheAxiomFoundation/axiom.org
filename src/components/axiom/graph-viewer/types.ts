@@ -149,4 +149,5 @@ export interface ParameterRule {
   unit?: string | null;
   dtype?: string | null;
   formula?: string | null;
+  table?: ParameterTable;
 }

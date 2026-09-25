@@ -20,7 +20,7 @@ import { BaseEdge, SmoothStepEdge, useReactFlow, type EdgeProps } from "@xyflow/
 import "@xyflow/react/dist/style.css";
 import dagre from "dagre";
 import { graphFitViewport, MAX_GRAPH_ZOOM } from "./zoom-bounds";
-import { inputContextSubgraph, dependencySubgraph, upstreamIds, upstreamNodeIds } from "./focus-layout";
+import { inputContextSubgraph, dependencySubgraph, scopeRootFor, upstreamIds, upstreamNodeIds } from "./focus-layout";
 import type { DashboardSpec, ParameterRule, TraceNode } from "./types";
 import {
   evalAst,
@@ -300,9 +300,13 @@ export function InteractiveRuleGraph({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [sizeHintsKey],
   );
-  // Opening a graph defines its scope; inspecting another node only moves
-  // the camera. Depth controls highlighting and framing, never topology.
-  const [scopeId] = useState<string | null>(() => {
+  // The canvas draws one output's tree. Opening on a linked or pinned node
+  // draws the output tree that CONTAINS it — never the node's own subtree,
+  // which hides everything that uses it (a reload on an intermediate rule
+  // left only its inputs, with no way back up). Inspecting a node inside
+  // the tree only moves the camera; one outside it re-scopes to the tree
+  // that holds it. Depth controls highlighting and framing, never topology.
+  const [scopeRequest, setScopeRequest] = useState<string | null>(() => {
     const linked = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("selection");
     return linked ?? pinnedLegalId ?? spec.outputs[0]?.legalId ?? null;
   });
@@ -341,6 +345,12 @@ export function InteractiveRuleGraph({
   );
 
   const focusedIds = useMemo(() => upstreamIds(baseGraph.nodes, baseGraph.edges, layoutFocusId, upstreamDepth), [baseGraph, layoutFocusId, upstreamDepth]);
+  const outputIdsKey = spec.outputs.map((output) => output.legalId).join("|");
+  const scopeId = useMemo(
+    () => scopeRootFor(baseGraph.nodes, baseGraph.edges, spec.outputs.map((output) => output.legalId), scopeRequest),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [baseGraph, outputIdsKey, scopeRequest],
+  );
   const { nodes, edges } = useMemo(() => {
     if (!nodeScoped) return baseGraph;
     const root = baseGraph.nodes.some(node => node.data.legalId === scopeId) ? scopeId : spec.outputs[0]?.legalId ?? null;
@@ -365,13 +375,31 @@ export function InteractiveRuleGraph({
       ease: (t: number) => t * t * (3 - 2 * t),
     });
   };
+  // A target outside the drawn tree re-scopes to the tree that holds it;
+  // the camera follows once that tree is laid out.
+  const pendingFocus = useRef<string | null>(null);
+  const drawn = (id: string) => nodes.some((node) => node.data.legalId === id);
+  const outsideScope = (id: string) =>
+    nodeScoped && !drawn(id) && baseGraph.nodes.some((node) => node.data.legalId === id);
   useEffect(() => {
     if (!flyTo || openingOverview) return;
     if (flyTo.legalId === "*") requestFrame("all");
-    else focusSelection(flyTo.legalId);
+    else if (outsideScope(flyTo.legalId)) {
+      pendingFocus.current = flyTo.legalId;
+      setScopeRequest(flyTo.legalId);
+    } else focusSelection(flyTo.legalId);
   }, [flyTo]);
   useEffect(() => {
     if (openingOverview) return;
+    if (pinnedLegalId && outsideScope(pinnedLegalId)) {
+      setScopeRequest(pinnedLegalId);
+      return;
+    }
+    const pending = pendingFocus.current;
+    if (pending && drawn(pending)) {
+      pendingFocus.current = null;
+      if (pending !== pinnedLegalId) focusSelection(pending);
+    }
     if (pinnedLegalId && pinnedLegalId !== lastCameraSelection.current) focusSelection(pinnedLegalId);
     if (!pinnedLegalId) lastCameraSelection.current = null;
   }, [pinnedLegalId, nodes, canvasSize]);
@@ -2363,6 +2391,14 @@ function walkAst(node: AstNode, parentScope: string, opPath: string, ctx: WalkCt
     if (!t) return null;
     return t.value as EvalValue;
   };
+  // Table rows resolve only inside a rule the run computed: a rule the
+  // engine refused (e.g. not in force for the run's period) must not
+  // read as computed from its tables.
+  const owner = ctx.byName.get(parentScope.split("#").pop() ?? "");
+  const lookupTable =
+    owner?.value !== null && owner?.value !== undefined
+      ? (name: string) => ctx.parametersByName.get(name)?.table
+      : undefined;
 
   switch (node.kind) {
     case "ident": {
@@ -2468,8 +2504,8 @@ function walkAst(node: AstNode, parentScope: string, opPath: string, ctx: WalkCt
     case "logical": {
       const op = node.op;
       const operands = flattenLogical(node, op);
-      const operandValues = operands.map((o) => evalAst(o, lookupValue));
-      const value = evalAst(node, lookupValue);
+      const operandValues = operands.map((o) => evalAst(o, lookupValue, lookupTable));
+      const value = evalAst(node, lookupValue, lookupTable);
       const verdictCls = verdictClassOfBool(value);
       const decisive =
         op === "and"
@@ -2500,7 +2536,7 @@ function walkAst(node: AstNode, parentScope: string, opPath: string, ctx: WalkCt
     }
 
     case "comparison": {
-      const value = evalAst(node, lookupValue);
+      const value = evalAst(node, lookupValue, lookupTable);
       const verdictCls = verdictClassOfBool(value);
       const myKey = `op:${parentScope}:${opPath}:${node.op}`;
       const myId = ensureNode(ctx, myKey, {
@@ -2521,7 +2557,7 @@ function walkAst(node: AstNode, parentScope: string, opPath: string, ctx: WalkCt
     }
 
     case "arith": {
-      const value = evalAst(node, lookupValue);
+      const value = evalAst(node, lookupValue, lookupTable);
       const operands =
         node.op === "+" || node.op === "*" ? flattenArith(node, node.op) : [node.left, node.right];
       const myKey = `op:${parentScope}:${opPath}:${node.op}`;
@@ -2543,7 +2579,7 @@ function walkAst(node: AstNode, parentScope: string, opPath: string, ctx: WalkCt
     }
 
     case "unary": {
-      const value = evalAst(node, lookupValue);
+      const value = evalAst(node, lookupValue, lookupTable);
       const label = node.op === "not" ? "NOT" : "−";
       const verdictCls = node.op === "not" ? verdictClassOfBool(value) : "rg-numeric";
       const myKey = `op:${parentScope}:${opPath}:${node.op}`;
@@ -2563,7 +2599,7 @@ function walkAst(node: AstNode, parentScope: string, opPath: string, ctx: WalkCt
     }
 
     case "call": {
-      const value = evalAst(node, lookupValue);
+      const value = evalAst(node, lookupValue, lookupTable);
       const cls = ["any", "all", "exactly_one"].includes(node.name) ? verdictClassOfBool(value) : "rg-numeric";
       const myKey = `op:${parentScope}:${opPath}:call:${node.name}`;
       const myId = ensureNode(ctx, myKey, {
@@ -2591,7 +2627,7 @@ function walkAst(node: AstNode, parentScope: string, opPath: string, ctx: WalkCt
           kind: "operator",
           label: "table[i]",
           verdictCls: "rg-numeric",
-          value: "",
+          value: ctx.showValues ? formatValue(evalAst(node, lookupValue, lookupTable)) : "",
           showValues: ctx.showValues,
         } satisfies IrgNodeData,
       });
@@ -2603,8 +2639,8 @@ function walkAst(node: AstNode, parentScope: string, opPath: string, ctx: WalkCt
     }
 
     case "ifElse": {
-      const condValue = evalAst(node.cond, lookupValue);
-      const value = evalAst(node, lookupValue);
+      const condValue = evalAst(node.cond, lookupValue, lookupTable);
+      const value = evalAst(node, lookupValue, lookupTable);
       const condTrue = condValue !== null && toBool(condValue);
       const verdictCls = verdictClassOfBool(value);
       const myKey = `op:${parentScope}:${opPath}:if`;

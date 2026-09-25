@@ -17,11 +17,16 @@ const baseTaxTable: ParameterTable = {
 };
 const baseTax = rule("base_tax", { kind: "parameter", formula: null, table: baseTaxTable, unit: "USD" });
 const graph: ProgramGraph = {
-  rules: [baseTax, rule("tax_band", { inputDeps: [`${FILE}#city_taxable_income`] }), rule("first_ceiling", { kind: "parameter", formula: "21600" })],
+  rules: [
+    baseTax,
+    rule("tax_band", { inputDeps: [`${FILE}#city_taxable_income`] }),
+    rule("first_ceiling", { kind: "parameter", formula: "21600" }),
+    rule("tax", { ruleDeps: [baseTax.legalId, `${FILE}#tax_band`] }),
+  ],
   inputs: [{ legalId: `${FILE}#city_taxable_income`, name: "city_taxable_income", fileLegalId: FILE }],
   relations: [], ownOutputs: [], terminalOutputs: [],
 };
-const run: ExplanationRun = { outputs: {}, trace: [{ variable: "tax_band", value: 2 }] };
+const run: ExplanationRun = { outputs: {}, trace: [{ variable: "tax_band", value: 2 }, { variable: "tax", value: 1857.5 }] };
 
 describe("table parameter lookup", () => {
   it("resolves the index by name, preferring the parameter's own file", () => {
@@ -60,19 +65,32 @@ describe("table rows need a recorded index", () => {
     kind: "parameter", formula: null,
     table: { indexedBy: "household_size", rows: [{ key: "1", value: 298 }, { key: "2", value: 546 }, { key: "3", value: 785 }], rowCount: 3 },
   });
+  const reader = rule("snap_maximum_allotment", { ruleDeps: [allotment.legalId] });
   const snap: ProgramGraph = {
-    rules: [allotment], relations: [], ownOutputs: [], terminalOutputs: [],
+    rules: [allotment, reader], relations: [], ownOutputs: [], terminalOutputs: [],
     inputs: [{ legalId: `${FILE}#input.household_size`, name: "household_size", fileLegalId: FILE }],
   };
   it("never picks a row from a site-side default", () => {
-    const unanswered: ExplanationRun = { outputs: {}, trace: [], submittedFacts: {} };
+    const unanswered: ExplanationRun = { outputs: {}, trace: [{ variable: "snap_maximum_allotment", value: 546 }], submittedFacts: {} };
     expect(inputAwareEvidence(snap, unanswered, allotment.legalId, { household_size: 1 })).toBeUndefined();
     expect(recordedTableRow(snap, unanswered, allotment.legalId)).toBeNull();
   });
   it("picks the row an answered input selects", () => {
-    const answered: ExplanationRun = { outputs: {}, trace: [], submittedFacts: { household_size: 3 } };
+    const answered: ExplanationRun = { outputs: {}, trace: [{ variable: "snap_maximum_allotment", value: 785 }], submittedFacts: { household_size: 3 } };
     expect(inputAwareEvidence(snap, answered, allotment.legalId, { household_size: 1 })).toBe(785);
     expect(recordedTableRow(snap, answered, allotment.legalId)?.key).toBe("3");
+  });
+});
+
+describe("a table no computed rule read", () => {
+  it("marks no row: NYC's subdivision B is in force from 2027, so a 2026 run never looked it up", () => {
+    const later = rule("subdivision_b_base_tax", { kind: "parameter", formula: null, table: baseTaxTable });
+    const laterTax = rule("subdivision_b_tax", { ruleDeps: [later.legalId, `${FILE}#tax_band`] });
+    const withLater: ProgramGraph = { ...graph, rules: [...graph.rules, later, laterTax] };
+    // The band is recorded (2), but subdivision_b_tax never ran.
+    expect(recordedTableRow(withLater, run, later.legalId)).toBeNull();
+    expect(inputAwareEvidence(withLater, run, later.legalId, {})).toBeUndefined();
+    expect(recordedTableRow(withLater, run, baseTax.legalId)?.value).toBe(1355);
   });
 });
 
