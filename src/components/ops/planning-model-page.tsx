@@ -10,7 +10,7 @@ import Link from "next/link";
  */
 export const PLANNING_MODEL = {
   asOf: "2026-07-11",
-  devAsOf: "2026-07-16",
+  devAsOf: "2026-08-14",
   // Measured encoder base
   runs: 3_582,
   tokensPerPass: 55_000, // [M] ~55k total tokens per pass
@@ -172,15 +172,15 @@ export const PLANNING_MODEL = {
     },
   ],
   // Development-fleet usage — strict-accounting dashboard figures
-  // (methodology hardened 2026-07-12; complete days through 2026-07-15)
+  // (methodology hardened 2026-07-12; snapshot 2026-08-14)
   devUsage: [
-    { window: "Trailing 7 days", claude: 26.6, codex: 30.2, total: 56.8 },
-    { window: "Trailing 30 days", claude: 58.9, codex: 42.1, total: 101.0 },
+    { window: "Trailing 7 days", claude: 16.3, codex: 9.3, total: 25.6 },
+    { window: "Trailing 30 days", claude: 94.8, codex: 62.7, total: 157.5 },
     {
       window: "Lifetime (since 2025-11-30)",
-      claude: 82.9,
-      codex: 94.0,
-      total: 176.9,
+      claude: 177.7,
+      codex: 156.7,
+      total: 334.4,
     },
   ],
 };
@@ -496,10 +496,13 @@ tier generation     = system $/module × modules remaining   (Opus 4.8, Tier A: 
             streamed usage deduplicated last-wins, repriced from pinned
             list-price tables — with the audit trail public in the
             dashboard&apos;s data repository <Provenance kind="M" />. The two
-            methods now agree to the token on most complete months and within
-            about 2% on the rest; the residual is sessions the recount
-            excludes as private, which the dashboard includes{" "}
-            <Provenance kind="M" />. These figures cover the
+            methods agreed to the token on most complete months when the
+            hardened rules landed, within about 2% on the rest{" "}
+            <Provenance kind="M" />; rerun later, the recount reads only
+            transcripts still on disk, while the dashboard&apos;s scan cache
+            keeps rotated history and extra codex lanes counted — so the
+            dashboard is the more complete series (May and June still
+            reconcile within 1%) <Provenance kind="M" />. These figures cover the
             operator&apos;s full multi-project workload — Axiom&apos;s share
             is substantial but not isolated here, so treat them as a verified
             operator-wide upper bound <Provenance kind="M" />.
@@ -540,15 +543,15 @@ tier generation     = system $/module × modules remaining   (Opus 4.8, Tier A: 
             </table>
           </div>
           <p className="font-body text-[1rem] text-[var(--color-ink-secondary)] leading-relaxed">
-            The trailing-30-day line is roughly $100k/month{" "}
-            <Provenance kind="D" />, and July to date paces at about
-            $175k/month <Provenance kind="D" />; the complete months before
-            were $39.0k (May) and $31.9k (June) <Provenance kind="M" /> —
-            July is pacing at about 5.5× June as the encoding lanes and the
-            launch push scaled up. The Claude-family line — the larger of the
-            two over the trailing 30 days — is cache-read dominated: 37.0B
-            cache-read versus 0.07B fresh input tokens July 1–15, plus 1.5B
-            of cache writes <Provenance kind="M" />. Prompt-caching
+            The trailing-30-day line is roughly $160k/month{" "}
+            <Provenance kind="D" />, with the trailing week cooler ($25.6k);
+            July closed at $170.4k and August 1–14 stands at $74.7k{" "}
+            <Provenance kind="M" />, against $39.0k (May) and $31.9k (June){" "}
+            <Provenance kind="M" /> — the step up came as the encoding lanes
+            and the launch push scaled. The Claude-family line — the larger
+            of the two over the trailing 30 days — is cache-read dominated:
+            18.9B cache-read versus 0.001B fresh input tokens August 1–14,
+            plus 0.9B of cache writes <Provenance kind="M" />. Prompt-caching
             economics, not list input price, drive this line. This is one
             operator plus agent fleets; scaling with team size is expected to
             be roughly linear <Provenance kind="A" />.
