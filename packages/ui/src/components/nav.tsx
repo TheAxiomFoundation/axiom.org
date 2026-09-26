@@ -72,21 +72,27 @@ const DEFAULT_LINKS: NavLink[] = [
       },
       {
         label: "Ground AI models in citable law",
-        items: [
-          { href: "/demos?d=chatbot", label: "Get accurate answers" },
-        ],
+        items: [{ href: "/demos?d=chatbot", label: "Get accurate answers" }],
       },
       {
         label: "Power products on rules you don't rebuild",
-        items: [
-          { href: "/demos?d=builder", label: "Build a form" },
-        ],
+        items: [{ href: "/demos?d=builder", label: "Build a form" }],
       },
       {
         label: "Simulate policy on real rules",
         items: [
           { href: "/demos?d=snap", label: "Explore benefits cliffs" },
           { href: "/demos?d=microsim", label: "Simulate household impacts" },
+        ],
+      },
+      {
+        label: "Trace a tariff to its source",
+        items: [
+          { href: "/tariff/schedule", label: "Browse the tariff schedule" },
+          {
+            href: "/us/statute/hts/2203.00.00",
+            label: "Read a line with its rules",
+          },
         ],
       },
       {
@@ -147,7 +153,8 @@ export function Nav({
     const isExternal = /^https?:\/\//.test(href) || href.startsWith("mailto:");
     const isHashLink = href.startsWith("/#");
     const isHomepageHash = isHashLink && !baseUrl && pathname === "/";
-    const useNativeAnchor = isExternal || baseUrl || !LinkComponent || isHomepageHash;
+    const useNativeAnchor =
+      isExternal || baseUrl || !LinkComponent || isHomepageHash;
 
     const finalHref = isHomepageHash
       ? href.replace("/", "")
@@ -169,14 +176,24 @@ export function Nav({
 
     if (useNativeAnchor) {
       return (
-        <a key={href} href={finalHref} className={resolvedClassName} onClick={close}>
+        <a
+          key={href}
+          href={finalHref}
+          className={resolvedClassName}
+          onClick={close}
+        >
           {content}
         </a>
       );
     }
 
     return (
-      <LinkComponent key={href} href={href} className={resolvedClassName} onClick={close}>
+      <LinkComponent
+        key={href}
+        href={href}
+        className={resolvedClassName}
+        onClick={close}
+      >
         {content}
       </LinkComponent>
     );
@@ -256,14 +273,15 @@ export function Nav({
         </div>
         {footer.length > 0 && (
           <div className="mt-5 border-t border-[var(--color-rule-subtle)] pt-3.5">
-            {footer.reduce<NavLink[]>((acc, g) => acc.concat(g.items), []).map(
-              (item) =>
+            {footer
+              .reduce<NavLink[]>((acc, g) => acc.concat(g.items), [])
+              .map((item) =>
                 renderNavLink(
                   item,
                   false,
                   "inline-flex items-center gap-1.5 no-underline font-mono text-[0.68rem] tracking-[0.14em] uppercase text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] transition-colors duration-150",
                 ),
-            )}
+              )}
           </div>
         )}
       </div>
@@ -287,7 +305,8 @@ export function Nav({
         <div
           className="pointer-events-none invisible absolute left-1/2 top-full -translate-x-1/2 translate-y-2.5 scale-[0.98] pt-3 opacity-0 transition-all duration-300 group-hover:pointer-events-auto group-hover:visible group-hover:translate-y-0 group-hover:scale-100 group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:scale-100 group-focus-within:opacity-100"
           style={{
-            transitionTimingFunction: "var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1))",
+            transitionTimingFunction:
+              "var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1))",
             transformOrigin: "top center",
           }}
         >
