@@ -72,6 +72,19 @@ export function LinePage({ line }: { line: SuiteLine }) {
               <p className="mt-3 text-pretty font-body text-[1.02rem] leading-relaxed text-[var(--color-ink)]">
                 {line.promise}
               </p>
+              {line.checks?.length ? (
+                <p className="mt-3 font-body text-[0.9rem] text-[var(--color-ink-secondary)]">
+                  Checked on{" "}
+                  {line.checks.map((c, i) => (
+                    <span key={c.href}>
+                      {i > 0 ? " · " : null}
+                      <a href={c.href} className="underline decoration-[var(--color-rule-strong)] underline-offset-2">
+                        {c.label}
+                      </a>
+                    </span>
+                  ))}
+                </p>
+              ) : null}
             </div>
           </div>
         </section>

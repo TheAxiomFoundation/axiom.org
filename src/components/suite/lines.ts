@@ -28,6 +28,8 @@ export interface SuiteLine {
    *  commitments audit's rules: checkable unit, coverage as a published list,
    *  data kept out of the rules promise). Rules uses the team's draft promise. */
   promise?: string;
+  /** Where the promise is checked in public: the line's harness. */
+  checks?: { label: string; href: string }[];
   /** Named products the line hosts (PolicyBench in Rules; Microcosm in Simulations). */
   inside?: { heading: string; items: { title: string; body: string; href?: string }[] };
   snapshot?: { heading: string; note: string; rows: string[][]; asOf?: string };
@@ -81,6 +83,7 @@ const LINES: Omit<SuiteLine, "forAll">[] = [
     subject: "Computable law",
     promise:
       "Every rule we serve encodes a named document at a named version. Each answer shows the provisions it applied, the reading we chose where the text is ambiguous, every value it took from outside our encoded documents, and how it compares with independent calculators on test cases. Where we know of a document outside our corpus that could change the answer, such as a court order or a statute the regulations haven't caught up with, the answer says so. We encode written law and published guidance. We don't represent unwritten administrative practice, and we don't decide how courts or agencies resolve open questions.",
+    checks: [{ label: "Comparisons with independent engines", href: "https://axiom.org/oracles" }],
     headline: "Computable law for all.",
     body:
       "Open, machine-readable encodings of the world's rules, starting with tax and benefit policy. Cited, time-aware, and executable, so anyone can run, audit, or reform them.",
@@ -131,6 +134,7 @@ const LINES: Omit<SuiteLine, "forAll">[] = [
     subject: "Official statistics",
     promise:
       "Every fact we serve is a number an official source published, kept exactly as first printed, with the release it came from, the date it was printed and a stable address. When the source revises a number, the revision is added beside the first print. We vouch for what was printed and when; the accuracy of the number itself is the publisher's.",
+    checks: [{ label: "Verify a fact against its release", href: "https://chronicle.institute" }],
     headline: "A record of what official sources printed, and when.",
     body:
       "The numbers government statistical agencies published, kept at first print, with provenance, revision history, and a stable address for every fact. Records keeps each value as published; it never reconciles, imputes, or models one.",
@@ -183,13 +187,14 @@ const LINES: Omit<SuiteLine, "forAll">[] = [
     subject: "Synthetic households",
     promise:
       "Every release is a named, versioned file of synthetic households and firms, published with the administrative totals it was calibrated to and how closely it hits each one. Its figures are estimates and carry sampling and imputation error.",
+    checks: [{ label: "Calibration dashboard", href: "https://microcosm.institute/calibration/dashboard" }],
     headline:
       "A nation is millions of people, households, and firms. We build a synthetic one that stands in for them all.",
     body:
       "Synthetic households, firms and the flows between them, calibrated to public totals from survey and administrative data: detailed enough to model tax and benefit policy, or to stand in for a population wherever one is needed, and improved in the open.",
     figure: {
       value: "95.7%",
-      label: "of 5,659 published targets hit within 10%",
+      label: "of 5,659 calibration targets hit within 10%",
       source: "huggingface.co/datasets/policyengine/populace-us",
       asOf: "22 Sep 2026",
     },
@@ -227,7 +232,8 @@ const LINES: Omit<SuiteLine, "forAll">[] = [
     noun: "microsimulation model",
     subject: "Policy simulations",
     promise:
-      "Every simulation applies encoded rules to a synthetic population and states what it ran on: the data release, the rules and parameters, the policy as we expressed it, and what it took as given. Population figures carry sampling and imputation error, so each data release publishes how closely it matches administrative totals. A simulation shows what the encoded law implies for that population; predictions of what will happen, with their uncertainty stated and scored, are Axiom Forecasts.",
+      "Every simulation applies encoded rules to a synthetic population and states what it ran on: the data release, the rules and parameters, the policy as we expressed it, and what it took as given. We compare our estimates with other models' published estimates in the open, and each data release shows how closely it matches administrative totals. The effect of a policy is the difference between two simulations, and at most one of them ever happens, so it cannot be scored for accuracy; predictions that can be scored are Axiom Forecasts.",
+    checks: [{ label: "Scorecard", href: "https://policyengine-scorecard.vercel.app" }],
     headline:
       "Free, open-source tax and benefit analysis. Model policy reforms across all 50 states.",
     body:
@@ -270,6 +276,7 @@ const LINES: Omit<SuiteLine, "forAll">[] = [
     subject: "Scored forecasts",
     promise:
       "Every forecast is a distribution registered before the number is known, with the source and the rule it will resolve against. When the official number arrives it is scored, and misses stay on the log. A forecast about a policy has one arm per outcome, and only the arm whose condition is met is scored.",
+    checks: [{ label: "The forecast log", href: "/suite/forecasts/log" }],
     headline: "Open forecasts of public outcomes, scored against reality.",
     body:
       "Calibrated, open forecasts of the statistics and policies that shape public life. Every prediction carries its full chain of reasoning and gets scored against the record when the official number arrives. The track record is the product.",
@@ -323,6 +330,7 @@ const LINES: Omit<SuiteLine, "forAll">[] = [
     subject: "AI benchmarks",
     promise:
       "Every benchmark score comes from deterministic checks against a published reference, on a named suite at a named version, and the reference can be inspected. A score describes performance on that suite.",
+    checks: [{ label: "The PolicyBench board", href: "https://policybench.org" }],
     headline: "Can a model compute the law, write it, and draft it?",
     body:
       "Benchmarks that test AI models on the law itself: calculating a household's taxes and benefits, turning a statute into executable rules, and doing a legislative drafter's work. Headline scores come from deterministic checks against a reference.",
@@ -405,6 +413,7 @@ function asSimulations(line: Omit<SuiteLine, "forAll">): Omit<SuiteLine, "forAll
       "Free, open-source tools to understand tax and benefit policies: the Axiom Simulator, to calculate taxes and benefits or analyze reforms, and Microcosm, a synthetic population of households and firms published as open data.",
     // The population's calibration becomes the line's check.
     figure: MICROCOSM.figure,
+    checks: [...(line.checks ?? []), ...(MICROCOSM.checks ?? [])],
     // Products inside a line: a generic noun takes the house name (Axiom
     // Simulator); a distinctive name stands alone (Microcosm, PolicyBench).
     inside: {
