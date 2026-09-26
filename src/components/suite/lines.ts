@@ -323,22 +323,51 @@ const LINES: Omit<SuiteLine, "forAll">[] = [
   },
 ];
 
-/** Three answers to the family's shape (NEXT_PUBLIC_SUITE_VARIANT):
+/** Four answers to the family's shape (NEXT_PUBLIC_SUITE_VARIANT):
  *  - evals-line (default): six lines, PolicyBench in its own Axiom Evals line.
  *  - pb-in-rules: five lines; each line hosts the benchmarks of AI on its own
  *    subject, so Rules holds PolicyBench, EncodeBench and PolicyBench Draft.
  *  - four-lines: Rules, Records, Simulations, Forecasts. Microcosm folds into
  *    Simulations as its named dataset (Nikhil, 2026-09-23: the finished
  *    product is the simulated open data; Max: aging the population is itself
- *    a simulation). Benchmarks stay in Rules. */
-export const SUITE_VARIANT: "evals-line" | "pb-in-rules" | "four-lines" =
+ *    a simulation). Benchmarks stay in Rules.
+ *  - three-lines: Rules, Records, Forecasts (Nikhil, by 2026-09-26): a policy
+ *    simulation is a conditional forecast, so the simulator and Microcosm
+ *    become products of Forecasts. Thesis already registers enacted and
+ *    baseline arms for bills and scores only the arm whose condition is met. */
+export const SUITE_VARIANT: "evals-line" | "pb-in-rules" | "four-lines" | "three-lines" =
   process.env.NEXT_PUBLIC_SUITE_VARIANT === "pb-in-rules"
     ? "pb-in-rules"
     : process.env.NEXT_PUBLIC_SUITE_VARIANT === "four-lines"
       ? "four-lines"
-      : "evals-line";
+      : process.env.NEXT_PUBLIC_SUITE_VARIANT === "three-lines"
+        ? "three-lines"
+        : "evals-line";
 
 const MICROCOSM = LINES.find((line) => line.slug === "microcosm")!;
+const SIMULATOR = LINES.find((line) => line.slug === "simulator")!;
+
+function asUnifiedForecasts(line: Omit<SuiteLine, "forAll">): Omit<SuiteLine, "forAll"> {
+  if (line.slug !== "forecasts") return line;
+  return {
+    ...line,
+    noun: "scored forecasts, including what policies would do",
+    body:
+      "Calibrated, open forecasts of the statistics and policies that shape public life: what the next official number will be, and what a bill would do if it passed. Every prediction carries its full chain of reasoning and gets scored against the record when the official number arrives; a bill's forecast has one arm per outcome, and only the arm that happens is scored.",
+    inside: {
+      heading: "Products",
+      items: [
+        {
+          title: "The forecast log",
+          body: "Every forecast, logged before the number and scored after it, with its source and resolution rule.",
+          href: "/suite/forecasts/log",
+        },
+        { title: "Axiom Simulator", body: SIMULATOR.body, href: "/suite/simulator/app" },
+        { title: "Microcosm", body: MICROCOSM.body, href: "/suite/microcosm/release" },
+      ],
+    },
+  };
+}
 
 function withBenchmarksInRules(line: Omit<SuiteLine, "forAll">): Omit<SuiteLine, "forAll"> {
   if (line.slug !== "rules") return line;
@@ -377,9 +406,13 @@ const VARIANT_LINES: Omit<SuiteLine, "forAll">[] =
     ? LINES
     : SUITE_VARIANT === "pb-in-rules"
       ? LINES.filter((line) => line.slug !== "evals").map(withBenchmarksInRules)
-      : LINES.filter((line) => line.slug !== "evals" && line.slug !== "microcosm")
-          .map(withBenchmarksInRules)
-          .map(asSimulations);
+      : SUITE_VARIANT === "four-lines"
+        ? LINES.filter((line) => line.slug !== "evals" && line.slug !== "microcosm")
+            .map(withBenchmarksInRules)
+            .map(asSimulations)
+        : LINES.filter((line) => !["evals", "microcosm", "simulator"].includes(line.slug))
+            .map(withBenchmarksInRules)
+            .map(asUnifiedForecasts);
 
 export const SUITE_LINES: SuiteLine[] = VARIANT_LINES.map((line) => ({
   ...line,

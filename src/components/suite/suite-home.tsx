@@ -89,6 +89,26 @@ export function SuiteHome() {
     );
   }
 
+  if (SUITE_VARIANT === "three-lines") {
+    // The two lines of fact side by side, and the one line of estimates
+    // built from them beneath. No labels.
+    const [rulesCard, recordsCard, forecastsCard] = SUITE_LINES;
+    return (
+      <>
+        <FlipHero />
+        <section id="lines" className="relative z-1 px-8 pb-24">
+          <div className="mx-auto max-w-[1280px]">
+            <div className="grid gap-5 md:grid-cols-2">
+              <LineCard line={rulesCard} />
+              <LineCard line={recordsCard} />
+            </div>
+            <WideCard line={forecastsCard} className="mt-5" />
+          </div>
+        </section>
+      </>
+    );
+  }
+
   const [rules, ...rest] = SUITE_LINES;
   const evals = rest.find((line) => line.slug === "evals");
   const others = rest.filter((line) => line.slug !== "evals");
