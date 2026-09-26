@@ -24,6 +24,10 @@ export interface SuiteLine {
   /** How the line is checked, where a real number exists; `asOf` when read on a different day. */
   figure?: { value: string; label: string; source: string; asOf?: string };
   features: { title: string; body: string; href?: string }[];
+  /** What the line promises, at the unit it can check (draft, graded against the
+   *  commitments audit's rules: checkable unit, coverage as a published list,
+   *  data kept out of the rules promise). Rules uses the team's draft promise. */
+  promise?: string;
   /** Named products the line hosts (PolicyBench in Rules; Microcosm in Simulations). */
   inside?: { heading: string; items: { title: string; body: string; href?: string }[] };
   snapshot?: { heading: string; note: string; rows: string[][]; asOf?: string };
@@ -75,6 +79,8 @@ const LINES: Omit<SuiteLine, "forAll">[] = [
     hueDark: "#D97706",
     noun: "executable law",
     subject: "Computable law",
+    promise:
+      "Every rule we serve encodes a named document at a named version. Each answer shows the provisions it applied, the reading we chose where the text is ambiguous, every value it took from outside our encoded documents, and how it compares with independent calculators on test cases. Where we know of a document outside our corpus that could change the answer, such as a court order or a statute the regulations haven't caught up with, the answer says so. We encode written law and published guidance. We don't represent unwritten administrative practice, and we don't decide how courts or agencies resolve open questions.",
     headline: "Computable law for all.",
     body:
       "Open, machine-readable encodings of the world's rules, starting with tax and benefit policy. Cited, time-aware, and executable, so anyone can run, audit, or reform them.",
@@ -93,9 +99,9 @@ const LINES: Omit<SuiteLine, "forAll">[] = [
           "Tax software, benefit estimators, eligibility tools: all running off the same encoding, all able to point at the statute behind any number.",
       },
       {
-        title: "Ground truth for AI",
+        title: "Answers AI can cite",
         body:
-          "People keep asking models policy questions. Verifiable answers grounded in actual law, useful for both training and inference.",
+          "People keep asking models policy questions. Answers that cite the provisions they applied, useful for both training and inference.",
       },
       {
         title: "Reform without rewriting",
@@ -123,6 +129,8 @@ const LINES: Omit<SuiteLine, "forAll">[] = [
     hueDark: "#7CA1D6",
     noun: "official statistics, as first printed",
     subject: "Official statistics",
+    promise:
+      "Every fact we serve is a number an official source published, kept exactly as first printed, with the release it came from, the date it was printed and a stable address. When the source revises a number, the revision is added beside the first print. We vouch for what was printed and when; the accuracy of the number itself is the publisher's.",
     headline: "A record of what official sources printed, and when.",
     body:
       "The numbers government statistical agencies published, kept at first print, with provenance, revision history, and a stable address for every fact. Records keeps each value as published; it never reconciles, imputes, or models one.",
@@ -173,10 +181,12 @@ const LINES: Omit<SuiteLine, "forAll">[] = [
     hueDark: "#5FA588",
     noun: "synthetic economy",
     subject: "Synthetic households",
+    promise:
+      "Every release is a named, versioned file of synthetic households and firms, published with the administrative totals it was calibrated to and how closely it hits each one. Its figures are estimates and carry sampling and imputation error.",
     headline:
       "A nation is millions of people, households, and firms. We build a synthetic one that stands in for them all.",
     body:
-      "Synthetic households, firms and the flows between them, calibrated to public totals from survey and administrative data: realistic enough to model tax and benefit policy for everyone, or to stand in for a population wherever one is needed, private by construction, and improved in the open.",
+      "Synthetic households, firms and the flows between them, calibrated to public totals from survey and administrative data: detailed enough to model tax and benefit policy, or to stand in for a population wherever one is needed, and improved in the open.",
     figure: {
       value: "95.7%",
       label: "of 5,659 published targets hit within 10%",
@@ -216,6 +226,8 @@ const LINES: Omit<SuiteLine, "forAll">[] = [
     hueDark: "#4FD1C5",
     noun: "microsimulation model",
     subject: "Policy simulations",
+    promise:
+      "Every simulation applies encoded rules to a synthetic population and states what it ran on: the data release, the rules and parameters, the policy as we expressed it, and what it took as given. Population figures carry sampling and imputation error, so each data release publishes how closely it matches administrative totals. A simulation shows what the encoded law implies for that population; predictions of what will happen, with their uncertainty stated and scored, are Axiom Forecasts.",
     headline:
       "Free, open-source tax and benefit analysis. Model policy reforms across all 50 states.",
     body:
@@ -256,6 +268,8 @@ const LINES: Omit<SuiteLine, "forAll">[] = [
     hueDark: "#C96B9C",
     noun: "scored forecasts",
     subject: "Scored forecasts",
+    promise:
+      "Every forecast is a distribution registered before the number is known, with the source and the rule it will resolve against. When the official number arrives it is scored, and misses stay on the log. A forecast about a policy has one arm per outcome, and only the arm whose condition is met is scored.",
     headline: "Open forecasts of public outcomes, scored against reality.",
     body:
       "Calibrated, open forecasts of the statistics and policies that shape public life. Every prediction carries its full chain of reasoning and gets scored against the record when the official number arrives. The track record is the product.",
@@ -307,6 +321,8 @@ const LINES: Omit<SuiteLine, "forAll">[] = [
     hueDark: "#A78BDA",
     noun: "benchmarks of AI on law",
     subject: "AI benchmarks",
+    promise:
+      "Every benchmark score comes from deterministic checks against a published reference, on a named suite at a named version, and the reference can be inspected. A score describes performance on that suite.",
     headline: "Can a model compute the law, write it, and draft it?",
     body:
       "Benchmarks that test AI models on the law itself: calculating a household's taxes and benefits, turning a statute into executable rules, and doing a legislative drafter's work. Headline scores come from deterministic checks against a reference.",

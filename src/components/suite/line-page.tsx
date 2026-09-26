@@ -62,6 +62,21 @@ export function LinePage({ line }: { line: SuiteLine }) {
         </div>
       </section>
 
+      {line.promise ? (
+        <section className="relative z-1 px-8 pb-14">
+          <div className="mx-auto max-w-[1280px]">
+            <div className="max-w-[820px] border-l-2 pl-6" style={{ borderColor: line.hue }}>
+              <h2 className="font-mono text-[0.62rem] font-normal uppercase tracking-[0.16em] text-[var(--color-ink-muted)]">
+                The promise
+              </h2>
+              <p className="mt-3 text-pretty font-body text-[1.02rem] leading-relaxed text-[var(--color-ink)]">
+                {line.promise}
+              </p>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       <section
         className="relative z-1 px-8 py-14"
         style={{ borderTop: `3px solid ${line.hue}` }}
