@@ -5,7 +5,8 @@
  * import them from here instead of copying the literals.
  */
 
-/** og:site_name for pages that set their own openGraph. */
+/** og:site_name: the root layout's, restated by every page that sets
+ *  its own openGraph. */
 export const SITE_NAME = "Axiom Foundation";
 
 /** Official brand share card (axiom-brand png/social/og-paper-full.png,

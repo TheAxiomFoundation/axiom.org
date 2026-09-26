@@ -3,7 +3,11 @@ import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import TariffPaperPage, { PAPER_VERSION, PINNED_PDF_SHA256 } from "./page";
+import TariffPaperPage, {
+  PAPER_VERSION,
+  PINNED_PDF_SHA256,
+  metadata,
+} from "./page";
 
 describe("tariff paper wrapper", () => {
   it("renders header, actions, and the sandboxed embed", () => {
@@ -118,5 +122,19 @@ describe("tariff paper wrapper", () => {
     expect(createHash("sha256").update(pdf).digest("hex")).toBe(
       PINNED_PDF_SHA256,
     );
+  });
+
+  // The page's openGraph replaces the root layout's wholesale; before it
+  // named an image, shares rendered a large card with no image.
+  // og:description falls back to the page description.
+  it("sets a complete article openGraph with the brand card", () => {
+    expect(metadata.openGraph).toEqual({
+      type: "article",
+      title: "Executable tariff law — working paper",
+      url: "https://axiom.org/tariff/paper",
+      siteName: "Axiom Foundation",
+      images: ["/og-image.png"],
+    });
+    expect(metadata).not.toHaveProperty("twitter");
   });
 });

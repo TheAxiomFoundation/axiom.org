@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Reveal } from "@/components/landing/reveal";
 import { SITE_URL } from "@/lib/urls";
+import { DEFAULT_SHARE_IMAGE, SITE_NAME } from "@/lib/share";
 
 // The manuscript embeds from the receipt repo's Pages deployment
 // (rendered by its docs workflow into paper/web; vercel.json rewrites
@@ -20,11 +21,16 @@ export const metadata: Metadata = {
   title: `${TITLE} — working paper`,
   description: DESCRIPTION,
   alternates: { canonical: `${SITE_URL}/receipt/paper` },
+  // This block replaces the root layout's openGraph wholesale, and
+  // without an images key the share card had no image; it names the
+  // brand card itself.
   openGraph: {
     type: "article",
     title: TITLE,
     description: DESCRIPTION,
     url: `${SITE_URL}/receipt/paper`,
+    siteName: SITE_NAME,
+    images: [DEFAULT_SHARE_IMAGE],
   },
 };
 
