@@ -627,3 +627,41 @@ body:has(.has-workspace) .nav-bar { display: none; }
 .result-calculation-inputs dl > div { display: grid; grid-template-columns: 1fr auto; gap: 12px; padding: 4px 0; }
 .result-calculation-inputs dd { margin: 0; font-variant-numeric: tabular-nums; }
 .result-calculation-table small { display: block; font-size: 11px; color: var(--color-ink-secondary); }
+
+/* Keep workspace changes calm without moving text or changing panel geometry. */
+.workspace-reader, .workspace-structure, .workspace-run, .results-sheet {
+  animation: workspace-panel-arrive 280ms cubic-bezier(.2,.65,.3,1) both;
+}
+@keyframes workspace-panel-arrive { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .workspace-reader, .workspace-structure, .workspace-run, .results-sheet { animation: none; }
+}
+
+/* Keep the entire workspace measurable under one opening screen. */
+.workspace-opening {
+  position: fixed; inset: 0; z-index: 80;
+  display: grid; place-items: center; background: var(--color-paper);
+}
+.graph-viewer-root .app-shell[data-opening="true"] {
+  opacity: 0; pointer-events: none;
+}
+.graph-viewer-root .app-shell[data-opening="false"] {
+  opacity: 1; transition: opacity 320ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .graph-viewer-root .app-shell[data-opening] { transition: none; }
+}
+
+/* Table parameters: the rows the encoding declares, the run's row marked. */
+.parameter-table { margin: 0 0 20px; min-width: 0; }
+.parameter-table-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 8px; font-size: 12px; color: var(--color-ink-secondary); }
+.parameter-table-heading small { font-size: 11px; }
+.parameter-table-scroll { max-height: 280px; overflow: auto; border: 1px solid var(--color-rule); border-radius: 6px; background: var(--color-paper); }
+.parameter-table table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.parameter-table th { position: sticky; top: 0; padding: 6px 12px; text-align: left; font-size: 11px; font-weight: 600; color: var(--color-ink-secondary); background: var(--color-paper); border-bottom: 1px solid var(--color-rule); }
+.parameter-table td { padding: 6px 12px; border-bottom: 1px solid var(--color-rule); overflow-wrap: anywhere; }
+.parameter-table tr:last-child td { border-bottom: 0; }
+.parameter-table tr.is-selected td { font-weight: 600; background: color-mix(in srgb, var(--color-accent) 9%, var(--color-paper)); }
+.parameter-table tr.is-selected td:first-child { box-shadow: inset 3px 0 0 var(--color-accent); }
+.parameter-table td small { margin-left: 8px; font-size: 11px; font-weight: 400; color: var(--color-accent); }
+.parameter-table-note { margin: 6px 0 0; font-size: 12px; color: var(--color-ink-secondary); }
