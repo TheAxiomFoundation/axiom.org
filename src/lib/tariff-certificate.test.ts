@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { locateSourceRepo } from "../../scripts/source-repos";
 import {
   CERTIFICATE_COMMIT,
   CERTIFICATE_REPO_PATH,
@@ -15,17 +16,9 @@ const verdicts = (values: Record<string, boolean>) =>
 const notCertified = { state: "no", value: false };
 
 // Byte identity with the pinned axiom-oracles commit runs only where that
-// repository is checked out (local lane, not CI), like the schedule artifact.
-const oraclesPath = process.env.AXIOM_ORACLES_PATH ?? `${process.env.HOME}/TheAxiomFoundation/axiom-oracles`;
-const oraclesAvailable = (() => {
-  if (!existsSync(oraclesPath)) return false;
-  try {
-    execFileSync("git", ["-C", oraclesPath, "cat-file", "-e", `${CERTIFICATE_COMMIT}^{commit}`]);
-    return true;
-  } catch {
-    return false;
-  }
-})();
+// repository is checked out (local lane, not CI), found the same way the
+// schedule build finds it.
+const oracles = locateSourceRepo({ envVar: "AXIOM_ORACLES_PATH", names: ["axiom-oracles"], commit: CERTIFICATE_COMMIT });
 
 describe("tariff certificate status", () => {
   it("derives the rendered sentence from the vendored certificate", () => {
@@ -57,8 +50,8 @@ describe("tariff certificate status", () => {
     expect(() => describeCertificate({ certified: notCertified, verdicts: { exercised: { value: true } } })).toThrow(/is not a boolean/);
   });
 
-  it.skipIf(!oraclesAvailable)("vendors the certificate byte-for-byte from the pinned commit", () => {
-    const upstream = execFileSync("git", ["-C", oraclesPath, "show", `${CERTIFICATE_COMMIT}:${CERTIFICATE_REPO_PATH}`]);
+  it.skipIf(!oracles.available)("vendors the certificate byte-for-byte from the pinned commit", () => {
+    const upstream = execFileSync("git", ["-C", oracles.path, "show", `${CERTIFICATE_COMMIT}:${CERTIFICATE_REPO_PATH}`]);
     expect(Buffer.compare(upstream, readFileSync(`public${certificateDownloadPath}`))).toBe(0);
   });
 });
