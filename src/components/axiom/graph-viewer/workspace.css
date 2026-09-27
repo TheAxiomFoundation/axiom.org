@@ -198,7 +198,6 @@ body:has(.has-workspace) .nav-bar { display: none; }
   color: var(--color-ink); background: var(--color-paper-elevated); border-color: var(--color-rule);
 }
 .graph-viewer-root.has-workspace .irg-toolbar { border-radius: 6px; box-shadow: none; }
-.graph-viewer-root.has-workspace .irg-toolbar-segment { border-radius: 6px; }
 .graph-viewer-root.has-workspace .node-inspector-code > h3,
 .workspace-formula > h2 {
   margin: 0; padding: 12px 14px; font: inherit; font-size: 13px;

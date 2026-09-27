@@ -12,12 +12,7 @@ export function upstreamNodeIds(nodes: Node[], edges: Edge[], startId: string, m
     if (depth > maxDepth || (distances.get(id) ?? Infinity) <= depth) continue;
     distances.set(id, depth);
     if (depth >= maxDepth) continue;
-    for (const parent of incoming.get(id) ?? []) {
-      const kind = byId.get(parent)?.data.kind;
-      // Formula operators don't consume a dependency level.
-      const step = kind === "operator" || kind === "ifGate" ? 0 : 1;
-      pending.push([parent, depth + step]);
-    }
+    for (const parent of incoming.get(id) ?? []) pending.push([parent, depth + 1]);
   }
   return new Set(distances.keys());
 }
@@ -73,8 +68,7 @@ export function focusLayout(nodes: Node[], focus: Set<string>, edges: Edge[] = [
     column.sort((a, b) => Number(focus.has(b.id)) - Number(focus.has(a.id)) || a.position.y - b.position.y || a.id.localeCompare(b.id));
     const sizes = column.map((node) => {
       const active = focus.has(node.id);
-      const small = ["operator", "ifGate", "literal"].includes(String(node.data.kind));
-      return { width: active ? node.width ?? 220 : small ? 100 : 164, height: active ? node.height ?? 80 : 48 };
+      return { width: active ? node.width ?? 220 : 164, height: active ? node.height ?? 80 : 48 };
     });
     let y = 0;
     const placed = column.map((node, index) => {

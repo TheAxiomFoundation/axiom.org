@@ -2547,37 +2547,7 @@
   color: var(--color-ink);
 }/* Segmented control for the detail switch */
 
-
- 
-.graph-viewer-root .irg-toolbar-segment{
-  display: inline-flex;
-  background: var(--color-rule-subtle);
-  border: 1px solid var(--color-rule);
-  border-radius: 4px;
-  padding: 2px;
-  height: var(--graph-control-h);
-  align-items: center;
-  margin-right: 4px;
-}
-
-.graph-viewer-root .irg-toolbar-segment .irg-toolbar-btn{
-  border: 1px solid transparent;
-  background: transparent;
-  height: 26px;
-  border-radius: 3px;
-}
-
-.graph-viewer-root .irg-toolbar-segment .irg-toolbar-btn:hover{
-  color: var(--color-ink);
-  background: transparent;
-}
-
-.graph-viewer-root .irg-toolbar-segment .irg-toolbar-btn.is-active{
-  background: var(--color-paper-elevated);
-  color: var(--color-ink);
-  border-color: var(--color-rule);
-  box-shadow: 0 1px 2px rgba(28, 25, 23, 0.06);
-}/* Fullscreen toggle button — top-right of the canvas, matches the editorial
+/* Fullscreen toggle button — top-right of the canvas, matches the editorial
    Axiom button language. */
 
 
@@ -2885,15 +2855,6 @@
   line-height: 17px;
 }
 
-.graph-viewer-root .irg-op-label{
-  font-family: var(--f-mono);
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  color: var(--color-ink);
-  text-align: center;
-}
-
 /* Per-member answers on a question card: "P1 40 · P2 38 · P3 —". */
 .graph-viewer-root .irg-members {
   display: flex;
@@ -3057,52 +3018,9 @@
   border-style: solid;
   transform: translateY(-2px);
   box-shadow: 0 4px 12px -4px rgba(22, 101, 52, 0.25);
-}/* Operator node — small, neutral */
-
-
- 
-
-.graph-viewer-root .irg-operator{
-  text-align: center;
-  align-items: center;
-  justify-content: center;
 }
 
-.graph-viewer-root .irg-operator.irg-holds{
-  border-color: var(--color-success);
-  background: var(--color-success-light);
-}
-.graph-viewer-root .irg-operator.irg-fails{
-  border-color: var(--color-error);
-  background: var(--color-error-light);
-}
-.graph-viewer-root .irg-operator.irg-undet{
-  border-color: var(--color-warning);
-  background: rgba(180, 83, 9, 0.06);
-}
-.graph-viewer-root .irg-operator.irg-numeric{
-  border-color: var(--color-accent);
-  background: var(--color-accent-light);
-}
-.graph-viewer-root .irg-operator.irg-neutral{
-  border-color: var(--color-ink-muted);
-  background: var(--color-rule-subtle);
-}/* IF gate — distinctive, double-bordered */
-
-
- 
-
-.graph-viewer-root .irg-ifgate{
-  text-align: center;
-  align-items: center;
-  border-width: 2px;
-}
-
-.graph-viewer-root .irg-ifgate.irg-holds{ border-color: var(--color-success); background: var(--color-success-light); }
-.graph-viewer-root .irg-ifgate.irg-fails{ border-color: var(--color-error); background: var(--color-error-light); }
-.graph-viewer-root .irg-ifgate.irg-undet{ border-color: var(--color-warning); background: rgba(180, 83, 9, 0.06); }
-.graph-viewer-root .irg-ifgate.irg-numeric{ border-color: var(--color-accent); background: var(--color-accent-light); }
-.graph-viewer-root .irg-ifgate.irg-neutral{ border-color: var(--color-ink); background: var(--color-paper-elevated); }/* Sub-rule reference — clickable terminal */
+/* Sub-rule reference — clickable terminal */
 
 
  
@@ -3118,23 +3036,7 @@
 
 .graph-viewer-root .irg-rule.irg-holds{ border-color: var(--color-success); background: var(--color-success-light); }
 .graph-viewer-root .irg-rule.irg-fails{ border-color: var(--color-error); background: var(--color-error-light); }
-.graph-viewer-root .irg-rule.irg-numeric{ border-color: var(--color-accent); background: var(--color-accent-light); }/* Literal */
-
-
- 
-
-.graph-viewer-root .irg-literal{
-  font-family: var(--f-mono);
-  font-weight: 500;
-  font-size: 12px;
-  text-align: center;
-  align-items: center;
-  justify-content: center;
-  background: var(--color-rule-subtle);
-  border-color: var(--color-rule);
-  font-variant-numeric: tabular-nums;
-  padding: 8px 12px;
-}
+.graph-viewer-root .irg-rule.irg-numeric{ border-color: var(--color-accent); background: var(--color-accent-light); }
 
 .graph-viewer-root .irg-unknown{
   background: var(--color-rule-subtle);
