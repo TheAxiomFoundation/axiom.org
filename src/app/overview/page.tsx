@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { axiomAppHref } from "@/lib/urls";
-import { DEFAULT_SHARE_IMAGE } from "@/lib/share";
+import { DEFAULT_SHARE_IMAGE, SITE_NAME } from "@/lib/share";
 import { ArrowRightIcon } from "@/components/icons";
 import { WhatWeEnable } from "@/components/overview/what-we-enable";
 import { SubscribeLink } from "@/components/overview/subscribe-link";
@@ -22,6 +22,9 @@ export const metadata: Metadata = {
     "What the Axiom Foundation does and what the encoded layer enables: open, cited, verified encodings of statutes, regulations, and policy rules, starting with tax and benefit policy.",
   alternates: { canonical: "/overview" },
   openGraph: {
+    type: "website",
+    url: "./",
+    siteName: SITE_NAME,
     title: "The Axiom Foundation — overview",
     description:
       "Open, cited, verified encodings of the world's rules, starting with tax and benefit policy.",

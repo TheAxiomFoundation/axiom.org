@@ -1,16 +1,22 @@
 import type { Metadata } from "next";
 import { Reveal } from "@/components/landing/reveal";
+import { SITE_NAME } from "@/lib/share";
 
+// og:title and og:description fall back to the page's title and
+// description. twitter is left to the root layout, which keeps the
+// site handle and the large card; Next copies this image into it.
 export const metadata: Metadata = {
   title: "Workshop: New technologies for evidence-based policy making — Axiom Foundation",
   description:
     "Free afternoon workshop in Brussels, Thursday 27 August 2026 — the Axiom Foundation and PolicyEngine with CAPE and BEAMM at UCLouvain Saint-Louis. Talks, a live demo, and a roundtable with Belgian policy institutions.",
   openGraph: {
+    type: "website",
+    url: "./",
+    siteName: SITE_NAME,
     images: [
       { url: "https://axiom.org/events/iariw-2026-og2.png", width: 2400, height: 1350 },
     ],
   },
-  twitter: { card: "summary_large_image" },
 };
 
 const REGISTRATION_URL =

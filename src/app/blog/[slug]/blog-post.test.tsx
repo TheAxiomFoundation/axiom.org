@@ -17,6 +17,7 @@ vi.mock('@/lib/ghost', () => ({
 }))
 
 import { getBlogPost } from '@/lib/ghost'
+import { expectCompleteShareCard } from '@/test/share-card'
 import BlogPostPage, { generateMetadata } from './page'
 
 const POST = {
@@ -124,6 +125,7 @@ describe('Blog post page', () => {
       authors: ['Ariel Kennan'],
       images: [{ url: 'https://example.com/cover.png', alt: POST.featureImageAlt }],
     })
+    expectCompleteShareCard(meta.openGraph)
   })
 
   it('omits the share-image alt when the cover has none', async () => {
@@ -153,6 +155,7 @@ describe('Blog post page', () => {
       authors: ['Ariel Kennan'],
       images: ['/og-image.png'],
     })
+    expectCompleteShareCard(meta.openGraph)
   })
 
   it('leaves out article fields Ghost did not supply', async () => {
@@ -173,6 +176,7 @@ describe('Blog post page', () => {
       title: 'Encoding Title 7, end to end',
       images: [{ url: 'https://example.com/cover.png', alt: POST.featureImageAlt }],
     })
+    expectCompleteShareCard(meta.openGraph)
   })
 
   it('titles a missing post as the blog', async () => {

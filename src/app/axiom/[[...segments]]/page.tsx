@@ -5,6 +5,7 @@ import {
   getAxiomRuleMetadata,
 } from "@/lib/axiom/metadata";
 import { AXIOM_ENCODED_ONLY_COOKIE } from "@/lib/axiom/preferences";
+import { DEFAULT_SHARE_IMAGE, SITE_NAME } from "@/lib/share";
 import { resolveAxiomPath } from "@/lib/tree-data";
 import {
   treeNodesCacheKey,
@@ -45,17 +46,17 @@ export async function generateMetadata({
     title: meta.title,
     description: meta.description,
     alternates: { canonical: meta.canonicalUrl },
+    // Replaces the root layout's openGraph wholesale, so it restates the
+    // brand card. No twitter block: the layout's keeps the site handle
+    // and large card, and Next fills title, description and image from
+    // this openGraph.
     openGraph: {
       title: meta.title,
       description: meta.description,
       url: meta.canonicalUrl,
       type: "article",
-      siteName: "Axiom · Axiom Foundation",
-    },
-    twitter: {
-      card: "summary_large_image",
-      title: meta.title,
-      description: meta.description,
+      siteName: SITE_NAME,
+      images: [DEFAULT_SHARE_IMAGE],
     },
     robots: {
       index: true,

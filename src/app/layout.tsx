@@ -10,7 +10,7 @@ import { GoogleAnalytics } from "@/components/google-analytics";
 import { PostHogProvider } from "@/components/posthog-provider";
 import { SITE_URL, axiomAppHref } from "@/lib/urls";
 import { UPDATES_URL } from "@/lib/launch";
-import { DEFAULT_SHARE_IMAGE } from "@/lib/share";
+import { DEFAULT_SHARE_IMAGE, SITE_NAME } from "@/lib/share";
 
 const mono = JetBrains_Mono({
   subsets: ["latin"],
@@ -33,8 +33,14 @@ export const metadata: Metadata = {
   title: "Axiom Foundation — Computable law for all",
   description:
     "Open, machine-readable encodings of the world's rules, starting with tax and benefit policy. Cited, time-aware, and executable, so anyone can run, audit, or reform them.",
+  // Pages that set their own openGraph replace this block wholesale
+  // (Next merges metadata per top-level key), so each restates type,
+  // url, siteName and an image, or leaves the image to a sibling
+  // opengraph-image. share-cards.test.ts finds and checks every one.
   openGraph: {
+    type: "website",
     url: "./",
+    siteName: SITE_NAME,
     title: "Axiom Foundation",
     // Post-launch share copy — the Message House top line (ops repo,
     // comms/Message-House.md). Keep in sync if the house changes.
@@ -42,6 +48,10 @@ export const metadata: Metadata = {
       "The rules that decide who gets food assistance, health coverage, and tax credits live in closed code that no one can check — the Axiom Foundation publishes them in the open: cited, computable, and verified.",
     images: [DEFAULT_SHARE_IMAGE],
   },
+  // Pages don't set twitter: a page-level block would replace this one
+  // and drop the site handle, and Next already fills twitter:title,
+  // :description and :image from the resolved openGraph, falling back
+  // to the page's own title and description.
   twitter: {
     site: "@AxiomFdn",
     // The brand share card is 1200×630; without this Next emits the
