@@ -179,7 +179,6 @@ export function InteractiveRuleGraph({
   const flowRef = useRef<Pick<ReactFlowInstance, "getViewport" | "setViewport" | "zoomTo"> | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [zoomPercent, setZoomPercent] = useState(100);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   // Execution dissects its own path: nodes the run computed unfold
   // so the machinery that actually ran is visible, while untouched
   // branches stay folded.
@@ -241,25 +240,6 @@ export function InteractiveRuleGraph({
     return () => {
       cancelled = true;
     };
-  }, []);
-
-  // Track Fullscreen API state so the toggle reflects reality (user may
-  // press Esc, click outside, etc.).
-  useEffect(() => {
-    const handler = () => {
-      setIsFullscreen(document.fullscreenElement === wrapRef.current);
-    };
-    document.addEventListener("fullscreenchange", handler);
-    return () => document.removeEventListener("fullscreenchange", handler);
-  }, []);
-
-  const toggleFullscreen = useCallback(() => {
-    if (!wrapRef.current) return;
-    if (document.fullscreenElement) {
-      void document.exitFullscreen();
-    } else {
-      void wrapRef.current.requestFullscreen();
-    }
   }, []);
 
   const toggleCollapse = useCallback(
@@ -694,14 +674,11 @@ export function InteractiveRuleGraph({
     <div
       ref={wrapRef}
       data-lod={lod}
-      className={`irg-wrap ${isFullscreen ? "irg-fullscreen" : ""}`}
+      className="irg-wrap"
     >
       <ReactFlowProvider>
         {(() => {
-          // The browser paints only the fullscreen element's subtree, so
-          // while .irg-wrap is fullscreen the bar has to live inside it —
-          // otherwise every control, the exit button included, vanishes.
-          const slot = isFullscreen ? null : controlsSlot;
+          const slot = controlsSlot;
           const controlsBar = (
         <div className={`irg-controls-bar ${slot ? "irg-controls-inline" : ""}`}>
           <div className="irg-toolbar">
@@ -724,35 +701,6 @@ export function InteractiveRuleGraph({
                 <button type="button" className="irg-toolbar-btn" aria-label="Increase dependency depth" disabled={!Number.isFinite(upstreamDepth)} onClick={() => changeDepth(upstreamDepth >= 5 ? Infinity : upstreamDepth + 1)}>+</button>
               </div>
           </div>
-          <button
-            type="button"
-            className="irg-fullscreen-btn"
-            onClick={toggleFullscreen}
-            title={isFullscreen ? "Exit full screen (Esc)" : "Enter full screen"}
-            aria-label={isFullscreen ? "Exit full screen" : "Enter full screen"}
-          >
-            {isFullscreen ? (
-              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
-                <path
-                  d="M6 2v4H2M10 2v4h4M6 14v-4H2M10 14v-4h4"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  fill="none"
-                  strokeLinecap="round"
-                />
-              </svg>
-            ) : (
-              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
-                <path
-                  d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  fill="none"
-                  strokeLinecap="round"
-                />
-              </svg>
-            )}
-          </button>
         </div>
           );
           return slot ? createPortal(controlsBar, slot) : controlsBar;
@@ -1494,22 +1442,7 @@ const NodeInfo = ({
   const [pos, setPos] = useState<{ left: number; top: number; place: "above" | "below" } | null>(
     null,
   );
-  // Portal into the current fullscreen element when one is active —
-  // otherwise document.body is hidden and the popover wouldn't render at
-  // all. Listening to `fullscreenchange` keeps the target current as the
-  // user toggles in/out without re-opening the popover.
-  const [portalTarget, setPortalTarget] = useState<HTMLElement>(
-    () => (document.fullscreenElement as HTMLElement | null) ?? document.body,
-  );
-  useEffect(() => {
-    const sync = () => {
-      setPortalTarget(
-        (document.fullscreenElement as HTMLElement | null) ?? document.body,
-      );
-    };
-    document.addEventListener("fullscreenchange", sync);
-    return () => document.removeEventListener("fullscreenchange", sync);
-  }, []);
+  const portalTarget = document.body;
   useLayoutEffect(() => {
     if (!open || !anchorRef.current) return;
     const measure = () => {

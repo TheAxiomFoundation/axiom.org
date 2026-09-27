@@ -2503,15 +2503,8 @@
   text-transform: uppercase;
 }
 
-.graph-viewer-root .irg-wrap.irg-fullscreen{
-  width: 100vw;
-  height: 100%;
-  min-height: 100%;
-  border-radius: 0;
-  border: none;
-}/* Toolbar (detail switch / expand-all / collapse-all) — a flex item of
-   the controls bar, beside the fullscreen button. Matches the editorial
-   Axiom button language. */
+/* Toolbar (zoom, dependency depth) — a flex item of the controls bar.
+   Matches the editorial Axiom button language. */
 
 
  
@@ -2545,41 +2538,6 @@
 .graph-viewer-root .irg-toolbar-btn:hover{
   border-color: var(--color-ink);
   color: var(--color-ink);
-}/* Segmented control for the detail switch */
-
-/* Fullscreen toggle button — top-right of the canvas, matches the editorial
-   Axiom button language. */
-
-
- 
-
-.graph-viewer-root .irg-fullscreen-btn{
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--graph-control-h);
-  height: var(--graph-control-h);
-  border: 1px solid var(--color-rule);
-  background: var(--color-paper-elevated);
-  color: var(--color-ink-secondary);
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 120ms ease;
-  padding: 0;
-}
-
-.graph-viewer-root .irg-fullscreen-btn:hover{
-  border-color: var(--color-ink);
-  color: var(--color-ink);
-  box-shadow: 0 2px 4px rgba(28, 25, 23, 0.08);
-}
-
-.graph-viewer-root .irg-fullscreen-btn:active{
-  transform: scale(0.96);
-}
-
-.graph-viewer-root .irg-fullscreen-btn svg{
-  display: block;
 }/* React Flow handles — invisible by default, but positioned for edge attachment */
 
 
@@ -3395,7 +3353,7 @@
 }
 
 /* ── Controls bar ──
-   The graph's controls (detail level, expand/collapse, fullscreen)
+   The graph's controls (zoom, dependency depth)
    live in a flow row ABOVE the canvas — inspector popups and door
    chips can never cover them. The wrap turns into a column; the
    canvas takes the rest. */
@@ -3416,9 +3374,6 @@
   padding: 8px 12px;
   border-bottom: 1px solid var(--color-rule);
   background: var(--color-paper);
-}
-.graph-viewer-root .irg-controls-bar .irg-fullscreen-btn{
-  margin-left: auto;
 }
 
 /* In-slot (header row) variant: the bar sheds its own chrome — the
