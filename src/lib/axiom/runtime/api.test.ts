@@ -210,6 +210,14 @@ describe("runtime api client", () => {
     });
   });
 
+  it("routes additional people through household.people and reserves the primary person", async () => {
+    vi.stubEnv("AXIOM_RUNTIME_API_KEY", "test-key");
+    const fetchMock = vi.fn().mockResolvedValue(okEnvelope({ outputs: { count: 1 } }));
+    vi.stubGlobal("fetch", fetchMock);
+    await runCalculateRoot({root: "us:statutes/26/21", facts: {age: 8}, people: {person_2: {age: 30}}, variables: ["count"]});
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({root: "us:statutes/26/21", facts: {age: 8}, household: {people: {person_1: {}, person_2: {age: 30}}}, variables: ["count"]});
+  });
+
   it("feature-detects run-by-root: upstream 400/404 map to unsupported", async () => {
     vi.stubEnv("AXIOM_RUNTIME_API_KEY", "test-key");
     for (const status of [400, 404]) {

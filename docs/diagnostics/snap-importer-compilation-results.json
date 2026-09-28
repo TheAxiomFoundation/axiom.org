@@ -1,0 +1,230 @@
+[
+  {
+    "root": "us-az:policies/des/faa5/na-eligibility-and-benefit-determination/fy-2026-benefit-calculation",
+    "modules": 17,
+    "compiled": false,
+    "failure": "Error: failed to load RuleSpec module `us-az:policies/des/faa5/na-eligibility-and-benefit-determination/fy-2026-benefit-calculation`: atomic RuleSpec module `us-az:policies/des/faa5/na-eligibility-and-benefit-determination/fy-2026-benefit-calculation` must not declare module.kind; `composition` is accepted only by the composed-program surface"
+  },
+  {
+    "root": "us-az:policies/des/faa6/utility-allowance-current-amount",
+    "modules": 7,
+    "compiled": true,
+    "failure": null
+  },
+  {
+    "root": "us-ca:policies/cdss/snap/fy-2026-benefit-calculation",
+    "modules": 18,
+    "compiled": false,
+    "failure": "Error: failed to load RuleSpec module `us-ca:policies/cdss/snap/fy-2026-benefit-calculation`: atomic RuleSpec module `us-ca:policies/cdss/snap/fy-2026-benefit-calculation` must not declare module.kind; `composition` is accepted only by the composed-program surface"
+  },
+  {
+    "root": "us-ca:policies/cdss/snap/modified-categorical-eligibility",
+    "modules": 13,
+    "compiled": false,
+    "failure": "Error: failed to load RuleSpec module `us-ca:policies/cdss/snap/modified-categorical-eligibility`: atomic RuleSpec module `us:policies/usda/snap/state-plan-composition` must not declare module.kind; `composition` is accepted only by the composed-program surface"
+  },
+  {
+    "root": "us-ca:policies/cdss/snap/standard-utility-allowance",
+    "modules": 7,
+    "compiled": true,
+    "failure": null
+  },
+  {
+    "root": "us-co:policies/cdhs/snap/fy-2026-benefit-calculation",
+    "modules": 56,
+    "compiled": false,
+    "failure": "Error: failed to load RuleSpec module `us-co:policies/cdhs/snap/fy-2026-benefit-calculation`: atomic RuleSpec module `us-co:policies/cdhs/snap/fy-2026-benefit-calculation` must not declare module.kind; `composition` is accepted only by the composed-program surface"
+  },
+  {
+    "root": "us-co:regulations/10-ccr-2506-1/4.205.1",
+    "modules": 9,
+    "compiled": true,
+    "failure": null
+  },
+  {
+    "root": "us-co:regulations/10-ccr-2506-1/4.205.32",
+    "modules": 11,
+    "compiled": true,
+    "failure": null
+  },
+  {
+    "root": "us-co:regulations/10-ccr-2506-1/4.207.2",
+    "modules": 9,
+    "compiled": true,
+    "failure": null
+  },
+  {
+    "root": "us-co:regulations/10-ccr-2506-1/4.207.3",
+    "modules": 6,
+    "compiled": true,
+    "failure": null
+  },
+  {
+    "root": "us-co:regulations/10-ccr-2506-1/4.401",
+    "modules": 7,
+    "compiled": true,
+    "failure": null
+  },
+  {
+    "root": "us-co:regulations/10-ccr-2506-1/4.407.3",
+    "modules": 5,
+    "compiled": true,
+    "failure": null
+  },
+  {
+    "root": "us-co:regulations/10-ccr-2506-1/4.407.31",
+    "modules": 7,
+    "compiled": true,
+    "failure": null
+  },
+  {
+    "root": "us-fl:policies/dcf/ess-program-policy-manual/appendix-a-1-food-assistance-income-eligibility-standards-and-deductions/page-1",
+    "modules": 7,
+    "compiled": true,
+    "failure": null
+  },
+  {
+    "root": "us-ga:policies/dfcs/snap/3617",
+    "modules": 7,
+    "compiled": true,
+    "failure": null
+  },
+  {
+    "root": "us-ga:policies/dfcs/snap/fy-2026-benefit-calculation",
+    "modules": 16,
+    "compiled": false,
+    "failure": "Error: failed to load RuleSpec module `us-ga:policies/dfcs/snap/fy-2026-benefit-calculation`: atomic RuleSpec module `us-ga:policies/dfcs/snap/fy-2026-benefit-calculation` must not declare module.kind; `composition` is accepted only by the composed-program surface"
+  },
+  {
+    "root": "us-ga:policies/dfcs/snap/standard-utility-allowances",
+    "modules": 7,
+    "compiled": true,
+    "failure": null
+  },
+  {
+    "root": "us-ma:policies/dta/snap-cola/2025-10-01/standard-utility-allowances/heating-cooling",
+    "modules": 9,
+    "compiled": true,
+    "failure": null
+  },
+  {
+    "root": "us-md:policies/dhs/fia/snap/fy-2026-benefit-calculation",
+    "modules": 16,
+    "compiled": false,
+    "failure": "Error: failed to load RuleSpec module `us-md:policies/dhs/fia/snap/fy-2026-benefit-calculation`: atomic RuleSpec module `us-md:policies/dhs/fia/snap/fy-2026-benefit-calculation` must not declare module.kind; `composition` is accepted only by the composed-program surface"
+  },
+  {
+    "root": "us-md:policies/dhs/fia/snap/standard-utility-allowances",
+    "modules": 7,
+    "compiled": true,
+    "failure": null
+  },
+  {
+    "root": "us-mo:manual/dss/snap/1115-000-00/1115-035-00/1115-035-25/block-1",
+    "modules": 7,
+    "compiled": false,
+    "failure": "Error: failed to load RuleSpec module `us-mo:manual/dss/snap/1115-000-00/1115-035-00/1115-035-25/block-1`: `us-mo:manual/dss/snap/1115-000-00/1115-035-00/1115-035-25/block-1` is not a canonical RuleSpec module target of the form `<jurisdiction>:<relative path without extension>`"
+  },
+  {
+    "root": "us-nc:policies/dhhs/fns/fns-360-determining-benefit-levels/page-1",
+    "modules": 7,
+    "compiled": true,
+    "failure": null
+  },
+  {
+    "root": "us-nh:regulations/he-w-700/742/02/standard-utility-allowances",
+    "modules": 8,
+    "compiled": true,
+    "failure": null
+  },
+  {
+    "root": "us-ny:policies/otda/snap/fy-2026-benefit-calculation",
+    "modules": 31,
+    "compiled": false,
+    "failure": "Error: failed to load RuleSpec module `us-ny:policies/otda/snap/fy-2026-benefit-calculation`: atomic RuleSpec module `us-ny:policies/otda/snap/fy-2026-benefit-calculation` must not declare module.kind; `composition` is accepted only by the composed-program surface"
+  },
+  {
+    "root": "us-ny:regulations/18-nycrr/387/10",
+    "modules": 7,
+    "compiled": true,
+    "failure": null
+  },
+  {
+    "root": "us-ny:regulations/18-nycrr/387/12/f/3/v/a",
+    "modules": 7,
+    "compiled": true,
+    "failure": null
+  },
+  {
+    "root": "us-ny:regulations/18-nycrr/387/12/f/3/v/b",
+    "modules": 8,
+    "compiled": true,
+    "failure": null
+  },
+  {
+    "root": "us-ny:regulations/18-nycrr/387/12/f/3/v/c",
+    "modules": 9,
+    "compiled": true,
+    "failure": null
+  },
+  {
+    "root": "us-ny:regulations/18-nycrr/387/14/a/5",
+    "modules": 6,
+    "compiled": true,
+    "failure": null
+  },
+  {
+    "root": "us-sc:policies/dss/snap-policy-manual/page-159",
+    "modules": 11,
+    "compiled": true,
+    "failure": null
+  },
+  {
+    "root": "us-sc:policies/dss/snap-policy-manual/page-369",
+    "modules": 7,
+    "compiled": true,
+    "failure": null
+  },
+  {
+    "root": "us-tn:regulations/1240-01/04/27/block-1",
+    "modules": 7,
+    "compiled": true,
+    "failure": null
+  },
+  {
+    "root": "us:policies/usda/snap/fy-2026-cola/maximum-allotments",
+    "modules": 1,
+    "compiled": true,
+    "failure": null
+  },
+  {
+    "root": "us:policies/usda/snap/state-plan-composition",
+    "modules": 12,
+    "compiled": false,
+    "failure": "Error: failed to load RuleSpec module `us:policies/usda/snap/state-plan-composition`: atomic RuleSpec module `us:policies/usda/snap/state-plan-composition` must not declare module.kind; `composition` is accepted only by the composed-program surface"
+  },
+  {
+    "root": "us:regulations/7-cfr/273/10",
+    "modules": 4,
+    "compiled": true,
+    "failure": null
+  },
+  {
+    "root": "us:regulations/7-cfr/273/11/c",
+    "modules": 7,
+    "compiled": true,
+    "failure": null
+  },
+  {
+    "root": "us:regulations/7-cfr/273/9",
+    "modules": 6,
+    "compiled": true,
+    "failure": null
+  },
+  {
+    "root": "us:statutes/7/2017/a",
+    "modules": 5,
+    "compiled": true,
+    "failure": null
+  }
+]

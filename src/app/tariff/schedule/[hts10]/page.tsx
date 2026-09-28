@@ -1,0 +1,19 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { TariffStatusBlock } from "@/components/tariff/status-block";
+import { findTariffLine } from "@/lib/tariff-schedule";
+
+export async function generateMetadata({ params }: { params: Promise<{ hts10: string }> }): Promise<Metadata> { const { hts10 } = await params; const line = findTariffLine(hts10); return { title: line ? `${line.displayCode} — Tariff schedule` : "Tariff line not found" }; }
+export default async function TariffLinePage({ params }: { params: Promise<{ hts10: string }> }) {
+  const { hts10 } = await params; const line = findTariffLine(hts10); if (!line) notFound();
+  return <main className="relative z-1 px-5 pb-24 pt-32 sm:px-8"><article className="mx-auto max-w-[900px]">
+    <Link href="/tariff/schedule" className="font-mono text-xs text-[var(--color-accent)] underline">Back to schedule</Link>
+    <header className="my-8"><p className="font-mono text-sm text-[var(--color-ink-muted)]">HTS {line.displayCode}</p><h1 className="heading-page mt-3">{line.description}</h1></header><TariffStatusBlock />
+    {line.canada338Warning && <aside className="my-8 border-l-2 border-[var(--color-accent)] pl-4 text-sm leading-relaxed text-[var(--color-ink-secondary)]"><strong className="text-[var(--color-ink)]">Canada Section 338 warning.</strong> This witness beer line is in an Annex II positive list associated with headings 9903.03.12–9903.03.14. U.S. note 51 is not encoded, so this warning does not establish the treatment of an entry.</aside>}
+    <section className="mt-10"><h2 className="heading-section">Statutory rates</h2><dl className="mt-5 grid gap-px bg-[var(--color-rule)] sm:grid-cols-2">{[["General rate", line.generalRate, line.generalDisposition], ["Column 2 rate", line.column2Rate, line.column2Disposition]].map(([label, rate, disposition]) => <div key={label} className="bg-[var(--color-paper)] p-5"><dt className="font-mono text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">{label}</dt><dd className="mx-0 mt-2 font-mono text-lg text-[var(--color-ink)]">{rate || "not determined"}</dd><dd className="mx-0 mt-1 text-sm text-[var(--color-ink-secondary)]">Disposition: {disposition || "not determined"}</dd></div>)}</dl></section>
+    <section className="mt-10"><h2 className="heading-section">Action-family memberships</h2>{line.memberships.length ? <ul className="mt-5 grid gap-4 pl-5">{line.memberships.map((m, i) => <li key={`${m.family}-${i}`} className="text-sm text-[var(--color-ink-secondary)]"><strong className="text-[var(--color-ink)]">{m.explanation}</strong> — <a className="text-[var(--color-accent)] underline" href={m.citationPath}>read authority</a></li>)}</ul> : <p className="text-sm text-[var(--color-ink-secondary)]">No membership appears in the five encoded incidence modules. Membership in other action families is not determined.</p>}</section>
+    <section className="mt-10"><h2 className="heading-section">Rate citations</h2><ul className="mt-5 grid gap-4 pl-5">{line.citations.map((c) => <li key={c.field} className="text-sm text-[var(--color-ink-secondary)]"><a className="text-[var(--color-accent)] underline" href={c.path}>{c.field}</a>: {c.excerpt}</li>)}</ul></section>
+    <section className="mt-10 border-t border-[var(--color-rule)] pt-8"><h2 className="heading-section">Coverage note</h2><p className="text-sm leading-relaxed text-[var(--color-ink-secondary)]">This record reports base schedule values and encoded incidence membership. It does not calculate an entry&apos;s applied duty. Special programs, origin, valuation, effective dates, and action families outside the named modules may change the result; where the artifact has no answer, the result is not determined.</p></section>
+  </article></main>;
+}

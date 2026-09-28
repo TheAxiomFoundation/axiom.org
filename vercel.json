@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/receipt/paper/web/:path(.*)",
+      "destination": "https://theaxiomfoundation.github.io/receipt/paper/web/:path(.*)"
+    },
+    {
       "source": "/receipt/api/:path(.*)",
       "destination": "https://theaxiomfoundation.github.io/receipt/:path(.*)"
     },
@@ -73,6 +77,14 @@
       "destination": "https://axiom-microsim.vercel.app/gallery/microsim/:path(.*)"
     },
     {
+      "source": "/gallery/guidance",
+      "destination": "https://guidance-impact-visualizer.vercel.app/guidance"
+    },
+    {
+      "source": "/gallery/guidance/:path(.*)",
+      "destination": "https://guidance-impact-visualizer.vercel.app/guidance/:path(.*)"
+    },
+    {
       "source": "/architecture",
       "destination": "https://axiom-architecture-one.vercel.app/architecture"
     },
@@ -111,6 +123,30 @@
     {
       "source": "/local/:path(.*)",
       "destination": "https://axiom-local-pi.vercel.app/local/:path(.*)"
+    },
+    {
+      "source": "/:site(philanthropy|philanthropy-[a-z0-9-]+)",
+      "destination": "https://axiom-philanthropy.vercel.app/:site"
+    },
+    {
+      "source": "/:site(philanthropy|philanthropy-[a-z0-9-]+)/:path(.*)",
+      "destination": "https://axiom-philanthropy.vercel.app/:site/:path(.*)"
+    },
+    {
+      "source": "/:site(government|government-[a-z0-9-]+)",
+      "destination": "https://axiom-government.vercel.app/:site"
+    },
+    {
+      "source": "/:site(government|government-[a-z0-9-]+)/:path(.*)",
+      "destination": "https://axiom-government.vercel.app/:site/:path(.*)"
+    },
+    {
+      "source": "/:site(advisors|advisors-[a-z0-9-]+)",
+      "destination": "https://axiom-advisors.vercel.app/:site"
+    },
+    {
+      "source": "/:site(advisors|advisors-[a-z0-9-]+)/:path(.*)",
+      "destination": "https://axiom-advisors.vercel.app/:site/:path(.*)"
     }
   ],
   "redirects": [
@@ -222,12 +258,12 @@
     },
     {
       "source": "/guidance",
-      "destination": "https://guidance-impact-visualizer.vercel.app/",
+      "destination": "/gallery/guidance",
       "permanent": false
     },
     {
       "source": "/guidance/:path(.*)",
-      "destination": "https://guidance-impact-visualizer.vercel.app/:path(.*)",
+      "destination": "/gallery/guidance/:path(.*)",
       "permanent": false
     }
   ]

@@ -1,7 +1,12 @@
 "use client";
+import { NodeMetadata } from "./node-metadata";
 
+import { HouseholdComposer } from "./household-composer";
+import { RecordedFormula } from "./recorded-formula";
+import { ResultExplanation, inputAwareEvidence, recordedTableRow } from "./result-explanation";
+import { ParameterTableView } from "./parameter-table";
+import { GraphLoading } from "./graph-loading";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   InputEditContext,
   InteractiveRuleGraph,
@@ -15,16 +20,23 @@ import {
   humanizeCitation,
   humanizeRuleName,
   humanizeSource,
+  readableLawTarget,
 } from "./citations";
 import { InspectorMiniGraph } from "./inspector-mini-graph";
 import "./styles.css";
 import "./graph-styles.css";
 import "./plane.css";
+import "./workspace.css";
+import { RuleWorkspace, type WorkspaceView } from "./rule-workspace";
+import { CorpusLibrary } from "./corpus-library";
+import { rememberRunCapability, type RecentRule } from "./library-state";
 import {
   countriesFromPrograms,
   PREFERRED_DEFAULT_PROGRAM_KEY,
+  countryLabel,
   countryOf,
   defaultOutputsForProgram,
+  displayNameForProgram,
   fetchAllPrograms,
   fetchComposedGraph,
   fetchRootInputs,
@@ -34,25 +46,17 @@ import {
   programRefFromSummary,
 } from "./api";
 import type { Country, DashboardSpec, LegalId, ParameterRule, ProgramGraph, ProgramRef, ProgramSummary, RuleNode, TraceNode } from "./types";
-import { SubtreeDoors, SubtreeSearch } from "./subtree-picker";
-import {
-  ALL_STATES,
-  JURISDICTION_SCOPES,
-  statesInModules,
-  type JurisdictionScope,
-} from "./list-entries";
 import {
   composeRootOutput,
   filterStandaloneRules,
+  focusedComposeRule,
 } from "./compose-filter";
-import { buildRunRequestBody, scenarioKey } from "./run-request";
+import { buildRunRequestBody, mergeRunBatches, scenarioKey, traceRootIds, TRACE_BATCH_SIZE, type RunPayload } from "./run-request";
 import { trackAxiomEvent } from "@/lib/analytics";
 import {
-  readLauncherMode,
-  storeLauncherMode,
+  DEFAULT_LAUNCHER_MODE,
   type LauncherMode,
 } from "./launcher-mode";
-import { CorpusField } from "@/components/axiom/corpus-field";
 import { loadCorpusModules } from "@/lib/axiom/corpus-live";
 import type { CorpusModule } from "@/lib/axiom/corpus-field";
 
@@ -64,7 +68,9 @@ export function GraphViewerApp({
    *  journey instead of navigating. Omitted on standalone routes. */
   onBackToOverview?: () => void;
 } = {}) {
-  const router = useRouter();
+  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("map");
+  const [graphMounted, setGraphMounted] = useState(false);
+  useEffect(() => { if (workspaceView === "map") setGraphMounted(true); }, [workspaceView]);
   const [allPrograms, setAllPrograms] = useState<ProgramSummary[]>([]);
   // The launcher's corpus: every subtree the mirror serves (live,
   // with the committed snapshot as ballast) — the picker searches
@@ -72,27 +78,12 @@ export function GraphViewerApp({
   const [corpusModules, setCorpusModules] = useState<CorpusModule[] | null>(
     null,
   );
-  // Field ⇄ List: the launcher opens on the open-world field by
-  // default; the list picker is the alternate mode. Persisted.
+  // Every new visit starts on the map; switching views stays local to this visit.
   const [launcherMode, setLauncherMode] = useState<LauncherMode>(() =>
-    readLauncherMode(),
+    DEFAULT_LAUNCHER_MODE,
   );
   const pickLauncherMode = (mode: LauncherMode) => {
     setLauncherMode(mode);
-    storeLauncherMode(mode);
-  };
-  // One query, two surfaces: the top-right search's dropdown AND the
-  // list mode's full corpus list filter live on the same string.
-  const [launcherQuery, setLauncherQuery] = useState("");
-  // List mode's jurisdiction scope: All · Nationwide (us) · States
-  // (us-XX). Composes with the text search.
-  const [listScope, setListScope] = useState<JurisdictionScope>("all");
-  // Under States, one state may be picked (ALL_STATES = every state);
-  // leaving the States scope forgets the pick.
-  const [listState, setListState] = useState<string>(ALL_STATES);
-  const pickListScope = (scope: JurisdictionScope) => {
-    setListScope(scope);
-    if (scope !== "states") setListState(ALL_STATES);
   };
   const [country, setCountry] = useState<Country>(() => initialCountry());
   const [program, setProgram] = useState<ProgramRef | null>(null);
@@ -109,13 +100,43 @@ export function GraphViewerApp({
   const [scenario, setScenario] = useState<Record<string, number | boolean>>(
     {},
   );
+  // Additional household members (person_2, …) for Person-entity
+  // answers. The flat scenario IS person_1 — the inspector, samples,
+  // and canvas flows keep writing it untouched; each extra member
+  // carries its own Person-level answers and rides the compose
+  // request as `people`.
+  const [extraMembers, setExtraMembers] = useState<string[]>([]);
+  const [memberScenario, setMemberScenario] = useState<
+    Record<string, Record<string, number | boolean>>
+  >({});
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
   // Post-run edits mark the sheet stale until the NEXT explicit run
   // (edits never fire the engine by themselves).
   const [resultsStale, setResultsStale] = useState(false);
   const ranScenarioKey = useRef<string | null>(null);
+  const [formulaDependency, setFormulaDependency] = useState<string | null>(null);
   const [inspected, setInspected] = useState<IrgNodeData | null>(null);
+  // The inspector shares the exec panel's scroll with the results
+  // section — bring it into view when a node is picked, or its card
+  // opens below the fold.
+  const execPanelRef = useRef<HTMLElement | null>(null);
+  const inspectorSectionRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!inspected) {
+      // Closing the node card leaves just the results — read them
+      // from the top, not from wherever the card had scrolled to.
+      execPanelRef.current?.scrollTo({ top: 0, behavior: "instant" });
+      return;
+    }
+    // Instant, not the page's smooth scroll-behavior — the canvas
+    // fly-to runs at the same moment and cancels an animated scroll
+    // midway.
+    inspectorSectionRef.current?.scrollIntoView({
+      block: "nearest",
+      behavior: "instant",
+    });
+  }, [inspected]);
   // The rule lens: "how does this rule work?" — a trail of focused
   // rules over the map. Entering saves the map's output selection;
   // the trail's crumbs step back; leaving restores the map exactly.
@@ -127,17 +148,19 @@ export function GraphViewerApp({
     legalId: string;
     nonce: number;
     immediate?: boolean;
+    readable?: boolean;
   } | null>(null);
   // immediate: the canvas layout is at rest (a plain card click) — no
   // relayout is coming, so the flight starts without the settle hold.
   // soft: a relayout IS coming, but it's a small unfold — glide
   // through its commit instead of hard-cutting.
-  const flyTo = (legalId: string, immediate = false, soft = false) =>
+  const flyTo = (legalId: string, immediate = false, soft = false, readable = false) =>
     setFlyTarget((current) => ({
       legalId,
       nonce: (current?.nonce ?? 0) + 1,
       immediate,
       soft,
+      readable,
     }));
   const savedSelection = useRef<{
     outputs: LegalId[];
@@ -170,41 +193,12 @@ export function GraphViewerApp({
     setSelectedOutputs([target]);
     inspectRule(target);
   };
-  // Clicking an Index entry must land on the canvas even when the
-  // target sits inside a folded branch: unfold its ancestry first,
-  // then fly — the camera chases the relayout to where it settles.
+  // The relationship diagram selects an already expanded graph node. Do
+  // not mutate folds here: that rebuilds the canvas during the camera flight.
   const flyFromIndex = (legalId: string) => {
-    // The trace tree is a DAG unrolled — the target can sit on
-    // several paths, and the renderer may materialize any of them.
-    // Unfold every ancestor on every path (the target itself keeps
-    // its own fold state). Worked out up front: when every ancestor
-    // is already open there is no fold update, no relayout — and the
-    // flight goes immediately instead of waiting out the relayout
-    // grace period.
-    const toUnfold = new Set<string>();
-    const unfold = (node: TraceNode): boolean => {
-      let viaChild = false;
-      for (const child of node.children ?? []) {
-        if (unfold(child)) viaChild = true;
-      }
-      if (viaChild && folded.has(node.legalId)) toUnfold.add(node.legalId);
-      return viaChild || node.legalId === legalId;
-    };
-    for (const id of selectedOutputs) {
-      const root = structureTraces[id];
-      if (root) unfold(root);
-    }
-    if (toUnfold.size > 0) {
-      setFolded((current) => {
-        const next = new Set(current);
-        for (const id of toUnfold) next.delete(id);
-        return next;
-      });
-    }
-    flyTo(legalId, toUnfold.size === 0, toUnfold.size > 0);
-    // An Index click is a card click: open the info sheet, which also
-    // pins the path highlight until it closes.
-    inspectRule(legalId);
+    flyTo(legalId, true);
+    if (walkInputById.has(legalId)) inspectInput(legalId);
+    else inspectRule(legalId);
   };
   const inspectRule = (legalId: string) => {
     const rule = walkRuleById.get(legalId);
@@ -243,16 +237,12 @@ export function GraphViewerApp({
       nonce: (current?.nonce ?? 0) + 1,
     }));
   };
-  // A click opens the card's info and glides the camera to it — the
-  // graph itself stays exactly as drawn (no re-dissection; that's the
-  // double-click lens).
+  // Clicking makes this node the root of the visible dependency graph.
   const focusNode = (data: IrgNodeData) => {
+    // The workspace records the step (URL + history) as the selection lands.
     setInspected(data);
     trackNodeOpened(data.kind);
-    const legalId = "legalId" in data && data.legalId ? data.legalId : null;
-    if (!legalId) return;
-    if (data.kind !== "output" && data.kind !== "ruleRef") return;
-    flyTo(legalId, true);
+    // The graph coordinates selection layout and camera as one transition.
   };
   const lensFocusId = lensTrail[lensTrail.length - 1] ?? null;
   // The sidebar is isolation's home — a pane click may clear the
@@ -261,7 +251,11 @@ export function GraphViewerApp({
     if (lensFocusId && !inspected) inspectRule(lensFocusId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lensFocusId, inspected]);
+  const [editingRunInputs, setEditingRunInputs] = useState(false);
+  const [explanationTrail, setExplanationTrail] = useState<string[]>([]);
   const [runResult, setRunResult] = useState<{
+    submittedFacts?: Record<string, unknown>;
+    submittedPersonIds?: Record<string, string>;
     outputs: Record<string, number | string | boolean | null>;
     trace: Array<{
       variable: string;
@@ -275,6 +269,12 @@ export function GraphViewerApp({
       vintage: { engine_release: string };
     } | null;
   } | null>(null);
+  // A fresh run leads with its results — snap the shared panel back to
+  // the top even when a node card was open below.
+  useEffect(() => {
+    if (!runResult) return;
+    execPanelRef.current?.scrollTo({ top: 0, behavior: "instant" });
+  }, [runResult]);
   // Deep-link params, consumed once: ?program=us-co/co-snap selects a
   // program as soon as the registry loads; ?focus=us:statutes/7/2017
   // pre-selects the rules whose fileLegalId sits at or under that
@@ -284,6 +284,11 @@ export function GraphViewerApp({
     string | null
   >(() => initialParam("program"));
   const pendingFocusRef = useRef<string | null>(initialParam("focus"));
+  // A composed deep link's ?focus=<rule> names the opening card. The
+  // compose load sets it and the opening flight consumes it once —
+  // the summit is the graph's largest root regardless of selection,
+  // so the flight has to be told.
+  const openingRuleRef = useRef<string | null>(null);
   // The entry launcher: a cold arrival (no deep link) opens with
   // "what law do you want to run?" instead of a bare canvas. Picking
   // a program dissolves the launcher into the graph.
@@ -309,12 +314,13 @@ export function GraphViewerApp({
   const [selectedLevers, setSelectedLevers] = useState<string[] | null>(null);
   // The runtime's input registry: every settable input, its dtype
   // and default — the single source of truth for answer controls.
-  // `options` holds closed numeric domains (table keys, equality-
-  // literal sets like filing_status ∈ {0,1,2}) rendered as selects.
+  // `options` and labels come from explicit enum metadata.
   const [inputMeta, setInputMeta] = useState<{
     dtypes: Record<string, string>;
     defaults: Record<string, unknown>;
     options?: Record<string, number[]>;
+    optionLabels?: Record<string, Record<number, string>>;
+    presentation?: Record<string, { category?: string; order?: number; label?: string }>;
   }>({ dtypes: {}, defaults: {} });
   // Bumped by Retry buttons — re-fires the program load effect after
   // a transient graph/registry failure.
@@ -327,18 +333,25 @@ export function GraphViewerApp({
   // The law popup: the provision page at the node's level, embedded
   // read-only — the Plane is the only surface that navigates.
   const [lawPopup, setLawPopup] = useState<string | null>(null);
+  // Anything that moves or resizes a tour-spotlit target asks an
+  // active tour to re-resolve and refit its anchor (no-op without
+  // one): overlays opening AND closing over their own triggers, the
+  // launcher's controls growing through Field/List and scope flips,
+  // and the inspector's mini-graph reshaping as neighbors are
+  // clicked (its size tracks the dependency count).
+  useEffect(() => {
+    window.dispatchEvent(new Event("axiom:tour-rehighlight"));
+  }, [lawPopup, launcherMode, inspected]);
+  // Opening the run sheet is engaging, not touring — the sheet is
+  // dense, interactive, and a tour card floating over it would cover
+  // its own Run button. End any active tour.
+  useEffect(() => {
+    if (runPanelOpen) window.dispatchEvent(new Event("axiom:tour-end"));
+  }, [runPanelOpen]);
   const graphJustLoaded = useRef(false);
   const surveyPendingRef = useRef(false);
   const pendingOpeningRef = useRef<string | null>(null);
-  // While a big selection lays out, the canvas hides behind a paper
-  // veil — the map is composed off-stage and revealed once, whole.
-  const [veiled, setVeiled] = useState(false);
-  const veilTimer = useRef<number | null>(null);
-  const veilFor = (ms: number) => {
-    setVeiled(true);
-    if (veilTimer.current) window.clearTimeout(veilTimer.current);
-    veilTimer.current = window.setTimeout(() => setVeiled(false), ms);
-  };
+  const [readyGraphKey, setReadyGraphKey] = useState<string | null>(null);
   // The scenario runner belongs to the "Run a scenario" journey only —
   // survey and rule journeys keep a quieter sidebar.
   const [scenarioMode, setScenarioMode] = useState(false);
@@ -411,10 +424,8 @@ export function GraphViewerApp({
     // so its one-time layout stall hits a still screen.
     if (outputRules.length === 0) {
       surveyPendingRef.current = true;
-      veilFor(2400);
       return;
     }
-    veilFor(1500);
     applySurvey();
   };
   const beginScenario = () => {
@@ -435,32 +446,37 @@ export function GraphViewerApp({
     () => new Map((graph?.inputs ?? []).map((input) => [input.legalId, input])),
     [graph],
   );
-  // The summit: the terminal result with the deepest dependency
-  // closure — the box the whole law rolls up into (Allotment,
-  // Benefit). The easiest handhold for a first look.
-  const summitOutput = useMemo(() => {
-    if (!graph) return null;
-    const byId = new Map(graph.rules.map((rule) => [rule.legalId, rule]));
-    let best: string | null = null;
-    let bestSize = -1;
-    for (const id of graph.terminalOutputs) {
+  // How much law rolls up into a rule: the size of its dependency
+  // closure — the measure that picks the headline of a run, the same
+  // one composeRootOutput uses to pick the summit of the graph.
+  const closureSizeOf = useMemo(
+    () => (legalId: string) => {
       const seen = new Set<string>();
-      const stack = [id];
+      const stack = [legalId];
       while (stack.length > 0) {
         const current = stack.pop()!;
         if (seen.has(current)) continue;
         seen.add(current);
-        const rule = byId.get(current);
+        const rule = walkRuleById.get(current);
         if (rule) stack.push(...rule.ruleDeps);
       }
-      if (seen.size > bestSize) {
-        bestSize = seen.size;
-        best = id;
-      }
-    }
-    return best;
-  }, [graph]);
-
+      return seen.size;
+    },
+    [walkRuleById],
+  );
+  // The summit: the terminal result with the deepest dependency
+  // closure — the box the whole law rolls up into (Allotment,
+  // Benefit). The easiest handhold for a first look. It is the same
+  // pick that leads a composed selection — the canvas scopes to
+  // selectedOutputs[0] while the header names the summit, so two
+  // rankings would draw one rule under another's title.
+  const summitOutput = useMemo(
+    () =>
+      graph && graph.terminalOutputs.length > 0
+        ? composeRootOutput(graph)
+        : null,
+    [graph],
+  );
   const consumersOf = (legalId: string) =>
     (graph?.rules ?? []).filter(
       (rule) =>
@@ -550,18 +566,17 @@ export function GraphViewerApp({
   // on demand from the encodings mirror — for law that is encoded but not
   // yet inside any compiled program package. Choosing a program or
   // country exits compose mode back to the package registry.
+  const [graphControlsSlot, setGraphControlsSlot] = useState<HTMLElement | null>(
+    null,
+  );
   const [composeFocus, setComposeFocus] = useState<string | null>(() =>
     initialParam("compose"),
   );
   const [composedFiles, setComposedFiles] = useState<LegalId[]>([]);
   const [composedTruncated, setComposedTruncated] = useState(false);
-  // Standalone definitions hidden from the composed canvas (the
-  // isolated-node filter) — reported honestly in top-meta.
-  const [composedHiddenCount, setComposedHiddenCount] = useState(0);
-  // Run-by-root, feature-detected: the API is gaining POST /calculate
-  // with `{ root, facts }`. Until the probe confirms the deployment
-  // answers that shape, compose mode shows no run affordance at all —
-  // the graph is fully browsable either way. null = probing.
+  // Run-by-root is available after the runtime compiles the input
+  // catalog. The source graph stays browseable if compilation fails.
+  // null = checking the catalog.
   const [composeRunReady, setComposeRunReady] = useState<boolean | null>(
     null,
   );
@@ -601,40 +616,51 @@ export function GraphViewerApp({
   // The picker's corpus loads only when the launcher is actually up —
   // a ?program= / ?compose= deep link never pays for it.
   useEffect(() => {
-    if (launcher === "closed" || corpusModules) return;
+    if (launcher === "closed") return;
     let cancelled = false;
-    loadCorpusModules().then(({ modules }) => {
+    loadCorpusModules({ country }).then(({ modules }) => {
       if (!cancelled) setCorpusModules(modules);
     });
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [launcher]);
+  }, [launcher, country]);
 
   // The launcher's single verb: pick a node → its subgraph opens.
   // Compose mode for exactly that root, the URL rewritten to the
   // canonical ?compose= deep link (replaceState — the viewer never
   // grows its own history entries).
-  const enterComposeMode = (target: string) => {
+  const enterComposeMode = (target: string, recent?: RecentRule) => {
+    setWorkspaceView("map");
+    setGraphMounted(false);
     // A backdrop program may have parked an opening flight while the
     // launcher was up — that summit belongs to the OLD graph.
     pendingOpeningRef.current = null;
+    // An inbound ?focus= belonged to the arrival view; it must not lead a
+    // later composed view that happens to carry the rule (the URL loses
+    // the param below, so the selection must lose it too).
+    pendingFocusRef.current = null;
     setProgram(null);
     setGraph(null);
     setSelectedOutputs([]);
     setComposedFiles([]);
     setComposedTruncated(false);
-    setComposedHiddenCount(0);
+    setReadyGraphKey(null);
     setComposeFocus(target);
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
       url.searchParams.set("compose", target);
       url.searchParams.delete("program");
       url.searchParams.delete("focus");
+      url.searchParams.delete("selection");
+      url.searchParams.delete("view");
+      if (recent) {
+        url.searchParams.set("selection", recent.selection);
+        url.searchParams.set("view", "map");
+      }
       window.history.replaceState({}, "", url.toString());
     }
-    veilFor(1800);
     dismissLauncher();
   };
 
@@ -644,14 +670,16 @@ export function GraphViewerApp({
   // lands on the launcher too. (The graph state resets; the backdrop
   // program re-defaults exactly like a cold arrival.)
   const exitToLauncher = () => {
+    setWorkspaceView("map");
+    setGraphMounted(false);
     pendingOpeningRef.current = null;
+    pendingFocusRef.current = null;
     setProgram(null);
     setGraph(null);
     setSelectedOutputs([]);
     setComposeFocus(null);
     setComposedFiles([]);
     setComposedTruncated(false);
-    setComposedHiddenCount(0);
     setComposeRunReady(null);
     setRunBlocked(null);
     setRunResult(null);
@@ -666,28 +694,23 @@ export function GraphViewerApp({
       url.searchParams.delete("compose");
       url.searchParams.delete("program");
       url.searchParams.delete("focus");
+      url.searchParams.delete("selection");
+      url.searchParams.delete("view");
       window.history.replaceState({}, "", url.toString());
     }
-    // "Overview" IS the field — land there even if the visitor's
-    // persisted launcher preference is the list (their stored
-    // preference is untouched; the next cold arrival honors it).
-    setLauncherMode("field");
+    // Preserve the current visit’s view when returning from a graph.
     setLauncher("open");
     launcherRef.current = "open";
   };
 
-  // One control, three surfaces: the landing's in-place overlay pops
-  // its own history entry (the host passed the handler); standalone
-  // /axiom/graph client-navigates to the /axiom landing (the field);
-  // /app reopens its launcher in place.
+  // One control, two behaviors: the landing's in-place overlay pops
+  // its own history entry (the host passed the handler); everywhere
+  // else — /app and standalone /axiom/graph — the overview is the
+  // graph's own field launcher, reopened in place. The /axiom corpus
+  // landing is deliberately not a destination from the graph app.
   const backToOverview = () => {
     if (onBackToOverview) {
       onBackToOverview();
-      return;
-    }
-    if (typeof window === "undefined") return;
-    if (/\/axiom\/graph$/.test(window.location.pathname)) {
-      router.push("/axiom");
       return;
     }
     exitToLauncher();
@@ -731,6 +754,7 @@ export function GraphViewerApp({
     const catalog: Array<{
       name: string;
       legalId: string;
+      fileLegalId: string;
       entity: string | null;
       isBool: boolean;
       sample: number | boolean;
@@ -743,6 +767,7 @@ export function GraphViewerApp({
       catalog.push({
         name: input.name,
         legalId: input.legalId,
+        fileLegalId: input.fileLegalId,
         entity: input.entity ?? null,
         isBool,
         sample: isBool
@@ -756,17 +781,291 @@ export function GraphViewerApp({
     return catalog;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graph, inputMeta]);
+  // The picker's computation outline: the law's own dependency tree —
+  // rules as branches, answerable questions as leaves. The graph is a
+  // DAG, so a shared input appears under EVERY branch that consumes
+  // it; the structure carries the fan-out that any flat partition
+  // hides. Linear pass-through rules collapse so chains read as one
+  // hop.
+  const inputOutline = useMemo<OutlineNode[]>(() => {
+    if (!graph) return [];
+    const ruleById = new Map(graph.rules.map((rule) => [rule.legalId, rule]));
+    const catalogByName = new Map(inputCatalog.map((row) => [row.name, row]));
+    const leafById = new Map(
+      graph.inputs
+        .filter((input) => !ruleById.has(input.legalId))
+        .map((input) => [input.legalId, input]),
+    );
+    // Cross-module seams bridge by NAME: a rule consumes the input
+    // `earned_income` while the rule computing it lives in another
+    // module under its own id. Bridged chains nest where they're
+    // consumed instead of floating as extra roots; the seam input
+    // stays answerable at the top of the bridged branch (a direct
+    // answer short-circuits its sub-questions).
+    const ruleIdByName = new Map(
+      graph.rules.map((rule) => [rule.name, rule.legalId]),
+    );
+    const built = new Map<string, OutlineNode | null>();
+    const build = (id: string, path: Set<string>): OutlineNode | null => {
+      if (path.has(id)) return null;
+      const cached = built.get(id);
+      if (cached !== undefined) return cached;
+      const rule = ruleById.get(id);
+      if (!rule) return null;
+      const nextPath = new Set(path).add(id);
+      const inputs: OutlineInputRow[] = [];
+      const seenInputs = new Set<string>();
+      let children: OutlineNode[] = [];
+      for (const dep of [...rule.ruleDeps, ...rule.inputDeps]) {
+        if (ruleById.has(dep)) {
+          const child = build(dep, nextPath);
+          if (child) children.push(child);
+        } else {
+          const leaf = leafById.get(dep);
+          if (!leaf) continue;
+          // Bridge whether or not the seam is answerable — the chain
+          // belongs under its consumer either way.
+          const row = catalogByName.get(leaf.name);
+          if (row && seenInputs.has(row.name)) continue;
+          const bridged = ruleIdByName.get(leaf.name);
+          if (bridged && bridged !== id && !nextPath.has(bridged)) {
+            const child = build(bridged, nextPath);
+            if (child) {
+              if (row) {
+                seenInputs.add(row.name);
+                if (!child.inputs.some((r) => r.name === row.name)) {
+                  children.push({
+                    ...child,
+                    inputs: [row, ...child.inputs],
+                    count: child.count + 1,
+                  });
+                  continue;
+                }
+              }
+              children.push(child);
+              continue;
+            }
+          }
+          if (row) {
+            seenInputs.add(row.name);
+            inputs.push(row);
+          }
+        }
+      }
+      inputs.sort((a, b) => humanize(a.name).localeCompare(humanize(b.name)));
+      // A corridor — one child, no questions of its own — collapses:
+      // the outer (closer-to-result) name stays, the contents hoist.
+      if (inputs.length === 0 && children.length === 1) {
+        const inner = children[0]!;
+        inputs.push(...inner.inputs);
+        children = inner.children;
+      }
+      const names = new Set<string>();
+      collectOutlineInputNames({ inputs, children }, names);
+      const node: OutlineNode | null =
+        names.size > 0
+          ? { id, label: humanize(rule.name), inputs, children, count: names.size }
+          : null;
+      built.set(id, node);
+      return node;
+    };
+    const idConsumed = new Set<string>();
+    const consumed = new Set<string>();
+    for (const rule of graph.rules)
+      for (const dep of [...rule.ruleDeps, ...rule.inputDeps]) {
+        idConsumed.add(dep);
+        consumed.add(dep);
+        // A name-bridged chain is consumed too — it nests under its
+        // consumer rather than surfacing as a root. Never by ITSELF:
+        // a rule whose subtree consumes a seam input bearing its own
+        // name (a prior-period self-reference) must stay a root.
+        const leaf = leafById.get(dep);
+        const bridged = leaf ? ruleIdByName.get(leaf.name) : undefined;
+        if (bridged && bridged !== rule.legalId) consumed.add(bridged);
+      }
+    const rootsFrom = (unconsumed: Set<string>) =>
+      graph.rules
+        .filter((rule) => !unconsumed.has(rule.legalId))
+        .map((rule) => build(rule.legalId, new Set()))
+        .filter((node): node is OutlineNode => !!node)
+        .sort((a, b) => b.count - a.count);
+    const roots = rootsFrom(consumed);
+    // Mutually-bridged chains can consume every root away; a picker
+    // with rules but no tree is strictly worse than extra roots —
+    // fall back to id-only consumption.
+    const kept = roots.length > 0 ? roots : rootsFrom(idConsumed);
+    // Whole-module serving drags in co-resident chains that feed no
+    // computed output (import § 151 for one definition, receive its
+    // senior-deduction machinery too). Answering those questions
+    // cannot change any result — drop chains that touch no terminal
+    // output. The systematic fix is upstream: compose should serve
+    // the exercised closure, not whole files.
+    const terminal = new Set(graph.terminalOutputs ?? []);
+    if (terminal.size === 0) return kept;
+    const touchesTerminal = (node: OutlineNode): boolean =>
+      terminal.has(node.id) || node.children.some(touchesTerminal);
+    return kept.filter(touchesTerminal);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [graph, inputCatalog]);
+  // Explicit expand/collapse choices; anything unset falls back to
+  // "roots open, branches closed" (search opens everything).
+  const [outlineOpen, setOutlineOpen] = useState<Map<string, boolean>>(
+    new Map(),
+  );
+  // The picker's view of the outline: pruned to what's addable and
+  // matching, primary tree first, satellites folded. Memoized — the
+  // DAG walk must not re-run on unrelated panel re-renders.
+  const outlineView = useMemo<OutlineNode[]>(() => {
+    const active = selectedLevers ?? [];
+    const query = runBrowseSearch.trim().toLowerCase();
+    const rowVisible = (row: OutlineInputRow) =>
+      !active.includes(row.name) &&
+      (!query || humanize(row.name).toLowerCase().includes(query));
+    // Node identity is the whole game here: shared sub-computations
+    // are the SAME object under each consumer (the builder caches by
+    // id), so all structural passes run on the original outline —
+    // cloning first would sever the sharing they detect. The
+    // active/query filter applies at input-collection time instead.
+    const pruned = inputOutline;
+    if (pruned.length === 0) return [];
+    // ── One MEANINGFUL home per node and per input ──
+    // The fan-out is real, but repeating rows under every consumer
+    // buries an 8-question law under 40 add-buttons, and "first
+    // occurrence" is order trivia. Dominator placement, two passes:
+    //   1. A shared SUB-COMPUTATION (a subtree consumed by several
+    //      calcs) renders once, at the narrowest node all of its
+    //      consumers sit beneath, internal structure intact.
+    //   2. A shared INPUT then renders once, at the narrowest node
+    //      all of its (now unique) consumers sit beneath.
+    // Used everywhere → the law's root; scoped → inside its section.
+    // Placement itself carries information.
+    const commonPrefix = (paths: OutlineNode[][]): OutlineNode[] => {
+      let prefix = paths[0] ?? [];
+      for (const path of paths.slice(1)) {
+        let i = 0;
+        while (i < prefix.length && i < path.length && prefix[i] === path[i]) {
+          i += 1;
+        }
+        prefix = prefix.slice(0, i);
+      }
+      return prefix;
+    };
+    // Pass 1: where does every node live? Unique parent → in place;
+    // several distinct parents → the LCA of its occurrence trails.
+    const nodeParents = new Map<OutlineNode, Set<OutlineNode>>();
+    const nodeTrails = new Map<OutlineNode, OutlineNode[][]>();
+    const record = (node: OutlineNode, trail: OutlineNode[]) => {
+      const parents = nodeParents.get(node) ?? new Set<OutlineNode>();
+      if (trail.length > 0) parents.add(trail[trail.length - 1]!);
+      nodeParents.set(node, parents);
+      const trails = nodeTrails.get(node) ?? [];
+      trails.push(trail);
+      nodeTrails.set(node, trails);
+      node.children.forEach((child) => record(child, [...trail, node]));
+    };
+    pruned.forEach((root) => record(root, []));
+    const homeOf = new Map<OutlineNode, OutlineNode | null>();
+    for (const [node, parents] of nodeParents) {
+      if (parents.size === 0) {
+        homeOf.set(node, null);
+      } else if (parents.size === 1) {
+        homeOf.set(node, [...parents][0]!);
+      } else {
+        const prefix = commonPrefix(nodeTrails.get(node)!);
+        homeOf.set(node, prefix.length > 0 ? prefix[prefix.length - 1]! : null);
+      }
+    }
+    const childrenOf = new Map<OutlineNode | null, OutlineNode[]>();
+    for (const [node, home] of homeOf) {
+      const list = childrenOf.get(home) ?? [];
+      list.push(node);
+      childrenOf.set(home, list);
+    }
+    const topLevel = childrenOf.get(null) ?? [];
+    // Pass 2: input homes over the deduplicated structure.
+    const inputPaths = new Map<string, OutlineNode[][]>();
+    const rowByName = new Map<string, OutlineInputRow>();
+    const walkPlaced = (node: OutlineNode, trail: OutlineNode[]) => {
+      const here = [...trail, node];
+      for (const row of node.inputs) {
+        if (!rowVisible(row)) continue;
+        rowByName.set(row.name, row);
+        const list = inputPaths.get(row.name) ?? [];
+        list.push(here);
+        inputPaths.set(row.name, list);
+      }
+      (childrenOf.get(node) ?? []).forEach((child) => walkPlaced(child, here));
+    };
+    topLevel.forEach((root) => walkPlaced(root, []));
+    const inputHomes = new Map<OutlineNode, OutlineInputRow[]>();
+    for (const [name, occurrences] of inputPaths) {
+      const prefix = commonPrefix(occurrences);
+      // Occurrences in different trees share no prefix — the primary
+      // law takes law-wide questions.
+      const home =
+        prefix.length > 0 ? prefix[prefix.length - 1]! : topLevel[0]!;
+      const list = inputHomes.get(home) ?? [];
+      list.push(rowByName.get(name)!);
+      inputHomes.set(home, list);
+    }
+    const rebuild = (node: OutlineNode): OutlineNode | null => {
+      const inputs = (inputHomes.get(node) ?? []).sort((a, b) =>
+        humanize(a.name).localeCompare(humanize(b.name)),
+      );
+      const children = (childrenOf.get(node) ?? [])
+        .map(rebuild)
+        .filter((child): child is OutlineNode => !!child);
+      if (inputs.length === 0 && children.length === 0) return null;
+      const names = new Set<string>();
+      collectOutlineInputNames({ inputs, children }, names);
+      return { ...node, inputs, children, count: names.size };
+    };
+    const placed = topLevel
+      .map(rebuild)
+      .filter((node): node is OutlineNode => !!node);
+    if (placed.length === 0) return [];
+    // One primary tree — the law that was opened — fully expanded;
+    // renamed-seam satellite chains and unrelated co-modules tuck
+    // under a single collapsed entry. File-level comparison: the
+    // compose focus may carry a #rule fragment.
+    const focusFile = composeFocus ? fileLegalIdOf(composeFocus) : null;
+    const primaryIndex = focusFile
+      ? Math.max(
+          0,
+          placed.findIndex((node) => fileLegalIdOf(node.id) === focusFile),
+        )
+      : 0;
+    const rest = placed.filter((_, index) => index !== primaryIndex);
+    return [
+      placed[primaryIndex]!,
+      ...(rest.length
+        ? [
+            {
+              id: "__outline-other__",
+              label: "Other definitions in this module",
+              inputs: [],
+              children: rest,
+              count: rest.reduce((sum, n) => sum + n.count, 0),
+            },
+          ]
+        : []),
+    ];
+  }, [inputOutline, selectedLevers, runBrowseSearch, composeFocus]);
   const scenarioFields = useMemo(
     () =>
       inputCatalog.map((input) => ({
         name: input.name,
-        label: input.name,
+        label: inputMeta.presentation?.[input.name]?.label ?? input.name,
+        category: inputMeta.presentation?.[input.name]?.category,
+        order: inputMeta.presentation?.[input.name]?.order,
         sample: input.sample,
+        entity: input.entity,
       })),
-    [inputCatalog],
+    [inputCatalog, inputMeta.presentation],
   );
 
   const allScenarioFields = scenarioFields;
+  useEffect(() => { setExplanationTrail([]); }, [composeFocus, program?.programId]);
 
   useEffect(() => {
     // A program switch is a clean slate: every piece of state that
@@ -779,6 +1078,8 @@ export function GraphViewerApp({
     setRunPanelOpen(false);
     setSelectedLevers(null);
     setScenario({});
+    setExtraMembers([]);
+    setMemberScenario({});
     setResultsStale(false);
     ranScenarioKey.current = null;
     setInputMeta({ dtypes: {}, defaults: {} });
@@ -802,14 +1103,20 @@ export function GraphViewerApp({
 
   const runScenario = async () => {
     if (!effectiveProgram || running) return;
-    // Compose mode runs only through the feature-detected root shape.
+    // Compose mode runs only after input-catalog compilation succeeds.
     if (composeFocus && composeRunReady !== true) return;
+    // Executing a run outgrows the tour — end it rather than talking
+    // over the results.
+    window.dispatchEvent(new Event("axiom:tour-end"));
     setRunning(true);
     setRunError(null);
     // An explicit run consumes the pending edits: the stale flag
     // clears and the edit tracker syncs to what this run computes.
     setResultsStale(false);
-    ranScenarioKey.current = scenarioKey(scenario);
+    ranScenarioKey.current = scenarioKey({
+      ...scenario,
+      ...flattenMemberAnswers(extraMembers, memberScenario),
+    });
     try {
       // Trace the selected outputs plus their reachable rules so the
       // execution lights intermediate nodes, not just the results.
@@ -819,7 +1126,7 @@ export function GraphViewerApp({
       const byId = new Map((graph?.rules ?? []).map((r) => [r.legalId, r]));
       const visited = new Set<string>();
       const walk = (id: string) => {
-        if (visited.has(id) || reachable.size > 160) return;
+        if (visited.has(id) || reachable.size >= 2 * TRACE_BATCH_SIZE) return;
         visited.add(id);
         const rule = byId.get(id);
         if (!rule) return;
@@ -827,16 +1134,27 @@ export function GraphViewerApp({
         for (const dep of rule.ruleDeps) walk(dep);
       };
       // Every run computes the outermost layer and everything in
-      // between: trace from the terminal results regardless of what
-      // the canvas currently selects.
-      const traceRoots = (graph?.terminalOutputs ?? []).filter((id) =>
+      // between: trace from the graph's tops regardless of what the
+      // canvas currently selects.
+      const traceRoots = (graph ? traceRootIds(graph) : []).filter((id) =>
         walkRuleById.has(id),
       );
       for (const id of traceRoots) walk(id);
       // Compose mode speaks the run-by-root shape (`{ root, facts }`);
       // package programs keep their coordinates. Same envelope back.
+      // Extra household members ride as `people` — empty records
+      // still travel: an added person with no answers is a person.
+      const people = Object.fromEntries(
+        extraMembers.map((member) => [member, memberScenario[member] ?? {}]),
+      );
       const requestBody = (variables: string[]): Record<string, unknown> =>
-        buildRunRequestBody(composeFocus, effectiveProgram, scenario, variables);
+        buildRunRequestBody(
+          composeFocus,
+          effectiveProgram,
+          scenario,
+          variables,
+          composeFocus ? people : undefined,
+        );
       const attempt = async (variables: string[]) => {
         const response = await fetch("/api/axiom/runtime/calculate", {
           method: "POST",
@@ -847,7 +1165,15 @@ export function GraphViewerApp({
         });
         // The root endpoint vanished mid-session (deploy rollback):
         // fold the affordance back away instead of error-looping.
+        // With extra members aboard, a 404 more likely means the
+        // upstream predates the `people` shape — keep the affordance
+        // and say what to change.
         if (composeFocus && response.status === 404) {
+          if (extraMembers.length > 0) {
+            throw new Error(
+              "This deployment doesn't accept per-member answers yet — remove the added household members to run.",
+            );
+          }
           setComposeRunReady(false);
           throw new Error(
             "Running composed views isn't available on this deployment yet.",
@@ -912,9 +1238,14 @@ export function GraphViewerApp({
       const ordered = [...reachable].sort(
         (a, b) => Number(isUnitScoped(b)) - Number(isUnitScoped(a)),
       );
-      const bareNames = [
+      const allNames = [
         ...new Set(ordered.map((id) => id.split("#").pop() ?? id)),
-      ].slice(0, 96);
+      ];
+      const bareNames = allNames.slice(0, TRACE_BATCH_SIZE);
+      // Past the per-request cap, a second batch lights the rest (CO
+      // SNAP traces 115 rules). Best effort: its failure never costs
+      // the primary run.
+      const overflowNames = allNames.slice(TRACE_BATCH_SIZE, 2 * TRACE_BATCH_SIZE);
       const tryVariables = async (variables: string[]) => {
         lastRunRequest.current = requestBody(variables);
         const result = await attempt(variables);
@@ -977,19 +1308,22 @@ export function GraphViewerApp({
         }
         response = bare;
       }
-      const data = (await response.json()) as {
-        outputs: Record<string, number | string | boolean | null>;
-        trace: Array<{
-      variable: string;
-      value: unknown;
-      instances?: Array<{ entity_id: string; value: unknown }>;
-    }>;
+      let data = (await response.json()) as RunPayload & {
         provenance?: {
           ledger_id: string;
           vintage: { engine_release: string };
         } | null;
       };
-      setRunResult(data);
+      if (overflowNames.length > 0) {
+        try {
+          const extra = await attempt(overflowNames);
+          if (extra.ok) data = mergeRunBatches(data, (await extra.json()) as RunPayload);
+        } catch {
+          // Rate limited or refused: the primary batch stands alone.
+        }
+      }
+      setRunResult({ ...data, submittedFacts: { ...scenario }, submittedPersonIds: Object.fromEntries(["person_1", ...extraMembers].map((id, index) => [id, `person:1:${index + 1}`])) });
+      setEditingRunInputs(false);
       trackRun("ok");
     } catch (err) {
       if (err instanceof Error && err.name === "RunBlockedError") {
@@ -1067,7 +1401,8 @@ export function GraphViewerApp({
       lensSyncedToUrl.current = false;
     }
     if (url.toString() !== window.location.href) {
-      window.history.replaceState({}, "", url.toString());
+      // Keep the entry's state: it carries the workspace's steps.
+      window.history.replaceState(window.history.state, "", url.toString());
     }
   }, [program, lensFocusId, composeFocus, requestedProgramKey, launcher]);
 
@@ -1189,6 +1524,8 @@ export function GraphViewerApp({
   // Compose mode: fetch the on-demand graph for the focus legal id. The
   // server narrows ownOutputs to the focus rule when a #fragment is given.
   useEffect(() => {
+    setComposeRunReady(null);
+    setRunBlocked(null);
     if (!composeFocus) return;
     let cancelled = false;
     setLoading(true);
@@ -1198,12 +1535,9 @@ export function GraphViewerApp({
         if (cancelled) return;
         // Standalone-definition filter: rules nothing feeds and
         // nothing consumes are wallpaper on a composed canvas — hide
-        // them, count them honestly (top-meta reports the count).
-        const { graph: filteredGraph, hiddenCount } = filterStandaloneRules(
-          composed.graph,
-        );
+        // them. The count no longer announces itself on the canvas.
+        const { graph: filteredGraph } = filterStandaloneRules(composed.graph);
         setGraph(filteredGraph);
-        setComposedHiddenCount(hiddenCount);
         setComposedFiles(composed.files);
         setComposedTruncated(composed.truncated);
         // No package registry backs a composed view; the graph's own
@@ -1213,33 +1547,26 @@ export function GraphViewerApp({
         const defaults: Record<string, unknown> = {};
         for (const input of filteredGraph.inputs) {
           if (input.name in dtypes) continue;
-          // The mirror carries no dtypes; a boolean sample or a
-          // predicate-shaped name gets a checkbox, the rest numbers.
-          dtypes[input.name] =
-            typeof input.sample === "boolean" ||
-            /^(?:is|has|have|was|are|does|do|meets|qualifies|entitled|eligible|receives|received|treated)_/.test(
-              input.name,
-            )
-              ? "bool"
-              : "number";
+          // Until runtime metadata arrives, use only the sample's actual type.
+          dtypes[input.name] = typeof input.sample === "boolean" ? "bool" : "number";
           defaults[input.name] = input.sample;
         }
         setInputMeta({ dtypes, defaults });
-        // The runtime's input catalog carries the REAL dtypes, inferred
-        // from the compiled artifact — a mid-name predicate like
-        // taxpayer_married_at_close_of_taxable_year is a checkbox, not
-        // a 0/1 number box. It lands async and overrides the heuristics
-        // above; a subtree that doesn't compile just keeps them.
+        // Runtime metadata supplies input types, choices and presentation.
         fetchRootInputs(fileLegalIdOf(composeFocus))
           .then((slots) => {
-            if (cancelled || slots.length === 0) return;
+            if (cancelled) return;
+            if (slots.length === 0) return;
             setInputMeta((current) => {
               const merged = {
                 dtypes: { ...current.dtypes },
                 defaults: { ...current.defaults },
                 options: { ...current.options },
+                optionLabels: { ...current.optionLabels },
+                presentation: { ...current.presentation },
               };
               for (const slot of slots) {
+                merged.presentation[slot.name] = { label: slot.label, category: slot.category, order: slot.order };
                 if (slot.dtype === "bool") {
                   merged.dtypes[slot.name] = "bool";
                   merged.defaults[slot.name] = Boolean(slot.default);
@@ -1247,14 +1574,12 @@ export function GraphViewerApp({
                   merged.dtypes[slot.name] =
                     slot.dtype === "integer" ? "integer" : "number";
                   merged.defaults[slot.name] = Number(slot.default) || 0;
-                  // A closed numeric domain becomes a select — table
-                  // keys, or the literal set the statute distinguishes
-                  // (filing_status ∈ {0,1,2}).
-                  const numeric = (slot.values ?? []).filter(
-                    (value): value is number => typeof value === "number",
-                  );
-                  if (numeric.length > 0 && numeric.length === slot.values?.length) {
-                    merged.options[slot.name] = numeric;
+                  // Only explicit metadata defines the full set of choices.
+                  delete merged.options[slot.name];
+                  delete merged.optionLabels[slot.name];
+                  if (slot.choices?.length) {
+                    merged.options[slot.name] = slot.choices.map(choice => choice.value);
+                    merged.optionLabels[slot.name] = Object.fromEntries(slot.choices.map(choice => [choice.value, choice.label]));
                   }
                 }
                 // text/date slots can't travel the run wire (facts are
@@ -1263,9 +1588,7 @@ export function GraphViewerApp({
               return merged;
             });
           })
-          .catch(() => {
-            // Catalog unavailable — heuristics carry the panel.
-          });
+          .catch(() => { /* The independent readiness probe controls Run. */ });
         const rulesById = new Map(
           filteredGraph.rules.map((rule) => [rule.legalId, rule]),
         );
@@ -1285,8 +1608,25 @@ export function GraphViewerApp({
         const ordered = root
           ? [root, ...picked.filter((id) => id !== root)]
           : picked;
+        // ?focus=us:statutes/26/24/d#refundable_ctc beside ?compose=
+        // names the rule the reader came for: lead the selection with
+        // it and land the opening flight there, not on the subtree's
+        // summit (often a sibling — the non-refundable credit that
+        // consumes the refundable one).
+        const focused = focusedComposeRule(
+          filteredGraph,
+          pendingFocusRef.current,
+        );
+        if (focused) {
+          pendingFocusRef.current = null;
+          openingRuleRef.current = focused;
+        }
         graphJustLoaded.current = true;
-        setSelectedOutputs(ordered);
+        setSelectedOutputs(
+          focused
+            ? [focused, ...ordered.filter((id) => id !== focused)]
+            : ordered,
+        );
       })
       .catch((err) => {
         if (!cancelled) setError(String(err));
@@ -1299,54 +1639,40 @@ export function GraphViewerApp({
     };
   }, [composeFocus]);
 
-  // Feature-detect run-by-root once per composed view: one probe run
-  // with default facts. 200/422/429 mean the deployment understands
-  // the `{ root }` shape (even if this subtree is refused); 400/404
-  // mean the endpoint isn't there yet — keep the affordance hidden.
+  // Compilation capability is independent of whether an empty household can
+  // produce a result. The input catalog compiles without executing a scenario.
   useEffect(() => {
     setComposeRunReady(null);
     setRunBlocked(null);
     if (!composeFocus) return;
     let cancelled = false;
     const root = fileLegalIdOf(composeFocus);
-    fetch("/api/axiom/runtime/calculate", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ root, facts: {}, variables: [] }),
-      signal: AbortSignal.timeout(30_000),
-    })
-      .then(async (response) => {
+    fetchRootInputs(root)
+      .then(() => {
         if (cancelled) return;
-        if (response.status === 422) {
-          // The endpoint exists but declines this subtree — show the
-          // affordance AND the honest blocked state up front.
-          let payload: { message?: string | null } = {};
-          try {
-            payload = await response.json();
-          } catch {
-            // Anonymous refusal.
-          }
-          if (!cancelled) {
-            setRunBlocked(
-              payload.message ??
-                "the engine declined this computation without a message.",
-            );
-            setComposeRunReady(true);
-          }
+        rememberRunCapability(root, true);
+        setComposeRunReady(true);
+      })
+      .catch((error) => {
+        if (!cancelled && error instanceof Error && error.name === "RunUnavailableError") {
+          rememberRunCapability(root, false);
+          setComposeRunReady(false);
           return;
         }
-        setComposeRunReady(response.ok || response.status === 429);
-      })
-      .catch(() => {
-        if (!cancelled) setComposeRunReady(false);
+        // Unavailability is not evidence that the encoding cannot execute.
+        // Leave it unknown so a transient outage does not poison the cache.
+        if (!cancelled) setComposeRunReady(null);
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [composeFocus]);
+    return () => { cancelled = true; };
+  }, [composeFocus, reloadNonce]);
   // The run affordance exists in compose mode only once the probe
   // confirms the API can execute a composed root.
-  const runAffordanceReady = !composeFocus || composeRunReady === true;
+  const runAffordanceReady = !runBlocked && (!composeFocus || composeRunReady === true);
+  useEffect(() => {
+    if (workspaceView === "run" && (runBlocked || (composeFocus && composeRunReady === false))) {
+      setWorkspaceView("map");
+    }
+  }, [workspaceView, runBlocked, composeFocus, composeRunReady]);
 
   const outputRules = useMemo(
     () => rankOutputRules(graph, { includeLeaves: composeFocus != null }),
@@ -1401,6 +1727,7 @@ export function GraphViewerApp({
           unit: rule.unit,
           dtype: rule.dtype,
           formula: rule.formula,
+          table: rule.table,
         })),
     [graph],
   );
@@ -1438,6 +1765,13 @@ export function GraphViewerApp({
     [graph, selectedOutputs],
   );
   const runModeActive = runPanelOpen || Boolean(runResult);
+  // The Person-entity subset, stable across member edits — the
+  // member-values map must not refilter the whole catalog (and
+  // invalidate every canvas card) on each keystroke.
+  const personCatalog = useMemo(
+    () => inputCatalog.filter((input) => input.entity === "Person"),
+    [inputCatalog],
+  );
   const inputEditValues = useMemo(() => {
     // Every registry input is genuinely settable (grafted onto its
     // owning entity server-side) — so every one gets a live field.
@@ -1472,6 +1806,24 @@ export function GraphViewerApp({
             typeof entry[1] === "number" || typeof entry[1] === "boolean",
         ),
       ),
+      // Person-level cards show every member's answer (read-only
+      // beyond Person 1 — the inspector and run panel edit members).
+      memberValues:
+        extraMembers.length > 0
+          ? Object.fromEntries(
+              personCatalog
+                .map((input) => [
+                  input.name,
+                  [
+                    { label: "P1", value: scenario[input.name] ?? null },
+                    ...extraMembers.map((member) => ({
+                      label: `P${member.split("_")[1] ?? "?"}`,
+                      value: memberScenario[member]?.[input.name] ?? null,
+                    })),
+                  ],
+                ]),
+            )
+          : undefined,
       onChange: (name: string, value: number | boolean) =>
         setScenario((current) => {
           if (typeof value === "number" && Number.isNaN(value)) {
@@ -1482,7 +1834,7 @@ export function GraphViewerApp({
           return { ...current, [name]: value };
         }),
     }),
-    [inputEditValues, scenario, inputMeta],
+    [inputEditValues, scenario, inputMeta, personCatalog, extraMembers, memberScenario],
   );
 
   const structureTraces = useMemo(
@@ -1503,6 +1855,56 @@ export function GraphViewerApp({
     }
     return scope;
   }, [selectedOutputs, structureTraces]);
+  // The headline result: ONLY the main node of whatever the canvas is
+  // currently showing — the computed value whose rule has the deepest
+  // dependency closure. Scope decides which node that is: on the full
+  // graph it's the final answer, and inside a lens it's the rule that
+  // lens is rooted on, because a subtree's root always closes over its
+  // own descendants. Intermediates stay on the canvas, where the
+  // execution layer already paints them; the grid never repeats them.
+  // Purely graph-driven; nothing is declared or curated. Shared with
+  // the inspector, which skips re-printing a value that already sits
+  // on a results cell in the same panel. Run outputs are keyed by the
+  // rule's legal-id fragment, which is not always its display name —
+  // so the headline carries the legalId and every consumer resolves
+  // the rule through it.
+  const ruleByFragment = useMemo(() => {
+    const byFragment = new Map<
+      string,
+      NonNullable<ReturnType<typeof walkRuleById.get>>
+    >();
+    for (const rule of graph?.rules ?? []) {
+      const fragment = rule.legalId.split("#").pop() ?? "";
+      if (!byFragment.has(fragment)) byFragment.set(fragment, rule);
+    }
+    return byFragment;
+  }, [graph]);
+  const resultHeadline = useMemo(() => {
+    if (!runResult) return null;
+    const ranked = Object.keys(runResult.outputs)
+      .filter((name) => !name.includes(":"))
+      .map((name) => {
+        const rule = ruleByFragment.get(name);
+        return {
+          name,
+          legalId: rule?.legalId ?? null,
+          size: rule ? closureSizeOf(rule.legalId) : 0,
+        };
+      })
+      .sort((a, b) => b.size - a.size || a.name.localeCompare(b.name));
+    // A lens narrows the question: answer the graph on screen. If the
+    // run computed nothing inside it, the whole-run summit still beats
+    // an empty panel. The summit leads when it's in scope: parallel
+    // rules tie on closure size (NYC's per-filing-status taxes), and the
+    // name order above would headline a sibling the canvas doesn't draw.
+    const inScope = (entry: (typeof ranked)[number]) =>
+      Boolean(entry.legalId && inScopeIds.has(entry.legalId));
+    const onCanvas =
+      ranked.find((entry) => entry.legalId === summitOutput && inScope(entry)) ??
+      ranked.find(inScope);
+    return onCanvas ?? ranked[0] ?? null;
+  }, [runResult, ruleByFragment, closureSizeOf, inScopeIds, summitOutput]);
+
   // Take me there — wherever "there" is: in-scope results fly in
   // place; out-of-scope results leave the lens and re-root on the
   // rule itself.
@@ -1562,7 +1964,15 @@ export function GraphViewerApp({
   useEffect(() => {
     if (!graphJustLoaded.current || selectedOutputs.length === 0) return;
     graphJustLoaded.current = false;
-    const summit = summitOutput ?? selectedOutputs[0];
+    // Honor explicit rule and input deep links before the default root.
+    const linkedId = new URL(window.location.href).searchParams.get("selection");
+    const linkedRule = linkedId && graph?.rules.some((rule) => rule.legalId === linkedId);
+    const linkedInput = linkedId && graph?.inputs.some((input) => input.legalId === linkedId);
+    const summit = openingRuleRef.current ?? (linkedId && (linkedRule || linkedInput) ? linkedId :
+      summitOutput && selectedOutputs.includes(summitOutput)
+        ? summitOutput
+        : selectedOutputs[0]);
+    openingRuleRef.current = null;
     if (launcherRef.current === "open") {
       // Never move the camera behind the launcher — it reads as a
       // random zoom through the backdrop. Fly when the fade ends.
@@ -1577,7 +1987,8 @@ export function GraphViewerApp({
     }));
     // The opening card: whatever the flight lands on — the summit
     // when the graph names one, else the root-first selection.
-    inspectRule(summit);
+    if (linkedInput && summit === linkedId) inspectInput(summit);
+    else inspectRule(summit);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedOutputs, summitOutput]);
 
@@ -1587,7 +1998,9 @@ export function GraphViewerApp({
     const key =
       Object.keys(structureTraces).sort().join("|") +
       "::" +
-      (lensTrail.length > 0 ? "always" : "auto");
+      // A lens shows the chain the user asked for — it folds only
+      // when the subtree is genuinely large, same rule as the map.
+      "auto";
     if (foldedInitialized.current !== key) {
       foldedInitialized.current = key;
       if (restoreFoldedRef.current) {
@@ -1602,12 +2015,7 @@ export function GraphViewerApp({
         surveyRef.current = false;
         setFolded((current) => (current.size === 0 ? current : new Set()));
       } else {
-        setFolded(
-          initialCollapse(
-            structureTraces,
-            lensTrail.length > 0 ? "always" : "auto",
-          ),
-        );
+        setFolded(initialCollapse(structureTraces, "auto"));
       }
     }
   }, [structureTraces, lensTrail.length]);
@@ -1625,10 +2033,13 @@ export function GraphViewerApp({
   // change to the values marks it STALE ("values changed — Run
   // again") until the next explicit Run consumes the edits.
   useEffect(() => {
-    const key = scenarioKey(debouncedScenario);
+    const key = scenarioKey({
+      ...debouncedScenario,
+      ...flattenMemberAnswers(extraMembers, memberScenario),
+    });
     if (ranScenarioKey.current === null) return; // nothing ran yet
     setResultsStale(runResult !== null && key !== ranScenarioKey.current);
-  }, [debouncedScenario, runResult]);
+  }, [debouncedScenario, extraMembers, memberScenario, runResult]);
 
   // Execution overlay: clone the structural traces and light them
   // with the run's computed values (rules by durable id or bare
@@ -1688,6 +2099,11 @@ export function GraphViewerApp({
         executed.add(node.legalId);
       }
       let value: unknown = ranValue ?? scenarioValue;
+      // The engine traces no parameters: a table shows the row the
+      // run's recorded index picked.
+      if (value === undefined && node.ruleKind === "parameter" && graph) {
+        value = recordedTableRow(graph, runResult, node.legalId)?.value;
+      }
       const next: TraceNode = {
         ...node,
         value:
@@ -1725,7 +2141,7 @@ export function GraphViewerApp({
       executed,
       valueOf,
     };
-  }, [structureTraces, runResult, debouncedScenario]);
+  }, [structureTraces, runResult, debouncedScenario, graph]);
 
   useEffect(() => {
     if (!runResult) return;
@@ -1787,170 +2203,53 @@ export function GraphViewerApp({
   // One scenario flow, two homes: the launcher's middle screen and
   // the sidebar panel render the same staged UI.
   const scenarioFlowUI = (() => {
-    // Start empty: pick levers on the left, they pop up on the right
-    // ready for values; unpicked ones fall to the law's defaults.
-    const active = selectedLevers ?? [];
-    const query = runBrowseSearch.trim().toLowerCase();
-    const activeFields = allScenarioFields.filter((field) =>
-      active.includes(field.name),
-    );
     return (
       <>
-        <div className="run-columns">
-          <div className="run-col">
-            <p className="run-section-label">Inputs</p>
-            <input
-              type="search"
-              className="run-overview-search"
-              value={runBrowseSearch}
-              onChange={(event) => setRunBrowseSearch(event.target.value)}
-              placeholder={`Search ${inputCatalog.length} inputs...`}
-            />
-            <div className="run-picker-list">
-              {inputCatalog
-                .filter(
-                  (input) =>
-                    !active.includes(input.name) &&
-                    (!query ||
-                      humanize(input.name).toLowerCase().includes(query)),
-                )
-                .slice(0, 60)
-                .map((input) => (
-                  <button
-                    type="button"
-                    key={input.legalId}
-                    className="run-picker-row is-lever"
-                    title="Add to your answers"
-                    onClick={() => setSelectedLevers([...active, input.name])}
-                  >
-                    <span className="run-picker-icon">＋</span>
-                    <span className="run-picker-name">
-                      {humanize(input.name)}
-                    </span>
-                    <span className="run-picker-tag run-picker-tag-muted">
-                      {input.entity ? humanize(input.entity) : "—"}
-                    </span>
-                  </button>
-                ))}
-              {inputCatalog.length === 0 &&
-                (graph?.inputs.length ?? 0) > 0 && (
-                  <div className="output-empty">
-                    The input registry didn't load.{" "}
-                    <button
-                      type="button"
-                      className="status-retry"
-                      onClick={() => setReloadNonce((n) => n + 1)}
-                    >
-                      Retry
-                    </button>
-                  </div>
-                )}
-              {inputCatalog.length === 0 &&
-                (graph?.inputs.length ?? 0) === 0 && (
-                  <div className="output-empty">
-                    This program asks no questions — it runs on defaults.
-                  </div>
-                )}
-              {inputCatalog.length > 0 &&
-                inputCatalog.filter(
-                  (input) =>
-                    !active.includes(input.name) &&
-                    (!query ||
-                      humanize(input.name).toLowerCase().includes(query)),
-                ).length === 0 && (
-                  <div className="output-empty">No inputs match.</div>
-                )}
-            </div>
-          </div>
-          <div className="run-col">
-            <p className="run-section-label">Your answers</p>
-            <div className="scenario-fields">
-              {activeFields.map((field) => (
-                <label key={field.name} className="scenario-field">
-                  <span>{humanize(field.label)}</span>
-                  <span className="scenario-field-controls">
-                    <AnswerControl
-                      name={field.name}
-                      value={scenario[field.name]}
-                      meta={inputMeta}
-                      selectClassName="scenario-field-select"
-                      placeholder={`e.g. ${field.sample}`}
-                      onChange={(next) =>
-                        setScenario((current) => {
-                          if (next === undefined) {
-                            const { [field.name]: _gone, ...rest } = current;
-                            return rest;
-                          }
-                          return { ...current, [field.name]: next };
-                        })
-                      }
-                    />
-                    <button
-                      type="button"
-                      className="scenario-field-remove"
-                      aria-label={`Remove ${humanize(field.label)}`}
-                      onClick={() => {
-                        setSelectedLevers(
-                          active.filter((name) => name !== field.name),
-                        );
-                        setScenario((current) => {
-                          const { [field.name]: _gone, ...rest } = current;
-                          return rest;
-                        });
-                      }}
-                    >
-                      ×
-                    </button>
-                  </span>
-                </label>
-              ))}
-              {activeFields.length === 0 && (
-                <>
-                  {inputCatalog.some(
-                    (input) => input.name in CURATED_SAMPLES,
-                  ) && (
-                    <button
-                      type="button"
-                      className="run-sample"
-                      onClick={() => {
-                        // One click to a runnable household: the curated
-                        // starter values this package understands.
-                        const starters = inputCatalog.filter(
-                          (input) => input.name in CURATED_SAMPLES,
-                        );
-                        setSelectedLevers(starters.map((input) => input.name));
-                        // Merge under any answers already typed on the
-                        // canvas — a sample never overwrites the user.
-                        setScenario((current) => ({
-                          ...Object.fromEntries(
-                            starters.map((input) => [
-                              input.name,
-                              CURATED_SAMPLES[input.name]!,
-                            ]),
-                          ),
-                          ...current,
-                        }));
-                      }}
-                    >
-                      Start from a sample household
-                    </button>
-                  )}
-                  <p className="run-hint">
-                    Or pick inputs on the left — unanswered ones use this
-                    program's default values.
-                  </p>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
+        <HouseholdComposer
+          fields={allScenarioFields}
+          members={extraMembers}
+          canAddPeople={Boolean(composeFocus)}
+          running={running}
+          onAddPerson={() => setExtraMembers(current => {
+            const used = new Set(current);
+            for (let index = 2; index <= 12; index++) if (!used.has(`person_${index}`)) return [...current, `person_${index}`];
+            return current;
+          })}
+          onRemovePerson={member => {
+            setExtraMembers(current => current.filter(id => id !== member));
+            setMemberScenario(current => {
+              const { [member]: removed, ...rest } = current;
+              return rest;
+            });
+          }}
+          renderControl={(field, member) => <AnswerControl
+            name={field.name}
+            value={member ? memberScenario[member]?.[field.name] : scenario[field.name]}
+            meta={inputMeta}
+            selectClassName="scenario-field-select"
+            inputClassName="scenario-field-input"
+            plainDefaults
+            onChange={next => {
+              const update = (current: Record<string, number | boolean>) => {
+                const result = { ...current };
+                if (next === undefined) delete result[field.name]; else result[field.name] = next;
+                return result;
+              };
+              if (member) setMemberScenario(current => ({...current, [member]: update(current[member] ?? {})}));
+              else setScenario(update);
+            }}
+          />}
+        />
+        {inputCatalog.length === 0 && (graph?.inputs.length ?? 0) > 0 && <button type="button" className="status-retry" onClick={() => setReloadNonce(n => n + 1)}>Retry loading inputs</button>}
         <div className="run-actions">
+          <p className="run-assumptions">{Object.keys(scenario).length + Object.values(memberScenario).reduce((count, answers) => count + Object.keys(answers).length, 0)} household inputs answered · unanswered inputs use engine defaults</p>
           <button
             type="button"
             className="run-button"
+            disabled={running}
             onClick={() => launchRun()}
           >
-            {running ? "Running — show the graph" : "Run it all"}
+            {running ? "Running…" : "Run scenario"}
           </button>
         </div>
         {runError && <p className="run-error">{runError}</p>}
@@ -1958,140 +2257,37 @@ export function GraphViewerApp({
     );
   })();
 
+  const graphKey = composeFocus ?? (program ? programKey(program) : "workspace");
+  const openingWorkspace = launcher !== "open" && !error && (
+    (!graph && (programsLoading || Boolean(composeFocus))) || loading || (workspaceView === "map" && spec && Object.keys(structureTraces).length > 0 && readyGraphKey !== graphKey)
+  );
+
   return (
-    <div className="graph-viewer-root">
-    {/* Desktop-only for now — a phone gets an honest notice instead
-        of a broken layout. */}
-    <div className="small-screen-notice" role="note">
-      <strong>The Plane needs a bigger screen.</strong>
-      <p>
-        This is a full law-graph workbench — open it on a laptop or
-        desktop for now.
-      </p>
-    </div>
-    {launcher !== "closed" && (
-      <div
-        className={`plane-launcher ${launcher === "leaving" ? "is-leaving" : ""} ${
-          launcherMode === "field" ? "is-field" : ""
-        }`}
-        role="dialog"
-        aria-label="Pick a provision to open"
-      >
-        {corpusModules ? (
-          <>
-            {launcherMode === "field" ? (
-              /* The first view IS the field: the same open world the
-                 landing mounts, full-bleed — pan, zoom, motifs,
-                 doors; picking calls straight into compose mode. */
-              <div className="launcher-field-stage" data-testid="launcher-field">
-                <CorpusField onPick={enterComposeMode} frame={false} />
-              </div>
-            ) : (
-              <div className="plane-launcher-inner has-picker launcher-list">
-                <SubtreeDoors
-                  modules={corpusModules}
-                  onPick={enterComposeMode}
-                  query={launcherQuery}
-                  scope={listScope}
-                  state={listState}
-                />
-              </div>
-            )}
-            {/* Compact control cluster, top right: search + mode. */}
-            <div className="launcher-controls" data-testid="launcher-controls">
-              <SubtreeSearch
-                modules={corpusModules}
-                onPick={enterComposeMode}
-                compact
-                query={launcherQuery}
-                onQueryChange={setLauncherQuery}
-              />
-              {/* Nationwide / State scope, list mode only — composes
-                  with the text search over the same list. */}
-              {launcherMode === "list" && (
-                <div
-                  className="picker-mode-toggle picker-scope-toggle"
-                  role="tablist"
-                  aria-label="Which corpora to list"
-                >
-                  {JURISDICTION_SCOPES.map((scope) => (
-                    <button
-                      key={scope.id}
-                      type="button"
-                      role="tab"
-                      data-testid={`list-scope-${scope.id}`}
-                      aria-selected={listScope === scope.id}
-                      className={listScope === scope.id ? "is-active" : ""}
-                      onClick={() => pickListScope(scope.id)}
-                    >
-                      {scope.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {/* Under States, narrow to ONE state — real names from
-                  the citations map, only states the corpus carries. */}
-              {launcherMode === "list" && listScope === "states" && (
-                <select
-                  className="list-state-select"
-                  data-testid="list-state-select"
-                  value={listState}
-                  onChange={(event) => setListState(event.target.value)}
-                  aria-label="Narrow to one state"
-                >
-                  <option value={ALL_STATES}>All states</option>
-                  {statesInModules(corpusModules).map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              )}
-              <div
-                className="picker-mode-toggle"
-                role="tablist"
-                aria-label="How to browse the corpus"
-              >
-                <button
-                  type="button"
-                  role="tab"
-                  data-testid="launcher-mode-field"
-                  aria-selected={launcherMode === "field"}
-                  className={launcherMode === "field" ? "is-active" : ""}
-                  onClick={() => pickLauncherMode("field")}
-                >
-                  Field
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  data-testid="launcher-mode-list"
-                  aria-selected={launcherMode === "list"}
-                  className={launcherMode === "list" ? "is-active" : ""}
-                  onClick={() => pickLauncherMode("list")}
-                >
-                  List
-                </button>
-              </div>
-            </div>
-          </>
-        ) : (
-          <p className="plane-launcher-loading">Loading the corpus…</p>
-        )}
-      </div>
-    )}
-    <main className="app-shell no-sidebar">
+    <div className="graph-viewer-root has-workspace" data-workspace-view={workspaceView} data-run-stage={runResult && !editingRunInputs ? "result" : "inputs"} data-graph-mounted={graphMounted}>
+    <CorpusLibrary
+      modules={corpusModules}
+      active={launcher === "open"}
+      mode={launcherMode}
+      onModeChange={pickLauncherMode}
+      onPick={enterComposeMode}
+      country={country}
+      countries={countries.map((id) => ({ id, label: countryLabel(id) }))}
+      onCountryChange={setCountry}
+    />
+    {openingWorkspace && <div className="workspace-opening"><GraphLoading /></div>}
+    <main className="app-shell no-sidebar" data-opening={Boolean(openingWorkspace)} aria-hidden={openingWorkspace ? true : undefined} inert={Boolean(openingWorkspace)} hidden={launcher === "open"}>
 
       <section className="viewer-panel">
         {/* The picker and the field are the ways IN; inside a
             subgraph the canvas itself is the navigation — no program
             dropdown, no in-subtree search box. */}
         <div className="top-controls">
+          <a className="workspace-brand" href="/" aria-label="Axiom home"><img src="/logos/axiom-foundation.svg" alt="Axiom Foundation" /></a>
           {/* The way back to the field overview: the frame's own slim
               row ABOVE the plane, flush with the plane's left edge —
               compose AND program views, every host (/axiom overlay,
               standalone /axiom/graph, /app). */}
-          {launcher === "closed" && (
+          {launcher === "closed" && (!graph || loading || graph.rules.length === 0) && (
             <button
               type="button"
               className="back-to-overview"
@@ -2102,8 +2298,46 @@ export function GraphViewerApp({
               ← Overview
             </button>
           )}
+          {graph && launcher === "closed" && <span className="workspace-breadcrumb-scope">{composeFocus ? humanizeCitation(fileLegalIdOf(composeFocus)) : effectiveProgram?.displayName ?? "Program"}</span>}
           {/* Composed views carry no header line at all — the graph
               is its own label. Program views keep their coordinates. */}
+          {!composeFocus && countries.length > 1 && (
+            <div className="program-switch" data-testid="program-switch">
+              <select
+                className="list-state-select"
+                data-testid="country-switch"
+                value={country}
+                onChange={(event) => setCountry(event.target.value)}
+                aria-label="Switch country"
+              >
+                {countries.map((option) => (
+                  <option key={option} value={option}>
+                    {countryLabel(option)}
+                  </option>
+                ))}
+              </select>
+              {programs.length > 1 && (
+                <select
+                  className="list-state-select"
+                  data-testid="program-switch-select"
+                  value={program ? programKey(program) : ""}
+                  onChange={(event) => {
+                    const next = programs.find(
+                      (item) => programKey(item) === event.target.value,
+                    );
+                    if (next) setProgram(programRefFromSummary(next));
+                  }}
+                  aria-label="Switch program"
+                >
+                  {programs.map((item) => (
+                    <option key={programKey(item)} value={programKey(item)}>
+                      {displayNameForProgram(item)}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
           {!composeFocus && (
             <span className="top-meta">
               {programsLoading
@@ -2113,8 +2347,106 @@ export function GraphViewerApp({
                   : "Loading graph"}
             </span>
           )}
+          {/* The primary action ends the row it belongs to. It sits
+              IN the flex line with the graph's controls rather than
+              floating over the canvas beside it — one band, one
+              baseline, one gap, no negative offsets to keep in sync. */}
+          {runResult && !running ? (
+            // A live run owns the row's end — the pill replaces the
+            // Run button until the execution layer is dismissed.
+            <div
+              className="exec-pill"
+              role="status"
+              title="The execution layer is live"
+            >
+              <span className="exec-pill-dot" aria-hidden />
+              Live
+              <button type="button" onClick={() => setRunResult(null)}>
+                exit
+              </button>
+            </div>
+          ) : runAffordanceReady ? (
+            <button
+              type="button"
+              className={`run-toggle ${resultsStale ? "is-stale" : ""}`}
+              data-tour="run-scenario"
+              disabled={running}
+              onClick={() => setWorkspaceView("run")}
+              aria-expanded={runPanelOpen}
+              title="Answer the household's questions and execute the law"
+            >
+              {running ? "Running…" : "Run a scenario"}
+            </button>
+          ) : null}
         </div>
+        {graph && !loading && graph.rules.length > 0 && launcher === "closed" && (
+          <RuleWorkspace
+            explanationTrail={explanationTrail}
+            onExplanationTrailChange={setExplanationTrail}
+            onOverview={backToOverview}
+            key={composeFocus ?? (program ? programKey(program) : "workspace")}
+            graph={graph}
+            rootTarget={composeFocus ? fileLegalIdOf(composeFocus) : undefined}
+            selectedId={(inspected && "legalId" in inspected && inspected.legalId) || summitOutput || graph.terminalOutputs[0] || graph.rules[0]!.legalId}
+            onSelect={(id) => {
+              if (walkRuleById.has(id)) inspectRule(id);
+              else if (walkInputById.has(id)) inspectInput(id);
+              else setInspected({ kind: "ruleRef", label: graph.relations.find((item) => item.legalId === id)?.name ?? id, legalId: id, canExpand: false, isParameter: false, isOutput: false, verdictCls: "", value: "", isExpanded: false, showValues: false, meta: { kindLine: "Relation", legalId: id } });
+            }}
+            view={workspaceView}
+            onViewChange={(view) => {
+              if (view === workspaceView) return;
+              if (view === "map") {
+                const target = (inspected && "legalId" in inspected && inspected.legalId) || summitOutput || graph.terminalOutputs[0] || graph.rules[0]!.legalId;
+                flyTo(target, true);
+              }
+              setWorkspaceView(view);
+              setRunPanelOpen(false);
+            }}
+            scopeLabel={composeFocus ? humanizeCitation(fileLegalIdOf(composeFocus)) : effectiveProgram?.displayName ?? "Program"}
+            truncated={composedTruncated}
+            runReady={runAffordanceReady}
+            onRun={() => void runScenario()}
+            running={running}
+            members={extraMembers}
+            run={runResult}
+            renderInput={(id, selectedMember) => {
+              const input = graph.inputs.find(item => item.legalId === id);
+              if (!input || !(input.name in inputMeta.dtypes)) return null;
+              const name = input.name;
+              const fallback = inputMeta.defaults[name];
+              const members = selectedMember !== undefined ? [selectedMember] : input.entity === "Person" ? [null, ...extraMembers] : [null];
+              return <div className="relationship-inputs">{members.map(member => {
+                const draft = member ? memberScenario[member]?.[name] : scenario[name];
+                const effective = draft ?? fallback;
+                const change = (next: number | boolean | undefined) => {
+                  const update = (current: Record<string, number | boolean>) => {
+                    const result = { ...current };
+                    if (next === undefined) delete result[name]; else result[name] = next;
+                    return result;
+                  };
+                  if (member) setMemberScenario(current => ({ ...current, [member]: update(current[member] ?? {}) }));
+                  else setScenario(update);
+                };
+                return <label key={member ?? "household"}><span>{members.length > 1 ? member ? memberLabel(member) : "Person 1" : humanize(name)}</span>
+                  {inputMeta.dtypes[name] === "bool" ? <select disabled={running} value={effective === true ? "true" : effective === false ? "false" : ""} onChange={event => change(event.target.value === "" ? undefined : event.target.value === "true")}>
+                    {typeof effective !== "boolean" && <option value="">—</option>}<option value="false">false</option><option value="true">true</option>
+                  </select> : inputMeta.options?.[name] ? <select disabled={running} value={typeof effective === "number" ? effective : ""} onChange={event => change(event.target.value === "" ? undefined : Number(event.target.value))}>
+                    {typeof effective !== "number" && <option value="">—</option>}{inputMeta.options[name]!.map(option => <option key={option} value={option}>{inputMeta.optionLabels?.[name]?.[option] ?? String(option)}</option>)}
+                  </select> : <input disabled={running} type="number" step="any" value={typeof effective === "number" ? effective : ""} onChange={event => change(event.target.value === "" ? undefined : event.target.valueAsNumber)} />}
+                </label>;
+              })}</div>;
+            }}
+            scenario={scenarioFlowUI}
+            graphControls={<div className="graph-controls-slot" ref={setGraphControlsSlot} />}
+            valueOf={(id) => graph ? inputAwareEvidence(graph, runResult, id, inputMeta.defaults) : undefined}
+            hasRun={Boolean(runResult)}
+            stale={resultsStale}
+          />
+        )}
         <div
+          aria-hidden={workspaceView !== "map" && graphMounted ? true : undefined}
+          inert={workspaceView !== "map" && graphMounted}
           className={`graph-stage ${runResult ? "plane-live" : ""} ${
             planeFresh ? "plane-fresh" : ""
           }`}
@@ -2137,80 +2469,6 @@ export function GraphViewerApp({
               {runError}
             </div>
           )}
-          {/* A refused subtree announces itself even with the panel
-              closed — silence would read as "runnable". */}
-          {runBlocked && !runPanelOpen && !running && (
-            <div className="run-blocked run-blocked-floating" role="status">
-              <strong>This subtree can&rsquo;t execute yet</strong>
-              <span>{runBlocked}</span>
-            </div>
-          )}
-          {composeFocus && composedHiddenCount > 0 && (
-            // The isolated-node filter's honesty note: tiny, muted,
-            // out of the way — never a header.
-            <span className="standalone-note" data-testid="standalone-note">
-              +{composedHiddenCount} standalone definitions hidden
-            </span>
-          )}
-          <div
-            className={`graph-veil ${veiled ? "is-on" : ""}`}
-            aria-hidden={!veiled}
-          >
-            <span>Laying out the graph…</span>
-          </div>
-          {runResult && !running ? (
-            // A live run owns the top-right slot — the pill replaces
-            // the Run button until the execution layer is dismissed.
-            <div className="exec-pill" role="status">
-              <span className="exec-pill-dot" aria-hidden />
-              Execution layer · live
-              <button type="button" onClick={() => setRunResult(null)}>
-                exit
-              </button>
-            </div>
-          ) : runAffordanceReady ? (
-            <button
-              type="button"
-              className={`run-toggle ${resultsStale ? "is-stale" : ""}`}
-              disabled={running}
-              onClick={() => setRunPanelOpen((open) => !open)}
-              aria-expanded={runPanelOpen}
-              title="Answer the household's questions and execute the law"
-            >
-              {running ? "Running…" : "Run a scenario"}
-            </button>
-          ) : null}
-          {runPanelOpen && (
-            <div
-              className="run-panel"
-              role="dialog"
-              aria-modal="true"
-              aria-label="Run this law"
-              onClick={() => setRunPanelOpen(false)}
-            >
-              <div onClick={(event) => event.stopPropagation()}>
-                <div className="run-panel-head">
-                  <h2>Run {effectiveProgram?.displayName ?? "this law"}</h2>
-                  <button
-                    type="button"
-                    className="results-close"
-                    onClick={() => setRunPanelOpen(false)}
-                    aria-label="Close"
-                  >
-                    ×
-                  </button>
-                </div>
-                {scenarioFlowUI}
-                {runBlocked && (
-                  <div className="run-blocked" role="status">
-                    <strong>This subtree can&rsquo;t execute yet</strong>
-                    <span>{runBlocked}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
           {error && (
             <div className="status error">
               {error}
@@ -2228,10 +2486,7 @@ export function GraphViewerApp({
           )}
 
           {loading ? (
-            <div className="loading-state" role="status" aria-live="polite">
-              <span className="loading-spinner" aria-hidden="true" />
-              <span>Loading graph...</span>
-            </div>
+            <div className="loading-state" />
           ) : graph && graph.rules.length === 0 && !composeFocus ? (
             // The certified-serving API answers 200 with no rules when
             // a program's artifact exists but nothing in it is
@@ -2256,15 +2511,19 @@ export function GraphViewerApp({
                 </div>
               );
             })()
-          ) : spec && Object.keys(structureTraces).length > 0 ? (
+          ) : workspaceView !== "map" && !graphMounted ? null : spec && Object.keys(structureTraces).length > 0 ? (
             <InputEditContext.Provider value={inputEditCtx}>
             <InteractiveRuleGraph
+              key={composeFocus ?? (program ? programKey(program) : "workspace")}
+              nodeScoped
+              suppressLoadingIndicator
+              onReady={() => setReadyGraphKey(graphKey)}
               spec={spec}
               traces={liveTraces.traces}
               showValues={Boolean(runResult)}
               executionActive={Boolean(runResult)}
               executedLegalIds={effectiveExecuted}
-              dissect={lensFocusId ? "always" : "auto"}
+              dissect="auto"
               collapsed={folded}
               onCollapsedChange={setFolded}
               flyTo={flyTarget}
@@ -2276,6 +2535,7 @@ export function GraphViewerApp({
               }
               hoverLegalId={null}
               onPaneClear={() => setInspected(null)}
+              controlsSlot={graphControlsSlot}
               onLens={openLens}
               parameterRules={parameterRules}
               selectedOutputIds={selectedSet}
@@ -2286,464 +2546,23 @@ export function GraphViewerApp({
           )}
         </div>
 
-        {inspected &&
-          (() => {
-            const legalId =
-              "legalId" in inspected && inspected.legalId
-                ? inspected.legalId
-                : null;
-            const rule = legalId ? (walkRuleById.get(legalId) ?? null) : null;
-            const input = legalId ? (walkInputById.get(legalId) ?? null) : null;
-            const consumers = inspectedConsumers;
-            const meta = "meta" in inspected ? inspected.meta : undefined;
-            const formula = meta?.formula ?? rule?.formula ?? null;
-            const rawCitation =
-              meta?.citation ??
-              rule?.source ??
-              (legalId ? fileLegalIdOf(legalId) : null);
-            // A synthetic package home is not a source — a question
-            // with no citation shows no Source row rather than the
-            // raw "axiom:us-ny-snap-fy-2026" id.
-            const citation =
-              rawCitation && !rawCitation.startsWith("axiom:")
-                ? humanizeSource(rawCitation)
-                : null;
-            const parameterValue =
-              meta?.parameterValue ??
-              (rule?.kind === "parameter" && rule.formula
-                ? rule.formula.replace(/\s+/g, " ").trim().slice(0, 140)
-                : null);
-            // The card's computed value from the live run — the same
-            // number the canvas box shows, whichever door opened this
-            // inspector (canvas click or flow-panel row).
-            const liveFragment = legalId ? (legalId.split("#").pop() ?? "") : "";
-            const liveRaw = runResult
-              ? (runResult.trace.find(
-                  (entry) => entry.variable === liveFragment,
-                )?.value ?? runResult.outputs[liveFragment])
-              : undefined;
-            const liveValue =
-              liveRaw === undefined || liveRaw === null
-                ? null
-                : typeof liveRaw === "boolean"
-                  ? liveRaw
-                    ? "Yes"
-                    : "No"
-                  : typeof liveRaw === "number"
-                    ? liveRaw.toLocaleString("en-US")
-                    : String(liveRaw);
-            // The provision to read: a rule's own home file. A question
-            // has no home in the law (it lives in the synthetic package
-            // file), so read the provision that asks it — the first
-            // consumer rule housed in a statutes/regulations file.
-            const lawFileLegalId = (() => {
-              if (!legalId) return null;
-              const own = fileLegalIdOf(legalId);
-              if (/:(statutes|regulations|manual)\//.test(own)) return own;
-              // Synthesized package rules cite their statute in
-              // `source` as a raw legal id — that IS the law to read.
-              const source = rule?.source;
-              if (
-                source &&
-                /^[a-z]{2}(?:-[a-z]{2})?:(statutes|regulations|manual)\//.test(
-                  source,
-                )
-              ) {
-                return source.split("#")[0] ?? null;
-              }
-              // Only questions borrow a consumer's provision — they
-              // have no home in the law, so the section that asks them
-              // is the honest read. A RULE with an unreadable home (a
-              // policy file the corpus text doesn't carry) must never
-              // point at a consumer's law: that provision does not
-              // contain it.
-              if (!rule) {
-                for (const consumer of consumers) {
-                  const file = fileLegalIdOf(consumer.legalId);
-                  if (/:(statutes|regulations|manual)\//.test(file)) {
-                    return file;
-                  }
-                }
-              }
-              return null;
-            })();
-            // The read link carries the cited subsection — the reader
-            // focuses it and clamps the rest of the section.
-            const lawHref = lawFileLegalId
-              ? axiomAppUrlForCitation(
-                  lawFileLegalId,
-                  citation ? rawCitation : null,
-                )
-              : null;
-            return (
-          <aside className="node-inspector" aria-label="Node details">
-            <div className="node-inspector-head">
-              <button
-                type="button"
-                className="results-close"
-                onClick={() => {
-                  // In isolation the sidebar IS the mode — closing it
-                  // ends the isolation and restores the map.
-                  if (lensTrail.length > 0) closeLens();
-                  setInspected(null);
-                }}
-                aria-label="Close inspector"
-              >
-                ×
-              </button>
-            </div>
-            {lensTrail.length > 1 && (
-              <nav
-                className="lens-bar lens-bar-docked"
-                aria-label="Isolation trail"
-              >
-                {lensTrail.map((id, index) => (
-                  <button
-                    type="button"
-                    key={`${id}-${index}`}
-                    className={`lens-crumb ${index === lensTrail.length - 1 ? "is-current" : ""}`}
-                    onClick={() => jumpLens(index)}
-                  >
-                    {humanize(id.split("#").pop() ?? id)}
-                  </button>
-                ))}
-              </nav>
-            )}
-            <h2 className="node-inspector-title">
-              {humanize("label" in inspected ? (inspected.label ?? "") : "")}
-            </h2>
-            {parameterValue ? (
-              <p className="parameter-value">
-                {formatParameterValue(parameterValue, rule?.unit ?? null)}
-              </p>
-            ) : null}
-            {(() => {
-              const cardValue =
-                "value" in inspected &&
-                inspected.value &&
-                "showValues" in inspected &&
-                inspected.showValues
-                  ? inspected.value
-                  : null;
-              const shown = cardValue ?? liveValue;
-              if (shown === null) return null;
-              // Member-level rules can't be traced against the
-              // household query yet — the dash is a capability gap,
-              // not a computed nothing. Say so.
-              const memberLevel =
-                shown === "—" &&
-                rule?.entity != null &&
-                /person|member/i.test(rule.entity);
-              return (
-                <p className="node-inspector-value">
-                  {shown}
-                  {memberLevel && (
-                    <span className="node-inspector-value-note">
-                      member-level — not traced per member yet
-                    </span>
-                  )}
-                </p>
-              );
-            })()}
-            <dl className="node-inspector-meta">
-              {citation ? (
-                <>
-                  <dt>Source</dt>
-                  <dd>
-                    {(meta?.sourceUrl ?? rule?.sourceUrl) ? (
-                      <a
-                        href={(meta?.sourceUrl ?? rule?.sourceUrl) as string}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {citation} ↗
-                      </a>
-                    ) : (
-                      citation
-                    )}
-                  </dd>
-                </>
-              ) : null}
-              {rule?.certificationStatus ? (
-                <>
-                  {/* The four-status launch taxonomy: certification is a
-                      status, not a gate — the queue is public on every
-                      node. */}
-                  <dt>Status</dt>
-                  <dd>
-                    {rule.certificationStatus === "certified"
-                      ? "Certified"
-                      : rule.certificationStatus === "validated"
-                        ? "Validated, not certified"
-                        : rule.certificationStatus === "pending"
-                          ? "Pending — not yet encoded"
-                          : rule.incompleteByDeclaration
-                            ? "Encoded, incomplete by declaration"
-                            : "Encoded"}
-                  </dd>
-                </>
-              ) : null}
-              {rule?.certificateId ? (
-                <>
-                  {/* The verifier certificate is why this node is
-                      visible at all — show it, truncated, full id on
-                      hover. */}
-                  <dt>Certificate</dt>
-                  <dd
-                    className="node-inspector-mono"
-                    title={rule.certificateId}
-                  >
-                    {rule.certificateId.length > 28
-                      ? `${rule.certificateId.slice(0, 28)}…`
-                      : rule.certificateId}
-                  </dd>
-                </>
-              ) : null}
-              {(rule?.entity ?? input?.entity) ? (
-                <>
-                  <dt>Entity</dt>
-                  <dd>{humanize((rule?.entity ?? input?.entity) as string)}</dd>
-                </>
-              ) : null}
-              {rule?.period ? (
-                <>
-                  <dt>Period</dt>
-                  <dd>{rule.period}</dd>
-                </>
-              ) : null}
-              {rule?.unit ? (
-                <>
-                  <dt>Unit</dt>
-                  <dd>{rule.unit}</dd>
-                </>
-              ) : null}
-              {"kind" in inspected && inspected.kind === "input" ? (
-                <>
-                  <dt>Answered</dt>
-                  <dd>
-                    {inspected.source === "user"
-                      ? "by your scenario"
-                      : "by its default"}
-                  </dd>
-                </>
-              ) : null}
-              {input && input.sample !== undefined && input.sample !== null ? (
-                <>
-                  <dt>Default</dt>
-                  <dd className="node-inspector-mono">
-                    {typeof input.sample === "object"
-                      ? JSON.stringify(input.sample)
-                      : String(input.sample)}
-                  </dd>
-                </>
-              ) : null}
-              {input && input.name in inputEditValues ? (
-                <>
-                  <dt>Your answer</dt>
-                  <dd>
-                    <AnswerControl
-                      name={input.name}
-                      value={scenario[input.name]}
-                      meta={inputMeta}
-                      selectClassName="node-inspector-answer"
-                      inputClassName="node-inspector-answer"
-                      placeholder="answer…"
-                      onChange={(next) =>
-                        setScenario((current) => {
-                          if (next === undefined) {
-                            const cleaned = { ...current };
-                            delete cleaned[input.name];
-                            return cleaned;
-                          }
-                          return { ...current, [input.name]: next };
-                        })
-                      }
-                    />
-                  </dd>
-                </>
-              ) : null}
-              {null}
-              {"hiddenCount" in inspected && inspected.hiddenCount ? (
-                <>
-                  <dt>Contains</dt>
-                  <dd>{inspected.hiddenCount} rules</dd>
-                </>
-              ) : null}
-                          </dl>
-            {/* The local lens: this rule as a one-hop graph — built
-                from on the left, used by on the right, wires converging
-                into the center. Same left-to-right flow as the canvas,
-                without the canvas's crowd. When a run is live every
-                card carries its value. */}
-            {(rule &&
-              (rule.ruleDeps.length > 0 || rule.inputDeps.length > 0)) ||
-            consumers.length > 0 ? (
-              (() => {
-                const miniValue = (id: string): string | null => {
-                  const raw = liveTraces.valueOf(id);
-                  if (raw === undefined || raw === null) return null;
-                  if (typeof raw === "boolean")
-                    return raw ? "✓ true" : "✗ false";
-                  if (typeof raw === "number")
-                    return raw.toLocaleString("en-US");
-                  return String(raw);
-                };
-                const deps = [
-                  ...(rule?.ruleDeps ?? []).map((depId) => ({
-                    id: depId,
-                    label: humanize(
-                      walkRuleById.get(depId)?.name ??
-                        depId.split("#").pop() ??
-                        depId,
-                    ),
-                    kind: "rule" as const,
-                    value: miniValue(depId),
-                    hint: "Descend to this rule on the canvas",
-                    onClick: () => flyFromIndex(depId),
-                  })),
-                  ...(rule?.inputDeps ?? []).map((depId) => {
-                    const bareName =
-                      walkInputById.get(depId)?.name ??
-                      (depId.split("#").pop() ?? depId).split(".").pop() ??
-                      depId;
-                    // The engine doesn't trace inputs, so the trace
-                    // never carries a value here — the scenario is the
-                    // truth for answered ones; unanswered ones ran on
-                    // their registry default, and the run says so.
-                    const fromScenario =
-                      bareName in scenario ? scenario[bareName] : undefined;
-                    const format = (raw: number | boolean) =>
-                      typeof raw === "boolean"
-                        ? raw
-                          ? "✓ true"
-                          : "✗ false"
-                        : raw.toLocaleString("en-US");
-                    const fallback = inputMeta.defaults[bareName];
-                    const answered =
-                      miniValue(depId) ??
-                      (fromScenario !== undefined
-                        ? format(fromScenario)
-                        : null);
-                    return {
-                    id: depId,
-                    label: humanize(bareName),
-                    kind: "question" as const,
-                    value:
-                      answered ??
-                      (runResult
-                        ? typeof fallback === "number" ||
-                          typeof fallback === "boolean"
-                          ? `default — ${String(fallback)}`
-                          : "default"
-                        : null),
-                    valueTone:
-                      answered === null && runResult
-                        ? ("muted" as const)
-                        : undefined,
-                    hint: "Fly to this question on the canvas",
-                    onClick: () => {
-                      flyFromIndex(depId);
-                      inspectInput(depId);
-                    },
-                  };
-                  }),
-                ];
-                const uses = consumers.map((consumer) => ({
-                  id: consumer.legalId,
-                  label: humanize(consumer.name),
-                  kind: "rule" as const,
-                  value: miniValue(consumer.legalId),
-                  hint: inScopeIds.has(consumer.legalId)
-                    ? "Climb to this rule on the canvas"
-                    : "Expand the canvas up to this rule",
-                  onClick: () =>
-                    inScopeIds.has(consumer.legalId)
-                      ? flyFromIndex(consumer.legalId)
-                      : expandLensTo(consumer.legalId),
-                }));
-                return (
-                  <InspectorMiniGraph
-                    center={{
-                      label: humanize(
-                        "label" in inspected ? (inspected.label ?? "") : "",
-                      ),
-                      value: legalId ? miniValue(legalId) : null,
-                    }}
-                    deps={deps}
-                    consumers={uses}
-                  />
-                );
-              })()
-            ) : null}
-            {formula && rule?.kind !== "parameter" ? (
-              <details className="node-inspector-code">
-                <summary>Formula</summary>
-                <div className="node-inspector-code-body">
-                  <FormulaPretty source={formula} />
-                </div>
-              </details>
-            ) : null}
-            {"legalId" in inspected &&
-            inspected.legalId &&
-            inspected.kind !== "input" ? (
-              <button
-                type="button"
-                className="node-inspector-link"
-                onClick={() => isolateAt(inspected.legalId)}
-              >
-                Isolate this rule
-              </button>
-            ) : null}
-            {"kind" in inspected &&
-            inspected.kind === "input" &&
-            input &&
-            input.name in inputEditValues ? (
-              <button
-                type="button"
-                className="node-inspector-lens"
-                disabled={running}
-                onClick={() => void runScenario()}
-              >
-                {running ? "Running…" : "Run with these values"}
-              </button>
-            ) : null}
-            {lawHref ? (
-              <button
-                type="button"
-                className="node-inspector-link"
-                onClick={() => {
-                  // Encodings can be one level deeper than the corpus
-                  // provisions (…/2014/e/6/A vs …/e/6) — resolve to the
-                  // nearest existing page instead of opening a 404. But
-                  // when the resolved row is just an ancestor of the
-                  // cited path, keep the deep path: the reader resolves
-                  // it itself and focuses the cited subsection.
-                  void fetch(`/api/axiom/resolve${lawHref}`)
-                    .then((response) =>
-                      response.ok ? response.json() : null,
-                    )
-                    .then((resolved: { href?: string | null } | null) => {
-                      const href = resolved?.href ?? null;
-                      const target =
-                        href && !lawHref.startsWith(href) ? href : lawHref;
-                      setLawPopup(`${target}?embed=1`);
-                    })
-                    .catch(() => setLawPopup(`${lawHref}?embed=1`));
-                }}
-              >
-                Read the law →
-              </button>
-            ) : null}
-          </aside>
-            );
-          })()}
-
+        {/* One right-docked panel is the execution home: run results on
+            top, the selected node's card below, sharing one scroll —
+            nothing floats over the graph itself. */}
+        {((workspaceView === "run" && runResult && !editingRunInputs) || (workspaceView === "map" && (runResult || inspected))) && (
+          <aside
+            ref={execPanelRef}
+            className="exec-panel"
+            aria-label="Run results and node details"
+          >
+        {workspaceView === "run" && !runResult && <section className="results-sheet"><h2>Scenario result</h2><p>{running ? "Calculating…" : "Run your scenario to see the result here."}</p></section>}
         {runResult && (
-          <aside className="results-sheet" role="status">
+          <section className="results-sheet" role="status">
+            {workspaceView === "run" && resultsStale && <p className="workspace-stale">Inputs have changed. Run again to update this result.</p>}
             <div className="results-head">
               <div>
-                <span className="results-eyebrow">Executed</span>
-                <strong>{effectiveProgram?.displayName ?? "Program"}</strong>
+                <span className="results-eyebrow">Scenario result</span>
+                {workspaceView !== "run" && <strong>{effectiveProgram?.displayName ?? "Program"}</strong>}
               </div>
               <button
                 type="button"
@@ -2754,50 +2573,15 @@ export function GraphViewerApp({
                 ×
               </button>
             </div>
-            <div className="results-grid">
+            {workspaceView !== "run" && <div className="results-grid">
               {(() => {
-                // Headline: the program's own outputs, then the direct
-                // ingredients of the first one (the money chain — for
-                // SNAP that surfaces the monthly allotment). Every cell
-                // is a door to its node on the canvas.
-                const names: string[] = [];
-                const push = (fragment: string | undefined) => {
-                  if (!fragment) return;
-                  if (!(fragment in runResult.outputs)) return;
-                  if (!names.includes(fragment)) names.push(fragment);
-                };
-                for (const id of graph?.ownOutputs ?? []) {
-                  push(id.split("#").pop());
-                }
-                const first = (graph?.ownOutputs ?? [])[0];
-                const firstRule = first ? walkRuleById.get(first) : null;
-                for (const dep of firstRule?.ruleDeps ?? []) {
-                  push(dep.split("#").pop());
-                }
-                if (names.length === 0) {
-                  for (const name of Object.keys(runResult.outputs)) {
-                    if (!name.includes(":")) push(name);
-                  }
-                }
-                return names.slice(0, 8).map((name) => {
-                  const value = runResult.outputs[name];
-                  const rule = (graph?.rules ?? []).find(
-                    (item) => item.name === name,
-                  );
-                  return (
-                    <button
-                      type="button"
-                      key={name}
-                      className="results-cell"
-                      disabled={!rule}
-                      title={rule ? "See this on the canvas" : undefined}
-                      onClick={() => {
-                        if (!rule) return;
-                        if (inScopeIds.has(rule.legalId))
-                          flyFromIndex(rule.legalId);
-                        else expandLensTo(rule.legalId);
-                      }}
-                    >
+                // The cell is a door to its node on the canvas.
+                if (!resultHeadline) return null;
+                const { name, legalId: headlineId } = resultHeadline;
+                const value = runResult.outputs[name];
+                const rule = headlineId ? walkRuleById.get(headlineId) : undefined;
+                return (
+                    <div className="results-cell">
                       <span className="results-label">{humanize(name)}</span>
                       <span className="results-value">
                         {typeof value === "boolean"
@@ -2805,15 +2589,21 @@ export function GraphViewerApp({
                             ? "Yes"
                             : "No"
                           : typeof value === "number"
-                            ? value.toLocaleString("en-US")
+                            ? value.toLocaleString("en-US", { maximumFractionDigits: 6 })
                             : String(value ?? "—")}
                       </span>
-                    </button>
-                  );
-                });
+                    </div>
+                );
               })()}
-            </div>
-            <div className="results-adjust" aria-label="Adjust and run again">
+            </div>}
+            {workspaceView === "run" && graph && resultHeadline?.legalId && <>
+              {<ResultExplanation trail={explanationTrail} onTrailChange={setExplanationTrail} key={resultHeadline.legalId} graph={graph} run={runResult} rootId={resultHeadline.legalId} stale={resultsStale} onEditInputs={() => setEditingRunInputs(true)} onRelationships={(id) => {
+                inspectRule(id); setWorkspaceView("structure"); setRunPanelOpen(false);
+              }} onGraph={(id) => {
+                inspectRule(id); setWorkspaceView("map"); flyTo(id, true);
+              }} onRead={(id) => { inspectRule(id); setWorkspaceView("read"); }} />}
+            </>}
+            {workspaceView !== "run" && <div className="results-adjust" aria-label="Adjust and run again">
               {(() => {
                 // Every SELECTED input, editable in place: typed values
                 // show as themselves, untouched picks show their
@@ -2921,44 +2711,473 @@ export function GraphViewerApp({
                   </>
                 );
               })()}
-              {resultsStale && (
-                <p className="results-stale" data-testid="results-stale">
-                  values changed — Run again
-                </p>
-              )}
+              {/* The actions own a row of their own — the pager above
+                  never pushes Run again around as pages come and go. */}
+              <div className="results-actions">
+                {resultsStale && (
+                  <p className="results-stale" data-testid="results-stale">
+                    values changed — Run again
+                  </p>
+                )}
+                <button
+                  type="button"
+                  className={`results-rerun ${resultsStale ? "is-stale" : ""}`}
+                  disabled={running}
+                  onClick={() => void runScenario()}
+                >
+                  {running ? "Running…" : "Run again"}
+                </button>
+                <button
+                  type="button"
+                  className="results-edit-inputs"
+                  disabled={running}
+                  onClick={() => { setEditingRunInputs(true); setWorkspaceView("run"); document.querySelector(".workspace-run")?.scrollIntoView({ block: "start", behavior: "instant" }); }}
+                  title="Reopen the full input list to add or change answers"
+                >
+                  Edit inputs
+                </button>
+              </div>
+            </div>
+            }
+          </section>
+        )}
+        {inspected && workspaceView === "map" &&
+          (() => {
+            const legalId =
+              "legalId" in inspected && inspected.legalId
+                ? inspected.legalId
+                : null;
+            const rule = legalId ? (walkRuleById.get(legalId) ?? null) : null;
+            const input = legalId ? (walkInputById.get(legalId) ?? null) : null;
+            const consumers = inspectedConsumers;
+            const meta = "meta" in inspected ? inspected.meta : undefined;
+            // Node meta is built from the same graph, so the two agree;
+            // the rule is simply present on more inspection paths.
+            const formula = rule?.formula ?? meta?.formula ?? null;
+            const rawCitation =
+              meta?.citation ??
+              rule?.source ??
+              (legalId ? fileLegalIdOf(legalId) : null);
+            // A synthetic package home is not a source — a question
+            // with no citation shows no Source row rather than the
+            // raw "axiom:us-ny-snap-fy-2026" id.
+            const citation =
+              rawCitation && !rawCitation.startsWith("axiom:")
+                ? humanizeSource(rawCitation)
+                : null;
+            const parameterValue =
+              meta?.parameterValue ??
+              (rule?.kind === "parameter" && rule.formula
+                ? rule.formula.replace(/\s+/g, " ").trim().slice(0, 140)
+                : null);
+            // The card's computed value from the live run — the same
+            // number the canvas box shows, whichever door opened this
+            // inspector (canvas click or flow-panel row).
+            const liveFragment = legalId ? (legalId.split("#").pop() ?? "") : "";
+            const liveRaw = runResult
+              ? (runResult.trace.find(
+                  (entry) => entry.variable === liveFragment,
+                )?.value ?? runResult.outputs[liveFragment])
+              : undefined;
+            const liveValue =
+              liveRaw === undefined || liveRaw === null
+                ? null
+                : typeof liveRaw === "boolean"
+                  ? liveRaw
+                    ? "Yes"
+                    : "No"
+                  : typeof liveRaw === "number"
+                    ? liveRaw.toLocaleString("en-US", { maximumFractionDigits: 6 })
+                    : String(liveRaw);
+            // The provision to read: a rule's own home file. A question
+            // has no home in the law (it lives in the synthetic package
+            // file), so read the provision that asks it — the first
+            // consumer rule housed in a statutes/regulations file.
+            // Only a citation that came from the node's own `source`
+            // is curated. The canvas also sets meta.citation to the
+            // humanized FILE id as a display fallback — steering
+            // Read-the-law by that would send every question to its
+            // file head, unfocused (the #190 "no question focuses"
+            // regression).
+            const curatedCitation =
+              meta?.citationFromSource &&
+              typeof meta?.citation === "string" &&
+              !meta.citation.startsWith("axiom:")
+                ? meta.citation
+                : null;
+            const lawTarget = readableLawTarget({
+              legalId,
+              ruleSource: rule?.source ?? null,
+              citation: citation ? rawCitation : null,
+              curatedCitation,
+              isQuestion: !rule,
+              consumers,
+            });
+            // The read link carries the cited subsection — the reader
+            // focuses it and clamps the rest of the section. For a
+            // question the citation and spotlight rule come from the
+            // consumer whose provision asks it.
+            const lawHref = lawTarget
+              ? axiomAppUrlForCitation(lawTarget.fileLegalId, lawTarget.citation)
+              : null;
+            return (
+          <section
+            ref={inspectorSectionRef}
+            className="node-inspector"
+            aria-label="Node details"
+          >
+            <div className="node-inspector-head">
               <button
                 type="button"
-                className={`results-rerun ${resultsStale ? "is-stale" : ""}`}
+                className="results-close"
+                onClick={() => {
+                  // In isolation the sidebar IS the mode — closing it
+                  // ends the isolation and restores the map.
+                  if (lensTrail.length > 0) closeLens();
+                  setInspected(null);
+                }}
+                aria-label="Close inspector"
+              >
+                ×
+              </button>
+            </div>
+            {/* A click can land here on its own (a chain too wide to
+                frame isolates itself), so the way back must be in
+                plain sight from the first level: the map, then every
+                isolation step. */}
+            {lensTrail.length > 0 && (
+              <nav
+                className="lens-bar lens-bar-docked"
+                aria-label="Isolation trail"
+              >
+                <button
+                  type="button"
+                  className="lens-crumb lens-crumb-map"
+                  onClick={() => {
+                    closeLens();
+                    setInspected(null);
+                  }}
+                  title="Leave isolation and show the whole map"
+                >
+                  ← Map
+                </button>
+                {lensTrail.map((id, index) => (
+                  <button
+                    type="button"
+                    key={`${id}-${index}`}
+                    className={`lens-crumb ${index === lensTrail.length - 1 ? "is-current" : ""}`}
+                    onClick={() => jumpLens(index)}
+                  >
+                    {humanize(id.split("#").pop() ?? id)}
+                  </button>
+                ))}
+              </nav>
+            )}
+            <h2 className="node-inspector-title">
+              {humanize("label" in inspected ? (inspected.label ?? "") : "")}
+            </h2>
+            {parameterValue ? (
+              <p className="parameter-value">
+                {formatParameterValue(parameterValue, rule?.unit ?? null)}
+              </p>
+            ) : null}
+            {(() => {
+              // The parameter-value line above already states the
+              // constant — repeating it as a "computed" value reads as
+              // two different numbers waiting to disagree.
+              if (parameterValue) return null;
+              // Same for the headline output: its number already sits on
+              // the results cell in this panel, a few lines up.
+              if (runResult && legalId && resultHeadline?.legalId === legalId)
+                return null;
+              const cardValue =
+                "value" in inspected &&
+                inspected.value &&
+                "showValues" in inspected &&
+                inspected.showValues
+                  ? inspected.value
+                  : null;
+              const shown = cardValue ?? liveValue;
+              if (shown === null) return null;
+              // Member-level rules can't be traced against the
+              // household query yet — the dash is a capability gap,
+              // not a computed nothing. Say so.
+              const memberLevel =
+                shown === "—" &&
+                rule?.entity != null &&
+                /person|member/i.test(rule.entity);
+              return (
+                <p className="node-inspector-value">
+                  {shown}
+                  {memberLevel && (
+                    <span className="node-inspector-value-note">
+                      member-level — not traced per member yet
+                    </span>
+                  )}
+                </p>
+              );
+            })()}
+            {/* Answer rows stay in the open for question nodes; the
+                rest of the metadata lives in the Details disclosure
+                further down. */}
+            {("kind" in inspected && inspected.kind === "input") || input ? (
+            <dl className="node-inspector-meta">
+              {"kind" in inspected && inspected.kind === "input" ? (
+                <>
+                  <dt>Answered</dt>
+                  <dd>
+                    {inspected.source === "user"
+                      ? "by your scenario"
+                      : "by its default"}
+                  </dd>
+                </>
+              ) : null}
+              {input && input.sample !== undefined && input.sample !== null ? (
+                <>
+                  <dt>Default</dt>
+                  <dd className="node-inspector-mono">
+                    {typeof input.sample === "object"
+                      ? JSON.stringify(input.sample)
+                      : String(input.sample)}
+                  </dd>
+                </>
+              ) : null}
+              {input && input.name in inputEditValues ? (
+                <>
+                  <dt>Your answer</dt>
+                  <dd>
+                    {input.entity === "Person" && extraMembers.length > 0 ? (
+                      // One row per member, Person 1 included — the
+                      // same uniform stack the run panel uses.
+                      <div className="scenario-member-rows">
+                        {[null, ...extraMembers].map((member) => (
+                          <label
+                            key={member ?? "person_1"}
+                            className="scenario-member-row"
+                          >
+                            <span className="scenario-field-member">
+                              {member ? memberLabel(member) : "Person 1"}
+                            </span>
+                            <AnswerControl
+                              name={input.name}
+                              value={
+                                member
+                                  ? memberScenario[member]?.[input.name]
+                                  : scenario[input.name]
+                              }
+                              meta={inputMeta}
+                              selectClassName="node-inspector-answer"
+                              inputClassName="node-inspector-answer"
+                              placeholder="answer…"
+                              onChange={(next) =>
+                                member
+                                  ? setMemberScenario((current) => {
+                                      const answers = {
+                                        ...(current[member] ?? {}),
+                                      };
+                                      if (next === undefined) {
+                                        delete answers[input.name];
+                                      } else {
+                                        answers[input.name] = next;
+                                      }
+                                      return {
+                                        ...current,
+                                        [member]: answers,
+                                      };
+                                    })
+                                  : setScenario((current) => {
+                                      if (next === undefined) {
+                                        const cleaned = { ...current };
+                                        delete cleaned[input.name];
+                                        return cleaned;
+                                      }
+                                      return {
+                                        ...current,
+                                        [input.name]: next,
+                                      };
+                                    })
+                              }
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    ) : (
+                      <AnswerControl
+                        name={input.name}
+                        value={scenario[input.name]}
+                        meta={inputMeta}
+                        selectClassName="node-inspector-answer"
+                        inputClassName="node-inspector-answer"
+                        placeholder="answer…"
+                        onChange={(next) =>
+                          setScenario((current) => {
+                            if (next === undefined) {
+                              const cleaned = { ...current };
+                              delete cleaned[input.name];
+                              return cleaned;
+                            }
+                            return { ...current, [input.name]: next };
+                          })
+                        }
+                      />
+                    )}
+                  </dd>
+                </>
+              ) : null}
+                          </dl>
+            ) : null}
+            {/* The local lens: this rule as a one-hop graph — built
+                from on the left, used by on the right, wires converging
+                into the center. Same left-to-right flow as the canvas,
+                without the canvas's crowd. When a run is live every
+                card carries its value. */}
+            {(rule &&
+              (rule.ruleDeps.length > 0 || rule.inputDeps.length > 0)) ||
+            consumers.length > 0 ? (
+              (() => {
+                const miniValue = (id: string): string | null => {
+                  const raw = graph ? inputAwareEvidence(graph, runResult, id, inputMeta.defaults) : undefined;
+                  if (raw === undefined || raw === null) return null;
+                  if (typeof raw === "boolean")
+                    return raw ? "✓ true" : "✗ false";
+                  if (typeof raw === "number")
+                    return raw.toLocaleString("en-US", { maximumFractionDigits: 6 });
+                  return String(raw);
+                };
+                const deps = [
+                  ...(rule?.ruleDeps ?? []).map((depId) => ({
+                    id: depId,
+                    label: humanize(
+                      walkRuleById.get(depId)?.name ??
+                        depId.split("#").pop() ??
+                        depId,
+                    ),
+                    kind: "rule" as const,
+                    value: miniValue(depId),
+                    hint: "Descend to this rule on the canvas",
+                    onClick: () => flyFromIndex(depId),
+                  })),
+                  ...(rule?.inputDeps ?? []).map((depId) => {
+                    const bareName =
+                      walkInputById.get(depId)?.name ??
+                      (depId.split("#").pop() ?? depId).split(".").pop() ??
+                      depId;
+                    // The engine doesn't trace inputs, so the trace
+                    // never carries a value here — the scenario is the
+                    // truth for answered ones; unanswered ones ran on
+                    // their registry default, and the run says so.
+                    const fromScenario =
+                      runResult?.submittedFacts?.[bareName];
+                    const format = (raw: number | boolean) =>
+                      typeof raw === "boolean"
+                        ? raw
+                          ? "✓ true"
+                          : "✗ false"
+                        : raw.toLocaleString("en-US", { maximumFractionDigits: 6 });
+                    const fallback = inputMeta.defaults[bareName];
+                    const answered =
+                      miniValue(depId) ??
+                      ((typeof fromScenario === "number" || typeof fromScenario === "boolean")
+                        ? format(fromScenario)
+                        : null);
+                    return {
+                    id: depId,
+                    label: humanize(bareName),
+                    kind: "question" as const,
+                    value:
+                      answered ??
+                      (runResult
+                        ? typeof fallback === "number" ||
+                          typeof fallback === "boolean"
+                          ? String(fallback)
+                          : "Not reported"
+                        : null),
+                    valueTone:
+                      answered === null && runResult
+                        ? ("muted" as const)
+                        : undefined,
+                    hint: "Fly to this question on the canvas",
+                    onClick: () => {
+                      flyFromIndex(depId);
+                      inspectInput(depId);
+                    },
+                  };
+                  }),
+                ];
+                const uses = consumers.map((consumer) => ({
+                  id: consumer.legalId,
+                  label: humanize(consumer.name),
+                  kind: "rule" as const,
+                  value: miniValue(consumer.legalId),
+                  hint: inScopeIds.has(consumer.legalId)
+                    ? "Climb to this rule on the canvas"
+                    : "Expand the canvas up to this rule",
+                  onClick: () =>
+                    inScopeIds.has(consumer.legalId)
+                      ? flyFromIndex(consumer.legalId)
+                      : expandLensTo(consumer.legalId),
+                }));
+                return (
+                  <InspectorMiniGraph
+                    activeId={formulaDependency}
+                    center={{
+                      label: humanize(
+                        "label" in inspected ? (inspected.label ?? "") : "",
+                      ),
+                      value: legalId ? miniValue(legalId) : null,
+                    }}
+                    deps={deps}
+                    consumers={uses}
+                  />
+                );
+              })()
+            ) : null}
+            {/* Reference details and formula stay visible beside the graph. */}
+            {graph && legalId && rule?.table && (
+              <ParameterTableView
+                table={rule.table}
+                unit={rule.unit}
+                selectedKey={runResult ? recordedTableRow(graph, runResult, legalId)?.key : null}
+                stale={resultsStale}
+              />
+            )}
+            {legalId && <NodeMetadata key={legalId} id={legalId} entry={rule ?? input ?? graph?.relations.find(item => item.legalId === legalId) ?? {}} />}
+            {formula && rule?.kind !== "parameter" ? (
+              <section className="node-inspector-code" aria-label="Formula">
+                <h3>Formula</h3>
+                <div className="node-inspector-code-body">
+                  {graph && rule ? <RecordedFormula
+                    formula={formula}
+                    dependencies={[...rule.ruleDeps, ...rule.inputDeps, ...rule.relationDeps]}
+                    entries={new Map([...graph.rules, ...graph.inputs, ...graph.relations].map((entry) => [entry.legalId, entry]))}
+                    valueOf={(id) => inputAwareEvidence(graph, runResult, id, inputMeta.defaults)}
+                    hasRun={Boolean(runResult)}
+                    activeId={formulaDependency}
+                    onHighlight={setFormulaDependency}
+                    onSelect={(id) => { flyFromIndex(id); if (walkInputById.has(id)) inspectInput(id); else inspectRule(id); }}
+                  /> : <FormulaPretty source={formula} />}
+                </div>
+              </section>
+            ) : null}
+            {"kind" in inspected &&
+            inspected.kind === "input" &&
+            input &&
+            input.name in inputEditValues ? (
+              <button
+                type="button"
+                className="node-inspector-lens"
                 disabled={running}
                 onClick={() => void runScenario()}
               >
-                {running ? "Running…" : "Run again"}
+                {running ? "Running…" : "Run with these values"}
               </button>
-              <button
-                type="button"
-                className="results-edit-inputs"
-                disabled={running}
-                onClick={() => setRunPanelOpen(true)}
-                title="Reopen the full input list to add or change answers"
-              >
-                Edit inputs
-              </button>
-            </div>
-            <p className="results-note">
-              Computed by the Axiom engine from your scenario — the graph
-              above shows every intermediate value. You answered{" "}
-              {Object.keys(scenario).length} of {inputCatalog.length}{" "}
-              questions; the rest used this program's default values, so
-              a "No" can mean "not asked", not "disqualified".
-            </p>
-            {runResult.provenance && (
-              // The certification ledger is why these numbers may be
-              // served at all — name it under the results.
-              <p className="results-note">
-                Computed under ledger {runResult.provenance.ledger_id},
-                engine {runResult.provenance.vintage.engine_release}
-              </p>
-            )}
+            ) : null}
+            {lawHref ? (
+              <button type="button" className="node-inspector-link" data-testid="read-the-law" onClick={() => setWorkspaceView("read")}>Read the law →</button>
+            ) : null}
+          </section>
+            );
+          })()}
           </aside>
         )}
       </section>
@@ -3008,11 +3227,23 @@ function buildStructureTraces(
 
     const rule = rulesById.get(legalId);
     if (rule) {
+      // A scalar parameter's value IS its formula constant. The engine
+      // only traces derived rules, so without this the run view shows
+      // "—" where the statute's own number belongs (the 0.009 on the
+      // Additional Medicare rate). Table-shaped parameters keep null.
+      const literal =
+        rule.kind === "parameter" && rule.formula
+          ? rule.formula.trim()
+          : null;
+      const parameterValue =
+        literal && /^-?[\d_]+(\.\d+)?$/.test(literal)
+          ? Number(literal.replace(/_/g, ""))
+          : null;
       const trace: TraceNode = {
         legalId: rule.legalId,
         label: rule.name,
         ruleKind: rule.kind,
-        value: null,
+        value: parameterValue,
         dtype: traceDtype(rule.dtype),
         source: rule.source ?? undefined,
         sourceUrl: rule.sourceUrl ?? null,
@@ -3033,13 +3264,16 @@ function buildStructureTraces(
 
     const input = inputsById.get(legalId);
     if (input) {
+      // No `source`: a question has no legal citation of its own —
+      // homeFile covers the display fallback, and a fake source here
+      // would masquerade as a curated citation in Read-the-law
+      // targeting (the "no question focuses" regression).
       const trace: TraceNode = {
         legalId: input.legalId,
         label: input.name,
         value: scalarSample(input.sample),
         dtype: "input",
         inputSource: "default",
-        source: input.fileLegalId,
         homeFile: input.fileLegalId,
         children: [],
       };
@@ -3055,7 +3289,6 @@ function buildStructureTraces(
         value: null,
         dtype: "input",
         inputSource: "default",
-        source: relation.fileLegalId,
         homeFile: relation.fileLegalId,
         children: [],
       };
@@ -3151,20 +3384,137 @@ function humanize(value: string): string {
   );
 }
 
-// Labels for encoding conventions whose raw values would read as
-// magic numbers. filing_status is the rulespec-us convention: 1 joint,
-// 2 married filing separately, everything else not a married filing.
-const FILING_STATUS_LABELS: Record<number, string> = {
-  0: "0 — not a married filing",
-  1: "1 — joint return",
-  2: "2 — married filing separately",
-};
-
-function enumOptionLabel(inputName: string, option: number): string {
-  if (/(^|_)filing_status$/.test(inputName)) {
-    return FILING_STATUS_LABELS[option] ?? String(option);
+/** Member answers folded into a flat record for scenario-identity
+ *  keys. Membership itself dirties the key — an added person with no
+ *  answers still changes the household. */
+function flattenMemberAnswers(
+  members: string[],
+  memberScenario: Record<string, Record<string, number | boolean>>,
+): Record<string, number | boolean> {
+  const flat: Record<string, number | boolean> = {};
+  for (const member of members) {
+    flat[`${member}:__present`] = true;
+    for (const [name, value] of Object.entries(memberScenario[member] ?? {})) {
+      flat[`${member}:${name}`] = value;
+    }
   }
-  return String(option);
+  return flat;
+}
+
+/** "person_3" → "Person 3" — ids are stable across removals, so the
+ *  label follows the id, not the position. */
+function memberLabel(id: string): string {
+  return humanize(id);
+}
+
+// ── Input picker computation outline ──
+// The run panel's input list rendered as the law's own dependency
+// tree. Shared inputs appear under every branch that consumes them —
+// the point of the structure.
+
+interface OutlineInputRow {
+  name: string;
+  legalId: string;
+  fileLegalId: string;
+  entity: string | null;
+  isBool: boolean;
+  sample: number | boolean;
+}
+
+interface OutlineNode {
+  id: string;
+  label: string;
+  inputs: OutlineInputRow[];
+  children: OutlineNode[];
+  /** Distinct answerable questions in this subtree. */
+  count: number;
+}
+
+/** Distinct input names in a subtree — shared by the outline builder
+ *  and the picker's pruned view so the two counts can't drift. */
+function collectOutlineInputNames(
+  node: { inputs: OutlineInputRow[]; children: OutlineNode[] },
+  names: Set<string>,
+): void {
+  node.inputs.forEach((row) => names.add(row.name));
+  node.children.forEach((child) => collectOutlineInputNames(child, names));
+}
+
+function InputOutlineBranch({
+  node,
+  depth,
+  pathKey,
+  defaultOpen,
+  searching,
+  openOverrides,
+  onToggle,
+  onAdd,
+}: {
+  node: OutlineNode;
+  depth: number;
+  /** Slash-joined ancestor ids — a DAG node recurs under several
+   *  parents, so expansion state keys on the occurrence, not the id. */
+  pathKey: string;
+  defaultOpen?: boolean;
+  searching: boolean;
+  openOverrides: Map<string, boolean>;
+  onToggle: (key: string, fallback: boolean) => void;
+  onAdd: (name: string) => void;
+}) {
+  // Branches are open unless the visitor (or the synthetic "other
+  // definitions" wrapper) says otherwise — the outline shows itself.
+  const fallbackOpen = defaultOpen ?? true;
+  // A live search overrides stored collapses — hidden matches would
+  // read as "no results".
+  const isOpen = searching
+    ? true
+    : (openOverrides.get(pathKey) ?? fallbackOpen);
+  return (
+    <div
+      className="run-outline-branch"
+      style={{ "--outline-depth": depth } as React.CSSProperties}
+    >
+      <button
+        type="button"
+        className="run-outline-head"
+        aria-expanded={isOpen}
+        onClick={() => onToggle(pathKey, fallbackOpen)}
+      >
+        <span className="run-outline-caret" aria-hidden>
+          {isOpen ? "▾" : "▸"}
+        </span>
+        <span className="run-outline-name">{node.label}</span>
+      </button>
+      {isOpen && (
+        <div className="run-outline-body">
+          {node.inputs.map((row) => (
+            <button
+              type="button"
+              key={row.legalId}
+              className="run-picker-row is-lever"
+              title="Add to your answers"
+              onClick={() => onAdd(row.name)}
+            >
+              <span className="run-picker-icon">＋</span>
+              <span className="run-picker-name">{humanize(row.name)}</span>
+            </button>
+          ))}
+          {node.children.map((child) => (
+            <InputOutlineBranch
+              key={`${pathKey}/${child.id}`}
+              node={child}
+              depth={depth + 1}
+              pathKey={`${pathKey}/${child.id}`}
+              searching={searching}
+              openOverrides={openOverrides}
+              onToggle={onToggle}
+              onAdd={onAdd}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -3184,6 +3534,7 @@ function AnswerControl({
   selectClassName,
   inputClassName,
   placeholder,
+  plainDefaults = false,
 }: {
   name: string;
   value: number | boolean | undefined;
@@ -3191,11 +3542,14 @@ function AnswerControl({
     dtypes: Record<string, string>;
     defaults: Record<string, unknown>;
     options?: Record<string, number[]>;
+    optionLabels?: Record<string, Record<number, string>>;
+    presentation?: Record<string, { category?: string; order?: number; label?: string }>;
   };
   onChange: (value: number | boolean | undefined) => void;
   selectClassName?: string;
   inputClassName?: string;
   placeholder?: string;
+  plainDefaults?: boolean;
 }) {
   const dtype = meta.dtypes[name];
   const fallback = meta.defaults[name];
@@ -3217,7 +3571,7 @@ function AnswerControl({
           )
         }
       >
-        <option value="">default — {String(presumed)}</option>
+        <option value="">{plainDefaults ? String(presumed) : `default — ${String(presumed)}`}</option>
         <option value={String(!presumed)}>{String(!presumed)}</option>
       </select>
     );
@@ -3241,12 +3595,12 @@ function AnswerControl({
           )
         }
       >
-        <option value="">default — {enumOptionLabel(name, presumed)}</option>
+        <option value="">{plainDefaults ? (meta.optionLabels?.[name]?.[presumed] ?? String(presumed)) : `default — ${(meta.optionLabels?.[name]?.[presumed] ?? String(presumed))}`}</option>
         {domain
           .filter((option) => option !== presumed)
           .map((option) => (
             <option key={option} value={String(option)}>
-              {enumOptionLabel(name, option)}
+              {(meta.optionLabels?.[name]?.[option] ?? String(option))}
             </option>
           ))}
       </select>
@@ -3258,7 +3612,7 @@ function AnswerControl({
       className={inputClassName}
       step={dtype === "integer" ? 1 : "any"}
       placeholder={placeholder}
-      value={typeof value === "number" ? String(value) : ""}
+      value={typeof value === "number" ? String(value) : plainDefaults && typeof fallback === "number" ? String(fallback) : ""}
       onChange={(event) =>
         onChange(
           event.target.value === ""
@@ -3317,7 +3671,7 @@ function connectedComponent(
 
 /** Jurisdictions hidden from the viewer for now (registry still
  *  serves them; this is presentation only). */
-const HIDDEN_COUNTRIES = new Set<Country>(["uk"]);
+const HIDDEN_COUNTRIES = new Set<Country>(["uk", "ca"]);
 /** Individual programs hidden for now — us-ny/tanf executes into a
  *  known parameter-table gap until rulespec-us#1131's artifact lands. */
 const HIDDEN_PROGRAMS = new Set<string>(["us-ny/tanf"]);
@@ -3398,10 +3752,12 @@ const FORMULA_KEYWORDS = new Set([
 function formatParameterValue(raw: string, unit: string | null): string {
   const trimmed = raw.trim();
   if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) {
-    const numeric = Number(trimmed);
-    const pretty = numeric.toLocaleString("en-US", {
-      maximumFractionDigits: 2,
-    });
+    // Exactly as encoded: group the integer part for readability but
+    // keep the fraction verbatim — a 0.062 rate must never display
+    // as 0.06.
+    const [whole, fraction] = trimmed.split(".");
+    const grouped = Number(whole).toLocaleString("en-US");
+    const pretty = fraction ? `${grouped}.${fraction}` : grouped;
     if (unit === "USD") return `$${pretty}`;
     return unit ? `${pretty} ${unit.toLowerCase()}` : pretty;
   }
@@ -3673,8 +4029,14 @@ function FormulaPretty({ source }: { source: string }) {
   return (
     <code className="formula-pretty formula-block">
       {lines.map((line, lineIndex) => (
-        <span key={lineIndex} className="fp-line">
-          {"  ".repeat(line.indent)}
+        // Indent as padding, not literal spaces: a long line wraps and
+        // its continuation hangs at the construct's own depth instead
+        // of forcing a horizontal scrollbar.
+        <span
+          key={lineIndex}
+          className="fp-line"
+          style={{ paddingLeft: `${line.indent * 14}px` }}
+        >
           {line.spans.map((span, spanIndex) => (
             <span key={spanIndex} className={span.cls} title={span.title}>
               {span.text}

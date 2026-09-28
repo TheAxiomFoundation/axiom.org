@@ -125,7 +125,8 @@ async function runtimeGet<T>(path: string): Promise<T | null> {
  * verbatim (the viewer client parses it), the key stays server-side.
  */
 export async function runtimeProxyGet(
-  path: string
+  path: string,
+  options: { timeoutMs?: number; fresh?: boolean } = {},
 ): Promise<{ status: number; body: unknown }> {
   if (!isRuntimeApiConfigured()) {
     return {
@@ -137,8 +138,8 @@ export async function runtimeProxyGet(
   try {
     const response = await fetch(`${apiBase()}${path}`, {
       headers: key ? { "x-api-key": key } : undefined,
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      next: { revalidate: REVALIDATE_SECONDS },
+      signal: AbortSignal.timeout(options.timeoutMs ?? REQUEST_TIMEOUT_MS),
+      ...(options.fresh ? { cache: "no-store" as const } : { next: { revalidate: REVALIDATE_SECONDS } }),
     });
     return { status: response.status, body: await response.json() };
   } catch {
@@ -285,6 +286,10 @@ export type RootCalculateOutcome =
 export async function runCalculateRoot(request: {
   root: string;
   facts: Record<string, number | boolean>;
+  /** Additional household members (person_2, …) with their own
+   *  Person-level answers; the flat facts remain person_1. Omitted
+   *  for single-filer runs so older upstreams see the old shape. */
+  people?: Record<string, Record<string, number | boolean>>;
   variables?: string[];
 }): Promise<RootCalculateOutcome> {
   if (!isRuntimeApiConfigured()) return { kind: "failed" };
@@ -296,7 +301,12 @@ export async function runCalculateRoot(request: {
         "content-type": "application/json",
         ...(key ? { "x-api-key": key } : {}),
       },
-      body: JSON.stringify(request),
+      body: JSON.stringify(request.people ? {
+        root: request.root,
+        facts: request.facts,
+        variables: request.variables,
+        household: { people: { person_1: {}, ...request.people } },
+      } : request),
       signal: AbortSignal.timeout(CALCULATE_TIMEOUT_MS),
       cache: "no-store",
     });

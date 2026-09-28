@@ -24,9 +24,11 @@ export type MiniGraphNode = {
  */
 export function InspectorMiniGraph({
   center,
+  activeId,
   deps,
   consumers,
 }: {
+  activeId?: string | null;
   center: { label: string; value: string | null };
   deps: MiniGraphNode[];
   consumers: MiniGraphNode[];
@@ -102,7 +104,7 @@ export function InspectorMiniGraph({
         if (el) cardRefs.current.set(`${side}:${node.id}`, el);
         else cardRefs.current.delete(`${side}:${node.id}`);
       }}
-      className={`mini-graph-card ${node.kind === "question" ? "is-question" : ""}`}
+      className={`mini-graph-card ${activeId === node.id ? "is-highlighted" : ""} ${node.kind === "question" ? "is-question" : ""}`}
       title={node.hint}
       onClick={node.onClick}
     >
@@ -118,7 +120,7 @@ export function InspectorMiniGraph({
   );
 
   return (
-    <div className="mini-graph" ref={rootRef}>
+    <div className="mini-graph" data-tour="mini-graph" ref={rootRef}>
       <svg
         className="mini-graph-wires"
         width={size.w}
@@ -130,7 +132,7 @@ export function InspectorMiniGraph({
         ))}
       </svg>
       <div className="mini-graph-col mini-graph-deps">
-        <p className="mini-graph-label">Built from · {deps.length}</p>
+        <p className="mini-graph-label">Built from</p>
         {deps.map((node) => card(node, "dep"))}
         {deps.length === 0 && (
           <span className="mini-graph-empty">nothing — a leaf</span>
@@ -145,7 +147,7 @@ export function InspectorMiniGraph({
         </div>
       </div>
       <div className="mini-graph-col mini-graph-consumers">
-        <p className="mini-graph-label">Used by · {consumers.length}</p>
+        <p className="mini-graph-label">Used by</p>
         {consumers.map((node) => card(node, "use"))}
         {consumers.length === 0 && (
           <span className="mini-graph-empty">nothing — a final result</span>

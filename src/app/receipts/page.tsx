@@ -6,7 +6,7 @@ import { SITE_URL } from "@/lib/urls";
 export const metadata: Metadata = {
   title: "Receipts — Axiom Foundation",
   description:
-    "A receipt is the record you keep so anyone can check it later. Everything Axiom publishes carries one — the evidence to re-verify it without asking us.",
+    "Everything Axiom publishes carries the evidence to re-verify it, offline, without asking us. Trust anchors live in the verifier's own committed code, never in configuration we could swap.",
   alternates: { canonical: `${SITE_URL}/receipts` },
 };
 
@@ -20,6 +20,13 @@ const receipts = [
       "The machinery that writes them: append-only hash-chained manifests, dual RFC 3161 time witnesses, pinned Ed25519 signatures, and one offline fail-closed command — receipt verify. An open-source package anyone can adopt; it has its own page.",
     href: "/receipt",
     label: "axiom.org/receipt",
+  },
+  {
+    name: "The working paper",
+    what:
+      "What an offline check of agent-produced records establishes and refuses to establish, why trust anchors live in the verifier's own code, and the four evidence classes behind the package. Manuscript, PDF, and the code it describes.",
+    href: "/receipt/paper",
+    label: "axiom.org/receipt/paper",
   },
   {
     name: "Releases",
@@ -69,9 +76,8 @@ export default function ReceiptsPage() {
           </p>
           <h1 className="heading-page mb-6 mt-2">We show our receipts</h1>
           <p className="font-body text-[1.2rem] leading-relaxed text-[var(--color-ink-secondary)] text-pretty">
-            A receipt is the record you keep so anyone can check it later.
-            Everything Axiom publishes carries one — the evidence to re-verify
-            it, offline, without asking us. Trust anchors live in the
+            Everything Axiom publishes carries the evidence to re-verify it,
+            offline, without asking us. Trust anchors live in the
             verifier&apos;s own committed code, never in configuration we could
             swap.
           </p>
@@ -106,9 +112,8 @@ export default function ReceiptsPage() {
         <Reveal as="section">
           <h2 className="heading-section mb-3">What&apos;s next</h2>
           <p className="max-w-[720px] font-body text-[1rem] leading-relaxed text-[var(--color-ink-secondary)]">
-            The receipts get thicker, not thinner: we intend to publish the
-            full agent logs behind every encoding as telemetry — the complete
-            record of how each rule came to say what it says.
+            We intend to publish the full agent logs behind every encoding —
+            the complete record of how each rule came to say what it says.
           </p>
         </Reveal>
       </div>

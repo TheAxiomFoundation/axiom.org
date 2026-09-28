@@ -1,7 +1,8 @@
+import { compositionReadiness } from "@/lib/axiom/runtime/composition-readiness";
 import { NextResponse } from "next/server";
 import { runtimeProxyGet } from "@/lib/axiom/runtime/api";
 
-const ROOT_RE = /^[a-z]{2}(?:-[a-z]{2})?:[\w./–-]+(?:#[\w-]+)?$/;
+const ROOT_RE = /^[a-z]{2}(?:-[a-z]{2,3})?:[\w./–-]+(?:#[\w-]+)?$/;
 
 /** Input catalog passthrough for the run panel: every dataset slot of
  *  a compile-on-demand subtree with the dtype and screening default
@@ -16,10 +17,15 @@ export async function GET(request: Request) {
     );
   }
   const { status, body } = await runtimeProxyGet(
-    `/runtime/root-inputs?root=${encodeURIComponent(root)}`
+    `/runtime/root-inputs?root=${encodeURIComponent(root)}`,
+    { timeoutMs: 20_000, fresh: true }
   );
+  if (status === 200) {
+    const readiness = await compositionReadiness(root);
+    if (readiness !== "ready") return NextResponse.json({status:"error", error:{code:readiness}}, {status:readiness === "relationships_unsupported" ? 422 : 503, headers:{"cache-control":"no-store"}});
+  }
   return NextResponse.json(body, {
     status,
-    headers: { "cache-control": "public, max-age=300" },
+    headers: { "cache-control": status === 200 ? "public, max-age=300" : "no-store" },
   });
 }

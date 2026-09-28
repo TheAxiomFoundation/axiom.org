@@ -9,7 +9,10 @@ describe("Nav", () => {
       "href",
       "https://axiom.org/app",
     );
-    expect(screen.queryByText("Axiom")).not.toBeInTheDocument();
+    // "Axiom" names the About dropdown's first item, never an app link.
+    for (const el of screen.getAllByText("Axiom")) {
+      expect(el.closest("a")).toHaveAttribute("href", "/about");
+    }
     expect(screen.getAllByText("What's possible").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Validation").length).toBeGreaterThan(0);
     expect(screen.getAllByText("About").length).toBeGreaterThan(0);

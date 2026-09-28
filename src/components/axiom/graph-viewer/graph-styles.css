@@ -18,6 +18,13 @@
      text in the popover). */
   --f-serif: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 
+  /* One row height for every control in the frame's header band, and
+     one footprint for the two controls that take turns ending it (the
+     Run button and the live pill) — so swapping them never shifts the
+     line. */
+  --graph-control-h: 32px;
+  --graph-run-w: 126px;
+
   --color-paper: #faf9f6;
   --color-paper-elevated: #ffffff;
   --color-ink: #1c1917;
@@ -2496,23 +2503,13 @@
   text-transform: uppercase;
 }
 
-.graph-viewer-root .irg-wrap.irg-fullscreen{
-  width: 100vw;
-  height: 100%;
-  min-height: 100%;
-  border-radius: 0;
-  border: none;
-}/* Toolbar (expand-all / collapse-all) — top-right alongside the fullscreen
-   button. Matches the editorial Axiom button language. */
+/* Toolbar (zoom, dependency depth) — a flex item of the controls bar.
+   Matches the editorial Axiom button language. */
 
 
  
 
 .graph-viewer-root .irg-toolbar{
-  position: absolute;
-  top: 12px;
-  right: 56px;
-  z-index: 10;
   display: inline-flex;
   gap: 6px;
   align-items: center;
@@ -2522,7 +2519,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 32px;
+  height: var(--graph-control-h);
   padding: 0 12px;
   border: 1px solid var(--color-rule);
   background: var(--color-paper-elevated);
@@ -2541,75 +2538,6 @@
 .graph-viewer-root .irg-toolbar-btn:hover{
   border-color: var(--color-ink);
   color: var(--color-ink);
-}/* Segmented control for the detail switch */
-
-
- 
-.graph-viewer-root .irg-toolbar-segment{
-  display: inline-flex;
-  background: var(--color-rule-subtle);
-  border: 1px solid var(--color-rule);
-  border-radius: 4px;
-  padding: 2px;
-  height: 32px;
-  align-items: center;
-  margin-right: 4px;
-}
-
-.graph-viewer-root .irg-toolbar-segment .irg-toolbar-btn{
-  border: 1px solid transparent;
-  background: transparent;
-  height: 26px;
-  border-radius: 3px;
-}
-
-.graph-viewer-root .irg-toolbar-segment .irg-toolbar-btn:hover{
-  color: var(--color-ink);
-  background: transparent;
-}
-
-.graph-viewer-root .irg-toolbar-segment .irg-toolbar-btn.is-active{
-  background: var(--color-paper-elevated);
-  color: var(--color-ink);
-  border-color: var(--color-rule);
-  box-shadow: 0 1px 2px rgba(28, 25, 23, 0.06);
-}/* Fullscreen toggle button — top-right of the canvas, matches the editorial
-   Axiom button language. */
-
-
- 
-
-.graph-viewer-root .irg-fullscreen-btn{
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 10;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border: 1px solid var(--color-rule);
-  background: var(--color-paper-elevated);
-  color: var(--color-ink-secondary);
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 120ms ease;
-  padding: 0;
-}
-
-.graph-viewer-root .irg-fullscreen-btn:hover{
-  border-color: var(--color-ink);
-  color: var(--color-ink);
-  box-shadow: 0 2px 4px rgba(28, 25, 23, 0.08);
-}
-
-.graph-viewer-root .irg-fullscreen-btn:active{
-  transform: scale(0.96);
-}
-
-.graph-viewer-root .irg-fullscreen-btn svg{
-  display: block;
 }/* React Flow handles — invisible by default, but positioned for edge attachment */
 
 
@@ -2650,7 +2578,8 @@
      than getting flex-centered into the dashed border when the height
      budget is tight. */
   justify-content: flex-start;
-  padding: 12px 14px;
+  /* Matches labelledNodeSize()'s horizontal padding (32px). */
+  padding: 14px 16px;
   border-radius: 4px;
   border: 1px solid var(--color-rule);
   background: var(--color-paper-elevated);
@@ -2679,7 +2608,7 @@
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--color-ink-muted);
-  margin-bottom: 2px;
+  margin-bottom: 5px;
 }
 
 .graph-viewer-root .irg-status{
@@ -2872,25 +2801,29 @@
   font-family: var(--f-mono);
   font-size: 11px;
   font-weight: 500;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
   color: var(--color-ink);
   /* Wrap full identifiers across lines so nothing is truncated. The node's
-     dagre size is computed to match — see labelledNodeSize() in TS. */
+     dagre size is computed to match — see labelledNodeSize() in TS:
+     the card picks its width so the title takes two lines at most,
+     and LABEL_LINE_PX mirrors this line height. */
   white-space: normal;
   overflow-wrap: break-word;
   word-break: break-word;
-  line-height: 16px;
+  line-height: 17px;
 }
 
-.graph-viewer-root .irg-op-label{
-  font-family: var(--f-mono);
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  color: var(--color-ink);
-  text-align: center;
+/* Per-member answers on a question card: "P1 40 · P2 38 · P3 —". */
+.graph-viewer-root .irg-members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 4px;
+  font-family: var(--f-mono, monospace);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--color-ink-muted);
 }
-
 .graph-viewer-root .irg-value{
   flex-shrink: 0;
   font-family: var(--f-display);
@@ -2911,8 +2844,8 @@
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--color-accent);
-  margin-top: 6px;
-  padding: 4px 6px 2px;
+  margin-top: 8px;
+  padding: 5px 6px 2px;
   border-top: 1px solid var(--color-rule-subtle);
   border-radius: 0 0 3px 3px;
   margin-left: -6px;
@@ -3006,8 +2939,21 @@
  
 .graph-viewer-root .irg-input{
   border-radius: 22px;
-  padding-left: 20px;
-  padding-right: 20px;
+  /* Matches labelledNodeSize(): 10px vertical, 20px horizontal. */
+  padding: 10px 20px;
+}
+/* The question's state, as a dot on the title line. */
+.graph-viewer-root .irg-q-dot{
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  vertical-align: 1px;
+  background: currentColor;
+}
+.graph-viewer-root .irg-input.is-answered .irg-q-dot{
+  color: var(--color-accent);
 }
 
 .graph-viewer-root .irg-input.irg-input-user{
@@ -3030,52 +2976,9 @@
   border-style: solid;
   transform: translateY(-2px);
   box-shadow: 0 4px 12px -4px rgba(22, 101, 52, 0.25);
-}/* Operator node — small, neutral */
-
-
- 
-
-.graph-viewer-root .irg-operator{
-  text-align: center;
-  align-items: center;
-  justify-content: center;
 }
 
-.graph-viewer-root .irg-operator.irg-holds{
-  border-color: var(--color-success);
-  background: var(--color-success-light);
-}
-.graph-viewer-root .irg-operator.irg-fails{
-  border-color: var(--color-error);
-  background: var(--color-error-light);
-}
-.graph-viewer-root .irg-operator.irg-undet{
-  border-color: var(--color-warning);
-  background: rgba(180, 83, 9, 0.06);
-}
-.graph-viewer-root .irg-operator.irg-numeric{
-  border-color: var(--color-accent);
-  background: var(--color-accent-light);
-}
-.graph-viewer-root .irg-operator.irg-neutral{
-  border-color: var(--color-ink-muted);
-  background: var(--color-rule-subtle);
-}/* IF gate — distinctive, double-bordered */
-
-
- 
-
-.graph-viewer-root .irg-ifgate{
-  text-align: center;
-  align-items: center;
-  border-width: 2px;
-}
-
-.graph-viewer-root .irg-ifgate.irg-holds{ border-color: var(--color-success); background: var(--color-success-light); }
-.graph-viewer-root .irg-ifgate.irg-fails{ border-color: var(--color-error); background: var(--color-error-light); }
-.graph-viewer-root .irg-ifgate.irg-undet{ border-color: var(--color-warning); background: rgba(180, 83, 9, 0.06); }
-.graph-viewer-root .irg-ifgate.irg-numeric{ border-color: var(--color-accent); background: var(--color-accent-light); }
-.graph-viewer-root .irg-ifgate.irg-neutral{ border-color: var(--color-ink); background: var(--color-paper-elevated); }/* Sub-rule reference — clickable terminal */
+/* Sub-rule reference — clickable terminal */
 
 
  
@@ -3091,23 +2994,7 @@
 
 .graph-viewer-root .irg-rule.irg-holds{ border-color: var(--color-success); background: var(--color-success-light); }
 .graph-viewer-root .irg-rule.irg-fails{ border-color: var(--color-error); background: var(--color-error-light); }
-.graph-viewer-root .irg-rule.irg-numeric{ border-color: var(--color-accent); background: var(--color-accent-light); }/* Literal */
-
-
- 
-
-.graph-viewer-root .irg-literal{
-  font-family: var(--f-mono);
-  font-weight: 500;
-  font-size: 12px;
-  text-align: center;
-  align-items: center;
-  justify-content: center;
-  background: var(--color-rule-subtle);
-  border-color: var(--color-rule);
-  font-variant-numeric: tabular-nums;
-  padding: 8px 12px;
-}
+.graph-viewer-root .irg-rule.irg-numeric{ border-color: var(--color-accent); background: var(--color-accent-light); }
 
 .graph-viewer-root .irg-unknown{
   background: var(--color-rule-subtle);
@@ -3454,15 +3341,53 @@
    
   .graph-viewer-root .react-flow__minimap{
     display: none;
-  }/* Let the toolbar (detail switch + expand/collapse + fullscreen) wrap
-     within the canvas instead of overflowing off the right edge. */
+  }/* Let the toolbar (detail switch + expand/collapse) wrap within the
+     controls bar instead of overflowing off the right edge. */
 
 
-   
+
   .graph-viewer-root .irg-toolbar{
-    right: 52px;
-    left: 12px;
     flex-wrap: wrap;
     justify-content: flex-end;
   }
+}
+
+/* ── Controls bar ──
+   The graph's controls (zoom, dependency depth)
+   live in a flow row ABOVE the canvas — inspector popups and door
+   chips can never cover them. The wrap turns into a column; the
+   canvas takes the rest. */
+.graph-viewer-root .irg-wrap{
+  display: flex;
+  flex-direction: column;
+}
+.graph-viewer-root .irg-canvas{
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+.graph-viewer-root .irg-controls-bar{
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-rule);
+  background: var(--color-paper);
+}
+
+/* In-slot (header row) variant: the bar sheds its own chrome — the
+   frame row is the chrome. */
+.graph-viewer-root .graph-controls-slot{
+  /* Pushes itself and the Run button that follows it to the row's
+     right end. No reserved margin: the button is a real sibling on
+     this line now, so the flex gap does the spacing. */
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+}
+.graph-viewer-root .irg-controls-bar.irg-controls-inline{
+  border-bottom: none;
+  padding: 0;
+  background: transparent;
 }

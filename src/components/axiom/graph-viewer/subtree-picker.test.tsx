@@ -20,8 +20,8 @@ function module(overrides: Partial<CorpusModule>): CorpusModule {
 const MODULES: CorpusModule[] = [
   module({ target: "us:regulations/7-cfr/273/10", bucket: "regulations", ruleCount: 40, linkedRuleCount: 40 }),
   module({ target: "us:statutes/7/2014/e/6/A", ruleCount: 22, linkedRuleCount: 22, importCount: 3 }),
-  module({ target: "us-ny:regulations/18-nycrr/387/14", jurisdiction: "us-ny", bucket: "regulations", ruleCount: 9, linkedRuleCount: 9 }),
-  module({ target: "us-fl:policies/dcf/ess-program-policy-manual/appendix-a-1", jurisdiction: "us-fl", bucket: "policies", ruleCount: 3, linkedRuleCount: 3 }),
+  module({ target: "us-ny:regulations/18-nycrr/387/14", jurisdiction: "us-ny", bucket: "regulations", ruleCount: 19, linkedRuleCount: 19 }),
+  module({ target: "us-fl:policies/dcf/ess-program-policy-manual/appendix-a-1", jurisdiction: "us-fl", bucket: "policies", ruleCount: 13, linkedRuleCount: 13 }),
 ];
 
 describe("SubtreeDoors", () => {
@@ -263,5 +263,67 @@ describe("SubtreeSearch", () => {
       target: { value: "" },
     });
     expect(document.querySelector(".picker-results")).toBeNull();
+  });
+});
+
+describe("SubtreeSearch headline matching (#find-by-name)", () => {
+  const NAMED_MODULES: CorpusModule[] = [
+    module({
+      target: "us-al:policies/dhr/poe/chapter-06-social-security-numbers/600",
+      jurisdiction: "us-al",
+      bucket: "policies",
+      ruleCount: 2,
+      linkedRuleCount: 2,
+    }),
+    module({
+      target: "us:statutes/26/86",
+      ruleCount: 26,
+      linkedRuleCount: 26,
+      headlineRule: "social_security_benefits_included_in_gross_income",
+    }),
+    module({
+      target: "us:statutes/26/1411",
+      ruleCount: 14,
+      linkedRuleCount: 14,
+      headlineRule: "net_investment_income_tax",
+    }),
+  ];
+
+  it("finds a module by its headline-rule name, not just its citation", () => {
+    render(<SubtreeSearch modules={NAMED_MODULES} onPick={vi.fn()} />);
+    fireEvent.change(screen.getByTestId("picker-search"), {
+      target: { value: "net investment" },
+    });
+    const results = screen.getAllByTestId("picker-result");
+    expect(results).toHaveLength(1);
+    expect(results[0]!.textContent).toContain("Net Investment Income Tax");
+    expect(results[0]!.textContent).toContain("26 USC \u00a7 1411");
+  });
+
+  it("ranks name matches above path-only matches", () => {
+    render(<SubtreeSearch modules={NAMED_MODULES} onPick={vi.fn()} />);
+    fireEvent.change(screen.getByTestId("picker-search"), {
+      target: { value: "social security" },
+    });
+    const results = screen.getAllByTestId("picker-result");
+    expect(results.length).toBe(2);
+    // The statute named "Social Security Benefits…" beats the state
+    // policy whose file PATH merely contains social-security.
+    expect(results[0]!.textContent).toContain(
+      "Social Security Benefits Included In Gross Income"
+    );
+    expect(results[1]!.textContent).toContain("us-al");
+  });
+
+  it("headline title rows demote the citation to the subtitle line", () => {
+    render(<SubtreeSearch modules={NAMED_MODULES} onPick={vi.fn()} />);
+    fireEvent.change(screen.getByTestId("picker-search"), {
+      target: { value: "1411" },
+    });
+    const row = screen.getAllByTestId("picker-result")[0]!;
+    expect(row.querySelector("strong")!.textContent).toBe(
+      "Net Investment Income Tax"
+    );
+    expect(row.textContent).not.toContain("us:statutes/26/1411");
   });
 });

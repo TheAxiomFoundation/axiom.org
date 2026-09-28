@@ -4,7 +4,6 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useState,
 } from "react";
 import { CommandPalette } from "./command-palette";
@@ -32,9 +31,10 @@ const PaletteContext = createContext<Ctx>({
  * ``open`` / ``close`` to any descendant. Wraps the axiom subtree so
  * the palette is available on every Axiom page, not just the landing.
  *
- * Also installs a global keyboard shortcut: ⌘K / Ctrl-K opens the
- * palette from anywhere, unless the focused element is a text input
- * (so typing "k" in a search box doesn't hijack).
+ * The global ⌘K shortcut is retired for now: palette results navigate
+ * into the corpus tree, and the corpus has no entry points from the
+ * graph app at the moment. Explicit triggers (the corpus browser's
+ * own search button) still call ``open()``.
  */
 export function CommandPaletteProvider({
   children,
@@ -49,17 +49,6 @@ export function CommandPaletteProvider({
 
   const open = useCallback(() => setOpen(true), []);
   const close = useCallback(() => setOpen(false), []);
-
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      const isToggle = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k";
-      if (!isToggle) return;
-      e.preventDefault();
-      setOpen((prev) => !prev);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
 
   return (
     <PaletteContext.Provider value={{ open, close, isOpen }}>

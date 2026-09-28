@@ -19,6 +19,8 @@ const POSTS = [
     excerpt: 'How the encoder walked chapter 51.',
     publishedAt: '2026-07-20T12:00:00.000+00:00',
     featureImage: null,
+    featureImageAlt: null,
+    featureImageCaption: null,
     readingTime: 4,
   },
   {
@@ -27,6 +29,8 @@ const POSTS = [
     excerpt: null,
     publishedAt: null,
     featureImage: null,
+    featureImageAlt: null,
+    featureImageCaption: null,
     readingTime: null,
   },
 ]

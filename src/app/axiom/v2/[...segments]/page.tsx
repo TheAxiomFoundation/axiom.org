@@ -43,7 +43,7 @@ export const dynamic = "force-dynamic";
 
 interface PageProps {
   params: Promise<{ segments: string[] }>;
-  searchParams?: Promise<{ page?: string; embed?: string }>;
+  searchParams?: Promise<{ page?: string; embed?: string; rule?: string }>;
 }
 
 function decodeSegments(segments: string[]): string[] {
@@ -81,9 +81,11 @@ export async function generateMetadata({
 async function SectionBody({
   resolution,
   decoded,
+  highlightRule,
 }: {
   resolution: SectionResolution;
   decoded: string[];
+  highlightRule: string | null;
 }) {
   const [data, meta] = await Promise.all([
     getSectionPageDataFromResolution(resolution),
@@ -101,7 +103,7 @@ async function SectionBody({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
       )}
-      <SectionReader data={data} />
+      <SectionReader data={data} highlightRule={highlightRule} />
     </>
   );
 }
@@ -118,6 +120,10 @@ export default async function SectionPage({
   const embed = query?.embed === "1";
   const shell = (node: React.ReactNode) =>
     embed ? <div className="embed-page">{node}</div> : <>{node}</>;
+  // ?rule= names the encoded rule the visitor navigated from (the
+  // graph inspector's Read-the-law) — the rail spotlights its card.
+  const rawRule = query?.rule ?? "";
+  const highlightRule = /^\w{1,120}$/.test(rawRule) ? rawRule : null;
   const rawPage = Number(query?.page ?? "0");
   const page =
     Number.isInteger(rawPage) && rawPage > 0 ? Math.min(rawPage, 50) : 0;
@@ -153,7 +159,7 @@ export default async function SectionPage({
 
   return shell(
     <Suspense fallback={<SectionSkeleton />}>
-      <SectionBody resolution={resolution} decoded={decoded} />
+      <SectionBody resolution={resolution} decoded={decoded} highlightRule={highlightRule} />
     </Suspense>,
   );
 }

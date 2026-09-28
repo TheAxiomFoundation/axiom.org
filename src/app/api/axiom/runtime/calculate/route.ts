@@ -1,3 +1,4 @@
+import { compositionReadiness } from "@/lib/axiom/runtime/composition-readiness";
 import { NextResponse } from "next/server";
 import {
   getRuntimePackage,
@@ -22,7 +23,7 @@ function sanitizeValues(raw: unknown): {
     for (const [key, value] of Object.entries(
       raw as Record<string, unknown>
     )) {
-      if (!INPUT_NAME_RE.test(key)) continue;
+      if (!INPUT_NAME_RE.test(key)) { rejected.push(key); continue; }
       if (
         (typeof value !== "number" && typeof value !== "boolean") ||
         (typeof value === "number" && !Number.isFinite(value))
@@ -38,11 +39,15 @@ function sanitizeValues(raw: unknown): {
 }
 
 const SLUG_RE = /^[a-z0-9-]{1,64}$/;
-const INPUT_NAME_RE = /^[a-z0-9_]{1,80}$/;
-const VARIABLE_RE = /^[\w.:#/–-]{1,140}$/;
+const INPUT_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]{0,511}$/;
+// Additional household members: person_2 … person_12 (person_1 IS
+// the flat facts). Bounded so a hostile request can't fan out.
+const MEMBER_ID_RE = /^person_(?:[2-9]|1[0-2])$/;
+const MAX_MEMBERS = 11;
+const VARIABLE_RE = /^[\w.:#/–-]{1,1024}$/;
 // A file legal id: `us:statutes/7/2014/e/6/A` — no #fragment; run-by-root
 // roots a whole subtree, not a single rule.
-const ROOT_RE = /^[a-z]{2}(?:-[a-z]{2})?:[\w./–-]{1,200}$/;
+const ROOT_RE = /^[a-z]{2}(?:-[a-z]{2,3})?:[\w./–-]{1,200}$/;
 const MAX_VALUES = 64;
 const MAX_VARIABLES = 96;
 
@@ -71,6 +76,7 @@ export async function POST(request: Request) {
     values?: unknown;
     root?: unknown;
     facts?: unknown;
+    people?: unknown;
     variables?: unknown;
   };
   try {
@@ -98,10 +104,40 @@ export async function POST(request: Request) {
     if (typeof root !== "string" || !ROOT_RE.test(root)) {
       return NextResponse.json({ error: "invalid_root" }, { status: 400 });
     }
+    const readiness = await compositionReadiness(root);
+    if (readiness !== "ready") return NextResponse.json({error:readiness}, {status:readiness === "relationships_unsupported" ? 422 : 503, headers:{"cache-control":"no-store"}});
     const { sanitized: facts, rejected: droppedFacts } = sanitizeValues(
       body.facts
     );
-    const outcome = await runCalculateRoot({ root, facts, variables });
+    // Extra household members: `people.person_N` records sanitized
+    // exactly like facts; malformed member ids — and non-object
+    // records — are dropped whole. An EMPTY object is kept: by the
+    // members contract an added person with no answers is still a
+    // person, but only when the caller actually sent an object (a
+    // scalar must never fabricate a household member).
+    let people: Record<string, Record<string, number | boolean>> | undefined;
+    if (body.people && typeof body.people === "object") {
+      people = {};
+      for (const [member, values] of Object.entries(
+        body.people as Record<string, unknown>
+      )) {
+        if (
+          !MEMBER_ID_RE.test(member) ||
+          !values ||
+          typeof values !== "object" ||
+          Array.isArray(values)
+        ) {
+          droppedFacts.push(member);
+          continue;
+        }
+        if (Object.keys(people).length >= MAX_MEMBERS) break;
+        const { sanitized, rejected } = sanitizeValues(values);
+        people[member] = sanitized;
+        droppedFacts.push(...rejected.map((name) => `${member}:${name}`));
+      }
+      if (Object.keys(people).length === 0) people = undefined;
+    }
+    const outcome = await runCalculateRoot({ root, facts, people, variables });
     if (outcome.kind === "unsupported") {
       return NextResponse.json(
         { error: "root_calculate_unsupported" },

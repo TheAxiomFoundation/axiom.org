@@ -29,7 +29,15 @@ function TocList({
 }) {
   if (entries.length === 0) return null;
   return (
-    <ol className={depth === 0 ? "space-y-1" : "mt-1 ml-3 space-y-1"}>
+    // The list takes one direction from its first label, and nesting
+    // indents from that side (ms-, not ml-): a Hebrew outline nests
+    // from the right. The anchors carry no dir of their own: the auto
+    // scan skips text under a descendant that has one, so a dir on
+    // every anchor would leave the list nothing to read and pin it LTR.
+    <ol
+      {...(depth === 0 && { dir: "auto" })}
+      className={depth === 0 ? "space-y-1" : "mt-1 ms-3 space-y-1"}
+    >
       {entries.map((entry) => (
         <li key={entry.anchor}>
           <a

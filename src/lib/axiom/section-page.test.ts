@@ -14,6 +14,10 @@ import {
   type SectionProvision,
   mapRulesToDeepPath,
   joinedSegmentPaths,
+  splitNycrrSectionPath,
+  docTypeCrosswalk,
+  encodingPathCandidates,
+  splitRootBodyAroundChildren,
 } from "./section-page";
 
 const ROOT = "us/statute/26/32";
@@ -458,5 +462,96 @@ describe("mapRulesToDeepPath", () => {
   it("returns nothing without content or relative depth", () => {
     expect(mapRulesToDeepPath("us/regulation/7/273/10", ["e"], null)).toEqual([]);
     expect(mapRulesToDeepPath("us/regulation/7/273/10", [], yaml)).toEqual([]);
+  });
+});
+
+describe("docTypeCrosswalk", () => {
+  it("maps policy-adjacent classes to their siblings and nothing else", () => {
+    expect(docTypeCrosswalk("policy")).toEqual(["manual", "guidance"]);
+    expect(docTypeCrosswalk("manual")).toEqual(["policy", "guidance"]);
+    expect(docTypeCrosswalk("guidance")).toEqual(["policy", "manual"]);
+    expect(docTypeCrosswalk("statute")).toEqual([]);
+    expect(docTypeCrosswalk(undefined)).toEqual([]);
+  });
+});
+
+describe("encodingPathCandidates", () => {
+  it("tries resolved, requested, and crosswalk sibling paths in order", () => {
+    expect(
+      encodingPathCandidates({
+        citationPath: "us-ca/guidance/dor/spotlight/block-7",
+        requestedPath: "us-ca/policy/dor/spotlight/block-7",
+      })
+    ).toEqual([
+      "us-ca/guidance/dor/spotlight/block-7",
+      "us-ca/policy/dor/spotlight/block-7",
+      "us-ca/manual/dor/spotlight/block-7",
+    ]);
+  });
+
+  it("stays a single candidate for statute paths with no rewrite", () => {
+    expect(
+      encodingPathCandidates({
+        citationPath: "us/statute/26/32",
+        requestedPath: "us/statute/26/32",
+      })
+    ).toEqual(["us/statute/26/32"]);
+  });
+});
+
+describe("splitRootBodyAroundChildren", () => {
+  const asRule = (citationPath: string, body: string | null) =>
+    ({ citation_path: citationPath, body }) as Parameters<
+      typeof splitRootBodyAroundChildren
+    >[0];
+
+  it("keeps the chapeau and surfaces the flush sentence after the last child", () => {
+    const parent = asRule(
+      "us/statute/26/21/c",
+      "The amount taken into account shall not exceed—\n\n" +
+        "(1) $3,000 if there is 1 qualifying individual for the year, or\n\n" +
+        "(2) $6,000 if there are 2 or more qualifying individuals there.\n\n" +
+        "The amount determined under paragraph (1) or (2) shall be reduced under section 129."
+    );
+    const children = [
+      asRule(
+        "us/statute/26/21/c/1",
+        "$3,000 if there is 1 qualifying individual for the year, or"
+      ),
+      asRule(
+        "us/statute/26/21/c/2",
+        "$6,000 if there are 2 or more qualifying individuals there."
+      ),
+    ];
+    const { root, flush } = splitRootBodyAroundChildren(parent, children);
+    expect(root.body).toBe("The amount taken into account shall not exceed—");
+    expect(flush).toBe(
+      "The amount determined under paragraph (1) or (2) shall be reduced under section 129."
+    );
+  });
+
+  it("returns no flush when nothing follows the last child", () => {
+    const parent = asRule(
+      "x/statute/1/2",
+      "Chapeau—\n\n(a) First subsection text that is long enough here."
+    );
+    const children = [
+      asRule("x/statute/1/2/a", "First subsection text that is long enough here."),
+    ];
+    const { flush } = splitRootBodyAroundChildren(parent, children);
+    expect(flush).toBeNull();
+  });
+});
+
+
+describe("splitNycrrSectionPath", () => {
+  it("resolves dotted New York section citations while preserving subsections", () => {
+    expect(splitNycrrSectionPath(["us-ny", "regulation", "18-nycrr", "387.9"])).toEqual(["us-ny", "regulation", "18-nycrr", "387", "9"]);
+    expect(splitNycrrSectionPath(["us-ny", "regulation", "18-nycrr", "387.10", "a"])).toEqual(["us-ny", "regulation", "18-nycrr", "387", "10", "a"]);
+  });
+  it("leaves canonical paths and other numbering systems alone", () => {
+    expect(splitNycrrSectionPath(["us-ny", "regulation", "18-nycrr", "387", "9"])).toBeNull();
+    expect(splitNycrrSectionPath(["us-or", "statute", "315.264"])).toBeNull();
+    expect(splitNycrrSectionPath(["us-co", "regulation", "10-ccr", "4.410"])).toBeNull();
   });
 });

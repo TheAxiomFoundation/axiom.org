@@ -101,7 +101,8 @@ describe("Footer", () => {
 
     render(<Footer renderLink={TestLink} />);
     const customLinks = screen.getAllByTestId("custom-link");
-    // Demos, Coverage, Validation, Docs, About, Team, Blog, Privacy, Contact
-    expect(customLinks.length).toBe(9);
+    // Demos, Coverage, Validation, Citations, Docs, About, Team, Blog,
+    // Privacy, Contact
+    expect(customLinks.length).toBe(10);
   });
 });

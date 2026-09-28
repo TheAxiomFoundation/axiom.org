@@ -741,9 +741,6 @@ const composeState = await picker.evaluate(() => ({
   inspector:
     document.querySelector(".node-inspector-title")?.textContent ?? "",
   topMetaAbsent: !document.querySelector(".top-meta"),
-  standaloneNote:
-    document.querySelector('[data-testid="standalone-note"]')?.textContent ??
-    "",
 }));
 const pickerComposeUrl = await picker.evaluate(() => window.location.href);
 console.log("picker → compose viewer:", pickerComposeUrl);
@@ -752,8 +749,6 @@ console.log(
   composeState.inspector,
   "· top-meta absent:",
   composeState.topMetaAbsent,
-  "· note:",
-  composeState.standaloneNote,
 );
 
 // 10b) Editable facts, end to end: run on defaults, then TYPE a fact
@@ -809,7 +804,7 @@ const outputsChanged =
 const factEchoed =
   /Gross Monthly Earned Income/i.test(afterFact.echo) &&
   afterFact.echo.includes("2,000");
-const answeredLine = /You answered 1 of \d+/.test(afterFact.note);
+const answeredLine = /1 of \d+ inputs answered/.test(afterFact.note);
 console.log(
   "typed fact: outputs changed:",
   outputsChanged,
@@ -1024,7 +1019,6 @@ const pass =
   pickerComposeUrl.includes("compose=") &&
   /allotment/i.test(composeState.inspector) &&
   composeState.topMetaAbsent &&
-  composeState.standaloneNote.includes("standalone definitions hidden") &&
   outputsChanged &&
   factEchoed &&
   answeredLine &&

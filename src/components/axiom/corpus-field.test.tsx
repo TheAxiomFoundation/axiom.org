@@ -301,7 +301,9 @@ describe("CorpusField", () => {
     expect(tooltip.textContent).toContain(
       humanizeRuleName(dot.headlineRule!)
     );
-    expect(tooltip.textContent).toContain(`${dot.ruleCount} rules`);
+    // Deliberately no rule-count/bucket line — the tooltip names the
+    // program and its citation, nothing quantitative.
+    expect(tooltip.textContent).not.toContain(`${dot.ruleCount} rules`);
     fireEvent.mouseLeave(canvasEl());
     expect(screen.queryByTestId("corpus-field-tooltip")).toBeNull();
   });

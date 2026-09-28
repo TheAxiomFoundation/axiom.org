@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.36">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Max Ghenis">
+<meta name="dcterms.date" content="2026-08-25">
+
+<title>Executable tariff law: deterministic derivations and conformance for the 2025–26 trade shock</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+/* CSS for citations */
+div.csl-bib-body { }
+div.csl-entry {
+  clear: both;
+}
+.hanging-indent div.csl-entry {
+  margin-left:2em;
+  text-indent:-2em;
+}
+div.csl-left-margin {
+  min-width:2em;
+  float:left;
+}
+div.csl-right-inline {
+  margin-left:2em;
+  padding-left:1em;
+}
+div.csl-indent {
+  margin-left: 2em;
+}</style>
+
+
+<script src="paper_files/libs/clipboard/clipboard.min.js"></script>
+<script src="paper_files/libs/quarto-html/quarto.js" type="module"></script>
+<script src="paper_files/libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="paper_files/libs/quarto-html/popper.min.js"></script>
+<script src="paper_files/libs/quarto-html/tippy.umd.min.js"></script>
+<script src="paper_files/libs/quarto-html/anchor.min.js"></script>
+<link href="paper_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="paper_files/libs/quarto-html/quarto-syntax-highlighting-f249261e44929d7d4752e549aac043f1.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="paper_files/libs/bootstrap/bootstrap.min.js"></script>
+<link href="paper_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="paper_files/libs/bootstrap/bootstrap-9088a2560c9f2a3fc2b91890541d4fd6.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+
+
+<link rel="stylesheet" href="_extensions/axiom/fonts.css">
+</head>
+
+<body class="quarto-light">
+
+<div id="quarto-content" class="page-columns page-rows-contents page-layout-article">
+<div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+  <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">Table of contents</h2>
+   
+  <ul>
+  <li><a href="#abstract" id="toc-abstract" class="nav-link active" data-scroll-target="#abstract"><span class="header-section-number">1</span> Abstract</a></li>
+  <li><a href="#why-2026-broke-tariff-lookup" id="toc-why-2026-broke-tariff-lookup" class="nav-link" data-scroll-target="#why-2026-broke-tariff-lookup"><span class="header-section-number">2</span> Why 2026 broke tariff lookup</a></li>
+  <li><a href="#what-a-tariff-change-is-formally" id="toc-what-a-tariff-change-is-formally" class="nav-link" data-scroll-target="#what-a-tariff-change-is-formally"><span class="header-section-number">3</span> What a tariff change is, formally</a></li>
+  <li><a href="#cross-implementation-reconciliation-against-an-independent-tracker" id="toc-cross-implementation-reconciliation-against-an-independent-tracker" class="nav-link" data-scroll-target="#cross-implementation-reconciliation-against-an-independent-tracker"><span class="header-section-number">4</span> Cross-implementation reconciliation against an independent tracker</a></li>
+  <li><a href="#when-the-oracle-disagrees-dispositions-with-legal-derivations" id="toc-when-the-oracle-disagrees-dispositions-with-legal-derivations" class="nav-link" data-scroll-target="#when-the-oracle-disagrees-dispositions-with-legal-derivations"><span class="header-section-number">5</span> When the oracle disagrees: dispositions with legal derivations</a></li>
+  <li><a href="#deterministic-generation-and-evidence-gates" id="toc-deterministic-generation-and-evidence-gates" class="nav-link" data-scroll-target="#deterministic-generation-and-evidence-gates"><span class="header-section-number">6</span> Deterministic generation and evidence gates</a>
+  <ul class="collapse">
+  <li><a href="#deterministic-generation-at-schedule-scale" id="toc-deterministic-generation-at-schedule-scale" class="nav-link" data-scroll-target="#deterministic-generation-at-schedule-scale"><span class="header-section-number">6.1</span> Deterministic generation at schedule scale</a></li>
+  <li><a href="#composition-at-schedule-scale-and-its-measured-boundary" id="toc-composition-at-schedule-scale-and-its-measured-boundary" class="nav-link" data-scroll-target="#composition-at-schedule-scale-and-its-measured-boundary"><span class="header-section-number">6.2</span> Composition at schedule scale and its measured boundary</a></li>
+  <li><a href="#encoding-the-action-incidence-layer" id="toc-encoding-the-action-incidence-layer" class="nav-link" data-scroll-target="#encoding-the-action-incidence-layer"><span class="header-section-number">6.3</span> Encoding the action-incidence layer</a></li>
+  </ul></li>
+  <li><a href="#uses-and-limits" id="toc-uses-and-limits" class="nav-link" data-scroll-target="#uses-and-limits"><span class="header-section-number">7</span> Uses and limits</a></li>
+  <li><a href="#related-work" id="toc-related-work" class="nav-link" data-scroll-target="#related-work"><span class="header-section-number">8</span> Related work</a></li>
+  <li><a href="#data-and-code-availability" id="toc-data-and-code-availability" class="nav-link" data-scroll-target="#data-and-code-availability"><span class="header-section-number">9</span> Data and code availability</a></li>
+  <li><a href="#appendix-tables" id="toc-appendix-tables" class="nav-link" data-scroll-target="#appendix-tables"><span class="header-section-number">10</span> Appendix: tables</a>
+  <ul class="collapse">
+  <li><a href="#table-1-conformance-scoreboard-at-the-pinned-snapshot-3" id="toc-table-1-conformance-scoreboard-at-the-pinned-snapshot-3" class="nav-link" data-scroll-target="#table-1-conformance-scoreboard-at-the-pinned-snapshot-3"><span class="header-section-number">10.1</span> Table 1 — Conformance scoreboard at the pinned snapshot (§3)</a></li>
+  </ul></li>
+  </ul>
+<div class="quarto-alternate-formats"><h2>Other Formats</h2><ul><li><a href="index.pdf"><i class="bi bi-file-pdf"></i>PDF (axiom-paper)</a></li></ul></div></nav>
+</div>
+<main class="content" id="quarto-document-content">
+
+<style>
+  :root {
+    --color-accent: #d97706;
+    --color-accent-hover: #b45309;
+  }
+</style>
+
+<header id="title-block-header" class="quarto-title-block axiom-title-block">
+  <div class="axiom-kicker">
+    <span class="axiom-kicker-mark" aria-hidden="true">§</span>
+    <span>working paper</span>
+  </div>
+
+    <h1 class="title display-7">Executable tariff law: deterministic derivations and conformance for the 2025–26 trade shock</h1>
+  
+    <div class="axiom-authors">
+        <span class="author">Max Ghenis</span>  </div>
+  
+  <div class="axiom-affiliations">
+      <span class="affiliation">Axiom Foundation</span>
+    </div>
+
+    <div class="axiom-revision">Revision 3 <span aria-hidden="true">·</span> 2026-08-25</div>
+  
+  
+    <div class="axiom-status" role="note" aria-label="Status">
+    <div class="axiom-status-label">Status</div>
+    <div class="axiom-status-body"><p>Certification status (certificate <code>us-tariff-duty</code>, axiom-oracles main (110b4dd6c / re-minted at ea88758d2)): all four premises are computed and the certificate is decidable; its verdict is no. Conformant is false: the full-schedule comparison (a Yale-defined trajectory quotient, 9,913,304 evaluated cells) has zero unexplained mismatches under thirteen receipted disposition classes, but 1,592,236 units in two classes — the forced-labor and Brazil section 301 entry feeds — are axiom-attributed and open, so the leg does not count as clean. Exercised is true (strict audited bridges; entry-level facts and four action-family flags held constant, disclosed). Executable is true (the pinned engine reproduces certified values exactly). Closed is false (the closure ledger names the pending encoding: 9802 partial value, section 338, non-metal section 232, the 2018 China lists, historical vintages, and the unfed action families). Not certified, with its burndown named.</p></div>
+  </div>
+  </header>
+
+
+<section id="abstract" class="level1" data-number="1">
+<h1 data-number="1"><span class="header-section-number">1</span> Abstract</h1>
+<p>Tariff rates can cease legally before collection ends, so a statutory rate needs a date, an instrument, and a derivation. We encode the 2025–26 United States tariff stack as versioned, instrument-cited executable rules and reconcile their outputs cell by cell against Yale Budget Lab’s open tariff-rate tracker <span class="citation" data-cites="yaletracker_repo">(<a href="#ref-yaletracker_repo" role="doc-biblioref">The Budget Lab at Yale 2026b</a>)</span>. Five tariff lines form a witness slice jointly selected so that every in-scope authority binds somewhere. All 15,200 raw disagreements in 39,600 probe-date comparisons receive recorded dispositions, leaving zero unexplained and zero open against the encoding at the pinned snapshot. Two proposed reference corrections are supported by legal derivations and remain maintainer-unacknowledged. Deterministic generators extend the schedule spine to 13,790 rated lines, 100 per-chapter compositions, and 25 grounded action-membership tables under identity, differential, mutation, and byte-reproducibility gates. These schedule-scale artifacts pass their generation gates; the program’s machine-checked certificate is decidable and its verdict is no, with the remaining encoding named inside it, and the witness composition still lacks a fail-closed off-slice guard. The companion paper reports the weighted-rate analysis <span class="citation" data-cites="tariff_rates_companion">(<a href="#ref-tariff_rates_companion" role="doc-biblioref">Ghenis 2026</a>)</span>.</p>
+</section>
+<section id="why-2026-broke-tariff-lookup" class="level1" data-number="2">
+<h1 data-number="2"><span class="header-section-number">2</span> Why 2026 broke tariff lookup</h1>
+<p>On February 20, 2026, the additional ad valorem duties imposed under the International Emergency Economic Powers Act stopped being law. They did not stop being collected. That morning the Supreme Court held that “IEEPA does not authorize the President to impose tariffs” [<em>Learning Resources, Inc.&nbsp;v. Trump</em>, 607 U.S. 229 (2026); <span class="citation" data-cites="learningresources2026">Supreme Court of the United States (<a href="#ref-learningresources2026" role="doc-biblioref">2026</a>)</span>]; the same day, Executive Order 14389 <span class="citation" data-cites="eo14389_2026">(<a href="#ref-eo14389_2026" role="doc-biblioref">Executive Office of the President 2026a</a>)</span> ordered that the duties “shall no longer be in effect and, as soon as practicable, shall no longer be collected” — and named no date for the second clause. The date arrived two days later in a Customs and Border Protection cargo-systems message [CSMS #67834313; <span class="citation" data-cites="csms67834313_2026">U.S. Customs and Border Protection (<a href="#ref-csms67834313_2026" role="doc-biblioref">2026</a>)</span>], instructing that collection would end for goods entered on or after 12:00 a.m. on February 24. So the legal end of the era’s broadest tariff action — the IEEPA orders reached imports economy-wide — is a court decision and an executive order, and its operational end is an agency bulletin — three documents, two dates, four days apart. Any dataset that records “the tariff on Chinese imports in February 2026” as a single number has taken a position on which date counts — and a dataset that does not publish its convention has taken it silently.</p>
+<p>That week is the 2025–26 tariff environment in miniature. Over eighteen months, the United States imposed, modified, litigated, and unwound overlapping duties under the base tariff schedule and six overlay authorities — IEEPA, Section 232, Section 301, Section 201, Section 122, and Section 338 — the authority set the reference panel of Section 3 tracks as statutory rate columns. Alongside the IEEPA orders and their termination: Section 232 national-security actions across metals and manufactured goods; Section 301 actions <span class="citation" data-cites="ustr2026forcedlabor">(<a href="#ref-ustr2026forcedlabor" role="doc-biblioref">Office of the United States Trade Representative 2026</a>)</span> including a forced-labor program that determined sixty investigations actionable at once, inserting a new chapter-99 note into the tariff schedule (U.S. note 52) with two rate tiers and country-specific quotas; a Section 122 balance-of-payments surcharge <span class="citation" data-cites="proc11012_2026">(<a href="#ref-proc11012_2026" role="doc-biblioref">Executive Office of the President 2026b</a>)</span> that ran at 10 percent for exactly its statutory maximum of 150 days <span class="citation" data-cites="usc2132">(<a href="#ref-usc2132" role="doc-biblioref">Office of the Law Revision Counsel 2026</a>)</span>; Section 201 safeguards on solar equipment stepping down annually on a proclamation schedule to a 2026 expiry; and Section 338 duties. The seams between authorities are themselves dated facts: the §122 surcharge expired at 12:01 a.m. on July 24, 2026 — the same day the forced-labor duties took effect. The tariff schedule these overlays modify was a moving target in its own right: the International Trade Commission’s 2026 edition stood at Revision 15 by the first week of August <span class="citation" data-cites="hts2026rev15">(<a href="#ref-hts2026rev15" role="doc-biblioref">U.S. International Trade Commission 2026</a>)</span>, and a revision can carry a single surgical change — Revision 15’s only entry amends one chapter-99 heading, zeroing the Section 232 rate on United Kingdom patented pharmaceuticals from +10 percent <span class="citation" data-cites="bis2026ukpharma">(<a href="#ref-bis2026ukpharma" role="doc-biblioref">U.S. Department of Commerce, Bureau of Industry and Security 2026</a>)</span>, three days after Revision 14.</p>
+<p>The result is that the object researchers call “the statutory tariff rate” became a function of four arguments — tariff line, partner country, date, and legal interpretation — and the fourth argument is the one nobody’s spreadsheet has a column for. A rate query for a solar module from Malaysia on February 22, 2026 has defensible answers that differ by authority and by reading: the IEEPA overlay is legally dead but still being collected for two more days, and the safeguard duty’s staged schedule has been expired for sixteen days. The difference between the answers is not a data error. It is a fact about how each authority ended, and an analysis of legal exposure needs different dates than an analysis of customs revenue.</p>
+<p>Reference datasets have handled this churn the way the trade-war literature’s datasets handled 2018–19: expert judgment applied by hand, encoded in scripts, and published as numbers whose reasoning lives in commit messages if it lives anywhere. The most complete of these for 2025–26 — Yale Budget Lab’s tariff-rate-tracker, an open-source pipeline that resolves the churn into an interval-encoded panel of statutory rates by tariff line, country, and date, and the validation reference we use throughout this paper — is very good. It is also the product of judgment calls that a reader cannot mechanically audit: which proclamation governs a line on a date, when a staged schedule ends, which countries a general note diverts to a different rate column. Sections 3 and 4 show what happens when those calls are made checkable — including two places where the best available reference and the underlying instruments disagree.</p>
+<p>Our claim in this paper is narrow and, we think, timely: when the law moves this fast, the honest representation of a tariff rate is not a number but a dated derivation — a rule that cites the instrument that set it, bounded by the instrument that ended it, executable so that “the rate on date X” is computed rather than transcribed. The 2025–26 shock is the demonstration that this is not a formalist’s luxury. When rates change by proclamation monthly, die in two stages, and expire into seams that begin the next program the same morning, the derivation <em>is</em> the data.</p>
+<p>The paper’s contribution is a representation and validation regime: the 2025–26 stack encoded as instrument-cited, version-dated rules, reconciled against a separately developed reference on a five-line witness slice, and extended by deterministic generation to the schedule spine, per-chapter compositions, and action-membership tables. The slice is jointly selected so that every in-scope authority binds somewhere; it is not one independently representative line per authority family. Weighted rate constructs and their application to trade data belong to the companion estimation paper <span class="citation" data-cites="tariff_rates_companion">(<a href="#ref-tariff_rates_companion" role="doc-biblioref">Ghenis 2026</a>)</span>.</p>
+</section>
+<section id="what-a-tariff-change-is-formally" class="level1" data-number="3">
+<h1 data-number="3"><span class="header-section-number">3</span> What a tariff change is, formally</h1>
+<p>Every rule in our encoding is a list of dated versions. A version has an <code>effective_from</code> date, a formula or value, and a proof: one or more atoms, each citing a path into a signed corpus of legal instruments and quoting the operative text verbatim. A policy change appends a version; it never edits one. The history is not metadata attached to the representation — the history is the representation, and the engine answers “the rate on date X” by selecting the version in force at X.</p>
+<p>Three properties follow, and each one earns its keep in the 2025–26 record.</p>
+<p><strong>Changes cannot outrun their instruments.</strong> A version’s proof atoms cite corpus paths — a Federal Register document, a tariff-schedule heading at a specific revision — and the corpus is ingested under signed manifests before any encoding can reference it. There is no way to encode “the §232 aluminum rate doubled” ahead of possessing the proclamation that doubled it, and the citation carries an excerpt, so a reviewer checks the claim against quoted text rather than against a maintainer’s memory.</p>
+<p><strong>Endings are law, not deletions.</strong> The IEEPA termination that opened Section 1 is encoded as a rule, not as the removal of one:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode yaml code-with-copy"><code class="sourceCode yaml"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="co"># source: overlays/ieepa/termination.yaml@dbf09f44 (rulespec-us, excerpt)</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> terminated_ieepa_additional_ad_valorem_duty_rate</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">kind</span><span class="kw">:</span><span class="at"> parameter</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">dtype</span><span class="kw">:</span><span class="at"> Rate</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">source</span><span class="kw">:</span><span class="at"> Executive Order 14389 section 1</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">metadata</span><span class="kw">:</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">proof</span><span class="kw">:</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">atoms</span><span class="kw">:</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="kw">-</span><span class="at"> </span><span class="fu">path</span><span class="kw">:</span><span class="at"> versions[0].formula</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="at">          </span><span class="fu">kind</span><span class="kw">:</span><span class="at"> parameter</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a><span class="at">          </span><span class="fu">source</span><span class="kw">:</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="at">            </span><span class="fu">corpus_citation_path</span><span class="kw">:</span><span class="at"> us/rulemaking/federal-register/2026-02-25/2026-03832</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a><span class="at">            </span><span class="fu">excerpt</span><span class="kw">:</span><span class="at"> </span><span class="st">"shall no longer be in effect"</span></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">versions</span><span class="kw">:</span></span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="kw">-</span><span class="at"> </span><span class="fu">effective_from</span><span class="kw">:</span><span class="at"> </span><span class="st">'2026-02-20'</span></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a><span class="fu">      formula</span><span class="kw">: </span><span class="ch">|-</span></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>        0</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>The terminated rate is a zero that took effect on February 20, 2026, citing the order that zeroed it — the panel this encoding generates carries the termination as a dated fact, exactly as it carries the imposition. One scope note, stated precisely: this encodes the LEGAL endpoint, which is the semantics the reference panel publishes by default and the semantics we reconcile against in Section 3. The operational wind-down of Section 1 — CBP’s February 24 collection cutoff — is an agency bulletin, not a rule version in this encoding; a parallel collection-status series sourced from such bulletins is future work, and nothing in this paper’s data should be read as carrying it. A companion test evaluates the composed rates on the one-day period of February 20 itself and asserts that the additional duty no longer adds; the test is mandatory, so the change could not have merged without pinning its own boundary.</p>
+<p><strong>Schedule churn is encoded, not smoothed.</strong> When the trade commission issues a revision that restructures lines — consolidating headings, retiring statistical suffixes — that restructuring is itself a dated module (the aluminum family, for instance, carries a revision-12 consolidation module alongside its rate overlays). A downstream user never faces the silent question of which revision’s line structure a number refers to; the revision boundary is in the derivation.</p>
+<p>The engine’s operational semantics are part of the claim, not an implementation footnote. At the pinned engine revision <code>ffd82132</code>, they are:</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Operation</th>
+<th>Runtime rule</th>
+<th>Consequence for this paper</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Query time</td>
+<td>Compare inclusive version bounds at the query period’s start.</td>
+<td>A day-grain query uses that day’s start; intra-day legal cutoffs are not represented.</td>
+</tr>
+<tr class="even">
+<td>Version selection</td>
+<td>Among applicable versions, select the greatest <code>effective_from</code>; a gap raises a missing-version error. Equal-start ties fall through to document order.</td>
+<td>The encoding avoids relying on an equal-start tie as legal precedence.</td>
+</tr>
+<tr class="odd">
+<td>Branch precedence</td>
+<td>Evaluate the formula’s authored, nested conditionals. The engine has no general tariff-authority hierarchy solver.</td>
+<td>Exceptions and priority must be explicit inside each component formula.</td>
+</tr>
+<tr class="even">
+<td>Stacking</td>
+<td>Add the component outputs explicitly in the composition formula.</td>
+<td>No duty stacks merely because two instruments coexist.</td>
+</tr>
+<tr class="odd">
+<td>Types and errors</td>
+<td>Enforce declared scalar-versus-judgment shapes and reject unknown outputs, parameters, relations, or units; missing inputs, versions, or values; type mismatches; and division by zero.</td>
+<td><code>Rate</code> labels the composition’s scalar output; it does not supply a duty base or turn a rate into money.</td>
+</tr>
+</tbody>
+</table>
+<p>The caller precondition is equally important. The composition defines exact-line predicates for five witness lines and uses them within components, but it does not require their disjunction as a top-level domain guard. Outside the slice, the MFN component can fall through to zero and, during the Section 122 window, a non-exempt line can receive the blanket surcharge; their sum can therefore look plausible rather than error. All tariff-composition comparisons in Sections 3–4 restrict the input to the true five-line intersection. A fail-closed guard and negative off-slice tests are prerequisites for archival release.</p>
+<p>Within that caller-enforced slice, the composed function maps a (tariff line, partner country, query period) triple to the ex-post, posted ad valorem component-rate stack under legal-date semantics. It does not compute specific duties requiring physical quantities, Section 232 duties requiring declared aluminum-content value, quota position, or sub-monthly timing. Nor does it resolve entry-specific facts such as in-transit exceptions or claimed exclusions, or knowledge-time: <code>effective_from</code> records legal-valid time, so a retroactive instrument enters the ex-post record when encoded. Those uses need inputs and state absent from this function, and Section 8 repeats the boundary.</p>
+<p>The full stack composes from these pieces. A composition module wires the column rates of the tariff schedule to the authority overlays — the Section 232 aluminum program (the witness composition’s 232 family), the Section 301 families including the forced-labor program, the per-country IEEPA reciprocal modules and their fentanyl-order siblings, Section 122, Section 201, Section 338 — and the engine evaluates the composed rate for a caller-restricted (line, country, period) triple by resolving every overlay’s version in force. Nothing in the pipeline is hand-transcribed from a secondary source: the corpus snapshot for this work comprises 138 signed versions — 47 Federal Register instruments, 44 tariff-schedule revision snapshots, and 47 chapter-99 and general-note extractions — and every operative number on the evaluated witness paths traces to one of them.</p>
+<p>We do not claim this representation is novel as an idea; executable encodings of statutes have a literature (Section 9), and dated parameters are standard in tax microsimulation. The claim is about fit: 2025–26 tariff law is the environment where the alternatives visibly fail, because the thing being represented changed character. A rate that steps down on a proclamation schedule, dies in two stages, or applies to a line that stopped existing mid-year is not a cell in a table. It is a small legal argument, and the representation that survives contact with it is the one that stores the argument.</p>
+<p><strong>A worked trace.</strong> Take the solar query of Section 1 — the crystalline-silicon cell line, one of the five witness lines of Section 3, from Malaysia on February 22, 2026 — and read the actual rules at the pin rather than a stylized version of them. The column-rate module contributes the line’s general rate per the tariff-schedule revision in force. The Section 201 component is an explicit zero: its only operative version in the modeled temporal window begins February 15, 2026, nine days after the safeguard’s staged schedule expired. The historical stages are not executable versions in this component; its proof atoms document the derivation of the operative zero by quoting the extension proclamation’s staged table (14.75, 14.5, 14.25, 14 percent, each period dated) and the schedule’s compiler’s note that the safeguard has expired <span class="citation" data-cites="proc10339_2022">(<a href="#ref-proc10339_2022" role="doc-biblioref">Executive Office of the President 2022</a>)</span>. The operative formula is a constant; the legal argument for the constant travels with it, which is the representation’s point. The IEEPA component resolves through the termination rule shown above: from February 20 the termination’s zero governs <span class="citation" data-cites="eo14389_2026">(<a href="#ref-eo14389_2026" role="doc-biblioref">Executive Office of the President 2026a</a>)</span>, so the legal-date answer carries no IEEPA contribution — while the collection cutoff two days later <span class="citation" data-cites="csms67834313_2026">(<a href="#ref-csms67834313_2026" role="doc-biblioref">U.S. Customs and Border Protection 2026</a>)</span> is, per the scope note, outside this function’s semantics. Every step is a version lookup carrying instrument citations. A separate boundary probe changes both the partner and date: at the February 24, 2026 probe for solar cells from Canada, the pinned report shows both implementations return column rate zero, IEEPA zero, Section 201 zero, Section 122 at 0.10 — a total of exactly 10 percent, the balance-of-payments surcharge standing alone atop an otherwise-terminated stack. The “two defensible answers” of Section 1 become two different, explicit functions — and this paper’s panel computes the legal-date one.</p>
+</section>
+<section id="cross-implementation-reconciliation-against-an-independent-tracker" class="level1" data-number="4">
+<h1 data-number="4"><span class="header-section-number">4</span> Cross-implementation reconciliation against an independent tracker</h1>
+<p>An encoding of tariff law can be internally consistent and wrong. The check this section reports is a cross-implementation reconciliation: derive the panel our rules imply and reconcile it, cell by cell, against a reference built by people who never saw our code. We are deliberate about the term. The reference — Yale Budget Lab’s tariff-rate-tracker <span class="citation" data-cites="yaletracker_repo budgetlab2026tracker">(<a href="#ref-yaletracker_repo" role="doc-biblioref">The Budget Lab at Yale 2026b</a>, <a href="#ref-budgetlab2026tracker" role="doc-biblioref">2026a</a>)</span> — was separately developed, and the Budget Lab’s published rate series are already a benchmark other measurement work checks against <span class="citation" data-cites="cavallo2026tracking">(<a href="#ref-cavallo2026tracking" role="doc-biblioref">Cavallo et al. 2026</a>)</span>, but both implementations read the same public instruments, its spine defines the comparison universe (an omission from that spine is invisible to this exercise), and our encoding iterated against the visible disagreements until the predicate held. That is reconciliation between independent implementations — the standard validation practice of tax microsimulation transplanted to tariffs — not a held-out evaluation; the upgrades that would strengthen it (a frozen future snapshot, an independently double-coded legal sample, a third implementation) are stated future work.</p>
+<p>One design choice governs the universe and is the first thing a reader should know: the reconciliation runs on a <strong>five-line witness slice</strong> of the reference’s spine. The five tariff lines — beer (2203.00.0030), ferromanganese (7202.11.1000), unwrought aluminum (7601.10.3000), crystalline-silicon solar cells (8541.42.0010), and inflatable balls (9506.62.4040) — were chosen so that every overlay authority in scope has at least one line where it binds, and each is crossed with all 240 partners and all 57 of the tracker’s date intervals. The slice is a pilot of the method at full derivational depth, not a sample estimate of schedule-wide agreement: five lines are roughly 0.025 percent of the lines behind the reference’s 277-million-row panel, every number below is exact within the slice and says nothing outside it, and extending the same machinery across the schedule is the recorded next stage of this program. We chose depth-first deliberately — the two reference-attributed findings of Section 5 were found by exhausting five lines, not by sampling many — and the paper’s claims are written at the slice’s scale throughout.</p>
+<p>Definitions, so the numbers that follow are exact. A <em>cell</em> is a (tariff line, partner, date-interval) row on the reference’s spine; each row carries one value per <em>concept slot</em> — the column rate, each overlay authority, and the total — so mismatch counts by concept can overlap on one row. An interval is <em>covered</em> when our encoded domain spans it and <em>temporal debt</em> when it wholly predates that domain (48,000 interval-cells here); an interval straddling the domain boundary is clipped to its covered portion, with the clip recorded (1,200 clip events in the artifact). A <em>comparison</em> evaluates one covered row in both implementations at one probe date — 33 probe dates per line-partner span the covered intervals, placed at interval boundaries and their neighbors — at the reference’s default legal-date convention; a <em>match</em> is exact equality across every concept slot. A <em>disposition</em> closes a mismatched comparison unit with a recorded claim — an encoding defect (which must then be fixed), a reference-attributed discrepancy (Section 5’s standard), or a declared semantic difference — and a <em>tripwired exclusion</em> removes a reference construct from scope entirely behind a machine-checked guard that fails the build if the excluded construct’s footprint moves.</p>
+<p>The comparison totals below come from the pinned report, and the disposition entry, class, and footprint claims from the authoritative source, both in <code>axiom-oracles</code> at commit <code>dc1da3af</code>:</p>
+<ul>
+<li>report: <code>reports/axiom-yale-us-tariff-panel-all-2026-08-03.json</code></li>
+<li>dispositions: <code>dispositions/us-tariff-panel.yaml</code> (updated 2026-08-03)</li>
+</ul>
+<p>The reference is pinned at <code>c4307e51</code>, the encoding at <code>dbf09f44</code>, and the engine at <code>ffd82132</code>:</p>
+<ul>
+<li>The reference panel materializes 277,303,920 rows; the reconciled slice is the five witness lines crossed with 240 partners over the tracker’s 2025–26 coverage.</li>
+<li>The slice’s 68,400 in-scope interval-cells (5 lines × 240 partners × 57 intervals) split into 20,400 covered and 48,000 temporal-debt cells — our encoded rule history begins 2026-02-15, later than the tracker’s panel start, and the debt is the surfaced difference, carried into Section 8’s usage limits.</li>
+<li>The covered intervals yield 39,600 probe-date comparisons (5 lines × 240 partners × 33 probes): 24,400 exact matches (61.6 percent raw) and 15,200 mismatches, with zero evaluation errors.</li>
+<li>Every one of the 15,200 enters a disposition; none remain unexplained, and none are open against our encoding. The authoritative file partitions them into 30 entries — every mismatched unit appears in exactly one — and the class arithmetic closes explicitly: <strong>15,200 = 8,283 <code>upstream_engine_gap</code> units in 10 entries + 6,917 <code>explained_residual</code> units in 20 entries.</strong> Its families include the IEEPA metals-exclusion layer, the column-2 reference gap of Section 5, a Section 232 aluminum-content basis on beer, a free-trade-agreement preference layer, a Section 122 metal exclusion, and the Section 201 safeguard expiry of Section 5; each entry records its concept, case selector, and instrument citations. At the concept level the mismatches sit in the Section 201 slot (7,887), the Section 122 slot (4,560), and the column-rate, IEEPA, and Section 232 slots (594, 476, 1,920) — concept counts overlap where one cell mismatches several concepts, so they exceed the 15,200 distinct units. In the authoritative dispositions, the MFN footprint is 594 units: 528 in the column-2 family plus 66 in the preference family. Section 5 walks the two reference-attributed classes we escalated upstream; the remaining classes are recorded cell-by- cell in the same artifacts.</li>
+<li>Four reference constructs are excluded by tripwire, by name: the tracker’s residual <code>other</code> column, its China-semiconductor 301 rate column, its stacking-output columns, and its Swiss-framework construct — each excluded for a recorded technical reason (zero exposure in the covered window or a construct our composition deliberately does not mirror), each with a guard that reds the build if its footprint becomes nonzero.</li>
+</ul>
+<p>Table 1 consolidates the waterfall. All ten in-scope policy-construct records have <code>covered: true</code>; four other records are excluded with tripwires. This record field is distinct from the covered interval-cell term defined above. The conformance predicate — all in-scope policy records covered, unexplained equals zero, open encoding-attributed equals zero — holds on the witness slice. We report the 61.6 percent raw match rate as prominently as the zero because the two numbers mean different things: the raw rate is what falls out before any human judgment; the zero is what survives after every judgment is recorded, attributed, and exposed to audit. A reader who distrusts our dispositions can recompute the raw rate from the committed artifacts and re-litigate any cell.</p>
+<p>The comparison machinery earned its own scrutiny before we trusted its numbers. Adversarial review showed that early harness versions could report vacuous agreement (a slim CI artifact corrupted totals; an all-zero column compared equal to an all-zero column it should never have matched), and the reviews killed those with mutation tests — deliberately corrupted inputs a sound harness must catch. The final harness binds each panel row to a content digest and rebuilds byte-identically. Mutation tests validate the comparator, not the law — the legal-correctness burden rests on the instrument citations of Section 2 and the derivation standard of Section 5.</p>
+<p>We also measured the reference’s reproduction cost in a supervised local rebuild and reported the unexpectedly large resource envelope upstream, alongside a proposal that the project publish its panel as a release artifact. Because that measurement receipt is not committed at the named pins, this paper does not use its numerical value as evidence.</p>
+</section>
+<section id="when-the-oracle-disagrees-dispositions-with-legal-derivations" class="level1" data-number="5">
+<h1 data-number="5"><span class="header-section-number">5</span> When the oracle disagrees: dispositions with legal derivations</h1>
+<p>A conformance run that ends in disagreement forces a choice with three honest outcomes: the encoding is wrong (fix it), the reference is wrong (demonstrate it), or the two are answering different questions (declare it). The disposition machinery exists to make the second and third outcomes as auditable as the first. A disagreement attributed to the reference cannot be waved through; it requires either the reference maintainer’s acceptance or a derivation from the governing instruments independent of both implementations’ code — the proclamation’s own table, the schedule’s own note — recorded beside the cells it explains, with the cells enumerated by an applicability predicate rather than by hand. Until the maintainer responds, the honest name for such a finding is what we use throughout: author- attributed, derivation-backed, maintainer-unacknowledged. The rule’s purpose is to block the tempting failure mode — “our number differs, theirs is probably wrong” — by pricing that claim at a legal argument.</p>
+<p>Two derivations from this comparison illustrate the standard, and both became upstream reports.</p>
+<p><strong>A safeguard rate outliving its schedule.</strong> The Section 201 solar safeguard’s extension proclamation (10339) sets a staged duty schedule in its annex, verbatim: 14.75 percent through February 6, 2023, then 14.5, then 14.25, then 14 percent through February 6, 2026 — and nothing after. The current tariff schedule corroborates the end: the compiler’s note on the affected headings reads “this subheading and its related note … have expired.” The reference carries a flat 14.5 percent on the affected lines past the terminal date, which is wrong on two axes at once — 14.5 was the <em>second</em> year’s rate, stale since February 2024, and every rate is expired after February 2026. For the modeled temporal window, our Section 201 component’s operative version is an explicit zero. Its proof atoms document the historical stages and the expiry; the stages themselves are not executable versions in that component. The disagreement’s recorded footprint is the affected lines after the schedule moves, enumerated in the disposition artifact (the Section 201 concept slot’s 7,887 mismatched units of Section 3 are dominated by this class). The derivation — proclamation <span class="citation" data-cites="proc10339_2022">(<a href="#ref-proc10339_2022" role="doc-biblioref">Executive Office of the President 2022</a>)</span>, annex table, terminal date, the schedule’s own expiry note — is recorded in the disposition file, and the finding was filed upstream with the same citations.</p>
+<p><strong>Four countries on the wrong rate column.</strong> The tariff schedule’s General Note 3(b) <span class="citation" data-cites="hts2026rev15">(<a href="#ref-hts2026rev15" role="doc-biblioref">U.S. International Trade Commission 2026</a>)</span> directs that “the rates of duty shown in column 2 shall apply to products, whether imported directly or indirectly, of the following countries and areas”: the Republic of Belarus, Cuba, North Korea, and the Russian Federation. The reference’s parser has no column-2 branch, so those four countries inherit column-1 base rates throughout its panel. The disagreement is systematic rather than episodic — within the witness slice it touches four of the five lines for the four partners (beer escapes: its column-2 rate is specific rather than ad valorem, so the ad valorem panel shows no gap there), and nothing in the parser limits it to the slice — and the derivation is a single sentence of the schedule’s own general notes, with the note’s cross-reference to the Russia and Belarus additional- duty headings compounding the gap. Filed upstream likewise.</p>
+<p>We report both findings as what they are: derivation-backed and, as of this writing, unacknowledged. The reports sit in the tracker’s issue queue with our other filings — a locale-sensitivity bug that corrupted country matching (with a patch), the measured build envelope of Section 3, and a proposal that the project publish its panel as a release artifact, which would let downstream users skip the resource-intensive build. None of this is offered as fault- finding. A reference strong enough to validate against is a reference worth strengthening, and the economics of the exchange favor everyone: the tracker gave us the spine that made our zero meaningful, and the conformance run gave the tracker two defects located to the instrument and the line, for free.</p>
+<p>The dispositions are the paper’s answer to a question every validation exercise should face: what happens to your zero when the reference is imperfect? An unexplained-zero predicate against an imperfect reference is achievable only with an escape valve, and the escape valve is where validation exercises usually rot. Ours is load-bearing and inspectable — every escaped cell names its instrument — and the tripwires of Section 3 patrol its edges. When the reference updates, the dispositions are re-litigated against the new panel, not grandfathered: acceptance upstream would convert them to fixed cells; a counter-derivation would convert them to encoding bugs. Either outcome improves the public record, which is the point of validating in the open.</p>
+</section>
+<section id="deterministic-generation-and-evidence-gates" class="level1" data-number="6">
+<h1 data-number="6"><span class="header-section-number">6</span> Deterministic generation and evidence gates</h1>
+<p>Every reported result is tied either to a committed pin or to an explicitly hash-pinned local receipt, and the machinery was built by AI agents under human-directed gates. The distinction matters: the local receipts and several review records still require archival inclusion, so this draft does not claim that every result is yet publicly recomputable.</p>
+<p><strong>The gates.</strong> Corpus documents enter under signed manifests; an encoding cannot cite what the corpus does not hold. Every rule change must compile, must carry proof atoms whose excerpts appear in the cited document, and must pass companion tests that pin behavior at its effective boundaries — the merge machinery refuses the change otherwise. Panel derivations bind each row to a content digest and rebuild byte-identically. Conformance reports pin the reference commit, the engine build, and the encoding revision they were computed from, and the scoreboard numbers quoted in this paper carry their snapshot hashes because the live reports refresh as the encoding grows.</p>
+<p><strong>The adversary.</strong> The comparison harness and deterministic generators received same-project cross-model adversarial review. The reviews found concrete failures, including vacuous comparison and malformed generated proof wrapping; the associated regression and mutation tests are part of the technical evidence. The round counts and final no-finding verdicts are only retrospective development provenance. The exact component prompts, model versions and settings, adjudication record, and prospective stopping or restart rules were not preserved, so the sequence cannot establish convergence or a defect probability. Archiving those materials is a prerequisite for treating review as a reproducible protocol.</p>
+<p><strong>The division of labor.</strong> Model-written code, model-run reviews, machine-checked gates — and human judgment exactly where it is load- bearing: scope decisions (what counts as law versus estimation), the disposition standard of Section 4, anything that leaves the project (upstream reports, this paper), and the decision to ship. We do not claim the review regime is external certification — reviewer and authors sit inside one project, and a separately governed verification protocol is future work. The committed encodings, corpus manifests, comparison report, generation records, and gate evidence are pinned and inspectable. The disposition mirror and component-review protocol have the specific release limitations stated below; review verdicts do not substitute for those artifacts.</p>
+<p>Within this project, the useful products of adversarial review were the defects it exposed and the tests and receipts added in response. Those artifacts, rather than a trajectory toward a no-finding verdict, carry the evidentiary weight.</p>
+<section id="deterministic-generation-at-schedule-scale" class="level2" data-number="6.1">
+<h2 data-number="6.1" class="anchored" data-anchor-id="deterministic-generation-at-schedule-scale"><span class="header-section-number">6.1</span> Deterministic generation at schedule scale</h2>
+<p>The witness slice’s hand-built line modules extend to the full schedule by generation rather than authorship. A deterministic generator reads the corpus-pinned Revision 15 snapshot — the exact bytes, hash-pinned, that the corpus retains for that release — and emits per-chapter rule modules covering every rated line: 13,790 lines across 98 chapters, as general and column-2 rate tables over ad valorem and Free lines and total-partition disposition tables over all of them (ad valorem 6,247, Free 5,795, specific 777, conditional 548, compound 326, component-valued 93, column-2-only 4). A line whose column text is a specific, compound, or component-valued duty gets an explicit classification and no rate cell; the machinery refuses to force-parse what it cannot represent. The same refusal caught the schedule’s own data repair: the one column-2 change between the 2025 basic edition and Revision 15 across 11,504 common base lines is a trailing-slash typo the publisher fixed, which the partition classified as conditional rather than misreading as a rate.</p>
+<p>Every table cell carries a proof atom citing its line’s provision with a verbatim body-line excerpt — 48,479 atoms across the full schedule — validated against a corpus version that normalizes all 29,845 HTS-numbered rows of the pinned snapshot to per-line provisions. The generation is gated three ways: the generated cells must reproduce the encoded rates of the three hand-built witness line modules that carry rate cells exactly, with expectations parsed from those modules rather than from any secondary record; emitting twice must produce identical bytes; and the base general-rate column must show zero changes between the 2025 basic edition and Revision 15, which it does across 11,504 common base lines. A single dated version per line therefore rests on a verified endpoint comparison for those lines’ general column; chapter 99’s action headings and the 66 base lines born mid-window carry the snapshot’s value at a nominal date, with per-revision versioning recorded as composition-layer work. One structural fact stays out of statutory parameter space deliberately: the map from ten-digit statistical lines to their rate-bearing ancestors is emitted as a generated data artifact, held for the archival release, because its synthetic integer keys appear nowhere in provision text and therefore cannot meet the grounding standard the rate cells meet.</p>
+<p>Two findings from building the feedstock bear on anyone consuming the schedule programmatically. The USITC’s live export endpoint accepts a release parameter and silently ignores it — a January 2025 request returns headings that did not exist until April 2025 — so frozen vintages exist only where someone retained them; the corpus retains the full revision series for 2025 and 2026 as pinned snapshots. And at the table stage, applying a line’s rate to an entry was composition-layer work each module declared as a deferred output: the tables publish what the schedule says, at full coverage, and leave the five-line witness composition of Sections 2–3 untouched. The next subsection lands that deferred layer.</p>
+</section>
+<section id="composition-at-schedule-scale-and-its-measured-boundary" class="level2" data-number="6.2">
+<h2 data-number="6.2" class="anchored" data-anchor-id="composition-at-schedule-scale-and-its-measured-boundary"><span class="header-section-number">6.2</span> Composition at schedule scale and its measured boundary</h2>
+<p>The composition layer then extends the same way: a second deterministic generator emits one composition per chapter — one hundred modules — each importing its chapter’s generated tables and replicating the witness composition’s authority components, proof atoms, declared-entry surface, and effective windows verbatim, with chapter routing left in entry preparation. Keeping one hundred same-inventory siblings distinct under the repository’s static gates takes a documented lossless serialization (per-chapter redundant parentheses and temporal-key spelling for substantive formulas, chapter-prefixed names for four scalar-literal parameters whose bare values admit no parenthesization, one directory per chapter), and the generator asserts reverse-substitution equality against witness bytes for every transformed rule. Four gates held: the full battery validates one hundred of one hundred modules; independently compiled generated compositions reproduce the hand-built witness on ninety-cell country-by-date grids for both non-pilot witness chapters with zero component or total deltas; an independent second parser, sharing nothing with the first path but the pinned snapshot bytes, re-derives all 48,479 table cells and all 13,790 rated lines exactly, and fails on a single mutated cell; and double emission is byte-identical.</p>
+<p>Replay of the witness slice reproduced all 1,300 extract comparisons exactly. The action-incidence layer then replaces exemplar equalities with grounded membership semantics while retaining that witness as its oracle.</p>
+</section>
+<section id="encoding-the-action-incidence-layer" class="level2" data-number="6.3">
+<h2 data-number="6.3" class="anchored" data-anchor-id="encoding-the-action-incidence-layer"><span class="header-section-number">6.3</span> Encoding the action-incidence layer</h2>
+<p>The source is the tariff schedule itself. Chapter 99 notes state which ordinary tariff provisions receive each action heading. They are page- level provisions in the corpus and can be grounded at the same atom standard as a rate cell. The Section 232 note, for example, says that its headings apply to articles classifiable in the provisions in its lists, then introduces “(iii) Articles of steel.” The aluminum note says that a reference to a heading or subheading covers “all its subordinate provisions (both legal and statistical).” Those words require four- and six-digit scope as well as the eight- and ten-digit numbers used by the other lists.</p>
+<p>A declarative note grammar identifies the governing subdivision, its page-spanning bounds, the action, and the printed code widths. The generator emits 25 membership tables with 12,227 grounded rows. The tables preserve heading and subheading widths for the primary Section 232 scope. A structurally independent second parser uses the same pinned notes bytes but neither the generator’s prose boundaries nor its number recognizer. It reproduced every emitted set exactly. We also reconciled the sets against the tracker’s membership resources. Every difference was assigned to a vintage, partial-value, or statistical-level disposition.</p>
+<p>The composition generator then replaced five exemplar equalities with membership-semantic inputs. It also added a Section 232 steel component grounded on heading 9903.82.02. The hand-built five-line witness remains unchanged as the oracle. This separation caught a coupling defect: when general membership flags were fed into the exemplar slots, the witness zeroed Section 122 on Section 301-member lines. That was an artifact of the exemplar equalities, not the statute. The fix was made in the generated source and gated against the witness slice. The gate enumerates every coupling cell and requires equivalence on the witness mapping.</p>
+<p>This work also produced four author-attributed implementation findings against the Yale tracker. Two were filed as issues: a chapter-98 partial-value sequencing defect in the Section 122 path and a phantom 9031.49.70 civil-aircraft row absent from General Note 6 across the checked schedule revisions. Two methodology findings remain held: the missing General Note 3(b) column-2 branch and the stale Section 201 safeguard field derived in Section 4. All four are findings of the authors. The two held findings remain derivation-backed and maintainer-unacknowledged; no maintainer acceptance is implied.</p>
+</section>
+</section>
+<section id="uses-and-limits" class="level1" data-number="7">
+<h1 data-number="7"><span class="header-section-number">7</span> Uses and limits</h1>
+<p>The computed conformance result is confined to the five-line witness slice and the encoded temporal window. It is not a schedule-wide certificate or a held-out evaluation: both implementations read the same public instruments, Yale’s spine defines the comparison universe, and the encoding iterated against visible disagreements. The hand-built witness composition has no fail-closed top-level guard, so callers must enforce the five-line domain; unsupported lines can return plausible values rather than errors.</p>
+<p>The generated schedule spine, compositions, and incidence tables pass the generation gates reported here. Those gates establish grounded generation, identity against the witness where tested, differential agreement, mutation sensitivity, and byte reproducibility. Generation gates alone do not constitute a certificate. Since this manuscript’s data snapshot, the certification campaign has computed all four premises for the program over a schedule-wide comparison (the trajectory quotient of 9,913,304 evaluated cells described in the certification status note above); the resulting certificate is decidable and its verdict is no, with the remaining encoding named inside the artifact. The five-line conformance result reported in this section remains confined to the witness slice and the encoded temporal window. Specific and compound duties, content-value bases, quota state, entry-specific exceptions, collection-date semantics, and sub-day cutoffs remain outside the function described here. Weighted rate analysis is delegated to the companion paper <span class="citation" data-cites="tariff_rates_companion">(<a href="#ref-tariff_rates_companion" role="doc-biblioref">Ghenis 2026</a>)</span>.</p>
+</section>
+<section id="related-work" class="level1" data-number="8">
+<h1 data-number="8"><span class="header-section-number">8</span> Related work</h1>
+<p><strong>Tariff-rate data for the trade-war literature.</strong> The empirical literature on the 2018–19 tariffs built its rate data by hand, wave by wave. Fajgelbaum, Goldberg, Kennedy, and Khandelwal digitized each wave’s product lists and statutory rates from the official announcements to estimate the trade war’s incidence <span class="citation" data-cites="fajgelbaum2020return">(<a href="#ref-fajgelbaum2020return" role="doc-biblioref">Fajgelbaum et al. 2020</a>)</span>; Amiti, Redding, and Weinstein assembled the same sequence for pass-through event studies <span class="citation" data-cites="amiti2019impact amiti2020whos">(<a href="#ref-amiti2019impact" role="doc-biblioref">Amiti et al. 2019</a>, <a href="#ref-amiti2020whos" role="doc-biblioref">2020</a>)</span>; Flaaen and Pierce mapped tariff-line changes into industry exposure measures <span class="citation" data-cites="flaaen2019disentangling">(<a href="#ref-flaaen2019disentangling" role="doc-biblioref">Flaaen and Pierce 2019</a>)</span>. In each case the tariff schedule is a bespoke research input, frozen at publication. Bown’s widely used trackers institutionalized the hand-compiled approach as a maintained public timeline <span class="citation" data-cites="bown2021uschina bown_piie_chart">(<a href="#ref-bown2021uschina" role="doc-biblioref">Bown 2021</a>, <a href="#ref-bown_piie_chart" role="doc-biblioref">2025</a>)</span>. The 2025–26 environment strains this tradition on two margins the earlier waves mostly spared it: authority count (a base schedule plus six overlay authorities with distinct lifecycles) and tempo (terminations, expiries, and revision-level rate surgery inside single months). Teti’s Global Tariff Database extends statutory rate coverage impressively in space and time — two hundred importers back to 1988 — but at HS-6, without the 2025–26 emergency authorities, and as data rather than executable derivations <span class="citation" data-cites="teti2024missing">(<a href="#ref-teti2024missing" role="doc-biblioref">Teti 2024</a>)</span>.</p>
+<p><strong>The tracker we validate against.</strong> The nearest neighbor to our statutory panel is its own validation reference. Yale Budget Lab’s tariff-rate-tracker is an open-source pipeline producing an interval-encoded panel of statutory rates at the tariff-line × country level for the 2025–26 regime, built from the trade commission’s schedule archives with documented policy parameters <span class="citation" data-cites="yaletracker_repo budgetlab2026tracker">(<a href="#ref-yaletracker_repo" role="doc-biblioref">The Budget Lab at Yale 2026b</a>, <a href="#ref-budgetlab2026tracker" role="doc-biblioref">2026a</a>)</span>; the Budget Lab’s published rate series are already a benchmark other measurement work checks against <span class="citation" data-cites="cavallo2026tracking">(<a href="#ref-cavallo2026tracking" role="doc-biblioref">Cavallo et al. 2026</a>)</span> (the citation benchmarks the Lab’s report series; the tracker tool itself is newer). We are not, therefore, the first executable statutory tariff panel; the tracker is one, and a good one. The contribution is the form and what the form enables: rules at the instrument grain, each version citing and quoting its legal source, with mandatory boundary tests — versus one pipeline whose judgment calls live in code — and, on top of that form, a cross-implementation conformance regime. We find no formal citation of the tool itself as of August 2026 (a web-bounded search; the tool is four months old), which suggests — though a negative search cannot establish — that Section 3’s reconciliation is the first external research engagement with the tracker’s internals; Section 5’s derivation-backed defect reports are what that engagement produces when a disagreement survives audit.</p>
+<p><strong>Rules as code and calculator validation.</strong> Executable encodings of law have an established line: OpenFisca’s deployed tax-benefit engines <span class="citation" data-cites="openfisca">(<a href="#ref-openfisca" role="doc-biblioref">OpenFisca contributors, n.d.</a>)</span>, Catala’s formally grounded statute-to-code language <span class="citation" data-cites="merigoux2021catala">(<a href="#ref-merigoux2021catala" role="doc-biblioref">Merigoux et al. 2021</a>)</span>, and the policy agenda articulated for rules-as-code generally <span class="citation" data-cites="mohun2020cracking">(<a href="#ref-mohun2020cracking" role="doc-biblioref">Mohun and Roberts 2020</a>)</span>. Cross-validation is likewise institutionalized practice in tax microsimulation — NBER’s TAXSIM as a reference implementation <span class="citation" data-cites="feenberg1993introduction">(<a href="#ref-feenberg1993introduction" role="doc-biblioref">Feenberg and Coutts 1993</a>)</span>, EUROMOD’s country-report validation regime <span class="citation" data-cites="sutherland2013euromod">(<a href="#ref-sutherland2013euromod" role="doc-biblioref">Sutherland and Figari 2013</a>)</span>, and maintained harnesses that reconcile independent calculators line-by-line <span class="citation" data-cites="taxcalculator_taxsim_validation">(<a href="#ref-taxcalculator_taxsim_validation" role="doc-biblioref">Policy Simulation Library, n.d.</a>)</span>. To our knowledge that culture had not previously reached trade law. Tariffs are, if anything, the easier target for it — the instruments are public, the schedule is versioned by the issuing agency, and the reference tracker already exists — and the 2025–26 record supplies the volatility that makes the exercise informative rather than ornamental.</p>
+</section>
+<section id="data-and-code-availability" class="level1" data-number="9">
+<h1 data-number="9"><span class="header-section-number">9</span> Data and code availability</h1>
+<p>The rules layer is distributed across committed source projects. The rulespec-us repository contains the tariff composition, authority overlays, deterministic schedule and incidence generators, generated modules, and companion tests. Axiom-oracles contains the corpus manifests, comparison harness, conformance report, and authoritative disposition source. The Yale reference is pinned at <code>c4307e51</code>.</p>
+<p>The authoritative disposition evidence is <code>dispositions/us-tariff-panel.yaml</code> in <code>axiom-oracles</code> at commit <code>dc1da3af</code>: 30 entries covering 15,200 units. Its public mirror at the same pin is stale and is not evidence for this paper; regeneration plus a synchronization tripwire remains an archival prerequisite. Exact component-review prompts, model versions and settings, adjudication records, and prospective stop/restart rules were not preserved, so review-round counts remain development provenance.</p>
+<p><strong>Pinned revisions.</strong> Encoding: rulespec-us <code>dbf09f44eddd00b7ad5520f89371ebe8fdf0b7df</code>. Engine: axiom-rules-engine <code>ffd8213271947b0189a9dd61a055c1e0e78908a0</code>. Reconciliation snapshot: axiom-oracles <code>dc1da3af067c50fa7138458faf3703b4b9efd7cb</code>. Generated schedule spine: rulespec-us <code>f062088f</code>. Generated compositions: <code>747d54f5</code>. Action-incidence tables: <code>956a5474</code>; decoupled compositions and steel component: <code>96d5e7c1</code>. The gate evidence archive remains in the project lane pending archival release. No archival release accompanies this working paper.</p>
+<p><strong>AI-use disclosure.</strong> The encodings, generators, tests, and reviews described in Section 5 were produced by AI agents under the stated gates, with human direction of scope, dispositions, upstream communication, and publication. This manuscript was drafted by the authoring agents from a primary-source-verified fact base and revised through hostile, round-diff, red-team, and fresh-eyes referee passes. The human author is responsible for all claims.</p>
+</section>
+<section id="appendix-tables" class="level1" data-number="10">
+<h1 data-number="10"><span class="header-section-number">10</span> Appendix: tables</h1>
+<section id="table-1-conformance-scoreboard-at-the-pinned-snapshot-3" class="level2" data-number="10.1">
+<h2 data-number="10.1" class="anchored" data-anchor-id="table-1-conformance-scoreboard-at-the-pinned-snapshot-3"><span class="header-section-number">10.1</span> Table 1 — Conformance scoreboard at the pinned snapshot (§3)</h2>
+<p>Sources, all in <code>axiom-oracles</code> at commit <code>dc1da3af</code>: comparison report <code>reports/axiom-yale-us-tariff-panel-all-2026-08-03.json</code>; authoritative dispositions <code>dispositions/us-tariff-panel.yaml</code>; reference Budget-Lab-Yale/tariff-rate-tracker at <code>c4307e51</code>.</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Quantity</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Witness slice</td>
+<td>5 HTS-10 lines × 240 partners × 57 intervals</td>
+</tr>
+<tr class="even">
+<td>In-scope interval-cells</td>
+<td>68,400 = 20,400 covered + 48,000 temporal debt</td>
+</tr>
+<tr class="odd">
+<td>Probe-date comparisons</td>
+<td>39,600 (33 probes per line-partner)</td>
+</tr>
+<tr class="even">
+<td>Exact matches / mismatches (raw)</td>
+<td>24,400 / 15,200 (61.6% raw)</td>
+</tr>
+<tr class="odd">
+<td>Authoritative disposition partition</td>
+<td>30 entries: 10 / 8,283 upstream-engine-gap + 20 / 6,917 explained-residual = 15,200 units</td>
+</tr>
+<tr class="even">
+<td>In-scope policy records with <code>covered: true</code></td>
+<td>10 / 10</td>
+</tr>
+<tr class="odd">
+<td>Unexplained disagreements</td>
+<td>0</td>
+</tr>
+<tr class="even">
+<td>Open disagreements attributed to the encoding</td>
+<td>0</td>
+</tr>
+<tr class="odd">
+<td>Tripwired scope exclusions</td>
+<td>4</td>
+</tr>
+<tr class="even">
+<td>Reference-attributed units, classified with evidence</td>
+<td>8,283</td>
+</tr>
+<tr class="odd">
+<td>Boundary-straddle clip events recorded</td>
+<td>1,200</td>
+</tr>
+<tr class="even">
+<td>Corpus versions grounding the encoding</td>
+<td>138 (47 FR + 44 HTS + 47 notes)</td>
+</tr>
+</tbody>
+</table>
+
+</section>
+</section>
+
+<div id="quarto-appendix" class="default"><section class="quarto-appendix-contents" role="doc-bibliography" id="quarto-bibliography"><h2 class="anchored quarto-appendix-heading">References</h2><div id="refs" class="references csl-bib-body hanging-indent" role="list">
+<div id="ref-amiti2019impact" class="csl-entry" role="listitem">
+Amiti, Mary, Stephen J. Redding, and David E. Weinstein. 2019. <span>“The Impact of the 2018 Tariffs on Prices and Welfare.”</span> <em>Journal of Economic Perspectives</em> 33 (4): 187–210. <a href="https://doi.org/10.1257/jep.33.4.187">https://doi.org/10.1257/jep.33.4.187</a>.
+</div>
+<div id="ref-amiti2020whos" class="csl-entry" role="listitem">
+Amiti, Mary, Stephen J. Redding, and David E. Weinstein. 2020. <span>“Who’s Paying for the <span>US</span> Tariffs? A Longer-Term Perspective.”</span> <em>AEA Papers and Proceedings</em> 110: 541–46. <a href="https://doi.org/10.1257/pandp.20201018">https://doi.org/10.1257/pandp.20201018</a>.
+</div>
+<div id="ref-bown2021uschina" class="csl-entry" role="listitem">
+Bown, Chad P. 2021. <span>“The <span>US</span>–<span>China</span> Trade War and Phase One Agreement.”</span> <em>Journal of Policy Modeling</em> 43 (4): 805–43. <a href="https://doi.org/10.1016/j.jpolmod.2021.02.009">https://doi.org/10.1016/j.jpolmod.2021.02.009</a>.
+</div>
+<div id="ref-bown_piie_chart" class="csl-entry" role="listitem">
+Bown, Chad P. 2025. <em>US-China Trade War Tariffs: An up-to-Date Chart</em>. Peterson Institute for International Economics, PIIE Charts; last updated November 14, 2025. <a href="https://www.piie.com/research/piie-charts/2019/us-china-trade-war-tariffs-date-chart">https://www.piie.com/research/piie-charts/2019/us-china-trade-war-tariffs-date-chart</a>.
+</div>
+<div id="ref-cavallo2026tracking" class="csl-entry" role="listitem">
+Cavallo, Alberto, Paola Llamas, and Franco M. Vazquez. 2026. <em>Tracking the Short-Run Price Impact of <span>U.S.</span> Tariffs</em>. Harvard Business School / Pricing Lab. <a href="https://www.pricinglab.org/files/TrackingTariffs_Cavallo_Llamas_Vazquez.pdf">https://www.pricinglab.org/files/TrackingTariffs_Cavallo_Llamas_Vazquez.pdf</a>.
+</div>
+<div id="ref-proc10339_2022" class="csl-entry" role="listitem">
+Executive Office of the President. 2022. <em>Proclamation 10339: To Continue Facilitating Positive Adjustment to Competition from Imports of Certain Crystalline Silicon Photovoltaic Cells (Whether or Not Partially or Fully Assembled into Other Products)</em>. 87 Fed. Reg. 7357 (Feb. 9, 2022), FR Doc. 2022-02906, signed Feb. 4, 2022; Annex I staged rates at 87 Fed. Reg. 7361–7362. <a href="https://www.federalregister.gov/d/2022-02906">https://www.federalregister.gov/d/2022-02906</a>.
+</div>
+<div id="ref-eo14389_2026" class="csl-entry" role="listitem">
+Executive Office of the President. 2026a. <em>Executive Order 14389: Ending Certain Tariff Actions</em>. 91 Fed. Reg. 9437 (Feb. 25, 2026), FR Doc. 2026-03832, signed Feb. 20, 2026. <a href="https://www.federalregister.gov/d/2026-03832">https://www.federalregister.gov/d/2026-03832</a>.
+</div>
+<div id="ref-proc11012_2026" class="csl-entry" role="listitem">
+Executive Office of the President. 2026b. <em>Proclamation 11012: Imposing a Temporary Import Surcharge to Address Fundamental International Payments Problems</em>. 91 Fed. Reg. 9339 (Feb. 25, 2026), FR Doc. 2026-03824, signed Feb. 20, 2026. <a href="https://www.federalregister.gov/d/2026-03824">https://www.federalregister.gov/d/2026-03824</a>.
+</div>
+<div id="ref-fajgelbaum2020return" class="csl-entry" role="listitem">
+Fajgelbaum, Pablo D., Pinelopi K. Goldberg, Patrick J. Kennedy, and Amit K. Khandelwal. 2020. <span>“The Return to Protectionism.”</span> <em>The Quarterly Journal of Economics</em> 135 (1): 1–55. <a href="https://doi.org/10.1093/qje/qjz036">https://doi.org/10.1093/qje/qjz036</a>.
+</div>
+<div id="ref-feenberg1993introduction" class="csl-entry" role="listitem">
+Feenberg, Daniel, and Elisabeth Coutts. 1993. <span>“An Introduction to the <span>TAXSIM</span> Model.”</span> <em>Journal of Policy Analysis and Management</em> 12 (1): 189–94. <a href="https://doi.org/10.2307/3325474">https://doi.org/10.2307/3325474</a>.
+</div>
+<div id="ref-flaaen2019disentangling" class="csl-entry" role="listitem">
+Flaaen, Aaron, and Justin R. Pierce. 2019. <em>Disentangling the Effects of the 2018-2019 Tariffs on a Globally Connected <span>U.S.</span> Manufacturing Sector</em>. Finance and Economics Discussion Series Nos. 2019-086. Board of Governors of the Federal Reserve System. <a href="https://doi.org/10.17016/FEDS.2019.086">https://doi.org/10.17016/FEDS.2019.086</a>.
+</div>
+<div id="ref-tariff_rates_companion" class="csl-entry" role="listitem">
+Ghenis, Max. 2026. <span>“Tariff Rate Constructs for the 2025–26 Trade Shock: Weights, Scope, and Synthetic Customs Entries.”</span> <a href="https://github.com/PolicyEngine/tariff-paper">https://github.com/PolicyEngine/tariff-paper</a>.
+</div>
+<div id="ref-merigoux2021catala" class="csl-entry" role="listitem">
+Merigoux, Denis, Nicolas Chataing, and Jonathan Protzenko. 2021. <span>“Catala: A Programming Language for the Law.”</span> <em>Proceedings of the ACM on Programming Languages</em> 5 (ICFP): 1–29. <a href="https://doi.org/10.1145/3473582">https://doi.org/10.1145/3473582</a>.
+</div>
+<div id="ref-mohun2020cracking" class="csl-entry" role="listitem">
+Mohun, James, and Alex Roberts. 2020. <em>Cracking the Code: Rulemaking for Humans and Machines</em>. OECD Working Papers on Public Governance No. 42. OECD. <a href="https://doi.org/10.1787/3afe6ba5-en">https://doi.org/10.1787/3afe6ba5-en</a>.
+</div>
+<div id="ref-usc2132" class="csl-entry" role="listitem">
+Office of the Law Revision Counsel. 2026. <em>19 u.s.c. §&nbsp;2132: Balance-of-Payments Authority</em>. United States Code (prelim.), text containing laws in effect on Aug. 6, 2026. <a href="https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title19-section2132&amp;num=0&amp;edition=prelim">https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title19-section2132&amp;num=0&amp;edition=prelim</a>.
+</div>
+<div id="ref-ustr2026forcedlabor" class="csl-entry" role="listitem">
+Office of the United States Trade Representative. 2026. <em>Notice of Actions in Section 301 Investigations of Acts, Policies, and Practices of Various Economies Related to the Failure of Each Economy to Impose and Effectively Enforce a Prohibition on the Importation of Goods Produced with Forced Labor</em>. 91 Fed. Reg. 47318 (July 28, 2026), FR Doc. 2026-15181. <a href="https://www.federalregister.gov/d/2026-15181">https://www.federalregister.gov/d/2026-15181</a>.
+</div>
+<div id="ref-openfisca" class="csl-entry" role="listitem">
+OpenFisca contributors. n.d. <em><span>OpenFisca</span>: Open-Source Engine to Write Rules as Code</em>. Software, AGPL-3.0 core engine. <a href="https://openfisca.org">https://openfisca.org</a>.
+</div>
+<div id="ref-taxcalculator_taxsim_validation" class="csl-entry" role="listitem">
+Policy Simulation Library. n.d. <em>Tax-Calculator Validation Against <span>NBER</span> <span>TAXSIM-35</span></em>. PSLmodels/Tax-Calculator repository, taxcalc/validation/taxsim35 (verified present Aug. 7, 2026). <a href="https://github.com/PSLmodels/Tax-Calculator/tree/master/taxcalc/validation">https://github.com/PSLmodels/Tax-Calculator/tree/master/taxcalc/validation</a>.
+</div>
+<div id="ref-learningresources2026" class="csl-entry" role="listitem">
+Supreme Court of the United States. 2026. <em>Learning Resources, Inc. V. Trump, 607 u.s. 229 (2026) (No. 24-1287, Together with Trump v. V.o.s. Selections, Inc., No. 25-250)</em>. Decided Feb. 20, 2026; preliminary print, Vol. 607 U.S. Part 2. <a href="https://www.supremecourt.gov/opinions/25pdf/607us2r12_8nj9.pdf">https://www.supremecourt.gov/opinions/25pdf/607us2r12_8nj9.pdf</a>.
+</div>
+<div id="ref-sutherland2013euromod" class="csl-entry" role="listitem">
+Sutherland, Holly, and Francesco Figari. 2013. <span>“<span>EUROMOD</span>: The <span>European Union</span> Tax-Benefit Microsimulation Model.”</span> <em>International Journal of Microsimulation</em> 6 (1): 4–26. <a href="https://doi.org/10.34196/ijm.00075">https://doi.org/10.34196/ijm.00075</a>.
+</div>
+<div id="ref-teti2024missing" class="csl-entry" role="listitem">
+Teti, Feodora A. 2024. <em>Missing Tariffs</em>. CESifo Working Paper No. 11590. CESifo. <a href="https://feodorateti.github.io/data.html">https://feodorateti.github.io/data.html</a>.
+</div>
+<div id="ref-budgetlab2026tracker" class="csl-entry" role="listitem">
+The Budget Lab at Yale. 2026a. <em>Introducing the Tariff Rate Tracker: An Open-Source Tool for Daily Effective Tariff Rates</em>. Published April 1, 2026; updated May 9, 2026. <a href="https://budgetlab.yale.edu/research/introducing-tariff-rate-tracker-open-source-tool-daily-effective-tariff-rates">https://budgetlab.yale.edu/research/introducing-tariff-rate-tracker-open-source-tool-daily-effective-tariff-rates</a>.
+</div>
+<div id="ref-yaletracker_repo" class="csl-entry" role="listitem">
+The Budget Lab at Yale. 2026b. <em>Tariff-Rate-Tracker: Code to Track and Organize Tariff Rates</em>. GitHub repository, Budget-Lab-Yale organization, MIT license; reference commit c4307e51, full hash c4307e514196618afcbf88cf7fd33746417eeabf (July 24, 2026). <a href="https://github.com/Budget-Lab-Yale/tariff-rate-tracker">https://github.com/Budget-Lab-Yale/tariff-rate-tracker</a>.
+</div>
+<div id="ref-csms67834313_2026" class="csl-entry" role="listitem">
+U.S. Customs and Border Protection. 2026. <em><span>CSMS</span> #67834313: Ending Collection of International Emergency Economic Powers Act Duties</em>. Cargo Systems Messaging Service, Feb. 22, 2026. <a href="https://content.govdelivery.com/bulletins/gd/USDHSCBP-40b11c9">https://content.govdelivery.com/bulletins/gd/USDHSCBP-40b11c9</a>.
+</div>
+<div id="ref-bis2026ukpharma" class="csl-entry" role="listitem">
+U.S. Department of Commerce, Bureau of Industry and Security. 2026. <em>Notice of Reduction of Tariffs on Patented Pharmaceuticals and Pharmaceutical Ingredients for Products of the United Kingdom Implemented by Presidential Proclamation 11020</em>. 91 Fed. Reg. 49406 (Aug. 4, 2026), FR Doc. 2026-15799; effective July 31, 2026. <a href="https://www.federalregister.gov/d/2026-15799">https://www.federalregister.gov/d/2026-15799</a>.
+</div>
+<div id="ref-hts2026rev15" class="csl-entry" role="listitem">
+U.S. International Trade Commission. 2026. <em>Harmonized Tariff Schedule of the United States (2026 Revision 15)</em>. August 3, 2026 release; change record and General Notes retrieved from hts.usitc.gov, Aug. 7, 2026. <a href="https://hts.usitc.gov/">https://hts.usitc.gov/</a>.
+</div>
+</div></section></div></main>
+<!-- /main column -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+</body></html>

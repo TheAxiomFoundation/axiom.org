@@ -1,6 +1,7 @@
 # Axiom
 
-Axiom website + app (axiom.org / app.axiom-foundation.org). Deploys
+Axiom website + app (axiom.org; app.axiom-foundation.org is the retired
+app host and redirects there). Deploys
 to Vercel (project `axiom-foundation`, team `axiom-foundation`).
 
 ## Routing model
@@ -14,12 +15,22 @@ generate `/axiom/v2/...` hrefs. The app root and marketing pages stay on v1.
 ## Data sources
 
 - **Corpus text** (`corpus.current_provisions`, `navigation_nodes`): Supabase,
-  read server-side. The DB is *release-pointer-based* — it projects the single
+  read server-side. The DB is _release-pointer-based_ — it projects the single
   active signed corpus release, so contents change wholesale when a release is
   activated upstream (axiom-corpus).
 - **RuleSpec encodings**: `encodings.rulespec_files` mirror first (live-synced
   from the rulespec-* repos), legacy GitHub-raw fallback second. Never add
-  request-time GitHub reads to hot paths.
+  request-time GitHub reads to hot paths. Each mirror row's
+  `source_citation_paths` records every corpus provision declared by its module
+  and proof atoms, and `value_citation_paths` records the singular module source
+  plus paths cited by every proof atom except `import` and `ordering`. These
+  arrays are search aids. The section reader keys its **Encoded from this
+  provision** group on the materialized `encodings.rule_citations` index, which
+  stores one row per rule and cited provision. It fetches the first 120 rules by
+  grounding rank and module path, renders every name collision with a stable
+  module-qualified alias, and reports an exact rule overflow count. The
+  `rulespec_files` array lookup remains only as a rollout fallback while the
+  additive rule index is unavailable.
 - **Everything executable** (packages, graphs, calculate): the hosted
   axiom-api via `src/lib/axiom/runtime/api.ts`, server-side only.
 
@@ -55,6 +66,7 @@ cd ~/axiom-api && AXIOM_RUNTIME_SOURCE=compiled \
 ## After pushing changes
 
 **Always verify Vercel deploy succeeded:**
+
 ```bash
 vercel ls 2>&1 | head -5
 ```

@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Overview — Axiom Foundation</title>
+<style>
+@import url("fonts-embed.css");   /* embedded Geist / Geist Mono / Newsreader — keeps the PDF fallback-free */
+  :root{
+    --paper:#ffffff; --paperElevated:#ffffff;
+    --ink:#1c1917; --inkSecondary:#57534e; --inkMuted:#78716c;
+    --accent:#92400e; --accentHover:#7c2d12;
+    --rule:#e7e5e4; --ruleStrong:#78716c;
+    --success:#166534;
+    --amber1:#b45309; --amber2:#8a3d08;
+  }
+  /* 0.5in top/bottom rather than the template's 0.6in — still inside every
+     printer's safe area, and spending it on the outer margin rather than on
+     the gaps between sections is the wrong trade for a one-pager. */
+  @page{ size:Letter; margin:0.5in 0.7in; }
+  *{ box-sizing:border-box; }
+  table,tr,.note,.risk,ol.steps>li,ul.asks>li{ break-inside:avoid; }
+  h2,.budget-label,.subhead{ break-after:avoid; }
+  .sig,hr{ break-before:avoid; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background:var(--paper); color:var(--ink);
+    font-family:"Geist","Helvetica Neue",Helvetica,Arial,sans-serif;
+    /* 11pt body is the floor and stays. Leading is pulled a little tighter
+       than the template's 1.47 so the document closes on two pages instead
+       of stranding the sign-off alone on a third. */
+    font-size:11pt; line-height:1.42; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{ max-width:7.1in; margin:0 auto; }
+
+  /* Masthead */
+  .masthead{ display:flex; justify-content:space-between; align-items:flex-end;
+    border-bottom:2px solid var(--ink); padding-bottom:10px; margin-bottom:14px; }
+  .masthead .logo{ width:140px; height:auto; display:block; }
+  .kicker{ text-align:right; font-size:8pt; letter-spacing:0.15em; text-transform:uppercase;
+    color:var(--accent); font-weight:600; line-height:1.7; }
+
+  h1{ font-family:"Newsreader",Georgia,"Times New Roman",serif;
+    font-weight:500; font-size:22pt; line-height:1.08; letter-spacing:-0.01em;
+    margin:2px 0 4px; color:var(--ink); }
+  .dek{ font-family:"Newsreader",Georgia,serif; font-style:italic; font-size:13pt;
+    color:var(--inkSecondary); margin:0 0 16px; }
+
+  h2{ font-size:9pt; letter-spacing:0.14em; text-transform:uppercase; font-weight:700;
+    color:var(--accent); margin:15px 0 7px; padding-bottom:4px;
+    border-bottom:1px solid var(--rule); }
+
+  p{ margin:0 0 7px; }
+  strong{ font-weight:600; color:var(--ink); }
+  a{ color:var(--accent); text-decoration:none; }
+  a strong{ color:var(--accent); }
+  em{ color:var(--inkSecondary); }
+  /* Standfirst, matching the web page's `text-xl` lede: a step up from the
+     11pt body, a step below the 13pt serif dek above it. Centred, like the
+     lede on the web page. */
+  .lead{ font-size:12.5pt; line-height:1.38; margin-bottom:2px; text-align:center; }
+  .lead strong{ color:var(--ink); }
+  /* `.lead strong` (class + element) outranks the template's `a strong`
+     (element + element), so a bold run inside a link silently reverts to ink.
+     Restore the accent for the linked organization name in the lead. */
+  .lead a strong{ color:var(--accent); }
+
+  ol.steps{ margin:0 0 7px; padding-left:0; list-style:none; counter-reset:step; }
+  ol.steps>li{ counter-increment:step; position:relative; padding-left:27px; margin-bottom:7px; }
+  ol.steps>li::before{ content:counter(step); position:absolute; left:0; top:1px;
+    width:18px; height:18px; border-radius:50%; background:var(--accent); color:#fff;
+    font-size:9.5pt; font-weight:700; display:flex; align-items:center; justify-content:center; }
+
+  ul.asks{ margin:0 0 7px; padding-left:0; list-style:none; }
+  ul.asks>li{ position:relative; padding-left:13px; margin-bottom:3px; }
+  ul.asks>li::before{ content:""; position:absolute; left:0; top:5px; width:5px; height:5px;
+    background:var(--accent); border-radius:1px; }
+
+  .subhead{ font-weight:600; color:var(--ink); margin:8px 0 4px; }
+
+  .note{ font-family:"Newsreader",Georgia,serif; font-style:italic; font-size:11pt;
+    color:var(--inkSecondary); background:transparent; border-left:2px solid var(--accent);
+    padding:4px 11px; margin:7px 0; line-height:1.42; }
+
+  table{ width:100%; border-collapse:collapse; margin:5px 0 7px; font-size:10.5pt; }
+  th{ text-align:left; font-size:8.5pt; letter-spacing:0.08em; text-transform:uppercase;
+    color:var(--inkMuted); font-weight:700; border-bottom:1.5px solid var(--ruleStrong);
+    padding:4px 8px 4px 0; }
+  td{ padding:7px 8px 7px 0; border-bottom:1px solid var(--rule); vertical-align:top; color:var(--inkSecondary); }
+  tr.total td{ border-bottom:none; border-top:1.5px solid var(--ink); color:var(--ink);
+    font-weight:700; padding-top:5px; }
+
+  .risk{ font-size:11pt; color:var(--inkSecondary); background:var(--paperElevated);
+    border:1px solid var(--ruleStrong); border-radius:3px; padding:9px 11px; margin:9px 0; line-height:1.45; }
+
+  /* Colophon line — boilerplate credit, deliberately below the 11pt reading
+     floor in the same way the sign-off is. Not a claim anyone reads to act on. */
+  .fineprint{ font-family:"Newsreader",Georgia,serif; font-style:italic;
+    font-size:9.5pt; color:var(--inkMuted); margin:8px 0 0; }
+  .fineprint.centered{ text-align:center; }
+
+  hr{ border:none; border-top:1px solid var(--rule); margin:10px 0 6px; }
+  .sig{ font-size:9.5pt; color:var(--inkMuted); text-align:center; }
+  .sig a{ color:var(--inkMuted); }
+
+  /* Audience table: label column left, prose right. Keeps four audiences
+     legible on paper without four repeated sub-headings. */
+  table.audiences td:first-child{ width:23%; color:var(--ink); font-weight:600; }
+  table.audiences td:last-child{ padding-right:0; }
+  /* Override the global row-level break guard for this one table: the rows
+     are long prose blocks, so holding each whole pushes a row to the next
+     page and strands a half-page of white. Breaking mid-paragraph inside a
+     row costs nothing here — there is no figure or total to keep together. */
+  table.audiences,table.audiences tr,table.audiences td{ break-inside:auto; }
+  /* The template welds the sign-off to what precedes it via
+     `break-before:avoid` on hr and .sig. Nothing in this document needs that,
+     and leaving it on strands the tail on a third page. Released here; the
+     closing org note uses .note rather than the bordered .risk box for the
+     same reason (a break-inside:avoid box in the tail forces the same break). */
+  hr,.sig{ break-before:auto; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="masthead">
+    <img src="axiom-full-w350-gradient.svg" class="logo" alt="Axiom Foundation">
+    <div class="kicker">
+      Organization overview<br>July 2026
+    </div>
+  </div>
+
+  <h1>Computable law for all.</h1>
+
+  <p class="lead">The rules that decide who gets food assistance, health coverage, and tax credits live in closed code that no one outside the vendor can check. <a href="https://axiom.org"><strong>The Axiom Foundation</strong></a> publishes those rules in the open &mdash; cited, computable, and verified.</p>
+
+  <h2>What we do</h2>
+
+  <ol class="steps">
+    <li><strong>Encode &mdash; we turn the law into software.</strong> An encoder pipeline reads a statute and drafts its encoding in RuleSpec. Every value cites its authority, every clause carries its effective dates, and each decision is recorded alongside the source text.</li>
+    <li><strong>Verify &mdash; a deterministic gauntlet decides what ships.</strong> Every draft must compile and pass its test suite to merge, and oracles cross-check results against external engines &mdash; so the model that wrote the rules never grades its own work.</li>
+    <li><strong>Publish &mdash; we put the whole chain in public.</strong> The Axiom App holds the source document, the encoding, the validation record, and the computation graph in one place, openly licensed &mdash; so a claim about what a rule computes is something you can check.</li>
+  </ol>
+
+  <!-- Licences verified against the repos, not paraphrased: rulespec-* carry
+       CC BY 4.0, the engine / encoder / oracles carry MIT. -->
+  <p class="fineprint">Encodings are published under CC BY 4.0 and the code under MIT &mdash; free to use, modify, and redistribute, with attribution.</p>
+
+  <h2>What we enable</h2>
+
+  <table class="audiences">
+    <tbody>
+      <tr>
+        <td>Government</td>
+        <td><strong>Stop paying to re-implement the same rules</strong> &mdash; one cited, dated, verified encoding that delivery systems, auditors, and legislators all work from.</td>
+      </tr>
+      <tr>
+        <td>Frontier AI labs</td>
+        <td><strong>Make AI truthful about the law</strong> &mdash; executable, cited code a model can call instead of guess, and an evaluation set for scoring what it answers unassisted.</td>
+      </tr>
+      <tr>
+        <td>Research</td>
+        <td><strong>A citable, executable corpus of law</strong> &mdash; effective-dated encodings cross-checked against external engines, and a computation graph that is analyzable data.</td>
+      </tr>
+      <tr>
+        <td>Builders</td>
+        <td><strong>Ground truth for the rules your product touches</strong> &mdash; the hardest, least differentiated layer of your stack, maintained in the open instead of by you.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Where to start</h2>
+
+  <p>Open a rule and read the statute next to the code that runs it.</p>
+
+
+  <ul class="asks">
+    <li><strong>Use the app</strong> &mdash; <a href="https://axiom.org/app">axiom.org/app</a>.</li>
+    <li><strong>Get in touch</strong> &mdash; <a href="mailto:hello@axiom.org">hello@axiom.org</a>.</li>
+    <li><strong>Meet the team</strong> &mdash; <a href="https://axiom.org/team">axiom.org/team</a>.</li>
+    <li><strong>Subscribe for updates</strong> &mdash; newsletters, product releases, and research: <a href="https://axiom-foundation.us12.list-manage.com/subscribe?u=43b8282de112809c41a3cff2c&amp;id=fbea2dd394">join the mailing list</a>.</li>
+  </ul>
+
+  <p class="fineprint centered">A fiscally sponsored project of the PSL Foundation.</p>
+
+  <hr>
+  <p class="sig"><a href="mailto:hello@axiom.org">hello@axiom.org</a> &middot; <a href="https://axiom.org">axiom.org</a> &middot; <a href="https://github.com/TheAxiomFoundation">github.com/TheAxiomFoundation</a></p>
+
+</div>
+</body>
+</html>

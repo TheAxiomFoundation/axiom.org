@@ -83,13 +83,11 @@ describe("CoveragePage", () => {
     expect(screen.getByText("Source documents")).toBeInTheDocument();
     expect(screen.getByText("Provisions")).toBeInTheDocument();
     expect(screen.getByText("RuleSpec encodings")).toBeInTheDocument();
-    // Hero totals are recomputed over the US scope — sums of the US
-    // rows, not the data layer's global figures.
-    expect(screen.getByText("332")).toBeInTheDocument();
-    expect(screen.getByText("10,109")).toBeInTheDocument();
-    expect(screen.getByText("1,500")).toBeInTheDocument();
-    expect(screen.queryByText("405")).toBeNull();
-    expect(screen.queryByText("58,624")).toBeNull();
+    // Hero totals are the data layer's global figures — the whole
+    // stack, every jurisdiction.
+    expect(screen.getByText("405")).toBeInTheDocument();
+    expect(screen.getByText("58,624")).toBeInTheDocument();
+    expect(screen.getByText("4,875")).toBeInTheDocument();
     // Each layer carries its serif support line.
     expect(
       screen.getByText(/Statutes, regulations, and agency guidance/)
@@ -112,16 +110,21 @@ describe("CoveragePage", () => {
     expect(screen.getByText("Mississippi").closest("a")).toBeNull();
     expect(screen.getByText("300 encodings")).toBeInTheDocument();
 
-    // Only US jurisdictions are public for now — non-US rows are held
-    // back, and a single shown country means no filter row at all.
+    // Every jurisdiction is public, grouped by country with the
+    // national row first in each group; more than one country means
+    // the country filter row is present.
     const names = Array.from(
       document.querySelectorAll<HTMLElement>(".cov-rows .cov-row-name")
     ).map((el) => el.textContent);
-    expect(names).toEqual(["Mississippi", "Oklahoma", "US Federal"]);
-    expect(screen.queryByText("United Kingdom")).toBeNull();
+    expect(names).toEqual([
+      "United Kingdom",
+      "US Federal",
+      "Mississippi",
+      "Oklahoma",
+    ]);
     expect(
-      screen.queryByRole("group", { name: /filter by country/i })
-    ).toBeNull();
+      screen.getByRole("group", { name: /filter by country/i })
+    ).toBeInTheDocument();
 
     // No program concepts anywhere on the page.
     expect(screen.queryByText(/by program/i)).toBeNull();

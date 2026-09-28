@@ -124,13 +124,13 @@ describe("PlanningModelPage", () => {
       screen.getByRole("link", { name: "26 U.S.C. § 24" }),
     ).toHaveAttribute(
       "href",
-      "https://app.axiom-foundation.org/us/statute/26/24",
+      "https://axiom.org/us/statute/26/24",
     );
     expect(
       screen.getByRole("link", { name: "10 CCR 2506-1 § 4.110" }),
     ).toHaveAttribute(
       "href",
-      "https://app.axiom-foundation.org/us-co/regulation/10-ccr-2506-1/4.110",
+      "https://axiom.org/us-co/regulation/10-ccr-2506-1/4.110",
     );
   });
 });

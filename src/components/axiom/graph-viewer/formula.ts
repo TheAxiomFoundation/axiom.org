@@ -35,7 +35,7 @@ const KEYWORDS = new Set([
   "true", "false", "True", "False", "None", "in", "is",
 ]);
 
-function tokenize(src: string): Tok[] {
+function tokenize(src: string, strict = false): Tok[] {
   const out: Tok[] = [];
   let i = 0;
   while (i < src.length) {
@@ -55,6 +55,7 @@ function tokenize(src: string): Tok[] {
     if (/\d/.test(c)) {
       let j = i;
       while (j < src.length && /[\d.]/.test(src[j]!)) j++;
+      if (strict && !/^\d+(?:\.\d+)?$/.test(src.slice(i, j))) throw new Error("Unsupported number");
       out.push({ kind: "num", text: src.slice(i, j) });
       i = j;
       continue;
@@ -78,6 +79,7 @@ function tokenize(src: string): Tok[] {
     if (c === "]") { out.push({ kind: "rbracket", text: "]" }); i++; continue; }
     if (c === ",") { out.push({ kind: "comma", text: "," }); i++; continue; }
     if (c === ":") { out.push({ kind: "colon", text: ":" }); i++; continue; }
+    if (strict) throw new Error("Unsupported character");
     i++;
   }
   out.push({ kind: "eof", text: "" });
@@ -276,21 +278,46 @@ export function parseFormula(src: string): AstNode {
   }
 }
 
+/** Only return a diagram when the entire expression is representable. */
+export function parseFormulaStrict(src: string): AstNode | null {
+  try {
+    if (!src.trim() || src.length > 12000) return null;
+    const tokens = tokenize(src, true);
+    if (tokens.length > 1200) return null;
+    const parser = new Parser(tokens);
+    const ast = parser.parseExpr();
+    if (!parser.match("eof")) return null;
+    const valid = (value: unknown): boolean => {
+      if (typeof value === "number") return Number.isFinite(value);
+      if (!value || typeof value !== "object") return true;
+      if ("kind" in value && value.kind === "error") return false;
+      return Object.values(value).every(valid);
+    };
+    return valid(ast) ? ast : null;
+  } catch { return null; }
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Evaluator
 // ─────────────────────────────────────────────────────────────────────────
 
 export type EvalValue = number | boolean | string | null;
 
+/** A parameter's lookup table: one value per key, in key order. */
+export interface EvalTable {
+  rows: Array<{ key: string; value: string | number | boolean }>;
+}
+
 /**
  * Evaluate the AST against a lookup that resolves named identifiers to
  * concrete values (typically pulled from the engine's trace). Returns null
- * for sub-expressions we can't compute (table lookups, count_where without
- * member-level data, missing identifiers).
+ * for sub-expressions we can't compute (table lookups without the table's
+ * rows, count_where without member-level data, missing identifiers).
  */
 export function evalAst(
   ast: AstNode,
   lookup: (name: string) => EvalValue,
+  lookupTable?: (name: string) => EvalTable | null | undefined,
 ): EvalValue {
   switch (ast.kind) {
     case "ident":
@@ -300,23 +327,23 @@ export function evalAst(
     case "bool":
       return ast.value;
     case "logical": {
-      const l = evalAst(ast.left, lookup);
-      const r = evalAst(ast.right, lookup);
+      const l = evalAst(ast.left, lookup, lookupTable);
+      const r = evalAst(ast.right, lookup, lookupTable);
       if (l === null || r === null) return null;
       const lb = toBool(l);
       const rb = toBool(r);
       return ast.op === "and" ? lb && rb : lb || rb;
     }
     case "unary": {
-      const v = evalAst(ast.operand, lookup);
+      const v = evalAst(ast.operand, lookup, lookupTable);
       if (v === null) return null;
       if (ast.op === "not") return !toBool(v);
       if (ast.op === "-" && typeof v === "number") return -v;
       return null;
     }
     case "comparison": {
-      const l = evalAst(ast.left, lookup);
-      const r = evalAst(ast.right, lookup);
+      const l = evalAst(ast.left, lookup, lookupTable);
+      const r = evalAst(ast.right, lookup, lookupTable);
       if (l === null || r === null) return null;
       if (ast.op === "==") return l === r;
       if (ast.op === "!=") return l !== r;
@@ -332,8 +359,8 @@ export function evalAst(
       return null;
     }
     case "arith": {
-      const l = evalAst(ast.left, lookup);
-      const r = evalAst(ast.right, lookup);
+      const l = evalAst(ast.left, lookup, lookupTable);
+      const r = evalAst(ast.right, lookup, lookupTable);
       if (typeof l !== "number" || typeof r !== "number") return null;
       switch (ast.op) {
         case "+": return l + r;
@@ -344,12 +371,12 @@ export function evalAst(
       return null;
     }
     case "ifElse": {
-      const c = evalAst(ast.cond, lookup);
+      const c = evalAst(ast.cond, lookup, lookupTable);
       if (c === null) return null;
-      return toBool(c) ? evalAst(ast.then, lookup) : evalAst(ast.else_, lookup);
+      return toBool(c) ? evalAst(ast.then, lookup, lookupTable) : evalAst(ast.else_, lookup, lookupTable);
     }
     case "call": {
-      const args = ast.args.map((a) => evalAst(a, lookup));
+      const args = ast.args.map((a) => evalAst(a, lookup, lookupTable));
       switch (ast.name) {
         case "min":
           return args.every((a) => typeof a === "number")
@@ -358,6 +385,13 @@ export function evalAst(
         case "max":
           return args.every((a) => typeof a === "number")
             ? Math.max(...(args as number[]))
+            : null;
+        case "exactly_one":
+          // Judgment gate: holds when exactly one argument holds. Strict on
+          // types like min/max — anything non-boolean means the engine's
+          // trace, not us, owns the verdict.
+          return args.every((a) => typeof a === "boolean")
+            ? (args as boolean[]).filter(Boolean).length === 1
             : null;
         case "abs":
           return typeof args[0] === "number" ? Math.abs(args[0]) : null;
@@ -371,10 +405,19 @@ export function evalAst(
       // count_where / sum_where / etc. need member-level data we don't have here.
       return null;
     }
-    case "index":
-      // Table lookup (e.g. snap_max_allotment_table[5]) — engine resolves it,
-      // we can't (we don't have the table data on the client).
-      return null;
+    case "index": {
+      // Table lookup (e.g. snap_max_allotment_table[5]): resolvable when the
+      // caller has the table's rows; otherwise only the engine knows.
+      const table = ast.target.kind === "ident" ? lookupTable?.(ast.target.name) : null;
+      const key = table ? evalAst(ast.index, lookup, lookupTable) : null;
+      if (!table || key === null || typeof key === "boolean") return null;
+      const row =
+        table.rows.find((item) => item.key === String(key)) ??
+        (String(key).trim() === ""
+          ? undefined
+          : table.rows.find((item) => item.key.trim() !== "" && Number(item.key) === Number(key)));
+      return row ? row.value : null;
+    }
     case "error":
       return null;
   }

@@ -1,0 +1,194 @@
+/* Guided-tour popover, restyled from driver.js defaults into the
+ * reader's visual language: elevated paper card, serif title, mono
+ * micro-caps for progress, accent pill for the primary action. */
+
+.driver-popover.axiom-tour {
+  background: var(--color-paper-elevated);
+  color: var(--color-ink);
+  border: 1px solid var(--color-rule);
+  border-radius: 8px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.14);
+  padding: 18px 20px;
+  max-width: 320px;
+}
+
+.axiom-tour .driver-popover-title {
+  font-family: var(--f-serif);
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--color-ink);
+}
+
+.axiom-tour .driver-popover-description {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--color-ink-secondary);
+}
+
+.axiom-tour .driver-popover-progress-text {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--color-ink-muted);
+}
+
+.axiom-tour .driver-popover-footer {
+  margin-top: 14px;
+}
+
+.axiom-tour .driver-popover-footer button {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-shadow: none;
+  border-radius: 999px;
+  padding: 6px 14px;
+  transition: background-color 150ms, color 150ms, border-color 150ms;
+}
+
+/* Step CTA — a full-width accent pill under the description (e.g.
+ * "Open an example — the EITC"). Completing action, not navigation
+ * chrome, so it outranks the footer buttons visually. */
+.axiom-tour button.axiom-tour-action {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--color-accent);
+  background: var(--color-accent);
+  color: #fff;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background-color 150ms, border-color 150ms;
+}
+
+.axiom-tour button.axiom-tour-action:hover {
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+}
+
+/* When a CTA is present it is the primary — the footer's Done
+ * demotes to the ghost treatment so two accent pills don't compete. */
+.axiom-tour:has(.axiom-tour-action) .driver-popover-next-btn {
+  background: transparent;
+  border: 1px solid var(--color-rule);
+  color: var(--color-ink-secondary);
+}
+
+.axiom-tour:has(.axiom-tour-action) .driver-popover-next-btn:hover {
+  background: transparent;
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.axiom-tour .driver-popover-footer button.axiom-tour-skip {
+  background: transparent;
+  border: none;
+  padding-left: 0;
+  padding-right: 0;
+  margin-left: 14px;
+  margin-right: auto;
+  color: var(--color-ink-muted);
+  text-decoration: none;
+}
+
+.axiom-tour .driver-popover-footer button.axiom-tour-skip:hover {
+  background: transparent;
+  color: var(--color-ink);
+}
+
+.axiom-tour .driver-popover-prev-btn {
+  background: transparent;
+  border: 1px solid var(--color-rule);
+  color: var(--color-ink-secondary);
+}
+
+.axiom-tour .driver-popover-prev-btn:hover {
+  background: transparent;
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.axiom-tour .driver-popover-next-btn {
+  background: var(--color-accent);
+  border: 1px solid var(--color-accent);
+  color: #fff;
+}
+
+.axiom-tour .driver-popover-next-btn:hover {
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+  color: #fff;
+}
+
+.axiom-tour .driver-popover-close-btn {
+  color: var(--color-ink-muted);
+}
+
+.axiom-tour .driver-popover-close-btn:hover {
+  color: var(--color-ink);
+}
+
+/* Driver draws the arrow with border tricks against its default
+ * white card — repaint each side to match the paper. */
+.axiom-tour .driver-popover-arrow-side-left.driver-popover-arrow {
+  border-left-color: var(--color-paper-elevated);
+}
+.axiom-tour .driver-popover-arrow-side-right.driver-popover-arrow {
+  border-right-color: var(--color-paper-elevated);
+}
+.axiom-tour .driver-popover-arrow-side-top.driver-popover-arrow {
+  border-top-color: var(--color-paper-elevated);
+}
+.axiom-tour .driver-popover-arrow-side-bottom.driver-popover-arrow {
+  border-bottom-color: var(--color-paper-elevated);
+}
+
+/* Replay affordance — a quiet labeled pill pinned to the corner the
+ * Plane's results sheet leaves free (it starts at left: 60px). The
+ * bare "?" read as decoration; the word says what it does. */
+.axiom-tour-replay {
+  position: fixed;
+  bottom: 16px;
+  left: 16px;
+  z-index: 90;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--color-rule);
+  background: var(--color-paper-elevated);
+  color: var(--color-ink-muted);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.85;
+  transition: color 150ms, border-color 150ms, opacity 150ms;
+}
+
+.axiom-tour-replay:hover,
+.axiom-tour-replay:focus-visible {
+  opacity: 1;
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+/* The embed iframe shows the reader without site chrome — no tour
+ * button either. */
+.embed-page .axiom-tour-replay {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .axiom-tour-replay {
+    display: none;
+  }
+}

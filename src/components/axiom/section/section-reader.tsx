@@ -17,6 +17,7 @@ import { ActionStrip } from "./action-strip";
 import { CollapsibleText } from "./collapsible-text";
 import { primaryProgram } from "./primary-program";
 import { TrackView } from "@/components/axiom/track-view";
+import { ReaderTour } from "@/components/axiom/tour/reader-tour";
 import {
   builderUrlForRule,
   composeGraphViewerUrl,
@@ -26,6 +27,11 @@ import {
   ruleGraphFocus,
 } from "@/lib/axiom/runtime/graph-links";
 import { formatLegalCitation } from "@/lib/axiom/citation/format";
+import {
+  sourceCreditForUrl,
+  sourceLinkLabel,
+} from "@/lib/axiom/source-attribution";
+import { baseDirection } from "@/lib/axiom/text-direction";
 
 /**
  * Server-rendered reading column for a section and its full
@@ -79,10 +85,10 @@ function EncodingStatusLine({ data }: { data: SectionPageData }) {
           .map((provision) => provision.anchor)
       : data.bodyChunks.map((chunk) => chunk.anchor);
   const encodedAnchors = new Set(
-    data.encodedRules.flatMap((entry) => entry.anchors)
+    data.encodedRules.flatMap((entry) => entry.anchors),
   );
   const encodedCount = unitAnchors.filter((anchor) =>
-    encodedAnchors.has(anchor)
+    encodedAnchors.has(anchor),
   ).length;
 
   return (
@@ -104,10 +110,12 @@ function EncodingStatusLine({ data }: { data: SectionPageData }) {
           title={
             encodedCount === unitAnchors.length
               ? "Every subsection has encoded rules"
-              : `Encoded so far: ${unitAnchors
-                  .filter((anchor) => encodedAnchors.has(anchor))
-                  .map((anchor) => `(${anchor})`)
-                  .join(" ") || "none at subsection level"}`
+              : `Encoded so far: ${
+                  unitAnchors
+                    .filter((anchor) => encodedAnchors.has(anchor))
+                    .map((anchor) => `(${anchor})`)
+                    .join(" ") || "none at subsection level"
+                }`
           }
         >
           {unitAnchors.length <= COVERAGE_MAP_MAX_UNITS && (
@@ -169,19 +177,19 @@ function Breadcrumbs({ data }: { data: SectionPageData }) {
   // section-depth paths to this reader and browse levels to the v1
   // tree browser.
   return (
-    <nav aria-label="Breadcrumb">
+    <nav aria-label="Breadcrumb" data-tour="breadcrumbs">
       <ol className="flex flex-wrap items-center gap-1 font-mono text-[11px] uppercase tracking-wider text-[var(--color-ink-muted)]">
         {data.breadcrumbs.map((item, index) => (
           <li key={item.href} className="flex items-center gap-1">
             {index > 0 && <span aria-hidden>/</span>}
             {index === data.breadcrumbs.length - 1 ? (
-              <span aria-current="page" className="text-[var(--color-ink-secondary)]">
+              <span aria-current="page" className="text-[var(--color-ink)]">
                 {item.label}
               </span>
             ) : (
               <Link
                 href={item.href}
-                className="hover:text-[var(--color-ink)] transition-colors"
+                className="text-[var(--color-ink-secondary)] underline decoration-[var(--color-rule)] underline-offset-[3px] hover:text-[var(--color-accent)] hover:decoration-current transition-colors"
               >
                 {item.label}
               </Link>
@@ -205,7 +213,6 @@ function AnchorLink({ anchor }: { anchor: string }) {
   );
 }
 
-
 /** Top-level provision with its whole subtree — one collapsible unit
  *  so provision-backed sections compress the same way chunked ones
  *  do. Heading, chips, and actions stay outside the clamp. */
@@ -223,7 +230,7 @@ function ProvisionGroup({
   const anchor = head.anchor;
   const focused = data.focusAnchor === anchor;
   const groupRules = data.encodedRules.filter((entry) =>
-    entry.anchors.includes(anchor)
+    entry.anchors.includes(anchor),
   );
   const { graphHref, builderHref } = focused
     ? subsectionActionHrefs(data, anchor, groupRules)
@@ -233,7 +240,7 @@ function ProvisionGroup({
     (head.rule.body?.length ?? 0) +
     childProvisions.reduce(
       (sum, child) => sum + (child.rule.body?.length ?? 0),
-      0
+      0,
     );
   const clamp = data.encodedRules.length > 0 && !focused && textLength > 420;
   const content = (
@@ -409,22 +416,22 @@ function ProvisionBlock({
 function subsectionActionHrefs(
   data: SectionPageData,
   anchor: string,
-  subsectionRules: SectionPageData["encodedRules"]
+  subsectionRules: SectionPageData["encodedRules"],
 ): { graphHref: string | null; builderHref: string | null } {
   const sectionFocus = graphFocusForCitationPath(data.citationPath);
   const slug = data.citationPath.split("/")[0];
   const graphProgram =
     data.programs.find(
       (program) =>
-        program.status === "ready" && program.anchors.includes(anchor)
+        program.status === "ready" && program.anchors.includes(anchor),
     ) ??
     data.programs.find((program) => program.anchors.includes(anchor)) ??
     primaryProgram(data.programs);
   const inPrograms = new Set(
-    data.programs.flatMap((program) => program.ruleNames)
+    data.programs.flatMap((program) => program.ruleNames),
   );
   const sorted = [...subsectionRules].sort(
-    (a, b) => Number(b.kind === "derived") - Number(a.kind === "derived")
+    (a, b) => Number(b.kind === "derived") - Number(a.kind === "derived"),
   );
   // No package covers this section: compose the graph on demand from
   // the subsection's encoded file instead of dropping the link.
@@ -434,7 +441,7 @@ function subsectionActionHrefs(
       ? graphViewerUrl(graphProgram, `${sectionFocus}/${anchor}`)
       : composeRule && slug
         ? composeGraphViewerUrl(
-            fileGraphFocus(slug, data.ruleFiles[composeRule.name])
+            fileGraphFocus(slug, data.ruleFiles[composeRule.name]),
           )
         : null;
   // Builder gets the section-level legal id: its deep-link handler
@@ -468,9 +475,7 @@ function stripComposeHref(data: SectionPageData): string | null {
   const rule = data.encodedRules.find((entry) => data.ruleFiles[entry.name]);
   if (!rule) return null;
   const slug = data.citationPath.split("/")[0];
-  return composeGraphViewerUrl(
-    fileGraphFocus(slug, data.ruleFiles[rule.name])
-  );
+  return composeGraphViewerUrl(fileGraphFocus(slug, data.ruleFiles[rule.name]));
 }
 
 const FOCUSED_SUBSECTION_CLASS =
@@ -485,7 +490,7 @@ function ChunkBlock({
 }) {
   const focused = data.focusAnchor === chunk.anchor;
   const chunkRules = data.encodedRules.filter((rule) =>
-    rule.anchors.includes(chunk.anchor)
+    rule.anchors.includes(chunk.anchor),
   );
   const { graphHref, builderHref } = focused
     ? subsectionActionHrefs(data, chunk.anchor, chunkRules)
@@ -509,7 +514,13 @@ function ChunkBlock({
       id={chunk.anchor}
       className={`group scroll-mt-24 ${focused ? FOCUSED_SUBSECTION_CLASS : ""}`}
     >
-      <h2 className="mt-7 flex items-baseline gap-2">
+      {/* The row follows the chunk's text, not its designator: "(1)"
+          is all weak characters, so auto alone would leave a Hebrew
+          chunk's heading row left-to-right. */}
+      <h2
+        dir={baseDirection(`${chunk.label} ${chunk.text}`) ?? "auto"}
+        className="mt-7 flex items-baseline gap-2"
+      >
         <Link
           href={`/${data.citationPath}/${chunk.anchor}`}
           className="font-mono text-sm text-[var(--color-ink-muted)] hover:text-[var(--color-accent)] transition-colors"
@@ -561,7 +572,9 @@ function NeighborNav({ data }: { data: SectionPageData }) {
           rel="prev"
           className="max-w-[45%] truncate text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)] transition-colors"
         >
-          ← {data.prev.label}
+          {/* The arrows are page chrome and keep their side; <bdi>
+              isolates a Hebrew label so it cannot reorder them. */}
+          ← <bdi>{data.prev.label}</bdi>
         </Link>
       ) : (
         <span />
@@ -572,7 +585,7 @@ function NeighborNav({ data }: { data: SectionPageData }) {
           rel="next"
           className="max-w-[45%] truncate text-right text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)] transition-colors"
         >
-          {data.next.label} →
+          <bdi>{data.next.label}</bdi> →
         </Link>
       ) : (
         <span />
@@ -581,17 +594,23 @@ function NeighborNav({ data }: { data: SectionPageData }) {
   );
 }
 
-export function SectionReader({ data }: { data: SectionPageData }) {
+export function SectionReader({
+  data,
+  highlightRule = null,
+}: {
+  data: SectionPageData;
+  /** Rule name the visitor navigated from (graph inspector's
+   *  Read-the-law) — the rail spotlights its card. */
+  highlightRule?: string | null;
+}) {
   const heading = data.root.heading?.trim();
   const effective = formatDate(data.root.effective_date);
   const outgoing = buildInlineReferences(
     data.refBody ?? data.root.body,
     data.citationPath,
-    data.rootRefs
+    data.rootRefs,
   ).filter((ref) => ref.direction === "outgoing");
-  const incoming = data.rootRefs.filter(
-    (ref) => ref.direction === "incoming"
-  );
+  const incoming = data.rootRefs.filter((ref) => ref.direction === "incoming");
   const sectionFocus = graphFocusForCitationPath(data.citationPath);
 
   return (
@@ -611,6 +630,7 @@ export function SectionReader({ data }: { data: SectionPageData }) {
       </aside>
 
       <article data-testid="section-reader">
+        <ReaderTour />
         <CitationPreviewLayer />
         {data.focusAnchor && <FocusScroll anchor={data.focusAnchor} />}
         <div className="mb-4">
@@ -620,6 +640,7 @@ export function SectionReader({ data }: { data: SectionPageData }) {
         <header className="border-b border-[var(--color-rule)] pb-5">
           {heading && (
             <h1
+              dir="auto"
               className="text-2xl font-semibold text-[var(--color-ink)]"
               style={{ fontFamily: "var(--f-serif)" }}
             >
@@ -634,9 +655,12 @@ export function SectionReader({ data }: { data: SectionPageData }) {
                 href={data.root.source_url}
                 target="_blank"
                 rel="noreferrer"
+                // A volunteer consolidation is not an official
+                // publication: it carries its own name.
+                title={sourceCreditForUrl(data.root.source_url)?.linkTitle}
                 className="underline decoration-[var(--color-rule)] underline-offset-2 hover:text-[var(--color-ink)] transition-colors"
               >
-                Official source
+                {sourceLinkLabel(data.root.source_url)}
               </a>
             )}
           </div>
@@ -659,7 +683,7 @@ export function SectionReader({ data }: { data: SectionPageData }) {
             {data.intro && (
               <div className="mt-6">
                 <RuleBody
-                                    body={data.intro}
+                  body={data.intro}
                   refs={refsForChunk(data.rootRefs, data.intro)}
                   citationPath={data.root.citation_path ?? undefined}
                 />
@@ -673,7 +697,7 @@ export function SectionReader({ data }: { data: SectionPageData }) {
           data.root.body && (
             <div className="mt-6">
               <RuleBody
-                                body={data.root.body}
+                body={data.root.body}
                 refs={data.rootRefs}
                 citationPath={data.root.citation_path ?? undefined}
               />
@@ -700,13 +724,13 @@ export function SectionReader({ data }: { data: SectionPageData }) {
                 sectionFocus={sectionFocus}
               />
             ))
-          )
+          ),
         )}
 
         {data.truncated && (
           <p className="mt-8 text-sm text-[var(--color-ink-muted)]">
-            This section is unusually large; deeper subsections were cut
-            off. Open a subsection via its designator link — for example{" "}
+            This section is unusually large; deeper subsections were cut off.
+            Open a subsection via its designator link — for example{" "}
             {data.toc[0] ? (
               <Link
                 href={`/${data.citationPath}/${data.toc[0].anchor.split("-")[0]}`}
@@ -729,6 +753,7 @@ export function SectionReader({ data }: { data: SectionPageData }) {
           "prove faithfulness" pairing from the v1 detail panel. */}
       <aside className="lg:sticky lg:top-24 lg:self-start lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto">
         <EncodingRail
+          highlightRule={highlightRule}
           encoding={data.encoding}
           jurisdiction={data.root.jurisdiction}
           citationPath={data.root.citation_path}
@@ -748,6 +773,8 @@ export function SectionReader({ data }: { data: SectionPageData }) {
           incoming={incoming}
           programs={data.programs}
           ruleFiles={data.ruleFiles}
+          citedByFiles={data.citedByFiles}
+          citedByOverflow={data.citedByOverflow}
         />
       </aside>
     </div>

@@ -43,38 +43,52 @@ export default async function BlogPage() {
           </Reveal>
         ) : (
           <ol className="m-0 list-none p-0">
-            {posts.map((post) => {
+            {posts.map((post, index) => {
               const date = formatDate(post.publishedAt);
+              const titleId = `blog-post-${index}`;
               return (
-                <Reveal
-                  as="li"
-                  key={post.slug}
-                  className="border-t border-[var(--color-rule)] py-10 grid gap-3 md:grid-cols-[220px_minmax(0,1fr)] md:gap-12"
-                >
-                  <p className="m-0 font-mono text-[0.72rem] tracking-[0.12em] uppercase text-[var(--color-ink-muted)] md:pt-1.5">
-                    {date}
-                    {post.readingTime ? (
-                      <>
-                        {" "}
-                        &middot; {post.readingTime} min
-                      </>
-                    ) : null}
-                  </p>
-                  <div>
-                    <h2 className="m-0 mb-3 font-display text-[1.4rem] font-light tracking-[0.02em] leading-snug">
-                      <Link
-                        href={`/blog/${post.slug}`}
-                        className="text-[var(--color-ink)] no-underline hover:text-[var(--color-accent)] transition-colors"
-                      >
+                <Reveal as="li" key={post.slug} className="border-t border-[var(--color-rule)]">
+                  <Link
+                    href={`/blog/${post.slug}`}
+                    aria-labelledby={titleId}
+                    className={`group grid items-center gap-6 py-9 text-[var(--color-ink)] no-underline outline-offset-8 ${post.featureImage ? "md:grid-cols-[280px_minmax(0,1fr)] md:gap-9" : ""}`}
+                  >
+                    {post.featureImage && (
+                      <div className="aspect-[16/10] overflow-hidden rounded-sm bg-[var(--color-surface)]">
+                        {/* Ghost supplies the original cover URL and its editorial alt text. */}
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={post.featureImage}
+                          alt={post.featureImageAlt ?? ""}
+                          width={560}
+                          height={350}
+                          loading={index === 0 ? "eager" : "lazy"}
+                          decoding="async"
+                          className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.025] motion-reduce:transform-none motion-reduce:transition-none"
+                        />
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      {(date || post.readingTime) && (
+                        <p className="m-0 mb-3 font-mono text-[0.68rem] tracking-[0.1em] uppercase text-[var(--color-ink-muted)]">
+                          {date && <time dateTime={post.publishedAt!}>{date}</time>}
+                          {date && post.readingTime ? " · " : null}
+                          {post.readingTime ? `${post.readingTime} min read` : null}
+                        </p>
+                      )}
+                      <h2 id={titleId} className="m-0 mb-3 font-display text-[1.5rem] font-light tracking-[0.01em] leading-snug transition-colors group-hover:text-[var(--color-accent)]">
                         {post.title}
-                      </Link>
-                    </h2>
-                    {post.excerpt ? (
-                      <p className="m-0 font-body text-[1.02rem] text-[var(--color-ink-secondary)] leading-relaxed text-pretty">
-                        {post.excerpt}
-                      </p>
-                    ) : null}
-                  </div>
+                      </h2>
+                      {post.excerpt && (
+                        <p className="m-0 font-body text-[1.02rem] text-[var(--color-ink-secondary)] leading-relaxed text-pretty line-clamp-3">
+                          {post.excerpt}
+                        </p>
+                      )}
+                      <span aria-hidden="true" className="mt-4 inline-flex items-center gap-2 font-mono text-[0.7rem] text-[var(--color-accent)]">
+                        Read article <span>→</span>
+                      </span>
+                    </div>
+                  </Link>
                 </Reveal>
               );
             })}

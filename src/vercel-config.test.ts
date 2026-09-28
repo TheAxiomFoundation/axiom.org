@@ -116,19 +116,52 @@ describe("demo zone rewrites", () => {
     },
   );
 
-  it("redirects /guidance to its app — it serves at root, so a path rewrite would break its assets", () => {
+  it("guidance joins the gallery scheme — its app now serves under /guidance, and its ROOT canonically redirects to axiom.org/guidance, so the old root redirect was an infinite loop", () => {
     expect(config.redirects).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           source: "/guidance",
-          destination: "https://guidance-impact-visualizer.vercel.app/",
+          destination: "/gallery/guidance",
+          permanent: false,
+        }),
+        expect.objectContaining({
+          source: "/guidance/:path(.*)",
+          destination: "/gallery/guidance/:path(.*)",
           permanent: false,
         }),
       ]),
     );
-    expect(config.rewrites).not.toEqual(
+    expect(config.rewrites).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ source: "/guidance" }),
+        expect.objectContaining({
+          source: "/gallery/guidance",
+          destination:
+            "https://guidance-impact-visualizer.vercel.app/guidance",
+        }),
+        expect.objectContaining({
+          source: "/gallery/guidance/:path(.*)",
+          destination:
+            "https://guidance-impact-visualizer.vercel.app/guidance/:path(.*)",
+        }),
+      ]),
+    );
+    // The demo's own redirect must never point back at the app's root
+    // — that root 308s to axiom.org/guidance, closing the loop.
+    for (const redirect of config.redirects) {
+      expect(redirect.destination).not.toBe(
+        "https://guidance-impact-visualizer.vercel.app/",
+      );
+    }
+  });
+
+  it("rewrites the working-paper manuscript tree to the receipt Pages deployment", () => {
+    expect(config.rewrites).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "/receipt/paper/web/:path(.*)",
+          destination:
+            "https://theaxiomfoundation.github.io/receipt/paper/web/:path(.*)",
+        }),
       ]),
     );
   });

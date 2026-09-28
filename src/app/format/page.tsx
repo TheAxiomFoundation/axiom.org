@@ -29,7 +29,7 @@ export default function FormatPage() {
               <ArrowRightIcon className="w-5 h-5" />
             </a>
             <a
-              href="https://github.com/TheAxiomFoundation/axiom-rules-engine"
+              href="https://github.com/TheAxiomFoundation/axiom-rules-engine/blob/main/docs/rulespec-format.md"
               className="btn-outline"
             >
               Spec on GitHub

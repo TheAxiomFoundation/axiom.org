@@ -28,6 +28,12 @@ const nextConfig: NextConfig = {
         source: "/receipt/api/:path*",
         destination: "https://theaxiomfoundation.github.io/receipt/:path*",
       },
+      // Dev-parity mirror for the working-paper manuscript embed; the
+      // wrapper page at /receipt/paper is a normal route.
+      {
+        source: "/receipt/paper/web/:path*",
+        destination: "https://theaxiomfoundation.github.io/receipt/paper/web/:path*",
+      },
       {
         source: "/proposal",
         destination: "https://proposal.axiom-foundation.org/",

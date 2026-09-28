@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import dynamic from "next/dynamic";
+import { Scan } from "lucide-react";
 import {
   humanizeCitation,
   humanizeRuleName,
@@ -27,12 +28,14 @@ import {
   shapeRendersNodes,
   buildFieldLayout,
   computeFieldHighlights,
+  clampFieldTransform,
   countFootprintCollisions,
   groupSeparationStats,
   fieldComposeHref,
   fieldToView,
   hitTestDot,
   interpolateTransform,
+  MAX_FIELD_ZOOM,
   panField,
   viewToField,
   zoomFieldAt,
@@ -79,6 +82,11 @@ const ComposeViewer = dynamic(
 
 const JURISDICTION_LABELS: Record<string, string> = {
   us: "US · Federal",
+  be: "BE · Federal",
+  "be-vlg": "BE · Flanders",
+  "be-wal": "BE · Wallonia",
+  "be-bru": "BE · Brussels",
+  "be-dg": "BE · German-speaking Community",
 };
 
 const ZOOM_IN_MS = 640;
@@ -111,7 +119,19 @@ function composeTargetFromLocation(): string | null {
 export function CorpusField({
   onPick,
   frame = true,
+  spotlight = null,
+  country = "us",
+  suppliedModules,
+  spread = false,
 }: {
+  /** Which country family's subtrees the field shows ("us", "be").
+   *  Hosts with a country switch pass their selection; the landing
+   *  keeps the US default. */
+  country?: string;
+  /** A host-filtered collection, shared with its list and search. */
+  suppliedModules?: CorpusModule[];
+  /** Distribute a source’s provisions over the canvas without jurisdiction bubbles. */
+  spread?: boolean;
   /** Embedded mode (the viewer's launcher): picking a subtree calls
    *  this instead of pushState + mounting the compose viewer overlay
    *  — the host is already the viewer. Omitted on the /axiom landing,
@@ -120,11 +140,16 @@ export function CorpusField({
   /** frame=false: full-bleed — no border/panel chrome and no fixed
    *  aspect; the host sizes the box and the camera cover-fits it. */
   frame?: boolean;
+  /** A module target the guided tour wants presented: the camera
+   *  glides most of the way to its cluster and its hover ring + label
+   *  pin, without opening it. Clearing glides back. */
+  spotlight?: string | null;
 } = {}) {
   const embedded = Boolean(onPick);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [modules, setModules] = useState<CorpusModule[] | null>(null);
+  const [loadedModules, setModules] = useState<CorpusModule[] | null>(null);
+  const modules = suppliedModules ?? loadedModules;
   const [source, setSource] = useState<CorpusSource>("snapshot");
   const [hovered, setHovered] = useState<FieldDot | null>(null);
   // The camera. A ref mirrors the state so rAF animation frames and
@@ -159,10 +184,11 @@ export function CorpusField({
   );
 
   useEffect(() => {
+    if (suppliedModules) return;
     let cancelled = false;
     // Live mirror first, committed snapshot as ballast — the field is
     // never empty just because the API is down.
-    loadCorpusModules().then(
+    loadCorpusModules({ country }).then(
       ({ modules: loaded, source: loadedSource }) => {
         if (cancelled) return;
         setModules(loaded);
@@ -177,7 +203,7 @@ export function CorpusField({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [country, suppliedModules]);
 
   // Doors are computed from the census — the largest / most intricate
   // subtrees, capped per jurisdiction — and labeled by citation.
@@ -188,10 +214,13 @@ export function CorpusField({
         module.target,
         // Headline rule first, citation second — "Elderly Disabled
         // Credit — 26 USC § 22"; citation-only when the census has
-        // no headline.
-        module.headlineRule
-          ? `${humanizeRuleName(module.headlineRule)} — ${humanizeCitation(module.target)}`
-          : humanizeCitation(module.target),
+        // no headline. Belgian topic paths already read as names
+        // ("Income Tax — Benefits — Company Car (Belgium)"): the
+        // citation alone, or headline+citation would say every word
+        // twice and overflow the chip.
+        module.jurisdiction.startsWith("be") || !module.headlineRule
+          ? humanizeCitation(module.target)
+          : `${humanizeRuleName(module.headlineRule)} — ${humanizeCitation(module.target)}`,
       ])
     );
   }, [modules]);
@@ -199,8 +228,22 @@ export function CorpusField({
     if (!modules) return [null, 0] as const;
     const startedAt = performance.now();
     const built = buildFieldLayout(modules, highlightLabels ?? undefined);
+    if (spread && built.dots.length) {
+      const columns = Math.ceil(Math.sqrt(built.dots.length * FIELD_WIDTH / FIELD_HEIGHT / 1.45));
+      const rows = Math.ceil(built.dots.length / columns);
+      const cellW = (FIELD_WIDTH - 40) / columns;
+      const cellH = (FIELD_HEIGHT - 40) / rows;
+      const maxRules = Math.max(1, ...built.dots.map(dot => dot.ruleCount));
+      built.dots.forEach((dot, index) => {
+        dot.x = 20 + (index % columns + .5) * cellW;
+        dot.y = 20 + (Math.floor(index / columns) + .34) * cellH;
+        dot.r = Math.min(cellW * .4, cellH * .30) * (.88 + .12 * Math.sqrt(dot.ruleCount / maxRules));
+        dot.highlightLabel = null;
+      });
+      built.clusters = [];
+    }
     return [built, performance.now() - startedAt] as const;
-  }, [modules, highlightLabels]);
+  }, [modules, highlightLabels, spread]);
   // The hard invariant, surfaced: zero intersecting footprint pairs
   // (checked once per layout, never per frame) — and the document
   // grouping, measurable: median inter-family vs intra-family
@@ -395,12 +438,12 @@ export function CorpusField({
       // the doors, source rings, and the hovered dot carry the
       // hierarchy. Hover restores full presence.
       const alpha =
-        dot === hovered ? 0.95 : dot.highlightLabel ? 0.9 : 0.5;
+        dot === hovered ? 0.95 : dot.highlightLabel ? 0.9 : spread ? 0.8 : 0.5;
       if (shape.kind === "true") {
         const { nodes, edges } = shape.motif;
         ctx.globalAlpha = alpha;
         ctx.strokeStyle = dot.color;
-        ctx.lineWidth = 0.4 / k;
+        ctx.lineWidth = (spread ? 0.7 : 0.4) / k;
         if (edges.length > 0) {
           // One path per module — a single stroke call keeps ~7.4k
           // edges cheap at far zoom.
@@ -477,8 +520,7 @@ export function CorpusField({
       // fallbacks only much closer), not already named by a door.
       if (
         !dot.highlightLabel &&
-        dot.r * pxPerUnit >= labelMinPx(dot) &&
-        dotEarnsLabel(dot)
+        (spread || (dot.r * pxPerUnit >= labelMinPx(dot) && dotEarnsLabel(dot)))
       ) {
         labelCandidates.push(dot);
       }
@@ -509,16 +551,22 @@ export function CorpusField({
           b.r - a.r
       );
       for (const dot of sorted) {
-        if (labelsDrawn >= 160) break;
+        if (!spread && labelsDrawn >= 160) break;
         const isHeadline = dot.headlineRule !== null;
-        if (!isHeadline && fallbackLabelsDrawn >= FALLBACK_LABELS_PER_FRAME) {
+        if (!spread && !isHeadline && fallbackLabelsDrawn >= FALLBACK_LABELS_PER_FRAME) {
           continue;
         }
         let entry = cache.get(dot.target);
         if (!entry) {
-          const text = dot.headlineRule
+          const raw = dot.headlineRule
             ? humanizeRuleName(dot.headlineRule)
             : humanizeCitation(dot.target);
+          // Inside a country's own field every rule repeating the
+          // country name is pure width — "Belgium Worker Pension …"
+          // reads as "Worker Pension …".
+          const text = dot.jurisdiction.startsWith("be")
+            ? raw.replace(/^Belgium /, "")
+            : raw;
           entry = {
             text,
             // measureText under the current font (field units) —
@@ -527,16 +575,43 @@ export function CorpusField({
           };
           cache.set(dot.target, entry);
         }
-        const w = entry.widthCss / pxPerUnit;
+        let label = entry.text;
+        let secondLine = "";
+        let w = entry.widthCss / pxPerUnit;
+        if (spread) {
+          const columns = Math.ceil(Math.sqrt(layout.dots.length * FIELD_WIDTH / FIELD_HEIGHT / 1.45));
+          const available = (FIELD_WIDTH - 40) / columns - 12;
+          if (w > available) {
+            const rows = Math.ceil(layout.dots.length / columns);
+            const canWrap = ((FIELD_HEIGHT - 40) / rows) * pxPerUnit > 75;
+            if (canWrap) {
+              const words = label.split(" ");
+              label = words.shift() ?? "";
+              while (words.length && ctx.measureText(`${label} ${words[0]}`).width <= available) label += ` ${words.shift()}`;
+              secondLine = words.join(" ");
+              if (ctx.measureText(secondLine).width > available) {
+                while (secondLine.length > 1 && ctx.measureText(secondLine + "…").width > available) secondLine = secondLine.slice(0, -1);
+                secondLine += "…";
+              }
+            }
+            if (ctx.measureText(label).width > available) {
+              while (label.length > 1 && ctx.measureText(label + "…").width > available) label = label.slice(0, -1);
+              label += "…";
+            }
+            w = Math.max(ctx.measureText(label).width, ctx.measureText(secondLine).width);
+          }
+        }
         const x = dot.x;
-        const y = dot.y + dot.r + 2 / k;
+        const spreadRows = spread ? Math.ceil(layout.dots.length / Math.ceil(Math.sqrt(layout.dots.length * FIELD_WIDTH / FIELD_HEIGHT / 1.45))) : 1;
+        const y = spread ? dot.y + ((FIELD_HEIGHT - 40) / spreadRows) * .32 + 3 / k : dot.y + dot.r + 2 / k;
         const collides = placed.some(
           (p) =>
-            Math.abs(p.y - y) < lineH &&
-            Math.abs(p.x - x) < (p.w + w) / 2 + fontField
+            Math.abs(p.y - y) < lineH * 1.7 &&
+            Math.abs(p.x - x) < (p.w + w) / 2 + fontField * 3
         );
         if (collides) continue;
-        ctx.fillText(entry.text, x, y);
+        ctx.fillText(label, x, y);
+        if (secondLine) ctx.fillText(secondLine, x, y + lineH);
         placed.push({ x, y, w });
         labelsDrawn += 1;
         if (isHeadline) headlineLabelsDrawn += 1;
@@ -564,7 +639,7 @@ export function CorpusField({
       host.dataset.labelsFallback = String(fallbackLabelsDrawn);
       host.dataset.frameMs = (performance.now() - frameStartedAt).toFixed(2);
     }
-  }, [layout, hovered, transform]);
+  }, [layout, hovered, transform, spread]);
 
   useEffect(() => {
     draw();
@@ -743,6 +818,49 @@ export function CorpusField({
     [layout, openTarget, animateTo, openCompose, onPick]
   );
 
+  // ── Tour spotlight ──
+  // Glide 80% of the flight to the spotlighted dot — near enough to
+  // single it out, far enough to keep its neighborhood in frame —
+  // then pin its hover ring + label. An invisible anchor box renders
+  // at the dot's LANDING position so the tour overlay can cut its
+  // spotlight hole there. Clearing glides back to where the visitor
+  // was.
+  const spotlightReturnRef = useRef<FieldTransform | null>(null);
+  const [spotlightMark, setSpotlightMark] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  useEffect(() => {
+    if (!layout) return;
+    if (spotlight) {
+      const dot = layout.dots.find((item) => item.target === spotlight);
+      if (!dot) return;
+      spotlightReturnRef.current ??= transformRef.current;
+      // Well past the cluster framing — dot-level zoom, so the
+      // spotlight hole holds the subtree alone, not its neighborhood.
+      // No pinned hover: the subtree and its label ARE the show.
+      const cluster = zoomTransformForDot(layout, dot, viewHeightRef.current);
+      const k = Math.min(cluster.k * 4, MAX_FIELD_ZOOM);
+      const framing = clampFieldTransform(
+        {
+          k,
+          tx: FIELD_WIDTH / 2 - dot.x * k,
+          ty: viewHeightRef.current / 2 - dot.y * k,
+        },
+        viewHeightRef.current
+      );
+      setSpotlightMark(fieldToView(framing, dot.x, dot.y));
+      animateTo(framing, ZOOM_IN_MS);
+      return;
+    }
+    setSpotlightMark(null);
+    if (spotlightReturnRef.current) {
+      setHovered(null);
+      animateTo(spotlightReturnRef.current, ZOOM_IN_MS);
+      spotlightReturnRef.current = null;
+    }
+  }, [spotlight, layout, animateTo]);
+
   const onClick = useCallback(
     (event: React.MouseEvent<HTMLCanvasElement>) => {
       if (!layout) return;
@@ -884,7 +1002,7 @@ export function CorpusField({
         <canvas
           ref={canvasRef}
           role="img"
-          aria-label="Map of the encoded legal corpus: every provision-rooted subtree, clustered by jurisdiction. Drag to pan, scroll to zoom, click a subtree to open its rule graph."
+          aria-label={spread ? "Provisions in this source. Drag to pan, scroll to zoom, select a provision to open its rule graph." : "Map of the encoded legal corpus: every provision-rooted subtree, clustered by jurisdiction. Drag to pan, scroll to zoom, click a subtree to open its rule graph."}
           className="absolute inset-0 h-full w-full"
           style={{
             cursor: hovered ? "pointer" : isZoomed ? "grab" : "default",
@@ -922,45 +1040,123 @@ export function CorpusField({
         })}
 
         {/* The computed doors: the corpus's own largest subtrees */}
-        {highlights.map((dot, index) => {
-          const pos = fieldToView(transform, dot.x, dot.y);
-          if (!inView(pos.x, pos.y, 40)) return null;
-          return (
-            <a
-              key={dot.target}
-              href={fieldComposeHref(dot.target)}
-              data-testid="corpus-field-highlight"
-              title={`${humanizeCitation(dot.target)} · ${dot.ruleCount} rules`}
-              onClick={(event) => {
-                // Zoom in, don't navigate away — plain left-click
-                // enters in place; modified clicks keep link behavior.
-                if (
-                  event.metaKey ||
-                  event.ctrlKey ||
-                  event.shiftKey ||
-                  event.altKey
-                ) {
-                  return;
-                }
-                event.preventDefault();
-                enterDot(dot);
-              }}
-              // NOTE: centering lives in the inline transform only —
-              // Tailwind's -translate-x-1/2 uses the separate
-              // `translate` property and would compose (double-shift).
-              className="absolute z-10 max-w-[240px] truncate rounded border border-[var(--color-accent)] bg-[var(--color-paper)] px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-[var(--color-ink)] no-underline shadow-sm hover:bg-[var(--color-accent-light)] sm:px-2 sm:py-1 sm:text-[10px]"
-              style={{
-                // Clamped so a door on a cluster's rim never bleeds
-                // past the panel edge (the chip is centered on its dot).
-                left: `clamp(130px, ${(pos.x / FIELD_WIDTH) * 100}%, calc(100% - 130px))`,
-                top: `${(pos.y / viewHeight) * 100}%`,
-                transform: `translate(-50%, ${index % 2 === 0 ? "-160%" : "70%"})`,
-              }}
-            >
-              {dot.highlightLabel}
-            </a>
-          );
-        })}
+        {(() => {
+          // Full names, no truncation: chips wrap to the max width
+          // and claim real space. Placement is collision-aware —
+          // each chip tries above its dot, then below, then further
+          // tiers, against the boxes already placed — so long names
+          // stack instead of overlapping each other.
+          const hostEl = containerRef.current;
+          const widthPx = hostEl?.clientWidth ?? FIELD_WIDTH;
+          const heightPx = hostEl?.clientHeight ?? viewHeight;
+          const CHAR_W = 6.9; // 10px mono uppercase + tracking, approx.
+          const LINE_H = 13;
+          const PAD_H = 18;
+          const PAD_V = 9;
+          const MAX_W = 220;
+          const GAP = 4;
+          const placedChips: Array<{
+            x: number;
+            y: number;
+            w: number;
+            h: number;
+          }> = [];
+          // The launcher's search/mode controls own the top-right
+          // corner — chips route around them like any other chip.
+          if (embedded) {
+            placedChips.push({
+              x: widthPx - 250,
+              y: 70,
+              w: 500,
+              h: 140,
+            });
+          }
+          const collides = (box: (typeof placedChips)[number]) =>
+            placedChips.some(
+              (p) =>
+                Math.abs(p.x - box.x) < (p.w + box.w) / 2 + GAP &&
+                Math.abs(p.y - box.y) < (p.h + box.h) / 2 + GAP,
+            );
+          return highlights.map((dot) => {
+            const pos = fieldToView(transform, dot.x, dot.y);
+            if (!inView(pos.x, pos.y, 40)) return null;
+            const label = dot.highlightLabel ?? "";
+            const textW = label.length * CHAR_W;
+            const lineCount = Math.max(1, Math.ceil(textW / (MAX_W - PAD_H)));
+            const w = Math.min(MAX_W, textW + PAD_H);
+            const h = lineCount * LINE_H + PAD_V;
+            const rPx = dot.r * transform.k * (widthPx / FIELD_WIDTH);
+            const cx = Math.min(
+              Math.max((pos.x / FIELD_WIDTH) * widthPx, 130),
+              widthPx - 130,
+            );
+            const dotY = (pos.y / viewHeight) * heightPx;
+            const base = rPx + GAP + h / 2;
+            const tiers = [-base, base];
+            for (let extra = 1; extra <= 3; extra += 1) {
+              tiers.push(-base - extra * (h + GAP), base + extra * (h + GAP));
+            }
+            let cy = dotY + tiers[0]!;
+            for (const tier of tiers) {
+              const candidate = { x: cx, y: dotY + tier, w, h };
+              if (!collides(candidate)) {
+                cy = candidate.y;
+                break;
+              }
+            }
+            placedChips.push({ x: cx, y: cy, w, h });
+            return (
+              <a
+                key={dot.target}
+                href={fieldComposeHref(dot.target)}
+                data-testid="corpus-field-highlight"
+                title={humanizeCitation(dot.target)}
+                onClick={(event) => {
+                  // Zoom in, don't navigate away — plain left-click
+                  // enters in place; modified clicks keep link behavior.
+                  if (
+                    event.metaKey ||
+                    event.ctrlKey ||
+                    event.shiftKey ||
+                    event.altKey
+                  ) {
+                    return;
+                  }
+                  event.preventDefault();
+                  enterDot(dot);
+                }}
+                // NOTE: centering lives in the inline transform only —
+                // Tailwind's -translate-x-1/2 uses the separate
+                // `translate` property and would compose (double-shift).
+                className="absolute z-10 max-w-[220px] whitespace-normal text-center leading-[1.3] rounded border border-[var(--color-accent)] bg-[var(--color-paper)] px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-[var(--color-ink)] no-underline shadow-sm hover:bg-[var(--color-accent-light)] sm:px-2 sm:py-1 sm:text-[10px]"
+                style={{
+                  left: `${cx}px`,
+                  top: `${cy}px`,
+                  transform: "translate(-50%, -50%)",
+                }}
+              >
+                {dot.highlightLabel}
+              </a>
+            );
+          });
+        })()}
+
+        {/* Invisible anchor at the spotlighted dot's landing spot —
+            the guided tour's overlay cuts its hole around this box,
+            sized to cover the ring, pinned card, and label. */}
+        {spotlightMark && (
+          <div
+            data-testid="field-spotlight"
+            className="pointer-events-none absolute"
+            style={{
+              left: `${(spotlightMark.x / FIELD_WIDTH) * 100}%`,
+              top: `${(spotlightMark.y / viewHeight) * 100}%`,
+              width: 300,
+              height: 280,
+              transform: "translate(-50%, -50%)",
+            }}
+          />
+        )}
 
         {/* Hover tooltip: humanized citation + rule count */}
         {hovered &&
@@ -985,10 +1181,6 @@ export function CorpusField({
                 <span className="block font-mono text-[11px] text-[var(--color-ink)]">
                   {humanizeCitation(hovered.target)}
                 </span>
-                <span className="block font-mono text-[10px] uppercase tracking-wider text-[var(--color-ink-muted)]">
-                  {hovered.ruleCount} rule
-                  {hovered.ruleCount === 1 ? "" : "s"} · {hovered.bucket}
-                </span>
               </div>
             );
           })()}
@@ -999,9 +1191,9 @@ export function CorpusField({
             type="button"
             data-testid="corpus-field-reset"
             onClick={resetView}
-            className="absolute right-2 top-2 z-20 rounded border border-[var(--color-rule)] bg-[var(--color-paper)] px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-[var(--color-ink-secondary)] shadow-sm transition-colors hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+            className="absolute right-2 top-2 z-20 inline-flex h-6 items-center gap-1 rounded border border-[var(--color-rule)] bg-[var(--color-paper)] px-1.5 py-0 font-sans text-[10px] font-medium normal-case tracking-normal text-[var(--color-ink-secondary)] transition-colors hover:bg-[var(--color-paper-elevated)] hover:text-[var(--color-ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
           >
-            ⌂ whole corpus
+            <Scan size={12} aria-hidden="true" /> Whole corpus
           </button>
         )}
       </div>

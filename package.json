@@ -1,7 +1,9 @@
 {
   "name": "axiom-foundation",
   "private": true,
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "version": "0.0.1",
   "type": "module",
   "scripts": {
@@ -13,20 +15,30 @@
     "test:run": "bun run build:ui && vitest run",
     "test:coverage": "bun run build:ui && vitest run --coverage",
     "sync:rulespec-index": "bun scripts/sync-rulespec-index.mjs",
-    "deploy": "vercel --prod"
+    "build:tariff-schedule": "bun scripts/build-tariff-schedule-data.ts",
+    "deploy": "vercel --prod",
+    "posters:capture": "bun scripts/capture-demo-posters.mjs"
   },
   "dependencies": {
+    "@base-ui/react": "^1.7.0",
     "@supabase/supabase-js": "^2.105.1",
     "@xyflow/react": "^12.11.2",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "dagre": "^0.8.5",
+    "driver.js": "^1.8.0",
     "geist": "^1.7.0",
     "js-yaml": "^4.1.1",
+    "lucide-react": "^1.31.0",
     "motion": "^12.38.0",
     "next": "^16.2.4",
     "posthog-js": "^1.372.3",
     "prismjs": "^1.30.0",
     "react": "^19.2.5",
-    "react-dom": "^19.2.5"
+    "react-dom": "^19.2.5",
+    "shadcn": "^4.16.2",
+    "tailwind-merge": "^3.6.0",
+    "tw-animate-css": "^1.4.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.4",
@@ -43,7 +55,8 @@
     "puppeteer-core": "^25.4.0",
     "tailwindcss": "^4.2.4",
     "typescript": "~6.0.3",
-    "vitest": "^4.1.5"
+    "vitest": "^4.1.5",
+    "playwright": "^1.58.0"
   },
   "engines": {
     "node": ">=22 <25"

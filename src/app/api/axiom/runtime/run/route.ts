@@ -14,7 +14,7 @@ import {
 export const dynamic = "force-dynamic";
 
 const SLUG_RE = /^[a-z0-9-]{1,64}$/;
-const LEGAL_ID_RE = /^[a-z]{2}(?:-[a-z]{2})?:[\w./–-]+#[\w-]+$/;
+const LEGAL_ID_RE = /^[a-z]{2}(?:-[a-z]{2,3})?:[\w./–-]+#[\w-]+$/;
 const MAX_SECTION_RULES = 12;
 
 /**

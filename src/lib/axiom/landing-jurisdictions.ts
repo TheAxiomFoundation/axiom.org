@@ -6,7 +6,7 @@ export function getLandingJurisdictions(
 ) {
   return JURISDICTIONS_SEED.filter(
     (jurisdiction) =>
-      isCountryWithPublishedRepo(jurisdiction.slug) ||
+      isCountryWithKnownRepoFamily(jurisdiction.slug) ||
       isBelgiumRegionalOrCommunitySeed(jurisdiction.slug) ||
       countedSlugs.has(jurisdiction.slug) ||
       isUsStateOrDistrictSeed(jurisdiction.slug)
@@ -14,12 +14,17 @@ export function getLandingJurisdictions(
 }
 
 /**
- * Country-level seeds surface on the landing as soon as their family
- * has a published rulespec repo — derived from the repo map rather
- * than a hand-maintained slug list, so a new country shows up (as
- * "pending" until data lands) without touching this file.
+ * Country-level seeds surface on the landing as soon as the repo map
+ * knows their family — derived from the map rather than a
+ * hand-maintained slug list, so a new country shows up (as "pending"
+ * until data lands) without touching this file.
+ *
+ * Deliberately the *ungated* family map: a country whose repo is still
+ * a gated pilot belongs on the landing as a pending tile. Whether its
+ * encodings may be read is a separate question, answered by
+ * ``getRuleSpecRepoLocation`` on the read paths.
  */
-function isCountryWithPublishedRepo(slug: string): boolean {
+function isCountryWithKnownRepoFamily(slug: string): boolean {
   return !slug.includes("-") && getRuleSpecRepoForJurisdiction(slug) !== null;
 }
 

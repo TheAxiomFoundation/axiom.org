@@ -1,21 +1,30 @@
 import type { Metadata } from "next";
 import { ArchitectureStrip } from "@/components/docs/architecture-strip";
+import { CoreExecutionPath } from "@/components/docs/core-execution-path";
 import { Reveal } from "@/components/landing/reveal";
 
 export const metadata: Metadata = {
   title: "Documentation — Axiom Foundation",
   description:
-    "Canonical Axiom documentation map for architecture, RuleSpec, corpus, claims, and encoder validation.",
+    "Axiom architecture: the implemented core and encoder execution path, planned admission and publication, and repository ownership.",
 };
 
 const repoMap = [
   {
     repo: "axiom-corpus",
-    owns: "Corpus source text, anchors, hierarchy, tables, hashes, and source claims.",
+    owns: "Corpus source text, anchors, hierarchy, tables, hashes, source claims, and signed source releases.",
   },
   {
     repo: "axiom-encode",
-    owns: "Encoder prompts, harness validation, proof validation, oracles, eval suites, and methods notes.",
+    owns: "Candidate generation, harness and proof validation, eval suites, and explicit BuildSpec export. Export does not change signed apply or acceptance-test trust.",
+  },
+  {
+    repo: "axiom-core",
+    owns: "Local development bundle identity, pinned compilation, offline verification, strict execution receipts, and the thin Python transport.",
+  },
+  {
+    repo: "axiom-oracles",
+    owns: "Oracle adapters, comparison workloads, and evidence used to evaluate candidate behavior against external implementations.",
   },
   {
     repo: "axiom-rules-engine",
@@ -50,17 +59,36 @@ export default function DocsPage() {
           </p>
         </Reveal>
 
-        {/* The pipeline strip — rendered natively, not an embed */}
-        <Reveal as="section" className="mb-20">
+        <section id="core-execution" className="mb-20 scroll-mt-28">
           <h2 className="heading-section m-0 mb-6">The architecture</h2>
           <p className="mb-6 max-w-[720px] font-body text-[1rem] leading-relaxed text-[var(--color-ink-secondary)]">
-            The whole pipeline as five stations &mdash; intake, corpus,
-            encoding loop, RuleSpec, graph &mdash; then the compile seal and
-            the surfaces it powers. One example, &sect;&nbsp;2017&apos;s
-            &ldquo;30 per centum&rdquo;, runs the whole way.
+            The core and encoder now connect an explicitly selected candidate
+            to a verifiable local bundle and a real engine response. This is a
+            working development checkpoint; admission and publication remain
+            separate work.
           </p>
-          <ArchitectureStrip />
-        </Reveal>
+          <CoreExecutionPath />
+          <p className="m-0 font-body text-[0.88rem] leading-relaxed text-[var(--color-ink-secondary)]">
+            Merged implementation: {" "}
+            <a href="https://github.com/TheAxiomFoundation/axiom-core/pull/1">core bundles and execution</a>
+            {", "}
+            <a href="https://github.com/TheAxiomFoundation/axiom-encode/pull/1581">explicit encoder export</a>
+            {", and "}
+            <a href="https://github.com/TheAxiomFoundation/axiom-core/pull/2">real encoder/core integration tests</a>.
+          </p>
+          <details className="mt-10 border-y border-[var(--color-rule)] py-5">
+            <summary className="cursor-pointer font-body text-[1rem] text-[var(--color-ink)]">
+              The broader pipeline
+            </summary>
+            <p className="mt-5 mb-6 max-w-[720px] font-body text-[0.92rem] leading-relaxed text-[var(--color-ink-secondary)]">
+              This conceptual map follows source intake, corpus, encoding,
+              RuleSpec, and the rule graph to application surfaces. Its
+              illustrative compile seal does not represent a signed or admitted
+              core bundle. The implemented and planned boundaries are shown above.
+            </p>
+            <ArchitectureStrip />
+          </details>
+        </section>
 
         {/* Repo ownership */}
         <Reveal as="section">

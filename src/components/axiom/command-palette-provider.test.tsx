@@ -55,7 +55,7 @@ describe("CommandPaletteProvider", () => {
     expect(screen.getByTestId("state")).toHaveTextContent("closed");
   });
 
-  it("toggles on the global command shortcut", () => {
+  it("ignores the retired ⌘K shortcut — the palette opens only via explicit triggers", () => {
     render(
       <CommandPaletteProvider>
         <PaletteConsumer />
@@ -63,7 +63,7 @@ describe("CommandPaletteProvider", () => {
     );
 
     fireEvent.keyDown(window, { key: "k", metaKey: true });
-    expect(screen.getByTestId("state")).toHaveTextContent("open");
+    expect(screen.getByTestId("state")).toHaveTextContent("closed");
 
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
     expect(screen.getByTestId("state")).toHaveTextContent("closed");

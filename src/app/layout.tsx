@@ -10,6 +10,7 @@ import { GoogleAnalytics } from "@/components/google-analytics";
 import { PostHogProvider } from "@/components/posthog-provider";
 import { SITE_URL, axiomAppHref } from "@/lib/urls";
 import { UPDATES_URL } from "@/lib/launch";
+import { DEFAULT_SHARE_IMAGE, SITE_NAME } from "@/lib/share";
 
 const mono = JetBrains_Mono({
   subsets: ["latin"],
@@ -32,18 +33,30 @@ export const metadata: Metadata = {
   title: "Axiom Foundation — Computable law for all",
   description:
     "Open, machine-readable encodings of the world's rules, starting with tax and benefit policy. Cited, time-aware, and executable, so anyone can run, audit, or reform them.",
+  // Pages that set their own openGraph replace this block wholesale
+  // (Next merges metadata per top-level key), so each restates type,
+  // url, siteName and an image, or leaves the image to a sibling
+  // opengraph-image. share-cards.test.ts finds and checks every one.
   openGraph: {
+    type: "website",
     url: "./",
+    siteName: SITE_NAME,
     title: "Axiom Foundation",
-    // Round 1 tease — shares should carry the launch date. Update at launch.
+    // Post-launch share copy — the Message House top line (ops repo,
+    // comms/Message-House.md). Keep in sync if the house changes.
     description:
-      "Launching publicly July 28, 2026. Open, machine-readable encodings of the world's rules — starting with tax and benefit policy.",
-    // Official brand share card (axiom-brand png/social/og-paper-full.png,
-    // 1200×630, w350 lockup on paper).
-    images: ["/og-image.png"],
+      "The rules that decide who gets food assistance, health coverage, and tax credits live in closed code that no one can check — the Axiom Foundation publishes them in the open: cited, computable, and verified.",
+    images: [DEFAULT_SHARE_IMAGE],
   },
+  // Pages don't set twitter: a page-level block would replace this one
+  // and drop the site handle, and Next already fills twitter:title,
+  // :description and :image from the resolved openGraph, falling back
+  // to the page's own title and description.
   twitter: {
     site: "@AxiomFdn",
+    // The brand share card is 1200×630; without this Next emits the
+    // small summary card and shares render a thumbnail.
+    card: "summary_large_image",
   },
 };
 
@@ -70,7 +83,11 @@ export default function RootLayout({
         <GradientSync />
         <CommandPaletteProvider>
           <NavWrapper />
-          <main className="relative z-10">{children}</main>
+          {/* Above the footer's z-10: fixed overlays inside main (the
+              run sheet, the law popup) are trapped in main's stacking
+              context, and a later same-level footer would paint over
+              them once the page scrolls to it. */}
+          <main className="relative z-20">{children}</main>
         </CommandPaletteProvider>
         <Footer renderLink={Link} appUrl={axiomAppHref()} updatesUrl={UPDATES_URL} />
       </body>

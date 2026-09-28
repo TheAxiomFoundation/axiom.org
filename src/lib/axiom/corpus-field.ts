@@ -105,10 +105,21 @@ export function isCompositionTarget(target: string): boolean {
 /** The app's full view filter, applied once in the shared loader so
  *  every surface (field, picker, doors, clusters, counts) agrees:
  *  US-only, no single-node subtrees, no composition pipelines. */
-export function filterViewModules(modules: CorpusModule[]): CorpusModule[] {
+/** Family membership: "be-wal" belongs to "be", "us-co" to "us". */
+export function isCountryJurisdiction(
+  jurisdiction: string,
+  country: string,
+): boolean {
+  return jurisdiction === country || jurisdiction.startsWith(`${country}-`);
+}
+
+export function filterViewModules(
+  modules: CorpusModule[],
+  country = "us",
+): CorpusModule[] {
   return modules.filter(
     (module) =>
-      isUsJurisdiction(module.jurisdiction) &&
+      isCountryJurisdiction(module.jurisdiction, country) &&
       module.ruleCount >= MIN_VIEW_RULE_COUNT &&
       !isCompositionTarget(module.target),
   );
@@ -175,11 +186,26 @@ export const NON_COMPILING_ROOTS: ReadonlySet<string> = new Set([
   "us:statutes/42/415/a",
   "us:statutes/42/415/b",
   "us:statutes/42/415/i",
+  // Composes but doesn't execute: run-by-root 422s on a parameter with
+  // no value at the run date (article 114 professional-past limit).
+  "be:regulations/unemployment/benefit_amount",
 ]);
 
 export function highlightScore(module: CorpusModule): number {
   return module.linkedRuleCount + 2 * module.importCount;
 }
+
+/** A size-based door needs real substance: below this score a module
+ *  rides the field unlabeled however empty its jurisdiction's door
+ *  quota is (small regional corpora were winning doors by quota
+ *  alone). Pins are exempt. */
+export const MIN_HIGHLIGHT_SCORE = 12;
+
+/** Jurisdictions whose modules ride the field but never take a door —
+ *  a presentation choice, not a data one (the German-speaking
+ *  Community's family-benefit modules are substantial but the
+ *  country-level doors should lead). */
+export const DOORLESS_JURISDICTIONS: ReadonlySet<string> = new Set(["be-dg"]);
 
 /** Doors the corpus must always offer, whatever the size formula
  *  says. Verified compiling (run-by-root answers 200 with outputs):
@@ -188,6 +214,12 @@ export function highlightScore(module: CorpusModule): number {
  *  (the US may show 4 doors) — they never evict a size-based pick. */
 export const PINNED_HIGHLIGHT_TARGETS: readonly string[] = [
   "us:statutes/26/32",
+  // Belgium's flagship doors: verified composing statute modules
+  // (company-car benefit, the special social-security contribution,
+  // and the elderly income-guarantee payable amount).
+  "be:statutes/income_tax/benefits/company_car",
+  "be:statutes/social_security/special_contribution",
+  "be:statutes/income_guarantee_for_elderly/payable_amount",
 ];
 
 export function computeFieldHighlights(
@@ -195,6 +227,13 @@ export function computeFieldHighlights(
   count = HIGHLIGHT_COUNT,
   maxPerJurisdiction = HIGHLIGHT_MAX_PER_JURISDICTION,
 ): CorpusModule[] {
+  // Door density scales with the corpus: a ~100-module country field
+  // doesn't need the 14 doors the 4,400-module US field earns. Only
+  // the default count adapts — explicit counts stay literal.
+  const sizeTarget =
+    count === HIGHLIGHT_COUNT
+      ? Math.min(count, Math.max(4, Math.round(modules.length / 22)))
+      : count;
   const ranked = [...modules].sort(
     (a, b) =>
       highlightScore(b) - highlightScore(a) ||
@@ -218,12 +257,14 @@ export function computeFieldHighlights(
       continue;
     }
     // Keep scanning past the count: a pinned target may rank lower.
-    if (sizePicked >= count) continue;
+    if (sizePicked >= sizeTarget) continue;
     // Dust never gets a door, and neither do roots we know can't
     // execute. (Callers pass the mirror-authoritative module list, so
     // targets absent from the live mirror are already gone.)
     if (isDustModule(module)) continue;
     if (NON_COMPILING_ROOTS.has(module.target)) continue;
+    if (highlightScore(module) < MIN_HIGHLIGHT_SCORE) continue;
+    if (DOORLESS_JURISDICTIONS.has(module.jurisdiction)) continue;
     const used = perJurisdiction.get(module.jurisdiction) ?? 0;
     if (used >= maxPerJurisdiction) continue;
     perJurisdiction.set(module.jurisdiction, used + 1);
@@ -285,7 +326,7 @@ export interface FieldLayout {
 
 /** Clusters with at least this many modules earn a text label —
  *  labelling all 52 jurisdictions would wallpaper the field. */
-export const CLUSTER_LABEL_MIN_MODULES = 20;
+export const CLUSTER_LABEL_MIN_MODULES = 2;
 
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 
@@ -366,7 +407,7 @@ const GROUP_RIM = 1.7;
 const GROUP_RIM_SINGLETON = 1.1;
 /** How far apart the group spiral spreads, × the area-faithful
  *  radius (1 = groups touch; more = clear water between families). */
-const GROUP_SPREAD = 1.25;
+const GROUP_SPREAD = 1.45;
 
 interface PlacedClusterDots {
   /** Emission order — offsets are index-aligned with this list. */
@@ -486,7 +527,7 @@ function packClusters(
       const angle = step * GOLDEN_ANGLE;
       const x = Math.cos(angle) * t * aspect * 0.55;
       const y = Math.sin(angle) * t * 0.55;
-      const pad = 14;
+      const pad = 28;
       const collides = placed.some(
         (other) =>
           Math.hypot(other.x - x, other.y - y) <
@@ -1094,12 +1135,12 @@ export function shapeRendersNodes(pxRadius: number): boolean {
 
 /** On-screen footprint radius (CSS px) at which a HEADLINE title
  *  appears — at far zoom, unlabeled is fine. */
-export const SUBTREE_LABEL_MIN_PX = 10;
+export const SUBTREE_LABEL_MIN_PX = 14;
 /** Citation-fallback titles wait for twice the footprint. */
-export const SUBTREE_FALLBACK_LABEL_MIN_PX = 20;
+export const SUBTREE_FALLBACK_LABEL_MIN_PX = 26;
 /** At most this many fallback titles per frame (headline titles own
  *  the rest of the label budget). */
-export const FALLBACK_LABELS_PER_FRAME = 32;
+export const FALLBACK_LABELS_PER_FRAME = 20;
 
 export function dotEarnsLabel(
   dot: Pick<FieldDot, "dust" | "headlineRule" | "sourceOutline">,

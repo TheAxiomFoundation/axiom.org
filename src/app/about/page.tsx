@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
+import { DemoThumb } from "@/components/landing/demo-thumb";
 import { Reveal, RevealGroup, RevealItem } from "@/components/landing/reveal";
 
 export const metadata: Metadata = {
@@ -71,6 +72,12 @@ export default function AboutPage() {
             </span>{" "}
             that anyone can run, audit, or reform.
           </p>
+          <Link
+            href="/overview"
+            className="mt-7 inline-flex items-center gap-2 rounded-md border border-[var(--color-rule)] px-5 py-2.5 font-mono text-[0.8rem] tracking-[0.12em] text-[var(--color-accent)] no-underline transition-colors hover:border-[var(--color-accent)] hover:text-[var(--color-accent-hover)]"
+          >
+            Read the one-page overview &rarr;
+          </Link>
         </Reveal>
 
         <ProseBand label="Why">
@@ -130,7 +137,8 @@ export default function AboutPage() {
           </RevealGroup>
 
           {/* Demos highlight — a two-column card: the pitch on the
-              left, a live thumb of the gallery on the right. */}
+              left, a thumb of the gallery on the right (live iframe on
+              desktop only — see DemoThumb). */}
           <Reveal className="mt-8">
             <Link
               href="/demos"
@@ -151,14 +159,11 @@ export default function AboutPage() {
                   Open the demo gallery &rarr;
                 </span>
               </div>
-              <span className="landing-demo-thumb" aria-hidden>
-                <iframe
-                  src="https://axiom-demo-shell.vercel.app/demos/"
-                  title="Demo gallery — preview"
-                  loading="lazy"
-                  tabIndex={-1}
-                />
-              </span>
+              <DemoThumb
+                src="https://axiom-demo-shell.vercel.app/demos/"
+                poster="/demo-posters/gallery.png"
+                title="Demo gallery — preview"
+              />
             </Link>
           </Reveal>
         </Reveal>
@@ -196,6 +201,14 @@ export default function AboutPage() {
             </a>
             . Our code, our data, and our encoding decisions are public.
           </p>
+          <a
+            href="https://github.com/TheAxiomFoundation"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-5 inline-flex items-center gap-2 font-mono text-[0.68rem] tracking-[0.14em] uppercase text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] transition-colors no-underline"
+          >
+            Browse the code on GitHub &rarr;
+          </a>
         </ProseBand>
 
         <ProseBand label="Founding team">

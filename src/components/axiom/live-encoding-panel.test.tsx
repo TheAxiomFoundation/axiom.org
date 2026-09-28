@@ -4,6 +4,7 @@ import { LiveEncodingPanel } from "./live-encoding-panel";
 import type {
   CorpusStatusArtifact,
   EncodingOpsStatus,
+  LiveEncodingRun,
 } from "@/lib/corpus-status";
 
 function encodingStatus(
@@ -45,6 +46,34 @@ function encodingStatus(
       },
     ],
     latest_source_counts: { reviewer_agent: 1 },
+    live_runs: [],
+    ...overrides,
+  };
+}
+
+function liveRun(
+  overrides: Partial<LiveEncodingRun> = {}
+): LiveEncodingRun {
+  return {
+    id: "live-1",
+    citation: "us/statute/26/32",
+    status: "running",
+    started_at: "2026-07-01T11:50:00.000Z",
+    last_heartbeat_at: "2026-07-01T12:00:20.000Z",
+    finished_at: null,
+    phase: null,
+    attempt: 1,
+    backend: "codex",
+    model: "gpt-5.5",
+    encoder_version: "0.2.1587",
+    run_id: null,
+    runner: {
+      hostname: "mac-a.local",
+      username: "pavel",
+      platform: "darwin",
+      pid: 123,
+      is_ci: false,
+    },
     ...overrides,
   };
 }
@@ -266,6 +295,136 @@ describe("LiveEncodingPanel", () => {
     expect(screen.getByText("No encoding runs recorded yet.")).toBeInTheDocument();
     expect(screen.getByText("No SDK sessions recorded yet.")).toBeInTheDocument();
     expect(screen.getByText(/session status unavailable/i)).toBeInTheDocument();
+  });
+
+  it("groups live runs by machine and counts them in the headline", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-01T12:00:30.000Z"));
+    render(
+      <LiveEncodingPanel
+        initial={artifact(
+          encodingStatus({
+            live_runs: [
+              liveRun(),
+              liveRun({
+                id: "live-2",
+                citation: "nz/statute/social-security/23",
+                attempt: 2,
+                model: "gpt-5.5-max",
+                runner: {
+                  hostname: "linux-ci",
+                  username: "runner",
+                  platform: "linux",
+                  pid: 9,
+                  is_ci: true,
+                },
+              }),
+            ],
+          })
+        )}
+      />
+    );
+
+    expect(
+      screen.getByText(/2 encodes running on 2 machines/i)
+    ).toBeInTheDocument();
+    expect(screen.getByText("Machines")).toBeInTheDocument();
+    expect(screen.getByText("mac-a.local")).toBeInTheDocument();
+    expect(screen.getByText("linux-ci")).toBeInTheDocument();
+    expect(screen.getByText(/runner\s*· CI/)).toBeInTheDocument();
+    expect(screen.getAllByText("Encoding")).toHaveLength(2);
+    expect(screen.getByText("us/statute/26/32")).toBeInTheDocument();
+    expect(screen.getByText(/attempt 2/)).toBeInTheDocument();
+    // Elapsed for a live run tracks the clock: started 11:50:00, now 12:00:30.
+    expect(screen.getAllByText(/10m 30s/)).toHaveLength(2);
+  });
+
+  it("flags running rows with lost heartbeats as stale", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-01T12:00:30.000Z"));
+    render(
+      <LiveEncodingPanel
+        initial={artifact(
+          encodingStatus({
+            live_runs: [
+              liveRun({
+                last_heartbeat_at: "2026-07-01T11:55:00.000Z",
+              }),
+            ],
+          })
+        )}
+      />
+    );
+
+    expect(
+      screen.getByText(/1 encode stalled — heartbeat lost/i)
+    ).toBeInTheDocument();
+    expect(screen.getByText("Stale")).toBeInTheDocument();
+    expect(screen.getByText(/last heartbeat 5m 30s ago/i)).toBeInTheDocument();
+  });
+
+  it("drops stale rows an hour after their last heartbeat", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-01T12:00:30.000Z"));
+    render(
+      <LiveEncodingPanel
+        initial={artifact(
+          encodingStatus({
+            live_runs: [
+              liveRun({
+                id: "live-long-dead",
+                citation: "us/statute/26/long-dead",
+                last_heartbeat_at: "2026-07-01T10:45:00.000Z",
+              }),
+            ],
+          })
+        )}
+      />
+    );
+
+    expect(screen.queryByText("us/statute/26/long-dead")).not.toBeInTheDocument();
+    expect(screen.queryByText("Machines")).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/no encoding sessions running/i)
+    ).toBeInTheDocument();
+  });
+
+  it("shows recently finished runs and ages out old ones", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-01T12:00:30.000Z"));
+    render(
+      <LiveEncodingPanel
+        initial={artifact(
+          encodingStatus({
+            live_runs: [
+              liveRun({
+                id: "live-done",
+                citation: "us/statute/26/151",
+                status: "completed",
+                finished_at: "2026-07-01T11:45:00.000Z",
+                last_heartbeat_at: "2026-07-01T11:45:00.000Z",
+                run_id: "run-1",
+              }),
+              liveRun({
+                id: "live-old",
+                citation: "us/statute/26/ancient",
+                status: "failed",
+                finished_at: "2026-07-01T10:30:00.000Z",
+                last_heartbeat_at: "2026-07-01T10:30:00.000Z",
+              }),
+            ],
+          })
+        )}
+      />
+    );
+
+    expect(screen.getByText("Completed")).toBeInTheDocument();
+    expect(screen.getByText("us/statute/26/151")).toBeInTheDocument();
+    expect(screen.queryByText("us/statute/26/ancient")).not.toBeInTheDocument();
+    // No running rows → the headline falls back to session state.
+    expect(
+      screen.getByText(/no encoding sessions running/i)
+    ).toBeInTheDocument();
   });
 
   it("renders the unavailable state when there is no data at all", () => {

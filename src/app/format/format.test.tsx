@@ -75,7 +75,7 @@ describe('FormatPage', () => {
     expect(screen.getByRole('link', { name: /back to overview/i })).toHaveAttribute('href', '/')
     expect(screen.getByRole('link', { name: /spec on github/i })).toHaveAttribute(
       'href',
-      'https://github.com/TheAxiomFoundation/axiom-rules-engine',
+      'https://github.com/TheAxiomFoundation/axiom-rules-engine/blob/main/docs/rulespec-format.md',
     )
   })
 })

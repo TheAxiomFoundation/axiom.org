@@ -6,7 +6,8 @@
  * cut it. If a check is known to fail today, it goes in `openIssues` with the
  * error text, not into a softer adjective in the table above.
  *
- * Source of truth for the tier definitions: launch/Launch-Scope.md.
+ * The tier definitions live here and on /verify. The July 2026 rationale sits in
+ * the archived launch repo (Launch-Scope.md), which is a record, not a source.
  */
 
 export type Tier = "verified" | "preview" | "demo" | "blocked";

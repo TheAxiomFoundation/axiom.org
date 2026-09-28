@@ -93,6 +93,23 @@ describe('Landing sections', () => {
     expect(text).not.toMatch(/experts? (verify|review|check)/i)
   })
 
+  it('serves the four demo previews as posters, not live iframes, off desktop', () => {
+    // Regression for the mobile-Safari crash guard: with the default
+    // non-desktop media environment, no card may mount a live app
+    // iframe — each renders its static poster instead.
+    const { container } = render(<ApplicationsSection />)
+    expect(container.querySelectorAll('iframe')).toHaveLength(0)
+    const posters = [...container.querySelectorAll('.landing-demo-thumb img')].map(
+      (img) => img.getAttribute('src'),
+    )
+    expect(posters).toEqual([
+      '/demo-posters/workflow.png',
+      '/demo-posters/chatbot.png',
+      '/demo-posters/snap.png',
+      '/demo-posters/app.png',
+    ])
+  })
+
   it('renders the applications section with four use cases', () => {
     render(<ApplicationsSection />)
     expect(

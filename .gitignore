@@ -45,3 +45,14 @@ coverage/
 *.tgz
 .env.production.real
 .claude/
+
+# Agent-lane session state (sandboxed lanes write these at the repo root;
+# they are per-session handoff notes, never project documentation)
+/PROGRESS.md
+/FINAL_REPORT.md
+supabase/.temp/
+
+# receipt demo capture evidence (scripts/receipt-verify-demo/README.md writes
+# these under /tmp; they are working evidence, never source). Anchored, like
+# the lane-artifact rules above: only the repo root one is ours to ignore.
+/captures/

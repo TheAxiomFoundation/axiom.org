@@ -50,20 +50,24 @@ async function fetchLiveSubtrees(): Promise<LiveSubtree[] | null> {
   }
 }
 
-export async function loadCorpusModules(): Promise<LoadedCorpus> {
+export async function loadCorpusModules(
+  options: { country?: string } = {},
+): Promise<LoadedCorpus> {
+  const country = options.country ?? "us";
   // The snapshot ships as its own cached chunk, never inline; it is
   // needed either way (sizes when live, everything when not).
   const snapshot = (await import("./corpus-subtrees.json")).default
     .modules as CorpusModule[];
   const live = await fetchLiveSubtrees();
   // The app's view scope, applied to BOTH sources so every surface
-  // (field, picker, doors, clusters, counts) agrees: US-only, and no
-  // single-node subtrees (a one-rule module isn't a graph).
+  // (field, picker, doors, clusters, counts) agrees: one country
+  // family at a time (US by default), and no single-node subtrees
+  // (a one-rule module isn't a graph).
   if (live) {
     return {
-      modules: filterViewModules(mergeLiveSubtrees(snapshot, live)),
+      modules: filterViewModules(mergeLiveSubtrees(snapshot, live), country),
       source: "live",
     };
   }
-  return { modules: filterViewModules(snapshot), source: "snapshot" };
+  return { modules: filterViewModules(snapshot, country), source: "snapshot" };
 }

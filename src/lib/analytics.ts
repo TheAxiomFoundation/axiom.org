@@ -63,6 +63,14 @@ export type AxiomEvent =
       );
     }
   | {
+      /** Guided-tour lifecycle on the Plane or the reader. */
+      event: "axiom_tour";
+      properties: {
+        surface: "graph" | "subgraph" | "reader";
+        action: "started" | "completed" | "dismissed" | "replayed";
+      };
+    }
+  | {
       event: "announcement_cta_clicked";
       properties: { cta: "join_launch_event" | "get_updates" };
     }

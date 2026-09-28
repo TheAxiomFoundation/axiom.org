@@ -1,5 +1,6 @@
 import {
   supabaseCorpus,
+  supabaseEncodings,
   getRuleReferences,
   type Rule,
   type RuleReference,
@@ -13,12 +14,16 @@ import {
 import { getProvisionByCitationPath } from "@/lib/axiom/navigation-index/read";
 import type { NavigationNodeRow } from "@/lib/axiom/navigation-index/types";
 import { parseRuleSpec } from "@/lib/axiom/rulespec/doc";
+import { isGatedJurisdiction } from "@/lib/axiom/rulespec/index-visibility";
 import {
   getProvisionCoverage,
   type ProvisionProgramCoverage,
 } from "@/lib/axiom/runtime/coverage";
 import { listParityCases } from "@/lib/axiom/runtime/api";
-import { getSectionEncoding } from "@/lib/axiom/section-encoding";
+import {
+  getSectionEncoding,
+  type SectionEncoding,
+} from "@/lib/axiom/section-encoding";
 
 /**
  * Data assembly for the v2 server-rendered section page: one reading
@@ -107,6 +112,10 @@ export interface SectionPageData {
   programs: ProvisionProgramCoverage[];
   /** Rule name → repo file path (the file half of its legal ID). */
   ruleFiles: Record<string, string>;
+  /** Modules with materialized rules grounded in this provision. */
+  citedByFiles: SectionEncoding["citedByFiles"];
+  /** Citing rules not shown because the reverse lookup is bounded. */
+  citedByOverflow: number;
   /**
    * Set when the requested path was deeper than the ingested corpus
    * row (e.g. …/26/32/a on a section-granular corpus): the section
@@ -166,7 +175,7 @@ export function subtreeAnchor(rootPath: string, citationPath: string): string {
 
 export function relativeDesignator(
   rootPath: string,
-  citationPath: string
+  citationPath: string,
 ): string {
   if (!citationPath.startsWith(`${rootPath}/`)) return "";
   return citationPath
@@ -188,7 +197,7 @@ function tocLabel(designator: string, heading: string | null): string {
  */
 export function buildSectionToc(
   provisions: SectionProvision[],
-  maxDepth = 2
+  maxDepth = 2,
 ): SectionTocEntry[] {
   const rootEntries: SectionTocEntry[] = [];
   const byAnchor = new Map<string, SectionTocEntry>();
@@ -205,10 +214,7 @@ export function buildSectionToc(
       rootEntries.push(entry);
       continue;
     }
-    const parentAnchor = provision.anchor
-      .split("-")
-      .slice(0, -1)
-      .join("-");
+    const parentAnchor = provision.anchor.split("-").slice(0, -1).join("-");
     const parent = byAnchor.get(parentAnchor);
     if (parent) {
       parent.children.push(entry);
@@ -243,7 +249,7 @@ function escapeRegExp(text: string): string {
  */
 export function mapRulesToSubsections(
   citationPath: string,
-  rulespecContent: string | null
+  rulespecContent: string | null,
 ): EncodedRuleLink[] {
   if (!rulespecContent) return [];
   const doc = parseRuleSpec(rulespecContent);
@@ -254,14 +260,12 @@ export function mapRulesToSubsections(
   // subsections; capture the letter after every "<section>(" token.
   const sourceRe = new RegExp(
     `(?:§+\\s*)?${escapeRegExp(section)}\\s*\\(([a-z]{1,2})\\)`,
-    "g"
+    "g",
   );
   return doc.rules.map((rule) => {
     const source = rule.source ?? "";
     const anchors = Array.from(
-      new Set(
-        Array.from(source.matchAll(sourceRe), (match) => match[1])
-      )
+      new Set(Array.from(source.matchAll(sourceRe), (match) => match[1])),
     );
     return {
       name: rule.name,
@@ -284,7 +288,7 @@ export function mapRulesToSubsections(
 export function mapRulesToDeepPath(
   encodingRootPath: string,
   relSegments: string[],
-  rulespecContent: string | null
+  rulespecContent: string | null,
 ): EncodedRuleLink[] {
   if (!rulespecContent || relSegments.length === 0) return [];
   const doc = parseRuleSpec(rulespecContent);
@@ -295,7 +299,7 @@ export function mapRulesToDeepPath(
   // the section number; a source may cite several chains.
   const chainRe = new RegExp(
     `(?:§+\\s*)?${escapeRegExp(section)}((?:\\s*\\([A-Za-z0-9]{1,4}\\))+)`,
-    "g"
+    "g",
   );
   const rel = relSegments.map((segment) => segment.toLowerCase());
   const links: EncodedRuleLink[] = [];
@@ -306,7 +310,7 @@ export function mapRulesToDeepPath(
     for (const match of source.matchAll(chainRe)) {
       const segments = Array.from(
         match[1].matchAll(/\(([A-Za-z0-9]{1,4})\)/g),
-        (seg) => seg[1]
+        (seg) => seg[1],
       );
       const lower = segments.map((segment) => segment.toLowerCase());
       const within =
@@ -335,15 +339,13 @@ export function mapRulesToDeepPath(
  */
 export function applyFileAnchors(
   links: EncodedRuleLink[],
-  fileAnchors: Record<string, string[]>
+  fileAnchors: Record<string, string[]>,
 ): EncodedRuleLink[] {
   return links.map((link) => {
     const extra = fileAnchors[link.name];
     if (!extra || extra.length === 0) return link;
     const anchors = Array.from(new Set([...link.anchors, ...extra]));
-    return anchors.length === link.anchors.length
-      ? link
-      : { ...link, anchors };
+    return anchors.length === link.anchors.length ? link : { ...link, anchors };
   });
 }
 
@@ -356,7 +358,7 @@ export function applyFileAnchors(
  * whole subtree, so per-node reference scoping keeps working.
  */
 export function railChunksFromProvisions(
-  provisions: SectionProvision[]
+  provisions: SectionProvision[],
 ): Array<{ anchor: string; designator: string; label: string; text: string }> {
   const chunks: Array<{
     anchor: string;
@@ -412,9 +414,7 @@ function chunkLabel(designator: string, text: string): string {
  * < aa < bb (USC doubles letters after z).
  */
 function designatorRank(designator: string): number {
-  return (
-    (designator.length - 1) * 26 + (designator.charCodeAt(0) - 97)
-  );
+  return (designator.length - 1) * 26 + (designator.charCodeAt(0) - 97);
 }
 
 /**
@@ -474,13 +474,13 @@ export function splitBodyIntoSubsections(body: string): {
  */
 export function refsForChunk(
   refs: RuleReference[],
-  chunkText: string
+  chunkText: string,
 ): RuleReference[] {
   return refs.filter(
     (ref) =>
       ref.direction === "outgoing" &&
       Boolean(ref.citation_text) &&
-      chunkText.includes(ref.citation_text)
+      chunkText.includes(ref.citation_text),
   );
 }
 
@@ -494,7 +494,7 @@ export function refsForChunk(
 function synthesizeSectionRoot(
   citationPath: string,
   resolved: ReturnType<typeof resolveAxiomPath>,
-  navLabel: string | undefined
+  navLabel: string | undefined,
 ): Rule {
   const segments = citationPath.split("/");
   return {
@@ -519,7 +519,7 @@ function synthesizeSectionRoot(
 }
 
 async function getSubtreeProvisions(
-  citationPath: string
+  citationPath: string,
 ): Promise<{ provisions: Rule[]; truncated: boolean }> {
   const result = await withTimeout(
     supabaseCorpus
@@ -529,7 +529,7 @@ async function getSubtreeProvisions(
       .lt("citation_path", `${citationPath}~`)
       .limit(SUBTREE_LIMIT),
     SECTION_QUERY_TIMEOUT_MS,
-    null
+    null,
   );
   if (!result || result.error) return { provisions: [], truncated: false };
   // The range scan's upper bound (path + "~") also admits
@@ -540,17 +540,17 @@ async function getSubtreeProvisions(
   const prefix = `${citationPath}/`;
   const rows = ((result.data ?? []) as Rule[]).filter(
     (row): row is Rule & { citation_path: string } =>
-      Boolean(row.citation_path?.startsWith(prefix))
+      Boolean(row.citation_path?.startsWith(prefix)),
   );
   rows.sort((a, b) =>
-    compareCitationPaths(a.citation_path as string, b.citation_path as string)
+    compareCitationPaths(a.citation_path as string, b.citation_path as string),
   );
   return { provisions: rows, truncated: rows.length >= SUBTREE_LIMIT };
 }
 
 async function getNeighbor(
   node: NavigationNodeRow,
-  direction: "prev" | "next"
+  direction: "prev" | "next",
 ): Promise<SectionNeighbor | null> {
   let query = supabaseCorpus
     .from("navigation_nodes")
@@ -574,8 +574,7 @@ async function getNeighbor(
   const result = await withTimeout(query, SECTION_QUERY_TIMEOUT_MS, null);
   if (!result || result.error) return null;
   const row = (result.data ?? [])[0] as
-    | Pick<NavigationNodeRow, "path" | "citation_path" | "label">
-    | undefined;
+    Pick<NavigationNodeRow, "path" | "citation_path" | "label"> | undefined;
   if (!row) return null;
   return {
     citationPath: row.citation_path ?? row.path,
@@ -584,7 +583,7 @@ async function getNeighbor(
 }
 
 async function getNavigationNode(
-  path: string
+  path: string,
 ): Promise<NavigationNodeRow | null> {
   const result = await withTimeout(
     supabaseCorpus
@@ -593,7 +592,7 @@ async function getNavigationNode(
       .eq("path", path)
       .maybeSingle(),
     SECTION_QUERY_TIMEOUT_MS,
-    null
+    null,
   );
   if (!result || result.error) return null;
   return (result.data as NavigationNodeRow | null) ?? null;
@@ -609,6 +608,10 @@ async function getNavigationNode(
 export interface SectionResolution {
   root: Rule;
   citationPath: string;
+  /** The path the URL actually asked for, before any fallback rewrote
+   *  it. When it differs from citationPath (doc-type crosswalk, mirror
+   *  source lookup), encodings may still be keyed by it. */
+  requestedPath: string;
   focusAnchor: string | null;
   /** True when no corpus row exists at the path itself and the root
    *  was synthesized over descendant rows — the signal that the path
@@ -635,12 +638,12 @@ function anchorExistsUnder(
   root: Rule,
   citationPath: string,
   anchor: string,
-  subtree: { provisions: Rule[] }
+  subtree: { provisions: Rule[] },
 ): boolean {
   const found = subtree.provisions.some((rule) => {
     const relative = subtreeAnchor(
       citationPath,
-      (rule.citation_path as string) ?? ""
+      (rule.citation_path as string) ?? "",
     );
     return relative === anchor || relative.startsWith(`${anchor}-`);
   });
@@ -648,7 +651,7 @@ function anchorExistsUnder(
   if (subtree.provisions.length === 0 && root.body) {
     if (
       splitBodyIntoSubsections(root.body).chunks.some(
-        (chunk) => chunk.anchor === anchor
+        (chunk) => chunk.anchor === anchor,
       )
     ) {
       return true;
@@ -674,7 +677,7 @@ function anchorExistsUnder(
  */
 export function joinedSegmentPaths(
   slug: string,
-  ruleSegments: string[]
+  ruleSegments: string[],
 ): string[] {
   const [docType, ...parts] = ruleSegments;
   if (!docType || parts.length < 2) return [];
@@ -686,8 +689,74 @@ export function joinedSegmentPaths(
   return paths;
 }
 
+/** Document classes the corpus files interchangeably for policy-adjacent
+ *  material. An encoding under policies/ may live in the corpus as
+ *  manual/ or guidance/ — same document, different classification. */
+const DOC_TYPE_SIBLINGS: Record<string, string[]> = {
+  policy: ["manual", "guidance"],
+  manual: ["policy", "guidance"],
+  guidance: ["policy", "manual"],
+};
+
+export function docTypeCrosswalk(docType: string | undefined): string[] {
+  return docType ? (DOC_TYPE_SIBLINGS[docType] ?? []) : [];
+}
+
+/**
+ * The corpus home an encoding module attests for itself:
+ * `module.source_verification.corpus_citation_path` from the rulespec
+ * mirror. Looked up by the reader path (mirror rows are keyed by the
+ * file's citation path); subsection tails are trimmed until a row
+ * matches, since page-structured sources can't anchor subsections.
+ */
+export async function rulespecSourceCitationPath(
+  slug: string,
+  ruleSegments: string[],
+): Promise<string | null> {
+  // Same registered-visibility refusal the section reader makes: a
+  // gated pilot family's module must not attest a corpus home through
+  // the mirror when its YAML is unreadable everywhere else.
+  if (isGatedJurisdiction(slug)) return null;
+  for (let end = ruleSegments.length; end >= 3; end--) {
+    const candidate = [slug, ...ruleSegments.slice(0, end)].join("/");
+    const { data, error } = await supabaseEncodings
+      .from("rulespec_files")
+      .select("raw_yaml")
+      .eq("citation_path", candidate)
+      .limit(3);
+    if (error) return null;
+    for (const row of data ?? []) {
+      const yaml = (row as { raw_yaml: string | null }).raw_yaml;
+      if (!yaml) continue;
+      // The encoder emits both spellings: singular scalar
+      // (`corpus_citation_path: us/...`) and plural list
+      // (`corpus_citation_paths:` followed by `- us/...` items). Read
+      // the scalar, else the first list item.
+      // Same-line value only: an empty scalar followed by another key
+      // must not capture the next line's token as a path.
+      const single = yaml.match(
+        /corpus_citation_path:[ \t]*["']?([\w./-]+)["']?/,
+      );
+      if (single?.[1]) return single[1];
+      const plural = yaml.match(
+        /corpus_citation_paths:\s*\n\s*-\s*["']?([\w./-]+)["']?/,
+      );
+      if (plural?.[1]) return plural[1];
+    }
+  }
+  return null;
+}
+
+/** NYCRR citations write part.section, while corpus paths split those numbers. */
+export function splitNycrrSectionPath(segments: string[]): string[] | null {
+  const [jurisdiction, kind, title, section, ...tail] = segments;
+  if (jurisdiction !== "us-ny" || kind !== "regulation" || !/^\d+-nycrr$/.test(title ?? "")) return null;
+  const match = /^(\d+)\.(\d+[a-z]?)$/i.exec(section ?? "");
+  return match ? [jurisdiction, kind, title!, match[1]!, match[2]!, ...tail] : null;
+}
+
 export async function resolveSection(
-  segments: string[]
+  segments: string[],
 ): Promise<SectionResolution | null> {
   const resolved = resolveAxiomPath(segments);
   if (
@@ -705,12 +774,51 @@ export async function resolveSection(
   // The corpus is mostly section-granular, so subsection URLs
   // (…/26/32/a) resolve to their section with a focus anchor.
   let root = await getProvisionByCitationPath(requestedPath).catch(() => null);
+  if (!root) {
+    const splitPath = splitNycrrSectionPath([slug, ...ruleSegments]);
+    if (splitPath) {
+      const alias = await resolveSection(splitPath);
+      if (alias) return { ...alias, requestedPath };
+    }
+  }
   let citationPath = requestedPath;
   let focusAnchor: string | null = null;
   let synthetic = false;
   let prefetchedSubtree: Awaited<
     ReturnType<typeof getSubtreeProvisions>
   > | null = null;
+  if (root) {
+    // A childless deep leaf (…/26/21/c/1) is one item of an
+    // enumeration — its text reads as a fragment ("$3,000 …, or")
+    // without the parent's chapeau. When the parent is itself a
+    // body-bearing provision, render the parent focused on the leaf
+    // instead. Leaves with their own subtrees keep their page.
+    const leaf = ruleSegments[ruleSegments.length - 1] ?? "";
+    if (ruleSegments.length >= 4 && /^[a-z0-9]{1,4}$/i.test(leaf)) {
+      const probe = await getSubtreeProvisions(requestedPath);
+      if (probe.provisions.length > 0) {
+        prefetchedSubtree = probe;
+      } else {
+        const parentPath = [slug, ...ruleSegments.slice(0, -1)].join("/");
+        const parent = await getProvisionByCitationPath(parentPath).catch(
+          () => null,
+        );
+        if (parent?.body) {
+          const parentSubtree = await getSubtreeProvisions(parentPath);
+          if (anchorExistsUnder(parent, parentPath, leaf, parentSubtree)) {
+            root = parent;
+            citationPath = parentPath;
+            focusAnchor = leaf;
+            prefetchedSubtree = parentSubtree;
+          } else {
+            prefetchedSubtree = probe;
+          }
+        } else {
+          prefetchedSubtree = probe;
+        }
+      }
+    }
+  }
   if (!root) {
     // Some sections are ingested subsection-granular with no section
     // row at all (42 USC 1396a: …/1396a/e/15 exists, …/1396a does
@@ -732,7 +840,7 @@ export async function resolveSection(
     const dashPath = [
       slug,
       ...ruleSegments.map((segment, index) =>
-        index === 0 ? segment : segment.replace(/-/g, "–")
+        index === 0 ? segment : segment.replace(/-/g, "–"),
       ),
     ].join("/");
     if (dashPath !== requestedPath) {
@@ -759,7 +867,7 @@ export async function resolveSection(
     // shapes before climbing to an ancestor.
     for (const candidate of joinedSegmentPaths(slug, ruleSegments)) {
       const rule = await getProvisionByCitationPath(candidate).catch(
-        () => null
+        () => null,
       );
       if (rule) {
         root = rule;
@@ -772,7 +880,7 @@ export async function resolveSection(
     for (let end = ruleSegments.length - 1; end >= 2; end--) {
       const candidate = [slug, ...ruleSegments.slice(0, end)].join("/");
       const rule = await getProvisionByCitationPath(candidate).catch(
-        () => null
+        () => null,
       );
       if (rule) {
         // Only focus the anchor when it really exists under the
@@ -787,11 +895,74 @@ export async function resolveSection(
         if (!anchored && !rule.body) {
           return null;
         }
+        if (!anchored && process.env.NODE_ENV !== "production") {
+          // #190: silent focus no-ops are undiagnosable — say which
+          // cited anchor found no home under the resolved section.
+          console.warn(
+            `[reader] focus anchor "${anchor}" (from ${requestedPath}) ` +
+              `not found under ${candidate} — rendering unfocused`,
+          );
+        }
         root = rule;
         citationPath = candidate;
         focusAnchor = anchored ? anchor : null;
         prefetchedSubtree = subtree;
         break;
+      }
+    }
+  }
+  if (!root) {
+    // Encoding file paths and corpus paths disagree on document class
+    // for policy-adjacent material: a rulespec filed under policies/
+    // may be ingested as manual/ or guidance/. Retry the same tail
+    // under the sibling classes before giving up (#191).
+    for (const sibling of docTypeCrosswalk(ruleSegments[0])) {
+      const candidate = [slug, sibling, ...ruleSegments.slice(1)].join("/");
+      const rule = await getProvisionByCitationPath(candidate).catch(
+        () => null,
+      );
+      if (rule) {
+        root = rule;
+        citationPath = candidate;
+        break;
+      }
+      const probe = await getSubtreeProvisions(candidate);
+      if (probe.provisions.length > 0) {
+        const navNode = await getNavigationNode(candidate);
+        root = synthesizeSectionRoot(candidate, resolved, navNode?.label);
+        citationPath = candidate;
+        synthetic = true;
+        prefetchedSubtree = probe;
+        break;
+      }
+    }
+  }
+  if (!root) {
+    // Last rung: the encodings mirror records each module's true corpus
+    // home (module.source_verification.corpus_citation_path). A reader
+    // URL built from a rule-file legal id — the graph inspector's
+    // "Read the law" — resolves through it even when the file and
+    // corpus paths diverge entirely (…/capital-gains vs …/page-25).
+    const sourcePath = await rulespecSourceCitationPath(
+      slug,
+      ruleSegments,
+    ).catch(() => null);
+    if (sourcePath && sourcePath !== requestedPath) {
+      const rule = await getProvisionByCitationPath(sourcePath).catch(
+        () => null,
+      );
+      if (rule) {
+        root = rule;
+        citationPath = sourcePath;
+      } else {
+        const probe = await getSubtreeProvisions(sourcePath);
+        if (probe.provisions.length > 0) {
+          const navNode = await getNavigationNode(sourcePath);
+          root = synthesizeSectionRoot(sourcePath, resolved, navNode?.label);
+          citationPath = sourcePath;
+          synthetic = true;
+          prefetchedSubtree = probe;
+        }
       }
     }
   }
@@ -804,6 +975,7 @@ export async function resolveSection(
   return {
     root,
     citationPath,
+    requestedPath,
     focusAnchor,
     synthetic,
     containerCandidate,
@@ -820,29 +992,126 @@ export async function resolveSection(
  * it.
  */
 export function dedupeRootBody(root: Rule, descendants: Rule[]): Rule {
+  return splitRootBodyAroundChildren(root, descendants).root;
+}
+
+/**
+ * Split a root body that repeats its descendants' text into the intro
+ * (chapeau before the first child) and the flush text after the LAST
+ * child — the trailing sentence enumerations often carry ("The amount
+ * determined under paragraph (1) or (2) … shall be reduced …"), which
+ * plain intro-trimming silently dropped.
+ */
+export function splitRootBodyAroundChildren(
+  root: Rule,
+  descendants: Rule[],
+): { root: Rule; flush: string | null } {
   const body = root.body;
-  if (!body) return root;
-  const firstChildBody = descendants
+  if (!body) return { root, flush: null };
+  const childBodies = descendants
     .map((rule) => rule.body?.trim() ?? "")
-    .find((text) => text.length >= 20);
-  if (!firstChildBody) return root;
+    .filter((text) => text.length >= 20);
+  const firstChildBody = childBodies[0];
+  if (!firstChildBody) return { root, flush: null };
   const needle = firstChildBody.slice(0, 60);
   const index = body.indexOf(needle);
-  if (index < 0) return root;
-  const intro = body.slice(0, index).trim();
-  return { ...root, body: intro.length > 0 ? intro : null };
+  if (index < 0) return { root, flush: null };
+  // Child rows store their text without the enumeration marker, so the
+  // kept chapeau would end with a dangling "(1)" — strip it.
+  const intro = body
+    .slice(0, index)
+    .trim()
+    .replace(/\(\s*[\w.]{1,4}\s*\)\s*$/, "")
+    .trim();
+
+  // Locate the end of the last child's text inside the root body; what
+  // follows is flush text belonging to the root, not to any child.
+  let flush: string | null = null;
+  const lastChildBody = childBodies[childBodies.length - 1]!;
+  const lastNeedle = lastChildBody.slice(0, 60);
+  const lastAt = body.lastIndexOf(lastNeedle);
+  if (lastAt >= 0) {
+    const tail = body.slice(lastAt + lastChildBody.length).trim();
+    if (tail.length >= 20) flush = tail;
+  }
+
+  return {
+    root: { ...root, body: intro.length > 0 ? intro : null },
+    flush,
+  };
 }
 
 export async function getSectionPageData(
-  segments: string[]
+  segments: string[],
 ): Promise<SectionPageData | null> {
   const resolution = await resolveSection(segments);
   if (!resolution) return null;
   return getSectionPageDataFromResolution(resolution);
 }
 
+/**
+ * Encoding paths for a section, most likely first: the resolved corpus
+ * path, the originally requested path when a fallback rewrote it, and
+ * the doc-type crosswalk siblings of both. Rulespec mirror rows are
+ * keyed by encoding-file paths, which classify policy-adjacent
+ * documents differently from the corpus (#191) — a guidance page's
+ * rules may be keyed under policy/, whichever URL the reader arrived
+ * from.
+ */
+export function encodingPathCandidates(
+  resolution: Pick<SectionResolution, "citationPath" | "requestedPath">,
+): string[] {
+  const candidates: string[] = [];
+  for (const path of [resolution.citationPath, resolution.requestedPath]) {
+    if (!path || candidates.includes(path)) continue;
+    candidates.push(path);
+    const segments = path.split("/");
+    for (const sibling of docTypeCrosswalk(segments[1])) {
+      const variant = [segments[0], sibling, ...segments.slice(2)].join("/");
+      if (!candidates.includes(variant)) candidates.push(variant);
+    }
+  }
+  return candidates;
+}
+
+function hasEncodingContent(
+  section: Awaited<ReturnType<typeof getSectionEncoding>>,
+): boolean {
+  return section.encoding != null || Object.keys(section.ruleFiles).length > 0;
+}
+
+async function getSectionEncodingAcrossPaths(
+  rootId: string,
+  resolution: Pick<SectionResolution, "citationPath" | "requestedPath">,
+): Promise<Awaited<ReturnType<typeof getSectionEncoding>>> {
+  const candidates = encodingPathCandidates(resolution);
+  let first: Awaited<ReturnType<typeof getSectionEncoding>> | null = null;
+  for (const candidate of candidates) {
+    const section = await getSectionEncoding(rootId, candidate).catch(() => ({
+      encoding: null,
+      encodingRootPath: null,
+      fileAnchors: {},
+      ruleFiles: {},
+      citedByFiles: [],
+      citedByOverflow: 0,
+    }));
+    if (hasEncodingContent(section)) return section;
+    first = first ?? section;
+  }
+  return (
+    first ?? {
+      encoding: null,
+      encodingRootPath: null,
+      fileAnchors: {},
+      ruleFiles: {},
+      citedByFiles: [],
+      citedByOverflow: 0,
+    }
+  );
+}
+
 export async function getSectionPageDataFromResolution(
-  resolution: SectionResolution
+  resolution: SectionResolution,
 ): Promise<SectionPageData | null> {
   const { citationPath, focusAnchor, prefetchedSubtree } = resolution;
   let root = resolution.root;
@@ -852,21 +1121,24 @@ export async function getSectionPageDataFromResolution(
       prefetchedSubtree ?? getSubtreeProvisions(citationPath),
       getRuleReferences(citationPath).catch(() => [] as RuleReference[]),
       getNavigationNode(citationPath),
-      getSectionEncoding(root.id, citationPath).catch(() => ({
+      getSectionEncodingAcrossPaths(root.id, resolution).catch(() => ({
         encoding: null,
         encodingRootPath: null,
         fileAnchors: {},
         ruleFiles: {},
+        citedByFiles: [],
+        citedByOverflow: 0,
       })),
       getProvisionCoverage(citationPath).catch(
-        () => [] as ProvisionProgramCoverage[]
+        () => [] as ProvisionProgramCoverage[],
       ),
       listParityCases().catch(() => []),
     ]);
   const encoding = sectionEncoding.encoding;
 
   const refBody = root.body;
-  root = dedupeRootBody(root, subtree.provisions);
+  const split = splitRootBodyAroundChildren(root, subtree.provisions);
+  root = split.root;
 
   const rootDepth = citationPath.split("/").length;
   const provisions: SectionProvision[] = subtree.provisions.map((rule) => ({
@@ -875,12 +1147,19 @@ export async function getSectionPageDataFromResolution(
     designator: relativeDesignator(citationPath, rule.citation_path as string),
     relativeDepth: (rule.citation_path as string).split("/").length - rootDepth,
   }));
+  // Flush text after the last enumerated child belongs to the section,
+  // not to any child — render it at the end of the last child's block,
+  // where section-granular corpora place it.
+  if (split.flush && provisions.length > 0) {
+    const last = provisions[provisions.length - 1]!;
+    last.rule = {
+      ...last.rule,
+      body: [last.rule.body, split.flush].filter(Boolean).join("\n\n"),
+    };
+  }
 
   const [prev, next] = node
-    ? await Promise.all([
-        getNeighbor(node, "prev"),
-        getNeighbor(node, "next"),
-      ])
+    ? await Promise.all([getNeighbor(node, "prev"), getNeighbor(node, "next")])
     : [null, null];
 
   // Corpus rows are the preferred structure source; body parsing is
@@ -902,8 +1181,11 @@ export async function getSectionPageDataFromResolution(
   const encodedRules =
     encodingRoot === citationPath
       ? applyFileAnchors(
-          mapRulesToSubsections(citationPath, encoding?.rulespec_content ?? null),
-          sectionEncoding.fileAnchors
+          mapRulesToSubsections(
+            citationPath,
+            encoding?.rulespec_content ?? null,
+          ),
+          sectionEncoding.fileAnchors,
         )
       : // The request is DEEPER than the encoded module (paragraph page
         // under a section-granular file): join by each rule's source
@@ -913,7 +1195,7 @@ export async function getSectionPageDataFromResolution(
         mapRulesToDeepPath(
           encodingRoot,
           citationPath.slice(encodingRoot.length + 1).split("/"),
-          encoding?.rulespec_content ?? null
+          encoding?.rulespec_content ?? null,
         );
 
   // Coverage: which top-level subsections carry rules, out of how
@@ -925,13 +1207,13 @@ export async function getSectionPageDataFromResolution(
           .map((provision) => provision.anchor)
       : bodySplit.chunks.map((chunk) => chunk.anchor);
   const encodedAnchors = new Set(
-    encodedRules.flatMap((entry) => entry.anchors)
+    encodedRules.flatMap((entry) => entry.anchors),
   );
   const encodedCoverage =
     unitAnchors.length > 0 && encodedRules.length > 0
       ? {
           encodedUnits: unitAnchors.filter((anchor) =>
-            encodedAnchors.has(anchor)
+            encodedAnchors.has(anchor),
           ).length,
           totalUnits: unitAnchors.length,
         }
@@ -945,7 +1227,7 @@ export async function getSectionPageDataFromResolution(
       (item) =>
         item.jurisdiction === program.jurisdiction &&
         item.program_id === program.programId &&
-        item.oracles.length > 0
+        item.oracles.length > 0,
     );
     if (cases.length > 0) {
       parity = {
@@ -973,6 +1255,8 @@ export async function getSectionPageDataFromResolution(
     encodedRules,
     programs,
     ruleFiles: sectionEncoding.ruleFiles,
+    citedByFiles: sectionEncoding.citedByFiles,
+    citedByOverflow: sectionEncoding.citedByOverflow,
     focusAnchor,
     prev,
     next,
@@ -985,7 +1269,7 @@ export async function getSectionPageDataFromResolution(
 function withTimeout<T>(
   promise: PromiseLike<T>,
   ms: number,
-  fallback: T
+  fallback: T,
 ): Promise<T> {
   return new Promise((resolve) => {
     const timer = setTimeout(() => resolve(fallback), ms);
@@ -997,7 +1281,7 @@ function withTimeout<T>(
       () => {
         clearTimeout(timer);
         resolve(fallback);
-      }
+      },
     );
   });
 }

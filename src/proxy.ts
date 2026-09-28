@@ -48,6 +48,26 @@ function stripAxiomPrefix(pathname: string): string {
   return pathname.startsWith("/axiom/") ? pathname.slice("/axiom".length) : pathname;
 }
 
+// The app's own routes that are not citation paths and are public at
+// their bare path on every host -- the encoded-rules index links to
+// /encoded/<citation> -- rewritten to their /axiom mount like citation
+// paths are. /ops is not among them: on the marketing host /ops is the
+// marketing page, so the app's ops dashboard stays at /axiom/ops.
+const APP_BARE_ROUTE_RE = /^\/(?:encoded|search)(?:\/|$)/;
+
+// The one public URL on the canonical host for a path that reached the
+// app under its old host, its /axiom mount or a trailing-slash alias:
+// the root and the graph are /app, the ops dashboard is /axiom/ops, and
+// everything else -- a citation path, an index link, a marketing page --
+// is the bare path itself.
+function canonicalSitePath(pathname: string): string {
+  const trimmed = pathname.replace(/\/+$/, "") || "/";
+  const bare = isInternalAxiomPath(trimmed) ? stripAxiomPrefix(trimmed) : trimmed;
+  if (bare === "/" || bare === "/graph" || bare === "/app") return "/app";
+  if (bare === "/ops") return "/axiom/ops";
+  return bare;
+}
+
 // Top-level dirs/files in ``public/`` that ship to the deploy
 // verbatim. Without an explicit bypass the app-subdomain rewrite
 // turns e.g. ``/logos/foo.svg`` into ``/axiom/logos/foo.svg``, which
@@ -81,13 +101,6 @@ function isInternalAxiomPath(pathname: string): boolean {
   return pathname === "/axiom" || pathname.startsWith("/axiom/");
 }
 
-// Marketing routes that exist only on the marketing site. The
-// app-host catch-all rewrite would otherwise serve app-root content
-// for them with HTTP 200 — the global footer links (/about, /team,
-// /privacy, /docs) silently landing on the wrong page.
-const MARKETING_PATH_RE =
-  /^\/(?:about|team|privacy|docs|format|stack|reports|preview)(?:\/|$)/;
-
 export function proxy(request: NextRequest) {
   const host = cleanHost(request);
   const { pathname } = request.nextUrl;
@@ -110,26 +123,22 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(target, 308);
   }
 
+  // app.axiom-foundation.org is the retired app host: axiom.org serves
+  // the site and the app alike, so every page request there redirects to
+  // the same resource on the canonical host. Framework, asset and
+  // analytics paths still resolve, so nothing cached on the old host
+  // breaks before the alias is removed.
   if (host === APP_HOST) {
     if (isBypassPath(pathname)) {
       return NextResponse.next();
     }
-
-    if (MARKETING_PATH_RE.test(pathname)) {
-      const target = request.nextUrl.clone();
-      target.hostname = SITE_HOST;
-      return NextResponse.redirect(target, 308);
-    }
-
-    if (isInternalAxiomPath(pathname)) {
-      const target = request.nextUrl.clone();
-      target.pathname = stripAxiomPrefix(pathname);
-      return NextResponse.redirect(target, 308);
-    }
-
-    const target = request.nextUrl.clone();
-    target.pathname = appPagePath(pathname);
-    return NextResponse.rewrite(target);
+    // A plain URL, not nextUrl.clone(): NextURL keeps a trailing-slash
+    // alias's slash on pathname assignment, which would send /graph/ to
+    // /app/, a URL with no page.
+    const target = new URL(
+      `https://${SITE_HOST}${canonicalSitePath(pathname)}${request.nextUrl.search}`
+    );
+    return NextResponse.redirect(target, 308);
   }
 
   // The site skips Next's trailing-slash normalization, but the
@@ -144,11 +153,18 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL("/receipt/api/", request.url), 307);
   }
 
+  // /axiom is the app's internal mount. On the canonical host a public
+  // /axiom URL for the root, the graph or a citation path redirects to
+  // its one public form (/app, or the bare citation path); the app's
+  // own routes under the mount are served in place.
   if (host === SITE_HOST && isInternalAxiomPath(pathname)) {
-    const target = request.nextUrl.clone();
-    target.hostname = APP_HOST;
-    target.pathname = stripAxiomPrefix(pathname);
-    return NextResponse.redirect(target, 308);
+    const canonical = canonicalSitePath(pathname);
+    if (canonical !== pathname) {
+      const target = new URL(request.url);
+      target.pathname = canonical;
+      return NextResponse.redirect(target, 308);
+    }
+    return NextResponse.next();
   }
 
   // The two-door portal is retired — the Plane is the app. Old
@@ -160,9 +176,11 @@ export function proxy(request: NextRequest) {
   }
 
   // /app is the Plane's canonical path on every host; /graph was its
-  // old name and redirects.
-  if (pathname === "/graph") {
-    const target = request.nextUrl.clone();
+  // old name, and the trailing-slash forms (the site disables Next's
+  // own slash redirect) are aliases, all redirecting with their query.
+  const slashless = pathname.replace(/\/+$/, "") || "/";
+  if (slashless === "/graph" || (slashless === "/app" && pathname !== "/app")) {
+    const target = new URL(request.url);
     target.pathname = "/app";
     return NextResponse.redirect(target, 308);
   }
@@ -180,6 +198,14 @@ export function proxy(request: NextRequest) {
   if (APP_ROOT_PREFIX_RE.test(pathname)) {
     const target = request.nextUrl.clone();
     target.pathname = appPagePath(pathname);
+    return NextResponse.rewrite(target);
+  }
+
+  // The app's bare public routes (the encoded-rules index and search)
+  // resolve on every host the same way, at their /axiom mount.
+  if (APP_BARE_ROUTE_RE.test(pathname)) {
+    const target = request.nextUrl.clone();
+    target.pathname = `/axiom${pathname}`;
     return NextResponse.rewrite(target);
   }
 

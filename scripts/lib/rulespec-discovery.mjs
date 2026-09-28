@@ -80,8 +80,10 @@ async function fetchAppVisibility(repo) {
  * skipped, as are archived repos — an archived repo is read-only, so
  * it can never flip its own visibility marker, and a parked lane's
  * encodings don't belong on app surfaces (rulespec-tz-znz).
+ * ``onIncomplete`` is notified when a repository tree cannot be
+ * inspected, allowing destructive consumers to suppress stale cleanup.
  */
-export async function discoverRoots() {
+export async function discoverRoots(onIncomplete) {
   const repos = await githubJson(
     `https://api.github.com/orgs/${GITHUB_ORG}/repos?per_page=100&type=all&sort=pushed`
   );
@@ -103,9 +105,16 @@ export async function discoverRoots() {
       );
     } catch (error) {
       console.warn(`skip ${repo.name}: ${error.message}`);
+      onIncomplete?.({ repo: repo.name, error });
       continue;
     }
-    const entries = tree.tree ?? [];
+    if (!Array.isArray(tree.tree)) {
+      const error = new Error("GitHub tree response did not contain entries");
+      console.warn(`skip ${repo.name}: ${error.message}`);
+      onIncomplete?.({ repo: repo.name, error });
+      continue;
+    }
+    const entries = tree.tree;
     const jurisdictionDirs = entries
       .filter(
         (entry) => entry.type === "tree" && isJurisdictionSegment(entry.path)

@@ -1,4 +1,4 @@
-import type { ProgramGraph, RuleNode } from "./types";
+import type { LegalId, ProgramGraph, RuleNode } from "./types";
 
 /**
  * Isolated-node filter for composed graphs: a rule with zero deps
@@ -52,7 +52,11 @@ export function filterStandaloneRules(graph: ProgramGraph): {
  * the largest dependency closure — the box the subtree rolls up
  * into (matches the census's headlineRule when present, but always
  * computed from the graph itself, never trusted from an index).
- * Ties break lexicographically for determinism.
+ * Ties go to the first one declared — the statute's own order, so
+ * NYC § 11-1701 opens on the joint-return tax (a)(1)(A), not on the
+ * alphabetically earlier head-of-household one. The viewer's summit
+ * is this same pick: the canvas scopes to it while the header and
+ * inspector name it, so a different tie-break splits the two.
  */
 export function composeRootOutput(graph: ProgramGraph): string | null {
   const byId = new Map(graph.rules.map((rule) => [rule.legalId, rule]));
@@ -75,13 +79,27 @@ export function composeRootOutput(graph: ProgramGraph): string | null {
       const rule = byId.get(current);
       if (rule) stack.push(...rule.ruleDeps);
     }
-    if (
-      seen.size > bestSize ||
-      (seen.size === bestSize && best !== null && id < best)
-    ) {
+    if (seen.size > bestSize) {
       bestSize = seen.size;
       best = id;
     }
   }
   return best;
+}
+
+/**
+ * The rule a ``?focus=`` deep link names inside a composed graph:
+ * ``us:statutes/26/24/d#refundable_ctc`` is that rule's legal id when
+ * the composed (already filtered) graph carries it, else null. The
+ * match is exact — a fragment never selects by suffix, so
+ * ``#refundable_ctc`` can't land on ``#non_refundable_ctc``. A focus
+ * without a ``#`` fragment names a file; compose mode already scopes
+ * to the file, so there is nothing further to select.
+ */
+export function focusedComposeRule(
+  graph: ProgramGraph,
+  focus: string | null,
+): LegalId | null {
+  if (!focus || !focus.includes("#")) return null;
+  return graph.rules.some((rule) => rule.legalId === focus) ? focus : null;
 }

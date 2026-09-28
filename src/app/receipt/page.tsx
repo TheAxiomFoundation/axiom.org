@@ -1,20 +1,44 @@
 import type { Metadata } from "next";
 import { Reveal } from "@/components/landing/reveal";
+import { VerifyDemo } from "./verify-demo";
 import { SITE_URL } from "@/lib/urls";
+import { SITE_NAME } from "@/lib/share";
 
 export const metadata: Metadata = {
   title: "receipt — verifiable custody of agent-produced records",
   description:
-    "A receipt is the record you keep so anyone can check it later. The receipt package writes them for agent-produced records — one offline verification command.",
+    "Anyone can verify, offline, that an agent-produced record was never changed, backdated, or deleted. One command over a clone; trust anchors live in the verifier's own code.",
   alternates: { canonical: `${SITE_URL}/receipt` },
+  // Without a page-level block, shares take the root layout's generic
+  // title and description; give the package its own.
+  // No `images` key: the sibling opengraph-image.tsx supplies the card,
+  // and an explicit images array here would take precedence over it.
+  openGraph: {
+    type: "website",
+    siteName: SITE_NAME,
+    title: "receipt — verifiable custody of agent-produced records",
+    description:
+      "Anyone can verify, offline, that an agent-produced record was never changed, backdated, or deleted. One command over a clone; trust anchors live in the verifier's own code.",
+    url: `${SITE_URL}/receipt`,
+  },
 };
 
 // The package homepage — receipt is an auxiliary open-source package for
 // anyone shipping agent-produced records, not an Axiom-internal tool. Axiom's
 // own usage appears once, as provenance. Copy stays close to the package
-// README (the claims are its claims); no version numbers on the page so
-// nothing drifts between releases.
-const provides: { mod: string; what: string; pending?: boolean }[] = [
+// README (the claims are its claims); no version numbers in the page's own
+// copy, so nothing drifts between releases — the one version it shows is the
+// demo's, and that comes out of the captured run itself.
+//
+// The list follows the package docstring's own three groups: modules that
+// arrived by extraction behind a byte-equivalence gate, the two the docstring
+// calls "also shipped" (composition over those, adding no cryptography and no
+// anchors of their own), and machinery still pending extraction.
+const provides: {
+  mod: string;
+  what: string;
+  status?: "pending" | "composed";
+}[] = [
   {
     mod: "receipt.release_chain",
     what: "Append-only hash-chained manifests over record sets: enumerated genesis, content-addressed links, immutable-prefix verification.",
@@ -40,13 +64,23 @@ const provides: { mod: string; what: string; pending?: boolean }[] = [
     what: "Workflow-provenance verification with self-anchoring enforcement epochs and a full-history sweep over every protected-tree commit.",
   },
   {
+    mod: "receipt.corpus",
+    status: "composed",
+    what: "Closed-world binding of a record tree to its witnessed journal: every content file present is bound, and every bound file is present.",
+  },
+  {
+    mod: "receipt.verify",
+    status: "composed",
+    what: "The spanning command behind receipt verify: history, custody, binding and declaration over the tree one commit names, stopping at the first refusal.",
+  },
+  {
     mod: "receipt.ratchet",
-    pending: true,
+    status: "pending",
     what: "Shrink-only exception registries recomputed from live state; an excused failure that starts passing is an error until removed.",
   },
   {
     mod: "receipt.chronology",
-    pending: true,
+    status: "pending",
     what: "Record-vs-event ordering tiers: does witnessed time prove the record existed before the event it predicts or observes?",
   },
 ];
@@ -71,19 +105,19 @@ export default function ReceiptPage() {
             Verifiable custody of agent-produced records
           </h1>
           <p className="font-body text-[1.2rem] leading-relaxed text-[var(--color-ink-secondary)] text-pretty">
-            A receipt is the record you keep so anyone can check it later.
-            Agents now produce records faster than any human can witness them —
-            forecasts, ledgers, encoded law. The receipt package writes
-            receipts for those records, and <code>receipt verify</code> is what
-            happens when someone asks to see them: a clone, commodity tools,
-            one offline, fail-closed verdict.
+            Agents produce records faster than any human can witness them —
+            encoded law, signed rule corpora, release histories. The receipt
+            package writes receipts for those records, and{" "}
+            <code>receipt verify</code> is what happens when someone asks to
+            see them: a clone, commodity tools, one offline, fail-closed
+            verdict.
           </p>
         </Reveal>
 
         {/* Install — the whole adoption story is two commands */}
         <Reveal as="section" className="mb-16">
           <pre className="m-0 rounded-md border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] p-5 font-mono text-[0.9rem] leading-relaxed text-[var(--color-ink)] overflow-x-auto">
-            {"pip install receipt\nreceipt verify"}
+            {"pip install receipt\nreceipt verify --spec verification/spec.py --commit HEAD"}
           </pre>
           <p className="mt-3 font-mono text-[0.72rem] uppercase tracking-wider text-[var(--color-ink-muted)]">
             on PyPI as{" "}
@@ -107,8 +141,29 @@ export default function ReceiptPage() {
             >
               API reference
             </a>{" "}
-            · <code>receipt verify</code> lands with the corpus adoption
+            ·{" "}
+            <a
+              href="/receipt/paper"
+              className="text-[var(--color-accent)] hover:underline"
+            >
+              Working paper
+            </a>
           </p>
+        </Reveal>
+
+        {/* The fail-closed behavior, touchable: pick an attack, watch the
+            first check that fails stop the run. Refusal strings are the
+            package's own. */}
+        <Reveal as="section" className="mb-16">
+          <h2 className="heading-section m-0 mb-6">Try to slip one past it</h2>
+          <p className="m-0 mb-6 max-w-[720px] font-body text-[1rem] leading-relaxed text-[var(--color-ink-secondary)]">
+            When an encoding is wrong, the discipline is to fix the pipeline
+            and re-encode — never edit the published file by hand. The record
+            shows which path a change took: pick one below and read the
+            verdict. It is a verdict about the tree the named commit carries,
+            never about whatever a working directory happens to hold.
+          </p>
+          <VerifyDemo />
         </Reveal>
 
         <Reveal as="section" className="mb-16">
@@ -121,9 +176,11 @@ export default function ReceiptPage() {
               >
                 <p className="m-0 font-mono text-[0.85rem] text-[var(--color-ink)]">
                   {item.mod}
-                  {item.pending && (
+                  {item.status && (
                     <span className="ml-2 font-mono text-[0.62rem] uppercase tracking-wider text-[var(--color-ink-muted)]">
-                      pending extraction
+                      {item.status === "pending"
+                        ? "pending extraction"
+                        : "composed, not extracted"}
                     </span>
                   )}
                 </p>
@@ -149,16 +206,20 @@ export default function ReceiptPage() {
           <h2 className="heading-section mb-3">Where it comes from</h2>
           <p className="font-body text-[1rem] leading-relaxed text-[var(--color-ink-secondary)]">
             The machinery arrives by extraction from three production systems
-            that each built it independently — pre-registered forecast records,
-            an observation-ledger release chain, and a signed statute corpus —
+            that each built it independently — a signed statute corpus,
+            pre-registered forecast records, and an observation-ledger release
+            chain —
             behind a byte-equivalence gate: the extracted verifier must
             reproduce the source verifier&apos;s verdict, pass and fail alike,
             on the live production chain before any system consumes the
-            package. The observation ledger runs on it in production today,
-            with differential harnesses re-proving equivalence on every
-            package change; adoption by the Axiom corpus is underway. We built
-            it because we needed it. We publish it because everyone shipping
-            agent-produced records will.
+            package. What <code>receipt verify</code> adds on top is
+            composition, not a fourth extraction: it spans those modules and
+            reports their verdicts, contributing no cryptography and no trust
+            anchors of its own. The observation ledger runs on it in
+            production today, with differential harnesses re-proving
+            equivalence on every package change; adoption by the Axiom corpus
+            is underway. We built it because we needed it. We publish it
+            because everyone shipping agent-produced records will.
           </p>
           <p className="mt-4 font-mono text-[0.72rem] uppercase tracking-wider text-[var(--color-ink-muted)]">
             Axiom&apos;s own records carry them:{" "}

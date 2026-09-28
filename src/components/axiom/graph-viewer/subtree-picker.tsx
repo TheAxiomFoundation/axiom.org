@@ -58,11 +58,21 @@ export function SubtreeSearch({
   const entries = useMemo(
     () =>
       modules.map((module) => {
-        const label = humanizeCitation(module.target);
+        const citation = humanizeCitation(module.target);
+        // The headline rule is how people actually name a module
+        // ("Net Investment Income Tax", "Social Security Benefits
+        // Included In Gross Income") — a citation-only haystack made
+        // federal statutes unfindable by policy name (their citations
+        // are just numbers).
+        const headline = module.headlineRule
+          ? humanizeRuleName(module.headlineRule)
+          : null;
         return {
           module,
-          label,
-          haystack: `${label} ${module.target}`.toLowerCase(),
+          label: headline ?? citation,
+          citation,
+          haystack:
+            `${headline ?? ""} ${citation} ${module.target}`.toLowerCase(),
         };
       }),
     [modules],
@@ -72,14 +82,38 @@ export function SubtreeSearch({
     const trimmed = query.trim().toLowerCase();
     if (!trimmed) return [];
     const tokens = trimmed.split(/\s+/);
-    const hits: typeof entries = [];
+    // Ranked in three tiers: a hit in the module's NAME (headline
+    // rule) beats a hit in its citation, which beats a hit that only
+    // lives in the raw file path — "social security" surfaces §86
+    // ("Social Security Benefits Included In Gross Income") above
+    // state documents merely titled or filed under those words.
+    const byHeadline: typeof entries = [];
+    const byCitation: typeof entries = [];
+    const byPath: typeof entries = [];
     for (const entry of entries) {
-      if (tokens.every((token) => entry.haystack.includes(token))) {
-        hits.push(entry);
-        if (hits.length >= MAX_RESULTS) break;
+      if (!tokens.every((token) => entry.haystack.includes(token))) continue;
+      const headline =
+        entry.label === entry.citation ? "" : entry.label.toLowerCase();
+      const citation = entry.citation.toLowerCase();
+      if (headline && tokens.every((token) => headline.includes(token))) {
+        byHeadline.push(entry);
+      } else if (tokens.every((token) => citation.includes(token))) {
+        byCitation.push(entry);
+      } else {
+        byPath.push(entry);
       }
+      if (byHeadline.length >= MAX_RESULTS) break;
     }
-    return hits;
+    // Within a tier, substantial modules first — the 26-rule §86
+    // encoding is a better "social security" answer than a 2-rule
+    // side definition that happens to share the words.
+    const bySize = (a: (typeof entries)[number], b: (typeof entries)[number]) =>
+      b.module.ruleCount - a.module.ruleCount;
+    return [
+      ...byHeadline.sort(bySize),
+      ...byCitation.sort(bySize),
+      ...byPath.sort(bySize),
+    ].slice(0, MAX_RESULTS);
   }, [entries, query]);
 
   const searching = query.trim().length > 0;
@@ -111,7 +145,9 @@ export function SubtreeSearch({
             >
               <strong>{entry.label}</strong>
               <span className="picker-result-target">
-                {entry.module.target}
+                {entry.label === entry.citation
+                  ? entry.module.target
+                  : entry.citation}
                 {entry.module.ruleCount > 0
                   ? ` · ${entry.module.ruleCount} rules`
                   : ""}

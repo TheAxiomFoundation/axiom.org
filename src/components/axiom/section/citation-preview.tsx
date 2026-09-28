@@ -157,6 +157,7 @@ export function CitationPreviewLayer() {
       </p>
       {card.heading && (
         <p
+          dir="auto"
           className="mt-1 mb-0 text-sm font-semibold text-[var(--color-ink)]"
           style={{ fontFamily: "var(--f-serif)" }}
         >
@@ -165,6 +166,7 @@ export function CitationPreviewLayer() {
       )}
       {card.snippet && (
         <p
+          dir="auto"
           className="mt-2 mb-0 text-[13px] leading-relaxed text-[var(--color-ink-secondary)]"
           style={{ fontFamily: "var(--f-serif)" }}
         >

@@ -96,7 +96,16 @@ const DEFAULT_LINKS: NavLink[] = [
     ],
   },
   { href: "/blog", label: "Blog" },
-  { href: "/about", label: "About" },
+  {
+    href: "/about",
+    label: "About",
+    // The parent stays a link to /about; the dropdown carries the
+    // pages that sit under the foundation rather than the product.
+    items: [
+      { href: "/about", label: "Axiom" },
+      { href: "/citations", label: "Citations" },
+    ],
+  },
   { href: "/team", label: "Team" },
 ];
 

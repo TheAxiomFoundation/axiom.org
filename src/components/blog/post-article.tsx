@@ -40,12 +40,21 @@ export function PostArticle({ post }: { post: BlogPost }) {
         ) : null}
       </header>
       {post.featureImage ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={post.featureImage}
-          alt=""
-          className="mb-12 w-full rounded-[4px] border border-[var(--color-rule)]"
-        />
+        <figure className="blog-cover mb-12">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={post.featureImage}
+            alt={post.featureImageAlt ?? ""}
+            className="w-full rounded-[4px] border border-[var(--color-rule)]"
+          />
+          {/* Ghost captions are HTML (e.g. a styled credit span) from the
+              same first-party instance as the body below. */}
+          {post.featureImageCaption ? (
+            <figcaption
+              dangerouslySetInnerHTML={{ __html: post.featureImageCaption }}
+            />
+          ) : null}
+        </figure>
       ) : null}
       {/* Post HTML is authored in our own Ghost instance — first-party
           trusted content, same trust model as the codebase's copy. */}

@@ -184,34 +184,39 @@
   }
 }
 
-/* ── The elevated results sheet ── */
+/* ── The execution panel ── */
+/* One right-docked card holds both the run results and the selected
+   node's details, sharing a single scroll — the graph itself never
+   sits under a floating sheet. */
 .graph-viewer-root .viewer-panel {
   position: relative;
 }
-.graph-viewer-root .results-sheet {
+.graph-viewer-root .exec-panel {
   position: absolute;
-  left: 60px;
-  bottom: 22px;
-  width: min(560px, calc(100% - 32px));
+  /* Controls row + the panel's 12px gutter; 12px inside the frame. */
+  top: 92px;
+  right: 24px;
+  z-index: 13;
+  /* Wide enough for the inspector mini graph's three columns to wrap
+     names instead of truncating them. */
+  width: min(420px, calc(100% - 48px));
   background: color-mix(in srgb, var(--color-paper-elevated) 97%, transparent);
   border: 1px solid var(--color-rule);
   border-radius: 16px;
   box-shadow:
     0 1px 2px rgba(28, 25, 23, 0.08),
     0 24px 60px -20px rgba(28, 25, 23, 0.35);
-  padding: 16px 18px 14px;
-  animation: sheet-rise 0.4s var(--ease-out, ease) both;
-  z-index: 12;
+  max-height: calc(100% - 128px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  animation: panel-in 0.3s var(--ease-out, ease) both;
 }
-@keyframes sheet-rise {
-  from {
-    opacity: 0;
-    transform: translateX(-50%) translateY(18px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(-50%);
-  }
+.graph-viewer-root .exec-panel > section {
+  padding: 14px 16px 16px;
+}
+.graph-viewer-root .exec-panel > section + section {
+  border-top: 1px solid var(--color-rule);
 }
 .graph-viewer-root .results-head {
   display: flex;
@@ -276,9 +281,8 @@
   .graph-viewer-root .plane-live .react-flow__edge path {
     animation: none;
   }
-  .graph-viewer-root .results-sheet,
+  .graph-viewer-root .exec-panel,
   .graph-viewer-root .results-value,
-  .graph-viewer-root .node-inspector,
   .graph-viewer-root .outputs-panel,
   .graph-viewer-root .run-panel > *,
   .graph-viewer-root .exec-pill,
@@ -441,6 +445,25 @@
   background: var(--color-paper);
 }
 
+/* The canvas hangs from a chain of percentage heights: root (100vh
+   above) → .app-shell → .viewer-panel → .graph-stage → .irg-wrap →
+   .irg-canvas → React Flow's inline height:100%. Below 900px the
+   scoped upstream sheet (styles.css) sets the shell and the panel to
+   height:auto for a stacked side-panel layout this app no longer
+   renders; the percentages then resolve against auto, .irg-wrap
+   shrinks to its 2px of border, and the graph disappears while its
+   nodes still sit in the DOM. Its 70vh floor for .irg-wrap never
+   reaches the page either: this sheet loads last and re-pins
+   .irg-wrap to min-height:0. Keep the chain whole at every width —
+   the ≤820px notice above covers the canvas on phones, but the
+   canvas beneath it stays laid out. */
+@media (max-width: 900px) {
+  .graph-viewer-root .app-shell,
+  .graph-viewer-root .viewer-panel {
+    height: 100%;
+  }
+}
+
 /* The side panel gained a fourth block (Scenario); the upstream grid
    declared rows for three, which overlapped Outputs and Scenario. */
 .graph-viewer-root .side-panel {
@@ -466,6 +489,22 @@
    fades the new scene in — one perceived change, never jump-then-pan. */
 .graph-viewer-root .irg-scene-cut .react-flow__viewport {
   animation: irg-scene-fade 340ms var(--ease-out, ease-out);
+}
+/* A card that joins the canvas (a lens opening, a door unfolding)
+   fades in beside the ones sliding into place, instead of popping.
+   The viewer tags it .irg-entering for one frame; the transition
+   carries it to its resting opacity when the tag drops. */
+.graph-viewer-root .irg-canvas .react-flow__node {
+  transition: opacity 320ms var(--ease-out, ease-out);
+}
+.graph-viewer-root .irg-canvas .react-flow__node.irg-entering {
+  opacity: 0;
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .graph-viewer-root .irg-canvas .react-flow__node {
+    transition: none;
+  }
 }
 /* A run landing is the SAME scene gaining light, not a scope change —
    the full blackout would read as a blink, but a RAW cut shows every
@@ -565,19 +604,19 @@
 
 /* ── Execution pill ── */
 .graph-viewer-root .exec-pill {
-  /* Replaces the Run button while a run is live — same top-right
-     band, flush with the graph box edge. */
-  position: absolute;
-  top: -30px;
-  right: 0;
-  z-index: 17;
+  /* Replaces the Run button while a run is live — same slot at the
+     row's end, same height AND the same footprint as .run-toggle, so
+     swapping one for the other never shifts the controls sitting left
+     of it on the line. */
   display: inline-flex;
   align-items: center;
+  height: var(--graph-control-h);
+  min-width: var(--graph-run-w);
   gap: 8px;
   border: 1px solid rgba(22, 101, 52, 0.3);
   background: color-mix(in srgb, var(--color-paper-elevated) 97%, transparent);
   border-radius: 999px;
-  padding: 6px 8px 6px 12px;
+  padding: 0 8px 0 12px;
   font-size: 12px;
   font-weight: 550;
   color: var(--color-success, #166534);
@@ -590,11 +629,9 @@
   background: var(--color-success, #166534);
   /* static — a forever-pulsing dot reads as flicker */
 }
-@keyframes exec-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(22, 101, 52, 0.35); }
-  50% { box-shadow: 0 0 0 5px rgba(22, 101, 52, 0); }
-}
 .graph-viewer-root .exec-pill button {
+  /* Exit hugs the pill's far end; the dot + label cluster left. */
+  margin-left: auto;
   border: 1px solid var(--color-rule);
   background: var(--color-paper-elevated);
   border-radius: 999px;
@@ -610,29 +647,8 @@
 }
 
 /* ── Node inspector ── */
-.graph-viewer-root .node-inspector {
-  position: absolute;
-  top: 104px;
-  right: 24px;
-  z-index: 13;
-  /* Wide enough for the mini graph's three columns to wrap names
-     instead of truncating them. */
-  width: min(400px, calc(100% - 48px));
-  background: color-mix(in srgb, var(--color-paper-elevated) 97%, transparent);
-  border: 1px solid var(--color-rule);
-  border-radius: 14px;
-  box-shadow:
-    0 1px 2px rgba(28, 25, 23, 0.08),
-    0 22px 50px -18px rgba(28, 25, 23, 0.4);
-  padding: 14px 16px 16px;
-  animation: inspector-in 0.3s var(--ease-out, ease) both;
-  /* Long content (a rule built from a dozen questions) scrolls inside
-     the card — the canvas never clips it. */
-  max-height: calc(100% - 128px);
-  overflow-y: auto;
-  overflow-x: hidden;
-  overscroll-behavior: contain;
-}
+/* A section of .exec-panel — the panel owns position, card chrome,
+   and the shared scroll. */
 @keyframes inspector-in {
   from { opacity: 0; transform: translateX(10px); }
   to { opacity: 1; transform: none; }
@@ -684,8 +700,7 @@
 }
 .graph-viewer-root .node-inspector-formula {
   margin: 10px 0 0;
-  max-height: 140px;
-  overflow: auto;
+  /* Full formula, no inner scrollbox — the inspector itself scrolls. */
   background: var(--color-rule-subtle);
   border-radius: 8px;
   padding: 8px 10px;
@@ -1648,16 +1663,22 @@
 
 /* Journey re-entry pill beside the Index toggle. */
 .graph-viewer-root .run-toggle {
-  /* Top right, flush with the graph box edge — THE primary action on
-     the page, so it's the one filled button in the band. */
-  position: absolute;
-  top: -32px;
-  right: 0;
-  z-index: 16;
+  /* Last item in the frame row — THE primary action on the page, so
+     it's the one filled button in the band. Height matches the row's
+     tallest control so the whole line shares a top and a bottom
+     edge; the flex row centers it. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--graph-control-h);
+  /* Holds the width of its longest label so "Running…" doesn't pull
+     the row in behind it — the only reservation the line needs. The
+     live pill shares the same token. */
+  min-width: var(--graph-run-w);
   border: none;
   background: var(--color-accent);
   border-radius: 999px;
-  padding: 7px 18px;
+  padding: 0 18px;
   font: inherit;
   font-size: 12.5px;
   font-weight: 600;
@@ -1776,8 +1797,8 @@
 .graph-viewer-root .plane-switch {
   position: absolute;
   top: 2px;
-  /* flush with the graph box's right edge (the canvas sits 24px in) */
-  right: 24px;
+  /* flush with the graph box's right edge (the canvas sits 12px in) */
+  right: 12px;
   z-index: 15;
   display: inline-flex;
   align-items: center;
@@ -1954,6 +1975,12 @@
   gap: 6px 12px;
   margin: 10px 0 0;
 }
+/* Inside the Details disclosure the box supplies the frame — the
+   grid just needs breathing room instead of its outer margin. */
+.graph-viewer-root .node-inspector-code .node-inspector-meta {
+  margin: 0;
+  padding: 9px 12px 11px;
+}
 .graph-viewer-root .node-inspector-meta dt {
   font-family: var(--f-mono, monospace);
   font-size: 10px;
@@ -2086,8 +2113,10 @@
   border-color: var(--color-accent);
 }
 .graph-viewer-root .mini-graph-card.is-question {
+  /* Dashed marks "input you answer" — but muted ink read as a
+     half-rendered card; keep the text legible. */
   border-style: dashed;
-  color: var(--color-ink-muted);
+  color: var(--color-ink-secondary);
 }
 .graph-viewer-root .mini-graph-card.is-center {
   border-color: var(--color-accent);
@@ -2114,8 +2143,6 @@
 
 .graph-viewer-root .node-inspector-code-body {
   padding: 10px 12px;
-  max-height: 240px;
-  overflow: auto;
   background: var(--color-paper);
 }
 .graph-viewer-root .formula-pretty {
@@ -2251,14 +2278,8 @@
     transform: none;
   }
 }
-.graph-viewer-root .node-inspector {
-  animation: panel-in 0.26s var(--ease-out, ease) both;
-}
 .graph-viewer-root .outputs-panel {
   animation: panel-in 0.2s var(--ease-out, ease) both;
-}
-.graph-viewer-root .results-sheet {
-  animation: panel-in 0.3s var(--ease-out, ease) both;
 }
 @media (prefers-reduced-motion: reduce) {
   .graph-viewer-root .react-flow__node,
@@ -2321,37 +2342,6 @@
   background: var(--color-accent-light, rgba(217, 119, 6, 0.1));
 }
 
-
-/* Center-anchored sheets need their translateX preserved through the
-   entrance — panel-in ends at transform:none and un-centers them. */
-@keyframes corner-in {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-.graph-viewer-root .results-sheet {
-  animation: corner-in 0.3s var(--ease-out, ease) both;
-}
-@keyframes sheet-in {
-  from {
-    opacity: 0;
-    transform: translateX(-50%) translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .graph-viewer-root .results-sheet {
-    animation: none;
-  }
-}
 
 /* Scenario setup inside the launcher card. */
 .graph-viewer-root .journey-scenario-body {
@@ -2539,35 +2529,6 @@
   padding: 0;
   cursor: pointer;
   text-align: left;
-}
-
-/* Smooth zoom controls (replacing the stock snapping ones). */
-.graph-viewer-root .smooth-controls {
-  position: absolute;
-  left: 12px;
-  bottom: 12px;
-  z-index: 12;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.graph-viewer-root .smooth-controls button {
-  width: 30px;
-  height: 30px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--color-rule);
-  border-radius: 8px;
-  background: var(--color-paper-elevated);
-  color: var(--color-ink-secondary);
-  font-size: 15px;
-  cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease;
-}
-.graph-viewer-root .smooth-controls button:hover {
-  color: var(--color-accent);
-  border-color: var(--color-accent);
 }
 
 /* Every scrollable surface scrolls smoothly. */
@@ -2798,7 +2759,10 @@
 }
 .graph-viewer-root .formula-block .fp-line {
   display: block;
-  white-space: pre;
+  /* Long constructs wrap in place (indent is padding, so the wrap
+     hangs at the construct's depth) — never a horizontal scrollbar. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   line-height: 1.75;
 }
 
@@ -2816,6 +2780,52 @@
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--color-ink-muted);
+}
+/* Computation outline inside the input picker: branch heads are the
+   law's intermediate calcs (mono micro-caps, expandable), leaves are
+   the question rows. Depth indents through a custom property; each
+   open body carries a hairline spine. */
+.graph-viewer-root .run-outline-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--f-mono, monospace);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-ink-secondary);
+}
+.graph-viewer-root .run-outline-head:hover .run-outline-name {
+  color: var(--color-accent);
+}
+.graph-viewer-root .run-outline-caret {
+  color: var(--color-ink-muted);
+  font-size: 9px;
+}
+.graph-viewer-root .run-outline-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 150ms;
+}
+.graph-viewer-root .run-outline-body {
+  /* Constant per level — bodies nest, so indentation compounds by
+     itself. Keep it small: the law nests deeper than a picker column
+     can afford. */
+  margin-left: 5px;
+  padding-left: 6px;
+  border-left: 1px solid var(--color-rule-subtle, var(--color-rule));
+}
+.graph-viewer-root .run-outline-body .run-picker-row {
+  padding-top: 3px;
+  padding-bottom: 3px;
 }
 .graph-viewer-root .run-overview {
   margin-top: 18px;
@@ -2849,9 +2859,10 @@
   grid-template-columns: minmax(0, 1fr) 80px 64px;
 }
 
-/* Run sheet: pick left, answer right, run at the bottom. */
+/* Run sheet: pick left, answer right, run at the bottom. Wide — the
+   input outline nests deep and answer rows carry controls. */
 .graph-viewer-root .run-panel > * {
-  width: min(940px, calc(100vw - 48px));
+  width: min(1240px, calc(100vw - 64px));
   display: flex;
   flex-direction: column;
 }
@@ -2864,6 +2875,19 @@
   overflow-y: auto;
   max-height: 100%;
   padding-right: 4px;
+  padding-bottom: 20px;
+  /* Rows dissolve at the scroll edge instead of being guillotined
+     against the run bar. */
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    black calc(100% - 24px),
+    transparent
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    black calc(100% - 24px),
+    transparent
+  );
 }
 .graph-viewer-root .run-overview-list {
   max-height: none;
@@ -2939,6 +2963,95 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+/* Household strip: who the Person-level answers are about. */
+.graph-viewer-root .scenario-members {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 12px;
+}
+.graph-viewer-root .scenario-members-label {
+  font-family: var(--f-mono, monospace);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-ink-muted);
+  margin-right: 2px;
+}
+.graph-viewer-root .scenario-member-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border: 1px solid var(--color-rule);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--color-ink-secondary);
+  background: var(--color-paper);
+}
+.graph-viewer-root .scenario-member-chip button {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--color-ink-muted);
+  font-size: 13px;
+  line-height: 1;
+}
+.graph-viewer-root .scenario-member-chip button:hover {
+  color: var(--color-accent);
+}
+.graph-viewer-root .scenario-member-add {
+  padding: 3px 10px;
+  border: 1px dashed var(--color-rule);
+  border-radius: 999px;
+  background: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--color-ink-muted);
+  transition: color 150ms, border-color 150ms;
+}
+.graph-viewer-root .scenario-member-add:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+/* Person-level question with members: title row (name + quiet ×),
+   then one identical row per member — mono micro-caps label beside
+   the box, boxes filling to the same right edge, the group held by
+   the same hairline spine the outline uses. */
+.graph-viewer-root .scenario-field-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.graph-viewer-root .scenario-member-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 8px;
+  border-left: 1px solid var(--color-rule-subtle, var(--color-rule));
+}
+.graph-viewer-root .scenario-member-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.graph-viewer-root .scenario-field-member {
+  font-family: var(--f-mono, monospace);
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-ink-muted);
+  white-space: nowrap;
+  min-width: 64px;
+}
+.graph-viewer-root .scenario-member-row input,
+.graph-viewer-root .scenario-member-row .scenario-field-select {
+  flex: 1;
+  min-width: 0;
 }
 .graph-viewer-root .scenario-field-remove {
   width: 22px;
@@ -3029,10 +3142,13 @@
   border-color: var(--color-accent);
 }
 .graph-viewer-root .results-adjust-pager {
-  display: inline-flex;
+  /* Its own line under the fields, tucked to the right — never
+     wedged between the last field and the run action. */
+  display: flex;
+  flex-basis: 100%;
+  justify-content: flex-end;
   align-items: center;
   gap: 6px;
-  align-self: center;
   font-family: var(--f-mono, monospace);
   font-size: 10.5px;
   color: var(--color-ink-muted);
@@ -3056,6 +3172,14 @@
 .graph-viewer-root .results-adjust-pager button:disabled {
   opacity: 0.35;
   cursor: default;
+}
+.graph-viewer-root .results-actions {
+  display: flex;
+  flex-wrap: wrap;
+  flex-basis: 100%;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
 }
 .graph-viewer-root .results-rerun {
   padding: 7px 16px;
@@ -3870,16 +3994,10 @@
   color: var(--color-accent-hover, #b45309);
 }
 
-/* The isolated-node filter's honesty note, stage corner. */
-.graph-viewer-root .standalone-note {
-  position: absolute;
-  left: 12px;
-  bottom: 10px;
-  z-index: 8;
-  font-family: var(--f-mono);
-  font-size: 9.5px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-ink-muted);
-  pointer-events: none;
+/* Country/program switch in the graph header: package navigation that
+   was previously deep-link-only. Reuses the launcher's select styling. */
+.graph-viewer-root .program-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }

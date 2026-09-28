@@ -30,6 +30,15 @@ describe('AboutPage', () => {
     expect(screen.getByRole('heading', { name: 'Validation' })).toBeInTheDocument()
   })
 
+  it('serves the demos highlight as a static poster, not a live iframe', () => {
+    // Regression: the live gallery iframe (7 nested app documents)
+    // crash-looped mobile Safari — DemoThumb must default to the
+    // poster and only upgrade on desktop-class devices.
+    const { container } = render(<AboutPage />)
+    expect(container.querySelector('iframe')).toBeNull()
+    expect(container.querySelector('img[src="/demo-posters/gallery.png"]')).toBeInTheDocument()
+  })
+
   it('renders how-we-verify and the founding-team band', () => {
     render(<AboutPage />)
     expect(screen.getByRole('heading', { name: /how we verify/i })).toBeInTheDocument()
@@ -48,8 +57,10 @@ describe('AboutPage', () => {
     expect(screen.getByText('hello@axiom.org')).toBeInTheDocument()
   })
 
-  it('does not link out to GitHub in Round 1', () => {
+  it('links out to the GitHub org', () => {
     render(<AboutPage />)
-    expect(screen.queryByText(/github\.com/i)).not.toBeInTheDocument()
+    const link = screen.getByRole('link', { name: /browse the code on github/i })
+    expect(link).toHaveAttribute('href', 'https://github.com/TheAxiomFoundation')
+    expect(link).toHaveAttribute('target', '_blank')
   })
 })
