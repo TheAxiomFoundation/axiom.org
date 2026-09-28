@@ -179,7 +179,6 @@ body:has(.has-workspace) .nav-bar { display: none; }
 /* Quiet, consistent utility controls instead of tiny typewriter pills. */
 .graph-viewer-root.has-workspace .back-to-overview,
 .graph-viewer-root.has-workspace .irg-toolbar-btn,
-.graph-viewer-root.has-workspace .irg-fullscreen-btn,
 .graph-viewer-root.has-workspace .workspace-button,
 .graph-viewer-root.has-workspace .library-filter-toggle {
   font-family: inherit; font-size: 12px; font-weight: 500; line-height: 1.3;
@@ -190,15 +189,10 @@ body:has(.has-workspace) .nav-bar { display: none; }
 }
 .graph-viewer-root.has-workspace .back-to-overview:hover,
 .graph-viewer-root.has-workspace .irg-toolbar-btn:hover,
-.graph-viewer-root.has-workspace .irg-fullscreen-btn:hover,
 .graph-viewer-root.has-workspace .workspace-button:hover {
   background: var(--color-paper-elevated); color: var(--color-ink); border-color: var(--color-rule);
 }
-.graph-viewer-root.has-workspace .irg-toolbar-btn.is-active {
-  color: var(--color-ink); background: var(--color-paper-elevated); border-color: var(--color-rule);
-}
 .graph-viewer-root.has-workspace .irg-toolbar { border-radius: 6px; box-shadow: none; }
-.graph-viewer-root.has-workspace .irg-toolbar-segment { border-radius: 6px; }
 .graph-viewer-root.has-workspace .node-inspector-code > h3,
 .workspace-formula > h2 {
   margin: 0; padding: 12px 14px; font: inherit; font-size: 13px;

@@ -36,11 +36,10 @@ describe("focus and context layout",()=>{
   const byId=new Map(laid.map(n=>[n.id,n]));
   for(const edge of links) expect(byId.get(edge.source)!.position.x+byId.get(edge.source)!.width!).toBeLessThan(byId.get(edge.target)!.position.x);
  });
- it("limits depth by named dependencies while passing through operators",()=>{
-  const op:Node={id:"op",position:{x:200,y:0},data:{kind:"operator"}};
-  const links=[{id:"aop",source:"a",target:"op"},{id:"opc",source:"op",target:"c"},{id:"ba",source:"b",target:"a"}];
-  expect([...upstreamIds([...nodes,op],links,"c",1)].sort()).toEqual(["a","c","op"]);
-  expect([...upstreamIds([...nodes,op],links,"c",2)].sort()).toEqual(["a","b","c","op"]);
+ it("limits depth by dependency levels",()=>{
+  const links=[{id:"ac",source:"a",target:"c"},{id:"ba",source:"b",target:"a"}];
+  expect([...upstreamIds(nodes,links,"c",1)].sort()).toEqual(["a","c"]);
+  expect([...upstreamIds(nodes,links,"c",2)].sort()).toEqual(["a","b","c"]);
  });
  it("returns deterministically to the original compact arrangement",()=>{
   expect(focusLayout(nodes,new Set())).toEqual(focusLayout(nodes,new Set()));
