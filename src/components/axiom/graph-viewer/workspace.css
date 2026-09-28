@@ -605,7 +605,20 @@ body:has(.has-workspace) .nav-bar { display: none; }
 .node-metadata dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; white-space: pre-wrap; }
 .node-metadata details { margin-top: 14px; }
 .node-metadata summary { cursor: pointer; font-size: 12px; }
-.node-metadata pre { max-height: 320px; overflow: auto; padding: 12px; background: #f1f2ed; color: #25352c; font-size: 11px; line-height: 1.6; border-radius: 5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.node-metadata details h4 { margin: 16px 0 6px; font-size: 12px; }
+.node-metadata-raw { padding: 10px 12px; background: #f1f2ed; color: #25352c; border-radius: 5px; font-family: var(--f-mono, monospace); font-size: 11px; line-height: 1.6; }
+/* Nested fields hang under their key on a guide line; a wrapped value keeps
+   its indent. Multi-line strings (formulas) stay verbatim and scroll. */
+.metadata-tree { min-width: 0; }
+.metadata-tree-entry > .metadata-tree { margin: 1px 0 3px 2px; padding-left: 10px; border-left: 1px solid rgba(37, 53, 44, .18); }
+.metadata-tree-leaf { padding-left: 14px; text-indent: -14px; overflow-wrap: anywhere; }
+.metadata-tree-key { opacity: .6; }
+.metadata-tree-empty { opacity: .45; }
+.metadata-tree-item { position: relative; padding-left: 12px; text-indent: 0; }
+.metadata-tree-item::before { content: "–"; position: absolute; left: 0; top: 0; opacity: .45; }
+.metadata-tree-item > .metadata-tree { margin: 0; padding-left: 0; border-left: 0; }
+.metadata-tree-item + .metadata-tree-item { margin-top: 2px; }
+.metadata-tree pre { margin: 3px 0 4px; padding: 6px 8px; background: rgba(255, 255, 255, .6); color: inherit; border: 0; border-radius: 4px; font: inherit; white-space: pre; overflow-x: auto; }
 .node-metadata-note { font-size: 12px; line-height: 1.5; margin: 8px 0; }
 .node-metadata-loading { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; opacity: .7; }
 .node-metadata-loading svg { animation: spin 1s linear infinite; }

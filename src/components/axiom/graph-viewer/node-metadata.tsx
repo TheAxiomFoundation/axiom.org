@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CORE_SCHEMA, dump, load } from "js-yaml";
+import { CORE_SCHEMA, load } from "js-yaml";
 import { LoaderCircle } from "lucide-react";
 import { peekReader, readReader } from "./reader-cache";
 import { humanizeRuleName } from "./citations";
@@ -21,6 +21,27 @@ export function selectedMetadata(content: string, id: string): Fields | null {
     const matches = [doc?.rules, doc?.inputs, doc?.relations].flatMap(items => Array.isArray(items) ? items.filter(item => record(item)?.name === name) : []);
     return matches.length === 1 ? record(matches[0]) : null;
   } catch { return null; }
+}
+
+const blank = (value: unknown) => !present(value) || (Array.isArray(value) && value.length === 0) || (record(value) !== null && Object.keys(value as Fields).length === 0);
+
+// The raw fields as a tree rather than a YAML/JSON dump: nesting is drawn by
+// guides instead of leading spaces, so a value that wraps in the narrow
+// inspector keeps its indent instead of restarting at the left edge.
+function MetadataTree({ value }: { value: Fields | unknown[] }) {
+  const entries: Array<[string | null, unknown]> = Array.isArray(value) ? value.map(item => [null, item]) : Object.entries(value);
+  return <div className="metadata-tree">{entries.map(([name,item],index) => <MetadataEntry key={name ?? index} name={name} value={item} />)}</div>;
+}
+
+// Ids and paths break after "/" or "#" before they break mid-word.
+const breakable = (value: string) => value.split(/(?<=[/#])/).flatMap((part, index) => index ? [<wbr key={index} />, part] : [part]);
+
+function MetadataEntry({ name, value }: { name: string | null; value: unknown }) {
+  const item = name === null ? " metadata-tree-item" : "";
+  const key = name === null ? null : <span className="metadata-tree-key">{name}:</span>;
+  if (!blank(value) && (Array.isArray(value) || record(value))) return <div className={`metadata-tree-entry${item}`}>{key}<MetadataTree value={value as Fields | unknown[]} /></div>;
+  if (typeof value === "string" && value.includes("\n")) return <div className={`metadata-tree-entry${item}`}>{key}<pre>{value}</pre></div>;
+  return <div className={`metadata-tree-entry metadata-tree-leaf${item}`}>{key}{key && " "}{blank(value) ? <span className="metadata-tree-empty">{Array.isArray(value) || record(value) ? "none" : "—"}</span> : <span>{breakable(text(value))}</span>}</div>;
 }
 
 export function NodeMetadata({ id, entry = {}, content }: { id: string; entry?: object; content?: string }) {
@@ -69,8 +90,8 @@ export function NodeMetadata({ id, entry = {}, content }: { id: string; entry?: 
     {failed && <p className="node-metadata-note">Encoding metadata could not be loaded. <button onClick={() => { setLoaded(null); setAttempt(value => value + 1); }}>Retry</button></p>}
     {definition !== undefined && !node && <p className="node-metadata-note">No exact standalone definition was found for this node. Showing available graph metadata.</p>}
     <details><summary>All metadata</summary>
-      {node && <><h4>Published encoding</h4><pre>{dump(node, {lineWidth: 100, noRefs:true})}</pre></>}
-      <h4>Loaded graph</h4><pre>{JSON.stringify({ ...fallback, legalId:id }, null, 2)}</pre>
+      {node && <><h4>Published encoding</h4><div className="node-metadata-raw"><MetadataTree value={node} /></div></>}
+      <h4>Loaded graph</h4><div className="node-metadata-raw"><MetadataTree value={{ ...fallback, legalId:id }} /></div>
     </details>
   </section>;
 }
