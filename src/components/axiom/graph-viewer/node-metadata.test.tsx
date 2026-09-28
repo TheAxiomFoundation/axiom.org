@@ -31,6 +31,12 @@ it("shows encoding description, false default, choices and dates without leaking
  expect(screen.queryByText(/Sibling module description/)).not.toBeInTheDocument();
  expect(screen.queryByText(/Not this node/)).not.toBeInTheDocument();
 });
+it("pairs short facts and gives long values their own row after them", () => {
+ render(<NodeMetadata id="root#credit" content={`rules:\n  - name: credit\n    entity: TaxUnit\n    dtype: Money\n    source: 26 USC 22(a), 26 USC 22(f)\n    period: Year\n    versions:\n      - effective_from: 2026-01-01`} entry={{certificationStatus:"encoded"}} />);
+ const items = [...document.querySelectorAll(".node-metadata dl > div")];
+ expect(items.map(item => item.querySelector("dt")?.textContent)).toEqual(["Entity","Value type","Period","Verification status","Source","Encoded effective dates"]);
+ expect(items.filter(item => item.classList.contains("node-metadata-wide")).map(item => item.querySelector("dt")?.textContent)).toEqual(["Source","Encoded effective dates"]);
+});
 it("rejects ambiguous, missing, file-only and malformed definitions", () => {
  expect(selectedMetadata(content,"us:statutes/1")).toBeNull();
  expect(selectedMetadata(content,"us:statutes/1#unknown")).toBeNull();

@@ -55,12 +55,16 @@ export function NodeMetadata({ id, entry = {}, content }: { id: string; entry?: 
   const dates = versions.filter(version => present(version.effective_from) || present(version.effective_to));
   const relation = record(node?.data_relation);
   if (relation) rows.push(["Relationship", relation.predicate], ["Arity", relation.arity]);
-  const visible = rows.filter(([,value]) => present(value));
+  if (dates.length > 0) rows.push(["Encoded effective dates", dates.map(version => `${present(version.effective_from) ? text(version.effective_from) : "Start unspecified"}${present(version.effective_to) ? ` to ${text(version.effective_to)}` : " · no end specified"}`).join("\n")]);
+  // Short facts pair up across the grid; a long value takes a whole row so it
+  // wraps in its own cell rather than squeezing beside a neighbour. Short rows
+  // come first so reading order and visual order stay the same.
+  const visible = rows.filter(([,value]) => present(value)).map(([label,value]) => ({ label, value: text(value), wide: text(value).split("\n").some(line => line.length > 16) }));
+  const ordered = [...visible.filter(row => !row.wide), ...visible.filter(row => row.wide)];
   return <section className="node-metadata" aria-label="Details">
     <h3>Details</h3>
     {typeof description === "string" && <p className="node-metadata-description">{String(description)}<small>Description from encoding</small></p>}
-    {visible.length > 0 && <dl>{visible.map(([label,value]) => <div key={label}><dt>{label}</dt><dd>{text(value)}</dd></div>)}</dl>}
-    {dates.length > 0 && <div className="node-metadata-dates"><h4>Encoded effective dates</h4>{dates.map((version,index) => <p key={index}>{present(version.effective_from) ? text(version.effective_from) : "Start unspecified"}{present(version.effective_to) ? ` to ${text(version.effective_to)}` : " · no end specified"}</p>)}</div>}
+    {ordered.length > 0 && <dl>{ordered.map(({label,value,wide}) => <div key={label} className={wide ? "node-metadata-wide" : undefined}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>}
     {definition === undefined && !failed && <span className="node-metadata-loading" role="status"><LoaderCircle size={14} />Loading metadata…</span>}
     {failed && <p className="node-metadata-note">Encoding metadata could not be loaded. <button onClick={() => { setLoaded(null); setAttempt(value => value + 1); }}>Retry</button></p>}
     {definition !== undefined && !node && <p className="node-metadata-note">No exact standalone definition was found for this node. Showing available graph metadata.</p>}
