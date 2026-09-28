@@ -68,7 +68,7 @@ export function NodeMetadata({ id, entry = {}, content }: { id: string; entry?: 
     {definition === undefined && !failed && <span className="node-metadata-loading" role="status"><LoaderCircle size={14} />Loading metadata…</span>}
     {failed && <p className="node-metadata-note">Encoding metadata could not be loaded. <button onClick={() => { setLoaded(null); setAttempt(value => value + 1); }}>Retry</button></p>}
     {definition !== undefined && !node && <p className="node-metadata-note">No exact standalone definition was found for this node. Showing available graph metadata.</p>}
-    <details><summary>All metadata</summary><p className="node-metadata-note">Selected node only. Published encoding and loaded graph fields are shown separately.</p>
+    <details><summary>All metadata</summary>
       {node && <><h4>Published encoding</h4><pre>{dump(node, {lineWidth: 100, noRefs:true})}</pre></>}
       <h4>Loaded graph</h4><pre>{JSON.stringify({ ...fallback, legalId:id }, null, 2)}</pre>
     </details>
