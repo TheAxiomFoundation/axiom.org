@@ -2,15 +2,20 @@ import type { Metadata } from "next";
 import { Reveal } from "@/components/landing/reveal";
 import { VerifyDemo } from "./verify-demo";
 import { SITE_URL } from "@/lib/urls";
+import { SITE_NAME } from "@/lib/share";
 
 export const metadata: Metadata = {
   title: "receipt — verifiable custody of agent-produced records",
   description:
     "Anyone can verify, offline, that an agent-produced record was never changed, backdated, or deleted. One command over a clone; trust anchors live in the verifier's own code.",
   alternates: { canonical: `${SITE_URL}/receipt` },
-  // Without a page-level block, shares inherit the root layout's
-  // generic brand card; give the package its own title and description.
+  // Without a page-level block, shares take the root layout's generic
+  // title and description; give the package its own.
+  // No `images` key: the sibling opengraph-image.tsx supplies the card,
+  // and an explicit images array here would take precedence over it.
   openGraph: {
+    type: "website",
+    siteName: SITE_NAME,
     title: "receipt — verifiable custody of agent-produced records",
     description:
       "Anyone can verify, offline, that an agent-produced record was never changed, backdated, or deleted. One command over a clone; trust anchors live in the verifier's own code.",

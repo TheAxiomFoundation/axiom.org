@@ -10,6 +10,7 @@ const POST = {
   custom_excerpt: "Short version.",
   excerpt: "Long version.",
   published_at: "2026-07-20T12:00:00.000+00:00",
+  updated_at: "2026-07-21T09:30:00.000+00:00",
   feature_image: "https://example.com/cover.png",
   feature_image_alt: "Sepia illustration of an auditor at a desk.",
   feature_image_caption:
@@ -116,6 +117,7 @@ describe("ghost content client", () => {
     // no field filter, so Ghost sends the cover alt text and caption
     expect(url.searchParams.has("fields")).toBe(false);
     expect(post?.html).toBe("<p>Body.</p>");
+    expect(post?.updatedAt).toBe("2026-07-21T09:30:00.000+00:00");
     expect(post?.authors).toEqual(["Ariel Kennan"]);
     expect(post?.status).toBe("published");
     expect(post?.featureImageAlt).toBe(
@@ -124,6 +126,11 @@ describe("ghost content client", () => {
     expect(post?.featureImageCaption).toBe(
       '<span style="white-space: pre-wrap;">Photo by Martin Romero</span>'
     );
+  });
+
+  it("reads a post without an edit timestamp as updatedAt null", async () => {
+    mockFetch({ posts: [{ ...POST, updated_at: undefined }] });
+    expect((await getBlogPost("first-post"))?.updatedAt).toBeNull();
   });
 
   it("returns null for an unknown slug", async () => {

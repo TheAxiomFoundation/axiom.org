@@ -52,7 +52,11 @@ export function filterStandaloneRules(graph: ProgramGraph): {
  * the largest dependency closure — the box the subtree rolls up
  * into (matches the census's headlineRule when present, but always
  * computed from the graph itself, never trusted from an index).
- * Ties break lexicographically for determinism.
+ * Ties go to the first one declared — the statute's own order, so
+ * NYC § 11-1701 opens on the joint-return tax (a)(1)(A), not on the
+ * alphabetically earlier head-of-household one. The viewer's summit
+ * is this same pick: the canvas scopes to it while the header and
+ * inspector name it, so a different tie-break splits the two.
  */
 export function composeRootOutput(graph: ProgramGraph): string | null {
   const byId = new Map(graph.rules.map((rule) => [rule.legalId, rule]));
@@ -75,10 +79,7 @@ export function composeRootOutput(graph: ProgramGraph): string | null {
       const rule = byId.get(current);
       if (rule) stack.push(...rule.ruleDeps);
     }
-    if (
-      seen.size > bestSize ||
-      (seen.size === bestSize && best !== null && id < best)
-    ) {
+    if (seen.size > bestSize) {
       bestSize = seen.size;
       best = id;
     }

@@ -41,6 +41,8 @@ import {
 import { citationPathSetsForFile } from "./lib/source-citation-paths.mjs";
 import { indexableRoots } from "./lib/indexable-roots.mjs";
 
+import { executionClassification } from "./lib/execution-classification.mjs";
+
 const RAW_FETCH_CONCURRENCY = 8;
 const UPSERT_CHUNK_SIZE = 100;
 const RULE_CITATION_DELETE_CHUNK_SIZE = 25;
@@ -265,6 +267,7 @@ const indexedFiles = (
         jurisdiction: file.root.jurisdiction,
         bucket: file.bucket,
         raw_yaml: content,
+        ...executionClassification(content, doc, file.bucket),
         search_text: buildSearchText(file, doc),
         source_citation_paths: citationPathSets.all,
         value_citation_paths: citationPathSets.values,

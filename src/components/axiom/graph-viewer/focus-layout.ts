@@ -12,12 +12,7 @@ export function upstreamNodeIds(nodes: Node[], edges: Edge[], startId: string, m
     if (depth > maxDepth || (distances.get(id) ?? Infinity) <= depth) continue;
     distances.set(id, depth);
     if (depth >= maxDepth) continue;
-    for (const parent of incoming.get(id) ?? []) {
-      const kind = byId.get(parent)?.data.kind;
-      // Formula operators don't consume a dependency level.
-      const step = kind === "operator" || kind === "ifGate" ? 0 : 1;
-      pending.push([parent, depth + step]);
-    }
+    for (const parent of incoming.get(id) ?? []) pending.push([parent, depth + 1]);
   }
   return new Set(distances.keys());
 }
@@ -73,8 +68,7 @@ export function focusLayout(nodes: Node[], focus: Set<string>, edges: Edge[] = [
     column.sort((a, b) => Number(focus.has(b.id)) - Number(focus.has(a.id)) || a.position.y - b.position.y || a.id.localeCompare(b.id));
     const sizes = column.map((node) => {
       const active = focus.has(node.id);
-      const small = ["operator", "ifGate", "literal"].includes(String(node.data.kind));
-      return { width: active ? node.width ?? 220 : small ? 100 : 164, height: active ? node.height ?? 80 : 48 };
+      return { width: active ? node.width ?? 220 : 164, height: active ? node.height ?? 80 : 48 };
     });
     let y = 0;
     const placed = column.map((node, index) => {
@@ -115,4 +109,19 @@ export function inputContextSubgraph(nodes: Node[], edges: Edge[], legalId: stri
   const ids = new Set<string>();
   for (const id of downstream) for (const upstream of upstreamNodeIds(nodes, edges, id)) ids.add(upstream);
   return { nodes: nodes.filter(node => ids.has(node.id)).map(node => ({...node, position:{...node.position}})), edges: edges.filter(edge => ids.has(edge.source) && ids.has(edge.target)).map(edge => ({...edge})) };
+}
+
+/** The root whose tree the canvas draws for a requested node: the first
+ *  output (outputs lead with the summit) whose dependency tree holds it,
+ *  so an intermediate rule opens inside the tree that uses it. An input
+ *  keeps its own context view; a node no output reaches is its own root. */
+export function scopeRootFor(nodes: Node[], edges: Edge[], outputIds: string[], requested: string | null): string | null {
+  const fallback = outputIds.find((id) => nodes.some((node) => node.data.legalId === id)) ?? null;
+  const target = requested ? nodes.find((node) => node.data.legalId === requested) : undefined;
+  if (!target || !requested) return fallback;
+  if (target.data.kind === "input") return requested;
+  for (const output of outputIds) {
+    if (output === requested || upstreamIds(nodes, edges, output).has(target.id)) return output;
+  }
+  return requested;
 }

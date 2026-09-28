@@ -3,7 +3,8 @@ import { NodeMetadata } from "./node-metadata";
 
 import { HouseholdComposer } from "./household-composer";
 import { RecordedFormula } from "./recorded-formula";
-import { ResultExplanation, inputAwareEvidence } from "./result-explanation";
+import { ResultExplanation, inputAwareEvidence, recordedTableRow } from "./result-explanation";
+import { ParameterTableView } from "./parameter-table";
 import { GraphLoading } from "./graph-loading";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -50,11 +51,10 @@ import {
   filterStandaloneRules,
   focusedComposeRule,
 } from "./compose-filter";
-import { buildRunRequestBody, scenarioKey } from "./run-request";
+import { buildRunRequestBody, mergeRunBatches, scenarioKey, traceRootIds, TRACE_BATCH_SIZE, type RunPayload } from "./run-request";
 import { trackAxiomEvent } from "@/lib/analytics";
 import {
-  readLauncherMode,
-  storeLauncherMode,
+  DEFAULT_LAUNCHER_MODE,
   type LauncherMode,
 } from "./launcher-mode";
 import { loadCorpusModules } from "@/lib/axiom/corpus-live";
@@ -78,13 +78,12 @@ export function GraphViewerApp({
   const [corpusModules, setCorpusModules] = useState<CorpusModule[] | null>(
     null,
   );
-  // The searchable library and corpus map share a persisted view choice.
+  // Every new visit starts on the map; switching views stays local to this visit.
   const [launcherMode, setLauncherMode] = useState<LauncherMode>(() =>
-    readLauncherMode(),
+    DEFAULT_LAUNCHER_MODE,
   );
   const pickLauncherMode = (mode: LauncherMode) => {
     setLauncherMode(mode);
-    storeLauncherMode(mode);
   };
   const [country, setCountry] = useState<Country>(() => initialCountry());
   const [program, setProgram] = useState<ProgramRef | null>(null);
@@ -240,13 +239,8 @@ export function GraphViewerApp({
   };
   // Clicking makes this node the root of the visible dependency graph.
   const focusNode = (data: IrgNodeData) => {
+    // The workspace records the step (URL + history) as the selection lands.
     setInspected(data);
-    if ("legalId" in data && data.legalId) {
-      const url = new URL(window.location.href);
-      url.searchParams.set("selection", data.legalId);
-      url.searchParams.set("view", "map");
-      window.history.replaceState(window.history.state, "", url);
-    }
     trackNodeOpened(data.kind);
     // The graph coordinates selection layout and camera as one transition.
   };
@@ -357,15 +351,7 @@ export function GraphViewerApp({
   const graphJustLoaded = useRef(false);
   const surveyPendingRef = useRef(false);
   const pendingOpeningRef = useRef<string | null>(null);
-  // While a big selection lays out, the canvas hides behind a paper
-  // veil — the map is composed off-stage and revealed once, whole.
-  const [veiled, setVeiled] = useState(false);
-  const veilTimer = useRef<number | null>(null);
-  const veilFor = (ms: number) => {
-    setVeiled(true);
-    if (veilTimer.current) window.clearTimeout(veilTimer.current);
-    veilTimer.current = window.setTimeout(() => setVeiled(false), ms);
-  };
+  const [readyGraphKey, setReadyGraphKey] = useState<string | null>(null);
   // The scenario runner belongs to the "Run a scenario" journey only —
   // survey and rule journeys keep a quieter sidebar.
   const [scenarioMode, setScenarioMode] = useState(false);
@@ -438,10 +424,8 @@ export function GraphViewerApp({
     // so its one-time layout stall hits a still screen.
     if (outputRules.length === 0) {
       surveyPendingRef.current = true;
-      veilFor(2400);
       return;
     }
-    veilFor(1500);
     applySurvey();
   };
   const beginScenario = () => {
@@ -463,8 +447,8 @@ export function GraphViewerApp({
     [graph],
   );
   // How much law rolls up into a rule: the size of its dependency
-  // closure. One ranking, asked twice — once to pick the summit of
-  // the graph, once to pick the headline of a run.
+  // closure — the measure that picks the headline of a run, the same
+  // one composeRootOutput uses to pick the summit of the graph.
   const closureSizeOf = useMemo(
     () => (legalId: string) => {
       const seen = new Set<string>();
@@ -482,20 +466,17 @@ export function GraphViewerApp({
   );
   // The summit: the terminal result with the deepest dependency
   // closure — the box the whole law rolls up into (Allotment,
-  // Benefit). The easiest handhold for a first look.
-  const summitOutput = useMemo(() => {
-    if (!graph) return null;
-    let best: string | null = null;
-    let bestSize = -1;
-    for (const id of graph.terminalOutputs) {
-      const size = closureSizeOf(id);
-      if (size > bestSize) {
-        bestSize = size;
-        best = id;
-      }
-    }
-    return best;
-  }, [graph, closureSizeOf]);
+  // Benefit). The easiest handhold for a first look. It is the same
+  // pick that leads a composed selection — the canvas scopes to
+  // selectedOutputs[0] while the header names the summit, so two
+  // rankings would draw one rule under another's title.
+  const summitOutput = useMemo(
+    () =>
+      graph && graph.terminalOutputs.length > 0
+        ? composeRootOutput(graph)
+        : null,
+    [graph],
+  );
   const consumersOf = (legalId: string) =>
     (graph?.rules ?? []).filter(
       (rule) =>
@@ -665,6 +646,7 @@ export function GraphViewerApp({
     setSelectedOutputs([]);
     setComposedFiles([]);
     setComposedTruncated(false);
+    setReadyGraphKey(null);
     setComposeFocus(target);
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
@@ -679,7 +661,6 @@ export function GraphViewerApp({
       }
       window.history.replaceState({}, "", url.toString());
     }
-    veilFor(1800);
     dismissLauncher();
   };
 
@@ -717,8 +698,7 @@ export function GraphViewerApp({
       url.searchParams.delete("view");
       window.history.replaceState({}, "", url.toString());
     }
-    // Return to the visitor’s preferred corpus entry view.
-    setLauncherMode(readLauncherMode());
+    // Preserve the current visit’s view when returning from a graph.
     setLauncher("open");
     launcherRef.current = "open";
   };
@@ -1146,7 +1126,7 @@ export function GraphViewerApp({
       const byId = new Map((graph?.rules ?? []).map((r) => [r.legalId, r]));
       const visited = new Set<string>();
       const walk = (id: string) => {
-        if (visited.has(id) || reachable.size > 160) return;
+        if (visited.has(id) || reachable.size >= 2 * TRACE_BATCH_SIZE) return;
         visited.add(id);
         const rule = byId.get(id);
         if (!rule) return;
@@ -1154,9 +1134,9 @@ export function GraphViewerApp({
         for (const dep of rule.ruleDeps) walk(dep);
       };
       // Every run computes the outermost layer and everything in
-      // between: trace from the terminal results regardless of what
-      // the canvas currently selects.
-      const traceRoots = (graph?.terminalOutputs ?? []).filter((id) =>
+      // between: trace from the graph's tops regardless of what the
+      // canvas currently selects.
+      const traceRoots = (graph ? traceRootIds(graph) : []).filter((id) =>
         walkRuleById.has(id),
       );
       for (const id of traceRoots) walk(id);
@@ -1258,9 +1238,14 @@ export function GraphViewerApp({
       const ordered = [...reachable].sort(
         (a, b) => Number(isUnitScoped(b)) - Number(isUnitScoped(a)),
       );
-      const bareNames = [
+      const allNames = [
         ...new Set(ordered.map((id) => id.split("#").pop() ?? id)),
-      ].slice(0, 96);
+      ];
+      const bareNames = allNames.slice(0, TRACE_BATCH_SIZE);
+      // Past the per-request cap, a second batch lights the rest (CO
+      // SNAP traces 115 rules). Best effort: its failure never costs
+      // the primary run.
+      const overflowNames = allNames.slice(TRACE_BATCH_SIZE, 2 * TRACE_BATCH_SIZE);
       const tryVariables = async (variables: string[]) => {
         lastRunRequest.current = requestBody(variables);
         const result = await attempt(variables);
@@ -1323,18 +1308,20 @@ export function GraphViewerApp({
         }
         response = bare;
       }
-      const data = (await response.json()) as {
-        outputs: Record<string, number | string | boolean | null>;
-        trace: Array<{
-      variable: string;
-      value: unknown;
-      instances?: Array<{ entity_id: string; value: unknown }>;
-    }>;
+      let data = (await response.json()) as RunPayload & {
         provenance?: {
           ledger_id: string;
           vintage: { engine_release: string };
         } | null;
       };
+      if (overflowNames.length > 0) {
+        try {
+          const extra = await attempt(overflowNames);
+          if (extra.ok) data = mergeRunBatches(data, (await extra.json()) as RunPayload);
+        } catch {
+          // Rate limited or refused: the primary batch stands alone.
+        }
+      }
       setRunResult({ ...data, submittedFacts: { ...scenario }, submittedPersonIds: Object.fromEntries(["person_1", ...extraMembers].map((id, index) => [id, `person:1:${index + 1}`])) });
       setEditingRunInputs(false);
       trackRun("ok");
@@ -1414,7 +1401,8 @@ export function GraphViewerApp({
       lensSyncedToUrl.current = false;
     }
     if (url.toString() !== window.location.href) {
-      window.history.replaceState({}, "", url.toString());
+      // Keep the entry's state: it carries the workspace's steps.
+      window.history.replaceState(window.history.state, "", url.toString());
     }
   }, [program, lensFocusId, composeFocus, requestedProgramKey, launcher]);
 
@@ -1683,9 +1671,6 @@ export function GraphViewerApp({
   useEffect(() => {
     if (workspaceView === "run" && (runBlocked || (composeFocus && composeRunReady === false))) {
       setWorkspaceView("map");
-      const url = new URL(window.location.href);
-      url.searchParams.set("view", "map");
-      window.history.replaceState(window.history.state, "", url);
     }
   }, [workspaceView, runBlocked, composeFocus, composeRunReady]);
 
@@ -1742,6 +1727,7 @@ export function GraphViewerApp({
           unit: rule.unit,
           dtype: rule.dtype,
           formula: rule.formula,
+          table: rule.table,
         })),
     [graph],
   );
@@ -1908,12 +1894,16 @@ export function GraphViewerApp({
       .sort((a, b) => b.size - a.size || a.name.localeCompare(b.name));
     // A lens narrows the question: answer the graph on screen. If the
     // run computed nothing inside it, the whole-run summit still beats
-    // an empty panel.
-    const onCanvas = ranked.find(
-      (entry) => entry.legalId && inScopeIds.has(entry.legalId),
-    );
+    // an empty panel. The summit leads when it's in scope: parallel
+    // rules tie on closure size (NYC's per-filing-status taxes), and the
+    // name order above would headline a sibling the canvas doesn't draw.
+    const inScope = (entry: (typeof ranked)[number]) =>
+      Boolean(entry.legalId && inScopeIds.has(entry.legalId));
+    const onCanvas =
+      ranked.find((entry) => entry.legalId === summitOutput && inScope(entry)) ??
+      ranked.find(inScope);
     return onCanvas ?? ranked[0] ?? null;
-  }, [runResult, ruleByFragment, closureSizeOf, inScopeIds]);
+  }, [runResult, ruleByFragment, closureSizeOf, inScopeIds, summitOutput]);
 
   // Take me there — wherever "there" is: in-scope results fly in
   // place; out-of-scope results leave the lens and re-root on the
@@ -2109,6 +2099,11 @@ export function GraphViewerApp({
         executed.add(node.legalId);
       }
       let value: unknown = ranValue ?? scenarioValue;
+      // The engine traces no parameters: a table shows the row the
+      // run's recorded index picked.
+      if (value === undefined && node.ruleKind === "parameter" && graph) {
+        value = recordedTableRow(graph, runResult, node.legalId)?.value;
+      }
       const next: TraceNode = {
         ...node,
         value:
@@ -2146,7 +2141,7 @@ export function GraphViewerApp({
       executed,
       valueOf,
     };
-  }, [structureTraces, runResult, debouncedScenario]);
+  }, [structureTraces, runResult, debouncedScenario, graph]);
 
   useEffect(() => {
     if (!runResult) return;
@@ -2262,6 +2257,11 @@ export function GraphViewerApp({
     );
   })();
 
+  const graphKey = composeFocus ?? (program ? programKey(program) : "workspace");
+  const openingWorkspace = launcher !== "open" && !error && (
+    (!graph && (programsLoading || Boolean(composeFocus))) || loading || (workspaceView === "map" && spec && Object.keys(structureTraces).length > 0 && readyGraphKey !== graphKey)
+  );
+
   return (
     <div className="graph-viewer-root has-workspace" data-workspace-view={workspaceView} data-run-stage={runResult && !editingRunInputs ? "result" : "inputs"} data-graph-mounted={graphMounted}>
     <CorpusLibrary
@@ -2274,7 +2274,8 @@ export function GraphViewerApp({
       countries={countries.map((id) => ({ id, label: countryLabel(id) }))}
       onCountryChange={setCountry}
     />
-    <main className="app-shell no-sidebar" hidden={launcher === "open"}>
+    {openingWorkspace && <div className="workspace-opening"><GraphLoading /></div>}
+    <main className="app-shell no-sidebar" data-opening={Boolean(openingWorkspace)} aria-hidden={openingWorkspace ? true : undefined} inert={Boolean(openingWorkspace)} hidden={launcher === "open"}>
 
       <section className="viewer-panel">
         {/* The picker and the field are the ways IN; inside a
@@ -2468,12 +2469,6 @@ export function GraphViewerApp({
               {runError}
             </div>
           )}
-          <div
-            className={`graph-veil ${veiled && !loading && !error ? "is-on" : ""}`}
-            aria-hidden={!veiled || loading || Boolean(error)}
-          >
-            {veiled && !loading && !error && <GraphLoading label="Arranging the graph…" />}
-          </div>
           {error && (
             <div className="status error">
               {error}
@@ -2491,9 +2486,7 @@ export function GraphViewerApp({
           )}
 
           {loading ? (
-            <div className="loading-state">
-              <GraphLoading />
-            </div>
+            <div className="loading-state" />
           ) : graph && graph.rules.length === 0 && !composeFocus ? (
             // The certified-serving API answers 200 with no rules when
             // a program's artifact exists but nothing in it is
@@ -2523,7 +2516,8 @@ export function GraphViewerApp({
             <InteractiveRuleGraph
               key={composeFocus ?? (program ? programKey(program) : "workspace")}
               nodeScoped
-              suppressLoadingIndicator={veiled || Boolean(error)}
+              suppressLoadingIndicator
+              onReady={() => setReadyGraphKey(graphKey)}
               spec={spec}
               traces={liveTraces.traces}
               showValues={Boolean(runResult)}
@@ -2605,15 +2599,9 @@ export function GraphViewerApp({
             {workspaceView === "run" && graph && resultHeadline?.legalId && <>
               {<ResultExplanation trail={explanationTrail} onTrailChange={setExplanationTrail} key={resultHeadline.legalId} graph={graph} run={runResult} rootId={resultHeadline.legalId} stale={resultsStale} onEditInputs={() => setEditingRunInputs(true)} onRelationships={(id) => {
                 inspectRule(id); setWorkspaceView("structure"); setRunPanelOpen(false);
-                const url = new URL(window.location.href);
-                url.searchParams.set("selection", id); url.searchParams.set("view", "structure"); url.searchParams.delete("source"); url.hash = "";
-                window.history.replaceState(window.history.state, "", url);
               }} onGraph={(id) => {
                 inspectRule(id); setWorkspaceView("map"); flyTo(id, true);
-                const url = new URL(window.location.href);
-                url.searchParams.set("selection", id); url.searchParams.set("view", "map"); url.searchParams.delete("source"); url.hash = "";
-                window.history.pushState(window.history.state, "", url);
-              }} onRead={(id) => { inspectRule(id); setWorkspaceView("read"); const url = new URL(window.location.href); url.searchParams.set("selection", id); url.searchParams.set("view", "read"); window.history.replaceState(window.history.state, "", url); }} />}
+              }} onRead={(id) => { inspectRule(id); setWorkspaceView("read"); }} />}
             </>}
             {workspaceView !== "run" && <div className="results-adjust" aria-label="Adjust and run again">
               {(() => {
@@ -3145,6 +3133,14 @@ export function GraphViewerApp({
               })()
             ) : null}
             {/* Reference details and formula stay visible beside the graph. */}
+            {graph && legalId && rule?.table && (
+              <ParameterTableView
+                table={rule.table}
+                unit={rule.unit}
+                selectedKey={runResult ? recordedTableRow(graph, runResult, legalId)?.key : null}
+                stale={resultsStale}
+              />
+            )}
             {legalId && <NodeMetadata key={legalId} id={legalId} entry={rule ?? input ?? graph?.relations.find(item => item.legalId === legalId) ?? {}} />}
             {formula && rule?.kind !== "parameter" ? (
               <section className="node-inspector-code" aria-label="Formula">
@@ -3177,13 +3173,7 @@ export function GraphViewerApp({
               </button>
             ) : null}
             {lawHref ? (
-              <button type="button" className="node-inspector-link" data-testid="read-the-law" onClick={() => {
-                setWorkspaceView("read");
-                const url = new URL(window.location.href);
-                url.searchParams.set("view", "read");
-                if ("legalId" in inspected && inspected.legalId) url.searchParams.set("selection", inspected.legalId);
-                window.history.replaceState(window.history.state, "", url);
-              }}>Read the law →</button>
+              <button type="button" className="node-inspector-link" data-testid="read-the-law" onClick={() => setWorkspaceView("read")}>Read the law →</button>
             ) : null}
           </section>
             );

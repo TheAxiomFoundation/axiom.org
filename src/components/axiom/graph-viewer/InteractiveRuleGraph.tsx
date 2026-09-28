@@ -20,7 +20,7 @@ import { BaseEdge, SmoothStepEdge, useReactFlow, type EdgeProps } from "@xyflow/
 import "@xyflow/react/dist/style.css";
 import dagre from "dagre";
 import { graphFitViewport, MAX_GRAPH_ZOOM } from "./zoom-bounds";
-import { inputContextSubgraph, dependencySubgraph, upstreamIds, upstreamNodeIds } from "./focus-layout";
+import { inputContextSubgraph, dependencySubgraph, scopeRootFor, upstreamIds, upstreamNodeIds } from "./focus-layout";
 import type { DashboardSpec, ParameterRule, TraceNode } from "./types";
 import {
   evalAst,
@@ -53,6 +53,8 @@ interface Props {
   showValues?: boolean;
   /** The host is already displaying the graph-loading indicator. */
   suppressLoadingIndicator?: boolean;
+  /** Initial layout and overview viewport are ready to reveal together. */
+  onReady?: () => void;
   /** Restrict the canvas to the selected node and its dependencies. */
   nodeScoped?: boolean;
   /**
@@ -123,6 +125,7 @@ export function InteractiveRuleGraph({
   selectedOutputIds,
   showValues = false,
   suppressLoadingIndicator = false,
+  onReady,
   nodeScoped = false,
   parameterRules,
   dissect = "auto",
@@ -172,17 +175,10 @@ export function InteractiveRuleGraph({
       }
     }
   }, [traceKey, traces, dissect, controlledCollapsed]);
-  // "wires": collapse operator boxes — atomic inputs connect directly to
-  //   the sub-rule or output that consumes them. Cleanest overview, and
-  //   the default since most users care about structure first.
-  // "operators": full graph with every AND / + / IF / count_where node
-  //   visible — opt-in for when the user wants to inspect arithmetic.
-  const [detail, setDetail] = useState<"operators" | "wires">("wires");
   const wrapRef = useRef<HTMLDivElement>(null);
   const flowRef = useRef<Pick<ReactFlowInstance, "getViewport" | "setViewport" | "zoomTo"> | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [zoomPercent, setZoomPercent] = useState(100);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   // Execution dissects its own path: nodes the run computed unfold
   // so the machinery that actually ran is visible, while untouched
   // branches stay folded.
@@ -205,6 +201,8 @@ export function InteractiveRuleGraph({
   const [lod, setLod] = useState<"near" | "mid" | "far">("near");
   const lodTimer = useRef<number | null>(null);
   // Start with a readable direct-dependency frame; depth never removes nodes.
+  const readyCallback = useRef(onReady);
+  readyCallback.current = onReady;
   const [openingOverview, setOpeningOverview] = useState(true);
   const [flowReady, setFlowReady] = useState(false);
   const [upstreamDepth, setUpstreamDepth] = useState<number>(1);
@@ -244,25 +242,6 @@ export function InteractiveRuleGraph({
     };
   }, []);
 
-  // Track Fullscreen API state so the toggle reflects reality (user may
-  // press Esc, click outside, etc.).
-  useEffect(() => {
-    const handler = () => {
-      setIsFullscreen(document.fullscreenElement === wrapRef.current);
-    };
-    document.addEventListener("fullscreenchange", handler);
-    return () => document.removeEventListener("fullscreenchange", handler);
-  }, []);
-
-  const toggleFullscreen = useCallback(() => {
-    if (!wrapRef.current) return;
-    if (document.fullscreenElement) {
-      void document.exitFullscreen();
-    } else {
-      void wrapRef.current.requestFullscreen();
-    }
-  }, []);
-
   const toggleCollapse = useCallback(
     (legalId: string) => {
       setCollapsed((s) => {
@@ -295,9 +274,13 @@ export function InteractiveRuleGraph({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [sizeHintsKey],
   );
-  // Opening a graph defines its scope; inspecting another node only moves
-  // the camera. Depth controls highlighting and framing, never topology.
-  const [scopeId] = useState<string | null>(() => {
+  // The canvas draws one output's tree. Opening on a linked or pinned node
+  // draws the output tree that CONTAINS it — never the node's own subtree,
+  // which hides everything that uses it (a reload on an intermediate rule
+  // left only its inputs, with no way back up). Inspecting a node inside
+  // the tree only moves the camera; one outside it re-scopes to the tree
+  // that holds it. Depth controls highlighting and framing, never topology.
+  const [scopeRequest, setScopeRequest] = useState<string | null>(() => {
     const linked = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("selection");
     return linked ?? pinnedLegalId ?? spec.outputs[0]?.legalId ?? null;
   });
@@ -309,7 +292,6 @@ export function InteractiveRuleGraph({
         nodeScoped ? new Set<string>() : collapsed,
         exposedInputIds,
         showValues,
-        detail,
         canExposeInputs,
         parameterRules,
         selectedOutputIds,
@@ -326,7 +308,6 @@ export function InteractiveRuleGraph({
       collapsed,
       exposedInputIds,
       showValues,
-      detail,
       canExposeInputs,
       parameterRules,
       selectedOutputIds,
@@ -336,6 +317,12 @@ export function InteractiveRuleGraph({
   );
 
   const focusedIds = useMemo(() => upstreamIds(baseGraph.nodes, baseGraph.edges, layoutFocusId, upstreamDepth), [baseGraph, layoutFocusId, upstreamDepth]);
+  const outputIdsKey = spec.outputs.map((output) => output.legalId).join("|");
+  const scopeId = useMemo(
+    () => scopeRootFor(baseGraph.nodes, baseGraph.edges, spec.outputs.map((output) => output.legalId), scopeRequest),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [baseGraph, outputIdsKey, scopeRequest],
+  );
   const { nodes, edges } = useMemo(() => {
     if (!nodeScoped) return baseGraph;
     const root = baseGraph.nodes.some(node => node.data.legalId === scopeId) ? scopeId : spec.outputs[0]?.legalId ?? null;
@@ -347,7 +334,7 @@ export function InteractiveRuleGraph({
   }, [baseGraph, nodeScoped, scopeId, sizeHints]);
 
   const lastCameraSelection = useRef<string | null>(null);
-  const focusSelection = (id: string, duration = 750) => {
+  const focusSelection = (id: string, duration = 950) => {
     const ids = nodes.some(node => node.data.legalId === id && node.data.kind === "input")
       ? new Set(inputContextSubgraph(nodes, edges, id).nodes.map(node => node.id))
       : upstreamIds(nodes, edges, id, upstreamDepth);
@@ -360,16 +347,37 @@ export function InteractiveRuleGraph({
       ease: (t: number) => t * t * (3 - 2 * t),
     });
   };
+  // A target outside the drawn tree re-scopes to the tree that holds it;
+  // the camera follows once that tree is laid out.
+  const pendingFocus = useRef<string | null>(null);
+  const drawn = (id: string) => nodes.some((node) => node.data.legalId === id);
+  const outsideScope = (id: string) =>
+    nodeScoped && !drawn(id) && baseGraph.nodes.some((node) => node.data.legalId === id);
   useEffect(() => {
     if (!flyTo || openingOverview) return;
     if (flyTo.legalId === "*") requestFrame("all");
-    else focusSelection(flyTo.legalId);
+    else if (outsideScope(flyTo.legalId)) {
+      pendingFocus.current = flyTo.legalId;
+      setScopeRequest(flyTo.legalId);
+    } else focusSelection(flyTo.legalId);
   }, [flyTo]);
   useEffect(() => {
     if (openingOverview) return;
+    if (pinnedLegalId && outsideScope(pinnedLegalId)) {
+      setScopeRequest(pinnedLegalId);
+      return;
+    }
+    const pending = pendingFocus.current;
+    if (pending && drawn(pending)) {
+      pendingFocus.current = null;
+      if (pending !== pinnedLegalId) focusSelection(pending);
+    }
     if (pinnedLegalId && pinnedLegalId !== lastCameraSelection.current) focusSelection(pinnedLegalId);
     if (!pinnedLegalId) lastCameraSelection.current = null;
-  }, [pinnedLegalId, nodes, canvasSize]);
+    // Re-run when the opening flight ends: a selection made during it
+    // (or while the page sat in a background tab, where the flight
+    // waits on animation frames) still re-scopes afterwards.
+  }, [pinnedLegalId, nodes, canvasSize, openingOverview]);
 
   const fitViewport = useMemo(() => graphFitViewport(nodes, canvasSize.width, canvasSize.height), [nodes, canvasSize]);
   const minGraphZoom = fitViewport?.zoom ?? .01;
@@ -379,19 +387,30 @@ export function InteractiveRuleGraph({
     if (!flow) return;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     void flow.setViewport(fitViewport, { duration: 0 });
-    const timer = window.setTimeout(() => {
+    let timer: number | undefined;
+    let secondFrame = 0;
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => {
+        readyCallback.current?.();
+        timer = window.setTimeout(() => {
       const target = pinnedLegalId ?? scopeId ?? spec.outputs[0]?.legalId;
       if (target) focusSelection(target, 1100);
       setOpeningOverview(false);
-    }, reducedMotion ? 0 : 500);
-    return () => window.clearTimeout(timer);
+        }, reducedMotion ? 0 : 650);
+      });
+    });
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      cancelAnimationFrame(secondFrame);
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
   }, [openingOverview, flowReady, fontsReady, fitViewport, nodes, pinnedLegalId, scopeId]);
 
   useEffect(() => {
     if (openingOverview || !frameRequest || (frameRequest.mode === "upstream" && !focusedIds.size)) return;
     const visible = frameRequest.mode === "upstream" && focusedIds.size ? nodes.filter((node) => focusedIds.has(node.id)) : nodes;
     const viewport = graphFitViewport(visible, canvasSize.width, canvasSize.height);
-    if (viewport) void flowRef.current?.setViewport(viewport, { duration: 600, interpolate: "smooth" });
+    if (viewport) void flowRef.current?.setViewport(viewport, { duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 950, interpolate: "linear", ease: (t: number) => t * t * (3 - 2 * t) });
   }, [frameRequest, nodes, focusedIds, canvasSize]);
   useEffect(() => {
     if (!fontsReady) return;
@@ -407,12 +426,12 @@ export function InteractiveRuleGraph({
     const flow = flowRef.current;
     if (!flow || !fitViewport) return;
     const current = flow.getViewport();
-    if (current.zoom < fitViewport.zoom - .0001) void flow.setViewport(fitViewport);
+    if (current.zoom < fitViewport.zoom - .0001) void flow.setViewport(fitViewport, { duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 500, interpolate: "linear" });
     else if (current.zoom > MAX_GRAPH_ZOOM) void flow.zoomTo(MAX_GRAPH_ZOOM);
   }, [fitViewport]);
   const stepZoom = (factor: number) => {
     const flow = flowRef.current;
-    if (flow) void flow.zoomTo(Math.max(minGraphZoom, Math.min(MAX_GRAPH_ZOOM, flow.getViewport().zoom * factor)), { duration: 200 });
+    if (flow) void flow.zoomTo(Math.max(minGraphZoom, Math.min(MAX_GRAPH_ZOOM, flow.getViewport().zoom * factor)), { duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 350 });
   };
 
   // Pre-compute the incoming and outgoing edge maps once per build. We use
@@ -655,14 +674,11 @@ export function InteractiveRuleGraph({
     <div
       ref={wrapRef}
       data-lod={lod}
-      className={`irg-wrap ${isFullscreen ? "irg-fullscreen" : ""}`}
+      className="irg-wrap"
     >
       <ReactFlowProvider>
         {(() => {
-          // The browser paints only the fullscreen element's subtree, so
-          // while .irg-wrap is fullscreen the bar has to live inside it —
-          // otherwise every control, the exit button included, vanishes.
-          const slot = isFullscreen ? null : controlsSlot;
+          const slot = controlsSlot;
           const controlsBar = (
         <div className={`irg-controls-bar ${slot ? "irg-controls-inline" : ""}`}>
           <div className="irg-toolbar">
@@ -684,58 +700,7 @@ export function InteractiveRuleGraph({
                 </select>
                 <button type="button" className="irg-toolbar-btn" aria-label="Increase dependency depth" disabled={!Number.isFinite(upstreamDepth)} onClick={() => changeDepth(upstreamDepth >= 5 ? Infinity : upstreamDepth + 1)}>+</button>
               </div>
-            <div className="irg-toolbar-segment" role="tablist" aria-label="Detail level">
-              <button
-                type="button"
-                className={`irg-toolbar-btn ${detail === "operators" ? "is-active" : ""}`}
-                onClick={() => setDetail("operators")}
-                role="tab"
-                aria-selected={detail === "operators"}
-                title="Show operators (AND, OR, IF, comparisons, arithmetic)"
-              >
-                Operators
-              </button>
-              <button
-                type="button"
-                className={`irg-toolbar-btn ${detail === "wires" ? "is-active" : ""}`}
-                onClick={() => setDetail("wires")}
-                role="tab"
-                aria-selected={detail === "wires"}
-                title="Hide operators — show only inputs, sub-rules, outputs and the wires between them"
-              >
-                Wires only
-              </button>
-            </div>
           </div>
-          <button
-            type="button"
-            className="irg-fullscreen-btn"
-            onClick={toggleFullscreen}
-            title={isFullscreen ? "Exit full screen (Esc)" : "Enter full screen"}
-            aria-label={isFullscreen ? "Exit full screen" : "Enter full screen"}
-          >
-            {isFullscreen ? (
-              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
-                <path
-                  d="M6 2v4H2M10 2v4h4M6 14v-4H2M10 14v-4h4"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  fill="none"
-                  strokeLinecap="round"
-                />
-              </svg>
-            ) : (
-              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
-                <path
-                  d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  fill="none"
-                  strokeLinecap="round"
-                />
-              </svg>
-            )}
-          </button>
         </div>
           );
           return slot ? createPortal(controlsBar, slot) : controlsBar;
@@ -807,11 +772,7 @@ export function InteractiveRuleGraph({
           elementsSelectable
           onNodeMouseEnter={(_e, node) => {
             if (moveBusy.current) return;
-            const kind = (node.data as IrgNodeData).kind;
-            // Literals (raw numbers) aren't useful to highlight from — they
-            // appear in many unrelated places and would light up half the
-            // graph at once.
-            if (kind !== "literal") setHighlightNodeId(node.id);
+            setHighlightNodeId(node.id);
           }}
           onNodeMouseLeave={() => setHighlightNodeId(null)}
           onPaneClick={() => onPaneClear?.()}
@@ -916,21 +877,11 @@ export type IrgNodeData =
       showValues: boolean;
       meta: NodeMeta;
     }
-  | {
-      kind: "operator";
-      label: string;
-      verdictCls: string;
-      value: string;
-      showValues: boolean;
-    }
-  | {
-      kind: "ifGate";
-      label: string;
-      verdictCls: string;
-      branchLabel: string;
-      value: string;
-      showValues: boolean;
-    }
+  // Formula machinery (AND, +, IF, table lookups, literals): built while
+  // walking a formula, then merged into direct wires before layout —
+  // never rendered. Only the kind marks it for the merge.
+  | { kind: "operator" }
+  | { kind: "ifGate" }
   | {
       kind: "ruleRef";
       label: string;
@@ -946,10 +897,7 @@ export type IrgNodeData =
       showValues: boolean;
       meta: NodeMeta;
     }
-  | {
-      kind: "literal";
-      label: string;
-    }
+  | { kind: "literal" }
   | {
       kind: "unknown";
       label: string;
@@ -1494,22 +1442,7 @@ const NodeInfo = ({
   const [pos, setPos] = useState<{ left: number; top: number; place: "above" | "below" } | null>(
     null,
   );
-  // Portal into the current fullscreen element when one is active —
-  // otherwise document.body is hidden and the popover wouldn't render at
-  // all. Listening to `fullscreenchange` keeps the target current as the
-  // user toggles in/out without re-opening the popover.
-  const [portalTarget, setPortalTarget] = useState<HTMLElement>(
-    () => (document.fullscreenElement as HTMLElement | null) ?? document.body,
-  );
-  useEffect(() => {
-    const sync = () => {
-      setPortalTarget(
-        (document.fullscreenElement as HTMLElement | null) ?? document.body,
-      );
-    };
-    document.addEventListener("fullscreenchange", sync);
-    return () => document.removeEventListener("fullscreenchange", sync);
-  }, []);
+  const portalTarget = document.body;
   useLayoutEffect(() => {
     if (!open || !anchorRef.current) return;
     const measure = () => {
@@ -1831,29 +1764,6 @@ const InputNode = ({ data }: NodeProps) => {
   );
 };
 
-const OperatorNode = ({ data }: NodeProps) => {
-  const d = data as Extract<IrgNodeData, { kind: "operator" }>;
-  return (
-    <div className={`irg-node irg-operator ${d.showValues ? d.verdictCls : "irg-neutral"}`}>
-      <HandleBoth />
-      <div className="irg-op-label">{d.label}</div>
-      {d.showValues && d.value && <div className="irg-value">{d.value}</div>}
-    </div>
-  );
-};
-
-const IfGateNode = ({ data }: NodeProps) => {
-  const d = data as Extract<IrgNodeData, { kind: "ifGate" }>;
-  return (
-    <div className={`irg-node irg-ifgate ${d.showValues ? d.verdictCls : "irg-neutral"}`}>
-      <HandleBoth />
-      <div className="irg-op-label">IF</div>
-      {d.showValues && d.branchLabel && <div className="irg-eyebrow">{d.branchLabel}</div>}
-      {d.showValues && d.value && <div className="irg-value">{d.value}</div>}
-    </div>
-  );
-};
-
 const RuleRefNode = ({ data }: NodeProps) => {
   const d = data as Extract<IrgNodeData, { kind: "ruleRef" }>;
   const pop = useHoverPopover();
@@ -1886,16 +1796,6 @@ const RuleRefNode = ({ data }: NodeProps) => {
         onEnter={pop.enter}
         onLeave={pop.leave}
       />
-    </div>
-  );
-};
-
-const LiteralNode = ({ data }: NodeProps) => {
-  const d = data as Extract<IrgNodeData, { kind: "literal" }>;
-  return (
-    <div className="irg-node irg-literal">
-      <HandleSource />
-      {d.label}
     </div>
   );
 };
@@ -1977,10 +1877,7 @@ const EDGE_TYPES = { smoothstep: RoundedSmoothStep };
 const NODE_TYPES = {
   output: OutputNode,
   input: InputNode,
-  operator: OperatorNode,
-  ifGate: IfGateNode,
   ruleRef: RuleRefNode,
-  literal: LiteralNode,
   unknown: UnknownNode,
 };
 
@@ -1990,9 +1887,6 @@ function miniMapColor(d: IrgNodeData): string {
     case "input": return d.source === "user" ? "#166534" : "#b45309";
     case "ruleRef": return "#92400e";
     case "unknown": return d.isParameter ? "#78716c" : "#a8a29e";
-    case "ifGate": return "#92400e";
-    case "operator": return "#92400e";
-    case "literal": return "#e7e5e4";
     default: return "#a8a29e";
   }
 }
@@ -2012,7 +1906,6 @@ function buildGraph(
   collapsed: Set<string>,
   exposedInputIds: Set<string> | undefined,
   showValues: boolean,
-  detail: "operators" | "wires" = "operators",
   canExposeInputs: boolean = false,
   parameterRules?: ParameterRule[],
   selectedOutputIds?: Set<string>,
@@ -2127,7 +2020,7 @@ function buildGraph(
       }
     }
 
-    if (detail === "wires" && isExpanded) {
+    if (isExpanded) {
       wireTraceChildren(outputTrace, outputNodeId, walkCtx);
     }
   }
@@ -2138,18 +2031,13 @@ function buildGraph(
   const ctxExtras = { parametersByName };
   void ctxExtras;
 
-  // Wires-only mode: collapse every operator/IF/literal/non-parameter unknown
-  // node so the graph shows only inputs, parameters, sub-rules, and outputs
-  // connected by direct wires. Each removed node's incoming and outgoing
-  // edges are merged.
-  if (detail === "wires") {
-    const result = collapseOperators(nodes, edges);
-    layout(result.nodes, result.edges, stageAspect, sizeHints);
-    return result;
-  }
-
-  layout(nodes, edges, stageAspect, sizeHints);
-  return { nodes, edges };
+  // Collapse every operator/IF/literal/non-parameter unknown node so the
+  // graph shows only inputs, parameters, sub-rules, and outputs connected
+  // by direct wires. Each removed node's incoming and outgoing edges are
+  // merged, keeping the verdict styling the formula walk gave them.
+  const result = collapseOperators(nodes, edges);
+  layout(result.nodes, result.edges, stageAspect, sizeHints);
+  return result;
 }
 
 function wireTraceChildren(parent: TraceNode, parentNodeId: string, ctx: WalkCtx): void {
@@ -2347,6 +2235,14 @@ function walkAst(node: AstNode, parentScope: string, opPath: string, ctx: WalkCt
     if (!t) return null;
     return t.value as EvalValue;
   };
+  // Table rows resolve only inside a rule the run computed: a rule the
+  // engine refused (e.g. not in force for the run's period) must not
+  // read as computed from its tables.
+  const owner = ctx.byName.get(parentScope.split("#").pop() ?? "");
+  const lookupTable =
+    owner?.value !== null && owner?.value !== undefined
+      ? (name: string) => ctx.parametersByName.get(name)?.table
+      : undefined;
 
   switch (node.kind) {
     case "ident": {
@@ -2441,35 +2337,21 @@ function walkAst(node: AstNode, parentScope: string, opPath: string, ctx: WalkCt
 
     case "number":
     case "bool": {
-      const text = String(node.kind === "number" ? node.value : node.value);
-      const dedupKey = `lit:${opPath}:${text}`;
-      return ensureNode(ctx, dedupKey, {
-        type: "literal",
-        data: { kind: "literal", label: text } satisfies IrgNodeData,
-      });
+      const dedupKey = `lit:${opPath}:${String(node.value)}`;
+      return ensureNode(ctx, dedupKey, { type: "literal", data: { kind: "literal" } satisfies IrgNodeData });
     }
 
     case "logical": {
       const op = node.op;
       const operands = flattenLogical(node, op);
-      const operandValues = operands.map((o) => evalAst(o, lookupValue));
-      const value = evalAst(node, lookupValue);
-      const verdictCls = verdictClassOfBool(value);
+      // The decisive operands (a false AND clause, a true OR clause)
+      // color their wires once the operator is merged away.
+      const operandValues = operands.map((o) => evalAst(o, lookupValue, lookupTable));
       const decisive =
         op === "and"
           ? (v: EvalValue) => v !== null && !toBool(v)
           : (v: EvalValue) => v !== null && toBool(v);
-      const myKey = `op:${parentScope}:${opPath}:${op}`;
-      const myId = ensureNode(ctx, myKey, {
-        type: "operator",
-        data: {
-          kind: "operator",
-          label: op.toUpperCase(),
-          verdictCls,
-          value: ctx.showValues ? formatValue(value) : "",
-          showValues: ctx.showValues,
-        } satisfies IrgNodeData,
-      });
+      const myId = operatorNode(ctx, `op:${parentScope}:${opPath}:${op}`);
       operands.forEach((child, i) => {
         const childId = walkAst(child, parentScope, `${opPath}/${op}[${i}]`, ctx);
         const cls =
@@ -2484,19 +2366,7 @@ function walkAst(node: AstNode, parentScope: string, opPath: string, ctx: WalkCt
     }
 
     case "comparison": {
-      const value = evalAst(node, lookupValue);
-      const verdictCls = verdictClassOfBool(value);
-      const myKey = `op:${parentScope}:${opPath}:${node.op}`;
-      const myId = ensureNode(ctx, myKey, {
-        type: "operator",
-        data: {
-          kind: "operator",
-          label: node.op,
-          verdictCls,
-          value: ctx.showValues ? formatValue(value) : "",
-          showValues: ctx.showValues,
-        } satisfies IrgNodeData,
-      });
+      const myId = operatorNode(ctx, `op:${parentScope}:${opPath}:${node.op}`);
       const lid = walkAst(node.left, parentScope, `${opPath}/cmp.l`, ctx);
       const rid = walkAst(node.right, parentScope, `${opPath}/cmp.r`, ctx);
       addEdge(ctx, lid, myId, "");
@@ -2505,20 +2375,9 @@ function walkAst(node: AstNode, parentScope: string, opPath: string, ctx: WalkCt
     }
 
     case "arith": {
-      const value = evalAst(node, lookupValue);
       const operands =
         node.op === "+" || node.op === "*" ? flattenArith(node, node.op) : [node.left, node.right];
-      const myKey = `op:${parentScope}:${opPath}:${node.op}`;
-      const myId = ensureNode(ctx, myKey, {
-        type: "operator",
-        data: {
-          kind: "operator",
-          label: node.op,
-          verdictCls: "rg-numeric",
-          value: ctx.showValues ? formatValue(value) : "",
-          showValues: ctx.showValues,
-        } satisfies IrgNodeData,
-      });
+      const myId = operatorNode(ctx, `op:${parentScope}:${opPath}:${node.op}`);
       operands.forEach((child, i) => {
         const cid = walkAst(child, parentScope, `${opPath}/${node.op}[${i}]`, ctx);
         addEdge(ctx, cid, myId, "");
@@ -2527,39 +2386,14 @@ function walkAst(node: AstNode, parentScope: string, opPath: string, ctx: WalkCt
     }
 
     case "unary": {
-      const value = evalAst(node, lookupValue);
-      const label = node.op === "not" ? "NOT" : "−";
-      const verdictCls = node.op === "not" ? verdictClassOfBool(value) : "rg-numeric";
-      const myKey = `op:${parentScope}:${opPath}:${node.op}`;
-      const myId = ensureNode(ctx, myKey, {
-        type: "operator",
-        data: {
-          kind: "operator",
-          label,
-          verdictCls,
-          value: ctx.showValues ? formatValue(value) : "",
-          showValues: ctx.showValues,
-        } satisfies IrgNodeData,
-      });
+      const myId = operatorNode(ctx, `op:${parentScope}:${opPath}:${node.op}`);
       const cid = walkAst(node.operand, parentScope, `${opPath}/u`, ctx);
       addEdge(ctx, cid, myId, "");
       return myId;
     }
 
     case "call": {
-      const value = evalAst(node, lookupValue);
-      const cls = ["any", "all", "exactly_one"].includes(node.name) ? verdictClassOfBool(value) : "rg-numeric";
-      const myKey = `op:${parentScope}:${opPath}:call:${node.name}`;
-      const myId = ensureNode(ctx, myKey, {
-        type: "operator",
-        data: {
-          kind: "operator",
-          label: node.name,
-          verdictCls: cls,
-          value: ctx.showValues ? formatValue(value) : "",
-          showValues: ctx.showValues,
-        } satisfies IrgNodeData,
-      });
+      const myId = operatorNode(ctx, `op:${parentScope}:${opPath}:call:${node.name}`);
       node.args.forEach((arg, i) => {
         const cid = walkAst(arg, parentScope, `${opPath}/call[${i}]`, ctx);
         addEdge(ctx, cid, myId, "");
@@ -2568,17 +2402,7 @@ function walkAst(node: AstNode, parentScope: string, opPath: string, ctx: WalkCt
     }
 
     case "index": {
-      const myKey = `op:${parentScope}:${opPath}:index`;
-      const myId = ensureNode(ctx, myKey, {
-        type: "operator",
-        data: {
-          kind: "operator",
-          label: "table[i]",
-          verdictCls: "rg-numeric",
-          value: "",
-          showValues: ctx.showValues,
-        } satisfies IrgNodeData,
-      });
+      const myId = operatorNode(ctx, `op:${parentScope}:${opPath}:index`);
       const tid = walkAst(node.target, parentScope, `${opPath}/idx.t`, ctx);
       const iid = walkAst(node.index, parentScope, `${opPath}/idx.i`, ctx);
       addEdge(ctx, tid, myId, "");
@@ -2587,53 +2411,18 @@ function walkAst(node: AstNode, parentScope: string, opPath: string, ctx: WalkCt
     }
 
     case "ifElse": {
-      const condValue = evalAst(node.cond, lookupValue);
-      const value = evalAst(node, lookupValue);
+      // The branch taken lights its wire; the other dims.
+      const condValue = evalAst(node.cond, lookupValue, lookupTable);
       const condTrue = condValue !== null && toBool(condValue);
-      const verdictCls = verdictClassOfBool(value);
-      const myKey = `op:${parentScope}:${opPath}:if`;
-      const myId = ensureNode(ctx, myKey, {
-        type: "ifGate",
-        data: {
-          kind: "ifGate",
-          label: "IF",
-          verdictCls,
-          branchLabel:
-            condValue === null ? "" : condTrue ? "→ then" : "→ else",
-          value: ctx.showValues ? formatValue(value) : "",
-          showValues: ctx.showValues,
-        } satisfies IrgNodeData,
-      });
+      const myId = ensureNode(ctx, `op:${parentScope}:${opPath}:if`, { type: "ifGate", data: { kind: "ifGate" } satisfies IrgNodeData });
       const cid = walkAst(node.cond, parentScope, `${opPath}/cond`, ctx);
       const tid = walkAst(node.then, parentScope, `${opPath}/then`, ctx);
       const eid = walkAst(node.else_, parentScope, `${opPath}/else`, ctx);
-      addEdgeWithLabel(ctx, cid, myId, "test", ctx.showValues ? "" : "");
-      addEdgeWithLabel(
-        ctx,
-        tid,
-        myId,
-        "if true",
-        ctx.showValues
-          ? condValue === null
-            ? ""
-            : condTrue
-              ? "pass"
-              : "dim"
-          : "",
-      );
-      addEdgeWithLabel(
-        ctx,
-        eid,
-        myId,
-        "if false",
-        ctx.showValues
-          ? condValue === null
-            ? ""
-            : condTrue
-              ? "dim"
-              : "pass"
-          : "",
-      );
+      const branch = (taken: boolean) =>
+        ctx.showValues && condValue !== null ? (taken ? "pass" : "dim") : "";
+      addEdge(ctx, cid, myId, "");
+      addEdge(ctx, tid, myId, branch(condTrue));
+      addEdge(ctx, eid, myId, branch(!condTrue));
       return myId;
     }
 
@@ -2648,7 +2437,8 @@ function walkAst(node: AstNode, parentScope: string, opPath: string, ctx: WalkCt
 function ensureNode(
   ctx: WalkCtx,
   dedupKey: string,
-  spec: { type: keyof typeof NODE_TYPES; data: IrgNodeData },
+  // Rendered kinds, plus the formula machinery merged away before render.
+  spec: { type: keyof typeof NODE_TYPES | "operator" | "ifGate" | "literal"; data: IrgNodeData },
 ): string {
   if (ctx.nodeIds.has(dedupKey)) return ctx.nodeIds.get(dedupKey)!;
   // Stable across rebuilds — see the output node's comment.
@@ -2663,6 +2453,11 @@ function ensureNode(
   return id;
 }
 
+/** A formula operator: a merge point for wires, never a rendered box. */
+function operatorNode(ctx: WalkCtx, key: string): string {
+  return ensureNode(ctx, key, { type: "operator", data: { kind: "operator" } satisfies IrgNodeData });
+}
+
 function addEdge(ctx: WalkCtx, source: string, target: string, cls: string) {
   // Dedup edges by (source, target).
   if (ctx.edges.find((e) => e.source === source && e.target === target)) return;
@@ -2675,31 +2470,6 @@ function addEdge(ctx: WalkCtx, source: string, target: string, cls: string) {
     className: edgeClass(cls),
     markerEnd: { type: MarkerType.ArrowClosed, color: edgeColorVar(cls), markerUnits: "userSpaceOnUse", width: 12, height: 12 },
     style: { strokeWidth: cls === "pass" || cls === "fail" ? 2 : 1.5 },
-  });
-}
-
-function addEdgeWithLabel(
-  ctx: WalkCtx,
-  source: string,
-  target: string,
-  label: string,
-  cls: string,
-) {
-  if (ctx.edges.find((e) => e.source === source && e.target === target)) return;
-  const id = `e${ctx.edges.length}`;
-  ctx.edges.push({
-    id,
-    source,
-    target,
-    type: "smoothstep",
-    label,
-    className: edgeClass(cls),
-    markerEnd: { type: MarkerType.ArrowClosed, color: edgeColorVar(cls), markerUnits: "userSpaceOnUse", width: 12, height: 12 },
-    style: { strokeWidth: cls === "pass" || cls === "fail" ? 2 : 1.5 },
-    labelStyle: { fontFamily: "var(--f-mono)", fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase" },
-    labelBgStyle: { fill: "var(--color-paper-elevated)", stroke: "var(--color-rule)" },
-    labelBgPadding: [4, 2],
-    labelBgBorderRadius: 8,
   });
 }
 
@@ -2898,8 +2668,6 @@ function pairLeaves(
   }
   const groups = new Map<string, Node[]>();
   for (const n of nodes) {
-    const kind = (n.data as IrgNodeData).kind;
-    if (kind === "operator" || kind === "ifGate" || kind === "literal") continue;
     if (hasIncoming.has(n.id)) continue;
     const target = primaryTarget.get(n.id);
     if (!target) continue;
@@ -3148,14 +2916,11 @@ function nodeSize(n: Node, hints: SizeHints): { width: number; height: number } 
     case "input":
     case "ruleRef":
       return labelledNodeSize(labelText, data, hints);
-    case "ifGate":
-      return { width: 140, height: 76 };
-    case "operator":
-      return { width: 110, height: 60 };
-    case "literal":
-      return { width: 80, height: 40 };
     case "unknown":
       return labelledNodeSize(labelText, data, hints, /* small */ true);
+    default:
+      // Formula machinery never reaches layout (merged into wires first).
+      return { width: 0, height: 0 };
   }
 }
 
@@ -3444,11 +3209,6 @@ function verdictClass(t: TraceNode): string {
     return "irg-undet";
   }
   return "irg-numeric";
-}
-
-function verdictClassOfBool(v: EvalValue): string {
-  if (v === null) return "irg-undet";
-  return toBool(v) ? "irg-holds" : "irg-fails";
 }
 
 // Suppress unused-variable warning in TS when useEffect isn't currently used.

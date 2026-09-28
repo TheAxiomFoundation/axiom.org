@@ -146,9 +146,9 @@ export function LibraryBubbles({ modules, onPick, query = "", onLevelChange, sco
     setMoving(true);
     animation.current = layer.animate([
       { transform: "scale(1)", opacity: 1, transformOrigin },
-      { transform: "scale(1.015)", opacity: .7, transformOrigin },
-    ], { duration: 180, easing: "cubic-bezier(.4,0,.2,1)", fill: "forwards" });
-    timer.current = setTimeout(finish, 180);
+      { transform: "scale(1.015)", opacity: 0, transformOrigin },
+    ], { duration: 240, easing: "cubic-bezier(.4,0,.2,1)", fill: "forwards" });
+    timer.current = setTimeout(finish, 240);
   };
   const enter = (group: Group, button: HTMLButtonElement | SVGPathElement | SVGGElement) => {
     if (moving) return;

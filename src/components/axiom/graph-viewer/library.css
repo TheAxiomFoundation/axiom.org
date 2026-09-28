@@ -256,7 +256,7 @@ body:has(.corpus-library:not([hidden])) { overflow: hidden; }
 .library-book strong { font-size: clamp(10px,1vw,14px); line-height: 1.4; font-weight: 500; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .library-book-open { position: absolute; bottom: 8px; right: 10px; color: var(--color-accent); font-size: 12px; }
 .library-country-map, .library-books, .library-bubble-grid { animation: library-layer-arrive .5s cubic-bezier(.2,.65,.3,1) both; }
-@keyframes library-layer-arrive { from { opacity: 0; transform: scale(.975); } to { opacity: 1; transform: scale(1); } }
+@keyframes library-layer-arrive { from { opacity: 0; transform: scale(.992); } to { opacity: 1; transform: scale(1); } }
 @media(max-width:760px) { .library-books { padding: 8px; gap: 10px; } .library-book { padding: 8px; gap: 6px; } .library-book-kind { font-size: 8px; } }
 @media(prefers-reduced-motion: reduce) { .library-country-map, .library-books, .library-bubble-grid { animation: none; } .library-book { transition: none; } }
 
@@ -499,8 +499,8 @@ body:has(.corpus-library:not([hidden])) { overflow: hidden; }
 @keyframes atlas-preview-spin { to { transform: rotate(360deg); } }
 @media(prefers-reduced-motion: reduce) { .atlas-preview-loading svg { animation: none; } }
 
-.library-source-clusters { animation: atlas-arrive .35s ease both; }
-@keyframes atlas-arrive { from { opacity: .7; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+.library-source-clusters { animation: atlas-arrive .5s cubic-bezier(.2,.65,.3,1) both; }
+@keyframes atlas-arrive { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
 .source-atlas-range-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,190px),1fr)); grid-auto-rows: minmax(0,1fr); gap: 12px; flex: 1; min-height: 0; padding: 6px; }
 .source-atlas-range { min-height: 0; min-width: 0; padding: 12px; border: 1px solid var(--color-rule); border-radius: 5px; background: var(--color-paper); color: var(--color-ink); display: flex; flex-direction: column; gap: 7px; text-align: left; cursor: pointer; }
 .source-atlas-range > strong { font-size: 13px; font-weight: 500; line-height: 1.4; }
@@ -585,3 +585,9 @@ body:has(.corpus-library:not([hidden])) { overflow: hidden; }
 .library-document-title small { display: block; font-size: 10px; color: var(--color-accent); margin-top: 3px; }
 .library-document-citation, .library-document-type { color: var(--color-ink-secondary); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 @media(max-width:760px) { .library-document-columns { display: none; } .library-document-row { grid-template-columns: minmax(0,1fr) auto; gap: 4px 12px; } .library-document-title { grid-column: 1 / -1; } }
+
+/* Animate the containing layer once, rather than stacking entrance motion. */
+.library-source-groups .library-source-tiles { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .library-source-tiles, .library-source-groups { animation: none; }
+}

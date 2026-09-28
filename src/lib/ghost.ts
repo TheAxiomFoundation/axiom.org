@@ -28,6 +28,9 @@ export interface BlogPostSummary {
 
 export interface BlogPost extends BlogPostSummary {
   html: string;
+  /** Ghost's last-edit timestamp (article:modified_time). The list
+   *  endpoint's `fields` filter leaves it out, so only posts carry it. */
+  updatedAt: string | null;
   authors: string[];
   /** Admin API only ("draft" | "published" | "scheduled" | "sent");
    *  null from the Content API, where published is implied. Note that
@@ -41,6 +44,7 @@ interface GhostPost {
   custom_excerpt?: string | null;
   excerpt?: string | null;
   published_at?: string | null;
+  updated_at?: string | null;
   feature_image?: string | null;
   feature_image_alt?: string | null;
   feature_image_caption?: string | null;
@@ -108,6 +112,7 @@ function toPost(post: GhostPost): BlogPost {
   return {
     ...toSummary(post),
     html: post.html ?? "",
+    updatedAt: post.updated_at ?? null,
     authors: (post.authors ?? [])
       .map((a) => a?.name ?? "")
       .filter((name) => name.length > 0),

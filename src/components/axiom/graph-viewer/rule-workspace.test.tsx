@@ -1,11 +1,16 @@
 import { clearReaderCache } from "./reader-cache";
 import { useState } from "react";
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { neighborhood, RuleWorkspace, type WorkspaceView } from "./rule-workspace";
 import type { ProgramGraph, RuleNode } from "./types";
 
-beforeEach(() => clearReaderCache());
+beforeEach(() => {
+  clearReaderCache();
+  // The navigation trail lives in session storage per graph; each test
+  // opens its graph fresh.
+  window.sessionStorage.clear();
+});
 
 const rule = (id: string, deps: string[] = []): RuleNode => ({ legalId: id, name: id, fileLegalId: "test", kind: null, entity: null, dtype: null, period: null, unit: null, source: null, ruleDeps: deps, inputDeps: [], relationDeps: [] });
 const graph: ProgramGraph = { rules: [rule("result", ["shared", "missing"]), rule("shared"), rule("other", ["shared"])], inputs: [], relations: [], ownOutputs: ["result"], terminalOutputs: ["result"] };
@@ -28,13 +33,13 @@ describe("rule workspace", () => {
     expect(neighborhood(data, "shared").consumers.map((item) => item.legalId)).toEqual(["result", "other"]);
     expect(neighborhood(data, "people").consumers.map((item) => item.legalId)).toEqual(["result"]);
   });
-  it("walks a relationship and returns to the previous selection", () => {
+  it("walks a relationship and returns to the previous selection", async () => {
     render(<Harness />);
     fireEvent.click(screen.getByRole("button", { name: /Rule Shared Not reported/i }));
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Shared");
     expect(new URLSearchParams(window.location.search).get("selection")).toBe("shared");
     fireEvent.click(screen.getByRole("button", { name: "Back to previous rule" }));
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Result");
+    await waitFor(() => expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Result"));
     expect(screen.getByRole("button", { name: "Back to previous rule" })).toBeDisabled();
   });
   it("distinguishes false from not evaluated and exposes missing scope", () => {
@@ -66,12 +71,12 @@ describe("rule workspace", () => {
     fireEvent.click(operand);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Shared");
   });
-  it("returns from Read to the graph with the same selected node", () => {
+  it("returns from Read to the graph with the same selected node", async () => {
     render(<Harness />);
     fireEvent.click(screen.getByRole("button", { name: "Graph" }));
     fireEvent.click(screen.getByRole("button", { name: "Read" }));
     fireEvent.click(screen.getByRole("button", { name: "Back to previous view" }));
-    expect(screen.getByRole("button", { name: "Graph" })).toHaveAttribute("aria-current", "page");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Graph" })).toHaveAttribute("aria-current", "page"));
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Result");
   });
   it("offers scope search and hides unavailable execution", () => {
@@ -248,7 +253,7 @@ it("returns to the library when Back is pressed on a newly opened graph", () => 
   expect(onOverview).toHaveBeenCalledOnce();
 });
 
-it("steps backward through result checks, views and external node selections in order", () => {
+it("steps backward through result checks, views and external node selections in order", async () => {
   function NavigationHarness() {
     const [id, setId] = useState("result");
     const [view, setView] = useState<WorkspaceView>("run");
@@ -265,13 +270,27 @@ it("steps backward through result checks, views and external node selections in 
   fireEvent.click(screen.getByRole("button", {name:"Inspect result check"}));
   fireEvent.click(screen.getByRole("button", {name:"Follow check in graph"}));
   fireEvent.click(screen.getByRole("button", {name:"Select graph neighbor"}));
+  const state = () => screen.getByLabelText("navigation state");
   fireEvent.click(screen.getByRole("button", {name:"Back to previous rule"}));
-  expect(screen.getByLabelText("navigation state")).toHaveTextContent(JSON.stringify({id:"shared",view:"map",trail:["result","shared"]}));
+  await waitFor(() => expect(state()).toHaveTextContent(JSON.stringify({id:"shared",view:"map",trail:["result","shared"]})));
   fireEvent.click(screen.getByRole("button", {name:"Back to previous view"}));
-  expect(screen.getByLabelText("navigation state")).toHaveTextContent(JSON.stringify({id:"result",view:"run",trail:["result","shared"]}));
+  await waitFor(() => expect(state()).toHaveTextContent(JSON.stringify({id:"result",view:"run",trail:["result","shared"]})));
   fireEvent.click(screen.getByRole("button", {name:"Back to previous rule"}));
-  expect(screen.getByLabelText("navigation state")).toHaveTextContent(JSON.stringify({id:"result",view:"run",trail:[]}));
+  await waitFor(() => expect(state()).toHaveTextContent(JSON.stringify({id:"result",view:"run",trail:[]})));
   expect(screen.getByRole("button", {name:"Back to previous rule"})).toBeDisabled();
+  // The browser's forward walks the same steps the other way.
+  act(() => window.history.forward());
+  await waitFor(() => expect(state()).toHaveTextContent(JSON.stringify({id:"result",view:"run",trail:["result","shared"]})));
+});
+
+it("records only the user's own moves as steps; the graph settling replaces the current one", () => {
+  const { rerender } = render(<RuleWorkspace graph={graph} selectedId="result" onSelect={vi.fn()} view="structure" onViewChange={vi.fn()} scopeLabel="Test" truncated={false} runReady={false} scenario={null} hasRun={false} stale={false} valueOf={() => undefined} />);
+  const before = window.history.length;
+  // No click, tap or key: an opening pick, a run landing.
+  rerender(<RuleWorkspace graph={graph} selectedId="shared" onSelect={vi.fn()} view="structure" onViewChange={vi.fn()} scopeLabel="Test" truncated={false} runReady={false} scenario={null} hasRun={false} stale={false} valueOf={() => undefined} />);
+  expect(window.history.length).toBe(before);
+  expect(new URLSearchParams(window.location.search).get("selection")).toBe("shared");
+  expect(screen.getByRole("button", {name: "Back to previous rule"})).toBeDisabled();
 });
 
 it("highlights Run again only while a previous result needs recalculating", () => {
