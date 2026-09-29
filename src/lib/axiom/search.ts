@@ -1,4 +1,5 @@
 import { parseAppVisibility, type AppVisibility } from "./registry-visibility";
+import { DISPLAY_ACRONYMS } from "@/lib/display-acronyms";
 import { searchRules, type SearchHit } from "@/lib/supabase";
 import {
   EXTRA_JURISDICTION_LABELS,
@@ -135,24 +136,6 @@ const DOC_TYPE_TO_REPO_BUCKET: Readonly<Record<string, string>> = Object.freeze(
   form: "forms",
   guidance: "guidance",
 });
-const ACRONYMS = new Set([
-  "aca",
-  "cdhs",
-  "cfr",
-  "cola",
-  "eitc",
-  "fy",
-  "gst",
-  "hhs",
-  "irs",
-  "snap",
-  "ssi",
-  "tanf",
-  "uc",
-  "usc",
-  "usda",
-  "wic",
-]);
 
 export async function searchAxiom(
   query: string,
@@ -1077,7 +1060,7 @@ function titleise(value: string): string {
     .filter(Boolean)
     .map((part) => {
       const lower = part.toLowerCase();
-      if (ACRONYMS.has(lower)) return lower.toUpperCase();
+      if (DISPLAY_ACRONYMS.has(lower)) return lower.toUpperCase();
       return lower.charAt(0).toUpperCase() + lower.slice(1);
     })
     .join(" ");
@@ -1174,8 +1157,10 @@ function bestFuzzyTokenMatch(
   return best;
 }
 
+// Fuzzy matching never fires on acronym tokens — "abawd" must not drift
+// toward lookalike words the way ordinary vocabulary may.
 function canFuzzyMatch(token: string): boolean {
-  return token.length >= 5 && !ACRONYMS.has(token);
+  return token.length >= 5 && !DISPLAY_ACRONYMS.has(token);
 }
 
 function fuzzyTokenSimilarity(a: string, b: string): number {

@@ -245,6 +245,19 @@ describe("buildBreadcrumbs", () => {
     ]);
   });
 
+  it("upper-cases shared-registry acronyms the old breadcrumb set lacked", () => {
+    const crumbs = buildBreadcrumbs([
+      "us",
+      "guidance",
+      "hhs",
+      "tanf-eitc-notice",
+    ]);
+    expect(crumbs.slice(3)).toEqual([
+      { label: "HHS", href: "/us/guidance/hhs" },
+      { label: "TANF EITC Notice", href: "/us/guidance/hhs/tanf-eitc-notice" },
+    ]);
+  });
+
   it("builds breadcrumb for Federal Register rulemaking", () => {
     const crumbs = buildBreadcrumbs([
       "us",
