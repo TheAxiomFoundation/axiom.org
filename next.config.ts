@@ -6,6 +6,8 @@ import path from "node:path";
 const configDir = path.dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
+  // PROTOTYPE (suite-mock): lets two naming variants run side by side.
+  distDir: process.env.SUITE_DIST_DIR || ".next",
   // A stray package-lock.json in the home directory makes Next infer
   // the wrong workspace root; pin it to the repo.
   turbopack: { root: configDir },
