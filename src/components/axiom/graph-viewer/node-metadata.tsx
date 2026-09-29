@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CORE_SCHEMA, dump, load } from "js-yaml";
+import { CORE_SCHEMA, load } from "js-yaml";
 import { LoaderCircle } from "lucide-react";
 import { peekReader, readReader } from "./reader-cache";
 import { humanizeRuleName } from "./citations";
+import { ruleSpecBlobUrl } from "@/lib/axiom/repo-map";
 
 type Fields = Record<string, unknown>;
 const record = (value: unknown): Fields | null => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Fields : null;
@@ -21,6 +22,18 @@ export function selectedMetadata(content: string, id: string): Fields | null {
     const matches = [doc?.rules, doc?.inputs, doc?.relations].flatMap(items => Array.isArray(items) ? items.filter(item => record(item)?.name === name) : []);
     return matches.length === 1 ? record(matches[0]) : null;
   } catch { return null; }
+}
+
+/** The published file on GitHub, anchored to the rule's line when the mirror text pins it to exactly one. */
+export function encodingGitHubUrl(root: string, id: string, content?: string): string | null {
+  const [jurisdiction, path] = root.split(":");
+  const url = jurisdiction && path ? ruleSpecBlobUrl(jurisdiction, `${path}.yaml`) : null;
+  const name = id.includes("#") ? id.split("#").at(-1) : null;
+  if (!url || !name || content === undefined) return url;
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`^\\s*-?\\s*name:\\s*["']?${escaped}["']?\\s*$`);
+  const lines = content.split("\n").flatMap((line, index) => pattern.test(line) ? [index + 1] : []);
+  return lines.length === 1 ? `${url}#L${lines[0]}` : url;
 }
 
 export function NodeMetadata({ id, entry = {}, content }: { id: string; entry?: object; content?: string }) {
@@ -55,18 +68,20 @@ export function NodeMetadata({ id, entry = {}, content }: { id: string; entry?: 
   const dates = versions.filter(version => present(version.effective_from) || present(version.effective_to));
   const relation = record(node?.data_relation);
   if (relation) rows.push(["Relationship", relation.predicate], ["Arity", relation.arity]);
-  const visible = rows.filter(([,value]) => present(value));
+  if (dates.length > 0) rows.push(["Encoded effective dates", dates.map(version => `${present(version.effective_from) ? text(version.effective_from) : "Start unspecified"}${present(version.effective_to) ? ` to ${text(version.effective_to)}` : " · no end specified"}`).join("\n")]);
+  // Short facts pair up across the grid; a long value takes a whole row so it
+  // wraps in its own cell rather than squeezing beside a neighbour. Short rows
+  // come first so reading order and visual order stay the same.
+  const visible = rows.filter(([,value]) => present(value)).map(([label,value]) => ({ label, value: text(value), wide: text(value).split("\n").some(line => line.length > 16) }));
+  const ordered = [...visible.filter(row => !row.wide), ...visible.filter(row => row.wide)];
+  const gitHubUrl = encodingGitHubUrl(root, id, node ? definition : undefined);
   return <section className="node-metadata" aria-label="Details">
     <h3>Details</h3>
     {typeof description === "string" && <p className="node-metadata-description">{String(description)}<small>Description from encoding</small></p>}
-    {visible.length > 0 && <dl>{visible.map(([label,value]) => <div key={label}><dt>{label}</dt><dd>{text(value)}</dd></div>)}</dl>}
-    {dates.length > 0 && <div className="node-metadata-dates"><h4>Encoded effective dates</h4>{dates.map((version,index) => <p key={index}>{present(version.effective_from) ? text(version.effective_from) : "Start unspecified"}{present(version.effective_to) ? ` to ${text(version.effective_to)}` : " · no end specified"}</p>)}</div>}
+    {ordered.length > 0 && <dl>{ordered.map(({label,value,wide}) => <div key={label} className={wide ? "node-metadata-wide" : undefined}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>}
     {definition === undefined && !failed && <span className="node-metadata-loading" role="status"><LoaderCircle size={14} />Loading metadata…</span>}
     {failed && <p className="node-metadata-note">Encoding metadata could not be loaded. <button onClick={() => { setLoaded(null); setAttempt(value => value + 1); }}>Retry</button></p>}
     {definition !== undefined && !node && <p className="node-metadata-note">No exact standalone definition was found for this node. Showing available graph metadata.</p>}
-    <details><summary>All metadata</summary><p className="node-metadata-note">Selected node only. Published encoding and loaded graph fields are shown separately.</p>
-      {node && <><h4>Published encoding</h4><pre>{dump(node, {lineWidth: 100, noRefs:true})}</pre></>}
-      <h4>Loaded graph</h4><pre>{JSON.stringify({ ...fallback, legalId:id }, null, 2)}</pre>
-    </details>
+    {gitHubUrl && <a className="node-metadata-github" href={gitHubUrl} target="_blank" rel="noreferrer">View encoding on GitHub ↗</a>}
   </section>;
 }
