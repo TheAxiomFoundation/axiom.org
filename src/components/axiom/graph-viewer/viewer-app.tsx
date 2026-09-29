@@ -2,7 +2,6 @@
 import { NodeMetadata } from "./node-metadata";
 
 import { HouseholdComposer } from "./household-composer";
-import { RecordedFormula } from "./recorded-formula";
 import { ResultExplanation, inputAwareEvidence, recordedTableRow } from "./result-explanation";
 import { ParameterTableView } from "./parameter-table";
 import { GraphLoading } from "./graph-loading";
@@ -115,7 +114,6 @@ export function GraphViewerApp({
   // (edits never fire the engine by themselves).
   const [resultsStale, setResultsStale] = useState(false);
   const ranScenarioKey = useRef<string | null>(null);
-  const [formulaDependency, setFormulaDependency] = useState<string | null>(null);
   const [inspected, setInspected] = useState<IrgNodeData | null>(null);
   // The inspector shares the exec panel's scroll with the results
   // section — bring it into view when a node is picked, or its card
@@ -3119,7 +3117,6 @@ export function GraphViewerApp({
                 }));
                 return (
                   <InspectorMiniGraph
-                    activeId={formulaDependency}
                     center={{
                       label: humanize(
                         "label" in inspected ? (inspected.label ?? "") : "",
@@ -3142,22 +3139,10 @@ export function GraphViewerApp({
               />
             )}
             {legalId && <NodeMetadata key={legalId} id={legalId} entry={rule ?? input ?? graph?.relations.find(item => item.legalId === legalId) ?? {}} />}
+            {/* The formula reads best beside the rules it combines, which
+                is what Relationships lays out — link there, don't repeat it. */}
             {formula && rule?.kind !== "parameter" ? (
-              <section className="node-inspector-code" aria-label="Formula">
-                <h3>Formula</h3>
-                <div className="node-inspector-code-body">
-                  {graph && rule ? <RecordedFormula
-                    formula={formula}
-                    dependencies={[...rule.ruleDeps, ...rule.inputDeps, ...rule.relationDeps]}
-                    entries={new Map([...graph.rules, ...graph.inputs, ...graph.relations].map((entry) => [entry.legalId, entry]))}
-                    valueOf={(id) => inputAwareEvidence(graph, runResult, id, inputMeta.defaults)}
-                    hasRun={Boolean(runResult)}
-                    activeId={formulaDependency}
-                    onHighlight={setFormulaDependency}
-                    onSelect={(id) => { flyFromIndex(id); if (walkInputById.has(id)) inspectInput(id); else inspectRule(id); }}
-                  /> : <FormulaPretty source={formula} />}
-                </div>
-              </section>
+              <button type="button" className="node-inspector-link" onClick={() => setWorkspaceView("structure")}>View formula →</button>
             ) : null}
             {"kind" in inspected &&
             inspected.kind === "input" &&
@@ -3715,37 +3700,6 @@ const BUCKET_DOT: Record<string, string> = {
  * it on the canvas and in the tree — the same fold state drives
  * both projections.
  */
-/**
- * Formula, readable: identifiers become their humanized names,
- * keywords / numbers / operators get their own weight so the
- * expression reads as a sentence about rules, not engine code.
- */
-const FORMULA_TOKEN_RE =
-  /[A-Za-z_][A-Za-z0-9_.]*|\d+(?:\.\d+)?|"[^"]*"|'[^']*'|\s+|./g;
-const FORMULA_KEYWORDS = new Set([
-  "if",
-  "then",
-  "else",
-  "and",
-  "or",
-  "not",
-  "in",
-  "true",
-  "false",
-  "null",
-  "min",
-  "max",
-  "abs",
-  "floor",
-  "ceil",
-  "round",
-  "sum",
-  "any",
-  "all",
-  "count",
-  "count_where",
-  "where",
-]);
 /** A parameter's constant, dressed as the headline it is: plain
  *  numbers pick up their unit ($218, 30 hours); expressions and
  *  tables show as-is. */
@@ -3762,288 +3716,4 @@ function formatParameterValue(raw: string, unit: string | null): string {
     return unit ? `${pretty} ${unit.toLowerCase()}` : pretty;
   }
   return trimmed.length > 90 ? `${trimmed.slice(0, 90)}…` : trimmed;
-}
-
-type FormulaNode =
-  | { type: "atom"; kind: "id" | "num" | "str"; text: string }
-  | { type: "call"; name: string; args: FormulaNode[] }
-  | { type: "chain"; items: FormulaNode[]; ops: string[] };
-
-type FormulaSpan = { cls: string; text: string; title?: string };
-type FormulaLine = { indent: number; spans: FormulaSpan[] };
-
-const FORMULA_WIDTH = 42;
-
-/** Parse the engine's expression grammar just enough to re-print it
- *  as code: calls, operator chains, atoms. Throws on anything odd —
- *  the caller falls back to the flat rendering. */
-function parseFormula(source: string): FormulaNode {
-  const tokens = (source.match(FORMULA_TOKEN_RE) ?? []).filter(
-    (token) => !/^\s+$/.test(token),
-  );
-  let at = 0;
-  const peek = () => tokens[at];
-  const next = () => tokens[at++];
-  const parsePrimary = (): FormulaNode => {
-    const token = next();
-    if (token === undefined) throw new Error("eof");
-    if (token === "(") {
-      const inner = parseExpr();
-      if (next() !== ")") throw new Error("paren");
-      return inner;
-    }
-    if (/^[A-Za-z_]/.test(token)) {
-      if (token.toLowerCase() === "not") {
-        return { type: "call", name: "not", args: [parsePrimary()] };
-      }
-      if (peek() === "(") {
-        next();
-        const args: FormulaNode[] = [];
-        if (peek() !== ")") {
-          args.push(parseExpr());
-          while (peek() === ",") {
-            next();
-            args.push(parseExpr());
-          }
-        }
-        if (next() !== ")") throw new Error("call");
-        return { type: "call", name: token, args };
-      }
-      return { type: "atom", kind: "id", text: token };
-    }
-    if (/^[\d"']/.test(token) || /^-?\d/.test(token)) {
-      return { type: "atom", kind: /^\d|^-/.test(token) ? "num" : "str", text: token };
-    }
-    if (token === "-" && tokens[at] && /^\d/.test(tokens[at])) {
-      const value = next();
-      return { type: "atom", kind: "num", text: `-${value}` };
-    }
-    throw new Error(`unexpected ${token}`);
-  };
-  const isOp = (token: string | undefined) =>
-    token !== undefined &&
-    (/^[-+*/<>=%]|<=|>=|==|!=$/.test(token) ||
-      ["and", "or", "in"].includes(token.toLowerCase()));
-  const parseExpr = (): FormulaNode => {
-    let left = parsePrimary();
-    const items = [left];
-    const ops: string[] = [];
-    while (isOp(peek())) {
-      let op = next()!;
-      if ((op === "<" || op === ">" || op === "=" || op === "!") && peek() === "=") {
-        op += next();
-      }
-      ops.push(op);
-      items.push(parsePrimary());
-    }
-    if (items.length === 1) return left;
-    return { type: "chain", items, ops };
-  };
-  const result = parseExpr();
-  if (at !== tokens.length) throw new Error("trailing");
-  return flattenFormula(result);
-}
-
-/** ((((a - b) - c) - d) reads as noise — merge left-nested chains of
- *  the same precedence class into one flat chain (safe: it mirrors
- *  left associativity exactly). */
-function formulaOpClass(op: string): string {
-  if (op === "+" || op === "-") return "add";
-  if (op === "*" || op === "/") return "mul";
-  return op.toLowerCase();
-}
-function flattenFormula(node: FormulaNode): FormulaNode {
-  if (node.type === "call") {
-    return { ...node, args: node.args.map(flattenFormula) };
-  }
-  if (node.type !== "chain") return node;
-  const items = node.items.map(flattenFormula);
-  const ops = [...node.ops];
-  const parentClass = formulaOpClass(ops[0]);
-  const uniform = ops.every((op) => formulaOpClass(op) === parentClass);
-  const head = items[0];
-  if (
-    uniform &&
-    head.type === "chain" &&
-    head.ops.every((op) => formulaOpClass(op) === parentClass)
-  ) {
-    return {
-      type: "chain",
-      items: [...head.items, ...items.slice(1)],
-      ops: [...head.ops, ...ops],
-    };
-  }
-  return { type: "chain", items, ops };
-}
-
-function formulaAtomSpan(node: Extract<FormulaNode, { type: "atom" }>): FormulaSpan {
-  if (node.kind === "id") {
-    return FORMULA_KEYWORDS.has(node.text.toLowerCase())
-      ? { cls: "fp-kw", text: node.text }
-      : {
-          cls: "fp-id",
-          text: humanize(node.text.split(".").pop() ?? node.text),
-          title: node.text,
-        };
-  }
-  return { cls: "fp-num", text: node.text };
-}
-
-/** Single-line spans for a node (used when it fits). `wrap` adds
- *  parens around mixed-operator children so meaning stays exact. */
-function formulaInline(node: FormulaNode, wrap = false): FormulaSpan[] {
-  if (node.type === "atom") return [formulaAtomSpan(node)];
-  if (node.type === "call") {
-    if (node.name === "not" && node.args.length === 1) {
-      const arg = node.args[0];
-      return [
-        { cls: "fp-kw", text: "not " },
-        ...formulaInline(arg, arg.type === "chain"),
-      ];
-    }
-    const spans: FormulaSpan[] = [
-      { cls: FORMULA_KEYWORDS.has(node.name.toLowerCase()) ? "fp-kw" : "fp-id", text: node.name },
-      { cls: "fp-op", text: "(" },
-    ];
-    node.args.forEach((arg, index) => {
-      if (index > 0) spans.push({ cls: "fp-op", text: ", " });
-      spans.push(...formulaInline(arg));
-    });
-    spans.push({ cls: "fp-op", text: ")" });
-    return spans;
-  }
-  const spans: FormulaSpan[] = [];
-  if (wrap) spans.push({ cls: "fp-op", text: "(" });
-  node.items.forEach((item, index) => {
-    if (index > 0) spans.push({ cls: "fp-op", text: ` ${node.ops[index - 1]} ` });
-    spans.push(...formulaInline(item, item.type === "chain"));
-  });
-  if (wrap) spans.push({ cls: "fp-op", text: ")" });
-  return spans;
-}
-
-const spanLength = (spans: FormulaSpan[]) =>
-  spans.reduce((sum, span) => sum + span.text.length, 0);
-
-/** Lay a node out as code lines within FORMULA_WIDTH. */
-function formulaLayout(
-  node: FormulaNode,
-  indent: number,
-  out: FormulaLine[],
-  prefix: FormulaSpan[] = [],
-  suffix: FormulaSpan[] = [],
-): void {
-  const inline = [...prefix, ...formulaInline(node), ...suffix];
-  if (indent * 2 + spanLength(inline) <= FORMULA_WIDTH) {
-    out.push({ indent, spans: inline });
-    return;
-  }
-  if (node.type === "call") {
-    if (node.name === "not" && node.args.length === 1) {
-      const arg = node.args[0];
-      formulaLayout(
-        arg,
-        indent,
-        out,
-        [...prefix, { cls: "fp-kw", text: "not " }, { cls: "fp-op", text: "(" }],
-        [{ cls: "fp-op", text: ")" }, ...suffix],
-      );
-      return;
-    }
-    out.push({
-      indent,
-      spans: [
-        ...prefix,
-        { cls: FORMULA_KEYWORDS.has(node.name.toLowerCase()) ? "fp-kw" : "fp-id", text: node.name },
-        { cls: "fp-op", text: "(" },
-      ],
-    });
-    node.args.forEach((arg, index) => {
-      formulaLayout(
-        arg,
-        indent + 1,
-        out,
-        [],
-        index < node.args.length - 1 ? [{ cls: "fp-op", text: "," }] : [],
-      );
-    });
-    out.push({ indent, spans: [{ cls: "fp-op", text: ")" }, ...suffix] });
-    return;
-  }
-  if (node.type === "chain") {
-    node.items.forEach((item, index) => {
-      const opPrefix: FormulaSpan[] =
-        index === 0
-          ? [...prefix]
-          : [{ cls: "fp-op", text: `${node.ops[index - 1]} ` }];
-      const itemSuffix = index === node.items.length - 1 ? suffix : [];
-      const childIndent = index === 0 ? indent : indent + 1;
-      if (item.type === "chain") {
-        formulaLayout(item, childIndent, out,
-          [...opPrefix, { cls: "fp-op", text: "(" }],
-          [{ cls: "fp-op", text: ")" }, ...itemSuffix]);
-      } else {
-        formulaLayout(item, childIndent, out, opPrefix, itemSuffix);
-      }
-    });
-    return;
-  }
-  out.push({ indent, spans: inline });
-}
-
-function FormulaPretty({ source }: { source: string }) {
-  const lines = useMemo<FormulaLine[] | null>(() => {
-    try {
-      const ast = parseFormula(source);
-      const out: FormulaLine[] = [];
-      formulaLayout(ast, 0, out);
-      return out;
-    } catch {
-      return null;
-    }
-  }, [source]);
-  if (!lines) {
-    // Unparseable — flat token coloring, never nothing.
-    const tokens = source.match(FORMULA_TOKEN_RE) ?? [source];
-    return (
-      <code className="formula-pretty">
-        {tokens.map((token, index) => {
-          if (/^\s+$/.test(token)) return token;
-          if (/^[A-Za-z_]/.test(token)) {
-            return FORMULA_KEYWORDS.has(token.toLowerCase()) ? (
-              <span key={index} className="fp-kw">{token}</span>
-            ) : (
-              <span key={index} className="fp-id" title={token}>
-                {humanize(token.split(".").pop() ?? token)}
-              </span>
-            );
-          }
-          if (/^[\d"']/.test(token)) {
-            return <span key={index} className="fp-num">{token}</span>;
-          }
-          return <span key={index} className="fp-op">{token}</span>;
-        })}
-      </code>
-    );
-  }
-  return (
-    <code className="formula-pretty formula-block">
-      {lines.map((line, lineIndex) => (
-        // Indent as padding, not literal spaces: a long line wraps and
-        // its continuation hangs at the construct's own depth instead
-        // of forcing a horizontal scrollbar.
-        <span
-          key={lineIndex}
-          className="fp-line"
-          style={{ paddingLeft: `${line.indent * 14}px` }}
-        >
-          {line.spans.map((span, spanIndex) => (
-            <span key={spanIndex} className={span.cls} title={span.title}>
-              {span.text}
-            </span>
-          ))}
-        </span>
-      ))}
-    </code>
-  );
 }

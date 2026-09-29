@@ -1,5 +1,6 @@
 import { supabaseCorpus, type Rule } from "@/lib/supabase";
 import { naturalCompare } from "@/lib/natural-sort";
+import { DISPLAY_ACRONYMS } from "@/lib/display-acronyms";
 import {
   JURISDICTIONS_SEED,
   synthesiseJurisdiction,
@@ -1180,19 +1181,6 @@ export function buildBreadcrumbs(segments: string[]): BreadcrumbItem[] {
 }
 
 function formatGenericSegmentLabel(segment: string): string {
-  const acronyms = new Set([
-    "cfr",
-    "cola",
-    "fns",
-    "irs",
-    "snap",
-    "uk",
-    "ukpga",
-    "uksi",
-    "us",
-    "usc",
-    "usda",
-  ]);
   switch (segment) {
     case "legislation":
       return "Legislation";
@@ -1215,7 +1203,7 @@ function formatGenericSegmentLabel(segment: string): string {
         .filter(Boolean)
         .map((part) => {
           const lower = part.toLowerCase();
-          if (acronyms.has(lower)) return lower.toUpperCase();
+          if (DISPLAY_ACRONYMS.has(lower)) return lower.toUpperCase();
           if (/^fy\d+$/i.test(part)) return part.toUpperCase();
           return part.charAt(0).toUpperCase() + part.slice(1);
         })
