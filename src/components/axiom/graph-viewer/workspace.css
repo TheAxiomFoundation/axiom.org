@@ -589,36 +589,22 @@ body:has(.has-workspace) .nav-bar { display: none; }
 .formula-punctuation { color: var(--color-ink-secondary); }
 .formula-function-name { font-family: var(--f-mono, monospace); font-size: 12px; margin-right: 3px; }
 
-/* Encoding-backed node details: readable summary, inspectable complete fields. */
-.node-metadata { padding: 16px 0; min-width: 0; border-top: 1px solid var(--border, #deded8); container: node-metadata / inline-size; }
-.node-metadata h3, .node-metadata h4 { margin: 0 0 10px; font-size: 13px; font-weight: 600; }
-.node-metadata-description { margin: 0 0 14px; font-size: 14px; line-height: 1.6; white-space: pre-line; }
+/* Encoding-backed node details: a compact summary; the full encoding is on GitHub. */
+.node-metadata { padding: 12px 0; min-width: 0; border-top: 1px solid var(--border, #deded8); container: node-metadata / inline-size; }
+.node-metadata h3 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
+.node-metadata-description { margin: 0 0 10px; font-size: 14px; line-height: 1.6; white-space: pre-line; }
 .node-metadata-description small { display: block; margin-top: 4px; opacity: .6; font-size: 11px; }
 /* Two facts per row in the side inspector, more in the wide workspace. Rows
    grow to their tallest cell and values wrap inside their own cell, so metadata
    of any length never overlaps a neighbour. */
-.node-metadata dl { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 128px), 1fr)); gap: 12px 20px; align-items: start; margin: 0 0 14px; }
+.node-metadata dl { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 128px), 1fr)); gap: 8px 16px; align-items: start; margin: 0 0 10px; }
 .node-metadata dl > div { min-width: 0; }
 .node-metadata dl > .node-metadata-wide { grid-column: 1 / -1; }
 @container node-metadata (min-width: 480px) { .node-metadata dl > .node-metadata-wide { grid-column: span 2; } }
-.node-metadata dt { font-size: 11px; opacity: .65; margin-bottom: 3px; }
-.node-metadata dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; white-space: pre-wrap; }
-.node-metadata details { margin-top: 14px; }
-.node-metadata summary { cursor: pointer; font-size: 12px; }
-.node-metadata details h4 { margin: 16px 0 6px; font-size: 12px; }
-.node-metadata-raw { padding: 10px 12px; background: #f1f2ed; color: #25352c; border-radius: 5px; font-family: var(--f-mono, monospace); font-size: 11px; line-height: 1.6; }
-/* Nested fields hang under their key on a guide line; a wrapped value keeps
-   its indent. Multi-line strings (formulas) stay verbatim and scroll. */
-.metadata-tree { min-width: 0; }
-.metadata-tree-entry > .metadata-tree { margin: 1px 0 3px 2px; padding-left: 10px; border-left: 1px solid rgba(37, 53, 44, .18); }
-.metadata-tree-leaf { padding-left: 14px; text-indent: -14px; overflow-wrap: anywhere; }
-.metadata-tree-key { opacity: .6; }
-.metadata-tree-empty { opacity: .45; }
-.metadata-tree-item { position: relative; padding-left: 12px; text-indent: 0; }
-.metadata-tree-item::before { content: "–"; position: absolute; left: 0; top: 0; opacity: .45; }
-.metadata-tree-item > .metadata-tree { margin: 0; padding-left: 0; border-left: 0; }
-.metadata-tree-item + .metadata-tree-item { margin-top: 2px; }
-.metadata-tree pre { margin: 3px 0 4px; padding: 6px 8px; background: rgba(255, 255, 255, .6); color: inherit; border: 0; border-radius: 4px; font: inherit; white-space: pre; overflow-x: auto; }
+.node-metadata dt { font-size: 11px; line-height: 1.3; opacity: .65; margin-bottom: 1px; }
+.node-metadata dd { margin: 0; font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; white-space: pre-wrap; }
+.node-metadata-github { display: inline-block; margin-top: 2px; font-size: 12.5px; font-weight: 550; color: var(--color-accent); text-decoration: none; }
+.node-metadata-github:hover { color: var(--color-accent-hover); text-decoration: underline; }
 .node-metadata-note { font-size: 12px; line-height: 1.5; margin: 8px 0; }
 .node-metadata-loading { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; opacity: .7; }
 .node-metadata-loading svg { animation: spin 1s linear infinite; }
