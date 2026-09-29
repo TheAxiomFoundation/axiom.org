@@ -6,6 +6,9 @@ import { runtimeProxyGet } from "@/lib/axiom/runtime/api";
 // length only. The upstream certified gate is the real arbiter (and
 // answers the same 404 for unknown and uncertified ids).
 function validSegment(segment: string): boolean {
+  // `.` and `..` are path navigation, never part of a legal id; forwarding
+  // one would let the upstream URL resolve outside /nodes.
+  if (segment === "." || segment === "..") return false;
   return segment.length > 0 && segment.length <= 200 && !/\s/.test(segment);
 }
 

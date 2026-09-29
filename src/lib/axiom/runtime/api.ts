@@ -69,6 +69,46 @@ function apiBase(): string {
 }
 
 /**
+ * The upstream URL for an API path, or null when the path would not land
+ * where it says. Paths here are built from request input — node ids,
+ * package coordinates, compose focuses — and `encodeURIComponent` leaves
+ * `.` and `..` untouched, while URL resolution collapses dot segments
+ * (percent-encoded ones included). So `/nodes/%2E%2E/admin/keys` arriving
+ * at a proxy route would resolve to `/v1/admin/keys` and be read with this
+ * app's key. A path is used only if resolving it changes nothing, and never
+ * when it names the admin surface, which the site has no reason to call.
+ */
+export function upstreamUrl(path: string): string | null {
+  const base = apiBase();
+  let baseUrl: URL;
+  let resolved: URL;
+  try {
+    baseUrl = new URL(base);
+    resolved = new URL(`${base}${path}`);
+  } catch {
+    return null;
+  }
+  const requestedPath = `${baseUrl.pathname.replace(/\/$/, "")}${path}`.split(/[?#]/, 1)[0];
+  if (resolved.origin !== baseUrl.origin || resolved.pathname !== requestedPath) {
+    return null;
+  }
+  const relative = resolved.pathname.slice(baseUrl.pathname.replace(/\/$/, "").length);
+  if (
+    !relative.startsWith("/") ||
+    relative.includes("//") ||
+    /^\/admin(\/|$)/i.test(relative)
+  ) {
+    return null;
+  }
+  return resolved.href;
+}
+
+const INVALID_PATH = {
+  status: 400,
+  body: { status: "error", error: { code: "invalid_path" } },
+} as const;
+
+/**
  * Process-local response cache. Program graphs run 2–3 MB — over the
  * Next.js Data Cache's 2 MB item limit — so `next.revalidate` alone
  * silently refetches them on every render. Fluid Compute reuses
@@ -95,9 +135,11 @@ async function runtimeGet<T>(path: string): Promise<T | null> {
   if (cached && Date.now() - cached.at < REVALIDATE_SECONDS * 1000) {
     return cached.value as T;
   }
+  const url = upstreamUrl(path);
+  if (!url) return null;
   const key = process.env.AXIOM_RUNTIME_API_KEY;
   try {
-    const response = await fetch(`${apiBase()}${path}`, {
+    const response = await fetch(url, {
       headers: key ? { "x-api-key": key } : undefined,
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       next: { revalidate: REVALIDATE_SECONDS },
@@ -134,9 +176,11 @@ export async function runtimeProxyGet(
       body: { status: "error", error: { code: "runtime_unconfigured" } },
     };
   }
+  const url = upstreamUrl(path);
+  if (!url) return { status: INVALID_PATH.status, body: INVALID_PATH.body };
   const key = process.env.AXIOM_RUNTIME_API_KEY;
   try {
-    const response = await fetch(`${apiBase()}${path}`, {
+    const response = await fetch(url, {
       headers: key ? { "x-api-key": key } : undefined,
       signal: AbortSignal.timeout(options.timeoutMs ?? REQUEST_TIMEOUT_MS),
       ...(options.fresh ? { cache: "no-store" as const } : { next: { revalidate: REVALIDATE_SECONDS } }),
