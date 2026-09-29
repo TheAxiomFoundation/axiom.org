@@ -1,9 +1,11 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import fc from "fast-check";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildR2GetRequest,
+  countCorpusProvisionFiles,
   countFromContentRange,
   corpusKeyFromPath,
   getCorpusStatus,
@@ -621,6 +623,201 @@ describe("corpus status helpers", () => {
     expect(status.stateStatutes.source).toBe("status-url");
     expect(status.regulations.source).toBe("status-url");
     expect(status.encodingStatus.error).toMatch(/non-array payload/);
+  });
+
+  it("counts provision files from corpus locks once corpus bytes leave git", async () => {
+    vi.stubEnv("AXIOM_GITHUB_TOKEN", "github-token");
+    vi.stubEnv("AXIOM_COMPILED_ARTIFACT_REPOS", "axiom-programs");
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = new URL(input.toString());
+      if (url.pathname === "/repos/TheAxiomFoundation/rulespec-nz/git/trees/main") {
+        return Promise.resolve(
+          jsonResponse({
+            tree: [
+              { path: "nz/statutes/income_tax/core/taxable_income.yaml", type: "blob" },
+              { path: ".axiom/corpus-locks", type: "tree" },
+              { path: ".axiom/corpus-locks/nz/statute/2026-06-17-taxable-income-core.json", type: "blob" },
+              { path: ".axiom/corpus-locks/nz/regulation/2026-07-13.json", type: "blob" },
+              { path: ".axiom/corpus-locks/README.md", type: "blob" },
+            ],
+          })
+        );
+      }
+      return mockStatusFetch(input);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const status = await getCorpusStatus();
+
+    expect(status.rulespecRepoActivity?.value?.corpus_provision_file_count).toBe(2);
+    expect(status.rulespecRepoActivity?.value?.rows[0]).toMatchObject({
+      name: "rulespec-nz",
+      corpus_provision_file_count: 2,
+    });
+    // The tree listing alone decides the count: no lock contents are read.
+    const githubPaths = fetchMock.mock.calls.map(
+      ([input]) => new URL(input.toString()).pathname
+    );
+    expect(githubPaths.filter((p) => p.includes("corpus-locks"))).toEqual([]);
+    expect(
+      githubPaths.filter((p) => p.startsWith("/repos/TheAxiomFoundation/rulespec-nz/"))
+    ).toEqual([
+      "/repos/TheAxiomFoundation/rulespec-nz/git/trees/main",
+      "/repos/TheAxiomFoundation/rulespec-nz/commits",
+    ]);
+  });
+});
+
+describe("countCorpusProvisionFiles", () => {
+  it("counts tracked provision blobs before the storage switch", () => {
+    expect(
+      countCorpusProvisionFiles([
+        "data/corpus/provisions/uk/statute/2026-07-01.jsonl",
+        "data/corpus/provisions/uk/regulation/2026-07-01.jsonl",
+        "data/corpus/sources/uk/statute/2026-07-01/ukpga-1994-23.xml",
+        "data/corpus/inventory/uk/statute/2026-07-01.json",
+        "data/corpus/coverage/uk/statute/2026-07-01.json",
+        "uk/statutes/vat/liability.yaml",
+      ])
+    ).toBe(2);
+  });
+
+  it("counts one provision file per scope lock after the storage switch", () => {
+    expect(
+      countCorpusProvisionFiles([
+        ".axiom/corpus-locks/uk/statute/2026-07-01.json",
+        ".axiom/corpus-locks/uk/regulation/2026-07-01.json",
+        ".axiom/corpus-locks/us-co/statute/2026-04-29.v2.json",
+        "uk/statutes/vat/liability.yaml",
+      ])
+    ).toBe(3);
+  });
+
+  it("ignores files under the lock root that are not scope locks", () => {
+    expect(
+      countCorpusProvisionFiles([
+        ".axiom/corpus-locks/README.md",
+        ".axiom/corpus-locks/uk/statute.json",
+        ".axiom/corpus-locks/uk/statute/2026/07-01.json",
+        ".axiom/corpus-locks/uk/statute/2026-07-01.jsonl",
+        ".axiom/corpus-locks/uk/statute/.json",
+        ".axiom/corpus-locks/UK/statute/2026-07-01.json",
+        ".axiom/corpus-locks/uk/-statute/2026-07-01.json",
+        ".axiom/encoding-manifests/uk/statutes/vat/liability.json",
+      ])
+    ).toBe(0);
+  });
+
+  it("counts a scope that is both tracked and locked once", () => {
+    expect(
+      countCorpusProvisionFiles([
+        "data/corpus/provisions/nz/statute/2026-06-17.jsonl",
+        ".axiom/corpus-locks/nz/statute/2026-06-17.json",
+        ".axiom/corpus-locks/nz/regulation/2026-06-17.json",
+      ])
+    ).toBe(2);
+  });
+
+  // Invariants over generated trees. A scope is one (jurisdiction,
+  // document_class, version); axiom-corpus names its files by the scope.
+  const scopeComponent = fc.stringMatching(/^[a-z0-9][a-z0-9._-]{0,11}$/);
+  const scopes = fc.uniqueArray(
+    fc.tuple(scopeComponent, scopeComponent, scopeComponent),
+    { selector: (scope) => scope.join("/"), maxLength: 25 }
+  );
+  const unrelatedPath = fc
+    .oneof(
+      fc.string(),
+      fc
+        .tuple(
+          fc.constantFrom(
+            "data/corpus/",
+            "data/corpus/provisions",
+            "data/coverage/",
+            "data/oracles/",
+            ".axiom/",
+            ".axiom/encoding-manifests/",
+            "uk/statutes/"
+          ),
+          fc.string()
+        )
+        .map(([prefix, rest]) => prefix + rest)
+    )
+    .filter(
+      (p) =>
+        !p.startsWith("data/corpus/provisions/") &&
+        !p.startsWith(".axiom/corpus-locks/")
+    );
+  type Scope = [string, string, string];
+  const provisionPath = (s: Scope) => `data/corpus/provisions/${s.join("/")}.jsonl`;
+  const lockPath = (s: Scope) => `.axiom/corpus-locks/${s.join("/")}.json`;
+  const otherArtifactPaths = (s: Scope) => [
+    `data/corpus/sources/${s.join("/")}/source.html`,
+    `data/corpus/inventory/${s.join("/")}.json`,
+    `data/corpus/coverage/${s.join("/")}.json`,
+  ];
+
+  it("conserves the count across the switch, including mid-migration", () => {
+    fc.assert(
+      fc.property(
+        scopes.chain((scopeList) =>
+          fc.tuple(
+            fc.constant(scopeList),
+            fc.array(fc.constantFrom("tracked", "locked", "both"), {
+              minLength: scopeList.length,
+              maxLength: scopeList.length,
+            }),
+            fc.array(unrelatedPath, { maxLength: 10 })
+          )
+        ),
+        ([scopeList, states, unrelated]) => {
+          const tracked = scopeList.flatMap((s) => [
+            provisionPath(s),
+            ...otherArtifactPaths(s),
+          ]);
+          const locked = scopeList.map(lockPath);
+          const mixed = scopeList.flatMap((s, i) => [
+            ...(states[i] === "locked" ? [] : [provisionPath(s), ...otherArtifactPaths(s)]),
+            ...(states[i] === "tracked" ? [] : [lockPath(s)]),
+          ]);
+          const expected = scopeList.length;
+          expect(countCorpusProvisionFiles([...tracked, ...unrelated])).toBe(expected);
+          expect(countCorpusProvisionFiles([...locked, ...unrelated])).toBe(expected);
+          expect(countCorpusProvisionFiles([...mixed, ...unrelated])).toBe(expected);
+        }
+      )
+    );
+  });
+
+  it("depends on the set of paths, not their order or repetition", () => {
+    fc.assert(
+      fc.property(
+        scopes.chain((scopeList) =>
+          fc.tuple(
+            fc.constant(scopeList),
+            fc.shuffledSubarray([
+              ...scopeList.map(provisionPath),
+              ...scopeList.map(lockPath),
+              ...scopeList.flatMap(otherArtifactPaths),
+            ])
+          )
+        ),
+        fc.array(unrelatedPath, { maxLength: 10 }),
+        ([scopeList, paths], unrelated) => {
+          const present = new Set(paths);
+          const count = countCorpusProvisionFiles(paths);
+          // A scope counts when its provisions file or its lock is present.
+          expect(count).toBe(
+            scopeList.filter(
+              (s) => present.has(provisionPath(s)) || present.has(lockPath(s))
+            ).length
+          );
+          expect(countCorpusProvisionFiles([...paths].reverse())).toBe(count);
+          expect(countCorpusProvisionFiles([...paths, ...paths])).toBe(count);
+          expect(countCorpusProvisionFiles([...unrelated, ...paths])).toBe(count);
+        }
+      )
+    );
   });
 });
 
