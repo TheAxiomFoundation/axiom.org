@@ -39,19 +39,29 @@ describe("availableGraphCitations", () => {
     );
   });
 
-  it("deduplicates checks and keeps a definitive answer across polls for ten minutes", async () => {
-    proxy
-      .mockResolvedValueOnce({ status: 404, body: {} })
-      .mockResolvedValueOnce({
-        status: 200,
-        body: { status: "ok", data: { graph: { rules: [{}] } } },
-      });
-    const { availableGraphCitations } =
-      await import("./ops-graph-availability");
-    const run = { citation: "us:statutes/26/24", has_issues: false };
-    expect((await availableGraphCitations([run, run])).size).toBe(0);
-    // Twenty polls at the dashboard's 30-second interval: one API request.
+  const composed = { status: 200, body: { status: "ok", data: { graph: { rules: [{}] } } } };
+  const run = { citation: "us:statutes/26/24", has_issues: false };
+
+  it("keeps an available graph for ten minutes of polls", async () => {
+    proxy.mockResolvedValue(composed);
+    const { availableGraphCitations } = await import("./ops-graph-availability");
+    expect((await availableGraphCitations([run])).has(run.citation)).toBe(true);
+    // Nineteen more polls at the dashboard's 30-second interval.
     for (let poll = 0; poll < 19; poll += 1) {
+      vi.advanceTimersByTime(30_000);
+      expect((await availableGraphCitations([run])).has(run.citation)).toBe(true);
+    }
+    expect(proxy).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(30_001);
+    await availableGraphCitations([run]);
+    expect(proxy).toHaveBeenCalledTimes(2);
+  });
+
+  it("re-asks about a not-yet-composable graph after three minutes, so a newly synced one shows soon", async () => {
+    proxy.mockResolvedValueOnce({ status: 404, body: {} }).mockResolvedValueOnce(composed);
+    const { availableGraphCitations } = await import("./ops-graph-availability");
+    expect((await availableGraphCitations([run, run])).size).toBe(0);
+    for (let poll = 0; poll < 5; poll += 1) {
       vi.advanceTimersByTime(30_000);
       expect((await availableGraphCitations([run])).size).toBe(0);
     }
@@ -61,23 +71,75 @@ describe("availableGraphCitations", () => {
     expect(proxy).toHaveBeenCalledTimes(2);
   });
 
-  it("retries a failed check after a minute, not ten", async () => {
-    proxy
-      .mockResolvedValueOnce({ status: 503, body: {} })
-      .mockResolvedValueOnce({
-        status: 200,
-        body: { status: "ok", data: { graph: { rules: [{}] } } },
-      });
-    const { availableGraphCitations } =
-      await import("./ops-graph-availability");
-    const run = { citation: "us:statutes/26/24", has_issues: false };
-    expect((await availableGraphCitations([run])).size).toBe(0);
-    vi.advanceTimersByTime(30_000);
-    expect((await availableGraphCitations([run])).size).toBe(0);
+  it.each([
+    [400, 3 * 60_000],
+    [422, 3 * 60_000],
+    [429, 60_000],
+    [502, 60_000],
+  ])("keeps a %s answer for %d ms", async (status, keepMs) => {
+    proxy.mockResolvedValueOnce({ status, body: {} }).mockResolvedValueOnce(composed);
+    const { availableGraphCitations } = await import("./ops-graph-availability");
+    await availableGraphCitations([run]);
+    vi.advanceTimersByTime(keepMs - 1);
+    await availableGraphCitations([run]);
     expect(proxy).toHaveBeenCalledTimes(1);
-    vi.advanceTimersByTime(30_001);
-    expect((await availableGraphCitations([run])).has(run.citation)).toBe(true);
+    vi.advanceTimersByTime(2);
+    await availableGraphCitations([run]);
     expect(proxy).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries a failed check after a minute", async () => {
+    proxy.mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce(composed);
+    const { availableGraphCitations } = await import("./ops-graph-availability");
+    expect((await availableGraphCitations([run])).size).toBe(0);
+    vi.advanceTimersByTime(60_001);
+    expect((await availableGraphCitations([run])).has(run.citation)).toBe(true);
+  });
+
+  it("shares a check that is still in flight", async () => {
+    let answer!: (value: unknown) => void;
+    proxy.mockReturnValueOnce(new Promise((resolve) => { answer = resolve; }));
+    const { availableGraphCitations } = await import("./ops-graph-availability");
+    const first = availableGraphCitations([run]);
+    const second = availableGraphCitations([run]);
+    answer(composed);
+    expect((await first).has(run.citation)).toBe(true);
+    expect((await second).has(run.citation)).toBe(true);
+    expect(proxy).toHaveBeenCalledTimes(1);
+  });
+
+  it("counts the keep time from when the answer arrives, not when it was asked", async () => {
+    let answer!: (value: unknown) => void;
+    proxy.mockReturnValueOnce(new Promise((resolve) => { answer = resolve; })).mockResolvedValue(composed);
+    const { availableGraphCitations } = await import("./ops-graph-availability");
+    const slow = availableGraphCitations([run]);
+    vi.advanceTimersByTime(9 * 60_000); // a very slow first answer
+    answer(composed);
+    await slow;
+    vi.advanceTimersByTime(9 * 60_000); // 18 min after asking, 9 after answering
+    await availableGraphCitations([run]);
+    expect(proxy).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-checking a held focus never pushes another one out", async () => {
+    // Map order: F0 (kept 10 min), B (not composable: kept 3 min), then 198
+    // more composable foci — 200 in all, the cap.
+    const cite = (n: number) => ({ citation: `us:statutes/26/${n}`, has_issues: false });
+    proxy.mockImplementation(async (path: string) =>
+      path.endsWith(encodeURIComponent("us:statutes/26/2")) ? { status: 404, body: {} } : composed,
+    );
+    const { availableGraphCitations } = await import("./ops-graph-availability");
+    await availableGraphCitations([cite(1)]);
+    await availableGraphCitations([cite(2)]);
+    await availableGraphCitations(Array.from({ length: 198 }, (_, index) => cite(index + 3)));
+    expect(proxy).toHaveBeenCalledTimes(200);
+    // B expires first and is re-checked while the map is full.
+    vi.advanceTimersByTime(3 * 60_000 + 1);
+    await availableGraphCitations([cite(2)]);
+    expect(proxy).toHaveBeenCalledTimes(201);
+    // F0 is still held: the re-check replaced B in place of evicting F0.
+    await availableGraphCitations([cite(1)]);
+    expect(proxy).toHaveBeenCalledTimes(201);
   });
 
   it("keeps telemetry usable when graph checks fail and skips failed runs", async () => {
