@@ -68,6 +68,10 @@ function apiBase(): string {
   );
 }
 
+type UpstreamTarget =
+  | { ok: true; url: string }
+  | { ok: false; reason: "invalid_path" | "invalid_base" };
+
 /**
  * The upstream URL for an API path, refused when the path would not land
  * where it says. Paths here are built from request input — node ids,
@@ -78,10 +82,6 @@ function apiBase(): string {
  * app's key. A path is used only if resolving it changes nothing, and never
  * when it names the admin surface, which the site has no reason to call.
  */
-type UpstreamTarget =
-  | { ok: true; url: string }
-  | { ok: false; reason: "invalid_path" | "invalid_base" };
-
 function upstreamTarget(path: string): UpstreamTarget {
   const base = apiBase();
   let baseUrl: URL;
