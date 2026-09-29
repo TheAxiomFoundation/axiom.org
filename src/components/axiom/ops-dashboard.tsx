@@ -218,7 +218,7 @@ export function OpsDashboard({
   useEffect(() => {
     setNowMs(Date.now());
     const clock = setInterval(() => setNowMs(Date.now()), CLOCK_TICK_MS);
-    const poll = setInterval(async () => {
+    const refresh = async () => {
       try {
         const response = await fetch("/api/ops/encoding");
         if (!response.ok) return;
@@ -228,10 +228,23 @@ export function OpsDashboard({
       } catch {
         // Keep showing the last good payload; the next poll retries.
       }
+    };
+    // Every poll reads Supabase and asks the serving API about graph
+    // availability, so a tab left open in the background keeps spending
+    // both. Poll only while someone can see the page, and catch up at once
+    // when they come back to it.
+    const poll = setInterval(() => {
+      if (document.visibilityState === "hidden") return;
+      void refresh();
     }, POLL_INTERVAL_MS);
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       clearInterval(clock);
       clearInterval(poll);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, []);
 

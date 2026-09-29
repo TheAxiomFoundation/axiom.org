@@ -39,7 +39,7 @@ describe("availableGraphCitations", () => {
     );
   });
 
-  it("deduplicates checks and retries unavailable graphs after the next polling interval", async () => {
+  it("deduplicates checks and keeps a definitive answer across polls for ten minutes", async () => {
     proxy
       .mockResolvedValueOnce({ status: 404, body: {} })
       .mockResolvedValueOnce({
@@ -50,10 +50,34 @@ describe("availableGraphCitations", () => {
       await import("./ops-graph-availability");
     const run = { citation: "us:statutes/26/24", has_issues: false };
     expect((await availableGraphCitations([run, run])).size).toBe(0);
+    // Twenty polls at the dashboard's 30-second interval: one API request.
+    for (let poll = 0; poll < 19; poll += 1) {
+      vi.advanceTimersByTime(30_000);
+      expect((await availableGraphCitations([run])).size).toBe(0);
+    }
+    expect(proxy).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(30_001);
+    expect((await availableGraphCitations([run])).has(run.citation)).toBe(true);
+    expect(proxy).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries a failed check after a minute, not ten", async () => {
+    proxy
+      .mockResolvedValueOnce({ status: 503, body: {} })
+      .mockResolvedValueOnce({
+        status: 200,
+        body: { status: "ok", data: { graph: { rules: [{}] } } },
+      });
+    const { availableGraphCitations } =
+      await import("./ops-graph-availability");
+    const run = { citation: "us:statutes/26/24", has_issues: false };
+    expect((await availableGraphCitations([run])).size).toBe(0);
+    vi.advanceTimersByTime(30_000);
     expect((await availableGraphCitations([run])).size).toBe(0);
     expect(proxy).toHaveBeenCalledTimes(1);
     vi.advanceTimersByTime(30_001);
     expect((await availableGraphCitations([run])).has(run.citation)).toBe(true);
+    expect(proxy).toHaveBeenCalledTimes(2);
   });
 
   it("keeps telemetry usable when graph checks fail and skips failed runs", async () => {

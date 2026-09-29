@@ -432,4 +432,41 @@ describe("OpsDashboard", () => {
     expect(screen.getByText("Israel")).toBeInTheDocument();
     expect(screen.queryByText("il")).not.toBeInTheDocument();
   });
+
+  it("polls only while the page is visible, and catches up on return", async () => {
+    let visibility: DocumentVisibilityState = "visible";
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => visibility,
+    });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ value: status({}) }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      render(
+        <OpsDashboard
+          initialStatus={status({})}
+          encodingError={null}
+          queues={[]}
+          recentScopes={[]}
+        />,
+      );
+      vi.advanceTimersByTime(30_000);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      visibility = "hidden";
+      document.dispatchEvent(new Event("visibilitychange"));
+      vi.advanceTimersByTime(10 * 60_000);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      visibility = "visible";
+      document.dispatchEvent(new Event("visibilitychange"));
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock).toHaveBeenLastCalledWith("/api/ops/encoding");
+    } finally {
+      delete (document as { visibilityState?: unknown }).visibilityState;
+    }
+  });
 });
