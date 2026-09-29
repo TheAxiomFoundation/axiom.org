@@ -482,13 +482,20 @@ describe("OpsDashboard", () => {
       setVisibility("visible");
       expect(fetchMock).toHaveBeenCalledTimes(3);
 
+      // Hiding the tab, whenever it happens, never fetches.
+      vi.advanceTimersByTime(20_000);
+      setVisibility("hidden");
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      setVisibility("visible");
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+
       // After unmount, neither the interval nor the listener fires.
       unmount();
       setVisibility("hidden");
       vi.advanceTimersByTime(60_000);
       setVisibility("visible");
       vi.advanceTimersByTime(60_000);
-      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(fetchMock).toHaveBeenCalledTimes(4);
     } finally {
       delete (document as { visibilityState?: unknown }).visibilityState;
     }

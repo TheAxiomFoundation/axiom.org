@@ -71,6 +71,19 @@ describe("availableGraphCitations", () => {
     expect(proxy).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps a composed-but-empty graph as not yet composable (three minutes)", async () => {
+    proxy
+      .mockResolvedValueOnce({ status: 200, body: { status: "ok", data: { graph: { rules: [] } } } })
+      .mockResolvedValueOnce(composed);
+    const { availableGraphCitations } = await import("./ops-graph-availability");
+    expect((await availableGraphCitations([run])).size).toBe(0);
+    vi.advanceTimersByTime(3 * 60_000 - 1);
+    await availableGraphCitations([run]);
+    expect(proxy).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(2);
+    expect((await availableGraphCitations([run])).has(run.citation)).toBe(true);
+  });
+
   it.each([
     [400, 3 * 60_000],
     [422, 3 * 60_000],
@@ -119,6 +132,19 @@ describe("availableGraphCitations", () => {
     vi.advanceTimersByTime(9 * 60_000); // 18 min after asking, 9 after answering
     await availableGraphCitations([run]);
     expect(proxy).toHaveBeenCalledTimes(1);
+  });
+
+  it("evicts the oldest focus when a new one arrives at the cap", async () => {
+    proxy.mockResolvedValue(composed);
+    const { availableGraphCitations } = await import("./ops-graph-availability");
+    const cite = (n: number) => ({ citation: `us:statutes/26/${n}`, has_issues: false });
+    for (let n = 1; n <= 200; n += 1) await availableGraphCitations([cite(n)]);
+    await availableGraphCitations([cite(201)]);
+    proxy.mockClear();
+    await availableGraphCitations([cite(200)]);
+    expect(proxy).not.toHaveBeenCalled(); // the newest is still held
+    await availableGraphCitations([cite(1)]);
+    expect(proxy).toHaveBeenCalledTimes(1); // the oldest was pushed out
   });
 
   it("re-checking a held focus never pushes another one out", async () => {

@@ -219,7 +219,9 @@ export function OpsDashboard({
   useEffect(() => {
     setNowMs(Date.now());
     const clock = setInterval(() => setNowMs(Date.now()), CLOCK_TICK_MS);
-    let lastRefreshMs = 0;
+    // The server rendered this data just now; a quick first return to the
+    // tab does not need to fetch it again.
+    let lastRefreshMs = Date.now();
     const refresh = async () => {
       lastRefreshMs = Date.now();
       try {

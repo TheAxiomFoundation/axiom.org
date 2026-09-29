@@ -31,8 +31,11 @@ function classify(status: number, body: unknown): Check {
       envelope.data.graph.rules.length > 0;
     return { available, keepMs: available ? AVAILABLE_MS : UNAVAILABLE_MS };
   }
-  // 404 (not composable yet) and other client errors are answers about this
-  // focus; 429 and server errors say nothing about it.
+  // 404 (not composable yet) and other client errors are kept as "not yet".
+  // That is not always an answer about the focus — the API also answers 404
+  // when its mirror read fails, and 401/403 mean a key problem — but a
+  // three-minute keep only delays the link. 429 and server errors are
+  // retried after a minute.
   if (status >= 400 && status < 500 && status !== 429) {
     return { available: false, keepMs: UNAVAILABLE_MS };
   }
