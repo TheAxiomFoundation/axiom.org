@@ -1,0 +1,2370 @@
+{
+ "generated_at": "2026-07-27T22:49:45+00:00",
+ "method": "Rule file := *.yaml/*.yml with a path component 'statutes', 'regulations', or 'policies', excluding *.test.yaml/*.test.yml companion tests and any path under a hidden ('.'-prefixed) directory (.github CI, .axiom encoding-manifest metadata). Per repo, the live set of matching paths is replayed over the origin default branch's first-parent history (git log --first-parent --no-renames --name-status, committer dates in UTC), collapsed to one point per calendar day (last value that day); the series is sparse and step-interpolated (a day's value is the most recent point at or before it). Endpoint verified exactly: per repo, the replayed final set is set-equal to git ls-tree -r of today's origin default head under the same predicate; this primary method passed for every repo (no sampling fallback needed). Because every satellite repo's rules (13 rulespec-us-* states + rulespec-uk-kingston-upon-thames) are today fully mirrored inside the rulespec-us / rulespec-uk monorepo subtrees, 'series'/'total_today' (files summed across repos) double-count mirrored rules; 'series_distinct'/'total_today_distinct' count distinct (jurisdiction, rule-path) keys across all repos, verified the same way against the union of today's trees \u2014 use the distinct series for corpus-size claims. Kind split: files under statutes/ or regulations/ are 'provision' (provision-rooted encodings); files under policies/ are 'policy' (composed policy modules); the bucket directory is part of the dedup key, so kind is a pure function of the key, cross-kind collisions are structurally impossible, and series_distinct_by_kind/total_today_by_kind partition the distinct totals exactly (per-repo final_count_by_kind partitions raw file counts). Predecessor caveat: before RuleSpec, a legacy encoding format (*.rac; Dec 2025-Apr 2026 in rulespec-us and rulespec-uk, peaking around 278 files) was removed as 'legacy formula artifacts' on 2026-04-27 and is not counted here.",
+ "repos": {
+  "rulespec-be": {
+   "final_count": 111,
+   "final_count_by_kind": {
+    "provision": 108,
+    "policy": 3
+   },
+   "first_date": "2026-07-01",
+   "default_branch": "main",
+   "head_sha": "d942b44a0edcaa5cc19488d12744dfdd9a201cad",
+   "series": [
+    [
+     "2026-07-01",
+     79
+    ],
+    [
+     "2026-07-02",
+     84
+    ],
+    [
+     "2026-07-03",
+     85
+    ],
+    [
+     "2026-07-04",
+     90
+    ],
+    [
+     "2026-07-05",
+     101
+    ],
+    [
+     "2026-07-06",
+     102
+    ],
+    [
+     "2026-07-07",
+     103
+    ],
+    [
+     "2026-07-08",
+     106
+    ],
+    [
+     "2026-07-09",
+     111
+    ]
+   ]
+  },
+  "rulespec-bo": {
+   "final_count": 0,
+   "final_count_by_kind": {
+    "provision": 0,
+    "policy": 0
+   },
+   "first_date": null,
+   "default_branch": "main",
+   "head_sha": "6bb48b2a15d2c2ddb7fffdfec05a973388ba121c",
+   "series": [
+    [
+     "2026-07-24",
+     0
+    ]
+   ]
+  },
+  "rulespec-ca": {
+   "final_count": 103,
+   "final_count_by_kind": {
+    "provision": 0,
+    "policy": 103
+   },
+   "first_date": "2026-07-06",
+   "default_branch": "main",
+   "head_sha": "d3b0378a9f2e957f3f3bf741de5a894f03fab32e",
+   "series": [
+    [
+     "2026-01-31",
+     0
+    ],
+    [
+     "2026-07-06",
+     103
+    ],
+    [
+     "2026-07-10",
+     103
+    ]
+   ]
+  },
+  "rulespec-co": {
+   "final_count": 0,
+   "final_count_by_kind": {
+    "provision": 0,
+    "policy": 0
+   },
+   "first_date": null,
+   "default_branch": "main",
+   "head_sha": "762241393050735e3ee843cff8f943f904d87c17",
+   "series": [
+    [
+     "2026-07-23",
+     0
+    ]
+   ]
+  },
+  "rulespec-compile": {
+   "final_count": 0,
+   "final_count_by_kind": {
+    "provision": 0,
+    "policy": 0
+   },
+   "first_date": null,
+   "default_branch": "main",
+   "head_sha": "5995ea1bcb7d599960041b59475e158daa1bb809",
+   "series": [
+    [
+     "2025-12-12",
+     0
+    ]
+   ]
+  },
+  "rulespec-de": {
+   "final_count": 4,
+   "final_count_by_kind": {
+    "provision": 4,
+    "policy": 0
+   },
+   "first_date": "2026-07-26",
+   "default_branch": "main",
+   "head_sha": "5b54c097f2f66b9de1263abcda0b5b448ebded98",
+   "series": [
+    [
+     "2026-07-16",
+     0
+    ],
+    [
+     "2026-07-26",
+     4
+    ]
+   ]
+  },
+  "rulespec-dk": {
+   "final_count": 3,
+   "final_count_by_kind": {
+    "provision": 3,
+    "policy": 0
+   },
+   "first_date": "2026-07-12",
+   "default_branch": "main",
+   "head_sha": "4d48fda82c30b541942d9159f01786b5edd59a78",
+   "series": [
+    [
+     "2026-07-12",
+     3
+    ]
+   ]
+  },
+  "rulespec-ec": {
+   "final_count": 0,
+   "final_count_by_kind": {
+    "provision": 0,
+    "policy": 0
+   },
+   "first_date": null,
+   "default_branch": "main",
+   "head_sha": "feb22563502a7f0753da4cab24896cccc54e541a",
+   "series": [
+    [
+     "2026-07-22",
+     0
+    ]
+   ]
+  },
+  "rulespec-eg": {
+   "final_count": 0,
+   "final_count_by_kind": {
+    "provision": 0,
+    "policy": 0
+   },
+   "first_date": null,
+   "default_branch": "main",
+   "head_sha": "96314fe32450d2c892210a55e78e32a3ab182840",
+   "series": [
+    [
+     "2026-07-24",
+     0
+    ]
+   ]
+  },
+  "rulespec-et": {
+   "final_count": 6,
+   "final_count_by_kind": {
+    "provision": 6,
+    "policy": 0
+   },
+   "first_date": "2026-07-09",
+   "default_branch": "main",
+   "head_sha": "de12a7810c4d2900dabee940e83ba7f28071241b",
+   "series": [
+    [
+     "2026-07-09",
+     5
+    ],
+    [
+     "2026-07-24",
+     6
+    ]
+   ]
+  },
+  "rulespec-gh": {
+   "final_count": 17,
+   "final_count_by_kind": {
+    "provision": 14,
+    "policy": 3
+   },
+   "first_date": "2026-07-06",
+   "default_branch": "main",
+   "head_sha": "1e3b93b3a674d7c59a638889a8673edafa966cd5",
+   "series": [
+    [
+     "2026-07-06",
+     2
+    ],
+    [
+     "2026-07-07",
+     15
+    ],
+    [
+     "2026-07-12",
+     17
+    ]
+   ]
+  },
+  "rulespec-graph-viewer": {
+   "final_count": 0,
+   "final_count_by_kind": {
+    "provision": 0,
+    "policy": 0
+   },
+   "first_date": null,
+   "default_branch": "main",
+   "head_sha": "bc99f97676dde5b56ac7c841ed5560c927fb20cd",
+   "series": [
+    [
+     "2026-05-14",
+     0
+    ]
+   ]
+  },
+  "rulespec-mz": {
+   "final_count": 0,
+   "final_count_by_kind": {
+    "provision": 0,
+    "policy": 0
+   },
+   "first_date": null,
+   "default_branch": "main",
+   "head_sha": "cac79ed3448cc025b7c37eb4e687773f0ffd87b9",
+   "series": [
+    [
+     "2026-07-23",
+     0
+    ]
+   ]
+  },
+  "rulespec-ng": {
+   "final_count": 2,
+   "final_count_by_kind": {
+    "provision": 2,
+    "policy": 0
+   },
+   "first_date": "2026-07-06",
+   "default_branch": "main",
+   "head_sha": "06ee5bd90d81691db19480a363804766e9a59f47",
+   "series": [
+    [
+     "2026-07-06",
+     2
+    ]
+   ]
+  },
+  "rulespec-nz": {
+   "final_count": 40,
+   "final_count_by_kind": {
+    "provision": 39,
+    "policy": 1
+   },
+   "first_date": "2026-06-17",
+   "default_branch": "main",
+   "head_sha": "de41bf78e9a0512d1e26abe1da5a1838e262ff6d",
+   "series": [
+    [
+     "2026-06-16",
+     0
+    ],
+    [
+     "2026-06-17",
+     18
+    ],
+    [
+     "2026-07-01",
+     36
+    ],
+    [
+     "2026-07-18",
+     37
+    ],
+    [
+     "2026-07-24",
+     40
+    ]
+   ]
+  },
+  "rulespec-pe": {
+   "final_count": 0,
+   "final_count_by_kind": {
+    "provision": 0,
+    "policy": 0
+   },
+   "first_date": null,
+   "default_branch": "main",
+   "head_sha": "689688cfef54d1788745b6bd363566e3439e7aea",
+   "series": [
+    [
+     "2026-07-23",
+     0
+    ]
+   ]
+  },
+  "rulespec-rw": {
+   "final_count": 14,
+   "final_count_by_kind": {
+    "provision": 13,
+    "policy": 1
+   },
+   "first_date": "2026-07-09",
+   "default_branch": "main",
+   "head_sha": "0dfa5bd9d2964dddadedd2c47ffd15dd6cd04366",
+   "series": [
+    [
+     "2026-07-09",
+     13
+    ],
+    [
+     "2026-07-23",
+     14
+    ]
+   ]
+  },
+  "rulespec-syntax": {
+   "final_count": 0,
+   "final_count_by_kind": {
+    "provision": 0,
+    "policy": 0
+   },
+   "first_date": null,
+   "default_branch": "master",
+   "head_sha": "3319b78ea31d0230452c1a8f34549161cce9ae27",
+   "series": [
+    [
+     "2026-01-31",
+     0
+    ]
+   ]
+  },
+  "rulespec-tz": {
+   "final_count": 0,
+   "final_count_by_kind": {
+    "provision": 0,
+    "policy": 0
+   },
+   "first_date": null,
+   "default_branch": "main",
+   "head_sha": "3830ea4a49d317046cdb3741716473b7388337f2",
+   "series": [
+    [
+     "2026-07-09",
+     0
+    ]
+   ]
+  },
+  "rulespec-tz-znz": {
+   "final_count": 0,
+   "final_count_by_kind": {
+    "provision": 0,
+    "policy": 0
+   },
+   "first_date": null,
+   "default_branch": "main",
+   "head_sha": "72db677c1b0a0bbdd4fbdbd9e22ef7c66d3968c4",
+   "series": [
+    [
+     "2026-07-21",
+     0
+    ]
+   ]
+  },
+  "rulespec-ug": {
+   "final_count": 12,
+   "final_count_by_kind": {
+    "provision": 11,
+    "policy": 1
+   },
+   "first_date": "2026-07-08",
+   "default_branch": "main",
+   "head_sha": "6c11ed594291c98962f2dc9b547c84c1068e7c25",
+   "series": [
+    [
+     "2026-07-08",
+     9
+    ],
+    [
+     "2026-07-23",
+     11
+    ],
+    [
+     "2026-07-24",
+     12
+    ]
+   ]
+  },
+  "rulespec-uk": {
+   "final_count": 332,
+   "final_count_by_kind": {
+    "provision": 293,
+    "policy": 39
+   },
+   "first_date": "2026-05-29",
+   "default_branch": "main",
+   "head_sha": "e60b12676343ecf87047494e5f0dbf11c1e33031",
+   "series": [
+    [
+     "2026-03-30",
+     0
+    ],
+    [
+     "2026-05-29",
+     4
+    ],
+    [
+     "2026-05-30",
+     5
+    ],
+    [
+     "2026-06-03",
+     57
+    ],
+    [
+     "2026-06-04",
+     62
+    ],
+    [
+     "2026-06-05",
+     120
+    ],
+    [
+     "2026-06-06",
+     136
+    ],
+    [
+     "2026-06-07",
+     138
+    ],
+    [
+     "2026-06-10",
+     136
+    ],
+    [
+     "2026-06-11",
+     151
+    ],
+    [
+     "2026-06-12",
+     152
+    ],
+    [
+     "2026-07-01",
+     156
+    ],
+    [
+     "2026-07-03",
+     157
+    ],
+    [
+     "2026-07-05",
+     171
+    ],
+    [
+     "2026-07-06",
+     178
+    ],
+    [
+     "2026-07-07",
+     198
+    ],
+    [
+     "2026-07-08",
+     201
+    ],
+    [
+     "2026-07-09",
+     227
+    ],
+    [
+     "2026-07-17",
+     298
+    ],
+    [
+     "2026-07-19",
+     321
+    ],
+    [
+     "2026-07-24",
+     325
+    ],
+    [
+     "2026-07-25",
+     328
+    ],
+    [
+     "2026-07-26",
+     332
+    ]
+   ]
+  },
+  "rulespec-uk-kingston-upon-thames": {
+   "final_count": 1,
+   "final_count_by_kind": {
+    "provision": 0,
+    "policy": 1
+   },
+   "first_date": "2026-06-07",
+   "default_branch": "main",
+   "head_sha": "b619e3b46d591cc609453313b22226bf38ce6d84",
+   "series": [
+    [
+     "2026-06-07",
+     1
+    ]
+   ],
+   "mirrored_into": "rulespec-uk"
+  },
+  "rulespec-us": {
+   "final_count": 4486,
+   "final_count_by_kind": {
+    "provision": 2892,
+    "policy": 1594
+   },
+   "first_date": "2026-04-29",
+   "default_branch": "main",
+   "head_sha": "ecb057ef35ab47fb055213b42459c42ae63485ef",
+   "series": [
+    [
+     "2025-12-11",
+     0
+    ],
+    [
+     "2026-04-29",
+     10
+    ],
+    [
+     "2026-04-30",
+     11
+    ],
+    [
+     "2026-05-01",
+     17
+    ],
+    [
+     "2026-05-02",
+     18
+    ],
+    [
+     "2026-05-04",
+     24
+    ],
+    [
+     "2026-05-06",
+     26
+    ],
+    [
+     "2026-05-07",
+     27
+    ],
+    [
+     "2026-05-10",
+     38
+    ],
+    [
+     "2026-05-11",
+     57
+    ],
+    [
+     "2026-05-12",
+     63
+    ],
+    [
+     "2026-05-14",
+     66
+    ],
+    [
+     "2026-05-15",
+     74
+    ],
+    [
+     "2026-05-16",
+     96
+    ],
+    [
+     "2026-05-17",
+     97
+    ],
+    [
+     "2026-05-22",
+     101
+    ],
+    [
+     "2026-05-23",
+     125
+    ],
+    [
+     "2026-05-24",
+     160
+    ],
+    [
+     "2026-05-25",
+     241
+    ],
+    [
+     "2026-05-26",
+     280
+    ],
+    [
+     "2026-05-27",
+     327
+    ],
+    [
+     "2026-05-28",
+     397
+    ],
+    [
+     "2026-05-29",
+     400
+    ],
+    [
+     "2026-06-01",
+     402
+    ],
+    [
+     "2026-06-02",
+     406
+    ],
+    [
+     "2026-06-03",
+     407
+    ],
+    [
+     "2026-06-05",
+     423
+    ],
+    [
+     "2026-06-06",
+     427
+    ],
+    [
+     "2026-06-08",
+     434
+    ],
+    [
+     "2026-06-12",
+     2349
+    ],
+    [
+     "2026-06-15",
+     2357
+    ],
+    [
+     "2026-06-16",
+     2513
+    ],
+    [
+     "2026-06-18",
+     2756
+    ],
+    [
+     "2026-06-19",
+     2764
+    ],
+    [
+     "2026-06-20",
+     2772
+    ],
+    [
+     "2026-06-21",
+     2774
+    ],
+    [
+     "2026-06-23",
+     2781
+    ],
+    [
+     "2026-06-24",
+     2798
+    ],
+    [
+     "2026-06-25",
+     2841
+    ],
+    [
+     "2026-06-26",
+     2884
+    ],
+    [
+     "2026-06-27",
+     2906
+    ],
+    [
+     "2026-06-29",
+     2961
+    ],
+    [
+     "2026-06-30",
+     2969
+    ],
+    [
+     "2026-07-01",
+     2990
+    ],
+    [
+     "2026-07-02",
+     3019
+    ],
+    [
+     "2026-07-03",
+     3035
+    ],
+    [
+     "2026-07-04",
+     3041
+    ],
+    [
+     "2026-07-05",
+     3159
+    ],
+    [
+     "2026-07-06",
+     3175
+    ],
+    [
+     "2026-07-07",
+     3180
+    ],
+    [
+     "2026-07-08",
+     3188
+    ],
+    [
+     "2026-07-09",
+     3362
+    ],
+    [
+     "2026-07-10",
+     3368
+    ],
+    [
+     "2026-07-12",
+     3452
+    ],
+    [
+     "2026-07-13",
+     3473
+    ],
+    [
+     "2026-07-14",
+     3550
+    ],
+    [
+     "2026-07-15",
+     3628
+    ],
+    [
+     "2026-07-16",
+     3811
+    ],
+    [
+     "2026-07-17",
+     4402
+    ],
+    [
+     "2026-07-18",
+     4404
+    ],
+    [
+     "2026-07-21",
+     4430
+    ],
+    [
+     "2026-07-22",
+     4433
+    ],
+    [
+     "2026-07-23",
+     4438
+    ],
+    [
+     "2026-07-24",
+     4466
+    ],
+    [
+     "2026-07-25",
+     4473
+    ],
+    [
+     "2026-07-26",
+     4482
+    ],
+    [
+     "2026-07-27",
+     4486
+    ]
+   ]
+  },
+  "rulespec-us-al": {
+   "final_count": 105,
+   "final_count_by_kind": {
+    "provision": 22,
+    "policy": 83
+   },
+   "first_date": "2026-05-29",
+   "default_branch": "main",
+   "head_sha": "9739372ea6b27a1e93a4d902688921672eba2c01",
+   "series": [
+    [
+     "2026-04-14",
+     0
+    ],
+    [
+     "2026-05-29",
+     22
+    ],
+    [
+     "2026-06-01",
+     105
+    ]
+   ],
+   "mirrored_into": "rulespec-us"
+  },
+  "rulespec-us-ar": {
+   "final_count": 0,
+   "final_count_by_kind": {
+    "provision": 0,
+    "policy": 0
+   },
+   "first_date": null,
+   "default_branch": "main",
+   "head_sha": "d0dd3bf9d8427fab48b3bf9ed14d627ce6794769",
+   "series": [
+    [
+     "2026-04-14",
+     0
+    ]
+   ]
+  },
+  "rulespec-us-az": {
+   "final_count": 33,
+   "final_count_by_kind": {
+    "provision": 0,
+    "policy": 33
+   },
+   "first_date": "2026-05-27",
+   "default_branch": "main",
+   "head_sha": "27e59d52e1dee3f608b50e19ae743c938b1685dd",
+   "series": [
+    [
+     "2026-05-27",
+     5
+    ],
+    [
+     "2026-06-04",
+     7
+    ],
+    [
+     "2026-06-08",
+     26
+    ],
+    [
+     "2026-06-09",
+     33
+    ]
+   ],
+   "mirrored_into": "rulespec-us"
+  },
+  "rulespec-us-ca": {
+   "final_count": 360,
+   "final_count_by_kind": {
+    "provision": 358,
+    "policy": 2
+   },
+   "first_date": "2026-05-14",
+   "default_branch": "main",
+   "head_sha": "321ed395ac076b580f20af351eb476056e018779",
+   "series": [
+    [
+     "2025-12-26",
+     0
+    ],
+    [
+     "2026-05-14",
+     358
+    ],
+    [
+     "2026-05-30",
+     360
+    ]
+   ],
+   "mirrored_into": "rulespec-us"
+  },
+  "rulespec-us-co": {
+   "final_count": 114,
+   "final_count_by_kind": {
+    "provision": 111,
+    "policy": 3
+   },
+   "first_date": "2026-04-30",
+   "default_branch": "main",
+   "head_sha": "8e6369ddaf78127b8399e971e4cfd4c094851394",
+   "series": [
+    [
+     "2026-04-03",
+     0
+    ],
+    [
+     "2026-04-30",
+     30
+    ],
+    [
+     "2026-05-01",
+     31
+    ],
+    [
+     "2026-05-04",
+     34
+    ],
+    [
+     "2026-05-07",
+     39
+    ],
+    [
+     "2026-05-29",
+     51
+    ],
+    [
+     "2026-05-31",
+     109
+    ],
+    [
+     "2026-06-01",
+     110
+    ],
+    [
+     "2026-06-04",
+     113
+    ],
+    [
+     "2026-06-08",
+     114
+    ]
+   ],
+   "mirrored_into": "rulespec-us"
+  },
+  "rulespec-us-de": {
+   "final_count": 0,
+   "final_count_by_kind": {
+    "provision": 0,
+    "policy": 0
+   },
+   "first_date": null,
+   "default_branch": "main",
+   "head_sha": "d827b1fdc2f0323bc976b10157081895f60452c5",
+   "series": [
+    [
+     "2026-05-29",
+     0
+    ]
+   ]
+  },
+  "rulespec-us-fl": {
+   "final_count": 7,
+   "final_count_by_kind": {
+    "provision": 7,
+    "policy": 0
+   },
+   "first_date": "2026-05-29",
+   "default_branch": "main",
+   "head_sha": "d76ea39a1c040f3ced171c07f3dc8479cf3412ad",
+   "series": [
+    [
+     "2026-04-14",
+     0
+    ],
+    [
+     "2026-05-29",
+     7
+    ]
+   ],
+   "mirrored_into": "rulespec-us"
+  },
+  "rulespec-us-ga": {
+   "final_count": 2,
+   "final_count_by_kind": {
+    "provision": 0,
+    "policy": 2
+   },
+   "first_date": "2026-06-11",
+   "default_branch": "main",
+   "head_sha": "3ec65873b829041aa2cff6c88349bb166b0f0f83",
+   "series": [
+    [
+     "2026-04-14",
+     0
+    ],
+    [
+     "2026-06-11",
+     2
+    ]
+   ],
+   "mirrored_into": "rulespec-us"
+  },
+  "rulespec-us-id": {
+   "final_count": 17,
+   "final_count_by_kind": {
+    "provision": 17,
+    "policy": 0
+   },
+   "first_date": "2026-05-29",
+   "default_branch": "main",
+   "head_sha": "3e99012641a7f385068052bc8c392f5f804add84",
+   "series": [
+    [
+     "2026-05-29",
+     17
+    ]
+   ],
+   "mirrored_into": "rulespec-us"
+  },
+  "rulespec-us-ma": {
+   "final_count": 213,
+   "final_count_by_kind": {
+    "provision": 213,
+    "policy": 0
+   },
+   "first_date": "2026-05-29",
+   "default_branch": "main",
+   "head_sha": "96686b60d22282596ac295a8dd0863c974e9df96",
+   "series": [
+    [
+     "2026-05-28",
+     0
+    ],
+    [
+     "2026-05-29",
+     213
+    ]
+   ],
+   "mirrored_into": "rulespec-us"
+  },
+  "rulespec-us-md": {
+   "final_count": 0,
+   "final_count_by_kind": {
+    "provision": 0,
+    "policy": 0
+   },
+   "first_date": null,
+   "default_branch": "main",
+   "head_sha": "d25573bb6d6e4f76005d6cb614f50556647f2c29",
+   "series": [
+    [
+     "2026-04-14",
+     0
+    ]
+   ]
+  },
+  "rulespec-us-nc": {
+   "final_count": 497,
+   "final_count_by_kind": {
+    "provision": 4,
+    "policy": 493
+   },
+   "first_date": "2026-05-29",
+   "default_branch": "main",
+   "head_sha": "7da36479d4429e60a528b011f01219d3cc1c74db",
+   "series": [
+    [
+     "2026-04-13",
+     0
+    ],
+    [
+     "2026-05-29",
+     4
+    ],
+    [
+     "2026-06-04",
+     497
+    ]
+   ],
+   "mirrored_into": "rulespec-us"
+  },
+  "rulespec-us-nh": {
+   "final_count": 4,
+   "final_count_by_kind": {
+    "provision": 4,
+    "policy": 0
+   },
+   "first_date": "2026-05-29",
+   "default_branch": "main",
+   "head_sha": "3b61ecfd5bd70b3098489c9d9258e990b3729336",
+   "series": [
+    [
+     "2026-05-29",
+     4
+    ]
+   ],
+   "mirrored_into": "rulespec-us"
+  },
+  "rulespec-us-ny": {
+   "final_count": 22,
+   "final_count_by_kind": {
+    "provision": 15,
+    "policy": 7
+   },
+   "first_date": "2026-05-09",
+   "default_branch": "main",
+   "head_sha": "13456f86822961ddd04d7f3dfa5940223d58c245",
+   "series": [
+    [
+     "2025-12-26",
+     0
+    ],
+    [
+     "2026-05-09",
+     13
+    ],
+    [
+     "2026-06-05",
+     22
+    ]
+   ],
+   "mirrored_into": "rulespec-us"
+  },
+  "rulespec-us-ok": {
+   "final_count": 0,
+   "final_count_by_kind": {
+    "provision": 0,
+    "policy": 0
+   },
+   "first_date": null,
+   "default_branch": "main",
+   "head_sha": "4fe0de67e572dc451a4a45c0fcb5b1b8062c17a1",
+   "series": [
+    [
+     "2026-05-29",
+     0
+    ]
+   ]
+  },
+  "rulespec-us-sc": {
+   "final_count": 367,
+   "final_count_by_kind": {
+    "provision": 6,
+    "policy": 361
+   },
+   "first_date": "2026-05-29",
+   "default_branch": "main",
+   "head_sha": "04fd9e31535376df90b1be2cb291b712c0973d70",
+   "series": [
+    [
+     "2026-04-14",
+     0
+    ],
+    [
+     "2026-05-29",
+     6
+    ],
+    [
+     "2026-06-04",
+     367
+    ]
+   ],
+   "mirrored_into": "rulespec-us"
+  },
+  "rulespec-us-tn": {
+   "final_count": 176,
+   "final_count_by_kind": {
+    "provision": 23,
+    "policy": 153
+   },
+   "first_date": "2026-05-29",
+   "default_branch": "main",
+   "head_sha": "488b331d49b1e89cf60e0029d4d92940f8e6c8be",
+   "series": [
+    [
+     "2026-04-13",
+     0
+    ],
+    [
+     "2026-05-29",
+     23
+    ],
+    [
+     "2026-05-31",
+     176
+    ]
+   ],
+   "mirrored_into": "rulespec-us"
+  },
+  "rulespec-us-tx": {
+   "final_count": 0,
+   "final_count_by_kind": {
+    "provision": 0,
+    "policy": 0
+   },
+   "first_date": null,
+   "default_branch": "main",
+   "head_sha": "423fa5bf422042ee847c2d461add9609dee5df4e",
+   "series": [
+    [
+     "2026-01-31",
+     0
+    ]
+   ]
+  },
+  "rulespec-validators": {
+   "final_count": 0,
+   "final_count_by_kind": {
+    "provision": 0,
+    "policy": 0
+   },
+   "first_date": null,
+   "default_branch": "main",
+   "head_sha": "07014c105890fe330be77a88eaa496fe56cb04ad",
+   "series": [
+    [
+     "2025-12-10",
+     0
+    ]
+   ]
+  },
+  "rulespec-vn": {
+   "final_count": 0,
+   "final_count_by_kind": {
+    "provision": 0,
+    "policy": 0
+   },
+   "first_date": null,
+   "default_branch": "main",
+   "head_sha": "04c920cd69b44ee59969998908aabcd68db1ccf2",
+   "series": [
+    [
+     "2026-07-24",
+     0
+    ]
+   ]
+  },
+  "rulespec-zm": {
+   "final_count": 18,
+   "final_count_by_kind": {
+    "provision": 15,
+    "policy": 3
+   },
+   "first_date": "2026-07-08",
+   "default_branch": "main",
+   "head_sha": "3961e9a76d63d8f9dbf88c21a6053ce78bae26f2",
+   "series": [
+    [
+     "2026-07-08",
+     4
+    ],
+    [
+     "2026-07-09",
+     8
+    ],
+    [
+     "2026-07-12",
+     10
+    ],
+    [
+     "2026-07-23",
+     13
+    ],
+    [
+     "2026-07-24",
+     18
+    ]
+   ]
+  }
+ },
+ "total_today": 7066,
+ "total_today_distinct": 5148,
+ "total_today_by_kind": {
+  "provision": 3400,
+  "policy": 1748
+ },
+ "series": [
+  {
+   "date": "2025-12-10",
+   "total": 0
+  },
+  {
+   "date": "2026-04-29",
+   "total": 10
+  },
+  {
+   "date": "2026-04-30",
+   "total": 41
+  },
+  {
+   "date": "2026-05-01",
+   "total": 48
+  },
+  {
+   "date": "2026-05-02",
+   "total": 49
+  },
+  {
+   "date": "2026-05-04",
+   "total": 58
+  },
+  {
+   "date": "2026-05-06",
+   "total": 60
+  },
+  {
+   "date": "2026-05-07",
+   "total": 66
+  },
+  {
+   "date": "2026-05-09",
+   "total": 79
+  },
+  {
+   "date": "2026-05-10",
+   "total": 90
+  },
+  {
+   "date": "2026-05-11",
+   "total": 109
+  },
+  {
+   "date": "2026-05-12",
+   "total": 115
+  },
+  {
+   "date": "2026-05-14",
+   "total": 476
+  },
+  {
+   "date": "2026-05-15",
+   "total": 484
+  },
+  {
+   "date": "2026-05-16",
+   "total": 506
+  },
+  {
+   "date": "2026-05-17",
+   "total": 507
+  },
+  {
+   "date": "2026-05-22",
+   "total": 511
+  },
+  {
+   "date": "2026-05-23",
+   "total": 535
+  },
+  {
+   "date": "2026-05-24",
+   "total": 570
+  },
+  {
+   "date": "2026-05-25",
+   "total": 651
+  },
+  {
+   "date": "2026-05-26",
+   "total": 690
+  },
+  {
+   "date": "2026-05-27",
+   "total": 742
+  },
+  {
+   "date": "2026-05-28",
+   "total": 812
+  },
+  {
+   "date": "2026-05-29",
+   "total": 1127
+  },
+  {
+   "date": "2026-05-30",
+   "total": 1130
+  },
+  {
+   "date": "2026-05-31",
+   "total": 1341
+  },
+  {
+   "date": "2026-06-01",
+   "total": 1427
+  },
+  {
+   "date": "2026-06-02",
+   "total": 1431
+  },
+  {
+   "date": "2026-06-03",
+   "total": 1484
+  },
+  {
+   "date": "2026-06-04",
+   "total": 2348
+  },
+  {
+   "date": "2026-06-05",
+   "total": 2431
+  },
+  {
+   "date": "2026-06-06",
+   "total": 2451
+  },
+  {
+   "date": "2026-06-07",
+   "total": 2454
+  },
+  {
+   "date": "2026-06-08",
+   "total": 2481
+  },
+  {
+   "date": "2026-06-09",
+   "total": 2488
+  },
+  {
+   "date": "2026-06-10",
+   "total": 2486
+  },
+  {
+   "date": "2026-06-11",
+   "total": 2503
+  },
+  {
+   "date": "2026-06-12",
+   "total": 4419
+  },
+  {
+   "date": "2026-06-15",
+   "total": 4427
+  },
+  {
+   "date": "2026-06-16",
+   "total": 4583
+  },
+  {
+   "date": "2026-06-17",
+   "total": 4601
+  },
+  {
+   "date": "2026-06-18",
+   "total": 4844
+  },
+  {
+   "date": "2026-06-19",
+   "total": 4852
+  },
+  {
+   "date": "2026-06-20",
+   "total": 4860
+  },
+  {
+   "date": "2026-06-21",
+   "total": 4862
+  },
+  {
+   "date": "2026-06-23",
+   "total": 4869
+  },
+  {
+   "date": "2026-06-24",
+   "total": 4886
+  },
+  {
+   "date": "2026-06-25",
+   "total": 4929
+  },
+  {
+   "date": "2026-06-26",
+   "total": 4972
+  },
+  {
+   "date": "2026-06-27",
+   "total": 4994
+  },
+  {
+   "date": "2026-06-29",
+   "total": 5049
+  },
+  {
+   "date": "2026-06-30",
+   "total": 5057
+  },
+  {
+   "date": "2026-07-01",
+   "total": 5179
+  },
+  {
+   "date": "2026-07-02",
+   "total": 5213
+  },
+  {
+   "date": "2026-07-03",
+   "total": 5231
+  },
+  {
+   "date": "2026-07-04",
+   "total": 5242
+  },
+  {
+   "date": "2026-07-05",
+   "total": 5385
+  },
+  {
+   "date": "2026-07-06",
+   "total": 5516
+  },
+  {
+   "date": "2026-07-07",
+   "total": 5555
+  },
+  {
+   "date": "2026-07-08",
+   "total": 5582
+  },
+  {
+   "date": "2026-07-09",
+   "total": 5809
+  },
+  {
+   "date": "2026-07-10",
+   "total": 5815
+  },
+  {
+   "date": "2026-07-12",
+   "total": 5906
+  },
+  {
+   "date": "2026-07-13",
+   "total": 5927
+  },
+  {
+   "date": "2026-07-14",
+   "total": 6004
+  },
+  {
+   "date": "2026-07-15",
+   "total": 6082
+  },
+  {
+   "date": "2026-07-16",
+   "total": 6265
+  },
+  {
+   "date": "2026-07-17",
+   "total": 6927
+  },
+  {
+   "date": "2026-07-18",
+   "total": 6930
+  },
+  {
+   "date": "2026-07-19",
+   "total": 6953
+  },
+  {
+   "date": "2026-07-21",
+   "total": 6979
+  },
+  {
+   "date": "2026-07-22",
+   "total": 6982
+  },
+  {
+   "date": "2026-07-23",
+   "total": 6993
+  },
+  {
+   "date": "2026-07-24",
+   "total": 7035
+  },
+  {
+   "date": "2026-07-25",
+   "total": 7045
+  },
+  {
+   "date": "2026-07-26",
+   "total": 7062
+  },
+  {
+   "date": "2026-07-27",
+   "total": 7066
+  }
+ ],
+ "series_distinct": [
+  {
+   "date": "2026-04-29",
+   "total": 10
+  },
+  {
+   "date": "2026-04-30",
+   "total": 41
+  },
+  {
+   "date": "2026-05-01",
+   "total": 48
+  },
+  {
+   "date": "2026-05-02",
+   "total": 49
+  },
+  {
+   "date": "2026-05-04",
+   "total": 58
+  },
+  {
+   "date": "2026-05-06",
+   "total": 60
+  },
+  {
+   "date": "2026-05-07",
+   "total": 66
+  },
+  {
+   "date": "2026-05-09",
+   "total": 79
+  },
+  {
+   "date": "2026-05-10",
+   "total": 90
+  },
+  {
+   "date": "2026-05-11",
+   "total": 109
+  },
+  {
+   "date": "2026-05-12",
+   "total": 115
+  },
+  {
+   "date": "2026-05-14",
+   "total": 476
+  },
+  {
+   "date": "2026-05-15",
+   "total": 484
+  },
+  {
+   "date": "2026-05-16",
+   "total": 506
+  },
+  {
+   "date": "2026-05-17",
+   "total": 507
+  },
+  {
+   "date": "2026-05-22",
+   "total": 511
+  },
+  {
+   "date": "2026-05-23",
+   "total": 535
+  },
+  {
+   "date": "2026-05-24",
+   "total": 570
+  },
+  {
+   "date": "2026-05-25",
+   "total": 651
+  },
+  {
+   "date": "2026-05-26",
+   "total": 690
+  },
+  {
+   "date": "2026-05-27",
+   "total": 742
+  },
+  {
+   "date": "2026-05-28",
+   "total": 812
+  },
+  {
+   "date": "2026-05-29",
+   "total": 1127
+  },
+  {
+   "date": "2026-05-30",
+   "total": 1130
+  },
+  {
+   "date": "2026-05-31",
+   "total": 1341
+  },
+  {
+   "date": "2026-06-01",
+   "total": 1427
+  },
+  {
+   "date": "2026-06-02",
+   "total": 1431
+  },
+  {
+   "date": "2026-06-03",
+   "total": 1484
+  },
+  {
+   "date": "2026-06-04",
+   "total": 2348
+  },
+  {
+   "date": "2026-06-05",
+   "total": 2431
+  },
+  {
+   "date": "2026-06-06",
+   "total": 2451
+  },
+  {
+   "date": "2026-06-07",
+   "total": 2454
+  },
+  {
+   "date": "2026-06-08",
+   "total": 2481
+  },
+  {
+   "date": "2026-06-09",
+   "total": 2488
+  },
+  {
+   "date": "2026-06-10",
+   "total": 2486
+  },
+  {
+   "date": "2026-06-11",
+   "total": 2503
+  },
+  {
+   "date": "2026-06-15",
+   "total": 2510
+  },
+  {
+   "date": "2026-06-16",
+   "total": 2666
+  },
+  {
+   "date": "2026-06-17",
+   "total": 2684
+  },
+  {
+   "date": "2026-06-18",
+   "total": 2927
+  },
+  {
+   "date": "2026-06-19",
+   "total": 2935
+  },
+  {
+   "date": "2026-06-20",
+   "total": 2943
+  },
+  {
+   "date": "2026-06-21",
+   "total": 2945
+  },
+  {
+   "date": "2026-06-23",
+   "total": 2952
+  },
+  {
+   "date": "2026-06-24",
+   "total": 2969
+  },
+  {
+   "date": "2026-06-25",
+   "total": 3012
+  },
+  {
+   "date": "2026-06-26",
+   "total": 3055
+  },
+  {
+   "date": "2026-06-27",
+   "total": 3076
+  },
+  {
+   "date": "2026-06-29",
+   "total": 3131
+  },
+  {
+   "date": "2026-06-30",
+   "total": 3139
+  },
+  {
+   "date": "2026-07-01",
+   "total": 3261
+  },
+  {
+   "date": "2026-07-02",
+   "total": 3295
+  },
+  {
+   "date": "2026-07-03",
+   "total": 3313
+  },
+  {
+   "date": "2026-07-04",
+   "total": 3324
+  },
+  {
+   "date": "2026-07-05",
+   "total": 3467
+  },
+  {
+   "date": "2026-07-06",
+   "total": 3598
+  },
+  {
+   "date": "2026-07-07",
+   "total": 3637
+  },
+  {
+   "date": "2026-07-08",
+   "total": 3664
+  },
+  {
+   "date": "2026-07-09",
+   "total": 3891
+  },
+  {
+   "date": "2026-07-10",
+   "total": 3897
+  },
+  {
+   "date": "2026-07-12",
+   "total": 3988
+  },
+  {
+   "date": "2026-07-13",
+   "total": 4009
+  },
+  {
+   "date": "2026-07-14",
+   "total": 4086
+  },
+  {
+   "date": "2026-07-15",
+   "total": 4164
+  },
+  {
+   "date": "2026-07-16",
+   "total": 4347
+  },
+  {
+   "date": "2026-07-17",
+   "total": 5009
+  },
+  {
+   "date": "2026-07-18",
+   "total": 5012
+  },
+  {
+   "date": "2026-07-19",
+   "total": 5035
+  },
+  {
+   "date": "2026-07-21",
+   "total": 5061
+  },
+  {
+   "date": "2026-07-22",
+   "total": 5064
+  },
+  {
+   "date": "2026-07-23",
+   "total": 5075
+  },
+  {
+   "date": "2026-07-24",
+   "total": 5117
+  },
+  {
+   "date": "2026-07-25",
+   "total": 5127
+  },
+  {
+   "date": "2026-07-26",
+   "total": 5144
+  },
+  {
+   "date": "2026-07-27",
+   "total": 5148
+  }
+ ],
+ "series_distinct_by_kind": [
+  {
+   "date": "2026-04-29",
+   "provision": 10,
+   "policy": 0,
+   "total": 10
+  },
+  {
+   "date": "2026-04-30",
+   "provision": 40,
+   "policy": 1,
+   "total": 41
+  },
+  {
+   "date": "2026-05-01",
+   "provision": 44,
+   "policy": 4,
+   "total": 48
+  },
+  {
+   "date": "2026-05-02",
+   "provision": 44,
+   "policy": 5,
+   "total": 49
+  },
+  {
+   "date": "2026-05-04",
+   "provision": 53,
+   "policy": 5,
+   "total": 58
+  },
+  {
+   "date": "2026-05-06",
+   "provision": 55,
+   "policy": 5,
+   "total": 60
+  },
+  {
+   "date": "2026-05-07",
+   "provision": 61,
+   "policy": 5,
+   "total": 66
+  },
+  {
+   "date": "2026-05-09",
+   "provision": 73,
+   "policy": 6,
+   "total": 79
+  },
+  {
+   "date": "2026-05-10",
+   "provision": 84,
+   "policy": 6,
+   "total": 90
+  },
+  {
+   "date": "2026-05-11",
+   "provision": 98,
+   "policy": 11,
+   "total": 109
+  },
+  {
+   "date": "2026-05-12",
+   "provision": 104,
+   "policy": 11,
+   "total": 115
+  },
+  {
+   "date": "2026-05-14",
+   "provision": 465,
+   "policy": 11,
+   "total": 476
+  },
+  {
+   "date": "2026-05-15",
+   "provision": 473,
+   "policy": 11,
+   "total": 484
+  },
+  {
+   "date": "2026-05-16",
+   "provision": 494,
+   "policy": 12,
+   "total": 506
+  },
+  {
+   "date": "2026-05-17",
+   "provision": 495,
+   "policy": 12,
+   "total": 507
+  },
+  {
+   "date": "2026-05-22",
+   "provision": 495,
+   "policy": 16,
+   "total": 511
+  },
+  {
+   "date": "2026-05-23",
+   "provision": 519,
+   "policy": 16,
+   "total": 535
+  },
+  {
+   "date": "2026-05-24",
+   "provision": 554,
+   "policy": 16,
+   "total": 570
+  },
+  {
+   "date": "2026-05-25",
+   "provision": 635,
+   "policy": 16,
+   "total": 651
+  },
+  {
+   "date": "2026-05-26",
+   "provision": 673,
+   "policy": 17,
+   "total": 690
+  },
+  {
+   "date": "2026-05-27",
+   "provision": 720,
+   "policy": 22,
+   "total": 742
+  },
+  {
+   "date": "2026-05-28",
+   "provision": 790,
+   "policy": 22,
+   "total": 812
+  },
+  {
+   "date": "2026-05-29",
+   "provision": 1105,
+   "policy": 22,
+   "total": 1127
+  },
+  {
+   "date": "2026-05-30",
+   "provision": 1106,
+   "policy": 24,
+   "total": 1130
+  },
+  {
+   "date": "2026-05-31",
+   "provision": 1164,
+   "policy": 177,
+   "total": 1341
+  },
+  {
+   "date": "2026-06-01",
+   "provision": 1165,
+   "policy": 262,
+   "total": 1427
+  },
+  {
+   "date": "2026-06-02",
+   "provision": 1169,
+   "policy": 262,
+   "total": 1431
+  },
+  {
+   "date": "2026-06-03",
+   "provision": 1222,
+   "policy": 262,
+   "total": 1484
+  },
+  {
+   "date": "2026-06-04",
+   "provision": 1229,
+   "policy": 1119,
+   "total": 2348
+  },
+  {
+   "date": "2026-06-05",
+   "provision": 1306,
+   "policy": 1125,
+   "total": 2431
+  },
+  {
+   "date": "2026-06-06",
+   "provision": 1315,
+   "policy": 1136,
+   "total": 2451
+  },
+  {
+   "date": "2026-06-07",
+   "provision": 1315,
+   "policy": 1139,
+   "total": 2454
+  },
+  {
+   "date": "2026-06-08",
+   "provision": 1323,
+   "policy": 1158,
+   "total": 2481
+  },
+  {
+   "date": "2026-06-09",
+   "provision": 1323,
+   "policy": 1165,
+   "total": 2488
+  },
+  {
+   "date": "2026-06-10",
+   "provision": 1326,
+   "policy": 1160,
+   "total": 2486
+  },
+  {
+   "date": "2026-06-11",
+   "provision": 1341,
+   "policy": 1162,
+   "total": 2503
+  },
+  {
+   "date": "2026-06-15",
+   "provision": 1341,
+   "policy": 1169,
+   "total": 2510
+  },
+  {
+   "date": "2026-06-16",
+   "provision": 1391,
+   "policy": 1275,
+   "total": 2666
+  },
+  {
+   "date": "2026-06-17",
+   "provision": 1409,
+   "policy": 1275,
+   "total": 2684
+  },
+  {
+   "date": "2026-06-18",
+   "provision": 1652,
+   "policy": 1275,
+   "total": 2927
+  },
+  {
+   "date": "2026-06-19",
+   "provision": 1660,
+   "policy": 1275,
+   "total": 2935
+  },
+  {
+   "date": "2026-06-20",
+   "provision": 1668,
+   "policy": 1275,
+   "total": 2943
+  },
+  {
+   "date": "2026-06-21",
+   "provision": 1670,
+   "policy": 1275,
+   "total": 2945
+  },
+  {
+   "date": "2026-06-23",
+   "provision": 1677,
+   "policy": 1275,
+   "total": 2952
+  },
+  {
+   "date": "2026-06-24",
+   "provision": 1690,
+   "policy": 1279,
+   "total": 2969
+  },
+  {
+   "date": "2026-06-25",
+   "provision": 1705,
+   "policy": 1307,
+   "total": 3012
+  },
+  {
+   "date": "2026-06-26",
+   "provision": 1729,
+   "policy": 1326,
+   "total": 3055
+  },
+  {
+   "date": "2026-06-27",
+   "provision": 1739,
+   "policy": 1337,
+   "total": 3076
+  },
+  {
+   "date": "2026-06-29",
+   "provision": 1794,
+   "policy": 1337,
+   "total": 3131
+  },
+  {
+   "date": "2026-06-30",
+   "provision": 1798,
+   "policy": 1341,
+   "total": 3139
+  },
+  {
+   "date": "2026-07-01",
+   "provision": 1914,
+   "policy": 1347,
+   "total": 3261
+  },
+  {
+   "date": "2026-07-02",
+   "provision": 1925,
+   "policy": 1370,
+   "total": 3295
+  },
+  {
+   "date": "2026-07-03",
+   "provision": 1940,
+   "policy": 1373,
+   "total": 3313
+  },
+  {
+   "date": "2026-07-04",
+   "provision": 1947,
+   "policy": 1377,
+   "total": 3324
+  },
+  {
+   "date": "2026-07-05",
+   "provision": 1977,
+   "policy": 1490,
+   "total": 3467
+  },
+  {
+   "date": "2026-07-06",
+   "provision": 1998,
+   "policy": 1600,
+   "total": 3598
+  },
+  {
+   "date": "2026-07-07",
+   "provision": 2021,
+   "policy": 1616,
+   "total": 3637
+  },
+  {
+   "date": "2026-07-08",
+   "provision": 2047,
+   "policy": 1617,
+   "total": 3664
+  },
+  {
+   "date": "2026-07-09",
+   "provision": 2257,
+   "policy": 1634,
+   "total": 3891
+  },
+  {
+   "date": "2026-07-10",
+   "provision": 2259,
+   "policy": 1638,
+   "total": 3897
+  },
+  {
+   "date": "2026-07-12",
+   "provision": 2345,
+   "policy": 1643,
+   "total": 3988
+  },
+  {
+   "date": "2026-07-13",
+   "provision": 2360,
+   "policy": 1649,
+   "total": 4009
+  },
+  {
+   "date": "2026-07-14",
+   "provision": 2434,
+   "policy": 1652,
+   "total": 4086
+  },
+  {
+   "date": "2026-07-15",
+   "provision": 2512,
+   "policy": 1652,
+   "total": 4164
+  },
+  {
+   "date": "2026-07-16",
+   "provision": 2695,
+   "policy": 1652,
+   "total": 4347
+  },
+  {
+   "date": "2026-07-17",
+   "provision": 3357,
+   "policy": 1652,
+   "total": 5009
+  },
+  {
+   "date": "2026-07-18",
+   "provision": 3358,
+   "policy": 1654,
+   "total": 5012
+  },
+  {
+   "date": "2026-07-19",
+   "provision": 3381,
+   "policy": 1654,
+   "total": 5035
+  },
+  {
+   "date": "2026-07-21",
+   "provision": 3383,
+   "policy": 1678,
+   "total": 5061
+  },
+  {
+   "date": "2026-07-22",
+   "provision": 3384,
+   "policy": 1680,
+   "total": 5064
+  },
+  {
+   "date": "2026-07-23",
+   "provision": 3389,
+   "policy": 1686,
+   "total": 5075
+  },
+  {
+   "date": "2026-07-24",
+   "provision": 3398,
+   "policy": 1719,
+   "total": 5117
+  },
+  {
+   "date": "2026-07-25",
+   "provision": 3398,
+   "policy": 1729,
+   "total": 5127
+  },
+  {
+   "date": "2026-07-26",
+   "provision": 3401,
+   "policy": 1743,
+   "total": 5144
+  },
+  {
+   "date": "2026-07-27",
+   "provision": 3400,
+   "policy": 1748,
+   "total": 5148
+  }
+ ]
+}

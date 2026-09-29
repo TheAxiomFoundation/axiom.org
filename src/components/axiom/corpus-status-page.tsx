@@ -16,6 +16,7 @@ import type {
   ValidationReport,
 } from "@/lib/corpus-status";
 import { LiveEncodingPanel } from "./live-encoding-panel";
+import { CumulativeEncodingsPanel } from "@/components/axiom/cumulative-encodings-panel";
 
 interface CorpusStatusPageProps {
   status: CorpusStatusData;
@@ -167,6 +168,15 @@ export function CorpusStatusPage({
             compiledArtifacts={compiledArtifacts}
             rulespecActivity={rulespecActivity}
           />
+        </section>
+
+        <section className="mt-10">
+          <SectionHeader
+            eyebrow="Corpus"
+            title="Cumulative Encodings"
+            detail="git-mined · endpoint set-verified · scripts/rulespec-growth.py"
+          />
+          <CumulativeEncodingsPanel />
         </section>
 
         <section className="mt-10">
