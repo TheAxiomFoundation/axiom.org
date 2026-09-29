@@ -793,16 +793,25 @@ describe("countCorpusProvisionFiles", () => {
     fc.assert(
       fc.property(
         scopes.chain((scopeList) =>
-          fc.shuffledSubarray([
-            ...scopeList.map(provisionPath),
-            ...scopeList.map(lockPath),
-            ...scopeList.flatMap(otherArtifactPaths),
-          ])
+          fc.tuple(
+            fc.constant(scopeList),
+            fc.shuffledSubarray([
+              ...scopeList.map(provisionPath),
+              ...scopeList.map(lockPath),
+              ...scopeList.flatMap(otherArtifactPaths),
+            ])
+          )
         ),
         fc.array(unrelatedPath, { maxLength: 10 }),
-        (paths, unrelated) => {
+        ([scopeList, paths], unrelated) => {
+          const present = new Set(paths);
           const count = countCorpusProvisionFiles(paths);
-          expect(count).toBeLessThanOrEqual(new Set(paths).size);
+          // A scope counts when its provisions file or its lock is present.
+          expect(count).toBe(
+            scopeList.filter(
+              (s) => present.has(provisionPath(s)) || present.has(lockPath(s))
+            ).length
+          );
           expect(countCorpusProvisionFiles([...paths].reverse())).toBe(count);
           expect(countCorpusProvisionFiles([...paths, ...paths])).toBe(count);
           expect(countCorpusProvisionFiles([...unrelated, ...paths])).toBe(count);
