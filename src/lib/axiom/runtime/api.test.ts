@@ -372,6 +372,7 @@ describe("runtime api client", () => {
 
   it("never lets a request-built path resolve outside itself or into admin", async () => {
     vi.stubEnv("AXIOM_RUNTIME_API_KEY", "test-key");
+    vi.stubEnv("AXIOM_RUNTIME_API_BASE", "https://axiom-api-eta.vercel.app/v1");
     const fetchMock = vi.fn().mockResolvedValue(okEnvelope({}));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -396,6 +397,10 @@ describe("runtime api client", () => {
       "/runtime/packages/./x/graph",
       "/admin/keys",
       "/ADMIN/usage",
+      // the API decodes before routing, so these are /admin there
+      "/%61dmin/usage",
+      "/adm%69n/keys",
+      "/%41DMIN",
       "//evil.example/v1/runtime/packages",
       "/nodes\\..\\admin",
     ]) {
@@ -413,23 +418,36 @@ describe("runtime api client", () => {
   it("resolves generated paths only to themselves, for every input", () => {
     // Seeded property check: whatever segments a caller builds a path from,
     // an accepted path resolves to exactly the requested /v1 path and never
-    // to the admin surface.
+    // to the admin surface, as the API will route it (decoded).
+    vi.stubEnv("AXIOM_RUNTIME_API_BASE", "https://axiom-api-eta.vercel.app/v1");
     let state = 20260929;
     const random = () => {
-      state = (state * 1_103_515_245 + 12_345) >>> 0;
-      return state / 4_294_967_296;
+      // mulberry32: integer arithmetic, no float-precision short cycle
+      state = (state + 0x6d2b79f5) >>> 0;
+      let t = state;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4_294_967_296;
     };
     const pick = <T,>(items: readonly T[]): T => items[Math.floor(random() * items.length)]!;
     const heads = ["/nodes", "/runtime/packages", "/graph/compose", "/subgraph", "/certified", ""];
     const segments = [
       "us-co", "co-snap", "us%3Astatutes", "26", "24%23ctc", "admin", "keys", "..", ".", "%2E%2E",
-      "%2e", "%2F", "%5C", "\\", "", "v1", "ADMIN",
+      "%2e", "%2F", "%5C", "\\", "", "v1", "ADMIN", "%61dmin", "%2E%2e", "1(j)", "a.b",
     ];
+    const fresh = () => {
+      let out = "";
+      const length = 1 + Math.floor(random() * 12);
+      const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789-_.";
+      for (let i = 0; i < length; i += 1) out += alphabet[Math.floor(random() * alphabet.length)];
+      return out;
+    };
     let accepted = 0;
+    const distinct = new Set<string>();
     for (let run = 0; run < 20_000; run += 1) {
       let path = pick(heads);
       const depth = Math.floor(random() * 5);
-      for (let i = 0; i < depth; i += 1) path += `/${pick(segments)}`;
+      for (let i = 0; i < depth; i += 1) path += `/${random() < 0.5 ? fresh() : pick(segments)}`;
       if (random() < 0.3) path += `?focus=${pick(segments)}`;
       const url = upstreamUrl(path);
       if (url === null) continue;
@@ -438,8 +456,39 @@ describe("runtime api client", () => {
       const context = `run=${run} path=${JSON.stringify(path)} -> ${url}`;
       expect(resolved.origin, context).toBe("https://axiom-api-eta.vercel.app");
       expect(resolved.pathname, context).toBe(`/v1${path.split(/[?#]/, 1)[0]}`);
-      expect(/^\/v1\/admin(\/|$)/i.test(resolved.pathname), context).toBe(false);
+      const routed = decodeURI(resolved.pathname);
+      expect(/^\/v1\/admin(\/|$)/i.test(routed), context).toBe(false);
+      expect(routed.split("/").some((segment) => segment === "." || segment === ".."), context).toBe(false);
+      distinct.add(path);
     }
     expect(accepted).toBeGreaterThan(5_000);
+    expect(distinct.size).toBeGreaterThan(2_000);
+  });
+
+  it("refuses redirects on keyed requests, so the key goes nowhere unchecked", async () => {
+    vi.stubEnv("AXIOM_RUNTIME_API_KEY", "test-key");
+    vi.stubEnv("AXIOM_RUNTIME_API_BASE", "https://axiom-api-eta.vercel.app/v1");
+    const fetchMock = vi.fn().mockResolvedValue(okEnvelope({ packages: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+    await listRuntimePackages();
+    await runtimeProxyGet("/runtime/packages");
+    await runCalculate({});
+    await runCalculateRoot({ root: "us:statutes/26/24", facts: {} });
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(init.redirect).toBe("error");
+    }
+  });
+
+  it("answers a malformed API base as an upstream fault, not a bad request", async () => {
+    vi.stubEnv("AXIOM_RUNTIME_API_KEY", "test-key");
+    vi.stubEnv("AXIOM_RUNTIME_API_BASE", "not a url");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await runtimeProxyGet("/runtime/packages")).toEqual({
+      status: 502,
+      body: { status: "error", error: { code: "upstream_misconfigured" } },
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

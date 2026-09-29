@@ -69,7 +69,7 @@ function apiBase(): string {
 }
 
 /**
- * The upstream URL for an API path, or null when the path would not land
+ * The upstream URL for an API path, refused when the path would not land
  * where it says. Paths here are built from request input — node ids,
  * package coordinates, compose focuses — and `encodeURIComponent` leaves
  * `.` and `..` untouched, while URL resolution collapses dot segments
@@ -78,34 +78,64 @@ function apiBase(): string {
  * app's key. A path is used only if resolving it changes nothing, and never
  * when it names the admin surface, which the site has no reason to call.
  */
-export function upstreamUrl(path: string): string | null {
+type UpstreamTarget =
+  | { ok: true; url: string }
+  | { ok: false; reason: "invalid_path" | "invalid_base" };
+
+function upstreamTarget(path: string): UpstreamTarget {
   const base = apiBase();
   let baseUrl: URL;
-  let resolved: URL;
   try {
     baseUrl = new URL(base);
+  } catch {
+    return { ok: false, reason: "invalid_base" };
+  }
+  let resolved: URL;
+  try {
     resolved = new URL(`${base}${path}`);
   } catch {
-    return null;
+    return { ok: false, reason: "invalid_path" };
   }
-  const requestedPath = `${baseUrl.pathname.replace(/\/$/, "")}${path}`.split(/[?#]/, 1)[0];
+  const basePath = baseUrl.pathname.replace(/\/$/, "");
+  const requestedPath = `${basePath}${path}`.split(/[?#]/, 1)[0];
   if (resolved.origin !== baseUrl.origin || resolved.pathname !== requestedPath) {
-    return null;
+    return { ok: false, reason: "invalid_path" };
   }
-  const relative = resolved.pathname.slice(baseUrl.pathname.replace(/\/$/, "").length);
+  const relative = resolved.pathname.slice(basePath.length);
+  // The API routes on the decoded path (its router applies decodeURI), so
+  // the checks below look at what it will see: `/%61dmin` is `/admin` there.
+  let routed: string;
+  try {
+    routed = decodeURI(relative);
+  } catch {
+    return { ok: false, reason: "invalid_path" };
+  }
   if (
     !relative.startsWith("/") ||
     relative.includes("//") ||
-    /^\/admin(\/|$)/i.test(relative)
+    routed.split("/").some((segment) => segment === "." || segment === "..") ||
+    /^\/admin(\/|$)/i.test(routed)
   ) {
-    return null;
+    return { ok: false, reason: "invalid_path" };
   }
-  return resolved.href;
+  return { ok: true, url: resolved.href };
+}
+
+export function upstreamUrl(path: string): string | null {
+  const target = upstreamTarget(path);
+  return target.ok ? target.url : null;
 }
 
 const INVALID_PATH = {
   status: 400,
   body: { status: "error", error: { code: "invalid_path" } },
+} as const;
+
+// A malformed AXIOM_RUNTIME_API_BASE is this deployment's fault, not the
+// caller's: answer as an upstream failure, never as a bad request.
+const MISCONFIGURED = {
+  status: 502,
+  body: { status: "error", error: { code: "upstream_misconfigured" } },
 } as const;
 
 /**
@@ -141,6 +171,9 @@ async function runtimeGet<T>(path: string): Promise<T | null> {
   try {
     const response = await fetch(url, {
       headers: key ? { "x-api-key": key } : undefined,
+      // fetch forwards custom headers across redirects, even cross-origin;
+      // the key goes to the URL checked above and nowhere else.
+      redirect: "error",
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       next: { revalidate: REVALIDATE_SECONDS },
     });
@@ -176,12 +209,16 @@ export async function runtimeProxyGet(
       body: { status: "error", error: { code: "runtime_unconfigured" } },
     };
   }
-  const url = upstreamUrl(path);
-  if (!url) return { status: INVALID_PATH.status, body: INVALID_PATH.body };
+  const target = upstreamTarget(path);
+  if (!target.ok) {
+    const refusal = target.reason === "invalid_base" ? MISCONFIGURED : INVALID_PATH;
+    return { status: refusal.status, body: refusal.body };
+  }
   const key = process.env.AXIOM_RUNTIME_API_KEY;
   try {
-    const response = await fetch(url, {
+    const response = await fetch(target.url, {
       headers: key ? { "x-api-key": key } : undefined,
+      redirect: "error",
       signal: AbortSignal.timeout(options.timeoutMs ?? REQUEST_TIMEOUT_MS),
       ...(options.fresh ? { cache: "no-store" as const } : { next: { revalidate: REVALIDATE_SECONDS } }),
     });
@@ -279,6 +316,7 @@ export async function runCalculate(
         ...(key ? { "x-api-key": key } : {}),
       },
       body: JSON.stringify(request),
+      redirect: "error",
       signal: AbortSignal.timeout(CALCULATE_TIMEOUT_MS),
       cache: "no-store",
     });
@@ -351,6 +389,7 @@ export async function runCalculateRoot(request: {
         variables: request.variables,
         household: { people: { person_1: {}, ...request.people } },
       } : request),
+      redirect: "error",
       signal: AbortSignal.timeout(CALCULATE_TIMEOUT_MS),
       cache: "no-store",
     });
