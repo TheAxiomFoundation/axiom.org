@@ -7,6 +7,8 @@ node_modules/
 dist/
 build/
 .next/
+# side-by-side variant builds (SUITE_DIST_DIR); also keeps Tailwind from scanning them
+.next-*/
 
 # Cache
 .cache/
