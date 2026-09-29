@@ -12,6 +12,7 @@ import { SUITE_LINES } from "./lines";
  *  The slot glides to the next subject's measured width across the whole
  *  flip, clipped at its sides, so "for all." slides instead of jumping. */
 const CARDS = SUITE_LINES.map(({ slug, subject, hue }) => ({ slug, subject, hue }));
+const COUNT_WORDS: Record<number, string> = { 3: "three", 4: "four", 5: "five", 6: "six" };
 const HOLD_MS = 2200;
 const FLIP_MS = 520;
 const GLIDE = "cubic-bezier(0.65, 0, 0.35, 1)";
@@ -118,7 +119,7 @@ export function FlipHero() {
             <ArrowRightIcon className="h-5 w-5" />
           </Link>
           <a href="#lines" className="btn-outline">
-            See all five
+            See all {COUNT_WORDS[SUITE_LINES.length] ?? SUITE_LINES.length}
           </a>
         </div>
       </div>
