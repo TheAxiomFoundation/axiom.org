@@ -2505,7 +2505,7 @@ export function GraphViewerApp({
                   Nothing certified yet for this program
                   {awaiting != null && (
                     <>
-                      <br />— {awaiting} nodes await the certification sweep
+                      <br />— {awaiting} nodes are not in the certified ledger yet
                     </>
                   )}
                 </div>

@@ -11,17 +11,24 @@
 //                           concepts it draws on
 //   IV   THE GRAPH, WHOLE   no cut, no new format: the same camera keeps
 //                           pulling back and the same cards keep coming —
-//                           co-snap's own rules, then every compiled
-//                           program in the live registry (real IDs, real
-//                           counts), then the ghost cards of everything
-//                           not yet encoded.
+//                           co-snap's own rules, then every runtime
+//                           package in the dated registry snapshot (real
+//                           IDs, real counts), then the ghost cards of
+//                           everything not yet encoded.
 //
 // Transitions carry the zoom story: scene I exits by scaling INTO the
 // target cell; scene III/IV is one long pull-back. Everything else is
 // crossfade. Reduced motion gets scene II as a composed still.
+//
+// Copy rule: nothing here is certified — the certified ledger is empty
+// (api.axiom.org/v1/ready) — so no caption or label may say certified,
+// signed or sealed. Registry numbers carry the snapshot month and come
+// from registrySummary(), never a hand-typed total. On axiom.org the
+// scrolly plays only FILM_FROM..FILM_TO (journey-scrolly.tsx), which
+// starts after scene I, so the accessible description starts at § 2017.
 
 import { useEffect, useRef } from "react";
-import { CLUSTERS } from "./registry-snapshot";
+import { CLUSTERS, registrySummary, snapshotMonth } from "./registry-snapshot";
 
 export const CYCLE = 56;
 
@@ -46,11 +53,11 @@ const W = {
 // the sub is one verifiable fact about the system — never a note about
 // the film's own construction.
 const CAPTIONS = [
-  { w: W.s1, name: "The law, whole", sub: "1,742,391 provisions · green = encoded & verified" },
+  { w: W.s1, name: "The law, whole", sub: "the corpus, word for word — one cell per provision" },
   { w: W.s2, name: "One provision, encoded", sub: "split into sections — each checked four ways: run, checks, compare, review" },
   { w: [0.48, 0.583] as const, name: "The graph", sub: "every rule is a node — typed, cited, connected" },
   { w: [0.59, 0.648] as const, name: "One rule, many programs", sub: "state programs build on the federal core — shared rules, one graph" },
-  { w: [0.655, 0.87] as const, name: "The graph, whole", sub: "the live registry — 16 programs, 3,323 certified rules, and everything not yet encoded" },
+  { w: [0.655, 0.87] as const, name: "The graph, whole", sub: `${snapshotMonth()} registry snapshot — ${registrySummary()}` },
 ];
 
 // ── SMIL helpers ──────────────────────────────────────────────────────
@@ -213,8 +220,8 @@ const COL_X = COLS.map((c) => {
   cum += c.cells;
   return { ...c, x0, x1: WALL.x + cum * PITCH, cx: x0 + (c.cells * PITCH) / 2 };
 });
-// the few provisions NOT yet encoded — grey holdouts in a green field;
-// the dive targets one of them
+// a few grey cells in the field; the dive targets one of them. Scene I
+// is not played on axiom.org, and its caption gives the colours no status
 const S1_GREY: ReadonlyArray<readonly [number, number]> = [
   [7, 5], [23, 20], [36, 9], [61, 22], [72, 4], [88, 15], [94, 24], [15, 14],
 ];
@@ -858,8 +865,8 @@ function SceneGraph() {
         {NODES.map((n) => (
           <GraphNode key={n.id} n={n} />
         ))}
-        {/* every compiled program in the registry: the same structure,
-            full size, under a real label */}
+        {/* every runtime package in the registry snapshot: the same
+            structure, full size */}
         {CLUSTERS.filter((c) => c.id !== "co-snap").map((c) => {
           const [wx, wy] = WORLD_POS[c.id];
           const idx = STATE_SNAPS.indexOf(c.id);
@@ -1255,7 +1262,7 @@ function Captions() {
           One provision, encoded
         </text>
         <text className="jw-sub" x="710" y="681" textAnchor="middle">
-          the whole law captured · segmented & encoded · graphed · certified · everywhere
+          the whole law captured · segmented & encoded · graphed · compiled · everywhere
         </text>
       </g>
     );
@@ -1339,7 +1346,7 @@ export function JourneyFilm({
         className="lsk"
         viewBox="0 0 1420 700"
         role="img"
-        aria-label="One continuous shot, five scenes. First, the whole law: a wall of 1,742,391 provision-cells across seven jurisdictions, almost all lit green — encoded and verified — with a few grey holdouts remaining. The camera dives into one cell: the statute is segmented into sections, each section encoded into a RuleSpec — id, citation, typed inputs and output, and the formula allotment equals tfp minus 0.30 times net income, every value citing its source words, and each encoding walked through the four gates — run, checks, compare, review; one cites the wrong section, is caught by compare, redrafted, and passes. The validated rules then join the axiom graph as nodes — typed, cited, connected to the concepts they draw on; on the graph's output layer, two composed nodes declare their types and compute live answers: snap/benefit, money per month, $478, and snap/eligible, boolean, yes. Then the camera backs out and the same cards keep coming: co-snap's own rules join around the hero graph — snap_maximum_allotment, the deductions, the eligibility tests, real names from its 168 outputs — then every compiled program in the live registry arrives as its own group of identical cards under a real label, from us-sc-snap at 1,327 rules to us-oasdi-wage-tax at 6. At full distance the encoded graph sits among the ghost cards of everything not yet encoded, stamped: the runtime registry, 16 programs compiled, 3,323 rules certified and signed."
+        aria-label={`One continuous shot. The camera opens on one provision, § 2017 of Title 7: the statute is segmented into sections, each section encoded into a RuleSpec — id, citation, typed inputs and output, and the formula allotment equals tfp minus 0.30 times net income, every value citing its source words — and each encoding walked through the four gates — run, checks, compare, review; one drafts 0.03 for thirty per centum, disagrees with the independent calculators at compare, is redrafted to 0.30, and passes. The encoded rules then join the axiom graph as nodes — typed, cited, connected to the concepts they draw on; on the graph's output layer, two composed nodes declare their types and show illustrative output cards: snap/benefit, money per month, $478, and snap/eligible, boolean, yes. Then the camera backs out and the same cards keep coming: co-snap's own rules join around the hero graph — snap_maximum_allotment, the deductions, the eligibility tests, real names from its recorded outputs — then each runtime package in the ${snapshotMonth()} registry snapshot arrives as its own group of identical cards, from us-sc-snap to us-oasdi-wage-tax. At full distance the encoded graph sits among the ghost cards of everything not yet encoded, and the caption reads: ${snapshotMonth()} registry snapshot — ${registrySummary()}. The snapshot predates the registry's 2026-07-28 production cutover, and package outputs can count a shared rule more than once, so this is not a unique-rule or certification count.`}
       >
         <Defs />
         <g clipPath="url(#jw-stage)">
