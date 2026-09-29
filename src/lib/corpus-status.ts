@@ -885,9 +885,7 @@ async function readRulespecRepoActivityRow(
     manifest_count: paths.filter((path) =>
       path.startsWith(".axiom/encoding-manifests/")
     ).length,
-    corpus_provision_file_count: paths.filter((path) =>
-      path.startsWith("data/corpus/provisions/")
-    ).length,
+    corpus_provision_file_count: countCorpusProvisionFiles(paths),
     coverage_file_count: paths.filter((path) =>
       path.startsWith("data/coverage/")
     ).length,
@@ -921,6 +919,49 @@ async function githubJson<T>(url: string, token: string): Promise<T> {
     throw new Error(`GitHub returned ${response.status} for ${url}`);
   }
   return response.json() as Promise<T>;
+}
+
+const CORPUS_PROVISIONS_PREFIX = "data/corpus/provisions/";
+const CORPUS_LOCK_PREFIX = ".axiom/corpus-locks/";
+// axiom-corpus `_SCOPE_COMPONENT_RE` (corpus_locks.py).
+const CORPUS_SCOPE_COMPONENT = /^[a-z0-9][a-z0-9._-]{0,255}$/;
+
+/**
+ * Provision files a commit pins, from its tree's blob paths alone. Tracked
+ * files under data/corpus/provisions/ count directly. Once corpus bytes move
+ * out of git (axiom-corpus corpus-storage), each scope's lock at
+ * .axiom/corpus-locks/<jurisdiction>/<document_class>/<version>.json pins
+ * them instead. A scope's only possible provisions entry is
+ * data/corpus/provisions/<jurisdiction>/<document_class>/<version>.jsonl
+ * (`scope_for_path`), so the lock path names it without fetching the lock.
+ * A lock whose scope has no provisions file would still count one; every
+ * scope in axiom-corpus and the rulespec repos had one when checked
+ * (2026-09-29). The union counts a file both tracked and locked once.
+ */
+export function countCorpusProvisionFiles(blobPaths: readonly string[]): number {
+  const provisionPaths = new Set<string>();
+  for (const filePath of blobPaths) {
+    const provisionPath = filePath.startsWith(CORPUS_PROVISIONS_PREFIX)
+      ? filePath
+      : provisionPathForCorpusLock(filePath);
+    if (provisionPath) provisionPaths.add(provisionPath);
+  }
+  return provisionPaths.size;
+}
+
+// axiom-corpus `scope_for_lock_path`: anything else under the lock root is
+// not a lock.
+function provisionPathForCorpusLock(filePath: string): string | null {
+  if (!filePath.startsWith(CORPUS_LOCK_PREFIX) || !filePath.endsWith(".json")) {
+    return null;
+  }
+  const parts = filePath.slice(CORPUS_LOCK_PREFIX.length).split("/");
+  if (parts.length !== 3) return null;
+  const [jurisdiction, documentClass, fileName] = parts;
+  const version = fileName.slice(0, -".json".length);
+  const scope = [jurisdiction, documentClass, version];
+  if (!scope.every((part) => CORPUS_SCOPE_COMPONENT.test(part))) return null;
+  return `${CORPUS_PROVISIONS_PREFIX}${scope.join("/")}.jsonl`;
 }
 
 function isRulespecYamlPath(filePath: string): boolean {
