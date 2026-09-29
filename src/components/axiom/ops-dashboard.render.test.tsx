@@ -49,15 +49,7 @@ function liveRun(overrides: Partial<LiveEncodingRun>): LiveEncodingRun {
 function status(overrides: Partial<EncodingOpsStatus>): EncodingOpsStatus {
   return {
     refreshed_at: new Date(NOW).toISOString(),
-    lookback_days: 7,
-    run_count: 100,
-    recent_run_count: 5,
-    issue_run_count: 2,
-    active_session_count: 0,
-    earliest_run_at: "2026-05-03T00:00:00Z",
     latest_runs: [],
-    latest_sessions: [],
-    latest_source_counts: {},
     live_runs: [],
     citation_labels: {},
     ...overrides,

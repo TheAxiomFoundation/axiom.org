@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  countFromContentRange,
   getEncodingStatus,
   getRecentCorpusScopes,
   supabaseRestUrl,
@@ -33,35 +32,42 @@ describe("corpus status helpers", () => {
     ).toBe(
       "https://example.supabase.co/rest/v1/encoding_runs?select=id%2Ctimestamp&order=timestamp.desc&limit=12"
     );
-  });
-
-  it("parses exact Supabase counts from content-range", () => {
-    expect(countFromContentRange("0-0/42")).toBe(42);
-    expect(countFromContentRange("*/0")).toBe(0);
-    expect(countFromContentRange("malformed")).toBeNull();
-    expect(countFromContentRange(null)).toBeNull();
+    expect(
+      supabaseRestUrl({ ...config, url: "https://example.supabase.co/" }, "encoding_runs", {})
+    ).toBe("https://example.supabase.co/rest/v1/encoding_runs");
   });
 });
 
 describe("getEncodingStatus", () => {
-  it("reads encoding runs, sessions, live runs and citation labels from Supabase", async () => {
+  it("reads encoding runs, live runs and citation labels from Supabase", async () => {
     stubSupabaseEnv();
-    vi.stubGlobal("fetch", vi.fn(mockSupabaseFetch));
+    const fetchMock = vi.fn(mockSupabaseFetch);
+    vi.stubGlobal("fetch", fetchMock);
 
     const status = await getEncodingStatus();
 
     expect(status.key).toBe("supabase://encodings.encoding_runs");
     expect(status.source).toBe("supabase");
     expect(status.error).toBeNull();
-    expect(status.value?.run_count).toBe(42);
-    expect(status.value?.recent_run_count).toBe(5);
-    expect(status.value?.issue_run_count).toBe(1);
-    expect(status.value?.active_session_count).toBe(1);
-    expect(status.value?.earliest_run_at).toBe("2026-05-03T12:00:00.000Z");
-    expect(status.value?.latest_source_counts).toEqual({
-      reviewer_agent: 1,
-      unknown: 1,
-    });
+    // /ops reads only these fields; nothing else is fetched for it.
+    expect(Object.keys(status.value ?? {}).sort()).toEqual([
+      "citation_document_paths",
+      "citation_labels",
+      "latest_runs",
+      "live_runs",
+      "refreshed_at",
+    ]);
+    const supabaseTables = fetchMock.mock.calls
+      .map(([input]) => new URL(input.toString()))
+      .filter((url) => url.hostname === "example.supabase.co")
+      .map((url) => url.pathname.replace("/rest/v1/", ""))
+      .sort();
+    expect(supabaseTables).toEqual([
+      "current_provisions",
+      "encoding_runs",
+      "live_encoding_runs",
+      "navigation_nodes",
+    ]);
     expect(status.value?.latest_runs.map((run) => run.id)).toEqual([
       "enc-1",
       "enc-2",
@@ -116,7 +122,7 @@ describe("getEncodingStatus", () => {
             ),
           );
         }
-        return Promise.resolve(jsonResponse([], { contentRange: "0-0/0" }));
+        return Promise.resolve(jsonResponse([]));
       }),
     );
     const result = await getEncodingStatus({ fresh: true });
@@ -221,6 +227,9 @@ describe("getEncodingStatus", () => {
     expect(status.error).not.toContain("anon-key.secret-part");
     expect(status.error).not.toContain("access-key");
     expect(status.error).not.toContain("abc123");
+
+    vi.stubGlobal("fetch", vi.fn(() => Promise.reject("Bearer thrown-string-token")));
+    expect((await getEncodingStatus()).error).toBe("Bearer [redacted]");
   });
 });
 
@@ -323,19 +332,6 @@ function mockSupabaseFetch(input: RequestInfo | URL) {
     }
 
     if (url.pathname.endsWith("/encoding_runs")) {
-      if (url.searchParams.get("select") === "id") {
-        const count = url.searchParams.has("timestamp")
-          ? 5
-          : url.searchParams.has("has_issues")
-            ? 1
-            : 42;
-        return Promise.resolve(jsonResponse([], { contentRange: `0-0/${count}` }));
-      }
-      if (url.searchParams.get("select") === "timestamp") {
-        return Promise.resolve(
-          jsonResponse([{ timestamp: "2026-05-03T12:00:00.000Z" }])
-        );
-      }
       return Promise.resolve(
         jsonResponse([
           {
@@ -365,27 +361,6 @@ function mockSupabaseFetch(input: RequestInfo | URL) {
         ])
       );
     }
-
-    if (url.pathname.endsWith("/sdk_sessions")) {
-      if (url.searchParams.get("select") === "id") {
-        return Promise.resolve(jsonResponse([], { contentRange: "0-0/1" }));
-      }
-      return Promise.resolve(
-        jsonResponse([
-          {
-            id: "sdk-1",
-            started_at: "2026-05-03T12:00:00.000Z",
-            ended_at: null,
-            model: "gpt-5.4",
-            event_count: 18,
-            input_tokens: 1200,
-            output_tokens: 800,
-            estimated_cost_usd: 0.314,
-            encoder_version: "0.4.2",
-          },
-        ])
-      );
-    }
   }
 
   return Promise.resolve(jsonResponse({ message: "not found" }, { status: 404 }));
@@ -394,20 +369,13 @@ function mockSupabaseFetch(input: RequestInfo | URL) {
 function mockMalformedSupabaseFetch(input: RequestInfo | URL) {
   const url = new URL(input.toString());
   if (url.hostname === "example.supabase.co") {
-    if (url.searchParams.get("select") === "id") {
-      return Promise.resolve(jsonResponse([], { contentRange: "0-0/1" }));
-    }
     return Promise.resolve(jsonResponse({ rows: [] }));
   }
   return Promise.resolve(jsonResponse({ message: "not found" }, { status: 404 }));
 }
 
-function jsonResponse(
-  value: unknown,
-  options: { status?: number; contentRange?: string } = {}
-) {
+function jsonResponse(value: unknown, options: { status?: number } = {}) {
   const headers = new Headers({ "content-type": "application/json" });
-  if (options.contentRange) headers.set("content-range", options.contentRange);
   return new Response(JSON.stringify(value), {
     status: options.status ?? 200,
     headers,

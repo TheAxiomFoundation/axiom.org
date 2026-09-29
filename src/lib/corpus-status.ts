@@ -4,7 +4,6 @@ import { corpusLookupPathsForCitation } from "@/lib/axiom/ops-citations";
 const STATUS_REVALIDATE_SECONDS = 300;
 
 const ENCODING_STATUS_KEY = "supabase://encodings.encoding_runs";
-const ENCODING_LOOKBACK_DAYS = 7;
 /** How far back live_encoding_runs rows stay in the ops payload (by
  *  heartbeat). Generous because the ledger leans on live rows for history
  *  until manifest syncs land in encoding_runs. */
@@ -24,18 +23,6 @@ export interface EncodingStatusRun {
   data_source: string | null;
   has_issues: boolean | null;
   session_id: string | null;
-  encoder_version: string | null;
-}
-
-export interface EncodingStatusSession {
-  id: string;
-  started_at: string;
-  ended_at: string | null;
-  model: string | null;
-  event_count: number;
-  input_tokens: number;
-  output_tokens: number;
-  estimated_cost_usd: number;
   encoder_version: string | null;
 }
 
@@ -72,18 +59,10 @@ export interface LiveEncodingRun {
   runner: LiveEncodingRunner | null;
 }
 
+/** What /ops reads: its initial render and its /api/ops/encoding poll. */
 export interface EncodingOpsStatus {
   refreshed_at: string;
-  lookback_days: number;
-  run_count: number | null;
-  recent_run_count: number | null;
-  issue_run_count: number | null;
-  active_session_count: number | null;
-  /** Timestamp of the oldest recorded run — run telemetry only exists from here on. */
-  earliest_run_at: string | null;
   latest_runs: EncodingStatusRun[];
-  latest_sessions: EncodingStatusSession[];
-  latest_source_counts: Record<string, number>;
   live_runs: LiveEncodingRun[];
   /** Human-readable corpus labels keyed by navigation path
    *  (`us/statute/26` → "INTERNAL REVENUE CODE") for the citations that
@@ -134,56 +113,11 @@ async function readEncodingStatusFromSupabase(
   }
 
   const fetchOptions: SupabaseFetchOptions = { fresh: options.fresh };
-  const since = new Date(
-    Date.now() - ENCODING_LOOKBACK_DAYS * 24 * 60 * 60 * 1000
-  ).toISOString();
   const liveWindowStart = new Date(
     Date.now() - LIVE_RUN_WINDOW_HOURS * 60 * 60 * 1000
   ).toISOString();
 
-  const [
-    runCount,
-    recentRunCount,
-    issueRunCount,
-    activeSessionCount,
-    earliestRuns,
-    latestRuns,
-    latestSessions,
-    liveRuns,
-  ] = await Promise.all([
-    readSupabaseCount(config, "encodings", "encoding_runs", {}, fetchOptions),
-    readSupabaseCount(
-      config,
-      "encodings",
-      "encoding_runs",
-      { timestamp: `gte.${since}` },
-      fetchOptions
-    ),
-    readSupabaseCount(
-      config,
-      "encodings",
-      "encoding_runs",
-      { has_issues: "eq.true" },
-      fetchOptions
-    ),
-    readSupabaseCount(
-      config,
-      "telemetry",
-      "sdk_sessions",
-      { ended_at: "is.null" },
-      fetchOptions
-    ),
-    readSupabaseRows<{ timestamp: string }>(
-      config,
-      "encodings",
-      "encoding_runs",
-      {
-        select: "timestamp",
-        order: "timestamp.asc",
-        limit: "1",
-      },
-      fetchOptions
-    ),
+  const [latestRuns, liveRuns] = await Promise.all([
     readSupabaseRows<EncodingStatusRun>(
       config,
       "encodings",
@@ -193,18 +127,6 @@ async function readEncodingStatusFromSupabase(
           "id,timestamp,citation,total_duration_ms,agent_type,agent_model,data_source,has_issues,session_id,encoder_version",
         order: "timestamp.desc",
         limit: "60",
-      },
-      fetchOptions
-    ),
-    readSupabaseRows<EncodingStatusSession>(
-      config,
-      "telemetry",
-      "sdk_sessions",
-      {
-        select:
-          "id,started_at,ended_at,model,event_count,input_tokens,output_tokens,estimated_cost_usd,encoder_version",
-        order: "started_at.desc",
-        limit: "8",
       },
       fetchOptions
     ),
@@ -237,28 +159,12 @@ async function readEncodingStatusFromSupabase(
     availableGraphCitations(latestRuns),
   ]);
 
-  const resolvedRunCount =
-    runCount == null ? latestRuns.length : Math.max(runCount, latestRuns.length);
-  const latestIssueRunCount = latestRuns.filter((run) => run.has_issues).length;
-  const resolvedIssueRunCount =
-    issueRunCount == null
-      ? latestIssueRunCount
-      : Math.max(issueRunCount, latestIssueRunCount);
-
   return {
     refreshed_at: new Date().toISOString(),
-    lookback_days: ENCODING_LOOKBACK_DAYS,
-    run_count: resolvedRunCount,
-    recent_run_count: recentRunCount,
-    issue_run_count: resolvedIssueRunCount,
-    active_session_count: activeSessionCount,
-    earliest_run_at: stringOrNull(earliestRuns[0]?.timestamp),
     latest_runs: latestRuns.map((run) => ({
       ...run,
       graph_available: run.citation != null && graphCitations.has(run.citation),
     })),
-    latest_sessions: latestSessions,
-    latest_source_counts: summarizeLatestSources(latestRuns),
     live_runs: liveRuns,
     citation_labels: citationMetadata.labels,
     citation_document_paths: citationMetadata.documentPaths,
@@ -425,40 +331,6 @@ async function readSupabaseRows<T>(
   return value as T[];
 }
 
-async function readSupabaseCount(
-  config: SupabaseRestConfig,
-  schema: string,
-  table: string,
-  filters: Record<string, string> = {},
-  options: SupabaseFetchOptions = {}
-): Promise<number | null> {
-  const response = await fetch(
-    supabaseRestUrl(config, table, {
-      select: "id",
-      limit: "1",
-      ...filters,
-    }),
-    {
-      headers: {
-        ...supabaseRestHeaders(config, schema),
-        Prefer: "count=exact",
-      },
-      ...supabaseCacheOptions(options),
-    } as RequestInit
-  );
-
-  if (!response.ok) {
-    throw new Error(`Supabase returned ${response.status} for ${schema}.${table}`);
-  }
-
-  return countFromContentRange(response.headers.get("content-range"));
-}
-
-export function countFromContentRange(value: string | null): number | null {
-  const match = value?.match(/\/(\d+)$/);
-  return match ? Number(match[1]) : null;
-}
-
 export function supabaseRestUrl(
   config: SupabaseRestConfig,
   table: string,
@@ -491,20 +363,6 @@ function getSupabaseRestConfig(): SupabaseRestConfig | null {
   }
 
   return { url, anonKey };
-}
-
-function summarizeLatestSources(
-  runs: EncodingStatusRun[]
-): Record<string, number> {
-  return runs.reduce<Record<string, number>>((counts, run) => {
-    const key = run.data_source ?? "unknown";
-    counts[key] = (counts[key] ?? 0) + 1;
-    return counts;
-  }, {});
-}
-
-function stringOrNull(value: unknown): string | null {
-  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 function ensureTrailingSlash(value: string): string {
