@@ -1,0 +1,551 @@
+.ij-track {
+  height: 420vh;
+  color: #332e26;
+  --ij-progress: 0;
+}
+.ij-stage {
+  position: sticky;
+  top: 0;
+  height: 100svh;
+  min-height: 580px;
+  overflow: hidden;
+  background: #e8e2d6;
+  border-radius: 4px;
+  isolation: isolate;
+}
+.ij-canvas {
+  position: absolute;
+  inset: 0;
+}
+.ij-canvas canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.ij-vignette {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    #eee8dcf5 0%,
+    #eee8dcdd 9%,
+    #eee8dc00 37%,
+    #eee8dc00 68%,
+    #e9e1d3dd 94%,
+    #e9e1d3 100%
+  );
+  pointer-events: none;
+}
+.ij-caption {
+  position: absolute;
+  top: 88px;
+  left: 40px;
+  max-width: 450px;
+  pointer-events: none;
+}
+.ij-kicker {
+  font: 10px/1.4 var(--font-mono, monospace);
+  letter-spacing: 0.12em;
+  color: #9b4c28;
+  display: block;
+  margin-bottom: 14px;
+  text-transform: uppercase;
+}
+.ij-caption h3 {
+  font:
+    normal clamp(30px, 3.6vw, 49px)/1.08 Georgia,
+    serif;
+  letter-spacing: -0.035em;
+  margin: 0;
+  color: #3c3227;
+  text-wrap: balance;
+}
+.ij-caption p {
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 13px 0 0;
+  color: #7d6b53;
+  max-width: 300px;
+}
+.ij-source {
+  position: absolute;
+  right: 40px;
+  bottom: 105px;
+  max-width: 335px;
+  opacity: 0;
+  transform: translateY(10px);
+  transition:
+    opacity 0.5s,
+    transform 0.5s;
+  pointer-events: none;
+  padding: 18px 22px;
+  background: #faf6ebed;
+  border-left: 2px solid #ad7041;
+  box-shadow: 0 12px 35px #3f2c1410;
+}
+.ij-source.is-visible {
+  opacity: 1;
+  transform: none;
+}
+.ij-source > span {
+  font: 10px var(--font-mono, monospace);
+  color: #9c6b43;
+}
+.ij-source p {
+  font:
+    19px/1.55 Georgia,
+    serif;
+  margin: 10px 0 0;
+  color: #594831;
+}
+.ij-source mark,
+.ij-fallback mark {
+  background: #ebd4a680;
+  color: inherit;
+}
+.ij-footer {
+  position: absolute;
+  bottom: 66px;
+  left: 40px;
+  right: 40px;
+  display: flex;
+  justify-content: space-between;
+  font: 8px/1.5 var(--font-mono, monospace);
+  letter-spacing: 0.07em;
+  color: #907b5f;
+}
+.ij-footer b {
+  margin: 0 8px;
+  font-weight: 400;
+}
+.ij-navigation {
+  position: absolute;
+  bottom: 17px;
+  left: 40px;
+  right: 40px;
+  display: flex;
+  gap: 40px;
+  border-top: 1px solid #cfc1aa;
+  padding-top: 12px;
+}
+.ij-navigation button {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  border: 0;
+  background: none;
+  padding: 4px 0;
+  font-size: 11px;
+  color: #8b795f;
+  cursor: pointer;
+}
+.ij-navigation button span {
+  font: 9px var(--font-mono, monospace);
+  opacity: 0.7;
+}
+.ij-navigation button[aria-current] {
+  color: #9d4826;
+}
+.ij-navigation button:focus-visible {
+  outline: 2px solid #9d4826;
+  outline-offset: 4px;
+}
+.ij-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -1px;
+  height: 2px;
+  background: #a45c33;
+  transform-origin: left;
+  transform: scaleX(var(--ij-progress));
+}
+.ij-fallback {
+  position: absolute;
+  inset: 30% 12% 17%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 25px;
+}
+.ij-fallback-cover {
+  background: #954c2a;
+  color: #eed3a3;
+  width: 230px;
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 24px;
+  box-shadow: 8px 12px 25px #4a2b1d28;
+  border: 8px double #b07a47;
+}
+.ij-fallback-cover small {
+  font:
+    10px Georgia,
+    serif;
+  letter-spacing: 2px;
+}
+.ij-fallback-cover strong {
+  font:
+    42px Georgia,
+    serif;
+}
+.ij-fallback-cover span {
+  font:
+    14px Georgia,
+    serif;
+}
+.ij-fallback article {
+  max-width: 300px;
+  padding: 28px;
+  background: #fbf6e7;
+  box-shadow: 0 8px 22px #573c1c16;
+}
+.ij-fallback article > span {
+  font: 10px var(--font-mono, monospace);
+  color: #98704a;
+}
+.ij-fallback h4 {
+  font:
+    24px Georgia,
+    serif;
+  margin: 20px 0;
+}
+.ij-fallback article p {
+  font:
+    18px/1.6 Georgia,
+    serif;
+  color: #6a563c;
+}
+.ij-accessible {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.ij-static {
+  height: auto;
+}
+.ij-static .ij-stage {
+  position: relative;
+  min-height: 800px;
+}
+.ij-static .ij-source {
+  display: none;
+}
+@media (max-width: 700px) {
+  .ij-track {
+    height: 360vh;
+  }
+  .ij-stage {
+    min-height: 600px;
+  }
+  .ij-caption {
+    top: 86px;
+    left: 22px;
+    right: 22px;
+    max-width: 290px;
+  }
+  .ij-caption h3 {
+    font-size: 33px;
+  }
+  .ij-caption p {
+    font-size: 12px;
+    max-width: 240px;
+    margin-top: 10px;
+  }
+  .ij-kicker {
+    font-size: 8px;
+    margin-bottom: 10px;
+  }
+  .ij-source {
+    left: 22px;
+    right: 22px;
+    bottom: 110px;
+    max-width: none;
+    padding: 12px 16px;
+  }
+  .ij-source p {
+    font-size: 16px;
+    margin-top: 7px;
+  }
+  .ij-source > span {
+    font-size: 8px;
+  }
+  .ij-footer {
+    left: 22px;
+    right: 22px;
+    font-size: 7px;
+    bottom: 72px;
+  }
+  .ij-footer > span:last-child {
+    display: none;
+  }
+  .ij-navigation {
+    left: 22px;
+    right: 22px;
+    gap: 20px;
+    justify-content: space-between;
+  }
+  .ij-navigation button {
+    font-size: 10px;
+    gap: 6px;
+  }
+  .ij-fallback {
+    inset: 32% 8% 16%;
+    gap: 0;
+  }
+  .ij-fallback-cover {
+    display: none;
+  }
+  .ij-static {
+    height: auto;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ij-source {
+    transition: none;
+  }
+}
+/* One persistent world, with quiet reading aids outside the 3D canvas. */
+.ij-track {
+  height: 960vh;
+}
+.ij-navigation {
+  gap: 0;
+  justify-content: space-between;
+}
+.ij-navigation button b {
+  font-weight: 400;
+}
+.ij-navigation button {
+  font-size: 10px;
+  gap: 7px;
+}
+.ij-insight {
+  position: absolute;
+  left: 40px;
+  bottom: 105px;
+  width: 320px;
+  padding: 19px 22px;
+  background: #faf6ebef;
+  border-left: 2px solid #a88753;
+  box-shadow: 0 12px 35px #3f2c1410;
+  color: #61543d;
+}
+.ij-insight > span {
+  font: 9px/1.4 var(--font-mono, monospace);
+  letter-spacing: 0.06em;
+  color: #98794e;
+}
+.ij-insight p {
+  font:
+    17px/1.5 Georgia,
+    serif;
+  margin: 10px 0 0;
+}
+.ij-insight small {
+  display: block;
+  font: 9px/1.5 var(--font-mono, monospace);
+  margin-top: 12px;
+  color: #9a896d;
+}
+.ij-gates {
+  display: flex;
+  gap: 13px;
+  margin-bottom: 15px;
+  font: 10px var(--font-mono, monospace);
+  color: #a4957d;
+}
+.ij-gates .is-done {
+  color: #58734e;
+}
+.ij-check-panel strong {
+  font:
+    23px Georgia,
+    serif;
+  font-weight: 400;
+}
+.ij-check-panel.has-failure {
+  border-color: #aa4f2c;
+}
+.ij-check-panel.has-failure strong {
+  color: #a14d2d;
+}
+.ij-check-panel.has-failure .ij-gates {
+  color: #a14d2d;
+}
+.ij-legend > span {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.ij-legend i {
+  display: block;
+  width: 10px;
+  height: 13px;
+  background: #637b63;
+  border-radius: 1px;
+}
+.ij-legend > span:nth-child(2) i {
+  background: #c7b99c;
+}
+.ij-legend p {
+  font-size: 13px;
+  color: #978567;
+}
+.ij-static-story {
+  padding: 0 40px 40px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 30px;
+  background: #e8e2d6;
+  list-style: none;
+  margin: 0;
+}
+.ij-static-story > li {
+  border-top: 1px solid #c6b89f;
+  padding-top: 25px;
+}
+.ij-static-story > li > span {
+  font: 10px var(--font-mono, monospace);
+  color: #a26b45;
+  text-transform: uppercase;
+}
+.ij-static-story h4 {
+  font:
+    28px Georgia,
+    serif;
+  margin: 12px 0;
+}
+.ij-static-story p {
+  font-size: 15px;
+  line-height: 1.7;
+  color: #75684f;
+}
+.ij-static-story code {
+  font-size: 13px;
+}
+.ij-static-story li:last-child {
+  grid-column: 1/-1;
+  font-size: 12px;
+  color: #8a785c;
+}
+.ij-static {
+  height: auto;
+}
+@media (max-width: 700px) {
+  .ij-track {
+    height: 860vh;
+  }
+  .ij-navigation button b {
+    display: none;
+  }
+  .ij-navigation button {
+    padding: 7px;
+  }
+  .ij-navigation button span {
+    font-size: 11px;
+  }
+  .ij-insight {
+    left: 22px;
+    right: 22px;
+    width: auto;
+    bottom: 105px;
+    padding: 13px 16px;
+  }
+  .ij-insight p {
+    font-size: 15px;
+    line-height: 1.45;
+    margin-top: 8px;
+  }
+  .ij-insight small {
+    font-size: 8px;
+    margin-top: 7px;
+  }
+  .ij-check-panel strong {
+    font-size: 20px;
+  }
+  .ij-gates {
+    font-size: 9px;
+    gap: 15px;
+    margin-bottom: 10px;
+  }
+  .ij-static {
+    height: auto;
+  }
+  .ij-static-story {
+    grid-template-columns: 1fr;
+    padding: 0 22px 30px;
+  }
+  .ij-legend {
+    max-width: 270px;
+  }
+  .ij-legend p {
+    font-size: 12px;
+  }
+}
+/* The UI follows the scene from warm paper into a digital workspace. */
+.ij-stage {
+  --ij-digital: 0;
+}
+.ij-caption h3 {
+  color: color-mix(in srgb, #3c3227, #edf4f1 calc(var(--ij-digital) * 100%));
+}
+.ij-caption p {
+  color: color-mix(in srgb, #7d6b53, #aac6c8 calc(var(--ij-digital) * 100%));
+}
+.ij-kicker,
+.ij-navigation button[aria-current] {
+  color: color-mix(in srgb, #9b4c28, #9cdbd0 calc(var(--ij-digital) * 100%));
+}
+.ij-vignette {
+  opacity: calc(1 - var(--ij-digital));
+}
+.ij-footer,
+.ij-navigation button {
+  color: color-mix(in srgb, #907b5f, #9cb6bd calc(var(--ij-digital) * 100%));
+}
+.ij-progress {
+  background: color-mix(
+    in srgb,
+    #a45c33,
+    #77c5bc calc(var(--ij-digital) * 100%)
+  );
+}
+.ij-navigation {
+  border-color: color-mix(
+    in srgb,
+    #cfc1aa,
+    #365560 calc(var(--ij-digital) * 100%)
+  );
+}
+.ij-insight {
+  background: color-mix(
+    in srgb,
+    #faf6eb,
+    #18323d calc(var(--ij-digital) * 100%)
+  );
+  color: color-mix(in srgb, #61543d, #d8e8e7 calc(var(--ij-digital) * 100%));
+  border-color: color-mix(
+    in srgb,
+    #a88753,
+    #66b8ad calc(var(--ij-digital) * 100%)
+  );
+}
+.ij-insight > span,
+.ij-insight small,
+.ij-legend p {
+  color: color-mix(in srgb, #98794e, #a8c7c8 calc(var(--ij-digital) * 100%));
+}
+.ij-check-panel.has-failure strong,
+.ij-check-panel.has-failure .ij-gates {
+  color: #e7a184;
+}
+.ij-gates .is-done {
+  color: #85c4ae;
+}
