@@ -5,6 +5,7 @@ import {
   buildMirrorIndex,
   errorRule,
   failureLookups,
+  indexEncoderRows,
   jurisdictionOf,
   linkPrsToRuns,
   matchEncoderRun,
@@ -184,17 +185,28 @@ describe("indexes", () => {
   });
 
   it("matches the encoder record inside the run's window", () => {
-    const byCitation = new Map([[CITATION, [
+    const index = indexEncoderRows([
       encoderRow({ id: "before", timestamp: "2026-09-29T17:00:00Z" }),
       encoderRow({ id: "early", timestamp: "2026-09-29T18:05:00Z" }),
       encoderRow({ id: "late", timestamp: "2026-09-29T18:35:00Z" }),
-    ]]]);
-    expect(matchEncoderRun(run(), CITATION, byCitation, NOW)?.id).toBe("late");
-    expect(matchEncoderRun(run(), "other", byCitation, NOW)).toBeNull();
+      encoderRow({ id: "no-citation", citation: null }),
+    ]);
+    expect(matchEncoderRun(run(), CITATION, index, NOW)?.id).toBe("late");
+    expect(matchEncoderRun(run(), "other", index, NOW)).toBeNull();
     // A running dispatch's window stays open until now.
     const running = run({ status: "in_progress", run_started_at: null, updated_at: "2026-09-29T18:01:00Z" });
-    const later = new Map([[CITATION, [encoderRow({ timestamp: "2026-09-30T11:00:00Z" })]]]);
+    const later = indexEncoderRows([encoderRow({ timestamp: "2026-09-30T11:00:00Z" })]);
     expect(matchEncoderRun(running, CITATION, later, NOW)).not.toBeNull();
+  });
+
+  it("prefers the record stamped with the run's id, and never borrows another run's", () => {
+    const index = indexEncoderRows([
+      encoderRow({ id: "window", timestamp: "2026-09-29T18:20:00Z" }),
+      encoderRow({ id: "stamped", timestamp: "2026-09-29T18:10:00Z", github_run_id: "501" }),
+      encoderRow({ id: "other-run", timestamp: "2026-09-29T18:25:00Z", github_run_id: "999" }),
+    ]);
+    expect(matchEncoderRun(run(), CITATION, index, NOW)?.id).toBe("stamped");
+    expect(matchEncoderRun(run({ id: 502 }), CITATION, index, NOW)?.id).toBe("window");
   });
 });
 

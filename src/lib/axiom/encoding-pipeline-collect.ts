@@ -38,6 +38,8 @@ export interface EncoderRunRow {
   note: string | null;
   generation_attempt_count: number | null;
   estimated_cost_usd: number | null;
+  /** The Actions run that wrote the record (axiom-encode migration 008 on). */
+  github_run_id?: string | null;
 }
 
 export interface ManifestPr {
@@ -247,35 +249,57 @@ export function buildCompileIndex(
   return index;
 }
 
-function encoderRowsByCitation(rows: EncoderRunRow[]): Map<string, EncoderRunRow[]> {
-  const map = new Map<string, EncoderRunRow[]>();
-  for (const row of rows) {
-    if (!row.citation) continue;
-    const list = map.get(row.citation) ?? [];
-    list.push(row);
-    map.set(row.citation, list);
-  }
-  return map;
+export interface EncoderIndex {
+  byCitation: Map<string, EncoderRunRow[]>;
+  byRunId: Map<string, EncoderRunRow[]>;
 }
 
-/** The encoder's latest record for this citation inside the run's window. */
+export function indexEncoderRows(rows: EncoderRunRow[]): EncoderIndex {
+  const byCitation = new Map<string, EncoderRunRow[]>();
+  const byRunId = new Map<string, EncoderRunRow[]>();
+  const add = (map: Map<string, EncoderRunRow[]>, key: string, row: EncoderRunRow) => {
+    const list = map.get(key) ?? [];
+    list.push(row);
+    map.set(key, list);
+  };
+  for (const row of rows) {
+    if (row.github_run_id) add(byRunId, row.github_run_id, row);
+    else if (row.citation) add(byCitation, row.citation, row);
+  }
+  return { byCitation, byRunId };
+}
+
+function latest(rows: EncoderRunRow[]): EncoderRunRow | null {
+  let best: EncoderRunRow | null = null;
+  for (const row of rows) {
+    if (!best || Date.parse(row.timestamp) > Date.parse(best.timestamp)) best = row;
+  }
+  return best;
+}
+
+/**
+ * The encoder's record for this dispatch: the one stamped with its run id
+ * when the encoder recorded it, else the latest unstamped record for the
+ * citation inside the run's time window.
+ */
 export function matchEncoderRun(
   run: WorkflowRun,
   citation: string,
-  byCitation: Map<string, EncoderRunRow[]>,
+  index: EncoderIndex,
   nowMs: number
 ): EncoderRunRow | null {
+  const stamped = index.byRunId.get(String(run.id));
+  if (stamped) return latest(stamped);
   const start = Date.parse(run.run_started_at ?? run.created_at) - ENCODER_WINDOW_SLACK_MS;
   const end =
     (run.status === "completed" ? Date.parse(run.updated_at) : nowMs) +
     ENCODER_WINDOW_SLACK_MS;
-  let best: EncoderRunRow | null = null;
-  for (const row of byCitation.get(citation) ?? []) {
-    const at = Date.parse(row.timestamp);
-    if (at < start || at > end) continue;
-    if (!best || at > Date.parse(best.timestamp)) best = row;
-  }
-  return best;
+  return latest(
+    (index.byCitation.get(citation) ?? []).filter((row) => {
+      const at = Date.parse(row.timestamp);
+      return at >= start && at <= end;
+    })
+  );
 }
 
 function encoderFailed(row: EncoderRunRow): boolean {
@@ -469,7 +493,7 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
   const mirror = buildMirrorIndex(inputs.mirror);
   const compile = buildCompileIndex(inputs.compile);
   const compileAt = inputs.compile?.generated_at ?? null;
-  const encoderByCitation = encoderRowsByCitation(inputs.encoderRuns);
+  const encoderIndex = indexEncoderRows(inputs.encoderRuns);
   const { byRun, orphans } = linkPrsToRuns(inputs.runs, inputs.prs);
 
   const attempts: PipelineAttempt[] = [];
@@ -503,7 +527,7 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
       run_conclusion: completed ? run.conclusion : null,
     };
 
-    const encoder = matchEncoderRun(run, citation, encoderByCitation, inputs.nowMs);
+    const encoder = matchEncoderRun(run, citation, encoderIndex, inputs.nowMs);
     if (encoder) {
       attempt.encoder_run_id = encoder.id;
       attempt.encoder_status = encoder.status;
@@ -568,7 +592,7 @@ export function failureLookups(
   nowMs: number,
   limit: number
 ): WorkflowRun[] {
-  const byCitation = encoderRowsByCitation(encoderRuns);
+  const encoderIndex = indexEncoderRows(encoderRuns);
   return runs
     .filter((run) => {
       if (!isFailedRun(run)) return false;
@@ -576,7 +600,7 @@ export function failureLookups(
       // An unnamed early run has no citation to match an encoder record by.
       const parsed = parseRunTitle(run.display_title);
       const encoder = parsed
-        ? matchEncoderRun(run, parsed.citation, byCitation, nowMs)
+        ? matchEncoderRun(run, parsed.citation, encoderIndex, nowMs)
         : null;
       return !encoder || !encoderError(encoder);
     })

@@ -144,12 +144,19 @@ async function readAll(table, select, build = (query) => query) {
   }
 }
 
-function readEncoderRuns(since) {
-  return readAll(
-    "encoding_runs",
-    "id,timestamp,citation,status:outcome->>status,apply_error:outcome->>apply_error,note,generation_attempt_count,estimated_cost_usd",
-    (query) => query.gte("timestamp", since).order("timestamp"),
-  );
+const ENCODER_COLUMNS =
+  "id,timestamp,citation,status:outcome->>status,apply_error:outcome->>apply_error,note,generation_attempt_count,estimated_cost_usd";
+
+/** Encoder records, with their Actions run id once axiom-encode's migration 008 adds it. */
+async function readEncoderRuns(since) {
+  const read = (columns) =>
+    readAll("encoding_runs", columns, (query) => query.gte("timestamp", since).order("timestamp"));
+  try {
+    return await read(`${ENCODER_COLUMNS},github_run_id`);
+  } catch (error) {
+    if (!/github_run_id/.test(error.message)) throw error;
+    return read(ENCODER_COLUMNS);
+  }
 }
 
 async function readPrevious() {
