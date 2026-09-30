@@ -133,3 +133,21 @@ export const getEncodingQueues = unstable_cache(
   ["ops-encoding-queues"],
   { revalidate: QUEUE_REVALIDATE_SECONDS }
 );
+
+/** The pipeline view's "Queued" stage: every queue's pending items together. */
+export interface QueuedSummary {
+  pending: number;
+  queues: number;
+  /** Set only when every queue is paused: the first stated reason. */
+  pausedReason: string | null;
+}
+
+export function queuedSummary(queues: EncodingQueueSummary[]): QueuedSummary | null {
+  if (queues.length === 0) return null;
+  const allPaused = queues.every((queue) => queue.pauseReason !== null);
+  return {
+    pending: queues.reduce((sum, queue) => sum + queue.pending, 0),
+    queues: queues.length,
+    pausedReason: allPaused ? queues[0].pauseReason : null,
+  };
+}

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { summarizeQueue } from "./encoding-queues";
+import {
+  queuedSummary,
+  summarizeQueue,
+  type EncodingQueueSummary,
+} from "./encoding-queues";
 
 describe("summarizeQueue", () => {
   it("aggregates pending, dispositions, and jurisdictions", () => {
@@ -41,5 +45,27 @@ describe("summarizeQueue", () => {
         items: [{ status: "pending" }],
       })?.pauseReason
     ).toBeNull();
+  });
+});
+
+describe("queuedSummary", () => {
+  const queue = (pending: number, pauseReason: string | null): EncodingQueueSummary => ({
+    queueId: `q-${pending}`,
+    description: null,
+    pauseReason,
+    total: pending,
+    pending,
+    dispositionCounts: {},
+    jurisdictionCount: 1,
+  });
+
+  it("sums pending items and reports a pause only when every queue is paused", () => {
+    expect(queuedSummary([])).toBeNull();
+    expect(queuedSummary([queue(3, "Awaiting a tip."), queue(4, "Other.")])).toEqual({
+      pending: 7,
+      queues: 2,
+      pausedReason: "Awaiting a tip.",
+    });
+    expect(queuedSummary([queue(3, "Awaiting a tip."), queue(4, null)])?.pausedReason).toBeNull();
   });
 });

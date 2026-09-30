@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Activity, ArrowDownToLine, ListOrdered } from "lucide-react";
 import styles from "./ops-dashboard.module.css";
 import type {
@@ -57,6 +57,8 @@ interface OpsDashboardProps {
   encodingError: string | null;
   queues: EncodingQueueSummary[];
   recentScopes: RecentCorpusScope[];
+  /** The end-to-end pipeline section, rendered server-side by the page. */
+  pipeline?: ReactNode;
 }
 
 type LiveRunState = "running" | "stale" | "finished" | "expired";
@@ -211,6 +213,7 @@ export function OpsDashboard({
   encodingError,
   queues,
   recentScopes,
+  pipeline,
 }: OpsDashboardProps) {
   const [status, setStatus] = useState(initialStatus);
   const [nowMs, setNowMs] = useState<number | null>(null);
@@ -265,6 +268,8 @@ export function OpsDashboard({
             recent encodings, and see what’s next.
           </p>
         </header>
+
+        {pipeline}
 
         <DocketBand
           status={status}

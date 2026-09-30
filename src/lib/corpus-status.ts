@@ -298,7 +298,7 @@ async function readCitationMetadata(
   return { labels, documentPaths };
 }
 
-interface SupabaseFetchOptions {
+export interface SupabaseFetchOptions {
   fresh?: boolean;
 }
 
@@ -308,7 +308,7 @@ function supabaseCacheOptions(options: SupabaseFetchOptions): RequestInit {
     : ({ next: { revalidate: STATUS_REVALIDATE_SECONDS } } as RequestInit);
 }
 
-async function readSupabaseRows<T>(
+export async function readSupabaseRows<T>(
   config: SupabaseRestConfig,
   schema: string,
   table: string,
@@ -354,7 +354,7 @@ function supabaseRestHeaders(
   };
 }
 
-function getSupabaseRestConfig(): SupabaseRestConfig | null {
+export function getSupabaseRestConfig(): SupabaseRestConfig | null {
   const url = cleanEnvValue(process.env.NEXT_PUBLIC_SUPABASE_URL);
   const anonKey = cleanEnvValue(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 

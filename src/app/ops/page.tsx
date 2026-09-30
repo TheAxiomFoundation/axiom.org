@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { OpsDashboard } from "@/components/axiom/ops-dashboard";
-import { getEncodingQueues } from "@/lib/axiom/encoding-queues";
+import { OpsPipeline } from "@/components/axiom/ops-pipeline";
+import { pipelineView } from "@/lib/axiom/encoding-pipeline";
+import { getPipelineAttempts } from "@/lib/axiom/encoding-pipeline-data";
+import { getEncodingQueues, queuedSummary } from "@/lib/axiom/encoding-queues";
 import { getEncodingStatus, getRecentCorpusScopes } from "@/lib/corpus-status";
 import { SITE_URL } from "@/lib/urls";
 
@@ -16,17 +19,30 @@ export const metadata: Metadata = {
 };
 
 export default async function OpsPage() {
-  const [encodingStatus, queues, recentScopes] = await Promise.all([
+  const [encodingStatus, queues, recentScopes, pipeline] = await Promise.all([
     getEncodingStatus(),
     getEncodingQueues(),
     getRecentCorpusScopes(),
+    getPipelineAttempts(),
   ]);
+  // One clock for the server render and the client's first paint.
+  const referenceMs = Date.now();
   return (
     <OpsDashboard
       initialStatus={encodingStatus.value}
       encodingError={encodingStatus.error}
       queues={queues}
       recentScopes={recentScopes}
+      pipeline={
+        pipeline.attempts.length > 0 ? (
+          <OpsPipeline
+            key="pipeline"
+            view={pipelineView(pipeline.attempts, referenceMs)}
+            queued={queuedSummary(queues)}
+            referenceMs={referenceMs}
+          />
+        ) : null
+      }
     />
   );
 }
