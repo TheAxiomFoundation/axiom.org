@@ -1,0 +1,38 @@
+name: Collect encoding pipeline
+
+# Rebuilds encodings.pipeline_attempts: every targeted re-encode dispatch
+# followed through its PR, merge, the rulespec_files index, and the
+# axiom-api compile sweep. The /ops pipeline view reads only that table.
+# After writing, it dispatches sync-rulespec-index.yml when a merge is
+# waiting for the index, so merges don't wait out the 6-hour sync cron.
+on:
+  schedule:
+    - cron: "7,37 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # Dispatch sync-rulespec-index.yml after merges.
+  actions: write
+
+concurrency:
+  group: collect-encoding-pipeline
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun scripts/collect-encoding-pipeline.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # actions:read on the private axiom-api repo, for the nightly
+          # compile sweep's artifact. Optional: unset leaves the compile
+          # stage unchecked.
+          AXIOM_API_ARTIFACTS_TOKEN: ${{ secrets.AXIOM_API_ARTIFACTS_TOKEN }}

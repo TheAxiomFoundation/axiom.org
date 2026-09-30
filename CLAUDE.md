@@ -31,6 +31,12 @@ generate `/axiom/v2/...` hrefs. The app root and marketing pages stay on v1.
   module-qualified alias, and reports an exact rule overflow count. The
   `rulespec_files` array lookup remains only as a rollout fallback while the
   additive rule index is unavailable.
+- **Encoding pipeline** (`encodings.pipeline_attempts`): one row per
+  targeted re-encode dispatch, followed through its signed manifest PR, the
+  merge, the `rulespec_files` index, and axiom-api's nightly compile sweep.
+  `scripts/collect-encoding-pipeline.mjs` rebuilds it every 30 minutes from
+  GitHub and Supabase (and dispatches the index sync after merges); `/ops`
+  and `/ops/journey` read only the table, never GitHub at request time.
 - **Everything executable** (packages, graphs, calculate): the hosted
   axiom-api via `src/lib/axiom/runtime/api.ts`, server-side only.
 
@@ -46,6 +52,9 @@ Dev needs `.env.local` (gitignored) with:
 - `AXIOM_RUNTIME_API_BASE` — optional; point at a local axiom-api
   (`http://localhost:8787/v1`) to develop against unreleased endpoints. A
   keyless base override counts as configured.
+- `AXIOM_OPS_PIPELINE_FILE` — optional, dev only: a collector dry run
+  (`bun scripts/collect-encoding-pipeline.mjs --out <file>`) that `/ops`
+  reads instead of `encodings.pipeline_attempts`.
 - `NEXT_PUBLIC_GRAPH_VIEWER_URL` / `NEXT_PUBLIC_BUILDER_URL` — optional
   overrides for the graph-viewer / dashboard-builder deep-link targets.
 
