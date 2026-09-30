@@ -355,9 +355,9 @@ describe("buildAttempts", () => {
     expect(attempt.synced_at).toBe("2026-09-30T02:17:00Z");
   });
 
-  it("indexes a merge that changed no module", () => {
+  it("indexes a merge that changed no module, with nothing to compile", () => {
     const [attempt] = buildAttempts(inputs({ prs: [merged({ files: ["README.md"] })], mirror: [mirrorRow()] }));
-    expect(attempt).toMatchObject({ index_status: "indexed", compile_status: null });
+    expect(attempt).toMatchObject({ index_status: "indexed", compile_status: "skipped", compile_checked_at: null });
   });
 
   it("takes the compile sweep's verdict only for the module version in the index", () => {

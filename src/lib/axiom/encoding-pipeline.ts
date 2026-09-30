@@ -203,6 +203,16 @@ export function isExitStage(stage: PipelineStage): boolean {
   return EXIT_STAGES.has(stage);
 }
 
+/**
+ * Whether a citation's latest dispatch is stuck. A module the compile sweep
+ * does not check (a composition, or a merge that changed no module) has
+ * nothing left to wait for, so it never counts as stuck in the index.
+ */
+export function citationIsStuck(state: CitationState, referenceMs: number): boolean {
+  if (state.stage === "indexed" && state.latest.compile_status === "skipped") return false;
+  return isStuck(state.stage, state.since, referenceMs);
+}
+
 export function isStuck(
   stage: PipelineStage,
   since: string | null,
@@ -391,7 +401,7 @@ export function summarizePipeline(
     const summary = stages[state.stage];
     summary.count += 1;
     summary.citations.push(state);
-    if (isStuck(state.stage, state.since, referenceMs)) summary.stuck += 1;
+    if (citationIsStuck(state, referenceMs)) summary.stuck += 1;
     if (
       state.since &&
       (!summary.oldestSince || Date.parse(state.since) < Date.parse(summary.oldestSince))
@@ -630,7 +640,11 @@ export function journeySteps(attempt: PipelineAttempt): JourneyStep[] {
             ? "active"
             : "pending",
       detail: attempt.compile_error ??
-        (attempt.compile_status === "skipped" ? "Not checked (composition)" : null),
+        (attempt.compile_status === "skipped"
+          ? attempt.module_paths.length === 0
+            ? "No module changed"
+            : "Not checked (composition)"
+          : null),
       href: null,
     },
   ];
@@ -736,7 +750,7 @@ export function pipelineItem(state: CitationState, referenceMs: number): Pipelin
     jurisdiction: state.jurisdiction,
     stage: state.stage,
     since: state.since,
-    stuck: isStuck(state.stage, state.since, referenceMs),
+    stuck: citationIsStuck(state, referenceMs),
     dispatches: state.dispatches,
     openPrs: state.openPrs,
     reachedIndex: state.reachedIndex,

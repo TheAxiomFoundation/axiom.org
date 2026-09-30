@@ -17,6 +17,8 @@
  *   bun scripts/collect-encoding-pipeline.mjs --out /tmp/pipeline.json
  *
  * Options:
+ *   --compile-sweep F    read the compile sweep from a local compile-sweep.json
+ *                        instead of axiom-api's latest artifact.
  *   --failure-lookups N  failed runs to look up per pass (default 100). A
  *                        cause is stored once found, so the backlog drains
  *                        across passes while diagnostics bundles last (90 days).
@@ -33,7 +35,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createClient } from "@supabase/supabase-js";
@@ -359,6 +361,8 @@ async function lookUpFailures(runs) {
 }
 
 async function readCompileSweep() {
+  const localSweep = argValue("--compile-sweep");
+  if (localSweep) return JSON.parse(readFileSync(localSweep, "utf8"));
   const token = process.env.AXIOM_API_ARTIFACTS_TOKEN;
   if (!token) {
     console.log("compile sweep skipped: AXIOM_API_ARTIFACTS_TOKEN is not set");

@@ -245,6 +245,9 @@ describe("journeySteps", () => {
     expect(journeySteps(mergedAttempt({ ...indexed, compile_status: "skipped" }))[5].detail).toBe(
       "Not checked (composition)"
     );
+    expect(journeySteps(mergedAttempt({ ...indexed, compile_status: "skipped", module_paths: [] }))[5].detail).toBe(
+      "No module changed"
+    );
     expect(journeySteps(mergedAttempt({ pr_base_branch: null }))[3].detail).toBeNull();
   });
 });
@@ -281,6 +284,18 @@ describe("pipelineView", () => {
     expect(item("review")).toMatchObject({ prLabel: "rulespec-us#9", reason: null });
     expect(pipelineView([mergedAttempt({ pr_base_branch: null, pr_targets_default: false })], NOW).stages.merged_off_main.items[0].reason).toBeNull();
     expect(pipelineView([mergedAttempt({ synced_at: "S", compile_status: null }), mergedAttempt({ id: "x", citation: "c/x", synced_at: "S", compile_status: "compile_error" })], NOW).stages.compile_failed.items[0].reason).toBe("compile error");
+  });
+
+  it("never counts an unchecked module in the index as stuck", () => {
+    const old = { synced_at: "2026-09-01T00:00:00Z", index_status: "indexed" as const };
+    const view = pipelineView(
+      [
+        mergedAttempt({ id: "s", citation: "c/s", ...old, compile_status: "skipped" }),
+        mergedAttempt({ id: "u", citation: "c/u", ...old, compile_status: null }),
+      ],
+      NOW
+    );
+    expect(view.stages.indexed).toMatchObject({ count: 2, stuck: 1 });
   });
 
   it("has no bottleneck when nothing is stuck", () => {

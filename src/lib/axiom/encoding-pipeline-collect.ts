@@ -413,7 +413,10 @@ function withPr(
       attempt.index_status = "missing";
     }
   }
-  if (!attempt.synced_at || mirrorRows.length === 0 || !mirrorRows.every(Boolean)) {
+  if (!attempt.synced_at || !mirrorRows.every(Boolean)) return attempt;
+  // A merge that changed no module (manifests or tests only) has nothing to run.
+  if (mirrorRows.length === 0) {
+    attempt.compile_status = "skipped";
     return attempt;
   }
 
