@@ -32,8 +32,11 @@ generate `/axiom/v2/...` hrefs. The app root and marketing pages stay on v1.
   `rulespec_files` array lookup remains only as a rollout fallback while the
   additive rule index is unavailable.
 - **Encoding pipeline** (`encodings.pipeline_attempts`): one row per
-  targeted re-encode dispatch, followed through its signed manifest PR, the
-  merge, the `rulespec_files` index, and axiom-api's nightly compile sweep.
+  targeted re-encode dispatch, followed through its signed manifest PR (and
+  what holds it: failing or cancelled checks, reviewers), the merge, the
+  `rulespec_files` index (matched by commit), axiom-api's nightly compile
+  sweep, its jurisdiction's validation on main (waiver-aware), and any
+  axiom-oracles comparison report.
   `scripts/collect-encoding-pipeline.mjs` rebuilds it every 30 minutes from
   GitHub and Supabase (and dispatches the index sync after merges); `/ops`
   and `/ops/journey` read only the table, never GitHub at request time.

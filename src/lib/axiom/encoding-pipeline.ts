@@ -46,6 +46,25 @@ export interface PipelineAttempt {
   compile_checked_at: string | null;
   compile_error: string | null;
   collected_at: string;
+  /** Head commit's failed checks, by name, without the aggregate "validate / validate". */
+  pr_failed_checks?: string[] | null;
+  /** How many of the head commit's checks were cancelled before finishing. */
+  pr_cancelled_checks?: number | null;
+  /** Users or teams a review is requested from. */
+  pr_requested_reviewers?: string[] | null;
+  pr_merge_commit?: string | null;
+  /** The module's jurisdiction validation (compile, companion tests,
+   *  source-unit rules) on the default branch at a commit with the merge. */
+  tests_status?: "pass" | "fail" | "waived" | null;
+  tests_checked_at?: string | null;
+  tests_run_url?: string | null;
+  /** The axiom-oracles comparison: match, explained (only dispositioned
+   *  engine or bridge differences), disagree, or stale (compared an earlier
+   *  version of the module). */
+  oracle_status?: "match" | "explained" | "disagree" | "stale" | null;
+  oracle_report?: string | null;
+  oracle_engine?: string | null;
+  oracle_checked_at?: string | null;
 }
 
 /** Where one attempt sits. Main-line stages first, then the ways out. */
@@ -55,12 +74,15 @@ export type PipelineStage =
   | "awaiting_sync"
   | "indexed"
   | "runs"
+  | "verified"
   | "encode_failed"
   | "no_pr"
   | "closed"
   | "merged_off_main"
   | "not_indexed"
-  | "compile_failed";
+  | "compile_failed"
+  | "tests_failing"
+  | "oracle_disagrees";
 
 /** Stage names and what they mean, shared by /ops and the journey page. */
 export interface StageCopy {
@@ -77,7 +99,7 @@ export const STAGE_COPY: Record<PipelineStage, StageCopy> = {
   review: {
     label: "In review",
     description:
-      "Signed manifest PRs waiting for review and merge. Stuck after 3 days.",
+      "Signed manifest PRs not yet merged, by what holds them: CI, a review, or the merge itself. Stuck after 3 days.",
   },
   awaiting_sync: {
     label: "Merged",
@@ -91,12 +113,18 @@ export const STAGE_COPY: Record<PipelineStage, StageCopy> = {
   },
   runs: {
     label: "Runs",
-    description: "The compile sweep compiles and runs every merged module.",
+    description:
+      "The nightly sweep compiles and runs it (with default inputs); its jurisdiction's validation on main has not confirmed it yet. Stuck after 36 hours.",
+  },
+  verified: {
+    label: "Tests pass",
+    description:
+      "It compiles and runs, and its jurisdiction's validation on main (compile, companion tests, source-unit rules) passes at a commit that includes the merge. Companion tests are written with the encoding, so this checks consistency, not an outside answer.",
   },
   encode_failed: {
     label: "Last encode failed",
     description:
-      "The citation's most recent dispatch failed, grouped by the first validator rule or failed step.",
+      "The citation's most recent dispatch failed, by the step that stopped it and the first validator rule.",
   },
   no_pr: {
     label: "Encoded, no PR",
@@ -120,6 +148,16 @@ export const STAGE_COPY: Record<PipelineStage, StageCopy> = {
     label: "Fails to compile",
     description: "The nightly compile sweep fails on a merged module.",
   },
+  tests_failing: {
+    label: "Fails validation on main",
+    description:
+      "Its jurisdiction's validation on main fails at a commit that includes the merge.",
+  },
+  oracle_disagrees: {
+    label: "Disagrees with an oracle",
+    description:
+      "An axiom-oracles comparison of this version (PolicyEngine, TAXSIM, ...) has a mismatch that is unexplained or blamed on the encoding.",
+  },
 };
 
 export const FAILED_COMPILE_STATUSES = new Set([
@@ -133,9 +171,18 @@ export function attemptStage(attempt: PipelineAttempt): PipelineStage {
     if (attempt.pr_targets_default === false) return "merged_off_main";
     if (attempt.index_status === "missing") return "not_indexed";
     if (!attempt.synced_at) return "awaiting_sync";
-    if (attempt.compile_status === "ok") return "runs";
     if (attempt.compile_status && FAILED_COMPILE_STATUSES.has(attempt.compile_status)) {
       return "compile_failed";
+    }
+    if (attempt.tests_status === "fail") return "tests_failing";
+    if (attempt.oracle_status === "disagree") return "oracle_disagrees";
+    if (attempt.compile_status === "ok") {
+      return attempt.tests_status === "pass" ? "verified" : "runs";
+    }
+    // Nothing for the sweep to run (a composition, or no module changed):
+    // passing tests on main are the whole check.
+    if (attempt.compile_status === "skipped" && attempt.tests_status === "pass") {
+      return "verified";
     }
     return "indexed";
   }
@@ -170,6 +217,11 @@ export function stageSince(
       return attempt.synced_at;
     case "compile_failed":
       return attempt.compile_checked_at ?? attempt.synced_at;
+    case "verified":
+    case "tests_failing":
+      return attempt.tests_checked_at ?? attempt.synced_at;
+    case "oracle_disagrees":
+      return attempt.oracle_checked_at ?? attempt.synced_at;
   }
 }
 
@@ -178,8 +230,8 @@ const DAY_MS = 24 * HOUR_MS;
 
 /**
  * How long an item can sit in a waiting stage before it counts as stuck.
- * Exits (a failed encode, a closed PR, ...) are stuck by definition; "runs"
- * is the finish line.
+ * Exits (a failed encode, a closed PR, ...) are stuck by definition;
+ * "verified" is the finish line.
  */
 export const STUCK_AFTER_MS: Partial<Record<PipelineStage, number>> = {
   encoding: 3 * HOUR_MS,
@@ -188,6 +240,8 @@ export const STUCK_AFTER_MS: Partial<Record<PipelineStage, number>> = {
   awaiting_sync: 8 * HOUR_MS,
   // The compile sweep runs nightly.
   indexed: 36 * HOUR_MS,
+  // Jurisdiction validation runs on every push to main and daily.
+  runs: 36 * HOUR_MS,
 };
 
 const EXIT_STAGES = new Set<PipelineStage>([
@@ -197,6 +251,8 @@ const EXIT_STAGES = new Set<PipelineStage>([
   "merged_off_main",
   "not_indexed",
   "compile_failed",
+  "tests_failing",
+  "oracle_disagrees",
 ]);
 
 export function isExitStage(stage: PipelineStage): boolean {
@@ -206,10 +262,13 @@ export function isExitStage(stage: PipelineStage): boolean {
 /**
  * Whether a citation's latest dispatch is stuck. A module the compile sweep
  * does not check (a composition, or a merge that changed no module) has
- * nothing left to wait for, so it never counts as stuck in the index.
+ * nothing left to wait for, so it never counts as stuck in the index; nor
+ * does one whose validation is waived.
  */
 export function citationIsStuck(state: CitationState, referenceMs: number): boolean {
   if (state.stage === "indexed" && state.latest.compile_status === "skipped") return false;
+  // A waived module's tests never run, so it is not waiting on them.
+  if (state.stage === "runs" && state.latest.tests_status === "waived") return false;
   return isStuck(state.stage, state.since, referenceMs);
 }
 
@@ -328,6 +387,123 @@ export function failureReason(attempt: PipelineAttempt): FailureReason {
   return { key: "run:unknown", label: "No failure detail recorded", kind: "run" };
 }
 
+/** The step of a targeted encode run that stopped it, in run order. */
+export type EncodeGate =
+  | "budget"
+  | "setup"
+  | "generate"
+  | "compile"
+  | "validate"
+  | "review"
+  | "sign"
+  | "publish"
+  | "encode"
+  | "cancelled"
+  | "unknown";
+
+export const ENCODE_GATE_LABELS: Record<EncodeGate, string> = {
+  budget: "Attempt budget used up",
+  setup: "Setup",
+  generate: "Generate",
+  compile: "Compile",
+  validate: "Validation rules",
+  review: "Review",
+  sign: "Sign and package",
+  publish: "Open the PR",
+  encode: "Inside the encode step (no detail)",
+  cancelled: "Cancelled or timed out",
+  unknown: "No detail recorded",
+};
+
+/** The validator's issue prefix: "<file>.yaml: <check>: ...". */
+const ERROR_CHECK_RE = /^\S+?\.ya?ml:\s*([a-z_-]+):/;
+const ERROR_CHECK_GATES: Record<string, EncodeGate> = {
+  ci: "validate",
+  compile: "compile",
+  grounding: "validate",
+  proof: "validate",
+  oracle: "validate",
+  review: "review",
+};
+
+/** Workflow steps (by diagnostics id or job/step name) and the gate they belong to. */
+const STEP_GATES: Array<[RegExp, EncodeGate]> = [
+  [/budget/i, "budget"],
+  [/repair[ _]candidate|checkout identities|corpus release|signing supervisor|compose runtime|routing|existing signed imports/i, "setup"],
+  [/package|provenance|commit[ _]reviewed/i, "sign"],
+  [/pull request|publish_lane|push lane/i, "publish"],
+  [/encode_apply|encode, review, validate, and apply/i, "encode"],
+];
+
+export function encodeGate(attempt: PipelineAttempt): EncodeGate {
+  if (attempt.run_conclusion === "cancelled" || attempt.run_conclusion === "timed_out") {
+    return "cancelled";
+  }
+  const check = attempt.encoder_error?.match(ERROR_CHECK_RE)?.[1];
+  if (check && ERROR_CHECK_GATES[check]) return ERROR_CHECK_GATES[check];
+  if (attempt.encoder_status === "apply_blocked_generation") return "generate";
+  if (attempt.encoder_status === "apply_blocked_manifest") return "sign";
+  if (attempt.encoder_error_rule || attempt.encoder_status === "apply_blocked_validation") {
+    return "validate";
+  }
+  if (attempt.failed_step) {
+    for (const [pattern, gate] of STEP_GATES) {
+      if (pattern.test(attempt.failed_step)) return gate;
+    }
+  }
+  return "unknown";
+}
+
+/** What holds a signed manifest PR that has not merged. */
+export type ReviewHold =
+  | "ci_cancelled"
+  | "ci_failing_own"
+  | "ci_failing_other"
+  | "ci_failing"
+  | "ci_pending"
+  | "changes_requested"
+  | "draft"
+  | "awaiting_review"
+  | "approved";
+
+export const REVIEW_HOLD_LABELS: Record<ReviewHold, string> = {
+  ci_cancelled: "CI cancelled before finishing",
+  ci_failing_own: "Fails its own checks",
+  ci_failing_other: "Blocked by another jurisdiction's failing check",
+  ci_failing: "Fails CI",
+  ci_pending: "CI still running",
+  changes_requested: "Changes requested",
+  draft: "Draft, CI passed, not marked ready",
+  awaiting_review: "Awaiting review",
+  approved: "Approved, not merged",
+};
+
+/** "validate / validate (us-az)" → "us-az"; null for checks that are not a shard. */
+export function checkJurisdiction(name: string): string | null {
+  return name.match(/^validate \/ validate \(([^)]+)\)$/)?.[1] ?? null;
+}
+
+export function reviewHold(attempt: PipelineAttempt): ReviewHold {
+  if (attempt.pr_review === "changes_requested") return "changes_requested";
+  if (attempt.pr_checks === "failure") {
+    const failed = attempt.pr_failed_checks;
+    if (!failed) return "ci_failing";
+    if (failed.length === 0) {
+      return (attempt.pr_cancelled_checks ?? 0) > 0 ? "ci_cancelled" : "ci_failing";
+    }
+    // A failing check outside the jurisdiction shards (build, lint) is the PR's own.
+    const own = failed.some((name) => {
+      const shard = checkJurisdiction(name);
+      return shard === null || shard === attempt.jurisdiction;
+    });
+    return own ? "ci_failing_own" : "ci_failing_other";
+  }
+  if (attempt.pr_checks === "pending") return "ci_pending";
+  if (attempt.pr_review === "approved") return "approved";
+  if (attempt.pr_state === "draft") return "draft";
+  return "awaiting_review";
+}
+
 export interface StageSummary {
   stage: PipelineStage;
   /** Citations whose latest dispatch sits here. */
@@ -335,6 +511,32 @@ export interface StageSummary {
   stuck: number;
   oldestSince: string | null;
   citations: CitationState[];
+}
+
+/** Citations of one stage grouped by a derived key, largest group first. */
+export interface CitationGroup {
+  key: string;
+  label: string;
+  count: number;
+  citations: CitationState[];
+}
+
+export function groupCitations(
+  states: CitationState[],
+  keyOf: (state: CitationState) => string,
+  labelOf: (key: string) => string
+): CitationGroup[] {
+  const groups = new Map<string, CitationGroup>();
+  for (const state of states) {
+    const key = keyOf(state);
+    const group = groups.get(key) ?? { key, label: labelOf(key), count: 0, citations: [] };
+    group.count += 1;
+    group.citations.push(state);
+    groups.set(key, group);
+  }
+  return [...groups.values()].sort(
+    (a, b) => b.count - a.count || a.label.localeCompare(b.label)
+  );
 }
 
 export interface FailureGroup extends FailureReason {
@@ -361,6 +563,10 @@ export interface PipelineSummary {
   duplicatePrs: number;
   /** Encode failures of each citation's latest dispatch, largest group first. */
   failures: FailureGroup[];
+  /** The same failures by the step of the run that stopped them. */
+  gates: CitationGroup[];
+  /** Citations in review by what holds their PR. */
+  holds: CitationGroup[];
   /** Every dispatch's failure (not just latest) over the last FAILURE_WINDOW_DAYS. */
   recentFailureRate: { failed: number; finished: number } | null;
   weekly: WeeklyThroughput[];
@@ -372,12 +578,15 @@ export const ALL_STAGES: PipelineStage[] = [
   "awaiting_sync",
   "indexed",
   "runs",
+  "verified",
   "encode_failed",
   "no_pr",
   "closed",
   "merged_off_main",
   "not_indexed",
   "compile_failed",
+  "tests_failing",
+  "oracle_disagrees",
 ];
 
 const FAILURE_WINDOW_DAYS = 14;
@@ -446,6 +655,16 @@ export function summarizePipeline(
     duplicatePrs,
     failures: [...failureGroups.values()].sort(
       (a, b) => b.count - a.count || a.label.localeCompare(b.label)
+    ),
+    gates: groupCitations(
+      stages.encode_failed.citations,
+      (state) => encodeGate(state.latest),
+      (key) => ENCODE_GATE_LABELS[key as EncodeGate]
+    ),
+    holds: groupCitations(
+      stages.review.citations,
+      (state) => reviewHold(state.latest),
+      (key) => REVIEW_HOLD_LABELS[key as ReviewHold]
     ),
     recentFailureRate: recentFailureRate(attempts, referenceMs),
     weekly: weeklyThroughput(attempts, referenceMs),
@@ -523,7 +742,7 @@ export function citationJourney(
 }
 
 export interface JourneyStep {
-  key: "dispatched" | "encoded" | "pr" | "merged" | "indexed" | "compiled";
+  key: "dispatched" | "encoded" | "pr" | "merged" | "indexed" | "compiled" | "tested" | "oracle";
   label: string;
   at: string | null;
   state: "done" | "active" | "failed" | "pending";
@@ -562,7 +781,12 @@ export function journeySteps(attempt: PipelineAttempt): JourneyStep[] {
             ? "failed"
             : "pending",
       detail: failedEncode
-        ? [reason?.label, attempt.encoder_error].filter(Boolean).join(" — ")
+        ? [
+            `${ENCODE_GATE_LABELS[encodeGate(attempt)]}: ${reason?.label}`,
+            attempt.encoder_error,
+          ]
+            .filter(Boolean)
+            .join(" — ")
         : attempt.generation_attempts
           ? `${attempt.generation_attempts} generation attempt${attempt.generation_attempts === 1 ? "" : "s"}`
           : stage === "no_pr"
@@ -583,15 +807,19 @@ export function journeySteps(attempt: PipelineAttempt): JourneyStep[] {
             : "active",
       detail: attempt.pr_state === null
         ? null
-        : [
-            attempt.pr_state === "draft" ? "Draft" : capitalize(attempt.pr_state),
-            attempt.pr_checks && attempt.pr_checks !== "none" ? `checks ${attempt.pr_checks}` : null,
-            attempt.pr_review && attempt.pr_review !== "none"
-              ? attempt.pr_review.replaceAll("_", " ")
-              : null,
-          ]
-            .filter(Boolean)
-            .join(" · "),
+        : attempt.pr_state === "draft" || attempt.pr_state === "open"
+          ? [REVIEW_HOLD_LABELS[reviewHold(attempt)], reviewDetail(attempt)]
+              .filter(Boolean)
+              .join(" — ")
+          : [
+              capitalize(attempt.pr_state),
+              attempt.pr_checks && attempt.pr_checks !== "none" ? `checks ${attempt.pr_checks}` : null,
+              attempt.pr_review && attempt.pr_review !== "none"
+                ? attempt.pr_review.replaceAll("_", " ")
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" · "),
       href: attempt.pr_url,
     },
     {
@@ -647,7 +875,88 @@ export function journeySteps(attempt: PipelineAttempt): JourneyStep[] {
           : null),
       href: null,
     },
+    {
+      key: "tested",
+      label: "Tests pass on main",
+      at: attempt.tests_checked_at ?? null,
+      state: attempt.tests_status === "pass"
+        ? "done"
+        : attempt.tests_status === "fail"
+          ? "failed"
+          : stage === "runs" && attempt.tests_status !== "waived"
+            ? "active"
+            : "pending",
+      detail: attempt.tests_status === "pass"
+        ? "Its jurisdiction's validation passes on main"
+        : attempt.tests_status === "fail"
+          ? "Its jurisdiction's validation fails on main"
+          : attempt.tests_status === "waived"
+            ? "Skipped: an active known-validation-gaps waiver"
+            : null,
+      href: attempt.tests_run_url ?? null,
+    },
+    {
+      key: "oracle",
+      label: "Matches an oracle",
+      at: attempt.oracle_status && attempt.oracle_status !== "stale"
+        ? attempt.oracle_checked_at ?? null
+        : null,
+      state: attempt.oracle_status === "match" || attempt.oracle_status === "explained"
+        ? "done"
+        : attempt.oracle_status === "disagree"
+          ? "failed"
+          : "pending",
+      detail: attempt.oracle_status
+        ? [oracleLabel(attempt), attempt.oracle_report].filter(Boolean).join(" — ")
+        : attempt.pr_state === "merged"
+          ? "No oracle report covers it"
+          : null,
+      href: attempt.oracle_report
+        ? `https://github.com/TheAxiomFoundation/axiom-oracles/blob/main/dashboard/public/data/${attempt.oracle_report}`
+        : null,
+    },
   ];
+}
+
+const ORACLE_ENGINE_LABELS: Record<string, string> = {
+  policyengine: "PolicyEngine",
+  euromod: "EUROMOD",
+  taxsim: "TAXSIM",
+  snapqc: "SNAP QC",
+  spsm: "SPSM",
+};
+
+/** The oracle comparison in a few words, or null when no report covers it. */
+export function oracleLabel(attempt: PipelineAttempt): string | null {
+  if (!attempt.oracle_status) return null;
+  const engine =
+    ORACLE_ENGINE_LABELS[attempt.oracle_engine ?? ""] ?? attempt.oracle_engine ?? "an oracle";
+  switch (attempt.oracle_status) {
+    case "match":
+      return `Matches ${engine}`;
+    case "explained":
+      return `Matches ${engine}, differences explained`;
+    case "disagree":
+      return `Disagrees with ${engine}`;
+    case "stale":
+      return capitalize(`${engine} report predates this version`);
+  }
+}
+
+/** Which checks fail, how many were cancelled, and whom a review waits on. */
+export function reviewDetail(attempt: PipelineAttempt): string | null {
+  const parts: string[] = [];
+  const failed = attempt.pr_failed_checks ?? [];
+  if (failed.length > 0) {
+    const shown = failed.slice(0, 3).join(", ");
+    parts.push(`failing: ${shown}${failed.length > 3 ? ` and ${failed.length - 3} more` : ""}`);
+  }
+  const cancelled = attempt.pr_cancelled_checks ?? 0;
+  if (cancelled > 0) parts.push(`${cancelled} check${cancelled === 1 ? "" : "s"} cancelled`);
+  const reviewers = attempt.pr_requested_reviewers ?? [];
+  if (reviewers.length > 0) parts.push(`waiting on ${reviewers.join(", ")}`);
+  else if (reviewHold(attempt) === "awaiting_review") parts.push("no reviewer requested");
+  return parts.length ? parts.join(" · ") : null;
 }
 
 function capitalize(value: string): string {
@@ -671,9 +980,14 @@ export interface PipelineItem {
   prChecks: PipelineAttempt["pr_checks"];
   prReview: PipelineAttempt["pr_review"];
   prBaseBranch: string | null;
-  /** Why it stopped, in a few words (failure group, compile status, ...). */
+  /** For a failed encode, the step of the run that stopped it. */
+  gate: string | null;
+  /** The oracle comparison, when a report covers the module. */
+  oracle: string | null;
+  testsRunUrl: string | null;
+  /** Why it stopped, in a few words (failure group, what holds a PR, ...). */
   reason: string | null;
-  /** The first validator issue, apply error, or compile error. */
+  /** The first validator issue, apply or compile error, or a PR's failing checks. */
   detail: string | null;
 }
 
@@ -693,6 +1007,14 @@ export interface PipelineFailureView {
   items: PipelineItem[];
 }
 
+/** A stage's citations grouped by a derived key (step, hold). */
+export interface PipelineGroupView {
+  key: string;
+  label: string;
+  count: number;
+  items: PipelineItem[];
+}
+
 export interface PipelineView {
   collectedAt: string | null;
   /** When the compile sweep last checked a merged module; null until it has. */
@@ -703,6 +1025,10 @@ export interface PipelineView {
   stages: Record<PipelineStage, PipelineStageView>;
   duplicatePrs: number;
   failures: PipelineFailureView[];
+  /** Failed encodes by the step that stopped them. */
+  gates: PipelineGroupView[];
+  /** Citations in review by what holds their PR. */
+  holds: PipelineGroupView[];
   recentFailureRate: PipelineSummary["recentFailureRate"];
   weekly: WeeklyThroughput[];
 }
@@ -725,6 +1051,17 @@ function itemReason(state: CitationState): string | null {
       return RUN_WAITING_LABELS[latest.run_status] ?? null;
     case "encode_failed":
       return failureReason(latest).label;
+    case "review":
+      return REVIEW_HOLD_LABELS[reviewHold(latest)];
+    case "tests_failing":
+      return "Fails its jurisdiction's validation on main";
+    case "runs":
+      return latest.tests_status === "waived"
+        ? "Validation waived on main (known gap)"
+        : "Waiting for its jurisdiction's validation on main";
+    case "verified":
+    case "oracle_disagrees":
+      return oracleLabel(latest) ?? "No oracle report covers it";
     case "compile_failed":
       return latest.compile_status?.replaceAll("_", " ") ?? null;
     case "merged_off_main":
@@ -740,6 +1077,7 @@ function itemDetail(state: CitationState): string | null {
   const latest = state.latest;
   if (state.stage === "compile_failed") return latest.compile_error;
   if (state.stage === "encode_failed") return latest.encoder_error;
+  if (state.stage === "review") return reviewDetail(latest);
   return null;
 }
 
@@ -761,6 +1099,9 @@ export function pipelineItem(state: CitationState, referenceMs: number): Pipelin
     prChecks: latest.pr_checks,
     prReview: latest.pr_review,
     prBaseBranch: latest.pr_base_branch,
+    gate: state.stage === "encode_failed" ? ENCODE_GATE_LABELS[encodeGate(latest)] : null,
+    oracle: oracleLabel(latest),
+    testsRunUrl: latest.tests_run_url ?? null,
     reason: itemReason(state),
     detail: itemDetail(state),
   };
@@ -810,9 +1151,22 @@ export function pipelineView(
         .slice(0, VIEW_ITEMS_PER_FAILURE)
         .map((state) => pipelineItem(state, referenceMs)),
     })),
+    gates: groupView(summary.gates, referenceMs),
+    holds: groupView(summary.holds, referenceMs),
     recentFailureRate: summary.recentFailureRate,
     weekly: summary.weekly,
   };
+}
+
+function groupView(groups: CitationGroup[], referenceMs: number): PipelineGroupView[] {
+  return groups.map((group) => ({
+    key: group.key,
+    label: group.label,
+    count: group.count,
+    items: group.citations
+      .slice(0, VIEW_ITEMS_PER_FAILURE)
+      .map((state) => pipelineItem(state, referenceMs)),
+  }));
 }
 
 /** The stage with the most stuck citations: where to look first. */

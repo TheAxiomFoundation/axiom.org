@@ -31,8 +31,10 @@ describe("PipelineJourney", () => {
     expect(screen.getByRole("link", { name: "PR" })).toHaveAttribute("href", "https://github.com/x/pull/9");
     expect(screen.getByText(/\$0\.02/)).toBeInTheDocument();
     expect(screen.getByText("Into codex/x, not the default branch")).toBeInTheDocument();
-    expect(screen.getByText("rule-a — detail")).toBeInTheDocument();
+    expect(screen.getByText("Validation rules: rule-a — detail")).toBeInTheDocument();
     expect(screen.getAllByText("stopped here").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Tests pass on main")).toHaveLength(3);
+    expect(screen.getAllByText("Matches an oracle")).toHaveLength(3);
   });
 
   it("explains an empty journey", () => {
