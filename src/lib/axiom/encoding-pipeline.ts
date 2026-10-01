@@ -117,17 +117,17 @@ export const STAGE_COPY: Record<PipelineStage, StageCopy> = {
   indexed: {
     label: "In the index",
     description:
-      "In the index; the nightly compile sweep has not checked this version yet.",
+      "In the index, waiting for its jurisdiction's validation on main to confirm this version. Stuck after 36 hours.",
   },
   runs: {
     label: "Runs",
     description:
-      "The nightly sweep compiles and runs it (with default inputs); its jurisdiction's validation on main has not confirmed it yet. Stuck after 36 hours.",
+      "The nightly axiom-api engine sweep compiles and runs it (with default inputs); its jurisdiction's validation on main has not confirmed it yet. Stuck after 36 hours.",
   },
   verified: {
     label: "Tests pass",
     description:
-      "It compiles and runs, and its jurisdiction's validation on main (compile, companion tests, source-unit rules) passes at a commit that includes the merge. Companion tests are written with the encoding, so this checks consistency, not an outside answer.",
+      "Its jurisdiction's validation on main (compile, companion tests, source-unit rules) passes at a commit that includes the merge, and the axiom-api engine sweep found no error if it has checked. Companion tests are written with the encoding, so this checks consistency, not an outside answer.",
   },
   encode_failed: {
     label: "Last encode failed",
@@ -154,7 +154,8 @@ export const STAGE_COPY: Record<PipelineStage, StageCopy> = {
   },
   compile_failed: {
     label: "Fails to compile",
-    description: "The nightly compile sweep fails on a merged module.",
+    description:
+      "The nightly axiom-api engine sweep can't compile or run a merged module, even when its own repo's checks pass.",
   },
   tests_failing: {
     label: "Fails validation on main",
@@ -184,14 +185,11 @@ export function attemptStage(attempt: PipelineAttempt): PipelineStage {
     }
     if (attempt.tests_status === "fail") return "tests_failing";
     if (attempt.oracle_status === "disagree") return "oracle_disagrees";
-    if (attempt.compile_status === "ok") {
-      return attempt.tests_status === "pass" ? "verified" : "runs";
-    }
-    // Nothing for the sweep to run (a composition, or no module changed):
-    // passing tests on main are the whole check.
-    if (attempt.compile_status === "skipped" && attempt.tests_status === "pass") {
-      return "verified";
-    }
+    // Validation on main compiles the module and runs its tests, so it is
+    // enough on its own; the nightly engine sweep is an extra check that only
+    // ever moves a module out, into compile_failed.
+    if (attempt.tests_status === "pass") return "verified";
+    if (attempt.compile_status === "ok") return "runs";
     return "indexed";
   }
   if (attempt.pr_state === "draft" || attempt.pr_state === "open") return "review";
@@ -246,7 +244,7 @@ export const STUCK_AFTER_MS: Partial<Record<PipelineStage, number>> = {
   review: 3 * DAY_MS,
   // The index syncs every 6 hours, and the collector triggers one after a merge.
   awaiting_sync: 8 * HOUR_MS,
-  // The compile sweep runs nightly.
+  // Jurisdiction validation runs on every push to main and daily.
   indexed: 36 * HOUR_MS,
   // Jurisdiction validation runs on every push to main and daily.
   runs: 36 * HOUR_MS,
@@ -268,15 +266,13 @@ export function isExitStage(stage: PipelineStage): boolean {
 }
 
 /**
- * Whether a citation's latest dispatch is stuck. A module the compile sweep
- * does not check (a composition, or a merge that changed no module) has
- * nothing left to wait for, so it never counts as stuck in the index; nor
- * does one whose validation is waived.
+ * Whether a citation's latest dispatch is stuck. A module whose validation is
+ * waived has nothing left to wait for, so it never counts as stuck.
  */
 export function citationIsStuck(state: CitationState, referenceMs: number): boolean {
-  if (state.stage === "indexed" && state.latest.compile_status === "skipped") return false;
-  // A waived module's tests never run, so it is not waiting on them.
-  if (state.stage === "runs" && state.latest.tests_status === "waived") return false;
+  if (state.latest.tests_status === "waived" && (state.stage === "indexed" || state.stage === "runs")) {
+    return false;
+  }
   return isStuck(state.stage, state.since, referenceMs);
 }
 
@@ -883,19 +879,20 @@ export function journeySteps(attempt: PipelineAttempt): JourneyStep[] {
       key: "compiled",
       label: "Compiles and runs",
       at: attempt.compile_checked_at,
+      // The engine sweep is an extra check: never what a module waits on.
       state: attempt.compile_status === "ok"
         ? "done"
         : attempt.compile_status && FAILED_COMPILE_STATUSES.has(attempt.compile_status)
           ? "failed"
-          : stage === "indexed"
-            ? "active"
-            : "pending",
+          : "pending",
       detail: attempt.compile_error ??
         (attempt.compile_status === "skipped"
           ? attempt.module_paths.length === 0
             ? "No module changed"
             : "Not checked (composition)"
-          : null),
+          : attempt.synced_at && !attempt.compile_status
+            ? "Not checked by the axiom-api engine sweep yet"
+            : null),
       href: null,
     },
     {
@@ -906,7 +903,7 @@ export function journeySteps(attempt: PipelineAttempt): JourneyStep[] {
         ? "done"
         : attempt.tests_status === "fail"
           ? "failed"
-          : stage === "runs" && attempt.tests_status !== "waived"
+          : (stage === "indexed" || stage === "runs") && attempt.tests_status !== "waived"
             ? "active"
             : "pending",
       detail: attempt.tests_status === "pass"

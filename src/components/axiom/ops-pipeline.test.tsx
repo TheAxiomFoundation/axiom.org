@@ -58,7 +58,7 @@ describe("OpsPipeline", () => {
     expect(within(stages).getByText("18,615")).toBeInTheDocument();
     expect(within(stages).getByText("paused")).toHaveAttribute("title", "Awaiting a green tip.");
     expect(within(stages).getByRole("button", { name: /In review\s*1\s*1 stuck · 3w/ })).toBeInTheDocument();
-    expect(within(stages).getByRole("button", { name: /Runs\s*0\s*compile sweep pending/ })).toBeInTheDocument();
+    expect(within(stages).getByRole("button", { name: /Runs\s*0\s*no engine sweep yet/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^3\s*last encode failed$/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /1\s*encoded, no PR/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /1\s*merged off main/ })).toBeInTheDocument();
@@ -157,7 +157,7 @@ describe("OpsPipeline", () => {
       mergedAttempt({ id: "ok", citation: "us/ok", synced_at: "2026-09-22T00:00:00Z", compile_status: "ok", compile_checked_at: "2026-09-30T07:00:00Z", pr_checks: "pending", pr_review: "approved" }),
     ];
     renderPipeline(attempts);
-    expect(screen.queryByText("compile sweep pending")).not.toBeInTheDocument();
+    expect(screen.queryByText("no engine sweep yet")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /^65\s*last encode failed$/ }));
     expect(within(openList()).getByText("Latest 60 of 65")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /In review/ }));

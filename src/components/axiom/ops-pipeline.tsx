@@ -23,7 +23,7 @@ const FLOW: Array<{ stage: PipelineStage; hint: string }> = [
   { stage: "encoding", hint: "running now" },
   { stage: "review", hint: "PR open" },
   { stage: "awaiting_sync", hint: "awaiting the index" },
-  { stage: "indexed", hint: "not compile-checked" },
+  { stage: "indexed", hint: "awaiting validation" },
   { stage: "runs", hint: "tests unconfirmed" },
   { stage: "verified", hint: "passes on main" },
 ];
@@ -153,7 +153,7 @@ export function OpsPipeline({
           const oldest = ageLabel(summary.oldestSince, referenceMs);
           const status =
             stage === "runs" && !view.compileCheckedAt && summary.count === 0
-              ? "compile sweep pending"
+              ? "no engine sweep yet"
               : summary.stuck > 0
                 ? `${number(summary.stuck)} stuck${oldest ? ` · ${oldest}` : ""}`
                 : hint;

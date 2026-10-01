@@ -44,7 +44,7 @@ describe("attemptStage", () => {
     expect(attemptStage(pipelineAttempt(overrides))).toBe(stage);
   });
 
-  it("follows a merge through the index and the compile sweep", () => {
+  it("follows a merge through the index, validation on main, and the engine sweep", () => {
     expect(attemptStage(mergedAttempt({ pr_targets_default: false }))).toBe("merged_off_main");
     expect(attemptStage(mergedAttempt({ index_status: "missing" }))).toBe("not_indexed");
     expect(attemptStage(mergedAttempt())).toBe("awaiting_sync");
@@ -52,7 +52,9 @@ describe("attemptStage", () => {
     expect(attemptStage(mergedAttempt(synced))).toBe("indexed");
     expect(attemptStage(mergedAttempt({ ...synced, compile_status: "skipped" }))).toBe("indexed");
     expect(attemptStage(mergedAttempt({ ...synced, compile_status: "ok" }))).toBe("runs");
-    expect(attemptStage(mergedAttempt({ ...synced, compile_status: "exec_error" }))).toBe(
+    // Validation on main is enough without the sweep; the sweep only adds failures.
+    expect(attemptStage(mergedAttempt({ ...synced, tests_status: "pass" }))).toBe("verified");
+    expect(attemptStage(mergedAttempt({ ...synced, compile_status: "exec_error", tests_status: "pass" }))).toBe(
       "compile_failed"
     );
   });
@@ -257,7 +259,9 @@ describe("journeySteps", () => {
     const indexed = { synced_at: "2026-09-21T12:00:00Z", index_status: "indexed" as const };
     expect(journeySteps(mergedAttempt(indexed))[4].detail).toBe("1 module");
     expect(journeySteps(mergedAttempt({ ...indexed, module_paths: ["a.yaml", "b.yaml"] }))[4].detail).toBe("2 modules");
-    expect(states(mergedAttempt(indexed)).slice(4)).toEqual(["done", "active", "pending", "pending"]);
+    expect(states(mergedAttempt(indexed)).slice(4)).toEqual(["done", "pending", "active", "pending"]);
+    expect(journeySteps(mergedAttempt(indexed))[5].detail).toBe("Not checked by the axiom-api engine sweep yet");
+    expect(states(mergedAttempt({ ...indexed, tests_status: "pass" })).slice(5, 7)).toEqual(["pending", "done"]);
     expect(states(mergedAttempt({ ...indexed, compile_status: "ok" }))[5]).toBe("done");
     const failed = journeySteps(mergedAttempt({ ...indexed, compile_status: "compile_error", compile_error: "bad import" }));
     expect(failed[5]).toMatchObject({ state: "failed", detail: "bad import" });
@@ -305,11 +309,11 @@ describe("pipelineView", () => {
     expect(pipelineView([mergedAttempt({ synced_at: "S", compile_status: null }), mergedAttempt({ id: "x", citation: "c/x", synced_at: "S", compile_status: "compile_error" })], NOW).stages.compile_failed.items[0].reason).toBe("compile error");
   });
 
-  it("never counts an unchecked module in the index as stuck", () => {
+  it("counts a module in the index as stuck only while validation could still confirm it", () => {
     const old = { synced_at: "2026-09-01T00:00:00Z", index_status: "indexed" as const };
     const view = pipelineView(
       [
-        mergedAttempt({ id: "s", citation: "c/s", ...old, compile_status: "skipped" }),
+        mergedAttempt({ id: "w", citation: "c/w", ...old, tests_status: "waived" }),
         mergedAttempt({ id: "u", citation: "c/u", ...old, compile_status: null }),
       ],
       NOW
