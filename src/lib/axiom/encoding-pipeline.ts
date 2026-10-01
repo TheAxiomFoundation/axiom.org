@@ -65,6 +65,14 @@ export interface PipelineAttempt {
   oracle_report?: string | null;
   oracle_engine?: string | null;
   oracle_checked_at?: string | null;
+  /** Who started the run (GitHub's triggering actor). */
+  dispatched_by?: string | null;
+  /** When the encode job's first step ran: after the production-signing approval. */
+  encode_started_at?: string | null;
+  /** How far a cancelled run got: approval, before_job, or running. */
+  cancel_stage?: "approval" | "before_job" | "running" | null;
+  /** When the run's jobs were read (once per run). */
+  jobs_checked_at?: string | null;
 }
 
 /** Where one attempt sits. Main-line stages first, then the ways out. */
@@ -109,17 +117,17 @@ export const STAGE_COPY: Record<PipelineStage, StageCopy> = {
   indexed: {
     label: "In the index",
     description:
-      "In the index; the nightly compile sweep has not checked this version yet.",
+      "In the index, waiting for its jurisdiction's validation on main to confirm this version. Stuck after 36 hours.",
   },
   runs: {
     label: "Runs",
     description:
-      "The nightly sweep compiles and runs it (with default inputs); its jurisdiction's validation on main has not confirmed it yet. Stuck after 36 hours.",
+      "The nightly axiom-api engine sweep compiles and runs it (with default inputs); its jurisdiction's validation on main has not confirmed it yet. Stuck after 36 hours.",
   },
   verified: {
     label: "Tests pass",
     description:
-      "It compiles and runs, and its jurisdiction's validation on main (compile, companion tests, source-unit rules) passes at a commit that includes the merge. Companion tests are written with the encoding, so this checks consistency, not an outside answer.",
+      "Its jurisdiction's validation on main (compile, companion tests, source-unit rules) passes at a commit that includes the merge, and the axiom-api engine sweep found no error if it has checked. Companion tests are written with the encoding, so this checks consistency, not an outside answer.",
   },
   encode_failed: {
     label: "Last encode failed",
@@ -146,7 +154,8 @@ export const STAGE_COPY: Record<PipelineStage, StageCopy> = {
   },
   compile_failed: {
     label: "Fails to compile",
-    description: "The nightly compile sweep fails on a merged module.",
+    description:
+      "The nightly axiom-api engine sweep can't compile or run a merged module, even when its own repo's checks pass.",
   },
   tests_failing: {
     label: "Fails validation on main",
@@ -176,14 +185,11 @@ export function attemptStage(attempt: PipelineAttempt): PipelineStage {
     }
     if (attempt.tests_status === "fail") return "tests_failing";
     if (attempt.oracle_status === "disagree") return "oracle_disagrees";
-    if (attempt.compile_status === "ok") {
-      return attempt.tests_status === "pass" ? "verified" : "runs";
-    }
-    // Nothing for the sweep to run (a composition, or no module changed):
-    // passing tests on main are the whole check.
-    if (attempt.compile_status === "skipped" && attempt.tests_status === "pass") {
-      return "verified";
-    }
+    // Validation on main compiles the module and runs its tests, so it is
+    // enough on its own; the nightly engine sweep is an extra check that only
+    // ever moves a module out, into compile_failed.
+    if (attempt.tests_status === "pass") return "verified";
+    if (attempt.compile_status === "ok") return "runs";
     return "indexed";
   }
   if (attempt.pr_state === "draft" || attempt.pr_state === "open") return "review";
@@ -238,7 +244,7 @@ export const STUCK_AFTER_MS: Partial<Record<PipelineStage, number>> = {
   review: 3 * DAY_MS,
   // The index syncs every 6 hours, and the collector triggers one after a merge.
   awaiting_sync: 8 * HOUR_MS,
-  // The compile sweep runs nightly.
+  // Jurisdiction validation runs on every push to main and daily.
   indexed: 36 * HOUR_MS,
   // Jurisdiction validation runs on every push to main and daily.
   runs: 36 * HOUR_MS,
@@ -260,15 +266,13 @@ export function isExitStage(stage: PipelineStage): boolean {
 }
 
 /**
- * Whether a citation's latest dispatch is stuck. A module the compile sweep
- * does not check (a composition, or a merge that changed no module) has
- * nothing left to wait for, so it never counts as stuck in the index; nor
- * does one whose validation is waived.
+ * Whether a citation's latest dispatch is stuck. A module whose validation is
+ * waived has nothing left to wait for, so it never counts as stuck.
  */
 export function citationIsStuck(state: CitationState, referenceMs: number): boolean {
-  if (state.stage === "indexed" && state.latest.compile_status === "skipped") return false;
-  // A waived module's tests never run, so it is not waiting on them.
-  if (state.stage === "runs" && state.latest.tests_status === "waived") return false;
+  if (state.latest.tests_status === "waived" && (state.stage === "indexed" || state.stage === "runs")) {
+    return false;
+  }
   return isStuck(state.stage, state.since, referenceMs);
 }
 
@@ -358,7 +362,22 @@ export function failedStepLabel(step: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
+const CANCEL_LABELS: Record<NonNullable<PipelineAttempt["cancel_stage"]>, string> = {
+  approval: "Cancelled while waiting for signing approval",
+  before_job: "Cancelled before the encode job started",
+  running: "Cancelled mid-run",
+};
+
 export function failureReason(attempt: PipelineAttempt): FailureReason {
+  // A cancelled run's story is how far it got, not what it last logged.
+  if (attempt.run_conclusion === "timed_out") {
+    return { key: "run:timed_out", label: "Timed out", kind: "run" };
+  }
+  if (attempt.run_conclusion === "cancelled") {
+    return attempt.cancel_stage
+      ? { key: `cancel:${attempt.cancel_stage}`, label: CANCEL_LABELS[attempt.cancel_stage], kind: "run" }
+      : { key: "run:cancelled", label: "Cancelled (not read yet)", kind: "run" };
+  }
   if (attempt.encoder_error_rule) {
     return {
       key: `rule:${attempt.encoder_error_rule}`,
@@ -378,11 +397,9 @@ export function failureReason(attempt: PipelineAttempt): FailureReason {
     const label = failedStepLabel(attempt.failed_step);
     return { key: `step:${label}`, label: `Failed at: ${label}`, kind: "workflow" };
   }
-  if (attempt.run_conclusion === "cancelled") {
-    return { key: "run:cancelled", label: "Cancelled", kind: "run" };
-  }
-  if (attempt.run_conclusion === "timed_out") {
-    return { key: "run:timed_out", label: "Timed out", kind: "run" };
+  // Never looked up yet: the collector works through causes in batches.
+  if (!attempt.failure_source) {
+    return { key: "run:pending", label: "Cause not looked up yet", kind: "run" };
   }
   return { key: "run:unknown", label: "No failure detail recorded", kind: "run" };
 }
@@ -399,6 +416,7 @@ export type EncodeGate =
   | "publish"
   | "encode"
   | "cancelled"
+  | "pending"
   | "unknown";
 
 export const ENCODE_GATE_LABELS: Record<EncodeGate, string> = {
@@ -412,6 +430,7 @@ export const ENCODE_GATE_LABELS: Record<EncodeGate, string> = {
   publish: "Open the PR",
   encode: "Inside the encode step (no detail)",
   cancelled: "Cancelled or timed out",
+  pending: "Cause not looked up yet",
   unknown: "No detail recorded",
 };
 
@@ -451,7 +470,7 @@ export function encodeGate(attempt: PipelineAttempt): EncodeGate {
       if (pattern.test(attempt.failed_step)) return gate;
     }
   }
-  return "unknown";
+  return attempt.failure_source ? "unknown" : "pending";
 }
 
 /** What holds a signed manifest PR that has not merged. */
@@ -783,7 +802,7 @@ export function journeySteps(attempt: PipelineAttempt): JourneyStep[] {
       detail: failedEncode
         ? [
             `${ENCODE_GATE_LABELS[encodeGate(attempt)]}: ${reason?.label}`,
-            attempt.encoder_error,
+            attempt.encoder_error ?? cancellationDetail(attempt),
           ]
             .filter(Boolean)
             .join(" — ")
@@ -860,19 +879,20 @@ export function journeySteps(attempt: PipelineAttempt): JourneyStep[] {
       key: "compiled",
       label: "Compiles and runs",
       at: attempt.compile_checked_at,
+      // The engine sweep is an extra check: never what a module waits on.
       state: attempt.compile_status === "ok"
         ? "done"
         : attempt.compile_status && FAILED_COMPILE_STATUSES.has(attempt.compile_status)
           ? "failed"
-          : stage === "indexed"
-            ? "active"
-            : "pending",
+          : "pending",
       detail: attempt.compile_error ??
         (attempt.compile_status === "skipped"
           ? attempt.module_paths.length === 0
             ? "No module changed"
             : "Not checked (composition)"
-          : null),
+          : attempt.synced_at && !attempt.compile_status
+            ? "Not checked by the axiom-api engine sweep yet"
+            : null),
       href: null,
     },
     {
@@ -883,7 +903,7 @@ export function journeySteps(attempt: PipelineAttempt): JourneyStep[] {
         ? "done"
         : attempt.tests_status === "fail"
           ? "failed"
-          : stage === "runs" && attempt.tests_status !== "waived"
+          : (stage === "indexed" || stage === "runs") && attempt.tests_status !== "waived"
             ? "active"
             : "pending",
       detail: attempt.tests_status === "pass"
@@ -1031,6 +1051,7 @@ export interface PipelineView {
   holds: PipelineGroupView[];
   recentFailureRate: PipelineSummary["recentFailureRate"];
   weekly: WeeklyThroughput[];
+  approval: ApprovalSummary;
 }
 
 export const VIEW_ITEMS_PER_STAGE = 60;
@@ -1076,7 +1097,7 @@ function itemReason(state: CitationState): string | null {
 function itemDetail(state: CitationState): string | null {
   const latest = state.latest;
   if (state.stage === "compile_failed") return latest.compile_error;
-  if (state.stage === "encode_failed") return latest.encoder_error;
+  if (state.stage === "encode_failed") return latest.encoder_error ?? cancellationDetail(latest);
   if (state.stage === "review") return reviewDetail(latest);
   return null;
 }
@@ -1155,6 +1176,7 @@ export function pipelineView(
     holds: groupView(summary.holds, referenceMs),
     recentFailureRate: summary.recentFailureRate,
     weekly: summary.weekly,
+    approval: approvalSummary(attempts, referenceMs),
   };
 }
 
@@ -1189,6 +1211,94 @@ export function ageLabel(since: string | null, referenceMs: number): string | nu
   const days = hours / 24;
   if (days < 14) return `${Math.round(days)}d`;
   return `${Math.round(days / 7)}w`;
+}
+
+/** A compact duration: 45m, 3h 12m, 4d. */
+export function durationLabel(ms: number): string {
+  const minutes = Math.max(0, Math.round(ms / 60_000));
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return minutes % 60 ? `${hours}h ${minutes % 60}m` : `${hours}h`;
+  return `${Math.round(hours / 24)}d`;
+}
+
+/** How long a run waited and who dispatched it, for a cancelled run. */
+export function cancellationDetail(attempt: PipelineAttempt): string | null {
+  if (attempt.run_conclusion !== "cancelled" && attempt.run_conclusion !== "timed_out") {
+    return null;
+  }
+  const parts: string[] = [];
+  if (attempt.finished_at) {
+    const ran = Date.parse(attempt.finished_at) - Date.parse(attempt.dispatched_at);
+    parts.push(
+      attempt.cancel_stage === "approval"
+        ? `waited ${durationLabel(ran)} for signing approval`
+        : `ran ${durationLabel(ran)}`
+    );
+  }
+  if (attempt.dispatched_by) parts.push(`dispatched by ${attempt.dispatched_by}`);
+  return parts.length ? capitalize(parts.join(" · ")) : null;
+}
+
+export interface ApprovalSummary {
+  /** Runs waiting for the production-signing approval now. */
+  waitingNow: number;
+  oldestWaitingSince: string | null;
+  /** Runs dispatched in the last APPROVAL_WINDOW_DAYS whose encode job started. */
+  approved: { count: number; medianMs: number | null; p90Ms: number | null };
+  /** Every cancelled or timed-out dispatch, by how far it got. */
+  cancellations: Array<{ key: string; label: string; count: number }>;
+  cancelledWhileWaiting: { count: number; overAnHour: number; medianMs: number | null };
+}
+
+const APPROVAL_WINDOW_DAYS = 14;
+
+function quantile(sorted: number[], q: number): number | null {
+  if (sorted.length === 0) return null;
+  return sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))];
+}
+
+/** The signing-approval gate across every dispatch, not just each citation's latest. */
+export function approvalSummary(
+  attempts: PipelineAttempt[],
+  referenceMs: number
+): ApprovalSummary {
+  const since = referenceMs - APPROVAL_WINDOW_DAYS * DAY_MS;
+  const waiting = attempts.filter((a) => a.run_status === "waiting");
+  const waits = attempts
+    .filter((a) => a.encode_started_at && Date.parse(a.dispatched_at) >= since)
+    .map((a) => Date.parse(a.encode_started_at!) - Date.parse(a.dispatched_at))
+    .filter((ms) => ms >= 0)
+    .sort((a, b) => a - b);
+  const cancelled = attempts.filter(
+    (a) => a.run_conclusion === "cancelled" || a.run_conclusion === "timed_out"
+  );
+  const counts = new Map<string, { key: string; label: string; count: number }>();
+  for (const attempt of cancelled) {
+    const reason = failureReason(attempt);
+    const entry = counts.get(reason.key) ?? { key: reason.key, label: reason.label, count: 0 };
+    entry.count += 1;
+    counts.set(reason.key, entry);
+  }
+  const waitedThenCancelled = cancelled
+    .filter((a) => a.cancel_stage === "approval" && a.finished_at)
+    .map((a) => Date.parse(a.finished_at!) - Date.parse(a.dispatched_at))
+    .sort((a, b) => a - b);
+  return {
+    waitingNow: waiting.length,
+    oldestWaitingSince: waiting.map((a) => a.dispatched_at).sort()[0] ?? null,
+    approved: {
+      count: waits.length,
+      medianMs: quantile(waits, 0.5),
+      p90Ms: quantile(waits, 0.9),
+    },
+    cancellations: [...counts.values()].sort((a, b) => b.count - a.count),
+    cancelledWhileWaiting: {
+      count: waitedThenCancelled.length,
+      overAnHour: waitedThenCancelled.filter((ms) => ms > HOUR_MS).length,
+      medianMs: quantile(waitedThenCancelled, 0.5),
+    },
+  };
 }
 
 export function journeyHref(citation: string): string {

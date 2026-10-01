@@ -27,6 +27,8 @@ export interface WorkflowRun {
   updated_at: string;
   html_url: string;
   run_attempt?: number | null;
+  /** Login of whoever started (or re-ran) it. */
+  triggering_actor?: string | null;
 }
 
 export interface EncoderRunRow {
@@ -514,6 +516,62 @@ function moduleVerdict(
   return worst;
 }
 
+/** What a run's jobs say: when encoding started, how far a cancelled run got. */
+export interface RunDetail {
+  encodeStartedAt: string | null;
+  cancelStage: PipelineAttempt["cancel_stage"];
+}
+
+interface RunJob {
+  name: string;
+  steps?: Array<{ conclusion?: string | null; started_at?: string | null }> | null;
+}
+
+/**
+ * Read a targeted re-encode run's jobs. The encode job waits for the
+ * production-signing approval before any step runs, so its first step's
+ * start is when encoding began; a cancelled run with no encode job, or one
+ * whose encode job ran no step, was cancelled before it or while waiting
+ * for approval.
+ */
+export function parseRunJobs(jobs: RunJob[], conclusion: string | null): RunDetail {
+  const encode =
+    jobs.find((job) => /re-encode/i.test(job.name)) ??
+    jobs.find((job) => !/budget/i.test(job.name)) ??
+    null;
+  const ran = (encode?.steps ?? []).filter(
+    (step) => step.conclusion && step.conclusion !== "skipped"
+  );
+  const starts = ran
+    .map((step) => step.started_at)
+    .filter((value): value is string => !!value)
+    .sort();
+  let cancelStage: RunDetail["cancelStage"] = null;
+  if (conclusion === "cancelled") {
+    cancelStage = !encode ? "before_job" : ran.length === 0 ? "approval" : "running";
+  }
+  return { encodeStartedAt: starts[0] ?? null, cancelStage };
+}
+
+/**
+ * Finished runs whose jobs have not been read, cancelled ones first (their
+ * story is in the jobs), then newest first.
+ */
+export function runDetailLookups(
+  runs: WorkflowRun[],
+  previous: Map<string, Partial<PipelineAttempt>>,
+  limit: number
+): WorkflowRun[] {
+  return runs
+    .filter((run) => run.status === "completed" && !previous.get(String(run.id))?.jobs_checked_at)
+    .sort(
+      (a, b) =>
+        Number(b.conclusion === "cancelled") - Number(a.conclusion === "cancelled") ||
+        b.created_at.localeCompare(a.created_at)
+    )
+    .slice(0, limit);
+}
+
 export interface CollectInputs {
   runs: WorkflowRun[];
   prs: ManifestPr[];
@@ -531,6 +589,8 @@ export interface CollectInputs {
   /** Oracle verdicts read this pass; absent between refreshes, when each
    *  attempt keeps the verdict its previous collection stored. */
   oracle?: Map<string, OracleVerdict>;
+  /** Jobs read this pass, by run id (see runDetailLookups). */
+  runDetails?: Map<string, RunDetail>;
 }
 
 interface JoinContext {
@@ -829,7 +889,19 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
       finished_at: completed ? run.updated_at : null,
       run_status: run.status,
       run_conclusion: completed ? run.conclusion : null,
+      dispatched_by: run.triggering_actor ?? null,
     };
+
+    const detail = inputs.runDetails?.get(id);
+    if (detail) {
+      attempt.encode_started_at = detail.encodeStartedAt;
+      attempt.cancel_stage = detail.cancelStage;
+      attempt.jobs_checked_at = nowIso;
+    } else if (previous?.jobs_checked_at) {
+      attempt.encode_started_at = previous.encode_started_at ?? null;
+      attempt.cancel_stage = previous.cancel_stage ?? null;
+      attempt.jobs_checked_at = previous.jobs_checked_at;
+    }
 
     const encoder = matchEncoderRun(run, citation, encoderIndex, inputs.nowMs);
     if (encoder) {
@@ -886,8 +958,11 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
 }
 
 /**
- * Failed runs whose cause is still unknown, newest first: no encoder
- * record explains them and no earlier collection stored a detail.
+ * Failed runs whose cause is still unknown, in the order /ops needs them:
+ * each citation's latest dispatch first (the view shows only that one),
+ * then older dispatches, newest first within each. A cancelled or
+ * timed-out run is explained by its conclusion and never looked up; nor is
+ * one an encoder record or an earlier lookup explains.
  */
 export function failureLookups(
   runs: WorkflowRun[],
@@ -897,9 +972,19 @@ export function failureLookups(
   limit: number
 ): WorkflowRun[] {
   const encoderIndex = indexEncoderRows(encoderRuns);
+  const latestByCitation = new Map<string, WorkflowRun>();
+  for (const run of runs) {
+    const citation =
+      parseRunTitle(run.display_title)?.citation ?? previous.get(String(run.id))?.citation;
+    if (!citation) continue;
+    const latest = latestByCitation.get(citation);
+    if (!latest || run.created_at > latest.created_at) latestByCitation.set(citation, run);
+  }
+  const latestIds = new Set([...latestByCitation.values()].map((run) => run.id));
   return runs
     .filter((run) => {
       if (!isFailedRun(run)) return false;
+      if (run.conclusion === "cancelled" || run.conclusion === "timed_out") return false;
       if (previous.get(String(run.id))?.failure_source) return false;
       // An unnamed early run has no citation to match an encoder record by.
       const parsed = parseRunTitle(run.display_title);
@@ -908,7 +993,11 @@ export function failureLookups(
         : null;
       return !encoder || !encoderError(encoder);
     })
-    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    .sort(
+      (a, b) =>
+        Number(latestIds.has(b.id)) - Number(latestIds.has(a.id)) ||
+        b.created_at.localeCompare(a.created_at)
+    )
     .slice(0, limit);
 }
 

@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   ageLabel,
+  approvalSummary,
   attemptStage,
+  cancellationDetail,
+  durationLabel,
   checkJurisdiction,
   citationIsStuck,
   encodeGate,
@@ -41,7 +44,7 @@ describe("attemptStage", () => {
     expect(attemptStage(pipelineAttempt(overrides))).toBe(stage);
   });
 
-  it("follows a merge through the index and the compile sweep", () => {
+  it("follows a merge through the index, validation on main, and the engine sweep", () => {
     expect(attemptStage(mergedAttempt({ pr_targets_default: false }))).toBe("merged_off_main");
     expect(attemptStage(mergedAttempt({ index_status: "missing" }))).toBe("not_indexed");
     expect(attemptStage(mergedAttempt())).toBe("awaiting_sync");
@@ -49,7 +52,9 @@ describe("attemptStage", () => {
     expect(attemptStage(mergedAttempt(synced))).toBe("indexed");
     expect(attemptStage(mergedAttempt({ ...synced, compile_status: "skipped" }))).toBe("indexed");
     expect(attemptStage(mergedAttempt({ ...synced, compile_status: "ok" }))).toBe("runs");
-    expect(attemptStage(mergedAttempt({ ...synced, compile_status: "exec_error" }))).toBe(
+    // Validation on main is enough without the sweep; the sweep only adds failures.
+    expect(attemptStage(mergedAttempt({ ...synced, tests_status: "pass" }))).toBe("verified");
+    expect(attemptStage(mergedAttempt({ ...synced, compile_status: "exec_error", tests_status: "pass" }))).toBe(
       "compile_failed"
     );
   });
@@ -123,9 +128,18 @@ describe("failureReason", () => {
     );
     expect(failureReason(pipelineAttempt({ failed_step: "stage_signed_bundle" })).label)
       .toBe("Failed at: Stage signed bundle");
-    expect(failureReason(pipelineAttempt({ run_conclusion: "cancelled" })).key).toBe("run:cancelled");
+    expect(failureReason(pipelineAttempt({ run_conclusion: "cancelled" }))).toMatchObject({
+      key: "run:cancelled",
+      label: "Cancelled (not read yet)",
+    });
+    expect(failureReason(pipelineAttempt({ run_conclusion: "cancelled", cancel_stage: "approval", encoder_error_rule: "x" })))
+      .toMatchObject({ key: "cancel:approval", label: "Cancelled while waiting for signing approval" });
+    expect(failureReason(pipelineAttempt({ run_conclusion: "cancelled", cancel_stage: "running" })).label).toBe("Cancelled mid-run");
+    expect(failureReason(pipelineAttempt({ run_conclusion: "cancelled", cancel_stage: "before_job" })).label)
+      .toBe("Cancelled before the encode job started");
     expect(failureReason(pipelineAttempt({ run_conclusion: "timed_out" })).key).toBe("run:timed_out");
-    expect(failureReason(pipelineAttempt()).key).toBe("run:unknown");
+    expect(failureReason(pipelineAttempt()).key).toBe("run:pending");
+    expect(failureReason(pipelineAttempt({ failure_source: "jobs" })).key).toBe("run:unknown");
   });
 });
 
@@ -245,7 +259,9 @@ describe("journeySteps", () => {
     const indexed = { synced_at: "2026-09-21T12:00:00Z", index_status: "indexed" as const };
     expect(journeySteps(mergedAttempt(indexed))[4].detail).toBe("1 module");
     expect(journeySteps(mergedAttempt({ ...indexed, module_paths: ["a.yaml", "b.yaml"] }))[4].detail).toBe("2 modules");
-    expect(states(mergedAttempt(indexed)).slice(4)).toEqual(["done", "active", "pending", "pending"]);
+    expect(states(mergedAttempt(indexed)).slice(4)).toEqual(["done", "pending", "active", "pending"]);
+    expect(journeySteps(mergedAttempt(indexed))[5].detail).toBe("Not checked by the axiom-api engine sweep yet");
+    expect(states(mergedAttempt({ ...indexed, tests_status: "pass" })).slice(5, 7)).toEqual(["pending", "done"]);
     expect(states(mergedAttempt({ ...indexed, compile_status: "ok" }))[5]).toBe("done");
     const failed = journeySteps(mergedAttempt({ ...indexed, compile_status: "compile_error", compile_error: "bad import" }));
     expect(failed[5]).toMatchObject({ state: "failed", detail: "bad import" });
@@ -293,11 +309,11 @@ describe("pipelineView", () => {
     expect(pipelineView([mergedAttempt({ synced_at: "S", compile_status: null }), mergedAttempt({ id: "x", citation: "c/x", synced_at: "S", compile_status: "compile_error" })], NOW).stages.compile_failed.items[0].reason).toBe("compile error");
   });
 
-  it("never counts an unchecked module in the index as stuck", () => {
+  it("counts a module in the index as stuck only while validation could still confirm it", () => {
     const old = { synced_at: "2026-09-01T00:00:00Z", index_status: "indexed" as const };
     const view = pipelineView(
       [
-        mergedAttempt({ id: "s", citation: "c/s", ...old, compile_status: "skipped" }),
+        mergedAttempt({ id: "w", citation: "c/w", ...old, tests_status: "waived" }),
         mergedAttempt({ id: "u", citation: "c/u", ...old, compile_status: null }),
       ],
       NOW
@@ -359,8 +375,9 @@ describe("encodeGate", () => {
     expect(gate({ failed_step: "package_exact_generated_changes" })).toBe("sign");
     expect(gate({ failed_step: "Queue / Push lane branch and open draft pull request" })).toBe("publish");
     expect(gate({ failed_step: "encode_apply" })).toBe("encode");
-    expect(gate({ failed_step: "Something new" })).toBe("unknown");
-    expect(gate({})).toBe("unknown");
+    expect(gate({ failed_step: "Something new", failure_source: "jobs" })).toBe("unknown");
+    expect(gate({ failure_source: "jobs" })).toBe("unknown");
+    expect(gate({})).toBe("pending");
   });
 });
 
@@ -499,5 +516,57 @@ describe("tests and oracle stages", () => {
     ]);
     expect(view.stages.tests_failing.items[0].reason).toBe("Fails its jurisdiction's validation on main");
     expect(view.stages.oracle_disagrees.items[0].reason).toBe("Disagrees with TAXSIM");
+  });
+});
+
+describe("signing approval and cancellations", () => {
+  it("formats durations", () => {
+    expect(durationLabel(-5)).toBe("0m");
+    expect(durationLabel(45 * 60_000)).toBe("45m");
+    expect(durationLabel(3 * 3_600_000)).toBe("3h");
+    expect(durationLabel(3 * 3_600_000 + 12 * 60_000)).toBe("3h 12m");
+    expect(durationLabel(96 * 3_600_000)).toBe("4d");
+  });
+
+  it("describes how long a cancelled run waited and who dispatched it", () => {
+    const base = { run_conclusion: "cancelled", dispatched_at: "2026-09-30T00:00:00Z", finished_at: "2026-09-30T06:11:00Z" };
+    expect(cancellationDetail(pipelineAttempt({ ...base, cancel_stage: "approval", dispatched_by: "github-actions[bot]" })))
+      .toBe("Waited 6h 11m for signing approval · dispatched by github-actions[bot]");
+    expect(cancellationDetail(pipelineAttempt({ ...base, cancel_stage: "running" }))).toBe("Ran 6h 11m");
+    expect(cancellationDetail(pipelineAttempt({ ...base, finished_at: null }))).toBeNull();
+    expect(cancellationDetail(pipelineAttempt())).toBeNull();
+    const [item] = pipelineView([pipelineAttempt({ ...base, cancel_stage: "approval" })], NOW).stages.encode_failed.items;
+    expect(item.detail).toBe("Waited 6h 11m for signing approval");
+  });
+
+  it("summarizes the approval gate over every dispatch", () => {
+    const approved = (id: string, minutes: number) =>
+      pipelineAttempt({ id, citation: `c/${id}`, run_conclusion: "success", dispatched_at: "2026-09-29T00:00:00Z", encode_started_at: new Date(Date.parse("2026-09-29T00:00:00Z") + minutes * 60_000).toISOString() });
+    const summary = approvalSummary(
+      [
+        approved("a", 1),
+        approved("b", 2),
+        approved("c", 200),
+        pipelineAttempt({ id: "old", dispatched_at: "2026-08-01T00:00:00Z", encode_started_at: "2026-08-01T05:00:00Z" }),
+        pipelineAttempt({ id: "w", run_status: "waiting", run_conclusion: null, dispatched_at: "2026-09-28T04:00:00Z" }),
+        pipelineAttempt({ id: "x", run_conclusion: "cancelled", cancel_stage: "approval", dispatched_at: "2026-09-20T00:00:00Z", finished_at: "2026-09-20T02:00:00Z" }),
+        pipelineAttempt({ id: "y", run_conclusion: "cancelled", cancel_stage: "approval", dispatched_at: "2026-09-20T00:00:00Z", finished_at: "2026-09-20T00:10:00Z" }),
+        pipelineAttempt({ id: "z", run_conclusion: "cancelled", cancel_stage: "running" }),
+        pipelineAttempt({ id: "t", run_conclusion: "timed_out" }),
+      ],
+      NOW
+    );
+    expect(summary).toMatchObject({
+      waitingNow: 1,
+      oldestWaitingSince: "2026-09-28T04:00:00Z",
+      approved: { count: 3, medianMs: 2 * 60_000, p90Ms: 200 * 60_000 },
+      cancelledWhileWaiting: { count: 2, overAnHour: 1, medianMs: 2 * 3_600_000 },
+    });
+    expect(summary.cancellations.map((c) => [c.label, c.count])).toEqual([
+      ["Cancelled while waiting for signing approval", 2],
+      ["Cancelled mid-run", 1],
+      ["Timed out", 1],
+    ]);
+    expect(approvalSummary([], NOW)).toMatchObject({ waitingNow: 0, oldestWaitingSince: null, approved: { medianMs: null, p90Ms: null } });
   });
 });
