@@ -28,6 +28,7 @@ describe("readEncodingQueues", () => {
   it("lists the queue directory and summarizes each file", async () => {
     const fetchMock = vi.fn(async (url: string | URL | Request) => {
       const href = String(url);
+      if (href.includes("encoding-queue-state")) return jsonResponse([]);
       if (href.includes("api.github.com")) {
         return jsonResponse([
           { name: "us-snap-or-ut-2026-07.json" },
@@ -59,6 +60,7 @@ describe("readEncodingQueues", () => {
     const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const href = String(url);
       const auth = (init?.headers as Record<string, string>)?.Authorization;
+      if (href.includes("encoding-queue-state")) return jsonResponse([]);
       if (href.includes("api.github.com")) {
         expect(auth).toBe("Bearer token-1");
         return jsonResponse([{ name: "us-snap-or-ut-2026-07.json" }]);
@@ -78,6 +80,8 @@ describe("readEncodingQueues", () => {
       if (href.includes("api.github.com")) {
         return jsonResponse({ message: "rate limited" }, false);
       }
+      // The known dispatcher queue is unreadable too.
+      if (href.includes("encoding-queue-state")) return jsonResponse({}, false);
       if (href.includes("us-snap-or-ut")) return jsonResponse(QUEUE_FILE);
       // The other known file is unreadable and must be skipped.
       return jsonResponse({}, false);
@@ -87,5 +91,34 @@ describe("readEncodingQueues", () => {
     const queues = await readEncodingQueues();
     expect(queues).toHaveLength(1);
     expect(queues[0].queueId).toBe("us-snap-or-ut-2026-07");
+  });
+
+  it("lists live dispatcher queues first", async () => {
+    const dispatcherFile = {
+      schema: "axiom-encode/snap-dispatch-queue/v1",
+      queue_id: "us-snap-or-ut-pilot",
+      state: "active",
+      items: [{ status: "pending" }, { status: "blocked" }],
+    };
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const href = String(url);
+      if (href.includes("api.github.com") && href.includes("encoding-queue-state")) {
+        return jsonResponse([{ name: "us-snap-or-ut-pilot.json" }]);
+      }
+      if (href.includes("api.github.com")) {
+        return jsonResponse([{ name: "us-snap-or-ut-2026-07.json" }]);
+      }
+      if (href.includes("encoding-queue-state/queues/us-snap-or-ut-pilot.json")) {
+        return jsonResponse(dispatcherFile);
+      }
+      return jsonResponse(QUEUE_FILE);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const queues = await readEncodingQueues();
+    expect(queues.map((queue) => [queue.queueId, queue.kind])).toEqual([
+      ["us-snap-or-ut-pilot", "dispatcher"],
+      ["us-snap-or-ut-2026-07", "legacy"],
+    ]);
   });
 });
