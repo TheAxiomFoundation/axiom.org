@@ -338,3 +338,32 @@ export function queuedSummary(queues: EncodingQueueSummary[]): QueuedSummary | n
       .sort((a, b) => b.count - a.count),
   };
 }
+
+/**
+ * The queue summary for the items one jurisdiction filter keeps. Counts come
+ * from the listed items, so a state with more than ITEMS_PER_STATE items in
+ * one queue counts only those listed.
+ */
+export function scopeQueued(
+  queued: QueuedSummary | null,
+  keep: (jurisdiction: string) => boolean
+): QueuedSummary | null {
+  if (!queued) return null;
+  const items = queued.items.filter((item) => keep(item.citation.split("/")[0]));
+  const notStarted = queued.notStarted.filter((entry) => keep(entry.jurisdiction));
+  const blocked = items.filter((item) => item.state === "blocked");
+  const notes = new Map<string, number>();
+  for (const item of blocked) if (item.why) notes.set(item.why, (notes.get(item.why) ?? 0) + 1);
+  const [top] = [...notes].sort((a, b) => b[1] - a[1]);
+  return {
+    ...queued,
+    pending:
+      notStarted.reduce((total, entry) => total + entry.count, 0) +
+      items.filter((item) => item.state === "retrying").length,
+    inFlight: items.filter((item) => item.state === "dispatched").length,
+    blocked: blocked.length,
+    blockedNote: top ? { note: top[0], count: top[1] } : null,
+    items,
+    notStarted,
+  };
+}

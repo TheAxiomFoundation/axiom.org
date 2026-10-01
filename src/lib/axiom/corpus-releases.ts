@@ -307,3 +307,16 @@ export async function getCorpusView(): Promise<CorpusView | null> {
     return null;
   }
 }
+
+/** The view for one top-level jurisdiction (a "us" release carries the states). */
+export function scopeCorpus(view: CorpusView, root: string | null): CorpusView {
+  if (!root) return view;
+  const jurisdictions = view.jurisdictions.filter(
+    (row) => row.jurisdiction === root || row.jurisdiction.startsWith(`${root}-`)
+  );
+  return {
+    ...view,
+    jurisdictions,
+    outOfSync: jurisdictions.filter((row) => row.status !== "current").length,
+  };
+}

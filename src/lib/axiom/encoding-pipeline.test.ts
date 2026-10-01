@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  checkErrorLabel,
   ageLabel,
   approvalSummary,
   attemptStage,
@@ -568,5 +569,27 @@ describe("signing approval and cancellations", () => {
       ["Timed out", 1],
     ]);
     expect(approvalSummary([], NOW)).toMatchObject({ waitingNow: 0, oldestWaitingSince: null, approved: { medianMs: null, p90Ms: null } });
+  });
+});
+
+describe("check errors", () => {
+  it("label what a failing check printed without its paths or hashes", () => {
+    expect(checkErrorLabel("- .axiom/x/y.json  manifest 0123456789ab   is stale")).toBe("- … manifest … is stale");
+    const view = pipelineView(
+      [
+        pipelineAttempt({
+          run_conclusion: "success",
+          pr_state: "draft",
+          pr_created_at: "2026-09-29T00:00:00Z",
+          pr_checks: "failure",
+          pr_failed_checks: ["validate / validate (dk)"],
+          pr_check_error: "- dk/a.json does not match the running pinned encoder",
+        }),
+      ],
+      Date.parse("2026-09-30T12:00:00Z")
+    );
+    expect(view.stages.review.items[0].detail).toBe(
+      "- … does not match the running pinned encoder · failing: validate / validate (dk)"
+    );
   });
 });
