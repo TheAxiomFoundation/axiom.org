@@ -19,7 +19,14 @@
  * Options:
  *   --compile-sweep F    read the compile sweep from a local compile-sweep.json
  *                        instead of axiom-api's latest artifact.
- *   --failure-lookups N  failed runs to look up per pass (default 100). A
+ *   --previous F         take earlier rows (failure causes, first sync times)
+ *                        from a dry run's output instead of the table.
+ *   --oracles            re-read the axiom-oracles comparison reports now. They
+ *                        are ~30 MB and change rarely, so a scheduled pass
+ *                        re-reads them only in the first half hour of every
+ *                        sixth UTC hour and otherwise keeps each attempt's
+ *                        stored verdict.
+ *   --failure-lookups N  failed runs to look up per pass (default 60). A
  *                        cause is stored once found, so the backlog drains
  *                        across passes while diagnostics bundles last (90 days).
  *                        Each lookup costs 2-3 GitHub requests, and the Actions
@@ -39,10 +46,15 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createClient } from "@supabase/supabase-js";
+import yaml from "js-yaml";
 import {
+  activeWaivers,
   buildAttempts,
+  containmentQueries,
+  containsKey,
   failureLookups,
   oldestUnsyncedMerge,
+  oracleVerdicts,
   parseDiagnostics,
   prCitation,
 } from "../src/lib/axiom/encoding-pipeline-collect.ts";
@@ -59,7 +71,7 @@ const UPSERT_CHUNK = 200;
 
 const args = process.argv.slice(2);
 const outPath = argValue("--out");
-const lookupLimit = Number(argValue("--failure-lookups") ?? 100);
+const lookupLimit = Number(argValue("--failure-lookups") ?? 60);
 const dryRun = Boolean(outPath);
 
 function argValue(name) {
@@ -162,12 +174,21 @@ async function readEncoderRuns(since) {
 }
 
 async function readPrevious() {
+  const previousFile = argValue("--previous");
+  if (previousFile) {
+    const rows = JSON.parse(readFileSync(previousFile, "utf8"));
+    return new Map(rows.map((row) => [row.id, row]));
+  }
+  const base = "id,citation,synced_at,failure_source,failed_step,encoder_error,encoder_error_rule";
+  const read = (columns) => readAll("pipeline_attempts", columns, (query) => query.order("id"));
   try {
-    const rows = await readAll(
-      "pipeline_attempts",
-      "id,citation,synced_at,failure_source,failed_step,encoder_error,encoder_error_rule",
-      (query) => query.order("id"),
-    );
+    let rows;
+    try {
+      rows = await read(`${base},oracle_status,oracle_report,oracle_engine,oracle_checked_at`);
+    } catch (error) {
+      if (!/oracle_/.test(error.message)) throw error;
+      rows = await read(base);
+    }
     return new Map(rows.map((row) => [row.id, row]));
   } catch (error) {
     if (!dryRun) throw error;
@@ -176,16 +197,24 @@ async function readPrevious() {
   }
 }
 
-function readMirror() {
-  return readAll(
-    "rulespec_files",
-    "repo,jurisdiction,file_path,citation_path,synced_at,raw_yaml_sha256",
-    (query) => query.order("repo").order("file_path"),
-  );
+const MIRROR_COLUMNS = "repo,jurisdiction,file_path,citation_path,synced_at,raw_yaml_sha256";
+
+/** Index rows, with the commit each was read from once that column exists. */
+async function readMirror() {
+  const read = (columns) =>
+    readAll("rulespec_files", columns, (query) => query.order("repo").order("file_path"));
+  try {
+    return await read(`${MIRROR_COLUMNS},commit_sha`);
+  } catch (error) {
+    if (!/commit_sha/.test(error.message)) throw error;
+    return read(MIRROR_COLUMNS);
+  }
 }
 
+// 20 per page: with each PR's check runs and review requests, a 50-PR page
+// exceeds GitHub's per-query resource limit and comes back empty.
 const PR_QUERY = `query($q: String!, $cursor: String) {
-  search(query: $q, type: ISSUE, first: 50, after: $cursor) {
+  search(query: $q, type: ISSUE, first: 20, after: $cursor) {
     issueCount
     pageInfo { hasNextPage endCursor }
     nodes {
@@ -193,7 +222,26 @@ const PR_QUERY = `query($q: String!, $cursor: String) {
         number url title body isDraft state createdAt mergedAt closedAt baseRefName
         repository { name defaultBranchRef { name } }
         reviewDecision
-        commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
+        mergeCommit { oid }
+        reviewRequests(first: 10) {
+          nodes { requestedReviewer { __typename ... on User { login } ... on Team { slug } ... on Bot { login } } }
+        }
+        commits(last: 1) {
+          nodes {
+            commit {
+              statusCheckRollup {
+                state
+                contexts(first: 100) {
+                  nodes {
+                    __typename
+                    ... on CheckRun { name conclusion }
+                    ... on StatusContext { context state }
+                  }
+                }
+              }
+            }
+          }
+        }
         files(first: 100) { nodes { path } }
       }
     }
@@ -209,7 +257,8 @@ async function searchPrs(from, to) {
       method: "POST",
       body: JSON.stringify({ query: PR_QUERY, variables: { q, cursor } }),
     });
-    if (body.errors?.length) throw new Error(`GraphQL: ${body.errors[0].message}`);
+    if (body?.errors?.length) throw new Error(`GraphQL: ${body.errors[0].message}`);
+    if (!body?.data?.search) throw new Error(`GraphQL returned no search result for ${q}`);
     const search = body.data.search;
     // Search stops at 1,000 results; split the window rather than drop PRs.
     if (search.issueCount > 1000 && from !== to) {
@@ -236,11 +285,166 @@ async function searchPrs(from, to) {
         checks: node.commits?.nodes?.[0]?.commit?.statusCheckRollup?.state ?? null,
         reviewDecision: node.reviewDecision,
         files: (node.files?.nodes ?? []).map((file) => file.path),
+        ...checkDetail(node.commits?.nodes?.[0]?.commit?.statusCheckRollup?.contexts?.nodes ?? []),
+        requestedReviewers: (node.reviewRequests?.nodes ?? [])
+          .map((request) => request.requestedReviewer)
+          .filter(Boolean)
+          .map((reviewer) => reviewer.login ?? (reviewer.slug ? `team:${reviewer.slug}` : null))
+          .filter(Boolean),
+        mergeCommit: node.mergeCommit?.oid ?? null,
       });
     }
     if (!search.pageInfo.hasNextPage) return prs;
     cursor = search.pageInfo.endCursor;
   }
+}
+
+const FAILED_CONCLUSIONS = new Set(["FAILURE", "TIMED_OUT", "STARTUP_FAILURE", "ACTION_REQUIRED"]);
+// The sharded validate workflow's summary job fails whenever any shard does.
+const AGGREGATE_CHECK = "validate / validate";
+
+/** Failed check names (shards and other checks) and the count cancelled. */
+function checkDetail(contexts) {
+  const failedChecks = [];
+  let cancelledChecks = 0;
+  for (const context of contexts) {
+    if (context?.__typename === "CheckRun") {
+      if (context.conclusion === "CANCELLED") cancelledChecks += 1;
+      else if (FAILED_CONCLUSIONS.has(context.conclusion) && context.name !== AGGREGATE_CHECK) {
+        failedChecks.push(context.name);
+      }
+    } else if (context?.__typename === "StatusContext") {
+      if (context.state === "FAILURE" || context.state === "ERROR") failedChecks.push(context.context);
+    }
+  }
+  return { failedChecks: failedChecks.sort(), cancelledChecks };
+}
+
+const VALIDATE_JOB_RE = /^validate \/ validate(?: \(([^)]+)\))?$/;
+const VALIDATION_RUNS_SCANNED = 8;
+
+/**
+ * Each repo's latest decisive (success or failure) validate result per
+ * jurisdiction shard on its default branch, newest run first.
+ */
+async function readValidation(repos) {
+  const index = new Map();
+  for (const repo of repos) {
+    const shards = new Map();
+    try {
+      const info = await githubJson(`repos/${GITHUB_ORG}/${repo}`);
+      const runs = await githubJson(
+        // No status filter: with one, GitHub lists months-old runs first.
+        // Each job's own conclusion decides, so a running run still counts.
+        `repos/${GITHUB_ORG}/${repo}/actions/runs?branch=${encodeURIComponent(info.default_branch)}&per_page=30`,
+      );
+      let scanned = 0;
+      for (const run of runs.workflow_runs ?? []) {
+        if (!["push", "schedule", "workflow_dispatch"].includes(run.event)) continue;
+        let sawValidate = false;
+        for (let page = 1; page <= 3; page++) {
+          const body = await githubJson(
+            `repos/${GITHUB_ORG}/${repo}/actions/runs/${run.id}/jobs?per_page=100&page=${page}`,
+          );
+          const jobs = body.jobs ?? [];
+          for (const job of jobs) {
+            const match = job.name.match(VALIDATE_JOB_RE);
+            if (!match) continue;
+            sawValidate = true;
+            const key = match[1] ?? "";
+            if (shards.has(key)) continue;
+            if (job.conclusion !== "success" && job.conclusion !== "failure") continue;
+            shards.set(key, {
+              conclusion: job.conclusion,
+              headSha: run.head_sha,
+              runUrl: job.html_url,
+              completedAt: job.completed_at,
+            });
+          }
+          if (jobs.length < 100) break;
+        }
+        if (sawValidate && ++scanned >= VALIDATION_RUNS_SCANNED) break;
+      }
+    } catch (error) {
+      console.warn(`validation for ${repo}: ${error.message}`);
+    }
+    index.set(repo, shards);
+  }
+  return index;
+}
+
+/**
+ * Whether each later commit contains its merge commit. Compared as
+ * later...merge, so a contained merge diffs to nothing and the response
+ * stays small whatever lies between them.
+ */
+async function resolveContainment(queries) {
+  const contains = new Map();
+  for (const { repo, ancestor, descendant } of queries) {
+    try {
+      const body = await githubJson(
+        `repos/${GITHUB_ORG}/${repo}/compare/${descendant}...${ancestor}?per_page=1`,
+      );
+      contains.set(
+        containsKey(repo, ancestor, descendant),
+        body.status === "behind" || body.status === "identical",
+      );
+    } catch (error) {
+      console.warn(`compare ${repo} ${ancestor}..${descendant}: ${error.message}`);
+    }
+  }
+  return contains;
+}
+
+/** Per repo, the modules an active known-validation-gaps waiver exempts. */
+async function readWaivers(repos) {
+  const waivers = new Map();
+  for (const repo of repos) {
+    try {
+      const res = await github(
+        `repos/${GITHUB_ORG}/${repo}/contents/known-validation-gaps.yaml`,
+        { headers: { Accept: "application/vnd.github.raw" } },
+      );
+      waivers.set(repo, activeWaivers(yaml.load(await res.text())));
+    } catch (error) {
+      // No file means no waivers; anything else leaves the repo unknown.
+      if (/ 404 /.test(error.message)) waivers.set(repo, new Set());
+      else console.warn(`waivers for ${repo}: ${error.message}`);
+    }
+  }
+  return waivers;
+}
+
+const ORACLE_REPORT_RE = /^axiom-(policyengine|taxsim|snapqc|spsm)-.*\.json$/;
+const ORACLE_CONCURRENCY = 6;
+
+/** The axiom-oracles comparison reports, parsed into per-module verdicts. */
+async function readOracleVerdicts() {
+  const listing = await githubJson(
+    "repos/TheAxiomFoundation/axiom-oracles/contents/dashboard/public/data",
+  );
+  const files = listing.filter((entry) => ORACLE_REPORT_RE.test(entry.name));
+  const reports = [];
+  const queue = [...files];
+  await Promise.all(
+    Array.from({ length: ORACLE_CONCURRENCY }, async () => {
+      for (let file = queue.shift(); file; file = queue.shift()) {
+        try {
+          const res = await fetch(file.download_url);
+          if (res.ok) reports.push({ name: file.name, report: await res.json() });
+        } catch (error) {
+          console.warn(`oracle report ${file.name}: ${error.message}`);
+        }
+      }
+    }),
+  );
+  console.log(`read ${reports.length} of ${files.length} oracle reports`);
+  return oracleVerdicts(reports);
+}
+
+function oracleRefreshDue(nowMs) {
+  const now = new Date(nowMs);
+  return args.includes("--oracles") || (now.getUTCHours() % 6 === 0 && now.getUTCMinutes() < 30);
 }
 
 async function listManifestPrs(sinceIso) {
@@ -389,7 +593,34 @@ async function readCompileSweep() {
   }
 }
 
+// Added by the 2026-10-01 stages migration; written only once they exist.
+const STAGE_COLUMNS = [
+  "pr_failed_checks",
+  "pr_cancelled_checks",
+  "pr_requested_reviewers",
+  "pr_merge_commit",
+  "tests_status",
+  "tests_checked_at",
+  "tests_run_url",
+  "oracle_status",
+  "oracle_report",
+  "oracle_engine",
+  "oracle_checked_at",
+];
+
 async function upsert(rows) {
+  const { error: probeError } = await supabase
+    .from("pipeline_attempts")
+    .select(STAGE_COLUMNS.join(","))
+    .limit(1);
+  if (probeError) {
+    console.log(`stage columns not written yet (${probeError.message})`);
+    rows = rows.map((row) => {
+      const trimmed = { ...row };
+      for (const column of STAGE_COLUMNS) delete trimmed[column];
+      return trimmed;
+    });
+  }
   for (let i = 0; i < rows.length; i += UPSERT_CHUNK) {
     const chunk = rows.slice(i, i + UPSERT_CHUNK);
     const { error } = await supabase
@@ -442,6 +673,26 @@ async function main() {
       `compile sweep ${compile ? compile.generated_at : "unavailable"}, ${previous.size} previous rows`,
   );
 
+  const mergedRepos = [
+    ...new Set(prs.filter((pr) => pr.state === "MERGED").map((pr) => pr.repo)),
+  ].sort();
+  const [validation, waivers] = await Promise.all([
+    readValidation(mergedRepos),
+    readWaivers(mergedRepos),
+  ]);
+  const oracle = oracleRefreshDue(nowMs)
+    ? await readOracleVerdicts().catch((error) => {
+        console.warn(`oracle reports unavailable: ${error.message}`);
+        return undefined;
+      })
+    : undefined;
+  const contains = await resolveContainment(
+    containmentQueries(prs, mirror, validation, oracle),
+  );
+  console.log(
+    `validation read for ${mergedRepos.length} repos, ${contains.size} merge ancestry checks`,
+  );
+
   const lookups = failureLookups(runs, encoderRuns, previous, nowMs, lookupLimit);
   const failureDetails = await lookUpFailures(lookups);
   console.log(`looked up ${failureDetails.size} of ${lookups.length} unexplained failures`);
@@ -455,6 +706,10 @@ async function main() {
     failureDetails,
     previous,
     nowMs,
+    contains,
+    validation,
+    waivers,
+    oracle,
   });
 
   if (dryRun) {

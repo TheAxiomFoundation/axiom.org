@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  activeWaivers,
   buildAttempts,
+  conceptModuleKeys,
+  containmentQueries,
+  containsKey,
+  oracleVerdicts,
   buildCompileIndex,
   buildMirrorIndex,
   errorRule,
@@ -20,6 +25,7 @@ import {
   type EncoderRunRow,
   type ManifestPr,
   type MirrorRow,
+  type ShardResult,
   type WorkflowRun,
 } from "./encoding-pipeline-collect";
 import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
@@ -437,5 +443,191 @@ describe("oldestUnsyncedMerge", () => {
       )
     ).toBe("2026-09-30T09:00:00Z");
     expect(oldestUnsyncedMerge([], NOW)).toBeNull();
+  });
+});
+
+describe("stage joins", () => {
+  const MERGE = "m1";
+  const INDEX = "i1";
+  const HEAD = "h1";
+  const REPORT_SHA = "r1";
+  const merged = (override: Partial<ManifestPr> = {}) =>
+    pr({ state: "MERGED", isDraft: false, mergedAt: "2026-09-30T01:00:00Z", mergeCommit: MERGE, ...override });
+  const shard = (conclusion: ShardResult["conclusion"], headSha = HEAD): ShardResult => ({
+    conclusion,
+    headSha,
+    runUrl: "https://github.com/x/runs/1",
+    completedAt: "2026-09-30T10:00:00Z",
+  });
+  const mirrorWithCommit = [mirrorRow({ commit_sha: INDEX })];
+  const contains = (pairs: Array<[string, string, boolean]>) =>
+    new Map(pairs.map(([a, d, v]) => [containsKey("rulespec-us", a, d), v]));
+
+  it("carries a PR's failing checks, cancellations, reviewers, and merge commit", () => {
+    const [attempt] = buildAttempts(
+      inputs({
+        prs: [pr({ failedChecks: ["validate / validate (us)"], cancelledChecks: 3, requestedReviewers: ["MaxGhenis"], mergeCommit: null })],
+      })
+    );
+    expect(attempt).toMatchObject({
+      pr_failed_checks: ["validate / validate (us)"],
+      pr_cancelled_checks: 3,
+      pr_requested_reviewers: ["MaxGhenis"],
+      pr_merge_commit: null,
+    });
+    const [bare] = buildAttempts(inputs({ prs: [pr()] }));
+    expect(bare).not.toHaveProperty("pr_failed_checks");
+  });
+
+  it("counts a sync only when the commit it read contains the merge", () => {
+    const sync = (pairs: Array<[string, string, boolean]>) =>
+      buildAttempts(inputs({ prs: [merged()], mirror: mirrorWithCommit, contains: contains(pairs) }))[0];
+    expect(sync([[MERGE, INDEX, true]]).index_status).toBe("indexed");
+    // Synced after the merge by the clock, but read an older commit.
+    expect(sync([[MERGE, INDEX, false]])).toMatchObject({ synced_at: null, index_status: null });
+    // Unknown ancestry falls back to the clock.
+    expect(sync([]).index_status).toBe("indexed");
+    expect(buildMirrorIndex(mirrorWithCommit).repoCommit.get("rulespec-us")).toBe(INDEX);
+  });
+
+  it("takes tests from the module's jurisdiction shard on a commit with the merge", () => {
+    const tests = (
+      shards: Array<[string, ShardResult]>,
+      pairs: Array<[string, string, boolean]>,
+      waivers?: Map<string, Set<string>>
+    ) =>
+      buildAttempts(
+        inputs({
+          prs: [merged()],
+          mirror: mirrorWithCommit,
+          contains: contains([[MERGE, INDEX, true], ...pairs]),
+          validation: new Map([["rulespec-us", new Map(shards)]]),
+          waivers,
+        })
+      )[0];
+    expect(tests([["us", shard("success")]], [[MERGE, HEAD, true]])).toMatchObject({
+      tests_status: "pass",
+      tests_run_url: "https://github.com/x/runs/1",
+      tests_checked_at: "2026-09-30T10:00:00Z",
+    });
+    expect(tests([["us", shard("failure")]], [[MERGE, HEAD, true]]).tests_status).toBe("fail");
+    expect(tests([["us", shard("success")]], [[MERGE, HEAD, false]]).tests_status).toBeUndefined();
+    // An unsharded repo's single validate job stands in; a sharded repo's aggregate never does.
+    expect(tests([["", shard("success")]], [[MERGE, HEAD, true]]).tests_status).toBe("pass");
+    expect(tests([["", shard("success")], ["us-az", shard("success")]], [[MERGE, HEAD, true]]).tests_status).toBeUndefined();
+    const waived = new Map([["rulespec-us", new Set(["us/regulations/42-cfr/457/800.yaml"])]]);
+    expect(tests([["us", shard("success")]], [[MERGE, HEAD, true]], waived).tests_status).toBe("waived");
+  });
+
+  it("keeps an oracle verdict current only if its report compared the merge", () => {
+    const verdicts = oracleVerdicts([
+      {
+        name: "axiom-policyengine-us-x.json",
+        report: {
+          aggregates: [{ concept: "us:regulations/42-cfr/457/800#out", mismatch_count: 0 }],
+          provenance: { generated_at: "2026-09-20T00:00:00Z", rulespecs: [{ sha: REPORT_SHA }] },
+        },
+      },
+    ]);
+    const oracle = (pairs: Array<[string, string, boolean]>, previous = new Map()) =>
+      buildAttempts(
+        inputs({
+          prs: [merged()],
+          mirror: mirrorWithCommit,
+          contains: contains([[MERGE, INDEX, true], ...pairs]),
+          oracle: pairs.length ? verdicts : undefined,
+          previous,
+        })
+      )[0];
+    expect(oracle([[MERGE, REPORT_SHA, true]])).toMatchObject({
+      oracle_status: "match",
+      oracle_engine: "policyengine",
+      oracle_report: "axiom-policyengine-us-x.json",
+      oracle_checked_at: "2026-09-20T00:00:00Z",
+    });
+    expect(oracle([[MERGE, REPORT_SHA, false]]).oracle_status).toBe("stale");
+    // Between refreshes the previous verdict stays.
+    const kept = oracle([], new Map([["501", { oracle_status: "disagree" as const, oracle_engine: "taxsim" }]]));
+    expect(kept).toMatchObject({ oracle_status: "disagree", oracle_engine: "taxsim", oracle_report: null });
+    expect(oracle([]).oracle_status).toBeUndefined();
+  });
+
+  it("lists the ancestry checks the joins need", () => {
+    const queries = containmentQueries(
+      [
+        merged(),
+        merged({ number: 2, mergeCommit: null }),
+        merged({ number: 3, baseRefName: "codex/x" }),
+        pr({ number: 4 }),
+      ],
+      mirrorWithCommit,
+      new Map([["rulespec-us", new Map([["us", shard("success")]])]]),
+      oracleVerdicts([
+        {
+          name: "axiom-policyengine-us-x.json",
+          report: {
+            aggregates: [{ concept: "us:regulations/42-cfr/457/800#out" }],
+            provenance: { rulespecs: [{ sha: REPORT_SHA }] },
+          },
+        },
+      ])
+    );
+    expect(queries.map((q) => q.descendant).sort()).toEqual([HEAD, INDEX, REPORT_SHA]);
+    expect(queries.every((q) => q.ancestor === MERGE)).toBe(true);
+    expect(containmentQueries([merged({ title: "Unrelated" })], [], new Map())).toEqual([]);
+  });
+});
+
+describe("waivers and oracle reports", () => {
+  it("reads active validation waivers", () => {
+    expect(
+      [...activeWaivers({
+        validate_failures: {
+          "us/a.yaml": { active: { fingerprint: "x" } },
+          "us/b.yaml": { pending: { fingerprint: "y" } },
+          "us/c.yaml": null,
+        },
+      })]
+    ).toEqual(["us/a.yaml"]);
+    expect(activeWaivers(null).size).toBe(0);
+    expect(activeWaivers({ validate_failures: "nope" }).size).toBe(0);
+  });
+
+  it("maps an oracle concept to its module in either repo layout", () => {
+    expect(conceptModuleKeys("us-az:policies/des/faa5/x#out")).toEqual([
+      "rulespec-us:us-az/policies/des/faa5/x.yaml",
+      "rulespec-us:policies/des/faa5/x.yaml",
+    ]);
+    expect(conceptModuleKeys("ca:statutes/1")).toEqual(["rulespec-ca:ca/statutes/1.yaml", "rulespec-ca:statutes/1.yaml"]);
+    expect(conceptModuleKeys("not a concept")).toEqual([]);
+  });
+
+  it("keeps each module's worst verdict across reports", () => {
+    const verdicts = oracleVerdicts([
+      {
+        name: "axiom-policyengine-az-snap.json",
+        report: {
+          aggregates: [{ concept: "us:statutes/7/2014/u#snap_benefit" }, { concept: "us:statutes/7/2014/o#snap_eligible" }],
+          summary: {
+            mismatches_by_concept: [{ value: "us:statutes/7/2014/u#snap_benefit", count: 3 }, { value: "us:statutes/7/2015/f#x", count: 1 }],
+            dispositioned: { counts: { axiom_encoding_gap: 0, unexplained: 0, upstream_engine_gap: 4 } },
+          },
+          provenance: { rulespecs: [{ sha: "a" }], generated_at: "G" },
+        },
+      },
+      {
+        name: "axiom-taxsim-us-tax.json",
+        report: {
+          aggregates: [{ concept: "us:statutes/7/2014/o#snap_eligible", mismatch_count: 2 }],
+          summary: { dispositioned: { counts: { unexplained: 2 } } },
+        },
+      },
+      { name: "weird.json", report: { aggregates: [{ concept: "us:statutes/9#x", mismatch_count: 1 }, {}] } },
+    ]);
+    expect(verdicts.get("rulespec-us:us/statutes/7/2014/u.yaml")).toMatchObject({ status: "explained", engine: "policyengine", rulespecSha: "a", generatedAt: "G" });
+    expect(verdicts.get("rulespec-us:us/statutes/7/2014/o.yaml")).toMatchObject({ status: "disagree", engine: "taxsim", rulespecSha: null });
+    expect(verdicts.get("rulespec-us:us/statutes/7/2015/f.yaml")?.status).toBe("explained");
+    // No dispositions recorded: a mismatch is unexplained.
+    expect(verdicts.get("rulespec-us:us/statutes/9.yaml")).toMatchObject({ status: "disagree", engine: "oracle" });
   });
 });

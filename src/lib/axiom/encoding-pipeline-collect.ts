@@ -59,6 +59,12 @@ export interface ManifestPr {
   checks: string | null;
   reviewDecision: string | null;
   files: string[];
+  /** Head commit's failed checks, by name, without the aggregate "validate / validate". */
+  failedChecks?: string[];
+  /** How many head commit checks were cancelled before finishing. */
+  cancelledChecks?: number;
+  requestedReviewers?: string[];
+  mergeCommit?: string | null;
 }
 
 export interface MirrorRow {
@@ -68,6 +74,8 @@ export interface MirrorRow {
   citation_path: string;
   synced_at: string;
   raw_yaml_sha256: string | null;
+  /** The commit the sync read (once the commit_sha column exists). */
+  commit_sha?: string | null;
 }
 
 export interface CompileSweepRow {
@@ -214,6 +222,8 @@ export interface MirrorIndex {
   repoSyncedAt: Map<string, string>;
   /** Latest sync time of any repo: a repo absent from the index was skipped by it. */
   lastSyncedAt: string | null;
+  /** The commit each repo's rows were last read from, when recorded. */
+  repoCommit: Map<string, string>;
 }
 
 /**
@@ -225,14 +235,20 @@ export function buildMirrorIndex(rows: MirrorRow[]): MirrorIndex {
   const byPath = new Map<string, MirrorRow>();
   const repoSyncedAt = new Map<string, string>();
   let lastSyncedAt: string | null = null;
+  const repoCommit = new Map<string, string>();
+  const repoCommitAt = new Map<string, string>();
   for (const row of rows) {
     byPath.set(`${row.repo}:${row.file_path}`, row);
     byPath.set(`${row.repo}:${row.jurisdiction}/${row.file_path}`, row);
     const current = repoSyncedAt.get(row.repo);
     if (!current || row.synced_at > current) repoSyncedAt.set(row.repo, row.synced_at);
     if (!lastSyncedAt || row.synced_at > lastSyncedAt) lastSyncedAt = row.synced_at;
+    if (row.commit_sha && row.synced_at >= (repoCommitAt.get(row.repo) ?? "")) {
+      repoCommit.set(row.repo, row.commit_sha);
+      repoCommitAt.set(row.repo, row.synced_at);
+    }
   }
-  return { byPath, repoSyncedAt, lastSyncedAt };
+  return { byPath, repoSyncedAt, lastSyncedAt, repoCommit };
 }
 
 function compileKey(repo: string, citationPath: string): string {
@@ -310,6 +326,187 @@ function encoderError(row: EncoderRunRow): string | null {
   return truncateError(row.apply_error ?? (encoderFailed(row) ? row.note : null));
 }
 
+/** One jurisdiction's latest decisive validation on a repo's default branch. */
+export interface ShardResult {
+  conclusion: "success" | "failure";
+  headSha: string;
+  runUrl: string;
+  completedAt: string;
+}
+
+/** Per repo: shard results keyed by jurisdiction ("" for an unsharded validate job). */
+export type ValidationIndex = Map<string, Map<string, ShardResult>>;
+
+export function containsKey(repo: string, ancestor: string, descendant: string): string {
+  return `${repo}:${ancestor}..${descendant}`;
+}
+
+/** The (repo, merge commit, later commit) pairs whose ancestry decides sync and tests. */
+export function containmentQueries(
+  prs: ManifestPr[],
+  mirror: MirrorRow[],
+  validation: ValidationIndex,
+  oracle: Map<string, OracleVerdict> = new Map()
+): Array<{ repo: string; ancestor: string; descendant: string }> {
+  const index = buildMirrorIndex(mirror);
+  const queries = new Map<string, { repo: string; ancestor: string; descendant: string }>();
+  const add = (repo: string, ancestor: string, descendant: string) =>
+    queries.set(containsKey(repo, ancestor, descendant), { repo, ancestor, descendant });
+  for (const pr of prs) {
+    if (pr.state !== "MERGED" || !pr.mergeCommit) continue;
+    if (pr.defaultBranch && pr.baseRefName !== pr.defaultBranch) continue;
+    const indexCommit = index.repoCommit.get(pr.repo);
+    if (indexCommit) add(pr.repo, pr.mergeCommit, indexCommit);
+    const citation = prCitation(pr.title);
+    const shard = shardFor(validation, pr.repo, citation ? jurisdictionOf(citation) : null);
+    if (shard) add(pr.repo, pr.mergeCommit, shard.headSha);
+    const verdict = moduleVerdict(oracle, pr.repo, rulespecModulePaths(pr.files));
+    if (verdict?.rulespecSha) add(pr.repo, pr.mergeCommit, verdict.rulespecSha);
+  }
+  return [...queries.values()];
+}
+
+function shardFor(
+  validation: ValidationIndex,
+  repo: string,
+  jurisdiction: string | null
+): ShardResult | null {
+  const shards = validation.get(repo);
+  if (!shards) return null;
+  const own = jurisdiction ? shards.get(jurisdiction) : undefined;
+  if (own) return own;
+  // An unsharded repo has one "validate" job; a sharded repo's aggregate job
+  // fails for any shard, so it never stands in for a missing one.
+  const sharded = [...shards.keys()].some((key) => key !== "");
+  return sharded ? null : shards.get("") ?? null;
+}
+
+/**
+ * Modules whose validation is waived: the `validate_failures` entries of a
+ * repo's known-validation-gaps.yaml that carry an `active` waiver. CI skips
+ * their validate, companion tests, and proofs, so a green shard says
+ * nothing about them.
+ */
+export function activeWaivers(doc: unknown): Set<string> {
+  const failures = (doc as { validate_failures?: Record<string, unknown> } | null)
+    ?.validate_failures;
+  const waived = new Set<string>();
+  if (!failures || typeof failures !== "object") return waived;
+  for (const [path, entry] of Object.entries(failures)) {
+    if (entry && typeof entry === "object" && (entry as { active?: unknown }).active) {
+      waived.add(path);
+    }
+  }
+  return waived;
+}
+
+/** One module's verdict from the axiom-oracles comparison reports. */
+export interface OracleVerdict {
+  /** match: every compared output agrees. explained: mismatches, all
+   *  dispositioned as engine, bridge, or residual differences. disagree:
+   *  an unexplained mismatch or one blamed on the encoding. */
+  status: "match" | "explained" | "disagree";
+  /** The report file that decided it, e.g. axiom-policyengine-az-snap-ecps.json. */
+  report: string;
+  engine: string;
+  /** The rulespec commit the report compared. */
+  rulespecSha: string | null;
+  generatedAt: string | null;
+}
+
+interface OracleReport {
+  aggregates?: Array<{ concept?: string; mismatch_count?: number }>;
+  summary?: {
+    mismatches_by_concept?: Array<{ value?: string; count?: number }>;
+    dispositioned?: { counts?: Record<string, number> } | null;
+  };
+  provenance?: {
+    generated_at?: string;
+    rulespecs?: Array<{ repo?: string; sha?: string }>;
+  };
+}
+
+const ORACLE_RANK: Record<OracleVerdict["status"], number> = {
+  match: 0,
+  explained: 1,
+  disagree: 2,
+};
+
+/**
+ * `us-az:policies/des/faa5/x#output` → the module's index keys in its
+ * repo, for both repo layouts (see buildMirrorIndex).
+ */
+export function conceptModuleKeys(concept: string): string[] {
+  const match = concept.match(/^([a-z]{2}(?:-[a-z0-9-]+)*):([^#]+?)(?:#.*)?$/);
+  if (!match) return [];
+  const [, jurisdiction, path] = match;
+  const repo = `rulespec-${jurisdiction.split("-")[0]}`;
+  return [`${repo}:${jurisdiction}/${path}.yaml`, `${repo}:${path}.yaml`];
+}
+
+/** Per module index key, the worst verdict across every report that compares it. */
+export function oracleVerdicts(
+  reports: Array<{ name: string; report: OracleReport }>
+): Map<string, OracleVerdict> {
+  const verdicts = new Map<string, OracleVerdict>();
+  for (const { name, report } of reports) {
+    const engine = name.match(/^axiom-([a-z]+)-/)?.[1] ?? "oracle";
+    const counts = report.summary?.dispositioned?.counts ?? null;
+    const blamed = counts
+      ? (counts.unexplained ?? 0) + (counts.axiom_encoding_gap ?? 0)
+      : null;
+    const mismatches = new Map<string, number>();
+    for (const entry of report.summary?.mismatches_by_concept ?? []) {
+      if (entry.value) mismatches.set(entry.value, entry.count ?? 0);
+    }
+    const concepts = new Map<string, number>();
+    for (const aggregate of report.aggregates ?? []) {
+      if (aggregate.concept) {
+        concepts.set(
+          aggregate.concept,
+          mismatches.get(aggregate.concept) ?? aggregate.mismatch_count ?? 0
+        );
+      }
+    }
+    for (const [concept, count] of mismatches) {
+      if (!concepts.has(concept)) concepts.set(concept, count);
+    }
+    for (const [concept, count] of concepts) {
+      const status: OracleVerdict["status"] =
+        count === 0 ? "match" : blamed === 0 ? "explained" : "disagree";
+      const verdict: OracleVerdict = {
+        status,
+        report: name,
+        engine,
+        rulespecSha: report.provenance?.rulespecs?.[0]?.sha ?? null,
+        generatedAt: report.provenance?.generated_at ?? null,
+      };
+      for (const key of conceptModuleKeys(concept)) {
+        const current = verdicts.get(key);
+        if (!current || ORACLE_RANK[status] > ORACLE_RANK[current.status]) {
+          verdicts.set(key, verdict);
+        }
+      }
+    }
+  }
+  return verdicts;
+}
+
+function moduleVerdict(
+  oracle: Map<string, OracleVerdict>,
+  repo: string,
+  modules: string[]
+): OracleVerdict | null {
+  let worst: OracleVerdict | null = null;
+  for (const path of modules) {
+    const verdict = oracle.get(`${repo}:${path}`);
+    if (verdict && (!worst || ORACLE_RANK[verdict.status] > ORACLE_RANK[worst.status])) {
+      worst = verdict;
+    }
+  }
+  return worst;
+}
+
 export interface CollectInputs {
   runs: WorkflowRun[];
   prs: ManifestPr[];
@@ -319,6 +516,24 @@ export interface CollectInputs {
   failureDetails: Map<string, FailureDetail>;
   previous: Map<string, Partial<PipelineAttempt>>;
   nowMs: number;
+  /** Whether a repo's later commit contains a merge commit (see containmentQueries). */
+  contains?: Map<string, boolean>;
+  validation?: ValidationIndex;
+  /** Per repo, modules with an active validation waiver. */
+  waivers?: Map<string, Set<string>>;
+  /** Oracle verdicts read this pass; absent between refreshes, when each
+   *  attempt keeps the verdict its previous collection stored. */
+  oracle?: Map<string, OracleVerdict>;
+}
+
+interface JoinContext {
+  mirror: MirrorIndex;
+  compile: Map<string, CompileSweepRow>;
+  compileAt: string | null;
+  contains: Map<string, boolean>;
+  validation: ValidationIndex;
+  waivers: Map<string, Set<string>>;
+  oracle: Map<string, OracleVerdict> | null;
 }
 
 /** Link each PR to its dispatch: the run URL in its body, else citation + time. */
@@ -371,12 +586,12 @@ export function linkPrsToRuns(
 function withPr(
   base: PipelineAttempt,
   pr: ManifestPr | undefined,
-  mirror: MirrorIndex,
-  compile: Map<string, CompileSweepRow>,
-  compileGeneratedAt: string | null,
+  context: JoinContext,
   previous: Partial<PipelineAttempt> | undefined
 ): PipelineAttempt {
   if (!pr) return base;
+  const { mirror, compile, compileAt: compileGeneratedAt, contains, validation, waivers, oracle } =
+    context;
   const state = prState(pr);
   const modules = rulespecModulePaths(pr.files);
   const targetsDefault = pr.defaultBranch ? pr.baseRefName === pr.defaultBranch : null;
@@ -394,14 +609,29 @@ function withPr(
     pr_checks: prChecks(pr.checks),
     pr_review: prReview(pr.reviewDecision),
     module_paths: modules,
+    ...(pr.failedChecks !== undefined ? { pr_failed_checks: pr.failedChecks } : {}),
+    ...(pr.cancelledChecks !== undefined ? { pr_cancelled_checks: pr.cancelledChecks } : {}),
+    ...(pr.requestedReviewers !== undefined
+      ? { pr_requested_reviewers: pr.requestedReviewers }
+      : {}),
+    ...(pr.mergeCommit !== undefined ? { pr_merge_commit: pr.mergeCommit } : {}),
   };
   if (state !== "merged" || targetsDefault === false || !pr.mergedAt) return attempt;
+  const mergeCommit = pr.mergeCommit ?? null;
 
   const mirrorRows = modules.map((path) => mirror.byPath.get(`${pr.repo}:${path}`));
   // A repo with no rows at all (e.g. one gated experimental) was still
   // passed over by the latest sync.
   const repoSynced = mirror.repoSyncedAt.get(pr.repo) ?? mirror.lastSyncedAt;
-  const syncedAfterMerge = repoSynced !== null && repoSynced >= pr.mergedAt;
+  // The commit the index read decides when both commits are known; else
+  // the sync time against the merge time.
+  const indexCommit = mirror.repoCommit.get(pr.repo);
+  const commitContains =
+    mergeCommit && indexCommit
+      ? contains.get(containsKey(pr.repo, mergeCommit, indexCommit))
+      : undefined;
+  const syncedAfterMerge =
+    commitContains ?? (repoSynced !== null && repoSynced >= pr.mergedAt);
   if (previous?.synced_at) {
     attempt.synced_at = previous.synced_at;
     attempt.index_status = "indexed";
@@ -414,6 +644,57 @@ function withPr(
     }
   }
   if (!attempt.synced_at || !mirrorRows.every(Boolean)) return attempt;
+
+  // Tests: the module's jurisdiction validation on the default branch, at a
+  // commit that contains the merge.
+  // A waived module is skipped by its shard, so the shard cannot vouch for it.
+  const shard = shardFor(validation, pr.repo, attempt.jurisdiction);
+  const waived = modules.some((path) => waivers.get(pr.repo)?.has(path));
+  if (waived) {
+    attempt.tests_status = "waived";
+  } else if (
+    shard &&
+    mergeCommit &&
+    contains.get(containsKey(pr.repo, mergeCommit, shard.headSha))
+  ) {
+    attempt.tests_status = shard.conclusion === "success" ? "pass" : "fail";
+    attempt.tests_checked_at = shard.completedAt;
+    attempt.tests_run_url = shard.runUrl;
+  }
+
+  // Oracle: a report counts only if the rulespec commit it compared
+  // contains the merge; an older one compared an earlier version.
+  if (!oracle) {
+    if (previous?.oracle_status) {
+      attempt.oracle_status = previous.oracle_status;
+      attempt.oracle_report = previous.oracle_report ?? null;
+      attempt.oracle_engine = previous.oracle_engine ?? null;
+      attempt.oracle_checked_at = previous.oracle_checked_at ?? null;
+    }
+    return compileVerdict(attempt, mirrorRows, compile, compileGeneratedAt);
+  }
+  const verdict = moduleVerdict(oracle, pr.repo, modules);
+  if (verdict) {
+    const current =
+      !!mergeCommit &&
+      !!verdict.rulespecSha &&
+      contains.get(containsKey(pr.repo, mergeCommit, verdict.rulespecSha)) === true;
+    attempt.oracle_status = current ? verdict.status : "stale";
+    attempt.oracle_report = verdict.report;
+    attempt.oracle_engine = verdict.engine;
+    attempt.oracle_checked_at = verdict.generatedAt;
+  }
+
+  return compileVerdict(attempt, mirrorRows, compile, compileGeneratedAt);
+}
+
+/** The compile sweep's verdict on the module versions now in the index. */
+function compileVerdict(
+  attempt: PipelineAttempt,
+  mirrorRows: Array<MirrorRow | undefined>,
+  compile: Map<string, CompileSweepRow>,
+  compileGeneratedAt: string | null
+): PipelineAttempt {
   // A merge that changed no module (manifests or tests only) has nothing to run.
   if (mirrorRows.length === 0) {
     attempt.compile_status = "skipped";
@@ -496,6 +777,15 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
   const mirror = buildMirrorIndex(inputs.mirror);
   const compile = buildCompileIndex(inputs.compile);
   const compileAt = inputs.compile?.generated_at ?? null;
+  const context: JoinContext = {
+    mirror,
+    compile,
+    compileAt,
+    contains: inputs.contains ?? new Map(),
+    validation: inputs.validation ?? new Map(),
+    waivers: inputs.waivers ?? new Map(),
+    oracle: inputs.oracle ?? null,
+  };
   const encoderIndex = indexEncoderRows(inputs.encoderRuns);
   const { byRun, orphans } = linkPrsToRuns(inputs.runs, inputs.prs);
 
@@ -559,7 +849,7 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
       }
     }
 
-    attempt = withPr(attempt, pr, mirror, compile, compileAt, previous);
+    attempt = withPr(attempt, pr, context, previous);
     attempts.push(attempt);
   }
 
@@ -579,7 +869,7 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
       run_status: "completed",
       run_conclusion: "success",
     };
-    attempts.push(withPr(base, pr, mirror, compile, compileAt, inputs.previous.get(id)));
+    attempts.push(withPr(base, pr, context, inputs.previous.get(id)));
   }
   return attempts;
 }
