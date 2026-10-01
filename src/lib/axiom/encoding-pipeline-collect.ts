@@ -27,6 +27,8 @@ export interface WorkflowRun {
   updated_at: string;
   html_url: string;
   run_attempt?: number | null;
+  /** Login of whoever started (or re-ran) it. */
+  triggering_actor?: string | null;
 }
 
 export interface EncoderRunRow {
@@ -514,6 +516,62 @@ function moduleVerdict(
   return worst;
 }
 
+/** What a run's jobs say: when encoding started, how far a cancelled run got. */
+export interface RunDetail {
+  encodeStartedAt: string | null;
+  cancelStage: PipelineAttempt["cancel_stage"];
+}
+
+interface RunJob {
+  name: string;
+  steps?: Array<{ conclusion?: string | null; started_at?: string | null }> | null;
+}
+
+/**
+ * Read a targeted re-encode run's jobs. The encode job waits for the
+ * production-signing approval before any step runs, so its first step's
+ * start is when encoding began; a cancelled run with no encode job, or one
+ * whose encode job ran no step, was cancelled before it or while waiting
+ * for approval.
+ */
+export function parseRunJobs(jobs: RunJob[], conclusion: string | null): RunDetail {
+  const encode =
+    jobs.find((job) => /re-encode/i.test(job.name)) ??
+    jobs.find((job) => !/budget/i.test(job.name)) ??
+    null;
+  const ran = (encode?.steps ?? []).filter(
+    (step) => step.conclusion && step.conclusion !== "skipped"
+  );
+  const starts = ran
+    .map((step) => step.started_at)
+    .filter((value): value is string => !!value)
+    .sort();
+  let cancelStage: RunDetail["cancelStage"] = null;
+  if (conclusion === "cancelled") {
+    cancelStage = !encode ? "before_job" : ran.length === 0 ? "approval" : "running";
+  }
+  return { encodeStartedAt: starts[0] ?? null, cancelStage };
+}
+
+/**
+ * Finished runs whose jobs have not been read, cancelled ones first (their
+ * story is in the jobs), then newest first.
+ */
+export function runDetailLookups(
+  runs: WorkflowRun[],
+  previous: Map<string, Partial<PipelineAttempt>>,
+  limit: number
+): WorkflowRun[] {
+  return runs
+    .filter((run) => run.status === "completed" && !previous.get(String(run.id))?.jobs_checked_at)
+    .sort(
+      (a, b) =>
+        Number(b.conclusion === "cancelled") - Number(a.conclusion === "cancelled") ||
+        b.created_at.localeCompare(a.created_at)
+    )
+    .slice(0, limit);
+}
+
 export interface CollectInputs {
   runs: WorkflowRun[];
   prs: ManifestPr[];
@@ -531,6 +589,8 @@ export interface CollectInputs {
   /** Oracle verdicts read this pass; absent between refreshes, when each
    *  attempt keeps the verdict its previous collection stored. */
   oracle?: Map<string, OracleVerdict>;
+  /** Jobs read this pass, by run id (see runDetailLookups). */
+  runDetails?: Map<string, RunDetail>;
 }
 
 interface JoinContext {
@@ -829,7 +889,19 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
       finished_at: completed ? run.updated_at : null,
       run_status: run.status,
       run_conclusion: completed ? run.conclusion : null,
+      dispatched_by: run.triggering_actor ?? null,
     };
+
+    const detail = inputs.runDetails?.get(id);
+    if (detail) {
+      attempt.encode_started_at = detail.encodeStartedAt;
+      attempt.cancel_stage = detail.cancelStage;
+      attempt.jobs_checked_at = nowIso;
+    } else if (previous?.jobs_checked_at) {
+      attempt.encode_started_at = previous.encode_started_at ?? null;
+      attempt.cancel_stage = previous.cancel_stage ?? null;
+      attempt.jobs_checked_at = previous.jobs_checked_at;
+    }
 
     const encoder = matchEncoderRun(run, citation, encoderIndex, inputs.nowMs);
     if (encoder) {

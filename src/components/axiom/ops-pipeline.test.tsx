@@ -181,4 +181,26 @@ describe("OpsPipeline", () => {
     expect(screen.getByRole("link", { name: "validation run" })).toHaveAttribute("href", "https://github.com/x/runs/9");
     expect(screen.getAllByText(/Matches PolicyEngine/).length).toBeGreaterThan(0);
   });
+
+  it("shows the signing-approval gate and every cancellation", () => {
+    renderPipeline([
+      pipelineAttempt({ id: "a", citation: "us/a", run_conclusion: "success", dispatched_at: "2026-09-29T00:00:00Z", encode_started_at: "2026-09-29T00:01:00Z" }),
+      pipelineAttempt({ id: "b", citation: "us/b", run_conclusion: "success", dispatched_at: "2026-09-29T00:00:00Z", encode_started_at: "2026-09-29T04:00:00Z" }),
+      pipelineAttempt({ id: "w", citation: "us/w", run_status: "waiting", run_conclusion: null, dispatched_at: "2026-09-29T00:00:00Z" }),
+      pipelineAttempt({ id: "x", citation: "us/x", run_conclusion: "cancelled", cancel_stage: "approval", dispatched_at: "2026-09-20T00:00:00Z", finished_at: "2026-09-20T02:00:00Z" }),
+    ]);
+    expect(screen.getByRole("heading", { name: "Signing approval" })).toBeInTheDocument();
+    expect(screen.getByText("4h")).toBeInTheDocument();
+    expect(screen.getByText(/or longer for the slowest tenth of approvals in the last 14 days \(half within 4h; 2 approved\)/)).toBeInTheDocument();
+    expect(screen.getByText(/1 waiting now, the oldest for 36h/)).toBeInTheDocument();
+    expect(screen.getByText("Cancelled runs, all dispatches")).toBeInTheDocument();
+    expect(screen.getByText(/1 of the 1 cancelled while waiting had waited over an hour \(median 2h\)/)).toBeInTheDocument();
+  });
+
+  it("says when no approval timing or waiting runs exist yet", () => {
+    renderPipeline([pipelineAttempt({ run_conclusion: "success" })]);
+    expect(screen.getByText("No approved runs with recorded timing in the last 14 days.")).toBeInTheDocument();
+    expect(screen.getByText("None waiting now")).toBeInTheDocument();
+    expect(screen.queryByText("Cancelled runs, all dispatches")).not.toBeInTheDocument();
+  });
 });

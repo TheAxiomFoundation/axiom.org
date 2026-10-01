@@ -65,6 +65,14 @@ export interface PipelineAttempt {
   oracle_report?: string | null;
   oracle_engine?: string | null;
   oracle_checked_at?: string | null;
+  /** Who started the run (GitHub's triggering actor). */
+  dispatched_by?: string | null;
+  /** When the encode job's first step ran: after the production-signing approval. */
+  encode_started_at?: string | null;
+  /** How far a cancelled run got: approval, before_job, or running. */
+  cancel_stage?: "approval" | "before_job" | "running" | null;
+  /** When the run's jobs were read (once per run). */
+  jobs_checked_at?: string | null;
 }
 
 /** Where one attempt sits. Main-line stages first, then the ways out. */
@@ -358,7 +366,22 @@ export function failedStepLabel(step: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
+const CANCEL_LABELS: Record<NonNullable<PipelineAttempt["cancel_stage"]>, string> = {
+  approval: "Cancelled while waiting for signing approval",
+  before_job: "Cancelled before the encode job started",
+  running: "Cancelled mid-run",
+};
+
 export function failureReason(attempt: PipelineAttempt): FailureReason {
+  // A cancelled run's story is how far it got, not what it last logged.
+  if (attempt.run_conclusion === "timed_out") {
+    return { key: "run:timed_out", label: "Timed out", kind: "run" };
+  }
+  if (attempt.run_conclusion === "cancelled") {
+    return attempt.cancel_stage
+      ? { key: `cancel:${attempt.cancel_stage}`, label: CANCEL_LABELS[attempt.cancel_stage], kind: "run" }
+      : { key: "run:cancelled", label: "Cancelled (not read yet)", kind: "run" };
+  }
   if (attempt.encoder_error_rule) {
     return {
       key: `rule:${attempt.encoder_error_rule}`,
@@ -377,12 +400,6 @@ export function failureReason(attempt: PipelineAttempt): FailureReason {
     // Key by label so a step named by id and by job/step name groups once.
     const label = failedStepLabel(attempt.failed_step);
     return { key: `step:${label}`, label: `Failed at: ${label}`, kind: "workflow" };
-  }
-  if (attempt.run_conclusion === "cancelled") {
-    return { key: "run:cancelled", label: "Cancelled", kind: "run" };
-  }
-  if (attempt.run_conclusion === "timed_out") {
-    return { key: "run:timed_out", label: "Timed out", kind: "run" };
   }
   // Never looked up yet: the collector works through causes in batches.
   if (!attempt.failure_source) {
@@ -789,7 +806,7 @@ export function journeySteps(attempt: PipelineAttempt): JourneyStep[] {
       detail: failedEncode
         ? [
             `${ENCODE_GATE_LABELS[encodeGate(attempt)]}: ${reason?.label}`,
-            attempt.encoder_error,
+            attempt.encoder_error ?? cancellationDetail(attempt),
           ]
             .filter(Boolean)
             .join(" — ")
@@ -1037,6 +1054,7 @@ export interface PipelineView {
   holds: PipelineGroupView[];
   recentFailureRate: PipelineSummary["recentFailureRate"];
   weekly: WeeklyThroughput[];
+  approval: ApprovalSummary;
 }
 
 export const VIEW_ITEMS_PER_STAGE = 60;
@@ -1082,7 +1100,7 @@ function itemReason(state: CitationState): string | null {
 function itemDetail(state: CitationState): string | null {
   const latest = state.latest;
   if (state.stage === "compile_failed") return latest.compile_error;
-  if (state.stage === "encode_failed") return latest.encoder_error;
+  if (state.stage === "encode_failed") return latest.encoder_error ?? cancellationDetail(latest);
   if (state.stage === "review") return reviewDetail(latest);
   return null;
 }
@@ -1161,6 +1179,7 @@ export function pipelineView(
     holds: groupView(summary.holds, referenceMs),
     recentFailureRate: summary.recentFailureRate,
     weekly: summary.weekly,
+    approval: approvalSummary(attempts, referenceMs),
   };
 }
 
@@ -1195,6 +1214,94 @@ export function ageLabel(since: string | null, referenceMs: number): string | nu
   const days = hours / 24;
   if (days < 14) return `${Math.round(days)}d`;
   return `${Math.round(days / 7)}w`;
+}
+
+/** A compact duration: 45m, 3h 12m, 4d. */
+export function durationLabel(ms: number): string {
+  const minutes = Math.max(0, Math.round(ms / 60_000));
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return minutes % 60 ? `${hours}h ${minutes % 60}m` : `${hours}h`;
+  return `${Math.round(hours / 24)}d`;
+}
+
+/** How long a run waited and who dispatched it, for a cancelled run. */
+export function cancellationDetail(attempt: PipelineAttempt): string | null {
+  if (attempt.run_conclusion !== "cancelled" && attempt.run_conclusion !== "timed_out") {
+    return null;
+  }
+  const parts: string[] = [];
+  if (attempt.finished_at) {
+    const ran = Date.parse(attempt.finished_at) - Date.parse(attempt.dispatched_at);
+    parts.push(
+      attempt.cancel_stage === "approval"
+        ? `waited ${durationLabel(ran)} for signing approval`
+        : `ran ${durationLabel(ran)}`
+    );
+  }
+  if (attempt.dispatched_by) parts.push(`dispatched by ${attempt.dispatched_by}`);
+  return parts.length ? capitalize(parts.join(" · ")) : null;
+}
+
+export interface ApprovalSummary {
+  /** Runs waiting for the production-signing approval now. */
+  waitingNow: number;
+  oldestWaitingSince: string | null;
+  /** Runs dispatched in the last APPROVAL_WINDOW_DAYS whose encode job started. */
+  approved: { count: number; medianMs: number | null; p90Ms: number | null };
+  /** Every cancelled or timed-out dispatch, by how far it got. */
+  cancellations: Array<{ key: string; label: string; count: number }>;
+  cancelledWhileWaiting: { count: number; overAnHour: number; medianMs: number | null };
+}
+
+const APPROVAL_WINDOW_DAYS = 14;
+
+function quantile(sorted: number[], q: number): number | null {
+  if (sorted.length === 0) return null;
+  return sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))];
+}
+
+/** The signing-approval gate across every dispatch, not just each citation's latest. */
+export function approvalSummary(
+  attempts: PipelineAttempt[],
+  referenceMs: number
+): ApprovalSummary {
+  const since = referenceMs - APPROVAL_WINDOW_DAYS * DAY_MS;
+  const waiting = attempts.filter((a) => a.run_status === "waiting");
+  const waits = attempts
+    .filter((a) => a.encode_started_at && Date.parse(a.dispatched_at) >= since)
+    .map((a) => Date.parse(a.encode_started_at!) - Date.parse(a.dispatched_at))
+    .filter((ms) => ms >= 0)
+    .sort((a, b) => a - b);
+  const cancelled = attempts.filter(
+    (a) => a.run_conclusion === "cancelled" || a.run_conclusion === "timed_out"
+  );
+  const counts = new Map<string, { key: string; label: string; count: number }>();
+  for (const attempt of cancelled) {
+    const reason = failureReason(attempt);
+    const entry = counts.get(reason.key) ?? { key: reason.key, label: reason.label, count: 0 };
+    entry.count += 1;
+    counts.set(reason.key, entry);
+  }
+  const waitedThenCancelled = cancelled
+    .filter((a) => a.cancel_stage === "approval" && a.finished_at)
+    .map((a) => Date.parse(a.finished_at!) - Date.parse(a.dispatched_at))
+    .sort((a, b) => a - b);
+  return {
+    waitingNow: waiting.length,
+    oldestWaitingSince: waiting.map((a) => a.dispatched_at).sort()[0] ?? null,
+    approved: {
+      count: waits.length,
+      medianMs: quantile(waits, 0.5),
+      p90Ms: quantile(waits, 0.9),
+    },
+    cancellations: [...counts.values()].sort((a, b) => b.count - a.count),
+    cancelledWhileWaiting: {
+      count: waitedThenCancelled.length,
+      overAnHour: waitedThenCancelled.filter((ms) => ms > HOUR_MS).length,
+      medianMs: quantile(waitedThenCancelled, 0.5),
+    },
+  };
 }
 
 export function journeyHref(citation: string): string {

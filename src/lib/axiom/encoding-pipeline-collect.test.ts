@@ -6,6 +6,8 @@ import {
   containmentQueries,
   containsKey,
   oracleVerdicts,
+  parseRunJobs,
+  runDetailLookups,
   buildCompileIndex,
   buildMirrorIndex,
   errorRule,
@@ -700,5 +702,52 @@ describe("waivers and oracle reports", () => {
       .toMatchObject({ report: "axiom-a-real.json", status: "match" });
     expect(oracleVerdicts([report("axiom-b-re.json", 5, true), report("axiom-a-real.json", 0, false)]).get(key))
       .toMatchObject({ report: "axiom-a-real.json", status: "match" });
+  });
+});
+
+describe("run details", () => {
+  const encodeJob = (steps: Array<{ conclusion: string | null; started_at?: string }>) => ({
+    name: "Queue protected signed RuleSpec re-encode",
+    steps,
+  });
+  const budget = { name: "Enforce failed-attempt budget", steps: [{ conclusion: "success", started_at: "2026-09-30T00:00:10Z" }] };
+
+  it("reads when encoding started and how far a cancelled run got", () => {
+    expect(parseRunJobs([budget, encodeJob([{ conclusion: "success", started_at: "2026-09-30T01:00:00Z" }, { conclusion: "skipped" }])], "success"))
+      .toEqual({ encodeStartedAt: "2026-09-30T01:00:00Z", cancelStage: null });
+    expect(parseRunJobs([budget, encodeJob([])], "cancelled")).toEqual({ encodeStartedAt: null, cancelStage: "approval" });
+    expect(parseRunJobs([budget, encodeJob([{ conclusion: "cancelled", started_at: "2026-09-30T01:00:00Z" }])], "cancelled"))
+      .toEqual({ encodeStartedAt: "2026-09-30T01:00:00Z", cancelStage: "running" });
+    expect(parseRunJobs([budget], "cancelled")).toEqual({ encodeStartedAt: null, cancelStage: "before_job" });
+    expect(parseRunJobs([{ name: "build", steps: null }], "failure")).toEqual({ encodeStartedAt: null, cancelStage: null });
+  });
+
+  it("reads each finished run's jobs once, cancelled runs first", () => {
+    const runs = [
+      run({ id: 1, conclusion: "success", created_at: "2026-09-29T00:00:00Z" }),
+      run({ id: 2, conclusion: "cancelled", created_at: "2026-09-01T00:00:00Z" }),
+      run({ id: 3, conclusion: "failure", created_at: "2026-09-30T00:00:00Z" }),
+      run({ id: 4, status: "waiting", conclusion: null }),
+      run({ id: 5, conclusion: "cancelled" }),
+    ];
+    const previous = new Map([["5", { jobs_checked_at: "2026-09-30T00:00:00Z" }]]);
+    expect(runDetailLookups(runs, previous, 10).map((r) => r.id)).toEqual([2, 3, 1]);
+    expect(runDetailLookups(runs, previous, 1).map((r) => r.id)).toEqual([2]);
+  });
+
+  it("records the dispatcher and run detail, fresh or carried from the previous collection", () => {
+    const [fresh] = buildAttempts(
+      inputs({
+        runs: [run({ conclusion: "cancelled", triggering_actor: "PavelMakarchuk" })],
+        runDetails: new Map([["501", { encodeStartedAt: null, cancelStage: "approval" as const }]]),
+      })
+    );
+    expect(fresh).toMatchObject({ dispatched_by: "PavelMakarchuk", cancel_stage: "approval", encode_started_at: null, jobs_checked_at: "2026-09-30T12:00:00.000Z" });
+    const [carried] = buildAttempts(
+      inputs({ previous: new Map([["501", { jobs_checked_at: "T", cancel_stage: "running" as const, encode_started_at: "S" }]]) })
+    );
+    expect(carried).toMatchObject({ cancel_stage: "running", encode_started_at: "S", jobs_checked_at: "T", dispatched_by: null });
+    const [unread] = buildAttempts(inputs());
+    expect(unread).not.toHaveProperty("jobs_checked_at");
   });
 });

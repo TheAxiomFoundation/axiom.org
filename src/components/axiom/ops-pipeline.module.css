@@ -219,6 +219,20 @@
   margin-top: 22px;
 }
 
+.side {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+
+.reason[data-static] {
+  cursor: default;
+}
+
+.reason[data-static]:hover {
+  background: transparent;
+}
+
 .detail,
 .throughput {
   min-width: 0;

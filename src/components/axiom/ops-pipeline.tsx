@@ -6,6 +6,7 @@ import styles from "./ops-pipeline.module.css";
 import {
   ageLabel,
   bottleneckStage,
+  durationLabel,
   isExitStage,
   journeyHref,
   STAGE_COPY,
@@ -155,7 +156,10 @@ export function OpsPipeline({
 
       <div className={styles.lower}>
         <StageDetail stage={selected} view={view} referenceMs={referenceMs} />
-        <Throughput view={view} />
+        <div className={styles.side}>
+          <Throughput view={view} />
+          <SigningApproval view={view} referenceMs={referenceMs} />
+        </div>
       </div>
     </section>
   );
@@ -394,6 +398,77 @@ function ItemRow({ item, referenceMs }: { item: PipelineItem; referenceMs: numbe
       </p>
       {item.detail && <p className={styles.itemDetail}>{item.detail}</p>}
     </li>
+  );
+}
+
+/** The production-signing approval: a human gate every encode waits at. */
+function SigningApproval({ view, referenceMs }: { view: PipelineView; referenceMs: number }) {
+  const { approval } = view;
+  const waitingAge = ageLabel(approval.oldestWaitingSince, referenceMs);
+  const max = approval.cancellations[0]?.count ?? 0;
+  return (
+    <div className={styles.throughput}>
+      <div className={styles.detailHead}>
+        <h3>Signing approval</h3>
+        <p>
+          Every targeted encode waits for a person to approve the production-signing
+          environment before its encode job starts.
+        </p>
+      </div>
+      {approval.approved.p90Ms !== null && approval.approved.medianMs !== null ? (
+        <p className={styles.stat}>
+          <span className={styles.statValue}>{durationLabel(approval.approved.p90Ms)}</span>
+          <span>
+            or longer for the slowest tenth of approvals in the last 14 days (half within{" "}
+            {durationLabel(approval.approved.medianMs)}; {number(approval.approved.count)}{" "}
+            approved)
+          </span>
+        </p>
+      ) : (
+        <p className={styles.empty}>No approved runs with recorded timing in the last 14 days.</p>
+      )}
+      <p className={`${styles.itemMeta} ${approval.waitingNow > 0 ? styles.warnNote : ""}`}>
+        {approval.waitingNow > 0 ? (
+          <>
+            <AlertTriangle size={11} aria-hidden /> {number(approval.waitingNow)} waiting now
+            {waitingAge && `, the oldest for ${waitingAge}`}
+          </>
+        ) : (
+          "None waiting now"
+        )}
+      </p>
+      {approval.cancellations.length > 0 && (
+        <div className={styles.reasons}>
+          <p className={styles.miniLabel}>Cancelled runs, all dispatches</p>
+          <ul>
+            {approval.cancellations.map((entry) => (
+              <li key={entry.key} className={styles.reason} data-static>
+                <span className={styles.reasonLabel} title={entry.label}>
+                  {entry.label}
+                </span>
+                <span className={styles.reasonBarTrack} aria-hidden>
+                  <span
+                    className={styles.reasonBar}
+                    style={{ width: `${Math.max(2, (entry.count / max) * 100)}%` }}
+                  />
+                </span>
+                <span className={styles.reasonCount}>{number(entry.count)}</span>
+              </li>
+            ))}
+          </ul>
+          {approval.cancelledWhileWaiting.count > 0 && (
+            <p className={styles.itemMeta}>
+              {number(approval.cancelledWhileWaiting.overAnHour)} of the{" "}
+              {number(approval.cancelledWhileWaiting.count)} cancelled while waiting had waited
+              over an hour
+              {approval.cancelledWhileWaiting.medianMs !== null &&
+                ` (median ${durationLabel(approval.cancelledWhileWaiting.medianMs)})`}
+              .
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

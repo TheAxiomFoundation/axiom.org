@@ -21,6 +21,10 @@
  *                        instead of axiom-api's latest artifact.
  *   --previous F         take earlier rows (failure causes, first sync times)
  *                        from a dry run's output instead of the table.
+ *   --run-detail-lookups N  finished runs whose jobs to read per pass (default
+ *                        80): when encoding started after the signing approval,
+ *                        and how far a cancelled run got. Read once per run,
+ *                        cancelled runs first.
  *   --oracles            re-read the axiom-oracles comparison reports now. They
  *                        are ~30 MB and change rarely, so a scheduled pass
  *                        re-reads them only in the first half hour of every
@@ -56,7 +60,9 @@ import {
   oldestUnsyncedMerge,
   oracleVerdicts,
   parseDiagnostics,
+  parseRunJobs,
   prCitation,
+  runDetailLookups,
 } from "../src/lib/axiom/encoding-pipeline-collect.ts";
 import { GITHUB_ORG, githubHeaders } from "./lib/rulespec-discovery.mjs";
 
@@ -72,6 +78,7 @@ const UPSERT_CHUNK = 200;
 const args = process.argv.slice(2);
 const outPath = argValue("--out");
 const lookupLimit = Number(argValue("--failure-lookups") ?? 60);
+const runDetailLimit = Number(argValue("--run-detail-lookups") ?? 80);
 const dryRun = Boolean(outPath);
 
 function argValue(name) {
@@ -138,6 +145,7 @@ async function listDispatchRuns() {
         updated_at: run.updated_at,
         html_url: run.html_url,
         run_attempt: run.run_attempt,
+        triggering_actor: run.triggering_actor?.login ?? null,
       });
     }
     if (!body.workflow_runs?.length || runs.length >= body.total_count) break;
@@ -173,6 +181,14 @@ async function readEncoderRuns(since) {
   }
 }
 
+const ORACLE_CARRIED = ["oracle_status", "oracle_report", "oracle_engine", "oracle_checked_at"];
+const RUN_CARRIED = ["encode_started_at", "cancel_stage", "jobs_checked_at"];
+
+async function columnsExist(columns) {
+  const { error } = await supabase.from("pipeline_attempts").select(columns.join(",")).limit(1);
+  return !error;
+}
+
 async function readPrevious() {
   const previousFile = argValue("--previous");
   if (previousFile) {
@@ -182,13 +198,12 @@ async function readPrevious() {
   const base = "id,citation,synced_at,failure_source,failed_step,encoder_error,encoder_error_rule";
   const read = (columns) => readAll("pipeline_attempts", columns, (query) => query.order("id"));
   try {
-    let rows;
-    try {
-      rows = await read(`${base},oracle_status,oracle_report,oracle_engine,oracle_checked_at`);
-    } catch (error) {
-      if (!/oracle_/.test(error.message)) throw error;
-      rows = await read(base);
+    // Carried columns arrive by migration; read each group only once it exists.
+    let columns = base;
+    for (const group of [ORACLE_CARRIED, RUN_CARRIED]) {
+      if (await columnsExist(group)) columns += `,${group.join(",")}`;
     }
+    const rows = await read(columns);
     return new Map(rows.map((row) => [row.id, row]));
   } catch (error) {
     if (!dryRun) throw error;
@@ -561,6 +576,26 @@ async function lookUpFailures(runs) {
   return details;
 }
 
+async function lookUpRunDetails(runs) {
+  const details = new Map();
+  const queue = [...runs];
+  await Promise.all(
+    Array.from({ length: LOOKUP_CONCURRENCY }, async () => {
+      for (let run = queue.shift(); run; run = queue.shift()) {
+        try {
+          const body = await githubJson(
+            `repos/${GITHUB_ORG}/${ENCODE_REPO}/actions/runs/${run.id}/jobs?per_page=50`,
+          );
+          details.set(String(run.id), parseRunJobs(body.jobs ?? [], run.conclusion));
+        } catch (error) {
+          console.warn(`jobs for run ${run.id}: ${error.message}`);
+        }
+      }
+    }),
+  );
+  return details;
+}
+
 async function readCompileSweep() {
   const localSweep = argValue("--compile-sweep");
   if (localSweep) return JSON.parse(readFileSync(localSweep, "utf8"));
@@ -605,16 +640,17 @@ const STAGE_COLUMNS = [
   "oracle_checked_at",
 ];
 
+// Added by the 2026-10-01 run-detail migration.
+const RUN_COLUMNS = ["dispatched_by", ...RUN_CARRIED];
+
 async function upsert(rows) {
-  const { error: probeError } = await supabase
-    .from("pipeline_attempts")
-    .select(STAGE_COLUMNS.join(","))
-    .limit(1);
-  if (probeError) {
-    console.log(`stage columns not written yet (${probeError.message})`);
+  // Each migration's columns are written only once that migration is applied.
+  for (const [name, group] of [["stage", STAGE_COLUMNS], ["run detail", RUN_COLUMNS]]) {
+    if (await columnsExist(group)) continue;
+    console.log(`${name} columns not written yet (migration not applied)`);
     rows = rows.map((row) => {
       const trimmed = { ...row };
-      for (const column of STAGE_COLUMNS) delete trimmed[column];
+      for (const column of group) delete trimmed[column];
       return trimmed;
     });
   }
@@ -693,6 +729,9 @@ async function main() {
   const lookups = failureLookups(runs, encoderRuns, previous, nowMs, lookupLimit);
   const failureDetails = await lookUpFailures(lookups);
   console.log(`looked up ${failureDetails.size} of ${lookups.length} unexplained failures`);
+  const detailRuns = runDetailLookups(runs, previous, runDetailLimit);
+  const runDetails = await lookUpRunDetails(detailRuns);
+  console.log(`read jobs for ${runDetails.size} of ${detailRuns.length} runs`);
 
   const attempts = buildAttempts({
     runs,
@@ -707,6 +746,7 @@ async function main() {
     validation,
     waivers,
     oracle,
+    runDetails,
   });
 
   if (dryRun) {
