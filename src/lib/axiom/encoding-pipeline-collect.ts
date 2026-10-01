@@ -29,6 +29,8 @@ export interface WorkflowRun {
   run_attempt?: number | null;
   /** Login of whoever started (or re-ran) it. */
   triggering_actor?: string | null;
+  /** The axiom-encode commit the run checked out: the encoder that ran. */
+  head_sha?: string | null;
 }
 
 export interface EncoderRunRow {
@@ -65,8 +67,15 @@ export interface ManifestPr {
   failedChecks?: string[];
   /** How many head commit checks were cancelled before finishing. */
   cancelledChecks?: number;
+  /** The head commit's failed check runs with their Actions job ids, by name. */
+  failedJobs?: FailedJob[];
   requestedReviewers?: string[];
   mergeCommit?: string | null;
+}
+
+export interface FailedJob {
+  name: string;
+  id: number;
 }
 
 export interface MirrorRow {
@@ -591,6 +600,10 @@ export interface CollectInputs {
   oracle?: Map<string, OracleVerdict>;
   /** Jobs read this pass, by run id (see runDetailLookups). */
   runDetails?: Map<string, RunDetail>;
+  /** Package versions read this pass, by axiom-encode commit (see versionLookups). */
+  encoderVersions?: Map<string, string>;
+  /** What failing PR jobs printed, read this pass, by job id (see checkErrorLookups). */
+  checkErrors?: Map<string, string>;
 }
 
 interface JoinContext {
@@ -601,6 +614,7 @@ interface JoinContext {
   validation: ValidationIndex;
   waivers: Map<string, Set<string>>;
   oracle: Map<string, OracleVerdict> | null;
+  checkErrors: Map<string, string>;
 }
 
 /** Link each PR to its dispatch: the run URL in its body, else citation + time. */
@@ -650,6 +664,26 @@ export function linkPrsToRuns(
   return { byRun, orphans };
 }
 
+/**
+ * An open PR's first failing job and what it printed: read once per job, so
+ * a new CI run is read again and a closed or passing PR carries none.
+ */
+function prCheckError(
+  pr: ManifestPr,
+  state: PipelineAttempt["pr_state"],
+  checkErrors: Map<string, string>,
+  previous: Partial<PipelineAttempt> | undefined
+): Partial<PipelineAttempt> {
+  if (pr.failedJobs === undefined) return {};
+  const job = state === "draft" || state === "open" ? pr.failedJobs[0] : undefined;
+  if (!job) return { pr_check_job_id: null, pr_check_error: null };
+  const kept =
+    previous?.pr_check_job_id != null && Number(previous.pr_check_job_id) === job.id
+      ? (previous.pr_check_error ?? null)
+      : null;
+  return { pr_check_job_id: job.id, pr_check_error: checkErrors.get(String(job.id)) ?? kept };
+}
+
 function withPr(
   base: PipelineAttempt,
   pr: ManifestPr | undefined,
@@ -682,6 +716,7 @@ function withPr(
       ? { pr_requested_reviewers: pr.requestedReviewers }
       : {}),
     ...(pr.mergeCommit !== undefined ? { pr_merge_commit: pr.mergeCommit } : {}),
+    ...prCheckError(pr, state, context.checkErrors, previous),
   };
   if (state !== "merged" || targetsDefault === false || !pr.mergedAt) return attempt;
   const mergeCommit = pr.mergeCommit ?? null;
@@ -856,7 +891,10 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
     validation: inputs.validation ?? new Map(),
     waivers: inputs.waivers ?? new Map(),
     oracle: inputs.oracle ?? null,
+    checkErrors: inputs.checkErrors ?? new Map(),
   };
+  const versions = knownVersions(inputs.previous);
+  for (const [sha, version] of inputs.encoderVersions ?? []) versions.set(sha, version);
   const encoderIndex = indexEncoderRows(inputs.encoderRuns);
   const { byRun, orphans } = linkPrsToRuns(inputs.runs, inputs.prs);
 
@@ -891,6 +929,11 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
       run_conclusion: completed ? run.conclusion : null,
       dispatched_by: run.triggering_actor ?? null,
     };
+    const sha = run.head_sha ?? previous?.encoder_sha ?? null;
+    if (sha) {
+      attempt.encoder_sha = sha;
+      attempt.encoder_version = versions.get(sha) ?? null;
+    }
 
     const detail = inputs.runDetails?.get(id);
     if (detail) {
@@ -1021,4 +1064,93 @@ export function oldestUnsyncedMerge(
     if (!oldest || attempt.pr_merged_at < oldest) oldest = attempt.pr_merged_at;
   }
   return oldest;
+}
+
+/** Package versions already stored, by axiom-encode commit. */
+function knownVersions(previous: Map<string, Partial<PipelineAttempt>>): Map<string, string> {
+  const versions = new Map<string, string>();
+  for (const row of previous.values()) {
+    if (row.encoder_sha && row.encoder_version) versions.set(row.encoder_sha, row.encoder_version);
+  }
+  return versions;
+}
+
+/** axiom-encode commits whose package version is not stored yet. */
+export function versionLookups(
+  runs: WorkflowRun[],
+  previous: Map<string, Partial<PipelineAttempt>>
+): string[] {
+  const known = knownVersions(previous);
+  return [...new Set(runs.map((run) => run.head_sha).filter((sha): sha is string => !!sha))].filter(
+    (sha) => !known.has(sha)
+  );
+}
+
+/** The package version in a pyproject.toml. */
+export function parseVersion(pyproject: string): string | null {
+  return /^version\s*=\s*"([^"]+)"/m.exec(pyproject)?.[1] ?? null;
+}
+
+/**
+ * Failing jobs of open PRs whose log has not been read, newest PR first, one
+ * job per PR. A job is read once; a new CI run has a new job id.
+ */
+export function checkErrorLookups(
+  prs: ManifestPr[],
+  previous: Map<string, Partial<PipelineAttempt>>,
+  limit: number
+): Array<{ repo: string; jobId: number }> {
+  const read = new Set<number>();
+  for (const row of previous.values()) {
+    if (row.pr_check_job_id != null && row.pr_check_error != null) read.add(Number(row.pr_check_job_id));
+  }
+  const lookups: Array<{ repo: string; jobId: number }> = [];
+  for (const pr of [...prs].sort((a, b) => b.createdAt.localeCompare(a.createdAt))) {
+    const job = pr.state === "OPEN" ? pr.failedJobs?.[0] : undefined;
+    if (!job || read.has(job.id)) continue;
+    read.add(job.id);
+    lookups.push({ repo: pr.repo, jobId: job.id });
+  }
+  return lookups.slice(0, limit);
+}
+
+const LOG_PREFIX_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z ?/;
+// eslint-disable-next-line no-control-regex
+const ANSI_RE = /\x1b\[[0-9;]*m/g;
+/** Actions' own closing lines, which say a step failed but not why. */
+const GENERIC_ERROR_RE =
+  /^(Process completed with exit code \d+|The operation was canceled|The job was not acquired|The runner has received a shutdown signal)/i;
+const CHECK_ERROR_MAX_CHARS = 400;
+/** A failing step's own output, up to this many lines, is quoted whole; longer output by its end. */
+const PRINTED_LINES = 4;
+
+function clipLine(text: string): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > CHECK_ERROR_MAX_CHARS ? `${flat.slice(0, CHECK_ERROR_MAX_CHARS - 1)}…` : flat;
+}
+
+/**
+ * Why a check job failed, from its log: its first explicit error annotation,
+ * else what the failing step printed just before Actions' generic "exit
+ * code" line. Null when the log shows no failure.
+ */
+export function checkErrorFromLog(log: string): string | null {
+  const lines = log.split(/\r?\n/).map((line) => line.replace(LOG_PREFIX_RE, "").replace(ANSI_RE, ""));
+  let generic = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const match = /^##\[error\](.*)$/.exec(lines[i]);
+    if (!match) continue;
+    const message = match[1].trim();
+    if (message && !GENERIC_ERROR_RE.test(message)) return clipLine(message);
+    if (generic < 0) generic = i;
+  }
+  if (generic < 0) return null;
+  if (/canceled/i.test(lines[generic])) return "Cancelled before it finished (a timeout or a newer run)";
+  // The step's output follows the group that echoes its script and env.
+  const printed: string[] = [];
+  for (let i = generic - 1; i >= 0 && !/^##\[(?:group|endgroup)\]/.test(lines[i]); i--) {
+    if (lines[i].trim()) printed.unshift(lines[i].trim());
+  }
+  if (printed.length === 0) return clipLine(lines[generic].replace(/^##\[error\]/, ""));
+  return clipLine((printed.length <= PRINTED_LINES ? printed : printed.slice(-2)).join(" "));
 }

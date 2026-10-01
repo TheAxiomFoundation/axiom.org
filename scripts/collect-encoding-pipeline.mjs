@@ -35,6 +35,13 @@
  *                        across passes while diagnostics bundles last (90 days).
  *                        Each lookup costs 2-3 GitHub requests, and the Actions
  *                        token's 1,000/hour is shared with the index sync.
+ *   --check-error-lookups N  failing PR jobs whose log to read per pass
+ *                        (default 60): what the check printed before failing.
+ *                        One request each, read once per job.
+ *
+ * Each dispatch also records the axiom-encode commit it ran and that commit's
+ * package version (pyproject.toml, read from raw.githubusercontent.com once
+ * per commit), so success can be compared across encoder releases.
  *
  * The compile sweep is an artifact of the private axiom-api repo, so reading
  * it takes AXIOM_API_ARTIFACTS_TOKEN (a token with actions:read there). Without
@@ -54,6 +61,8 @@ import yaml from "js-yaml";
 import {
   activeWaivers,
   buildAttempts,
+  checkErrorFromLog,
+  checkErrorLookups,
   containmentQueries,
   containsKey,
   failureLookups,
@@ -61,8 +70,10 @@ import {
   oracleVerdicts,
   parseDiagnostics,
   parseRunJobs,
+  parseVersion,
   prCitation,
   runDetailLookups,
+  versionLookups,
 } from "../src/lib/axiom/encoding-pipeline-collect.ts";
 import { GITHUB_ORG, githubHeaders } from "./lib/rulespec-discovery.mjs";
 
@@ -79,6 +90,7 @@ const args = process.argv.slice(2);
 const outPath = argValue("--out");
 const lookupLimit = Number(argValue("--failure-lookups") ?? 60);
 const runDetailLimit = Number(argValue("--run-detail-lookups") ?? 80);
+const checkErrorLimit = Number(argValue("--check-error-lookups") ?? 60);
 const dryRun = Boolean(outPath);
 
 function argValue(name) {
@@ -146,6 +158,7 @@ async function listDispatchRuns() {
         html_url: run.html_url,
         run_attempt: run.run_attempt,
         triggering_actor: run.triggering_actor?.login ?? null,
+        head_sha: run.head_sha ?? null,
       });
     }
     if (!body.workflow_runs?.length || runs.length >= body.total_count) break;
@@ -183,6 +196,7 @@ async function readEncoderRuns(since) {
 
 const ORACLE_CARRIED = ["oracle_status", "oracle_report", "oracle_engine", "oracle_checked_at"];
 const RUN_CARRIED = ["encode_started_at", "cancel_stage", "jobs_checked_at"];
+const VERSION_CARRIED = ["encoder_sha", "encoder_version", "pr_check_error", "pr_check_job_id"];
 
 async function columnsExist(columns) {
   const { error } = await supabase.from("pipeline_attempts").select(columns.join(",")).limit(1);
@@ -200,7 +214,7 @@ async function readPrevious() {
   try {
     // Carried columns arrive by migration; read each group only once it exists.
     let columns = base;
-    for (const group of [ORACLE_CARRIED, RUN_CARRIED]) {
+    for (const group of [ORACLE_CARRIED, RUN_CARRIED, VERSION_CARRIED]) {
       if (await columnsExist(group)) columns += `,${group.join(",")}`;
     }
     const rows = await read(columns);
@@ -249,7 +263,7 @@ const PR_QUERY = `query($q: String!, $cursor: String) {
                 contexts(first: 100) {
                   nodes {
                     __typename
-                    ... on CheckRun { name conclusion }
+                    ... on CheckRun { name conclusion databaseId }
                     ... on StatusContext { context state }
                   }
                 }
@@ -318,21 +332,24 @@ const FAILED_CONCLUSIONS = new Set(["FAILURE", "TIMED_OUT", "STARTUP_FAILURE", "
 // The sharded validate workflow's summary job fails whenever any shard does.
 const AGGREGATE_CHECK = "validate / validate";
 
-/** Failed check names (shards and other checks) and the count cancelled. */
+/** Failed check names (shards and other checks), their job ids, and the count cancelled. */
 function checkDetail(contexts) {
   const failedChecks = [];
+  const failedJobs = [];
   let cancelledChecks = 0;
   for (const context of contexts) {
     if (context?.__typename === "CheckRun") {
       if (context.conclusion === "CANCELLED") cancelledChecks += 1;
       else if (FAILED_CONCLUSIONS.has(context.conclusion) && context.name !== AGGREGATE_CHECK) {
         failedChecks.push(context.name);
+        if (context.databaseId) failedJobs.push({ name: context.name, id: context.databaseId });
       }
     } else if (context?.__typename === "StatusContext") {
       if (context.state === "FAILURE" || context.state === "ERROR") failedChecks.push(context.context);
     }
   }
-  return { failedChecks: failedChecks.sort(), cancelledChecks };
+  failedJobs.sort((a, b) => a.name.localeCompare(b.name));
+  return { failedChecks: failedChecks.sort(), failedJobs, cancelledChecks };
 }
 
 const VALIDATE_JOB_RE = /^validate \/ validate(?: \(([^)]+)\))?$/;
@@ -596,6 +613,57 @@ async function lookUpRunDetails(runs) {
   return details;
 }
 
+const VERSION_CONCURRENCY = 8;
+
+/** Package versions for axiom-encode commits, from each commit's pyproject.toml. */
+async function readEncoderVersions(shas) {
+  const versions = new Map();
+  const queue = [...shas];
+  await Promise.all(
+    Array.from({ length: VERSION_CONCURRENCY }, async () => {
+      for (let sha = queue.shift(); sha; sha = queue.shift()) {
+        try {
+          const res = await fetch(
+            `https://raw.githubusercontent.com/${GITHUB_ORG}/${ENCODE_REPO}/${sha}/pyproject.toml`,
+          );
+          const version = res.ok ? parseVersion(await res.text()) : null;
+          if (version) versions.set(sha, version);
+        } catch (error) {
+          console.warn(`version for ${sha}: ${error.message}`);
+        }
+      }
+    }),
+  );
+  return versions;
+}
+
+/** What each failing PR job printed before it failed, by job id. */
+async function readCheckErrors(jobs) {
+  const errors = new Map();
+  const queue = [...jobs];
+  await Promise.all(
+    Array.from({ length: LOOKUP_CONCURRENCY }, async () => {
+      for (let job = queue.shift(); job; job = queue.shift()) {
+        try {
+          const res = await github(`repos/${GITHUB_ORG}/${job.repo}/actions/jobs/${job.jobId}/logs`);
+          errors.set(
+            String(job.jobId),
+            checkErrorFromLog(await res.text()) ?? "The log shows no error message",
+          );
+        } catch (error) {
+          // Logs expire after 90 days; say so rather than ask again every pass.
+          if (/returned (404|410)/.test(error.message)) {
+            errors.set(String(job.jobId), "The job's log is no longer available");
+          } else {
+            console.warn(`log of ${job.repo} job ${job.jobId}: ${error.message}`);
+          }
+        }
+      }
+    }),
+  );
+  return errors;
+}
+
 async function readCompileSweep() {
   const localSweep = argValue("--compile-sweep");
   if (localSweep) return JSON.parse(readFileSync(localSweep, "utf8"));
@@ -643,9 +711,16 @@ const STAGE_COLUMNS = [
 // Added by the 2026-10-01 run-detail migration.
 const RUN_COLUMNS = ["dispatched_by", ...RUN_CARRIED];
 
+// Added by the 2026-10-02 versions migration.
+const VERSION_COLUMNS = VERSION_CARRIED;
+
 async function upsert(rows) {
   // Each migration's columns are written only once that migration is applied.
-  for (const [name, group] of [["stage", STAGE_COLUMNS], ["run detail", RUN_COLUMNS]]) {
+  for (const [name, group] of [
+    ["stage", STAGE_COLUMNS],
+    ["run detail", RUN_COLUMNS],
+    ["version", VERSION_COLUMNS],
+  ]) {
     if (await columnsExist(group)) continue;
     console.log(`${name} columns not written yet (migration not applied)`);
     rows = rows.map((row) => {
@@ -732,6 +807,12 @@ async function main() {
   const detailRuns = runDetailLookups(runs, previous, runDetailLimit);
   const runDetails = await lookUpRunDetails(detailRuns);
   console.log(`read jobs for ${runDetails.size} of ${detailRuns.length} runs`);
+  const shas = versionLookups(runs, previous);
+  const encoderVersions = await readEncoderVersions(shas);
+  console.log(`read encoder versions for ${encoderVersions.size} of ${shas.length} new commits`);
+  const errorJobs = checkErrorLookups(prs, previous, checkErrorLimit);
+  const checkErrors = await readCheckErrors(errorJobs);
+  console.log(`read ${checkErrors.size} of ${errorJobs.length} failing PR check logs`);
 
   const attempts = buildAttempts({
     runs,
@@ -747,6 +828,8 @@ async function main() {
     waivers,
     oracle,
     runDetails,
+    encoderVersions,
+    checkErrors,
   });
 
   if (dryRun) {
