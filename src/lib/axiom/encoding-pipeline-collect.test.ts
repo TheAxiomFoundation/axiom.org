@@ -566,6 +566,24 @@ describe("stage joins", () => {
       )[0];
     expect(unpinned("2026-09-30T02:00:00Z")).toMatchObject({ oracle_status: "match", oracle_engine: "euromod" });
     expect(unpinned("2026-09-29T00:00:00Z").oracle_status).toBe("stale");
+    // A re-emission is stale however recent its stamp or commit.
+    const reemitted = buildAttempts(
+      inputs({
+        prs: [merged()],
+        mirror: mirrorWithCommit,
+        contains: contains([[MERGE, INDEX, true], [MERGE, REPORT_SHA, true]]),
+        oracle: oracleVerdicts([
+          {
+            name: "axiom-euromod-uk-x.json",
+            report: {
+              aggregates: [{ concept: "us:regulations/42-cfr/457/800#out", mismatch_count: 0 }],
+              provenance: { generated_at: "2026-09-30T02:00:00Z", rulespecs: [{ sha: REPORT_SHA }], reemitted_report: true },
+            },
+          },
+        ]),
+      })
+    )[0];
+    expect(reemitted.oracle_status).toBe("stale");
     // Between refreshes the previous verdict stays.
     const kept = oracle([], new Map([["501", { oracle_status: "disagree" as const, oracle_engine: "taxsim" }]]));
     expect(kept).toMatchObject({ oracle_status: "disagree", oracle_engine: "taxsim", oracle_report: null });
@@ -649,5 +667,21 @@ describe("waivers and oracle reports", () => {
     expect(verdicts.get("rulespec-us:us/statutes/7/2015/f.yaml")?.status).toBe("explained");
     // No dispositions recorded: a mismatch is unexplained.
     expect(verdicts.get("rulespec-us:us/statutes/9.yaml")).toMatchObject({ status: "disagree", engine: "oracle" });
+    expect(verdicts.get("rulespec-us:us/statutes/9.yaml")?.reemitted).toBe(false);
+  });
+
+  it("prefers a real run over a re-emission, whatever their verdicts", () => {
+    const report = (name: string, mismatch: number, reemitted: boolean) => ({
+      name,
+      report: {
+        aggregates: [{ concept: "us:statutes/1#x", mismatch_count: mismatch }],
+        provenance: { reemitted_report: reemitted },
+      },
+    });
+    const key = "rulespec-us:us/statutes/1.yaml";
+    expect(oracleVerdicts([report("axiom-a-real.json", 0, false), report("axiom-b-re.json", 5, true)]).get(key))
+      .toMatchObject({ report: "axiom-a-real.json", status: "match" });
+    expect(oracleVerdicts([report("axiom-b-re.json", 5, true), report("axiom-a-real.json", 0, false)]).get(key))
+      .toMatchObject({ report: "axiom-a-real.json", status: "match" });
   });
 });

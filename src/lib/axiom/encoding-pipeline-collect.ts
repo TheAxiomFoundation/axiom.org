@@ -412,6 +412,9 @@ export interface OracleVerdict {
   /** The rulespec commit the report compared. */
   rulespecSha: string | null;
   generatedAt: string | null;
+  /** A re-emission: the leg could not run the comparison and re-stamped an
+   *  earlier report, so its date and commit say nothing about this version. */
+  reemitted: boolean;
 }
 
 interface OracleReport {
@@ -423,6 +426,7 @@ interface OracleReport {
   provenance?: {
     generated_at?: string;
     rulespecs?: Array<{ repo?: string; sha?: string }>;
+    reemitted_report?: boolean;
   };
 }
 
@@ -442,6 +446,13 @@ export function conceptModuleKeys(concept: string): string[] {
   const [, jurisdiction, path] = match;
   const repo = `rulespec-${jurisdiction.split("-")[0]}`;
   return [`${repo}:${jurisdiction}/${path}.yaml`, `${repo}:${path}.yaml`];
+}
+
+/** A real run beats a re-emission; between equals, the worse verdict wins. */
+function outranks(verdict: OracleVerdict, current: OracleVerdict | undefined): boolean {
+  if (!current) return true;
+  if (verdict.reemitted !== current.reemitted) return !verdict.reemitted;
+  return ORACLE_RANK[verdict.status] > ORACLE_RANK[current.status];
 }
 
 /** Per module index key, the worst verdict across every report that compares it. */
@@ -480,12 +491,10 @@ export function oracleVerdicts(
         engine,
         rulespecSha: report.provenance?.rulespecs?.[0]?.sha ?? null,
         generatedAt: report.provenance?.generated_at ?? null,
+        reemitted: report.provenance?.reemitted_report === true,
       };
       for (const key of conceptModuleKeys(concept)) {
-        const current = verdicts.get(key);
-        if (!current || ORACLE_RANK[status] > ORACLE_RANK[current.status]) {
-          verdicts.set(key, verdict);
-        }
+        if (outranks(verdict, verdicts.get(key))) verdicts.set(key, verdict);
       }
     }
   }
@@ -500,9 +509,7 @@ function moduleVerdict(
   let worst: OracleVerdict | null = null;
   for (const path of modules) {
     const verdict = oracle.get(`${repo}:${path}`);
-    if (verdict && (!worst || ORACLE_RANK[verdict.status] > ORACLE_RANK[worst.status])) {
-      worst = verdict;
-    }
+    if (verdict && outranks(verdict, worst ?? undefined)) worst = verdict;
   }
   return worst;
 }
@@ -664,7 +671,8 @@ function withPr(
 
   // Oracle: a report counts only if it compared this version: the rulespec
   // commit it recorded contains the merge, or, for a report that records no
-  // commit (EUROMOD/UKMOD), it was generated after the merge.
+  // commit (EUROMOD/UKMOD), it was generated after the merge. A re-emission
+  // never counts: it re-stamps an earlier run.
   if (!oracle) {
     if (previous?.oracle_status) {
       attempt.oracle_status = previous.oracle_status;
@@ -676,10 +684,12 @@ function withPr(
   }
   const verdict = moduleVerdict(oracle, pr.repo, modules);
   if (verdict) {
-    const current = verdict.rulespecSha
-      ? !!mergeCommit &&
-        contains.get(containsKey(pr.repo, mergeCommit, verdict.rulespecSha)) === true
-      : !!verdict.generatedAt && verdict.generatedAt > pr.mergedAt;
+    const current =
+      !verdict.reemitted &&
+      (verdict.rulespecSha
+        ? !!mergeCommit &&
+          contains.get(containsKey(pr.repo, mergeCommit, verdict.rulespecSha)) === true
+        : !!verdict.generatedAt && verdict.generatedAt > pr.mergedAt);
     attempt.oracle_status = current ? verdict.status : "stale";
     attempt.oracle_report = verdict.report;
     attempt.oracle_engine = verdict.engine;
