@@ -9,6 +9,7 @@ import {
   isExitStage,
   journeyHref,
   STAGE_COPY,
+  type PipelineGroupView,
   type PipelineItem,
   type PipelineStage,
   type PipelineView,
@@ -32,7 +33,8 @@ const FLOW: FlowColumn[] = [
     exits: ["merged_off_main", "not_indexed"],
   },
   { stage: "indexed", hint: "compile not checked", exits: [] },
-  { stage: "runs", hint: "compiles and runs", exits: ["compile_failed"] },
+  { stage: "runs", hint: "tests not confirmed", exits: ["compile_failed"] },
+  { stage: "verified", hint: "passes on main", exits: ["tests_failing", "oracle_disagrees"] },
 ];
 
 const number = (value: number) => value.toLocaleString("en-US");
@@ -227,6 +229,26 @@ function ExitChip({
   );
 }
 
+interface GroupSet {
+  id: string;
+  title: string;
+  groups: PipelineGroupView[];
+}
+
+/** The breakdowns a stage's detail panel offers, most telling first. */
+function groupSetsFor(stage: PipelineStage, view: PipelineView): GroupSet[] {
+  if (stage === "encode_failed") {
+    return [
+      { id: "gate", title: "Where they stopped", groups: view.gates },
+      { id: "reason", title: "Why they failed", groups: view.failures },
+    ];
+  }
+  if (stage === "review") {
+    return [{ id: "hold", title: "What holds them", groups: view.holds }];
+  }
+  return [];
+}
+
 function StageDetail({
   stage,
   view,
@@ -236,13 +258,16 @@ function StageDetail({
   view: PipelineView;
   referenceMs: number;
 }) {
-  const [reasonKey, setReasonKey] = useState<string | null>(null);
+  const [selection, setSelection] = useState<{ set: string; key: string } | null>(null);
   const summary = view.stages[stage];
-  const failures = stage === "encode_failed" ? view.failures : [];
-  const activeReason = failures.find((group) => group.key === reasonKey) ?? null;
-  const items = activeReason ? activeReason.items : summary.items;
-  const shownOf = activeReason ? activeReason.count : summary.count;
-  const maxFailure = failures[0]?.count ?? 0;
+  const sets = groupSetsFor(stage, view);
+  const active =
+    selection &&
+    sets
+      .find((set) => set.id === selection.set)
+      ?.groups.find((group) => group.key === selection.key);
+  const items = active ? active.items : summary.items;
+  const shownOf = active ? active.count : summary.count;
 
   return (
     <div className={styles.detail}>
@@ -254,41 +279,51 @@ function StageDetail({
         <p>{STAGE_COPY[stage].description}</p>
       </div>
 
-      {failures.length > 0 && (
-        <div className={styles.reasons}>
-          <p className={styles.miniLabel}>Why they failed</p>
-          <ul>
-            {failures.slice(0, 8).map((group) => (
-              <li key={group.key}>
-                <button
-                  type="button"
-                  aria-pressed={reasonKey === group.key}
-                  onClick={() => setReasonKey(reasonKey === group.key ? null : group.key)}
-                  className={styles.reason}
-                >
-                  <span className={styles.reasonLabel} title={group.label}>
-                    {group.label}
-                  </span>
-                  <span className={styles.reasonBarTrack} aria-hidden>
-                    <span
-                      className={styles.reasonBar}
-                      style={{ width: `${Math.max(2, (group.count / maxFailure) * 100)}%` }}
-                    />
-                  </span>
-                  <span className={styles.reasonCount}>{number(group.count)}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      {sets
+        .filter((set) => set.groups.length > 0)
+        .map((set) => {
+          const max = set.groups[0].count;
+          return (
+            <div key={set.id} className={styles.reasons}>
+              <p className={styles.miniLabel}>{set.title}</p>
+              <ul>
+                {set.groups.slice(0, 8).map((group) => {
+                  const pressed = selection?.set === set.id && selection.key === group.key;
+                  return (
+                    <li key={group.key}>
+                      <button
+                        type="button"
+                        aria-pressed={pressed}
+                        onClick={() =>
+                          setSelection(pressed ? null : { set: set.id, key: group.key })
+                        }
+                        className={styles.reason}
+                      >
+                        <span className={styles.reasonLabel} title={group.label}>
+                          {group.label}
+                        </span>
+                        <span className={styles.reasonBarTrack} aria-hidden>
+                          <span
+                            className={styles.reasonBar}
+                            style={{ width: `${Math.max(2, (group.count / max) * 100)}%` }}
+                          />
+                        </span>
+                        <span className={styles.reasonCount}>{number(group.count)}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          );
+        })}
 
       {items.length === 0 ? (
         <p className={styles.empty}>Nothing here right now.</p>
       ) : (
         <>
           <p className={styles.miniLabel}>
-            {activeReason ? `${activeReason.label}: ` : ""}
+            {active ? `${active.label}: ` : ""}
             {items.length < shownOf
               ? `${isExitStage(stage) ? "Latest" : "Oldest"} ${number(items.length)} of ${number(shownOf)}`
               : `${number(shownOf)} citation${shownOf === 1 ? "" : "s"}`}
@@ -305,18 +340,27 @@ function StageDetail({
 }
 
 function ItemRow({ item, referenceMs }: { item: PipelineItem; referenceMs: number }) {
+  // A review item's reason and detail already say what holds the PR.
+  const reviewing = item.stage === "review";
   const meta = [
-    item.prState === "draft" ? "draft" : null,
-    item.prChecks === "failure" ? "checks failing" : item.prChecks === "pending" ? "checks pending" : null,
-    item.prReview === "changes_requested"
+    item.gate,
+    !reviewing && item.prChecks === "failure"
+      ? "checks failing"
+      : !reviewing && item.prChecks === "pending"
+        ? "checks pending"
+        : null,
+    !reviewing && item.prReview === "changes_requested"
       ? "changes requested"
-      : item.prReview === "approved"
+      : !reviewing && item.prReview === "approved"
         ? "approved"
         : null,
     item.dispatches > 1 ? `${item.dispatches} dispatches` : null,
     item.openPrs > 1 ? `${item.openPrs} open PRs` : null,
-    item.reachedIndex && item.stage !== "runs" && item.stage !== "indexed"
+    item.reachedIndex && !["indexed", "runs", "verified"].includes(item.stage)
       ? "an earlier encoding is in the index"
+      : null,
+    item.stage === "runs" || item.stage === "verified" || item.stage === "tests_failing"
+      ? item.oracle
       : null,
   ].filter(Boolean);
   return (
@@ -336,6 +380,14 @@ function ItemRow({ item, referenceMs }: { item: PipelineItem; referenceMs: numbe
           <a href={item.runUrl} target="_blank" rel="noreferrer">
             run
           </a>
+        )}
+        {item.testsRunUrl && (
+          <>
+            {" · "}
+            <a href={item.testsRunUrl} target="_blank" rel="noreferrer">
+              validation run
+            </a>
+          </>
         )}
         {meta.length > 0 && ` · ${meta.join(" · ")}`}
         {item.reason && item.stage !== "encode_failed" && ` · ${item.reason}`}

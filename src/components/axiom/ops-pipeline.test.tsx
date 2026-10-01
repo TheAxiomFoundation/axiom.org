@@ -68,7 +68,8 @@ describe("OpsPipeline", () => {
     const item = screen.getByRole("link", { name: "us/d" });
     expect(item).toHaveAttribute("href", "/ops/journey?citation=us%2Fd");
     expect(screen.getByRole("link", { name: "rulespec-us#7" })).toHaveAttribute("href", "https://github.com/x/pull/7");
-    expect(screen.getByText(/draft · checks failing · changes requested · 2 dispatches · 2 open PRs · an earlier encoding is in the index/)).toBeInTheDocument();
+    expect(screen.getByText(/2 dispatches · 2 open PRs · an earlier encoding is in the index · Changes requested/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Changes requested\s*1/ })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /merged off main/ }));
     expect(screen.getByText(/Merged into codex\/x/)).toBeInTheDocument();
@@ -148,5 +149,36 @@ describe("OpsPipeline", () => {
     expect(screen.queryByText("sweep not running yet")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Runs/ }));
     expect(screen.getByText("1 citation")).toBeInTheDocument();
+  });
+
+  it("breaks failed encodes down by step and review by hold, and ends at tests passing", () => {
+    const indexed = { synced_at: "2026-09-21T12:00:00Z", index_status: "indexed" as const, compile_status: "ok" };
+    renderPipeline([
+      pipelineAttempt({ id: "1", citation: "us/a", encoder_error: "a.yaml: ci: [rule-a] x", encoder_error_rule: "rule-a" }),
+      pipelineAttempt({ id: "2", citation: "us/b", run_conclusion: "cancelled" }),
+      pipelineAttempt({ id: "3", citation: "us/c", pr_state: "draft", pr_checks: "failure", pr_failed_checks: ["validate / validate (us-ak)"], pr_cancelled_checks: 4 }),
+      mergedAttempt({ id: "4", citation: "us/d", ...indexed, tests_status: "pass", tests_run_url: "https://github.com/x/runs/9", oracle_status: "match", oracle_engine: "policyengine" }),
+      mergedAttempt({ id: "5", citation: "us/e", ...indexed, tests_status: "fail" }),
+      mergedAttempt({ id: "6", citation: "us/f", ...indexed, oracle_status: "disagree", oracle_engine: "taxsim" }),
+    ]);
+    const stages = screen.getByRole("list", { name: "Pipeline stages" });
+    expect(within(stages).getByRole("button", { name: /Tests pass\s*1/ })).toBeInTheDocument();
+    expect(within(stages).getByRole("button", { name: /1\s*fails validation on main/ })).toBeInTheDocument();
+    expect(within(stages).getByRole("button", { name: /1\s*disagrees with an oracle/ })).toBeInTheDocument();
+
+    fireEvent.click(within(stages).getByRole("button", { name: /2\s*last encode failed/ }));
+    expect(screen.getByText("Where they stopped")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Cancelled or timed out\s*1/ }));
+    expect(screen.getByText("Cancelled or timed out: 1 citation")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "us/b" })).toBeInTheDocument();
+
+    fireEvent.click(within(stages).getByRole("button", { name: /In review/ }));
+    expect(screen.getByText("What holds them")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Blocked by another jurisdiction's failing check\s*1/ })).toBeInTheDocument();
+    expect(screen.getByText("failing: validate / validate (us-ak) · 4 checks cancelled")).toBeInTheDocument();
+
+    fireEvent.click(within(stages).getByRole("button", { name: /Tests pass/ }));
+    expect(screen.getByRole("link", { name: "validation run" })).toHaveAttribute("href", "https://github.com/x/runs/9");
+    expect(screen.getAllByText(/Matches PolicyEngine/).length).toBeGreaterThan(0);
   });
 });
