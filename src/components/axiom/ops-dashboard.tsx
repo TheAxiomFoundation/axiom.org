@@ -269,8 +269,6 @@ export function OpsDashboard({
           </p>
         </header>
 
-        {pipeline}
-
         <DocketBand
           status={status}
           error={encodingError}
@@ -300,6 +298,8 @@ export function OpsDashboard({
             </aside>
           )}
         </div>
+
+        {pipeline}
       </div>
     </div>
   );

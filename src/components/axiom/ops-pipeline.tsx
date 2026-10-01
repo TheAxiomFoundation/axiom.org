@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { AlertTriangle, Workflow } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { AlertTriangle, X } from "lucide-react";
 import styles from "./ops-pipeline.module.css";
 import {
   ageLabel,
@@ -18,27 +18,44 @@ import {
 } from "@/lib/axiom/encoding-pipeline";
 import type { QueuedSummary } from "@/lib/axiom/encoding-queues";
 
+/** The stages a citation moves through, in order, with a short status when nothing is stuck. */
+const FLOW: Array<{ stage: PipelineStage; hint: string }> = [
+  { stage: "encoding", hint: "running now" },
+  { stage: "review", hint: "PR open" },
+  { stage: "awaiting_sync", hint: "awaiting the index" },
+  { stage: "indexed", hint: "not compile-checked" },
+  { stage: "runs", hint: "tests unconfirmed" },
+  { stage: "verified", hint: "passes on main" },
+];
 
-interface FlowColumn {
-  stage: PipelineStage;
-  hint: string;
-  exits: PipelineStage[];
-}
-
-const FLOW: FlowColumn[] = [
-  { stage: "encoding", hint: "running now", exits: ["encode_failed", "no_pr"] },
-  { stage: "review", hint: "PR open", exits: ["closed"] },
-  {
-    stage: "awaiting_sync",
-    hint: "waiting for the index",
-    exits: ["merged_off_main", "not_indexed"],
-  },
-  { stage: "indexed", hint: "compile not checked", exits: [] },
-  { stage: "runs", hint: "tests not confirmed", exits: ["compile_failed"] },
-  { stage: "verified", hint: "passes on main", exits: ["tests_failing", "oracle_disagrees"] },
+/** Where citations leave the main line, in pipeline order. */
+const DROP_OUTS: PipelineStage[] = [
+  "encode_failed",
+  "no_pr",
+  "closed",
+  "merged_off_main",
+  "not_indexed",
+  "compile_failed",
+  "tests_failing",
+  "oracle_disagrees",
 ];
 
 const number = (value: number) => value.toLocaleString("en-US");
+
+/** A stage label mid-sentence: lowercase its first word, keep acronyms ("PR"). */
+const inline = (label: string) =>
+  label.replace(/^[A-Z](?![A-Z])/, (letter) => letter.toLowerCase());
+
+/** What the citation list shows: a stage, or one group of a breakdown. */
+interface Listing {
+  title: string;
+  description: string;
+  items: PipelineItem[];
+  count: number;
+  newestFirst: boolean;
+  /** The group's own label, which its rows need not repeat. */
+  groupLabel?: string;
+}
 
 export function OpsPipeline({
   view,
@@ -49,292 +66,270 @@ export function OpsPipeline({
   queued: QueuedSummary | null;
   referenceMs: number;
 }) {
+  const [listing, setListing] = useState<Listing | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const bottleneck = bottleneckStage(view);
-  const [selected, setSelected] = useState<PipelineStage>(bottleneck ?? "review");
+
+  // The list opens under the stage strip; bring it into view, since it may
+  // open from a card further down the page.
+  const show = (next: Listing) => {
+    setListing(next);
+    requestAnimationFrame(() => {
+      const top = listRef.current?.getBoundingClientRect().top;
+      if (top !== undefined && (top < 0 || top > window.innerHeight * 0.6)) {
+        listRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+      }
+    });
+  };
+  const showStage = (stage: PipelineStage) =>
+    show({
+      title: STAGE_COPY[stage].label,
+      description: STAGE_COPY[stage].description,
+      items: view.stages[stage].items,
+      count: view.stages[stage].count,
+      newestFirst: isExitStage(stage),
+    });
+  const showGroup = (heading: string, group: PipelineGroupView, newestFirst: boolean) =>
+    show({
+      title: `${heading}: ${group.label}`,
+      description: "",
+      items: group.items,
+      count: group.count,
+      newestFirst,
+      groupLabel: group.label,
+    });
 
   return (
     <section aria-labelledby="pipeline-title" className={styles.pipeline}>
-      <div className={styles.head}>
+      <header className={styles.head}>
         <div>
-          <p className={styles.eyebrow}>
-            <Workflow size={12} aria-hidden /> Pipeline
-          </p>
-          <h2 id="pipeline-title">Where the work is</h2>
+          <p className={styles.eyebrow}>Pipeline</p>
+          <h2 id="pipeline-title">Where every citation is</h2>
           <p className={styles.sub}>
-            {number(view.citationCount)} citations across {number(view.dispatchCount)}{" "}
-            dispatches
-            {view.firstDispatchAt && ` since ${formatDay(view.firstDispatchAt)}`}, followed
-            from the encoder to a rule that runs. Each citation sits where its latest
-            dispatch is.
-            {view.collectedAt && ` Refreshed ${ageLabel(view.collectedAt, referenceMs)} ago.`}
+            {number(view.citationCount)} citations · {number(view.dispatchCount)} dispatches
+            {view.firstDispatchAt && ` since ${formatDay(view.firstDispatchAt)}`}
           </p>
         </div>
-        {bottleneck && (
-          <button
-            type="button"
-            className={styles.bottleneck}
-            onClick={() => setSelected(bottleneck)}
-          >
-            <AlertTriangle size={14} aria-hidden />
-            <span>
-              Biggest pile: <strong>{number(view.stages[bottleneck].stuck)}</strong>{" "}
-              {STAGE_COPY[bottleneck].label.toLowerCase()}
+        {view.collectedAt && (
+          <p className={styles.updated}>Updated {ageLabel(view.collectedAt, referenceMs)} ago</p>
+        )}
+      </header>
+
+      {bottleneck && (
+        <button
+          type="button"
+          className={styles.headline}
+          onClick={() => showStage(bottleneck)}
+        >
+          <AlertTriangle size={14} aria-hidden />
+          <span>
+            Biggest bottleneck: <strong>{number(view.stages[bottleneck].stuck)}</strong>{" "}
+            {inline(STAGE_COPY[bottleneck].label)}
+          </span>
+        </button>
+      )}
+
+      <ol className={styles.flow} aria-label="Pipeline stages">
+        <li>
+          <div className={`${styles.tile} ${styles.static}`}>
+            <span className={styles.tileLabel}>Queued</span>
+            <span className={styles.tileValue}>{queued ? number(queued.pending) : "—"}</span>
+            <span
+              className={`${styles.tileHint} ${queued?.blocked ? styles.warn : ""}`}
+              title={(queued?.blocked ? queued.blockedNote?.note : queued?.pausedReason) ?? undefined}
+            >
+              {!queued
+                ? "no queues"
+                : queued.blocked > 0
+                  ? `${number(queued.blocked)} blocked`
+                  : queued.pausedReason
+                    ? "paused"
+                    : `${number(queued.inFlight)} in flight`}
             </span>
+          </div>
+        </li>
+        {FLOW.map(({ stage, hint }) => {
+          const summary = view.stages[stage];
+          const oldest = ageLabel(summary.oldestSince, referenceMs);
+          const status =
+            stage === "runs" && !view.compileCheckedAt && summary.count === 0
+              ? "compile sweep pending"
+              : summary.stuck > 0
+                ? `${number(summary.stuck)} stuck${oldest ? ` · ${oldest}` : ""}`
+                : hint;
+          return (
+            <li key={stage}>
+              <button
+                type="button"
+                className={`${styles.tile} ${summary.stuck > 0 ? styles.tileStuck : ""}`}
+                aria-pressed={listing?.title === STAGE_COPY[stage].label}
+                onClick={() => showStage(stage)}
+              >
+                <span className={styles.tileLabel}>{STAGE_COPY[stage].label}</span>
+                <span className={styles.tileValue}>{number(summary.count)}</span>
+                <span className={styles.tileHint}>{status}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+
+      <div className={styles.dropouts}>
+        <span className={styles.dropoutsLabel}>Dropped out</span>
+        {DROP_OUTS.filter((stage) => view.stages[stage].count > 0).map((stage) => (
+          <button
+            key={stage}
+            type="button"
+            className={`${styles.dropout} ${stage === "no_pr" ? "" : styles.dropoutStuck}`}
+            aria-pressed={listing?.title === STAGE_COPY[stage].label}
+            onClick={() => showStage(stage)}
+          >
+            <strong>{number(view.stages[stage].count)}</strong>
+            {inline(STAGE_COPY[stage].label)}
           </button>
+        ))}
+        {view.duplicatePrs > 0 && (
+          <span className={styles.dropoutNote}>
+            {number(view.duplicatePrs)} duplicate open PR{view.duplicatePrs === 1 ? "" : "s"}
+          </span>
         )}
       </div>
 
-      <ol className={styles.flow} aria-label="Pipeline stages">
-        <li className={styles.column}>
-          <div className={`${styles.tile} ${styles.static}`}>
-            <span className={styles.tileLabel}>Queued</span>
-            <span className={styles.tileValue}>
-              {queued ? number(queued.pending) : "—"}
-            </span>
-            <span className={styles.tileHint}>
-              {queued
-                ? queued.pausedReason
-                  ? "paused"
-                  : `${number(queued.inFlight)} in flight`
-                : "no durable queues"}
-            </span>
-          </div>
-          {queued && queued.blocked > 0 && (
-            <div>
-              <p className={`${styles.exitNote} ${styles.warnNote}`}>
-                <AlertTriangle size={11} aria-hidden /> {number(queued.blocked)} blocked
-                until a person requeues {queued.blocked === 1 ? "it" : "them"}
-              </p>
-              {queued.blockedNote && (
-                <p className={styles.pauseNote}>
-                  {queued.blockedNote.count === queued.blocked
-                    ? "All: "
-                    : `${number(queued.blockedNote.count)}: `}
-                  {queued.blockedNote.note}
-                </p>
-              )}
-            </div>
-          )}
-          {queued?.pausedReason && (
-            <p className={styles.pauseNote}>{queued.pausedReason}</p>
-          )}
-        </li>
-        {FLOW.map((column) => (
-          <li key={column.stage} className={styles.column}>
-            <StageTile
-              stage={column.stage}
-              hint={
-                column.stage === "runs" && !view.compileCheckedAt
-                  ? "sweep not running yet"
-                  : column.hint
-              }
-              view={view}
-              referenceMs={referenceMs}
-              selected={selected === column.stage}
-              onSelect={setSelected}
-            />
-            {column.exits
-              .filter((exit) => view.stages[exit].count > 0)
-              .map((exit) => (
-                <ExitChip
-                  key={exit}
-                  stage={exit}
-                  view={view}
-                  selected={selected === exit}
-                  onSelect={setSelected}
-                />
-              ))}
-            {column.stage === "review" && view.duplicatePrs > 0 && (
-              <p className={styles.exitNote}>
-                +{number(view.duplicatePrs)} duplicate open PR
-                {view.duplicatePrs === 1 ? "" : "s"}
-              </p>
-            )}
-          </li>
-        ))}
-      </ol>
-
-      <div className={styles.lower}>
-        <StageDetail stage={selected} view={view} referenceMs={referenceMs} />
-        <div className={styles.side}>
-          <Throughput view={view} />
-          <SigningApproval view={view} referenceMs={referenceMs} />
+      {listing && (
+        <div ref={listRef} className={styles.listAnchor}>
+          <CitationList listing={listing} referenceMs={referenceMs} onClose={() => setListing(null)} />
         </div>
+      )}
+
+      <div className={styles.cards}>
+        <Breakdown
+          title="Why encodes fail"
+          description={`${number(view.stages.encode_failed.count)} citations whose latest encode failed`}
+          views={[
+            { id: "step", label: "By step", groups: view.gates },
+            { id: "rule", label: "By cause", groups: view.failures },
+          ]}
+          onOpen={(group) => showGroup("Failed", group, true)}
+        />
+        <Breakdown
+          title="What holds PRs in review"
+          description={`${number(view.stages.review.count)} citations with an open PR`}
+          views={[{ id: "hold", label: "By hold", groups: view.holds }]}
+          onOpen={(group) => showGroup("In review", group, false)}
+        />
+        <Throughput view={view} />
+        <SigningApproval view={view} referenceMs={referenceMs} />
       </div>
     </section>
   );
 }
 
-function StageTile({
-  stage,
-  hint,
-  view,
-  referenceMs,
-  selected,
-  onSelect,
+/** Ranked groups of one stage, with a toggle when there is more than one way to cut it. */
+function Breakdown({
+  title,
+  description,
+  views,
+  onOpen,
 }: {
-  stage: PipelineStage;
-  hint: string;
-  view: PipelineView;
-  referenceMs: number;
-  selected: boolean;
-  onSelect: (stage: PipelineStage) => void;
-}) {
-  const summary = view.stages[stage];
-  const oldest = ageLabel(summary.oldestSince, referenceMs);
-  return (
-    <button
-      type="button"
-      className={`${styles.tile} ${summary.stuck > 0 ? styles.tileStuck : ""}`}
-      aria-pressed={selected}
-      onClick={() => onSelect(stage)}
-    >
-      <span className={styles.tileLabel}>{STAGE_COPY[stage].label}</span>
-      <span className={styles.tileValue}>{number(summary.count)}</span>
-      <span className={styles.tileHint}>
-        {summary.stuck > 0 ? (
-          <>
-            <AlertTriangle size={11} aria-hidden /> {number(summary.stuck)} stuck
-            {oldest && ` · oldest ${oldest}`}
-          </>
-        ) : (
-          hint
-        )}
-      </span>
-    </button>
-  );
-}
-
-function ExitChip({
-  stage,
-  view,
-  selected,
-  onSelect,
-}: {
-  stage: PipelineStage;
-  view: PipelineView;
-  selected: boolean;
-  onSelect: (stage: PipelineStage) => void;
-}) {
-  const neutral = stage === "no_pr";
-  return (
-    <button
-      type="button"
-      className={`${styles.exit} ${neutral ? "" : styles.exitStuck}`}
-      aria-pressed={selected}
-      onClick={() => onSelect(stage)}
-    >
-      <span className={styles.exitArrow} aria-hidden>
-        ↳
-      </span>
-      <strong>{number(view.stages[stage].count)}</strong>
-      <span>{STAGE_COPY[stage].label.toLowerCase()}</span>
-    </button>
-  );
-}
-
-interface GroupSet {
-  id: string;
   title: string;
-  groups: PipelineGroupView[];
-}
-
-/** The breakdowns a stage's detail panel offers, most telling first. */
-function groupSetsFor(stage: PipelineStage, view: PipelineView): GroupSet[] {
-  if (stage === "encode_failed") {
-    return [
-      { id: "gate", title: "Where they stopped", groups: view.gates },
-      { id: "reason", title: "Why they failed", groups: view.failures },
-    ];
-  }
-  if (stage === "review") {
-    return [{ id: "hold", title: "What holds them", groups: view.holds }];
-  }
-  return [];
-}
-
-function StageDetail({
-  stage,
-  view,
-  referenceMs,
-}: {
-  stage: PipelineStage;
-  view: PipelineView;
-  referenceMs: number;
+  description: string;
+  views: Array<{ id: string; label: string; groups: PipelineGroupView[] }>;
+  onOpen: (group: PipelineGroupView) => void;
 }) {
-  const [selection, setSelection] = useState<{ set: string; key: string } | null>(null);
-  const summary = view.stages[stage];
-  const sets = groupSetsFor(stage, view);
-  const active =
-    selection &&
-    sets
-      .find((set) => set.id === selection.set)
-      ?.groups.find((group) => group.key === selection.key);
-  const items = active ? active.items : summary.items;
-  const shownOf = active ? active.count : summary.count;
-
+  const [active, setActive] = useState(views[0].id);
+  const current = views.find((v) => v.id === active) ?? views[0];
+  const groups = current.groups.slice(0, 7);
+  const max = groups[0]?.count ?? 0;
   return (
-    <div className={styles.detail}>
-      <div className={styles.detailHead}>
-        <h3>
-          {STAGE_COPY[stage].label}
-          <span className={styles.detailCount}>{number(summary.count)}</span>
-        </h3>
-        <p>{STAGE_COPY[stage].description}</p>
+    <div className={styles.card} role="group" aria-label={title}>
+      <div className={styles.cardHead}>
+        <div>
+          <h3>{title}</h3>
+          <p>{description}</p>
+        </div>
+        {views.length > 1 && (
+          <div className={styles.toggle} role="group" aria-label={`${title} grouping`}>
+            {views.map((v) => (
+              <button
+                key={v.id}
+                type="button"
+                aria-pressed={v.id === current.id}
+                onClick={() => setActive(v.id)}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
+      {groups.length === 0 ? (
+        <p className={styles.empty}>Nothing here right now.</p>
+      ) : (
+        <ul className={styles.bars}>
+          {groups.map((group) => (
+            <li key={group.key}>
+              <button type="button" className={styles.bar} onClick={() => onOpen(group)}>
+                <span className={styles.barLabel} title={group.label}>
+                  {group.label}
+                </span>
+                <span className={styles.barTrack} aria-hidden>
+                  <span
+                    className={styles.barFill}
+                    style={{ width: `${Math.max(2, (group.count / max) * 100)}%` }}
+                  />
+                </span>
+                <span className={styles.barCount}>{number(group.count)}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
-      {sets
-        .filter((set) => set.groups.length > 0)
-        .map((set) => {
-          const max = set.groups[0].count;
-          return (
-            <div key={set.id} className={styles.reasons}>
-              <p className={styles.miniLabel}>{set.title}</p>
-              <ul>
-                {set.groups.slice(0, 8).map((group) => {
-                  const pressed = selection?.set === set.id && selection.key === group.key;
-                  return (
-                    <li key={group.key}>
-                      <button
-                        type="button"
-                        aria-pressed={pressed}
-                        onClick={() =>
-                          setSelection(pressed ? null : { set: set.id, key: group.key })
-                        }
-                        className={styles.reason}
-                      >
-                        <span className={styles.reasonLabel} title={group.label}>
-                          {group.label}
-                        </span>
-                        <span className={styles.reasonBarTrack} aria-hidden>
-                          <span
-                            className={styles.reasonBar}
-                            style={{ width: `${Math.max(2, (group.count / max) * 100)}%` }}
-                          />
-                        </span>
-                        <span className={styles.reasonCount}>{number(group.count)}</span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          );
-        })}
-
-      {items.length === 0 ? (
+function CitationList({
+  listing,
+  referenceMs,
+  onClose,
+}: {
+  listing: Listing;
+  referenceMs: number;
+  onClose: () => void;
+}) {
+  const shown = listing.items.length;
+  return (
+    <div className={styles.list} role="region" aria-label={`${listing.title} citations`}>
+      <div className={styles.listHead}>
+        <div>
+          <h3>
+            {listing.title}
+            <span className={styles.listCount}>{number(listing.count)}</span>
+          </h3>
+          {listing.description && <p>{listing.description}</p>}
+        </div>
+        <button type="button" className={styles.close} onClick={onClose} aria-label="Close list">
+          <X size={16} aria-hidden />
+        </button>
+      </div>
+      {shown === 0 ? (
         <p className={styles.empty}>Nothing here right now.</p>
       ) : (
         <>
-          <p className={styles.miniLabel}>
-            {active ? `${active.label}: ` : ""}
-            {items.length < shownOf
-              ? `${isExitStage(stage) ? "Latest" : "Oldest"} ${number(items.length)} of ${number(shownOf)}`
-              : `${number(shownOf)} citation${shownOf === 1 ? "" : "s"}`}
-          </p>
+          {shown < listing.count && (
+            <p className={styles.listNote}>
+              {listing.newestFirst ? "Latest" : "Oldest"} {number(shown)} of{" "}
+              {number(listing.count)}
+            </p>
+          )}
           <ul className={styles.items}>
-            {items.map((item) => (
-              <ItemRow key={item.citation} item={item} referenceMs={referenceMs} />
+            {listing.items.map((item) => (
+              <ItemRow
+                key={item.citation}
+                item={item}
+                referenceMs={referenceMs}
+                groupLabel={listing.groupLabel}
+              />
             ))}
           </ul>
         </>
@@ -343,60 +338,60 @@ function StageDetail({
   );
 }
 
-function ItemRow({ item, referenceMs }: { item: PipelineItem; referenceMs: number }) {
-  // A review item's reason and detail already say what holds the PR.
-  const reviewing = item.stage === "review";
-  const meta = [
-    item.gate,
-    !reviewing && item.prChecks === "failure"
-      ? "checks failing"
-      : !reviewing && item.prChecks === "pending"
-        ? "checks pending"
-        : null,
-    !reviewing && item.prReview === "changes_requested"
-      ? "changes requested"
-      : !reviewing && item.prReview === "approved"
-        ? "approved"
-        : null,
+function ItemRow({
+  item,
+  referenceMs,
+  groupLabel,
+}: {
+  item: PipelineItem;
+  referenceMs: number;
+  groupLabel?: string;
+}) {
+  // Each row says why it is here, minus whatever the open group already says.
+  const why = [item.stage === "encode_failed" ? item.gate : null, item.reason]
+    .filter((part): part is string => !!part && part !== groupLabel)
+    .join(" · ");
+  const flags = [
     item.dispatches > 1 ? `${item.dispatches} dispatches` : null,
     item.openPrs > 1 ? `${item.openPrs} open PRs` : null,
     item.reachedIndex && !["indexed", "runs", "verified"].includes(item.stage)
-      ? "an earlier encoding is in the index"
+      ? "an earlier version is in the index"
       : null,
-    item.stage === "runs" || item.stage === "verified" || item.stage === "tests_failing"
-      ? item.oracle
-      : null,
+    ["runs", "verified", "tests_failing"].includes(item.stage) ? item.oracle : null,
   ].filter(Boolean);
   return (
     <li className={styles.item}>
-      <div className={styles.itemTop}>
+      <div className={styles.itemMain}>
         <a href={journeyHref(item.citation)} className={styles.citation}>
           {item.citation}
         </a>
-        <span className={styles.age}>{ageLabel(item.since, referenceMs)}</span>
+        {why && <span className={styles.itemWhy}>{why}</span>}
+        {item.detail && (
+          <span className={styles.itemDetail} title={item.detail}>
+            {item.detail}
+          </span>
+        )}
       </div>
-      <p className={styles.itemMeta}>
-        {item.prUrl ? (
-          <a href={item.prUrl} target="_blank" rel="noreferrer">
-            {item.prLabel}
-          </a>
-        ) : (
-          <a href={item.runUrl} target="_blank" rel="noreferrer">
-            run
-          </a>
-        )}
-        {item.testsRunUrl && (
-          <>
-            {" · "}
-            <a href={item.testsRunUrl} target="_blank" rel="noreferrer">
-              validation run
+      <div className={styles.itemSide}>
+        <span className={styles.age}>{ageLabel(item.since, referenceMs)}</span>
+        <span className={styles.itemLinks}>
+          {item.prUrl ? (
+            <a href={item.prUrl} target="_blank" rel="noreferrer">
+              {item.prLabel}
             </a>
-          </>
-        )}
-        {meta.length > 0 && ` · ${meta.join(" · ")}`}
-        {item.reason && item.stage !== "encode_failed" && ` · ${item.reason}`}
-      </p>
-      {item.detail && <p className={styles.itemDetail}>{item.detail}</p>}
+          ) : (
+            <a href={item.runUrl} target="_blank" rel="noreferrer">
+              run
+            </a>
+          )}
+          {item.testsRunUrl && (
+            <a href={item.testsRunUrl} target="_blank" rel="noreferrer">
+              validation
+            </a>
+          )}
+        </span>
+        {flags.length > 0 && <span className={styles.itemFlags}>{flags.join(" · ")}</span>}
+      </div>
     </li>
   );
 }
@@ -407,66 +402,62 @@ function SigningApproval({ view, referenceMs }: { view: PipelineView; referenceM
   const waitingAge = ageLabel(approval.oldestWaitingSince, referenceMs);
   const max = approval.cancellations[0]?.count ?? 0;
   return (
-    <div className={styles.throughput}>
-      <div className={styles.detailHead}>
-        <h3>Signing approval</h3>
-        <p>
-          Every targeted encode waits for a person to approve the production-signing
-          environment before its encode job starts.
-        </p>
+    <div className={styles.card} role="group" aria-label="Signing approval">
+      <div className={styles.cardHead}>
+        <div>
+          <h3>Signing approval</h3>
+          <p>Each encode waits for a person to approve production signing.</p>
+        </div>
       </div>
-      {approval.approved.p90Ms !== null && approval.approved.medianMs !== null ? (
-        <p className={styles.stat}>
-          <span className={styles.statValue}>{durationLabel(approval.approved.p90Ms)}</span>
-          <span>
-            or longer for the slowest tenth of approvals in the last 14 days (half within{" "}
-            {durationLabel(approval.approved.medianMs)}; {number(approval.approved.count)}{" "}
-            approved)
+      <div className={styles.stats}>
+        <div className={styles.statBlock}>
+          <span className={styles.statValue}>
+            {approval.approved.p90Ms !== null ? durationLabel(approval.approved.p90Ms) : "—"}
           </span>
-        </p>
-      ) : (
-        <p className={styles.empty}>No approved runs with recorded timing in the last 14 days.</p>
-      )}
-      <p className={`${styles.itemMeta} ${approval.waitingNow > 0 ? styles.warnNote : ""}`}>
-        {approval.waitingNow > 0 ? (
-          <>
-            <AlertTriangle size={11} aria-hidden /> {number(approval.waitingNow)} waiting now
-            {waitingAge && `, the oldest for ${waitingAge}`}
-          </>
-        ) : (
-          "None waiting now"
-        )}
-      </p>
+          <span className={styles.statLabel}>
+            slowest 10% of approvals, last 14 days
+            {approval.approved.medianMs !== null &&
+              ` (half within ${durationLabel(approval.approved.medianMs)})`}
+          </span>
+        </div>
+        <div className={styles.statBlock}>
+          <span className={`${styles.statValue} ${approval.waitingNow > 0 ? styles.warn : ""}`}>
+            {number(approval.waitingNow)}
+          </span>
+          <span className={styles.statLabel}>
+            waiting now{waitingAge && approval.waitingNow > 0 ? `, oldest ${waitingAge}` : ""}
+          </span>
+        </div>
+      </div>
       {approval.cancellations.length > 0 && (
-        <div className={styles.reasons}>
-          <p className={styles.miniLabel}>Cancelled runs, all dispatches</p>
-          <ul>
+        <>
+          <p className={styles.miniLabel}>Cancelled runs</p>
+          <ul className={styles.bars}>
             {approval.cancellations.map((entry) => (
-              <li key={entry.key} className={styles.reason} data-static>
-                <span className={styles.reasonLabel} title={entry.label}>
-                  {entry.label}
-                </span>
-                <span className={styles.reasonBarTrack} aria-hidden>
-                  <span
-                    className={styles.reasonBar}
-                    style={{ width: `${Math.max(2, (entry.count / max) * 100)}%` }}
-                  />
-                </span>
-                <span className={styles.reasonCount}>{number(entry.count)}</span>
+              <li key={entry.key}>
+                <div className={`${styles.bar} ${styles.barStatic}`}>
+                  <span className={styles.barLabel} title={entry.label}>
+                    {entry.label.replace(/^Cancelled /, "").replace(/^(.)/, (c) => c.toUpperCase())}
+                  </span>
+                  <span className={styles.barTrack} aria-hidden>
+                    <span
+                      className={styles.barFill}
+                      style={{ width: `${Math.max(2, (entry.count / max) * 100)}%` }}
+                    />
+                  </span>
+                  <span className={styles.barCount}>{number(entry.count)}</span>
+                </div>
               </li>
             ))}
           </ul>
           {approval.cancelledWhileWaiting.count > 0 && (
-            <p className={styles.itemMeta}>
-              {number(approval.cancelledWhileWaiting.overAnHour)} of the{" "}
-              {number(approval.cancelledWhileWaiting.count)} cancelled while waiting had waited
-              over an hour
-              {approval.cancelledWhileWaiting.medianMs !== null &&
-                ` (median ${durationLabel(approval.cancelledWhileWaiting.medianMs)})`}
-              .
+            <p className={styles.footnote}>
+              {number(approval.cancelledWhileWaiting.overAnHour)} of{" "}
+              {number(approval.cancelledWhileWaiting.count)} waited over an hour before being
+              cancelled.
             </p>
           )}
-        </div>
+        </>
       )}
     </div>
   );
@@ -509,21 +500,24 @@ function Throughput({ view }: { view: PipelineView }) {
   const last = weeks.length - 1;
 
   return (
-    <div className={styles.throughput}>
-      <div className={styles.detailHead}>
-        <h3>Weekly throughput</h3>
-        <p>Dispatches, successful encodes, and merges into a default branch, by week.</p>
+    <div className={styles.card} role="group" aria-label="Weekly throughput">
+      <div className={styles.cardHead}>
+        <div>
+          <h3>Weekly throughput</h3>
+          <p>Dispatched, encoded, and merged, by week.</p>
+        </div>
       </div>
       {rate && (
-        <p className={styles.stat}>
-          <span className={styles.statValue}>
-            {Math.round((rate.failed / rate.finished) * 100)}%
-          </span>
-          <span>
-            of finished runs failed in the last 14 days ({number(rate.failed)} of{" "}
-            {number(rate.finished)})
-          </span>
-        </p>
+        <div className={styles.stats}>
+          <div className={styles.statBlock}>
+            <span className={styles.statValue}>
+              {Math.round((rate.failed / rate.finished) * 100)}%
+            </span>
+            <span className={styles.statLabel}>
+              of runs failed, last 14 days ({number(rate.failed)} of {number(rate.finished)})
+            </span>
+          </div>
+        </div>
       )}
       <ul className={styles.legend}>
         {SERIES.map((series, i) => (

@@ -1,12 +1,27 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OpsPipeline } from "./ops-pipeline";
 import { pipelineView } from "@/lib/axiom/encoding-pipeline";
 import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 
 const NOW = Date.parse("2026-09-30T12:00:00Z");
 
-afterEach(cleanup);
+const scrollIntoView = vi.fn();
+let frames: FrameRequestCallback[] = [];
+const flushFrames = () => frames.splice(0).forEach((frame) => frame(0));
+
+beforeEach(() => {
+  frames = [];
+  vi.stubGlobal("requestAnimationFrame", (frame: FrameRequestCallback) => frames.push(frame));
+  Element.prototype.scrollIntoView = scrollIntoView;
+});
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  scrollIntoView.mockReset();
+});
 
 function renderPipeline(
   attempts = [
@@ -32,126 +47,79 @@ function renderPipeline(
   );
 }
 
+const openList = () => screen.getByRole("region", { name: / citations$/ });
+const card = (name: string) => screen.getByRole("group", { name });
+
 describe("OpsPipeline", () => {
-  it("lays out every stage with counts, stuck totals, and exits", () => {
+  it("lays out the stage strip and the drop-outs, with no list open", () => {
     renderPipeline();
+    expect(screen.getByText("6 citations · 7 dispatches since Sep 1, 2026")).toBeInTheDocument();
     const stages = screen.getByRole("list", { name: "Pipeline stages" });
     expect(within(stages).getByText("18,615")).toBeInTheDocument();
-    expect(within(stages).getByText("paused")).toBeInTheDocument();
-    expect(screen.getByText("Awaiting a green tip.")).toBeInTheDocument();
-    expect(within(stages).getByRole("button", { name: /In review\s*1/ })).toBeInTheDocument();
-    expect(within(stages).getByRole("button", { name: /3\s*last encode failed/ })).toBeInTheDocument();
-    expect(within(stages).getByRole("button", { name: /1\s*encoded, no pr/ })).toBeInTheDocument();
-    expect(within(stages).getByRole("button", { name: /1\s*merged off main/ })).toBeInTheDocument();
-    expect(screen.getByText("+1 duplicate open PR")).toBeInTheDocument();
-    expect(screen.getByText("sweep not running yet")).toBeInTheDocument();
-    expect(screen.getByText(/6 citations across 7 dispatches since Sep 1, 2026/)).toBeInTheDocument();
+    expect(within(stages).getByText("paused")).toHaveAttribute("title", "Awaiting a green tip.");
+    expect(within(stages).getByRole("button", { name: /In review\s*1\s*1 stuck · 3w/ })).toBeInTheDocument();
+    expect(within(stages).getByRole("button", { name: /Runs\s*0\s*compile sweep pending/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^3\s*last encode failed$/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /1\s*encoded, no PR/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /1\s*merged off main/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /missing from the index/ })).not.toBeInTheDocument();
+    expect(screen.getByText("1 duplicate open PR")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: / citations$/ })).not.toBeInTheDocument();
   });
 
-  it("opens on the biggest pile and filters it by failure reason", () => {
+  it("opens the biggest bottleneck, scrolls to it, and closes", () => {
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ top: 5000 } as DOMRect);
     renderPipeline();
-    expect(screen.getByRole("button", { name: /Biggest pile: 3 last encode failed/ })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /Last encode failed/ })).toBeInTheDocument();
-    expect(screen.getByText("3 citations")).toBeInTheDocument();
-    const reason = screen.getByRole("button", { name: /rule-a\s*2/ });
-    fireEvent.click(reason);
-    expect(reason).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText("rule-a: 2 citations")).toBeInTheDocument();
-    expect(screen.getByText("Source branch (a) is neither encoded nor deferred.")).toBeInTheDocument();
-    fireEvent.click(reason);
-    expect(screen.getByText("3 citations")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Biggest bottleneck: 3 last encode failed/ }));
+    flushFrames();
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
+    const list = openList();
+    expect(within(list).getByRole("heading", { name: /Last encode failed\s*3/ })).toBeInTheDocument();
+    expect(within(list).getByText("Source branch (a) is neither encoded nor deferred.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^3\s*last encode failed$/ })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(within(list).getByRole("button", { name: "Close list" }));
+    expect(screen.queryByRole("region", { name: / citations$/ })).not.toBeInTheDocument();
   });
 
-  it("shows a stage's items with their PR state and history", () => {
+  it("lists a stage's citations with why they are there, links, and flags", () => {
     renderPipeline();
     fireEvent.click(screen.getByRole("button", { name: /In review/ }));
-    const item = screen.getByRole("link", { name: "us/d" });
-    expect(item).toHaveAttribute("href", "/ops/journey?citation=us%2Fd");
-    expect(screen.getByRole("link", { name: "rulespec-us#7" })).toHaveAttribute("href", "https://github.com/x/pull/7");
-    expect(screen.getByText(/2 dispatches · 2 open PRs · an earlier encoding is in the index · Changes requested/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Changes requested\s*1/ })).toBeInTheDocument();
+    flushFrames();
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    const list = openList();
+    expect(within(list).getByRole("link", { name: "us/d" })).toHaveAttribute("href", "/ops/journey?citation=us%2Fd");
+    expect(within(list).getByRole("link", { name: "rulespec-us#7" })).toHaveAttribute("href", "https://github.com/x/pull/7");
+    expect(within(list).getByText("Changes requested")).toBeInTheDocument();
+    expect(within(list).getByText("2 dispatches · 2 open PRs · an earlier version is in the index")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /merged off main/ }));
-    expect(screen.getByText(/Merged into codex\/x/)).toBeInTheDocument();
+    expect(within(openList()).getByText("Merged into codex/x")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /1\s*encoded, no PR/ }));
+    expect(within(openList()).getByRole("link", { name: "run" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Runs/ }));
-    expect(screen.getByText("Nothing here right now.")).toBeInTheDocument();
+    expect(within(openList()).getByText("Nothing here right now.")).toBeInTheDocument();
   });
 
-  it("charts weekly throughput with a hover readout and a table", () => {
+  it("breaks failed encodes down by step or cause, and opens a group without repeating it", () => {
     renderPipeline();
-    expect(screen.getByText(/of finished runs failed in the last 14 days \(5 of 7\)/)).toBeInTheDocument();
-    expect(screen.getByText("71%")).toBeInTheDocument();
-    const chart = screen.getByRole("img", { name: /Weekly dispatches/ });
-    const bands = chart.querySelectorAll("rect");
-    expect(bands).toHaveLength(8);
-    fireEvent.mouseEnter(bands[7]);
-    const tooltip = screen.getByRole("status");
-    expect(within(tooltip).getByText("Week of Sep 28")).toBeInTheDocument();
-    fireEvent.mouseLeave(chart);
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
-    expect(screen.getByRole("table")).toBeInTheDocument();
+    const failures = card("Why encodes fail");
+    expect(within(failures).getByText("3 citations whose latest encode failed")).toBeInTheDocument();
+    const byCause = within(failures).getByRole("button", { name: "By cause" });
+    fireEvent.click(byCause);
+    expect(byCause).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(within(failures).getByRole("button", { name: /rule-a\s*2/ }));
+    const list = openList();
+    expect(within(list).getByRole("heading", { name: /Failed: rule-a\s*2/ })).toBeInTheDocument();
+    expect(within(list).getByRole("link", { name: "us/a" })).toBeInTheDocument();
+    expect(within(list).queryByText("rule-a")).not.toBeInTheDocument();
+
+    fireEvent.click(within(failures).getByRole("button", { name: "By step" }));
+    expect(within(failures).queryByRole("button", { name: /rule-a/ })).not.toBeInTheDocument();
   });
 
-  it("handles an unpaused queue, no queues, and a quiet pipeline", () => {
-    renderPipeline([pipelineAttempt({ run_conclusion: "success", pr_state: "open", pr_created_at: "2026-09-30T00:00:00Z" })], {
-      pending: 5,
-      queues: 1,
-      inFlight: 1,
-      blocked: 19,
-      blockedNote: { note: "skipped for the pilot: the manual's introduction", count: 19 },
-      pausedReason: null,
-    });
-    expect(screen.getByText("1 in flight")).toBeInTheDocument();
-    expect(screen.getByText(/19 blocked until a person requeues them/)).toBeInTheDocument();
-    expect(screen.getByText("All: skipped for the pilot: the manual's introduction")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Biggest pile/ })).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /In review/ })).toBeInTheDocument();
-    cleanup();
-    renderPipeline([pipelineAttempt({ run_conclusion: "success" })], null);
-    expect(screen.getByText("no durable queues")).toBeInTheDocument();
-    cleanup();
-    renderPipeline([pipelineAttempt({ run_conclusion: "success" })], { pending: 5, queues: 3, inFlight: 4, blocked: 0, blockedNote: null, pausedReason: null });
-    expect(screen.getByText("4 in flight")).toBeInTheDocument();
-    expect(screen.queryByText(/blocked until/)).not.toBeInTheDocument();
-    cleanup();
-    renderPipeline([pipelineAttempt({ run_conclusion: "success" })], {
-      pending: 5,
-      queues: 1,
-      inFlight: 0,
-      blocked: 3,
-      blockedNote: { note: "failed twice", count: 2 },
-      pausedReason: null,
-    });
-    expect(screen.getByText(/3 blocked until a person requeues them/)).toBeInTheDocument();
-    expect(screen.getByText("2: failed twice")).toBeInTheDocument();
-    cleanup();
-    renderPipeline([pipelineAttempt({ run_conclusion: "success" })], {
-      pending: 5,
-      queues: 1,
-      inFlight: 0,
-      blocked: 1,
-      blockedNote: null,
-      pausedReason: null,
-    });
-    expect(screen.getByText(/1 blocked until a person requeues it/)).toBeInTheDocument();
-  });
-
-  it("lists the latest of a long exit and marks a checked compile sweep", () => {
-    const attempts = Array.from({ length: 65 }, (_, i) =>
-      pipelineAttempt({ id: String(i), citation: `us/x/${i}` })
-    );
-    attempts.push(
-      mergedAttempt({ id: "ok", citation: "us/ok", synced_at: "2026-09-22T00:00:00Z", compile_status: "ok", compile_checked_at: "2026-09-30T07:00:00Z", pr_checks: "pending", pr_review: "approved" })
-    );
-    renderPipeline(attempts);
-    expect(screen.getByText("Latest 60 of 65")).toBeInTheDocument();
-    expect(screen.queryByText("sweep not running yet")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Runs/ }));
-    expect(screen.getByText("1 citation")).toBeInTheDocument();
-  });
-
-  it("breaks failed encodes down by step and review by hold, and ends at tests passing", () => {
+  it("follows citations through review holds, the index, and main", () => {
     const indexed = { synced_at: "2026-09-21T12:00:00Z", index_status: "indexed" as const, compile_status: "ok" };
     renderPipeline([
       pipelineAttempt({ id: "1", citation: "us/a", encoder_error: "a.yaml: ci: [rule-a] x", encoder_error_rule: "rule-a" }),
@@ -163,23 +131,78 @@ describe("OpsPipeline", () => {
     ]);
     const stages = screen.getByRole("list", { name: "Pipeline stages" });
     expect(within(stages).getByRole("button", { name: /Tests pass\s*1/ })).toBeInTheDocument();
-    expect(within(stages).getByRole("button", { name: /1\s*fails validation on main/ })).toBeInTheDocument();
-    expect(within(stages).getByRole("button", { name: /1\s*disagrees with an oracle/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /1\s*fails validation on main/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /1\s*disagrees with an oracle/ })).toBeInTheDocument();
 
-    fireEvent.click(within(stages).getByRole("button", { name: /2\s*last encode failed/ }));
-    expect(screen.getByText("Where they stopped")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Cancelled or timed out\s*1/ }));
-    expect(screen.getByText("Cancelled or timed out: 1 citation")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "us/b" })).toBeInTheDocument();
+    expect(within(openList()).getByRole("link", { name: "us/b" })).toBeInTheDocument();
 
-    fireEvent.click(within(stages).getByRole("button", { name: /In review/ }));
-    expect(screen.getByText("What holds them")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Blocked by another jurisdiction's failing check\s*1/ })).toBeInTheDocument();
-    expect(screen.getByText("failing: validate / validate (us-ak) · 4 checks cancelled")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Blocked by another jurisdiction's failing check\s*1/ }));
+    const holds = openList();
+    expect(within(holds).getByRole("heading", { name: /In review: Blocked by another/ })).toBeInTheDocument();
+    expect(within(holds).getByText("failing: validate / validate (us-ak) · 4 checks cancelled")).toBeInTheDocument();
 
     fireEvent.click(within(stages).getByRole("button", { name: /Tests pass/ }));
-    expect(screen.getByRole("link", { name: "validation run" })).toHaveAttribute("href", "https://github.com/x/runs/9");
-    expect(screen.getAllByText(/Matches PolicyEngine/).length).toBeGreaterThan(0);
+    const verified = openList();
+    expect(within(verified).getByRole("link", { name: "validation" })).toHaveAttribute("href", "https://github.com/x/runs/9");
+    expect(within(verified).getAllByText(/Matches PolicyEngine/).length).toBeGreaterThan(0);
+  });
+
+  it("shows the latest of a long exit, the oldest of a long stage, and a checked compile sweep", () => {
+    const attempts = [
+      ...Array.from({ length: 65 }, (_, i) => pipelineAttempt({ id: `f${i}`, citation: `us/x/${i}` })),
+      ...Array.from({ length: 62 }, (_, i) =>
+        pipelineAttempt({ id: `r${i}`, citation: `us/r/${i}`, pr_state: "open", pr_created_at: "2026-09-30T00:00:00Z" })
+      ),
+      mergedAttempt({ id: "ok", citation: "us/ok", synced_at: "2026-09-22T00:00:00Z", compile_status: "ok", compile_checked_at: "2026-09-30T07:00:00Z", pr_checks: "pending", pr_review: "approved" }),
+    ];
+    renderPipeline(attempts);
+    expect(screen.queryByText("compile sweep pending")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^65\s*last encode failed$/ }));
+    expect(within(openList()).getByText("Latest 60 of 65")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /In review/ }));
+    expect(within(openList()).getByText("Oldest 60 of 62")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Runs/ }));
+    expect(within(openList()).getByRole("link", { name: "us/ok" })).toBeInTheDocument();
+  });
+
+  it("charts weekly throughput with a hover readout and a table", () => {
+    renderPipeline();
+    expect(screen.getByText("71%")).toBeInTheDocument();
+    expect(screen.getByText("of runs failed, last 14 days (5 of 7)")).toBeInTheDocument();
+    const chart = screen.getByRole("img", { name: /Weekly dispatches/ });
+    const bands = chart.querySelectorAll("rect");
+    expect(bands).toHaveLength(8);
+    fireEvent.mouseEnter(bands[7]);
+    const tooltip = screen.getByRole("status");
+    expect(within(tooltip).getByText("Week of Sep 28")).toBeInTheDocument();
+    fireEvent.mouseLeave(chart);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByRole("table")).toBeInTheDocument();
+  });
+
+  it("summarizes the queue as blocked, paused, in flight, or absent", () => {
+    const quiet = [pipelineAttempt({ run_conclusion: "success", pr_state: "open", pr_created_at: "2026-09-30T00:00:00Z" })];
+    renderPipeline(quiet, {
+      pending: 5,
+      queues: 1,
+      inFlight: 1,
+      blocked: 19,
+      blockedNote: { note: "skipped for the pilot", count: 19 },
+      pausedReason: null,
+    });
+    expect(screen.getByText("19 blocked")).toHaveAttribute("title", "skipped for the pilot");
+    expect(screen.queryByRole("button", { name: /Biggest bottleneck/ })).not.toBeInTheDocument();
+    cleanup();
+    renderPipeline(quiet, { pending: 5, queues: 1, inFlight: 0, blocked: 2, blockedNote: null, pausedReason: null });
+    expect(screen.getByText("2 blocked")).not.toHaveAttribute("title");
+    cleanup();
+    renderPipeline(quiet, { pending: 5, queues: 3, inFlight: 4, blocked: 0, blockedNote: null, pausedReason: null });
+    expect(screen.getByText("4 in flight")).not.toHaveAttribute("title");
+    cleanup();
+    renderPipeline(quiet, null);
+    expect(within(screen.getByRole("list", { name: "Pipeline stages" })).getByText("—")).toBeInTheDocument();
+    expect(screen.getByText("no queues")).toBeInTheDocument();
   });
 
   it("shows the signing-approval gate and every cancellation", () => {
@@ -189,18 +212,21 @@ describe("OpsPipeline", () => {
       pipelineAttempt({ id: "w", citation: "us/w", run_status: "waiting", run_conclusion: null, dispatched_at: "2026-09-29T00:00:00Z" }),
       pipelineAttempt({ id: "x", citation: "us/x", run_conclusion: "cancelled", cancel_stage: "approval", dispatched_at: "2026-09-20T00:00:00Z", finished_at: "2026-09-20T02:00:00Z" }),
     ]);
-    expect(screen.getByRole("heading", { name: "Signing approval" })).toBeInTheDocument();
-    expect(screen.getByText("4h")).toBeInTheDocument();
-    expect(screen.getByText(/or longer for the slowest tenth of approvals in the last 14 days \(half within 4h; 2 approved\)/)).toBeInTheDocument();
-    expect(screen.getByText(/1 waiting now, the oldest for 36h/)).toBeInTheDocument();
-    expect(screen.getByText("Cancelled runs, all dispatches")).toBeInTheDocument();
-    expect(screen.getByText(/1 of the 1 cancelled while waiting had waited over an hour \(median 2h\)/)).toBeInTheDocument();
+    const approval = card("Signing approval");
+    expect(within(approval).getByText("4h")).toBeInTheDocument();
+    expect(within(approval).getByText("slowest 10% of approvals, last 14 days (half within 4h)")).toBeInTheDocument();
+    expect(within(approval).getByText("waiting now, oldest 36h")).toBeInTheDocument();
+    expect(within(approval).getByText("Cancelled runs")).toBeInTheDocument();
+    expect(within(approval).getByText("While waiting for signing approval")).toBeInTheDocument();
+    expect(within(approval).getByText("1 of 1 waited over an hour before being cancelled.")).toBeInTheDocument();
   });
 
   it("says when no approval timing or waiting runs exist yet", () => {
     renderPipeline([pipelineAttempt({ run_conclusion: "success" })]);
-    expect(screen.getByText("No approved runs with recorded timing in the last 14 days.")).toBeInTheDocument();
-    expect(screen.getByText("None waiting now")).toBeInTheDocument();
-    expect(screen.queryByText("Cancelled runs, all dispatches")).not.toBeInTheDocument();
+    const approval = card("Signing approval");
+    expect(within(approval).getByText("—")).toBeInTheDocument();
+    expect(within(approval).getByText("slowest 10% of approvals, last 14 days")).toBeInTheDocument();
+    expect(within(approval).getByText("waiting now")).toBeInTheDocument();
+    expect(within(approval).queryByText("Cancelled runs")).not.toBeInTheDocument();
   });
 });
