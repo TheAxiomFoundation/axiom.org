@@ -374,6 +374,7 @@ function pluralizeDocumentClass(documentClass: string): string {
 
 function QueuedWork({ queues }: { queues: EncodingQueueSummary[] }) {
   if (queues.length === 0) return null;
+  const hasDispatcher = queues.some((queue) => queue.kind === "dispatcher");
   return (
     <Card className={styles.supportCard}>
       <CardHeader className="border-b [.border-b]:pb-4">
@@ -389,14 +390,24 @@ function QueuedWork({ queues }: { queues: EncodingQueueSummary[] }) {
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
         {queues.map((queue) => (
-          <QueueRow key={queue.queueId} queue={queue} />
+          <QueueRow
+            key={queue.queueId}
+            queue={queue}
+            superseded={hasDispatcher && queue.kind === "legacy"}
+          />
         ))}
       </CardContent>
     </Card>
   );
 }
 
-function QueueRow({ queue }: { queue: EncodingQueueSummary }) {
+function QueueRow({
+  queue,
+  superseded = false,
+}: {
+  queue: EncodingQueueSummary;
+  superseded?: boolean;
+}) {
   const dispositioned = queue.total - queue.pending;
   const fraction = queue.total > 0 ? dispositioned / queue.total : 0;
   const dispositionLine = Object.entries(queue.dispositionCounts)
@@ -409,6 +420,11 @@ function QueueRow({ queue }: { queue: EncodingQueueSummary }) {
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
         <h3 className="font-mono text-sm text-foreground break-all">
           {queue.queueId}
+          {superseded && (
+            <span className="ml-2 font-sans text-xs text-muted-foreground">
+              earlier inventory, replaced by the dispatcher
+            </span>
+          )}
         </h3>
         <p className="text-xs tabular-nums text-muted-foreground">
           {dispositioned.toLocaleString("en-US")} of{" "}

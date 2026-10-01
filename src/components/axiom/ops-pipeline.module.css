@@ -170,6 +170,13 @@
   overflow: hidden;
 }
 
+.warnNote {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-warning);
+}
+
 .exit {
   display: flex;
   align-items: baseline;

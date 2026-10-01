@@ -21,6 +21,8 @@ function renderPipeline(
   queued: Parameters<typeof OpsPipeline>[0]["queued"] = {
     pending: 18615,
     queues: 2,
+    inFlight: 0,
+    blocked: 0,
     pausedReason: "Awaiting a green tip.",
   }
 ) {
@@ -93,17 +95,21 @@ describe("OpsPipeline", () => {
     renderPipeline([pipelineAttempt({ run_conclusion: "success", pr_state: "open", pr_created_at: "2026-09-30T00:00:00Z" })], {
       pending: 5,
       queues: 1,
+      inFlight: 1,
+      blocked: 19,
       pausedReason: null,
     });
-    expect(screen.getByText("in 1 queue")).toBeInTheDocument();
+    expect(screen.getByText("1 in flight")).toBeInTheDocument();
+    expect(screen.getByText(/19 blocked, need a person/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Biggest pile/ })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /In review/ })).toBeInTheDocument();
     cleanup();
     renderPipeline([pipelineAttempt({ run_conclusion: "success" })], null);
     expect(screen.getByText("no durable queues")).toBeInTheDocument();
     cleanup();
-    renderPipeline([pipelineAttempt({ run_conclusion: "success" })], { pending: 5, queues: 3, pausedReason: null });
-    expect(screen.getByText("in 3 queues")).toBeInTheDocument();
+    renderPipeline([pipelineAttempt({ run_conclusion: "success" })], { pending: 5, queues: 3, inFlight: 4, blocked: 0, pausedReason: null });
+    expect(screen.getByText("4 in flight")).toBeInTheDocument();
+    expect(screen.queryByText(/blocked, need a person/)).not.toBeInTheDocument();
   });
 
   it("lists the latest of a long exit and marks a checked compile sweep", () => {

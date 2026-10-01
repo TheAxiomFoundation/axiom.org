@@ -92,10 +92,16 @@ export function OpsPipeline({
               {queued
                 ? queued.pausedReason
                   ? "paused"
-                  : `in ${queued.queues} queue${queued.queues === 1 ? "" : "s"}`
+                  : `${number(queued.inFlight)} in flight`
                 : "no durable queues"}
             </span>
           </div>
+          {queued && queued.blocked > 0 && (
+            <p className={`${styles.exitNote} ${styles.warnNote}`}>
+              <AlertTriangle size={11} aria-hidden /> {number(queued.blocked)} blocked,
+              need a person
+            </p>
+          )}
           {queued?.pausedReason && (
             <p className={styles.pauseNote}>{queued.pausedReason}</p>
           )}

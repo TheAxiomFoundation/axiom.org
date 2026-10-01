@@ -22,6 +22,7 @@ describe("summarizeQueue", () => {
       })
     ).toEqual({
       queueId: "q",
+      kind: "legacy",
       description: "All-state inventory.",
       pauseReason: "Awaiting review.",
       total: 5,
@@ -37,6 +38,24 @@ describe("summarizeQueue", () => {
     expect(summarizeQueue({ queue_id: "q" })).toBeNull();
   });
 
+  it("reads a dispatcher queue's kind and paused state", () => {
+    const dispatcher = {
+      schema: "axiom-encode/snap-dispatch-queue/v1",
+      queue_id: "us-snap-or-ut-pilot",
+      items: [{ status: "pending" }, { status: "blocked" }, { status: "dispatched" }],
+    };
+    expect(summarizeQueue({ ...dispatcher, state: "active" })).toMatchObject({
+      kind: "dispatcher",
+      pauseReason: null,
+      dispositionCounts: { blocked: 1, dispatched: 1 },
+    });
+    expect(summarizeQueue({ ...dispatcher, state: "paused" })?.pauseReason).toBe("Paused");
+    expect(summarizeQueue({ queue_id: "q", state: "paused", items: [{}] })).toMatchObject({
+      kind: "legacy",
+      pauseReason: null,
+    });
+  });
+
   it("treats a blank pause reason as active", () => {
     expect(
       summarizeQueue({
@@ -49,13 +68,19 @@ describe("summarizeQueue", () => {
 });
 
 describe("queuedSummary", () => {
-  const queue = (pending: number, pauseReason: string | null): EncodingQueueSummary => ({
+  const queue = (
+    pending: number,
+    pauseReason: string | null,
+    kind: EncodingQueueSummary["kind"] = "legacy",
+    dispositionCounts: Record<string, number> = {}
+  ): EncodingQueueSummary => ({
     queueId: `q-${pending}`,
+    kind,
     description: null,
     pauseReason,
     total: pending,
     pending,
-    dispositionCounts: {},
+    dispositionCounts,
     jurisdictionCount: 1,
   });
 
@@ -64,8 +89,19 @@ describe("queuedSummary", () => {
     expect(queuedSummary([queue(3, "Awaiting a tip."), queue(4, "Other.")])).toEqual({
       pending: 7,
       queues: 2,
+      inFlight: 0,
+      blocked: 0,
       pausedReason: "Awaiting a tip.",
     });
     expect(queuedSummary([queue(3, "Awaiting a tip."), queue(4, null)])?.pausedReason).toBeNull();
+  });
+
+  it("counts only dispatcher queues once one exists", () => {
+    expect(
+      queuedSummary([
+        queue(935, null, "dispatcher", { blocked: 19, dispatched: 1, in_review: 2 }),
+        queue(17784, "Awaiting a tip."),
+      ])
+    ).toEqual({ pending: 935, queues: 1, inFlight: 1, blocked: 19, pausedReason: null });
   });
 });

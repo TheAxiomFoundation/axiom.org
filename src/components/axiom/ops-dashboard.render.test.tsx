@@ -58,6 +58,7 @@ function status(overrides: Partial<EncodingOpsStatus>): EncodingOpsStatus {
 
 const QUEUE: EncodingQueueSummary = {
   queueId: "us-snap-all-states-2026-07",
+  kind: "legacy",
   description: "All-state SNAP inventory.",
   pauseReason: "Awaiting a green tip.",
   total: 17784,
@@ -392,6 +393,22 @@ describe("OpsDashboard", () => {
     expect(
       screen.getByText(/paused — Awaiting a green tip/),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/replaced by the dispatcher/)).not.toBeInTheDocument();
+  });
+
+  it("marks earlier inventories as replaced once a dispatcher queue exists", () => {
+    render(
+      <OpsDashboard
+        initialStatus={status({})}
+        encodingError={null}
+        queues={[
+          { ...QUEUE, queueId: "us-snap-or-ut-pilot", kind: "dispatcher", pauseReason: null },
+          QUEUE,
+        ]}
+        recentScopes={[]}
+      />,
+    );
+    expect(screen.getAllByText(/earlier inventory, replaced by the dispatcher/)).toHaveLength(1);
   });
 
   it("renders recently ingested scopes with jurisdiction names", () => {
