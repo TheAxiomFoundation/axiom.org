@@ -97,10 +97,20 @@ export function OpsPipeline({
             </span>
           </div>
           {queued && queued.blocked > 0 && (
-            <p className={`${styles.exitNote} ${styles.warnNote}`}>
-              <AlertTriangle size={11} aria-hidden /> {number(queued.blocked)} blocked,
-              need a person
-            </p>
+            <div>
+              <p className={`${styles.exitNote} ${styles.warnNote}`}>
+                <AlertTriangle size={11} aria-hidden /> {number(queued.blocked)} blocked
+                until a person requeues {queued.blocked === 1 ? "it" : "them"}
+              </p>
+              {queued.blockedNote && (
+                <p className={styles.pauseNote}>
+                  {queued.blockedNote.count === queued.blocked
+                    ? "All: "
+                    : `${number(queued.blockedNote.count)}: `}
+                  {queued.blockedNote.note}
+                </p>
+              )}
+            </div>
           )}
           {queued?.pausedReason && (
             <p className={styles.pauseNote}>{queued.pausedReason}</p>

@@ -42,7 +42,7 @@ interface QueueFile {
   /** Dispatcher queues: "active" or "paused". */
   state?: string;
   pause_reason?: string | null;
-  items?: Array<{ status?: string; jurisdiction?: string }>;
+  items?: Array<{ status?: string; jurisdiction?: string; note?: string | null }>;
 }
 
 export interface EncodingQueueSummary {
@@ -59,6 +59,8 @@ export interface EncodingQueueSummary {
   /** Non-pending item counts by status, e.g. { dispatched: 3, completed: 1 }. */
   dispositionCounts: Record<string, number>;
   jurisdictionCount: number;
+  /** The most common note on blocked items, and how many carry it. */
+  blockedNote: { note: string; count: number } | null;
 }
 
 export function summarizeQueue(file: QueueFile): EncodingQueueSummary | null {
@@ -67,12 +69,16 @@ export function summarizeQueue(file: QueueFile): EncodingQueueSummary | null {
   let pending = 0;
   const dispositionCounts: Record<string, number> = {};
   const jurisdictions = new Set<string>();
+  const blockedNotes = new Map<string, number>();
   for (const item of items) {
     const status = item.status ?? "pending";
     if (status === "pending") pending += 1;
     else dispositionCounts[status] = (dispositionCounts[status] ?? 0) + 1;
     if (item.jurisdiction) jurisdictions.add(item.jurisdiction);
+    const note = item.note?.trim();
+    if (status === "blocked" && note) blockedNotes.set(note, (blockedNotes.get(note) ?? 0) + 1);
   }
+  const [topNote] = [...blockedNotes.entries()].sort((a, b) => b[1] - a[1]);
   const dispatcher = file.schema?.startsWith(DISPATCHER_SCHEMA_PREFIX) ?? false;
   return {
     queueId: file.queue_id,
@@ -84,6 +90,7 @@ export function summarizeQueue(file: QueueFile): EncodingQueueSummary | null {
     pending,
     dispositionCounts,
     jurisdictionCount: jurisdictions.size,
+    blockedNote: topNote ? { note: topNote[0], count: topNote[1] } : null,
   };
 }
 
@@ -159,7 +166,9 @@ export async function readEncodingQueues(): Promise<EncodingQueueSummary[]> {
  */
 export const getEncodingQueues = unstable_cache(
   readEncodingQueues,
-  ["ops-encoding-queues"],
+  // Bump the key when the summary's shape changes, so a deploy never reads
+  // summaries cached by the previous one.
+  ["ops-encoding-queues-v2"],
   { revalidate: QUEUE_REVALIDATE_SECONDS }
 );
 
@@ -172,6 +181,8 @@ export interface QueuedSummary {
   inFlight: number;
   /** Items that need a person (failed twice, budget used up, PR closed, ...). */
   blocked: number;
+  /** The most common stated reason among blocked items, when they carry one. */
+  blockedNote: { note: string; count: number } | null;
   /** Set only when every counted queue is paused: the first stated reason. */
   pausedReason: string | null;
 }
@@ -188,6 +199,11 @@ export function queuedSummary(queues: EncodingQueueSummary[]): QueuedSummary | n
     queues: counted.length,
     inFlight: sum("dispatched"),
     blocked: sum("blocked"),
+    blockedNote:
+      counted
+        .map((queue) => queue.blockedNote)
+        .filter((note): note is NonNullable<typeof note> => note !== null)
+        .sort((a, b) => b.count - a.count)[0] ?? null,
     pausedReason: allPaused ? counted[0].pauseReason : null,
   };
 }

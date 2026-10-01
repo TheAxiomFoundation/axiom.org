@@ -29,6 +29,7 @@ describe("summarizeQueue", () => {
       pending: 3,
       dispositionCounts: { completed: 1, dispatched: 1 },
       jurisdictionCount: 3,
+      blockedNote: null,
     });
   });
 
@@ -48,7 +49,19 @@ describe("summarizeQueue", () => {
       kind: "dispatcher",
       pauseReason: null,
       dispositionCounts: { blocked: 1, dispatched: 1 },
+      blockedNote: null,
     });
+    expect(
+      summarizeQueue({
+        ...dispatcher,
+        items: [
+          { status: "blocked", note: "skipped for the pilot" },
+          { status: "blocked", note: " skipped for the pilot " },
+          { status: "blocked", note: "failed twice" },
+          { status: "pending", note: "ignored" },
+        ],
+      })?.blockedNote
+    ).toEqual({ note: "skipped for the pilot", count: 2 });
     expect(summarizeQueue({ ...dispatcher, state: "paused" })?.pauseReason).toBe("Paused");
     expect(summarizeQueue({ queue_id: "q", state: "paused", items: [{}] })).toMatchObject({
       kind: "legacy",
@@ -82,6 +95,7 @@ describe("queuedSummary", () => {
     pending,
     dispositionCounts,
     jurisdictionCount: 1,
+    blockedNote: null,
   });
 
   it("sums pending items and reports a pause only when every queue is paused", () => {
@@ -91,6 +105,7 @@ describe("queuedSummary", () => {
       queues: 2,
       inFlight: 0,
       blocked: 0,
+      blockedNote: null,
       pausedReason: "Awaiting a tip.",
     });
     expect(queuedSummary([queue(3, "Awaiting a tip."), queue(4, null)])?.pausedReason).toBeNull();
@@ -102,6 +117,11 @@ describe("queuedSummary", () => {
         queue(935, null, "dispatcher", { blocked: 19, dispatched: 1, in_review: 2 }),
         queue(17784, "Awaiting a tip."),
       ])
-    ).toEqual({ pending: 935, queues: 1, inFlight: 1, blocked: 19, pausedReason: null });
+    ).toEqual({ pending: 935, queues: 1, inFlight: 1, blocked: 19, blockedNote: null, pausedReason: null });
+    const noted = (note: string, count: number) => ({
+      ...queue(1, null, "dispatcher", { blocked: count }),
+      blockedNote: { note, count },
+    });
+    expect(queuedSummary([noted("a", 2), noted("b", 5)])?.blockedNote).toEqual({ note: "b", count: 5 });
   });
 });

@@ -23,6 +23,7 @@ function renderPipeline(
     queues: 2,
     inFlight: 0,
     blocked: 0,
+    blockedNote: null,
     pausedReason: "Awaiting a green tip.",
   }
 ) {
@@ -97,19 +98,42 @@ describe("OpsPipeline", () => {
       queues: 1,
       inFlight: 1,
       blocked: 19,
+      blockedNote: { note: "skipped for the pilot: the manual's introduction", count: 19 },
       pausedReason: null,
     });
     expect(screen.getByText("1 in flight")).toBeInTheDocument();
-    expect(screen.getByText(/19 blocked, need a person/)).toBeInTheDocument();
+    expect(screen.getByText(/19 blocked until a person requeues them/)).toBeInTheDocument();
+    expect(screen.getByText("All: skipped for the pilot: the manual's introduction")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Biggest pile/ })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /In review/ })).toBeInTheDocument();
     cleanup();
     renderPipeline([pipelineAttempt({ run_conclusion: "success" })], null);
     expect(screen.getByText("no durable queues")).toBeInTheDocument();
     cleanup();
-    renderPipeline([pipelineAttempt({ run_conclusion: "success" })], { pending: 5, queues: 3, inFlight: 4, blocked: 0, pausedReason: null });
+    renderPipeline([pipelineAttempt({ run_conclusion: "success" })], { pending: 5, queues: 3, inFlight: 4, blocked: 0, blockedNote: null, pausedReason: null });
     expect(screen.getByText("4 in flight")).toBeInTheDocument();
-    expect(screen.queryByText(/blocked, need a person/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/blocked until/)).not.toBeInTheDocument();
+    cleanup();
+    renderPipeline([pipelineAttempt({ run_conclusion: "success" })], {
+      pending: 5,
+      queues: 1,
+      inFlight: 0,
+      blocked: 3,
+      blockedNote: { note: "failed twice", count: 2 },
+      pausedReason: null,
+    });
+    expect(screen.getByText(/3 blocked until a person requeues them/)).toBeInTheDocument();
+    expect(screen.getByText("2: failed twice")).toBeInTheDocument();
+    cleanup();
+    renderPipeline([pipelineAttempt({ run_conclusion: "success" })], {
+      pending: 5,
+      queues: 1,
+      inFlight: 0,
+      blocked: 1,
+      blockedNote: null,
+      pausedReason: null,
+    });
+    expect(screen.getByText(/1 blocked until a person requeues it/)).toBeInTheDocument();
   });
 
   it("lists the latest of a long exit and marks a checked compile sweep", () => {
