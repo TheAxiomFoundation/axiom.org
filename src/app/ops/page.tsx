@@ -3,6 +3,7 @@ import { OpsDashboard } from "@/components/axiom/ops-dashboard";
 import { OpsPipeline } from "@/components/axiom/ops-pipeline";
 import { pipelineView } from "@/lib/axiom/encoding-pipeline";
 import { getPipelineAttempts } from "@/lib/axiom/encoding-pipeline-data";
+import { getCorpusView } from "@/lib/axiom/corpus-releases";
 import { getEncodingQueues, queuedSummary } from "@/lib/axiom/encoding-queues";
 import { getEncodingStatus, getRecentCorpusScopes } from "@/lib/corpus-status";
 import { SITE_URL } from "@/lib/urls";
@@ -19,11 +20,12 @@ export const metadata: Metadata = {
 };
 
 export default async function OpsPage() {
-  const [encodingStatus, queues, recentScopes, pipeline] = await Promise.all([
+  const [encodingStatus, queues, recentScopes, pipeline, corpus] = await Promise.all([
     getEncodingStatus(),
     getEncodingQueues(),
     getRecentCorpusScopes(),
     getPipelineAttempts(),
+    getCorpusView(),
   ]);
   // One clock for the server render and the client's first paint.
   const referenceMs = Date.now();
@@ -39,6 +41,7 @@ export default async function OpsPage() {
             key="pipeline"
             view={pipelineView(pipeline.attempts, referenceMs)}
             queued={queuedSummary(queues)}
+            corpus={corpus}
             referenceMs={referenceMs}
           />
         ) : null

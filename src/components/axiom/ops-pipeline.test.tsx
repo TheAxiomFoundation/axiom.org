@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OpsPipeline } from "./ops-pipeline";
 import { pipelineView } from "@/lib/axiom/encoding-pipeline";
 import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
+import type { QueuedSummary, QueueItemView } from "@/lib/axiom/encoding-queues";
+import type { CorpusJurisdiction, CorpusView } from "@/lib/axiom/corpus-releases";
 
 const NOW = Date.parse("2026-09-30T12:00:00Z");
 
@@ -40,12 +42,27 @@ function renderPipeline(
     blocked: 0,
     blockedNote: null,
     pausedReason: "Awaiting a green tip.",
-  }
+    items: [],
+    notStarted: [],
+  },
+  corpus: CorpusView | null = null
 ) {
   return render(
-    <OpsPipeline view={pipelineView(attempts, NOW)} queued={queued} referenceMs={NOW} />
+    <OpsPipeline view={pipelineView(attempts, NOW)} queued={queued} corpus={corpus} referenceMs={NOW} />
   );
 }
+
+const queuedWith = (overrides: Partial<QueuedSummary>): QueuedSummary => ({
+  pending: 5,
+  queues: 1,
+  inFlight: 0,
+  blocked: 0,
+  blockedNote: null,
+  pausedReason: null,
+  items: [],
+  notStarted: [],
+  ...overrides,
+});
 
 const openList = () => screen.getByRole("region", { name: / citations$/ });
 const card = (name: string) => screen.getByRole("group", { name });
@@ -183,21 +200,14 @@ describe("OpsPipeline", () => {
 
   it("summarizes the queue as blocked, paused, in flight, or absent", () => {
     const quiet = [pipelineAttempt({ run_conclusion: "success", pr_state: "open", pr_created_at: "2026-09-30T00:00:00Z" })];
-    renderPipeline(quiet, {
-      pending: 5,
-      queues: 1,
-      inFlight: 1,
-      blocked: 19,
-      blockedNote: { note: "skipped for the pilot", count: 19 },
-      pausedReason: null,
-    });
+    renderPipeline(quiet, queuedWith({ inFlight: 1, blocked: 19, blockedNote: { note: "skipped for the pilot", count: 19 } }));
     expect(screen.getByText("19 blocked")).toHaveAttribute("title", "skipped for the pilot");
     expect(screen.queryByRole("button", { name: /Biggest bottleneck/ })).not.toBeInTheDocument();
     cleanup();
-    renderPipeline(quiet, { pending: 5, queues: 1, inFlight: 0, blocked: 2, blockedNote: null, pausedReason: null });
+    renderPipeline(quiet, queuedWith({ blocked: 2 }));
     expect(screen.getByText("2 blocked")).not.toHaveAttribute("title");
     cleanup();
-    renderPipeline(quiet, { pending: 5, queues: 3, inFlight: 4, blocked: 0, blockedNote: null, pausedReason: null });
+    renderPipeline(quiet, queuedWith({ queues: 3, inFlight: 4 }));
     expect(screen.getByText("4 in flight")).not.toHaveAttribute("title");
     cleanup();
     renderPipeline(quiet, null);
@@ -230,5 +240,161 @@ describe("OpsPipeline", () => {
     expect(within(approval).getByText("slowest 10% of approvals, last 14 days")).toBeInTheDocument();
     expect(within(approval).getByText("waiting now")).toBeInTheDocument();
     expect(within(approval).queryByText("Cancelled runs")).not.toBeInTheDocument();
+  });
+
+  it("lists the queue's items by what they need, and what has not started", () => {
+    const item = (citation: string, state: QueueItemView["state"], extra: Partial<QueueItemView> = {}): QueueItemView => ({
+      queueId: "pilot",
+      citation,
+      label: null,
+      state,
+      why: null,
+      attempts: 1,
+      lastAt: "2026-09-30T06:00:00Z",
+      runUrl: `https://github.com/x/runs/${citation}`,
+      prUrl: null,
+      ...extra,
+    });
+    renderPipeline(
+      [pipelineAttempt({ run_conclusion: "success" })],
+      queuedWith({
+        pending: 935,
+        blocked: 3,
+        inFlight: 1,
+        pausedReason: "Paused",
+        items: [
+          item("us-or/a", "blocked", { why: "skipped for the pilot", label: "Page 26", attempts: 0, lastAt: null, runUrl: null }),
+          item("us-or/b", "blocked", { why: "failed 2 times", attempts: 2 }),
+          item("us-or/e", "blocked", { why: "skipped for the pilot", label: "Page 27", attempts: 0, lastAt: null, runUrl: null }),
+          item("us-ut/c", "dispatched", { prUrl: "https://github.com/x/pull/1" }),
+          item("us-ut/d", "retrying", { why: "failure: Encode, review, validate, and apply" }),
+        ],
+        notStarted: [
+          { jurisdiction: "us-or", count: 562 },
+          { jurisdiction: "us-ut", count: 353 },
+        ],
+      })
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Queued\s*935\s*3 blocked/ }));
+    const list = screen.getByRole("region", { name: "Queued items" });
+    expect(within(list).getByText(/^Paused; nothing new is dispatched\./)).toBeInTheDocument();
+    const blocked = within(list).getByRole("region", { name: "Needs a person" });
+    expect(within(blocked).getByRole("link", { name: "us-or/a" })).toHaveAttribute("href", "/ops/journey?citation=us-or%2Fa");
+    expect(within(blocked).getByText("Page 26")).toBeInTheDocument();
+    expect(within(blocked).getByText("2 runs")).toBeInTheDocument();
+    // Shared reasons are said once, with how many items share them.
+    expect(within(blocked).getAllByText("skipped for the pilot")).toHaveLength(1);
+    expect(within(blocked).getByText("skipped for the pilot").textContent).toBe("skipped for the pilot2");
+    expect(within(list).getByRole("region", { name: "Run open" })).toHaveTextContent("PR");
+    expect(within(list).getByRole("region", { name: "Retrying after a failed run" })).toHaveTextContent(
+      "failure: Encode, review, validate, and apply"
+    );
+    expect(within(list).getByRole("region", { name: "Run open" }).querySelector("p")).toBeNull();
+    expect(within(list).getByText("Not started yet: us-or 562 · us-ut 353")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Queued/ })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(within(list).getByRole("button", { name: "Close list" }));
+    expect(screen.queryByRole("region", { name: "Queued items" })).not.toBeInTheDocument();
+
+    cleanup();
+    renderPipeline([pipelineAttempt({ run_conclusion: "success" })], queuedWith({ pausedReason: "Awaiting a green tip." }));
+    fireEvent.click(screen.getByRole("button", { name: /Queued/ }));
+    expect(screen.getByText(/^Paused: Awaiting a green tip\.; nothing new/)).toBeInTheDocument();
+    expect(screen.queryByText(/Not started yet/)).not.toBeInTheDocument();
+  });
+
+  it("opens the corpus releases that are out of sync, and names the ones up to date", () => {
+    const row = (overrides: Partial<CorpusJurisdiction>): CorpusJurisdiction => ({
+      jurisdiction: "uk",
+      name: "United Kingdom",
+      status: "current",
+      serving: { release: "uk-rulespec-2026-09-07", since: "2026-09-13T00:00:00Z", scopes: 191 },
+      newest: { release: "uk-rulespec-2026-09-07", signedAt: "2026-09-13T00:00:00Z", scopes: 191 },
+      encoder: { repo: "rulespec-uk", release: "uk-rulespec-2026-09-07", registered: true },
+      since: null,
+      ...overrides,
+    });
+    const corpus: CorpusView = {
+      outOfSync: 3,
+      openPrs: { count: 47, oldestAt: "2026-07-16T00:00:00Z", url: "https://github.com/c/pulls" },
+      lastPublish: { conclusion: "failure", at: "2026-09-25T12:00:00Z", url: "https://github.com/c/runs/1" },
+      jurisdictions: [
+        row({
+          jurisdiction: "de",
+          name: "Germany",
+          status: "not_serving",
+          serving: null,
+          newest: { release: "de-rulespec-2026-09-15-x", signedAt: "2026-09-15T00:00:00Z", scopes: 62 },
+          encoder: { repo: "rulespec-de", release: "de-2026-09-15-y", registered: false },
+          since: "2026-09-08T00:00:00Z",
+        }),
+        row({
+          jurisdiction: "us",
+          name: "United States",
+          status: "encoder_behind",
+          serving: { release: "us-rulespec-2026-09-14-union", since: "2026-09-14T00:00:00Z", scopes: 1040 },
+          newest: { release: "us-rulespec-2026-09-14-union", signedAt: "2026-09-14T00:00:00Z", scopes: 1040 },
+          encoder: null,
+          since: "2026-09-14T00:00:00Z",
+        }),
+        row({
+          jurisdiction: "ng",
+          name: "Nigeria",
+          status: "not_serving",
+          serving: null,
+          newest: { release: "ng-rulespec-2026-07-10", signedAt: "2026-07-12T00:00:00Z", scopes: 1 },
+          encoder: null,
+          since: "2026-07-12T00:00:00Z",
+        }),
+        row({}),
+        row({ jurisdiction: "nz", name: "New Zealand" }),
+      ],
+    };
+    renderPipeline(undefined, undefined, corpus);
+    const corpusTile = screen.getByRole("button", { name: /Corpus\s*5\s*3 out of sync/ });
+    fireEvent.click(corpusTile);
+    expect(corpusTile).toHaveAttribute("aria-pressed", "true");
+    const list = screen.getByRole("region", { name: "Corpus releases" });
+    expect(within(list).getByRole("link", { name: "47 open PRs in axiom-corpus, oldest 11w" })).toHaveAttribute(
+      "href",
+      "https://github.com/c/pulls"
+    );
+    expect(within(list).getByRole("link", { name: "Last publish failed 5d ago" })).toBeInTheDocument();
+    const groups = within(list).getAllByRole("region").map((group) => group.getAttribute("aria-label"));
+    expect(groups).toEqual(["Encoder reads an older release", "Not serving: no release activated"]);
+    const notServing = within(list).getByRole("region", { name: "Not serving: no release activated" });
+    expect(within(notServing).getAllByRole("listitem").map((item) => item.textContent?.split(" · ")[0])).toEqual([
+      "Germany",
+      "Nigeria",
+    ]);
+    expect(
+      within(list).getByText("Serving nothing · newest 2026-09-15-x (62 scopes) · encoder reads 2026-09-15-y (not a registered release)")
+    ).toBeInTheDocument();
+    expect(within(list).getByRole("link", { name: "pin" })).toHaveAttribute(
+      "href",
+      "https://github.com/TheAxiomFoundation/rulespec-de/blob/main/.axiom/toolchain.toml"
+    );
+    expect(within(list).getByText("Serving 2026-09-14-union")).toBeInTheDocument();
+    expect(within(list).getByText("Up to date: United Kingdom, New Zealand")).toBeInTheDocument();
+    fireEvent.click(within(list).getByRole("button", { name: "Close list" }));
+    expect(screen.queryByRole("region", { name: "Corpus releases" })).not.toBeInTheDocument();
+
+    cleanup();
+    renderPipeline(undefined, undefined, {
+      ...corpus,
+      outOfSync: 0,
+      openPrs: { count: 1, oldestAt: null, url: "u" },
+      lastPublish: { conclusion: "success", at: "2026-09-29T12:00:00Z", url: "r" },
+      jurisdictions: [row({ jurisdiction: "uk-x", name: "Somewhere", serving: { release: "other-name", since: "s", scopes: 1 } })],
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Corpus\s*1\s*all in sync/ }));
+    expect(screen.getByRole("link", { name: "1 open PR in axiom-corpus" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Last publish succeeded 24h ago" })).toBeInTheDocument();
+
+    cleanup();
+    renderPipeline(undefined, undefined, { ...corpus, openPrs: null, lastPublish: null, jurisdictions: [row({ status: "encoder_off", since: "2026-09-20T00:00:00Z", newest: { release: "elsewhere", signedAt: "x", scopes: 3 } })] });
+    fireEvent.click(screen.getByRole("button", { name: /Corpus/ }));
+    expect(screen.getByText("Serving 2026-09-07 · newest elsewhere (3 scopes) · encoder reads 2026-09-07")).toBeInTheDocument();
+    expect(screen.queryByText(/in axiom-corpus/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Up to date/)).not.toBeInTheDocument();
   });
 });
