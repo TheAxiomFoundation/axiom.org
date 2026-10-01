@@ -211,6 +211,7 @@ describe("OpsPipeline", () => {
       pipelineAttempt({ id: "b", citation: "us/b", run_conclusion: "success", dispatched_at: "2026-09-29T00:00:00Z", encode_started_at: "2026-09-29T04:00:00Z" }),
       pipelineAttempt({ id: "w", citation: "us/w", run_status: "waiting", run_conclusion: null, dispatched_at: "2026-09-29T00:00:00Z" }),
       pipelineAttempt({ id: "x", citation: "us/x", run_conclusion: "cancelled", cancel_stage: "approval", dispatched_at: "2026-09-20T00:00:00Z", finished_at: "2026-09-20T02:00:00Z" }),
+      pipelineAttempt({ id: "y", citation: "us/y", run_conclusion: "cancelled", dispatched_at: "2026-09-20T00:00:00Z" }),
     ]);
     const approval = card("Signing approval");
     expect(within(approval).getByText("4h")).toBeInTheDocument();
@@ -218,6 +219,7 @@ describe("OpsPipeline", () => {
     expect(within(approval).getByText("waiting now, oldest 36h")).toBeInTheDocument();
     expect(within(approval).getByText("Cancelled runs")).toBeInTheDocument();
     expect(within(approval).getByText("While waiting for signing approval")).toBeInTheDocument();
+    expect(within(approval).getByText("Not read yet")).toBeInTheDocument();
     expect(within(approval).getByText("1 of 1 waited over an hour before being cancelled.")).toBeInTheDocument();
   });
 

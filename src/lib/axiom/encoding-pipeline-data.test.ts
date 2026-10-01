@@ -41,10 +41,10 @@ describe("getPipelineAttempts", () => {
     expect(await getPipelineAttempts()).toEqual({ attempts: [], available: false, error: null });
   });
 
-  it("pages through the table newest first", async () => {
+  it("pages through the table newest first, uncached so every page is one snapshot", async () => {
     stubSupabase();
     const page = Array.from({ length: 1000 }, (_, i) => pipelineAttempt({ id: String(i) }));
-    const fetchMock = vi.fn(async (url: string | URL | Request) =>
+    const fetchMock = vi.fn(async (url: string | URL | Request, _init?: RequestInit) =>
       jsonResponse(new URL(String(url)).searchParams.get("offset") === "0" ? page : [pipelineAttempt({ id: "last" })])
     );
     vi.stubGlobal("fetch", fetchMock);
@@ -54,6 +54,7 @@ describe("getPipelineAttempts", () => {
     const first = new URL(String(fetchMock.mock.calls[0][0]));
     expect(first.pathname).toBe("/rest/v1/pipeline_attempts");
     expect(first.searchParams.get("order")).toBe("dispatched_at.desc,id.desc");
+    expect(fetchMock.mock.calls.map(([, init]) => init?.cache)).toEqual(["no-store", "no-store"]);
   });
 
   it("treats a missing table as not available yet and reports other failures", async () => {

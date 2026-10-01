@@ -39,6 +39,8 @@ export async function getPipelineAttempts(): Promise<PipelineAttemptsResult> {
   const attempts: PipelineAttempt[] = [];
   try {
     for (let page = 0; page < MAX_PAGES; page++) {
+      // Uncached: pages cached one by one can come from different collector
+      // passes (one stale, one fresh) and split a citation's history.
       const rows = await readSupabaseRows<PipelineAttempt>(
         config,
         "encodings",
@@ -48,7 +50,8 @@ export async function getPipelineAttempts(): Promise<PipelineAttemptsResult> {
           order: "dispatched_at.desc,id.desc",
           limit: String(PAGE_SIZE),
           offset: String(page * PAGE_SIZE),
-        }
+        },
+        { fresh: true }
       );
       attempts.push(...rows);
       if (rows.length < PAGE_SIZE) break;
