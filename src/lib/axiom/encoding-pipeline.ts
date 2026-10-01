@@ -920,6 +920,7 @@ export function journeySteps(attempt: PipelineAttempt): JourneyStep[] {
 
 const ORACLE_ENGINE_LABELS: Record<string, string> = {
   policyengine: "PolicyEngine",
+  euromod: "EUROMOD",
   taxsim: "TAXSIM",
   snapqc: "SNAP QC",
   spsm: "SPSM",

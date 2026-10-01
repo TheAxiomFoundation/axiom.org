@@ -662,8 +662,9 @@ function withPr(
     attempt.tests_run_url = shard.runUrl;
   }
 
-  // Oracle: a report counts only if the rulespec commit it compared
-  // contains the merge; an older one compared an earlier version.
+  // Oracle: a report counts only if it compared this version: the rulespec
+  // commit it recorded contains the merge, or, for a report that records no
+  // commit (EUROMOD/UKMOD), it was generated after the merge.
   if (!oracle) {
     if (previous?.oracle_status) {
       attempt.oracle_status = previous.oracle_status;
@@ -675,10 +676,10 @@ function withPr(
   }
   const verdict = moduleVerdict(oracle, pr.repo, modules);
   if (verdict) {
-    const current =
-      !!mergeCommit &&
-      !!verdict.rulespecSha &&
-      contains.get(containsKey(pr.repo, mergeCommit, verdict.rulespecSha)) === true;
+    const current = verdict.rulespecSha
+      ? !!mergeCommit &&
+        contains.get(containsKey(pr.repo, mergeCommit, verdict.rulespecSha)) === true
+      : !!verdict.generatedAt && verdict.generatedAt > pr.mergedAt;
     attempt.oracle_status = current ? verdict.status : "stale";
     attempt.oracle_report = verdict.report;
     attempt.oracle_engine = verdict.engine;

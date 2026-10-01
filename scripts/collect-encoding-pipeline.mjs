@@ -321,11 +321,13 @@ function checkDetail(contexts) {
 }
 
 const VALIDATE_JOB_RE = /^validate \/ validate(?: \(([^)]+)\))?$/;
-const VALIDATION_RUNS_SCANNED = 8;
+const VALIDATION_COMMITS_SCANNED = 8;
 
 /**
  * Each repo's latest decisive (success or failure) validate result per
- * jurisdiction shard on its default branch, newest run first.
+ * jurisdiction shard on its default branch. Walks the branch's commits
+ * newest first and reads each commit's check runs: the workflow-run listing
+ * is not reliably newest first.
  */
 async function readValidation(repos) {
   const index = new Map();
@@ -333,37 +335,30 @@ async function readValidation(repos) {
     const shards = new Map();
     try {
       const info = await githubJson(`repos/${GITHUB_ORG}/${repo}`);
-      const runs = await githubJson(
-        // No status filter: with one, GitHub lists months-old runs first.
-        // Each job's own conclusion decides, so a running run still counts.
-        `repos/${GITHUB_ORG}/${repo}/actions/runs?branch=${encodeURIComponent(info.default_branch)}&per_page=30`,
+      const commits = await githubJson(
+        `repos/${GITHUB_ORG}/${repo}/commits?sha=${encodeURIComponent(info.default_branch)}&per_page=${VALIDATION_COMMITS_SCANNED}`,
       );
-      let scanned = 0;
-      for (const run of runs.workflow_runs ?? []) {
-        if (!["push", "schedule", "workflow_dispatch"].includes(run.event)) continue;
-        let sawValidate = false;
+      for (const commit of commits) {
         for (let page = 1; page <= 3; page++) {
           const body = await githubJson(
-            `repos/${GITHUB_ORG}/${repo}/actions/runs/${run.id}/jobs?per_page=100&page=${page}`,
+            `repos/${GITHUB_ORG}/${repo}/commits/${commit.sha}/check-runs?filter=latest&per_page=100&page=${page}`,
           );
-          const jobs = body.jobs ?? [];
-          for (const job of jobs) {
-            const match = job.name.match(VALIDATE_JOB_RE);
+          const runs = body.check_runs ?? [];
+          for (const run of runs) {
+            const match = run.name.match(VALIDATE_JOB_RE);
             if (!match) continue;
-            sawValidate = true;
             const key = match[1] ?? "";
             if (shards.has(key)) continue;
-            if (job.conclusion !== "success" && job.conclusion !== "failure") continue;
+            if (run.conclusion !== "success" && run.conclusion !== "failure") continue;
             shards.set(key, {
-              conclusion: job.conclusion,
-              headSha: run.head_sha,
-              runUrl: job.html_url,
-              completedAt: job.completed_at,
+              conclusion: run.conclusion,
+              headSha: commit.sha,
+              runUrl: run.html_url,
+              completedAt: run.completed_at,
             });
           }
-          if (jobs.length < 100) break;
+          if (runs.length < 100) break;
         }
-        if (sawValidate && ++scanned >= VALIDATION_RUNS_SCANNED) break;
       }
     } catch (error) {
       console.warn(`validation for ${repo}: ${error.message}`);
@@ -415,7 +410,9 @@ async function readWaivers(repos) {
   return waivers;
 }
 
-const ORACLE_REPORT_RE = /^axiom-(policyengine|taxsim|snapqc|spsm)-.*\.json$/;
+// Axiom-vs-engine comparison reports: axiom-<engine>-<suite>.json (PolicyEngine,
+// EUROMOD/UKMOD, SNAP QC, TAXSIM, ...). Other files in the folder are indexes.
+const ORACLE_REPORT_RE = /^axiom-[a-z0-9]+-.+\.json$/;
 const ORACLE_CONCURRENCY = 6;
 
 /** The axiom-oracles comparison reports, parsed into per-module verdicts. */

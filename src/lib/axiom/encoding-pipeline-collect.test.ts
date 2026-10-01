@@ -546,6 +546,26 @@ describe("stage joins", () => {
       oracle_checked_at: "2026-09-20T00:00:00Z",
     });
     expect(oracle([[MERGE, REPORT_SHA, false]]).oracle_status).toBe("stale");
+    // A report without a recorded commit (EUROMOD/UKMOD) is current when generated after the merge.
+    const unpinned = (generatedAt: string) =>
+      buildAttempts(
+        inputs({
+          prs: [merged()],
+          mirror: mirrorWithCommit,
+          contains: contains([[MERGE, INDEX, true]]),
+          oracle: oracleVerdicts([
+            {
+              name: "axiom-euromod-uk-x.json",
+              report: {
+                aggregates: [{ concept: "us:regulations/42-cfr/457/800#out", mismatch_count: 0 }],
+                provenance: { generated_at: generatedAt, rulespecs: [{}] },
+              },
+            },
+          ]),
+        })
+      )[0];
+    expect(unpinned("2026-09-30T02:00:00Z")).toMatchObject({ oracle_status: "match", oracle_engine: "euromod" });
+    expect(unpinned("2026-09-29T00:00:00Z").oracle_status).toBe("stale");
     // Between refreshes the previous verdict stays.
     const kept = oracle([], new Map([["501", { oracle_status: "disagree" as const, oracle_engine: "taxsim" }]]));
     expect(kept).toMatchObject({ oracle_status: "disagree", oracle_engine: "taxsim", oracle_report: null });

@@ -443,6 +443,7 @@ describe("tests and oracle stages", () => {
     expect(label({})).toBeNull();
     expect(label({ oracle_status: "match", oracle_engine: "policyengine" })).toBe("Matches PolicyEngine");
     expect(label({ oracle_status: "explained", oracle_engine: "taxsim" })).toBe("Matches TAXSIM, differences explained");
+    expect(label({ oracle_status: "match", oracle_engine: "euromod" })).toBe("Matches EUROMOD");
     expect(label({ oracle_status: "disagree", oracle_engine: "custom" })).toBe("Disagrees with custom");
     expect(label({ oracle_status: "stale", oracle_engine: null })).toBe("An oracle report predates this version");
   });
