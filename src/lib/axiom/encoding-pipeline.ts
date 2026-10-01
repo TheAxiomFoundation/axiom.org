@@ -384,6 +384,10 @@ export function failureReason(attempt: PipelineAttempt): FailureReason {
   if (attempt.run_conclusion === "timed_out") {
     return { key: "run:timed_out", label: "Timed out", kind: "run" };
   }
+  // Never looked up yet: the collector works through causes in batches.
+  if (!attempt.failure_source) {
+    return { key: "run:pending", label: "Cause not looked up yet", kind: "run" };
+  }
   return { key: "run:unknown", label: "No failure detail recorded", kind: "run" };
 }
 
@@ -399,6 +403,7 @@ export type EncodeGate =
   | "publish"
   | "encode"
   | "cancelled"
+  | "pending"
   | "unknown";
 
 export const ENCODE_GATE_LABELS: Record<EncodeGate, string> = {
@@ -412,6 +417,7 @@ export const ENCODE_GATE_LABELS: Record<EncodeGate, string> = {
   publish: "Open the PR",
   encode: "Inside the encode step (no detail)",
   cancelled: "Cancelled or timed out",
+  pending: "Cause not looked up yet",
   unknown: "No detail recorded",
 };
 
@@ -451,7 +457,7 @@ export function encodeGate(attempt: PipelineAttempt): EncodeGate {
       if (pattern.test(attempt.failed_step)) return gate;
     }
   }
-  return "unknown";
+  return attempt.failure_source ? "unknown" : "pending";
 }
 
 /** What holds a signed manifest PR that has not merged. */

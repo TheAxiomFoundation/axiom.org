@@ -423,6 +423,23 @@ describe("failureLookups", () => {
     expect(failureLookups(runs, encoder, previous, NOW, 10).map((r) => r.id)).toEqual([5, 1]);
     expect(failureLookups(runs, encoder, previous, NOW, 1).map((r) => r.id)).toEqual([5]);
   });
+
+  it("looks up each citation's latest failure first and never a cancelled run", () => {
+    const at = (day: string) => ({ created_at: `2026-09-${day}T00:00:00Z`, run_started_at: null, updated_at: `2026-09-${day}T00:30:00Z` });
+    const titled = (citation: string) => `Targeted signed RuleSpec re-encode [adhoc:adhoc:adhoc] ${citation}`;
+    const runs = [
+      run({ id: 10, display_title: titled("us/a"), ...at("20") }),
+      run({ id: 11, display_title: titled("us/a"), ...at("25") }),
+      run({ id: 12, display_title: titled("us/b"), ...at("02") }),
+      run({ id: 13, display_title: titled("us/c"), ...at("26"), conclusion: "cancelled" }),
+      run({ id: 14, display_title: "Targeted signed RuleSpec re-encode", ...at("27") }),
+    ];
+    // us/b's only run is old but latest for its citation; us/a's older run waits.
+    expect(failureLookups(runs, [], new Map(), NOW, 10).map((r) => r.id)).toEqual([11, 12, 14, 10]);
+    // An unnamed run named by an earlier collection counts as that citation's.
+    const named = new Map([["14", { citation: "us/d" }]]);
+    expect(failureLookups(runs, [], named, NOW, 10).map((r) => r.id)).toEqual([14, 11, 12, 10]);
+  });
 });
 
 describe("oldestUnsyncedMerge", () => {

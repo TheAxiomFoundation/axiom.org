@@ -886,8 +886,11 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
 }
 
 /**
- * Failed runs whose cause is still unknown, newest first: no encoder
- * record explains them and no earlier collection stored a detail.
+ * Failed runs whose cause is still unknown, in the order /ops needs them:
+ * each citation's latest dispatch first (the view shows only that one),
+ * then older dispatches, newest first within each. A cancelled or
+ * timed-out run is explained by its conclusion and never looked up; nor is
+ * one an encoder record or an earlier lookup explains.
  */
 export function failureLookups(
   runs: WorkflowRun[],
@@ -897,9 +900,19 @@ export function failureLookups(
   limit: number
 ): WorkflowRun[] {
   const encoderIndex = indexEncoderRows(encoderRuns);
+  const latestByCitation = new Map<string, WorkflowRun>();
+  for (const run of runs) {
+    const citation =
+      parseRunTitle(run.display_title)?.citation ?? previous.get(String(run.id))?.citation;
+    if (!citation) continue;
+    const latest = latestByCitation.get(citation);
+    if (!latest || run.created_at > latest.created_at) latestByCitation.set(citation, run);
+  }
+  const latestIds = new Set([...latestByCitation.values()].map((run) => run.id));
   return runs
     .filter((run) => {
       if (!isFailedRun(run)) return false;
+      if (run.conclusion === "cancelled" || run.conclusion === "timed_out") return false;
       if (previous.get(String(run.id))?.failure_source) return false;
       // An unnamed early run has no citation to match an encoder record by.
       const parsed = parseRunTitle(run.display_title);
@@ -908,7 +921,11 @@ export function failureLookups(
         : null;
       return !encoder || !encoderError(encoder);
     })
-    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    .sort(
+      (a, b) =>
+        Number(latestIds.has(b.id)) - Number(latestIds.has(a.id)) ||
+        b.created_at.localeCompare(a.created_at)
+    )
     .slice(0, limit);
 }
 

@@ -125,7 +125,8 @@ describe("failureReason", () => {
       .toBe("Failed at: Stage signed bundle");
     expect(failureReason(pipelineAttempt({ run_conclusion: "cancelled" })).key).toBe("run:cancelled");
     expect(failureReason(pipelineAttempt({ run_conclusion: "timed_out" })).key).toBe("run:timed_out");
-    expect(failureReason(pipelineAttempt()).key).toBe("run:unknown");
+    expect(failureReason(pipelineAttempt()).key).toBe("run:pending");
+    expect(failureReason(pipelineAttempt({ failure_source: "jobs" })).key).toBe("run:unknown");
   });
 });
 
@@ -359,8 +360,9 @@ describe("encodeGate", () => {
     expect(gate({ failed_step: "package_exact_generated_changes" })).toBe("sign");
     expect(gate({ failed_step: "Queue / Push lane branch and open draft pull request" })).toBe("publish");
     expect(gate({ failed_step: "encode_apply" })).toBe("encode");
-    expect(gate({ failed_step: "Something new" })).toBe("unknown");
-    expect(gate({})).toBe("unknown");
+    expect(gate({ failed_step: "Something new", failure_source: "jobs" })).toBe("unknown");
+    expect(gate({ failure_source: "jobs" })).toBe("unknown");
+    expect(gate({})).toBe("pending");
   });
 });
 

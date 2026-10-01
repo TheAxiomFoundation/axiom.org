@@ -9,6 +9,10 @@ on:
   schedule:
     - cron: "7,37 * * * *"
   workflow_dispatch:
+    inputs:
+      failure_lookups:
+        description: Failed runs to look up this pass (about 2.5 GitHub requests each; the token allows 1,000/hour)
+        default: "60"
 
 permissions:
   contents: read
@@ -27,7 +31,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
-      - run: bun scripts/collect-encoding-pipeline.mjs
+      - run: bun scripts/collect-encoding-pipeline.mjs --failure-lookups "${{ inputs.failure_lookups || '60' }}"
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
