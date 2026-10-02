@@ -437,7 +437,10 @@ function SigningApproval({ view, referenceMs }: { view: PipelineView; referenceM
               <li key={entry.key}>
                 <div className={`${styles.bar} ${styles.barStatic}`}>
                   <span className={styles.barLabel} title={entry.label}>
-                    {entry.label.replace(/^Cancelled /, "").replace(/^(.)/, (c) => c.toUpperCase())}
+                    {entry.label
+                      .replace(/^Cancelled /, "")
+                      .replace(/^\((.*)\)$/, "$1")
+                      .replace(/^(.)/, (c) => c.toUpperCase())}
                   </span>
                   <span className={styles.barTrack} aria-hidden>
                     <span
