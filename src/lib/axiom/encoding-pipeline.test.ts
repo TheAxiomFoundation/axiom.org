@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   checkErrorLabel,
+  logErrorLabel,
   ageLabel,
   approvalSummary,
   attemptStage,
@@ -591,5 +592,29 @@ describe("check errors", () => {
     expect(view.stages.review.items[0].detail).toBe(
       "- … does not match the running pinned encoder · failing: validate / validate (dk)"
     );
+  });
+});
+
+describe("causes read from a job log", () => {
+  it("group by the exception, without its module path or quoted values", () => {
+    expect(
+      logErrorLabel(
+        "axiom_encode.corpus_resolver.InvalidActiveCorpusSourceError: Active corpus source 'us-ok/statute/68-2355' is repealed"
+      )
+    ).toBe("InvalidActiveCorpusSourceError: Active corpus source … is repealed");
+    const failed = (citation: string, error: string) =>
+      pipelineAttempt({ citation, failure_source: "log", failed_step: "encode_apply", encoder_error: error });
+    const a = failed("us-nm/a", "ValueError: No local corpus source text found for 'us-nm/a'");
+    const b = failed("us-ga/b", 'ValueError: No local corpus source text found for "us-ga/b"');
+    expect(failureReason(a)).toEqual({
+      key: "log:ValueError: No local corpus source text found for …",
+      label: "ValueError: No local corpus source text found for …",
+      kind: "encoder",
+    });
+    expect(failureReason(b).key).toBe(failureReason(a).key);
+    // The step still says where it stopped.
+    expect(encodeGate(a)).toBe(encodeGate(pipelineAttempt({ failure_source: "diagnostics", failed_step: "encode_apply" })));
+    // A log that showed no error falls back to the step.
+    expect(failureReason(pipelineAttempt({ failure_source: "log", failed_step: "encode_apply" })).kind).toBe("workflow");
   });
 });

@@ -33,6 +33,8 @@
  *   --failure-lookups N  failed runs to look up per pass (default 60). A
  *                        cause is stored once found, so the backlog drains
  *                        across passes while diagnostics bundles last (90 days).
+ *                        When the bundle names only the failing step, the
+ *                        failing job's log is read for what it printed.
  *                        Each lookup costs 2-3 GitHub requests, and the Actions
  *                        token's 1,000/hour is shared with the index sync.
  *   --check-error-lookups N  failing PR jobs whose log to read per pass
@@ -66,6 +68,7 @@ import {
   containmentQueries,
   containsKey,
   failureLookups,
+  needsLogRead,
   oldestUnsyncedMerge,
   oracleVerdicts,
   parseDiagnostics,
@@ -564,28 +567,65 @@ async function jobsDetail(runId) {
 
 const LOOKUP_CONCURRENCY = 6;
 
-async function lookUpFailure(run) {
-  let detail = null;
+/**
+ * What the failing job printed before it failed, from its log: undefined
+ * when the log cannot be read (try again next pass), null when it shows no
+ * error.
+ */
+async function logError(runId) {
   try {
-    detail = await diagnosticsDetail(run.id);
+    const body = await githubJson(
+      `repos/${GITHUB_ORG}/${ENCODE_REPO}/actions/runs/${runId}/jobs?per_page=50`,
+    );
+    const job = (body.jobs ?? []).find((j) => j.conclusion === "failure");
+    if (!job) return null;
+    const res = await github(`repos/${GITHUB_ORG}/${ENCODE_REPO}/actions/jobs/${job.id}/logs`);
+    return checkErrorFromLog(await res.text());
   } catch (error) {
-    console.warn(`diagnostics for run ${run.id}: ${error.message.split("\n")[0]}`);
+    // Logs expire after 90 days; record that rather than ask every pass.
+    if (/returned (404|410)/.test(error.message)) return null;
+    console.warn(`log for run ${runId}: ${error.message}`);
+    return undefined;
   }
-  try {
-    detail ??= await jobsDetail(run.id);
-  } catch (error) {
-    console.warn(`jobs for run ${run.id}: ${error.message}`);
+}
+
+async function lookUpFailure(run, known) {
+  // A run already explained by its step alone only needs its log read.
+  let detail = known && needsLogRead(known)
+    ? {
+        source: known.failure_source,
+        citation: known.citation ?? null,
+        failed_step: known.failed_step ?? null,
+        error: null,
+        rule: null,
+      }
+    : null;
+  if (!detail) {
+    try {
+      detail = await diagnosticsDetail(run.id);
+    } catch (error) {
+      console.warn(`diagnostics for run ${run.id}: ${error.message.split("\n")[0]}`);
+    }
+    try {
+      detail ??= await jobsDetail(run.id);
+    } catch (error) {
+      console.warn(`jobs for run ${run.id}: ${error.message}`);
+    }
+  }
+  if (detail && !detail.error && !detail.rule) {
+    const printed = await logError(run.id);
+    if (printed !== undefined) detail = { ...detail, source: "log", error: printed };
   }
   return detail;
 }
 
-async function lookUpFailures(runs) {
+async function lookUpFailures(runs, previous) {
   const details = new Map();
   const queue = [...runs];
   await Promise.all(
     Array.from({ length: LOOKUP_CONCURRENCY }, async () => {
       for (let run = queue.shift(); run; run = queue.shift()) {
-        const detail = await lookUpFailure(run);
+        const detail = await lookUpFailure(run, previous.get(String(run.id)));
         if (detail) details.set(String(run.id), detail);
       }
     }),
@@ -802,7 +842,7 @@ async function main() {
   );
 
   const lookups = failureLookups(runs, encoderRuns, previous, nowMs, lookupLimit);
-  const failureDetails = await lookUpFailures(lookups);
+  const failureDetails = await lookUpFailures(lookups, previous);
   console.log(`looked up ${failureDetails.size} of ${lookups.length} unexplained failures`);
   const detailRuns = runDetailLookups(runs, previous, runDetailLimit);
   const runDetails = await lookUpRunDetails(detailRuns);
