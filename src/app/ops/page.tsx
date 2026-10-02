@@ -13,6 +13,7 @@ import {
   rootJurisdiction,
   scopeOptions,
 } from "@/lib/axiom/encoding-pipeline-insights";
+import { opsPipelineVisible } from "@/lib/axiom/ops-pipeline-visibility";
 import { getEncodingStatus, getRecentCorpusScopes } from "@/lib/corpus-status";
 import { SITE_URL } from "@/lib/urls";
 
@@ -34,17 +35,20 @@ export default async function OpsPage({
 }) {
   // ?j=us narrows the pipeline section to one jurisdiction (and those under it).
   const scope = parseScope((await searchParams) ?? {});
+  // Hidden on the public site for now (see opsPipelineVisible): skip its reads too.
+  const showPipeline = opsPipelineVisible();
   const [encodingStatus, queues, recentScopes, pipeline, corpus] = await Promise.all([
     getEncodingStatus(),
     getEncodingQueues(),
     getRecentCorpusScopes(),
-    getPipelineAttempts(),
-    getCorpusView(),
+    showPipeline ? getPipelineAttempts() : null,
+    showPipeline ? getCorpusView() : null,
   ]);
   // One clock for the server render and the client's first paint.
   const referenceMs = Date.now();
   const keep = (jurisdiction: string) => inScope(jurisdiction, scope);
-  const scoped = pipeline.attempts.filter((attempt) => keep(attemptJurisdiction(attempt)));
+  const attempts = pipeline?.attempts ?? [];
+  const scoped = attempts.filter((attempt) => keep(attemptJurisdiction(attempt)));
   return (
     <OpsDashboard
       initialStatus={encodingStatus.value}
@@ -52,13 +56,13 @@ export default async function OpsPage({
       queues={queues}
       recentScopes={recentScopes}
       pipeline={
-        pipeline.attempts.length > 0 ? (
+        attempts.length > 0 ? (
           <OpsPipeline
             key={`pipeline:${scope?.jurisdiction ?? "all"}:${scope?.only ? "only" : ""}`}
             view={pipelineView(scoped, referenceMs)}
             insights={pipelineInsights(scoped, referenceMs)}
             scope={scope}
-            scopes={scopeOptions(pipeline.attempts, scope)}
+            scopes={scopeOptions(attempts, scope)}
             queued={scopeQueued(queuedSummary(queues), keep)}
             corpus={corpus && scopeCorpus(corpus, scope ? rootJurisdiction(scope.jurisdiction) : null)}
             referenceMs={referenceMs}
