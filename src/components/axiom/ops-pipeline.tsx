@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { type ReactNode, useMemo, useRef, useState } from "react";
 import { AlertTriangle, X } from "lucide-react";
 import styles from "./ops-pipeline.module.css";
 import {
@@ -16,7 +16,12 @@ import {
   type PipelineView,
   type WeeklyThroughput,
 } from "@/lib/axiom/encoding-pipeline";
-import type { QueuedSummary } from "@/lib/axiom/encoding-queues";
+import type { QueuedSummary, QueueItemView } from "@/lib/axiom/encoding-queues";
+import {
+  CORPUS_STATUS_LABELS,
+  type CorpusJurisdiction,
+  type CorpusView,
+} from "@/lib/axiom/corpus-releases";
 
 /** The stages a citation moves through, in order, with a short status when nothing is stuck. */
 const FLOW: Array<{ stage: PipelineStage; hint: string }> = [
@@ -46,8 +51,9 @@ const number = (value: number) => value.toLocaleString("en-US");
 const inline = (label: string) =>
   label.replace(/^[A-Z](?![A-Z])/, (letter) => letter.toLowerCase());
 
-/** What the citation list shows: a stage, or one group of a breakdown. */
-interface Listing {
+/** A stage's citations, or one group of a breakdown. */
+interface CitationListing {
+  kind: "citations";
   title: string;
   description: string;
   items: PipelineItem[];
@@ -57,18 +63,24 @@ interface Listing {
   groupLabel?: string;
 }
 
+/** What the list panel shows: citations, the queue's items, or the corpus releases. */
+type Listing = CitationListing | { kind: "queue" } | { kind: "corpus" };
+
 export function OpsPipeline({
   view,
   queued,
+  corpus = null,
   referenceMs,
 }: {
   view: PipelineView;
   queued: QueuedSummary | null;
+  corpus?: CorpusView | null;
   referenceMs: number;
 }) {
   const [listing, setListing] = useState<Listing | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const bottleneck = bottleneckStage(view);
+  const shows = (title: string) => listing?.kind === "citations" && listing.title === title;
 
   // The list opens under the stage strip; bring it into view, since it may
   // open from a card further down the page.
@@ -83,6 +95,7 @@ export function OpsPipeline({
   };
   const showStage = (stage: PipelineStage) =>
     show({
+      kind: "citations",
       title: STAGE_COPY[stage].label,
       description: STAGE_COPY[stage].description,
       items: view.stages[stage].items,
@@ -91,6 +104,7 @@ export function OpsPipeline({
     });
   const showGroup = (heading: string, group: PipelineGroupView, newestFirst: boolean) =>
     show({
+      kind: "citations",
       title: `${heading}: ${group.label}`,
       description: "",
       items: group.items,
@@ -129,24 +143,54 @@ export function OpsPipeline({
         </button>
       )}
 
-      <ol className={styles.flow} aria-label="Pipeline stages">
-        <li>
-          <div className={`${styles.tile} ${styles.static}`}>
-            <span className={styles.tileLabel}>Queued</span>
-            <span className={styles.tileValue}>{queued ? number(queued.pending) : "—"}</span>
-            <span
-              className={`${styles.tileHint} ${queued?.blocked ? styles.warn : ""}`}
-              title={(queued?.blocked ? queued.blockedNote?.note : queued?.pausedReason) ?? undefined}
+      <ol
+        className={`${styles.flow} ${corpus ? styles.flowWide : ""}`}
+        aria-label="Pipeline stages"
+      >
+        {corpus && (
+          <li>
+            <button
+              type="button"
+              className={`${styles.tile} ${corpus.outOfSync > 0 ? styles.tileStuck : ""}`}
+              aria-pressed={listing?.kind === "corpus"}
+              onClick={() => show({ kind: "corpus" })}
             >
-              {!queued
-                ? "no queues"
-                : queued.blocked > 0
+              <span className={styles.tileLabel}>Corpus</span>
+              <span className={styles.tileValue}>{number(corpus.jurisdictions.length)}</span>
+              <span className={styles.tileHint}>
+                {corpus.outOfSync > 0 ? `${number(corpus.outOfSync)} out of sync` : "all in sync"}
+              </span>
+            </button>
+          </li>
+        )}
+        <li>
+          {queued ? (
+            <button
+              type="button"
+              className={`${styles.tile} ${queued.blocked > 0 ? styles.tileStuck : ""}`}
+              aria-pressed={listing?.kind === "queue"}
+              onClick={() => show({ kind: "queue" })}
+            >
+              <span className={styles.tileLabel}>Queued</span>
+              <span className={styles.tileValue}>{number(queued.pending)}</span>
+              <span
+                className={styles.tileHint}
+                title={(queued.blocked ? queued.blockedNote?.note : queued.pausedReason) ?? undefined}
+              >
+                {queued.blocked > 0
                   ? `${number(queued.blocked)} blocked`
                   : queued.pausedReason
                     ? "paused"
                     : `${number(queued.inFlight)} in flight`}
-            </span>
-          </div>
+              </span>
+            </button>
+          ) : (
+            <div className={`${styles.tile} ${styles.static}`}>
+              <span className={styles.tileLabel}>Queued</span>
+              <span className={styles.tileValue}>—</span>
+              <span className={styles.tileHint}>no queues</span>
+            </div>
+          )}
         </li>
         {FLOW.map(({ stage, hint }) => {
           const summary = view.stages[stage];
@@ -162,7 +206,7 @@ export function OpsPipeline({
               <button
                 type="button"
                 className={`${styles.tile} ${summary.stuck > 0 ? styles.tileStuck : ""}`}
-                aria-pressed={listing?.title === STAGE_COPY[stage].label}
+                aria-pressed={shows(STAGE_COPY[stage].label)}
                 onClick={() => showStage(stage)}
               >
                 <span className={styles.tileLabel}>{STAGE_COPY[stage].label}</span>
@@ -181,7 +225,7 @@ export function OpsPipeline({
             key={stage}
             type="button"
             className={`${styles.dropout} ${stage === "no_pr" ? "" : styles.dropoutStuck}`}
-            aria-pressed={listing?.title === STAGE_COPY[stage].label}
+            aria-pressed={shows(STAGE_COPY[stage].label)}
             onClick={() => showStage(stage)}
           >
             <strong>{number(view.stages[stage].count)}</strong>
@@ -197,7 +241,15 @@ export function OpsPipeline({
 
       {listing && (
         <div ref={listRef} className={styles.listAnchor}>
-          <CitationList listing={listing} referenceMs={referenceMs} onClose={() => setListing(null)} />
+          {listing.kind === "citations" && (
+            <CitationList listing={listing} referenceMs={referenceMs} onClose={() => setListing(null)} />
+          )}
+          {listing.kind === "queue" && queued && (
+            <QueueList queued={queued} referenceMs={referenceMs} onClose={() => setListing(null)} />
+          )}
+          {listing.kind === "corpus" && corpus && (
+            <CorpusList corpus={corpus} referenceMs={referenceMs} onClose={() => setListing(null)} />
+          )}
         </div>
       )}
 
@@ -288,30 +340,59 @@ function Breakdown({
   );
 }
 
-function CitationList({
-  listing,
-  referenceMs,
+/** The panel every list opens in, under the stage strip. */
+function ListPanel({
+  title,
+  label,
+  count,
+  description,
   onClose,
+  children,
 }: {
-  listing: Listing;
-  referenceMs: number;
+  title: string;
+  label: string;
+  count: number;
+  description: string;
   onClose: () => void;
+  children: ReactNode;
 }) {
-  const shown = listing.items.length;
   return (
-    <div className={styles.list} role="region" aria-label={`${listing.title} citations`}>
+    <div className={styles.list} role="region" aria-label={label}>
       <div className={styles.listHead}>
         <div>
           <h3>
-            {listing.title}
-            <span className={styles.listCount}>{number(listing.count)}</span>
+            {title}
+            <span className={styles.listCount}>{number(count)}</span>
           </h3>
-          {listing.description && <p>{listing.description}</p>}
+          {description && <p>{description}</p>}
         </div>
         <button type="button" className={styles.close} onClick={onClose} aria-label="Close list">
           <X size={16} aria-hidden />
         </button>
       </div>
+      {children}
+    </div>
+  );
+}
+
+function CitationList({
+  listing,
+  referenceMs,
+  onClose,
+}: {
+  listing: CitationListing;
+  referenceMs: number;
+  onClose: () => void;
+}) {
+  const shown = listing.items.length;
+  return (
+    <ListPanel
+      title={listing.title}
+      label={`${listing.title} citations`}
+      count={listing.count}
+      description={listing.description}
+      onClose={onClose}
+    >
       {shown === 0 ? (
         <p className={styles.empty}>Nothing here right now.</p>
       ) : (
@@ -334,7 +415,59 @@ function CitationList({
           </ul>
         </>
       )}
-    </div>
+    </ListPanel>
+  );
+}
+
+/** One row of any list: what it is, why it is there, and where to look. */
+function Row({
+  title,
+  href,
+  why,
+  detail,
+  age,
+  links,
+  flags,
+}: {
+  title: string;
+  href: string | null;
+  why: string | null;
+  detail: string | null;
+  age: string | null;
+  links: Array<{ label: string; href: string }>;
+  flags: string | null;
+}) {
+  return (
+    <li className={styles.item}>
+      <div className={styles.itemMain}>
+        {href ? (
+          <a href={href} className={styles.citation}>
+            {title}
+          </a>
+        ) : (
+          <span className={styles.rowTitle}>{title}</span>
+        )}
+        {why && <span className={styles.itemWhy}>{why}</span>}
+        {detail && (
+          <span className={styles.itemDetail} title={detail}>
+            {detail}
+          </span>
+        )}
+      </div>
+      <div className={styles.itemSide}>
+        <span className={styles.age}>{age}</span>
+        {links.length > 0 && (
+          <span className={styles.itemLinks}>
+            {links.map((link) => (
+              <a key={link.label} href={link.href} target="_blank" rel="noreferrer">
+                {link.label}
+              </a>
+            ))}
+          </span>
+        )}
+        {flags && <span className={styles.itemFlags}>{flags}</span>}
+      </div>
+    </li>
   );
 }
 
@@ -360,39 +493,236 @@ function ItemRow({
     ["runs", "verified", "tests_failing"].includes(item.stage) ? item.oracle : null,
   ].filter(Boolean);
   return (
-    <li className={styles.item}>
-      <div className={styles.itemMain}>
-        <a href={journeyHref(item.citation)} className={styles.citation}>
-          {item.citation}
-        </a>
-        {why && <span className={styles.itemWhy}>{why}</span>}
-        {item.detail && (
-          <span className={styles.itemDetail} title={item.detail}>
-            {item.detail}
-          </span>
-        )}
-      </div>
-      <div className={styles.itemSide}>
-        <span className={styles.age}>{ageLabel(item.since, referenceMs)}</span>
-        <span className={styles.itemLinks}>
-          {item.prUrl ? (
-            <a href={item.prUrl} target="_blank" rel="noreferrer">
-              {item.prLabel}
-            </a>
-          ) : (
-            <a href={item.runUrl} target="_blank" rel="noreferrer">
-              run
+    <Row
+      title={item.citation}
+      href={journeyHref(item.citation)}
+      why={why || null}
+      detail={item.detail}
+      age={ageLabel(item.since, referenceMs)}
+      links={[
+        item.prUrl
+          ? { label: item.prLabel ?? "PR", href: item.prUrl }
+          : { label: "run", href: item.runUrl },
+        ...(item.testsRunUrl ? [{ label: "validation", href: item.testsRunUrl }] : []),
+      ]}
+      flags={flags.length > 0 ? flags.join(" · ") : null}
+    />
+  );
+}
+
+const QUEUE_GROUPS: Array<{ state: QueueItemView["state"]; title: string }> = [
+  { state: "blocked", title: "Needs a person" },
+  { state: "dispatched", title: "Run open" },
+  { state: "retrying", title: "Retrying after a failed run" },
+];
+
+/** The dispatcher queues' items: what needs a person, what is running, what will retry. */
+function QueueList({
+  queued,
+  referenceMs,
+  onClose,
+}: {
+  queued: QueuedSummary;
+  referenceMs: number;
+  onClose: () => void;
+}) {
+  const totals: Record<QueueItemView["state"], number> = {
+    blocked: queued.blocked,
+    dispatched: queued.inFlight,
+    retrying: queued.items.filter((item) => item.state === "retrying").length,
+  };
+  return (
+    <ListPanel
+      title="Queued"
+      label="Queued items"
+      count={queued.pending}
+      description={[
+        queued.pausedReason
+          ? `Paused${queued.pausedReason === "Paused" ? "" : `: ${queued.pausedReason}`}; nothing new is dispatched.`
+          : null,
+        "Each item is sent to the targeted encode. A failed run is retried once; then the item waits for a person.",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      onClose={onClose}
+    >
+      {QUEUE_GROUPS.map(({ state, title }) => {
+        const items = queued.items.filter((item) => item.state === state);
+        if (items.length === 0) return null;
+        // Items that share a reason sit under it once, in first-seen order.
+        const clusters = new Map<string, QueueItemView[]>();
+        for (const item of items) {
+          const why = item.why ?? "";
+          clusters.set(why, [...(clusters.get(why) ?? []), item]);
+        }
+        return (
+          <section key={state} className={styles.listGroup} aria-label={title}>
+            <h4>
+              {title}
+              <span className={styles.listCount}>{number(Math.max(totals[state], items.length))}</span>
+            </h4>
+            {[...clusters].map(([why, members]) => (
+              <div key={why} className={styles.cluster}>
+                {why && (
+                  <p className={styles.clusterWhy}>
+                    {why}
+                    {members.length > 1 && (
+                      <span className={styles.listCount}>{number(members.length)}</span>
+                    )}
+                  </p>
+                )}
+                <ul className={styles.items}>
+                  {members.map((item) => (
+                    <Row
+                      key={`${item.queueId}/${item.citation}`}
+                      title={item.citation}
+                      href={journeyHref(item.citation)}
+                      why={item.label}
+                      detail={null}
+                      age={ageLabel(item.lastAt, referenceMs)}
+                      links={
+                        item.prUrl
+                          ? [{ label: "PR", href: item.prUrl }]
+                          : item.runUrl
+                            ? [{ label: "run", href: item.runUrl }]
+                            : []
+                      }
+                      flags={item.attempts > 1 ? `${item.attempts} runs` : null}
+                    />
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </section>
+        );
+      })}
+      {queued.notStarted.length > 0 && (
+        <p className={styles.listNote}>
+          Not started yet:{" "}
+          {queued.notStarted
+            .map(({ jurisdiction, count }) => `${jurisdiction} ${number(count)}`)
+            .join(" · ")}
+        </p>
+      )}
+    </ListPanel>
+  );
+}
+
+/** A release name without its jurisdiction prefix: "us-rulespec-2026-09-14-x" reads "2026-09-14-x". */
+function shortRelease(name: string, jurisdiction: string): string {
+  return name.startsWith(`${jurisdiction}-rulespec-`)
+    ? name.slice(jurisdiction.length + 10)
+    : name.startsWith(`${jurisdiction}-`)
+      ? name.slice(jurisdiction.length + 1)
+      : name;
+}
+
+function corpusDetail(row: CorpusJurisdiction): string {
+  const short = (name: string) => shortRelease(name, row.jurisdiction);
+  return [
+    row.serving ? `serving ${short(row.serving.release)}` : "serving nothing",
+    row.newest.release !== row.serving?.release
+      ? `newest ${short(row.newest.release)} (${number(row.newest.scopes)} scopes)`
+      : null,
+    row.encoder
+      ? `encoder reads ${short(row.encoder.release)}${row.encoder.registered ? "" : " (not a registered release)"}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ")
+    .replace(/^./, (c) => c.toUpperCase());
+}
+
+/** Out-of-sync statuses, most actionable first. */
+const CORPUS_GROUPS: Array<Exclude<CorpusJurisdiction["status"], "current">> = [
+  "newer_not_active",
+  "encoder_behind",
+  "encoder_off",
+  "not_serving",
+];
+
+/** Signed corpus releases per jurisdiction: what serves, what is newest, what the encoder reads. */
+function CorpusList({
+  corpus,
+  referenceMs,
+  onClose,
+}: {
+  corpus: CorpusView;
+  referenceMs: number;
+  onClose: () => void;
+}) {
+  const current = corpus.jurisdictions.filter((row) => row.status === "current");
+  const { openPrs, lastPublish } = corpus;
+  return (
+    <ListPanel
+      title="Corpus"
+      label="Corpus releases"
+      count={corpus.jurisdictions.length}
+      description="Per jurisdiction: the signed corpus release the site serves, the newest one signed, and the one its encoder reads. axiom-corpus's publish workflow signs a release; a person activates it."
+      onClose={onClose}
+    >
+      {(openPrs || lastPublish) && (
+        <p className={styles.listNote}>
+          {openPrs && (
+            <a href={openPrs.url} target="_blank" rel="noreferrer">
+              {number(openPrs.count)} open PR{openPrs.count === 1 ? "" : "s"} in axiom-corpus
+              {openPrs.oldestAt && `, oldest ${ageLabel(openPrs.oldestAt, referenceMs)}`}
             </a>
           )}
-          {item.testsRunUrl && (
-            <a href={item.testsRunUrl} target="_blank" rel="noreferrer">
-              validation
+          {openPrs && lastPublish && " · "}
+          {lastPublish && (
+            <a href={lastPublish.url} target="_blank" rel="noreferrer">
+              Last publish {lastPublish.conclusion === "success" ? "succeeded" : "failed"}{" "}
+              {ageLabel(lastPublish.at, referenceMs)} ago
             </a>
           )}
-        </span>
-        {flags.length > 0 && <span className={styles.itemFlags}>{flags.join(" · ")}</span>}
-      </div>
-    </li>
+        </p>
+      )}
+      {CORPUS_GROUPS.map((status) => {
+        // Most recently signed first: where work is happening now.
+        const rows = corpus.jurisdictions
+          .filter((row) => row.status === status)
+          .sort((a, b) => b.newest.signedAt.localeCompare(a.newest.signedAt));
+        if (rows.length === 0) return null;
+        const title = CORPUS_STATUS_LABELS[status];
+        return (
+          <section key={status} className={styles.listGroup} aria-label={title}>
+            <h4>
+              {title}
+              <span className={styles.listCount}>{number(rows.length)}</span>
+            </h4>
+            <ul className={styles.items}>
+              {rows.map((row) => (
+                <Row
+                  key={row.jurisdiction}
+                  title={`${row.name} · ${row.jurisdiction}`}
+                  href={null}
+                  why={corpusDetail(row)}
+                  detail={null}
+                  age={ageLabel(row.since, referenceMs)}
+                  links={
+                    row.encoder
+                      ? [
+                          {
+                            label: "pin",
+                            href: `https://github.com/TheAxiomFoundation/${row.encoder.repo}/blob/main/.axiom/toolchain.toml`,
+                          },
+                        ]
+                      : []
+                  }
+                  flags={null}
+                />
+              ))}
+            </ul>
+          </section>
+        );
+      })}
+      {current.length > 0 && (
+        <p className={styles.listNote}>
+          Up to date: {current.map((row) => row.name).join(", ")}
+        </p>
+      )}
+    </ListPanel>
   );
 }
 

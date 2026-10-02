@@ -42,8 +42,43 @@ interface QueueFile {
   /** Dispatcher queues: "active" or "paused". */
   state?: string;
   pause_reason?: string | null;
-  items?: Array<{ status?: string; jurisdiction?: string; note?: string | null }>;
+  items?: QueueFileItem[];
 }
+
+interface QueueFileItem {
+  citation?: string;
+  label?: string | null;
+  status?: string;
+  jurisdiction?: string;
+  note?: string | null;
+  /** Dispatcher queues: every dispatch of the item, oldest first. */
+  attempts?: Array<{
+    dispatched_at?: string;
+    run_url?: string;
+    result?: string;
+    note?: string | null;
+  }>;
+  pr?: { url?: string } | null;
+}
+
+/** A dispatcher queue item a person may need to look at. */
+export interface QueueItemView {
+  queueId: string;
+  citation: string;
+  label: string | null;
+  /** blocked: needs a person; dispatched: a run is open; retrying: pending after a failed run. */
+  state: "blocked" | "dispatched" | "retrying";
+  /** Why it is blocked, or how its last run ended. */
+  why: string | null;
+  attempts: number;
+  /** The last dispatch. */
+  lastAt: string | null;
+  runUrl: string | null;
+  prUrl: string | null;
+}
+
+/** Items listed per queue and state; the rest are only counted. */
+const ITEMS_PER_STATE = 100;
 
 export interface EncodingQueueSummary {
   queueId: string;
@@ -61,6 +96,55 @@ export interface EncodingQueueSummary {
   jurisdictionCount: number;
   /** The most common note on blocked items, and how many carry it. */
   blockedNote: { note: string; count: number } | null;
+  /** Dispatcher queues: blocked, dispatched, and retrying items. */
+  attention: QueueItemView[];
+  /** Dispatcher queues: pending items never dispatched, by jurisdiction. */
+  notStarted: Record<string, number>;
+}
+
+/**
+ * The dispatcher records where a run failed as "<job>: <step>"; the step is
+ * what tells items apart.
+ */
+function stepOnly(where: string): string {
+  return where.replace(/^[^;:]*: /, "");
+}
+
+/** How a dispatch ended, in a few words: "Failed at Encode, review, ...". */
+function lastRunText(result: string, note: string | null | undefined): string {
+  const detail = note?.trim() || null;
+  if (result === "failure" || result === "timed_out") {
+    return detail ? `Failed at ${stepOnly(detail)}` : "Failed";
+  }
+  const what = result.replaceAll(/[-_]/g, " ").replace(/^./, (c) => c.toUpperCase());
+  return detail ? `${what}: ${detail}` : what;
+}
+
+/** An item's label, unless it only repeats its citation's last segment ("Page 26" for ".../page-26"). */
+function meaningfulLabel(item: QueueFileItem): string | null {
+  const label = item.label?.trim();
+  if (!label) return null;
+  const segment = item.citation?.split("/").pop() ?? "";
+  return label.toLowerCase().replaceAll(/\s+/g, "-") === segment.toLowerCase() ? null : label;
+}
+
+function itemView(queueId: string, item: QueueFileItem, state: QueueItemView["state"]): QueueItemView {
+  const attempts = item.attempts ?? [];
+  const last = attempts.at(-1);
+  const lastRun = last?.result ? lastRunText(last.result, last.note) : null;
+  // "failed 2 times; last at <job>: <step>" names the step alone.
+  const note = item.note?.trim().replace(/(last at )[^;:]*: /, "$1") || null;
+  return {
+    queueId,
+    citation: item.citation ?? "",
+    label: meaningfulLabel(item),
+    state,
+    why: state === "blocked" ? note || lastRun : state === "retrying" ? lastRun : null,
+    attempts: attempts.length,
+    lastAt: last?.dispatched_at ?? null,
+    runUrl: last?.run_url ?? null,
+    prUrl: item.pr?.url ?? null,
+  };
 }
 
 export function summarizeQueue(file: QueueFile): EncodingQueueSummary | null {
@@ -80,6 +164,28 @@ export function summarizeQueue(file: QueueFile): EncodingQueueSummary | null {
   }
   const [topNote] = [...blockedNotes.entries()].sort((a, b) => b[1] - a[1]);
   const dispatcher = file.schema?.startsWith(DISPATCHER_SCHEMA_PREFIX) ?? false;
+  const attention: QueueItemView[] = [];
+  const notStarted: Record<string, number> = {};
+  if (dispatcher) {
+    const listed = { blocked: 0, dispatched: 0, retrying: 0 };
+    for (const item of items) {
+      if (!item.citation) continue;
+      const tried = (item.attempts?.length ?? 0) > 0;
+      const state =
+        item.status === "blocked" || item.status === "dispatched"
+          ? item.status
+          : (item.status ?? "pending") === "pending" && tried
+            ? "retrying"
+            : null;
+      if (state) {
+        if (listed[state] < ITEMS_PER_STATE) attention.push(itemView(file.queue_id, item, state));
+        listed[state] += 1;
+      } else if ((item.status ?? "pending") === "pending") {
+        const jurisdiction = item.jurisdiction ?? "other";
+        notStarted[jurisdiction] = (notStarted[jurisdiction] ?? 0) + 1;
+      }
+    }
+  }
   return {
     queueId: file.queue_id,
     kind: dispatcher ? "dispatcher" : "legacy",
@@ -91,6 +197,8 @@ export function summarizeQueue(file: QueueFile): EncodingQueueSummary | null {
     dispositionCounts,
     jurisdictionCount: jurisdictions.size,
     blockedNote: topNote ? { note: topNote[0], count: topNote[1] } : null,
+    attention,
+    notStarted,
   };
 }
 
@@ -168,7 +276,7 @@ export const getEncodingQueues = unstable_cache(
   readEncodingQueues,
   // Bump the key when the summary's shape changes, so a deploy never reads
   // summaries cached by the previous one.
-  ["ops-encoding-queues-v2"],
+  ["ops-encoding-queues-v3"],
   { revalidate: QUEUE_REVALIDATE_SECONDS }
 );
 
@@ -185,7 +293,13 @@ export interface QueuedSummary {
   blockedNote: { note: string; count: number } | null;
   /** Set only when every counted queue is paused: the first stated reason. */
   pausedReason: string | null;
+  /** Blocked items first, then open runs, then retries; oldest dispatch first within each. */
+  items: QueueItemView[];
+  /** Pending items never dispatched, by jurisdiction, largest first. */
+  notStarted: Array<{ jurisdiction: string; count: number }>;
 }
+
+const STATE_ORDER: Record<QueueItemView["state"], number> = { blocked: 0, dispatched: 1, retrying: 2 };
 
 export function queuedSummary(queues: EncodingQueueSummary[]): QueuedSummary | null {
   const live = queues.filter((queue) => queue.kind === "dispatcher");
@@ -205,5 +319,22 @@ export function queuedSummary(queues: EncodingQueueSummary[]): QueuedSummary | n
         .filter((note): note is NonNullable<typeof note> => note !== null)
         .sort((a, b) => b.count - a.count)[0] ?? null,
     pausedReason: allPaused ? counted[0].pauseReason : null,
+    items: counted
+      .flatMap((queue) => queue.attention)
+      .sort(
+        (a, b) =>
+          STATE_ORDER[a.state] - STATE_ORDER[b.state] ||
+          (a.lastAt ?? "").localeCompare(b.lastAt ?? "")
+      ),
+    notStarted: Object.entries(
+      counted.reduce<Record<string, number>>((all, queue) => {
+        for (const [jurisdiction, count] of Object.entries(queue.notStarted)) {
+          all[jurisdiction] = (all[jurisdiction] ?? 0) + count;
+        }
+        return all;
+      }, {})
+    )
+      .map(([jurisdiction, count]) => ({ jurisdiction, count }))
+      .sort((a, b) => b.count - a.count),
   };
 }

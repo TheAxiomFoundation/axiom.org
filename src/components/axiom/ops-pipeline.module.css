@@ -76,6 +76,11 @@
   list-style: none;
 }
 
+/* With the corpus tile in front. */
+.flowWide {
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
 .flow > li {
   display: flex;
   min-width: 0;
@@ -296,6 +301,42 @@
 
 .citation:hover {
   text-decoration: underline;
+}
+
+.rowTitle {
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--color-ink);
+}
+
+.listGroup {
+  margin-top: 16px;
+}
+
+.listGroup h4 {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--color-ink-secondary);
+}
+
+.cluster {
+  margin-top: 8px;
+}
+
+.clusterWhy {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-ink-secondary);
+}
+
+.listNote a {
+  color: var(--color-accent);
 }
 
 .itemWhy {
@@ -647,7 +688,8 @@
 }
 
 @media (max-width: 1180px) {
-  .flow {
+  .flow,
+  .flowWide {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
@@ -663,7 +705,8 @@
     padding: 18px 16px;
   }
 
-  .flow {
+  .flow,
+  .flowWide {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 

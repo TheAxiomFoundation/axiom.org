@@ -66,6 +66,8 @@ const QUEUE: EncodingQueueSummary = {
   dispositionCounts: { completed: 3, dispatched: 1 },
   jurisdictionCount: 51,
   blockedNote: null,
+  attention: [],
+  notStarted: {},
 };
 
 const SCOPE = {
