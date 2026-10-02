@@ -12,6 +12,7 @@ import {
   buildMirrorIndex,
   checkErrorFromLog,
   checkErrorLookups,
+  needsLogRead,
   parseVersion,
   versionLookups,
   errorRule,
@@ -425,7 +426,7 @@ describe("failureLookups", () => {
       run({ id: 6, status: "in_progress", conclusion: null }),
     ];
     const encoder = [encoderRow({ timestamp: "2026-09-04T00:20:00Z" })];
-    const previous = new Map([["2", { failure_source: "jobs" }]]);
+    const previous = new Map([["2", { failure_source: "log" }]]);
     expect(failureLookups(runs, encoder, previous, NOW, 10).map((r) => r.id)).toEqual([5, 1]);
     expect(failureLookups(runs, encoder, previous, NOW, 1).map((r) => r.id)).toEqual([5]);
   });
@@ -866,5 +867,59 @@ describe("PR check errors", () => {
     const merged = pr({ state: "MERGED", mergedAt: "2026-09-30T00:00:00Z", failedJobs: [{ name: "x", id: 79 }] });
     expect(buildAttempts(inputs({ prs: [merged] }))[0]).toMatchObject({ pr_check_job_id: null, pr_check_error: null });
     expect(buildAttempts(inputs({ prs: [pr()] }))[0]).not.toHaveProperty("pr_check_job_id");
+  });
+});
+
+describe("causes from the failing job's log", () => {
+  const log = (...lines: string[]) => lines.map((line) => `2026-09-29T18:04:19.0000000Z ${line}`).join("\n");
+
+  it("quotes the exception a traceback ends in, not the shutdown lines after it", () => {
+    expect(
+      checkErrorFromLog(
+        log(
+          "##[endgroup]",
+          "Traceback (most recent call last):",
+          '  File "x.py", line 1, in <module>',
+          "axiom_encode.corpus_resolver.InvalidActiveCorpusSourceError: Active corpus source 'us-ok/statute/68-2355' is repealed",
+          "axiom-apply-signer event=shutdown scope=apply_ed25519 signatures=0",
+          "##[error]Process completed with exit code 1."
+        )
+      )
+    ).toBe(
+      "axiom_encode.corpus_resolver.InvalidActiveCorpusSourceError: Active corpus source 'us-ok/statute/68-2355' is repealed"
+    );
+  });
+
+  it("re-reads a failure its bundle explained only by the step", () => {
+    expect(needsLogRead({ failure_source: "diagnostics", failed_step: "encode_apply" })).toBe(true);
+    expect(needsLogRead({ failure_source: "jobs", failed_step: "x / y" })).toBe(true);
+    expect(needsLogRead({ failure_source: "diagnostics", encoder_error_rule: "complete-source-unit:tests" })).toBe(false);
+    expect(needsLogRead({ failure_source: "diagnostics", encoder_error: "a.yaml: ci: [x-y] z" })).toBe(false);
+    expect(needsLogRead({ failure_source: "log", failed_step: "encode_apply" })).toBe(false);
+    expect(needsLogRead({ failure_source: "encoder_run" })).toBe(false);
+    const previous = new Map([
+      ["501", { citation: CITATION, failure_source: "diagnostics", failed_step: "encode_apply" }],
+      ["502", { citation: CITATION, failure_source: "log", failed_step: "encode_apply" }],
+    ]);
+    const runs = [run({ id: 501 }), run({ id: 502, created_at: "2026-09-29T19:00:00Z" })];
+    expect(failureLookups(runs, [], previous, NOW, 10).map((r) => r.id)).toEqual([501]);
+  });
+
+  it("stores a cause read from the log, and keeps it", () => {
+    const detail = {
+      source: "log" as const,
+      failed_step: "encode_apply",
+      error: "ValueError: No local corpus source text found for 'us-ga/x'",
+      rule: null,
+    };
+    const [attempt] = buildAttempts(inputs({ failureDetails: new Map([["501", detail]]) }));
+    expect(attempt).toMatchObject({
+      failure_source: "log",
+      failed_step: "encode_apply",
+      encoder_error: "ValueError: No local corpus source text found for 'us-ga/x'",
+      encoder_error_rule: null,
+    });
+    const [kept] = buildAttempts(inputs({ previous: new Map([["501", attempt]]) }));
+    expect(kept).toMatchObject({ failure_source: "log", encoder_error: attempt.encoder_error });
   });
 });

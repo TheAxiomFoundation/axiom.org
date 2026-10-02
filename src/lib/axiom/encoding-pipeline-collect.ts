@@ -104,7 +104,9 @@ export interface CompileSweep {
 }
 
 export interface FailureDetail {
-  source: "diagnostics" | "jobs";
+  /** "log" when the cause came from the failing job's log, after the
+   *  failure bundle or the jobs listing named only the step. */
+  source: "diagnostics" | "jobs" | "log";
   /** The dispatched citation, when the bundle records it (early runs' names do not). */
   citation?: string | null;
   failed_step: string | null;
@@ -1001,6 +1003,18 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
 }
 
 /**
+ * A failure explained only by the step that stopped it: the bundle had no
+ * validator issue and nothing else recorded why. Its job log usually does.
+ */
+export function needsLogRead(known: Partial<PipelineAttempt>): boolean {
+  return (
+    (known.failure_source === "diagnostics" || known.failure_source === "jobs") &&
+    !known.encoder_error &&
+    !known.encoder_error_rule
+  );
+}
+
+/**
  * Failed runs whose cause is still unknown, in the order /ops needs them:
  * each citation's latest dispatch first (the view shows only that one),
  * then older dispatches, newest first within each. A cancelled or
@@ -1028,7 +1042,8 @@ export function failureLookups(
     .filter((run) => {
       if (!isFailedRun(run)) return false;
       if (run.conclusion === "cancelled" || run.conclusion === "timed_out") return false;
-      if (previous.get(String(run.id))?.failure_source) return false;
+      const known = previous.get(String(run.id));
+      if (known?.failure_source && !needsLogRead(known)) return false;
       // An unnamed early run has no citation to match an encoder record by.
       const parsed = parseRunTitle(run.display_title);
       const encoder = parsed
@@ -1121,6 +1136,8 @@ const ANSI_RE = /\x1b\[[0-9;]*m/g;
 const GENERIC_ERROR_RE =
   /^(Process completed with exit code \d+|The operation was canceled|The job was not acquired|The runner has received a shutdown signal)/i;
 const CHECK_ERROR_MAX_CHARS = 400;
+/** "pkg.module.SomeError: message", the last line of a Python traceback. */
+const EXCEPTION_RE = /^[A-Za-z_][\w.]*(?:Error|Exception|Exit)\b[^:\s]*: \S/;
 /** A failing step's own output, up to this many lines, is quoted whole; longer output by its end. */
 const PRINTED_LINES = 4;
 
@@ -1152,5 +1169,8 @@ export function checkErrorFromLog(log: string): string | null {
     if (lines[i].trim()) printed.unshift(lines[i].trim());
   }
   if (printed.length === 0) return clipLine(lines[generic].replace(/^##\[error\]/, ""));
+  // A Python traceback ends in the exception; later lines are shutdown noise.
+  const exception = [...printed].reverse().find((line) => EXCEPTION_RE.test(line));
+  if (exception) return clipLine(exception);
   return clipLine((printed.length <= PRINTED_LINES ? printed : printed.slice(-2)).join(" "));
 }

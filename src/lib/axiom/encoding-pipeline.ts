@@ -374,6 +374,19 @@ const CANCEL_LABELS: Record<NonNullable<PipelineAttempt["cancel_stage"]>, string
   running: "Cancelled mid-run",
 };
 
+/**
+ * An error read from a job log, as the group runs failing the same way
+ * share: the exception's class without its module path, with quoted values
+ * (citations, paths) set aside.
+ */
+export function logErrorLabel(error: string): string {
+  return checkErrorLabel(
+    error
+      .replace(/^(?:[a-z_][\w]*\.)+(?=[A-Z]\w*(?:Error|Exception|Exit)\b)/, "")
+      .replace(/'[^']*'|"[^"]*"/g, "…")
+  );
+}
+
 export function failureReason(attempt: PipelineAttempt): FailureReason {
   // A cancelled run's story is how far it got, not what it last logged.
   if (attempt.run_conclusion === "timed_out") {
@@ -397,6 +410,11 @@ export function failureReason(attempt: PipelineAttempt): FailureReason {
       label: ENCODER_STATUS_LABELS[attempt.encoder_status],
       kind: "encoder",
     };
+  }
+  // A cause read from the failing job's log: group by the error, not the step.
+  if (attempt.failure_source === "log" && attempt.encoder_error) {
+    const label = logErrorLabel(attempt.encoder_error);
+    return { key: `log:${label}`, label, kind: "encoder" };
   }
   if (attempt.failed_step) {
     // Key by label so a step named by id and by job/step name groups once.
