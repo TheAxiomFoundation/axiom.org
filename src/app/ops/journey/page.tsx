@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { PipelineJourney } from "@/components/axiom/pipeline-journey";
 import { citationJourney } from "@/lib/axiom/encoding-pipeline";
 import { getPipelineAttempts } from "@/lib/axiom/encoding-pipeline-data";
+import { opsPipelineVisible } from "@/lib/axiom/ops-pipeline-visibility";
 import { SITE_URL } from "@/lib/urls";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +22,8 @@ export default async function OpsJourneyPage({
 }: {
   searchParams: Promise<{ citation?: string }>;
 }) {
+  // Hidden with the /ops pipeline section until it is made public.
+  if (!opsPipelineVisible()) notFound();
   const { citation } = await searchParams;
   const pipeline = citation ? await getPipelineAttempts() : null;
   return (
