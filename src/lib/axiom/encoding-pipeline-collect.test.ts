@@ -10,6 +10,10 @@ import {
   runDetailLookups,
   buildCompileIndex,
   buildMirrorIndex,
+  checkErrorFromLog,
+  checkErrorLookups,
+  parseVersion,
+  versionLookups,
   errorRule,
   failureLookups,
   indexEncoderRows,
@@ -749,5 +753,118 @@ describe("run details", () => {
     expect(carried).toMatchObject({ cancel_stage: "running", encode_started_at: "S", jobs_checked_at: "T", dispatched_by: null });
     const [unread] = buildAttempts(inputs());
     expect(unread).not.toHaveProperty("jobs_checked_at");
+  });
+});
+
+describe("encoder versions", () => {
+  it("records the encoder commit and its version, reading each commit once", () => {
+    const previous = new Map([["400", { encoder_sha: "aaa", encoder_version: "0.2.2079" }]]);
+    const runs = [run({ id: 501, head_sha: "aaa" }), run({ id: 502, head_sha: "bbb" }), run({ id: 503 })];
+    expect(versionLookups(runs, previous)).toEqual(["bbb"]);
+    const attempts = buildAttempts(
+      inputs({ runs, previous, encoderVersions: new Map([["bbb", "0.2.2080"]]) })
+    );
+    expect(attempts.map((a) => [a.id, a.encoder_sha, a.encoder_version])).toEqual([
+      ["501", "aaa", "0.2.2079"],
+      ["502", "bbb", "0.2.2080"],
+      ["503", undefined, undefined],
+    ]);
+    // A run listing without the commit keeps the stored one.
+    const kept = buildAttempts(
+      inputs({ runs: [run({ id: 400 })], previous, encoderVersions: new Map() })
+    );
+    expect(kept[0]).toMatchObject({ encoder_sha: "aaa", encoder_version: "0.2.2079" });
+    const unknown = buildAttempts(inputs({ runs: [run({ id: 504, head_sha: "ccc" })] }));
+    expect(unknown[0]).toMatchObject({ encoder_sha: "ccc", encoder_version: null });
+  });
+
+  it("reads the package version from pyproject.toml", () => {
+    expect(parseVersion('[project]\nname = "axiom-encode"\nversion = "0.2.2080"\n')).toBe("0.2.2080");
+    expect(parseVersion("[project]\nname = \"x\"")).toBeNull();
+  });
+});
+
+describe("PR check errors", () => {
+  const log = (...lines: string[]) =>
+    lines.map((line, i) => `2026-08-31T11:10:${String(i).padStart(2, "0")}.0000000Z ${line}`).join("\n");
+
+  it("quotes an explicit error annotation", () => {
+    expect(
+      checkErrorFromLog(log("##[group]Run tests", "##[endgroup]", "##[error]\u001b[31mschema check failed: bad field\u001b[0m", "##[error]Process completed with exit code 1."))
+    ).toBe("schema check failed: bad field");
+  });
+
+  it("otherwise quotes what the failing step printed before Actions' exit line", () => {
+    expect(
+      checkErrorFromLog(
+        log(
+          "##[group]Run set -euo pipefail",
+          "  CARGO_HOME: /home/runner/.cargo",
+          "##[endgroup]",
+          "Manual RuleSpec changes are not allowed.",
+          "- a/b.json validation_execution.axiom_encode does not match the running pinned encoder",
+          "",
+          "##[error]Process completed with exit code 1."
+        )
+      )
+    ).toBe(
+      "Manual RuleSpec changes are not allowed. - a/b.json validation_execution.axiom_encode does not match the running pinned encoder"
+    );
+    const long = log("##[endgroup]", "one", "two", "three", "four", "five: the cause", "##[error]Process completed with exit code 2.");
+    expect(checkErrorFromLog(long)).toBe("four five: the cause");
+    expect(checkErrorFromLog(log("##[endgroup]", "x".repeat(500), "##[error]Process completed with exit code 1."))).toHaveLength(400);
+  });
+
+  it("names a cancelled job, a step that printed nothing, and a log with no failure", () => {
+    expect(checkErrorFromLog(log("##[error]The operation was canceled."))).toBe(
+      "Cancelled before it finished (a timeout or a newer run)"
+    );
+    expect(checkErrorFromLog(log("##[endgroup]", "##[error]Process completed with exit code 3."))).toBe(
+      "Process completed with exit code 3."
+    );
+    expect(checkErrorFromLog(log("all good"))).toBeNull();
+  });
+
+  it("reads each open PR's first failing job once, newest PR first", () => {
+    const failing = (number: number, id: number, createdAt: string, state: ManifestPr["state"] = "OPEN") =>
+      pr({ number, createdAt, state, failedJobs: [{ name: "validate / validate (dk)", id }] });
+    const previous = new Map([
+      ["x", { pr_check_job_id: 10, pr_check_error: "read before" }],
+      ["y", { pr_check_job_id: 11, pr_check_error: null }],
+    ]);
+    const prs = [
+      failing(1, 10, "2026-09-01T00:00:00Z"),
+      failing(2, 11, "2026-09-02T00:00:00Z"),
+      failing(3, 12, "2026-09-03T00:00:00Z"),
+      failing(4, 12, "2026-09-04T00:00:00Z"),
+      failing(5, 13, "2026-09-05T00:00:00Z", "MERGED"),
+      pr({ number: 6, failedJobs: [] }),
+      pr({ number: 7 }),
+    ];
+    expect(checkErrorLookups(prs, previous, 10)).toEqual([
+      { repo: "rulespec-us", jobId: 12 },
+      { repo: "rulespec-us", jobId: 11 },
+    ]);
+    expect(checkErrorLookups(prs, previous, 1)).toHaveLength(1);
+  });
+
+  it("stores the error with its job, keeps it while the job is the same, and clears it once the PR is done", () => {
+    const failingPr = pr({ failedJobs: [{ name: "validate / validate (us)", id: 77 }] });
+    const read = buildAttempts(
+      inputs({ prs: [failingPr], checkErrors: new Map([["77", "schema is invalid"]]) })
+    );
+    expect(read[0]).toMatchObject({ pr_check_job_id: 77, pr_check_error: "schema is invalid" });
+    const previous = new Map([["501", { pr_check_job_id: 77, pr_check_error: "schema is invalid" }]]);
+    expect(buildAttempts(inputs({ prs: [failingPr], previous }))[0]).toMatchObject({
+      pr_check_error: "schema is invalid",
+    });
+    const rerun = pr({ failedJobs: [{ name: "validate / validate (us)", id: 78 }] });
+    expect(buildAttempts(inputs({ prs: [rerun], previous }))[0]).toMatchObject({
+      pr_check_job_id: 78,
+      pr_check_error: null,
+    });
+    const merged = pr({ state: "MERGED", mergedAt: "2026-09-30T00:00:00Z", failedJobs: [{ name: "x", id: 79 }] });
+    expect(buildAttempts(inputs({ prs: [merged] }))[0]).toMatchObject({ pr_check_job_id: null, pr_check_error: null });
+    expect(buildAttempts(inputs({ prs: [pr()] }))[0]).not.toHaveProperty("pr_check_job_id");
   });
 });

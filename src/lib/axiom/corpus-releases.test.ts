@@ -5,6 +5,7 @@ import {
   parsePin,
   readCorpusView,
   releaseJurisdiction,
+  scopeCorpus,
   type ServingPointer,
   type SignedRelease,
 } from "./corpus-releases";
@@ -218,5 +219,25 @@ describe("readCorpusView", () => {
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon-key");
     stubCorpusFetch();
     expect((await getCorpusView())?.outOfSync).toBe(0);
+  });
+});
+
+describe("scopeCorpus", () => {
+  it("keeps one top-level jurisdiction and recounts what is out of sync", () => {
+    const view = corpusView(
+      [
+        release("us-rulespec-1", "2026-09-14T00:00:00Z", ["us", "us-al"]),
+        release("us-ca-1", "2026-09-15T00:00:00Z", ["us-ca"]),
+        release("uk-rulespec-1", "2026-09-07T00:00:00Z", ["uk"]),
+        release("usx-1", "2026-09-07T00:00:00Z", ["usx"]),
+      ],
+      [pointer("us-rulespec-1", "2026-09-14T01:00:00Z", "us"), pointer("uk-rulespec-1", "2026-09-08T00:00:00Z", "uk")],
+      {}
+    );
+    expect(scopeCorpus(view, null)).toBe(view);
+    const us = scopeCorpus(view, "us");
+    expect(us.jurisdictions.map((j) => j.jurisdiction).sort()).toEqual(["us", "us-ca"]);
+    expect(us.outOfSync).toBe(1);
+    expect(scopeCorpus(view, "uk")).toMatchObject({ outOfSync: 0, jurisdictions: [{ jurisdiction: "uk" }] });
   });
 });

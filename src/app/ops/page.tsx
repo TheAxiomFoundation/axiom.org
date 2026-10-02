@@ -3,8 +3,16 @@ import { OpsDashboard } from "@/components/axiom/ops-dashboard";
 import { OpsPipeline } from "@/components/axiom/ops-pipeline";
 import { pipelineView } from "@/lib/axiom/encoding-pipeline";
 import { getPipelineAttempts } from "@/lib/axiom/encoding-pipeline-data";
-import { getCorpusView } from "@/lib/axiom/corpus-releases";
-import { getEncodingQueues, queuedSummary } from "@/lib/axiom/encoding-queues";
+import { getCorpusView, scopeCorpus } from "@/lib/axiom/corpus-releases";
+import { getEncodingQueues, queuedSummary, scopeQueued } from "@/lib/axiom/encoding-queues";
+import {
+  attemptJurisdiction,
+  inScope,
+  parseScope,
+  pipelineInsights,
+  rootJurisdiction,
+  scopeOptions,
+} from "@/lib/axiom/encoding-pipeline-insights";
 import { getEncodingStatus, getRecentCorpusScopes } from "@/lib/corpus-status";
 import { SITE_URL } from "@/lib/urls";
 
@@ -19,7 +27,13 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default async function OpsPage() {
+export default async function OpsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  // ?j=us narrows the pipeline section to one jurisdiction (and those under it).
+  const scope = parseScope((await searchParams) ?? {});
   const [encodingStatus, queues, recentScopes, pipeline, corpus] = await Promise.all([
     getEncodingStatus(),
     getEncodingQueues(),
@@ -29,6 +43,8 @@ export default async function OpsPage() {
   ]);
   // One clock for the server render and the client's first paint.
   const referenceMs = Date.now();
+  const keep = (jurisdiction: string) => inScope(jurisdiction, scope);
+  const scoped = pipeline.attempts.filter((attempt) => keep(attemptJurisdiction(attempt)));
   return (
     <OpsDashboard
       initialStatus={encodingStatus.value}
@@ -38,10 +54,13 @@ export default async function OpsPage() {
       pipeline={
         pipeline.attempts.length > 0 ? (
           <OpsPipeline
-            key="pipeline"
-            view={pipelineView(pipeline.attempts, referenceMs)}
-            queued={queuedSummary(queues)}
-            corpus={corpus}
+            key={`pipeline:${scope?.jurisdiction ?? "all"}:${scope?.only ? "only" : ""}`}
+            view={pipelineView(scoped, referenceMs)}
+            insights={pipelineInsights(scoped, referenceMs)}
+            scope={scope}
+            scopes={scopeOptions(pipeline.attempts, scope)}
+            queued={scopeQueued(queuedSummary(queues), keep)}
+            corpus={corpus && scopeCorpus(corpus, scope ? rootJurisdiction(scope.jurisdiction) : null)}
             referenceMs={referenceMs}
           />
         ) : null

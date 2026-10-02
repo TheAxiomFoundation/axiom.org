@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   queuedSummary,
+  scopeQueued,
   summarizeQueue,
   type EncodingQueueSummary,
 } from "./encoding-queues";
@@ -200,5 +201,58 @@ describe("queuedSummary", () => {
       { jurisdiction: "us-ut", count: 5 },
       { jurisdiction: "us-or", count: 3 },
     ]);
+  });
+});
+
+describe("scopeQueued", () => {
+  const item = (citation: string, state: "blocked" | "dispatched" | "retrying", why: string | null = null) => ({
+    queueId: "q",
+    citation,
+    label: null,
+    state,
+    why,
+    attempts: 1,
+    lastAt: null,
+    runUrl: null,
+    prUrl: null,
+  });
+  const queued = {
+    pending: 950,
+    queues: 1,
+    inFlight: 1,
+    blocked: 3,
+    blockedNote: { note: "skipped", count: 2 },
+    pausedReason: "Paused",
+    items: [
+      item("us-or/a", "blocked", "skipped"),
+      item("us-or/b", "blocked", "skipped"),
+      item("us-ut/c", "blocked", "failed twice"),
+      item("us-ut/d", "dispatched"),
+      item("us-ut/e", "retrying"),
+      item("us-ut/f", "blocked"),
+    ],
+    notStarted: [
+      { jurisdiction: "us-or", count: 561 },
+      { jurisdiction: "us-ut", count: 371 },
+    ],
+  };
+
+  it("recounts the queue from the items one scope keeps", () => {
+    expect(scopeQueued(null, () => true)).toBeNull();
+    expect(scopeQueued(queued, (j) => j === "us-ut")).toEqual({
+      ...queued,
+      pending: 372,
+      inFlight: 1,
+      blocked: 2,
+      blockedNote: { note: "failed twice", count: 1 },
+      items: queued.items.slice(2),
+      notStarted: [{ jurisdiction: "us-ut", count: 371 }],
+    });
+    expect(scopeQueued(queued, (j) => j === "dk")).toMatchObject({
+      pending: 0,
+      blocked: 0,
+      blockedNote: null,
+      pausedReason: "Paused",
+    });
   });
 });

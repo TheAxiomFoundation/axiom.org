@@ -5,6 +5,10 @@ import { pipelineView } from "@/lib/axiom/encoding-pipeline";
 import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 import type { QueuedSummary, QueueItemView } from "@/lib/axiom/encoding-queues";
 import type { CorpusJurisdiction, CorpusView } from "@/lib/axiom/corpus-releases";
+import { pipelineInsights, scopeOptions } from "@/lib/axiom/encoding-pipeline-insights";
+
+const push = vi.fn();
+vi.mock("next/navigation", () => ({ usePathname: () => "/ops", useRouter: () => ({ push }) }));
 
 const NOW = Date.parse("2026-09-30T12:00:00Z");
 
@@ -396,5 +400,88 @@ describe("OpsPipeline", () => {
     expect(screen.getByText("Serving 2026-09-07 · newest elsewhere (3 scopes) · encoder reads 2026-09-07")).toBeInTheDocument();
     expect(screen.queryByText(/in axiom-corpus/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Up to date/)).not.toBeInTheDocument();
+  });
+
+  it("narrows to a jurisdiction, and reads the funnel, runs, encoder versions, and check errors", () => {
+    push.mockReset();
+    const attempts = [
+      ...Array.from({ length: 4 }, (_, i) =>
+        pipelineAttempt({ id: `x${i}`, citation: "us/x", dispatched_at: `2026-09-0${i + 1}T00:00:00Z`, encoder_version: "0.2.9", cost_usd: 1 })
+      ),
+      mergedAttempt({ id: "m", citation: "us-la/m", jurisdiction: "us-la", tests_status: "pass", encoder_version: "0.2.10", cost_usd: 0.5 }),
+      pipelineAttempt({
+        id: "r",
+        citation: "dk/r",
+        jurisdiction: "dk",
+        run_conclusion: "success",
+        pr_state: "draft",
+        pr_created_at: "2026-09-29T00:00:00Z",
+        pr_url: "https://github.com/x/pull/9",
+        pr_checks: "failure",
+        pr_failed_checks: ["validate / validate (dk)"],
+        pr_check_error: "- dk/r.json does not match the running pinned encoder",
+      }),
+    ];
+    const scope = { jurisdiction: "us", only: false };
+    render(
+      <OpsPipeline
+        view={pipelineView(attempts, NOW)}
+        insights={pipelineInsights(attempts, NOW)}
+        scope={scope}
+        scopes={scopeOptions(attempts, scope)}
+        queued={null}
+        referenceMs={NOW}
+      />
+    );
+    const bar = screen.getByRole("navigation", { name: "Jurisdiction" });
+    expect(within(bar).getByRole("link", { name: "All" })).toHaveAttribute("href", "/ops#pipeline-title");
+    expect(within(bar).getByRole("link", { name: /^us\s*2$/ })).toHaveAttribute("aria-current", "page");
+    expect(within(bar).getByRole("link", { name: /^dk\s*1$/ })).toHaveAttribute("href", "/ops?j=dk#pipeline-title");
+    const select = within(bar).getByRole("combobox", { name: "Within us" });
+    fireEvent.change(select, { target: { value: "us:only" } });
+    expect(push).toHaveBeenLastCalledWith("/ops?j=us&only=1#pipeline-title");
+    fireEvent.change(select, { target: { value: "us-la" } });
+    expect(push).toHaveBeenLastCalledWith("/ops?j=us-la#pipeline-title");
+    fireEvent.change(select, { target: { value: "" } });
+    expect(push).toHaveBeenLastCalledWith("/ops?j=us#pipeline-title");
+
+    expect(screen.getByRole("list", { name: "Citations that ever reached each point" })).toHaveTextContent(
+      "3 citations2 encoded1 merged1 into main1 passing on main"
+    );
+
+    const runs = screen.getByRole("group", { name: "Runs and retries" });
+    expect(within(runs).getByText("of citations encode on the first attempt (2 of 3)")).toBeInTheDocument();
+    expect(within(runs).getByText(/of recorded cost went to failed runs \(\$4 of \$5; 5 of 6 runs record a cost\)/)).toBeInTheDocument();
+    expect(within(runs).getByText("1st attempt")).toBeInTheDocument();
+    expect(within(runs).getByRole("link", { name: "us/x" })).toHaveAttribute("href", "/ops/journey?citation=us%2Fx");
+    expect(within(runs).getByText("4 dispatches · 0 encoded · 0 merged")).toBeInTheDocument();
+
+    const versions = screen.getByRole("group", { name: "By encoder version" });
+    expect(within(versions).getByText("0.2.9 – 10")).toBeInTheDocument();
+
+    const holds = screen.getByRole("group", { name: "What holds PRs in review" });
+    fireEvent.click(within(holds).getByRole("button", { name: "By error" }));
+    fireEvent.click(within(holds).getByRole("button", { name: /does not match the running pinned encoder\s*1/ }));
+    const list = screen.getByRole("region", { name: /^In review: - … does not match/ });
+    // The row's detail keeps the failing check but not the error its group already names.
+    expect(within(list).getByText("failing: validate / validate (dk)")).toBeInTheDocument();
+  });
+
+  it("says when no cost or encoder versions are recorded, and needs no scope bar for one jurisdiction", () => {
+    const attempts = [pipelineAttempt()];
+    render(
+      <OpsPipeline
+        view={pipelineView(attempts, NOW)}
+        insights={pipelineInsights(attempts, NOW)}
+        scopes={scopeOptions(attempts, null)}
+        queued={null}
+        referenceMs={NOW}
+      />
+    );
+    expect(screen.queryByRole("navigation", { name: "Jurisdiction" })).not.toBeInTheDocument();
+    expect(screen.getByText("No run records its cost yet")).toBeInTheDocument();
+    expect(screen.getByText("No encoder versions recorded yet.")).toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "Runs and retries" })).queryByText("Dispatched most")).not.toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "What holds PRs in review" })).queryByRole("button", { name: "By error" })).not.toBeInTheDocument();
   });
 });

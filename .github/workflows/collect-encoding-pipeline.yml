@@ -16,6 +16,9 @@ on:
       run_detail_lookups:
         description: Finished runs whose jobs to read this pass (one GitHub request each)
         default: "80"
+      check_error_lookups:
+        description: Failing PR checks whose log to read this pass (one GitHub request each)
+        default: "60"
 
 permissions:
   contents: read
@@ -38,6 +41,7 @@ jobs:
           bun scripts/collect-encoding-pipeline.mjs
           --failure-lookups "${{ inputs.failure_lookups || '60' }}"
           --run-detail-lookups "${{ inputs.run_detail_lookups || '80' }}"
+          --check-error-lookups "${{ inputs.check_error_lookups || '60' }}"
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

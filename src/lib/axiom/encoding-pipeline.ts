@@ -73,6 +73,12 @@ export interface PipelineAttempt {
   cancel_stage?: "approval" | "before_job" | "running" | null;
   /** When the run's jobs were read (once per run). */
   jobs_checked_at?: string | null;
+  /** The axiom-encode commit the run used, and the package version there. */
+  encoder_sha?: string | null;
+  encoder_version?: string | null;
+  /** What an open PR's first failing check printed, and that check's job id. */
+  pr_check_error?: string | null;
+  pr_check_job_id?: number | null;
 }
 
 /** Where one attempt sits. Main-line stages first, then the ways out. */
@@ -1094,11 +1100,26 @@ function itemReason(state: CitationState): string | null {
   }
 }
 
+/**
+ * What a failing check printed, with file paths and commit hashes elided:
+ * the part PRs failing the same way share.
+ */
+export function checkErrorLabel(message: string): string {
+  return message
+    .replace(/\S*\/\S*/g, "…")
+    .replace(/\b[0-9a-f]{7,40}\b/g, "…")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function itemDetail(state: CitationState): string | null {
   const latest = state.latest;
   if (state.stage === "compile_failed") return latest.compile_error;
   if (state.stage === "encode_failed") return latest.encoder_error ?? cancellationDetail(latest);
-  if (state.stage === "review") return reviewDetail(latest);
+  if (state.stage === "review") {
+    const printed = latest.pr_check_error ? checkErrorLabel(latest.pr_check_error) : null;
+    return [printed, reviewDetail(latest)].filter(Boolean).join(" · ") || null;
+  }
   return null;
 }
 

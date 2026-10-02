@@ -1,6 +1,8 @@
 "use client";
 
 import { type ReactNode, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { AlertTriangle, X } from "lucide-react";
 import styles from "./ops-pipeline.module.css";
 import {
@@ -17,6 +19,14 @@ import {
   type WeeklyThroughput,
 } from "@/lib/axiom/encoding-pipeline";
 import type { QueuedSummary, QueueItemView } from "@/lib/axiom/encoding-queues";
+import type {
+  AttemptRate,
+  PipelineInsights,
+  PipelineScope,
+  RunStats,
+  ScopeOption,
+  VersionBin,
+} from "@/lib/axiom/encoding-pipeline-insights";
 import {
   CORPUS_STATUS_LABELS,
   type CorpusJurisdiction,
@@ -66,13 +76,22 @@ interface CitationListing {
 /** What the list panel shows: citations, the queue's items, or the corpus releases. */
 type Listing = CitationListing | { kind: "queue" } | { kind: "corpus" };
 
+const NO_SCOPES = { roots: [], within: [] };
+
 export function OpsPipeline({
   view,
+  insights = null,
+  scope = null,
+  scopes = NO_SCOPES,
   queued,
   corpus = null,
   referenceMs,
 }: {
   view: PipelineView;
+  insights?: PipelineInsights | null;
+  /** The jurisdictions the view covers; null for all. */
+  scope?: PipelineScope | null;
+  scopes?: { roots: ScopeOption[]; within: ScopeOption[] };
   queued: QueuedSummary | null;
   corpus?: CorpusView | null;
   referenceMs: number;
@@ -128,6 +147,9 @@ export function OpsPipeline({
           <p className={styles.updated}>Updated {ageLabel(view.collectedAt, referenceMs)} ago</p>
         )}
       </header>
+
+      {scopes.roots.length > 1 && <ScopeBar scope={scope} scopes={scopes} />}
+      {insights && <Funnel funnel={insights.funnel} />}
 
       {bottleneck && (
         <button
@@ -266,11 +288,18 @@ export function OpsPipeline({
         <Breakdown
           title="What holds PRs in review"
           description={`${number(view.stages.review.count)} citations with an open PR`}
-          views={[{ id: "hold", label: "By hold", groups: view.holds }]}
+          views={[
+            { id: "hold", label: "By hold", groups: view.holds },
+            ...(insights?.checkErrors.length
+              ? [{ id: "error", label: "By error", groups: insights.checkErrors }]
+              : []),
+          ]}
           onOpen={(group) => showGroup("In review", group, false)}
         />
-        <Throughput view={view} />
+        {insights && <RunsCard runs={insights.runs} />}
+        {insights && <VersionsCard bins={insights.versions} />}
         <SigningApproval view={view} referenceMs={referenceMs} />
+        <Throughput view={view} />
       </div>
     </section>
   );
@@ -492,12 +521,16 @@ function ItemRow({
       : null,
     ["runs", "verified", "tests_failing"].includes(item.stage) ? item.oracle : null,
   ].filter(Boolean);
+  const detail = item.detail
+    ?.split(" · ")
+    .filter((part) => part !== groupLabel)
+    .join(" · ");
   return (
     <Row
       title={item.citation}
       href={journeyHref(item.citation)}
       why={why || null}
-      detail={item.detail}
+      detail={detail || null}
       age={ageLabel(item.since, referenceMs)}
       links={[
         item.prUrl
@@ -723,6 +756,205 @@ function CorpusList({
         </p>
       )}
     </ListPanel>
+  );
+}
+
+/** A URL for a scope, landing back on the pipeline section. */
+function scopeHref(pathname: string, scope: PipelineScope | null): string {
+  if (!scope) return `${pathname}#pipeline-title`;
+  const query = new URLSearchParams({ j: scope.jurisdiction, ...(scope.only ? { only: "1" } : {}) });
+  return `${pathname}?${query}#pipeline-title`;
+}
+
+/** Narrow every tile, card, and list to one jurisdiction. */
+function ScopeBar({
+  scope,
+  scopes,
+}: {
+  scope: PipelineScope | null;
+  scopes: { roots: ScopeOption[]; within: ScopeOption[] };
+}) {
+  const pathname = usePathname() ?? "/ops";
+  const router = useRouter();
+  const root = scope?.jurisdiction.split("-")[0] ?? null;
+  const withinValue = scope && scope.jurisdiction !== root ? scope.jurisdiction : scope?.only ? `${root}:only` : "";
+  return (
+    <nav className={styles.scopes} aria-label="Jurisdiction">
+      <Link href={scopeHref(pathname, null)} className={styles.scope} aria-current={!scope ? "page" : undefined}>
+        All
+      </Link>
+      {scopes.roots.map((option) => (
+        <Link
+          key={option.jurisdiction}
+          href={scopeHref(pathname, option)}
+          className={styles.scope}
+          aria-current={root === option.jurisdiction ? "page" : undefined}
+        >
+          {option.label}
+          <span className={styles.scopeCount}>{number(option.citations)}</span>
+        </Link>
+      ))}
+      {scopes.within.length > 0 && root && (
+        <select
+          className={styles.scopeSelect}
+          aria-label={`Within ${root}`}
+          value={withinValue}
+          onChange={(event) => {
+            const value = event.target.value;
+            const option = scopes.within.find((o) => (o.only ? `${o.jurisdiction}:only` : o.jurisdiction) === value);
+            router.push(scopeHref(pathname, option ?? { jurisdiction: root, only: false }));
+          }}
+        >
+          <option value="">All of {root}</option>
+          {scopes.within.map((option) => (
+            <option
+              key={`${option.jurisdiction}${option.only ? ":only" : ""}`}
+              value={option.only ? `${option.jurisdiction}:only` : option.jurisdiction}
+            >
+              {option.label} ({number(option.citations)})
+            </option>
+          ))}
+        </select>
+      )}
+    </nav>
+  );
+}
+
+/** How many citations ever got how far, across all their dispatches. */
+function Funnel({ funnel }: { funnel: PipelineInsights["funnel"] }) {
+  const steps = [
+    { label: "citations", value: funnel.citations },
+    { label: "encoded", value: funnel.encoded },
+    { label: "merged", value: funnel.merged },
+    { label: "into main", value: funnel.mergedMain },
+    { label: "passing on main", value: funnel.passing },
+  ];
+  return (
+    <div className={styles.funnel}>
+      <span className={styles.funnelLabel}>Ever reached</span>
+      <ol aria-label="Citations that ever reached each point">
+        {steps.map((step) => (
+          <li key={step.label}>
+            <strong>{number(step.value)}</strong> {step.label}
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+const percent = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 100) : 0);
+
+/** Success rates as bars on one 0–100% scale. */
+function RateBars({ rows }: { rows: Array<{ key: string; label: string; rate: AttemptRate }> }) {
+  return (
+    <ul className={styles.bars}>
+      {rows.map(({ key, label, rate }) => (
+        <li key={key}>
+          <div
+            className={`${styles.bar} ${styles.barStatic} ${styles.rateBar}`}
+            title={`${number(rate.success)} of ${number(rate.total)} succeeded`}
+          >
+            <span className={styles.barLabel}>
+              {label}
+              <span className={styles.barNote}> · {number(rate.total)}</span>
+            </span>
+            <span className={styles.barTrack} aria-hidden>
+              <span
+                className={styles.barFill}
+                style={{ width: `${Math.max(1, percent(rate.success, rate.total))}%` }}
+              />
+            </span>
+            <span className={styles.barCount}>{percent(rate.success, rate.total)}%</span>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** What each dispatch yields: first attempts, retries, the citations re-run most, and cost. */
+function RunsCard({ runs }: { runs: RunStats }) {
+  const { firstAttempt, cost } = runs;
+  return (
+    <div className={styles.card} role="group" aria-label="Runs and retries">
+      <div className={styles.cardHead}>
+        <div>
+          <h3>Runs and retries</h3>
+          <p>Finished runs, not counting cancellations.</p>
+        </div>
+      </div>
+      <div className={styles.stats}>
+        <div className={styles.statBlock}>
+          <span className={styles.statValue}>{percent(firstAttempt.success, firstAttempt.total)}%</span>
+          <span className={styles.statLabel}>
+            of citations encode on the first attempt ({number(firstAttempt.success)} of{" "}
+            {number(firstAttempt.total)})
+          </span>
+        </div>
+        <div className={styles.statBlock}>
+          <span className={styles.statValue}>
+            {cost.recorded > 0 ? `${percent(cost.onFailures, cost.total)}%` : "—"}
+          </span>
+          <span className={styles.statLabel}>
+            {cost.recorded > 0
+              ? `of recorded cost went to failed runs ($${cost.onFailures.toFixed(0)} of $${cost.total.toFixed(0)}; ${number(cost.recorded)} of ${number(cost.finished)} runs record a cost)`
+              : "No run records its cost yet"}
+          </span>
+        </div>
+      </div>
+      {runs.byAttempt.length > 0 && (
+        <>
+          <p className={styles.miniLabel}>Success by attempt</p>
+          <RateBars
+            rows={runs.byAttempt.map((rate) => ({ key: rate.label, label: `${rate.label} attempt`, rate }))}
+          />
+        </>
+      )}
+      {runs.mostDispatched.length > 0 && (
+        <>
+          <p className={styles.miniLabel}>Dispatched most</p>
+          <ul className={styles.ranked}>
+            {runs.mostDispatched.map((entry) => (
+              <li key={entry.citation}>
+                <a href={journeyHref(entry.citation)} className={styles.citation}>
+                  {entry.citation}
+                </a>
+                <span>
+                  {number(entry.dispatches)} dispatches · {number(entry.successes)} encoded ·{" "}
+                  {number(entry.merged)} merged
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Success across encoder releases, pooled so each bar has enough runs to compare. */
+function VersionsCard({ bins }: { bins: VersionBin[] }) {
+  return (
+    <div className={styles.card} role="group" aria-label="By encoder version">
+      <div className={styles.cardHead}>
+        <div>
+          <h3>By encoder version</h3>
+          <p>Success of finished runs. Consecutive versions are pooled to at least 10 runs; newest last.</p>
+        </div>
+      </div>
+      {bins.length === 0 ? (
+        <p className={styles.empty}>No encoder versions recorded yet.</p>
+      ) : (
+        <RateBars
+          rows={bins.map((bin) => ({
+            key: `${bin.from}-${bin.to}`,
+            label: bin.from === bin.to ? bin.from : `${bin.from} – ${bin.to.split(".").at(-1)}`,
+            rate: { label: bin.to, success: bin.successes, total: bin.runs },
+          }))}
+        />
+      )}
+    </div>
   );
 }
 
