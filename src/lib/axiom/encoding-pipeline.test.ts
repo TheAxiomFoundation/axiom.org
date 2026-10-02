@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   checkErrorLabel,
-  logErrorLabel,
+  errorGroupLabel,
   ageLabel,
   approvalSummary,
   attemptStage,
@@ -595,23 +595,38 @@ describe("check errors", () => {
   });
 });
 
-describe("causes read from a job log", () => {
-  it("group by the exception, without its module path or quoted values", () => {
+describe("errors without a rule id", () => {
+  it("group by what they say, without paths, names, quoted values, or numbers", () => {
     expect(
-      logErrorLabel(
+      errorGroupLabel(
         "axiom_encode.corpus_resolver.InvalidActiveCorpusSourceError: Active corpus source 'us-ok/statute/68-2355' is repealed"
       )
     ).toBe("InvalidActiveCorpusSourceError: Active corpus source … is repealed");
-    const failed = (citation: string, error: string) =>
-      pipelineAttempt({ citation, failure_source: "log", failed_step: "encode_apply", encoder_error: error });
+    expect(
+      errorGroupLabel(
+        "statutes/42/402/q.yaml: ci: Test case `auto_output_widow` output `benefit` expected decimal 12.3456789, got decimal 13."
+      )
+    ).toBe("ci: Test case … output … expected decimal N, got decimal N.");
+    const failed = (citation: string, error: string, extra: Partial<Parameters<typeof pipelineAttempt>[0]> = {}) =>
+      pipelineAttempt({ citation, failure_source: "log", failed_step: "encode_apply", encoder_error: error, ...extra });
     const a = failed("us-nm/a", "ValueError: No local corpus source text found for 'us-nm/a'");
     const b = failed("us-ga/b", 'ValueError: No local corpus source text found for "us-ga/b"');
     expect(failureReason(a)).toEqual({
-      key: "log:ValueError: No local corpus source text found for …",
+      key: "error:ValueError: No local corpus source text found for …",
       label: "ValueError: No local corpus source text found for …",
       kind: "encoder",
     });
     expect(failureReason(b).key).toBe(failureReason(a).key);
+    // A bundle issue without a rule id groups by its text, ahead of the encoder's status.
+    const issue = failed("us/c", "a.yaml: ci: Proof source evidence not found: rule `x` proof atom 2", {
+      failure_source: "encoder_run",
+      encoder_status: "apply_blocked_validation",
+    });
+    expect(failureReason(issue)).toEqual({
+      key: "error:ci: Proof source evidence not found: rule … proof atom N",
+      label: "ci: Proof source evidence not found: rule … proof atom N",
+      kind: "validator",
+    });
     // The step still says where it stopped.
     expect(encodeGate(a)).toBe(encodeGate(pipelineAttempt({ failure_source: "diagnostics", failed_step: "encode_apply" })));
     // A log that showed no error falls back to the step.

@@ -375,15 +375,18 @@ const CANCEL_LABELS: Record<NonNullable<PipelineAttempt["cancel_stage"]>, string
 };
 
 /**
- * An error read from a job log, as the group runs failing the same way
- * share: the exception's class without its module path, with quoted values
- * (citations, paths) set aside.
+ * An error as the group runs failing the same way share: without the module
+ * file it was raised for, the exception's module path, quoted or backticked
+ * values (citations, rule and test names, paths), or numbers.
  */
-export function logErrorLabel(error: string): string {
+export function errorGroupLabel(error: string): string {
   return checkErrorLabel(
     error
+      .replace(/^\S+\.ya?ml:\s*/, "")
       .replace(/^(?:[a-z_][\w]*\.)+(?=[A-Z]\w*(?:Error|Exception|Exit)\b)/, "")
-      .replace(/'[^']*'|"[^"]*"/g, "…")
+      .replace(/`[^`]*`|'[^']*'|"[^"]*"/g, "…")
+      // Before checkErrorLabel, so a long number is not taken for a hash.
+      .replace(/\b\d+(?:\.\d+)*\b/g, "N")
   );
 }
 
@@ -404,17 +407,22 @@ export function failureReason(attempt: PipelineAttempt): FailureReason {
       kind: "validator",
     };
   }
+  // An issue or log error with no rule id: group by what it says, which
+  // tells more than the encoder's status or the step that stopped the run.
+  if (attempt.encoder_error) {
+    const label = errorGroupLabel(attempt.encoder_error);
+    return {
+      key: `error:${label}`,
+      label,
+      kind: attempt.failure_source === "log" ? "encoder" : "validator",
+    };
+  }
   if (attempt.encoder_status && ENCODER_STATUS_LABELS[attempt.encoder_status]) {
     return {
       key: `status:${attempt.encoder_status}`,
       label: ENCODER_STATUS_LABELS[attempt.encoder_status],
       kind: "encoder",
     };
-  }
-  // A cause read from the failing job's log: group by the error, not the step.
-  if (attempt.failure_source === "log" && attempt.encoder_error) {
-    const label = logErrorLabel(attempt.encoder_error);
-    return { key: `log:${label}`, label, kind: "encoder" };
   }
   if (attempt.failed_step) {
     // Key by label so a step named by id and by job/step name groups once.
