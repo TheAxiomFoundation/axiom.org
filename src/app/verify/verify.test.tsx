@@ -90,7 +90,12 @@ describe("Verify page", () => {
     ).toBeInTheDocument();
     const row = screen.getByText(/^All 856 match at zero tolerance/);
     expect(row).toHaveTextContent(
-      /five intermediate values: gross income, the standard and excess-shelter deductions, net income, and the maximum allotment/,
+      /four intermediate values in the file: gross income, the standard and excess-shelter deductions, and net income/,
+    );
+    // The maximum allotment is checked against a typed FY 2024 table; the
+    // file's BENMAX is never read (axiom-oracles snap_qc_compare.py _LABELS).
+    expect(row).toHaveTextContent(
+      /The maximum allotment matches USDA.s FY 2024 table in all 856/,
     );
     expect(row).toHaveTextContent(/eligibility is untested/);
     expect(screen.queryByText(/federal computation/i)).not.toBeInTheDocument();
