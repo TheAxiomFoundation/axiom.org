@@ -85,7 +85,7 @@ export const surfaces: Surface[] = [
   },
   {
     id: "oracles",
-    name: "US validation against independent evidence",
+    name: "US validation against other calculators and USDA data",
     tier: "verified",
     claim:
       "Where a policy is covered, every disagreement with the reference calculator is classified with evidence: reconciled arithmetically, traced to a bug in the other engine, or attributed to the comparison harness itself (bridge artifacts) — a bounded class we disclose rather than blend in.",

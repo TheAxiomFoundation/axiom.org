@@ -24,7 +24,7 @@ const LAYERS = [
       "Cited — every value traces to a statute",
       "Time-aware — effective dates on every clause",
       "Composable — reform a parameter without rewriting",
-      "Verified — cross-checked against independent engines",
+      "Cross-checked — against other calculators where a comparison exists",
     ],
   },
 ];

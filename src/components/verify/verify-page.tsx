@@ -149,7 +149,7 @@ export function VerifyPage() {
 
         <section className="mb-24">
           <h2 className="heading-section normal-case mb-3">
-            US checks against independent evidence
+            US checks against other calculators and USDA data
           </h2>
           <p className="font-body text-[1rem] text-[var(--color-ink-secondary)] max-w-[820px] leading-relaxed mb-4">
             We do not publish a match rate. A rate counts a difference we have
@@ -164,7 +164,8 @@ export function VerifyPage() {
           <p className="font-body text-[0.9rem] text-[var(--color-ink-muted)] max-w-[820px] leading-relaxed mb-8">
             The conformance predicate applies to calculator comparisons. The
             administrative replay is a separate reality check against reviewed,
-            real cases.
+            real cases. Max Ghenis, Axiom&apos;s CEO, co-founded PolicyEngine,
+            the reference calculator below, and is also its CEO.
           </p>
 
           <pre className="font-mono text-[0.8rem] leading-6 text-[var(--color-code-text)] bg-[var(--color-code-bg)] border border-[var(--color-rule)] rounded-md p-4 overflow-x-auto mb-10">
@@ -174,7 +175,7 @@ export function VerifyPage() {
           <div className="overflow-x-auto rounded-md border border-[var(--color-rule)] mb-6">
             <table className="w-full border-collapse min-w-[920px]">
               <caption className="sr-only">
-                US checks against independent evidence
+                US checks against other calculators and USDA data
               </caption>
               <thead>
                 <tr className="bg-[var(--color-paper-elevated)]">

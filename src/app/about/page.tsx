@@ -32,7 +32,7 @@ const BUILD = [
   {
     n: "04",
     title: "Validation",
-    desc: "The harness that runs every encoding against engines we don't control — and publishes the comparison so anyone can re-run it.",
+    desc: "The harness that compares encodings with other calculators and datasets, and publishes the comparisons and the code that runs them.",
     href: "/validation",
   },
 ];
@@ -170,10 +170,15 @@ export default function AboutPage() {
 
         <ProseBand label="How we verify">
           <p className="m-0 font-body text-[1.05rem] text-[var(--color-ink-secondary)] leading-relaxed text-pretty">
-            We cross-check every encoding against independent engines and
-            datasets: PolicyEngine, TAXSIM, UKMOD, EUROMOD, SOUTHMOD, the PSL
-            Tax-Calculator, and SNAP quality-control data. Open isn&apos;t
-            enough &mdash; the point is that{" "}
+            We compare encodings with other calculators and datasets and
+            publish the results. Most of our rules have no comparison yet. The
+            calculators include PolicyEngine, TAXSIM, UKMOD, EUROMOD, and
+            SPSD/M. Max Ghenis, Axiom&apos;s CEO, co-founded PolicyEngine and
+            is also its CEO.
+            USDA&apos;s SNAP quality-control data checks our benefit
+            arithmetic; the file keeps only eligible households, so it leaves
+            eligibility untested. Open isn&apos;t enough &mdash; the point is
+            that{" "}
             <span className="serif-italic text-[var(--color-ink)]">
               you can check our work
             </span>

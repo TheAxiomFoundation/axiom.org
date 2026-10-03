@@ -6,7 +6,7 @@ import { Reveal, RevealGroup, RevealItem } from "@/components/landing/reveal";
 export const metadata: Metadata = {
   title: "Validation — Axiom Foundation",
   description:
-    "How the Axiom Foundation checks its encodings: cross-checks against independent oracles — PolicyEngine, TAXSIM, EUROMOD-family models, SPSD/M, ACCESS NYC, and government quality-control data.",
+    "How the Axiom Foundation checks its encodings: comparisons with other calculators and datasets, including PolicyEngine, TAXSIM, UKMOD, EUROMOD, SPSD/M, and USDA's SNAP quality-control data.",
 };
 
 interface Oracle {
@@ -20,19 +20,19 @@ const ORACLES: Oracle[] = [
   {
     name: "PolicyEngine",
     scope: "US + UK tax & benefits",
-    body: "Open-source microsimulation of US and UK tax and benefit policy — the broadest-coverage oracle we compare against.",
+    body: "Open-source microsimulation of US and UK tax and benefit policy — the broadest-coverage oracle we compare against. Max Ghenis, Axiom's CEO, co-founded PolicyEngine and is also its CEO, and PSL Foundation fiscally sponsors both organizations.",
     href: "https://policyengine.org",
   },
   {
     name: "TAXSIM",
     scope: "US federal & state income tax",
-    body: "NBER's tax calculator, the reference standard in economics research for US income tax liabilities.",
+    body: "NBER's tax calculator, the reference standard in economics research for US income tax liabilities. PolicyEngine is building its successor with NBER, and our runs use the TAXSIM binary bundled in PolicyEngine's policyengine-taxsim package.",
     href: "https://taxsim.nber.org",
   },
   {
-    name: "UKMOD / EUROMOD / SOUTHMOD",
-    scope: "UK, EU & Global South",
-    body: "The EUROMOD family of tax-benefit microsimulation models, maintained by university and EC research teams.",
+    name: "UKMOD / EUROMOD",
+    scope: "UK & EU",
+    body: "The EUROMOD family of tax-benefit microsimulation models, maintained by university and EC research teams. SOUTHMOD, the family's Global South models, is not yet connected: each model and data bundle needs licensing first.",
     href: "https://euromod-web.jrc.ec.europa.eu",
   },
   {
@@ -44,19 +44,19 @@ const ORACLES: Oracle[] = [
   {
     name: "PSL Tax-Calculator",
     scope: "US federal income tax",
-    body: "The Policy Simulation Library's open-source US federal tax model, developed in the open with public revision history.",
+    body: "The Policy Simulation Library's open-source US federal tax model, developed in the open with public revision history. So far we have compared it with PolicyEngine to test the adapter; it does not yet check Axiom's encodings.",
     href: "https://github.com/PSLmodels/Tax-Calculator",
   },
   {
     name: "ACCESS NYC",
     scope: "NYC benefit eligibility",
-    body: "New York City's public benefits screener — its published Drools rules and Screening API make it a checkable oracle for city-level eligibility.",
+    body: "New York City's public benefits screener — its published Drools rules and Screening API make it a checkable oracle for city-level eligibility. The adapter is built; we have not yet published a comparison.",
     href: "https://access.nyc.gov",
   },
   {
     name: "SNAP quality-control data",
     scope: "US food assistance",
-    body: "USDA's case-level QC microdata — real adjudicated cases we replay against the encodings to catch divergence from practice, not just from text.",
+    body: "USDA's case-level QC microdata. For each reviewed household, Mathematica computes a benefit for USDA from the edited case record; we compute it from the same record, taking income and several deductions as given, and compare. The file keeps only eligible households, so this checks benefit arithmetic and leaves eligibility untested.",
     href: "https://www.fns.usda.gov/snap/quality-control",
   },
 ];
@@ -71,13 +71,23 @@ export default function ValidationPage() {
             Validation &middot; Check our work
           </span>
           <h1 className="heading-page mb-6 mt-2">
-            Every encoding, cross-checked
+            Cross-checks in the open
           </h1>
           <p className="font-body text-[1.2rem] text-[var(--color-ink-secondary)] leading-relaxed text-pretty">
             Open isn&apos;t enough &mdash; an encoding you can read but
-            can&apos;t test is still a claim. We run every published rule
-            against independent engines we don&apos;t control, and publish
-            the comparisons so anyone can re-run them.
+            can&apos;t test is still a claim. We compare published rules with
+            other calculators and datasets, and publish the comparisons and the
+            code that runs them. Most of our rules have no comparison yet; for
+            US rules, a{" "}
+            <a
+              href="https://github.com/TheAxiomFoundation/rulespec-us/blob/main/oracle-coverage-pending.yaml"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] no-underline"
+            >
+              public file
+            </a>{" "}
+            lists the ones awaiting an oracle decision.
           </p>
 
         </Reveal>

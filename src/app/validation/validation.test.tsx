@@ -5,7 +5,7 @@ describe('ValidationPage', () => {
   it('renders the header and method steps', () => {
     render(<ValidationPage />)
     expect(
-      screen.getByRole('heading', { name: /every encoding, cross-checked/i }),
+      screen.getByRole('heading', { name: /cross-checks in the open/i }),
     ).toBeInTheDocument()
     expect(
       screen.getByRole('heading', { name: /same case, every engine/i }),
@@ -15,12 +15,12 @@ describe('ValidationPage', () => {
     ).toBeInTheDocument()
   })
 
-  it('lists the independent oracles with link-outs', () => {
+  it('lists the oracles with link-outs', () => {
     render(<ValidationPage />)
     for (const oracle of [
       'PolicyEngine',
       'TAXSIM',
-      'UKMOD / EUROMOD / SOUTHMOD',
+      'UKMOD / EUROMOD',
       'SPSD/M',
       'PSL Tax-Calculator',
       'ACCESS NYC',
