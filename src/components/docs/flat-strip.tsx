@@ -126,7 +126,7 @@ export function FlatStrip() {
         className="lsk"
         viewBox="0 96 1420 368"
         role="img"
-        aria-label="The Axiom pipeline as five equal stations. The intake: scraping pipelines (eCFR, USLM, state codes, laws-lois) fill the database — nothing ever leaves. The corpus: the whole law word for word, 1,742,391 provisions, § 2017 pulled forward. One provision at a time feeds the encoding loop, where encoders draft (30 per centum becomes 0.30) and validators — deterministic checks, oracles, AI judge — catch and teach across 7.7M runs. The RuleSpec snap_allotment plugs into the rules graph — tfp and income feed it, benefit flows out — which compiles into the sealed SNAP US 2026 program, powering the chatbot, dashboards, and APIs."
+        aria-label="The Axiom pipeline as five equal stations. The intake: scraping pipelines (eCFR, USLM, state codes, laws-lois) fill the database — nothing ever leaves. The corpus: the whole law word for word, 1,742,391 provisions, § 2017 pulled forward. One provision at a time feeds the encoding loop, where encoders draft (30 per centum becomes 0.30) and validators — deterministic checks, oracles, AI judge — catch and teach across 7.7M runs. The RuleSpec snap_allotment plugs into the rules graph — tfp and income feed it, benefit flows out — which compiles into an illustrative SNAP program that application surfaces call: a chatbot, dashboards, and APIs."
       >
         {/* ── THE INTAKE ── */}
         <Station x={IN} title="the intake" sub="hundreds of official sources">
@@ -297,7 +297,7 @@ export function FlatStrip() {
         <circle cx={SEAL.x} cy={SEAL.y} r="15.5" fill="none" stroke={WAX} strokeWidth="0.7" />
         <text className="fp-sealtick" x={SEAL.x} y={SEAL.y + 5} textAnchor="middle">✓</text>
         <text className="fp-mono fp-mono--sm" x={SEAL.x} y={SEAL.y + 42} textAnchor="middle">SNAP · US · 2026</text>
-        <text className="fp-mono fp-mono--tiny" x={SEAL.x} y={SEAL.y + 58} textAnchor="middle" opacity="0.6">certified · signed</text>
+        <text className="fp-mono fp-mono--tiny" x={SEAL.x} y={SEAL.y + 58} textAnchor="middle" opacity="0.6">compiled · illustrative</text>
 
         {/* ── THE SURFACES ── */}
         <text className="fp-eyebrow" x="1290" y={EYEBROW_Y}>surfaces</text>
