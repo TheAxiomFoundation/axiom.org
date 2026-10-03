@@ -82,6 +82,21 @@ describe("Verify page", () => {
     expect(screen.getByText(/axiom-api#115/)).toBeInTheDocument();
   });
 
+  it("scopes the SNAP QC row to the six compared values and untested eligibility", () => {
+    render(<Page />);
+
+    expect(
+      screen.getByText("Colorado SNAP QC benefit replay"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "All 856 match at zero tolerance on the benefit Mathematica computes for USDA from each case record and on five intermediate values: gross income, the standard and excess-shelter deductions, net income, and the maximum allotment. The file keeps only eligible households, so eligibility is untested.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/federal computation/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/stage by stage/i)).not.toBeInTheDocument();
+  });
+
   it("keeps repo closure separate from acknowledged program incompleteness", () => {
     render(<Page />);
 
