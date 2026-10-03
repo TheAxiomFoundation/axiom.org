@@ -85,14 +85,14 @@ export const surfaces: Surface[] = [
   },
   {
     id: "oracles",
-    name: "US validation against independent evidence",
+    name: "US validation against other calculators and USDA data",
     tier: "verified",
     claim:
       "Where a policy is covered, every disagreement with the reference calculator is classified with evidence: reconciled arithmetically, traced to a bug in the other engine, or attributed to the comparison harness itself (bridge artifacts) — a bounded class we disclose rather than blend in.",
     check:
       "git clone https://github.com/TheAxiomFoundation/axiom-oracles\ncat conformance/scoreboard.json\nuv run scripts/apply_dispositions.py --check",
     expect:
-      "The scoreboard's own predicate: covered == in_scope, unexplained == 0, Axiom-attributed == 0. The dispositions check recomputes every classification's arithmetic from the committed evidence.",
+      "The scoreboard's own predicate: covered == in_scope, unexplained == 0, Axiom-attributed == 0. For the US, unexplained and Axiom-attributed are 0, but live suites cover 36 of 127 in-scope PolicyEngine policies, so the US row is not yet conformant. The dispositions check recomputes every classification's arithmetic from the committed evidence.",
     limit:
       "Coverage is evidence-set specific. Agreement only shows two implementations agree; where both misread a provision the same way, it shows nothing.",
   },
@@ -169,11 +169,11 @@ export const usEvidenceRows: UsEvidenceRow[] = [
   },
   {
     id: "co-snap-qc",
-    check: "Colorado SNAP QC reality check",
+    check: "Colorado SNAP QC benefit replay",
     reference: "USDA SNAP QC",
     scale: "856 real FY 2024 administrative cases",
     result:
-      "All cases reproduce the federal computation exactly, case by case and stage by stage.",
+      "All 856 reproduce the benefit Mathematica computes for USDA, at each of six compared stages. The file keeps only eligible households, so eligibility is untested.",
     href: "/reports/colorado-snap-qc-fy2024",
     linkLabel: "Read the QC report",
   },
@@ -272,7 +272,7 @@ export const enforcement = [
   "Citations cannot dangle. Non-URL sources are repo paths and must exist.",
   "Dispositions expire with their sources. When a mismatch moves or disappears, its disposition stops applying rather than silently relabelling a new residual.",
   "The ratchet only turns one way. Covered may rise; unexplained and Axiom-attributed may only fall. CI refuses regressions.",
-  "Coverage is gated separately: every executable output must be mapped to an oracle concept and covered by companion tests, or the build fails.",
+  "Coverage is tracked separately. CI fails an executable output unless it is mapped to an oracle concept, ruled not comparable, or listed in a public pending file (14,952 US outputs in October 2026), and fails a mapped output its companion tests leave out.",
 ];
 
 export interface OpenIssue {

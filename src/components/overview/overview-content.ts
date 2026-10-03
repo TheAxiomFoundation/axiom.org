@@ -3,10 +3,16 @@
  *
  * Content lives here rather than inline in the components so the same
  * strings can be diffed against the print/PDF source in `pdf/overview/`
- * when either side changes. Every claim traces to the launch Message
- * House; the standing guardrails apply — "the Axiom Foundation" in full,
- * scoped coverage language, no funder or government partner names, no
- * API or compiler date promises, no stat without its scope and date.
+ * when either side changes. A claim about how the pipeline or its checks
+ * work must trace to code, an enforced test, a schema or ledger, or a page
+ * the code generates (axiom.org/verify, /validation), never to a messaging
+ * document such as the Message House; the sources for the verification
+ * copy sit next to WHAT_WE_DO. The standing guardrails apply — "the Axiom
+ * Foundation" in full, scoped coverage language, no funder or government
+ * partner names, no API or compiler date promises, no stat without its
+ * scope and date. src/app/verification-claims.test.tsx renders this page
+ * and reads the PDF source, and fails on the verification claims the code
+ * does not support.
  */
 
 export const OVERVIEW_PDF_PATH = "/Axiom-Foundation-Overview.pdf";
@@ -42,27 +48,80 @@ export interface DoCard {
   body: string;
 }
 
+/*
+ * Sources for the three cards, read 2026-10-03. The PDF makes the same claims.
+ *
+ * Encode
+ * - Citations: axiom-oracles dashboard/public/data/rule_verification.json
+ *   (rulespec-us 54d90a72, generated 2026-09-28): 34,781 of 34,810 rules
+ *   carry a `source` citation (`has_source_citation`).
+ * - Effective dates: axiom-rules-engine src/rulespec.rs fails a rule version
+ *   with no start date (RuleSpecError::MissingEffectiveFrom). Waived modules
+ *   skip the compile step in CI, so the card makes no "every" claim.
+ * - Not claimed: that the pipeline records each encoding decision with its
+ *   source text. The apply manifest records hashes, and the traces it points
+ *   to stay on the machine that ran the encoder.
+ *
+ * Verify
+ * - Gate: rulespec-us requires one status check, `validate / validate`
+ *   (branch protection, read 2026-10-03). It runs the shared workflow
+ *   TheAxiomFoundation/.github validate-rulespec.yml@df2dfb53, which compiles
+ *   and validates each changed module and runs its companion tests and proof
+ *   checks. That check runs no AI reviewer and compares nothing with an
+ *   oracle.
+ * - Waivers: the same workflow skips validation, companion tests and proof
+ *   checks for any module with an `active` entry in rulespec-us
+ *   known-validation-gaps.yaml. At 2066cef61 (2026-10-02) 1,940 modules had
+ *   one (3 more entries were pending only, which don't skip); joined to the
+ *   2026-09-28 rule_verification.json they hold 23,735 of 34,810 rules,
+ *   11,201 of them the generated tariff schedule. Each names an owner, an
+ *   issue and an expiry date. Branch protection exempts admins
+ *   (enforcement_level non_admins).
+ * - Tests: axiom-encode 6f08e25c src/axiom_encode/harness/evals.py
+ *   10642-10656 asks one model response for the RuleSpec file and its test
+ *   cases, expected outputs included. That is why "never grades its own
+ *   work" is gone.
+ * - Comparisons: axiom-oracles dashboard/public/data/
+ *   rule_verification_summary.json (2026-09-28): 14,030 of 34,810 rules sit
+ *   on a program surface a live comparison exercises, so 20,780 have none.
+ *   The flag is per program surface: the public file says which rules fall
+ *   in covered programs and is silent on which rules were compared. Comparisons
+ *   don't gate merges: the required check runs without --oracle, and the
+ *   14,952 outputs in rulespec-us oracle-coverage-pending.yaml pass it.
+ *   SNAP's is the only quality-control file any comparison reads.
+ * - Disclosure: Max Ghenis is CEO of both Axiom and PolicyEngine
+ *   (policyengine.org/us/team). Name PolicyEngine only with that sentence;
+ *   name TAXSIM only with "the TAXSIM executable that PolicyEngine packages"
+ *   (axiom-oracles axiom_oracles/adapters/taxsim/pins.py).
+ *
+ * Publish
+ * - The section reader (src/components/axiom/section/section-reader.tsx)
+ *   shows provision text beside its encoding and links to the program's
+ *   graph. Its "Verified" chip comes from the engines a parity case declares
+ *   (listParityCases in src/lib/axiom/runtime/api.ts), not from a result, so
+ *   the card does not promise a validation record.
+ */
 export const WHAT_WE_DO: readonly DoCard[] = [
   {
     n: "1",
     label: "Encode",
     title: "We turn the law into software",
     body:
-      "An encoder pipeline reads a statute and drafts its encoding in RuleSpec, the Axiom Foundation's format for computable law. Every value cites its authority, every clause carries its effective dates, and the pipeline records each encoding decision alongside the source text it came from.",
+      "An encoder pipeline reads a statute and drafts its encoding in RuleSpec, the Axiom Foundation's format for computable law. Rules cite their source (34,781 of our 34,810 US rules in September 2026), and rule versions carry the dates they take effect.",
   },
   {
     n: "2",
     label: "Verify",
-    title: "A deterministic gauntlet decides what ships",
+    title: "Automated checks gate what merges",
     body:
-      "Each draft encoding must compile and pass its test suite before it merges. Oracles cross-check results against external engines and datasets — PolicyEngine, TAXSIM, and program quality-control data — so the model that wrote the rules never grades its own work.",
+      "A draft encoding must compile and pass its test suite before it merges, unless its module has an active waiver on a public list (1,940 modules holding 23,735 of our 34,810 US rules on October 2, 2026). When the encoder drafts a module, it writes those tests too. Separately, we compare results with other calculators, including PolicyEngine, and publish the comparisons. They don't gate merges, and 20,780 of the 34,810 rules had none in September 2026. Max Ghenis is CEO of both Axiom and PolicyEngine.",
   },
   {
     n: "3",
     label: "Publish",
     title: "We put the whole chain in public",
     body:
-      "The Axiom App holds the source document, the RuleSpec encoding, the validation record, and the computation graph in one place, so you can read the statute next to the code that runs it. Everything is openly licensed, which means a claim about what a rule computes is something you can check.",
+      "In the Axiom App, you read the statute next to the RuleSpec encoding that runs it and can follow a program into its computation graph. Everything is openly licensed, which means a claim about what a rule computes is something you can check.",
   },
 ] as const;
 
@@ -112,7 +171,7 @@ export const AUDIENCES: readonly Audience[] = [
     tab: "Research",
     headline: "A citable, executable corpus of law",
     body:
-      "Policy research re-implements the tax-and-transfer system one paper at a time, which makes results hard to compare and harder to reproduce. The Axiom Foundation publishes the rules as effective-dated, executable encodings cross-checked against PolicyEngine and TAXSIM, and the computation graph becomes analyzable data in its own right.",
+      "Policy research re-implements the tax-and-transfer system one paper at a time, which makes results hard to compare and harder to reproduce. The Axiom Foundation publishes the rules as effective-dated, executable encodings with a public file showing which rules fall in programs a comparison covers, and the computation graph becomes analyzable data in its own right.",
     useCase:
       "A team studying benefit cliffs runs household profiles directly against the encoded rules, citable to statute and comparable across papers; a second team maps cross-program interactions to find where cliffs compound.",
   },
@@ -128,4 +187,4 @@ export const AUDIENCES: readonly Audience[] = [
 ] as const;
 
 export const ORG_STATUS =
-  "The Axiom Foundation is a fiscally sponsored project of the PSL Foundation.";
+  "The Axiom Foundation is a fiscally sponsored project of the PSL Foundation, which also sponsors PolicyEngine.";

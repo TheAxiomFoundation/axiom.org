@@ -130,8 +130,8 @@ export default function OverviewPage() {
               </h3>
               <p className="font-body text-sm text-[var(--color-ink-secondary)] leading-relaxed mb-4">
                 Search a program, open a provision, and follow it through source
-                text, encoding, and computation graph. Every value points at the
-                authority it came from.
+                text, encoding, and computation graph. Rules show the sources
+                they cite.
               </p>
               <a
                 href={axiomAppHref()}
