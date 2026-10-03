@@ -42,6 +42,8 @@ describe("receipts evidence page", () => {
     // about it (empty since issue: ledger bootstrap-empty).
     expect(hrefs).toContain("/api/axiom/certified");
     expect(screen.getByText(/That ledger is empty/)).toBeInTheDocument();
-    expect(screen.queryByText(/certifies itself|grants it by hand/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/certifies itself|grants it by hand|not granted/)).not.toBeInTheDocument();
+    // The ledger admits human-attested entries; the row must say so.
+    expect(screen.getByText(/attested by a human signature/)).toBeInTheDocument();
   });
 });

@@ -51,7 +51,7 @@ const receipts = [
   {
     name: "Certification",
     what:
-      "Computed, not granted: a program certifies only when axiom-oracles computes all four premises — conformant, exercised, closed, executable — true with zero open defects, and no flag is set by hand. None passes yet. The API serves a rule as certified only when it is in the certified ledger, where every entry names a computed or attested claim and pins its evidence. That ledger is empty. The emptiness is the credibility.",
+      "A program certifies only when axiom-oracles computes all four premises — conformant, exercised, closed, executable — true with zero open defects, and no flag is set by hand. None passes yet. The API serves a rule as certified only when it is in the certified ledger, where every entry names its claim — computed by a verifier, or attested by a human signature — and pins its evidence. That ledger is empty. The emptiness is the credibility.",
     href: "/api/axiom/certified",
     label: "the certified ledger",
   },

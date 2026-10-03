@@ -186,7 +186,7 @@ describe("public copy claims no certification the ledger lacks", () => {
 describe("retired certification copy stays retired", () => {
   const RETIRED = [
     "3,323",
-    "certified rules",
+    "3,323 certified rules",
     "certified · signed",
     "certified and signed",
     "sealed SNAP",

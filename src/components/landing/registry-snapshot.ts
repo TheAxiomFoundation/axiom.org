@@ -5,8 +5,8 @@
 // this module.
 //
 // It is a dated record, not the live registry: it predates axiom-api's
-// 2026-07-28 production cutover (only direct-compiled, provision-backed
-// programs serve), and nothing in it is certified — the certified ledger
+// 2026-07-28 production cutover (22689da: only direct-compiled,
+// provision-backed programs serve), and nothing in it is certified — the certified ledger
 // has been empty since it was issued on 2026-07-27. Copy that quotes
 // these numbers must carry SNAPSHOT_DATE and derive from registrySummary.
 
