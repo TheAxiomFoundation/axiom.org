@@ -42,10 +42,12 @@ export const metadata: Metadata = {
     url: "./",
     siteName: SITE_NAME,
     title: "Axiom Foundation",
-    // Post-launch share copy — the Message House top line (ops repo,
-    // comms/Message-House.md). Keep in sync if the house changes.
+    // Share text for every page without its own openGraph, and a short
+    // form of the /overview lede (HERO.lede): edit the two together. Each
+    // claim needs evidence in code. tagline-claims.test.tsx keeps
+    // "verified" out and this under X's 200-character card limit.
     description:
-      "The rules that decide who gets food assistance, health coverage, and tax credits live in closed code that no one can check — the Axiom Foundation publishes them in the open: cited, computable, and verified.",
+      "The rules that decide who gets food assistance, health coverage, and tax credits live in closed code no one can check. The Axiom Foundation publishes them, cited and computable, for anyone to check.",
     images: [DEFAULT_SHARE_IMAGE],
   },
   // Pages don't set twitter: a page-level block would replace this one
