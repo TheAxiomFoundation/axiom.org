@@ -45,7 +45,7 @@ const receipts = [
   {
     name: "Validation",
     what:
-      "Encodings are compared in the open against other implementations, where one exists, and disagreements are recorded rather than resolved quietly.",
+      "Encodings are compared with other calculators and datasets in the open, and the disagreements are recorded.",
     href: "https://github.com/TheAxiomFoundation/axiom-oracles",
     label: "axiom-oracles",
   },

@@ -7,82 +7,95 @@ vi.mock('next/link', () => ({
 
 import AboutPage from '@/app/about/page'
 import ValidationPage, { metadata as validationMetadata } from '@/app/validation/page'
-import { EncodedLawSection } from '@/components/landing/encoded-law-section'
 import VerifyPage from '@/app/verify/page'
 import ReceiptsPage from '@/app/receipts/page'
+import { EncodedLawSection } from '@/components/landing/encoded-law-section'
+import { EncoderSection } from '@/components/landing/encoder-section'
 
-// The verification copy must describe what the oracle harness actually does.
-// - Coverage is partial. rulespec-us/oracle-coverage-pending.yaml declares the
-//   outputs no oracle maps yet, and the pipeline page shows "No oracle report
-//   covers it" per encoding. "Every encoding" and "every published rule"
-//   claims are false.
-// - PolicyEngine is not independent of Axiom. Max Ghenis is CEO of both, and
-//   PSL Foundation fiscally sponsors both. Any page that names PolicyEngine
-//   as an oracle discloses that.
+// The verification copy must describe what the oracle harness does.
+// - Coverage is partial. axiom-oracles dashboard/public/data/
+//   rule_verification_summary.json (2026-09-28) puts 20,780 of 34,810
+//   rulespec-us rules on no surface a live comparison exercises, and
+//   rulespec-us oracle-coverage-pending.yaml declares 14,952 outputs the
+//   shared CI gate admits without a comparison. "Every encoding" claims are
+//   false.
+// - PolicyEngine is not independent of Axiom: Max Ghenis is CEO of both and
+//   PSL Foundation fiscally sponsors both. TAXSIM is not independent of
+//   PolicyEngine: the axiom-oracles TAXSIM adapter runs the executable
+//   bundled in policyengine-taxsim (adapters/taxsim/pins.py). A page that
+//   names either discloses the tie.
 // - The SNAP QC replay checks benefit arithmetic only. The public-use file
 //   keeps only eligible households and the replay feeds the eligibility gates
-//   passing values (axiom-oracles snap_qc_compare.py). A page that names SNAP
-//   QC says eligibility is untested.
+//   passing values (axiom-oracles bridges/snap_qc_compare.py). A page that
+//   names SNAP QC says eligibility is untested.
 const SURFACES = [
   ['/about', () => render(<AboutPage />)],
   ['/validation', () => render(<ValidationPage />)],
-  ['/ (encoded law section)', () => render(<EncodedLawSection />)],
   ['/verify', () => render(<VerifyPage />)],
   ['/receipts', () => render(<ReceiptsPage />)],
+  ['/ (encoded law section)', () => render(<EncodedLawSection />)],
+  ['/ (encoder section)', () => render(<EncoderSection />)],
 ] as const
 
+// Join text nodes with spaces: textContent glues adjacent elements together
+// ("independent evidence" + "Verified" reads "evidenceVerified"), which hides
+// a claim from any pattern that ends on a word boundary.
 function textOf(renderSurface: () => ReturnType<typeof render>) {
   const { container, unmount } = renderSurface()
-  const text = (container.textContent ?? '').replace(/\s+/g, ' ')
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
+  const parts: string[] = []
+  while (walker.nextNode()) parts.push(walker.currentNode.textContent ?? '')
   unmount()
-  return text
+  return parts.join(' ').replace(/\s+/g, ' ')
 }
+
+const CHECK_VERB = String.raw`(cross-check|check|verif|validat|compar|run[s]? against|mapped to an oracle)`
+const UNIVERSAL_SUBJECT = String.raw`(every|each|all) (encoding|published rule|rule|executable output|output)s?`
 
 describe('verification claims', () => {
   for (const [route, renderSurface] of SURFACES) {
     it(`${route} claims no universal or independent cross-check`, () => {
       const text = textOf(renderSurface)
 
-      // A universal subject next to a checking verb, either order, within
-      // one sentence. "The primary text every encoding points back to" is
-      // fine; "every encoding, cross-checked" is not.
+      // A universal subject next to a checking verb, either order, within one
+      // sentence. "The primary text every encoding points back to" is fine;
+      // "every encoding, cross-checked" is not.
+      expect(text).not.toMatch(new RegExp(String.raw`\b${UNIVERSAL_SUBJECT}\b[^.]{0,80}\b${CHECK_VERB}`, 'i'))
+      expect(text).not.toMatch(new RegExp(String.raw`\b${CHECK_VERB}\w*\b[^.]{0,20}\b${UNIVERSAL_SUBJECT}\b`, 'i'))
       expect(text).not.toMatch(
-        /\b(every|each|all) (encoding|published rule|rule)s?\b[^.]{0,80}\b(cross-check|check|verif|validat|compar|run[s]? against)/i,
+        /\bindependent(ly)? (of Axiom|engines?|oracles?|calculators?|calculations?|implementations?|evidence|checks?)\b/i,
       )
-      expect(text).not.toMatch(
-        /\b(cross-check|check|verif|validat|compar|run)\w*\b[^.]{0,20}\b(every|each|all) (encoding|published rule|rule)s?\b/i,
-      )
-      expect(text).not.toMatch(/independent (engines?|oracles?|calculators?)/i)
+      expect(text).not.toMatch(/\bcompared? independently\b/i)
+      expect(text).not.toMatch(/\bexternal (engines?|oracles?|calculators?)\b/i)
       expect(text).not.toMatch(/engines we don.t control/i)
-      expect(text).not.toMatch(/adjudicated/i)
+      expect(text).not.toMatch(/never grades its own work/i)
+      expect(text).not.toMatch(/adjudicated cases/i)
     })
 
     it(`${route} discloses the PolicyEngine tie wherever it names PolicyEngine`, () => {
       const text = textOf(renderSurface)
       if (!/PolicyEngine/.test(text)) return
 
-      expect(text).toMatch(/co-founded PolicyEngine,?( the reference calculator below,)? and is also its CEO/)
+      expect(text).toMatch(/Max Ghenis is CEO of both Axiom and PolicyEngine/)
+    })
+
+    it(`${route} discloses where TAXSIM runs come from wherever it names TAXSIM`, () => {
+      const text = textOf(renderSurface)
+      if (!/TAXSIM/.test(text)) return
+
+      expect(text).toMatch(/TAXSIM executable that PolicyEngine packages/)
     })
 
     it(`${route} scopes the SNAP QC replay to benefit arithmetic`, () => {
       const text = textOf(renderSurface)
-      if (!/SNAP quality-control/i.test(text)) return
+      if (!/SNAP (quality-control|QC)/i.test(text)) return
 
-      expect(text).toMatch(/eligibility untested/i)
+      expect(text).toMatch(/eligibility (is )?untested/i)
     })
   }
 
-  // TAXSIM is not independent of PolicyEngine either: PolicyEngine is
-  // building its successor with NBER, and the axiom-oracles TAXSIM adapter
-  // runs the binary bundled in policyengine-taxsim (adapters/taxsim/pins.py).
-  it('/validation discloses where the TAXSIM binary comes from', () => {
-    const text = textOf(() => render(<ValidationPage />))
-
-    expect(text).toMatch(/TAXSIM binary bundled in PolicyEngine's policyengine-taxsim package/)
-  })
-
-  it('keeps the validation metadata free of independence claims', () => {
+  it('keeps the validation metadata free of independence and coverage claims', () => {
     expect(validationMetadata.description).not.toMatch(/independent/i)
-    expect(validationMetadata.description).not.toMatch(/every/i)
+    expect(validationMetadata.description).not.toMatch(/\bevery\b/i)
   })
 })

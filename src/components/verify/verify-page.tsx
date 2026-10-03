@@ -163,9 +163,10 @@ export function VerifyPage() {
           </p>
           <p className="font-body text-[0.9rem] text-[var(--color-ink-muted)] max-w-[820px] leading-relaxed mb-8">
             The conformance predicate applies to calculator comparisons. The
-            administrative replay is a separate reality check against reviewed,
-            real cases. Max Ghenis, Axiom&apos;s CEO, co-founded PolicyEngine,
-            the reference calculator below, and is also its CEO.
+            administrative replay separately checks our benefit arithmetic
+            against reviewed, real cases; it does not test eligibility. Max
+            Ghenis is CEO of both Axiom and PolicyEngine, the reference
+            calculator below.
           </p>
 
           <pre className="font-mono text-[0.8rem] leading-6 text-[var(--color-code-text)] bg-[var(--color-code-bg)] border border-[var(--color-rule)] rounded-md p-4 overflow-x-auto mb-10">
