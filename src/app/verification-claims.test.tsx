@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { render } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 
@@ -93,6 +95,17 @@ describe('verification claims', () => {
       expect(text).toMatch(/eligibility (is )?untested/i)
     })
   }
+
+  // jsdom does not render the home journey film's captions or its
+  // aria-label, so read them from source.
+  it('keeps the home journey film free of independence claims', () => {
+    const source = readFileSync(
+      join(process.cwd(), 'src/components/landing/journey-film.tsx'),
+      'utf8',
+    )
+
+    expect(source).not.toMatch(/independent calc(ulator)?s?/i)
+  })
 
   it('keeps the validation metadata free of independence and coverage claims', () => {
     expect(validationMetadata.description).not.toMatch(/independent/i)

@@ -44,7 +44,7 @@ const ORACLES: Oracle[] = [
   {
     name: "SNAP quality-control data",
     scope: "US food assistance",
-    body: "USDA's case-level QC microdata. For reviewed households in six states, the research firm Mathematica computes a benefit for USDA from the edited case record; we compute it from the same record, taking income and several deductions as given, and compare. The file keeps only eligible households, so the replay checks benefit arithmetic and leaves eligibility untested.",
+    body: "USDA's case-level QC microdata. For 5,175 reviewed FY 2024 households in six states, the research firm Mathematica computes a benefit for USDA from the edited case record; we compute it from the same record, taking income and several deductions as given, and compare. The file keeps only eligible households, so the replay checks benefit arithmetic and leaves eligibility untested.",
     href: "https://www.fns.usda.gov/snap/quality-control",
   },
 ];
