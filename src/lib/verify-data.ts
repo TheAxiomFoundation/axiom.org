@@ -301,10 +301,10 @@ export const openIssues: OpenIssue[] = [
       "CI skips validation, companion tests, and proof checks for 1,940 US modules on a public waiver list",
     status: "Open — counted 2026-10-02",
     detail:
-      "rulespec-us keeps a waiver list, known-validation-gaps.yaml. Modules with an active waiver skip three steps of the shared validation workflow: RuleSpec validation, companion tests, and proof and claim checks. On October 2, 2026, 1,940 modules carried an active waiver, and they hold 23,735 of our 34,810 US rules (counted against axiom-oracles' per-rule file of September 28). Each waiver names an owner, an issue, and an expiry date.",
+      "rulespec-us keeps a waiver list, known-validation-gaps.yaml. Modules with an active waiver skip three steps of the shared validation workflow: RuleSpec validation, companion tests, and proof and claim checks. On October 2, 2026, 1,940 modules carried an active waiver, and they hold 23,735 of our 34,810 US rules (counted against axiom-oracles' per-rule file of September 28). Each waiver names an owner, an issue, and an expiry date: all 1,940 expire on December 21, 2026, and 1,650 link to rulespec-us#782, which tracks the waiver list as a merge bypass.",
     evidence:
       "git clone https://github.com/TheAxiomFoundation/rulespec-us && cd rulespec-us\ngit show 2066cef61:known-validation-gaps.yaml | grep -c '^    active:'\n1940",
-    fix: "Repair a waived module until it validates, then delete its waiver. rulespec-us#396 tracks the burn-down, and each waiver links its own issue.",
+    fix: "Repair a waived module until it validates, then delete its waiver.",
   },
   {
     id: "api-rounding",

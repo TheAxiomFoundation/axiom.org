@@ -117,6 +117,7 @@ describe('waiver and encoder-authorship claims', () => {
     expect(text).toMatch(/1,940 US modules on a public waiver list/)
     expect(text).toMatch(/they hold 23,735 of our 34,810 US rules/)
     expect(text).toMatch(/Each waiver names an owner, an issue, and an expiry date/)
+    expect(text).toMatch(/all 1,940 expire on December 21, 2026/)
   })
 
   it('/receipts says how many US rules the encoder wrote', () => {
