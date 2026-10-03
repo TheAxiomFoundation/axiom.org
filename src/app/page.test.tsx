@@ -22,7 +22,7 @@ describe('Home page', () => {
     // What we publish
     expect(screen.getByRole('heading', { name: /two layers, both in the open/i })).toBeInTheDocument()
     // Encoder
-    expect(screen.getByRole('heading', { name: /statutes encoded and verified/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /how a statute gets encoded/i })).toBeInTheDocument()
     // Applications
     expect(screen.getByRole('heading', { name: /one encoding\. many places/i })).toBeInTheDocument()
     // Foundation

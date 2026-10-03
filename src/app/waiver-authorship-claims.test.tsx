@@ -73,6 +73,7 @@ function expectNoUniversalClaims(text: string) {
   // tested" are false while waived modules skip CI.
   expect(text).not.toMatch(new RegExp(String.raw`\b${UNIVERSAL}\b[^.]{0,80}\b${TESTED}`, 'i'))
   expect(text).not.toMatch(new RegExp(String.raw`\b${TESTED}[^.]{0,30}\b${UNIVERSAL}\b`, 'i'))
+  expect(text).not.toMatch(/\bencoded and verified\b/i)
 
   // "Each rule module is produced by an agentic encoder loop" is false when
   // about 15,300 US rules were signed in by manual attestation.

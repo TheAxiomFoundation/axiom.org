@@ -61,7 +61,7 @@ describe('Landing sections', () => {
   it('renders the encoder section with the journey film', () => {
     render(<EncoderSection />)
     expect(
-      screen.getByRole('heading', { name: /statutes encoded and verified/i }),
+      screen.getByRole('heading', { name: /how a statute gets encoded/i }),
     ).toBeInTheDocument()
     // The terminal animation gave way to the journey film (scroll-
     // scrubbed on wide viewports, self-running elsewhere).
