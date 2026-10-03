@@ -1262,7 +1262,7 @@ function Captions() {
           One provision, encoded
         </text>
         <text className="jw-sub" x="710" y="681" textAnchor="middle">
-          the whole law captured · segmented & encoded · graphed · compiled · everywhere
+          one provision · segmented & encoded · graphed · compiled
         </text>
       </g>
     );

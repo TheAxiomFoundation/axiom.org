@@ -105,7 +105,10 @@ describe("public copy claims no certification the ledger lacks", () => {
     const { JourneyFilm } = await import("./journey-film");
     const { container } = render(<JourneyFilm />);
     expect(publicCopy(container)).not.toMatch(CERTIFICATION_CLAIM);
-    expect(container.textContent).toContain("graphed · compiled · everywhere");
+    // The still shows one provision, so its caption claims no more than that:
+    // the corpus is not "the whole law" (live /coverage: selected sources).
+    expect(container.textContent).toContain("one provision · segmented & encoded · graphed · compiled");
+    expect(container.textContent).not.toMatch(/whole law captured|everywhere/);
     const label = imgLabel(container);
     expect(label).toContain(
       `the caption reads: ${snapshotMonth()} registry snapshot — ${registrySummary()}.`,
@@ -196,6 +199,7 @@ describe("retired certification copy stays retired", () => {
     "certification sweep",
     "certifies itself",
     "certification is automatic",
+    "the whole law captured",
   ];
 
   function sources(dir: string): string[] {
