@@ -272,7 +272,7 @@ export const enforcement = [
   "Citations cannot dangle. Non-URL sources are repo paths and must exist.",
   "Dispositions expire with their sources. When a mismatch moves or disappears, its disposition stops applying rather than silently relabelling a new residual.",
   "The ratchet only turns one way. Covered may rise; unexplained and Axiom-attributed may only fall. CI refuses regressions.",
-  "Coverage is tracked separately. CI fails an executable output unless it is mapped to an oracle concept, ruled not comparable, or listed in a public pending file (14,952 US outputs in October 2026), and fails a mapped output its companion tests leave out.",
+  "Coverage is tracked separately. CI fails an executable output unless it is mapped to an oracle concept, ruled not comparable, or listed in a public pending file (14,952 US outputs in October 2026), and fails a mapped output its companion tests leave out. That check reads the test files without running them; the step that runs companion tests skips modules on the public waiver list below.",
 ];
 
 export interface OpenIssue {
@@ -301,10 +301,10 @@ export const openIssues: OpenIssue[] = [
       "CI skips validation, companion tests, and proof checks for 1,940 US modules on a public waiver list",
     status: "Open — counted 2026-10-02",
     detail:
-      "rulespec-us keeps a waiver list, known-validation-gaps.yaml. The shared validation workflow skips each module with an active waiver in three steps: RuleSpec validation, companion tests, and proof and claim checks. On October 2, 2026, 1,940 modules carried an active waiver, and they hold 23,735 of our 34,810 US rules (counted against axiom-oracles' per-rule file of September 28). Each waiver names an owner, an issue, and an expiry date.",
+      "rulespec-us keeps a waiver list, known-validation-gaps.yaml. Modules with an active waiver skip three steps of the shared validation workflow: RuleSpec validation, companion tests, and proof and claim checks. On October 2, 2026, 1,940 modules carried an active waiver, and they hold 23,735 of our 34,810 US rules (counted against axiom-oracles' per-rule file of September 28). Each waiver names an owner, an issue, and an expiry date.",
     evidence:
       "git clone https://github.com/TheAxiomFoundation/rulespec-us && cd rulespec-us\ngit show 2066cef61:known-validation-gaps.yaml | grep -c '^    active:'\n1940",
-    fix: "Repair each waived module until it validates, then delete its waiver. rulespec-us#396 tracks the burn-down, and each waiver links its own issue.",
+    fix: "Repair a waived module until it validates, then delete its waiver. rulespec-us#396 tracks the burn-down, and each waiver links its own issue.",
   },
   {
     id: "api-rounding",

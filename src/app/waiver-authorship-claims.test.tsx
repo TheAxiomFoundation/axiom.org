@@ -16,7 +16,7 @@ import { EncoderSection } from '@/components/landing/encoder-section'
 import { PlanningModelPage } from '@/components/ops/planning-model-page'
 
 // Two facts the copy must not contradict, both read from code on 2026-10-03.
-// - Not every encoding is tested in CI. rulespec-us known-validation-gaps.yaml
+// - CI skips the tests of waived modules. rulespec-us known-validation-gaps.yaml
 //   (2066cef61, 2026-10-02) lists 1,940 modules with an active waiver, and
 //   the shared workflow rulespec-us pins (TheAxiomFoundation/.github
 //   validate-rulespec.yml@df2dfb53) skips them in "Validate RuleSpec YAML",
