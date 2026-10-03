@@ -445,6 +445,20 @@ describe("SectionReader", () => {
   });
 
   describe("external comparison chip", () => {
+    /** The chip's visible label: every part except its sr-only description. */
+    function visibleLabel(chip: HTMLElement): string {
+      return Array.from(chip.childNodes)
+        .filter(
+          (node) =>
+            !(node instanceof HTMLElement && node.classList.contains("sr-only"))
+        )
+        .map((node) => node.textContent ?? "")
+        // The chip separates its parts with flex gap, not text.
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
     const coSnap = {
       programId: "co-snap",
       jurisdiction: "us-co",
@@ -466,7 +480,7 @@ describe("SectionReader", () => {
         <SectionReader data={makeData({ externalComparisons: coSnap })} />
       );
       const chip = screen.getByText(/PolicyEngine comparison/);
-      expect(chip).toHaveTextContent(/^PolicyEngine comparison\s*1 case/);
+      expect(visibleLabel(chip)).toBe("PolicyEngine comparison 1 case");
       expect(chip.querySelector("svg")).toBeNull();
       // Neutral styling: the grey chip, never the green success one.
       expect(chip.className).toContain("border-[var(--color-rule)]");
@@ -534,12 +548,12 @@ describe("SectionReader", () => {
         />
       );
       const policyengine = screen.getByText(/PolicyEngine comparison/);
-      expect(policyengine).toHaveTextContent(/^PolicyEngine comparison\s*2 cases/);
+      expect(visibleLabel(policyengine)).toBe("PolicyEngine comparison 2 cases");
       expect(policyengine.getAttribute("title")).toMatch(
         /^2 test cases for snap \(us-ca\) declare a comparison with PolicyEngine \(Household A; Household B\)\. The cases list /
       );
       const ukmod = screen.getByText(/UKMOD comparison/);
-      expect(ukmod).toHaveTextContent(/^UKMOD comparison\s*1 case/);
+      expect(visibleLabel(ukmod)).toBe("UKMOD comparison 1 case");
       expect(ukmod).toHaveAttribute(
         "title",
         "1 test case for snap (us-ca) declares a comparison with UKMOD. " +
