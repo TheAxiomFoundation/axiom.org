@@ -6,7 +6,7 @@
 //   II   ONE PROVISION      camera dives into a single cell: the statute
 //                           is segmented, each section encoded, run and
 //                           checked; the hero walks all four gates
-//   III  THE GRAPH          validated rules join the axiom graph — every
+//   III  THE GRAPH          encoded rules join the axiom graph — every
 //                           rule a node, typed and cited, linked to the
 //                           concepts it draws on
 //   IV   THE GRAPH, WHOLE   no cut, no new format: the same camera keeps
@@ -425,7 +425,7 @@ const RULES = ["snap/allotment", "snap/eligibility", "snap/rounding"];
 const SEG_T = [0.202, 0.216, 0.23]; // bracket flash → node pop
 // the hero pass: ONE node opens into a workbench and walks the whole
 // ritual — quote the words, encode them, face the four gates, get caught,
-// redraft, pass, seal — then folds back into a plain node
+// redraft, pass — then folds back into a plain node
 const WB = { x: 880, y: 168, w: 390, h: 290 };
 const HERO = {
   fly: 0.25,
@@ -435,7 +435,7 @@ const HERO = {
   formula: 0.336,
   run: 0.35,
   checks: 0.364,
-  flag: 0.378, // compare ✗ — the draft disagrees with other calculators
+  flag: 0.378, // compare ✗ — the draft disagrees with another calculator
   strike: 0.39,
   fixed: 0.4,
   repass: 0.412,
@@ -444,7 +444,14 @@ const HERO = {
   closed: 0.463,
   others: [0.457, 0.464], // the other two get their stamps in fast-forward
 };
-const GATE_NAMES = ["run", "checks", "compare", "review"];
+// The review is one AI model's read, so its chip says so. Chips are
+// sized to their labels (0.6em mono at 11px, plus the 12.5px tick) and
+// spread over the same span the four equal chips used to fill.
+const GATE_NAMES = ["run", "checks", "compare", "AI review"];
+const GATE_PAD = 12;
+const GATE_W = GATE_NAMES.map((g) => Math.round(GATE_PAD * 2 + 16 + g.length * 6.6));
+const GATE_GAP = (WB.w - 2 * 18 - GATE_W.reduce((t, w) => t + w, 0)) / (GATE_NAMES.length - 1);
+const GATE_X = GATE_W.map((_, j) => 18 + GATE_W.slice(0, j).reduce((t, w) => t + w + GATE_GAP, 0));
 
 function SceneProvision() {
   const DOC = { x: 250, y: 130, w: 300, h: 350 };
@@ -504,7 +511,7 @@ function SceneProvision() {
           </path>
           {/* the leader lives only while its node is actually home: it
               lets go when the hero leaves for the workbench, returns with
-              the sealed node, and releases again when the card departs
+              the finished node, and releases again when the card departs
               for the graph */}
           <path
             className="jw-leader"
@@ -547,10 +554,11 @@ function SceneProvision() {
               {"  rulespec-us"}
             </text>
             <text className="jw-nodetitle" x={NCOL.x + 12} y={y + 38}>{RULES[i]}</text>
-            {/* the stamp, in shorthand — the ritual the hero played in full */}
+            {/* the stamp, in shorthand: run and checks, the two gates every
+                section goes through (compare and review are the hero's) */}
             <text className="jw-gatetick" x={NCOL.x + NODE_W + 14} y={y + 32} opacity="0">
               <Vis a={done} b={done + 0.024} r={0.006} />
-              ✓✓✓✓
+              ✓✓
             </text>
             <text className="jw-nodecheck" x={NCOL.x + NODE_W - 14} y={y + 38} textAnchor="end" opacity={O2()}>
               ✓
@@ -678,15 +686,16 @@ function SceneProvision() {
           {/* the four gates — named chips, waiting, then stamped one at a time */}
           <line x1={WB.x + 18} y1={WB.y + 232} x2={WB.x + WB.w - 18} y2={WB.y + 232} stroke={INK} strokeWidth="0.6" opacity="0.35" />
           {GATE_NAMES.map((g, j) => {
-            const gx = WB.x + 16 + j * 92;
+            const gx = WB.x + GATE_X[j];
+            const gw = GATE_W[j];
             const gy = WB.y + 240;
             return (
               <g key={g}>
                 {!STATIC && (
                   <g opacity="0">
                     <Vis a={HERO.open + 0.004} b={j === 2 ? HERO.flag : heroGateAt[j]} r={0.006} />
-                    <rect className="jw-gatechip jw-gatechip--pending" x={gx} y={gy} width="84" height="24" rx="12" />
-                    <text className="jw-gatetick jw-gatetick--pending" x={gx + 12} y={gy + 16}>
+                    <rect className="jw-gatechip jw-gatechip--pending" x={gx} y={gy} width={gw} height="24" rx="12" />
+                    <text className="jw-gatetick jw-gatetick--pending" x={gx + GATE_PAD} y={gy + 16}>
                       {"· "}
                       <tspan className="jw-gatetick-name">{g}</tspan>
                     </text>
@@ -694,8 +703,8 @@ function SceneProvision() {
                 )}
                 <g opacity={O2()}>
                   {!STATIC && <Vis a={heroGateAt[j]} b={HERO.close} r={0.008} />}
-                  <rect className="jw-gatechip" x={gx} y={gy} width="84" height="24" rx="12" />
-                  <text className="jw-gatetick" x={gx + 12} y={gy + 16}>
+                  <rect className="jw-gatechip" x={gx} y={gy} width={gw} height="24" rx="12" />
+                  <text className="jw-gatetick" x={gx + GATE_PAD} y={gy + 16}>
                     {"✓ "}
                     <tspan className="jw-gatetick-name">{g}</tspan>
                   </text>
@@ -703,8 +712,8 @@ function SceneProvision() {
                 {j === 2 && !STATIC && (
                   <g opacity="0">
                     <Vis a={HERO.flag} b={HERO.repass - 0.004} r={0.006} />
-                    <rect className="jw-gatechip jw-gatechip--fail" x={gx} y={gy} width="84" height="24" rx="12" />
-                    <text className="jw-gatetick jw-gatetick--fail" x={gx + 12} y={gy + 16}>
+                    <rect className="jw-gatechip jw-gatechip--fail" x={gx} y={gy} width={gw} height="24" rx="12" />
+                    <text className="jw-gatetick jw-gatetick--fail" x={gx + GATE_PAD} y={gy + 16}>
                       {"✗ "}
                       <tspan className="jw-gatetick-name">{g}</tspan>
                     </text>
@@ -714,11 +723,11 @@ function SceneProvision() {
             );
           })}
           <text className="jw-redraft" x={WB.x + WB.w / 2} y={WB.y + 229} textAnchor="middle" opacity="0">
-            ✗ disagrees with other calculators — redrafted
+            ✗ disagrees with another calculator — redrafted
             {!STATIC && <Vis a={HERO.flag} b={HERO.repass} r={0.006} />}
           </text>
         </g>
-        {/* closed again — a plain node, now sealed */}
+        {/* closed again — a plain node, now checked */}
         {!STATIC && (
           <g opacity="0">
             <Vis a={HERO.closed} b={W.s2[1] - 0.004} r={0.008} />
@@ -1359,7 +1368,7 @@ export function JourneyFilm({
         className="lsk"
         viewBox="0 0 1420 700"
         role="img"
-        aria-label={`One continuous shot. The camera opens on one provision, § 2017 of Title 7: the statute is segmented into sections, each section encoded into a RuleSpec — id, citation, typed inputs and output, and the formula allotment equals tfp minus 0.30 times net income, every value citing its source words. Every section is run and checked against its own tests, and compared where another calculator covers the rule. In this illustration the workbench stamps four gates — run, checks, compare, and review by an AI model; one draft reads 0.03 for thirty per centum, disagrees with the other calculators at compare, is redrafted to 0.30, and passes. The encoded rules then join the axiom graph as nodes — typed, cited, connected to the concepts they draw on; on the graph's output layer, two composed nodes declare their types and show illustrative output cards: snap/benefit, money per month, $478, and snap/eligible, boolean, yes. Then the camera backs out and the same cards keep coming: co-snap's own rules join around the hero graph — snap_maximum_allotment, the deductions, the eligibility tests, real names from its recorded outputs — then each runtime package in the ${snapshotMonth()} registry snapshot arrives as its own group of identical cards, from us-sc-snap to us-oasdi-wage-tax. At full distance the encoded graph sits among the ghost cards of everything not yet encoded, and the caption reads: ${snapshotMonth()} registry snapshot — ${registrySummary()}. The snapshot predates the registry's 2026-07-28 production cutover, and package outputs can count a shared rule more than once, so this is not a unique-rule or certification count.`}
+        aria-label={`One continuous shot. The camera opens on one provision, § 2017 of Title 7: the statute is segmented into sections, each section encoded into a RuleSpec — id, citation, typed inputs and output, and the formula allotment equals tfp minus 0.30 times net income, every value citing its source words. Each of its sections is run and checked, and compared through its program's outputs where another calculator covers that program. In this illustration the workbench stamps four gates — run, checks, compare, and AI review; one draft reads 0.03 for thirty per centum, disagrees with another calculator at compare, is redrafted to 0.30, and passes. The other two sections are stamped run and checks. The encoded rules then join the axiom graph as nodes — typed, cited, connected to the concepts they draw on; on the graph's output layer, two composed nodes declare their types and show illustrative output cards: snap/benefit, money per month, $478, and snap/eligible, boolean, yes. Then the camera backs out and the same cards keep coming: co-snap's own rules join around the hero graph — snap_maximum_allotment, the deductions, the eligibility tests, real names from its recorded outputs — then each runtime package in the ${snapshotMonth()} registry snapshot arrives as its own group of identical cards, from us-sc-snap to us-oasdi-wage-tax. At full distance the encoded graph sits among the ghost cards of everything not yet encoded, and the caption reads: ${snapshotMonth()} registry snapshot — ${registrySummary()}. The snapshot predates the registry's 2026-07-28 production cutover, and package outputs can count a shared rule more than once, so this is not a unique-rule or certification count.`}
       >
         <Defs />
         <g clipPath="url(#jw-stage)">
