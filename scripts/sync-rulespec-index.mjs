@@ -69,8 +69,32 @@ const supabase = createClient(supabaseUrl, serviceKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+// Every read of a repo pins the commit its branch pointed at when the sync
+// reached it, so a merge landing mid-sync can't mix two trees, and each row
+// records the commit it came from.
+const branchHeads = new Map();
+async function branchHead(root) {
+  const key = `${root.repo}@${root.branch}`;
+  if (!branchHeads.has(key)) {
+    branchHeads.set(
+      key,
+      githubJson(
+        `https://api.github.com/repos/${GITHUB_ORG}/${root.repo}/commits/${encodeURIComponent(root.branch)}`,
+      )
+        .then((commit) => commit.sha ?? null)
+        .catch((error) => {
+          console.warn(`head of ${key} unresolved, reading the branch: ${error.message}`);
+          return null;
+        }),
+    );
+  }
+  return branchHeads.get(key);
+}
+
 async function listFiles(root) {
-  const treePath = root.prefix ? `${root.branch}:${root.prefix}` : root.branch;
+  root.commit = await branchHead(root);
+  const ref = root.commit ?? root.branch;
+  const treePath = root.prefix ? `${ref}:${root.prefix}` : ref;
   const body = await githubJson(
     `https://api.github.com/repos/${GITHUB_ORG}/${root.repo}/git/trees/${encodeURIComponent(treePath)}?recursive=1`,
   );
@@ -94,7 +118,7 @@ async function fetchRawYaml(file) {
   const prefixedPath = file.root.prefix
     ? `${file.root.prefix}/${file.filePath}`
     : file.filePath;
-  const url = `https://raw.githubusercontent.com/${GITHUB_ORG}/${file.root.repo}/${file.root.branch}/${prefixedPath}`;
+  const url = `https://raw.githubusercontent.com/${GITHUB_ORG}/${file.root.repo}/${file.root.commit ?? file.root.branch}/${prefixedPath}`;
   const res = await fetch(url, { headers: githubHeaders });
   if (!res.ok) {
     throw new Error(`GitHub returned ${res.status} for ${url}`);
@@ -202,6 +226,16 @@ if (roots.length < discovered.length) {
   );
 }
 
+// commit_sha arrives with a hand-applied migration; until then, sync without it.
+const { error: commitColumnError } = await supabase
+  .from("rulespec_files")
+  .select("commit_sha")
+  .limit(1);
+const hasCommitColumn = !commitColumnError;
+if (!hasCommitColumn) {
+  console.log(`rulespec_files.commit_sha unavailable, not recorded: ${commitColumnError.message}`);
+}
+
 const seen = new Set();
 const files = [];
 for (const root of roots) {
@@ -271,6 +305,7 @@ const indexedFiles = (
         search_text: buildSearchText(file, doc),
         source_citation_paths: citationPathSets.all,
         value_citation_paths: citationPathSets.values,
+        ...(hasCommitColumn ? { commit_sha: file.root.commit ?? null } : {}),
         synced_at: syncedAt,
       },
       ruleCitationRows: citations.map((row) => ({

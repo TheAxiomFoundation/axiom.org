@@ -92,6 +92,7 @@ describe("POST /api/ops/encoding/ingest", () => {
     expect(row.started_at).toBeTruthy();
     expect(row.runner.reported_via).toBe("public_ingest");
     expect(row.runner.hostname).toBe("third-party-box");
+    expect(row.phase).toBeNull();
     const headers = insert!.init.headers as Record<string, string>;
     expect(headers.apikey).toBe("service-key");
     expect(headers["Content-Profile"]).toBe("encodings");
@@ -103,10 +104,12 @@ describe("POST /api/ops/encoding/ingest", () => {
       post(
         startBody({
           started_at: "1999-01-01T00:00:00Z",
+          phase: "resolve",
           runner: {
             hostname: "box",
             reported_via: "trusted_direct",
             sneaky: "field",
+            github_run_id: "123",
           },
         })
       )
@@ -117,6 +120,8 @@ describe("POST /api/ops/encoding/ingest", () => {
     expect(row.started_at).not.toBe("1999-01-01T00:00:00Z");
     expect(row.runner.reported_via).toBe("public_ingest");
     expect(row.runner.sneaky).toBeUndefined();
+    expect(row.runner.github_run_id).toBeUndefined();
+    expect(row.phase).toBe("resolve");
   });
 
   it("rejects malformed ids, citations, and ops", async () => {
