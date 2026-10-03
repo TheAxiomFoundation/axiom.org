@@ -35,8 +35,13 @@ open(tmp_path, "w").write(html)
 PY
 trap 'rm -f "$TMP"' EXIT
 
+# Remove any earlier output first: Chrome's exit status is swallowed by the
+# filter below, so a failed render would otherwise leave the old PDF in place
+# for the stamp step to certify as fresh.
+rm -f "$OUT"
 "$CHROME" --headless --disable-gpu --no-sandbox --no-pdf-header-footer \
   --print-to-pdf="$OUT" "file://$TMP" 2>&1 | grep -iE "written|error" || true
+[ -s "$OUT" ] || { echo "Chrome wrote no PDF to $OUT" >&2; exit 1; }
 
 # Stamp the source HTML's SHA-256 into the PDF's metadata. The overview test
 # (src/components/overview/overview.test.tsx) recomputes it from the HTML in

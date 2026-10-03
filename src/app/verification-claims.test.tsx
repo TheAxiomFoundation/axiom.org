@@ -107,14 +107,15 @@ describe('verification claims', () => {
     // The shared validate workflow skips validation, companion tests and
     // proof checks for every module with an active waiver in rulespec-us
     // known-validation-gaps.yaml: 1,940 modules on 2026-10-02, holding
-    // 23,735 of 34,810 rules. A page that states the gate names the waivers
-    // in the same sentence.
-    it(`${route} names the waiver list wherever it says drafts must pass their tests`, () => {
-      const text = surfaceText()
-      const gate = /\bcompiles? and pass(es)? (its|their) (test suite|tests)\b/i
-      if (!gate.test(text)) return
+    // 23,735 of 34,810 rules. Every sentence that states the gate names the
+    // waivers.
+    it(`${route} names the waivers in every sentence that says drafts pass their tests`, () => {
+      const passesTests = /\bpass(es|ing)? (its |their |the |all )?(companion )?(test suite|tests)\b/i
+      const gateSentences = surfaceText()
+        .split(/(?<=[.!?])\s+/)
+        .filter((sentence) => passesTests.test(sentence))
 
-      expect(text).toMatch(new RegExp(gate.source + String.raw`[^.]{0,120}\bwaiver`, 'i'))
+      for (const sentence of gateSentences) expect(sentence).toMatch(/\bwaive/i)
     })
 
     it(`${route} discloses the PolicyEngine tie wherever it names PolicyEngine`, () => {

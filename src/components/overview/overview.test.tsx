@@ -164,18 +164,26 @@ describe('Overview share card', () => {
 })
 
 describe('Overview PDF', () => {
+  const pdf = () =>
+    readFileSync(join(process.cwd(), 'public', OVERVIEW_PDF_PATH.replace(/^\//, '')), 'latin1')
+
   // pdf/overview/render.sh stamps the SHA-256 of the HTML it rendered into
   // the PDF's metadata. Editing the print source without re-rendering would
   // leave the downloadable PDF making claims the HTML no longer makes.
+  // .gitattributes keeps the HTML's line endings as committed, so the hash
+  // matches on any checkout.
   it('was rendered from the print source in the repo', () => {
     const source = readFileSync(join(process.cwd(), 'pdf/overview/axiom-overview.html'))
     const sha = createHash('sha256').update(source).digest('hex')
-    const pdf = readFileSync(
-      join(process.cwd(), 'public', OVERVIEW_PDF_PATH.replace(/^\//, '')),
-      'latin1',
-    )
 
-    expect(pdf.startsWith('%PDF-')).toBe(true)
-    expect(pdf).toContain(`/AxiomSourceSHA256 (${sha})`)
+    expect(pdf().startsWith('%PDF-')).toBe(true)
+    expect(pdf()).toContain(`/AxiomSourceSHA256 (${sha})`)
+  })
+
+  // The download button says "1-Page PDF". The stamp step rewrites the file
+  // with pypdf, which leaves page objects uncompressed, so they can be
+  // counted directly.
+  it('is one page', () => {
+    expect(pdf().match(/\/Type\s*\/Page\b/g) ?? []).toHaveLength(1)
   })
 })

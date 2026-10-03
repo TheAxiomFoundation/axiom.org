@@ -56,7 +56,8 @@ export interface DoCard {
  *   (rulespec-us 54d90a72, generated 2026-09-28): 34,781 of 34,810 rules
  *   carry a `source` citation (`has_source_citation`).
  * - Effective dates: axiom-rules-engine src/rulespec.rs fails a rule version
- *   with no start date (RuleSpecError::MissingEffectiveFrom).
+ *   with no start date (RuleSpecError::MissingEffectiveFrom). Waived modules
+ *   skip the compile step in CI, so the card makes no "every" claim.
  * - Not claimed: that the pipeline records each encoding decision with its
  *   source text. The apply manifest records hashes, and the traces it points
  *   to stay on the machine that ran the encoder.
@@ -71,8 +72,11 @@ export interface DoCard {
  * - Waivers: the same workflow skips validation, companion tests and proof
  *   checks for any module with an `active` entry in rulespec-us
  *   known-validation-gaps.yaml. At 2066cef61 (2026-10-02) 1,940 modules had
- *   one; joined to rule_verification.json they hold 23,735 of 34,810 rules.
- *   Each names an owner, an issue and an expiry date.
+ *   one (3 more entries were pending only, which don't skip); joined to the
+ *   2026-09-28 rule_verification.json they hold 23,735 of 34,810 rules,
+ *   11,201 of them the generated tariff schedule. Each names an owner, an
+ *   issue and an expiry date. Branch protection exempts admins
+ *   (enforcement_level non_admins).
  * - Tests: axiom-encode 6f08e25c src/axiom_encode/harness/evals.py
  *   10642-10656 asks one model response for the RuleSpec file and its test
  *   cases, expected outputs included. That is why "never grades its own
@@ -80,7 +84,11 @@ export interface DoCard {
  * - Comparisons: axiom-oracles dashboard/public/data/
  *   rule_verification_summary.json (2026-09-28): 14,030 of 34,810 rules sit
  *   on a program surface a live comparison exercises, so 20,780 have none.
- *   Only SNAP's quality-control file is compared, not other programs'.
+ *   The flag is per program surface: the public file says which rules fall
+ *   in covered programs and is silent on which rules were compared. Comparisons
+ *   don't gate merges: the required check runs without --oracle, and the
+ *   14,952 outputs in rulespec-us oracle-coverage-pending.yaml pass it.
+ *   SNAP's is the only quality-control file any comparison reads.
  * - Disclosure: Max Ghenis is CEO of both Axiom and PolicyEngine
  *   (policyengine.org/us/team). Name PolicyEngine only with that sentence;
  *   name TAXSIM only with "the TAXSIM executable that PolicyEngine packages"
@@ -99,14 +107,14 @@ export const WHAT_WE_DO: readonly DoCard[] = [
     label: "Encode",
     title: "We turn the law into software",
     body:
-      "An encoder pipeline reads a statute and drafts its encoding in RuleSpec, the Axiom Foundation's format for computable law. Rules cite their source (34,781 of our 34,810 US rules in September 2026), and each version of a rule carries the date it takes effect.",
+      "An encoder pipeline reads a statute and drafts its encoding in RuleSpec, the Axiom Foundation's format for computable law. Rules cite their source (34,781 of our 34,810 US rules in September 2026), and rule versions carry the dates they take effect.",
   },
   {
     n: "2",
     label: "Verify",
     title: "Automated checks gate what merges",
     body:
-      "A draft encoding must compile and pass its test suite before it merges, unless its module is on a public waiver list (1,940 modules holding 23,735 of our 34,810 US rules on October 2, 2026). When the encoder drafts a module, it writes those tests too. We compare results with other calculators, including PolicyEngine, and publish the comparisons; 20,780 of the 34,810 rules had none in September. Max Ghenis is CEO of both Axiom and PolicyEngine.",
+      "A draft encoding must compile and pass its test suite before it merges, unless its module has an active waiver on a public list (1,940 modules holding 23,735 of our 34,810 US rules on October 2, 2026). When the encoder drafts a module, it writes those tests too. Separately, we compare results with other calculators, including PolicyEngine, and publish the comparisons. They don't gate merges, and 20,780 of the 34,810 rules had none in September 2026. Max Ghenis is CEO of both Axiom and PolicyEngine.",
   },
   {
     n: "3",
@@ -163,7 +171,7 @@ export const AUDIENCES: readonly Audience[] = [
     tab: "Research",
     headline: "A citable, executable corpus of law",
     body:
-      "Policy research re-implements the tax-and-transfer system one paper at a time, which makes results hard to compare and harder to reproduce. The Axiom Foundation publishes the rules as effective-dated, executable encodings with a public record of which ones have been compared with another calculator, and the computation graph becomes analyzable data in its own right.",
+      "Policy research re-implements the tax-and-transfer system one paper at a time, which makes results hard to compare and harder to reproduce. The Axiom Foundation publishes the rules as effective-dated, executable encodings with a public file showing which rules fall in programs a comparison covers, and the computation graph becomes analyzable data in its own right.",
     useCase:
       "A team studying benefit cliffs runs household profiles directly against the encoded rules, citable to statute and comparable across papers; a second team maps cross-program interactions to find where cliffs compound.",
   },
