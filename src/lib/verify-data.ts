@@ -81,7 +81,7 @@ export const surfaces: Surface[] = [
       "Fetch a US corpus release from the public mirror and recompute its canonical sha256.",
     expect: "Recomputed hash matches the published manifest.",
     limit:
-      "Coverage is per-program and partial. The programs list is the coverage claim; there is no blanket one.",
+      "Coverage is per-program and partial. The programs list is the coverage claim; there is no blanket one. CI skips validation, companion tests, and proof checks for modules on a public waiver list, counted under What is broken right now.",
   },
   {
     id: "oracles",
@@ -290,6 +290,22 @@ export interface OpenIssue {
  * worth. Entries leave only when the check passes, not when the copy improves.
  */
 export const openIssues: OpenIssue[] = [
+  {
+    // rulespec-us known-validation-gaps.yaml at 2066cef61; the skips are in
+    // TheAxiomFoundation/.github validate-rulespec.yml@df2dfb53 (the ref
+    // rulespec-us pins). Rule counts join the waived module paths to
+    // axiom-oracles dashboard/public/data/rule_verification.json (rulespec
+    // 54d90a72, generated 2026-09-28).
+    id: "validation-waivers",
+    title:
+      "CI skips validation, companion tests, and proof checks for 1,940 US modules on a public waiver list",
+    status: "Open — counted 2026-10-02",
+    detail:
+      "rulespec-us keeps a waiver list, known-validation-gaps.yaml. The shared validation workflow skips each module with an active waiver in three steps: RuleSpec validation, companion tests, and proof and claim checks. On October 2, 2026, 1,940 modules carried an active waiver, and they hold 23,735 of our 34,810 US rules (counted against axiom-oracles' per-rule file of September 28). Each waiver names an owner, an issue, and an expiry date.",
+    evidence:
+      "git clone https://github.com/TheAxiomFoundation/rulespec-us && cd rulespec-us\ngit show 2066cef61:known-validation-gaps.yaml | grep -c '^    active:'\n1940",
+    fix: "Repair each waived module until it validates, then delete its waiver. rulespec-us#396 tracks the burn-down, and each waiver links its own issue.",
+  },
   {
     id: "api-rounding",
     title:

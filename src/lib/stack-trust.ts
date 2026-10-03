@@ -61,6 +61,7 @@ export const layerTrust: Record<string, LayerTrust> = {
     ],
     open: [
       "Coverage is per-program. There is no blanket coverage claim, and there should not be one.",
+      "CI skips validation, companion tests, and proof checks for modules on a public waiver list: 1,940 rulespec-us modules carried an active validation waiver on October 2, 2026, and they hold 23,735 of our 34,810 US rules. Each waiver names an owner, an issue, and an expiry date.",
     ],
   },
 
@@ -69,7 +70,8 @@ export const layerTrust: Record<string, LayerTrust> = {
       "Generation runs on operator-controlled compute and is recorded as an event; the record of what was generated is separate from the decision to accept it.",
     ],
     open: [
-      "Model output is never the thing you are asked to trust — acceptance is decided downstream, by checks that do not involve a model.",
+      "Acceptance is decided downstream by checks that do not involve a model, except for modules on the public waiver list, which skip them.",
+      "Not every rule went through the encoder. In September 2026, about 16,300 of our 34,810 US rules matched a manifest written by the encoder's apply step, and about 15,300 more (mostly the generated US tariff schedule) were signed in by manual attestation.",
     ],
   },
 
@@ -77,7 +79,7 @@ export const layerTrust: Record<string, LayerTrust> = {
     checkable: [
       "Engine releases publish a sha256 per platform target and a build attestation resolving to the release workflow and commit.",
       "Program artifacts are content-addressed; the manifest declares each artifact's sha256 before you download it.",
-      "Encodings are compared against calculators built by other people, and every disagreement on a covered policy is classified with evidence that CI recomputes.",
+      "Encodings are compared with other calculators, and every disagreement on a covered policy is classified with evidence that CI recomputes.",
       "The released golden household is stranger-path reproducible on engine v0.1.1 x program-artifacts-59a10dab866e: snap_eligible = holds, snap_allotment = 478, and snap_net_income = 226.",
     ],
     open: [

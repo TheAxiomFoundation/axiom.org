@@ -232,11 +232,15 @@ export function PlanningModelPage() {
         <section className="mb-14">
           <SectionHeading>The measured base</SectionHeading>
           <p className="font-body text-[1rem] text-[var(--color-ink-secondary)] leading-relaxed mb-4">
-            Each rule module is produced by an agentic encoder loop: the agent
-            reads the provision from an immutable, cryptographically pinned
-            corpus release, writes the module, runs a deterministic gate
+            Each module the encoder writes comes out of an agentic loop: the
+            agent reads the provision from an immutable, cryptographically
+            pinned corpus release, writes the module, runs a deterministic gate
             battery (schema, citation resolution, dependency closure, oracle
-            conformance where one exists), and iterates. The module is the
+            conformance where one exists), and iterates. Not every module
+            came this way: in September 2026, about 16,300 of our 34,810 US
+            rules matched a manifest written by the encoder&apos;s apply step,
+            and about 15,300 more (mostly the generated US tariff schedule)
+            were signed in by manual attestation. The module is the
             provision-level increment every figure below counts — for
             example,{" "}
             <a

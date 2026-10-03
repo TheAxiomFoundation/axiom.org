@@ -38,7 +38,7 @@ const receipts = [
   {
     name: "Encodings",
     what:
-      "Every rule cites the provision of law it encodes and lands with a companion test. The repositories are the receipt: the citation, the test, and the history of both are public.",
+      "Every rule cites the provision of law it encodes, and modules carry companion tests. CI runs a module's tests unless it sits on a public waiver list: 1,940 rulespec-us modules carried an active validation waiver on October 2, 2026, and they hold 23,735 of our 34,810 US rules. The repositories are the receipt: the citations, the tests, the waiver list, and their history are public.",
     href: "https://github.com/TheAxiomFoundation/rulespec-us",
     label: "rulespec-us",
   },
@@ -112,8 +112,11 @@ export default function ReceiptsPage() {
         <Reveal as="section">
           <h2 className="heading-section mb-3">What&apos;s next</h2>
           <p className="max-w-[720px] font-body text-[1rem] leading-relaxed text-[var(--color-ink-secondary)]">
-            We intend to publish the full agent logs behind every encoding —
-            the complete record of how each rule came to say what it says.
+            We intend to publish the agent logs behind the rules our encoder
+            wrote. In September 2026, about 16,300 of our 34,810 US rules
+            matched a manifest written by the encoder&apos;s apply step, and
+            about 15,300 more (mostly the generated US tariff schedule) were
+            signed in by manual attestation; their manifests name no model.
           </p>
         </Reveal>
       </div>
