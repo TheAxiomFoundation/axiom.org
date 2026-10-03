@@ -19,7 +19,10 @@ import {
   getProvisionCoverage,
   type ProvisionProgramCoverage,
 } from "@/lib/axiom/runtime/coverage";
-import { listParityCases } from "@/lib/axiom/runtime/api";
+import {
+  listParityCases,
+  type ParityCaseSummary,
+} from "@/lib/axiom/runtime/api";
 import {
   getSectionEncoding,
   type SectionEncoding,
@@ -134,17 +137,64 @@ export interface SectionPageData {
    */
   encodedCoverage: { encodedUnits: number; totalUnits: number } | null;
   /**
-   * Oracle verification for the section's covering programs.
-   * Only external-oracle comparisons earn "verified" — golden
-   * expectations alone are self-graded (executable, not verified).
+   * External comparisons declared by the parity cases of the first
+   * covering program that has any. The hosted API lists each
+   * comparison's setup and no result (see `listParityCases`), so
+   * this records that a comparison exists and says nothing about
+   * whether the engines agree.
    */
-  parity: {
-    oracle: string;
+  externalComparisons: DeclaredExternalComparisons | null;
+}
+
+export interface DeclaredExternalComparisons {
+  programId: string;
+  jurisdiction: string;
+  /** One entry per engine, in first-declared order. */
+  engines: Array<{
+    engine: string;
+    /** Parity cases of this program that declare this engine. */
     caseCount: number;
-    programId: string;
-    jurisdiction: string;
     caseDescriptions: string[];
-  } | null;
+  }>;
+}
+
+/**
+ * The first covering program (in coverage order) with a parity case
+ * that declares an external comparison, grouped by engine so each
+ * engine's case count covers only the cases that name it.
+ */
+export function declaredExternalComparisons(
+  programs: ReadonlyArray<Pick<ProvisionProgramCoverage, "programId" | "jurisdiction">>,
+  parityCases: ReadonlyArray<ParityCaseSummary>,
+): DeclaredExternalComparisons | null {
+  for (const program of programs) {
+    const byEngine = new Map<string, string[]>();
+    for (const item of parityCases) {
+      if (
+        item.jurisdiction !== program.jurisdiction ||
+        item.program_id !== program.programId
+      ) {
+        continue;
+      }
+      for (const engine of new Set(item.comparisonEngines)) {
+        const descriptions = byEngine.get(engine) ?? [];
+        descriptions.push(item.description);
+        byEngine.set(engine, descriptions);
+      }
+    }
+    if (byEngine.size > 0) {
+      return {
+        programId: program.programId,
+        jurisdiction: program.jurisdiction,
+        engines: Array.from(byEngine, ([engine, descriptions]) => ({
+          engine,
+          caseCount: descriptions.length,
+          caseDescriptions: descriptions.filter(Boolean),
+        })),
+      };
+    }
+  }
+  return null;
 }
 
 /**
@@ -1219,28 +1269,6 @@ export async function getSectionPageDataFromResolution(
         }
       : null;
 
-  // Oracle verification: the first covering program with an
-  // external-oracle parity comparison.
-  let parity: SectionPageData["parity"] = null;
-  for (const program of programs) {
-    const cases = parityCases.filter(
-      (item) =>
-        item.jurisdiction === program.jurisdiction &&
-        item.program_id === program.programId &&
-        item.oracles.length > 0,
-    );
-    if (cases.length > 0) {
-      parity = {
-        oracle: cases[0].oracles[0],
-        caseCount: cases.length,
-        programId: program.programId,
-        jurisdiction: program.jurisdiction,
-        caseDescriptions: cases.map((item) => item.description),
-      };
-      break;
-    }
-  }
-
   return {
     citationPath,
     root,
@@ -1262,7 +1290,7 @@ export async function getSectionPageDataFromResolution(
     next,
     truncated: subtree.truncated,
     encodedCoverage,
-    parity,
+    externalComparisons: declaredExternalComparisons(programs, parityCases),
   };
 }
 

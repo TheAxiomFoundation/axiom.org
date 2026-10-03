@@ -443,4 +443,86 @@ describe("SectionReader", () => {
     expect(screen.getByText("Child body text.")).toBeInTheDocument();
     expect(document.getElementById("a-1")).not.toBeNull();
   });
+
+  describe("external comparison chip", () => {
+    const coSnap = {
+      programId: "co-snap",
+      jurisdiction: "us-co",
+      engines: [
+        {
+          engine: "policyengine",
+          caseCount: 1,
+          caseDescriptions: ["Colorado SNAP canonical two-person household."],
+        },
+      ],
+    };
+
+    it("labels a declared comparison without claiming it passed", () => {
+      // The live case: co-snap-us-co-family-1 declares a PolicyEngine
+      // comparison that, run on 2026-10-03, returned a $547.48 monthly
+      // benefit against Axiom's $478. The chip must not call that
+      // verified or agreeing.
+      const { container } = render(
+        <SectionReader data={makeData({ externalComparisons: coSnap })} />
+      );
+      const chip = screen.getByText(/PolicyEngine comparison/);
+      expect(chip).toHaveTextContent(/^PolicyEngine comparison\s*1 case$/);
+      expect(chip.querySelector("svg")).toBeNull();
+      expect(chip).toHaveAttribute(
+        "title",
+        "1 test case for co-snap (us-co) sets up a comparison with " +
+          "PolicyEngine (Colorado SNAP canonical two-person household). " +
+          "The case lists the comparison's inputs and output mappings and " +
+          "no result, so this chip does not say whether Axiom and " +
+          "PolicyEngine agree. Max Ghenis is CEO of both Axiom and " +
+          "PolicyEngine."
+      );
+      // Markup and attributes both: the old claim lived in a title.
+      expect(container.innerHTML).not.toMatch(/verified/i);
+      expect(container.innerHTML).not.toMatch(/agrees with/i);
+      expect(container.innerHTML).not.toContain("⊨");
+    });
+
+    it("shows no comparison chip when no covering program declares one", () => {
+      const { container } = render(
+        <SectionReader data={makeData({ externalComparisons: null })} />
+      );
+      expect(screen.queryByText(/comparison/i)).not.toBeInTheDocument();
+      expect(container.innerHTML).not.toMatch(/PolicyEngine|verified/i);
+    });
+
+    it("gives each declared engine its own chip and case count", () => {
+      render(
+        <SectionReader
+          data={makeData({
+            externalComparisons: {
+              programId: "snap",
+              jurisdiction: "us-ca",
+              engines: [
+                {
+                  engine: "policyengine",
+                  caseCount: 2,
+                  caseDescriptions: ["Household A.", "Household B"],
+                },
+                { engine: "ukmod", caseCount: 1, caseDescriptions: [] },
+              ],
+            },
+          })}
+        />
+      );
+      const policyengine = screen.getByText(/PolicyEngine comparison/);
+      expect(policyengine).toHaveTextContent(/2 cases$/);
+      expect(policyengine.getAttribute("title")).toMatch(
+        /^2 test cases for snap \(us-ca\) set up a comparison with PolicyEngine \(Household A; Household B\)\. The cases list /
+      );
+      const ukmod = screen.getByText(/UKMOD comparison/);
+      expect(ukmod).toHaveTextContent(/1 case$/);
+      expect(ukmod).toHaveAttribute(
+        "title",
+        "1 test case for snap (us-ca) sets up a comparison with UKMOD. " +
+          "The case lists the comparison's inputs and output mappings and " +
+          "no result, so this chip does not say whether Axiom and UKMOD agree."
+      );
+    });
+  });
 });

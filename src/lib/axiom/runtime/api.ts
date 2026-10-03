@@ -452,14 +452,22 @@ export interface ParityCaseSummary {
   description: string;
   program_id: string;
   jurisdiction: string;
-  /** External oracle engines this case is compared against
-   *  (empty = golden expectations only — executable, not verified). */
-  oracles: string[];
+  /** Engines this case declares an external comparison with
+   *  (`external_comparisons[].engine`), deduplicated. Empty means the
+   *  case checks Axiom against its own expected outputs only. */
+  comparisonEngines: string[];
 }
 
 /**
  * Canonical parity cases from the hosted API, reduced to what the
  * app's trust surfaces need. Cached like the registry reads.
+ *
+ * Each `external_comparisons` item carries the other engine's
+ * request, output mappings, notes, and tolerance, and no result:
+ * neither `/parity/cases` nor `/parity/run` (which checks Axiom
+ * against `expected_axiom_outputs` only) reports whether the other
+ * engine agreed. A declared engine is therefore never evidence of
+ * agreement.
  */
 export async function listParityCases(): Promise<ParityCaseSummary[]> {
   const data = await runtimeGet<{
@@ -476,7 +484,7 @@ export async function listParityCases(): Promise<ParityCaseSummary[]> {
     description: item.description ?? "",
     program_id: item.program_id,
     jurisdiction: item.jurisdiction,
-    oracles: Array.from(
+    comparisonEngines: Array.from(
       new Set(
         (item.external_comparisons ?? [])
           .map((comparison) => comparison.engine)

@@ -18,7 +18,9 @@ import {
   docTypeCrosswalk,
   encodingPathCandidates,
   splitRootBodyAroundChildren,
+  declaredExternalComparisons,
 } from "./section-page";
+import type { ParityCaseSummary } from "./runtime/api";
 
 const ROOT = "us/statute/26/32";
 
@@ -553,5 +555,109 @@ describe("splitNycrrSectionPath", () => {
     expect(splitNycrrSectionPath(["us-ny", "regulation", "18-nycrr", "387", "9"])).toBeNull();
     expect(splitNycrrSectionPath(["us-or", "statute", "315.264"])).toBeNull();
     expect(splitNycrrSectionPath(["us-co", "regulation", "10-ccr", "4.410"])).toBeNull();
+  });
+});
+
+describe("declaredExternalComparisons", () => {
+  const coSnap = { programId: "co-snap", jurisdiction: "us-co" };
+  const caSnap = { programId: "snap", jurisdiction: "us-ca" };
+  function parityCase(
+    overrides: Partial<ParityCaseSummary> = {},
+  ): ParityCaseSummary {
+    return {
+      id: "co-snap-us-co-family-1",
+      description: "Colorado SNAP canonical two-person household.",
+      program_id: "co-snap",
+      jurisdiction: "us-co",
+      comparisonEngines: ["policyengine"],
+      ...overrides,
+    };
+  }
+
+  it("returns null when the program's cases declare no external comparison", () => {
+    expect(
+      declaredExternalComparisons(
+        [coSnap],
+        [parityCase({ comparisonEngines: [] })],
+      ),
+    ).toBeNull();
+  });
+
+  it("returns null when no covering program has a parity case", () => {
+    expect(declaredExternalComparisons([coSnap], [])).toBeNull();
+    expect(declaredExternalComparisons([], [parityCase()])).toBeNull();
+  });
+
+  it("ignores declarations for another program or jurisdiction", () => {
+    expect(
+      declaredExternalComparisons(
+        [coSnap],
+        [
+          parityCase({ program_id: "snap" }),
+          parityCase({ jurisdiction: "us-ca" }),
+        ],
+      ),
+    ).toBeNull();
+  });
+
+  it("reports a declared comparison by engine and case count", () => {
+    // The live case: its notes predict a 50-cent snap_net_income gap
+    // against PolicyEngine. A declaration carries no outcome either way.
+    expect(declaredExternalComparisons([coSnap], [parityCase()])).toEqual({
+      programId: "co-snap",
+      jurisdiction: "us-co",
+      engines: [
+        {
+          engine: "policyengine",
+          caseCount: 1,
+          caseDescriptions: ["Colorado SNAP canonical two-person household."],
+        },
+      ],
+    });
+  });
+
+  it("takes the first covering program, in coverage order, that declares one", () => {
+    const result = declaredExternalComparisons(
+      [caSnap, coSnap],
+      [
+        parityCase({
+          id: "snap-us-ca-family-1",
+          program_id: "snap",
+          jurisdiction: "us-ca",
+          comparisonEngines: [],
+        }),
+        parityCase(),
+      ],
+    );
+    expect(result?.programId).toBe("co-snap");
+  });
+
+  it("counts each engine over only the cases that name it", () => {
+    const result = declaredExternalComparisons(
+      [coSnap],
+      [
+        parityCase({ id: "a", description: "A", comparisonEngines: ["taxsim"] }),
+        parityCase({
+          id: "b",
+          description: "B",
+          comparisonEngines: ["policyengine", "taxsim"],
+        }),
+        parityCase({ id: "c", description: "C", comparisonEngines: [] }),
+      ],
+    );
+    expect(result?.engines).toEqual([
+      { engine: "taxsim", caseCount: 2, caseDescriptions: ["A", "B"] },
+      { engine: "policyengine", caseCount: 1, caseDescriptions: ["B"] },
+    ]);
+  });
+
+  it("counts a case once per engine and drops blank descriptions", () => {
+    const result = declaredExternalComparisons(
+      [coSnap],
+      [parityCase({ description: "", comparisonEngines: ["policyengine", "policyengine"] })],
+    );
+    expect(result?.engines).toEqual([
+      { engine: "policyengine", caseCount: 1, caseDescriptions: [] },
+    ]);
   });
 });

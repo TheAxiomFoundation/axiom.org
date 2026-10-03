@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   isRuntimeApiConfigured,
   listRuntimePackages,
+  listParityCases,
   getProgramGraph,
   runCalculate,
   runCalculateRoot,
@@ -490,5 +491,71 @@ describe("runtime api client", () => {
       body: { status: "error", error: { code: "upstream_misconfigured" } },
     });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("reduces parity cases to their declared comparison engines", async () => {
+    vi.stubEnv("AXIOM_RUNTIME_API_KEY", "test-key");
+    // Shaped like the live GET /v1/parity/cases on 2026-10-03: an
+    // external comparison carries its setup and no result field.
+    const comparison = {
+      id: "co-snap-policyengine-current",
+      engine: "policyengine",
+      description: "PolicyEngine current comparison.",
+      request: { country_id: "us", version: "current", household: {} },
+      mappings: [
+        {
+          axiom_variable: "snap_benefit_amount",
+          external_path: "result.spm_units.spm_unit.snap.2026",
+          transform: "annual_to_monthly",
+        },
+      ],
+      trace_mappings: [],
+      notes: [],
+      tolerance: { amount: 0.01 },
+    };
+    const cases = [
+      {
+        id: "co-snap-us-co-family-1",
+        description: "Colorado SNAP canonical two-person household.",
+        program_id: "co-snap",
+        jurisdiction: "us-co",
+        runtime_supported: true,
+        external_comparisons: [
+          comparison,
+          { ...comparison, id: "second-policyengine" },
+          { ...comparison, id: "no-engine", engine: undefined },
+        ],
+        known_deviation: null,
+      },
+      {
+        id: "snap-us-ca-family-1",
+        description: null,
+        program_id: "snap",
+        jurisdiction: "us-ca",
+        runtime_supported: true,
+        external_comparisons: [],
+        known_deviation: null,
+      },
+    ];
+    const fetchMock = vi.fn().mockResolvedValue(okEnvelope({ cases }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(await listParityCases()).toEqual([
+      {
+        id: "co-snap-us-co-family-1",
+        description: "Colorado SNAP canonical two-person household.",
+        program_id: "co-snap",
+        jurisdiction: "us-co",
+        comparisonEngines: ["policyengine"],
+      },
+      {
+        id: "snap-us-ca-family-1",
+        description: "",
+        program_id: "snap",
+        jurisdiction: "us-ca",
+        comparisonEngines: [],
+      },
+    ]);
+    expect(fetchMock.mock.calls[0][0]).toContain("/parity/cases");
   });
 });
