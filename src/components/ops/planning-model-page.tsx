@@ -25,7 +25,7 @@ export const PLANNING_MODEL = {
       id: "A",
       name: "A — oracle universe",
       scope:
-        "Policies checkable against an independent oracle: the 137 programs currently scored in PolicyEngine-US, 51 income-tax jurisdictions, state benefit manuals",
+        "Policies checkable against an oracle: the 137 PolicyEngine-US policies in axiom-oracles' conformance scope as of 2026-07-11 (127 as of 2026-10-03), state income taxes across the 50 states and DC, state benefit manuals",
       modules: 20_000,
       modulesLabel: "~20,000",
       modulesProvenance: "D" as const,
@@ -262,12 +262,15 @@ export function PlanningModelPage() {
             measured runs); adjudication runs cross-family — OpenAI and Claude
             models judging each other&apos;s output — and the development
             fleet runs Claude main loops alongside codex lanes, per the usage
-            table below. Oracle conformance runs
-            against PolicyEngine, TAXSIM, EUROMOD/UKMOD, and the SOUTHMOD
-            country models, plus state administrative records (95.3%
-            exact-match against Colorado SNAP quality-control determinations{" "}
-            <Provenance kind="M" />); cross-family judge models review every
-            audit-logged run.
+            table below. Oracle comparisons run
+            against PolicyEngine, TAXSIM, and EUROMOD/UKMOD, plus USDA&apos;s
+            SNAP quality-control records (all 856 Colorado FY 2024 cases
+            match the benefit Mathematica computes for USDA from each case
+            record{" "}
+            <Provenance kind="M" />; the file keeps only eligible households,
+            so eligibility is untested). Max Ghenis is CEO of both Axiom and
+            PolicyEngine, and our TAXSIM runs use the TAXSIM executable that
+            PolicyEngine packages.
           </p>
           <ul className="font-body text-[1rem] text-[var(--color-ink-secondary)] leading-relaxed space-y-2 list-disc pl-5">
             <li>

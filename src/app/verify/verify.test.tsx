@@ -82,6 +82,26 @@ describe("Verify page", () => {
     expect(screen.getByText(/axiom-api#115/)).toBeInTheDocument();
   });
 
+  it("scopes the SNAP QC row to the six compared values and untested eligibility", () => {
+    render(<Page />);
+
+    expect(
+      screen.getByText("Colorado SNAP QC benefit replay"),
+    ).toBeInTheDocument();
+    const row = screen.getByText(/^All 856 match at zero tolerance/);
+    expect(row).toHaveTextContent(
+      /four intermediate values in the file: gross income, the standard and excess-shelter deductions, and net income/,
+    );
+    // The maximum allotment is checked against a typed FY 2024 table; the
+    // file's BENMAX is never read (axiom-oracles snap_qc_compare.py _LABELS).
+    expect(row).toHaveTextContent(
+      /The maximum allotment matches USDA.s FY 2024 table in all 856/,
+    );
+    expect(row).toHaveTextContent(/eligibility is untested/);
+    expect(screen.queryByText(/federal computation/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/stage by stage/i)).not.toBeInTheDocument();
+  });
+
   it("keeps repo closure separate from acknowledged program incompleteness", () => {
     render(<Page />);
 

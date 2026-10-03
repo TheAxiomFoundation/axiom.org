@@ -169,11 +169,11 @@ export const usEvidenceRows: UsEvidenceRow[] = [
   },
   {
     id: "co-snap-qc",
-    check: "Colorado SNAP QC reality check",
+    check: "Colorado SNAP QC benefit replay",
     reference: "USDA SNAP QC",
     scale: "856 real FY 2024 administrative cases",
     result:
-      "All cases reproduce the federal computation exactly, case by case and stage by stage.",
+      "All 856 match at zero tolerance on the benefit Mathematica computes for USDA from each case record and on four intermediate values in the file: gross income, the standard and excess-shelter deductions, and net income. The maximum allotment matches USDA's FY 2024 table in all 856. The file keeps only eligible households, so eligibility is untested.",
     href: "/reports/colorado-snap-qc-fy2024",
     linkLabel: "Read the QC report",
   },

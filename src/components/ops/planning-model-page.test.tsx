@@ -118,6 +118,30 @@ describe("PlanningModelPage", () => {
     expect(screen.getByText("The development fleet.")).toBeInTheDocument();
   });
 
+  it("reports the SNAP QC replay as it stands and discloses the PolicyEngine tie", () => {
+    const { container } = render(<PlanningModelPage />);
+    const text = (container.textContent ?? "").replace(/\s+/g, " ");
+
+    expect(text).toMatch(
+      /all 856 Colorado FY 2024 cases match the benefit Mathematica computes for USDA from each case record/,
+    );
+    expect(text).toMatch(/eligibility is untested/);
+    expect(text).toMatch(/Max Ghenis is CEO of both Axiom and PolicyEngine/);
+    expect(text).toMatch(/TAXSIM executable that PolicyEngine packages/);
+    // The July first run (816 of 856) is superseded, and FSBEN is a
+    // computed benefit rather than a determination. axiom-oracles main has
+    // no published SOUTHMOD comparison (the Ghana and Uganda parity work
+    // sits on unmerged PRs, #205 and its stack). axiom-encode's judge-*
+    // commands are standalone, and no encode path calls them, so no claim
+    // that every run is judged (axiom.org#300 has the evidence).
+    expect(text).not.toMatch(/95\.3%/);
+    expect(text).not.toMatch(/quality-control determinations/i);
+    expect(text).not.toMatch(/SOUTHMOD/);
+    expect(text).not.toMatch(/independent oracle/i);
+    expect(text).not.toMatch(/judge models review every/i);
+    expect(PLANNING_MODEL.tiers[0].scope).not.toMatch(/independent/i);
+  });
+
   it("links example rule modules so the increment is concrete", () => {
     render(<PlanningModelPage />);
     expect(
