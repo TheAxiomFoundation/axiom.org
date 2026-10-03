@@ -81,7 +81,9 @@ describe("PlanningModelPage", () => {
     expect(screen.getByText("Opus 4.8")).toBeInTheDocument();
     // Both vendors are first-class rows with production status
     expect(screen.getByText("gpt-5.6-terra")).toBeInTheDocument();
-    expect(screen.getByText("pinned production encoder")).toBeInTheDocument();
+    expect(
+      screen.getByText("encoder chosen in the July bake-off"),
+    ).toBeInTheDocument();
     expect(
       screen.getByText("OpenAI — native token units [M]"),
     ).toBeInTheDocument();
@@ -112,7 +114,7 @@ describe("PlanningModelPage", () => {
       screen.getByText("Generation waves — finish Tier A, then Tier B."),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("Encoder qualification — the standing quarterly bake-off."),
+      screen.getByText("Encoder qualification — a planned quarterly bake-off."),
     ).toBeInTheDocument();
     expect(screen.getByText("Cross-family judging.")).toBeInTheDocument();
     expect(screen.getByText("The development fleet.")).toBeInTheDocument();
@@ -132,5 +134,58 @@ describe("PlanningModelPage", () => {
       "href",
       "https://axiom.org/us-co/regulation/10-ccr-2506-1/4.110",
     );
+  });
+
+  it("states encoder, gate, judge and oracle-scope mechanics as the code shows them, with dates", () => {
+    const { container } = render(<PlanningModelPage />);
+    const text = (container.textContent ?? "").replace(/\s+/g, " ");
+
+    // axiom-oracles conformance/scoreboard.json us-pe: 137 in scope at
+    // b83f776f3 (2026-07-09, the last refresh before asOf), 127 at 522afa175.
+    expect(PLANNING_MODEL.tiers[0].scope).toBe(
+      "Policies checkable against an oracle: the 137 PolicyEngine-US policies in axiom-oracles' conformance scope as of 2026-07-11 (127 as of 2026-10-03), state income taxes across the 50 states and DC, state benefit manuals",
+    );
+    // axiom-encode 6f08e25c: the encode loop runs compile, companion tests,
+    // literal grounding and import checks with oracle="none"; corpus
+    // releases are Ed25519-signed.
+    expect(text).toMatch(
+      /reads the provision from a signed, hash-pinned corpus release, writes the module and its companion tests, runs deterministic checks \(rules-engine compile, the companion tests, grounding of numeric literals in the provisions each rule cites, and import resolution\), and retries with the failures as feedback\. Oracle comparisons run outside this loop, in axiom-oracles\./,
+    );
+    // Encoder defaults from axiom-encode constants.py history: b5b2c670
+    // (2026-07-17) and 3689e83b (2026-09-24).
+    expect(text).toMatch(
+      /axiom-encode's default encoder moved to gpt-5\.6-terra on 2026-07-17 and to gpt-6-luna on 2026-09-24/,
+    );
+    expect(text).toMatch(
+      /EncodeBench board has ranked candidate encoders by deterministic gate-pass rate on a fixed 16-case suite/,
+    );
+    // judges/client.py: Claude-only judges with a same-family guard; no
+    // encode path imports the judges package.
+    expect(text).toMatch(
+      /Claude Haiku 4\.5, escalating low-confidence verdicts to Sonnet 4\.5, and refuse a judge from the generator's model family/,
+    );
+    expect(text).toMatch(/the encode command does not call them/);
+    expect(text).toMatch(/As of 2026-10-03 none is scheduled in axiom-encode/);
+    expect(
+      screen.getByRole("columnheader", { name: "Role as of 2026-07-11" }),
+    ).toBeInTheDocument();
+
+    // Claims the code does not support.
+    expect(text).not.toMatch(/137 programs currently scored/);
+    expect(text).not.toMatch(/51 income-tax jurisdictions/);
+    expect(text).not.toMatch(/citation resolution, dependency closure/);
+    expect(text).not.toMatch(/oracle conformance where one exists/);
+    expect(text).not.toMatch(/benchmark reputation/);
+    expect(text).not.toMatch(/Every audit-logged encoder run is adjudicated/);
+    expect(text).not.toMatch(/judging each other/);
+    expect(text).not.toMatch(/standing quarterly bake-off/);
+    expect(text).not.toMatch(/In production today/);
+    expect(text).not.toMatch(/Today gpt-5\.6-terra is the pinned encoder/);
+    for (const model of PLANNING_MODEL.models) {
+      expect(model.today).not.toMatch(/cross-family|judge lane|judging/);
+    }
+    expect(
+      PLANNING_MODEL.models.find((model) => model.name === "Haiku 4.5")?.today,
+    ).toMatch(/^default judge model;/);
   });
 });

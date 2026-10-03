@@ -25,7 +25,7 @@ export const PLANNING_MODEL = {
       id: "A",
       name: "A — oracle universe",
       scope:
-        "Policies checkable against an independent oracle: the 137 programs currently scored in PolicyEngine-US, 51 income-tax jurisdictions, state benefit manuals",
+        "Policies checkable against an oracle: the 137 PolicyEngine-US policies in axiom-oracles' conformance scope as of 2026-07-11 (127 as of 2026-10-03), state income taxes across the 50 states and DC, state benefit manuals",
       modules: 20_000,
       modulesLabel: "~20,000",
       modulesProvenance: "D" as const,
@@ -84,7 +84,7 @@ export const PLANNING_MODEL = {
       system: "$0.404",
       tierA: "$8.1k",
       tierB: "$19.8k",
-      today: "pinned production encoder",
+      today: "encoder chosen in the July bake-off",
     },
     {
       vendor: "OpenAI" as const,
@@ -108,7 +108,7 @@ export const PLANNING_MODEL = {
       system: "$0.808",
       tierA: "$16.2k",
       tierB: "$39.6k",
-      today: "review/judge lane (cross-family)",
+      today: "review lane",
     },
     {
       vendor: "Anthropic" as const,
@@ -120,7 +120,8 @@ export const PLANNING_MODEL = {
       system: "$0.150",
       tierA: "$3.0k",
       tierB: "$7.3k",
-      today: "dev fleet (mechanical tasks); encoder pending bake-off",
+      today:
+        "default judge model; dev fleet (mechanical tasks); encoder pending bake-off",
     },
     {
       vendor: "Anthropic" as const,
@@ -168,7 +169,7 @@ export const PLANNING_MODEL = {
       system: "$1.502",
       tierA: "$29.9k",
       tierB: "$73.4k",
-      today: "dev fleet (main loops) + cross-family judging",
+      today: "dev fleet (main loops)",
     },
   ],
   // Development-fleet usage — strict-accounting dashboard figures
@@ -233,10 +234,12 @@ export function PlanningModelPage() {
           <SectionHeading>The measured base</SectionHeading>
           <p className="font-body text-[1rem] text-[var(--color-ink-secondary)] leading-relaxed mb-4">
             Each rule module is produced by an agentic encoder loop: the agent
-            reads the provision from an immutable, cryptographically pinned
-            corpus release, writes the module, runs a deterministic gate
-            battery (schema, citation resolution, dependency closure, oracle
-            conformance where one exists), and iterates. The module is the
+            reads the provision from a signed, hash-pinned corpus release,
+            writes the module and its companion tests, runs deterministic
+            checks (rules-engine compile, the companion tests, grounding of
+            numeric literals in the provisions each rule cites, and import
+            resolution), and retries with the failures as feedback. Oracle
+            comparisons run outside this loop, in axiom-oracles. The module is the
             provision-level increment every figure below counts — for
             example,{" "}
             <a
@@ -255,12 +258,15 @@ export function PlanningModelPage() {
               10 CCR 2506-1 § 4.110
             </a>{" "}
             (Colorado food assistance), browsable with citations and tests in
-            the Axiom app. Encoders are chosen
-            empirically by production bake-off — gate pass-rates on the live
-            task mix, never benchmark reputation. Today gpt-5.6-terra is the
-            pinned encoder (gpt-5.5 was the workhorse for 3,289 of the 3,582
-            measured runs); adjudication runs cross-family — OpenAI and Claude
-            models judging each other&apos;s output — and the development
+            the Axiom app. gpt-5.5 produced 3,289 of the 3,582 measured runs.
+            After a bake-off on 2026-07-10, axiom-encode&apos;s default encoder
+            moved to gpt-5.6-terra on 2026-07-17 and to gpt-6-luna on
+            2026-09-24. Since 2026-07-22 its EncodeBench board has ranked
+            candidate encoders by deterministic gate-pass rate on a fixed
+            16-case suite. Its judge commands run Claude Haiku 4.5, escalating
+            low-confidence verdicts to Sonnet 4.5, and refuse a judge from the
+            generator&apos;s model family; the encode command does not call
+            them. The development
             fleet runs Claude main loops alongside codex lanes, per the usage
             table below. Oracle conformance runs
             against PolicyEngine, TAXSIM, EUROMOD/UKMOD, and the SOUTHMOD
@@ -381,10 +387,8 @@ calendar       = modules ÷ throughput per day     (Tier A: 20,000 ÷ 100 ≈ 20
             unchanged <Provenance kind="A" /> — Anthropic&apos;s
             current-generation tokenizer produces roughly 30% more tokens for
             identical text, so treat Claude figures as ≈+30% pending a native
-            count; and quality on this task mix is unmeasured until a model
-            clears the bake-off <Provenance kind="A" /> — the harness
-            qualifies encoders on measured gate pass-rates, never on benchmark
-            reputation.
+            count; and a model&apos;s quality on this task mix stays unmeasured
+            until it runs that mix <Provenance kind="A" />.
           </p>
           <div className="overflow-x-auto border border-[var(--color-rule)] rounded-lg mb-4">
             <table className="w-full min-w-[1040px] text-sm">
@@ -396,7 +400,7 @@ calendar       = modules ÷ throughput per day     (Tier A: 20,000 ÷ 100 ≈ 20
                   <th className={`${thBase} text-right`}>System $/module (Batch, ×3) [D]</th>
                   <th className={`${thBase} text-right`}>Tier A generation [D]</th>
                   <th className={`${thBase} text-right`}>Tier B (cumulative) [D]</th>
-                  <th className={`${thBase} text-left`}>In production today</th>
+                  <th className={`${thBase} text-left`}>Role as of {m.asOf}</th>
                 </tr>
               </thead>
               <tbody>
@@ -582,22 +586,25 @@ tier generation     = system $/module × modules remaining   (Opus 4.8, Tier A: 
             </li>
             <li>
               <strong className="text-[var(--color-ink)]">
-                Encoder qualification — the standing quarterly bake-off.
+                Encoder qualification — a planned quarterly bake-off.
               </strong>{" "}
-              Any candidate model qualifies on the live production mix:
-              grounding-failure rate, cost per accepted module, and
-              wall-clock, in about a week of drain time <Provenance kind="D" />
-              . Results are publishable either way. This is the empirical gate
-              between the price table above and production use.
+              The planning model assumes four encoder bake-offs a year{" "}
+              <Provenance kind="A" />, each scoring a candidate model on the
+              live production mix for grounding-failure rate, cost per accepted
+              module, and wall-clock in about a week of drain time{" "}
+              <Provenance kind="D" />. As of 2026-10-03 none is scheduled in
+              axiom-encode; its EncodeBench board scores any candidate by
+              gate-pass rate on a fixed 16-case suite.
             </li>
             <li>
               <strong className="text-[var(--color-ink)]">
                 Cross-family judging.
               </strong>{" "}
-              Every audit-logged encoder run is adjudicated by a model family
-              different from the one that generated it. Judging is
-              adjudication-dense — the slot where frontier capability binds
-              hardest — and is carried inside the 3.0× system proxy{" "}
+              axiom-encode&apos;s judge commands score a generated module with
+              Claude Haiku 4.5, escalating low-confidence verdicts to Sonnet
+              4.5, and refuse a judge from the generator&apos;s model family.
+              They run when an operator invokes them; the encode command does
+              not call them. Judging is carried inside the 3.0× system proxy{" "}
               <Provenance kind="D" />.
             </li>
             <li>
