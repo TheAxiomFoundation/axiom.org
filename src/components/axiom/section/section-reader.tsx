@@ -68,12 +68,29 @@ const ENGINE_DISCLOSURES: Readonly<Record<string, string>> = {
   policyengine: "Max Ghenis is CEO of both Axiom and PolicyEngine.",
 };
 
+function plural(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
+/** The latest results that are not a match, in words. */
+function nonMatchingResults(
+  counts: DeclaredExternalComparisons["engines"][number]["resultCounts"],
+): string[] {
+  return [
+    counts.known_difference > 0 &&
+      plural(counts.known_difference, "documented known difference", "documented known differences"),
+    counts.diff > 0 && plural(counts.diff, "unexplained difference", "unexplained differences"),
+    counts.errored > 0 && plural(counts.errored, "run without a conclusion", "runs without a conclusion"),
+    counts.none > 0 && plural(counts.none, "comparison without a current result", "comparisons without a current result"),
+  ].filter((part): part is string => Boolean(part));
+}
+
 /**
- * Description of a declared external comparison: the program, its
- * cases, the engine, a plain statement that no result is shown, and
- * any tie between Axiom and the engine. Rendered as the chip's title
- * and as screen-reader text, so the disclosure does not depend on a
- * hover tooltip.
+ * Description of an engine's declared comparisons: the program, its
+ * cases, the engine, what the latest published results show, and any
+ * tie between Axiom and the engine. Rendered as the chip's title and
+ * as screen-reader text, so the disclosure does not depend on a hover
+ * tooltip.
  */
 export function externalComparisonTitle(
   declared: Pick<DeclaredExternalComparisons, "programId" | "jurisdiction">,
@@ -90,13 +107,33 @@ export function externalComparisonTitle(
   const disclosure = Object.hasOwn(ENGINE_DISCLOSURES, comparison.engine)
     ? ENGINE_DISCLOSURES[comparison.engine]
     : null;
+  const counts = comparison.resultCounts;
+  const measured =
+    counts.match + counts.known_difference + counts.diff + counts.errored;
+  const others = nonMatchingResults(counts);
+  let outcome: string;
+  if (comparison.matchingCaseCount > 0) {
+    const asOf = formatDate(comparison.matchingAsOf);
+    const versions = comparison.matchingEngineVersions.join(", ");
+    outcome =
+      `In the latest results${asOf ? `, as of ${asOf}` : ""}, ` +
+      `${comparison.matchingCaseCount} of ${comparison.caseCount} ` +
+      `${one ? "case matches" : "match"} ${engine} on every compared output, ` +
+      `within each comparison's tolerance` +
+      `${versions ? ` (${engine} model version ${versions})` : ""}.` +
+      (others.length > 0 ? ` The rest: ${others.join(", ")}.` : "");
+  } else if (measured > 0) {
+    outcome = `The latest results show no match: ${others.join(", ")}.`;
+  } else {
+    outcome =
+      `No current result is published for ${one ? "it" : "them"}, so this ` +
+      `chip does not say whether Axiom and ${engine} agree.`;
+  }
   return [
     `${comparison.caseCount} test ${one ? "case" : "cases"} for ` +
       `${declared.programId} (${declared.jurisdiction}) ` +
       `${one ? "declares" : "declare"} a comparison with ${engine}${described}.`,
-    `The ${one ? "case lists" : "cases list"} the comparison's inputs and ` +
-      `output mappings and no result, so this chip does not say whether ` +
-      `Axiom and ${engine} agree.`,
+    outcome,
     ...(disclosure ? [disclosure] : []),
   ].join(" ");
 }
@@ -112,14 +149,17 @@ const CHIP_CLASS =
  * product-style rather than typewriter-style:
  *
  *   (∀ 8 rules) (▰▱▱▱▱▱ 1 of 6 subsections) (PolicyEngine comparison 1 case)
+ *   (Matches PolicyEngine 1 of 2 cases · Oct 3, 2026)
  *
  * Coverage is a map, not a meter: one segment per top-level
  * subsection in document order, filled where rules exist; each
  * segment links to its subsection. A comparison chip appears for
- * each engine a covering program's parity cases declare. The API
- * publishes no result for those comparisons, so the chip stays
- * neutral: no check mark, no "verified", no "agrees". Denominators
- * always shown.
+ * each engine a covering program's parity cases declare. It says
+ * "Matches" only for cases whose latest published results all match,
+ * observed within EXTERNAL_MATCH_MAX_AGE_DAYS, with the oldest of
+ * those observations as its date; otherwise it stays a neutral
+ * "comparison" chip. Never "verified", never a check mark.
+ * Denominators always shown.
  */
 function EncodingStatusLine({ data }: { data: SectionPageData }) {
   if (data.encodedRules.length === 0) return null;
@@ -190,17 +230,31 @@ function EncodingStatusLine({ data }: { data: SectionPageData }) {
 
       {declared?.engines.map((comparison) => {
         const description = externalComparisonTitle(declared, comparison);
+        const cases = comparison.caseCount === 1 ? "case" : "cases";
+        const asOf = formatDate(comparison.matchingAsOf);
         return (
           <span
             key={comparison.engine}
             className={`${CHIP_CLASS} cursor-help`}
             title={description}
           >
-            {oracleLabel(comparison.engine)} comparison
-            <span className="opacity-60">
-              {comparison.caseCount}{" "}
-              {comparison.caseCount === 1 ? "case" : "cases"}
-            </span>
+            {comparison.matchingCaseCount > 0 ? (
+              <>
+                Matches {oracleLabel(comparison.engine)}
+                <span className="opacity-60">
+                  {comparison.matchingCaseCount} of {comparison.caseCount}{" "}
+                  {cases}
+                  {asOf ? ` · ${asOf}` : ""}
+                </span>
+              </>
+            ) : (
+              <>
+                {oracleLabel(comparison.engine)} comparison
+                <span className="opacity-60">
+                  {comparison.caseCount} {cases}
+                </span>
+              </>
+            )}
             <span className="sr-only">{description}</span>
           </span>
         );

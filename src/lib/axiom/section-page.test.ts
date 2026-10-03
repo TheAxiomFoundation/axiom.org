@@ -570,9 +570,18 @@ describe("declaredExternalComparisons", () => {
       program_id: "co-snap",
       jurisdiction: "us-co",
       comparisonEngines: ["policyengine"],
+      comparisonResults: [
+        { engine: "policyengine", status: null, observedAt: null, engineVersion: null },
+      ],
       ...overrides,
     };
   }
+  const NOW = new Date("2026-10-04T08:00:00.000Z");
+  const result = (
+    status: ParityCaseSummary["comparisonResults"][number]["status"],
+    observedAt: string | null = "2026-10-03T12:41:07.512Z",
+    engine = "policyengine",
+  ) => ({ engine, status, observedAt, engineVersion: status ? "2.9.0" : null });
 
   it("returns null when the program's cases declare no external comparison", () => {
     expect(
@@ -604,7 +613,7 @@ describe("declaredExternalComparisons", () => {
     // The live case. Its comparison notes describe an input difference
     // (PolicyEngine adds Colorado's utility allowance; the Axiom case has
     // none). A declaration carries no outcome either way.
-    expect(declaredExternalComparisons([coSnap], [parityCase()])).toEqual({
+    expect(declaredExternalComparisons([coSnap], [parityCase()], NOW)).toEqual({
       programId: "co-snap",
       jurisdiction: "us-co",
       engines: [
@@ -612,13 +621,64 @@ describe("declaredExternalComparisons", () => {
           engine: "policyengine",
           caseCount: 1,
           caseDescriptions: ["Colorado SNAP canonical two-person household."],
+          matchingCaseCount: 0,
+          matchingAsOf: null,
+          matchingEngineVersions: [],
+          resultCounts: { match: 0, known_difference: 0, diff: 0, errored: 0, none: 1 },
         },
       ],
     });
   });
 
+  it("counts a case as matching only when every comparison with the engine currently matches", () => {
+    const outcome = declaredExternalComparisons(
+      [coSnap],
+      [
+        parityCase({ id: "a", comparisonResults: [result("match", "2026-10-03T12:41:07.512Z")] }),
+        parityCase({
+          id: "b",
+          comparisonResults: [result("match", "2026-10-02T12:00:00.000Z"), result("match")],
+        }),
+        // One of two comparisons differs: not a matching case.
+        parityCase({ id: "c", comparisonResults: [result("match"), result("known_difference")] }),
+        parityCase({ id: "d", comparisonResults: [result("diff")] }),
+        parityCase({ id: "e", comparisonResults: [result("errored")] }),
+        // A match older than the window no longer counts.
+        parityCase({ id: "f", comparisonResults: [result("match", "2026-09-20T00:00:00.000Z")] }),
+        parityCase({ id: "g", comparisonResults: [result(null, null)] }),
+        // A match with another engine says nothing about this one.
+        parityCase({
+          id: "h",
+          comparisonEngines: ["policyengine", "taxsim"],
+          comparisonResults: [result(null, null), result("match", undefined, "taxsim")],
+        }),
+      ],
+      NOW,
+    );
+    const [policyengine, taxsim] = outcome!.engines;
+    expect(policyengine).toMatchObject({
+      engine: "policyengine",
+      caseCount: 8,
+      matchingCaseCount: 2,
+      // The oldest observation behind the matches.
+      matchingAsOf: "2026-10-02T12:00:00.000Z",
+      matchingEngineVersions: ["2.9.0"],
+      resultCounts: { match: 4, known_difference: 1, diff: 1, errored: 1, none: 3 },
+    });
+    expect(taxsim).toMatchObject({ engine: "taxsim", caseCount: 1, matchingCaseCount: 1 });
+  });
+
+  it("never counts a case that reports no comparison results, as older API responses do", () => {
+    const outcome = declaredExternalComparisons(
+      [coSnap],
+      [{ ...parityCase(), comparisonResults: undefined } as unknown as ParityCaseSummary],
+      NOW,
+    );
+    expect(outcome?.engines[0]).toMatchObject({ matchingCaseCount: 0, resultCounts: { none: 0 } });
+  });
+
   it("takes the first covering program, in coverage order, that declares one", () => {
-    const result = declaredExternalComparisons(
+    const outcome = declaredExternalComparisons(
       [caSnap, coSnap],
       [
         parityCase({
@@ -630,11 +690,11 @@ describe("declaredExternalComparisons", () => {
         parityCase(),
       ],
     );
-    expect(result?.programId).toBe("co-snap");
+    expect(outcome?.programId).toBe("co-snap");
   });
 
   it("counts each engine over only the cases that name it", () => {
-    const result = declaredExternalComparisons(
+    const outcome = declaredExternalComparisons(
       [coSnap],
       [
         parityCase({ id: "a", description: "A", comparisonEngines: ["taxsim"] }),
@@ -646,18 +706,18 @@ describe("declaredExternalComparisons", () => {
         parityCase({ id: "c", description: "C", comparisonEngines: [] }),
       ],
     );
-    expect(result?.engines).toEqual([
+    expect(outcome?.engines).toMatchObject([
       { engine: "taxsim", caseCount: 2, caseDescriptions: ["A", "B"] },
       { engine: "policyengine", caseCount: 1, caseDescriptions: ["B"] },
     ]);
   });
 
   it("counts a case once per engine and drops blank descriptions", () => {
-    const result = declaredExternalComparisons(
+    const outcome = declaredExternalComparisons(
       [coSnap],
       [parityCase({ description: "", comparisonEngines: ["policyengine", "policyengine"] })],
     );
-    expect(result?.engines).toEqual([
+    expect(outcome?.engines).toMatchObject([
       { engine: "policyengine", caseCount: 1, caseDescriptions: [] },
     ]);
   });

@@ -495,8 +495,8 @@ describe("runtime api client", () => {
 
   it("reduces parity cases to their declared comparison engines, skipping malformed entries", async () => {
     vi.stubEnv("AXIOM_RUNTIME_API_KEY", "test-key");
-    // Shaped like the live GET /v1/parity/cases on 2026-10-03: an
-    // external comparison carries its setup and no result field.
+    // Shaped like GET /v1/parity/cases on 2026-10-03, before the API
+    // published results: an external comparison carries its setup only.
     const comparison = {
       id: "co-snap-policyengine-current",
       engine: "policyengine",
@@ -548,6 +548,10 @@ describe("runtime api client", () => {
         program_id: "co-snap",
         jurisdiction: "us-co",
         comparisonEngines: ["policyengine"],
+        comparisonResults: [
+          { engine: "policyengine", status: null, observedAt: null, engineVersion: null },
+          { engine: "policyengine", status: null, observedAt: null, engineVersion: null },
+        ],
       },
       {
         id: "snap-us-ca-family-1",
@@ -555,8 +559,43 @@ describe("runtime api client", () => {
         program_id: "snap",
         jurisdiction: "us-ca",
         comparisonEngines: [],
+        comparisonResults: [],
       },
     ]);
     expect(fetchMock.mock.calls[0][0]).toContain("/parity/cases");
+  });
+
+  it("reads each comparison's latest published result and ignores a malformed one", async () => {
+    vi.stubEnv("AXIOM_RUNTIME_API_KEY", "test-key");
+    // Shaped like axiom-api#258's external_comparisons[].latest_result.
+    const latest = {
+      status: "known_difference",
+      observed_at: "2026-10-03T12:41:07.512Z",
+      engine_version: "2.9.0",
+      mappings: [],
+    };
+    const cases = [
+      {
+        id: "co-snap-us-co-family-1",
+        description: "Colorado SNAP canonical two-person household.",
+        program_id: "co-snap",
+        jurisdiction: "us-co",
+        external_comparisons: [
+          { id: "a", engine: "policyengine", latest_result: latest },
+          { id: "b", engine: "policyengine", latest_result: { ...latest, status: "match", engine_version: 7 } },
+          { id: "c", engine: "policyengine", latest_result: { ...latest, status: "verified" } },
+          { id: "d", engine: "policyengine", latest_result: null },
+        ],
+      },
+    ];
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(okEnvelope({ cases })));
+    const [summary] = await listParityCases();
+    expect(summary.comparisonResults).toEqual([
+      { engine: "policyengine", status: "known_difference", observedAt: "2026-10-03T12:41:07.512Z", engineVersion: "2.9.0" },
+      { engine: "policyengine", status: "match", observedAt: "2026-10-03T12:41:07.512Z", engineVersion: null },
+      // An unknown status is no result, so it can never read as a match.
+      { engine: "policyengine", status: null, observedAt: null, engineVersion: null },
+      { engine: "policyengine", status: null, observedAt: null, engineVersion: null },
+    ]);
   });
 });

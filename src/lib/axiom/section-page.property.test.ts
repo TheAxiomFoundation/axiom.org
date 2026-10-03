@@ -1,6 +1,9 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { declaredExternalComparisons } from "./section-page";
+import {
+  EXTERNAL_MATCH_MAX_AGE_DAYS,
+  declaredExternalComparisons,
+} from "./section-page";
 import type { ParityCaseSummary } from "./runtime/api";
 
 // Small alphabets so programs, jurisdictions, and engines collide often:
@@ -9,13 +12,42 @@ const programId = fc.constantFrom("co-snap", "snap", "eitc");
 const jurisdiction = fc.constantFrom("us", "us-co", "us-ca");
 const engine = fc.constantFrom("policyengine", "taxsim", "ukmod");
 const program = fc.record({ programId, jurisdiction });
-const parityCase: fc.Arbitrary<ParityCaseSummary> = fc.record({
-  id: fc.string({ maxLength: 4 }),
-  description: fc.constantFrom("", "Household A", "Household B"),
-  program_id: programId,
-  jurisdiction,
-  comparisonEngines: fc.array(engine, { maxLength: 3 }),
+const NOW = new Date("2026-10-04T08:00:00.000Z");
+const DAY = 86_400_000;
+// Fresh, exactly at the window's edge, just past it, unparseable, absent.
+const observedAt = fc.constantFrom<string | null>(
+  "2026-10-03T12:41:07.512Z",
+  new Date(NOW.getTime() - EXTERNAL_MATCH_MAX_AGE_DAYS * DAY).toISOString(),
+  new Date(NOW.getTime() - EXTERNAL_MATCH_MAX_AGE_DAYS * DAY - 1).toISOString(),
+  "not a date",
+  null,
+);
+const comparisonResult = fc.record({
+  engine,
+  status: fc.constantFrom("match", "diff", "known_difference", "errored", null) as fc.Arbitrary<
+    ParityCaseSummary["comparisonResults"][number]["status"]
+  >,
+  observedAt,
+  engineVersion: fc.constantFrom("2.9.0", "2.10.0", null),
 });
+const parityCase: fc.Arbitrary<ParityCaseSummary> = fc
+  .record({
+    id: fc.string({ maxLength: 4 }),
+    description: fc.constantFrom("", "Household A", "Household B"),
+    program_id: programId,
+    jurisdiction,
+    comparisonResults: fc.array(comparisonResult, { maxLength: 4 }),
+  })
+  .map((item) => ({
+    ...item,
+    comparisonEngines: Array.from(new Set(item.comparisonResults.map((r) => r.engine))),
+  }));
+
+const current = (result: ParityCaseSummary["comparisonResults"][number], now: Date) =>
+  result.status !== null &&
+  result.observedAt !== null &&
+  !Number.isNaN(Date.parse(result.observedAt)) &&
+  now.getTime() - Date.parse(result.observedAt) <= EXTERNAL_MATCH_MAX_AGE_DAYS * DAY;
 const scenario = fc.record({
   programs: fc.array(program, { maxLength: 4 }),
   cases: fc.array(parityCase, { maxLength: 8 }),
@@ -87,6 +119,64 @@ describe("declaredExternalComparisons invariants", () => {
         expect(declaredExternalComparisons(programs, [...cases, stray])).toEqual(
           declaredExternalComparisons(programs, cases),
         );
+      }),
+    );
+  });
+
+  it("counts a case as matching iff every comparison with the engine is a current match", () => {
+    fc.assert(
+      fc.property(scenario, ({ programs, cases }) => {
+        const result = declaredExternalComparisons(programs, cases, NOW);
+        if (!result) return;
+        for (const entry of result.engines) {
+          const naming = casesOf(cases, result).filter((item) =>
+            item.comparisonEngines.includes(entry.engine),
+          );
+          const matched = naming.filter((item) => {
+            const own = item.comparisonResults.filter((r) => r.engine === entry.engine);
+            return own.length > 0 && own.every((r) => current(r, NOW) && r.status === "match");
+          });
+          expect(entry.matchingCaseCount).toBe(matched.length);
+          expect(entry.matchingCaseCount).toBeLessThanOrEqual(entry.caseCount);
+          const times = matched.flatMap((item) =>
+            item.comparisonResults
+              .filter((r) => r.engine === entry.engine)
+              .map((r) => Date.parse(r.observedAt!)),
+          );
+          if (matched.length === 0) {
+            expect(entry.matchingAsOf).toBeNull();
+            expect(entry.matchingEngineVersions).toEqual([]);
+          } else {
+            expect(Date.parse(entry.matchingAsOf!)).toBe(Math.min(...times));
+          }
+          const results = naming.flatMap((item) =>
+            item.comparisonResults.filter((r) => r.engine === entry.engine),
+          );
+          const counts = entry.resultCounts;
+          expect(counts.match + counts.known_difference + counts.diff + counts.errored + counts.none).toBe(
+            results.length,
+          );
+          expect(counts.none).toBe(results.filter((r) => !current(r, NOW)).length);
+        }
+      }),
+      { numRuns: 500 },
+    );
+  });
+
+  it("never gains matches as time passes", () => {
+    fc.assert(
+      fc.property(scenario, fc.integer({ min: 0, max: 30 }), ({ programs, cases }, days) => {
+        const before = declaredExternalComparisons(programs, cases, NOW);
+        const after = declaredExternalComparisons(
+          programs,
+          cases,
+          new Date(NOW.getTime() + days * DAY),
+        );
+        before?.engines.forEach((entry, index) => {
+          expect(after!.engines[index]!.matchingCaseCount).toBeLessThanOrEqual(
+            entry.matchingCaseCount,
+          );
+        });
       }),
     );
   });
