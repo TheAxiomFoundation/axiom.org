@@ -90,4 +90,20 @@ describe("declaredExternalComparisons invariants", () => {
       }),
     );
   });
+
+  it("orders engines by first declaration across the program's cases", () => {
+    fc.assert(
+      fc.property(scenario, ({ programs, cases }) => {
+        const result = declaredExternalComparisons(programs, cases);
+        if (!result) return;
+        const order: string[] = [];
+        for (const item of casesOf(cases, result)) {
+          for (const engine of item.comparisonEngines) {
+            if (!order.includes(engine)) order.push(engine);
+          }
+        }
+        expect(result.engines.map((entry) => entry.engine)).toEqual(order);
+      }),
+    );
+  });
 });

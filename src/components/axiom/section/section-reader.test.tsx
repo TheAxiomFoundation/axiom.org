@@ -466,21 +466,44 @@ describe("SectionReader", () => {
         <SectionReader data={makeData({ externalComparisons: coSnap })} />
       );
       const chip = screen.getByText(/PolicyEngine comparison/);
-      expect(chip).toHaveTextContent(/^PolicyEngine comparison\s*1 case$/);
+      expect(chip).toHaveTextContent(/^PolicyEngine comparison\s*1 case/);
       expect(chip.querySelector("svg")).toBeNull();
-      expect(chip).toHaveAttribute(
-        "title",
-        "1 test case for co-snap (us-co) sets up a comparison with " +
-          "PolicyEngine (Colorado SNAP canonical two-person household). " +
-          "The case lists the comparison's inputs and output mappings and " +
-          "no result, so this chip does not say whether Axiom and " +
-          "PolicyEngine agree. Max Ghenis is CEO of both Axiom and " +
-          "PolicyEngine."
-      );
+      // Neutral styling: the grey chip, never the green success one.
+      expect(chip.className).toContain("border-[var(--color-rule)]");
+      expect(chip.className).not.toMatch(/success|22,101,52/);
+      const description =
+        "1 test case for co-snap (us-co) declares a comparison with " +
+        "PolicyEngine (Colorado SNAP canonical two-person household). " +
+        "The case lists the comparison's inputs and output mappings and " +
+        "no result, so this chip does not say whether Axiom and " +
+        "PolicyEngine agree. Max Ghenis is CEO of both Axiom and " +
+        "PolicyEngine.";
+      expect(chip).toHaveAttribute("title", description);
+      // The disclosure must not depend on a hover tooltip.
+      const srText = within(chip).getByText(description);
+      expect(srText).toHaveClass("sr-only");
       // Markup and attributes both: the old claim lived in a title.
       expect(container.innerHTML).not.toMatch(/verified/i);
       expect(container.innerHTML).not.toMatch(/agrees with/i);
       expect(container.innerHTML).not.toContain("⊨");
+    });
+
+    it("labels an engine named like an Object prototype key literally", () => {
+      render(
+        <SectionReader
+          data={makeData({
+            externalComparisons: {
+              programId: "snap",
+              jurisdiction: "us-ca",
+              engines: [
+                { engine: "constructor", caseCount: 1, caseDescriptions: [] },
+              ],
+            },
+          })}
+        />
+      );
+      const chip = screen.getByText(/constructor comparison/);
+      expect(chip.getAttribute("title")).not.toContain("native code");
     });
 
     it("shows no comparison chip when no covering program declares one", () => {
@@ -511,15 +534,15 @@ describe("SectionReader", () => {
         />
       );
       const policyengine = screen.getByText(/PolicyEngine comparison/);
-      expect(policyengine).toHaveTextContent(/2 cases$/);
+      expect(policyengine).toHaveTextContent(/^PolicyEngine comparison\s*2 cases/);
       expect(policyengine.getAttribute("title")).toMatch(
-        /^2 test cases for snap \(us-ca\) set up a comparison with PolicyEngine \(Household A; Household B\)\. The cases list /
+        /^2 test cases for snap \(us-ca\) declare a comparison with PolicyEngine \(Household A; Household B\)\. The cases list /
       );
       const ukmod = screen.getByText(/UKMOD comparison/);
-      expect(ukmod).toHaveTextContent(/1 case$/);
+      expect(ukmod).toHaveTextContent(/^UKMOD comparison\s*1 case/);
       expect(ukmod).toHaveAttribute(
         "title",
-        "1 test case for snap (us-ca) sets up a comparison with UKMOD. " +
+        "1 test case for snap (us-ca) declares a comparison with UKMOD. " +
           "The case lists the comparison's inputs and output mappings and " +
           "no result, so this chip does not say whether Axiom and UKMOD agree."
       );

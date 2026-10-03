@@ -601,8 +601,9 @@ describe("declaredExternalComparisons", () => {
   });
 
   it("reports a declared comparison by engine and case count", () => {
-    // The live case: its notes predict a 50-cent snap_net_income gap
-    // against PolicyEngine. A declaration carries no outcome either way.
+    // The live case. Its comparison notes describe an input difference
+    // (PolicyEngine adds Colorado's utility allowance; the Axiom case has
+    // none). A declaration carries no outcome either way.
     expect(declaredExternalComparisons([coSnap], [parityCase()])).toEqual({
       programId: "co-snap",
       jurisdiction: "us-co",

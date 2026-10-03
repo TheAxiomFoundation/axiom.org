@@ -493,7 +493,7 @@ describe("runtime api client", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("reduces parity cases to their declared comparison engines", async () => {
+  it("reduces parity cases to their declared comparison engines, skipping malformed entries", async () => {
     vi.stubEnv("AXIOM_RUNTIME_API_KEY", "test-key");
     // Shaped like the live GET /v1/parity/cases on 2026-10-03: an
     // external comparison carries its setup and no result field.
@@ -524,6 +524,7 @@ describe("runtime api client", () => {
           comparison,
           { ...comparison, id: "second-policyengine" },
           { ...comparison, id: "no-engine", engine: undefined },
+          null,
         ],
         known_deviation: null,
       },

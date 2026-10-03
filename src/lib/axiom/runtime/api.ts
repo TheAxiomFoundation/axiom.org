@@ -476,7 +476,7 @@ export async function listParityCases(): Promise<ParityCaseSummary[]> {
       description?: string;
       program_id: string;
       jurisdiction: string;
-      external_comparisons?: Array<{ engine?: string }>;
+      external_comparisons?: Array<{ engine?: string } | null>;
     }>;
   }>("/parity/cases");
   return (data?.cases ?? []).map((item) => ({
@@ -487,7 +487,7 @@ export async function listParityCases(): Promise<ParityCaseSummary[]> {
     comparisonEngines: Array.from(
       new Set(
         (item.external_comparisons ?? [])
-          .map((comparison) => comparison.engine)
+          .map((comparison) => comparison?.engine)
           .filter((engine): engine is string => Boolean(engine))
       )
     ),

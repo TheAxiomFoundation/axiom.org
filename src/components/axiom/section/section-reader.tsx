@@ -60,7 +60,7 @@ const ORACLE_LABELS: Readonly<Record<string, string>> = {
 };
 
 function oracleLabel(engine: string): string {
-  return ORACLE_LABELS[engine] ?? engine;
+  return Object.hasOwn(ORACLE_LABELS, engine) ? ORACLE_LABELS[engine] : engine;
 }
 
 /** Ties between Axiom and an engine, stated wherever the engine is named. */
@@ -69,9 +69,11 @@ const ENGINE_DISCLOSURES: Readonly<Record<string, string>> = {
 };
 
 /**
- * Tooltip for a declared external comparison: the program, its
+ * Description of a declared external comparison: the program, its
  * cases, the engine, a plain statement that no result is shown, and
- * any tie between Axiom and the engine.
+ * any tie between Axiom and the engine. Rendered as the chip's title
+ * and as screen-reader text, so the disclosure does not depend on a
+ * hover tooltip.
  */
 export function externalComparisonTitle(
   declared: Pick<DeclaredExternalComparisons, "programId" | "jurisdiction">,
@@ -85,11 +87,13 @@ export function externalComparisonTitle(
           .map((description) => description.replace(/\.$/, ""))
           .join("; ")})`
       : "";
-  const disclosure = ENGINE_DISCLOSURES[comparison.engine];
+  const disclosure = Object.hasOwn(ENGINE_DISCLOSURES, comparison.engine)
+    ? ENGINE_DISCLOSURES[comparison.engine]
+    : null;
   return [
     `${comparison.caseCount} test ${one ? "case" : "cases"} for ` +
       `${declared.programId} (${declared.jurisdiction}) ` +
-      `${one ? "sets" : "set"} up a comparison with ${engine}${described}.`,
+      `${one ? "declares" : "declare"} a comparison with ${engine}${described}.`,
     `The ${one ? "case lists" : "cases list"} the comparison's inputs and ` +
       `output mappings and no result, so this chip does not say whether ` +
       `Axiom and ${engine} agree.`,
@@ -184,19 +188,23 @@ function EncodingStatusLine({ data }: { data: SectionPageData }) {
         </span>
       )}
 
-      {declared?.engines.map((comparison) => (
-        <span
-          key={comparison.engine}
-          className={`${CHIP_CLASS} cursor-help`}
-          title={externalComparisonTitle(declared, comparison)}
-        >
-          {oracleLabel(comparison.engine)} comparison
-          <span className="opacity-60">
-            {comparison.caseCount}{" "}
-            {comparison.caseCount === 1 ? "case" : "cases"}
+      {declared?.engines.map((comparison) => {
+        const description = externalComparisonTitle(declared, comparison);
+        return (
+          <span
+            key={comparison.engine}
+            className={`${CHIP_CLASS} cursor-help`}
+            title={description}
+          >
+            {oracleLabel(comparison.engine)} comparison
+            <span className="opacity-60">
+              {comparison.caseCount}{" "}
+              {comparison.caseCount === 1 ? "case" : "cases"}
+            </span>
+            <span className="sr-only">{description}</span>
           </span>
-        </span>
-      ))}
+        );
+      })}
     </div>
   );
 }
