@@ -45,7 +45,7 @@ describe("Colorado SNAP QC report", () => {
       /the research firm Mathematica computes a benefit for USDA from the edited case record/,
     );
     expect(text).toMatch(
-      /Where that benefit is more than \$5 from the benefit the review recorded, adjusted for any payment error, Mathematica adjusts certain deductions to close the gap when it can; in Colorado, 797 of the 856 computed benefits end within \$5/,
+      /Where that benefit is more than \$5 from the issued benefit, adjusted for any payment error the reviewer found, Mathematica adjusts certain deductions to close the gap when it can; in Colorado, 797 of the 856 computed benefits end within \$5/,
     );
     expect(text).toMatch(/the reviewer.s finding is recorded separately/);
     expect(text).toMatch(/State QC reviewers examine each sampled case/);
@@ -106,7 +106,7 @@ describe("Colorado SNAP QC report", () => {
     expect(text).toMatch(/For 246 cases, our rules reproduce the issued benefit within \$5/);
     expect(text).toMatch(/14 of the 16 replayed cases coded as software errors \(18 error cases carry a software code\)/);
     expect(text).toMatch(/For the other 37, moving the input the first finding names does not reproduce the issued benefit/);
-    expect(text).toMatch(/Ten of the 37 carry a computation or policy cause code/);
+    expect(text).toMatch(/Ten of the 37 carry a computation, software or policy cause code/);
     expect(text).toMatch(/In seven, that coded finding concerns the benefit computation/);
     expect(text).toMatch(/the reconstruction does not show which step went wrong/);
 
@@ -126,7 +126,7 @@ describe("Colorado SNAP QC report", () => {
     expect(text).toMatch(/Colorado official FY 2025 payment error rate/);
     expect(text).toMatch(/10\.09%/);
     expect(text).toMatch(/is 0\.09 points above the 10% boundary/);
-    expect(text).toMatch(/starts in fiscal year 2029 or 2030 instead/);
+    expect(text).toMatch(/FY 2025 rate, multiplied by 1\.5, is 20% or more starts in fiscal year 2029 instead, and one whose FY 2026 rate meets that test starts in fiscal year 2030/);
     expect(text).not.toMatch(/the period being measured now/i);
     expect(text).toMatch(/revised October 2026/);
   });
@@ -149,12 +149,18 @@ describe("Colorado SNAP QC report", () => {
     expect(text).toMatch(/together carry 10\.5% of Colorado/);
     expect(text).toMatch(/6\.2% under the software codes 17 and 19/);
     expect(text).toMatch(/4\.3% under codes 10, 20, 21 and 22/);
-    expect(text).toMatch(/more than 30 times the 0\.03-point margin/);
-    expect(text).toMatch(/about half the 1\.97-point distance/);
+    expect(text).toMatch(/Cases the reconstruction traces to a wrong input carry 3\.8% and 1\.9% of those/);
+    expect(text).toMatch(/the seven computation candidates carry 1\.8%/);
+    expect(text).toMatch(
+      /the six codes would be about one point and the seven candidates about 0\.2 points, against a 0\.03-point margin/,
+    );
 
-    const points = 0.105 * 9.97;
-    expect(points / 0.03).toBeGreaterThan(30);
-    expect(Math.abs(points / 1.97 - 0.5)).toBeLessThan(0.05);
+    // Shares of error dollars applied to the official 9.97% rate.
+    expect(Math.round(0.105 * 9.97)).toBe(1);
+    expect(Math.round(0.018 * 9.97 * 10) / 10).toBe(0.2);
+    // The wrong-input share of each group cannot exceed the group.
+    expect(3.8).toBeLessThanOrEqual(6.2);
+    expect(1.9).toBeLessThanOrEqual(4.3);
     expect(10 - 9.97).toBeCloseTo(0.03, 10);
     expect(10.09 - 10).toBeCloseTo(0.09, 10);
     // The split sums to the whole, within one-decimal rounding.
