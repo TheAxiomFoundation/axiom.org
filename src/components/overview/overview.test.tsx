@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
 
@@ -157,5 +160,22 @@ describe('Overview share card', () => {
       images: ['/og-image.png'],
     })
     expect(metadata).not.toHaveProperty('twitter')
+  })
+})
+
+describe('Overview PDF', () => {
+  // pdf/overview/render.sh stamps the SHA-256 of the HTML it rendered into
+  // the PDF's metadata. Editing the print source without re-rendering would
+  // leave the downloadable PDF making claims the HTML no longer makes.
+  it('was rendered from the print source in the repo', () => {
+    const source = readFileSync(join(process.cwd(), 'pdf/overview/axiom-overview.html'))
+    const sha = createHash('sha256').update(source).digest('hex')
+    const pdf = readFileSync(
+      join(process.cwd(), 'public', OVERVIEW_PDF_PATH.replace(/^\//, '')),
+      'latin1',
+    )
+
+    expect(pdf.startsWith('%PDF-')).toBe(true)
+    expect(pdf).toContain(`/AxiomSourceSHA256 (${sha})`)
   })
 })

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Render an Axiom-branded HTML one-pager/brief to PDF via headless Chrome, then
-# verify (page count). No deps beyond Chrome and Python (pypdf optional).
+# verify (page count), and stamp the source HTML's hash into the PDF metadata.
+# Needs Chrome and Python with pypdf (falls back to `uv run --with pypdf`).
 #
 # Usage:  ./render.sh path/to/page.html [output.pdf]
 #
@@ -37,9 +38,26 @@ trap 'rm -f "$TMP"' EXIT
 "$CHROME" --headless --disable-gpu --no-sandbox --no-pdf-header-footer \
   --print-to-pdf="$OUT" "file://$TMP" 2>&1 | grep -iE "written|error" || true
 
-python3 - "$OUT" <<'PY' 2>/dev/null || true
-import sys, pypdf
-print("pages:", len(pypdf.PdfReader(sys.argv[1]).pages))
-PY
+# Stamp the source HTML's SHA-256 into the PDF's metadata. The overview test
+# (src/components/overview/overview.test.tsx) recomputes it from the HTML in
+# the repo, so a copy change that is never re-rendered fails CI instead of
+# leaving the published PDF making the old claims.
+STAMP_PY='
+import hashlib, os, sys, pypdf
+pdf, html = sys.argv[1], sys.argv[2]
+sha = hashlib.sha256(open(html, "rb").read()).hexdigest()
+writer = pypdf.PdfWriter(clone_from=pdf)
+writer.add_metadata({"/AxiomSourceSHA256": sha})
+with open(pdf + ".stamped", "wb") as f:
+    writer.write(f)
+os.replace(pdf + ".stamped", pdf)
+print("pages:", len(pypdf.PdfReader(pdf).pages))
+print("source sha256:", sha)
+'
+if python3 -c "import pypdf" 2>/dev/null; then
+  python3 -c "$STAMP_PY" "$OUT" "$DIR/$BASE"
+else
+  uv run --quiet --with pypdf python3 -c "$STAMP_PY" "$OUT" "$DIR/$BASE"
+fi
 
 echo "wrote $OUT"

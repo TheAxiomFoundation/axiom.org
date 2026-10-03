@@ -11,6 +11,7 @@ import AboutPage from '@/app/about/page'
 import ValidationPage, { metadata as validationMetadata } from '@/app/validation/page'
 import VerifyPage from '@/app/verify/page'
 import ReceiptsPage from '@/app/receipts/page'
+import OverviewPage, { metadata as overviewMetadata } from '@/app/overview/page'
 import { EncodedLawSection } from '@/components/landing/encoded-law-section'
 import { EncoderSection } from '@/components/landing/encoder-section'
 
@@ -30,15 +31,10 @@ import { EncoderSection } from '@/components/landing/encoder-section'
 //   keeps only eligible households and the replay feeds the eligibility gates
 //   passing values (axiom-oracles bridges/snap_qc_compare.py). A page that
 //   names SNAP QC says eligibility is untested.
-const SURFACES = [
-  ['/about', () => render(<AboutPage />)],
-  ['/validation', () => render(<ValidationPage />)],
-  ['/verify', () => render(<VerifyPage />)],
-  ['/receipts', () => render(<ReceiptsPage />)],
-  ['/ (encoded law section)', () => render(<EncodedLawSection />)],
-  ['/ (encoder section)', () => render(<EncoderSection />)],
-] as const
-
+// - Drafts must compile and pass their tests to merge, except modules on the
+//   waiver list, and the encoder writes those tests in the same model
+//   response as the rules (axiom-encode src/axiom_encode/harness/evals.py),
+//   so nothing here may say the model never grades its own work.
 // Join text nodes with spaces: textContent glues adjacent elements together
 // ("independent evidence" + "Verified" reads "evidenceVerified"), which hides
 // a claim from any pattern that ends on a word boundary.
@@ -51,13 +47,43 @@ function textOf(renderSurface: () => ReturnType<typeof render>) {
   return parts.join(' ').replace(/\s+/g, ' ')
 }
 
+// The downloadable overview PDF is rendered from this HTML (pdf/overview/
+// README.md), and overview.test.tsx checks the published PDF carries this
+// file's hash, so guarding the source guards the PDF. Comments and the style
+// block never reach the page.
+function printSourceText(path: string) {
+  return readFileSync(join(process.cwd(), path), 'utf8')
+    .replace(/<style[\s\S]*?<\/style>/g, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&mdash;/g, '—')
+    .replace(/&middot;/g, '·')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&rsquo;|&apos;|&#39;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+}
+
+const SURFACES: ReadonlyArray<readonly [string, () => string]> = [
+  ['/about', () => textOf(() => render(<AboutPage />))],
+  ['/validation', () => textOf(() => render(<ValidationPage />))],
+  ['/verify', () => textOf(() => render(<VerifyPage />))],
+  ['/receipts', () => textOf(() => render(<ReceiptsPage />))],
+  ['/ (encoded law section)', () => textOf(() => render(<EncodedLawSection />))],
+  ['/ (encoder section)', () => textOf(() => render(<EncoderSection />))],
+  // Every audience panel stays mounted (hidden, not unmounted), so the
+  // rendered text includes the tabs a reader has not opened.
+  ['/overview', () => textOf(() => render(<OverviewPage />))],
+  ['/Axiom-Foundation-Overview.pdf (print source)', () => printSourceText('pdf/overview/axiom-overview.html')],
+]
+
 const CHECK_VERB = String.raw`(cross-check|check|verif|validat|compar|run[s]? against|mapped to an oracle)`
 const UNIVERSAL_SUBJECT = String.raw`(every|each|all) (encoding|published rule|rule|executable output|output)s?`
 
 describe('verification claims', () => {
-  for (const [route, renderSurface] of SURFACES) {
+  for (const [route, surfaceText] of SURFACES) {
     it(`${route} claims no universal or independent cross-check`, () => {
-      const text = textOf(renderSurface)
+      const text = surfaceText()
 
       // A universal subject next to a checking verb, either order, within one
       // sentence. "The primary text every encoding points back to" is fine;
@@ -72,25 +98,42 @@ describe('verification claims', () => {
       expect(text).not.toMatch(/engines we don.t control/i)
       expect(text).not.toMatch(/never grades its own work/i)
       expect(text).not.toMatch(/adjudicated cases/i)
+      // Waivers and model-written tests decide what merges too.
+      expect(text).not.toMatch(/deterministic gauntlet/i)
+      // SNAP's is the only quality-control file any comparison reads.
+      expect(text).not.toMatch(/program quality-control data/i)
+    })
+
+    // The shared validate workflow skips validation, companion tests and
+    // proof checks for every module with an active waiver in rulespec-us
+    // known-validation-gaps.yaml: 1,940 modules on 2026-10-02, holding
+    // 23,735 of 34,810 rules. A page that states the gate names the waivers
+    // in the same sentence.
+    it(`${route} names the waiver list wherever it says drafts must pass their tests`, () => {
+      const text = surfaceText()
+      const gate = /\bcompiles? and pass(es)? (its|their) (test suite|tests)\b/i
+      if (!gate.test(text)) return
+
+      expect(text).toMatch(new RegExp(gate.source + String.raw`[^.]{0,120}\bwaiver`, 'i'))
     })
 
     it(`${route} discloses the PolicyEngine tie wherever it names PolicyEngine`, () => {
-      const text = textOf(renderSurface)
+      const text = surfaceText()
       if (!/PolicyEngine/.test(text)) return
 
       expect(text).toMatch(/Max Ghenis is CEO of both Axiom and PolicyEngine/)
     })
 
     it(`${route} discloses where TAXSIM runs come from wherever it names TAXSIM`, () => {
-      const text = textOf(renderSurface)
+      const text = surfaceText()
       if (!/TAXSIM/.test(text)) return
 
       expect(text).toMatch(/TAXSIM executable that PolicyEngine packages/)
     })
 
     it(`${route} scopes the SNAP QC replay to benefit arithmetic`, () => {
-      const text = textOf(renderSurface)
-      if (!/SNAP (quality-control|QC)/i.test(text)) return
+      const text = surfaceText()
+      if (!/SNAP (quality[- ]control|QC)/i.test(text)) return
 
       expect(text).toMatch(/eligibility (is )?untested/i)
     })
@@ -110,5 +153,13 @@ describe('verification claims', () => {
   it('keeps the validation metadata free of independence and coverage claims', () => {
     expect(validationMetadata.description).not.toMatch(/independent/i)
     expect(validationMetadata.description).not.toMatch(/\bevery\b/i)
+  })
+
+  it('keeps the overview metadata free of independence and coverage claims', () => {
+    for (const description of [overviewMetadata.description, overviewMetadata.openGraph?.description]) {
+      expect(description).toBeTruthy()
+      expect(description).not.toMatch(/independent|external|cross-check/i)
+      expect(description).not.toMatch(/\bevery\b/i)
+    }
   })
 })
