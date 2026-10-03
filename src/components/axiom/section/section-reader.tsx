@@ -72,7 +72,7 @@ function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
 }
 
-/** The latest results that are not a match, in words. */
+/** The latest published results that are not a match, in words. */
 function nonMatchingResults(
   counts: DeclaredExternalComparisons["engines"][number]["resultCounts"],
 ): string[] {
