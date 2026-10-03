@@ -89,6 +89,7 @@ describe("Colorado SNAP QC report", () => {
     expect(text).toMatch(
       /error-case replay, run in July 2026, compares our benefit with the benefit the agency issued, within \$5/,
     );
+    expect(text).toMatch(/the dollar shares quoted from it use the August 2026 weights/);
     expect(text).not.toMatch(/consistency tolerance/i);
   });
 
@@ -154,22 +155,32 @@ describe("Colorado SNAP QC report", () => {
     expect(text).toMatch(/together carry 10\.5% of Colorado/);
     expect(text).toMatch(/6\.2% under the software codes 17 and 19/);
     expect(text).toMatch(/4\.3% under codes 10, 20, 21 and 22/);
-    expect(text).toMatch(/Cases the reconstruction traces to a wrong input carry 3\.8% and 1\.9% of those/);
+    expect(text).toMatch(
+      /Within those groups, cases the reconstruction traces to a wrong input carry 3\.8% and 1\.9% of Colorado.s error dollars/,
+    );
     expect(text).toMatch(/the seven computation candidates carry 1\.8%/);
     expect(text).toMatch(
       /the six codes would be about one point and the seven candidates about 0\.2 points, against a 0\.03-point margin/,
     );
 
-    // Shares of error dollars applied to the official 9.97% rate.
-    expect(Math.round(0.105 * 9.97)).toBe(1);
-    expect(Math.round(0.018 * 9.97 * 10) / 10).toBe(0.2);
-    // The wrong-input share of each group cannot exceed the group.
-    expect(3.8).toBeLessThanOrEqual(6.2);
-    expect(1.9).toBeLessThanOrEqual(4.3);
+    // Read the published shares from the page, then check the relations the
+    // prose states. All shares are of Colorado's error dollars.
+    const pct = (re: RegExp) => Number(text.match(re)?.[1]);
+    const broad = pct(/together carry ([\d.]+)% of Colorado/);
+    const software = pct(/([\d.]+)% under the software codes 17 and 19/);
+    const other = pct(/([\d.]+)% under codes 10, 20, 21 and 22/);
+    const softwareWrongInput = pct(/wrong input carry ([\d.]+)% and/);
+    const otherWrongInput = pct(/wrong input carry [\d.]+% and ([\d.]+)%/);
+    const candidates = pct(/seven computation candidates carry ([\d.]+)%/);
+    expect(Math.abs(software + other - broad)).toBeLessThan(0.1);
+    expect(softwareWrongInput).toBeLessThanOrEqual(software);
+    expect(otherWrongInput).toBeLessThanOrEqual(other);
+    expect(candidates).toBeLessThanOrEqual(broad - softwareWrongInput - otherWrongInput);
+    // Applied to the official 9.97% rate: about one point and about 0.2.
+    expect(Math.round((broad / 100) * 9.97)).toBe(1);
+    expect(Math.round((candidates / 100) * 9.97 * 10) / 10).toBe(0.2);
     expect(10 - 9.97).toBeCloseTo(0.03, 10);
     expect(10.09 - 10).toBeCloseTo(0.09, 10);
-    // The split sums to the whole, within one-decimal rounding.
-    expect(Math.abs(6.2 + 4.3 - 10.5)).toBeLessThan(0.1);
     expect(9.97 - 8).toBeCloseTo(1.97, 10);
   });
 

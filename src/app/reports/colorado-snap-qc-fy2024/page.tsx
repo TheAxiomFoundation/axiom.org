@@ -232,9 +232,10 @@ export default function ColoradoSnapQcReport() {
           <p className="font-body text-[1rem] text-[var(--color-ink-secondary)] leading-relaxed">
             Cause codes 10, 17, 19, 20, 21 and 22 together carry 10.5% of
             Colorado&apos;s sampled error dollars: 6.2% under the software
-            codes 17 and 19 and 4.3% under codes 10, 20, 21 and 22. Cases the
-            reconstruction traces to a wrong input carry 3.8% and 1.9% of
-            those, and the seven computation candidates carry 1.8%. If those
+            codes 17 and 19 and 4.3% under codes 10, 20, 21 and 22. Within
+            those groups, cases the reconstruction traces to a wrong input
+            carry 3.8% and 1.9% of Colorado&apos;s error dollars, and the
+            seven computation candidates carry 1.8%. If those
             shares held for the official 9.97% FY 2024 rate, the six codes
             would be about one point and the seven candidates about 0.2
             points, against a 0.03-point margin to the 10% boundary and 1.97
@@ -300,7 +301,9 @@ export default function ColoradoSnapQcReport() {
               The error-case replay, run in July 2026, compares our benefit
               with the benefit the agency issued, within $5: the tolerance
               Mathematica uses to reconcile its computed benefit with the
-              issued benefit.
+              issued benefit. Its case counts do not depend on the sample
+              weights; the dollar shares quoted from it use the August 2026
+              weights.
             </li>
             <li>
               Scope: one state, one program, one fiscal year, benefit
