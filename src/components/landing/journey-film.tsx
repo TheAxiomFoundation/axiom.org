@@ -4,8 +4,9 @@
 //
 //   I    THE LAW, WHOLE     the wall of 1.7M provision-cells — vastness
 //   II   ONE PROVISION      camera dives into a single cell: the statute
-//                           is segmented, each section encoded, run and
-//                           checked; the hero walks all four gates
+//                           is segmented and each section encoded; the
+//                           hero, labelled an illustration, walks all four
+//                           gates
 //   III  THE GRAPH          encoded rules join the axiom graph — every
 //                           rule a node, typed and cited, linked to the
 //                           concepts it draws on
@@ -27,18 +28,20 @@
 // scrolly plays only FILM_FROM..FILM_TO (journey-scrolly.tsx), which
 // starts after scene I, so the accessible description starts at § 2017.
 //
-// Gate rule: only run and checks are said of every section. They are the
-// gates `axiom-encode encode --apply` blocks on: compile, source grounding
-// and the companion tests (harness/evals.py _eval_artifact_validation_error;
-// apply revalidates with oracles off and reviewers skipped), and rulespec
-// CI reruns them on each pull request's jurisdiction and daily on every
-// shard. The copy says "checked" because CI tolerates the recorded
-// failures in known-validation-gaps.yaml. The encoder never runs a
-// comparison (its oracle mode defaults to "none"); comparisons run later
-// in axiom-oracles, and only where another calculator covers the rule.
-// The review is one AI model's read, skippable and never blocking. The
-// hero walking compare and review is an illustration, and the label says
-// so.
+// Gate rule: the copy states one gate as universal, and only of drafts:
+// `axiom-encode encode --apply` writes a draft only after it compiles and
+// passes its source-grounding checks and companion tests
+// (harness/evals.py _eval_artifact_validation_error; apply revalidates
+// with oracles off, reviewers skipped and no waiver list). Nothing is
+// said of every published module: rulespec CI skips the modules listed
+// in known-validation-gaps.yaml (1,940 on 2026-10-02, holding about
+// 23,700 of 34,810 US rules), § 2017(a) among them, and about 15,400 US
+// rules came in through sign-applied-files, which runs no encoder gate.
+// The encoder never runs a comparison (its oracle mode defaults to
+// "none"); axiom-oracles compares program outputs later, where another
+// calculator covers the program. The review is one AI model's read,
+// skippable and never blocking. The hero walking compare and review is an
+// illustration, and both the workbench and the label say so.
 
 import { useEffect, useRef } from "react";
 import { CLUSTERS, registrySummary, snapshotMonth } from "./registry-snapshot";
@@ -67,7 +70,7 @@ const W = {
 // the film's own construction.
 const CAPTIONS = [
   { w: W.s1, name: "The law, whole", sub: "the corpus, word for word — one cell per provision" },
-  { w: W.s2, name: "One provision, encoded", sub: "each section run and checked — compared where another calculator covers it" },
+  { w: W.s2, name: "One provision, encoded", sub: "a draft must compile and pass its tests — compared where another calculator covers it" },
   { w: [0.48, 0.583] as const, name: "The graph", sub: "every rule is a node — typed, cited, connected" },
   { w: [0.59, 0.648] as const, name: "One rule, many programs", sub: "state programs build on the federal core — shared rules, one graph" },
   { w: [0.655, 0.87] as const, name: "The graph, whole", sub: `${snapshotMonth()} registry snapshot — ${registrySummary()}` },
@@ -411,7 +414,7 @@ function CellToPage() {
   );
 }
 
-// ── scene II: one provision — segment, encode, validate ──────────────
+// ── scene II: one provision — segment, encode, check ─────────────────
 
 const SECTIONS = [
   { key: "a", label: "Value of allotment", y: 240 },
@@ -445,8 +448,8 @@ const HERO = {
   others: [0.457, 0.464], // the other two get their stamps in fast-forward
 };
 // The review is one AI model's read, so its chip says so. Chips are
-// sized to their labels (0.6em mono at 11px, plus the 12.5px tick) and
-// spread over the same span the four equal chips used to fill.
+// sized to their labels (0.6em mono at 11px, plus about 16 units for the
+// tick and its space) and spread across the divider above them.
 const GATE_NAMES = ["run", "checks", "compare", "AI review"];
 const GATE_PAD = 12;
 const GATE_W = GATE_NAMES.map((g) => Math.round(GATE_PAD * 2 + 16 + g.length * 6.6));
@@ -556,7 +559,7 @@ function SceneProvision() {
             <text className="jw-nodetitle" x={NCOL.x + 12} y={y + 38}>{RULES[i]}</text>
             {/* the stamp, in shorthand: run and checks, the two gates every
                 section goes through (compare and review are the hero's) */}
-            <text className="jw-gatetick" x={NCOL.x + NODE_W + 14} y={y + 32} opacity="0">
+            <text className="jw-gatetick" x={NCOL.x + NODE_W + 14} y={y + 32} opacity={O2()}>
               <Vis a={done} b={done + 0.024} r={0.006} />
               ✓✓
             </text>
@@ -624,6 +627,11 @@ function SceneProvision() {
           <text className="jw-nodeeyebrow" x={WB.x + 18} y={WB.y + 26}>
             <tspan fill={WAX}>¶</tspan>
             {"  rulespec-us"}
+          </text>
+          {/* the gate run below is a composite, not this module's record:
+              the published § 2017(a) module sits on the waiver list */}
+          <text className="jw-nodeeyebrow" x={WB.x + WB.w - 18} y={WB.y + 26} textAnchor="end">
+            illustration
           </text>
           <text className="jw-nodetitle" x={WB.x + 18} y={WB.y + 46}>{RULES[0]}</text>
           <line x1={WB.x + 18} y1={WB.y + 58} x2={WB.x + WB.w - 18} y2={WB.y + 58} stroke={INK} strokeWidth="0.6" opacity="0.35" />
@@ -759,7 +767,7 @@ type GNode = {
   glyph: string;
   repo: string;
   title: string;
-  fresh?: boolean; // one of the three just-validated rules
+  fresh?: boolean; // one of the three just-encoded rules
   at: number;
   outType?: string; // output nodes: the declared type…
   value?: string; // …and the value that computes once wired
@@ -936,7 +944,7 @@ function SceneGraph() {
   );
 }
 
-// the bridge: the three validated cards from scene II don't die with the
+// the bridge: the three encoded cards from scene II don't die with the
 // crossfade — they FLOAT into their places in the graph
 function Travelers() {
   if (STATIC) return null;
@@ -1368,7 +1376,7 @@ export function JourneyFilm({
         className="lsk"
         viewBox="0 0 1420 700"
         role="img"
-        aria-label={`One continuous shot. The camera opens on one provision, § 2017 of Title 7: the statute is segmented into sections, each section encoded into a RuleSpec — id, citation, typed inputs and output, and the formula allotment equals tfp minus 0.30 times net income, every value citing its source words. Each of its sections is run and checked, and compared through its program's outputs where another calculator covers that program. In this illustration the workbench stamps four gates — run, checks, compare, and AI review; one draft reads 0.03 for thirty per centum, disagrees with another calculator at compare, is redrafted to 0.30, and passes. The other two sections are stamped run and checks. The encoded rules then join the axiom graph as nodes — typed, cited, connected to the concepts they draw on; on the graph's output layer, two composed nodes declare their types and show illustrative output cards: snap/benefit, money per month, $478, and snap/eligible, boolean, yes. Then the camera backs out and the same cards keep coming: co-snap's own rules join around the hero graph — snap_maximum_allotment, the deductions, the eligibility tests, real names from its recorded outputs — then each runtime package in the ${snapshotMonth()} registry snapshot arrives as its own group of identical cards, from us-sc-snap to us-oasdi-wage-tax. At full distance the encoded graph sits among the ghost cards of everything not yet encoded, and the caption reads: ${snapshotMonth()} registry snapshot — ${registrySummary()}. The snapshot predates the registry's 2026-07-28 production cutover, and package outputs can count a shared rule more than once, so this is not a unique-rule or certification count.`}
+        aria-label={`One continuous shot. The camera opens on one provision, § 2017 of Title 7: the statute is segmented into sections, each section encoded into a RuleSpec — id, citation, typed inputs and output, and the formula allotment equals tfp minus 0.30 times net income, every value citing its source words. The encoder applies a draft only once it compiles and passes its own tests; programs are compared through their outputs later, where another calculator covers them. The workbench, marked illustration, stamps four gates — run, checks, compare, and AI review: one draft reads 0.03 for thirty per centum, disagrees with another calculator at compare, is redrafted to 0.30, and passes. The other two sections are stamped run and checks. On October 2, 2026 the published § 2017(a) module was one of 1,940 rulespec-us modules on the validation waiver list, whose checks CI skips. The encoded rules then join the axiom graph as nodes — typed, cited, connected to the concepts they draw on; on the graph's output layer, two composed nodes declare their types and show illustrative output cards: snap/benefit, money per month, $478, and snap/eligible, boolean, yes. Then the camera backs out and the same cards keep coming: co-snap's own rules join around the hero graph — snap_maximum_allotment, the deductions, the eligibility tests, real names from its recorded outputs — then each runtime package in the ${snapshotMonth()} registry snapshot arrives as its own group of identical cards, from us-sc-snap to us-oasdi-wage-tax. At full distance the encoded graph sits among the ghost cards of everything not yet encoded, and the caption reads: ${snapshotMonth()} registry snapshot — ${registrySummary()}. The snapshot predates the registry's 2026-07-28 production cutover, and package outputs can count a shared rule more than once, so this is not a unique-rule or certification count.`}
       >
         <Defs />
         <g clipPath="url(#jw-stage)">
