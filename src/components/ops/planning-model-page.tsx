@@ -25,7 +25,7 @@ export const PLANNING_MODEL = {
       id: "A",
       name: "A — oracle universe",
       scope:
-        "Policies checkable against an oracle: the 137 programs currently scored in PolicyEngine-US, 51 income-tax jurisdictions, state benefit manuals",
+        "Policies checkable against an oracle: the 137 PolicyEngine-US policies in axiom-oracles' conformance scope as of 2026-07-11 (127 as of 2026-10-03), state income taxes across the 50 states and DC, state benefit manuals",
       modules: 20_000,
       modulesLabel: "~20,000",
       modulesProvenance: "D" as const,
@@ -270,8 +270,7 @@ export function PlanningModelPage() {
             <Provenance kind="M" />; the file keeps only eligible households,
             so eligibility is untested). Max Ghenis is CEO of both Axiom and
             PolicyEngine, and our TAXSIM runs use the TAXSIM executable that
-            PolicyEngine packages. Cross-family judge models review every
-            audit-logged run.
+            PolicyEngine packages.
           </p>
           <ul className="font-body text-[1rem] text-[var(--color-ink-secondary)] leading-relaxed space-y-2 list-disc pl-5">
             <li>
