@@ -59,7 +59,11 @@ function cleanAttempt(value: unknown): number | null {
   return value;
 }
 
-/** Whitelist the runner identity fields; everything else is dropped. */
+/**
+ * Whitelist the runner identity fields; everything else is dropped. GitHub
+ * run fields are dropped too: here they are self-reported and unverifiable,
+ * and CI encodes that carry them write directly with credentials.
+ */
 function sanitizeRunner(value: unknown): Record<string, unknown> {
   const runner =
     typeof value === "object" && value !== null
@@ -165,6 +169,8 @@ export async function POST(request: Request) {
         model: cleanText(body.model, MAX_FIELD_LENGTH),
         attempt: cleanAttempt(body.attempt) ?? 1,
         encoder_version: cleanText(body.encoder_version, MAX_FIELD_LENGTH),
+        // Encoders open a run already in its first phase (resolve).
+        phase: cleanText(body.phase, MAX_FIELD_LENGTH),
         runner: sanitizeRunner(body.runner),
       };
       const response = await fetch(`${config.url}/rest/v1/live_encoding_runs`, {
