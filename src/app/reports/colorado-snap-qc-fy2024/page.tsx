@@ -209,9 +209,11 @@ export default function ColoradoSnapQcReport() {
             through our rules. For 246 cases, our rules reproduce the issued
             benefit within $5, which is consistent with correct arithmetic on
             a wrong input. That includes 14 of the 16 replayed cases coded as
-            software errors (18 error cases carry a software code), in which
-            mass changes or programming errors budgeted the wrong Social
-            Security, SSI or child-support amount.
+            software errors (18 error cases carry a software code). In 10 of
+            the 14, the input the reconstruction moved is the one the software
+            finding names: a Social Security, SSI or child-support amount that
+            a mass change or programming error budgeted wrong. In the other 4,
+            it moved an input a different finding names.
           </p>
           <p className="font-body text-[1rem] text-[var(--color-ink-secondary)] leading-relaxed mb-4">
             For the other 37, moving the input the first finding names does
@@ -236,7 +238,9 @@ export default function ColoradoSnapQcReport() {
             shares held for the official 9.97% FY 2024 rate, the six codes
             would be about one point and the seven candidates about 0.2
             points, against a 0.03-point margin to the 10% boundary and 1.97
-            points to the 8% boundary below. Colorado&apos;s FY 2025 rate,
+            points to the 8% boundary below. Four of the seven are errors of
+            $56 or less, under the threshold the official rate counts.
+            Colorado&apos;s FY 2025 rate,
             10.09%, is 0.09 points above the 10% boundary.
           </p>
         </section>

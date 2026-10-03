@@ -24,8 +24,10 @@ import ColoradoSnapQcReport, { metadata } from "./page";
 //   paper/snapshot/labs/amterr) compares the engine on reconstructed inputs
 //   with RAWBEN within $5: 283 of 305 replayed, 246 reproduced, 37 not (14
 //   of them solver no_change rows), 10 of those with cause codes
-//   10/17/19/20/21/22, 7 of which concern the computation; 14 of the 16
-//   replayed software-coded cases reproduced (18 error cases carry 17/19).
+//   10/17/19/20/21/22, 7 of which concern the computation (4 of the 7 at
+//   or below the $56 threshold); 14 of the 16 replayed software-coded
+//   cases reproduced (18 error cases carry 17/19), 10 of them by moving the
+//   input the software finding names.
 // - The cause-code table recomputes from the August 2026 posting of
 //   qc_pub_fy2024.csv (STATE 8, STATUS 2/3, AMTERR * HWGT, AGENCY1-9).
 function pageText() {
@@ -105,6 +107,9 @@ describe("Colorado SNAP QC report", () => {
     expect(text).toMatch(/283 of 305 error cases/);
     expect(text).toMatch(/For 246 cases, our rules reproduce the issued benefit within \$5/);
     expect(text).toMatch(/14 of the 16 replayed cases coded as software errors \(18 error cases carry a software code\)/);
+    expect(text).toMatch(/In 10 of the 14, the input the reconstruction moved is the one the software finding names/);
+    expect(text).toMatch(/In the other 4, it moved an input a different finding names/);
+    expect(text).toMatch(/Four of the seven are errors of \$56 or less/);
     expect(text).toMatch(/For the other 37, moving the input the first finding names does not reproduce the issued benefit/);
     expect(text).toMatch(/Ten of the 37 carry a computation, software or policy cause code/);
     expect(text).toMatch(/In seven, that coded finding concerns the benefit computation/);
