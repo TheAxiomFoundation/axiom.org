@@ -527,7 +527,7 @@ describe("SectionReader", () => {
         "title",
         "1 test case for co-snap (us-co) declares a comparison with " +
           "PolicyEngine (Colorado SNAP canonical two-person household). " +
-          "The latest results show no match: 1 documented known difference. " +
+          "The latest published results show no match: 1 documented known difference. " +
           "Max Ghenis is CEO of both Axiom and PolicyEngine."
       );
       expect(container.innerHTML).not.toMatch(/matches/i);
@@ -553,7 +553,7 @@ describe("SectionReader", () => {
       expect(chip).toHaveAttribute(
         "title",
         "2 test cases for co-snap (us-co) declare a comparison with " +
-          "PolicyEngine (Household A; Household B). In the latest results, " +
+          "PolicyEngine (Household A; Household B). In the latest published results, " +
           "as of Oct 3, 2026, 1 of 2 match PolicyEngine on every compared " +
           "output, within each comparison's tolerance (PolicyEngine model " +
           "version 2.9.0). The rest: 1 documented known difference. Max " +
@@ -580,7 +580,7 @@ describe("SectionReader", () => {
       const chip = screen.getByText(/Matches PolicyEngine/);
       expect(visibleLabel(chip)).toBe("Matches PolicyEngine 1 of 1 case · Oct 3, 2026");
       expect(chip.getAttribute("title")).toContain(
-        "In the latest results, as of Oct 3, 2026, 1 of 1 case matches PolicyEngine on every compared output, within each comparison's tolerance."
+        "In the latest published results, as of Oct 3, 2026, 1 of 1 case matches PolicyEngine on every compared output, within each comparison's tolerance."
       );
     });
 

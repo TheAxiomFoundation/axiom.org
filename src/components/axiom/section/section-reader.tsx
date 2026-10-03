@@ -116,14 +116,14 @@ export function externalComparisonTitle(
     const asOf = formatDate(comparison.matchingAsOf);
     const versions = comparison.matchingEngineVersions.join(", ");
     outcome =
-      `In the latest results${asOf ? `, as of ${asOf}` : ""}, ` +
+      `In the latest published results${asOf ? `, as of ${asOf}` : ""}, ` +
       `${comparison.matchingCaseCount} of ${comparison.caseCount} ` +
       `${one ? "case matches" : "match"} ${engine} on every compared output, ` +
       `within each comparison's tolerance` +
       `${versions ? ` (${engine} model version ${versions})` : ""}.` +
       (others.length > 0 ? ` The rest: ${others.join(", ")}.` : "");
   } else if (measured > 0) {
-    outcome = `The latest results show no match: ${others.join(", ")}.`;
+    outcome = `The latest published results show no match: ${others.join(", ")}.`;
   } else {
     outcome =
       `No current result is published for ${one ? "it" : "them"}, so this ` +
