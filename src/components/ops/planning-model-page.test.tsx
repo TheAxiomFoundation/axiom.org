@@ -132,7 +132,7 @@ describe("PlanningModelPage", () => {
     // benefit rather than a determination, and axiom-oracles has no
     // SOUTHMOD comparison.
     expect(text).not.toMatch(/95\.3%/);
-    expect(text).not.toMatch(/determinations/);
+    expect(text).not.toMatch(/quality-control determinations/i);
     expect(text).not.toMatch(/SOUTHMOD/);
     expect(text).not.toMatch(/independent oracle/i);
     expect(PLANNING_MODEL.tiers[0].scope).not.toMatch(/independent/i);

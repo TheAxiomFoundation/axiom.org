@@ -66,7 +66,9 @@ export default function ColoradoSnapQcReport() {
             Under 7 U.S.C. 2013(a)(2), as amended in 2025, states begin paying
             a share of SNAP benefit costs in fiscal year 2028, set by their
             payment error rate: 0% below a 6% error rate, 5% from 6 to 8, 10%
-            from 8 to 10, and 15% at or above 10. For fiscal year 2028, each
+            from 8 to 10, and 15% at or above 10. A state whose FY 2025 or FY
+            2026 rate, multiplied by 1.5, is 20% or more starts in fiscal year
+            2029 or 2030 instead. For fiscal year 2028, each
             state chooses whether its FY 2025 or FY 2026 error rate sets the
             share. USDA published FY 2025 rates in June 2026; FY 2026 ended on
             September 30, 2026.
@@ -83,7 +85,7 @@ export default function ColoradoSnapQcReport() {
               value="10.09%"
             />
             <StatRow
-              label="FY 2024 distance to the 15% cost-share tier"
+              label="FY 2024 margin below the 15% cost-share tier"
               value="0.03 points"
             />
             <StatRow
@@ -107,16 +109,20 @@ export default function ColoradoSnapQcReport() {
             cases. State QC reviewers examine each sampled case, including a
             new interview with the household, and USDA&apos;s regional offices
             re-review a subsample. Mathematica then edits each record for
-            consistency, computes a benefit from it, and reconciles that
-            benefit to within $5 of the benefit the review recorded, adjusted
-            for any payment error. The file&apos;s technical documentation
-            states that it does not represent an official USDA determination.
+            consistency and computes a benefit from it. Where that benefit is
+            more than $5 from the benefit the review recorded, adjusted for
+            any payment error, Mathematica adjusts certain deductions to close
+            the gap when it can; in Colorado, 797 of the 856 computed benefits
+            end within $5. This benefit is Mathematica&apos;s computation for
+            the database; the reviewer&apos;s finding is recorded separately,
+            as the issued benefit and the error amount.
           </p>
           <p className="font-body text-[1rem] text-[var(--color-ink-secondary)] leading-relaxed mb-4">
             We ran every Colorado FY 2024 case through our encoded rules and
-            compared six values with the file: gross income, the standard
-            deduction, the excess-shelter deduction, net income, the maximum
-            allotment, and the benefit. The replay takes household income, the
+            compared six values: gross income, the standard deduction, the
+            excess-shelter deduction, net income, and the benefit with the
+            file, and the maximum allotment with USDA&apos;s FY 2024 table.
+            The replay takes household income, the
             medical, dependent-care and child-support deductions, and the
             utility amount from the file, and it gives the eligibility tests
             passing values. A match therefore checks the arithmetic from those
@@ -125,9 +131,9 @@ export default function ColoradoSnapQcReport() {
           <p className="font-body text-[1rem] text-[var(--color-ink-secondary)] leading-relaxed">
             The result: <strong className="text-[var(--color-ink)]">856 of
             856 cases matched on all six values at zero tolerance</strong>, in
-            the September 2026 run against current rules. Two of the details
-            exact agreement required show why checking against case records
-            matters. The regulation&apos;s printed text still sets the
+            the run of September 22, 2026. Reaching exact agreement required
+            getting two details right, and both show why checking against case
+            records matters. The regulation&apos;s printed text still sets the
             homeless shelter deduction at $143; the 2018 Farm Bill indexed it
             to inflation, and USDA&apos;s FY 2024 cost-of-living tables put it
             at $179.66. And SNAP regulations round to whole dollars at set
@@ -147,9 +153,9 @@ export default function ColoradoSnapQcReport() {
           <p className="font-body text-[1rem] text-[var(--color-ink-secondary)] leading-relaxed mb-4">
             Colorado has 305 sampled cases with a payment error, carrying
             $112.6M a year in weighted error dollars. Reviewers give each error
-            finding a cause code, which separates information problems on the
-            household&apos;s side from the agency&apos;s and, on the agency
-            side, software causes from worker causes:
+            finding a cause code. The codes separate information problems from
+            the household or third parties from the agency&apos;s own errors
+            and, for some agency codes, software causes from worker causes:
           </p>
           <div className="card-edition p-6 mb-2">
             <StatRow
@@ -199,27 +205,35 @@ export default function ColoradoSnapQcReport() {
             that pass its consistency checks, and ran each reconstructed case
             through our rules. For 246 cases, our rules reproduce the issued
             benefit within $5, which is consistent with correct arithmetic on
-            a wrong input. That includes 14 of the 16 cases coded as software
-            errors: mass changes that budgeted the wrong Social Security
-            amount, and programming errors that budgeted the wrong child
-            support.
+            a wrong input. That includes 14 of the 16 replayed cases coded as
+            software errors (18 error cases carry a software code), in which
+            mass changes or programming errors budgeted the wrong Social
+            Security, SSI or child-support amount.
           </p>
           <p className="font-body text-[1rem] text-[var(--color-ink-secondary)] leading-relaxed mb-4">
-            For the other 37, no single changed input reproduces the issued
-            benefit. Ten of them carry a computation or policy cause code (10,
-            17, 19, 20, 21 or 22). Four of those ten involve prorating the
-            first month&apos;s benefit; others involve a utility allowance
-            applied that should not have been, a child-support deduction left
-            out, and a homeless shelter deduction left out. These ten are
-            candidates for errors in the benefit computation itself; the
+            For the other 37, moving the input the first finding names does
+            not reproduce the issued benefit; for 14 of them the first finding
+            names nothing the code adjusts, such as an arithmetic step. Ten of
+            the 37 carry a computation or policy cause code (10, 17, 19, 20, 21
+            or 22). In seven, that coded finding concerns the benefit
+            computation: four improperly prorated first months, two
+            computation errors, and one homeless shelter deduction left out.
+            In the other three, it is a programming error that budgeted the
+            wrong Social Security or child-support income, or an eligible
+            person left out under the time limit on participation. The seven
+            are candidates for errors in the computation itself; the
             reconstruction does not show which step went wrong.
           </p>
           <p className="font-body text-[1rem] text-[var(--color-ink-secondary)] leading-relaxed">
             Cause codes 10, 17, 19, 20, 21 and 22 together carry 10.5% of
-            Colorado&apos;s sampled error dollars. If that share held for the
-            official 9.97% FY 2024 rate, it would be about one point: more
-            than 30 times the 0.03-point margin to the 10% boundary, and about
-            half the 1.97-point distance to the 8% boundary below.
+            Colorado&apos;s sampled error dollars: 6.2% under the software
+            codes 17 and 19, which the reconstruction mostly traces to wrong
+            inputs, and 4.3% under codes 10, 20, 21 and 22. If the 10.5% share
+            held for the official 9.97% FY 2024 rate, it would be about one
+            point: more than 30 times the 0.03-point margin to the 10%
+            boundary, and about half the 1.97-point distance to the 8%
+            boundary below. Colorado&apos;s FY 2025 rate, 10.09%, is 0.09
+            points above the 10% boundary.
           </p>
         </section>
 

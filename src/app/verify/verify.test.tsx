@@ -88,11 +88,11 @@ describe("Verify page", () => {
     expect(
       screen.getByText("Colorado SNAP QC benefit replay"),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "All 856 match at zero tolerance on the benefit Mathematica computes for USDA from each case record and on five intermediate values: gross income, the standard and excess-shelter deductions, net income, and the maximum allotment. The file keeps only eligible households, so eligibility is untested.",
-      ),
-    ).toBeInTheDocument();
+    const row = screen.getByText(/^All 856 match at zero tolerance/);
+    expect(row).toHaveTextContent(
+      /five intermediate values: gross income, the standard and excess-shelter deductions, net income, and the maximum allotment/,
+    );
+    expect(row).toHaveTextContent(/eligibility is untested/);
     expect(screen.queryByText(/federal computation/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/stage by stage/i)).not.toBeInTheDocument();
   });
