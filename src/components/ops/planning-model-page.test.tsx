@@ -82,7 +82,7 @@ describe("PlanningModelPage", () => {
     // Both vendors are first-class rows with production status
     expect(screen.getByText("gpt-5.6-terra")).toBeInTheDocument();
     expect(
-      screen.getByText("encoder chosen in the July bake-off"),
+      screen.getByText("passed the July bake-off"),
     ).toBeInTheDocument();
     expect(
       screen.getByText("OpenAI — native token units [M]"),
@@ -151,10 +151,10 @@ describe("PlanningModelPage", () => {
     // grounding and import checks with oracle="none"; corpus releases are
     // Ed25519-signed; validator-rejected candidates retry (b5b2c670).
     expect(text).toMatch(
-      /As of 2026-10-03, each rule module is produced by an agentic encoder loop: the agent reads the provision from a signed, hash-pinned corpus release, writes the module and its companion tests, and runs deterministic checks, including rules-engine compile, the companion tests, grounding of numeric literals in the provisions each rule cites, and import resolution\./,
+      /As of 2026-10-03, each rule module is produced by an agentic encoder loop: the agent reads the provision from a signed, hash-pinned corpus release and writes the module and its companion tests, then the harness runs deterministic checks, including rules-engine compile, the companion tests, grounding of numeric literals in the cited source text, and import resolution\./,
     );
     expect(text).toMatch(
-      /the encoder retries with the failures as feedback: up to two attempts on the default model, then up to two on an escalation model \(retries since 2026-07-17\)/,
+      /the encoder retries with the failures as feedback, by default making up to two attempts on its default model and up to two more on an escalation model \(retries since 2026-07-17\)/,
     );
     expect(text).toMatch(
       /Oracle comparisons run outside this loop: in axiom-oracles, and in axiom-encode's separate validate and eval-suite commands\./,
@@ -171,12 +171,28 @@ describe("PlanningModelPage", () => {
     // --skip-reviewers; judges/client.py: Claude-only judges with a
     // same-family guard, escalating below 0.6 confidence.
     expect(text).toMatch(
-      /By default the encode command also asks an LLM reviewer \(the Claude CLI's opus alias, or Codex where Claude is not installed\)/,
+      /As of 2026-10-03, the encode command by default also asks an LLM reviewer \(the Claude CLI's opus alias, or Codex where Claude is not installed\) to score each candidate that passes the deterministic checks; the score does not block apply\./,
     );
     expect(text).toMatch(
-      /default to Claude Haiku 4\.5, re-ask Sonnet 4\.5 once when a verdict's confidence is below 0\.6, and refuse a judge outside the Claude family or from the generator's family/,
+      /Since 2026-07-08, separate judge commands, run by an operator, have defaulted to Claude Haiku 4\.5; they re-ask Sonnet 4\.5 once when a verdict's confidence is below 0\.6 and refuse a judge outside the Claude family or from the generator's family\./,
+    );
+    expect(text).toMatch(
+      /As of 2026-10-03, axiom-encode's judge commands default to Claude Haiku 4\.5/,
     );
     expect(text).toMatch(/the encode command does not call them/);
+    expect(text).toMatch(
+      /gpt-5\.5 produced 3,289 of the 3,582 measured runs, all of which predate the retry loop/,
+    );
+    expect(text).toMatch(
+      /After a bake-off of 8 US citations on 4 models on 2026-07-10/,
+    );
+    expect(text).toMatch(/from any vendor whose model passes an encoder bake-off/);
+    expect(text).toMatch(
+      /each section's attempts run in order, and separate sections run as staged waves/,
+    );
+    expect(text).toMatch(
+      /Cost per accepted module for the models we ran as of 2026-07-11 and the ones we could/,
+    );
     expect(text).toMatch(/As of 2026-10-03 none is scheduled in axiom-encode/);
     expect(
       screen.getByRole("columnheader", { name: "Role as of 2026-07-11" }),
@@ -201,6 +217,10 @@ describe("PlanningModelPage", () => {
       /Today gpt-5\.6-terra is the pinned encoder/,
       /board has ranked/,
       /each pass is an independent request/,
+      /each section is an independent request/,
+      /models we run today/,
+      /encoder chosen in the July bake-off/,
+      /signed CI applies skip/,
     ]) {
       expect(text).not.toMatch(retired);
     }
