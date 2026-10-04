@@ -64,7 +64,7 @@ describe("Verify page", () => {
     expect(screen.getByText("226")).toBeInTheDocument();
     expect(
       screen.getByText(
-        /Certificate — certified: 0 — certification is automatic when the harness computes completeness and fidelity green; we expect no current encoding passes yet\./,
+        /Certificate — certified: 0 — the API's certified ledger is empty\. A program certifies only when axiom-oracles computes all four premises \(conformant, exercised, closed, executable\) true with zero open defects; this program's certificate reads unavailable because no producer computes closed or executable yet\./,
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText("Certified")).not.toBeInTheDocument();
