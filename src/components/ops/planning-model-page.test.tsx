@@ -93,7 +93,7 @@ describe("PlanningModelPage", () => {
     // $0.501 appears twice: Opus 4.8 standard and Fable 5 Batch
     expect(screen.getAllByText("$0.501")).toHaveLength(2);
     // Strict-accounting development-usage figures
-    expect(screen.getByText("$176.9k")).toBeInTheDocument();
+    expect(screen.getByText("$334.4k")).toBeInTheDocument();
     expect(
       screen.getByText("Lifetime (since 2025-11-30)"),
     ).toBeInTheDocument();
