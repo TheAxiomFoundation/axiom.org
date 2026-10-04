@@ -38,7 +38,7 @@ const receipts = [
   {
     name: "Encodings",
     what:
-      "Every rule cites the provision of law it encodes, and modules carry companion tests. CI runs a module's tests unless it sits on a public waiver list: 1,940 rulespec-us modules carried an active validation waiver on October 2, 2026, and they hold 23,735 of our 34,810 US rules. The repositories are the receipt: the citations, the tests, the waiver list, and their history are public.",
+      "Every rule cites the provision of law it encodes, and modules carry companion tests. CI runs a module's tests unless it sits on a public waiver list: 1,940 rulespec-us modules carried an active validation waiver on October 2, 2026, and they hold 23,735 of our 34,810 US rules (rule counts as of September 28). The repositories are the receipt: the citations, the tests, the waiver list, and their history are public.",
     href: "https://github.com/TheAxiomFoundation/rulespec-us",
     label: "rulespec-us",
   },

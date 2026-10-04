@@ -70,7 +70,7 @@ export const layerTrust: Record<string, LayerTrust> = {
       "Generation runs on operator-controlled compute and is recorded as an event; the record of what was generated is separate from the decision to accept it.",
     ],
     open: [
-      "Acceptance is decided downstream by checks that do not involve a model, except for modules on the public waiver list, which skip them.",
+      "Acceptance is decided downstream by checks that do not involve a model. Modules on the public waiver list skip the validation, companion-test, and proof steps.",
       "Not every rule went through the encoder. In September 2026, about 16,300 of our 34,810 US rules matched a manifest written by the encoder's apply step, and about 15,300 more (mostly the generated US tariff schedule) were signed in by manual attestation.",
     ],
   },

@@ -293,7 +293,7 @@ const runtimeStages: RuntimeStage[] = [
     id: "check",
     label: "Verify",
     detail:
-      "Deterministic CI, tests, and semantic review decide whether the candidate is promotion-safe. Modules on the public waiver list skip the CI validation, test, and proof steps.",
+      "Deterministic CI, tests, and semantic review decide whether the candidate is promotion-safe. Waived modules skip three CI steps.",
   },
   {
     id: "run",
@@ -1042,8 +1042,7 @@ export function StackSystemPage() {
                 companion tests, and proof checks for modules on a public
                 waiver list: on October 2, 2026, 1,940 rulespec-us modules
                 carried an active validation waiver, and they hold 23,735 of
-                our 34,810 US rules. Each waiver names an owner, an issue, and
-                an expiry date. This section covers the steps after encoding;
+                our 34,810 US rules. This section covers the steps after encoding;
                 the layer detail above maps the architecture.
               </p>
             </div>
