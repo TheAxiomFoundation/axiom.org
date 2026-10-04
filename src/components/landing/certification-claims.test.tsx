@@ -166,12 +166,12 @@ describe("public copy claims no certification the ledger lacks", () => {
     );
   });
 
-  it("the /docs strip's compile seal reads compiled, with no certification label", () => {
+  it("the /docs strip's compile seal reads compiled · illustrative, with no certification label", () => {
     const { container } = render(<FlatStrip />);
     expect(publicCopy(container)).not.toMatch(CERTIFICATION_CLAIM);
     const words = [...container.querySelectorAll("text")].map((t) => t.textContent);
     expect(words).toContain("SNAP · US · 2026");
-    expect(words).toContain("compiled");
+    expect(words).toContain("compiled · illustrative");
     expect(imgLabel(container)).toContain("which compiles into a program artifact");
     expect(imgLabel(container)).not.toMatch(/1,742,391|7\.7M/);
   });

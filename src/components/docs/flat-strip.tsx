@@ -4,7 +4,7 @@
 // strip — intake → corpus → encoding loop → rulespec → graph — then
 // the compile seal and the surfaces it powers.
 //
-// The seal reads "compiled" and carries no certification or signature
+// The seal reads "compiled · illustrative" and carries no certification or signature
 // label: the certified ledger is empty (api.axiom.org/v1/ready), and
 // /docs presents this map as illustrative. The launch deck's copy of
 // this strip made the same change. Never restore such a label without
@@ -303,7 +303,7 @@ export function FlatStrip() {
         <circle cx={SEAL.x} cy={SEAL.y} r="15.5" fill="none" stroke={WAX} strokeWidth="0.7" />
         <text className="fp-sealtick" x={SEAL.x} y={SEAL.y + 5} textAnchor="middle">✓</text>
         <text className="fp-mono fp-mono--sm" x={SEAL.x} y={SEAL.y + 42} textAnchor="middle">SNAP · US · 2026</text>
-        <text className="fp-mono fp-mono--tiny" x={SEAL.x} y={SEAL.y + 58} textAnchor="middle" opacity="0.6">compiled</text>
+        <text className="fp-mono fp-mono--tiny" x={SEAL.x} y={SEAL.y + 58} textAnchor="middle" opacity="0.6">compiled · illustrative</text>
 
         {/* ── THE SURFACES ── */}
         <text className="fp-eyebrow" x="1290" y={EYEBROW_Y}>surfaces</text>
