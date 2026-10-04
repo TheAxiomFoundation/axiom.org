@@ -25,7 +25,7 @@ export const PLANNING_MODEL = {
       id: "A",
       name: "A — oracle universe",
       scope:
-        "Policies checkable against an oracle: the 137 PolicyEngine-US policies in axiom-oracles' conformance scope as of 2026-07-11 (127 as of 2026-10-03), state income taxes across the 50 states and DC, state benefit manuals",
+        "Policies checkable against an oracle: the 137 PolicyEngine-US policies in axiom-oracles' conformance scope as of 2026-07-11 (127 as of 2026-10-03), state income taxes among them, plus state benefit manuals",
       modules: 20_000,
       modulesLabel: "~20,000",
       modulesProvenance: "D" as const,
@@ -96,7 +96,7 @@ export const PLANNING_MODEL = {
       system: "$0.808",
       tierA: "$16.2k",
       tierB: "$39.6k",
-      today: "prior workhorse — 3,289 of the 3,582 measured runs",
+      today: "default encoder until 2026-07-17; 3,289 of the 3,582 measured runs",
     },
     {
       vendor: "OpenAI" as const,
@@ -108,7 +108,7 @@ export const PLANNING_MODEL = {
       system: "$0.808",
       tierA: "$16.2k",
       tierB: "$39.6k",
-      today: "review lane",
+      today: "dev fleet (review lanes)",
     },
     {
       vendor: "Anthropic" as const,
@@ -233,14 +233,18 @@ export function PlanningModelPage() {
         <section className="mb-14">
           <SectionHeading>The measured base</SectionHeading>
           <p className="font-body text-[1rem] text-[var(--color-ink-secondary)] leading-relaxed mb-4">
-            Each rule module is produced by an agentic encoder loop: the agent
-            reads the provision from a signed, hash-pinned corpus release,
-            writes the module and its companion tests, runs deterministic
-            checks (rules-engine compile, the companion tests, grounding of
-            numeric literals in the provisions each rule cites, and import
-            resolution), and retries with the failures as feedback. Oracle
-            comparisons run outside this loop, in axiom-oracles. The module is the
-            provision-level increment every figure below counts — for
+            As of 2026-10-03, each rule module is produced by an agentic
+            encoder loop: the agent reads the provision from a signed,
+            hash-pinned corpus release, writes the module and its companion
+            tests, and runs deterministic checks, including rules-engine
+            compile, the companion tests, grounding of numeric literals in the
+            provisions each rule cites, and import resolution. When the checks
+            reject a candidate, the encoder retries with the failures as
+            feedback: up to two attempts on the default model, then up to two
+            on an escalation model (retries since 2026-07-17). Oracle
+            comparisons run outside this loop: in axiom-oracles, and in
+            axiom-encode&apos;s separate validate and eval-suite commands. The
+            module is the provision-level increment every figure below counts — for
             example,{" "}
             <a
               href="https://axiom.org/us/statute/26/24"
@@ -259,14 +263,19 @@ export function PlanningModelPage() {
             </a>{" "}
             (Colorado food assistance), browsable with citations and tests in
             the Axiom app. gpt-5.5 produced 3,289 of the 3,582 measured runs.
-            After a bake-off on 2026-07-10, axiom-encode&apos;s default encoder
-            moved to gpt-5.6-terra on 2026-07-17 and to gpt-6-luna on
-            2026-09-24. Since 2026-07-22 its EncodeBench board has ranked
-            candidate encoders by deterministic gate-pass rate on a fixed
-            16-case suite. Its judge commands run Claude Haiku 4.5, escalating
-            low-confidence verdicts to Sonnet 4.5, and refuse a judge from the
-            generator&apos;s model family; the encode command does not call
-            them. The development
+            After a bake-off of 8 US citations on 4 models on 2026-07-10,
+            axiom-encode&apos;s default encoder moved from gpt-5.5 to
+            gpt-5.6-terra on 2026-07-17; on 2026-09-24 it moved to gpt-6-luna,
+            which that bake-off did not include. Since 2026-07-22,
+            axiom-encode&apos;s EncodeBench board can rank candidate encoders by
+            deterministic gate-pass rate on a fixed suite of 16 UK cases. By
+            default the encode command also asks an LLM reviewer (the Claude
+            CLI&apos;s opus alias, or Codex where Claude is not installed) to
+            score each candidate that passes the deterministic checks.
+            Separate judge commands, run by an operator, default to Claude
+            Haiku 4.5, re-ask Sonnet 4.5 once when a verdict&apos;s confidence
+            is below 0.6, and refuse a judge outside the Claude family or from
+            the generator&apos;s family. The development
             fleet runs Claude main loops alongside codex lanes, per the usage
             table below. Oracle conformance runs
             against PolicyEngine, TAXSIM, EUROMOD/UKMOD, and the SOUTHMOD
@@ -564,7 +573,7 @@ tier generation     = system $/module × modules remaining   (Opus 4.8, Tier A: 
           <p className="font-body text-[1rem] text-[var(--color-ink-secondary)] leading-relaxed mb-4">
             Everything above is the demand side. Marginal capacity — metered
             credits or negotiated throughput, from any vendor whose model
-            clears the bake-off — converts into published, verifiable output
+            passes an encoder bake-off — converts into published, verifiable output
             in four places. Quantities reference the tables above; the cost
             table prices them in both vendors&apos; units.
           </p>
@@ -575,8 +584,9 @@ tier generation     = system $/module × modules remaining   (Opus 4.8, Tier A: 
               </strong>{" "}
               ≈6.4B system-proxy tokens completes Tier A; ≈15.7B cumulative
               completes Tier B <Provenance kind="D" />. The loop fits
-              Batch-class queued single-shot waves — each pass is an
-              independent request, so encoder iterations run as staged waves{" "}
+              Batch-class queued single-shot waves — each section is an
+              independent request (a section&apos;s retries run in order), so
+              sections run as staged waves{" "}
               <Provenance kind="A" /> — with interactive repair at standard
               tier. At the table&apos;s Batch rates, Tier A generation is
               $3.0–29.9k across the model tiers <Provenance kind="D" />; the
@@ -593,18 +603,18 @@ tier generation     = system $/module × modules remaining   (Opus 4.8, Tier A: 
               live production mix for grounding-failure rate, cost per accepted
               module, and wall-clock in about a week of drain time{" "}
               <Provenance kind="D" />. As of 2026-10-03 none is scheduled in
-              axiom-encode; its EncodeBench board scores any candidate by
-              gate-pass rate on a fixed 16-case suite.
+              axiom-encode; its EncodeBench board can score a candidate by
+              gate-pass rate on a fixed suite of 16 UK cases.
             </li>
             <li>
               <strong className="text-[var(--color-ink)]">
                 Cross-family judging.
               </strong>{" "}
-              axiom-encode&apos;s judge commands score a generated module with
-              Claude Haiku 4.5, escalating low-confidence verdicts to Sonnet
-              4.5, and refuse a judge from the generator&apos;s model family.
-              They run when an operator invokes them; the encode command does
-              not call them. Judging is carried inside the 3.0× system proxy{" "}
+              axiom-encode&apos;s judge commands default to Claude Haiku 4.5,
+              re-ask Sonnet 4.5 once when a verdict&apos;s confidence is below
+              0.6, and refuse a judge outside the Claude family or from the
+              generator&apos;s family. They run when an operator invokes them;
+              the encode command does not call them. Judging is carried inside the 3.0× system proxy{" "}
               <Provenance kind="D" />.
             </li>
             <li>

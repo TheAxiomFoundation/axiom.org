@@ -142,27 +142,39 @@ describe("PlanningModelPage", () => {
 
     // axiom-oracles conformance/scoreboard.json us-pe: 137 in scope at
     // b83f776f3 (2026-07-09, the last refresh before asOf), 127 at 522afa175.
+    // State income taxes are rows inside that scope, so they are not listed
+    // as a separate count.
     expect(PLANNING_MODEL.tiers[0].scope).toBe(
-      "Policies checkable against an oracle: the 137 PolicyEngine-US policies in axiom-oracles' conformance scope as of 2026-07-11 (127 as of 2026-10-03), state income taxes across the 50 states and DC, state benefit manuals",
+      "Policies checkable against an oracle: the 137 PolicyEngine-US policies in axiom-oracles' conformance scope as of 2026-07-11 (127 as of 2026-10-03), state income taxes among them, plus state benefit manuals",
     );
-    // axiom-encode 6f08e25c: the encode loop runs compile, companion tests,
-    // literal grounding and import checks with oracle="none"; corpus
-    // releases are Ed25519-signed.
+    // axiom-encode 6f08e25c: encode runs compile, companion tests, literal
+    // grounding and import checks with oracle="none"; corpus releases are
+    // Ed25519-signed; validator-rejected candidates retry (b5b2c670).
     expect(text).toMatch(
-      /reads the provision from a signed, hash-pinned corpus release, writes the module and its companion tests, runs deterministic checks \(rules-engine compile, the companion tests, grounding of numeric literals in the provisions each rule cites, and import resolution\), and retries with the failures as feedback\. Oracle comparisons run outside this loop, in axiom-oracles\./,
+      /As of 2026-10-03, each rule module is produced by an agentic encoder loop: the agent reads the provision from a signed, hash-pinned corpus release, writes the module and its companion tests, and runs deterministic checks, including rules-engine compile, the companion tests, grounding of numeric literals in the provisions each rule cites, and import resolution\./,
+    );
+    expect(text).toMatch(
+      /the encoder retries with the failures as feedback: up to two attempts on the default model, then up to two on an escalation model \(retries since 2026-07-17\)/,
+    );
+    expect(text).toMatch(
+      /Oracle comparisons run outside this loop: in axiom-oracles, and in axiom-encode's separate validate and eval-suite commands\./,
     );
     // Encoder defaults from axiom-encode constants.py history: b5b2c670
     // (2026-07-17) and 3689e83b (2026-09-24).
     expect(text).toMatch(
-      /axiom-encode's default encoder moved to gpt-5\.6-terra on 2026-07-17 and to gpt-6-luna on 2026-09-24/,
+      /axiom-encode's default encoder moved from gpt-5\.5 to gpt-5\.6-terra on 2026-07-17; on 2026-09-24 it moved to gpt-6-luna, which that bake-off did not include/,
     );
     expect(text).toMatch(
-      /EncodeBench board has ranked candidate encoders by deterministic gate-pass rate on a fixed 16-case suite/,
+      /EncodeBench board can rank candidate encoders by deterministic gate-pass rate on a fixed suite of 16 UK cases/,
     );
-    // judges/client.py: Claude-only judges with a same-family guard; no
-    // encode path imports the judges package.
+    // evals.py: the encode path runs the generalist reviewer unless
+    // --skip-reviewers; judges/client.py: Claude-only judges with a
+    // same-family guard, escalating below 0.6 confidence.
     expect(text).toMatch(
-      /Claude Haiku 4\.5, escalating low-confidence verdicts to Sonnet 4\.5, and refuse a judge from the generator's model family/,
+      /By default the encode command also asks an LLM reviewer \(the Claude CLI's opus alias, or Codex where Claude is not installed\)/,
+    );
+    expect(text).toMatch(
+      /default to Claude Haiku 4\.5, re-ask Sonnet 4\.5 once when a verdict's confidence is below 0\.6, and refuse a judge outside the Claude family or from the generator's family/,
     );
     expect(text).toMatch(/the encode command does not call them/);
     expect(text).toMatch(/As of 2026-10-03 none is scheduled in axiom-encode/);
@@ -171,21 +183,35 @@ describe("PlanningModelPage", () => {
     ).toBeInTheDocument();
 
     // Claims the code does not support.
-    expect(text).not.toMatch(/137 programs currently scored/);
-    expect(text).not.toMatch(/51 income-tax jurisdictions/);
-    expect(text).not.toMatch(/citation resolution, dependency closure/);
-    expect(text).not.toMatch(/oracle conformance where one exists/);
-    expect(text).not.toMatch(/benchmark reputation/);
-    expect(text).not.toMatch(/Every audit-logged encoder run is adjudicated/);
-    expect(text).not.toMatch(/judging each other/);
-    expect(text).not.toMatch(/standing quarterly bake-off/);
-    expect(text).not.toMatch(/In production today/);
-    expect(text).not.toMatch(/Today gpt-5\.6-terra is the pinned encoder/);
+    for (const retired of [
+      /137 programs currently scored/,
+      /51 income-tax jurisdictions/,
+      /50 states and DC/,
+      /citation resolution, dependency closure/,
+      /oracle conformance where one exists/,
+      /benchmark reputation/,
+      /Every audit-logged encoder run is adjudicated/,
+      /judging each other/,
+      /standing quarterly bake-off/,
+      /clears the bake-off/,
+      /Results are publishable either way/,
+      /empirical gate between the price table/,
+      /In production today/,
+      /pinned production encoder/,
+      /Today gpt-5\.6-terra is the pinned encoder/,
+      /board has ranked/,
+      /each pass is an independent request/,
+    ]) {
+      expect(text).not.toMatch(retired);
+    }
     for (const model of PLANNING_MODEL.models) {
       expect(model.today).not.toMatch(/cross-family|judge lane|judging/);
     }
-    expect(
-      PLANNING_MODEL.models.find((model) => model.name === "Haiku 4.5")?.today,
-    ).toMatch(/^default judge model;/);
+    const role = (name: string) =>
+      PLANNING_MODEL.models.find((model) => model.name === name)?.today;
+    expect(role("Haiku 4.5")).toMatch(/^default judge model;/);
+    expect(role("gpt-5.5")).toBe(
+      "default encoder until 2026-07-17; 3,289 of the 3,582 measured runs",
+    );
   });
 });
