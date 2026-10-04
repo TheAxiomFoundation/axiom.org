@@ -293,7 +293,7 @@ const runtimeStages: RuntimeStage[] = [
     id: "check",
     label: "Verify",
     detail:
-      "Deterministic CI, tests, and semantic review decide whether the candidate is promotion-safe. Waived modules skip three CI steps.",
+      "Deterministic CI, tests, and semantic review decide whether the candidate is promotion-safe. Modules on the public waiver list skip three CI steps.",
   },
   {
     id: "run",
@@ -508,7 +508,7 @@ export function StackSystemPage() {
                   so authority, transformation, correctness, and presentation
                   can each be inspected on their own terms. Not every rule takes
                   the encoder path: in September 2026, about 16,300 of our
-                  34,810 US rules matched a manifest written by the
+                  34,810 US rules matched a signed manifest that names the
                   encoder&apos;s apply step, and about 15,300 more (mostly the
                   generated US tariff schedule) were signed in by manual
                   attestation.

@@ -233,7 +233,7 @@ export function PlanningModelPage() {
           <SectionHeading>The measured base</SectionHeading>
           <p className="font-body text-[1rem] text-[var(--color-ink-secondary)] leading-relaxed mb-4">
             In September 2026, about 16,300 of our 34,810 US rules matched a
-            manifest written by the encoder&apos;s apply step, and about
+            signed manifest that names the encoder&apos;s apply step, and about
             15,300 more (mostly the generated US tariff schedule) were signed
             in by manual attestation. When the encoder writes a module, the
             agent reads the provision from an immutable, cryptographically

@@ -25,7 +25,8 @@ import { PlanningModelPage } from '@/components/ops/planning-model-page'
 //   rule_verification.json (rulespec 54d90a72, 2026-09-28), they hold 23,735
 //   of 34,810 US rules.
 // - The encoder did not write every rule. Of those 34,810 rules, 16,280 match
-//   only a manifest written by `axiom-encode encode --apply`, and 15,279 match
+//   only a manifest whose tool begins `axiom-encode encode` (15,412 with the
+//   exact `--apply` string, 822 more from sandbox-recovered manifests), and 15,279 match
 //   only one written by `axiom-encode sign-applied-files` (backend manual,
 //   runner manual-attestation, no model); 11,201 of those are the generated
 //   US tariff schedule.
@@ -47,65 +48,91 @@ const SOURCES = [
   ['/encoder', 'src/components/encoder/encoder-system-page.tsx'],
 ] as const
 
-// Join text nodes with spaces so adjacent elements don't glue words together.
+// Join text nodes with spaces so adjacent elements don't glue words together,
+// and start a new line at each block element so a heading with no closing
+// period never runs into the paragraph under it.
+const BLOCK = new Set(['P', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'DIV', 'TD', 'TH', 'DD', 'DT', 'BUTTON', 'CAPTION', 'FIGCAPTION', 'PRE', 'SECTION', 'ARTICLE'])
+function blockOf(node: Node) {
+  let el = node.parentElement
+  while (el && !BLOCK.has(el.tagName)) el = el.parentElement
+  return el
+}
 function renderedText(renderSurface: () => ReturnType<typeof render>) {
   const { container, unmount } = renderSurface()
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
   const parts: string[] = []
-  while (walker.nextNode()) parts.push(walker.currentNode.textContent ?? '')
+  let block: Element | null = null
+  while (walker.nextNode()) {
+    const node = walker.currentNode
+    const nodeBlock = blockOf(node)
+    parts.push(nodeBlock === block ? ' ' : '\n', node.textContent ?? '')
+    block = nodeBlock
+  }
   unmount()
-  return parts.join(' ').replace(/\s+/g, ' ')
+  return parts.join('').replace(/[^\S\n]+/g, ' ')
 }
 
 // Strip JSX tags and entities so `every <Link>rule</Link> is tested` reads
-// as one phrase.
+// as one phrase. Adjacent string literals and closing block tags start a new
+// line, so one array item never borrows the next item's waiver clause.
 function sourceText(path: string) {
   return readFileSync(join(process.cwd(), path), 'utf8')
     .replace(/\{" "\}/g, ' ')
     .replace(/&apos;/g, "'")
     .replace(/&amp;/g, '&')
-    .replace(/<\/?[A-Za-z][^<>]*>/g, ' ')
     .replace(/\s+/g, ' ')
+    .replace(/",\s*"/g, '"\n"')
+    .replace(/<\/(?:p|li|h[1-6]|div|td|th|dd|dt|button|section|article)>/g, '\n')
+    .replace(/<\/?[A-Za-z][^<>\n]*>/g, ' ')
 }
 
-// A period followed by a space and a capital, quote or bracket ends a
-// sentence; "U.S.C. is" and "0.30" do not.
+// A line break, or a period followed by a space and a capital, quote or
+// bracket, ends a sentence; "U.S.C. is" and "0.30" do not.
 function sentences(text: string) {
-  return text.split(/(?<=[.!?])\s+(?=[A-Z"“(\[])/)
+  return text.split(/\n+|(?<=[.!?])\s+(?=[A-Z"“(\[])/).map((sentence) => sentence.trim()).filter(Boolean)
 }
 
-// "every rule", "every US rule", "all 34,810 rules", "each RuleSpec module".
-// "Not every rule is tested" is an honest negation and passes.
-const QUALIFIER = String.raw`(?:(?:of )?(?:our|the|its|US|U\.S\.|RuleSpec|encoded|published|federal|state|\d[\d,]*) )*`
-const NOUN = String.raw`(?:draft encoding|draft|encoding|published rule|rule module|rule|module|provision)s?`
+// "every rule", "every US rule", "all 34,810 rules", "each RuleSpec module",
+// "every single rule".
+const QUALIFIER = String.raw`(?:(?:of )?(?:our|the|its|US|U\.S\.|RuleSpec|encoded|published|federal|state|single|one|last|\d[\d,]*) )*`
+const NOUN = String.raw`(?:draft encoding|draft|encoding|published rule|rule module|rule|module|provision|statute)s?`
 const UNIVERSAL = String.raw`(?<!\bnot )\b(?:every|each|all) ${QUALIFIER}${NOUN}\b`
-const TESTED = String.raw`(?:tested|validated|verified|test suite|must compile|compiles? and pass|pass(?:es|ed)? (?:its|their|the) (?:companion )?tests?|pass(?:es|ed)? CI|passing tests|(?:has|have) been tested|clears? (?:the|every|all) gates?)`
-const AUTHOR = String.raw`(?:AI|agentic|agents?|models?|encoder|pipeline)`
+const TESTED = String.raw`(?:tested|validated|verified|test suite|must compile|compiles? and pass|pass(?:es|ed)? (?:its|their|the) (?:companion )?tests?|pass(?:es|ed)? CI|passing tests|(?:has|have) been tested|(?:covered|backed) by tests|(?:ships|lands|comes) with (?:a |its )?(?:companion )?tests?|clears? (?:the |every |all |\w+ )?gates?)`
+const AUTHOR = String.raw`(?:AI|agentic|agents?|models?|encoder|pipeline|Codex|GPT[\w.-]*|Claude|LLMs?)`
 
 const UNIVERSAL_TESTING = [
   new RegExp(String.raw`${UNIVERSAL}.{0,80}\b${TESTED}`, 'i'),
   new RegExp(String.raw`\b${TESTED}.{0,30}${UNIVERSAL}`, 'i'),
+  new RegExp(String.raw`\btests? ${UNIVERSAL}`, 'i'),
   /\b(?:rules|encodings|modules) (?:are|were) all (?:tested|validated|verified)\b/i,
-  /\bencoded (?:and|&) verified\b/i,
+  /\b(?:nothing|no (?:rule|encoding|module|draft)) (?:ships|merges|reaches the corpus|is published) without\b/i,
+  /\bencoded,? (?:and |& )?(?:tested|verified|validated)\b/i,
 ]
 const UNIVERSAL_AUTHORSHIP = [
-  new RegExp(String.raw`${UNIVERSAL} (?:is |are |was |were )?(?:produced|written|drafted|generated|encoded|came out of|comes out of) (?:by |of )?(?:an |the |our )?${AUTHOR}`, 'i'),
+  new RegExp(String.raw`${UNIVERSAL}(?: [^.]{0,40})? (?:is |are |was |were )?(?:produced|written|drafted|generated|encoded|came out of|comes out of) (?:by |of )?(?:an |the |our )?(?:AI )?${AUTHOR}`, 'i'),
   new RegExp(String.raw`\b${AUTHOR}s? (?:wrote|writes|encoded|encodes|drafted|drafts|generated|generates|produced|produces) (?:every|each|all)\b`, 'i'),
+  new RegExp(String.raw`\b(?:every|each|all) ${NOUN} (?:has|have|comes with) (?:an |its )?agent logs?\b`, 'i'),
   /\bagent logs? (?:behind|for|from) (?:every|each|all)\b/i,
   /\bper-(?:encoding|rule) agent logs?\b/i,
   /\bpipeline output\b/i,
 ]
 
-// Sentences that make a universal testing or authorship claim. A testing
-// claim passes when its own sentence names the waiver list, the way the
-// approved wording does ("…before it merges, unless its module sits on a
-// public waiver list").
+// An honest negation passes: "Not every rule is tested", "We do not claim
+// that every rule is tested", "Fewer than half of all rules are verified".
+const NEGATED = /\b(?:not|never|no|fewer than|less than|of all)\b[^.]{0,30}\b(?:every|each|all)\b|\b(?:is|are|was|were) not (?:tested|verified|validated)\b/i
+
+// A testing claim passes when its own sentence carves out the waiver list,
+// the way the approved wording does ("…before it merges, unless its module
+// sits on a public waiver list"). A bare mention of the list does not.
+const WAIVER_EXCEPTION = /\b(?:unless|except|outside|other than|not on)\b[^.]{0,80}\bwaiver list\b/i
+
+// Sentences that make a universal testing or authorship claim.
 function universalClaims(text: string) {
-  return sentences(text).filter(
-    (sentence) =>
-      (UNIVERSAL_TESTING.some((re) => re.test(sentence)) && !/waiver list/i.test(sentence)) ||
-      UNIVERSAL_AUTHORSHIP.some((re) => re.test(sentence)),
-  )
+  return sentences(text).filter((sentence) => {
+    if (NEGATED.test(sentence)) return false
+    if (UNIVERSAL_TESTING.some((re) => re.test(sentence)) && !WAIVER_EXCEPTION.test(sentence)) return true
+    return UNIVERSAL_AUTHORSHIP.some((re) => re.test(sentence))
+  })
 }
 
 function expectNoUniversalClaims(text: string) {
@@ -138,15 +165,50 @@ describe('universal claim matcher', () => {
     'The encoder wrote every rule.',
     'Our agents encoded each module.',
     'We publish the agent logs behind every encoding.',
+    'Statutes encoded and tested',
+    'Encoded, tested, and verified statutes',
+    'CI tests every rule.',
+    'We test every rule.',
+    'Every rule ships with a companion test.',
+    'Every module is covered by tests.',
+    'No encoding merges without passing its tests.',
+    'Every single rule is tested.',
+    'Every rule clears four gates.',
+    'Every rule in rulespec-us was written by an AI agent.',
+    'Every rule was written by Codex.',
+    'Every rule has an agent log.',
+    'Every rule is tested, and the waiver list is empty.',
   ]
   const ALLOWED = [
     'A draft encoding must compile and pass its test suite before it merges, unless its module sits on a public waiver list (1,940 rulespec-us modules carried an active validation waiver on October 2, 2026, and they hold 23,735 of our 34,810 US rules; each waiver names an owner, an issue and an expiry date).',
-    "In September 2026, about 16,300 of our 34,810 US rules matched a manifest written by the encoder's apply step, and about 15,300 more (mostly the generated US tariff schedule) were signed in by manual attestation.",
+    "In September 2026, about 16,300 of our 34,810 US rules matched a signed manifest that names the encoder's apply step, and about 15,300 more (mostly the generated US tariff schedule) were signed in by manual attestation.",
     'Not every rule is tested in CI.',
     'When the encoder writes a module, the agent runs deterministic checks.',
     'The primary text every encoding points back to.',
     'Every rule cites the provision of law it encodes, and modules carry companion tests.',
+    'We do not claim that every rule is tested.',
+    'Fewer than half of all rules are verified against an oracle.',
+    'Not all rules are tested.',
   ]
+
+  it('keeps a heading from borrowing the next paragraph\'s waiver clause', () => {
+    const text = renderedText(() =>
+      render(
+        <div>
+          <h2>Every rule tested</h2>
+          <p>A draft must pass its tests to merge unless its module sits on a public waiver list.</p>
+        </div>,
+      ),
+    )
+    expect(universalClaims(text)).toEqual(['Every rule tested'])
+  })
+
+  it('keeps one string literal from borrowing the next one\'s waiver clause', () => {
+    const text = ' "Every encoding is tested in CI", "CI skips modules unless they are off the public waiver list" '
+      .replace(/\s+/g, ' ')
+      .replace(/",\s*"/g, '"\n"')
+    expect(universalClaims(text)).toHaveLength(1)
+  })
 
   for (const sentence of BANNED) {
     it(`flags: ${sentence}`, () => {
@@ -189,7 +251,7 @@ describe('waiver and encoder-authorship claims', () => {
   it('/receipts says how many US rules the encoder wrote', () => {
     const text = renderedText(() => render(<ReceiptsPage />))
 
-    expect(text).toMatch(/about 16,300 of our 34,810 US rules matched a manifest written by the encoder's apply step/)
+    expect(text).toMatch(/about 16,300 of our 34,810 US rules matched a signed manifest that names the encoder's apply step/)
     expect(text).toMatch(/signed in by manual attestation/)
   })
 })

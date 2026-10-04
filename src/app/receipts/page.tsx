@@ -114,9 +114,9 @@ export default function ReceiptsPage() {
           <p className="max-w-[720px] font-body text-[1rem] leading-relaxed text-[var(--color-ink-secondary)]">
             We intend to publish the agent logs behind the rules our encoder
             wrote. In September 2026, about 16,300 of our 34,810 US rules
-            matched a manifest written by the encoder&apos;s apply step. About
-            15,300 more (mostly the generated US tariff schedule) were signed
-            in by manual attestation, and their manifests name no model.
+            matched a signed manifest that names the encoder&apos;s apply step.
+            About 15,300 more (mostly the generated US tariff schedule) were
+            signed in by manual attestation, and their manifests name no model.
           </p>
         </Reveal>
       </div>
