@@ -32,7 +32,7 @@ const BUILD = [
   {
     n: "04",
     title: "Validation",
-    desc: "The harness that runs every encoding against engines we don't control — and publishes the comparison so anyone can re-run it.",
+    desc: "The open-source harness that runs test cases through our encodings and another calculator or dataset, and publishes the results.",
     href: "/validation",
   },
 ];
@@ -170,10 +170,16 @@ export default function AboutPage() {
 
         <ProseBand label="How we verify">
           <p className="m-0 font-body text-[1.05rem] text-[var(--color-ink-secondary)] leading-relaxed text-pretty">
-            We cross-check every encoding against independent engines and
-            datasets: PolicyEngine, TAXSIM, UKMOD, EUROMOD, SOUTHMOD, the PSL
-            Tax-Calculator, and SNAP quality-control data. Open isn&apos;t
-            enough &mdash; the point is that{" "}
+            We compare encodings with other calculators and datasets and
+            publish the results. In September 2026, 20,780 of our 34,810 US
+            rules had no comparison. The calculators include PolicyEngine,
+            TAXSIM, UKMOD, EUROMOD, and Statistics Canada&apos;s SPSD/M. Max
+            Ghenis is CEO of both Axiom and PolicyEngine, which he co-founded,
+            and our TAXSIM runs use the TAXSIM executable that PolicyEngine
+            packages. We also replay USDA&apos;s SNAP quality-control cases
+            from six states to check our benefit arithmetic; the file keeps
+            only eligible households, so the replay leaves eligibility
+            untested. Open isn&apos;t enough &mdash; the point is that{" "}
             <span className="serif-italic text-[var(--color-ink)]">
               you can check our work
             </span>
@@ -199,7 +205,8 @@ export default function AboutPage() {
             >
               PSL Foundation
             </a>
-            . Our code, our data, and our encoding decisions are public.
+            , which also sponsors PolicyEngine. Our code, our data, and our
+            encoding decisions are public.
           </p>
           <a
             href="https://github.com/TheAxiomFoundation"

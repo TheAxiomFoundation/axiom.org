@@ -422,7 +422,7 @@ const HERO = {
   formula: 0.336,
   run: 0.35,
   checks: 0.364,
-  flag: 0.378, // compare ✗ — the draft disagrees with independent calcs
+  flag: 0.378, // compare ✗ — the draft disagrees with other calcs
   strike: 0.39,
   fixed: 0.4,
   repass: 0.412,
@@ -701,7 +701,7 @@ function SceneProvision() {
             );
           })}
           <text className="jw-redraft" x={WB.x + WB.w / 2} y={WB.y + 229} textAnchor="middle" opacity="0">
-            ✗ disagrees with independent calculators — redrafted
+            ✗ disagrees with other calculators — redrafted
             {!STATIC && <Vis a={HERO.flag} b={HERO.repass} r={0.006} />}
           </text>
         </g>

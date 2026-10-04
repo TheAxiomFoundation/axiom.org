@@ -6,7 +6,7 @@ import { Reveal, RevealGroup, RevealItem } from "@/components/landing/reveal";
 export const metadata: Metadata = {
   title: "Validation — Axiom Foundation",
   description:
-    "How the Axiom Foundation checks its encodings: cross-checks against independent oracles — PolicyEngine, TAXSIM, EUROMOD-family models, SPSD/M, ACCESS NYC, and government quality-control data.",
+    "How the Axiom Foundation compares its encodings with other calculators and USDA's SNAP quality-control data, and how much of the law those comparisons cover.",
 };
 
 interface Oracle {
@@ -20,43 +20,31 @@ const ORACLES: Oracle[] = [
   {
     name: "PolicyEngine",
     scope: "US + UK tax & benefits",
-    body: "Open-source microsimulation of US and UK tax and benefit policy — the broadest-coverage oracle we compare against.",
+    body: "Open-source microsimulation of US and UK tax and benefit policy, co-founded by Max Ghenis.",
     href: "https://policyengine.org",
   },
   {
     name: "TAXSIM",
     scope: "US federal & state income tax",
-    body: "NBER's tax calculator, the reference standard in economics research for US income tax liabilities.",
+    body: "NBER's tax calculator, the reference standard in economics research for US income tax liabilities. PolicyEngine is building TAXSIM's successor with its author's cooperation, and our runs use the TAXSIM executable that PolicyEngine packages.",
     href: "https://taxsim.nber.org",
   },
   {
-    name: "UKMOD / EUROMOD / SOUTHMOD",
-    scope: "UK, EU & Global South",
+    name: "UKMOD / EUROMOD",
+    scope: "UK & EU",
     body: "The EUROMOD family of tax-benefit microsimulation models, maintained by university and EC research teams.",
     href: "https://euromod-web.jrc.ec.europa.eu",
   },
   {
     name: "SPSD/M",
-    scope: "Canada tax & transfers",
+    scope: "Canada federal income tax",
     body: "Statistics Canada's Social Policy Simulation Database and Model — the reference microsimulation of Canadian federal and provincial taxes and transfers.",
     href: "https://www.statcan.gc.ca/en/microsimulation/spsdm/spsdm",
   },
   {
-    name: "PSL Tax-Calculator",
-    scope: "US federal income tax",
-    body: "The Policy Simulation Library's open-source US federal tax model, developed in the open with public revision history.",
-    href: "https://github.com/PSLmodels/Tax-Calculator",
-  },
-  {
-    name: "ACCESS NYC",
-    scope: "NYC benefit eligibility",
-    body: "New York City's public benefits screener — its published Drools rules and Screening API make it a checkable oracle for city-level eligibility.",
-    href: "https://access.nyc.gov",
-  },
-  {
     name: "SNAP quality-control data",
     scope: "US food assistance",
-    body: "USDA's case-level QC microdata — real adjudicated cases we replay against the encodings to catch divergence from practice, not just from text.",
+    body: "USDA's case-level QC microdata. For 5,175 reviewed FY 2024 households in six states, the research firm Mathematica computes a benefit for USDA from the edited case record; we compute it from the same record, taking income and several deductions as given, and compare. The file keeps only eligible households, so the replay checks benefit arithmetic and leaves eligibility untested.",
     href: "https://www.fns.usda.gov/snap/quality-control",
   },
 ];
@@ -71,13 +59,25 @@ export default function ValidationPage() {
             Validation &middot; Check our work
           </span>
           <h1 className="heading-page mb-6 mt-2">
-            Every encoding, cross-checked
+            Cross-checks in the open
           </h1>
           <p className="font-body text-[1.2rem] text-[var(--color-ink-secondary)] leading-relaxed text-pretty">
             Open isn&apos;t enough &mdash; an encoding you can read but
-            can&apos;t test is still a claim. We run every published rule
-            against independent engines we don&apos;t control, and publish
-            the comparisons so anyone can re-run them.
+            can&apos;t test is still a claim. We compare our rules with other
+            calculators and datasets, and publish the comparisons and the code
+            that runs them. Max Ghenis is CEO of both Axiom and PolicyEngine,
+            the oracle we compare against most, and PSL Foundation fiscally
+            sponsors both. In September 2026, 20,780 of our 34,810 US rules had
+            no comparison; a{" "}
+            <a
+              href="https://github.com/TheAxiomFoundation/axiom-oracles/blob/main/dashboard/public/data/rule_verification.json"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] no-underline"
+            >
+              public file
+            </a>{" "}
+            gives each rule&apos;s status.
           </p>
 
         </Reveal>
@@ -97,8 +97,8 @@ export default function ValidationPage() {
             </a>
           </div>
           <p className="mb-6 max-w-[720px] font-body text-[1rem] leading-relaxed text-[var(--color-ink-secondary)]">
-            Cross-engine comparisons as they stand &mdash; every divergence is
-            a question about the law or its encoding.
+            Cross-engine comparisons as they stand, including divergences we
+            have not yet explained.
           </p>
           {/* The dashboard's own 69px topbar (sticky brand bar) is
               redundant inside this page — shift the iframe up so the
@@ -149,6 +149,10 @@ export default function ValidationPage() {
               </RevealItem>
             ))}
           </RevealGroup>
+          <p className="mt-8 mb-0 max-w-[720px] font-body text-[0.95rem] leading-relaxed text-[var(--color-ink-secondary)]">
+            Three more are not connected yet: SOUTHMOD, PSL Tax-Calculator, and
+            ACCESS NYC have no published comparison with our encodings.
+          </p>
         </Reveal>
 
         <Reveal className="mb-20 border-t border-[var(--color-rule)] pt-12">
@@ -160,18 +164,18 @@ export default function ValidationPage() {
             {[
               {
                 n: "01",
-                title: "Same case, every engine",
-                body: "Concept-keyed test cases — a household, an income, a date — run through each oracle behind a thin adapter, so no engine's quirks leak into the comparison.",
+                title: "Same case, side by side",
+                body: "Concept-keyed test cases — a household, an income, a date — run through Axiom and one or two oracles behind thin adapters, so no engine's quirks leak into the comparison.",
               },
               {
                 n: "02",
                 title: "Normalized outputs",
-                body: "Engine results map onto shared program concepts before comparing, and every mismatch lands in a taxonomy: encoding bug, oracle bug, or genuine ambiguity in the law.",
+                body: "Engine results map onto shared program concepts before comparing.",
               },
               {
                 n: "03",
-                title: "Disagreements explained",
-                body: "Reviewer agents explain each discrepancy. Disagreements get explained, not erased — the audit reports ship with the release.",
+                title: "Disagreements classified",
+                body: "Reports sort mismatches by cause — an encoding gap, an oracle gap, a harness artifact, or an explained residual — and count the ones still unexplained.",
               },
             ].map((step) => (
               <div key={step.n} className="card-edition p-6">
