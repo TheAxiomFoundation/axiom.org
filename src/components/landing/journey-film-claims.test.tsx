@@ -24,11 +24,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 //   § 2017(a) among them, and the TheAxiomFoundation/.github workflow
 //   validate-rulespec.yml prints "SKIPPED (known-validation-gaps
 //   validate_failures)" for each.
-// So the only universal gate the film names is the encoder's, and only of
-// drafts; compare is scoped to programs another calculator covers; the
-// review chip says AI; and the hero's four stamped gates are marked an
-// illustration on the workbench and in the label, which also says the
-// published § 2017(a) module is waived.
+// So the only universal gate the film names is the encoder's, and the
+// caption names the encoder as its subject; compare is scoped to programs
+// another calculator covers; the review chip says AI; scene II is titled an
+// illustration (the title is the line that stays readable on a phone); and
+// the label says the published § 2017(a) module was waived.
 // PolicyEngine is not independent of Axiom (Max Ghenis is CEO of both, and
 // PSL Foundation fiscally sponsors both), so the film never calls it
 // independent.
@@ -55,6 +55,7 @@ async function renderFilm({ motion }: { motion: boolean }) {
   const words = [...container.querySelectorAll("text")].map((t) => t.textContent ?? "");
   return {
     captions: [...container.querySelectorAll("text.jw-sub")].map((t) => t.textContent ?? ""),
+    names: [...container.querySelectorAll("text.jw-name")].map((t) => (t.textContent ?? "").trim()),
     chips: [...container.querySelectorAll("tspan.jw-gatetick-name")].map((t) => t.textContent ?? ""),
     label: svg?.getAttribute("aria-label") ?? "",
     ticks: [...container.querySelectorAll("text.jw-gatetick")].filter(
@@ -69,9 +70,12 @@ function clauses(text: string): string[] {
   return text.split(/[.;]\s+/).filter(Boolean);
 }
 
+// The clause loop only polices explicit quantifiers. A generic-article
+// universal ("a draft must…") slips past it, so captions are also pinned
+// by exact string below.
 const UNIVERSAL = /\b(every|each|all|any|always)\b/i;
 const SCOPED_COMPARE =
-  /\bcompared (where another calculator covers it|through their outputs later, where another calculator covers them)\b/;
+  /\bcompared (where another calculator covers them|through their outputs later, where another calculator covers them)\b/;
 
 describe.each([
   { mode: "animated", motion: true },
@@ -88,14 +92,15 @@ describe.each([
       expect(text).not.toMatch(/independent/i);
       expect(text).not.toMatch(/other calculators/i);
     }
-    expect(label).toContain("disagrees with another calculator at compare");
+    if (motion) expect(label).toContain("disagrees with another calculator at compare");
+    expect(words.map((w) => w.trim())).toContain("✗ disagrees with another calculator — redrafted");
   });
 
   it("names only the encoder's gate as universal, and scopes compare", async () => {
     const { captions, label, words } = await renderFilm({ motion });
     if (motion) {
       expect(captions).toContain(
-        "a draft must compile and pass its tests — compared where another calculator covers it",
+        "encoder drafts must pass their tests — programs compared where another calculator covers them",
       );
     }
     expect(label).toContain(
@@ -108,24 +113,32 @@ describe.each([
         // A universal clause may name a comparison only with its scope,
         // and may never claim a check, a pass, a verification or a review.
         if (/compar/i.test(clause)) expect(clause).toMatch(SCOPED_COMPARE);
-        expect(clause).not.toMatch(/\bcheck|\bpass(es|ed)?\b|\bverif|\breview/i);
+        expect(clause).not.toMatch(/\bcheck|\bpass(es|ed|ing)?\b|\bverif|\breview/i);
       }
     }
   });
 
-  it("names the AI review on its chip and marks the four gates an illustration", async () => {
-    const { chips, label, words } = await renderFilm({ motion });
+  it("names the AI review on its chip and titles the scene an illustration", async () => {
+    const { chips, label, names, words } = await renderFilm({ motion });
     expect(new Set(chips)).toEqual(new Set(["run", "checks", "compare", "AI review"]));
-    // On screen, in both modes: the workbench eyebrow.
+    // On screen, in both modes: the scene title, which phones enlarge, and
+    // the workbench eyebrow, which they do not.
+    expect(names).toContain("One provision, encoded — an illustration");
     expect(words.map((w) => w.trim())).toContain("illustration");
-    const gates = clauses(label).filter((c) => /four gates/.test(c));
+    const gates = clauses(label).filter((c) => /four (stamped )?gates/.test(c));
     expect(gates).toHaveLength(1);
-    expect(gates[0]).toMatch(/^The workbench, marked illustration, stamps four gates/);
+    expect(gates[0]).toMatch(/^In this illustration the workbench (stamps four gates|shows four stamped gates)/);
     expect(gates[0]).toContain("and AI review");
+    // The label narrates the redraft only where the film plays it.
+    if (motion) {
+      expect(label).toContain("is redrafted to 0.30, and passes");
+    } else {
+      expect(label).not.toMatch(/0\.03|redraft/);
+    }
     expect(label).toContain(
-      "On October 2, 2026 the published § 2017(a) module was one of 1,940 rulespec-us modules on the validation waiver list, whose checks CI skips.",
+      "On October 2, 2026 the published § 2017(a) module was one of 1,940 rulespec-us modules on the validation waiver list, whose checks CI skipped.",
     );
-    expect(label).toContain("The other two sections are stamped run and checks.");
+    expect(label).toMatch(/other two sections (are stamped run and checks|show two ticks, for run and checks)/);
     expect(label).not.toMatch(/\bhuman\b/i);
   });
 

@@ -5,8 +5,8 @@
 //   I    THE LAW, WHOLE     the wall of 1.7M provision-cells — vastness
 //   II   ONE PROVISION      camera dives into a single cell: the statute
 //                           is segmented and each section encoded; the
-//                           hero, labelled an illustration, walks all four
-//                           gates
+//                           scene is titled an illustration, and its hero
+//                           walks all four gates
 //   III  THE GRAPH          encoded rules join the axiom graph — every
 //                           rule a node, typed and cited, linked to the
 //                           concepts it draws on
@@ -41,7 +41,9 @@
 // "none"); axiom-oracles compares program outputs later, where another
 // calculator covers the program. The review is one AI model's read,
 // skippable and never blocking. The hero walking compare and review is an
-// illustration, and both the workbench and the label say so.
+// illustration. The scene title says so (the eyebrow on the workbench is
+// too small to read on a phone, the title is not), and so does the label,
+// which narrates the redraft only where the film plays it.
 
 import { useEffect, useRef } from "react";
 import { CLUSTERS, registrySummary, snapshotMonth } from "./registry-snapshot";
@@ -65,12 +67,16 @@ const W = {
   s3: [0.48, 0.87],
 } as const;
 
+// Scene II is a composite, so its title says so in both the film and the
+// still; the title is the line that stays readable at phone width.
+const SCENE2_NAME = "One provision, encoded — an illustration";
+
 // One voice throughout: the name is the story beat in plain language;
 // the sub is one verifiable fact about the system — never a note about
 // the film's own construction.
 const CAPTIONS = [
   { w: W.s1, name: "The law, whole", sub: "the corpus, word for word — one cell per provision" },
-  { w: W.s2, name: "One provision, encoded", sub: "a draft must compile and pass its tests — compared where another calculator covers it" },
+  { w: W.s2, name: SCENE2_NAME, sub: "encoder drafts must pass their tests — programs compared where another calculator covers them" },
   { w: [0.48, 0.583] as const, name: "The graph", sub: "every rule is a node — typed, cited, connected" },
   { w: [0.59, 0.648] as const, name: "One rule, many programs", sub: "state programs build on the federal core — shared rules, one graph" },
   { w: [0.655, 0.87] as const, name: "The graph, whole", sub: `${snapshotMonth()} registry snapshot — ${registrySummary()}` },
@@ -753,6 +759,12 @@ function SceneProvision() {
   );
 }
 
+// The label tells the gate story the visitor actually gets: the film plays
+// the 0.03 catch and redraft; the still shows only the stamped result.
+const GATE_STORY = STATIC
+  ? "In this illustration the workbench shows four stamped gates — run, checks, compare, and AI review — and the other two sections show two ticks, for run and checks."
+  : "In this illustration the workbench stamps four gates — run, checks, compare, and AI review; one draft reads 0.03 for thirty per centum, disagrees with another calculator at compare, is redrafted to 0.30, and passes. The other two sections are stamped run and checks.";
+
 // helper: initial opacity for elements that animate in (visible in static)
 function O2() {
   return STATIC ? 1 : 0;
@@ -1289,7 +1301,7 @@ function Captions() {
     return (
       <g>
         <text className="jw-name" x="710" y="655" textAnchor="middle">
-          One provision, encoded
+          {SCENE2_NAME}
         </text>
         <text className="jw-sub" x="710" y="681" textAnchor="middle">
           one provision · segmented & encoded · graphed · compiled
@@ -1376,7 +1388,7 @@ export function JourneyFilm({
         className="lsk"
         viewBox="0 0 1420 700"
         role="img"
-        aria-label={`One continuous shot. The camera opens on one provision, § 2017 of Title 7: the statute is segmented into sections, each section encoded into a RuleSpec — id, citation, typed inputs and output, and the formula allotment equals tfp minus 0.30 times net income, every value citing its source words. The encoder applies a draft only once it compiles and passes its own tests; programs are compared through their outputs later, where another calculator covers them. The workbench, marked illustration, stamps four gates — run, checks, compare, and AI review: one draft reads 0.03 for thirty per centum, disagrees with another calculator at compare, is redrafted to 0.30, and passes. The other two sections are stamped run and checks. On October 2, 2026 the published § 2017(a) module was one of 1,940 rulespec-us modules on the validation waiver list, whose checks CI skips. The encoded rules then join the axiom graph as nodes — typed, cited, connected to the concepts they draw on; on the graph's output layer, two composed nodes declare their types and show illustrative output cards: snap/benefit, money per month, $478, and snap/eligible, boolean, yes. Then the camera backs out and the same cards keep coming: co-snap's own rules join around the hero graph — snap_maximum_allotment, the deductions, the eligibility tests, real names from its recorded outputs — then each runtime package in the ${snapshotMonth()} registry snapshot arrives as its own group of identical cards, from us-sc-snap to us-oasdi-wage-tax. At full distance the encoded graph sits among the ghost cards of everything not yet encoded, and the caption reads: ${snapshotMonth()} registry snapshot — ${registrySummary()}. The snapshot predates the registry's 2026-07-28 production cutover, and package outputs can count a shared rule more than once, so this is not a unique-rule or certification count.`}
+        aria-label={`One continuous shot. The camera opens on one provision, § 2017 of Title 7: the statute is segmented into sections, each section encoded into a RuleSpec — id, citation, typed inputs and output, and the formula allotment equals tfp minus 0.30 times net income, every value citing its source words. The encoder applies a draft only once it compiles and passes its own tests; programs are compared through their outputs later, where another calculator covers them. ${GATE_STORY} On October 2, 2026 the published § 2017(a) module was one of 1,940 rulespec-us modules on the validation waiver list, whose checks CI skipped. The encoded rules then join the axiom graph as nodes — typed, cited, connected to the concepts they draw on; on the graph's output layer, two composed nodes declare their types and show illustrative output cards: snap/benefit, money per month, $478, and snap/eligible, boolean, yes. Then the camera backs out and the same cards keep coming: co-snap's own rules join around the hero graph — snap_maximum_allotment, the deductions, the eligibility tests, real names from its recorded outputs — then each runtime package in the ${snapshotMonth()} registry snapshot arrives as its own group of identical cards, from us-sc-snap to us-oasdi-wage-tax. At full distance the encoded graph sits among the ghost cards of everything not yet encoded, and the caption reads: ${snapshotMonth()} registry snapshot — ${registrySummary()}. The snapshot predates the registry's 2026-07-28 production cutover, and package outputs can count a shared rule more than once, so this is not a unique-rule or certification count.`}
       >
         <Defs />
         <g clipPath="url(#jw-stage)">
