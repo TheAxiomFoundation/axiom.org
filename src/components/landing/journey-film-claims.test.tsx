@@ -58,6 +58,10 @@ async function renderFilm({ motion }: { motion: boolean }) {
     names: [...container.querySelectorAll("text.jw-name")].map((t) => (t.textContent ?? "").trim()),
     chips: [...container.querySelectorAll("tspan.jw-gatetick-name")].map((t) => t.textContent ?? ""),
     label: svg?.getAttribute("aria-label") ?? "",
+    redraft: container.querySelector("text.jw-redraft"),
+    draftFormula: [...container.querySelectorAll("text.jw-wbcode")].find((t) =>
+      (t.textContent ?? "").includes("0.03"),
+    ),
     ticks: [...container.querySelectorAll("text.jw-gatetick")].filter(
       (t) => (t.textContent ?? "").trim() === "✓✓",
     ),
@@ -119,7 +123,7 @@ describe.each([
   });
 
   it("names the AI review on its chip and titles the scene an illustration", async () => {
-    const { chips, label, names, words } = await renderFilm({ motion });
+    const { chips, draftFormula, label, names, redraft, words } = await renderFilm({ motion });
     expect(new Set(chips)).toEqual(new Set(["run", "checks", "compare", "AI review"]));
     // On screen, in both modes: the scene title, which phones enlarge, and
     // the workbench eyebrow, which they do not.
@@ -127,18 +131,29 @@ describe.each([
     expect(words.map((w) => w.trim())).toContain("illustration");
     const gates = clauses(label).filter((c) => /four (stamped )?gates/.test(c));
     expect(gates).toHaveLength(1);
-    expect(gates[0]).toMatch(/^In this illustration the workbench (stamps four gates|shows four stamped gates)/);
+    expect(gates[0]).toMatch(
+      motion
+        ? /^In this illustration the workbench stamps four gates/
+        : /^In this illustration the workbench shows four stamped gates/,
+    );
     expect(gates[0]).toContain("and AI review");
     // The label narrates the redraft only where the film plays it.
     if (motion) {
       expect(label).toContain("is redrafted to 0.30, and passes");
     } else {
       expect(label).not.toMatch(/0\.03|redraft/);
+      // ...which holds only while the still keeps both beats hidden.
+      expect(redraft?.getAttribute("opacity")).toBe("0");
+      expect(draftFormula?.getAttribute("opacity")).toBe("0");
     }
     expect(label).toContain(
       "On October 2, 2026 the published § 2017(a) module was one of 1,940 rulespec-us modules on the validation waiver list, whose checks CI skipped.",
     );
-    expect(label).toMatch(/other two sections (are stamped run and checks|show two ticks, for run and checks)/);
+    expect(label).toContain(
+      motion
+        ? "The other two sections are stamped run and checks."
+        : "the other two sections show two ticks, for run and checks.",
+    );
     expect(label).not.toMatch(/\bhuman\b/i);
   });
 
