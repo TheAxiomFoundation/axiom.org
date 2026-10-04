@@ -1,10 +1,29 @@
-// A baked snapshot of the live Axiom runtime registry, used by the
-// journey film's constellation scene. Every number here is real:
-// fetched from /v1/runtime/packages and /v1/rules/*/dependencies on the
-// snapshot date. Refresh by re-running the same queries — the scene
-// reads only this module.
+// A baked snapshot of the Axiom runtime registry, used by the journey
+// film's constellation scene. Every number here is real: fetched from
+// /v1/runtime/packages and /v1/rules/*/dependencies on the snapshot
+// date. Refresh by re-running the same queries — the scene reads only
+// this module.
+//
+// It is a dated record, not the live registry: it predates axiom-api's
+// 2026-07-28 production cutover (22689da: only direct-compiled,
+// provision-backed programs serve), and nothing in it is certified — the certified ledger
+// has been empty since it was issued on 2026-07-27. Copy that quotes
+// these numbers must carry SNAPSHOT_DATE and derive from registrySummary.
 
 export const SNAPSHOT_DATE = "2026-07";
+
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June", "July",
+  "August", "September", "October", "November", "December",
+];
+
+// "2026-07" → "July 2026": the snapshot's date as a reader says it.
+export function snapshotMonth(date: string = SNAPSHOT_DATE): string {
+  const [year, month] = date.split("-").map(Number);
+  const name = MONTHS[month - 1];
+  if (!name || !Number.isInteger(year)) throw new Error(`bad snapshot date: ${date}`);
+  return `${name} ${year}`;
+}
 
 // one cluster per compiled runtime package — count = output_count
 export type Cluster = {
@@ -35,6 +54,16 @@ export const CLUSTERS: Cluster[] = [
 ];
 
 export const PROGRAM_COUNT = CLUSTERS.length;
+
+// Counts are package output entries; a rule shared by several packages
+// appears once per package. This is not a census of unique or certified
+// rules, so the summary names exactly what it adds up.
+export function registrySummary(
+  clusters: readonly Pick<Cluster, "count">[] = CLUSTERS,
+): string {
+  const outputs = clusters.reduce((total, cluster) => total + cluster.count, 0);
+  return `${clusters.length} runtime packages, ${outputs.toLocaleString("en-US")} package outputs`;
+}
 
 // each package's default outputs — real rule names, straight from the
 // registry listing
