@@ -3,6 +3,7 @@ import {
   railChunksFromProvisions,
   refsForChunk,
   type BodyChunk,
+  type DeclaredExternalComparisons,
   type SectionPageData,
   type SectionProvision,
 } from "@/lib/axiom/section-page";
@@ -58,6 +59,48 @@ const ORACLE_LABELS: Readonly<Record<string, string>> = {
   euromod: "EUROMOD",
 };
 
+function oracleLabel(engine: string): string {
+  return Object.hasOwn(ORACLE_LABELS, engine) ? ORACLE_LABELS[engine] : engine;
+}
+
+/** Ties between Axiom and an engine, stated wherever the engine is named. */
+const ENGINE_DISCLOSURES: Readonly<Record<string, string>> = {
+  policyengine: "Max Ghenis is CEO of both Axiom and PolicyEngine.",
+};
+
+/**
+ * Description of a declared external comparison: the program, its
+ * cases, the engine, a plain statement that no result is shown, and
+ * any tie between Axiom and the engine. Rendered as the chip's title
+ * and as screen-reader text, so the disclosure does not depend on a
+ * hover tooltip.
+ */
+export function externalComparisonTitle(
+  declared: Pick<DeclaredExternalComparisons, "programId" | "jurisdiction">,
+  comparison: DeclaredExternalComparisons["engines"][number],
+): string {
+  const engine = oracleLabel(comparison.engine);
+  const one = comparison.caseCount === 1;
+  const described =
+    comparison.caseDescriptions.length > 0
+      ? ` (${comparison.caseDescriptions
+          .map((description) => description.replace(/\.$/, ""))
+          .join("; ")})`
+      : "";
+  const disclosure = Object.hasOwn(ENGINE_DISCLOSURES, comparison.engine)
+    ? ENGINE_DISCLOSURES[comparison.engine]
+    : null;
+  return [
+    `${comparison.caseCount} test ${one ? "case" : "cases"} for ` +
+      `${declared.programId} (${declared.jurisdiction}) ` +
+      `${one ? "declares" : "declare"} a comparison with ${engine}${described}.`,
+    `The ${one ? "case lists" : "cases list"} the comparison's inputs and ` +
+      `output mappings and no result, so this chip does not say whether ` +
+      `Axiom and ${engine} agree.`,
+    ...(disclosure ? [disclosure] : []),
+  ].join(" ");
+}
+
 /** Past this many subsections the segment map gives way to numerals. */
 const COVERAGE_MAP_MAX_UNITS = 16;
 
@@ -65,16 +108,18 @@ const CHIP_CLASS =
   "inline-flex items-center gap-2 rounded-full border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-3 py-1.5 text-[12px] font-medium leading-none text-[var(--color-ink-secondary)]";
 
 /**
- * The section's trust row — three quiet status chips in the app's
- * sans, product-style rather than typewriter-style:
+ * The section's trust row — quiet status chips in the app's sans,
+ * product-style rather than typewriter-style:
  *
- *   (∀ 8 rules) (▰▱▱▱▱▱ 1 of 6 subsections) (✓ Verified · PolicyEngine)
+ *   (∀ 8 rules) (▰▱▱▱▱▱ 1 of 6 subsections) (PolicyEngine comparison 1 case)
  *
  * Coverage is a map, not a meter: one segment per top-level
  * subsection in document order, filled where rules exist; each
- * segment links to its subsection. The verified chip appears only
- * for external-oracle parity comparisons — golden expectations are
- * self-graded and earn nothing. Denominators always shown.
+ * segment links to its subsection. A comparison chip appears for
+ * each engine a covering program's parity cases declare. The API
+ * publishes no result for those comparisons, so the chip stays
+ * neutral: no check mark, no "verified", no "agrees". Denominators
+ * always shown.
  */
 function EncodingStatusLine({ data }: { data: SectionPageData }) {
   if (data.encodedRules.length === 0) return null;
@@ -90,6 +135,7 @@ function EncodingStatusLine({ data }: { data: SectionPageData }) {
   const encodedCount = unitAnchors.filter((anchor) =>
     encodedAnchors.has(anchor),
   ).length;
+  const declared = data.externalComparisons;
 
   return (
     <div className="mt-3.5 flex flex-wrap items-center gap-2">
@@ -142,32 +188,23 @@ function EncodingStatusLine({ data }: { data: SectionPageData }) {
         </span>
       )}
 
-      {data.parity && (
-        <span
-          className="inline-flex cursor-help items-center gap-2 rounded-full border border-[rgba(22,101,52,0.25)] bg-[rgba(22,101,52,0.06)] px-3 py-1.5 text-[12px] font-medium leading-none text-[var(--color-success)]"
-          title={`⊨ Externally verified: ${data.parity.programId} (${data.parity.jurisdiction}) agrees with ${
-            ORACLE_LABELS[data.parity.oracle] ?? data.parity.oracle
-          } — ${data.parity.caseDescriptions.join(" — ")}`}
-        >
-          <svg
-            aria-hidden
-            viewBox="0 0 12 12"
-            className="h-3 w-3"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+      {declared?.engines.map((comparison) => {
+        const description = externalComparisonTitle(declared, comparison);
+        return (
+          <span
+            key={comparison.engine}
+            className={`${CHIP_CLASS} cursor-help`}
+            title={description}
           >
-            <path d="M2 6.2 4.8 9 10 3.4" />
-          </svg>
-          Verified · {ORACLE_LABELS[data.parity.oracle] ?? data.parity.oracle}
-          <span className="opacity-60">
-            {data.parity.caseCount}{" "}
-            {data.parity.caseCount === 1 ? "case" : "cases"}
+            {oracleLabel(comparison.engine)} comparison
+            <span className="opacity-60">
+              {comparison.caseCount}{" "}
+              {comparison.caseCount === 1 ? "case" : "cases"}
+            </span>
+            <span className="sr-only">{description}</span>
           </span>
-        </span>
-      )}
+        );
+      })}
     </div>
   );
 }
