@@ -452,4 +452,72 @@ describe("OpsDashboard", () => {
     expect(screen.getByText("Israel")).toBeInTheDocument();
     expect(screen.queryByText("il")).not.toBeInTheDocument();
   });
+
+  it("polls only while the page is visible, and catches up on return", async () => {
+    vi.useFakeTimers({ now: NOW, toFake: ["Date", "setInterval", "clearInterval"] });
+    let visibility: DocumentVisibilityState = "visible";
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => visibility,
+    });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ value: status({}) }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const setVisibility = (next: DocumentVisibilityState) => {
+      visibility = next;
+      document.dispatchEvent(new Event("visibilitychange"));
+    };
+    try {
+      const { unmount } = render(
+        <OpsDashboard
+          initialStatus={status({})}
+          encodingError={null}
+          queues={[]}
+          recentScopes={[]}
+        />,
+      );
+      vi.advanceTimersByTime(30_000);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      // Hidden for ten minutes and a bit (returning mid-interval): no polls.
+      setVisibility("hidden");
+      vi.advanceTimersByTime(10 * 60_000 + 15_000);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      // Back: one catch-up refresh, and the interval restarts from here, so
+      // the next poll is a full interval later rather than moments after.
+      setVisibility("visible");
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock).toHaveBeenLastCalledWith("/api/ops/encoding");
+      vi.advanceTimersByTime(29_000);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      vi.advanceTimersByTime(1_000);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+
+      // Flicking away and back within seconds does not refresh again.
+      vi.advanceTimersByTime(2_000);
+      setVisibility("hidden");
+      setVisibility("visible");
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+
+      // Hiding the tab, whenever it happens, never fetches.
+      vi.advanceTimersByTime(20_000);
+      setVisibility("hidden");
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      setVisibility("visible");
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+
+      // After unmount, neither the interval nor the listener fires.
+      unmount();
+      setVisibility("hidden");
+      vi.advanceTimersByTime(60_000);
+      setVisibility("visible");
+      vi.advanceTimersByTime(60_000);
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+    } finally {
+      delete (document as { visibilityState?: unknown }).visibilityState;
+    }
+  });
 });
