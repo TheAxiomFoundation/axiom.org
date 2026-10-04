@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Reveal } from "@/components/landing/reveal";
-import { axiomAppHref } from "@/lib/urls";
 import { SITE_URL } from "@/lib/urls";
 
 export const metadata: Metadata = {
@@ -11,8 +10,8 @@ export const metadata: Metadata = {
 };
 
 // Every row links a PUBLIC surface — the receipt is only a receipt if a
-// stranger can follow it. (ops is private; certification status is public
-// through the app, which mirrors the certified ledger.)
+// stranger can follow it. (ops is private; the certified ledger is public
+// at /api/axiom/certified, which proxies axiom-api's ledger read.)
 const receipts = [
   {
     name: "The receipt package",
@@ -52,9 +51,9 @@ const receipts = [
   {
     name: "Certification",
     what:
-      "Computed, not granted: the harness derives completeness and fidelity, and a node certifies itself — nobody, including us, grants it by hand. Every node wears its tier in the app, including the empty certified tier at launch. The emptiness is the credibility.",
-    href: axiomAppHref(),
-    label: "the Axiom app",
+      "A program certifies only when axiom-oracles computes all four premises — conformant, exercised, closed, executable — true with zero open defects, and no flag is set by hand. None passes yet. The API serves a rule as certified only when it is in the certified ledger, where every entry names its claim — computed by a verifier, or attested by a human signature — and pins its evidence. That ledger is empty. The emptiness is the credibility.",
+    href: "/api/axiom/certified",
+    label: "the certified ledger",
   },
 ];
 

@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/table";
 
 const POLL_INTERVAL_MS = 30_000;
+const RETURN_REFRESH_GAP_MS = 5_000;
 const CLOCK_TICK_MS = 15_000;
 /** A running row whose heartbeat is older than this means the encoder died. */
 const STALE_HEARTBEAT_MS = 2 * 60 * 1000;
@@ -221,7 +222,11 @@ export function OpsDashboard({
   useEffect(() => {
     setNowMs(Date.now());
     const clock = setInterval(() => setNowMs(Date.now()), CLOCK_TICK_MS);
-    const poll = setInterval(async () => {
+    // The server rendered this data just now; a quick first return to the
+    // tab does not need to fetch it again.
+    let lastRefreshMs = Date.now();
+    const refresh = async () => {
+      lastRefreshMs = Date.now();
       try {
         const response = await fetch("/api/ops/encoding");
         if (!response.ok) return;
@@ -231,10 +236,29 @@ export function OpsDashboard({
       } catch {
         // Keep showing the last good payload; the next poll retries.
       }
-    }, POLL_INTERVAL_MS);
+    };
+    // Every poll reads Supabase and asks the serving API about graph
+    // availability, so a tab left open in the background keeps spending
+    // both. Poll only while someone can see the page; on return, catch up
+    // at once (unless a refresh just happened) and restart the interval so
+    // the next scheduled poll does not follow straight after.
+    const schedule = () =>
+      setInterval(() => {
+        if (document.visibilityState === "hidden") return;
+        void refresh();
+      }, POLL_INTERVAL_MS);
+    let poll = schedule();
+    const onVisibility = () => {
+      if (document.visibilityState !== "visible") return;
+      clearInterval(poll);
+      poll = schedule();
+      if (Date.now() - lastRefreshMs >= RETURN_REFRESH_GAP_MS) void refresh();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       clearInterval(clock);
       clearInterval(poll);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, []);
 
