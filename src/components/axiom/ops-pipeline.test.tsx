@@ -445,7 +445,14 @@ describe("OpsPipeline", () => {
     expect(within(bar).getByRole("link", { name: "All" })).toHaveAttribute("href", "/ops#pipeline-title");
     expect(within(bar).getByRole("link", { name: /^us\s*2$/ })).toHaveAttribute("aria-current", "page");
     expect(within(bar).getByRole("link", { name: /^dk\s*1$/ })).toHaveAttribute("href", "/ops?j=dk#pipeline-title");
-    const select = within(bar).getByRole("combobox", { name: "Within us" });
+    const select = within(bar).getByRole("combobox", { name: "Within United States" });
+    // All first, then the federal level, then the states by name.
+    expect([...select.querySelectorAll("option")].map((o) => o.textContent)).toEqual([
+      "All (2)",
+      "US Federal only (1)",
+      "Louisiana (1)",
+    ]);
+    expect(select.querySelector("optgroup")).toHaveAttribute("label", "States");
     fireEvent.change(select, { target: { value: "us:only" } });
     expect(push).toHaveBeenLastCalledWith("/ops?j=us&only=1#pipeline-title");
     fireEvent.change(select, { target: { value: "us-la" } });

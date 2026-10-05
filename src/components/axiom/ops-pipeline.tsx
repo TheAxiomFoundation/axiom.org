@@ -31,6 +31,7 @@ import {
   type CorpusJurisdiction,
   type CorpusView,
 } from "@/lib/axiom/corpus-releases";
+import { jurisdictionName } from "@/lib/axiom/jurisdiction-names";
 
 /** The stages a citation moves through, in order, with a short status when nothing is stuck. */
 const FLOW: Array<{ stage: PipelineStage; hint: string }> = [
@@ -840,7 +841,7 @@ function ScopeBar({
       {scopes.within.length > 0 && root && (
         <select
           className={styles.scopeSelect}
-          aria-label={`Within ${root}`}
+          aria-label={`Within ${jurisdictionName(root)}`}
           value={withinValue}
           onChange={(event) => {
             const value = event.target.value;
@@ -848,15 +849,25 @@ function ScopeBar({
             router.push(scopeHref(pathname, option ?? { jurisdiction: root, only: false }));
           }}
         >
-          <option value="">All of {root}</option>
-          {scopes.within.map((option) => (
-            <option
-              key={`${option.jurisdiction}${option.only ? ":only" : ""}`}
-              value={option.only ? `${option.jurisdiction}:only` : option.jurisdiction}
-            >
-              {option.label} ({number(option.citations)})
-            </option>
-          ))}
+          <option value="">
+            All ({number(scopes.roots.find((o) => o.jurisdiction === root)?.citations ?? 0)})
+          </option>
+          {scopes.within
+            .filter((option) => option.only)
+            .map((option) => (
+              <option key={`${option.jurisdiction}:only`} value={`${option.jurisdiction}:only`}>
+                {option.label} ({number(option.citations)})
+              </option>
+            ))}
+          <optgroup label={root === "us" ? "States" : "Regions"}>
+            {scopes.within
+              .filter((option) => !option.only)
+              .map((option) => (
+                <option key={option.jurisdiction} value={option.jurisdiction}>
+                  {option.label} ({number(option.citations)})
+                </option>
+              ))}
+          </optgroup>
         </select>
       )}
     </nav>
