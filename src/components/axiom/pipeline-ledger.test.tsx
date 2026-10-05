@@ -42,7 +42,7 @@ describe("PipelineLedger", () => {
     expect(screen.getByRole("button", { name: "Runs of us-la/statute/47/32" }).closest("tr")).toHaveTextContent("Validation rules");
   });
 
-  it("drops down an overview of a section's runs, the latest with its timeline, and links to every run", async () => {
+  it("drops down an overview of a section's runs with the latest run's timeline, and links to every run", async () => {
     const cause = (i: number) => (i % 3 === 0 ? "complete-source-unit:tests" : `ci: cause ${"abcdefghijkl"[i]}`);
     serve({
       rows: runRows(
@@ -71,11 +71,9 @@ describe("PipelineLedger", () => {
     expect(lines[0]).toBe("Runs: 12 from 29d ago to 18d ago0.2.2000 → 0.2.2011");
     expect(lines[1]).toBe("Ended: No detail recorded 8Validation rules 4");
     expect(lines[2]).toBe("Causes: complete-source-unit:tests 4ci: cause b 1ci: cause c 1ci: cause e 1+5 more");
-    expect(lines[3]).toBe("Latest: ▸18d agoNo detail recordedci: cause l");
-    // Only the latest run is listed; its timeline drops down under the overview.
-    const latest = screen.getByRole("button", { name: "Timeline of us/statute/7/2015/f, run r11" });
-    expect(screen.getAllByRole("button", { name: /^Timeline of / })).toHaveLength(1);
-    fireEvent.click(latest);
+    expect(lines[3]).toBe("Latest: 18d agoNo detail recordedci: cause l");
+    // The latest run's timeline shows under the overview, with nothing to open.
+    expect(screen.queryByRole("button", { name: /^Timeline of / })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Encode run" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "All 12 runs, each with its timeline →" })).toHaveAttribute(
       "href",
@@ -83,7 +81,7 @@ describe("PipelineLedger", () => {
     );
     // Closing the section closes its overview.
     fireEvent.click(section);
-    expect(screen.queryByRole("button", { name: /^Timeline of / })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Encode run" })).not.toBeInTheDocument();
   });
 
   it("shows ten documents at a time", async () => {

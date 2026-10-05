@@ -289,10 +289,6 @@
   color: var(--color-warning);
 }
 
-.ledgerOverview .ledgerToggle {
-  margin-right: 0;
-}
-
 .ledgerCount {
   font-weight: 600;
   color: var(--color-ink);
