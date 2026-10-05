@@ -280,14 +280,31 @@ export function PlanningModelPage() {
             generator&apos;s family. The development
             fleet runs Claude main loops alongside codex lanes, per the usage
             table below. Oracle comparisons run
-            against PolicyEngine, TAXSIM, and EUROMOD/UKMOD, plus USDA&apos;s
-            SNAP quality-control records (all 856 Colorado FY 2024 cases
-            match the benefit Mathematica computes for USDA from each case
-            record{" "}
+            against PolicyEngine, TAXSIM, EUROMOD/UKMOD, and SOUTHMOD, plus
+            USDA&apos;s SNAP quality-control records (all 856 Colorado FY 2024
+            cases match the benefit Mathematica computes for USDA from each
+            case record{" "}
             <Provenance kind="M" />; the file keeps only eligible households,
             so eligibility is untested). Max Ghenis is CEO of both Axiom and
             PolicyEngine, and our TAXSIM runs use the TAXSIM executable that
-            PolicyEngine packages.
+            PolicyEngine packages. Against{" "}
+            <a
+              href="https://axiom.org/oracles?oracle=southmod"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              SOUTHMOD A4.0
+            </a>
+            , UNU-WIDER&apos;s models for Ghana, Uganda, Zambia, Ethiopia and
+            Rwanda run on EUROMOD EM_Executable 1.0.0, 242 of 245 comparisons
+            match as of 2026-10-04 <Provenance kind="M" />; the other 3 are
+            recorded as gaps in those models. Three caveats: the runs are
+            manual, on our licensed machine rather than in CI, because the
+            license bars giving the model or its data to third parties; the
+            compared rule modules are not encoder output (Rwanda&apos;s carry
+            no encoding record, and the other four countries&apos; carry
+            manual attestations); and every compared household is synthetic,
+            with no microdata at all for Rwanda.
           </p>
           <ul className="font-body text-[1rem] text-[var(--color-ink-secondary)] leading-relaxed space-y-2 list-disc pl-5">
             <li>
