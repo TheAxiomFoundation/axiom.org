@@ -19,6 +19,9 @@ on:
       check_error_lookups:
         description: Failing PR checks whose log to read this pass (one GitHub request each)
         default: "60"
+      merge_test_lookups:
+        description: Merges whose merge commit's checks to read this pass (one GitHub request each)
+        default: "40"
 
 permissions:
   contents: read
@@ -42,6 +45,7 @@ jobs:
           --failure-lookups "${{ inputs.failure_lookups || '60' }}"
           --run-detail-lookups "${{ inputs.run_detail_lookups || '80' }}"
           --check-error-lookups "${{ inputs.check_error_lookups || '60' }}"
+          --merge-test-lookups "${{ inputs.merge_test_lookups || '40' }}"
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

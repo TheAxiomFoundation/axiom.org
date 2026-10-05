@@ -79,6 +79,17 @@ export interface PipelineAttempt {
   /** What an open PR's first failing check printed, and that check's job id. */
   pr_check_error?: string | null;
   pr_check_job_id?: number | null;
+  /** The encode job's parts, in seconds: checkouts and builds before the
+   *  encode step, the step itself, and packaging, signing, and the PR after it. */
+  setup_seconds?: number | null;
+  encode_seconds?: number | null;
+  publish_seconds?: number | null;
+  /** When the run's steps were read for those times (once per run). */
+  steps_read_at?: string | null;
+  /** When the first successful index sync after the merge finished. */
+  indexed_at?: string | null;
+  /** When the module's validation shard finished at the merge commit on main. */
+  tests_first_at?: string | null;
 }
 
 /** Where one attempt sits. Main-line stages first, then the ways out. */
