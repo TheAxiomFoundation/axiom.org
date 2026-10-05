@@ -93,6 +93,20 @@ export interface PipelineAttempt {
   /** When that first shard run started, and how it ended. */
   tests_first_started_at?: string | null;
   tests_first_status?: "pass" | "fail" | null;
+  /** Each try of the encode loop, from the encoder's own record. */
+  tries?: PipelineTry[] | null;
+}
+
+/** One try of the encode loop: the model that wrote the candidate, its time and cost, and what sent it back. */
+export interface PipelineTry {
+  attempt: number;
+  model: string | null;
+  /** The model's own time on this try, in milliseconds. */
+  ms: number | null;
+  cost: number | null;
+  ok: boolean;
+  /** The first check that failed this try's candidate. */
+  error: string | null;
 }
 
 /** Where one attempt sits. Main-line stages first, then the ways out. */

@@ -5,6 +5,7 @@ import {
   conceptModuleKeys,
   containmentQueries,
   containsKey,
+  encoderTries,
   firstSyncAfter,
   jobPhases,
   mergeValidationKey,
@@ -1081,5 +1082,39 @@ describe("causes from the failing job's log", () => {
     });
     const [kept] = buildAttempts(inputs({ previous: new Map([["501", attempt]]) }));
     expect(kept).toMatchObject({ failure_source: "log", encoder_error: attempt.encoder_error });
+  });
+});
+
+describe("encoder tries", () => {
+  it("keeps each try's model, time, cost, outcome, and first error from the encoder's record", () => {
+    const iterations = [
+      {
+        attempt: 1,
+        model: "gpt-6-luna",
+        success: false,
+        duration_ms: 18226,
+        estimated_cost_usd: 0.0096,
+        errors: [{ message: "statutes/42/402/q.yaml: ci: Embedded scalar literal: 5", error_type: "validation" }],
+      },
+      { attempt: 2, model: "gpt-6-sol", success: true, duration_ms: 41164, estimated_cost_usd: 0.25, errors: [] },
+      "not a try",
+    ];
+    expect(encoderTries(encoderRow({ iterations }))).toEqual([
+      { attempt: 1, model: "gpt-6-luna", ms: 18226, cost: 0.0096, ok: false, error: "statutes/42/402/q.yaml: ci: Embedded scalar literal: 5" },
+      { attempt: 2, model: "gpt-6-sol", ms: 41164, cost: 0.25, ok: true, error: null },
+    ]);
+    expect(encoderTries(encoderRow({ iterations: null }))).toBeNull();
+    expect(encoderTries(encoderRow({ iterations: [] }))).toBeNull();
+    // A record with no attempt numbers counts its tries in order.
+    expect(encoderTries(encoderRow({ iterations: [{ model: "m" }] }))?.[0]).toMatchObject({ attempt: 1, ms: null, ok: false });
+  });
+
+  it("puts the matched encoder record's tries on the attempt", () => {
+    const [attempt] = buildAttempts(
+      inputs({ encoderRuns: [encoderRow({ iterations: [{ attempt: 1, model: "m", duration_ms: 5 }] })] })
+    );
+    expect(attempt.tries).toEqual([{ attempt: 1, model: "m", ms: 5, cost: null, ok: false, error: null }]);
+    const [unmatched] = buildAttempts(inputs());
+    expect(unmatched).not.toHaveProperty("tries");
   });
 });
