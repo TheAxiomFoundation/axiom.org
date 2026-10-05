@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dispatchFlow, encodeParts, runRow, runRows, stepTimes } from "./encoding-pipeline-runs";
+import { dispatchFlow, encodeParts, runRow, runRows, stepTimes, testsParts } from "./encoding-pipeline-runs";
 import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 
 describe("runRow", () => {
@@ -262,5 +262,32 @@ describe("encodeParts", () => {
     const { parts, tries } = encodeParts([]);
     expect(parts.map((part) => part.untimed)).toEqual(["Not timed yet", "Not timed yet", "Not timed yet"]);
     expect(tries).toEqual({ tries: [], encoded: [], failed: [], recorded: 0, finished: 0 });
+  });
+});
+
+describe("testsParts", () => {
+  it("splits the first tests on main into the wait and the run, and counts how they ended", () => {
+    const merge = (id: string, started: string | null, finished: string | null, status: "pass" | "fail" | null) =>
+      mergedAttempt({
+        id,
+        pr_merged_at: "2026-09-21T09:00:00Z",
+        tests_first_started_at: started,
+        tests_first_at: finished,
+        tests_first_status: status,
+      });
+    const { parts, first } = testsParts(
+      runRows([
+        merge("a", "2026-09-21T09:16:00Z", "2026-09-21T11:07:00Z", "pass"),
+        merge("b", "2026-09-21T10:32:00Z", "2026-09-21T11:37:00Z", "fail"),
+        merge("c", null, "2026-09-21T12:00:00Z", null),
+        mergedAttempt({ id: "off", pr_targets_default: false, tests_first_started_at: "2026-09-21T09:01:00Z", tests_first_status: "pass" }),
+      ])
+    );
+    expect(parts.map((part) => [part.key, part.timings.map((t) => `${t.runs}:${t.medianMs / 60_000}`)])).toEqual([
+      ["wait", ["2:54"]],
+      ["run", ["2:88"]],
+    ]);
+    expect(first).toEqual({ pass: 1, fail: 1 });
+    expect(testsParts([]).parts.map((part) => part.untimed)).toEqual(["Not timed yet", "Not timed yet"]);
   });
 });

@@ -515,7 +515,8 @@
 
 .partsSteps {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
   gap: 8px;
   margin: 0;
   padding: 0;
@@ -1422,7 +1423,7 @@
   }
 
   .partsSteps {
-    grid-template-columns: minmax(0, 1fr);
+    grid-auto-flow: row;
   }
 
   .tileValue {

@@ -55,6 +55,9 @@ export interface RunRow {
   indexedAt: string | null;
   /** When the module's validation first finished at the merge commit on main. */
   testsAt: string | null;
+  /** When that first validation run started, and how it ended. */
+  testsStartedAt: string | null;
+  testsFirst: "pass" | "fail" | null;
 }
 
 const CANCEL_OUTCOMES: Record<string, string> = {
@@ -143,6 +146,8 @@ export function runRow(attempt: PipelineAttempt): RunRow {
     testsUrl: attempt.tests_run_url ?? null,
     indexedAt: merged === "main" ? (attempt.indexed_at ?? null) : null,
     testsAt: merged === "main" ? (attempt.tests_first_at ?? null) : null,
+    testsStartedAt: merged === "main" ? (attempt.tests_first_started_at ?? null) : null,
+    testsFirst: merged === "main" ? (attempt.tests_first_status ?? null) : null,
   };
 }
 
@@ -404,23 +409,25 @@ export interface EncodeParts {
   tries: TriesUsed;
 }
 
+/** A part of a step, "Not timed yet" until a run records it. */
+function timedPart(key: string, label: string, span: string, measures: string, ...timings: Array<StepTiming | null>): TimedStep {
+  const kept = timings.filter((t): t is StepTiming => t !== null);
+  return { key, label, span, measures, untimed: kept.length ? null : "Not timed yet", timings: kept };
+}
+
 export function encodeParts(rows: RunRow[]): EncodeParts {
   const finished = rows.filter((row) => row.outcome === "encoded" || row.outcome === "failed");
   // Setup is timed over runs that got past it, so a run stopped in setup does not shorten it.
   const pastSetup = finished.filter((row) => row.phases.encodeMs !== null);
-  const part = (key: string, label: string, span: string, measures: string, ...timings: Array<StepTiming | null>): TimedStep => {
-    const kept = timings.filter((t): t is StepTiming => t !== null);
-    return { key, label, span, measures, untimed: kept.length ? null : "Not timed yet", timings: kept };
-  };
   const parts = [
-    part(
+    timedPart(
       "setup",
       "Setup",
       "checkouts, builds, input checks",
       "From the encode job's first step until the encode step starts: check out the repos, build the engine, verify and fetch the signed inputs.",
       timing("", pastSetup.map((row) => row.phases.setupMs))
     ),
-    part(
+    timedPart(
       "encode",
       "Encode loop",
       "write, validate, repair, review",
@@ -428,7 +435,7 @@ export function encodeParts(rows: RunRow[]): EncodeParts {
       timing("Encoded", finished.filter((row) => row.outcome === "encoded").map((row) => row.phases.encodeMs)),
       timing("Failed", finished.filter((row) => row.outcome === "failed").map((row) => row.phases.encodeMs))
     ),
-    part(
+    timedPart(
       "publish",
       "Sign and open the PR",
       "package, sign, push, draft PR",
@@ -449,6 +456,39 @@ export function encodeParts(rows: RunRow[]): EncodeParts {
       failed: histogram("failed"),
       recorded: counted.length,
       finished: finished.length,
+    },
+  };
+}
+
+/** Inside the tests on main: the wait for the shard, its run, and how the first one ended. */
+export interface TestsParts {
+  parts: TimedStep[];
+  /** The first validation at each merge commit: how many passed and failed. */
+  first: { pass: number; fail: number };
+}
+
+export function testsParts(rows: RunRow[]): TestsParts {
+  const merges = rows.filter((row) => row.merged === "main");
+  return {
+    parts: [
+      timedPart(
+        "wait",
+        "Wait to start",
+        "merge → shard starts",
+        "From the merge until the jurisdiction's validation shard starts at the merge commit: CI starting and waiting for a runner.",
+        timing("", merges.map((row) => ms(row.pr?.mergedAt, row.testsStartedAt)))
+      ),
+      timedPart(
+        "run",
+        "Validation run",
+        "shard start → end",
+        "The validation shard at the merge commit, from start to end. It validates the whole jurisdiction, not only the merged module.",
+        timing("", merges.map((row) => ms(row.testsStartedAt, row.testsAt)))
+      ),
+    ],
+    first: {
+      pass: merges.filter((row) => row.testsFirst === "pass").length,
+      fail: merges.filter((row) => row.testsFirst === "fail").length,
     },
   };
 }

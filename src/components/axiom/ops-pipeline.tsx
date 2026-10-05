@@ -39,6 +39,7 @@ import {
   type EncodeParts,
   type RunRow,
   type StepTimes,
+  type TestsParts,
   type TimedStep,
   type TriesUsed,
 } from "@/lib/axiom/encoding-pipeline-runs";
@@ -116,6 +117,7 @@ export function OpsPipeline({
   flow = null,
   times = null,
   parts = null,
+  testParts = null,
   referenceMs,
 }: {
   view: PipelineView;
@@ -131,6 +133,8 @@ export function OpsPipeline({
   times?: StepTimes[] | null;
   /** The encode run's parts and the tries its encode loop used. */
   parts?: EncodeParts | null;
+  /** The tests on main's parts and how the first ones ended. */
+  testParts?: TestsParts | null;
   referenceMs: number;
 }) {
   const [listing, setListing] = useState<Listing | null>(null);
@@ -295,7 +299,7 @@ export function OpsPipeline({
               ))}
             </div>
           )}
-          {flow && detailsTab === "flow" && <FlowView gates={flow} times={times} parts={parts} onOpen={openSegment} />}
+          {flow && detailsTab === "flow" && <FlowView gates={flow} times={times} parts={parts} testParts={testParts} onOpen={openSegment} />}
           {flow && detailsTab === "log" && <RunLog load={loadRuns} referenceMs={referenceMs} />}
           {detailsTab === "cards" && (
           <>
@@ -1438,23 +1442,63 @@ function TriesTable({ tries }: { tries: TriesUsed }) {
   );
 }
 
-/** The encode run opened up: one job with three parts, and the tries its encode loop took. */
-function EncodeRunParts({ parts }: { parts: EncodeParts }) {
+/** A step opened up into its parts, with one more cell beside them. */
+function PartsRow({
+  id,
+  title,
+  note,
+  parts,
+  extra,
+}: {
+  id: string;
+  title: string;
+  note: ReactNode;
+  parts: TimedStep[];
+  extra: ReactNode;
+}) {
   return (
-    <section className={styles.flowPart} aria-labelledby="flow-parts-title">
-      <PartHead id="flow-parts-title" title="Inside the encode run">
-        The encode run is one GitHub Actions job in three parts: setup, the encode loop, then signing and
-        opening the PR.
+    <section className={styles.flowPart} aria-labelledby={id}>
+      <PartHead id={id} title={title}>
+        {note}
       </PartHead>
       <div className={styles.partsRow}>
         <ol className={styles.partsSteps}>
-          {parts.parts.map((part) => (
+          {parts.map((part) => (
             <TimedCell key={part.key} step={part} />
           ))}
         </ol>
-        <TriesTable tries={parts.tries} />
+        {extra}
       </div>
     </section>
+  );
+}
+
+/** How the first validation at each merge commit ended. */
+function FirstResult({ first }: { first: TestsParts["first"] }) {
+  return (
+    <div className={styles.timeStep}>
+      <div className={styles.cellHead}>
+        <span className={styles.tileLabel}>First result</span>
+        <Explain label="First result">
+          How the first validation at each merge commit ended. A later run on main can end differently; the bars
+          below count the latest result.
+        </Explain>
+      </div>
+      {first.pass + first.fail === 0 ? (
+        <span className={styles.timeNone}>Not recorded yet</span>
+      ) : (
+        <dl className={styles.timeStats}>
+          <div>
+            <dt>Pass</dt>
+            <dd>{number(first.pass)}</dd>
+          </div>
+          <div>
+            <dt>Fail</dt>
+            <dd>{number(first.fail)}</dd>
+          </div>
+        </dl>
+      )}
+    </div>
   );
 }
 
@@ -1462,17 +1506,36 @@ function FlowView({
   gates,
   times,
   parts,
+  testParts,
   onOpen,
 }: {
   gates: FlowGate[];
   times: StepTimes[] | null;
   parts: EncodeParts | null;
+  testParts: TestsParts | null;
   onOpen: (gate: FlowGate, segment: FlowSegment) => void;
 }) {
   return (
     <>
       {times && <StepTimeRow steps={times} />}
-      {parts && <EncodeRunParts parts={parts} />}
+      {parts && (
+        <PartsRow
+          id="flow-parts-title"
+          title="Inside the encode run"
+          note="The encode run is one GitHub Actions job in three parts: setup, the encode loop, then signing and opening the PR."
+          parts={parts.parts}
+          extra={<TriesTable tries={parts.tries} />}
+        />
+      )}
+      {testParts && (
+        <PartsRow
+          id="flow-tests-title"
+          title="Inside the tests on main"
+          note="After a merge, CI on main validates the module's jurisdiction at the merge commit: first the wait for that validation to start, then the run itself."
+          parts={testParts.parts}
+          extra={<FirstResult first={testParts.first} />}
+        />
+      )}
       <section className={styles.flowPart} aria-labelledby="flow-gates-title">
         <PartHead id="flow-gates-title" title="Where runs go">
           Each bar is one step, with the number of runs that reached it: the runs that passed the step before.

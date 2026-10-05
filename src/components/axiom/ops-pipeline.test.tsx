@@ -6,7 +6,7 @@ import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 import type { QueuedSummary, QueueItemView } from "@/lib/axiom/encoding-queues";
 import type { CorpusJurisdiction, CorpusView } from "@/lib/axiom/corpus-releases";
 import { pipelineInsights, scopeOptions } from "@/lib/axiom/encoding-pipeline-insights";
-import { dispatchFlow, encodeParts, runRows, stepTimes } from "@/lib/axiom/encoding-pipeline-runs";
+import { dispatchFlow, encodeParts, runRows, stepTimes, testsParts } from "@/lib/axiom/encoding-pipeline-runs";
 import { act, waitFor } from "@testing-library/react";
 
 const push = vi.fn();
@@ -733,6 +733,33 @@ describe("OpsPipeline", () => {
         "Encoded0100",
         "Failed0001",
       ]);
+    });
+
+    it("opens up the tests on main into the wait, the run, and the first result", () => {
+      const runs = runRows([
+        mergedAttempt({
+          id: "a",
+          pr_merged_at: "2026-09-21T09:00:00Z",
+          tests_first_started_at: "2026-09-21T09:16:00Z",
+          tests_first_at: "2026-09-21T11:07:00Z",
+          tests_first_status: "pass",
+        }),
+      ]);
+      render(
+        <OpsPipeline
+          view={pipelineView(attempts, NOW)}
+          queued={null}
+          flow={dispatchFlow(runs)}
+          testParts={testsParts(runs)}
+          referenceMs={NOW}
+        />
+      );
+      const section = screen.getByRole("region", { name: "Inside the tests on main" });
+      expect(within(section).getAllByRole("listitem").map((part) => part.textContent)).toEqual([
+        "Wait to start?16m",
+        "Validation run?1h 51m",
+      ]);
+      expect(within(section).getByText("First result").closest("div")?.parentElement).toHaveTextContent(/^First result\?Pass1Fail0$/);
     });
 
     it("says when no run reached a gate", () => {

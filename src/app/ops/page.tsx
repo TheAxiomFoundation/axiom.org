@@ -14,7 +14,7 @@ import {
   scopeOptions,
 } from "@/lib/axiom/encoding-pipeline-insights";
 import { opsPipelineVisible } from "@/lib/axiom/ops-pipeline-visibility";
-import { dispatchFlow, encodeParts, runRows, stepTimes } from "@/lib/axiom/encoding-pipeline-runs";
+import { dispatchFlow, encodeParts, runRows, stepTimes, testsParts } from "@/lib/axiom/encoding-pipeline-runs";
 import { getEncodingStatus, getRecentCorpusScopes } from "@/lib/corpus-status";
 import { SITE_URL } from "@/lib/urls";
 
@@ -74,6 +74,7 @@ export default async function OpsPage({
             }))}
             times={stepTimes(runs, referenceMs)}
             parts={encodeParts(runs)}
+            testParts={testsParts(runs)}
             referenceMs={referenceMs}
           />
         ) : null
