@@ -6,6 +6,8 @@ import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 import type { QueuedSummary, QueueItemView } from "@/lib/axiom/encoding-queues";
 import type { CorpusJurisdiction, CorpusView } from "@/lib/axiom/corpus-releases";
 import { pipelineInsights, scopeOptions } from "@/lib/axiom/encoding-pipeline-insights";
+import { dispatchFlow, runRows } from "@/lib/axiom/encoding-pipeline-runs";
+import { act, waitFor } from "@testing-library/react";
 
 const push = vi.fn();
 vi.mock("next/navigation", () => ({ usePathname: () => "/ops", useRouter: () => ({ push }) }));
@@ -561,5 +563,117 @@ describe("OpsPipeline", () => {
     const attempts = [mergedAttempt({ synced_at: "2026-09-22T00:00:00Z", index_status: "indexed", tests_status: "pass" })];
     render(<OpsPipeline view={pipelineView(attempts, NOW)} queued={null} referenceMs={NOW} />);
     expect(within(screen.getByRole("group", { name: "Top blockers" })).getByText("Nothing is stuck.")).toBeInTheDocument();
+  });
+
+  describe("flow and run log", () => {
+    const attempts = [
+      pipelineAttempt({ id: "c", citation: "us/c", run_conclusion: "cancelled", cancel_stage: "approval" }),
+      pipelineAttempt({ id: "v", citation: "us/v", encoder_error_rule: "rule-a", encoder_error: "a.yaml: ci: [rule-a] x", failure_source: "diagnostics", encoder_version: "0.2.9", dispatched_by: "Pavel" }),
+      mergedAttempt({ id: "m", citation: "us/m", encoder_version: "0.2.10", synced_at: "S", index_status: "indexed", tests_status: "pass" }),
+    ];
+    const rows = runRows(attempts);
+    const renderFlow = (scope: { jurisdiction: string; only: boolean } | null = null) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => ({ ok: true, json: async () => ({ rows }) }) as Response)
+      );
+      render(
+        <OpsPipeline
+          view={pipelineView(attempts, NOW)}
+          insights={pipelineInsights(attempts, NOW)}
+          scope={scope}
+          queued={null}
+          flow={dispatchFlow(rows).map((g) => ({ ...g, segments: g.segments.map((seg) => ({ ...seg, ids: [] })) }))}
+          referenceMs={NOW}
+        />
+      );
+      openDetails();
+    };
+
+    it("opens on the flow, and lists the runs behind a part of it", async () => {
+      renderFlow({ jurisdiction: "us", only: true });
+      expect(screen.getByRole("tab", { name: "Flow" })).toHaveAttribute("aria-selected", "true");
+      const flow = screen.getByRole("list", { name: "Dispatches through each gate" });
+      expect(flow).toHaveTextContent(/Signing approval3 in/);
+      fireEvent.click(within(flow).getByRole("button", { name: /^Validation rules\s*1\s*50%$/ }));
+      const list = await screen.findByRole("region", { name: "Encode run: Validation rules runs" });
+      expect(fetch).toHaveBeenCalledWith("/ops/runs?j=us&only=1");
+      expect(within(list).getByRole("link", { name: "us/v" })).toHaveAttribute("href", "/ops/journey?citation=us%2Fv");
+      expect(within(list).getByText("Validation rules · rule-a")).toBeInTheDocument();
+      expect(within(list).getByText(/by Pavel · encoder 0.2.9/)).toBeInTheDocument();
+      // A second part reuses the runs already loaded.
+      fireEvent.click(within(flow).getByRole("button", { name: /^Tests pass/ }));
+      await screen.findByRole("region", { name: "Tests on main: Tests pass runs" });
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("filters the run log and exports it", async () => {
+      renderFlow();
+      fireEvent.click(screen.getByRole("tab", { name: "Run log" }));
+      expect(screen.getByText("Loading runs…")).toBeInTheDocument();
+      await screen.findByText("3 of 3 runs");
+      expect(fetch).toHaveBeenCalledWith("/ops/runs");
+      const table = screen.getByRole("table");
+      expect(within(table).getAllByRole("row")).toHaveLength(4);
+      fireEvent.change(screen.getByRole("combobox", { name: "Outcome" }), { target: { value: "Validation rules" } });
+      expect(screen.getByText("1 of 3 runs")).toBeInTheDocument();
+      fireEvent.change(screen.getByRole("combobox", { name: "Outcome" }), { target: { value: "" } });
+      fireEvent.change(screen.getByRole("combobox", { name: "Encoder version" }), { target: { value: "0.2.10" } });
+      expect(within(screen.getByRole("table")).getByRole("link", { name: "us/m" })).toBeInTheDocument();
+      expect(within(screen.getByRole("table")).getByText("main")).toBeInTheDocument();
+      fireEvent.change(screen.getByRole("combobox", { name: "Encoder version" }), { target: { value: "" } });
+      fireEvent.change(screen.getByRole("searchbox", { name: "Search citations" }), { target: { value: "US/C" } });
+      expect(screen.getByText("1 of 3 runs")).toBeInTheDocument();
+
+      const created: string[] = [];
+      vi.stubGlobal("URL", Object.assign(URL, {
+        createObjectURL: vi.fn((blob: Blob) => {
+          void blob.text().then((text) => created.push(text));
+          return "blob:x";
+        }),
+        revokeObjectURL: vi.fn(),
+      }));
+      const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+      fireEvent.click(screen.getByRole("button", { name: "Export CSV" }));
+      expect(click).toHaveBeenCalled();
+      await waitFor(() => expect(created).toHaveLength(1));
+      const [header, line] = created[0].split("\n");
+      expect(header.split(",").slice(0, 3)).toEqual(["dispatched_at", "citation", "jurisdiction"]);
+      expect(line).toContain("us/c");
+      expect(line).toContain("Cancelled at approval");
+    });
+
+    it("says when no run reached a gate", () => {
+      const cancelled = runRows([pipelineAttempt({ run_conclusion: "cancelled", cancel_stage: "approval" })]);
+      render(<OpsPipeline view={pipelineView(attempts, NOW)} queued={null} flow={dispatchFlow(cancelled)} referenceMs={NOW} />);
+      openDetails();
+      expect(screen.getAllByText("No runs reached this gate.")).toHaveLength(6);
+    });
+
+    it("pages a long run log, and says when it cannot load", async () => {
+      const many = runRows(Array.from({ length: 60 }, (_, i) => pipelineAttempt({ id: `r${i}`, citation: `us/r/${i}` })));
+      vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ rows: many }) }) as Response));
+      render(
+        <OpsPipeline view={pipelineView(attempts, NOW)} queued={null} flow={dispatchFlow(rows)} referenceMs={NOW} />
+      );
+      openDetails();
+      fireEvent.click(screen.getByRole("tab", { name: "Run log" }));
+      await screen.findByText("60 of 60 runs");
+      expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(51);
+      fireEvent.click(screen.getByRole("button", { name: "Show 10 more" }));
+      expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(61);
+      cleanup();
+
+      vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 503 }) as Response));
+      render(<OpsPipeline view={pipelineView(attempts, NOW)} queued={null} flow={dispatchFlow(rows)} referenceMs={NOW} />);
+      openDetails();
+      fireEvent.click(screen.getByRole("tab", { name: "Run log" }));
+      await screen.findByText("The run log could not load. Try again later.");
+      // The breakdowns are still one tab away.
+      await act(async () => {
+        fireEvent.click(screen.getByRole("tab", { name: "Breakdowns" }));
+      });
+      expect(screen.getByRole("group", { name: "Why encodes fail" })).toBeInTheDocument();
+    });
   });
 });

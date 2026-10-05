@@ -460,7 +460,7 @@ export const ENCODE_GATE_LABELS: Record<EncodeGate, string> = {
   review: "Review",
   sign: "Sign and package",
   publish: "Open the PR",
-  encode: "Inside the encode step (no detail)",
+  encode: "Encode and apply step",
   cancelled: "Cancelled or timed out",
   pending: "Cause not looked up yet",
   unknown: "No detail recorded",

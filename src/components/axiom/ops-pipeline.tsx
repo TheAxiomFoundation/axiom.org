@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ChevronDown, X } from "lucide-react";
@@ -32,6 +32,12 @@ import {
   type CorpusView,
 } from "@/lib/axiom/corpus-releases";
 import { jurisdictionName } from "@/lib/axiom/jurisdiction-names";
+import {
+  dispatchFlow,
+  type FlowGate,
+  type FlowSegment,
+  type RunRow,
+} from "@/lib/axiom/encoding-pipeline-runs";
 
 /** The stages a citation moves through, in order, with a short status when nothing is stuck. */
 const FLOW: Array<{ stage: PipelineStage; hint: string }> = [
@@ -74,7 +80,25 @@ interface CitationListing {
 }
 
 /** What the list panel shows: citations, the queue's items, or the corpus releases. */
-type Listing = CitationListing | { kind: "queue" } | { kind: "corpus" };
+type Listing =
+  | CitationListing
+  | { kind: "queue" }
+  | { kind: "corpus" }
+  | { kind: "runs"; title: string; rows: RunRow[] };
+
+type DetailsTab = "flow" | "log" | "cards";
+
+const DETAILS_TABS: Array<{ id: DetailsTab; label: string }> = [
+  { id: "flow", label: "Flow" },
+  { id: "log", label: "Run log" },
+  { id: "cards", label: "Breakdowns" },
+];
+
+/** The /ops/runs query for a scope. */
+function scopeQuery(scope: PipelineScope | null): string {
+  if (!scope) return "";
+  return `?${new URLSearchParams({ j: scope.jurisdiction, ...(scope.only ? { only: "1" } : {}) })}`;
+}
 
 const NO_SCOPES = { roots: [], within: [] };
 
@@ -85,6 +109,7 @@ export function OpsPipeline({
   scopes = NO_SCOPES,
   queued,
   corpus = null,
+  flow = null,
   referenceMs,
 }: {
   view: PipelineView;
@@ -94,10 +119,40 @@ export function OpsPipeline({
   scopes?: { roots: ScopeOption[]; within: ScopeOption[] };
   queued: QueuedSummary | null;
   corpus?: CorpusView | null;
+  /** Every dispatch's path through the gates, counts only; rows load on demand. */
+  flow?: FlowGate[] | null;
   referenceMs: number;
 }) {
   const [listing, setListing] = useState<Listing | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsTab, setDetailsTab] = useState<DetailsTab>(flow ? "flow" : "cards");
+  const runsRequest = useRef<Promise<RunRow[]> | null>(null);
+  // Every dispatch in the scope, fetched once when the run log or a flow
+  // segment first needs it.
+  const loadRuns = useCallback(() => {
+    runsRequest.current ??= fetch(`/ops/runs${scopeQuery(scope)}`)
+      .then((response) => {
+        if (!response.ok) throw new Error(`runs: ${response.status}`);
+        return response.json() as Promise<{ rows: RunRow[] }>;
+      })
+      .then((body) => body.rows)
+      .catch((error: unknown) => {
+        runsRequest.current = null;
+        throw error;
+      });
+    return runsRequest.current;
+  }, [scope]);
+  const openSegment = (gate: FlowGate, segment: FlowSegment) =>
+    loadRuns()
+      .then((rows) => {
+        const ids = new Set(
+          dispatchFlow(rows)
+            .find((g) => g.key === gate.key)
+            ?.segments.find((s) => s.key === segment.key)?.ids ?? []
+        );
+        show({ kind: "runs", title: `${gate.label}: ${segment.label}`, rows: rows.filter((r) => ids.has(r.id)) });
+      })
+      .catch(() => undefined);
   const listRef = useRef<HTMLDivElement>(null);
   const shows = (title: string) => listing?.kind === "citations" && listing.title === title;
 
@@ -204,6 +259,9 @@ export function OpsPipeline({
           {listing.kind === "corpus" && corpus && (
             <CorpusList corpus={corpus} referenceMs={referenceMs} onClose={() => setListing(null)} />
           )}
+          {listing.kind === "runs" && (
+            <RunList title={listing.title} rows={listing.rows} referenceMs={referenceMs} onClose={() => setListing(null)} />
+          )}
         </div>
       )}
 
@@ -221,6 +279,26 @@ export function OpsPipeline({
 
       {detailsOpen && (
         <div id="pipeline-details" className={styles.details}>
+          {flow && (
+            <div className={styles.tabs} role="tablist" aria-label="Details view">
+              {DETAILS_TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={detailsTab === tab.id}
+                  className={styles.tab}
+                  onClick={() => setDetailsTab(tab.id)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          )}
+          {flow && detailsTab === "flow" && <FlowView gates={flow} onOpen={openSegment} />}
+          {flow && detailsTab === "log" && <RunLog load={loadRuns} referenceMs={referenceMs} />}
+          {detailsTab === "cards" && (
+          <>
       <ol
         className={`${styles.flow} ${corpus ? styles.flowWide : ""}`}
         aria-label="Pipeline stages"
@@ -343,6 +421,8 @@ export function OpsPipeline({
         <SigningApproval view={view} referenceMs={referenceMs} />
         <Throughput view={view} />
       </div>
+          </>
+          )}
         </div>
       )}
     </section>
@@ -1165,6 +1245,348 @@ function VersionsCard({ bins }: { bins: VersionBin[] }) {
             rate: { label: bin.to, success: bin.successes, total: bin.runs },
           }))}
         />
+      )}
+    </div>
+  );
+}
+
+const SEGMENT_CLASS: Record<FlowSegment["kind"], string> = {
+  continue: styles.segContinue,
+  pending: styles.segPending,
+  loss: styles.segLoss,
+};
+
+/**
+ * Every dispatch through the gates, one row per gate: a bar of the runs that
+ * reached it, split into those that went on, those still waiting, and those
+ * lost there. Each part opens its runs.
+ */
+function FlowView({
+  gates,
+  onOpen,
+}: {
+  gates: FlowGate[];
+  onOpen: (gate: FlowGate, segment: FlowSegment) => void;
+}) {
+  return (
+    <ol className={styles.flowGates} aria-label="Dispatches through each gate">
+      {gates.map((gate) => (
+        <li key={gate.key} className={styles.flowGate}>
+          <div className={styles.flowGateHead}>
+            <span className={styles.flowGateName}>{gate.label}</span>
+            <span className={styles.flowGateIn}>{number(gate.input)} in</span>
+          </div>
+          {gate.input === 0 ? (
+            <p className={styles.empty}>No runs reached this gate.</p>
+          ) : (
+            <>
+              <div className={styles.flowBar} aria-hidden>
+                {gate.segments.map((segment) => (
+                  <span
+                    key={segment.key}
+                    className={`${styles.flowSeg} ${SEGMENT_CLASS[segment.kind]}`}
+                    style={{ flexGrow: segment.count }}
+                    title={`${segment.label}: ${number(segment.count)}`}
+                  />
+                ))}
+              </div>
+              <div className={styles.flowLegend}>
+                {gate.segments.map((segment) => (
+                  <button
+                    key={segment.key}
+                    type="button"
+                    className={styles.flowChip}
+                    onClick={() => onOpen(gate, segment)}
+                  >
+                    <span className={`${styles.flowDot} ${SEGMENT_CLASS[segment.kind]}`} aria-hidden />
+                    {segment.label}
+                    <strong>{number(segment.count)}</strong>
+                    <span className={styles.flowShare}>{percent(segment.count, gate.input)}%</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** One run's provenance in a line: when, by whom, which encoder, how long it waited and ran. */
+function runProvenance(row: RunRow): string {
+  return [
+    `dispatched ${formatDay(row.dispatchedAt)}`,
+    row.by ? `by ${row.by}` : null,
+    row.encoder ? `encoder ${row.encoder}` : null,
+    row.approvalMs !== null ? `approval ${durationLabel(row.approvalMs)}` : null,
+    row.runMs !== null ? `run ${durationLabel(row.runMs)}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function runWhere(row: RunRow): string | null {
+  if (!row.pr) return null;
+  const parts = [
+    row.merged ? `merged ${row.merged === "main" ? "into main" : "off main"}` : `PR ${row.pr.state}`,
+    row.index === "indexed" ? "indexed" : row.index === "missing" ? "missing from the index" : null,
+    row.tests ? `tests ${row.tests}` : null,
+  ];
+  return parts.filter(Boolean).join(" · ");
+}
+
+const RUN_LIST_MAX = 60;
+
+/** The runs behind one part of the flow, newest first. */
+function RunList({
+  title,
+  rows,
+  referenceMs,
+  onClose,
+}: {
+  title: string;
+  rows: RunRow[];
+  referenceMs: number;
+  onClose: () => void;
+}) {
+  const shown = rows.slice(0, RUN_LIST_MAX);
+  return (
+    <ListPanel title={title} label={`${title} runs`} count={rows.length} description="" onClose={onClose}>
+      {rows.length === 0 ? (
+        <p className={styles.empty}>Nothing here right now.</p>
+      ) : (
+        <>
+          {shown.length < rows.length && (
+            <p className={styles.listNote}>
+              Latest {number(shown.length)} of {number(rows.length)}. The run log has all of them.
+            </p>
+          )}
+          <ul className={styles.items}>
+            {shown.map((row) => (
+              <Row
+                key={row.id}
+                title={row.citation}
+                href={journeyHref(row.citation)}
+                why={[row.outcomeLabel, row.cause].filter(Boolean).join(" · ")}
+                detail={runProvenance(row)}
+                age={ageLabel(row.dispatchedAt, referenceMs)}
+                links={[
+                  { label: "run", href: row.runUrl },
+                  ...(row.pr ? [{ label: row.pr.label, href: row.pr.url }] : []),
+                ]}
+                flags={runWhere(row)}
+              />
+            ))}
+          </ul>
+        </>
+      )}
+    </ListPanel>
+  );
+}
+
+const LOG_PAGE = 50;
+
+const CSV_COLUMNS: Array<[string, (row: RunRow) => string | number | null]> = [
+  ["dispatched_at", (r) => r.dispatchedAt],
+  ["citation", (r) => r.citation],
+  ["jurisdiction", (r) => r.jurisdiction],
+  ["dispatched_by", (r) => r.by],
+  ["encoder_version", (r) => r.encoder],
+  ["approval_seconds", (r) => (r.approvalMs === null ? null : Math.round(r.approvalMs / 1000))],
+  ["run_seconds", (r) => (r.runMs === null ? null : Math.round(r.runMs / 1000))],
+  ["outcome", (r) => r.outcome],
+  ["outcome_label", (r) => r.outcomeLabel],
+  ["cause", (r) => r.cause],
+  ["run_url", (r) => r.runUrl],
+  ["pr", (r) => r.pr?.label ?? null],
+  ["pr_url", (r) => r.pr?.url ?? null],
+  ["pr_state", (r) => r.pr?.state ?? null],
+  ["pr_check_error", (r) => r.pr?.error ?? null],
+  ["merged", (r) => r.merged],
+  ["index", (r) => r.index],
+  ["tests", (r) => r.tests],
+  ["tests_url", (r) => r.testsUrl],
+];
+
+export function runsCsv(rows: RunRow[]): string {
+  const cell = (value: string | number | null) => {
+    if (value === null) return "";
+    const text = String(value);
+    return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+  };
+  return [
+    CSV_COLUMNS.map(([name]) => name).join(","),
+    ...rows.map((row) => CSV_COLUMNS.map(([, read]) => cell(read(row))).join(",")),
+  ].join("\n");
+}
+
+/** Every dispatch with its full provenance: filter, read, export. */
+function RunLog({ load, referenceMs }: { load: () => Promise<RunRow[]>; referenceMs: number }) {
+  const [rows, setRows] = useState<RunRow[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [query, setQuery] = useState("");
+  const [outcome, setOutcome] = useState("");
+  const [encoder, setEncoder] = useState("");
+  const [limit, setLimit] = useState(LOG_PAGE);
+  useEffect(() => {
+    let live = true;
+    load().then(
+      (loaded) => live && setRows(loaded),
+      () => live && setFailed(true)
+    );
+    return () => {
+      live = false;
+    };
+  }, [load]);
+  if (failed) return <p className={styles.empty}>The run log could not load. Try again later.</p>;
+  if (!rows) return <p className={styles.empty}>Loading runs…</p>;
+
+  const outcomes = [...new Set(rows.map((r) => r.outcomeLabel))].sort();
+  const encoders = [...new Set(rows.map((r) => r.encoder).filter((v): v is string => !!v))].sort(
+    (a, b) => b.localeCompare(a, undefined, { numeric: true })
+  );
+  const needle = query.trim().toLowerCase();
+  const filtered = rows.filter(
+    (row) =>
+      (!needle || row.citation.toLowerCase().includes(needle)) &&
+      (!outcome || row.outcomeLabel === outcome) &&
+      (!encoder || row.encoder === encoder)
+  );
+  const download = () => {
+    const url = URL.createObjectURL(new Blob([runsCsv(filtered)], { type: "text/csv" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "encode-runs.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+  return (
+    <div className={styles.runLog}>
+      <div className={styles.logFilters}>
+        <input
+          type="search"
+          className={styles.logSearch}
+          placeholder="Search citations"
+          aria-label="Search citations"
+          value={query}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setLimit(LOG_PAGE);
+          }}
+        />
+        <select
+          className={styles.scopeSelect}
+          aria-label="Outcome"
+          value={outcome}
+          onChange={(event) => {
+            setOutcome(event.target.value);
+            setLimit(LOG_PAGE);
+          }}
+        >
+          <option value="">All outcomes</option>
+          {outcomes.map((label) => (
+            <option key={label} value={label}>
+              {label}
+            </option>
+          ))}
+        </select>
+        <select
+          className={styles.scopeSelect}
+          aria-label="Encoder version"
+          value={encoder}
+          onChange={(event) => {
+            setEncoder(event.target.value);
+            setLimit(LOG_PAGE);
+          }}
+        >
+          <option value="">All encoder versions</option>
+          {encoders.map((version) => (
+            <option key={version} value={version}>
+              {version}
+            </option>
+          ))}
+        </select>
+        <span className={styles.logCount}>
+          {number(filtered.length)} of {number(rows.length)} runs
+        </span>
+        <button type="button" className={styles.logExport} onClick={download}>
+          Export CSV
+        </button>
+      </div>
+      <div className={styles.logTableWrap}>
+        <table className={styles.logTable}>
+          <thead>
+            <tr>
+              <th scope="col">Dispatched</th>
+              <th scope="col">Citation</th>
+              <th scope="col">Encoder</th>
+              <th scope="col">Approval</th>
+              <th scope="col">Run</th>
+              <th scope="col">Outcome</th>
+              <th scope="col">PR</th>
+              <th scope="col">After merge</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.slice(0, limit).map((row) => (
+              <tr key={row.id}>
+                <td title={row.dispatchedAt}>
+                  {ageLabel(row.dispatchedAt, referenceMs)} ago
+                  {row.by && <span className={styles.logSub}>{row.by}</span>}
+                </td>
+                <td className={styles.logCitation}>
+                  <a href={journeyHref(row.citation)}>{row.citation}</a>
+                </td>
+                <td className={styles.logMono}>{row.encoder ?? "—"}</td>
+                <td>{row.approvalMs === null ? "—" : durationLabel(row.approvalMs)}</td>
+                <td>{row.runMs === null ? "—" : durationLabel(row.runMs)}</td>
+                <td className={styles.logOutcome} data-outcome={row.outcome}>
+                  <a href={row.runUrl} target="_blank" rel="noreferrer">
+                    {row.outcomeLabel}
+                  </a>
+                  {row.cause && (
+                    <span className={styles.logSub} title={row.cause}>
+                      {row.cause}
+                    </span>
+                  )}
+                </td>
+                <td>
+                  {row.pr ? (
+                    <>
+                      <a href={row.pr.url} target="_blank" rel="noreferrer">
+                        {row.pr.label}
+                      </a>
+                      <span className={styles.logSub} title={row.pr.error ?? undefined}>
+                        {row.pr.state}
+                        {row.pr.error ? ` · ${row.pr.error}` : ""}
+                      </span>
+                    </>
+                  ) : (
+                    "—"
+                  )}
+                </td>
+                <td>
+                  {row.merged ? (
+                    <>
+                      {row.merged === "main" ? "main" : "off main"}
+                      <span className={styles.logSub}>
+                        {[row.index, row.tests ? `tests ${row.tests}` : null].filter(Boolean).join(" · ")}
+                      </span>
+                    </>
+                  ) : (
+                    "—"
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {filtered.length > limit && (
+        <button type="button" className={styles.logMore} onClick={() => setLimit(limit + LOG_PAGE)}>
+          Show {number(Math.min(LOG_PAGE, filtered.length - limit))} more
+        </button>
       )}
     </div>
   );

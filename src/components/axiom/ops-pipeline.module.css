@@ -346,6 +346,243 @@
   padding-top: 2px;
 }
 
+/* ── Details: tabs, flow, run log ── */
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.tab {
+  padding: 8px 12px;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  font-size: 13px;
+  color: var(--color-ink-muted);
+  cursor: pointer;
+}
+
+.tab[aria-selected="true"] {
+  border-bottom-color: var(--color-accent);
+  color: var(--color-ink);
+  font-weight: 550;
+}
+
+.flowGates {
+  display: grid;
+  gap: 18px;
+  margin-top: 18px;
+  padding: 0;
+  list-style: none;
+}
+
+.flowGate {
+  display: grid;
+  gap: 6px;
+}
+
+.flowGateHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.flowGateName {
+  font-size: 14px;
+  font-weight: 550;
+  color: var(--color-ink);
+}
+
+.flowGateIn {
+  font-size: 12px;
+  color: var(--color-ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.flowBar {
+  display: flex;
+  gap: 2px;
+  height: 14px;
+}
+
+.flowSeg {
+  min-width: 3px;
+  border-radius: 3px;
+}
+
+.segContinue {
+  background: var(--color-accent);
+}
+
+.segPending {
+  background: color-mix(in srgb, var(--color-ink) 18%, transparent);
+}
+
+.segLoss {
+  background: color-mix(in srgb, var(--color-warning) 38%, var(--color-paper));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-warning) 55%, transparent);
+}
+
+.flowLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+
+.flowChip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid var(--color-rule);
+  border-radius: 999px;
+  background: var(--color-paper);
+  font-size: 12px;
+  color: var(--color-ink-secondary);
+  cursor: pointer;
+}
+
+.flowChip:hover {
+  border-color: var(--color-accent);
+}
+
+.flowChip strong {
+  font-weight: 600;
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.flowDot {
+  align-self: center;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.flowShare {
+  font-size: 11px;
+  color: var(--color-ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.runLog {
+  margin-top: 14px;
+}
+
+.logFilters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.logSearch {
+  flex: 1 1 200px;
+  padding: 5px 10px;
+  border: 1px solid var(--color-rule);
+  border-radius: 8px;
+  background: var(--color-paper);
+  font-size: 13px;
+  color: var(--color-ink);
+}
+
+.logCount {
+  font-size: 12px;
+  color: var(--color-ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.logExport,
+.logMore {
+  padding: 5px 10px;
+  border: 1px solid var(--color-rule);
+  border-radius: 8px;
+  background: var(--color-paper);
+  font-size: 12px;
+  color: var(--color-ink);
+  cursor: pointer;
+}
+
+.logExport {
+  margin-left: auto;
+}
+
+.logMore {
+  margin-top: 10px;
+}
+
+.logTableWrap {
+  max-height: 640px;
+  margin-top: 10px;
+  overflow: auto;
+  border: 1px solid var(--color-rule);
+  border-radius: 10px;
+}
+
+.logTable {
+  width: 100%;
+  min-width: 980px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.logTable th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-rule);
+  background: var(--color-paper);
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-align: left;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+}
+
+.logTable td {
+  max-width: 280px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-rule);
+  vertical-align: top;
+  color: var(--color-ink);
+}
+
+.logTable a {
+  color: var(--color-ink);
+}
+
+.logSub {
+  display: block;
+  overflow: hidden;
+  max-width: 280px;
+  margin-top: 2px;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-ink-muted);
+}
+
+.logCitation {
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono), monospace;
+}
+
+.logMono {
+  font-family: var(--font-mono), monospace;
+  white-space: nowrap;
+}
+
+.logOutcome[data-outcome="failed"] a,
+.logOutcome[data-outcome="cancelled"] a {
+  color: var(--color-warning);
+}
+
 /* ── Stage strip ── */
 
 .flow {

@@ -14,6 +14,7 @@ import {
   scopeOptions,
 } from "@/lib/axiom/encoding-pipeline-insights";
 import { opsPipelineVisible } from "@/lib/axiom/ops-pipeline-visibility";
+import { dispatchFlow, runRows } from "@/lib/axiom/encoding-pipeline-runs";
 import { getEncodingStatus, getRecentCorpusScopes } from "@/lib/corpus-status";
 import { SITE_URL } from "@/lib/urls";
 
@@ -65,6 +66,11 @@ export default async function OpsPage({
             scopes={scopeOptions(attempts, scope)}
             queued={scopeQueued(queuedSummary(queues), keep)}
             corpus={corpus && scopeCorpus(corpus, scope ? rootJurisdiction(scope.jurisdiction) : null)}
+            // Counts only: the runs behind each part load on demand from /ops/runs.
+            flow={dispatchFlow(runRows(scoped)).map((gate) => ({
+              ...gate,
+              segments: gate.segments.map((segment) => ({ ...segment, ids: [] })),
+            }))}
             referenceMs={referenceMs}
           />
         ) : null
