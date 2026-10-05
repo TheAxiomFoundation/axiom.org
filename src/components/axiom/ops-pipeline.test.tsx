@@ -51,10 +51,15 @@ function renderPipeline(
   },
   corpus: CorpusView | null = null
 ) {
-  return render(
+  const result = render(
     <OpsPipeline view={pipelineView(attempts, NOW)} queued={queued} corpus={corpus} referenceMs={NOW} />
   );
+  // The stage strip, drop-outs, and cards sit under Details.
+  openDetails();
+  return result;
 }
+
+const openDetails = () => fireEvent.click(screen.getByRole("button", { name: /^Details/ }));
 
 const queuedWith = (overrides: Partial<QueuedSummary>): QueuedSummary => ({
   pending: 5,
@@ -74,7 +79,7 @@ const card = (name: string) => screen.getByRole("group", { name });
 describe("OpsPipeline", () => {
   it("lays out the stage strip and the drop-outs, with no list open", () => {
     renderPipeline();
-    expect(screen.getByText("6 citations · 7 dispatches since Sep 1, 2026")).toBeInTheDocument();
+    expect(screen.getByText(/^6 citations since Sep 1, 2026 · updated \S+ ago$/)).toBeInTheDocument();
     const stages = screen.getByRole("list", { name: "Pipeline stages" });
     expect(within(stages).getByText("18,615")).toBeInTheDocument();
     expect(within(stages).getByText("paused")).toHaveAttribute("title", "Awaiting a green tip.");
@@ -88,10 +93,10 @@ describe("OpsPipeline", () => {
     expect(screen.queryByRole("region", { name: / citations$/ })).not.toBeInTheDocument();
   });
 
-  it("opens the biggest bottleneck, scrolls to it, and closes", () => {
+  it("opens a drop-out, scrolls to it, and closes", () => {
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ top: 5000 } as DOMRect);
     renderPipeline();
-    fireEvent.click(screen.getByRole("button", { name: /Biggest bottleneck: 3 last encode failed/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^3\s*last encode failed$/ }));
     flushFrames();
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
     const list = openList();
@@ -155,10 +160,12 @@ describe("OpsPipeline", () => {
     expect(screen.getByRole("button", { name: /1\s*fails validation on main/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /1\s*disagrees with an oracle/ })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /Cancelled or timed out\s*1/ }));
+    fireEvent.click(within(card("Why encodes fail")).getByRole("button", { name: /Cancelled or timed out\s*1/ }));
     expect(within(openList()).getByRole("link", { name: "us/b" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /Blocked by another jurisdiction's failing check\s*1/ }));
+    fireEvent.click(
+      within(card("What holds PRs in review")).getByRole("button", { name: /Blocked by another jurisdiction's failing check\s*1/ })
+    );
     const holds = openList();
     expect(within(holds).getByRole("heading", { name: /In review: Blocked by another/ })).toBeInTheDocument();
     expect(within(holds).getByText("failing: validate / validate (us-ak) · 4 checks cancelled")).toBeInTheDocument();
@@ -433,11 +440,19 @@ describe("OpsPipeline", () => {
         referenceMs={NOW}
       />
     );
+    openDetails();
     const bar = screen.getByRole("navigation", { name: "Jurisdiction" });
     expect(within(bar).getByRole("link", { name: "All" })).toHaveAttribute("href", "/ops#pipeline-title");
     expect(within(bar).getByRole("link", { name: /^us\s*2$/ })).toHaveAttribute("aria-current", "page");
     expect(within(bar).getByRole("link", { name: /^dk\s*1$/ })).toHaveAttribute("href", "/ops?j=dk#pipeline-title");
-    const select = within(bar).getByRole("combobox", { name: "Within us" });
+    const select = within(bar).getByRole("combobox", { name: "Within United States" });
+    // All first, then the federal level, then the states by name.
+    expect([...select.querySelectorAll("option")].map((o) => o.textContent)).toEqual([
+      "All (2)",
+      "US Federal only (1)",
+      "Louisiana (1)",
+    ]);
+    expect(select.querySelector("optgroup")).toHaveAttribute("label", "States");
     fireEvent.change(select, { target: { value: "us:only" } });
     expect(push).toHaveBeenLastCalledWith("/ops?j=us&only=1#pipeline-title");
     fireEvent.change(select, { target: { value: "us-la" } });
@@ -445,9 +460,11 @@ describe("OpsPipeline", () => {
     fireEvent.change(select, { target: { value: "" } });
     expect(push).toHaveBeenLastCalledWith("/ops?j=us#pipeline-title");
 
-    expect(screen.getByRole("list", { name: "Citations that ever reached each point" })).toHaveTextContent(
-      "3 citations2 encoded1 merged1 into main1 passing on main"
-    );
+    const funnel = screen.getByRole("list", { name: "Citations that ever reached each step" });
+    expect(funnel).toHaveTextContent(/^3dispatched.*2encoded.*1merged.*1in main.*1tests pass$/);
+    // Between the steps: what is stuck there now.
+    expect(within(funnel).getByRole("button", { name: "1 failed" })).toBeInTheDocument();
+    expect(within(funnel).getByRole("button", { name: "1 in review" })).toBeInTheDocument();
 
     const runs = screen.getByRole("group", { name: "Runs and retries" });
     expect(within(runs).getByText("of citations encode on the first attempt (2 of 3)")).toBeInTheDocument();
@@ -478,10 +495,71 @@ describe("OpsPipeline", () => {
         referenceMs={NOW}
       />
     );
+    openDetails();
     expect(screen.queryByRole("navigation", { name: "Jurisdiction" })).not.toBeInTheDocument();
     expect(screen.getByText("No run records its cost yet")).toBeInTheDocument();
     expect(screen.getByText("No encoder versions recorded yet.")).toBeInTheDocument();
     expect(within(screen.getByRole("group", { name: "Runs and retries" })).queryByText("Dispatched most")).not.toBeInTheDocument();
     expect(within(screen.getByRole("group", { name: "What holds PRs in review" })).queryByRole("button", { name: "By error" })).not.toBeInTheDocument();
+  });
+
+  it("summarizes on one screen and keeps the rest under Details", () => {
+    const attempts = [
+      ...["us/a", "us/b", "us/c"].map((citation, i) =>
+        pipelineAttempt({ id: `f${i}`, citation, encoder_error_rule: "rule-a", failure_source: "diagnostics" })
+      ),
+      pipelineAttempt({ id: "r", citation: "us/r", run_conclusion: "success", pr_state: "draft", pr_created_at: "2026-09-01T00:00:00Z", pr_checks: "failure", pr_failed_checks: ["validate / validate (us)"] }),
+      mergedAttempt({ id: "m", citation: "us/m", synced_at: "2026-09-22T00:00:00Z", index_status: "indexed", tests_status: "pass" }),
+      mergedAttempt({ id: "o", citation: "us/o", pr_targets_default: false, pr_base_branch: "codex/x" }),
+    ];
+    render(
+      <OpsPipeline
+        view={pipelineView(attempts, NOW)}
+        insights={pipelineInsights(attempts, NOW)}
+        queued={queuedWith({ pending: 935 })}
+        referenceMs={NOW}
+      />
+    );
+    // Details starts closed: no stage strip or cards.
+    const details = screen.getByRole("button", { name: /^Details/ });
+    expect(details).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("list", { name: "Pipeline stages" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Why encodes fail" })).not.toBeInTheDocument();
+
+    const funnel = screen.getByRole("list", { name: "Citations that ever reached each step" });
+    expect(funnel).toHaveTextContent(/^6dispatched.*3encoded.*2merged.*1in main.*1tests pass$/);
+    fireEvent.click(within(funnel).getByRole("button", { name: "3 failed" }));
+    expect(within(openList()).getByRole("heading", { name: /Last encode failed\s*3/ })).toBeInTheDocument();
+    expect(within(funnel).getByRole("button", { name: "3 failed" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(within(funnel).getByRole("button", { name: "1 off main" }));
+    expect(within(openList()).getByText("Merged into codex/x")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "935 queued" }));
+    expect(screen.getByRole("region", { name: "Queued items" })).toBeInTheDocument();
+
+    // The largest piles first, wherever they sit; each opens its citations.
+    const blockers = screen.getByRole("group", { name: "Top blockers" });
+    const rows = within(blockers).getAllByRole("button");
+    expect(rows.map((row) => row.textContent)).toEqual([
+      "EncodeValidation rules3",
+      "ReviewFails its own checks1",
+      "MergeMerged off main1",
+    ]);
+    fireEvent.click(rows[1]);
+    expect(within(openList()).getByRole("heading", { name: /In review: Fails its own checks\s*1/ })).toBeInTheDocument();
+
+    // The last full week, since the current one has only begun.
+    const trend = screen.getByRole("group", { name: "Weekly trend" });
+    expect(within(trend).getAllByText("last week")).toHaveLength(3);
+    expect(trend.querySelectorAll("[title^='Week of']")).toHaveLength(3 * 8);
+
+    fireEvent.click(details);
+    expect(details).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("list", { name: "Pipeline stages" })).toBeInTheDocument();
+  });
+
+  it("says when nothing is stuck", () => {
+    const attempts = [mergedAttempt({ synced_at: "2026-09-22T00:00:00Z", index_status: "indexed", tests_status: "pass" })];
+    render(<OpsPipeline view={pipelineView(attempts, NOW)} queued={null} referenceMs={NOW} />);
+    expect(within(screen.getByRole("group", { name: "Top blockers" })).getByText("Nothing is stuck.")).toBeInTheDocument();
   });
 });

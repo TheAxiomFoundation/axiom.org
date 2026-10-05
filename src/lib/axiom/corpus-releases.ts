@@ -15,7 +15,7 @@
 
 import { unstable_cache } from "next/cache";
 import { getSupabaseRestConfig, readSupabaseRows } from "@/lib/corpus-status";
-import { EXTRA_JURISDICTION_LABELS, JURISDICTIONS_SEED } from "./jurisdictions-seed";
+import { jurisdictionName } from "./jurisdiction-names";
 
 const REVALIDATE_SECONDS = 300;
 const CORPUS_REPO = "TheAxiomFoundation/axiom-corpus";
@@ -73,29 +73,6 @@ export interface CorpusView {
   lastPublish: { conclusion: string; at: string; url: string } | null;
 }
 
-const NAMES: Record<string, string> = {
-  ...Object.fromEntries(JURISDICTIONS_SEED.map((j) => [j.slug, j.label])),
-  ...EXTRA_JURISDICTION_LABELS,
-  // A release named for "us" carries the states too.
-  us: "United States",
-  am: "Armenia",
-  bo: "Bolivia",
-  co: "Colombia",
-  de: "Germany",
-  ec: "Ecuador",
-  eg: "Egypt",
-  et: "Ethiopia",
-  gh: "Ghana",
-  mz: "Mozambique",
-  ng: "Nigeria",
-  pe: "Peru",
-  rw: "Rwanda",
-  tz: "Tanzania",
-  "tz-znz": "Zanzibar",
-  ug: "Uganda",
-  vn: "Vietnam",
-  zm: "Zambia",
-};
 
 /**
  * The jurisdiction a release is for: the scope jurisdiction its name starts
@@ -167,7 +144,7 @@ export function corpusView(
 
     rows.push({
       jurisdiction,
-      name: NAMES[jurisdiction] ?? jurisdiction,
+      name: jurisdictionName(jurisdiction),
       status,
       serving: current
         ? { release: current[0], since: current[1], scopes: byName.get(current[0])?.scopes ?? 0 }
