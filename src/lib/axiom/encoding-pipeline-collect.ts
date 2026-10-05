@@ -394,6 +394,14 @@ function shardFor(
   return sharded ? null : shards.get("") ?? null;
 }
 
+/** A merge commit's shard run for the jurisdiction, by the same rule as shardFor. */
+function shardAtMerge(shards: Map<string, ShardRun>, jurisdiction: string | null): ShardRun | null {
+  const own = jurisdiction ? shards.get(jurisdiction) : undefined;
+  if (own) return own;
+  const sharded = [...shards.keys()].some((key) => key !== "");
+  return sharded ? null : (shards.get("") ?? null);
+}
+
 /**
  * Modules whose validation is waived: the `validate_failures` entries of a
  * repo's known-validation-gaps.yaml that carry an `active` waiver. CI skips
@@ -531,11 +539,63 @@ function moduleVerdict(
 export interface RunDetail {
   encodeStartedAt: string | null;
   cancelStage: PipelineAttempt["cancel_stage"];
+  /** The encode job's parts in seconds (see jobPhases); null for a part that did not run. */
+  phases: JobPhases;
+}
+
+export interface JobPhases {
+  setup: number | null;
+  encode: number | null;
+  publish: number | null;
+}
+
+interface RunStep {
+  name?: string;
+  conclusion?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
 }
 
 interface RunJob {
   name: string;
-  steps?: Array<{ conclusion?: string | null; started_at?: string | null }> | null;
+  steps?: RunStep[] | null;
+}
+
+/** The step that generates, validates, repairs, and reviews: the encode loop. */
+const ENCODE_STEP_RE = /^Encode, review, validate, and apply$/i;
+/** Steps outside the three parts: bookkeeping, failure bundles, and cleanup. */
+const UNTIMED_STEP_RE = /^(?:Post |Complete job$|Summarize model spend$|(?:Package|Upload) failed re-encode diagnostics$)/i;
+
+const seconds = (from: string, to: string) =>
+  Math.max(0, Math.round((Date.parse(to) - Date.parse(from)) / 1000));
+
+/**
+ * Split the encode job at its encode step. Setup runs from the first step
+ * to the encode step (or, when the job stopped before it, to the last step
+ * that ran); the encode part is that step; publishing runs from its end to
+ * the last packaging, signing, or PR step after it. Failure bundles and
+ * cleanup steps count toward none of them.
+ */
+export function jobPhases(steps: RunStep[]): JobPhases {
+  const ran = steps.filter(
+    (step): step is RunStep & { started_at: string; completed_at: string } =>
+      !!step.conclusion &&
+      step.conclusion !== "skipped" &&
+      !!step.started_at &&
+      !!step.completed_at &&
+      !UNTIMED_STEP_RE.test(step.name ?? "")
+  );
+  if (ran.length === 0) return { setup: null, encode: null, publish: null };
+  const at = ran.findIndex((step) => ENCODE_STEP_RE.test(step.name ?? ""));
+  const first = ran[0].started_at;
+  if (at < 0) return { setup: seconds(first, ran[ran.length - 1].completed_at), encode: null, publish: null };
+  const encode = ran[at];
+  const after = ran.slice(at + 1);
+  return {
+    setup: seconds(first, encode.started_at),
+    encode: seconds(encode.started_at, encode.completed_at),
+    publish: after.length ? seconds(encode.completed_at, after[after.length - 1].completed_at) : null,
+  };
 }
 
 /**
@@ -561,26 +621,135 @@ export function parseRunJobs(jobs: RunJob[], conclusion: string | null): RunDeta
   if (conclusion === "cancelled") {
     cancelStage = !encode ? "before_job" : ran.length === 0 ? "approval" : "running";
   }
-  return { encodeStartedAt: starts[0] ?? null, cancelStage };
+  return { encodeStartedAt: starts[0] ?? null, cancelStage, phases: jobPhases(encode?.steps ?? []) };
 }
 
 /**
  * Finished runs whose jobs have not been read, cancelled ones first (their
- * story is in the jobs), then newest first.
+ * story is in the jobs), then newest first. With `steps`, runs read before
+ * step times were recorded are read once more, after every unread run. A
+ * run named after no citation and never stored is left out: nothing would
+ * keep what its jobs say, so every pass would read it again first.
  */
 export function runDetailLookups(
   runs: WorkflowRun[],
   previous: Map<string, Partial<PipelineAttempt>>,
-  limit: number
+  limit: number,
+  { steps = false }: { steps?: boolean } = {}
 ): WorkflowRun[] {
+  const unread = (run: WorkflowRun) => !previous.get(String(run.id))?.jobs_checked_at;
+  const stepsUnread = (run: WorkflowRun) => steps && !previous.get(String(run.id))?.steps_read_at;
+  const storable = (run: WorkflowRun) => !!parseRunTitle(run.display_title) || previous.has(String(run.id));
   return runs
-    .filter((run) => run.status === "completed" && !previous.get(String(run.id))?.jobs_checked_at)
+    .filter((run) => run.status === "completed" && storable(run) && (unread(run) || stepsUnread(run)))
     .sort(
       (a, b) =>
+        Number(unread(b)) - Number(unread(a)) ||
         Number(b.conclusion === "cancelled") - Number(a.conclusion === "cancelled") ||
         b.created_at.localeCompare(a.created_at)
     )
     .slice(0, limit);
+}
+
+/** A successful run of the index sync: it read every repo's default branch when it started. */
+export interface SyncRun {
+  created_at: string;
+  updated_at: string;
+}
+
+/** A merge this recent may be indexed by the next sync even if no sync has shown it yet. */
+const SYNC_WINDOW_RECENT_MS = 7 * 86_400_000;
+
+/**
+ * Where to start listing sync runs: the oldest default-branch merge that is
+ * indexed (or recent enough to be indexed soon) but has no first sync
+ * recorded, or null when there is none. A merge that never reached the index
+ * does not hold the window open.
+ */
+export function syncWindowStart(
+  prs: ManifestPr[],
+  previous: Map<string, Partial<PipelineAttempt>>,
+  nowMs: number
+): string | null {
+  const byPr = new Map(
+    [...previous.values()]
+      .filter((attempt) => attempt.pr_repo && attempt.pr_number != null)
+      .map((attempt) => [`${attempt.pr_repo}#${attempt.pr_number}`, attempt])
+  );
+  let oldest: string | null = null;
+  for (const pr of prs) {
+    if (pr.state !== "MERGED" || !pr.mergedAt) continue;
+    if (pr.defaultBranch && pr.baseRefName !== pr.defaultBranch) continue;
+    const known = byPr.get(`${pr.repo}#${pr.number}`);
+    if (known?.indexed_at) continue;
+    if (!known?.synced_at && nowMs - Date.parse(pr.mergedAt) > SYNC_WINDOW_RECENT_MS) continue;
+    if (!oldest || pr.mergedAt < oldest) oldest = pr.mergedAt;
+  }
+  return oldest;
+}
+
+/** When the first successful sync that started after a merge finished, if one is listed. */
+export function firstSyncAfter(syncs: SyncRun[], mergedAt: string): string | null {
+  let first: SyncRun | null = null;
+  for (const sync of syncs) {
+    if (sync.created_at < mergedAt) continue;
+    if (!first || sync.created_at < first.created_at) first = sync;
+  }
+  return first?.updated_at ?? null;
+}
+
+/** A validate shard's first decisive run at a merge commit. */
+export interface ShardRun {
+  startedAt: string | null;
+  completedAt: string;
+  conclusion: "success" | "failure";
+}
+
+/**
+ * Per repo and merge commit, each validate shard's first decisive run there
+ * ("" for an unsharded validate job).
+ */
+export type MergeValidation = Map<string, Map<string, ShardRun>>;
+
+export function mergeValidationKey(repo: string, commit: string): string {
+  return `${repo}:${commit}`;
+}
+
+/**
+ * Default-branch merges whose first validation on main is not recorded yet,
+ * newest first: the merge commit's own check runs say when it started and
+ * finished, and how. With `detail`, a merge recorded before its start and
+ * result were kept is read once more.
+ */
+export function mergeValidationLookups(
+  prs: ManifestPr[],
+  previous: Map<string, Partial<PipelineAttempt>>,
+  limit: number,
+  { detail = false }: { detail?: boolean } = {}
+): Array<{ repo: string; commit: string }> {
+  const recorded = new Set(
+    [...previous.values()]
+      .filter(
+        (attempt) =>
+          attempt.tests_first_at &&
+          (!detail || attempt.tests_first_status) &&
+          attempt.pr_merge_commit &&
+          attempt.pr_repo
+      )
+      .map((attempt) => mergeValidationKey(attempt.pr_repo!, attempt.pr_merge_commit!))
+  );
+  const lookups = new Map<string, { repo: string; commit: string; mergedAt: string }>();
+  for (const pr of prs) {
+    if (pr.state !== "MERGED" || !pr.mergeCommit || !pr.mergedAt) continue;
+    if (pr.defaultBranch && pr.baseRefName !== pr.defaultBranch) continue;
+    const key = mergeValidationKey(pr.repo, pr.mergeCommit);
+    if (recorded.has(key)) continue;
+    lookups.set(key, { repo: pr.repo, commit: pr.mergeCommit, mergedAt: pr.mergedAt });
+  }
+  return [...lookups.values()]
+    .sort((a, b) => b.mergedAt.localeCompare(a.mergedAt))
+    .slice(0, limit)
+    .map(({ repo, commit }) => ({ repo, commit }));
 }
 
 export interface CollectInputs {
@@ -606,6 +775,10 @@ export interface CollectInputs {
   encoderVersions?: Map<string, string>;
   /** What failing PR jobs printed, read this pass, by job id (see checkErrorLookups). */
   checkErrors?: Map<string, string>;
+  /** Successful index syncs since the oldest merge whose first sync is not recorded. */
+  syncRuns?: SyncRun[];
+  /** Validate shards at merge commits, read this pass (see mergeValidationLookups). */
+  mergeValidation?: MergeValidation;
 }
 
 interface JoinContext {
@@ -617,6 +790,8 @@ interface JoinContext {
   waivers: Map<string, Set<string>>;
   oracle: Map<string, OracleVerdict> | null;
   checkErrors: Map<string, string>;
+  syncRuns: SyncRun[] | null;
+  mergeValidation: MergeValidation;
 }
 
 /** Link each PR to its dispatch: the run URL in its body, else citation + time. */
@@ -723,6 +898,22 @@ function withPr(
   if (state !== "merged" || targetsDefault === false || !pr.mergedAt) return attempt;
   const mergeCommit = pr.mergeCommit ?? null;
 
+  // The merge commit's own validation on main: the first tests the merge
+  // got there, when they started and finished, and how they ended.
+  const atMerge = mergeCommit ? context.mergeValidation.get(mergeValidationKey(pr.repo, mergeCommit)) : undefined;
+  const first = atMerge ? shardAtMerge(atMerge, attempt.jurisdiction) : null;
+  if (previous?.tests_first_status) {
+    attempt.tests_first_at = previous.tests_first_at ?? null;
+    attempt.tests_first_started_at = previous.tests_first_started_at ?? null;
+    attempt.tests_first_status = previous.tests_first_status;
+  } else if (first) {
+    attempt.tests_first_at = first.completedAt;
+    attempt.tests_first_started_at = first.startedAt;
+    attempt.tests_first_status = first.conclusion === "success" ? "pass" : "fail";
+  } else if (previous?.tests_first_at) {
+    attempt.tests_first_at = previous.tests_first_at;
+  }
+
   const mirrorRows = modules.map((path) => mirror.byPath.get(`${pr.repo}:${path}`));
   // A repo with no rows at all (e.g. one gated experimental) was still
   // passed over by the latest sync.
@@ -748,6 +939,11 @@ function withPr(
     }
   }
   if (!attempt.synced_at || !mirrorRows.every(Boolean)) return attempt;
+
+  // synced_at is the sync the collector first saw the modules in, which can
+  // be later than the first sync after the merge; the sync runs say that one.
+  const firstSync = previous?.indexed_at ?? (context.syncRuns ? firstSyncAfter(context.syncRuns, pr.mergedAt) : null);
+  if (firstSync) attempt.indexed_at = firstSync;
 
   // Tests: the module's jurisdiction validation on the default branch, at a
   // commit that contains the merge.
@@ -894,6 +1090,8 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
     waivers: inputs.waivers ?? new Map(),
     oracle: inputs.oracle ?? null,
     checkErrors: inputs.checkErrors ?? new Map(),
+    syncRuns: inputs.syncRuns ?? null,
+    mergeValidation: inputs.mergeValidation ?? new Map(),
   };
   const versions = knownVersions(inputs.previous);
   for (const [sha, version] of inputs.encoderVersions ?? []) versions.set(sha, version);
@@ -942,10 +1140,20 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
       attempt.encode_started_at = detail.encodeStartedAt;
       attempt.cancel_stage = detail.cancelStage;
       attempt.jobs_checked_at = nowIso;
+      attempt.setup_seconds = detail.phases.setup;
+      attempt.encode_seconds = detail.phases.encode;
+      attempt.publish_seconds = detail.phases.publish;
+      attempt.steps_read_at = nowIso;
     } else if (previous?.jobs_checked_at) {
       attempt.encode_started_at = previous.encode_started_at ?? null;
       attempt.cancel_stage = previous.cancel_stage ?? null;
       attempt.jobs_checked_at = previous.jobs_checked_at;
+      if (previous.steps_read_at) {
+        attempt.setup_seconds = previous.setup_seconds ?? null;
+        attempt.encode_seconds = previous.encode_seconds ?? null;
+        attempt.publish_seconds = previous.publish_seconds ?? null;
+        attempt.steps_read_at = previous.steps_read_at;
+      }
     }
 
     const encoder = matchEncoderRun(run, citation, encoderIndex, inputs.nowMs);
