@@ -193,7 +193,7 @@ export default function ValidationPage() {
               {
                 n: "01",
                 title: "Same case, side by side",
-                body: "Concept-keyed test cases — a household, an income, a date — run through Axiom and one or two oracles behind thin adapters, so no engine's quirks leak into the comparison.",
+                body: "Concept-keyed test cases — a household, an income, a date — run through Axiom and one or two oracles behind adapters that translate each engine's inputs and outputs.",
               },
               {
                 n: "02",

@@ -38,6 +38,11 @@ import { SOUTHMOD_CAVEATS } from '@/lib/verification-evidence'
 //   modules carry no encoder apply manifest, and every household is
 //   synthetic, with no Rwandan microdata at all. The evidence for each is in
 //   src/lib/verification-evidence.ts.
+// - The adapters do not keep engine quirks out of the comparison. axiom-oracles
+//   dispositions/README.md defines `bridge_artifact` as a mismatch where "the
+//   comparison harness fed the engines different inputs", and
+//   conformance/scoreboard.json (main 8826215d) counts 3,938 of them for the
+//   PolicyEngine US suites.
 const SURFACES = [
   ['/about', () => render(<AboutPage />)],
   ['/validation', () => render(<ValidationPage />)],
@@ -80,6 +85,7 @@ describe('verification claims', () => {
       expect(text).not.toMatch(/engines we don.t control/i)
       expect(text).not.toMatch(/never grades its own work/i)
       expect(text).not.toMatch(/adjudicated cases/i)
+      expect(text).not.toMatch(/no engine.?s quirks leak/i)
     })
 
     it(`${route} discloses the PolicyEngine tie wherever it names PolicyEngine`, () => {
