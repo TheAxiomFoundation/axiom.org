@@ -3,11 +3,10 @@
 import { type ReactNode, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { AlertTriangle, X } from "lucide-react";
+import { ChevronDown, X } from "lucide-react";
 import styles from "./ops-pipeline.module.css";
 import {
   ageLabel,
-  bottleneckStage,
   durationLabel,
   isExitStage,
   journeyHref,
@@ -97,8 +96,8 @@ export function OpsPipeline({
   referenceMs: number;
 }) {
   const [listing, setListing] = useState<Listing | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
-  const bottleneck = bottleneckStage(view);
   const shows = (title: string) => listing?.kind === "citations" && listing.title === title;
 
   // The list opens under the stage strip; bring it into view, since it may
@@ -132,6 +131,35 @@ export function OpsPipeline({
       groupLabel: group.label,
     });
 
+  // The largest piles of stuck citations, wherever they sit: failed
+  // encodes by the step that stopped them, PRs by what holds them, and the
+  // ways out after a merge.
+  const blockers: Blocker[] = [
+    ...view.gates.map((group) => ({
+      key: `gate:${group.key}`,
+      label: group.label,
+      where: "Encode",
+      count: group.count,
+      open: () => showGroup("Failed", group, true),
+    })),
+    ...view.holds.map((group) => ({
+      key: `hold:${group.key}`,
+      label: group.label,
+      where: "Review",
+      count: group.count,
+      open: () => showGroup("In review", group, false),
+    })),
+    ...BLOCKER_STAGES.filter(({ stage }) => view.stages[stage].count > 0).map(({ stage, where }) => ({
+      key: `stage:${stage}`,
+      label: STAGE_COPY[stage].label,
+      where,
+      count: view.stages[stage].count,
+      open: () => showStage(stage),
+    })),
+  ]
+    .sort((a, b) => b.count - a.count)
+    .slice(0, TOP_BLOCKERS);
+
   return (
     <section aria-labelledby="pipeline-title" className={styles.pipeline}>
       <header className={styles.head}>
@@ -139,32 +167,59 @@ export function OpsPipeline({
           <p className={styles.eyebrow}>Pipeline</p>
           <h2 id="pipeline-title">Where every citation is</h2>
           <p className={styles.sub}>
-            {number(view.citationCount)} citations · {number(view.dispatchCount)} dispatches
+            {number(view.citationCount)} citations
             {view.firstDispatchAt && ` since ${formatDay(view.firstDispatchAt)}`}
+            {view.collectedAt && ` · updated ${ageLabel(view.collectedAt, referenceMs)} ago`}
           </p>
         </div>
-        {view.collectedAt && (
-          <p className={styles.updated}>Updated {ageLabel(view.collectedAt, referenceMs)} ago</p>
-        )}
       </header>
 
       {scopes.roots.length > 1 && <ScopeBar scope={scope} scopes={scopes} />}
-      {insights && <Funnel funnel={insights.funnel} />}
 
-      {bottleneck && (
-        <button
-          type="button"
-          className={styles.headline}
-          onClick={() => showStage(bottleneck)}
-        >
-          <AlertTriangle size={14} aria-hidden />
-          <span>
-            Biggest bottleneck: <strong>{number(view.stages[bottleneck].stuck)}</strong>{" "}
-            {inline(STAGE_COPY[bottleneck].label)}
-          </span>
-        </button>
+      {insights && (
+        <SummaryFunnel
+          funnel={insights.funnel}
+          view={view}
+          queued={queued}
+          isOpen={shows}
+          onStage={showStage}
+          onQueue={() => show({ kind: "queue" })}
+        />
       )}
 
+      <div className={styles.summaryRow}>
+        <TopBlockers blockers={blockers} />
+        <TrendRows weeks={view.weekly} />
+      </div>
+
+      {listing && (
+        <div ref={listRef} className={styles.listAnchor}>
+          {listing.kind === "citations" && (
+            <CitationList listing={listing} referenceMs={referenceMs} onClose={() => setListing(null)} />
+          )}
+          {listing.kind === "queue" && queued && (
+            <QueueList queued={queued} referenceMs={referenceMs} onClose={() => setListing(null)} />
+          )}
+          {listing.kind === "corpus" && corpus && (
+            <CorpusList corpus={corpus} referenceMs={referenceMs} onClose={() => setListing(null)} />
+          )}
+        </div>
+      )}
+
+      <button
+        type="button"
+        className={styles.detailsToggle}
+        aria-expanded={detailsOpen}
+        aria-controls="pipeline-details"
+        onClick={() => setDetailsOpen((open) => !open)}
+      >
+        <ChevronDown size={14} aria-hidden className={styles.detailsChevron} />
+        Details
+        <span className={styles.detailsHint}>stages · corpus · queue · retries · versions · approval</span>
+      </button>
+
+      {detailsOpen && (
+        <div id="pipeline-details" className={styles.details}>
       <ol
         className={`${styles.flow} ${corpus ? styles.flowWide : ""}`}
         aria-label="Pipeline stages"
@@ -261,20 +316,6 @@ export function OpsPipeline({
         )}
       </div>
 
-      {listing && (
-        <div ref={listRef} className={styles.listAnchor}>
-          {listing.kind === "citations" && (
-            <CitationList listing={listing} referenceMs={referenceMs} onClose={() => setListing(null)} />
-          )}
-          {listing.kind === "queue" && queued && (
-            <QueueList queued={queued} referenceMs={referenceMs} onClose={() => setListing(null)} />
-          )}
-          {listing.kind === "corpus" && corpus && (
-            <CorpusList corpus={corpus} referenceMs={referenceMs} onClose={() => setListing(null)} />
-          )}
-        </div>
-      )}
-
       <div className={styles.cards}>
         <Breakdown
           title="Why encodes fail"
@@ -301,6 +342,8 @@ export function OpsPipeline({
         <SigningApproval view={view} referenceMs={referenceMs} />
         <Throughput view={view} />
       </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -820,25 +863,183 @@ function ScopeBar({
   );
 }
 
-/** How many citations ever got how far, across all their dispatches. */
-function Funnel({ funnel }: { funnel: PipelineInsights["funnel"] }) {
+/** Where the stuck citations sit between two funnel steps, in a few words. */
+const GAP_LABELS: Partial<Record<PipelineStage, string>> = {
+  encoding: "running",
+  encode_failed: "failed",
+  review: "in review",
+  no_pr: "no PR",
+  closed: "closed",
+  merged_off_main: "off main",
+  awaiting_sync: "awaiting index",
+  not_indexed: "not in index",
+  indexed: "awaiting tests",
+  runs: "tests unconfirmed",
+  compile_failed: "compile fails",
+  tests_failing: "tests fail",
+  oracle_disagrees: "oracle disagrees",
+};
+
+/** The stages that sit between each pair of funnel steps. */
+const GAPS: PipelineStage[][] = [
+  ["encode_failed", "encoding"],
+  ["review", "no_pr", "closed"],
+  ["merged_off_main"],
+  ["not_indexed", "awaiting_sync", "indexed", "runs", "compile_failed", "tests_failing", "oracle_disagrees"],
+];
+
+/**
+ * How far citations ever got, as five large numbers, with the citations
+ * stuck now between each pair of steps. A chip opens its citations.
+ */
+function SummaryFunnel({
+  funnel,
+  view,
+  queued,
+  isOpen,
+  onStage,
+  onQueue,
+}: {
+  funnel: PipelineInsights["funnel"];
+  view: PipelineView;
+  queued: QueuedSummary | null;
+  isOpen: (title: string) => boolean;
+  onStage: (stage: PipelineStage) => void;
+  onQueue: () => void;
+}) {
   const steps = [
-    { label: "citations", value: funnel.citations },
+    { label: "dispatched", value: funnel.citations },
     { label: "encoded", value: funnel.encoded },
     { label: "merged", value: funnel.merged },
-    { label: "into main", value: funnel.mergedMain },
-    { label: "passing on main", value: funnel.passing },
+    { label: "in main", value: funnel.mergedMain },
+    { label: "tests pass", value: funnel.passing },
   ];
   return (
-    <div className={styles.funnel}>
-      <span className={styles.funnelLabel}>Ever reached</span>
-      <ol aria-label="Citations that ever reached each point">
-        {steps.map((step) => (
-          <li key={step.label}>
-            <strong>{number(step.value)}</strong> {step.label}
+    <div className={styles.summaryFunnel}>
+      <div className={styles.summaryFunnelHead}>
+        <span className={styles.miniLabel}>Ever reached</span>
+        {queued && queued.pending > 0 && (
+          <button type="button" className={styles.gapChip} onClick={onQueue}>
+            <strong>{number(queued.pending)}</strong> queued
+          </button>
+        )}
+      </div>
+      <ol className={styles.funnelSteps} aria-label="Citations that ever reached each step">
+        {steps.map((step, index) => (
+          <li key={step.label} className={styles.funnelStep}>
+            <span className={styles.funnelValue}>{number(step.value)}</span>
+            <span className={styles.funnelName}>{step.label}</span>
+            {index < GAPS.length && (
+              <span className={styles.funnelGap}>
+                <span className={styles.funnelArrow} aria-hidden>
+                  →
+                </span>
+                {GAPS[index]
+                  .filter((stage) => view.stages[stage].count > 0)
+                  .map((stage) => (
+                    <button
+                      key={stage}
+                      type="button"
+                      className={`${styles.gapChip} ${isExitStage(stage) || view.stages[stage].stuck > 0 ? styles.gapChipStuck : ""}`}
+                      aria-pressed={isOpen(STAGE_COPY[stage].label)}
+                      title={STAGE_COPY[stage].description}
+                      onClick={() => onStage(stage)}
+                    >
+                      <strong>{number(view.stages[stage].count)}</strong> {GAP_LABELS[stage]}
+                    </button>
+                  ))}
+              </span>
+            )}
           </li>
         ))}
       </ol>
+    </div>
+  );
+}
+
+interface Blocker {
+  key: string;
+  label: string;
+  /** Where in the pipeline it holds citations. */
+  where: string;
+  count: number;
+  open: () => void;
+}
+
+const TOP_BLOCKERS = 3;
+
+/** Ways out after a merge, ranked against encode failures and review holds. */
+const BLOCKER_STAGES: Array<{ stage: PipelineStage; where: string }> = [
+  { stage: "no_pr", where: "Review" },
+  { stage: "closed", where: "Review" },
+  { stage: "merged_off_main", where: "Merge" },
+  { stage: "not_indexed", where: "Index" },
+  { stage: "compile_failed", where: "Main" },
+  { stage: "tests_failing", where: "Main" },
+  { stage: "oracle_disagrees", where: "Main" },
+];
+
+/** The largest piles of stuck citations; each opens its citations. */
+function TopBlockers({ blockers }: { blockers: Blocker[] }) {
+  return (
+    <div className={styles.summaryCard} role="group" aria-label="Top blockers">
+      <h3 className={styles.miniLabel}>Top blockers</h3>
+      {blockers.length === 0 ? (
+        <p className={styles.empty}>Nothing is stuck.</p>
+      ) : (
+        <ol className={styles.blockers}>
+          {blockers.map((blocker) => (
+            <li key={blocker.key}>
+              <button type="button" className={styles.blocker} onClick={blocker.open}>
+                <span className={styles.blockerWhere}>{blocker.where}</span>
+                <span className={styles.blockerLabel} title={blocker.label}>
+                  {blocker.label}
+                </span>
+                <span className={styles.blockerCount}>{number(blocker.count)}</span>
+              </button>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Each series' last eight weeks as a row of small bars, with the count of
+ * the last full week (the current week has only just begun).
+ */
+function TrendRows({ weeks }: { weeks: WeeklyThroughput[] }) {
+  const full = weeks.length > 1 ? weeks.length - 2 : weeks.length - 1;
+  return (
+    <div className={styles.summaryCard} role="group" aria-label="Weekly trend">
+      <h3 className={styles.miniLabel}>Weekly, last {weeks.length} weeks</h3>
+      <ul className={styles.trendRows}>
+        {SERIES.map((series, i) => {
+          const values = weeks.map((week) => week[series.key]);
+          const max = Math.max(1, ...values);
+          return (
+            <li key={series.key} className={styles.trendRow}>
+              <span className={styles.trendName}>{series.label}</span>
+              <span className={styles.spark} aria-hidden>
+                {weeks.map((week) => (
+                  <span
+                    key={week.weekStart}
+                    className={styles.sparkBar}
+                    data-series={i + 1}
+                    style={{ height: `${Math.max(4, (week[series.key] / max) * 100)}%` }}
+                    title={`Week of ${formatWeek(week.weekStart)}: ${number(week[series.key])}`}
+                  />
+                ))}
+              </span>
+              <span className={styles.trendValue}>
+                {number(values[full] ?? 0)}
+                <span className={styles.trendNote}> last week</span>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
