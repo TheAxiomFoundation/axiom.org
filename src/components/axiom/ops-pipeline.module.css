@@ -571,25 +571,63 @@
 .stepTable {
   width: 100%;
   margin-top: 10px;
-  border-collapse: collapse;
+  border: 1px solid var(--color-rule);
+  border-radius: 12px;
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+  background: var(--color-paper);
   font-variant-numeric: tabular-nums;
 }
 
+.stepColName {
+  width: 26%;
+}
+
+.stepColTime {
+  width: 14%;
+}
+
+.stepColWent {
+  width: 16%;
+}
+
 .stepTable thead th {
-  padding: 6px 12px 6px 0;
+  padding: 10px 16px;
   border-bottom: 1px solid var(--color-rule);
-  font-size: 11px;
+  background: var(--color-paper-elevated);
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
   font-weight: 500;
+  letter-spacing: 0.08em;
   text-align: left;
+  text-transform: uppercase;
   color: var(--color-ink-muted);
 }
 
 .stepTable tbody th,
 .stepTable tbody td {
-  padding: 10px 12px 10px 0;
+  padding: 10px 16px;
   border-bottom: 1px solid var(--color-rule);
   text-align: left;
   vertical-align: baseline;
+}
+
+.stepTable tbody tr:last-child th,
+.stepTable tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.stepTable .stepNumber,
+.stepTable .stepTime,
+.stepTable .stepWent {
+  text-align: right;
+}
+
+/* Clear space between the right-aligned counts and what stopped. */
+.stepTable thead th:last-child,
+.stepTable .stepStopped {
+  padding-left: 32px;
 }
 
 .stepTable tbody th {
@@ -1348,7 +1386,13 @@
   }
 
   /* The step table stacks: name and time, then went on, then what stopped. */
-  .stepTable thead {
+  .stepTable,
+  .stepTable tbody {
+    display: block;
+  }
+
+  .stepTable thead,
+  .stepTable colgroup {
     display: none;
   }
 
@@ -1356,8 +1400,18 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 4px 12px;
-    padding: 10px 0;
+    padding: 10px 14px;
     border-bottom: 1px solid var(--color-rule);
+  }
+
+  .stepTable tbody tr:last-child {
+    border-bottom: 0;
+  }
+
+  .stepTable .stepWent,
+  .stepTable .stepStopped {
+    padding-left: 0;
+    text-align: left;
   }
 
   .stepTable tbody th,

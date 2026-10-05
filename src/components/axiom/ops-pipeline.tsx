@@ -1357,11 +1357,21 @@ function StepTable({
   }
   return (
     <table className={styles.stepTable}>
+      <colgroup>
+        <col className={styles.stepColName} />
+        <col className={styles.stepColTime} />
+        <col className={styles.stepColWent} />
+        <col />
+      </colgroup>
       <thead>
         <tr>
           <th scope="col">Step</th>
-          <th scope="col">Time</th>
-          <th scope="col">Went on</th>
+          <th scope="col" className={styles.stepNumber}>
+            Typical time
+          </th>
+          <th scope="col" className={styles.stepNumber}>
+            Went on
+          </th>
           <th scope="col">Stopped or waiting</th>
         </tr>
       </thead>
