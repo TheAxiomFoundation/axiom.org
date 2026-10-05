@@ -31,7 +31,7 @@ import {
   type CorpusJurisdiction,
   type CorpusView,
 } from "@/lib/axiom/corpus-releases";
-import { jurisdictionName } from "@/lib/axiom/jurisdiction-names";
+import { jurisdictionName, ownLevelName } from "@/lib/axiom/jurisdiction-names";
 import {
   dispatchFlow,
   type FlowGate,
@@ -107,6 +107,11 @@ function scopeQuery(scope: PipelineScope | null): string {
 }
 
 const NO_SCOPES = { roots: [], within: [] };
+
+/** What the view is narrowed to, by name: "United States", "North Carolina", "US Federal only". */
+function scopeName(scope: PipelineScope): string {
+  return scope.only ? `${ownLevelName(scope.jurisdiction)} only` : jurisdictionName(scope.jurisdiction);
+}
 
 export function OpsPipeline({
   view,
@@ -276,6 +281,7 @@ export function OpsPipeline({
 
       <div className={styles.detailsHead}>
         <h3 id="pipeline-details-title">Details</h3>
+        {scope && <span className={styles.detailsScope}>{scopeName(scope)}</span>}
       </div>
 
       <div id="pipeline-details" className={styles.details} aria-labelledby="pipeline-details-title">

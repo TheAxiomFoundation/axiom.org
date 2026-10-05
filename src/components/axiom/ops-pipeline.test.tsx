@@ -444,6 +444,8 @@ describe("OpsPipeline", () => {
       />
     );
     const bar = screen.getByRole("navigation", { name: "Jurisdiction" });
+    // Details names what it is narrowed to.
+    expect(screen.getByRole("heading", { name: "Details" }).parentElement).toHaveTextContent(/^DetailsUnited States$/);
     // Countries by name, each with its citation count, and All with the total.
     expect(within(bar).getByRole("link", { name: /^All\s*3$/ })).toHaveAttribute("href", "/ops#pipeline-title");
     expect(within(bar).getByRole("link", { name: /^United States\s*2$/ })).toHaveAttribute("aria-current", "page");
