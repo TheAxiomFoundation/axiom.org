@@ -81,7 +81,9 @@ describe("PlanningModelPage", () => {
     expect(screen.getByText("Opus 4.8")).toBeInTheDocument();
     // Both vendors are first-class rows with production status
     expect(screen.getByText("gpt-5.6-terra")).toBeInTheDocument();
-    expect(screen.getByText("pinned production encoder")).toBeInTheDocument();
+    expect(
+      screen.getByText("passed the July bake-off"),
+    ).toBeInTheDocument();
     expect(
       screen.getByText("OpenAI — native token units [M]"),
     ).toBeInTheDocument();
@@ -112,7 +114,7 @@ describe("PlanningModelPage", () => {
       screen.getByText("Generation waves — finish Tier A, then Tier B."),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("Encoder qualification — the standing quarterly bake-off."),
+      screen.getByText("Encoder qualification — a planned quarterly bake-off."),
     ).toBeInTheDocument();
     expect(screen.getByText("Cross-family judging.")).toBeInTheDocument();
     expect(screen.getByText("The development fleet.")).toBeInTheDocument();
@@ -131,6 +133,105 @@ describe("PlanningModelPage", () => {
     ).toHaveAttribute(
       "href",
       "https://axiom.org/us-co/regulation/10-ccr-2506-1/4.110",
+    );
+  });
+
+  it("states encoder, gate, judge and oracle-scope mechanics as the code shows them, with dates", () => {
+    const { container } = render(<PlanningModelPage />);
+    const text = (container.textContent ?? "").replace(/\s+/g, " ");
+
+    // axiom-oracles conformance/scoreboard.json us-pe: 137 in scope at
+    // b83f776f3 (2026-07-09, the last refresh before asOf), 127 at 522afa175.
+    // State income taxes are rows inside that scope, so they are not listed
+    // as a separate count.
+    expect(PLANNING_MODEL.tiers[0].scope).toBe(
+      "Policies checkable against an oracle: the 137 PolicyEngine-US policies in axiom-oracles' conformance scope as of 2026-07-11 (127 as of 2026-10-03), state income taxes among them, plus state benefit manuals",
+    );
+    // axiom-encode 6f08e25c: encode runs compile, companion tests, literal
+    // grounding and import checks with oracle="none"; corpus releases are
+    // Ed25519-signed; validator-rejected candidates retry (b5b2c670).
+    expect(text).toMatch(
+      /As of 2026-10-03, each rule module is produced by an agentic encoder loop: the agent reads the provision from a signed, hash-pinned corpus release and writes the module and its companion tests, then the harness runs deterministic checks, including rules-engine compile, the companion tests, grounding of numeric literals in the cited source text, and import resolution\./,
+    );
+    expect(text).toMatch(
+      /the encoder retries with the failures as feedback, by default making up to two attempts on its default model and up to two more on an escalation model \(retries since 2026-07-17\)/,
+    );
+    expect(text).toMatch(
+      /Oracle comparisons run outside this loop: in axiom-oracles, and in axiom-encode's separate validate and eval-suite commands\./,
+    );
+    // Encoder defaults from axiom-encode constants.py history: b5b2c670
+    // (2026-07-17) and 3689e83b (2026-09-24).
+    expect(text).toMatch(
+      /axiom-encode's default encoder moved from gpt-5\.5 to gpt-5\.6-terra on 2026-07-17; on 2026-09-24 it moved to gpt-6-luna, which that bake-off did not include/,
+    );
+    expect(text).toMatch(
+      /EncodeBench board can rank candidate encoders by deterministic gate-pass rate on a fixed suite of 16 UK cases/,
+    );
+    // evals.py: the encode path runs the generalist reviewer unless
+    // --skip-reviewers; judges/client.py: Claude-only judges with a
+    // same-family guard, escalating below 0.6 confidence.
+    expect(text).toMatch(
+      /As of 2026-10-03, the encode command by default also asks an LLM reviewer \(the Claude CLI's opus alias, or Codex where Claude is not installed\) to score each candidate that passes the deterministic checks; the score does not block apply\./,
+    );
+    expect(text).toMatch(
+      /Since 2026-07-08, separate judge commands, run by an operator, have defaulted to Claude Haiku 4\.5; they re-ask Sonnet 4\.5 once when a verdict's confidence is below 0\.6 and refuse a judge outside the Claude family or from the generator's family\./,
+    );
+    expect(text).toMatch(
+      /As of 2026-10-03, axiom-encode's judge commands default to Claude Haiku 4\.5/,
+    );
+    expect(text).toMatch(/the encode command does not call them/);
+    expect(text).toMatch(
+      /gpt-5\.5 produced 3,289 of the 3,582 measured runs, all of which predate the retry loop/,
+    );
+    expect(text).toMatch(
+      /After a bake-off of 8 US citations on 4 models on 2026-07-10/,
+    );
+    expect(text).toMatch(/from any vendor whose model passes an encoder bake-off/);
+    expect(text).toMatch(
+      /each section's attempts run in order, and separate sections run as staged waves/,
+    );
+    expect(text).toMatch(
+      /Cost per accepted module for the models we ran as of 2026-07-11 and the ones we could/,
+    );
+    expect(text).toMatch(/As of 2026-10-03 none is scheduled in axiom-encode/);
+    expect(
+      screen.getByRole("columnheader", { name: "Role as of 2026-07-11" }),
+    ).toBeInTheDocument();
+
+    // Claims the code does not support.
+    for (const retired of [
+      /137 programs currently scored/,
+      /51 income-tax jurisdictions/,
+      /50 states and DC/,
+      /citation resolution, dependency closure/,
+      /oracle conformance where one exists/,
+      /benchmark reputation/,
+      /Every audit-logged encoder run is adjudicated/,
+      /judging each other/,
+      /standing quarterly bake-off/,
+      /clears the bake-off/,
+      /Results are publishable either way/,
+      /empirical gate between the price table/,
+      /In production today/,
+      /pinned production encoder/,
+      /Today gpt-5\.6-terra is the pinned encoder/,
+      /board has ranked/,
+      /each pass is an independent request/,
+      /each section is an independent request/,
+      /models we run today/,
+      /encoder chosen in the July bake-off/,
+      /signed CI applies skip/,
+    ]) {
+      expect(text).not.toMatch(retired);
+    }
+    for (const model of PLANNING_MODEL.models) {
+      expect(model.today).not.toMatch(/cross-family|judge lane|judging/);
+    }
+    const role = (name: string) =>
+      PLANNING_MODEL.models.find((model) => model.name === name)?.today;
+    expect(role("Haiku 4.5")).toMatch(/^default judge model;/);
+    expect(role("gpt-5.5")).toBe(
+      "default encoder until 2026-07-17; 3,289 of the 3,582 measured runs",
     );
   });
 });
