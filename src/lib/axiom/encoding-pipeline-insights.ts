@@ -13,6 +13,7 @@ import {
   type PipelineAttempt,
   type PipelineGroupView,
 } from "./encoding-pipeline";
+import { jurisdictionName, ownLevelName } from "./jurisdiction-names";
 
 /** Citations that ever reached each point, across all their dispatches. */
 export interface PipelineFunnel {
@@ -234,7 +235,8 @@ export interface ScopeOption extends PipelineScope {
 
 /** The jurisdiction a dispatch belongs to, from its citation when not recorded. */
 export function attemptJurisdiction(attempt: Pick<PipelineAttempt, "jurisdiction" | "citation">): string {
-  return attempt.jurisdiction ?? attempt.citation.split("/")[0];
+  // A malformed citation root such as "us-nc:manual" belongs to us-nc.
+  return (attempt.jurisdiction ?? attempt.citation.split("/")[0]).split(":")[0];
 }
 
 export function inScope(jurisdiction: string, scope: PipelineScope | null): boolean {
@@ -278,10 +280,13 @@ export function scopeOptions(
   const root = rootJurisdiction(selected.jurisdiction);
   const members = [...citations.keys()].filter((j) => rootJurisdiction(j) === root).sort();
   if (members.length < 2) return { roots, within: [] };
-  const within: ScopeOption[] = members.map((jurisdiction) =>
-    jurisdiction === root
-      ? { jurisdiction, only: true, label: `${root} only`, citations: count({ jurisdiction, only: true }) }
-      : { jurisdiction, only: false, label: jurisdiction, citations: count({ jurisdiction, only: false }) }
-  );
+  // The root's own level first ("US Federal only"), then those under it by name.
+  const within: ScopeOption[] = members
+    .map((jurisdiction) =>
+      jurisdiction === root
+        ? { jurisdiction, only: true, label: `${ownLevelName(root)} only`, citations: count({ jurisdiction, only: true }) }
+        : { jurisdiction, only: false, label: jurisdictionName(jurisdiction), citations: count({ jurisdiction, only: false }) }
+    )
+    .sort((a, b) => Number(b.only) - Number(a.only) || a.label.localeCompare(b.label));
   return { roots, within };
 }

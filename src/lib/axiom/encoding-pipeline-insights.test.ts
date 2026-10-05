@@ -172,6 +172,7 @@ describe("scopes", () => {
     expect(inScope("us", { jurisdiction: "us", only: true })).toBe(true);
     expect(rootJurisdiction("uk-wakefield")).toBe("uk");
     expect(attemptJurisdiction({ jurisdiction: null, citation: "dk/statute/x" })).toBe("dk");
+    expect(attemptJurisdiction({ jurisdiction: "us-nc:manual", citation: "us-nc:manual/x" })).toBe("us-nc");
   });
 
   it("offers each top-level jurisdiction, and the ones within the selected", () => {
@@ -191,8 +192,21 @@ describe("scopes", () => {
     ]);
     expect(all.within).toEqual([]);
     expect(scopeOptions(attempts, { jurisdiction: "us-la", only: false }).within).toEqual([
-      { jurisdiction: "us", only: true, label: "us only", citations: 1 },
-      { jurisdiction: "us-la", only: false, label: "us-la", citations: 2 },
+      { jurisdiction: "us", only: true, label: "US Federal only", citations: 1 },
+      { jurisdiction: "us-la", only: false, label: "Louisiana", citations: 2 },
+    ]);
+    // Named, sorted by name, and a malformed "us-nc:manual" root counted under North Carolina.
+    const more = [
+      ...attempts,
+      pipelineAttempt({ id: "7", citation: "us-nc/x", jurisdiction: "us-nc" }),
+      pipelineAttempt({ id: "8", citation: "us-nc:manual/y", jurisdiction: "us-nc:manual" }),
+      pipelineAttempt({ id: "9", citation: "us-al/z", jurisdiction: "us-al" }),
+    ];
+    expect(scopeOptions(more, { jurisdiction: "us", only: false }).within.map((o) => `${o.label} ${o.citations}`)).toEqual([
+      "US Federal only 1",
+      "Alabama 1",
+      "Louisiana 2",
+      "North Carolina 2",
     ]);
     expect(scopeOptions(attempts, { jurisdiction: "dk", only: false }).within).toEqual([]);
   });
