@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { runRow, runRows } from "./encoding-pipeline-runs";
-import { runLedger, sectionStatus } from "./run-ledger";
+import { runLedger, sectionOverview, sectionStatus } from "./run-ledger";
 import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 
 const day = (n: number) => `2026-09-${String(n).padStart(2, "0")}T10:00:00Z`;
@@ -64,5 +64,26 @@ describe("runLedger", () => {
       "SNAP FY 2026 Maximum Allotments",
       "page-1",
     ]);
+  });
+});
+
+describe("sectionOverview", () => {
+  it("sums a section's runs: span, encoders, where they ended, why they failed, and the latest", () => {
+    const rows = runRows([
+      pipelineAttempt({ id: "1", citation: "us/statute/42/416/l", dispatched_at: day(1), encoder_version: "0.2.2018", encoder_error_rule: "complete-source-unit:tests", failure_source: "diagnostics" }),
+      pipelineAttempt({ id: "2", citation: "us/statute/42/416/l", dispatched_at: day(2), encoder_version: "0.2.2023", encoder_error_rule: "complete-source-unit:tests", failure_source: "diagnostics" }),
+      pipelineAttempt({ id: "3", citation: "us/statute/42/416/l", dispatched_at: day(3), encoder_version: "0.2.2033", failed_step: "compile", encoder_error: "compile: engine failed", failure_source: "log" }),
+      mergedAttempt({ id: "4", citation: "us/statute/42/416/l", dispatched_at: day(4), encoder_version: "0.2.2087", pr_targets_default: false }),
+    ]);
+    const [section] = runLedger(rows)[0].documents[0].sections;
+    const overview = sectionOverview(section);
+    expect(overview).toMatchObject({ runs: 4, firstAt: day(1), lastAt: day(4), encoders: { from: "0.2.2018", to: "0.2.2087" } });
+    expect(overview.ended.map((e) => `${e.label}:${e.tone}:${e.count}`)).toEqual([
+      "Validation rules:failed:2",
+      "Merged off main:failed:1",
+      expect.stringMatching(/:failed:1$/),
+    ]);
+    expect(overview.causes[0]).toEqual({ label: "complete-source-unit:tests", count: 2 });
+    expect(overview.latest.id).toBe("4");
   });
 });

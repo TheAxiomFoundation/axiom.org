@@ -42,7 +42,8 @@ describe("PipelineLedger", () => {
     expect(screen.getByRole("button", { name: "Runs of us-la/statute/47/32" }).closest("tr")).toHaveTextContent("Validation rules");
   });
 
-  it("drops down a section's ten newest runs, each with its timeline, and links to the rest", async () => {
+  it("drops down an overview of a section's runs, the latest with its timeline, and links to every run", async () => {
+    const cause = (i: number) => (i % 3 === 0 ? "complete-source-unit:tests" : `ci: cause ${"abcdefghijkl"[i]}`);
     serve({
       rows: runRows(
         Array.from({ length: 12 }, (_, i) =>
@@ -51,7 +52,10 @@ describe("PipelineLedger", () => {
             citation: "us/statute/7/2015/f",
             jurisdiction: "us",
             dispatched_at: `2026-09-${String(i + 1).padStart(2, "0")}T10:00:00Z`,
-            run_conclusion: i === 11 ? "success" : "failure",
+            encoder_version: `0.2.${2000 + i}`,
+            encoder_error: cause(i),
+            encoder_error_rule: i % 3 === 0 ? "complete-source-unit:tests" : null,
+            failure_source: "diagnostics",
           })
         )
       ),
@@ -59,21 +63,25 @@ describe("PipelineLedger", () => {
     render(<PipelineLedger scope={null} scopeName={null} referenceMs={NOW} />);
     const section = await screen.findByRole("button", { name: "Runs of us/statute/7/2015/f" });
     expect(screen.getByText(/^Every run, grouped/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Timeline of / })).not.toBeInTheDocument();
     fireEvent.click(section);
     expect(section).toHaveAttribute("aria-expanded", "true");
-    const runs = screen.getAllByRole("button", { name: /^Timeline of / });
-    expect(runs).toHaveLength(10);
-    expect(runs[0]).toHaveAccessibleName("Timeline of us/statute/7/2015/f, run r11");
-    expect(screen.getByRole("link", { name: "All 12 runs, each with its timeline" })).toHaveAttribute(
+    const lines = screen
+      .getAllByRole("term")
+      .map((term) => `${term.textContent}: ${term.nextElementSibling?.textContent}`);
+    expect(lines[0]).toBe("Runs: 12 from 29d ago to 18d ago0.2.2000 → 0.2.2011");
+    expect(lines[1]).toBe("Ended: No detail recorded 8Validation rules 4");
+    expect(lines[2]).toBe("Causes: complete-source-unit:tests 4ci: cause b 1ci: cause c 1ci: cause e 1+5 more");
+    expect(lines[3]).toBe("Latest: ▸18d agoNo detail recordedci: cause l");
+    // Only the latest run is listed; its timeline drops down under the overview.
+    const latest = screen.getByRole("button", { name: "Timeline of us/statute/7/2015/f, run r11" });
+    expect(screen.getAllByRole("button", { name: /^Timeline of / })).toHaveLength(1);
+    fireEvent.click(latest);
+    expect(screen.getByRole("region", { name: "Encode run" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "All 12 runs, each with its timeline →" })).toHaveAttribute(
       "href",
       "/ops/journey?citation=us%2Fstatute%2F7%2F2015%2Ff"
     );
-    fireEvent.click(runs[0]);
-    expect(screen.getByRole("region", { name: "Encode run" })).toBeInTheDocument();
-    fireEvent.click(runs[0]);
-    expect(screen.queryByRole("region", { name: "Encode run" })).not.toBeInTheDocument();
-    // Closing the section closes its runs.
+    // Closing the section closes its overview.
     fireEvent.click(section);
     expect(screen.queryByRole("button", { name: /^Timeline of / })).not.toBeInTheDocument();
   });

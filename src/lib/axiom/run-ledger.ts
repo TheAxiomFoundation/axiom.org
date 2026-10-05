@@ -133,3 +133,45 @@ export function runLedger(
     .map((group) => ({ ...group, documents: group.documents.sort(newest) }))
     .sort(newest);
 }
+
+/** A section's runs in a few lines: how many and over what span, how they ended, why they failed, and the latest. */
+export interface SectionOverview {
+  runs: number;
+  firstAt: string;
+  lastAt: string;
+  /** The oldest and newest encoder versions its runs used, when recorded. */
+  encoders: { from: string; to: string } | null;
+  /** Where each run ended, as a section's status reads, largest first. */
+  ended: Array<{ label: string; tone: LedgerTone; count: number }>;
+  /** What stopped the runs that failed, largest first. */
+  causes: Array<{ label: string; count: number }>;
+  latest: RunRow;
+}
+
+function counted<T extends { count: number; label: string }>(groups: Map<string, T>): T[] {
+  return [...groups.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+}
+
+export function sectionOverview(section: LedgerSection): SectionOverview {
+  const runs = section.runs;
+  const ended = new Map<string, { label: string; tone: LedgerTone; count: number }>();
+  const causes = new Map<string, { label: string; count: number }>();
+  for (const run of runs) {
+    const { status, tone } = sectionStatus(run);
+    ended.set(status, { label: status, tone, count: (ended.get(status)?.count ?? 0) + 1 });
+    if (run.cause) causes.set(run.cause, { label: run.cause, count: (causes.get(run.cause)?.count ?? 0) + 1 });
+  }
+  const versions = runs
+    .map((run) => run.encoder)
+    .filter((version): version is string => !!version)
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  return {
+    runs: runs.length,
+    firstAt: runs.at(-1)!.dispatchedAt,
+    lastAt: runs[0].dispatchedAt,
+    encoders: versions.length ? { from: versions[0], to: versions.at(-1)! } : null,
+    ended: counted(ended),
+    causes: counted(causes),
+    latest: runs[0],
+  };
+}

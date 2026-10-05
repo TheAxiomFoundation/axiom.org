@@ -8,7 +8,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { journeyHref } from "@/lib/axiom/encoding-pipeline";
 import { scopeSearch, type PipelineScope } from "@/lib/axiom/encoding-pipeline-insights";
 import { runTimeline, type RunRow } from "@/lib/axiom/encoding-pipeline-runs";
-import { runLedger, type LedgerDocument, type LedgerJurisdiction, type LedgerTone } from "@/lib/axiom/run-ledger";
+import {
+  runLedger,
+  sectionOverview,
+  type LedgerDocument,
+  type LedgerJurisdiction,
+  type LedgerSection,
+  type LedgerTone,
+} from "@/lib/axiom/run-ledger";
 
 /** What /ops/runs returns: every run in the scope, and its citations' names and source documents. */
 interface RunsPayload {
@@ -19,8 +26,10 @@ interface RunsPayload {
 
 /** Documents shown before "Show more", as the encoding ledger always showed. */
 const DOCUMENTS_SHOWN = 10;
-/** Runs an open section lists; the journey page has every one. */
-const SECTION_RUNS = 10;
+/** Groups an overview line lists before "+N more". */
+const OVERVIEW_GROUPS = 4;
+/** A failure cause in an overview, cut to this length; its tooltip holds the rest. */
+const CAUSE_CHARS = 64;
 
 const TONE_CLASS: Record<LedgerTone, string> = {
   done: styles.completed,
@@ -53,7 +62,9 @@ function firstDocuments(ledger: LedgerJurisdiction[], count: number): LedgerJuri
  * The encoding ledger built from every run (failures that left no encoder
  * record included): by jurisdiction, source document, and section, each
  * section with its provision, its latest status, its runs, and when it last
- * ran. A section drops down its newest runs, and a run its timeline.
+ * ran. A section drops down an overview of its runs (how many, where they
+ * ended, why they failed, the latest with its timeline), and the journey
+ * page holds every run.
  */
 export function PipelineLedger({
   scope,
@@ -239,55 +250,125 @@ function DocumentSections({
                 {relativeTime(section.lastAt, referenceMs)}
               </TableCell>
             </TableRow>
-            {open &&
-              section.runs.slice(0, SECTION_RUNS).map((row) => (
-                <TableRow key={row.id} className="hover:bg-transparent">
-                  <TableCell colSpan={5} className={styles.ledgerRunCell}>
-                    <div className={styles.ledgerRunLine}>
-                      <button
-                        type="button"
-                        className={styles.ledgerToggle}
-                        aria-expanded={openRun === row.id}
-                        aria-label={`Timeline of ${row.citation}, run ${row.id}`}
-                        onClick={() => onRun(row.id)}
-                      >
-                        <span aria-hidden>{openRun === row.id ? "▾" : "▸"}</span>
-                      </button>
-                      <span title={row.dispatchedAt}>{relativeTime(row.dispatchedAt, referenceMs)}</span>
-                      {row.by && <span className={styles.ledgerRunMuted}>{row.by}</span>}
-                      {row.encoder && <span className="font-mono">{row.encoder}</span>}
-                      <a href={row.runUrl} target="_blank" rel="noreferrer" data-outcome={row.outcome}>
-                        {row.outcomeLabel}
-                      </a>
-                      {row.cause && (
-                        <span className={styles.ledgerRunCause} title={row.cause}>
-                          {row.cause}
-                        </span>
-                      )}
-                      {row.pr && (
-                        <a href={row.pr.url} target="_blank" rel="noreferrer">
-                          {row.pr.label} · {row.pr.state}
-                        </a>
-                      )}
-                    </div>
-                    {openRun === row.id && (
-                      <div className={styles.ledgerTimeline}>
-                        <RunTimeline timeline={runTimeline(row, referenceMs)} />
-                      </div>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            {open && section.runs.length > SECTION_RUNS && (
+            {open && (
               <TableRow className="hover:bg-transparent">
                 <TableCell colSpan={5} className={styles.ledgerRunCell}>
-                  <a href={journeyHref(section.citation)}>All {section.runs.length} runs, each with its timeline</a>
+                  <SectionRuns section={section} referenceMs={referenceMs} openRun={openRun} onRun={onRun} />
                 </TableCell>
               </TableRow>
             )}
           </Fragment>
         );
       })}
+    </>
+  );
+}
+
+const clip = (text: string, length: number) => (text.length > length ? `${text.slice(0, length - 1)}…` : text);
+
+/** One overview line's groups: the largest few, then how many more. */
+function Groups({ groups }: { groups: Array<{ label: string; count: number; tone?: LedgerTone }> }) {
+  return (
+    <>
+      {groups.slice(0, OVERVIEW_GROUPS).map((group) => (
+        <span key={group.label} title={group.label}>
+          {group.tone && (
+            <span aria-hidden className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${TONE_DOT[group.tone]}`} />
+          )}
+          {clip(group.label, CAUSE_CHARS)} <strong className={styles.ledgerCount}>{group.count}</strong>
+        </span>
+      ))}
+      {groups.length > OVERVIEW_GROUPS && <span>+{groups.length - OVERVIEW_GROUPS} more</span>}
+    </>
+  );
+}
+
+/** An open section: its runs in a few lines, the latest with its timeline, and a link to every run. */
+function SectionRuns({
+  section,
+  referenceMs,
+  openRun,
+  onRun,
+}: {
+  section: LedgerSection;
+  referenceMs: number;
+  openRun: string | null;
+  onRun: (id: string) => void;
+}) {
+  const overview = sectionOverview(section);
+  const latest = overview.latest;
+  return (
+    <>
+      <dl className={styles.ledgerOverview} aria-label={`Runs of ${section.citation}`}>
+        <div>
+          <dt>Runs</dt>
+          <dd>
+            <span>
+              <strong className={styles.ledgerCount}>{overview.runs}</strong>{" "}
+              {overview.runs === 1
+                ? relativeTime(overview.lastAt, referenceMs)
+                : `from ${relativeTime(overview.firstAt, referenceMs)} to ${relativeTime(overview.lastAt, referenceMs)}`}
+            </span>
+            {overview.encoders && (
+              <span className="font-mono">
+                {overview.encoders.from === overview.encoders.to
+                  ? overview.encoders.to
+                  : `${overview.encoders.from} → ${overview.encoders.to}`}
+              </span>
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt>Ended</dt>
+          <dd>
+            <Groups groups={overview.ended} />
+          </dd>
+        </div>
+        {overview.causes.length > 0 && (
+          <div>
+            <dt>Causes</dt>
+            <dd>
+              <Groups groups={overview.causes} />
+            </dd>
+          </div>
+        )}
+        <div>
+          <dt>Latest</dt>
+          <dd>
+            <button
+              type="button"
+              className={styles.ledgerToggle}
+              aria-expanded={openRun === latest.id}
+              aria-label={`Timeline of ${latest.citation}, run ${latest.id}`}
+              onClick={() => onRun(latest.id)}
+            >
+              <span aria-hidden>{openRun === latest.id ? "▾" : "▸"}</span>
+            </button>
+            <span title={latest.dispatchedAt}>{relativeTime(latest.dispatchedAt, referenceMs)}</span>
+            <a href={latest.runUrl} target="_blank" rel="noreferrer" data-outcome={latest.outcome}>
+              {latest.outcomeLabel}
+            </a>
+            {latest.cause && (
+              <span className={styles.ledgerRunCause} title={latest.cause}>
+                {latest.cause}
+              </span>
+            )}
+            {latest.pr && (
+              <a href={latest.pr.url} target="_blank" rel="noreferrer">
+                {latest.pr.label} · {latest.pr.state}
+              </a>
+            )}
+          </dd>
+        </div>
+      </dl>
+      {openRun === latest.id && (
+        <div className={styles.ledgerTimeline}>
+          <RunTimeline timeline={runTimeline(latest, referenceMs)} />
+        </div>
+      )}
+      <a className={styles.ledgerAll} href={journeyHref(section.citation)}>
+        {overview.runs === 1 ? "This run on the journey page" : `All ${overview.runs} runs, each with its timeline`} →
+      </a>
     </>
   );
 }
