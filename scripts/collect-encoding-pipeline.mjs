@@ -216,6 +216,7 @@ const TIME_CARRIED = [
   "indexed_at",
   "tests_first_at",
 ];
+const FIRST_TESTS_CARRIED = ["tests_first_started_at", "tests_first_status"];
 
 async function columnsExist(columns) {
   const { error } = await supabase.from("pipeline_attempts").select(columns.join(",")).limit(1);
@@ -239,6 +240,7 @@ async function readPrevious() {
     }
     // With the merge commit, these say which merges are timed already.
     if (await columnsExist(TIME_CARRIED)) columns += `,${TIME_CARRIED.join(",")},pr_merge_commit`;
+    if (await columnsExist(FIRST_TESTS_CARRIED)) columns += `,${FIRST_TESTS_CARRIED.join(",")}`;
     const rows = await read(columns);
     return new Map(rows.map((row) => [row.id, row]));
   } catch (error) {
@@ -776,6 +778,9 @@ const VERSION_COLUMNS = VERSION_CARRIED;
 // Added by the 2026-10-05 step-times migration.
 const TIME_COLUMNS = TIME_CARRIED;
 
+// Added by the 2026-10-05 first-tests migration.
+const FIRST_TESTS_COLUMNS = FIRST_TESTS_CARRIED;
+
 async function upsert(rows) {
   // Each migration's columns are written only once that migration is applied.
   for (const [name, group] of [
@@ -783,6 +788,7 @@ async function upsert(rows) {
     ["run detail", RUN_COLUMNS],
     ["version", VERSION_COLUMNS],
     ["step time", TIME_COLUMNS],
+    ["first tests", FIRST_TESTS_COLUMNS],
   ]) {
     if (await columnsExist(group)) continue;
     console.log(`${name} columns not written yet (migration not applied)`);
@@ -827,7 +833,7 @@ async function readSyncRuns(since) {
   return runs;
 }
 
-/** Per merge commit, when each validate shard first finished there. */
+/** Per merge commit, each validate shard's first decisive run there: when it started and finished, and how. */
 async function readMergeValidation(lookups) {
   const results = new Map();
   const queue = [...lookups];
@@ -848,7 +854,13 @@ async function readMergeValidation(lookups) {
               if (check.conclusion !== "success" && check.conclusion !== "failure") continue;
               const shard = match[1] ?? "";
               const known = shards.get(shard);
-              if (!known || check.completed_at < known) shards.set(shard, check.completed_at);
+              if (!known || check.completed_at < known.completedAt) {
+                shards.set(shard, {
+                  startedAt: check.started_at ?? null,
+                  completedAt: check.completed_at,
+                  conclusion: check.conclusion,
+                });
+              }
             }
             if (checks.length < 100) break;
           }
@@ -941,7 +953,10 @@ async function main() {
   console.log(`read ${checkErrors.size} of ${errorJobs.length} failing PR check logs`);
   const syncSince = timesTracked ? syncWindowStart(prs, previous, nowMs) : null;
   const syncRuns = timesTracked ? await readSyncRuns(syncSince) : null;
-  const mergeLookups = timesTracked ? mergeValidationLookups(prs, previous, mergeTestLimit) : [];
+  const firstTestsTracked = dryRun || (await columnsExist(FIRST_TESTS_COLUMNS));
+  const mergeLookups = timesTracked
+    ? mergeValidationLookups(prs, previous, mergeTestLimit, { detail: firstTestsTracked })
+    : [];
   const mergeValidation = await readMergeValidation(mergeLookups);
   console.log(
     `read ${syncRuns?.length ?? 0} index syncs since ${syncSince ?? "-"}, ` +
