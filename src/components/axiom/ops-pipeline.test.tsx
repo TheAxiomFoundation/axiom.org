@@ -82,7 +82,7 @@ function press(element: HTMLElement) {
 describe("OpsPipeline", () => {
   it("lays out the stage strip and the drop-outs, with no list open", () => {
     renderPipeline();
-    expect(screen.getByText(/^6 citations since Sep 1, 2026 · updated \S+ ago$/)).toBeInTheDocument();
+    expect(screen.queryByText(/citations since/)).not.toBeInTheDocument();
     const stages = screen.getByRole("list", { name: "Pipeline stages" });
     expect(within(stages).getByText("18,615")).toBeInTheDocument();
     expect(within(stages).getByText("paused")).toHaveAttribute("title", "Awaiting a green tip.");

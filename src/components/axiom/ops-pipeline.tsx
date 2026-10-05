@@ -236,11 +236,6 @@ export function OpsPipeline({
         <div>
           <p className={styles.eyebrow}>Pipeline</p>
           <h2 id="pipeline-title">Where every citation is</h2>
-          <p className={styles.sub}>
-            {number(view.citationCount)} citations
-            {view.firstDispatchAt && ` since ${formatDay(view.firstDispatchAt)}`}
-            {view.collectedAt && ` · updated ${ageLabel(view.collectedAt, referenceMs)} ago`}
-          </p>
         </div>
       </header>
 
