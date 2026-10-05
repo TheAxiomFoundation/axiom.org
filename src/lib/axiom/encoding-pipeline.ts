@@ -88,8 +88,11 @@ export interface PipelineAttempt {
   steps_read_at?: string | null;
   /** When the first successful index sync after the merge finished. */
   indexed_at?: string | null;
-  /** When the module's validation shard finished at the merge commit on main. */
+  /** When the module's validation shard first finished at the merge commit on main. */
   tests_first_at?: string | null;
+  /** When that first shard run started, and how it ended. */
+  tests_first_started_at?: string | null;
+  tests_first_status?: "pass" | "fail" | null;
 }
 
 /** Where one attempt sits. Main-line stages first, then the ways out. */
