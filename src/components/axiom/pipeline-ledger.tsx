@@ -253,34 +253,32 @@ function DocumentSections({
   );
 }
 
-/** One overview list, count first: "9  Validation rules". A row's tooltip holds a full message. */
+/** One overview list, count first: "9  Validation rules", the largest few until "+N more" opens the rest. A row's tooltip holds a full message. */
 function CountList({
   title,
   groups,
 }: {
   title: string;
-  groups: Array<{ label: string; count: number; tone?: LedgerTone; detail?: string }>;
+  groups: Array<{ label: string; count: number; detail?: string }>;
 }) {
+  const [all, setAll] = useState(false);
   const more = groups.length - OVERVIEW_GROUPS;
   return (
     <div>
       <p className={styles.ledgerLabel}>{title}</p>
       <ul className={styles.ledgerCounts} aria-label={title}>
-        {groups.slice(0, OVERVIEW_GROUPS).map((group) => (
+        {(all ? groups : groups.slice(0, OVERVIEW_GROUPS)).map((group) => (
           <li key={group.label} title={group.detail ?? group.label}>
             <span className={styles.ledgerCount}>{group.count}</span>
-            <span>
-              {group.tone && (
-                <span aria-hidden className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${TONE_DOT[group.tone]}`} />
-              )}
-              {group.label}
-            </span>
+            <span>{group.label}</span>
           </li>
         ))}
         {more > 0 && (
           <li>
             <span />
-            <span className={styles.ledgerMuted}>+{more} more</span>
+            <button type="button" className={styles.ledgerShowMore} aria-expanded={all} onClick={() => setAll((open) => !open)}>
+              {all ? "Show fewer" : `+${more} more`}
+            </button>
           </li>
         )}
       </ul>
@@ -314,7 +312,7 @@ function SectionRuns({ section, referenceMs }: { section: LedgerSection; referen
         )}
       </p>
       <div className={styles.ledgerColumns}>
-        <CountList title="How they ended" groups={overview.ended} />
+        <CountList title="Outcome of each run" groups={overview.ended} />
         {overview.causes.length > 0 && <CountList title="Why they failed" groups={overview.causes} />}
       </div>
       <p className={styles.ledgerLatest}>

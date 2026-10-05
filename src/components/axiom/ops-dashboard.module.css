@@ -294,8 +294,18 @@
   font-variant-numeric: tabular-nums;
 }
 
-.ledgerMuted {
-  color: var(--color-ink-muted);
+.ledgerShowMore {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 12px;
+  color: var(--color-accent);
+  cursor: pointer;
+}
+
+.ledgerShowMore:hover {
+  text-decoration: underline;
 }
 
 .ledgerLatest {
