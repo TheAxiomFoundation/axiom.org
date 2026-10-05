@@ -3,7 +3,6 @@ import {
   attemptJurisdiction,
   checkErrorGroups,
   compareVersions,
-  funnelGaps,
   inScope,
   parseScope,
   pipelineFunnel,
@@ -30,35 +29,6 @@ describe("pipelineFunnel", () => {
         pipelineAttempt({ id: "e1", citation: "us/e" }),
       ])
     ).toEqual({ citations: 5, encoded: 4, merged: 3, mergedMain: 2, passing: 1 });
-  });
-});
-
-describe("funnelGaps", () => {
-  it("splits each drop by where the citations that stopped there are now, re-runs apart", () => {
-    const attempts = [
-      pipelineAttempt({ id: "a", citation: "us/a" }),
-      pipelineAttempt({ id: "b", citation: "us/b", run_status: "in_progress", run_conclusion: null }),
-      // Encoded once, then a later run failed.
-      pipelineAttempt({ id: "c1", citation: "us/c", dispatched_at: day(1), run_conclusion: "success" }),
-      pipelineAttempt({ id: "c2", citation: "us/c", dispatched_at: day(2) }),
-      // Merged into main once, then a later run failed.
-      mergedAttempt({ id: "d1", citation: "us/d", dispatched_at: day(1) }),
-      pipelineAttempt({ id: "d2", citation: "us/d", dispatched_at: day(2) }),
-      pipelineAttempt({ id: "e", citation: "us/e", run_conclusion: "success", pr_state: "draft", pr_url: "u", pr_created_at: day(3) }),
-      mergedAttempt({ id: "f", citation: "us/f", pr_targets_default: false }),
-      mergedAttempt({ id: "g", citation: "us/g", tests_status: "pass", synced_at: "S", index_status: "indexed" }),
-    ];
-    expect(pipelineFunnel(attempts)).toEqual({ citations: 7, encoded: 5, merged: 3, mergedMain: 2, passing: 1 });
-    const gaps = funnelGaps(attempts, NOW);
-    expect(gaps.map((gap) => gap.map((g) => `${g.stage}${g.rerun ? " (re-run)" : ""} ${g.count}`))).toEqual([
-      ["encode_failed 1", "encoding 1"],
-      ["encode_failed (re-run) 1", "review 1"],
-      ["merged_off_main 1"],
-      ["encode_failed (re-run) 1"],
-    ]);
-    // Each gap adds up to the drop between its two numbers.
-    expect(gaps.map((gap) => gap.reduce((total, g) => total + g.count, 0))).toEqual([2, 2, 1, 1]);
-    expect(gaps[1][0].items.map((item) => item.citation)).toEqual(["us/c"]);
   });
 });
 

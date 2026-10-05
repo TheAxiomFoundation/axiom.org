@@ -121,7 +121,7 @@ describe("OpsPipeline", () => {
 
   it("lists a stage's citations with why they are there, links, and flags", () => {
     renderPipeline();
-    fireEvent.click(screen.getByRole("button", { name: /In review/ }));
+    fireEvent.click(within(screen.getByRole("list", { name: "Pipeline stages" })).getByRole("button", { name: /In review/ }));
     flushFrames();
     expect(scrollIntoView).not.toHaveBeenCalled();
     const list = openList();
@@ -200,7 +200,7 @@ describe("OpsPipeline", () => {
     expect(screen.queryByText("no engine sweep yet")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /^65\s*last encode failed$/ }));
     expect(within(openList()).getByText("Latest 60 of 65")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /In review/ }));
+    fireEvent.click(within(screen.getByRole("list", { name: "Pipeline stages" })).getByRole("button", { name: /In review/ }));
     expect(within(openList()).getByText("Oldest 60 of 62")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Runs/ }));
     expect(within(openList()).getByRole("link", { name: "us/ok" })).toBeInTheDocument();
@@ -474,11 +474,14 @@ describe("OpsPipeline", () => {
     fireEvent.change(select, { target: { value: "" } });
     expect(push).toHaveBeenLastCalledWith("/ops?j=us#pipeline-title");
 
-    const funnel = screen.getByRole("list", { name: "How far each citation got" });
-    expect(funnel).toHaveTextContent(/^3citations.*2encoded.*1merged.*1in main.*1tests pass$/);
-    // Between the steps: what is stuck there now.
-    expect(within(funnel).getByRole("button", { name: "1 failed" })).toBeInTheDocument();
-    expect(within(funnel).getByRole("button", { name: "1 in review" })).toBeInTheDocument();
+    // Each citation once, where its latest run left it, in pipeline order.
+    expect(screen.getByText("3 citations · where each one is now")).toBeInTheDocument();
+    const states = screen.getByRole("list", { name: "Where each citation is now" });
+    expect(within(states).getAllByRole("button").map((row) => row.textContent)).toEqual([
+      "1Encoding failslatest run failed",
+      "1In reviewPR open",
+      "1In main1 pending index",
+    ]);
 
     const runs = screen.getByRole("group", { name: "Runs and retries" });
     expect(within(runs).getByText("of citations encode on the first attempt (2 of 3)")).toBeInTheDocument();
@@ -538,12 +541,11 @@ describe("OpsPipeline", () => {
     expect(screen.getByRole("list", { name: "Pipeline stages" })).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "Why encodes fail" })).toBeInTheDocument();
 
-    const funnel = screen.getByRole("list", { name: "How far each citation got" });
-    expect(funnel).toHaveTextContent(/^6citations.*3encoded.*2merged.*1in main.*1tests pass$/);
-    fireEvent.click(within(funnel).getByRole("button", { name: "3 failed" }));
-    expect(within(openList()).getByRole("heading", { name: /Last encode failed\s*3/ })).toBeInTheDocument();
-    expect(within(funnel).getByRole("button", { name: "3 failed" })).toHaveAttribute("aria-pressed", "true");
-    fireEvent.click(within(funnel).getByRole("button", { name: "1 merged into another branch" }));
+    const states = screen.getByRole("list", { name: "Where each citation is now" });
+    fireEvent.click(within(states).getByRole("button", { name: /^3\s*Encoding fails/ }));
+    expect(within(openList()).getByRole("heading", { name: /Encoding fails\s*3/ })).toBeInTheDocument();
+    expect(within(states).getByRole("button", { name: /^3\s*Encoding fails/ })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(within(states).getByRole("button", { name: /^1\s*Merged elsewhere/ }));
     expect(within(openList()).getByText("Merged into codex/x")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "935 queued" }));
     expect(screen.getByRole("region", { name: "Queued items" })).toBeInTheDocument();
@@ -566,25 +568,31 @@ describe("OpsPipeline", () => {
     expect(within(trend).getByRole("note")).toHaveTextContent(/last 8 weeks\. The number is the last full week\./);
     // Names and numbers only; meanings sit behind each "?".
     expect(screen.queryByText(/stages · corpus/)).not.toBeInTheDocument();
-    press(screen.getByRole("button", { name: "What Citations: how far each got means" }));
-    expect(screen.getByRole("note")).toHaveTextContent(/^Each number counts citations, not runs/);
+    press(screen.getByRole("button", { name: "What Where each citation is now means" }));
+    expect(screen.getByRole("note")).toHaveTextContent(/^Each citation counts once, at the stage its latest run reached/);
     expect(within(blockers).getByRole("button", { name: "What Top blockers means" })).toBeInTheDocument();
 
   });
 
-  it("splits each drop in the summary into chips that add up to it, with re-runs apart", () => {
+  it("puts every citation in one group, by where its latest run left it, adding up to all of them", () => {
     const attempts = [
       pipelineAttempt({ id: "a", citation: "us/a" }),
-      pipelineAttempt({ id: "c1", citation: "us/c", dispatched_at: "2026-09-21T10:00:00Z", run_conclusion: "success" }),
-      pipelineAttempt({ id: "c2", citation: "us/c", dispatched_at: "2026-09-22T10:00:00Z" }),
+      pipelineAttempt({ id: "b", citation: "us/b", run_conclusion: "success" }),
+      pipelineAttempt({ id: "c", citation: "us/c", run_conclusion: "success", pr_state: "closed", pr_url: "u" }),
       mergedAttempt({ id: "g", citation: "us/g", tests_status: "pass", synced_at: "S", index_status: "indexed" }),
     ];
     render(<OpsPipeline view={pipelineView(attempts, NOW)} insights={pipelineInsights(attempts, NOW)} queued={null} referenceMs={NOW} />);
-    const funnel = screen.getByRole("list", { name: "How far each citation got" });
-    // 3 citations, 2 encoded: one never encoded (1 failed); one encoded once, then a re-run failed.
-    expect(funnel).toHaveTextContent(/^3citations→1 failed2encoded→1 re-run failed1merged/);
-    fireEvent.click(within(funnel).getByRole("button", { name: "1 re-run failed" }));
-    const list = screen.getByRole("region", { name: /^Re-run failed/ });
+    expect(screen.getByText("4 citations · where each one is now")).toBeInTheDocument();
+    const states = screen.getByRole("list", { name: "Where each citation is now" });
+    // A group of several stages names its parts.
+    expect(within(states).getAllByRole("button").map((row) => row.textContent)).toEqual([
+      "1Encoding failslatest run failed",
+      "2No open PR1 without a PR · 1 PR closed",
+      "1Donetests pass on main",
+    ]);
+    fireEvent.click(within(states).getByRole("button", { name: /^2\s*No open PR/ }));
+    const list = screen.getByRole("region", { name: /^No open PR/ });
+    expect(within(list).getByRole("link", { name: "us/b" })).toBeInTheDocument();
     expect(within(list).getByRole("link", { name: "us/c" })).toBeInTheDocument();
   });
 

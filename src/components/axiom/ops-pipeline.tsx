@@ -22,7 +22,6 @@ import {
   scopeName,
   scopeSearch,
   type AttemptRate,
-  type FunnelGapGroup,
   type PipelineInsights,
   type PipelineScope,
   type RunStats,
@@ -194,13 +193,14 @@ export function OpsPipeline({
       count: view.stages[stage].count,
       newestFirst: isExitStage(stage),
     });
-  const showGap = (group: FunnelGapGroup) =>
+  const showGroupOfStages = (group: CitationGroup) =>
     show({
       kind: "citations",
-      ...gapCopy(group),
-      items: group.items,
+      title: group.label,
+      description: group.description,
+      items: group.stages.flatMap((stage) => view.stages[stage].items),
       count: group.count,
-      newestFirst: isExitStage(group.stage),
+      newestFirst: group.stages.every(isExitStage),
     });
   const showGroup = (heading: string, group: PipelineGroupView, newestFirst: boolean) =>
     show({
@@ -254,16 +254,13 @@ export function OpsPipeline({
       {scopes.roots.length > 1 && <ScopeBar scope={scope} scopes={scopes} />}
 
 
-      {insights && (
-        <SummaryFunnel
-          funnel={insights.funnel}
-          gaps={insights.funnelGaps}
-          queued={queued}
-          isOpen={shows}
-          onGap={showGap}
-          onQueue={() => show({ kind: "queue" })}
-        />
-      )}
+      <CitationStates
+        view={view}
+        queued={queued}
+        isOpen={shows}
+        onGroup={showGroupOfStages}
+        onQueue={() => show({ kind: "queue" })}
+      />
 
       <div className={styles.summaryRow}>
         <TopBlockers blockers={blockers} />
@@ -991,57 +988,84 @@ const GAP_LABELS: Partial<Record<PipelineStage, string>> = {
 };
 
 /** The stages that sit between each pair of funnel steps. */
-/** A gap group's list heading and what it holds. */
-function gapCopy(group: FunnelGapGroup): { title: string; description: string } {
-  if (!group.rerun) return { title: STAGE_COPY[group.stage].label, description: STAGE_COPY[group.stage].description };
-  return group.stage === "encoding"
-    ? { title: "Re-running", description: "Citations that got further once and are being encoded again." }
-    : {
-        title: "Re-run failed",
-        description: "Citations that got further once, then their latest run failed to encode.",
-      };
-}
 
-/** A gap group's chip, in a few words: "73 failed", "3 re-run failed". */
-function gapLabel(group: FunnelGapGroup): string {
-  if (group.rerun) return group.stage === "encoding" ? "re-running" : "re-run failed";
-  return GAP_LABELS[group.stage] ?? STAGE_COPY[group.stage].label.toLowerCase();
+/** Where a citation can be now, in pipeline order; every stage belongs to exactly one group. */
+const CITATION_GROUPS: Array<{
+  key: string;
+  label: string;
+  stages: PipelineStage[];
+  tone: "fail" | "work" | "done";
+  /** What the group means; groups of several stages list their parts instead. */
+  detail: string | null;
+}> = [
+  { key: "failing", label: "Encoding fails", stages: ["encode_failed"], tone: "fail", detail: "latest run failed" },
+  { key: "encoding", label: "Encoding", stages: ["encoding"], tone: "work", detail: "a run is in progress" },
+  { key: "no-pr", label: "No open PR", stages: ["no_pr", "closed"], tone: "fail", detail: null },
+  { key: "review", label: "In review", stages: ["review"], tone: "work", detail: "PR open" },
+  { key: "elsewhere", label: "Merged elsewhere", stages: ["merged_off_main"], tone: "fail", detail: "merged into another branch" },
+  {
+    key: "main",
+    label: "In main",
+    stages: ["awaiting_sync", "not_indexed", "indexed", "runs", "compile_failed", "tests_failing", "oracle_disagrees"],
+    tone: "work",
+    detail: null,
+  },
+  { key: "done", label: "Done", stages: ["verified"], tone: "done", detail: "tests pass on main" },
+];
+
+interface CitationGroup {
+  key: string;
+  label: string;
+  stages: PipelineStage[];
+  tone: "fail" | "work" | "done";
+  count: number;
+  description: string;
 }
 
 /**
- * How far citations ever got, as five large numbers, with the citations
- * stuck now between each pair of steps. A chip opens its citations.
+ * Every citation in the scope, once each, at the stage its latest run
+ * reached: one bar split in pipeline order, and a row per group that lists
+ * its citations. The groups add up to all citations.
  */
-function SummaryFunnel({
-  funnel,
-  gaps,
+function CitationStates({
+  view,
   queued,
   isOpen,
-  onGap,
+  onGroup,
   onQueue,
 }: {
-  funnel: PipelineInsights["funnel"];
-  gaps: FunnelGapGroup[][];
+  view: PipelineView;
   queued: QueuedSummary | null;
   isOpen: (title: string) => boolean;
-  onGap: (group: FunnelGapGroup) => void;
+  onGroup: (group: CitationGroup) => void;
   onQueue: () => void;
 }) {
-  const steps = [
-    { label: "citations", value: funnel.citations },
-    { label: "encoded", value: funnel.encoded },
-    { label: "merged", value: funnel.merged },
-    { label: "in main", value: funnel.mergedMain },
-    { label: "tests pass", value: funnel.passing },
-  ];
+  const groups: CitationGroup[] = CITATION_GROUPS.map((group) => {
+    const parts = group.stages.filter((stage) => view.stages[stage].count > 0);
+    return {
+      ...group,
+      count: group.stages.reduce((sum, stage) => sum + view.stages[stage].count, 0),
+      description:
+        group.detail ??
+        parts
+          .map((stage) => {
+            const count = view.stages[stage].count;
+            const label = GAP_LABELS[stage] ?? STAGE_COPY[stage].label.toLowerCase();
+            return `${number(count)} ${count === 1 ? label.replace(/^PRs /, "PR ") : label}`;
+          })
+          .join(" · "),
+    };
+  }).filter((group) => group.count > 0);
+  const total = groups.reduce((sum, group) => sum + group.count, 0);
   return (
-    <div className={styles.summaryFunnel}>
+    <div className={styles.citationStates}>
       <div className={styles.summaryFunnelHead}>
-        <span className={styles.miniLabel}>Citations: how far each got</span>
-        <Explain label="Citations: how far each got">
-          Each number counts citations, not runs. A citation counts at a step if any of its runs got there, even if
-          a later run failed. The chips after a number are the citations that stopped there, by where they are now,
-          so they add up to the drop to the next number; click one to list them. The Flow tab counts runs.
+        <span className={styles.miniLabel}>
+          {number(total)} {total === 1 ? "citation" : "citations"} · where each one is now
+        </span>
+        <Explain label="Where each citation is now">
+          Each citation counts once, at the stage its latest run reached. The groups follow the pipeline and add up
+          to all citations. Click a group to list its citations.
         </Explain>
         {queued && queued.pending > 0 && (
           <button type="button" className={styles.gapChip} onClick={onQueue}>
@@ -1049,36 +1073,33 @@ function SummaryFunnel({
           </button>
         )}
       </div>
-      <ol className={styles.funnelSteps} aria-label="How far each citation got">
-        {steps.map((step, index) => (
-          <li key={step.label} className={styles.funnelStep}>
-            <span className={styles.funnelValue}>{number(step.value)}</span>
-            <span className={styles.funnelName}>{step.label}</span>
-            {index < gaps.length && (
-              <span className={styles.funnelGap}>
-                <span className={styles.funnelArrow} aria-hidden>
-                  →
-                </span>
-                {gaps[index].map((group) => {
-                  const copy = gapCopy(group);
-                  return (
-                    <button
-                      key={`${group.stage}:${group.rerun}`}
-                      type="button"
-                      className={`${styles.gapChip} ${isExitStage(group.stage) || group.rerun || group.stuck > 0 ? styles.gapChipStuck : ""}`}
-                      aria-pressed={isOpen(copy.title)}
-                      title={copy.description}
-                      onClick={() => onGap(group)}
-                    >
-                      <strong>{number(group.count)}</strong> {gapLabel(group)}
-                    </button>
-                  );
-                })}
-              </span>
-            )}
+      <div className={styles.stateBar} aria-hidden>
+        {groups.map((group) => (
+          <span
+            key={group.key}
+            data-tone={group.tone}
+            style={{ flexGrow: group.count }}
+            title={`${group.label}: ${number(group.count)}`}
+          />
+        ))}
+      </div>
+      <ul className={styles.stateList} aria-label="Where each citation is now">
+        {groups.map((group) => (
+          <li key={group.key}>
+            <button
+              type="button"
+              className={styles.stateRow}
+              aria-pressed={isOpen(group.label)}
+              onClick={() => onGroup(group)}
+            >
+              <span className={styles.stateCount}>{number(group.count)}</span>
+              <span className={styles.stateSwatch} data-tone={group.tone} aria-hidden />
+              <span className={styles.stateLabel}>{group.label}</span>
+              <span className={styles.stateDetail}>{group.description}</span>
+            </button>
           </li>
         ))}
-      </ol>
+      </ul>
     </div>
   );
 }
