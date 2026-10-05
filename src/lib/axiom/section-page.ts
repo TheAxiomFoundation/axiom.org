@@ -20,10 +20,6 @@ import {
   type ProvisionProgramCoverage,
 } from "@/lib/axiom/runtime/coverage";
 import {
-  listParityCases,
-  type ParityCaseSummary,
-} from "@/lib/axiom/runtime/api";
-import {
   getSectionEncoding,
   type SectionEncoding,
 } from "@/lib/axiom/section-encoding";
@@ -136,65 +132,6 @@ export interface SectionPageData {
    * section has no subsection structure to measure against.
    */
   encodedCoverage: { encodedUnits: number; totalUnits: number } | null;
-  /**
-   * External comparisons declared by the parity cases of the first
-   * covering program that has any. The hosted API lists each
-   * comparison's setup and no result (see `listParityCases`), so
-   * this records that a comparison exists and says nothing about
-   * whether the engines agree.
-   */
-  externalComparisons: DeclaredExternalComparisons | null;
-}
-
-export interface DeclaredExternalComparisons {
-  programId: string;
-  jurisdiction: string;
-  /** One entry per engine, in first-declared order. */
-  engines: Array<{
-    engine: string;
-    /** Parity cases of this program that declare this engine. */
-    caseCount: number;
-    caseDescriptions: string[];
-  }>;
-}
-
-/**
- * The first covering program (in coverage order) with a parity case
- * that declares an external comparison, grouped by engine so each
- * engine's case count covers only the cases that name it.
- */
-export function declaredExternalComparisons(
-  programs: ReadonlyArray<Pick<ProvisionProgramCoverage, "programId" | "jurisdiction">>,
-  parityCases: ReadonlyArray<ParityCaseSummary>,
-): DeclaredExternalComparisons | null {
-  for (const program of programs) {
-    const byEngine = new Map<string, string[]>();
-    for (const item of parityCases) {
-      if (
-        item.jurisdiction !== program.jurisdiction ||
-        item.program_id !== program.programId
-      ) {
-        continue;
-      }
-      for (const engine of new Set(item.comparisonEngines)) {
-        const descriptions = byEngine.get(engine) ?? [];
-        descriptions.push(item.description);
-        byEngine.set(engine, descriptions);
-      }
-    }
-    if (byEngine.size > 0) {
-      return {
-        programId: program.programId,
-        jurisdiction: program.jurisdiction,
-        engines: Array.from(byEngine, ([engine, descriptions]) => ({
-          engine,
-          caseCount: descriptions.length,
-          caseDescriptions: descriptions.filter(Boolean),
-        })),
-      };
-    }
-  }
-  return null;
 }
 
 /**
@@ -1166,7 +1103,7 @@ export async function getSectionPageDataFromResolution(
   const { citationPath, focusAnchor, prefetchedSubtree } = resolution;
   let root = resolution.root;
 
-  const [subtree, rootRefs, node, sectionEncoding, programs, parityCases] =
+  const [subtree, rootRefs, node, sectionEncoding, programs] =
     await Promise.all([
       prefetchedSubtree ?? getSubtreeProvisions(citationPath),
       getRuleReferences(citationPath).catch(() => [] as RuleReference[]),
@@ -1182,7 +1119,6 @@ export async function getSectionPageDataFromResolution(
       getProvisionCoverage(citationPath).catch(
         () => [] as ProvisionProgramCoverage[],
       ),
-      listParityCases().catch(() => []),
     ]);
   const encoding = sectionEncoding.encoding;
 
@@ -1290,7 +1226,6 @@ export async function getSectionPageDataFromResolution(
     next,
     truncated: subtree.truncated,
     encodedCoverage,
-    externalComparisons: declaredExternalComparisons(programs, parityCases),
   };
 }
 

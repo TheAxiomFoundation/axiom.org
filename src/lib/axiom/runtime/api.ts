@@ -447,53 +447,6 @@ export async function runCalculateRoot(request: {
   }
 }
 
-export interface ParityCaseSummary {
-  id: string;
-  description: string;
-  program_id: string;
-  jurisdiction: string;
-  /** Engines this case declares an external comparison with
-   *  (`external_comparisons[].engine`), deduplicated. Empty means the
-   *  case checks Axiom against its own expected outputs only. */
-  comparisonEngines: string[];
-}
-
-/**
- * Canonical parity cases from the hosted API, reduced to what the
- * app's trust surfaces need. Cached like the registry reads.
- *
- * Each `external_comparisons` item carries the other engine's
- * request, output mappings, notes, and tolerance, and no result:
- * neither `/parity/cases` nor `/parity/run` (which checks Axiom
- * against `expected_axiom_outputs` only) reports whether the other
- * engine agreed. A declared engine is therefore never evidence of
- * agreement.
- */
-export async function listParityCases(): Promise<ParityCaseSummary[]> {
-  const data = await runtimeGet<{
-    cases: Array<{
-      id: string;
-      description?: string;
-      program_id: string;
-      jurisdiction: string;
-      external_comparisons?: Array<{ engine?: string } | null>;
-    }>;
-  }>("/parity/cases");
-  return (data?.cases ?? []).map((item) => ({
-    id: item.id,
-    description: item.description ?? "",
-    program_id: item.program_id,
-    jurisdiction: item.jurisdiction,
-    comparisonEngines: Array.from(
-      new Set(
-        (item.external_comparisons ?? [])
-          .map((comparison) => comparison?.engine)
-          .filter((engine): engine is string => Boolean(engine))
-      )
-    ),
-  }));
-}
-
 export async function getProgramGraph(
   jurisdiction: string,
   programId: string

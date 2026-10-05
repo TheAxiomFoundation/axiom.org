@@ -3,7 +3,6 @@ import {
   railChunksFromProvisions,
   refsForChunk,
   type BodyChunk,
-  type DeclaredExternalComparisons,
   type SectionPageData,
   type SectionProvision,
 } from "@/lib/axiom/section-page";
@@ -52,55 +51,6 @@ function formatDate(value: string | null): string | null {
   });
 }
 
-const ORACLE_LABELS: Readonly<Record<string, string>> = {
-  policyengine: "PolicyEngine",
-  taxsim: "TAXSIM",
-  ukmod: "UKMOD",
-  euromod: "EUROMOD",
-};
-
-function oracleLabel(engine: string): string {
-  return Object.hasOwn(ORACLE_LABELS, engine) ? ORACLE_LABELS[engine] : engine;
-}
-
-/** Ties between Axiom and an engine, stated wherever the engine is named. */
-const ENGINE_DISCLOSURES: Readonly<Record<string, string>> = {
-  policyengine: "Max Ghenis is CEO of both Axiom and PolicyEngine.",
-};
-
-/**
- * Description of a declared external comparison: the program, its
- * cases, the engine, a plain statement that no result is shown, and
- * any tie between Axiom and the engine. Rendered as the chip's title
- * and as screen-reader text, so the disclosure does not depend on a
- * hover tooltip.
- */
-export function externalComparisonTitle(
-  declared: Pick<DeclaredExternalComparisons, "programId" | "jurisdiction">,
-  comparison: DeclaredExternalComparisons["engines"][number],
-): string {
-  const engine = oracleLabel(comparison.engine);
-  const one = comparison.caseCount === 1;
-  const described =
-    comparison.caseDescriptions.length > 0
-      ? ` (${comparison.caseDescriptions
-          .map((description) => description.replace(/\.$/, ""))
-          .join("; ")})`
-      : "";
-  const disclosure = Object.hasOwn(ENGINE_DISCLOSURES, comparison.engine)
-    ? ENGINE_DISCLOSURES[comparison.engine]
-    : null;
-  return [
-    `${comparison.caseCount} test ${one ? "case" : "cases"} for ` +
-      `${declared.programId} (${declared.jurisdiction}) ` +
-      `${one ? "declares" : "declare"} a comparison with ${engine}${described}.`,
-    `The ${one ? "case lists" : "cases list"} the comparison's inputs and ` +
-      `output mappings and no result, so this chip does not say whether ` +
-      `Axiom and ${engine} agree.`,
-    ...(disclosure ? [disclosure] : []),
-  ].join(" ");
-}
-
 /** Past this many subsections the segment map gives way to numerals. */
 const COVERAGE_MAP_MAX_UNITS = 16;
 
@@ -111,15 +61,16 @@ const CHIP_CLASS =
  * The section's trust row — quiet status chips in the app's sans,
  * product-style rather than typewriter-style:
  *
- *   (∀ 8 rules) (▰▱▱▱▱▱ 1 of 6 subsections) (PolicyEngine comparison 1 case)
+ *   (∀ 8 rules) (▰▱▱▱▱▱ 1 of 6 subsections)
  *
  * Coverage is a map, not a meter: one segment per top-level
  * subsection in document order, filled where rules exist; each
- * segment links to its subsection. A comparison chip appears for
- * each engine a covering program's parity cases declare. The API
- * publishes no result for those comparisons, so the chip stays
- * neutral: no check mark, no "verified", no "agrees". Denominators
- * always shown.
+ * segment links to its subsection. Denominators always shown.
+ *
+ * The row names no external engine. A green "Verified · PolicyEngine"
+ * chip once appeared here on the strength of a parity case's declared
+ * comparison alone (axiom.org#295). A chip built on external
+ * comparison results needs its own reviewed design first.
  */
 function EncodingStatusLine({ data }: { data: SectionPageData }) {
   if (data.encodedRules.length === 0) return null;
@@ -135,7 +86,6 @@ function EncodingStatusLine({ data }: { data: SectionPageData }) {
   const encodedCount = unitAnchors.filter((anchor) =>
     encodedAnchors.has(anchor),
   ).length;
-  const declared = data.externalComparisons;
 
   return (
     <div className="mt-3.5 flex flex-wrap items-center gap-2">
@@ -187,24 +137,6 @@ function EncodingStatusLine({ data }: { data: SectionPageData }) {
             : `${encodedCount} of ${unitAnchors.length} subsections`}
         </span>
       )}
-
-      {declared?.engines.map((comparison) => {
-        const description = externalComparisonTitle(declared, comparison);
-        return (
-          <span
-            key={comparison.engine}
-            className={`${CHIP_CLASS} cursor-help`}
-            title={description}
-          >
-            {oracleLabel(comparison.engine)} comparison
-            <span className="opacity-60">
-              {comparison.caseCount}{" "}
-              {comparison.caseCount === 1 ? "case" : "cases"}
-            </span>
-            <span className="sr-only">{description}</span>
-          </span>
-        );
-      })}
     </div>
   );
 }
