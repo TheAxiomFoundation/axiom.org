@@ -37,6 +37,7 @@ import {
   type FlowGate,
   type FlowSegment,
   type EncodeParts,
+  type GateKey,
   type RunRow,
   type StepTimes,
   type TestsParts,
@@ -1268,17 +1269,107 @@ function VersionsCard({ bins }: { bins: VersionBin[] }) {
   );
 }
 
-const SEGMENT_CLASS: Record<FlowSegment["kind"], string> = {
-  continue: styles.segContinue,
-  pending: styles.segPending,
-  loss: styles.segLoss,
+/** What the runs that went on from each step are called. */
+const WENT_ON: Record<GateKey, string> = {
+  approval: "approved",
+  run: "encoded",
+  pr: "PR opened",
+  review: "merged",
+  main: "into main",
+  index: "indexed",
+  tests: "tests pass",
+};
+
+/** Short names for the runs that stopped or wait at a step, by segment. */
+const STOPPED: Record<string, string> = {
+  "approval:waiting": "waiting",
+  "approval:cancelled": "cancelled",
+  "run:running": "running",
+  "pr:none": "no PR",
+  "review:open": "in review",
+  "review:closed": "closed",
+  "main:off": "into a side branch",
+  "index:awaiting": "waiting for the index",
+  "index:missing": "missing",
+  "tests:pending": "no result yet",
+  "tests:fail": "fail",
 };
 
 /**
- * Every dispatch through the gates, one row per gate: a bar of the runs that
- * reached it, split into those that went on, those still waiting, and those
- * lost there. Each part opens its runs.
+ * Every run through the steps, one line each: the runs that went on in
+ * large type, and beside them the runs that stopped or still wait there.
+ * Encode failures fold into one "failed" that opens their reasons. Every
+ * number opens its runs. The lines stop after a step nothing went on from.
  */
+function RunChain({ gates, onOpen }: { gates: FlowGate[]; onOpen: (gate: FlowGate, segment: FlowSegment) => void }) {
+  const [reasonsOpen, setReasonsOpen] = useState(false);
+  const shown: FlowGate[] = [];
+  for (const gate of gates) {
+    shown.push(gate);
+    if (!gate.segments.some((segment) => segment.kind === "continue")) break;
+  }
+  return (
+    <ol className={styles.chain} aria-label="Runs through each step">
+      <li className={styles.chainRow}>
+        <span className={styles.chainCount}>{number(gates[0]?.input ?? 0)}</span>
+        <span className={styles.chainLabel}>dispatched</span>
+      </li>
+      {shown.map((gate) => {
+        const on = gate.segments.find((segment) => segment.kind === "continue");
+        const losses = gate.segments.filter((segment) => segment.kind === "loss");
+        const pending = gate.segments.filter((segment) => segment.kind === "pending");
+        const folded = gate.key === "run" && losses.length > 0;
+        const side = folded ? pending : [...losses, ...pending];
+        return (
+          <li key={gate.key} className={styles.chainRow}>
+            {on ? (
+              <button
+                type="button"
+                className={styles.chainCount}
+                aria-label={`${number(on.count)} ${WENT_ON[gate.key]}`}
+                onClick={() => onOpen(gate, on)}
+              >
+                {number(on.count)}
+              </button>
+            ) : (
+              <span className={styles.chainCount}>0</span>
+            )}
+            <span className={styles.chainLabel}>{WENT_ON[gate.key]}</span>
+            <span className={styles.chainSide}>
+              {folded && (
+                <button
+                  type="button"
+                  className={styles.chainItem}
+                  aria-expanded={reasonsOpen}
+                  onClick={() => setReasonsOpen((open) => !open)}
+                >
+                  {number(losses.reduce((total, segment) => total + segment.count, 0))} failed{" "}
+                  <span aria-hidden>{reasonsOpen ? "▴" : "▾"}</span>
+                </button>
+              )}
+              {side.map((segment) => (
+                <button key={segment.key} type="button" className={styles.chainItem} onClick={() => onOpen(gate, segment)}>
+                  {number(segment.count)} {STOPPED[segment.key] ?? segment.label.toLowerCase()}
+                </button>
+              ))}
+            </span>
+            {folded && reasonsOpen && (
+              <span className={styles.chainReasons} role="group" aria-label="Why encode runs failed">
+                {losses.map((segment) => (
+                  <button key={segment.key} type="button" className={styles.chainReason} onClick={() => onOpen(gate, segment)}>
+                    {segment.label} <strong>{number(segment.count)}</strong>
+                  </button>
+                ))}
+              </span>
+            )}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+
 /** Seconds under a minute; otherwise as the rest of the page writes durations. */
 function shortDuration(ms: number): string {
   return ms < 60_000 ? `${Math.round(ms / 1000)}s` : durationLabel(ms);
@@ -1538,53 +1629,10 @@ function FlowView({
       )}
       <section className={styles.flowPart} aria-labelledby="flow-gates-title">
         <PartHead id="flow-gates-title" title="Where runs go">
-          Each bar is one step, with the number of runs that reached it: the runs that passed the step before.
-          The solid part went on, grey is still waiting, and the shaded part stopped there. Click a part to list
-          its runs.
+          Each line is a step. The big number is the runs that went on to the next step. The grey numbers beside it
+          stopped at that step or still wait there. Click a number to list those runs.
         </PartHead>
-        <ol className={styles.flowGates} aria-label="Dispatches through each gate">
-          {gates.map((gate) => (
-            <li key={gate.key} className={styles.flowGate}>
-              <div className={styles.flowGateHead}>
-                <span className={styles.flowGateName}>{gate.label}</span>
-                <span className={styles.flowGateIn}>
-                  {number(gate.input)} {gate.input === 1 ? "run" : "runs"}
-                </span>
-              </div>
-              {gate.input === 0 ? (
-                <p className={styles.empty}>No runs reached this gate.</p>
-              ) : (
-                <>
-                  <div className={styles.flowBar} aria-hidden>
-                    {gate.segments.map((segment) => (
-                      <span
-                        key={segment.key}
-                        className={`${styles.flowSeg} ${SEGMENT_CLASS[segment.kind]}`}
-                        style={{ flexGrow: segment.count }}
-                        title={`${segment.label}: ${number(segment.count)}`}
-                      />
-                    ))}
-                  </div>
-                  <div className={styles.flowLegend}>
-                    {gate.segments.map((segment) => (
-                      <button
-                        key={segment.key}
-                        type="button"
-                        className={styles.flowChip}
-                        onClick={() => onOpen(gate, segment)}
-                      >
-                        <span className={`${styles.flowDot} ${SEGMENT_CLASS[segment.kind]}`} aria-hidden />
-                        {segment.label}
-                        <strong>{number(segment.count)}</strong>
-                        <span className={styles.flowShare}>{percent(segment.count, gate.input)}%</span>
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </li>
-          ))}
-        </ol>
+        <RunChain gates={gates} onOpen={onOpen} />
       </section>
     </>
   );

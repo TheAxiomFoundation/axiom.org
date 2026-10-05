@@ -593,17 +593,34 @@ describe("OpsPipeline", () => {
     it("opens on the flow, and lists the runs behind a part of it", async () => {
       renderFlow({ jurisdiction: "us", only: true });
       expect(screen.getByRole("tab", { name: "Flow" })).toHaveAttribute("aria-selected", "true");
-      const flow = screen.getByRole("list", { name: "Dispatches through each gate" });
-      expect(flow).toHaveTextContent(/Signing approval3 runs/);
-      fireEvent.click(within(flow).getByRole("button", { name: /^Validation rules\s*1\s*50%$/ }));
+      // One line per step: the runs that went on, then those that stopped there.
+      const flow = screen.getByRole("list", { name: "Runs through each step" });
+      expect(within(flow).getAllByRole("listitem").map((row) => row.textContent)).toEqual([
+        "3dispatched",
+        "2approved1 cancelled",
+        "1encoded1 failed ▾",
+        "1PR opened",
+        "1merged",
+        "1into main",
+        "1indexed",
+        "1tests pass",
+      ]);
+      // Encode failures fold into one "failed" that opens their reasons.
+      const failed = within(flow).getByRole("button", { name: "1 failed" });
+      expect(failed).toHaveAttribute("aria-expanded", "false");
+      fireEvent.click(failed);
+      const reasons = within(flow).getByRole("group", { name: "Why encode runs failed" });
+      fireEvent.click(within(reasons).getByRole("button", { name: "Validation rules 1" }));
       const list = await screen.findByRole("region", { name: "Encode run: Validation rules runs" });
       expect(fetch).toHaveBeenCalledWith("/ops/runs?j=us&only=1");
       expect(within(list).getByRole("link", { name: "us/v" })).toHaveAttribute("href", "/ops/journey?citation=us%2Fv");
       expect(within(list).getByText("Validation rules · rule-a")).toBeInTheDocument();
       expect(within(list).getByText(/by Pavel · encoder 0.2.9/)).toBeInTheDocument();
-      // A second part reuses the runs already loaded.
-      fireEvent.click(within(flow).getByRole("button", { name: /^Tests pass/ }));
+      // Every number opens its runs, reusing the runs already loaded.
+      fireEvent.click(within(flow).getByRole("button", { name: "1 tests pass" }));
       await screen.findByRole("region", { name: "Tests on main: Tests pass runs" });
+      fireEvent.click(within(flow).getByRole("button", { name: "1 cancelled" }));
+      await screen.findByRole("region", { name: "Signing approval: Cancelled at approval runs" });
       expect(fetch).toHaveBeenCalledTimes(1);
     });
 
@@ -762,10 +779,14 @@ describe("OpsPipeline", () => {
       expect(within(section).getByText("First result").closest("div")?.parentElement).toHaveTextContent(/^First result\?Pass1Fail0$/);
     });
 
-    it("says when no run reached a gate", () => {
+    it("stops the lines after a step nothing went on from", () => {
       const cancelled = runRows([pipelineAttempt({ run_conclusion: "cancelled", cancel_stage: "approval" })]);
       render(<OpsPipeline view={pipelineView(attempts, NOW)} queued={null} flow={dispatchFlow(cancelled)} referenceMs={NOW} />);
-      expect(screen.getAllByText("No runs reached this gate.")).toHaveLength(6);
+      const flow = screen.getByRole("list", { name: "Runs through each step" });
+      expect(within(flow).getAllByRole("listitem").map((row) => row.textContent)).toEqual([
+        "1dispatched",
+        "0approved1 cancelled",
+      ]);
     });
 
     it("pages a long run log, and says when it cannot load", async () => {

@@ -558,69 +558,82 @@
   color: var(--color-ink);
 }
 
-.flowGates {
+.chain {
   display: grid;
-  gap: 18px;
-  margin-top: 12px;
+  margin: 10px 0 0;
   padding: 0;
   list-style: none;
 }
 
-.flowGate {
+.chainRow {
   display: grid;
-  gap: 6px;
-}
-
-.flowGateHead {
-  display: flex;
+  grid-template-columns: 64px minmax(110px, max-content) minmax(0, 1fr);
   align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
+  column-gap: 14px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--color-rule);
 }
 
-.flowGateName {
-  font-size: 14px;
-  font-weight: 550;
+.chainRow:last-child {
+  border-bottom: 0;
+}
+
+.chainCount {
+  justify-self: end;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
   color: var(--color-ink);
 }
 
-.flowGateIn {
-  font-size: 12px;
-  color: var(--color-ink-muted);
-  font-variant-numeric: tabular-nums;
+button.chainCount {
+  cursor: pointer;
 }
 
-.flowBar {
-  display: flex;
-  gap: 2px;
-  height: 14px;
+button.chainCount:hover {
+  color: var(--color-accent);
 }
 
-.flowSeg {
-  min-width: 3px;
-  border-radius: 3px;
+.chainLabel {
+  font-size: 14px;
+  color: var(--color-ink);
 }
 
-.segContinue {
-  background: var(--color-accent);
-}
-
-.segPending {
-  background: color-mix(in srgb, var(--color-ink) 18%, transparent);
-}
-
-.segLoss {
-  background: color-mix(in srgb, var(--color-warning) 38%, var(--color-paper));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-warning) 55%, transparent);
-}
-
-.flowLegend {
+.chainSide {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 6px;
+  gap: 2px 16px;
 }
 
-.flowChip {
+.chainItem {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ink-muted);
+  cursor: pointer;
+}
+
+.chainItem:hover,
+.chainItem[aria-expanded="true"] {
+  color: var(--color-accent);
+}
+
+.chainReasons {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 3;
+  gap: 4px 6px;
+  margin-top: 8px;
+}
+
+.chainReason {
   display: inline-flex;
   align-items: baseline;
   gap: 6px;
@@ -633,26 +646,13 @@
   cursor: pointer;
 }
 
-.flowChip:hover {
+.chainReason:hover {
   border-color: var(--color-accent);
 }
 
-.flowChip strong {
+.chainReason strong {
   font-weight: 600;
   color: var(--color-ink);
-  font-variant-numeric: tabular-nums;
-}
-
-.flowDot {
-  align-self: center;
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
-}
-
-.flowShare {
-  font-size: 11px;
-  color: var(--color-ink-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1424,6 +1424,15 @@
 
   .partsSteps {
     grid-auto-flow: row;
+  }
+
+  .chainRow {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+
+  .chainSide,
+  .chainReasons {
+    grid-column: 2;
   }
 
   .tileValue {
