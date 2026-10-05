@@ -303,12 +303,6 @@
   color: var(--color-ink);
 }
 
-.trendNote {
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--color-ink-muted);
-}
-
 .detailsHead {
   display: flex;
   align-items: baseline;
@@ -323,15 +317,6 @@
   font-weight: 550;
   letter-spacing: -0.02em;
   color: var(--color-ink);
-}
-
-.detailsHint {
-  overflow: hidden;
-  font-size: 12px;
-  font-weight: 400;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--color-ink-muted);
 }
 
 .details {
@@ -372,9 +357,8 @@
 
 .flowPartHead {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 10px;
+  align-items: center;
+  gap: 6px;
 }
 
 .flowPartHead h4 {
@@ -383,9 +367,91 @@
   color: var(--color-ink);
 }
 
-.flowPartHead span {
-  font-size: 12px;
+/* ── "?" notes: names and numbers on the page, meanings on request ── */
+
+.explain {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+
+.explainButton {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid var(--color-rule-strong);
+  border-radius: 50%;
+  background: transparent;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
   color: var(--color-ink-muted);
+  cursor: pointer;
+}
+
+.explainButton:hover,
+.explainButton[aria-expanded="true"] {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.explainNote {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: -8px;
+  z-index: 20;
+  display: grid;
+  gap: 6px;
+  width: 260px;
+  max-width: calc(100vw - 32px);
+  padding: 10px 12px;
+  border: 1px solid var(--color-rule);
+  border-radius: 10px;
+  background: var(--color-paper);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--color-ink) 12%, transparent);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+  letter-spacing: normal;
+  text-align: left;
+  text-transform: none;
+  white-space: normal;
+  color: var(--color-ink-secondary);
+}
+
+.explainNote[data-align="right"] {
+  right: -8px;
+  left: auto;
+}
+
+.explainList {
+  display: grid;
+  gap: 2px;
+  color: var(--color-ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.cardHead,
+.cellHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cellHead {
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+/* A step's name wraps rather than hide behind its "?". */
+.cellHead .tileLabel {
+  line-height: 1.5;
+  white-space: normal;
 }
 
 .timeSteps {
@@ -408,11 +474,6 @@
   background: var(--color-paper);
 }
 
-.timeSpan {
-  font-size: 11px;
-  color: var(--color-ink-muted);
-}
-
 .timeNone {
   margin-top: 6px;
   font-size: 13px;
@@ -425,35 +486,23 @@
   margin: 6px 0 0;
 }
 
+.timeStats > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
 .timeStats dt {
   font-size: 12px;
   color: var(--color-ink-secondary);
 }
 
-.timeStats dt span {
-  color: var(--color-ink-muted);
-  font-variant-numeric: tabular-nums;
-}
-
 .timeStats dd {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0 8px;
   margin: 0;
-}
-
-.timeStats dd strong {
   font-size: 20px;
   font-weight: 500;
   letter-spacing: -0.02em;
   color: var(--color-ink);
-  font-variant-numeric: tabular-nums;
-}
-
-.timeStats dd span {
-  font-size: 11px;
-  color: var(--color-ink-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1462,10 +1511,6 @@
   }
 
   .funnelArrow {
-    display: none;
-  }
-
-  .detailsHint {
     display: none;
   }
 }

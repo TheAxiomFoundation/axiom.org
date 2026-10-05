@@ -175,7 +175,7 @@ describe("stepTimes", () => {
       times.map((step) => [step.key, step.timings.map((t) => `${t.label}:${t.runs}:${t.medianMs / MIN}:${t.slowMs}`)])
     );
     expect(summary).toEqual({
-      approval: ["Wait:6:2:null"],
+      approval: [":6:2:null"],
       run: ["Encoded:2:15:null", "Failed:3:15:null"],
       pr: [],
       review: ["Merged:1:30:null", "Closed:1:12:null", "Open now:1:2880:null"],
@@ -194,7 +194,7 @@ describe("stepTimes", () => {
       )
     );
     const [wait] = stepTimes(rows, 0)[0].timings;
-    expect(wait).toEqual({ label: "Wait", runs: 10, medianMs: 5.5 * MIN, slowMs: 9 * MIN });
+    expect(wait).toEqual({ label: "", runs: 10, medianMs: 5.5 * MIN, slowMs: 9 * MIN });
   });
 });
 

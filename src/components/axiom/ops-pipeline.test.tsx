@@ -73,6 +73,12 @@ const queuedWith = (overrides: Partial<QueuedSummary>): QueuedSummary => ({
 const openList = () => screen.getByRole("region", { name: / citations$/ });
 const card = (name: string) => screen.getByRole("group", { name });
 
+/** A click as a browser sends it: the pointer goes down first, which closes any open "?" note elsewhere. */
+function press(element: HTMLElement) {
+  fireEvent.pointerDown(element);
+  fireEvent.click(element);
+}
+
 describe("OpsPipeline", () => {
   it("lays out the stage strip and the drop-outs, with no list open", () => {
     renderPipeline();
@@ -532,7 +538,7 @@ describe("OpsPipeline", () => {
 
     // The largest piles first, wherever they sit; each opens its citations.
     const blockers = screen.getByRole("group", { name: "Top blockers" });
-    const rows = within(blockers).getAllByRole("button");
+    const rows = within(within(blockers).getByRole("list")).getAllByRole("button");
     expect(rows.map((row) => row.textContent)).toEqual([
       "EncodeValidation rules3",
       "ReviewFails its own checks1",
@@ -541,10 +547,15 @@ describe("OpsPipeline", () => {
     fireEvent.click(rows[1]);
     expect(within(openList()).getByRole("heading", { name: /In review: Fails its own checks\s*1/ })).toBeInTheDocument();
 
-    // The last full week, since the current one has only begun.
+    // The last full week, since the current one has only begun; its "?" says so.
     const trend = screen.getByRole("group", { name: "Weekly trend" });
-    expect(within(trend).getAllByText("last week")).toHaveLength(3);
     expect(trend.querySelectorAll("[title^='Week of']")).toHaveLength(3 * 8);
+    fireEvent.click(within(trend).getByRole("button", { name: "What Weekly means" }));
+    expect(within(trend).getByRole("note")).toHaveTextContent(/last 8 weeks\. The number is the last full week\./);
+    // Names and numbers only; meanings sit behind each "?".
+    expect(screen.queryByText(/stages · corpus/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "What Ever reached means" })).toBeInTheDocument();
+    expect(within(blockers).getByRole("button", { name: "What Top blockers means" })).toBeInTheDocument();
 
   });
 
@@ -582,7 +593,7 @@ describe("OpsPipeline", () => {
       renderFlow({ jurisdiction: "us", only: true });
       expect(screen.getByRole("tab", { name: "Flow" })).toHaveAttribute("aria-selected", "true");
       const flow = screen.getByRole("list", { name: "Dispatches through each gate" });
-      expect(flow).toHaveTextContent(/Signing approval3 runs reached this step/);
+      expect(flow).toHaveTextContent(/Signing approval3 runs/);
       fireEvent.click(within(flow).getByRole("button", { name: /^Validation rules\s*1\s*50%$/ }));
       const list = await screen.findByRole("region", { name: "Encode run: Validation rules runs" });
       expect(fetch).toHaveBeenCalledWith("/ops/runs?j=us&only=1");
@@ -663,13 +674,29 @@ describe("OpsPipeline", () => {
         "Index",
         "Tests on main",
       ]);
-      expect(steps[0]).toHaveTextContent("dispatch → job startWait · 10 runs6mslowest 10%: 9m+");
-      expect(steps[0]).toHaveAttribute("title", expect.stringMatching(/^From the dispatch until a person approves/));
-      expect(steps[1]).toHaveTextContent("Encoded · 10 runs10mslowest 10%: 10m+");
-      expect(steps[2]).toHaveTextContent("opened by the runNo wait");
-      // One merged PR: a median with no slowest tenth.
-      expect(steps[3]).toHaveTextContent(/Merged · 1 run22h 31m$/);
-      expect(steps[5]).toHaveTextContent("Not timed yet");
+      // Each step shows its name and typical time; the rest is behind its "?".
+      expect(steps[0]).toHaveTextContent(/^Signing approval\?6m$/);
+      expect(steps[1]).toHaveTextContent(/^Encode run\?Encoded10m$/);
+      expect(steps[2]).toHaveTextContent(/^Pull request\?No wait$/);
+      expect(steps[3]).toHaveTextContent(/^Review\?Merged22h 31m$/);
+      expect(steps[5]).toHaveTextContent(/^Index\?Not timed yet$/);
+      const help = within(steps[0]).getByRole("button", { name: "What Signing approval means" });
+      expect(help).toHaveAttribute("aria-expanded", "false");
+      fireEvent.click(help);
+      expect(help).toHaveAttribute("aria-expanded", "true");
+      expect(within(steps[0]).getByRole("note")).toHaveTextContent(
+        "From the dispatch until a person approves the signing and the encode job starts.10 runs, the slowest 10% 9m or more"
+      );
+      // One merged PR: a count with no slowest tenth.
+      press(within(steps[3]).getByRole("button", { name: "What Review means" }));
+      expect(within(steps[3]).getByRole("note")).toHaveTextContent(/Merged: 1 run$/);
+      // A click elsewhere closes it, and so does Escape.
+      expect(within(steps[0]).queryByRole("note")).not.toBeInTheDocument();
+      fireEvent.pointerDown(document.body);
+      expect(screen.queryByRole("note")).not.toBeInTheDocument();
+      fireEvent.click(help);
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(screen.queryByRole("note")).not.toBeInTheDocument();
       expect(screen.getByRole("region", { name: "Where runs go" })).toBeInTheDocument();
     });
 
@@ -691,12 +718,14 @@ describe("OpsPipeline", () => {
       const section = screen.getByRole("region", { name: "Inside the encode run" });
       const parts = within(section).getAllByRole("listitem");
       expect(parts.map((part) => part.textContent)).toEqual([
-        "Setupcheckouts, builds, input checks2 runs4m",
-        "Encode loopwrite, validate, repair, reviewEncoded · 1 run6mFailed · 1 run20m",
-        "Sign and open the PRpackage, sign, push, draft PR1 run35s",
+        "Setup?4m",
+        "Encode loop?Encoded6mFailed20m",
+        "Sign and open the PR?35s",
       ]);
-      expect(parts[1]).toHaveAttribute("title", expect.stringMatching(/^The "Encode, review, validate, and apply" step/));
-      expect(within(section).getByText("2 of 3 finished runs recorded")).toBeInTheDocument();
+      fireEvent.click(within(parts[1]).getByRole("button", { name: "What Encode loop means" }));
+      expect(within(parts[1]).getByRole("note")).toHaveTextContent(/^The "Encode, review, validate, and apply" step/);
+      press(within(section).getByRole("button", { name: "What Tries used means" }));
+      expect(within(section).getByRole("note")).toHaveTextContent(/which 2 of 3 finished runs have\.$/);
       const table = within(section).getByRole("table");
       expect(within(table).getAllByRole("row").map((row) => row.textContent)).toEqual([
         "Tries1234",

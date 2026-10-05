@@ -348,7 +348,7 @@ export function stepTimes(rows: RunRow[], referenceMs: number): StepTimes[] {
       "approval",
       "dispatch → job start",
       "From the dispatch until a person approves the signing and the encode job starts.",
-      timing("Wait", rows.map((row) => row.approvalMs))
+      timing("", rows.map((row) => row.approvalMs))
     ),
     timed(
       "run",

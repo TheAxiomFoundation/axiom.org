@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { X } from "lucide-react";
@@ -276,7 +276,6 @@ export function OpsPipeline({
 
       <div className={styles.detailsHead}>
         <h3 id="pipeline-details-title">Details</h3>
-        <span className={styles.detailsHint}>stages · corpus · queue · retries · versions · approval</span>
       </div>
 
       <div id="pipeline-details" className={styles.details} aria-labelledby="pipeline-details-title">
@@ -1009,6 +1008,10 @@ function SummaryFunnel({
     <div className={styles.summaryFunnel}>
       <div className={styles.summaryFunnelHead}>
         <span className={styles.miniLabel}>Ever reached</span>
+        <Explain label="Ever reached">
+          How many citations ever got this far, over all their runs. The chips between the numbers are where the
+          others are now; click one to list them.
+        </Explain>
         {queued && queued.pending > 0 && (
           <button type="button" className={styles.gapChip} onClick={onQueue}>
             <strong>{number(queued.pending)}</strong> queued
@@ -1074,7 +1077,12 @@ const BLOCKER_STAGES: Array<{ stage: PipelineStage; where: string }> = [
 function TopBlockers({ blockers }: { blockers: Blocker[] }) {
   return (
     <div className={styles.summaryCard} role="group" aria-label="Top blockers">
-      <h3 className={styles.miniLabel}>Top blockers</h3>
+      <div className={styles.cardHead}>
+        <h3 className={styles.miniLabel}>Top blockers</h3>
+        <Explain label="Top blockers">
+          The biggest groups of stuck citations, and the step that holds them. Click one to list its citations.
+        </Explain>
+      </div>
       {blockers.length === 0 ? (
         <p className={styles.empty}>Nothing is stuck.</p>
       ) : (
@@ -1104,7 +1112,13 @@ function TrendRows({ weeks }: { weeks: WeeklyThroughput[] }) {
   const full = weeks.length > 1 ? weeks.length - 2 : weeks.length - 1;
   return (
     <div className={styles.summaryCard} role="group" aria-label="Weekly trend">
-      <h3 className={styles.miniLabel}>Weekly, last {weeks.length} weeks</h3>
+      <div className={styles.cardHead}>
+        <h3 className={styles.miniLabel}>Weekly</h3>
+        <Explain label="Weekly">
+          Runs dispatched, runs encoded, and PRs merged in each of the last {weeks.length} weeks. The number is the
+          last full week.
+        </Explain>
+      </div>
       <ul className={styles.trendRows}>
         {SERIES.map((series, i) => {
           const values = weeks.map((week) => week[series.key]);
@@ -1125,7 +1139,6 @@ function TrendRows({ weeks }: { weeks: WeeklyThroughput[] }) {
               </span>
               <span className={styles.trendValue}>
                 {number(values[full] ?? 0)}
-                <span className={styles.trendNote}> last week</span>
               </span>
             </li>
           );
@@ -1266,29 +1279,97 @@ function shortDuration(ms: number): string {
   return ms < 60_000 ? `${Math.round(ms / 1000)}s` : durationLabel(ms);
 }
 
-/** One timed step: what it spans, and its median and slowest 10% for each group of runs. */
+/**
+ * A "?" that opens a short note on what something means, so the page shows
+ * names and numbers and explains them only when asked. Closes on a click
+ * elsewhere or Escape, and opens leftward when it would run off the screen.
+ */
+function Explain({ label, children }: { label: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const [alignRight, setAlignRight] = useState(false);
+  const root = useRef<HTMLSpanElement>(null);
+  const note = useRef<HTMLSpanElement>(null);
+  const id = useId();
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (event: PointerEvent) => {
+      if (!root.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  useLayoutEffect(() => {
+    if (!open || !note.current || !root.current) return;
+    const width = note.current.getBoundingClientRect().width;
+    setAlignRight(root.current.getBoundingClientRect().left + width > window.innerWidth - 16);
+  }, [open]);
+  return (
+    <span ref={root} className={styles.explain}>
+      <button
+        type="button"
+        className={styles.explainButton}
+        aria-label={`What ${label} means`}
+        aria-expanded={open}
+        aria-controls={open ? id : undefined}
+        onClick={() => setOpen((value) => !value)}
+      >
+        ?
+      </button>
+      {open && (
+        <span ref={note} id={id} role="note" className={styles.explainNote} data-align={alignRight ? "right" : undefined}>
+          {children}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** A heading with its "?". */
+function PartHead({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+  return (
+    <div className={styles.flowPartHead}>
+      <h4 id={id}>{title}</h4>
+      <Explain label={title}>{children}</Explain>
+    </div>
+  );
+}
+
+/** One timed step: its name and typical time; what it measures, how many runs, and the slowest 10% behind its "?". */
 function TimedCell({ step }: { step: TimedStep }) {
   return (
-    <li className={styles.timeStep} title={step.measures}>
-      <span className={styles.tileLabel}>{step.label}</span>
-      <span className={styles.timeSpan}>{step.span}</span>
+    <li className={styles.timeStep}>
+      <div className={styles.cellHead}>
+        <span className={styles.tileLabel}>{step.label}</span>
+        <Explain label={step.label}>
+          {step.measures}
+          {step.timings.length > 0 && (
+            <span className={styles.explainList}>
+              {step.timings.map((timing) => (
+                <span key={timing.label}>
+                  {timing.label ? `${timing.label}: ` : ""}
+                  {number(timing.runs)} {timing.runs === 1 ? "run" : "runs"}
+                  {timing.slowMs !== null && `, the slowest 10% ${shortDuration(timing.slowMs)} or more`}
+                </span>
+              ))}
+            </span>
+          )}
+        </Explain>
+      </div>
       {step.timings.length === 0 ? (
         <span className={styles.timeNone}>{step.untimed ?? "No runs timed"}</span>
       ) : (
         <dl className={styles.timeStats}>
           {step.timings.map((timing) => (
             <div key={timing.label}>
-              <dt>
-                {timing.label && `${timing.label} `}
-                <span>
-                  {timing.label && "· "}
-                  {number(timing.runs)} {timing.runs === 1 ? "run" : "runs"}
-                </span>
-              </dt>
-              <dd>
-                <strong>{shortDuration(timing.medianMs)}</strong>
-                {timing.slowMs !== null && <span>slowest 10%: {shortDuration(timing.slowMs)}+</span>}
-              </dd>
+              {timing.label && <dt>{timing.label}</dt>}
+              <dd>{shortDuration(timing.medianMs)}</dd>
             </div>
           ))}
         </dl>
@@ -1301,10 +1382,10 @@ function TimedCell({ step }: { step: TimedStep }) {
 function StepTimeRow({ steps }: { steps: StepTimes[] }) {
   return (
     <section className={styles.flowPart} aria-labelledby="flow-times-title">
-      <div className={styles.flowPartHead}>
-        <h4 id="flow-times-title">Time per step</h4>
-        <span>the typical run (median), and how long the slowest 10% take</span>
-      </div>
+      <PartHead id="flow-times-title" title="Time per step">
+        The typical time (median) one run spends at each step, in order. Open a step&apos;s ? for what it
+        measures, how many runs it counts, and how long the slowest 10% take.
+      </PartHead>
       <ol className={styles.timeSteps}>
         {steps.map((step) => (
           <TimedCell key={step.key} step={step} />
@@ -1317,14 +1398,15 @@ function StepTimeRow({ steps }: { steps: StepTimes[] }) {
 /** How many generation attempts encoded and failed runs used. */
 function TriesTable({ tries }: { tries: TriesUsed }) {
   return (
-    <div
-      className={styles.timeStep}
-      title="Generation attempts the encode loop made, from the encoder's own record. Runs without a record are left out."
-    >
-      <span className={styles.tileLabel}>Tries used</span>
-      <span className={styles.timeSpan}>
-        {number(tries.recorded)} of {number(tries.finished)} finished runs recorded
-      </span>
+    <div className={styles.timeStep}>
+      <div className={styles.cellHead}>
+        <span className={styles.tileLabel}>Tries used</span>
+        <Explain label="Tries used">
+          How many tries the encode loop needed: each try writes the encoding again from the checks&apos; feedback,
+          up to four. From the encoder&apos;s own record, which {number(tries.recorded)} of {number(tries.finished)}{" "}
+          finished runs have.
+        </Explain>
+      </div>
       {tries.tries.length === 0 ? (
         <span className={styles.timeNone}>Not recorded yet</span>
       ) : (
@@ -1359,10 +1441,10 @@ function TriesTable({ tries }: { tries: TriesUsed }) {
 function EncodeRunParts({ parts }: { parts: EncodeParts }) {
   return (
     <section className={styles.flowPart} aria-labelledby="flow-parts-title">
-      <div className={styles.flowPartHead}>
-        <h4 id="flow-parts-title">Inside the encode run</h4>
-        <span>one job: setup, then the encode loop, then the PR</span>
-      </div>
+      <PartHead id="flow-parts-title" title="Inside the encode run">
+        The encode run is one GitHub Actions job in three parts: setup, the encode loop, then signing and
+        opening the PR.
+      </PartHead>
       <div className={styles.partsRow}>
         <ol className={styles.partsSteps}>
           {parts.parts.map((part) => (
@@ -1391,16 +1473,19 @@ function FlowView({
       {times && <StepTimeRow steps={times} />}
       {parts && <EncodeRunParts parts={parts} />}
       <section className={styles.flowPart} aria-labelledby="flow-gates-title">
-        <div className={styles.flowPartHead}>
-          <h4 id="flow-gates-title">Where runs go</h4>
-          <span>each step counts the runs that passed the step before</span>
-        </div>
+        <PartHead id="flow-gates-title" title="Where runs go">
+          Each bar is one step, with the number of runs that reached it: the runs that passed the step before.
+          The solid part went on, grey is still waiting, and the shaded part stopped there. Click a part to list
+          its runs.
+        </PartHead>
         <ol className={styles.flowGates} aria-label="Dispatches through each gate">
           {gates.map((gate) => (
             <li key={gate.key} className={styles.flowGate}>
               <div className={styles.flowGateHead}>
                 <span className={styles.flowGateName}>{gate.label}</span>
-                <span className={styles.flowGateIn}>{number(gate.input)} runs reached this step</span>
+                <span className={styles.flowGateIn}>
+                  {number(gate.input)} {gate.input === 1 ? "run" : "runs"}
+                </span>
               </div>
               {gate.input === 0 ? (
                 <p className={styles.empty}>No runs reached this gate.</p>
