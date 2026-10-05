@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dispatchFlow, runRow, runRows, stepTimes } from "./encoding-pipeline-runs";
+import { dispatchFlow, encodeParts, runRow, runRows, stepTimes } from "./encoding-pipeline-runs";
 import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 
 describe("runRow", () => {
@@ -67,6 +67,25 @@ describe("runRow", () => {
       testsUrl: "R",
     });
     expect(runRow(mergedAttempt({ index_status: "missing" })).index).toBe("missing");
+    expect(
+      runRow(
+        mergedAttempt({
+          setup_seconds: 240,
+          encode_seconds: 360,
+          publish_seconds: 30,
+          generation_attempts: 2,
+          indexed_at: "I",
+          tests_first_at: "T",
+        })
+      )
+    ).toMatchObject({
+      phases: { setupMs: 240_000, encodeMs: 360_000, publishMs: 30_000 },
+      attempts: 2,
+      indexedAt: "I",
+      testsAt: "T",
+    });
+    // Off main, the index and the tests on main do not apply.
+    expect(runRow(mergedAttempt({ pr_targets_default: false, indexed_at: "I" })).indexedAt).toBeNull();
     expect(runRow(mergedAttempt({})).index).toBe("awaiting");
     expect(runRow(mergedAttempt({ pr_targets_default: false })).merged).toBe("off main");
     const open = runRow(
@@ -176,5 +195,72 @@ describe("stepTimes", () => {
     );
     const [wait] = stepTimes(rows, 0)[0].timings;
     expect(wait).toEqual({ label: "Wait", runs: 10, medianMs: 5.5 * MIN, slowMs: 9 * MIN });
+  });
+});
+
+describe("post-merge times", () => {
+  it("times the first index sync and the first tests on main from the merge", () => {
+    const rows = runRows([
+      mergedAttempt({ id: "a", pr_merged_at: "2026-09-21T09:00:00Z", indexed_at: "2026-09-21T09:40:00Z", tests_first_at: "2026-09-21T09:12:00Z" }),
+      mergedAttempt({ id: "b", pr_merged_at: "2026-09-21T09:00:00Z", indexed_at: "2026-09-21T15:00:00Z" }),
+      mergedAttempt({ id: "off", pr_targets_default: false, indexed_at: "2026-09-29T00:00:00Z" }),
+    ]);
+    const times = stepTimes(rows, 0);
+    const index = times.find((step) => step.key === "index")!;
+    const tests = times.find((step) => step.key === "tests")!;
+    expect(index).toMatchObject({ untimed: null, span: "merge → index sync" });
+    expect(index.timings).toEqual([{ label: "", runs: 2, medianMs: 200 * 60_000, slowMs: null }]);
+    expect(tests.timings).toEqual([{ label: "", runs: 1, medianMs: 12 * 60_000, slowMs: null }]);
+  });
+});
+
+describe("encodeParts", () => {
+  const run = (id: string, conclusion: string, setup: number | null, encode: number | null, publish: number | null, tries: number | null) =>
+    pipelineAttempt({
+      id,
+      run_conclusion: conclusion,
+      setup_seconds: setup,
+      encode_seconds: encode,
+      publish_seconds: publish,
+      generation_attempts: tries,
+    });
+
+  it("times setup past it, the encode loop by outcome, and publishing for encoded runs", () => {
+    const { parts } = encodeParts(
+      runRows([
+        run("e1", "success", 240, 360, 30, 1),
+        run("e2", "success", 300, 600, 40, 3),
+        run("f1", "failure", 260, 1200, null, 4),
+        // Stopped in setup: it does not shorten setup.
+        run("f2", "failure", 20, null, null, null),
+        run("c", "cancelled", 100, 100, null, null),
+      ])
+    );
+    const summary = parts.map((part) => [part.key, part.timings.map((t) => `${t.label}:${t.runs}:${t.medianMs / 1000}`)]);
+    expect(summary).toEqual([
+      ["setup", [":3:260"]],
+      ["encode", ["Encoded:2:480", "Failed:1:1200"]],
+      ["publish", [":2:35"]],
+    ]);
+  });
+
+  it("counts the tries each encoded and failed run used", () => {
+    const { tries } = encodeParts(
+      runRows([
+        run("e1", "success", null, null, null, 1),
+        run("e2", "success", null, null, null, 3),
+        run("f1", "failure", null, null, null, 4),
+        run("f2", "failure", null, null, null, 4),
+        run("f3", "failure", null, null, null, null),
+        run("c", "cancelled", null, null, null, 2),
+      ])
+    );
+    expect(tries).toEqual({ tries: [1, 2, 3, 4], encoded: [1, 0, 1, 0], failed: [0, 0, 0, 2], recorded: 4, finished: 5 });
+  });
+
+  it("says when no part is timed", () => {
+    const { parts, tries } = encodeParts([]);
+    expect(parts.map((part) => part.untimed)).toEqual(["Not timed yet", "Not timed yet", "Not timed yet"]);
+    expect(tries).toEqual({ tries: [], encoded: [], failed: [], recorded: 0, finished: 0 });
   });
 });

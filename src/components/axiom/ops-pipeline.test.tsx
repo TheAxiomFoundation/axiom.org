@@ -6,7 +6,7 @@ import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 import type { QueuedSummary, QueueItemView } from "@/lib/axiom/encoding-queues";
 import type { CorpusJurisdiction, CorpusView } from "@/lib/axiom/corpus-releases";
 import { pipelineInsights, scopeOptions } from "@/lib/axiom/encoding-pipeline-insights";
-import { dispatchFlow, runRows, stepTimes } from "@/lib/axiom/encoding-pipeline-runs";
+import { dispatchFlow, encodeParts, runRows, stepTimes } from "@/lib/axiom/encoding-pipeline-runs";
 import { act, waitFor } from "@testing-library/react";
 
 const push = vi.fn();
@@ -671,6 +671,38 @@ describe("OpsPipeline", () => {
       expect(steps[3]).toHaveTextContent(/Merged · 1 run22h 31m$/);
       expect(steps[5]).toHaveTextContent("Not timed yet");
       expect(screen.getByRole("region", { name: "Where runs go" })).toBeInTheDocument();
+    });
+
+    it("opens up the encode run into its parts and the tries its loop used", () => {
+      const runs = runRows([
+        pipelineAttempt({ id: "e", run_conclusion: "success", setup_seconds: 250, encode_seconds: 370, publish_seconds: 35, generation_attempts: 2 }),
+        pipelineAttempt({ id: "f", run_conclusion: "failure", setup_seconds: 260, encode_seconds: 1210, generation_attempts: 4 }),
+        pipelineAttempt({ id: "n", run_conclusion: "failure" }),
+      ]);
+      render(
+        <OpsPipeline
+          view={pipelineView(attempts, NOW)}
+          queued={null}
+          flow={dispatchFlow(runs)}
+          parts={encodeParts(runs)}
+          referenceMs={NOW}
+        />
+      );
+      const section = screen.getByRole("region", { name: "Inside the encode run" });
+      const parts = within(section).getAllByRole("listitem");
+      expect(parts.map((part) => part.textContent)).toEqual([
+        "Setupcheckouts, builds, input checks2 runs4m",
+        "Encode loopwrite, validate, repair, reviewEncoded · 1 run6mFailed · 1 run20m",
+        "Sign and open the PRpackage, sign, push, draft PR1 run35s",
+      ]);
+      expect(parts[1]).toHaveAttribute("title", expect.stringMatching(/^The "Encode, review, validate, and apply" step/));
+      expect(within(section).getByText("2 of 3 finished runs recorded")).toBeInTheDocument();
+      const table = within(section).getByRole("table");
+      expect(within(table).getAllByRole("row").map((row) => row.textContent)).toEqual([
+        "Tries1234",
+        "Encoded0100",
+        "Failed0001",
+      ]);
     });
 
     it("says when no run reached a gate", () => {

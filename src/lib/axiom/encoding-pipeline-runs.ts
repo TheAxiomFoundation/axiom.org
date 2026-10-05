@@ -27,6 +27,10 @@ export interface RunRow {
   approvalMs: number | null;
   /** From the approval (or the dispatch) to the run's end. */
   runMs: number | null;
+  /** The encode job's parts: setup, the encode step, and publishing after it. */
+  phases: { setupMs: number | null; encodeMs: number | null; publishMs: number | null };
+  /** Generation attempts the encoder made, when its record says. */
+  attempts: number | null;
   outcome: RunOutcome;
   /** In a few words: "Encoded", "Validation rules", "Cancelled at approval". */
   outcomeLabel: string;
@@ -47,6 +51,10 @@ export interface RunRow {
   index: "indexed" | "missing" | "awaiting" | null;
   tests: "pass" | "fail" | "waived" | null;
   testsUrl: string | null;
+  /** When the first index sync after the merge finished. */
+  indexedAt: string | null;
+  /** When the module's validation first finished at the merge commit on main. */
+  testsAt: string | null;
 }
 
 const CANCEL_OUTCOMES: Record<string, string> = {
@@ -88,6 +96,8 @@ const clip = (text: string | null) =>
 const ms = (from: string | null | undefined, to: string | null | undefined) =>
   from && to ? Math.max(0, Date.parse(to) - Date.parse(from)) : null;
 
+const secondsMs = (value: number | null | undefined) => (value == null ? null : value * 1000);
+
 export function runRow(attempt: PipelineAttempt): RunRow {
   const merged =
     attempt.pr_state === "merged" ? (attempt.pr_targets_default === false ? "off main" : "main") : null;
@@ -100,6 +110,12 @@ export function runRow(attempt: PipelineAttempt): RunRow {
     encoder: attempt.encoder_version ?? null,
     approvalMs: ms(attempt.dispatched_at, attempt.encode_started_at),
     runMs: ms(attempt.encode_started_at ?? attempt.started_at, attempt.finished_at),
+    phases: {
+      setupMs: secondsMs(attempt.setup_seconds),
+      encodeMs: secondsMs(attempt.encode_seconds),
+      publishMs: secondsMs(attempt.publish_seconds),
+    },
+    attempts: attempt.generation_attempts,
     ...outcomeOf(attempt),
     runUrl: attempt.run_url,
     pr:
@@ -125,6 +141,8 @@ export function runRow(attempt: PipelineAttempt): RunRow {
         : null,
     tests: attempt.tests_status ?? null,
     testsUrl: attempt.tests_run_url ?? null,
+    indexedAt: merged === "main" ? (attempt.indexed_at ?? null) : null,
+    testsAt: merged === "main" ? (attempt.tests_first_at ?? null) : null,
   };
 }
 
@@ -253,6 +271,7 @@ export function dispatchFlow(rows: RunRow[]): FlowGate[] {
 
 /** How long runs spent at one step: the median, and the slowest tenth when there are enough runs. */
 export interface StepTiming {
+  /** Which runs: "Encoded", "Merged"; empty when the step's runs are not split. */
   label: string;
   runs: number;
   medianMs: number;
@@ -260,8 +279,9 @@ export interface StepTiming {
   slowMs: number | null;
 }
 
-export interface StepTimes {
-  key: GateKey;
+/** One timed part of the path: a gate, or a part of the encode run. */
+export interface TimedStep {
+  key: string;
   label: string;
   /** What is timed, in a few words: "dispatch → job start". */
   span: string;
@@ -270,6 +290,10 @@ export interface StepTimes {
   /** Why a step has no times: it takes none, or the data cannot time it yet. */
   untimed: "No wait" | "Not timed yet" | null;
   timings: StepTiming[];
+}
+
+export interface StepTimes extends TimedStep {
+  key: GateKey;
 }
 
 const TAIL_MIN_RUNS = 10;
@@ -288,8 +312,8 @@ function timing(label: string, values: Array<number | null>): StepTiming | null 
 
 /**
  * How long each gate takes, in the flow's order. The index and the tests on
- * main are not timed: the collector records the index sync it first saw a
- * module in and the latest validation run, not the first ones after the merge.
+ * main are timed only for merges whose first sync and first validation the
+ * collector recorded (from the 2026-10-05 step-times migration on).
  */
 export function stepTimes(rows: RunRow[], referenceMs: number): StepTimes[] {
   const timed = (key: GateKey, span: string, measures: string, ...timings: Array<StepTiming | null>): StepTimes => ({
@@ -314,6 +338,11 @@ export function stepTimes(rows: RunRow[], referenceMs: number): StepTimes[] {
   const withPr = rows.filter((row) => row.pr?.openedAt);
   const prMs = (row: RunRow, end: string | null | undefined) => ms(row.pr?.openedAt, end);
   const now = new Date(referenceMs).toISOString();
+  // Times from the merge, over merges into main whose time is recorded.
+  const afterMerge = (key: GateKey, span: string, measures: string, none: string, end: (row: RunRow) => string | null) => {
+    const time = timing("", rows.filter((row) => row.merged === "main").map((row) => ms(row.pr?.mergedAt, end(row))));
+    return time ? timed(key, span, measures, time) : untimed(key, span, "Not timed yet", none);
+  };
   return [
     timed(
       "approval",
@@ -341,17 +370,85 @@ export function stepTimes(rows: RunRow[], referenceMs: number): StepTimes[] {
       )
     ),
     untimed("main", "set at the merge", "No wait", "The PR's base branch decides it at the merge."),
-    untimed(
+    afterMerge(
       "index",
       "merge → index sync",
-      "Not timed yet",
-      "The collector records a later index sync, not the first one after the merge."
+      "From the merge until the first index sync after it finishes.",
+      "No merge into main has its first index sync recorded yet.",
+      (row) => row.indexedAt
     ),
-    untimed(
+    afterMerge(
       "tests",
-      "merge → tests on main",
-      "Not timed yet",
-      "The collector records the latest validation run on main, not the first one after the merge."
+      "merge → first tests on main",
+      "From the merge until the module's validation first finishes at the merge commit on main.",
+      "No merge into main has its first validation on main recorded yet.",
+      (row) => row.testsAt
     ),
   ];
+}
+
+/** Generation attempts used, by count: how many runs needed one try, two, and so on. */
+export interface TriesUsed {
+  /** 1, 2, 3, ... up to the most any run used. */
+  tries: number[];
+  encoded: number[];
+  failed: number[];
+  /** Encoded and failed runs whose encoder record gives a count, and all of them. */
+  recorded: number;
+  finished: number;
+}
+
+/** Inside the encode run: its three parts, and how many tries the encode loop took. */
+export interface EncodeParts {
+  parts: TimedStep[];
+  tries: TriesUsed;
+}
+
+export function encodeParts(rows: RunRow[]): EncodeParts {
+  const finished = rows.filter((row) => row.outcome === "encoded" || row.outcome === "failed");
+  // Setup is timed over runs that got past it, so a run stopped in setup does not shorten it.
+  const pastSetup = finished.filter((row) => row.phases.encodeMs !== null);
+  const part = (key: string, label: string, span: string, measures: string, ...timings: Array<StepTiming | null>): TimedStep => {
+    const kept = timings.filter((t): t is StepTiming => t !== null);
+    return { key, label, span, measures, untimed: kept.length ? null : "Not timed yet", timings: kept };
+  };
+  const parts = [
+    part(
+      "setup",
+      "Setup",
+      "checkouts, builds, input checks",
+      "From the encode job's first step until the encode step starts: check out the repos, build the engine, verify and fetch the signed inputs.",
+      timing("", pastSetup.map((row) => row.phases.setupMs))
+    ),
+    part(
+      "encode",
+      "Encode loop",
+      "write, validate, repair, review",
+      "The \"Encode, review, validate, and apply\" step: the model writes a candidate, the compile and completeness checks run, and failed checks go back as repair prompts, up to four tries, before a review.",
+      timing("Encoded", finished.filter((row) => row.outcome === "encoded").map((row) => row.phases.encodeMs)),
+      timing("Failed", finished.filter((row) => row.outcome === "failed").map((row) => row.phases.encodeMs))
+    ),
+    part(
+      "publish",
+      "Sign and open the PR",
+      "package, sign, push, draft PR",
+      "From the end of the encode step until the draft PR is open: verify provenance, package and sign the changes, push the branch.",
+      timing("", finished.filter((row) => row.outcome === "encoded").map((row) => row.phases.publishMs))
+    ),
+  ];
+  const counted = finished.filter((row) => row.attempts !== null && row.attempts > 0);
+  const most = counted.reduce((max, row) => Math.max(max, row.attempts!), 0);
+  const tries = Array.from({ length: most }, (_, i) => i + 1);
+  const histogram = (outcome: RunOutcome) =>
+    tries.map((n) => counted.filter((row) => row.outcome === outcome && row.attempts === n).length);
+  return {
+    parts,
+    tries: {
+      tries,
+      encoded: histogram("encoded"),
+      failed: histogram("failed"),
+      recorded: counted.length,
+      finished: finished.length,
+    },
+  };
 }

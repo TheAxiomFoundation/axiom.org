@@ -36,8 +36,11 @@ import {
   dispatchFlow,
   type FlowGate,
   type FlowSegment,
+  type EncodeParts,
   type RunRow,
   type StepTimes,
+  type TimedStep,
+  type TriesUsed,
 } from "@/lib/axiom/encoding-pipeline-runs";
 
 /** The stages a citation moves through, in order, with a short status when nothing is stuck. */
@@ -112,6 +115,7 @@ export function OpsPipeline({
   corpus = null,
   flow = null,
   times = null,
+  parts = null,
   referenceMs,
 }: {
   view: PipelineView;
@@ -125,6 +129,8 @@ export function OpsPipeline({
   flow?: FlowGate[] | null;
   /** How long each of the flow's gates takes. */
   times?: StepTimes[] | null;
+  /** The encode run's parts and the tries its encode loop used. */
+  parts?: EncodeParts | null;
   referenceMs: number;
 }) {
   const [listing, setListing] = useState<Listing | null>(null);
@@ -290,7 +296,7 @@ export function OpsPipeline({
               ))}
             </div>
           )}
-          {flow && detailsTab === "flow" && <FlowView gates={flow} times={times} onOpen={openSegment} />}
+          {flow && detailsTab === "flow" && <FlowView gates={flow} times={times} parts={parts} onOpen={openSegment} />}
           {flow && detailsTab === "log" && <RunLog load={loadRuns} referenceMs={referenceMs} />}
           {detailsTab === "cards" && (
           <>
@@ -1255,6 +1261,42 @@ const SEGMENT_CLASS: Record<FlowSegment["kind"], string> = {
  * reached it, split into those that went on, those still waiting, and those
  * lost there. Each part opens its runs.
  */
+/** Seconds under a minute; otherwise as the rest of the page writes durations. */
+function shortDuration(ms: number): string {
+  return ms < 60_000 ? `${Math.round(ms / 1000)}s` : durationLabel(ms);
+}
+
+/** One timed step: what it spans, and its median and slowest 10% for each group of runs. */
+function TimedCell({ step }: { step: TimedStep }) {
+  return (
+    <li className={styles.timeStep} title={step.measures}>
+      <span className={styles.tileLabel}>{step.label}</span>
+      <span className={styles.timeSpan}>{step.span}</span>
+      {step.timings.length === 0 ? (
+        <span className={styles.timeNone}>{step.untimed ?? "No runs timed"}</span>
+      ) : (
+        <dl className={styles.timeStats}>
+          {step.timings.map((timing) => (
+            <div key={timing.label}>
+              <dt>
+                {timing.label && `${timing.label} `}
+                <span>
+                  {timing.label && "· "}
+                  {number(timing.runs)} {timing.runs === 1 ? "run" : "runs"}
+                </span>
+              </dt>
+              <dd>
+                <strong>{shortDuration(timing.medianMs)}</strong>
+                {timing.slowMs !== null && <span>slowest 10%: {shortDuration(timing.slowMs)}+</span>}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </li>
+  );
+}
+
 /** One run's path, read left to right: how long each step takes. */
 function StepTimeRow({ steps }: { steps: StepTimes[] }) {
   return (
@@ -1265,29 +1307,70 @@ function StepTimeRow({ steps }: { steps: StepTimes[] }) {
       </div>
       <ol className={styles.timeSteps}>
         {steps.map((step) => (
-          <li key={step.key} className={styles.timeStep} title={step.measures}>
-            <span className={styles.tileLabel}>{step.label}</span>
-            <span className={styles.timeSpan}>{step.span}</span>
-            {step.timings.length === 0 ? (
-              <span className={styles.timeNone}>{step.untimed ?? "No runs timed"}</span>
-            ) : (
-              <dl className={styles.timeStats}>
-                {step.timings.map((timing) => (
-                  <div key={timing.label}>
-                    <dt>
-                      {timing.label} <span>· {number(timing.runs)} {timing.runs === 1 ? "run" : "runs"}</span>
-                    </dt>
-                    <dd>
-                      <strong>{durationLabel(timing.medianMs)}</strong>
-                      {timing.slowMs !== null && <span>slowest 10%: {durationLabel(timing.slowMs)}+</span>}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            )}
-          </li>
+          <TimedCell key={step.key} step={step} />
         ))}
       </ol>
+    </section>
+  );
+}
+
+/** How many generation attempts encoded and failed runs used. */
+function TriesTable({ tries }: { tries: TriesUsed }) {
+  return (
+    <div
+      className={styles.timeStep}
+      title="Generation attempts the encode loop made, from the encoder's own record. Runs without a record are left out."
+    >
+      <span className={styles.tileLabel}>Tries used</span>
+      <span className={styles.timeSpan}>
+        {number(tries.recorded)} of {number(tries.finished)} finished runs recorded
+      </span>
+      {tries.tries.length === 0 ? (
+        <span className={styles.timeNone}>Not recorded yet</span>
+      ) : (
+        <table className={styles.triesTable}>
+          <thead>
+            <tr>
+              <th scope="col">Tries</th>
+              {tries.tries.map((n) => (
+                <th key={n} scope="col">
+                  {n}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {(["encoded", "failed"] as const).map((outcome) => (
+              <tr key={outcome}>
+                <th scope="row">{outcome === "encoded" ? "Encoded" : "Failed"}</th>
+                {tries[outcome].map((count, i) => (
+                  <td key={tries.tries[i]}>{number(count)}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+/** The encode run opened up: one job with three parts, and the tries its encode loop took. */
+function EncodeRunParts({ parts }: { parts: EncodeParts }) {
+  return (
+    <section className={styles.flowPart} aria-labelledby="flow-parts-title">
+      <div className={styles.flowPartHead}>
+        <h4 id="flow-parts-title">Inside the encode run</h4>
+        <span>one job: setup, then the encode loop, then the PR</span>
+      </div>
+      <div className={styles.partsRow}>
+        <ol className={styles.partsSteps}>
+          {parts.parts.map((part) => (
+            <TimedCell key={part.key} step={part} />
+          ))}
+        </ol>
+        <TriesTable tries={parts.tries} />
+      </div>
     </section>
   );
 }
@@ -1295,15 +1378,18 @@ function StepTimeRow({ steps }: { steps: StepTimes[] }) {
 function FlowView({
   gates,
   times,
+  parts,
   onOpen,
 }: {
   gates: FlowGate[];
   times: StepTimes[] | null;
+  parts: EncodeParts | null;
   onOpen: (gate: FlowGate, segment: FlowSegment) => void;
 }) {
   return (
     <>
       {times && <StepTimeRow steps={times} />}
+      {parts && <EncodeRunParts parts={parts} />}
       <section className={styles.flowPart} aria-labelledby="flow-gates-title">
         <div className={styles.flowPartHead}>
           <h4 id="flow-gates-title">Where runs go</h4>
