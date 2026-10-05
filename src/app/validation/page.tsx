@@ -2,6 +2,15 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRightIcon } from "@/components/icons";
 import { Reveal, RevealGroup, RevealItem } from "@/components/landing/reveal";
+import {
+  countWord,
+  formatCount,
+  RULE_COVERAGE,
+  ruleCoverageClause,
+  SNAP_QC_REPLAYS,
+  snapQcTotals,
+  SOUTHMOD_FACTS,
+} from "@/lib/verification-evidence";
 
 export const metadata: Metadata = {
   title: "Validation — Axiom Foundation",
@@ -15,6 +24,8 @@ interface Oracle {
   body: string;
   href: string;
 }
+
+const snapQc = snapQcTotals(SNAP_QC_REPLAYS);
 
 const ORACLES: Oracle[] = [
   {
@@ -42,9 +53,21 @@ const ORACLES: Oracle[] = [
     href: "https://www.statcan.gc.ca/en/microsimulation/spsdm/spsdm",
   },
   {
+    name: "SOUTHMOD",
+    scope: "Ghana, Uganda, Zambia, Ethiopia & Rwanda",
+    body: [
+      "UNU-WIDER's tax-benefit microsimulation models for countries in the Global South, run on the EUROMOD software.",
+      SOUTHMOD_FACTS.summary,
+      SOUTHMOD_FACTS.caveats.manualRuns.sentence,
+      SOUTHMOD_FACTS.caveats.syntheticHouseholds.sentence,
+      SOUTHMOD_FACTS.caveats.notEncoderOutput.sentence,
+    ].join(" "),
+    href: SOUTHMOD_FACTS.url,
+  },
+  {
     name: "SNAP quality-control data",
     scope: "US food assistance",
-    body: "USDA's case-level QC microdata. For 5,175 reviewed FY 2024 households in six states, the research firm Mathematica computes a benefit for USDA from the edited case record; we compute it from the same record, taking income and several deductions as given, and compare. The file keeps only eligible households, so the replay checks benefit arithmetic and leaves eligibility untested.",
+    body: `USDA's case-level QC microdata. For ${formatCount(snapQc.households)} reviewed FY 2024 households in ${countWord(snapQc.states)} states, the research firm Mathematica computes a benefit for USDA from the edited case record; we compute it from the same record, taking income and several deductions as given, and compare. The file keeps only eligible households, so the replay checks benefit arithmetic and leaves eligibility untested.`,
     href: "https://www.fns.usda.gov/snap/quality-control",
   },
 ];
@@ -67,10 +90,9 @@ export default function ValidationPage() {
             calculators and datasets, and publish the comparisons and the code
             that runs them. Max Ghenis is CEO of both Axiom and PolicyEngine,
             the oracle we compare against most, and PSL Foundation fiscally
-            sponsors both. In September 2026, 20,780 of our 34,810 US rules had
-            no comparison; a{" "}
+            sponsors both. {ruleCoverageClause()}; a{" "}
             <a
-              href="https://github.com/TheAxiomFoundation/axiom-oracles/blob/main/dashboard/public/data/rule_verification.json"
+              href={RULE_COVERAGE.perRuleFileUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] no-underline"
@@ -150,8 +172,14 @@ export default function ValidationPage() {
             ))}
           </RevealGroup>
           <p className="mt-8 mb-0 max-w-[720px] font-body text-[0.95rem] leading-relaxed text-[var(--color-ink-secondary)]">
-            Three more are not connected yet: SOUTHMOD, PSL Tax-Calculator, and
-            ACCESS NYC have no published comparison with our encodings.
+            Two more are not connected yet: PSL Tax-Calculator and ACCESS NYC
+            have no published comparison with our encodings.
+          </p>
+          <p
+            data-testid="southmod-acknowledgement"
+            className="mt-6 mb-0 max-w-[720px] break-words font-body text-[0.78rem] leading-relaxed text-[var(--color-ink-muted)]"
+          >
+            SOUTHMOD acknowledgement: {SOUTHMOD_FACTS.acknowledgement}
           </p>
         </Reveal>
 

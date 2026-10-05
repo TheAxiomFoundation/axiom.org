@@ -13,6 +13,7 @@ import VerifyPage from '@/app/verify/page'
 import ReceiptsPage from '@/app/receipts/page'
 import { EncodedLawSection } from '@/components/landing/encoded-law-section'
 import { EncoderSection } from '@/components/landing/encoder-section'
+import { SOUTHMOD_CAVEATS } from '@/lib/verification-evidence'
 
 // The verification copy must describe what the oracle harness does.
 // - Coverage is partial. axiom-oracles dashboard/public/data/
@@ -30,6 +31,13 @@ import { EncoderSection } from '@/components/landing/encoder-section'
 //   keeps only eligible households and the replay feeds the eligibility gates
 //   passing values (axiom-oracles bridges/snap_qc_compare.py). A page that
 //   names SNAP QC says eligibility is untested.
+// - SOUTHMOD is compared (40 suites on axiom-oracles main since 2026-10-04),
+//   with three caveats a page that names it states: the runs are manual on
+//   the licensed machine (SOUTHMOD_A4.0 Adhesion Agreement clause 4; every
+//   config declares `ci: manual`), the compared rulespec-gh/ug/zm/et/rw
+//   modules carry no encoder apply manifest, and every household is
+//   synthetic, with no Rwandan microdata at all. The evidence for each is in
+//   src/lib/verification-evidence.ts.
 const SURFACES = [
   ['/about', () => render(<AboutPage />)],
   ['/validation', () => render(<ValidationPage />)],
@@ -86,6 +94,17 @@ describe('verification claims', () => {
       if (!/TAXSIM/.test(text)) return
 
       expect(text).toMatch(/TAXSIM executable that PolicyEngine packages/)
+    })
+
+    it(`${route} states the SOUTHMOD caveats wherever it names SOUTHMOD`, () => {
+      const text = textOf(renderSurface)
+      if (!/SOUTHMOD/.test(text)) return
+
+      for (const caveat of Object.values(SOUTHMOD_CAVEATS)) {
+        expect(text).toContain(caveat.marker)
+      }
+      // It has published comparisons, so no page lists it as unconnected.
+      expect(text).not.toMatch(/SOUTHMOD[^.]{0,120}(not connected|no published comparison)/)
     })
 
     it(`${route} scopes the SNAP QC replay to benefit arithmetic`, () => {
