@@ -53,4 +53,18 @@ describe('DemosPage', () => {
   it('keeps the page metadata', () => {
     expect(metadata.title).toMatch(/live demos/i)
   })
+
+  // The search snippet and intro describe the chatbot too. It is an OpenAI
+  // model with tool access to the rules engine, and most of its headline
+  // outputs carry no legal id (finbot-snap-demo catalog), so neither may say
+  // the assistants are grounded in cited rules or that every demo shares
+  // one encoding.
+  it('describes the demos without overstating the chatbot', async () => {
+    const { container } = render(await DemosPage(props()))
+    const text = `${String(metadata.description)} ${container.textContent ?? ''}`
+    expect(text).not.toMatch(/grounded in cited rules/i)
+    expect(text).not.toMatch(/every demo runs on the same/i)
+    expect(text).not.toMatch(/\b(certified|verified|accurate|official)\b/i)
+    expect(String(metadata.description)).toMatch(/tool access to the rules engine/i)
+  })
 })
