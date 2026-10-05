@@ -572,6 +572,22 @@ describe("OpsPipeline", () => {
 
   });
 
+  it("splits each drop in the summary into chips that add up to it, with re-runs apart", () => {
+    const attempts = [
+      pipelineAttempt({ id: "a", citation: "us/a" }),
+      pipelineAttempt({ id: "c1", citation: "us/c", dispatched_at: "2026-09-21T10:00:00Z", run_conclusion: "success" }),
+      pipelineAttempt({ id: "c2", citation: "us/c", dispatched_at: "2026-09-22T10:00:00Z" }),
+      mergedAttempt({ id: "g", citation: "us/g", tests_status: "pass", synced_at: "S", index_status: "indexed" }),
+    ];
+    render(<OpsPipeline view={pipelineView(attempts, NOW)} insights={pipelineInsights(attempts, NOW)} queued={null} referenceMs={NOW} />);
+    const funnel = screen.getByRole("list", { name: "How far each citation got" });
+    // 3 citations, 2 encoded: one never encoded (1 failed); one encoded once, then a re-run failed.
+    expect(funnel).toHaveTextContent(/^3citations→1 failed2encoded→1 re-run failed1merged/);
+    fireEvent.click(within(funnel).getByRole("button", { name: "1 re-run failed" }));
+    const list = screen.getByRole("region", { name: /^Re-run failed/ });
+    expect(within(list).getByRole("link", { name: "us/c" })).toBeInTheDocument();
+  });
+
   it("says when nothing is stuck", () => {
     const attempts = [mergedAttempt({ synced_at: "2026-09-22T00:00:00Z", index_status: "indexed", tests_status: "pass" })];
     render(<OpsPipeline view={pipelineView(attempts, NOW)} queued={null} referenceMs={NOW} />);

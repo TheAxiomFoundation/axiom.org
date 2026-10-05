@@ -20,6 +20,7 @@ import {
 import type { QueuedSummary, QueueItemView } from "@/lib/axiom/encoding-queues";
 import type {
   AttemptRate,
+  FunnelGapGroup,
   PipelineInsights,
   PipelineScope,
   RunStats,
@@ -196,6 +197,14 @@ export function OpsPipeline({
       count: view.stages[stage].count,
       newestFirst: isExitStage(stage),
     });
+  const showGap = (group: FunnelGapGroup) =>
+    show({
+      kind: "citations",
+      ...gapCopy(group),
+      items: group.items,
+      count: group.count,
+      newestFirst: isExitStage(group.stage),
+    });
   const showGroup = (heading: string, group: PipelineGroupView, newestFirst: boolean) =>
     show({
       kind: "citations",
@@ -250,10 +259,10 @@ export function OpsPipeline({
       {insights && (
         <SummaryFunnel
           funnel={insights.funnel}
-          view={view}
+          gaps={insights.funnelGaps}
           queued={queued}
           isOpen={shows}
-          onStage={showStage}
+          onGap={showGap}
           onQueue={() => show({ kind: "queue" })}
         />
       )}
@@ -985,12 +994,22 @@ const GAP_LABELS: Partial<Record<PipelineStage, string>> = {
 };
 
 /** The stages that sit between each pair of funnel steps. */
-const GAPS: PipelineStage[][] = [
-  ["encode_failed", "encoding"],
-  ["review", "no_pr", "closed"],
-  ["merged_off_main"],
-  ["not_indexed", "awaiting_sync", "indexed", "runs", "compile_failed", "tests_failing", "oracle_disagrees"],
-];
+/** A gap group's list heading and what it holds. */
+function gapCopy(group: FunnelGapGroup): { title: string; description: string } {
+  if (!group.rerun) return { title: STAGE_COPY[group.stage].label, description: STAGE_COPY[group.stage].description };
+  return group.stage === "encoding"
+    ? { title: "Re-running", description: "Citations that got further once and are being encoded again." }
+    : {
+        title: "Re-run failed",
+        description: "Citations that got further once, then their latest run failed to encode.",
+      };
+}
+
+/** A gap group's chip, in a few words: "73 failed", "3 re-run failed". */
+function gapLabel(group: FunnelGapGroup): string {
+  if (group.rerun) return group.stage === "encoding" ? "re-running" : "re-run failed";
+  return GAP_LABELS[group.stage] ?? STAGE_COPY[group.stage].label.toLowerCase();
+}
 
 /**
  * How far citations ever got, as five large numbers, with the citations
@@ -998,17 +1017,17 @@ const GAPS: PipelineStage[][] = [
  */
 function SummaryFunnel({
   funnel,
-  view,
+  gaps,
   queued,
   isOpen,
-  onStage,
+  onGap,
   onQueue,
 }: {
   funnel: PipelineInsights["funnel"];
-  view: PipelineView;
+  gaps: FunnelGapGroup[][];
   queued: QueuedSummary | null;
   isOpen: (title: string) => boolean;
-  onStage: (stage: PipelineStage) => void;
+  onGap: (group: FunnelGapGroup) => void;
   onQueue: () => void;
 }) {
   const steps = [
@@ -1024,8 +1043,8 @@ function SummaryFunnel({
         <span className={styles.miniLabel}>Citations: how far each got</span>
         <Explain label="Citations: how far each got">
           Each number counts citations, not runs. A citation counts at a step if any of its runs got there, even if
-          a later run failed. The chips show where the rest are now; click one to list them. The Flow tab counts
-          runs.
+          a later run failed. The chips after a number are the citations that stopped there, by where they are now,
+          so they add up to the drop to the next number; click one to list them. The Flow tab counts runs.
         </Explain>
         {queued && queued.pending > 0 && (
           <button type="button" className={styles.gapChip} onClick={onQueue}>
@@ -1038,25 +1057,26 @@ function SummaryFunnel({
           <li key={step.label} className={styles.funnelStep}>
             <span className={styles.funnelValue}>{number(step.value)}</span>
             <span className={styles.funnelName}>{step.label}</span>
-            {index < GAPS.length && (
+            {index < gaps.length && (
               <span className={styles.funnelGap}>
                 <span className={styles.funnelArrow} aria-hidden>
                   →
                 </span>
-                {GAPS[index]
-                  .filter((stage) => view.stages[stage].count > 0)
-                  .map((stage) => (
+                {gaps[index].map((group) => {
+                  const copy = gapCopy(group);
+                  return (
                     <button
-                      key={stage}
+                      key={`${group.stage}:${group.rerun}`}
                       type="button"
-                      className={`${styles.gapChip} ${isExitStage(stage) || view.stages[stage].stuck > 0 ? styles.gapChipStuck : ""}`}
-                      aria-pressed={isOpen(STAGE_COPY[stage].label)}
-                      title={STAGE_COPY[stage].description}
-                      onClick={() => onStage(stage)}
+                      className={`${styles.gapChip} ${isExitStage(group.stage) || group.rerun || group.stuck > 0 ? styles.gapChipStuck : ""}`}
+                      aria-pressed={isOpen(copy.title)}
+                      title={copy.description}
+                      onClick={() => onGap(group)}
                     >
-                      <strong>{number(view.stages[stage].count)}</strong> {GAP_LABELS[stage]}
+                      <strong>{number(group.count)}</strong> {gapLabel(group)}
                     </button>
-                  ))}
+                  );
+                })}
               </span>
             )}
           </li>

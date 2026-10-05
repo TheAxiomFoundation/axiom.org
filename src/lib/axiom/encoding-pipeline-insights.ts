@@ -8,10 +8,15 @@
 
 import {
   checkErrorLabel,
+  citationIsStuck,
   citationStates,
+  isExitStage,
   pipelineItem,
+  VIEW_ITEMS_PER_STAGE,
   type PipelineAttempt,
   type PipelineGroupView,
+  type PipelineItem,
+  type PipelineStage,
 } from "./encoding-pipeline";
 import { jurisdictionName, ownLevelName } from "./jurisdiction-names";
 
@@ -51,8 +56,23 @@ export interface VersionBin {
   lastAt: string;
 }
 
+/**
+ * Citations that reached one funnel step but never the next, by where they
+ * are now: their latest dispatch's stage. A citation whose latest dispatch
+ * is encoding or failed to encode after it once got further is a re-run.
+ */
+export interface FunnelGapGroup {
+  stage: PipelineStage;
+  rerun: boolean;
+  count: number;
+  stuck: number;
+  items: PipelineItem[];
+}
+
 export interface PipelineInsights {
   funnel: PipelineFunnel;
+  /** One list per gap between the funnel's numbers; each adds up to the drop. */
+  funnelGaps: FunnelGapGroup[][];
   runs: RunStats;
   versions: VersionBin[];
   /** Citations in review by what their PR's failing check printed. */
@@ -94,6 +114,55 @@ export function pipelineFunnel(attempts: PipelineAttempt[]): PipelineFunnel {
     mergedMain: ever(mergedMain),
     passing: ever((a) => mergedMain(a) && a.tests_status === "pass"),
   };
+}
+
+const ENCODE_STAGES = new Set<PipelineStage>(["encoding", "encode_failed"]);
+
+/**
+ * For each gap between the funnel's numbers (dispatched → encoded → merged →
+ * in main → tests pass), the citations that reached the first and never the
+ * second, grouped by their latest stage, largest first. Each gap's groups add
+ * up to the drop between its two numbers.
+ */
+export function funnelGaps(attempts: PipelineAttempt[], referenceMs: number): FunnelGapGroup[][] {
+  const groups = byCitation(attempts);
+  const mergedMain = (a: PipelineAttempt) => a.pr_state === "merged" && a.pr_targets_default !== false;
+  const steps: Array<(a: PipelineAttempt) => boolean> = [
+    () => true,
+    (a) => a.run_conclusion === "success",
+    (a) => a.pr_state === "merged",
+    mergedMain,
+    (a) => mergedMain(a) && a.tests_status === "pass",
+  ];
+  const furthest = new Map(
+    groups.map((list) => {
+      let reached = 0;
+      while (reached + 1 < steps.length && list.some(steps[reached + 1])) reached += 1;
+      return [list[0].citation, reached];
+    })
+  );
+  const gaps = Array.from({ length: steps.length - 1 }, () => new Map<string, FunnelGapGroup & { states: ReturnType<typeof citationStates> }>());
+  for (const state of citationStates(attempts)) {
+    const gap = furthest.get(state.citation) ?? 0;
+    if (gap >= gaps.length) continue;
+    const rerun = gap > 0 && ENCODE_STAGES.has(state.stage);
+    const key = `${state.stage}:${rerun}`;
+    const group = gaps[gap].get(key) ?? { stage: state.stage, rerun, count: 0, stuck: 0, items: [], states: [] };
+    group.count += 1;
+    group.stuck += Number(citationIsStuck(state, referenceMs));
+    group.states.push(state);
+    gaps[gap].set(key, group);
+  }
+  return gaps.map((gap) =>
+    [...gap.values()]
+      .map(({ states, ...group }) => {
+        // Waiting stages list their oldest first (the stuck end); exits their newest.
+        const sorted = [...states].sort((a, b) => (a.since ?? "").localeCompare(b.since ?? ""));
+        if (isExitStage(group.stage)) sorted.reverse();
+        return { ...group, items: sorted.slice(0, VIEW_ITEMS_PER_STAGE).map((state) => pipelineItem(state, referenceMs)) };
+      })
+      .sort((a, b) => b.count - a.count || a.stage.localeCompare(b.stage))
+  );
 }
 
 export function runStats(attempts: PipelineAttempt[]): RunStats {
@@ -216,6 +285,7 @@ export function checkErrorGroups(
 export function pipelineInsights(attempts: PipelineAttempt[], referenceMs: number): PipelineInsights {
   return {
     funnel: pipelineFunnel(attempts),
+    funnelGaps: funnelGaps(attempts, referenceMs),
     runs: runStats(attempts),
     versions: versionBins(attempts),
     checkErrors: checkErrorGroups(attempts, referenceMs),
