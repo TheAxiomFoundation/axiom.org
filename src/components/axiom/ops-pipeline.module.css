@@ -832,15 +832,7 @@
   white-space: nowrap;
 }
 
-.tileHint {
-  overflow: hidden;
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--color-ink-muted);
-}
-
-.tileStuck .tileHint,
+.tileStuck .tileValue,
 .warn {
   color: var(--color-warning);
 }

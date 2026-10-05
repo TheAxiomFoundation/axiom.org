@@ -51,7 +51,7 @@ import {
   type TriesUsed,
 } from "@/lib/axiom/encoding-pipeline-runs";
 
-/** The stages a citation moves through, in order, with a short status when nothing is stuck. */
+/** The stages a citation moves through, in order, with a short status (a tile's tooltip) when nothing is stuck. */
 const FLOW: Array<{ stage: PipelineStage; hint: string }> = [
   { stage: "encoding", hint: "running now" },
   { stage: "review", hint: "PR open" },
@@ -319,13 +319,11 @@ export function OpsPipeline({
               type="button"
               className={`${styles.tile} ${corpus.outOfSync > 0 ? styles.tileStuck : ""}`}
               aria-pressed={listing?.kind === "corpus"}
+              title={corpus.outOfSync > 0 ? `${number(corpus.outOfSync)} out of sync` : "all in sync"}
               onClick={() => show({ kind: "corpus" })}
             >
               <span className={styles.tileLabel}>Corpus</span>
               <span className={styles.tileValue}>{number(corpus.jurisdictions.length)}</span>
-              <span className={styles.tileHint}>
-                {corpus.outOfSync > 0 ? `${number(corpus.outOfSync)} out of sync` : "all in sync"}
-              </span>
             </button>
           </li>
         )}
@@ -335,26 +333,22 @@ export function OpsPipeline({
               type="button"
               className={`${styles.tile} ${queued.blocked > 0 ? styles.tileStuck : ""}`}
               aria-pressed={listing?.kind === "queue"}
+              title={
+                queued.blocked > 0
+                  ? [`${number(queued.blocked)} blocked`, queued.blockedNote?.note].filter(Boolean).join(": ")
+                  : queued.pausedReason
+                    ? `Paused: ${queued.pausedReason}`
+                    : `${number(queued.inFlight)} in flight`
+              }
               onClick={() => show({ kind: "queue" })}
             >
               <span className={styles.tileLabel}>Queued</span>
               <span className={styles.tileValue}>{number(queued.pending)}</span>
-              <span
-                className={styles.tileHint}
-                title={(queued.blocked ? queued.blockedNote?.note : queued.pausedReason) ?? undefined}
-              >
-                {queued.blocked > 0
-                  ? `${number(queued.blocked)} blocked`
-                  : queued.pausedReason
-                    ? "paused"
-                    : `${number(queued.inFlight)} in flight`}
-              </span>
             </button>
           ) : (
             <div className={`${styles.tile} ${styles.static}`}>
               <span className={styles.tileLabel}>Queued</span>
               <span className={styles.tileValue}>—</span>
-              <span className={styles.tileHint}>no queues</span>
             </div>
           )}
         </li>
@@ -373,11 +367,11 @@ export function OpsPipeline({
                 type="button"
                 className={`${styles.tile} ${summary.stuck > 0 ? styles.tileStuck : ""}`}
                 aria-pressed={shows(STAGE_COPY[stage].label)}
+                title={status}
                 onClick={() => showStage(stage)}
               >
                 <span className={styles.tileLabel}>{STAGE_COPY[stage].label}</span>
                 <span className={styles.tileValue}>{number(summary.count)}</span>
-                <span className={styles.tileHint}>{status}</span>
               </button>
             </li>
           );

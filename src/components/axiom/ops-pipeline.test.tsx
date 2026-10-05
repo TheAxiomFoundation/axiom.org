@@ -94,9 +94,10 @@ describe("OpsPipeline", () => {
     expect(screen.queryByText(/citations since/)).not.toBeInTheDocument();
     const stages = screen.getByRole("list", { name: "Pipeline stages" });
     expect(within(stages).getByText("18,615")).toBeInTheDocument();
-    expect(within(stages).getByText("paused")).toHaveAttribute("title", "Awaiting a green tip.");
-    expect(within(stages).getByRole("button", { name: /In review\s*1\s*1 stuck · 3w/ })).toBeInTheDocument();
-    expect(within(stages).getByRole("button", { name: /Runs\s*0\s*no engine sweep yet/ })).toBeInTheDocument();
+    // A tile shows its name and count; its status is the tooltip.
+    expect(within(stages).getByRole("button", { name: /^Queued/ })).toHaveAttribute("title", "Paused: Awaiting a green tip.");
+    expect(within(stages).getByRole("button", { name: /^In review\s*1$/ })).toHaveAttribute("title", "1 stuck · 3w");
+    expect(within(stages).getByRole("button", { name: /^Runs\s*0$/ })).toHaveAttribute("title", "no engine sweep yet");
     expect(screen.getByRole("button", { name: /^3\s*last encode failed$/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /1\s*encoded, no PR/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /1\s*merged off main/ })).toBeInTheDocument();
@@ -197,7 +198,10 @@ describe("OpsPipeline", () => {
       mergedAttempt({ id: "ok", citation: "us/ok", synced_at: "2026-09-22T00:00:00Z", compile_status: "ok", compile_checked_at: "2026-09-30T07:00:00Z", pr_checks: "pending", pr_review: "approved" }),
     ];
     renderPipeline(attempts);
-    expect(screen.queryByText("no engine sweep yet")).not.toBeInTheDocument();
+    expect(within(screen.getByRole("list", { name: "Pipeline stages" })).getByRole("button", { name: /^Runs/ })).not.toHaveAttribute(
+      "title",
+      "no engine sweep yet"
+    );
     fireEvent.click(screen.getByRole("button", { name: /^65\s*last encode failed$/ }));
     expect(within(openList()).getByText("Latest 60 of 65")).toBeInTheDocument();
     fireEvent.click(within(screen.getByRole("list", { name: "Pipeline stages" })).getByRole("button", { name: /In review/ }));
@@ -223,19 +227,19 @@ describe("OpsPipeline", () => {
 
   it("summarizes the queue as blocked, paused, in flight, or absent", () => {
     const quiet = [pipelineAttempt({ run_conclusion: "success", pr_state: "open", pr_created_at: "2026-09-30T00:00:00Z" })];
+    const queueTile = () => within(screen.getByRole("list", { name: "Pipeline stages" })).getByRole("button", { name: /^Queued/ });
     renderPipeline(quiet, queuedWith({ inFlight: 1, blocked: 19, blockedNote: { note: "skipped for the pilot", count: 19 } }));
-    expect(screen.getByText("19 blocked")).toHaveAttribute("title", "skipped for the pilot");
+    expect(queueTile()).toHaveAttribute("title", "19 blocked: skipped for the pilot");
     expect(screen.queryByRole("button", { name: /Biggest bottleneck/ })).not.toBeInTheDocument();
     cleanup();
     renderPipeline(quiet, queuedWith({ blocked: 2 }));
-    expect(screen.getByText("2 blocked")).not.toHaveAttribute("title");
+    expect(queueTile()).toHaveAttribute("title", "2 blocked");
     cleanup();
     renderPipeline(quiet, queuedWith({ queues: 3, inFlight: 4 }));
-    expect(screen.getByText("4 in flight")).not.toHaveAttribute("title");
+    expect(queueTile()).toHaveAttribute("title", "4 in flight");
     cleanup();
     renderPipeline(quiet, null);
     expect(within(screen.getByRole("list", { name: "Pipeline stages" })).getByText("—")).toBeInTheDocument();
-    expect(screen.getByText("no queues")).toBeInTheDocument();
   });
 
   it("shows the signing-approval gate and every cancellation", () => {
@@ -298,7 +302,7 @@ describe("OpsPipeline", () => {
         ],
       })
     );
-    fireEvent.click(screen.getByRole("button", { name: /Queued\s*935\s*3 blocked/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Queued\s*935$/ }));
     const list = screen.getByRole("region", { name: "Queued items" });
     expect(within(list).getByText(/^Paused; nothing new is dispatched\./)).toBeInTheDocument();
     const blocked = within(list).getByRole("region", { name: "Needs a person" });
@@ -373,7 +377,8 @@ describe("OpsPipeline", () => {
       ],
     };
     renderPipeline(undefined, undefined, corpus);
-    const corpusTile = screen.getByRole("button", { name: /Corpus\s*5\s*3 out of sync/ });
+    const corpusTile = screen.getByRole("button", { name: /^Corpus\s*5$/ });
+    expect(corpusTile).toHaveAttribute("title", "3 out of sync");
     fireEvent.click(corpusTile);
     expect(corpusTile).toHaveAttribute("aria-pressed", "true");
     const list = screen.getByRole("region", { name: "Corpus releases" });
@@ -409,7 +414,8 @@ describe("OpsPipeline", () => {
       lastPublish: { conclusion: "success", at: "2026-09-29T12:00:00Z", url: "r" },
       jurisdictions: [row({ jurisdiction: "uk-x", name: "Somewhere", serving: { release: "other-name", since: "s", scopes: 1 } })],
     });
-    fireEvent.click(screen.getByRole("button", { name: /Corpus\s*1\s*all in sync/ }));
+    expect(screen.getByRole("button", { name: /^Corpus\s*1$/ })).toHaveAttribute("title", "all in sync");
+    fireEvent.click(screen.getByRole("button", { name: /^Corpus\s*1$/ }));
     expect(screen.getByRole("link", { name: "1 open PR in axiom-corpus" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Last publish succeeded 24h ago" })).toBeInTheDocument();
 
