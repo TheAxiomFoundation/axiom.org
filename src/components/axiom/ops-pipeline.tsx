@@ -3,7 +3,7 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ChevronDown, X } from "lucide-react";
+import { X } from "lucide-react";
 import styles from "./ops-pipeline.module.css";
 import {
   ageLabel,
@@ -124,7 +124,6 @@ export function OpsPipeline({
   referenceMs: number;
 }) {
   const [listing, setListing] = useState<Listing | null>(null);
-  const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsTab, setDetailsTab] = useState<DetailsTab>(flow ? "flow" : "cards");
   const runsRequest = useRef<Promise<RunRow[]> | null>(null);
   // Every dispatch in the scope, fetched once when the run log or a flow
@@ -265,20 +264,12 @@ export function OpsPipeline({
         </div>
       )}
 
-      <button
-        type="button"
-        className={styles.detailsToggle}
-        aria-expanded={detailsOpen}
-        aria-controls="pipeline-details"
-        onClick={() => setDetailsOpen((open) => !open)}
-      >
-        <ChevronDown size={14} aria-hidden className={styles.detailsChevron} />
-        Details
+      <div className={styles.detailsHead}>
+        <h3 id="pipeline-details-title">Details</h3>
         <span className={styles.detailsHint}>stages · corpus · queue · retries · versions · approval</span>
-      </button>
+      </div>
 
-      {detailsOpen && (
-        <div id="pipeline-details" className={styles.details}>
+      <div id="pipeline-details" className={styles.details} aria-labelledby="pipeline-details-title">
           {flow && (
             <div className={styles.tabs} role="tablist" aria-label="Details view">
               {DETAILS_TABS.map((tab) => (
@@ -423,8 +414,7 @@ export function OpsPipeline({
       </div>
           </>
           )}
-        </div>
-      )}
+      </div>
     </section>
   );
 }

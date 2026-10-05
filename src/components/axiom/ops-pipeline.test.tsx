@@ -53,15 +53,10 @@ function renderPipeline(
   },
   corpus: CorpusView | null = null
 ) {
-  const result = render(
+  return render(
     <OpsPipeline view={pipelineView(attempts, NOW)} queued={queued} corpus={corpus} referenceMs={NOW} />
   );
-  // The stage strip, drop-outs, and cards sit under Details.
-  openDetails();
-  return result;
 }
-
-const openDetails = () => fireEvent.click(screen.getByRole("button", { name: /^Details/ }));
 
 const queuedWith = (overrides: Partial<QueuedSummary>): QueuedSummary => ({
   pending: 5,
@@ -442,7 +437,6 @@ describe("OpsPipeline", () => {
         referenceMs={NOW}
       />
     );
-    openDetails();
     const bar = screen.getByRole("navigation", { name: "Jurisdiction" });
     expect(within(bar).getByRole("link", { name: "All" })).toHaveAttribute("href", "/ops#pipeline-title");
     expect(within(bar).getByRole("link", { name: /^us\s*2$/ })).toHaveAttribute("aria-current", "page");
@@ -497,7 +491,6 @@ describe("OpsPipeline", () => {
         referenceMs={NOW}
       />
     );
-    openDetails();
     expect(screen.queryByRole("navigation", { name: "Jurisdiction" })).not.toBeInTheDocument();
     expect(screen.getByText("No run records its cost yet")).toBeInTheDocument();
     expect(screen.getByText("No encoder versions recorded yet.")).toBeInTheDocument();
@@ -505,7 +498,7 @@ describe("OpsPipeline", () => {
     expect(within(screen.getByRole("group", { name: "What holds PRs in review" })).queryByRole("button", { name: "By error" })).not.toBeInTheDocument();
   });
 
-  it("summarizes on one screen and keeps the rest under Details", () => {
+  it("summarizes on one screen, with Details open below it", () => {
     const attempts = [
       ...["us/a", "us/b", "us/c"].map((citation, i) =>
         pipelineAttempt({ id: `f${i}`, citation, encoder_error_rule: "rule-a", failure_source: "diagnostics" })
@@ -522,11 +515,10 @@ describe("OpsPipeline", () => {
         referenceMs={NOW}
       />
     );
-    // Details starts closed: no stage strip or cards.
-    const details = screen.getByRole("button", { name: /^Details/ });
-    expect(details).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByRole("list", { name: "Pipeline stages" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: "Why encodes fail" })).not.toBeInTheDocument();
+    // Details is always open: the stage strip and the cards show without a click.
+    expect(screen.getByRole("heading", { name: "Details" })).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Pipeline stages" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Why encodes fail" })).toBeInTheDocument();
 
     const funnel = screen.getByRole("list", { name: "Citations that ever reached each step" });
     expect(funnel).toHaveTextContent(/^6dispatched.*3encoded.*2merged.*1in main.*1tests pass$/);
@@ -554,9 +546,6 @@ describe("OpsPipeline", () => {
     expect(within(trend).getAllByText("last week")).toHaveLength(3);
     expect(trend.querySelectorAll("[title^='Week of']")).toHaveLength(3 * 8);
 
-    fireEvent.click(details);
-    expect(details).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("list", { name: "Pipeline stages" })).toBeInTheDocument();
   });
 
   it("says when nothing is stuck", () => {
@@ -587,7 +576,6 @@ describe("OpsPipeline", () => {
           referenceMs={NOW}
         />
       );
-      openDetails();
     };
 
     it("opens on the flow, and lists the runs behind a part of it", async () => {
@@ -646,7 +634,6 @@ describe("OpsPipeline", () => {
     it("says when no run reached a gate", () => {
       const cancelled = runRows([pipelineAttempt({ run_conclusion: "cancelled", cancel_stage: "approval" })]);
       render(<OpsPipeline view={pipelineView(attempts, NOW)} queued={null} flow={dispatchFlow(cancelled)} referenceMs={NOW} />);
-      openDetails();
       expect(screen.getAllByText("No runs reached this gate.")).toHaveLength(6);
     });
 
@@ -656,7 +643,6 @@ describe("OpsPipeline", () => {
       render(
         <OpsPipeline view={pipelineView(attempts, NOW)} queued={null} flow={dispatchFlow(rows)} referenceMs={NOW} />
       );
-      openDetails();
       fireEvent.click(screen.getByRole("tab", { name: "Run log" }));
       await screen.findByText("60 of 60 runs");
       expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(51);
@@ -666,7 +652,6 @@ describe("OpsPipeline", () => {
 
       vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 503 }) as Response));
       render(<OpsPipeline view={pipelineView(attempts, NOW)} queued={null} flow={dispatchFlow(rows)} referenceMs={NOW} />);
-      openDetails();
       fireEvent.click(screen.getByRole("tab", { name: "Run log" }));
       await screen.findByText("The run log could not load. Try again later.");
       // The breakdowns are still one tab away.

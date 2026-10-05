@@ -309,28 +309,20 @@
   color: var(--color-ink-muted);
 }
 
-.detailsToggle {
+.detailsHead {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  margin-top: 20px;
-  padding: 10px 2px;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 24px;
+  padding-top: 14px;
   border-top: 1px solid var(--color-rule);
-  background: transparent;
-  font-size: 13px;
+}
+
+.detailsHead h3 {
+  font-size: 16px;
   font-weight: 550;
+  letter-spacing: -0.02em;
   color: var(--color-ink);
-  text-align: left;
-  cursor: pointer;
-}
-
-.detailsChevron {
-  transition: transform 120ms ease;
-}
-
-.detailsToggle[aria-expanded="true"] .detailsChevron {
-  transform: rotate(180deg);
 }
 
 .detailsHint {
