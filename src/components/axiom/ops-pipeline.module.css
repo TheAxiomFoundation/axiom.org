@@ -47,40 +47,56 @@
 }
 
 .scopes {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.scopeRow {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
   gap: 6px;
-  margin-top: 16px;
 }
 
 .scope {
   display: inline-flex;
   align-items: baseline;
-  gap: 6px;
-  padding: 4px 10px;
+  gap: 7px;
+  padding: 5px 12px;
   border: 1px solid var(--color-rule);
   border-radius: 999px;
-  font-family: var(--font-mono), monospace;
-  font-size: 12px;
+  background: var(--color-paper);
+  font-size: 13px;
   color: var(--color-ink-secondary);
   text-decoration: none;
+  white-space: nowrap;
 }
 
 .scope:hover {
   border-color: var(--color-rule-strong);
+  color: var(--color-ink);
 }
 
 .scope[aria-current="page"] {
   border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-paper));
   color: var(--color-ink);
-  box-shadow: inset 0 0 0 1px var(--color-accent);
+  font-weight: 550;
 }
 
 .scopeCount {
-  font-size: 11px;
+  font-size: 12px;
+  font-weight: 400;
   color: var(--color-ink-muted);
   font-variant-numeric: tabular-nums;
+}
+
+.scopeWithin {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--color-ink-secondary);
 }
 
 .scopeSelect {

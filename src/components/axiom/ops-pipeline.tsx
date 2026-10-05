@@ -901,24 +901,30 @@ function ScopeBar({
   const router = useRouter();
   const root = scope?.jurisdiction.split("-")[0] ?? null;
   const withinValue = scope && scope.jurisdiction !== root ? scope.jurisdiction : scope?.only ? `${root}:only` : "";
+  const total = scopes.roots.reduce((sum, option) => sum + option.citations, 0);
   return (
     <nav className={styles.scopes} aria-label="Jurisdiction">
-      <Link href={scopeHref(pathname, null)} className={styles.scope} aria-current={!scope ? "page" : undefined}>
-        All
-      </Link>
-      {scopes.roots.map((option) => (
-        <Link
-          key={option.jurisdiction}
-          href={scopeHref(pathname, option)}
-          className={styles.scope}
-          aria-current={root === option.jurisdiction ? "page" : undefined}
-        >
-          {option.label}
-          <span className={styles.scopeCount}>{number(option.citations)}</span>
+      <div className={styles.scopeRow}>
+        <Link href={scopeHref(pathname, null)} className={styles.scope} aria-current={!scope ? "page" : undefined}>
+          All
+          <span className={styles.scopeCount}>{number(total)}</span>
         </Link>
-      ))}
+        {scopes.roots.map((option) => (
+          <Link
+            key={option.jurisdiction}
+            href={scopeHref(pathname, option)}
+            className={styles.scope}
+            aria-current={root === option.jurisdiction ? "page" : undefined}
+          >
+            {jurisdictionName(option.jurisdiction)}
+            <span className={styles.scopeCount}>{number(option.citations)}</span>
+          </Link>
+        ))}
+      </div>
       {scopes.within.length > 0 && root && (
-        <select
+        <label className={styles.scopeWithin}>
+          <span>{root === "us" ? "State" : "Region"}</span>
+          <select
           className={styles.scopeSelect}
           aria-label={`Within ${jurisdictionName(root)}`}
           value={withinValue}
@@ -947,7 +953,8 @@ function ScopeBar({
                 </option>
               ))}
           </optgroup>
-        </select>
+          </select>
+        </label>
       )}
     </nav>
   );

@@ -444,9 +444,10 @@ describe("OpsPipeline", () => {
       />
     );
     const bar = screen.getByRole("navigation", { name: "Jurisdiction" });
-    expect(within(bar).getByRole("link", { name: "All" })).toHaveAttribute("href", "/ops#pipeline-title");
-    expect(within(bar).getByRole("link", { name: /^us\s*2$/ })).toHaveAttribute("aria-current", "page");
-    expect(within(bar).getByRole("link", { name: /^dk\s*1$/ })).toHaveAttribute("href", "/ops?j=dk#pipeline-title");
+    // Countries by name, each with its citation count, and All with the total.
+    expect(within(bar).getByRole("link", { name: /^All\s*3$/ })).toHaveAttribute("href", "/ops#pipeline-title");
+    expect(within(bar).getByRole("link", { name: /^United States\s*2$/ })).toHaveAttribute("aria-current", "page");
+    expect(within(bar).getByRole("link", { name: /^Denmark\s*1$/ })).toHaveAttribute("href", "/ops?j=dk#pipeline-title");
     const select = within(bar).getByRole("combobox", { name: "Within United States" });
     // All first, then the federal level, then the states by name.
     expect([...select.querySelectorAll("option")].map((o) => o.textContent)).toEqual([
