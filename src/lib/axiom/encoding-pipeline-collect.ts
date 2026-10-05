@@ -15,7 +15,7 @@
  * Kept free of I/O so every join rule is unit-tested.
  */
 
-import type { PipelineAttempt } from "./encoding-pipeline";
+import type { PipelineAttempt, PipelineTry } from "./encoding-pipeline";
 
 export interface WorkflowRun {
   id: number;
@@ -44,6 +44,8 @@ export interface EncoderRunRow {
   estimated_cost_usd: number | null;
   /** The Actions run that wrote the record (axiom-encode migration 008 on). */
   github_run_id?: string | null;
+  /** One entry per generation attempt: model, time, tokens, cost, and the errors that sent it back. */
+  iterations?: unknown;
 }
 
 export interface ManifestPr {
@@ -146,6 +148,34 @@ export function prRunId(body: string | null | undefined): string | null {
 /** The bracketed validator rule of an issue, e.g. complete-source-unit:structure. */
 export function errorRule(message: string | null | undefined): string | null {
   return message?.match(ERROR_RULE_RE)?.[1] ?? null;
+}
+
+const number = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
+
+/**
+ * The encode loop's tries from the encoder's record: each attempt's model,
+ * its own time and cost, whether its candidate passed, and the first error
+ * that sent it back for repair. Null when the record has no iterations.
+ */
+export function encoderTries(row: EncoderRunRow): PipelineTry[] | null {
+  if (!Array.isArray(row.iterations)) return null;
+  const tries = row.iterations
+    .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === "object")
+    .map((entry, index) => {
+      const errors = Array.isArray(entry.errors) ? entry.errors : [];
+      const first = errors.find((error) => error && typeof error === "object" && "message" in error) as
+        | { message?: unknown }
+        | undefined;
+      return {
+        attempt: number(entry.attempt) ?? index + 1,
+        model: typeof entry.model === "string" ? entry.model : null,
+        ms: number(entry.duration_ms),
+        cost: number(entry.estimated_cost_usd),
+        ok: entry.success === true,
+        error: truncateError(typeof first?.message === "string" ? first.message : null),
+      };
+    });
+  return tries.length ? tries : null;
 }
 
 export function truncateError(message: string | null | undefined): string | null {
@@ -1162,6 +1192,8 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
       attempt.encoder_status = encoder.status;
       attempt.generation_attempts = encoder.generation_attempt_count;
       attempt.cost_usd = encoder.estimated_cost_usd;
+      const tries = encoderTries(encoder);
+      if (tries) attempt.tries = tries;
       const error = encoderError(encoder);
       if (error) {
         attempt.encoder_error = error;

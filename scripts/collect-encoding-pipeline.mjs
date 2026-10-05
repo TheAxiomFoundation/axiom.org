@@ -191,7 +191,7 @@ async function readAll(table, select, build = (query) => query) {
 }
 
 const ENCODER_COLUMNS =
-  "id,timestamp,citation,status:outcome->>status,apply_error:outcome->>apply_error,note,generation_attempt_count,estimated_cost_usd";
+  "id,timestamp,citation,status:outcome->>status,apply_error:outcome->>apply_error,note,generation_attempt_count,estimated_cost_usd,iterations";
 
 /** Encoder records, with their Actions run id once axiom-encode's migration 008 adds it. */
 async function readEncoderRuns(since) {
@@ -781,6 +781,9 @@ const TIME_COLUMNS = TIME_CARRIED;
 // Added by the 2026-10-05 first-tests migration.
 const FIRST_TESTS_COLUMNS = FIRST_TESTS_CARRIED;
 
+// Added by the 2026-10-06 tries migration: derived from encoder records each pass.
+const TRIES_COLUMNS = ["tries"];
+
 async function upsert(rows) {
   // Each migration's columns are written only once that migration is applied.
   for (const [name, group] of [
@@ -789,6 +792,7 @@ async function upsert(rows) {
     ["version", VERSION_COLUMNS],
     ["step time", TIME_COLUMNS],
     ["first tests", FIRST_TESTS_COLUMNS],
+    ["tries", TRIES_COLUMNS],
   ]) {
     if (await columnsExist(group)) continue;
     console.log(`${name} columns not written yet (migration not applied)`);
