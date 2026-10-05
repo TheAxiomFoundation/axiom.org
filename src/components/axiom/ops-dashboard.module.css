@@ -235,33 +235,34 @@
   white-space: normal;
 }
 
-.ledgerRunCause {
-  overflow: hidden;
-  max-width: 420px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--color-ink-muted);
-}
-
-.ledgerTimeline {
-  margin-top: 10px;
-}
-
 .ledgerOverview {
   display: grid;
-  gap: 5px;
-  margin: 0;
-  font-size: 12px;
+  gap: 12px;
 }
 
-.ledgerOverview > div {
-  display: grid;
-  grid-template-columns: 56px minmax(0, 1fr);
+.ledgerSummary {
+  display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  column-gap: 12px;
+  gap: 2px 14px;
+  font-size: 13px;
+  color: var(--color-ink-secondary);
 }
 
-.ledgerOverview dt {
+.ledgerSummary strong {
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.ledgerColumns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 32px;
+}
+
+.ledgerLabel {
+  display: block;
+  margin-bottom: 4px;
   font-family: var(--font-mono), monospace;
   font-size: 10px;
   letter-spacing: 0.08em;
@@ -269,37 +270,67 @@
   color: var(--color-ink-muted);
 }
 
-.ledgerOverview dd {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px 14px;
+.ledgerCounts {
+  display: grid;
+  gap: 3px;
   margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+.ledgerCounts li {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: 10px;
   color: var(--color-ink-secondary);
 }
 
-.ledgerOverview dd a {
-  color: var(--color-ink);
-  text-decoration: underline;
-  text-decoration-color: var(--color-rule-strong);
-}
-
-.ledgerOverview dd a[data-outcome="failed"],
-.ledgerOverview dd a[data-outcome="cancelled"] {
-  color: var(--color-warning);
-}
-
 .ledgerCount {
+  text-align: right;
   font-weight: 600;
   color: var(--color-ink);
   font-variant-numeric: tabular-nums;
 }
 
+.ledgerMuted {
+  color: var(--color-ink-muted);
+}
+
+.ledgerLatest {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 12px;
+  font-size: 12px;
+  color: var(--color-ink-secondary);
+}
+
+.ledgerLatest .ledgerLabel {
+  margin: 0;
+}
+
+.ledgerLatest a {
+  color: var(--color-ink);
+  text-decoration: underline;
+  text-decoration-color: var(--color-rule-strong);
+}
+
+.ledgerLatest a[data-outcome="failed"],
+.ledgerLatest a[data-outcome="cancelled"] {
+  color: var(--color-warning);
+}
+
 .ledgerAll {
-  display: inline-block;
-  margin-top: 8px;
   font-size: 12px;
   color: var(--color-accent);
+}
+
+@media (max-width: 700px) {
+  .ledgerColumns {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .ledgerMore {

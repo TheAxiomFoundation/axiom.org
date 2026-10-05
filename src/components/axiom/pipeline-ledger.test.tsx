@@ -44,6 +44,7 @@ describe("PipelineLedger", () => {
 
   it("drops down an overview of a section's runs with the latest run's timeline, and links to every run", async () => {
     const cause = (i: number) => (i % 3 === 0 ? "complete-source-unit:tests" : `ci: cause ${"abcdefghijkl"[i]}`);
+    // Each "ci: cause x" headline is the message without its source: "cause x".
     serve({
       rows: runRows(
         Array.from({ length: 12 }, (_, i) =>
@@ -65,13 +66,18 @@ describe("PipelineLedger", () => {
     expect(screen.getByText(/^Every run, grouped/)).toBeInTheDocument();
     fireEvent.click(section);
     expect(section).toHaveAttribute("aria-expanded", "true");
-    const lines = screen
-      .getAllByRole("term")
-      .map((term) => `${term.textContent}: ${term.nextElementSibling?.textContent}`);
-    expect(lines[0]).toBe("Runs: 12 from 29d ago to 18d ago0.2.2000 → 0.2.2011");
-    expect(lines[1]).toBe("Ended: No detail recorded 8Validation rules 4");
-    expect(lines[2]).toBe("Causes: complete-source-unit:tests 4ci: cause b 1ci: cause c 1ci: cause e 1+5 more");
-    expect(lines[3]).toBe("Latest: 18d agoNo detail recordedci: cause l");
+    // A summary line, then two count-first lists, then the latest run.
+    expect(screen.getByText("12 runs").parentElement).toHaveTextContent("12 runs29d ago → 18d agoencoder 0.2.2000 → 0.2.2011");
+    const list = (name: string) => within(screen.getByRole("list", { name })).getAllByRole("listitem").map((item) => item.textContent);
+    expect(list("How they ended")).toEqual(["8No detail recorded", "4Validation rules"]);
+    expect(list("Why they failed")).toEqual([
+      "4Completeness rule: tests",
+      "1cause b",
+      "1cause c",
+      "1cause e",
+      "+5 more",
+    ]);
+    expect(screen.getByText("Latest run").parentElement).toHaveTextContent("Latest run18d agoNo detail recordedcause l");
     // The latest run's timeline shows under the overview, with nothing to open.
     expect(screen.queryByRole("button", { name: /^Timeline of / })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Encode run" })).toBeInTheDocument();

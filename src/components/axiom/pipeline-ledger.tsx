@@ -9,6 +9,7 @@ import { journeyHref } from "@/lib/axiom/encoding-pipeline";
 import { scopeSearch, type PipelineScope } from "@/lib/axiom/encoding-pipeline-insights";
 import { runTimeline, type RunRow } from "@/lib/axiom/encoding-pipeline-runs";
 import {
+  causeHeadline,
   runLedger,
   sectionOverview,
   type LedgerDocument,
@@ -26,10 +27,8 @@ interface RunsPayload {
 
 /** Documents shown before "Show more", as the encoding ledger always showed. */
 const DOCUMENTS_SHOWN = 10;
-/** Groups an overview line lists before "+N more". */
+/** Groups an overview list shows before "+N more". */
 const OVERVIEW_GROUPS = 4;
-/** A failure cause in an overview, cut to this length; its tooltip holds the rest. */
-const CAUSE_CHARS = 64;
 
 const TONE_CLASS: Record<LedgerTone, string> = {
   done: styles.completed,
@@ -254,22 +253,38 @@ function DocumentSections({
   );
 }
 
-const clip = (text: string, length: number) => (text.length > length ? `${text.slice(0, length - 1)}…` : text);
-
-/** One overview line's groups: the largest few, then how many more. */
-function Groups({ groups }: { groups: Array<{ label: string; count: number; tone?: LedgerTone }> }) {
+/** One overview list, count first: "9  Validation rules". A row's tooltip holds a full message. */
+function CountList({
+  title,
+  groups,
+}: {
+  title: string;
+  groups: Array<{ label: string; count: number; tone?: LedgerTone; detail?: string }>;
+}) {
+  const more = groups.length - OVERVIEW_GROUPS;
   return (
-    <>
-      {groups.slice(0, OVERVIEW_GROUPS).map((group) => (
-        <span key={group.label} title={group.label}>
-          {group.tone && (
-            <span aria-hidden className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${TONE_DOT[group.tone]}`} />
-          )}
-          {clip(group.label, CAUSE_CHARS)} <strong className={styles.ledgerCount}>{group.count}</strong>
-        </span>
-      ))}
-      {groups.length > OVERVIEW_GROUPS && <span>+{groups.length - OVERVIEW_GROUPS} more</span>}
-    </>
+    <div>
+      <p className={styles.ledgerLabel}>{title}</p>
+      <ul className={styles.ledgerCounts} aria-label={title}>
+        {groups.slice(0, OVERVIEW_GROUPS).map((group) => (
+          <li key={group.label} title={group.detail ?? group.label}>
+            <span className={styles.ledgerCount}>{group.count}</span>
+            <span>
+              {group.tone && (
+                <span aria-hidden className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${TONE_DOT[group.tone]}`} />
+              )}
+              {group.label}
+            </span>
+          </li>
+        ))}
+        {more > 0 && (
+          <li>
+            <span />
+            <span className={styles.ledgerMuted}>+{more} more</span>
+          </li>
+        )}
+      </ul>
+    </div>
   );
 }
 
@@ -277,67 +292,48 @@ function Groups({ groups }: { groups: Array<{ label: string; count: number; tone
 function SectionRuns({ section, referenceMs }: { section: LedgerSection; referenceMs: number }) {
   const overview = sectionOverview(section);
   const latest = overview.latest;
+  const { encoders } = overview;
   return (
-    <>
-      <dl className={styles.ledgerOverview} aria-label={`Runs of ${section.citation}`}>
-        <div>
-          <dt>Runs</dt>
-          <dd>
-            <span>
-              <strong className={styles.ledgerCount}>{overview.runs}</strong>{" "}
-              {overview.runs === 1
-                ? relativeTime(overview.lastAt, referenceMs)
-                : `from ${relativeTime(overview.firstAt, referenceMs)} to ${relativeTime(overview.lastAt, referenceMs)}`}
+    <div className={styles.ledgerOverview}>
+      <p className={styles.ledgerSummary}>
+        <strong>
+          {overview.runs} {overview.runs === 1 ? "run" : "runs"}
+        </strong>
+        <span>
+          {overview.runs === 1
+            ? relativeTime(overview.lastAt, referenceMs)
+            : `${relativeTime(overview.firstAt, referenceMs)} → ${relativeTime(overview.lastAt, referenceMs)}`}
+        </span>
+        {encoders && (
+          <span>
+            encoder{" "}
+            <span className="font-mono">
+              {encoders.from === encoders.to ? encoders.to : `${encoders.from} → ${encoders.to}`}
             </span>
-            {overview.encoders && (
-              <span className="font-mono">
-                {overview.encoders.from === overview.encoders.to
-                  ? overview.encoders.to
-                  : `${overview.encoders.from} → ${overview.encoders.to}`}
-              </span>
-            )}
-          </dd>
-        </div>
-        <div>
-          <dt>Ended</dt>
-          <dd>
-            <Groups groups={overview.ended} />
-          </dd>
-        </div>
-        {overview.causes.length > 0 && (
-          <div>
-            <dt>Causes</dt>
-            <dd>
-              <Groups groups={overview.causes} />
-            </dd>
-          </div>
+          </span>
         )}
-        <div>
-          <dt>Latest</dt>
-          <dd>
-            <span title={latest.dispatchedAt}>{relativeTime(latest.dispatchedAt, referenceMs)}</span>
-            <a href={latest.runUrl} target="_blank" rel="noreferrer" data-outcome={latest.outcome}>
-              {latest.outcomeLabel}
-            </a>
-            {latest.cause && (
-              <span className={styles.ledgerRunCause} title={latest.cause}>
-                {latest.cause}
-              </span>
-            )}
-            {latest.pr && (
-              <a href={latest.pr.url} target="_blank" rel="noreferrer">
-                {latest.pr.label} · {latest.pr.state}
-              </a>
-            )}
-          </dd>
-        </div>
-      </dl>
-      <div className={styles.ledgerTimeline}>
-        <RunTimeline timeline={runTimeline(latest, referenceMs)} />
+      </p>
+      <div className={styles.ledgerColumns}>
+        <CountList title="How they ended" groups={overview.ended} />
+        {overview.causes.length > 0 && <CountList title="Why they failed" groups={overview.causes} />}
       </div>
+      <p className={styles.ledgerLatest}>
+        <span className={styles.ledgerLabel}>Latest run</span>
+        <span title={latest.dispatchedAt}>{relativeTime(latest.dispatchedAt, referenceMs)}</span>
+        <a href={latest.runUrl} target="_blank" rel="noreferrer" data-outcome={latest.outcome}>
+          {latest.outcomeLabel}
+        </a>
+        {latest.cause && <span title={latest.cause}>{causeHeadline(latest.cause)}</span>}
+        {latest.pr && (
+          <a href={latest.pr.url} target="_blank" rel="noreferrer">
+            {latest.pr.label} · {latest.pr.state}
+          </a>
+        )}
+      </p>
+      <RunTimeline timeline={runTimeline(latest, referenceMs)} />
       <a className={styles.ledgerAll} href={journeyHref(section.citation)}>
         {overview.runs === 1 ? "This run on the journey page" : `All ${overview.runs} runs, each with its timeline`} →
       </a>
-    </>
+    </div>
   );
 }

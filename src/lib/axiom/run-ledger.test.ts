@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { runRow, runRows } from "./encoding-pipeline-runs";
-import { runLedger, sectionOverview, sectionStatus } from "./run-ledger";
+import { causeHeadline, runLedger, sectionOverview, sectionStatus } from "./run-ledger";
 import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 
 const day = (n: number) => `2026-09-${String(n).padStart(2, "0")}T10:00:00Z`;
@@ -83,7 +83,21 @@ describe("sectionOverview", () => {
       "Merged off main:failed:1",
       expect.stringMatching(/:failed:1$/),
     ]);
-    expect(overview.causes[0]).toEqual({ label: "complete-source-unit:tests", count: 2 });
+    expect(overview.causes[0]).toEqual({ label: "Completeness rule: tests", count: 2, detail: "complete-source-unit:tests" });
     expect(overview.latest.id).toBe("4");
+  });
+});
+
+describe("causeHeadline", () => {
+  it("names a failure in a few words, without where it came from", () => {
+    expect(causeHeadline("complete-source-unit:structure")).toBe("Completeness rule: structure");
+    expect(causeHeadline("ci: Ungrounded generated numeric literal: N does not appear as a substantive numeric value in the source text.")).toBe(
+      "Ungrounded generated numeric literal"
+    );
+    expect(causeHeadline("ci: Test case … execution failed: derived … has no formula version at N-N-N")).toBe("Test case … execution failed");
+    expect(causeHeadline("ci: Test case … output … expected integer N, got decimal N.")).toBe("Test case … output … expected integer N, got decimal N");
+    expect(causeHeadline("compile: Axiom rules engine compile failed: failed to load RuleSpec module …")).toBe("Axiom rules engine compile failed");
+    expect(causeHeadline("RuntimeError: reviewed candidate validation produced …")).toBe("reviewed candidate validation produced …");
+    expect(causeHeadline("x".repeat(100))).toHaveLength(72);
   });
 });

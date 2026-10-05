@@ -143,9 +143,29 @@ export interface SectionOverview {
   encoders: { from: string; to: string } | null;
   /** Where each run ended, as a section's status reads, largest first. */
   ended: Array<{ label: string; tone: LedgerTone; count: number }>;
-  /** What stopped the runs that failed, largest first. */
-  causes: Array<{ label: string; count: number }>;
+  /** What stopped the runs that failed, by headline, largest first; `detail` is one full message. */
+  causes: Array<{ label: string; count: number; detail: string }>;
   latest: RunRow;
+}
+
+/** Prefixes that name where an error came from rather than what it says. */
+const CAUSE_SOURCE_RE = /^(?:ci|compile|error|RuntimeError|ValueError|TypeError|KeyError|AssertionError):\s*/i;
+const CAUSE_HEADLINE_MAX = 72;
+
+/**
+ * A failure cause in a few words: a completeness rule by its name, else the
+ * message's own first clause without where it came from ("ci: Ungrounded
+ * generated numeric literal: N does not…" is "Ungrounded generated numeric
+ * literal"). Causes with one headline count together.
+ */
+export function causeHeadline(cause: string): string {
+  const rule = cause.match(/^complete-source-unit:([a-z0-9-]+)$/i);
+  if (rule) return `Completeness rule: ${rule[1]}`;
+  let text = cause.trim();
+  while (CAUSE_SOURCE_RE.test(text)) text = text.replace(CAUSE_SOURCE_RE, "");
+  const clause = text.split(/:\s/)[0];
+  const headline = (clause.length >= 12 ? clause : text).replace(/[.\s]+$/, "");
+  return headline.length > CAUSE_HEADLINE_MAX ? `${headline.slice(0, CAUSE_HEADLINE_MAX - 1)}…` : headline;
 }
 
 function counted<T extends { count: number; label: string }>(groups: Map<string, T>): T[] {
@@ -155,11 +175,15 @@ function counted<T extends { count: number; label: string }>(groups: Map<string,
 export function sectionOverview(section: LedgerSection): SectionOverview {
   const runs = section.runs;
   const ended = new Map<string, { label: string; tone: LedgerTone; count: number }>();
-  const causes = new Map<string, { label: string; count: number }>();
+  const causes = new Map<string, { label: string; count: number; detail: string }>();
   for (const run of runs) {
     const { status, tone } = sectionStatus(run);
     ended.set(status, { label: status, tone, count: (ended.get(status)?.count ?? 0) + 1 });
-    if (run.cause) causes.set(run.cause, { label: run.cause, count: (causes.get(run.cause)?.count ?? 0) + 1 });
+    if (run.cause) {
+      const label = causeHeadline(run.cause);
+      const known = causes.get(label);
+      causes.set(label, { label, count: (known?.count ?? 0) + 1, detail: known?.detail ?? run.cause });
+    }
   }
   const versions = runs
     .map((run) => run.encoder)
