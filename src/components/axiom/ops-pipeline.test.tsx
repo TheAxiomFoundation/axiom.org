@@ -543,7 +543,7 @@ describe("OpsPipeline", () => {
     fireEvent.click(within(funnel).getByRole("button", { name: "3 failed" }));
     expect(within(openList()).getByRole("heading", { name: /Last encode failed\s*3/ })).toBeInTheDocument();
     expect(within(funnel).getByRole("button", { name: "3 failed" })).toHaveAttribute("aria-pressed", "true");
-    fireEvent.click(within(funnel).getByRole("button", { name: "1 off main" }));
+    fireEvent.click(within(funnel).getByRole("button", { name: "1 merged into another branch" }));
     expect(within(openList()).getByText("Merged into codex/x")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "935 queued" }));
     expect(screen.getByRole("region", { name: "Queued items" })).toBeInTheDocument();
@@ -627,7 +627,7 @@ describe("OpsPipeline", () => {
         "Encode run?—1 of 21 failed ▾",
         "Pull request?—1 of 1—",
         "Review?—1 of 1—",
-        "Default branch?—1 of 1—",
+        "Main branch?—1 of 1—",
         "Index?—1 of 1—",
         "Tests on main?—1 of 1—",
       ]);
@@ -677,10 +677,10 @@ describe("OpsPipeline", () => {
       expect(stepRows()).toEqual([
         "Signing approval?6m11 of 11—",
         "Encode run?10m11 of 11—",
-        "Pull request?—1 of 1110 no PR",
+        "Pull request?—1 of 1110 without a PR",
         "Review?22h 31m1 of 1—",
-        "Default branch?—1 of 1—",
-        "Index?—0 of 11 waiting for the index",
+        "Main branch?—1 of 1—",
+        "Index?—0 of 11 pending index",
       ]);
       const table = within(screen.getByRole("region", { name: "Steps" })).getByRole("table");
       const help = within(table).getByRole("button", { name: "What Signing approval means" });

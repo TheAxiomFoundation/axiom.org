@@ -978,15 +978,15 @@ const GAP_LABELS: Partial<Record<PipelineStage, string>> = {
   encoding: "running",
   encode_failed: "failed",
   review: "in review",
-  no_pr: "no PR",
-  closed: "closed",
-  merged_off_main: "off main",
-  awaiting_sync: "awaiting index",
-  not_indexed: "not in index",
-  indexed: "awaiting tests",
+  no_pr: "without a PR",
+  closed: "PRs closed",
+  merged_off_main: "merged into another branch",
+  awaiting_sync: "pending index",
+  not_indexed: "not indexed",
+  indexed: "tests pending",
   runs: "tests unconfirmed",
-  compile_failed: "compile fails",
-  tests_failing: "tests fail",
+  compile_failed: "compile failed",
+  tests_failing: "tests failed",
   oracle_disagrees: "oracle disagrees",
 };
 
@@ -1308,17 +1308,17 @@ const WENT_ON: Record<GateKey, string> = {
 
 /** Short names for the runs that stopped or wait at a step, by segment. */
 const STOPPED: Record<string, string> = {
-  "approval:waiting": "waiting",
+  "approval:waiting": "pending approval",
   "approval:cancelled": "cancelled",
   "run:running": "running",
-  "pr:none": "no PR",
+  "pr:none": "without a PR",
   "review:open": "in review",
-  "review:closed": "closed",
-  "main:off": "into a side branch",
-  "index:awaiting": "waiting for the index",
-  "index:missing": "missing",
-  "tests:pending": "no result yet",
-  "tests:fail": "fail",
+  "review:closed": "PRs closed",
+  "main:off": "merged into another branch",
+  "index:awaiting": "pending index",
+  "index:missing": "not indexed",
+  "tests:pending": "tests pending",
+  "tests:fail": "tests failed",
 };
 
 /** One timing for a "?" note: "Encoded: 15m typical over 72 runs; the slowest 10% 33m or more". */
@@ -1367,12 +1367,12 @@ function StepTable({
         <tr>
           <th scope="col">Step</th>
           <th scope="col" className={styles.stepNumber}>
-            Typical time
+            Median time
           </th>
           <th scope="col" className={styles.stepNumber}>
-            Went on
+            Advanced
           </th>
-          <th scope="col">Stopped or waiting</th>
+          <th scope="col">Stopped or pending</th>
         </tr>
       </thead>
       <tbody>
@@ -1672,9 +1672,10 @@ function FlowView({
     <>
       <section className={styles.flowPart} aria-labelledby="flow-steps-title">
         <PartHead id="flow-steps-title" title="Steps">
-          One row per step, in order. Time is the typical time (median) a run spends at the step. Went on counts the
-          runs that passed to the next step, out of those that reached it. Stopped or waiting are the runs that
-          stopped there or still wait. Click a number to list its runs, and a step&apos;s ? for its details.
+          One row per step, in order. Median time is how long a run typically spends at the step. Advanced counts
+          the runs that moved on to the next step, out of those that reached it. Stopped or pending lists the runs
+          that stopped at the step or have not finished it yet. Click a number to list its runs, and a step&apos;s ?
+          for its details.
         </PartHead>
         <StepTable gates={gates} times={times} testParts={testParts} onOpen={onOpen} />
       </section>

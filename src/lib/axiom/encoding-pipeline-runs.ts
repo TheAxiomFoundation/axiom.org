@@ -186,7 +186,7 @@ export const GATE_LABELS = {
   run: "Encode run",
   pr: "Pull request",
   review: "Review",
-  main: "Default branch",
+  main: "Main branch",
   index: "Index",
   tests: "Tests on main",
 } as const;

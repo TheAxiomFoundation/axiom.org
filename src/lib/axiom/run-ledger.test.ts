@@ -11,14 +11,14 @@ describe("sectionStatus", () => {
     expect(status({ run_status: "waiting", run_conclusion: null })).toEqual({ status: "Waiting for approval", tone: "waiting" });
     expect(status({ encoder_error_rule: "rule-a", failure_source: "diagnostics" })).toEqual({ status: "Validation rules", tone: "failed" });
     expect(status({ run_conclusion: "cancelled", cancel_stage: "approval" })).toEqual({ status: "Cancelled at approval", tone: "failed" });
-    expect(status({ run_conclusion: "success" })).toEqual({ status: "No PR", tone: "failed" });
+    expect(status({ run_conclusion: "success" })).toEqual({ status: "Without a PR", tone: "failed" });
     expect(status({ run_conclusion: "success", pr_state: "draft", pr_url: "u" })).toEqual({ status: "In review", tone: "waiting" });
     expect(status({ run_conclusion: "success", pr_state: "closed", pr_url: "u" })).toEqual({ status: "PR closed", tone: "failed" });
     const merged = (overrides: Parameters<typeof mergedAttempt>[0]) => sectionStatus(runRow(mergedAttempt(overrides)));
-    expect(merged({ pr_targets_default: false })).toEqual({ status: "Merged off main", tone: "failed" });
+    expect(merged({ pr_targets_default: false })).toEqual({ status: "Merged into another branch", tone: "failed" });
     expect(merged({ tests_status: "pass" })).toEqual({ status: "Tests pass", tone: "done" });
     expect(merged({ tests_status: "fail" })).toEqual({ status: "Tests fail", tone: "failed" });
-    expect(merged({ index_status: "missing" })).toEqual({ status: "Not in the index", tone: "failed" });
+    expect(merged({ index_status: "missing" })).toEqual({ status: "Not indexed", tone: "failed" });
     expect(merged({})).toEqual({ status: "In main", tone: "waiting" });
   });
 });
@@ -80,7 +80,7 @@ describe("sectionOverview", () => {
     expect(overview).toMatchObject({ runs: 4, firstAt: day(1), lastAt: day(4), encoders: { from: "0.2.2018", to: "0.2.2087" } });
     expect(overview.ended.map((e) => `${e.label}:${e.tone}:${e.count}`)).toEqual([
       "Validation rules:failed:2",
-      "Merged off main:failed:1",
+      "Merged into another branch:failed:1",
       expect.stringMatching(/:failed:1$/),
     ]);
     expect(overview.causes[0]).toEqual({ label: "Completeness rule: tests", count: 2, detail: "complete-source-unit:tests" });

@@ -60,13 +60,13 @@ export function sectionStatus(latest: RunRow): { status: string; tone: LedgerTon
       return { status: latest.outcomeLabel, tone: "failed" };
   }
   const pr = latest.pr;
-  if (!pr) return { status: "No PR", tone: "failed" };
+  if (!pr) return { status: "Without a PR", tone: "failed" };
   if (pr.state === "draft" || pr.state === "open") return { status: "In review", tone: "waiting" };
   if (pr.state === "closed") return { status: "PR closed", tone: "failed" };
-  if (latest.merged === "off main") return { status: "Merged off main", tone: "failed" };
+  if (latest.merged === "off main") return { status: "Merged into another branch", tone: "failed" };
   if (latest.tests === "pass") return { status: "Tests pass", tone: "done" };
   if (latest.tests === "fail") return { status: "Tests fail", tone: "failed" };
-  if (latest.index === "missing") return { status: "Not in the index", tone: "failed" };
+  if (latest.index === "missing") return { status: "Not indexed", tone: "failed" };
   return { status: "In main", tone: "waiting" };
 }
 
