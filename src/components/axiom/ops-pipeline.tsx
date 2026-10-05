@@ -34,6 +34,7 @@ import {
 } from "@/lib/axiom/corpus-releases";
 import { jurisdictionName, ownLevelName } from "@/lib/axiom/jurisdiction-names";
 import { RunTimeline } from "./run-timeline";
+import { runLedger, type LedgerTone } from "@/lib/axiom/run-ledger";
 import {
   dispatchFlow,
   type FlowGate,
@@ -101,7 +102,7 @@ type DetailsTab = "flow" | "log" | "cards";
 
 const DETAILS_TABS: Array<{ id: DetailsTab; label: string }> = [
   { id: "flow", label: "Flow" },
-  { id: "log", label: "Run log" },
+  { id: "log", label: "Ledger" },
   { id: "cards", label: "Breakdowns" },
 ];
 
@@ -150,16 +151,15 @@ export function OpsPipeline({
 }) {
   const [listing, setListing] = useState<Listing | null>(null);
   const [detailsTab, setDetailsTab] = useState<DetailsTab>(flow ? "flow" : "cards");
-  const runsRequest = useRef<Promise<RunRow[]> | null>(null);
-  // Every dispatch in the scope, fetched once when the run log or a flow
-  // segment first needs it.
+  const runsRequest = useRef<Promise<RunsPayload> | null>(null);
+  // Every dispatch in the scope, with its citations' names, fetched once
+  // when the ledger or a flow segment first needs it.
   const loadRuns = useCallback(() => {
     runsRequest.current ??= fetch(`/ops/runs${scopeQuery(scope)}`)
       .then((response) => {
         if (!response.ok) throw new Error(`runs: ${response.status}`);
-        return response.json() as Promise<{ rows: RunRow[] }>;
+        return response.json() as Promise<RunsPayload>;
       })
-      .then((body) => body.rows)
       .catch((error: unknown) => {
         runsRequest.current = null;
         throw error;
@@ -168,7 +168,7 @@ export function OpsPipeline({
   }, [scope]);
   const openSegment = (gate: FlowGate, segment: FlowSegment) =>
     loadRuns()
-      .then((rows) => {
+      .then(({ rows }) => {
         const ids = new Set(
           dispatchFlow(rows)
             .find((g) => g.key === gate.key)
@@ -315,7 +315,7 @@ export function OpsPipeline({
             </div>
           )}
           {flow && detailsTab === "flow" && <FlowView gates={flow} times={times} parts={parts} testParts={testParts} onOpen={openSegment} />}
-          {flow && detailsTab === "log" && <RunLog load={loadRuns} referenceMs={referenceMs} />}
+          {flow && detailsTab === "log" && <RunLedger load={loadRuns} referenceMs={referenceMs} />}
           {detailsTab === "cards" && (
           <>
       <ol
@@ -1759,8 +1759,6 @@ function RunList({
   );
 }
 
-const LOG_PAGE = 50;
-
 const CSV_COLUMNS: Array<[string, (row: RunRow) => string | number | null]> = [
   ["dispatched_at", (r) => r.dispatchedAt],
   ["citation", (r) => r.citation],
@@ -1795,72 +1793,136 @@ export function runsCsv(rows: RunRow[]): string {
   ].join("\n");
 }
 
-/** Every dispatch with its full provenance: filter, read, export. */
-function RunLog({ load, referenceMs }: { load: () => Promise<RunRow[]>; referenceMs: number }) {
-  const [rows, setRows] = useState<RunRow[] | null>(null);
+/** What /ops/runs returns: every run in the scope, and its citations' names and source documents. */
+interface RunsPayload {
+  rows: RunRow[];
+  labels?: Record<string, string>;
+  documentPaths?: Record<string, string>;
+}
+
+/** Sections shown before "Show more". */
+const LEDGER_PAGE = 40;
+/** Runs an open section lists; the journey page has every one. */
+const SECTION_RUNS = 10;
+
+/** Letters and digits only, to tell a real name from one that echoes its designator ("Page 2", "page-2"). */
+const plain = (text: string) => text.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/**
+ * Every run in the scope, the way the encoding ledger reads: by jurisdiction,
+ * source document, and section, each section with its latest status, its
+ * runs, and when it last ran. A section opens its runs, newest first, and a
+ * run opens its timeline. Search, filters, and the CSV export work on
+ * sections; the export holds their runs.
+ */
+function RunLedger({ load, referenceMs }: { load: () => Promise<RunsPayload>; referenceMs: number }) {
+  const [payload, setPayload] = useState<RunsPayload | null>(null);
   const [failed, setFailed] = useState(false);
   const [query, setQuery] = useState("");
-  const [outcome, setOutcome] = useState("");
+  const [status, setStatus] = useState("");
   const [encoder, setEncoder] = useState("");
-  const [limit, setLimit] = useState(LOG_PAGE);
+  const [limit, setLimit] = useState(LEDGER_PAGE);
+  const [openSection, setOpenSection] = useState<string | null>(null);
   const [openRun, setOpenRun] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
     load().then(
-      (loaded) => live && setRows(loaded),
+      (loaded) => live && setPayload(loaded),
       () => live && setFailed(true)
     );
     return () => {
       live = false;
     };
   }, [load]);
-  if (failed) return <p className={styles.empty}>The run log could not load. Try again later.</p>;
-  if (!rows) return <p className={styles.empty}>Loading runs…</p>;
+  const ledger = useMemo(
+    () =>
+      payload
+        ? runLedger(
+            encoder ? payload.rows.filter((row) => row.encoder === encoder) : payload.rows,
+            payload.labels,
+            payload.documentPaths
+          )
+        : [],
+    [payload, encoder]
+  );
+  if (failed) return <p className={styles.empty}>The ledger could not load. Try again later.</p>;
+  if (!payload) return <p className={styles.empty}>Loading runs…</p>;
 
-  const outcomes = [...new Set(rows.map((r) => r.outcomeLabel))].sort();
-  const encoders = [...new Set(rows.map((r) => r.encoder).filter((v): v is string => !!v))].sort(
-    (a, b) => b.localeCompare(a, undefined, { numeric: true })
+  const encoders = [...new Set(payload.rows.map((r) => r.encoder).filter((v): v is string => !!v))].sort((a, b) =>
+    b.localeCompare(a, undefined, { numeric: true })
   );
+  const allSections = ledger.flatMap((j) => j.documents.flatMap((d) => d.sections));
+  const statuses = [...new Set(allSections.map((section) => section.status))].sort();
   const needle = query.trim().toLowerCase();
-  const filtered = rows.filter(
-    (row) =>
-      (!needle || row.citation.toLowerCase().includes(needle)) &&
-      (!outcome || row.outcomeLabel === outcome) &&
-      (!encoder || row.encoder === encoder)
-  );
+  const shown = ledger
+    .map((jurisdiction) => ({
+      ...jurisdiction,
+      documents: jurisdiction.documents
+        .map((document) => ({
+          ...document,
+          sections: document.sections.filter(
+            (section) =>
+              (!status || section.status === status) &&
+              (!needle ||
+                section.citation.toLowerCase().includes(needle) ||
+                section.label?.toLowerCase().includes(needle) ||
+                document.title.toLowerCase().includes(needle))
+          ),
+        }))
+        .filter((document) => document.sections.length > 0),
+    }))
+    .filter((jurisdiction) => jurisdiction.documents.length > 0);
+  const matching = shown.flatMap((j) => j.documents.flatMap((d) => d.sections));
+  const matchingRuns = matching.reduce((total, section) => total + section.runs.length, 0);
+  // Page by sections, keeping each one's jurisdiction and document around it.
+  let budget = limit;
+  const page = shown
+    .map((jurisdiction) => ({
+      ...jurisdiction,
+      documents: jurisdiction.documents
+        .map((document) => {
+          const sections = document.sections.slice(0, Math.max(0, budget));
+          budget -= sections.length;
+          return { ...document, sections };
+        })
+        .filter((document) => document.sections.length > 0),
+    }))
+    .filter((jurisdiction) => jurisdiction.documents.length > 0);
   const download = () => {
-    const url = URL.createObjectURL(new Blob([runsCsv(filtered)], { type: "text/csv" }));
+    const runs = matching.flatMap((section) => section.runs);
+    const url = URL.createObjectURL(new Blob([runsCsv(runs)], { type: "text/csv" }));
     const link = document.createElement("a");
     link.href = url;
     link.download = "encode-runs.csv";
     link.click();
     URL.revokeObjectURL(url);
   };
+  const resetPage = () => setLimit(LEDGER_PAGE);
   return (
     <div className={styles.runLog}>
       <div className={styles.logFilters}>
         <input
           type="search"
           className={styles.logSearch}
-          placeholder="Search citations"
-          aria-label="Search citations"
+          placeholder="Search citations or names"
+          aria-label="Search citations or names"
           value={query}
           onChange={(event) => {
             setQuery(event.target.value);
-            setLimit(LOG_PAGE);
+            resetPage();
           }}
         />
         <select
           className={styles.scopeSelect}
-          aria-label="Outcome"
-          value={outcome}
+          aria-label="Status"
+          value={status}
           onChange={(event) => {
-            setOutcome(event.target.value);
-            setLimit(LOG_PAGE);
+            setStatus(event.target.value);
+            resetPage();
           }}
         >
-          <option value="">All outcomes</option>
-          {outcomes.map((label) => (
+          <option value="">All statuses</option>
+          {statuses.map((label) => (
             <option key={label} value={label}>
               {label}
             </option>
@@ -1872,7 +1934,7 @@ function RunLog({ load, referenceMs }: { load: () => Promise<RunRow[]>; referenc
           value={encoder}
           onChange={(event) => {
             setEncoder(event.target.value);
-            setLimit(LOG_PAGE);
+            resetPage();
           }}
         >
           <option value="">All encoder versions</option>
@@ -1883,7 +1945,8 @@ function RunLog({ load, referenceMs }: { load: () => Promise<RunRow[]>; referenc
           ))}
         </select>
         <span className={styles.logCount}>
-          {number(filtered.length)} of {number(rows.length)} runs
+          {number(matching.length)} of {number(allSections.length)} sections · {number(matchingRuns)}{" "}
+          {matchingRuns === 1 ? "run" : "runs"}
         </span>
         <button type="button" className={styles.logExport} onClick={download}>
           Export CSV
@@ -1894,96 +1957,131 @@ function RunLog({ load, referenceMs }: { load: () => Promise<RunRow[]>; referenc
           <thead>
             <tr>
               <th scope="col">
-                <span className="sr-only">Timeline</span>
+                <span className="sr-only">Runs</span>
               </th>
-              <th scope="col">Dispatched</th>
-              <th scope="col">Citation</th>
-              <th scope="col">Encoder</th>
-              <th scope="col">Approval</th>
-              <th scope="col">Run</th>
-              <th scope="col">Outcome</th>
-              <th scope="col">PR</th>
-              <th scope="col">After merge</th>
+              <th scope="col">Section</th>
+              <th scope="col">Provision</th>
+              <th scope="col">Status</th>
+              <th scope="col" className={styles.ledgerNumber}>
+                Runs
+              </th>
+              <th scope="col" className={styles.ledgerNumber}>
+                Last run
+              </th>
             </tr>
           </thead>
-          <tbody>
-            {filtered.slice(0, limit).map((row) => (
-              <Fragment key={row.id}>
-                <tr>
-                  <td className={styles.logToggleCell}>
-                    <button
-                      type="button"
-                      className={styles.logToggle}
-                      aria-expanded={openRun === row.id}
-                      aria-label={`Timeline of ${row.citation}, dispatched ${formatDay(row.dispatchedAt)}`}
-                      onClick={() => setOpenRun((open) => (open === row.id ? null : row.id))}
-                    >
-                      <span aria-hidden>{openRun === row.id ? "▾" : "▸"}</span>
-                    </button>
-                  </td>
-                  <td title={row.dispatchedAt}>
-                    {ageLabel(row.dispatchedAt, referenceMs)} ago
-                    {row.by && <span className={styles.logSub}>{row.by}</span>}
-                  </td>
-                  <td className={styles.logCitation}>
-                    <a href={journeyHref(row.citation)}>{row.citation}</a>
-                  </td>
-                  <td className={styles.logMono}>{row.encoder ?? "—"}</td>
-                  <td>{row.approvalMs === null ? "—" : durationLabel(row.approvalMs)}</td>
-                  <td>{row.runMs === null ? "—" : durationLabel(row.runMs)}</td>
-                  <td className={styles.logOutcome} data-outcome={row.outcome}>
-                    <a href={row.runUrl} target="_blank" rel="noreferrer">
-                      {row.outcomeLabel}
-                    </a>
-                    {row.cause && (
-                      <span className={styles.logSub} title={row.cause}>
-                        {row.cause}
-                      </span>
-                    )}
-                  </td>
-                  <td>
-                    {row.pr ? (
-                      <>
-                        <a href={row.pr.url} target="_blank" rel="noreferrer">
-                          {row.pr.label}
-                        </a>
-                        <span className={styles.logSub} title={row.pr.error ?? undefined}>
-                          {row.pr.state}
-                          {row.pr.error ? ` · ${row.pr.error}` : ""}
-                        </span>
-                      </>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td>
-                    {row.merged ? (
-                      <>
-                        {row.merged === "main" ? "main" : "off main"}
-                        <span className={styles.logSub}>
-                          {[row.index, row.tests ? `tests ${row.tests}` : null].filter(Boolean).join(" · ")}
-                        </span>
-                      </>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                </tr>
-                {openRun === row.id && (
-                  <tr className={styles.logTimelineRow}>
-                    <td colSpan={9}>
-                      <RunTimeline timeline={runTimeline(row, referenceMs)} />
+          {page.map((jurisdiction) => (
+            <tbody key={jurisdiction.code}>
+              <tr>
+                <th colSpan={6} scope="rowgroup" className={styles.ledgerBand}>
+                  {jurisdiction.name}
+                </th>
+              </tr>
+              {jurisdiction.documents.map((document) => (
+                <Fragment key={document.key}>
+                  <tr>
+                    <td colSpan={6} className={styles.ledgerDocument} title={document.titled ? document.key : "Source title not indexed yet"}>
+                      {document.title}
                     </td>
                   </tr>
-                )}
-              </Fragment>
-            ))}
-          </tbody>
+                  {document.sections.map((section) => {
+                    const open = openSection === section.citation;
+                    const label =
+                      section.label && plain(section.label) !== plain(section.designator) && section.label !== document.title
+                        ? section.label
+                        : "";
+                    return (
+                      <Fragment key={section.citation}>
+                        <tr>
+                          <td className={styles.logToggleCell}>
+                            <button
+                              type="button"
+                              className={styles.logToggle}
+                              aria-expanded={open}
+                              aria-label={`Runs of ${section.citation}`}
+                              onClick={() => {
+                                setOpenSection(open ? null : section.citation);
+                                setOpenRun(null);
+                              }}
+                            >
+                              <span aria-hidden>{open ? "▾" : "▸"}</span>
+                            </button>
+                          </td>
+                          <td className={styles.logCitation}>
+                            <a href={journeyHref(section.citation)} title={section.citation}>
+                              {section.designator}
+                            </a>
+                          </td>
+                          <td>{label}</td>
+                          <td className={styles.ledgerStatus} data-tone={section.tone satisfies LedgerTone}>
+                            <span aria-hidden className={styles.ledgerDot} />
+                            {section.status}
+                          </td>
+                          <td className={styles.ledgerNumber}>{number(section.runs.length)}</td>
+                          <td className={styles.ledgerNumber} title={section.lastAt}>
+                            {ageLabel(section.lastAt, referenceMs)} ago
+                          </td>
+                        </tr>
+                        {open &&
+                          section.runs.slice(0, SECTION_RUNS).map((row) => (
+                            <tr key={row.id} className={styles.ledgerRun}>
+                              <td />
+                              <td colSpan={5}>
+                                <div className={styles.ledgerRunLine}>
+                                  <button
+                                    type="button"
+                                    className={styles.logToggle}
+                                    aria-expanded={openRun === row.id}
+                                    aria-label={`Timeline of ${row.citation}, dispatched ${formatDay(row.dispatchedAt)}`}
+                                    onClick={() => setOpenRun((current) => (current === row.id ? null : row.id))}
+                                  >
+                                    <span aria-hidden>{openRun === row.id ? "▾" : "▸"}</span>
+                                  </button>
+                                  <span title={row.dispatchedAt}>{ageLabel(row.dispatchedAt, referenceMs)} ago</span>
+                                  {row.by && <span className={styles.logSub}>{row.by}</span>}
+                                  {row.encoder && <span className={styles.logMono}>{row.encoder}</span>}
+                                  <span className={styles.logOutcome} data-outcome={row.outcome}>
+                                    <a href={row.runUrl} target="_blank" rel="noreferrer">
+                                      {row.outcomeLabel}
+                                    </a>
+                                  </span>
+                                  {row.cause && (
+                                    <span className={styles.logSub} title={row.cause}>
+                                      {row.cause}
+                                    </span>
+                                  )}
+                                  {row.pr && (
+                                    <a href={row.pr.url} target="_blank" rel="noreferrer">
+                                      {row.pr.label} · {row.pr.state}
+                                    </a>
+                                  )}
+                                </div>
+                                {openRun === row.id && <RunTimeline timeline={runTimeline(row, referenceMs)} />}
+                              </td>
+                            </tr>
+                          ))}
+                        {open && section.runs.length > SECTION_RUNS && (
+                          <tr className={styles.ledgerRun}>
+                            <td />
+                            <td colSpan={5}>
+                              <a href={journeyHref(section.citation)}>
+                                All {number(section.runs.length)} runs, each with its timeline
+                              </a>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </Fragment>
+              ))}
+            </tbody>
+          ))}
         </table>
       </div>
-      {filtered.length > limit && (
-        <button type="button" className={styles.logMore} onClick={() => setLimit(limit + LOG_PAGE)}>
-          Show {number(Math.min(LOG_PAGE, filtered.length - limit))} more
+      {matching.length > limit && (
+        <button type="button" className={styles.logMore} onClick={() => setLimit((current) => current + LEDGER_PAGE)}>
+          Show {number(Math.min(LEDGER_PAGE, matching.length - limit))} more sections
         </button>
       )}
     </div>

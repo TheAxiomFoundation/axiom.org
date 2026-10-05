@@ -13,10 +13,16 @@ import {
   corpusLookupPathsForCitation,
   corpusPathForDocumentKey,
   corpusPathsForCitation,
+  deepestLabelForCitation,
+  documentIdentifier,
   documentKeyFromCitation,
+  meaningfulLabelAt,
   parseCitation,
+  sectionLabelForCitation,
   sectionWithinDocument,
 } from "@/lib/axiom/ops-citations";
+
+export { documentIdentifier };
 import {
   EXTRA_JURISDICTION_LABELS,
   JURISDICTIONS_SEED,
@@ -300,18 +306,24 @@ export function OpsDashboard({
           labels={labels}
         />
 
+        {/* The pipeline section carries the full ledger (every run, failures
+            included), so this one shows only while that section is hidden. */}
         <div
           className={
-            queues.length || recentScopes.length
-              ? styles.workspace
-              : styles.ledgerOnly
+            pipeline
+              ? styles.sidebarOnly
+              : queues.length || recentScopes.length
+                ? styles.workspace
+                : styles.ledgerOnly
           }
         >
-          <LatestEncodings
-            documents={documents}
-            referenceMs={referenceMs}
-            labels={labels}
-          />
+          {!pipeline && (
+            <LatestEncodings
+              documents={documents}
+              referenceMs={referenceMs}
+              labels={labels}
+            />
+          )}
           {(queues.length > 0 || recentScopes.length > 0) && (
             <aside className={styles.sidebar} aria-label="Corpus pipeline">
               <QueuedWork queues={queues} />
@@ -756,50 +768,6 @@ const JURISDICTION_NAMES: Record<string, string> = {
   de: "Germany",
 };
 
-/**
- * The label at one lookup path, unless it merely echoes the path's own
- * designator ("105-153.7" labeled "105-153.7") — those add nothing, so the
- * caller keeps walking toward an ancestor with a real name.
- */
-function meaningfulLabelAt(
-  paths: string[],
-  index: number,
-  labels: Record<string, string>,
-): string | null {
-  const label = labels[paths[index]];
-  if (!label) return null;
-  const segment = paths[index].split("/").pop() ?? "";
-  return label.trim().toLowerCase() === segment.toLowerCase() ? null : label;
-}
-
-/** Deepest meaningfully-named node, the document itself included. */
-function deepestLabelForCitation(
-  citation: string | null,
-  labels: Record<string, string>,
-): string | null {
-  if (!citation) return null;
-  const paths = corpusLookupPathsForCitation(citation);
-  for (let i = paths.length - 1; i >= 0; i--) {
-    const label = meaningfulLabelAt(paths, i, labels);
-    if (label) return label;
-  }
-  return null;
-}
-
-/** Deepest meaningfully-named node below the document itself. */
-function sectionLabelForCitation(
-  citation: string | null,
-  labels: Record<string, string>,
-): string | null {
-  if (!citation) return null;
-  const paths = corpusLookupPathsForCitation(citation);
-  for (let i = paths.length - 1; i >= 1; i--) {
-    const label = meaningfulLabelAt(paths, i, labels);
-    if (label) return label;
-  }
-  return null;
-}
-
 function jurisdictionName(citation: string | null): string | null {
   if (!citation) return null;
   const { scope } = parseCitation(citation);
@@ -1103,22 +1071,6 @@ function DocumentRows({
       ))}
     </>
   );
-}
-
-/** A readable identifier, never an invented title, while metadata is absent. */
-export function documentIdentifier(key: string): string {
-  const { scope, segments } = parseCitation(key);
-  if (!scope || segments.length < 2) return key;
-  return segments
-    .slice(1)
-    .map((segment) => {
-      // Preserve identifiers and their punctuation; only make short code tokens
-      // readable as acronyms. No jurisdiction- or document-specific names.
-      return segment.replace(/[a-z]+/gi, (token) =>
-        token.length <= 4 ? token.toUpperCase() : token,
-      );
-    })
-    .join(" · ");
 }
 
 /** Only the document's own metadata can supply its title. */

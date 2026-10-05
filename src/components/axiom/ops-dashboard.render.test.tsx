@@ -107,6 +107,21 @@ describe("OpsDashboard", () => {
     expect(screen.getByText(/in progress · started/)).toBeInTheDocument();
   });
 
+  it("keeps the encoding ledger until the pipeline section, with its own ledger, shows", () => {
+    const props = {
+      initialStatus: status({}),
+      encodingError: null,
+      queues: [],
+      recentScopes: [],
+    };
+    render(<OpsDashboard {...props} />);
+    expect(screen.getByRole("region", { name: "Latest encodings" })).toBeInTheDocument();
+    cleanup();
+    render(<OpsDashboard {...props} pipeline={<section aria-label="Pipeline" />} />);
+    expect(screen.queryByRole("region", { name: "Latest encodings" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Pipeline" })).toBeInTheDocument();
+  });
+
   it("shows stalled runs when the heartbeat dies", () => {
     render(
       <OpsDashboard

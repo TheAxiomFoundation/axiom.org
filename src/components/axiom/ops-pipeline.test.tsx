@@ -651,13 +651,16 @@ describe("OpsPipeline", () => {
       expect(fetch).toHaveBeenCalledTimes(1);
     });
 
-    it("opens a run's timeline under its row in the run log", async () => {
+    it("opens a section's runs in the ledger, and a run's timeline under it", async () => {
       renderFlow();
-      fireEvent.click(screen.getByRole("tab", { name: "Run log" }));
-      const toggle = await screen.findByRole("button", { name: /^Timeline of us\/m, dispatched/ });
-      expect(toggle).toHaveAttribute("aria-expanded", "false");
+      fireEvent.click(screen.getByRole("tab", { name: "Ledger" }));
+      const section = await screen.findByRole("button", { name: "Runs of us/m" });
+      expect(section).toHaveAttribute("aria-expanded", "false");
+      expect(screen.queryByRole("button", { name: /^Timeline of us\/m/ })).not.toBeInTheDocument();
+      fireEvent.click(section);
+      expect(section).toHaveAttribute("aria-expanded", "true");
+      const toggle = screen.getByRole("button", { name: /^Timeline of us\/m, dispatched/ });
       fireEvent.click(toggle);
-      expect(toggle).toHaveAttribute("aria-expanded", "true");
       const after = screen.getByRole("region", { name: "After the PR" });
       expect(within(after).getAllByRole("listitem").map((row) => row.querySelector("span")?.textContent)).toEqual([
         "Review",
@@ -667,25 +670,47 @@ describe("OpsPipeline", () => {
       expect(screen.getByRole("region", { name: "Encode run" })).toBeInTheDocument();
       fireEvent.click(toggle);
       expect(screen.queryByRole("region", { name: "After the PR" })).not.toBeInTheDocument();
+      // Closing the section closes its runs.
+      fireEvent.click(section);
+      expect(screen.queryByRole("button", { name: /^Timeline of us\/m/ })).not.toBeInTheDocument();
     });
 
-    it("filters the run log and exports it", async () => {
+    it("lists an open section's ten newest runs, and links to the rest", async () => {
+      const many = runRows(
+        Array.from({ length: 12 }, (_, i) =>
+          pipelineAttempt({ id: `r${i}`, citation: "us/statute/7/2015/f", dispatched_at: `2026-09-${String(i + 1).padStart(2, "0")}T10:00:00Z` })
+        )
+      );
+      vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ rows: many }) }) as Response));
+      render(<OpsPipeline view={pipelineView(attempts, NOW)} queued={null} flow={dispatchFlow(rows)} referenceMs={NOW} />);
+      fireEvent.click(screen.getByRole("tab", { name: "Ledger" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Runs of us/statute/7/2015/f" }));
+      expect(screen.getAllByRole("button", { name: /^Timeline of / })).toHaveLength(10);
+      expect(screen.getByRole("link", { name: "All 12 runs, each with its timeline" })).toHaveAttribute(
+        "href",
+        "/ops/journey?citation=us%2Fstatute%2F7%2F2015%2Ff"
+      );
+    });
+
+    it("filters the ledger's sections and exports their runs", async () => {
       renderFlow();
-      fireEvent.click(screen.getByRole("tab", { name: "Run log" }));
+      fireEvent.click(screen.getByRole("tab", { name: "Ledger" }));
       expect(screen.getByText("Loading runs…")).toBeInTheDocument();
-      await screen.findByText("3 of 3 runs");
+      await screen.findByText("3 of 3 sections · 3 runs");
       expect(fetch).toHaveBeenCalledWith("/ops/runs");
-      const table = screen.getByRole("table");
-      expect(within(table).getAllByRole("row")).toHaveLength(4);
-      fireEvent.change(screen.getByRole("combobox", { name: "Outcome" }), { target: { value: "Validation rules" } });
-      expect(screen.getByText("1 of 3 runs")).toBeInTheDocument();
-      fireEvent.change(screen.getByRole("combobox", { name: "Outcome" }), { target: { value: "" } });
+      // Each section with its latest status.
+      const status = (citation: string) =>
+        screen.getByRole("button", { name: `Runs of ${citation}` }).closest("tr")?.querySelector("[data-tone]")?.textContent;
+      expect([status("us/c"), status("us/v"), status("us/m")]).toEqual(["Cancelled at approval", "Validation rules", "Tests pass"]);
+      fireEvent.change(screen.getByRole("combobox", { name: "Status" }), { target: { value: "Validation rules" } });
+      expect(screen.getByText("1 of 3 sections · 1 run")).toBeInTheDocument();
+      fireEvent.change(screen.getByRole("combobox", { name: "Status" }), { target: { value: "" } });
       fireEvent.change(screen.getByRole("combobox", { name: "Encoder version" }), { target: { value: "0.2.10" } });
-      expect(within(screen.getByRole("table")).getByRole("link", { name: "us/m" })).toBeInTheDocument();
-      expect(within(screen.getByRole("table")).getByText("main")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Runs of us/m" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Runs of us/v" })).not.toBeInTheDocument();
       fireEvent.change(screen.getByRole("combobox", { name: "Encoder version" }), { target: { value: "" } });
-      fireEvent.change(screen.getByRole("searchbox", { name: "Search citations" }), { target: { value: "US/C" } });
-      expect(screen.getByText("1 of 3 runs")).toBeInTheDocument();
+      fireEvent.change(screen.getByRole("searchbox", { name: "Search citations or names" }), { target: { value: "US/C" } });
+      expect(screen.getByText("1 of 3 sections · 1 run")).toBeInTheDocument();
 
       const created: string[] = [];
       vi.stubGlobal("URL", Object.assign(URL, {
@@ -826,23 +851,29 @@ describe("OpsPipeline", () => {
       expect(stepRows()).toEqual(["Signing approval?—0 of 11 cancelled"]);
     });
 
-    it("pages a long run log, and says when it cannot load", async () => {
-      const many = runRows(Array.from({ length: 60 }, (_, i) => pipelineAttempt({ id: `r${i}`, citation: `us/r/${i}` })));
-      vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ rows: many }) }) as Response));
+    it("pages a long ledger by sections, names them, and says when it cannot load", async () => {
+      const many = runRows(
+        Array.from({ length: 60 }, (_, i) => pipelineAttempt({ id: `r${i}`, citation: `us/statute/7/2015/${i}` }))
+      );
+      const labels = { "us/statute/7": "Agriculture", "us/statute/7/2015/0": "The zeroth rule" };
+      vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ rows: many, labels }) }) as Response));
       render(
         <OpsPipeline view={pipelineView(attempts, NOW)} queued={null} flow={dispatchFlow(rows)} referenceMs={NOW} />
       );
-      fireEvent.click(screen.getByRole("tab", { name: "Run log" }));
-      await screen.findByText("60 of 60 runs");
-      expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(51);
-      fireEvent.click(screen.getByRole("button", { name: "Show 10 more" }));
-      expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(61);
+      fireEvent.click(screen.getByRole("tab", { name: "Ledger" }));
+      await screen.findByText("60 of 60 sections · 60 runs");
+      expect(screen.getAllByRole("button", { name: /^Runs of / })).toHaveLength(40);
+      fireEvent.click(screen.getByRole("button", { name: "Show 20 more sections" }));
+      expect(screen.getAllByRole("button", { name: /^Runs of / })).toHaveLength(60);
+      // Sections under their source document, with their names from the corpus.
+      expect(screen.getByText("Agriculture")).toBeInTheDocument();
+      expect(screen.getByText("The zeroth rule")).toBeInTheDocument();
       cleanup();
 
       vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 503 }) as Response));
       render(<OpsPipeline view={pipelineView(attempts, NOW)} queued={null} flow={dispatchFlow(rows)} referenceMs={NOW} />);
-      fireEvent.click(screen.getByRole("tab", { name: "Run log" }));
-      await screen.findByText("The run log could not load. Try again later.");
+      fireEvent.click(screen.getByRole("tab", { name: "Ledger" }));
+      await screen.findByText("The ledger could not load. Try again later.");
       // The breakdowns are still one tab away.
       await act(async () => {
         fireEvent.click(screen.getByRole("tab", { name: "Breakdowns" }));

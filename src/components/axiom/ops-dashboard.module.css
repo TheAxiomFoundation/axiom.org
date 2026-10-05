@@ -93,6 +93,22 @@
   margin-top: 32px;
 }
 
+/* With the pipeline's own ledger: the queue and recent corpus side by side. */
+.sidebarOnly {
+  margin-top: 32px;
+}
+
+.sidebarOnly .sidebar {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .sidebarOnly .sidebar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .sidebar {
   display: grid;
   gap: 24px;

@@ -3,6 +3,11 @@ import { pipelineAttempt } from "@/test/pipeline-attempt";
 
 const getPipelineAttempts = vi.fn();
 vi.mock("@/lib/axiom/encoding-pipeline-data", () => ({ getPipelineAttempts: () => getPipelineAttempts() }));
+const getCitationMetadata = vi.fn(async (citations: string[]) => ({
+  labels: Object.fromEntries(citations.map((citation) => [citation, `Name of ${citation}`])),
+  documentPaths: {},
+}));
+vi.mock("@/lib/corpus-status", () => ({ getCitationMetadata: (c: string[]) => getCitationMetadata(c) }));
 
 const { GET } = await import("./route");
 
@@ -12,7 +17,7 @@ afterEach(() => {
 });
 
 describe("GET /ops/runs", () => {
-  it("returns a scope's runs, newest first", async () => {
+  it("returns a scope's runs, newest first, with their citations' names", async () => {
     getPipelineAttempts.mockResolvedValue({
       available: true,
       error: null,
@@ -24,6 +29,8 @@ describe("GET /ops/runs", () => {
     });
     const all = await (await GET(new Request("http://x/ops/runs?j=us"))).json();
     expect(all.rows.map((r: { id: string }) => r.id)).toEqual(["2", "1"]);
+    expect(all.labels).toEqual({ "us-la/b": "Name of us-la/b", "us/a": "Name of us/a" });
+    expect(all.documentPaths).toEqual({});
     const federal = await GET(new Request("http://x/ops/runs?j=us&only=1"));
     expect(federal.headers.get("Cache-Control")).toBe("no-store");
     expect((await federal.json()).rows.map((r: { id: string }) => r.id)).toEqual(["1"]);
