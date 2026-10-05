@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, type ReactNode, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { X } from "lucide-react";
@@ -40,6 +40,7 @@ import {
   type GateKey,
   type RunRow,
   type StepTimes,
+  type StepTiming,
   type TestsParts,
   type TimedStep,
   type TriesUsed,
@@ -1303,80 +1304,157 @@ const STOPPED: Record<string, string> = {
   "tests:fail": "fail",
 };
 
+/** One timing for a "?" note: "Encoded: 15m typical over 72 runs; the slowest 10% 33m or more". */
+function timingLine(timing: StepTiming): string {
+  const runs = `${number(timing.runs)} ${timing.runs === 1 ? "run" : "runs"}`;
+  const slow = timing.slowMs !== null ? `; the slowest 10% ${shortDuration(timing.slowMs)} or more` : "";
+  return `${timing.label ? `${timing.label}: ` : ""}${shortDuration(timing.medianMs)} typical over ${runs}${slow}`;
+}
+
 /**
- * Every run through the steps, one line each: the runs that went on in
- * large type, and beside them the runs that stopped or still wait there.
- * Encode failures fold into one "failed" that opens their reasons. Every
- * number opens its runs. The lines stop after a step nothing went on from.
+ * Every step in one table, in order: the typical time a run spends there,
+ * how many of the runs that reached it went on, and the runs that stopped
+ * or still wait there. Encode failures fold into one "failed" that opens
+ * their reasons, and every number lists its runs. A step's "?" says what
+ * its time measures and every timing behind it; for the tests on main, also
+ * the wait for the shard, its run, and the first results. The rows stop
+ * after a step nothing went on from.
  */
-function RunChain({ gates, onOpen }: { gates: FlowGate[]; onOpen: (gate: FlowGate, segment: FlowSegment) => void }) {
+function StepTable({
+  gates,
+  times,
+  testParts,
+  onOpen,
+}: {
+  gates: FlowGate[];
+  times: StepTimes[] | null;
+  testParts: TestsParts | null;
+  onOpen: (gate: FlowGate, segment: FlowSegment) => void;
+}) {
   const [reasonsOpen, setReasonsOpen] = useState(false);
+  const timeOf = new Map((times ?? []).map((step) => [step.key, step]));
   const shown: FlowGate[] = [];
   for (const gate of gates) {
     shown.push(gate);
     if (!gate.segments.some((segment) => segment.kind === "continue")) break;
   }
   return (
-    <ol className={styles.chain} aria-label="Runs through each step">
-      <li className={styles.chainRow}>
-        <span className={styles.chainCount}>{number(gates[0]?.input ?? 0)}</span>
-        <span className={styles.chainLabel}>dispatched</span>
-      </li>
-      {shown.map((gate) => {
-        const on = gate.segments.find((segment) => segment.kind === "continue");
-        const losses = gate.segments.filter((segment) => segment.kind === "loss");
-        const pending = gate.segments.filter((segment) => segment.kind === "pending");
-        const folded = gate.key === "run" && losses.length > 0;
-        const side = folded ? pending : [...losses, ...pending];
-        return (
-          <li key={gate.key} className={styles.chainRow}>
-            {on ? (
-              <button
-                type="button"
-                className={styles.chainCount}
-                aria-label={`${number(on.count)} ${WENT_ON[gate.key]}`}
-                onClick={() => onOpen(gate, on)}
-              >
-                {number(on.count)}
-              </button>
-            ) : (
-              <span className={styles.chainCount}>0</span>
-            )}
-            <span className={styles.chainLabel}>{WENT_ON[gate.key]}</span>
-            <span className={styles.chainSide}>
-              {folded && (
-                <button
-                  type="button"
-                  className={styles.chainItem}
-                  aria-expanded={reasonsOpen}
-                  onClick={() => setReasonsOpen((open) => !open)}
-                >
-                  {number(losses.reduce((total, segment) => total + segment.count, 0))} failed{" "}
-                  <span aria-hidden>{reasonsOpen ? "▴" : "▾"}</span>
-                </button>
+    <table className={styles.stepTable}>
+      <thead>
+        <tr>
+          <th scope="col">Step</th>
+          <th scope="col">Time</th>
+          <th scope="col">Went on</th>
+          <th scope="col">Stopped or waiting</th>
+        </tr>
+      </thead>
+      <tbody>
+        {shown.map((gate) => {
+          const time = timeOf.get(gate.key);
+          const typical = time?.timings[0];
+          const on = gate.segments.find((segment) => segment.kind === "continue");
+          const losses = gate.segments.filter((segment) => segment.kind === "loss");
+          const pending = gate.segments.filter((segment) => segment.kind === "pending");
+          const folded = gate.key === "run" && losses.length > 0;
+          const side = folded ? pending : [...losses, ...pending];
+          const firstTests = gate.key === "tests" ? testParts : null;
+          return (
+            <Fragment key={gate.key}>
+              <tr>
+                <th scope="row">
+                  <span className={styles.stepName}>
+                    {gate.label}
+                    <Explain label={gate.label}>
+                      {time?.measures}
+                      <span className={styles.explainList}>
+                        {time?.timings.map((timing) => (
+                          <span key={timing.label}>{timingLine(timing)}</span>
+                        ))}
+                        {firstTests?.parts.map((part) =>
+                          part.timings[0] ? (
+                            <span key={part.key}>{timingLine({ ...part.timings[0], label: part.label })}</span>
+                          ) : null
+                        )}
+                        {firstTests && firstTests.first.pass + firstTests.first.fail > 0 && (
+                          <span>
+                            First result at the merge: {number(firstTests.first.pass)} pass,{" "}
+                            {number(firstTests.first.fail)} fail
+                          </span>
+                        )}
+                      </span>
+                    </Explain>
+                  </span>
+                </th>
+                <td className={styles.stepTime}>{typical ? shortDuration(typical.medianMs) : "—"}</td>
+                <td className={styles.stepWent}>
+                  {on ? (
+                    <button
+                      type="button"
+                      aria-label={`${number(on.count)} ${WENT_ON[gate.key]}`}
+                      onClick={() => onOpen(gate, on)}
+                    >
+                      {number(on.count)}
+                    </button>
+                  ) : (
+                    <span className={styles.stepNone}>0</span>
+                  )}{" "}
+                  <span className={styles.stepOf}>of {number(gate.input)}</span>
+                </td>
+                <td className={styles.stepStopped}>
+                  {folded || side.length > 0 ? (
+                    <span className={styles.stopList}>
+                      {folded && (
+                        <button
+                          type="button"
+                          className={styles.stopItem}
+                          aria-expanded={reasonsOpen}
+                          onClick={() => setReasonsOpen((open) => !open)}
+                        >
+                          {number(losses.reduce((total, segment) => total + segment.count, 0))} failed{" "}
+                          <span aria-hidden>{reasonsOpen ? "▴" : "▾"}</span>
+                        </button>
+                      )}
+                      {side.map((segment) => (
+                        <button
+                          key={segment.key}
+                          type="button"
+                          className={styles.stopItem}
+                          onClick={() => onOpen(gate, segment)}
+                        >
+                          {number(segment.count)} {STOPPED[segment.key] ?? segment.label.toLowerCase()}
+                        </button>
+                      ))}
+                    </span>
+                  ) : (
+                    <span className={styles.stepNone}>—</span>
+                  )}
+                </td>
+              </tr>
+              {folded && reasonsOpen && (
+                <tr className={styles.stepReasons}>
+                  <td colSpan={4}>
+                    <span className={styles.reasonList} role="group" aria-label="Why encode runs failed">
+                      {losses.map((segment) => (
+                        <button
+                          key={segment.key}
+                          type="button"
+                          className={styles.reasonChip}
+                          onClick={() => onOpen(gate, segment)}
+                        >
+                          {segment.label} <strong>{number(segment.count)}</strong>
+                        </button>
+                      ))}
+                    </span>
+                  </td>
+                </tr>
               )}
-              {side.map((segment) => (
-                <button key={segment.key} type="button" className={styles.chainItem} onClick={() => onOpen(gate, segment)}>
-                  {number(segment.count)} {STOPPED[segment.key] ?? segment.label.toLowerCase()}
-                </button>
-              ))}
-            </span>
-            {folded && reasonsOpen && (
-              <span className={styles.chainReasons} role="group" aria-label="Why encode runs failed">
-                {losses.map((segment) => (
-                  <button key={segment.key} type="button" className={styles.chainReason} onClick={() => onOpen(gate, segment)}>
-                    {segment.label} <strong>{number(segment.count)}</strong>
-                  </button>
-                ))}
-              </span>
-            )}
-          </li>
-        );
-      })}
-    </ol>
+            </Fragment>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }
-
 
 /** Seconds under a minute; otherwise as the rest of the page writes durations. */
 function shortDuration(ms: number): string {
@@ -1482,23 +1560,6 @@ function TimedCell({ step }: { step: TimedStep }) {
   );
 }
 
-/** One run's path, read left to right: how long each step takes. */
-function StepTimeRow({ steps }: { steps: StepTimes[] }) {
-  return (
-    <section className={styles.flowPart} aria-labelledby="flow-times-title">
-      <PartHead id="flow-times-title" title="Time per step">
-        The typical time (median) one run spends at each step, in order. Open a step&apos;s ? for what it
-        measures, how many runs it counts, and how long the slowest 10% take.
-      </PartHead>
-      <ol className={styles.timeSteps}>
-        {steps.map((step) => (
-          <TimedCell key={step.key} step={step} />
-        ))}
-      </ol>
-    </section>
-  );
-}
-
 /** How many generation attempts encoded and failed runs used. */
 function TriesTable({ tries }: { tries: TriesUsed }) {
   return (
@@ -1572,35 +1633,6 @@ function PartsRow({
   );
 }
 
-/** How the first validation at each merge commit ended. */
-function FirstResult({ first }: { first: TestsParts["first"] }) {
-  return (
-    <div className={styles.timeStep}>
-      <div className={styles.cellHead}>
-        <span className={styles.tileLabel}>First result</span>
-        <Explain label="First result">
-          How the first validation at each merge commit ended. A later run on main can end differently; the bars
-          below count the latest result.
-        </Explain>
-      </div>
-      {first.pass + first.fail === 0 ? (
-        <span className={styles.timeNone}>Not recorded yet</span>
-      ) : (
-        <dl className={styles.timeStats}>
-          <div>
-            <dt>Pass</dt>
-            <dd>{number(first.pass)}</dd>
-          </div>
-          <div>
-            <dt>Fail</dt>
-            <dd>{number(first.fail)}</dd>
-          </div>
-        </dl>
-      )}
-    </div>
-  );
-}
-
 function FlowView({
   gates,
   times,
@@ -1616,7 +1648,14 @@ function FlowView({
 }) {
   return (
     <>
-      {times && <StepTimeRow steps={times} />}
+      <section className={styles.flowPart} aria-labelledby="flow-steps-title">
+        <PartHead id="flow-steps-title" title="Steps">
+          One row per step, in order. Time is the typical time (median) a run spends at the step. Went on counts the
+          runs that passed to the next step, out of those that reached it. Stopped or waiting are the runs that
+          stopped there or still wait. Click a number to list its runs, and a step&apos;s ? for its details.
+        </PartHead>
+        <StepTable gates={gates} times={times} testParts={testParts} onOpen={onOpen} />
+      </section>
       {parts && (
         <PartsRow
           id="flow-parts-title"
@@ -1626,22 +1665,6 @@ function FlowView({
           extra={<TriesTable tries={parts.tries} />}
         />
       )}
-      {testParts && (
-        <PartsRow
-          id="flow-tests-title"
-          title="Inside the tests on main"
-          note="After a merge, CI on main validates the module's jurisdiction at the merge commit: first the wait for that validation to start, then the run itself."
-          parts={testParts.parts}
-          extra={<FirstResult first={testParts.first} />}
-        />
-      )}
-      <section className={styles.flowPart} aria-labelledby="flow-gates-title">
-        <PartHead id="flow-gates-title" title="Where runs go">
-          Each line is a step. The big number is the runs that went on to the next step. The grey numbers beside it
-          stopped at that step or still wait there. Click a number to list those runs.
-        </PartHead>
-        <RunChain gates={gates} onOpen={onOpen} />
-      </section>
     </>
   );
 }

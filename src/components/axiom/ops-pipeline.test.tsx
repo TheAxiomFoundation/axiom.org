@@ -73,6 +73,15 @@ const queuedWith = (overrides: Partial<QueuedSummary>): QueuedSummary => ({
 const openList = () => screen.getByRole("region", { name: / citations$/ });
 const card = (name: string) => screen.getByRole("group", { name });
 
+/** The step table's rows, as text: name and "?", time, went on, stopped or waiting. */
+function stepRows() {
+  const table = within(screen.getByRole("region", { name: "Steps" })).getByRole("table");
+  return within(table)
+    .getAllByRole("row")
+    .slice(1)
+    .map((row) => row.textContent);
+}
+
 /** A click as a browser sends it: the pointer goes down first, which closes any open "?" note elsewhere. */
 function press(element: HTMLElement) {
   fireEvent.pointerDown(element);
@@ -596,18 +605,17 @@ describe("OpsPipeline", () => {
     it("opens on the flow, and lists the runs behind a part of it", async () => {
       renderFlow({ jurisdiction: "us", only: true });
       expect(screen.getByRole("tab", { name: "Flow" })).toHaveAttribute("aria-selected", "true");
-      // One line per step: the runs that went on, then those that stopped there.
-      const flow = screen.getByRole("list", { name: "Runs through each step" });
-      expect(within(flow).getAllByRole("listitem").map((row) => row.textContent)).toEqual([
-        "3dispatched",
-        "2approved1 cancelled",
-        "1encoded1 failed ▾",
-        "1PR opened",
-        "1merged",
-        "1into main",
-        "1indexed",
-        "1tests pass",
+      // One row per step: its time, how many went on of those that reached it, and what stopped there.
+      expect(stepRows()).toEqual([
+        "Signing approval?—2 of 31 cancelled",
+        "Encode run?—1 of 21 failed ▾",
+        "Pull request?—1 of 1—",
+        "Review?—1 of 1—",
+        "Default branch?—1 of 1—",
+        "Index?—1 of 1—",
+        "Tests on main?—1 of 1—",
       ]);
+      const flow = within(screen.getByRole("region", { name: "Steps" })).getByRole("table");
       // Encode failures fold into one "failed" that opens their reasons.
       const failed = within(flow).getByRole("button", { name: "1 failed" });
       expect(failed).toHaveAttribute("aria-expanded", "false");
@@ -663,7 +671,7 @@ describe("OpsPipeline", () => {
       expect(line).toContain("Cancelled at approval");
     });
 
-    it("times each step above the flow, and says which steps take no time or are not timed", () => {
+    it("times each step in the table, with every timing behind its \"?\"", () => {
       const minute = (n: number) => new Date(Date.parse("2026-09-20T10:00:00Z") + n * 60_000).toISOString();
       const timed = runRows([
         ...Array.from({ length: 10 }, (_, i) =>
@@ -685,40 +693,32 @@ describe("OpsPipeline", () => {
           referenceMs={NOW}
         />
       );
-      const steps = within(screen.getByRole("region", { name: "Time per step" })).getAllByRole("listitem");
-      expect(steps.map((step) => step.querySelector("span")?.textContent)).toEqual([
-        "Signing approval",
-        "Encode run",
-        "Pull request",
-        "Review",
-        "Default branch",
-        "Index",
-        "Tests on main",
+      // The typical time per step; a step that takes none, or is not timed yet, shows a dash.
+      expect(stepRows()).toEqual([
+        "Signing approval?6m11 of 11—",
+        "Encode run?10m11 of 11—",
+        "Pull request?—1 of 1110 no PR",
+        "Review?22h 31m1 of 1—",
+        "Default branch?—1 of 1—",
+        "Index?—0 of 11 waiting for the index",
       ]);
-      // Each step shows its name and typical time; the rest is behind its "?".
-      expect(steps[0]).toHaveTextContent(/^Signing approval\?6m$/);
-      expect(steps[1]).toHaveTextContent(/^Encode run\?Encoded10m$/);
-      expect(steps[2]).toHaveTextContent(/^Pull request\?No wait$/);
-      expect(steps[3]).toHaveTextContent(/^Review\?Merged22h 31m$/);
-      expect(steps[5]).toHaveTextContent(/^Index\?Not timed yet$/);
-      const help = within(steps[0]).getByRole("button", { name: "What Signing approval means" });
+      const table = within(screen.getByRole("region", { name: "Steps" })).getByRole("table");
+      const help = within(table).getByRole("button", { name: "What Signing approval means" });
       expect(help).toHaveAttribute("aria-expanded", "false");
       fireEvent.click(help);
       expect(help).toHaveAttribute("aria-expanded", "true");
-      expect(within(steps[0]).getByRole("note")).toHaveTextContent(
-        "From the dispatch until a person approves the signing and the encode job starts.10 runs, the slowest 10% 9m or more"
+      expect(within(table).getByRole("note")).toHaveTextContent(
+        "From the dispatch until a person approves the signing and the encode job starts.6m typical over 10 runs; the slowest 10% 9m or more"
       );
-      // One merged PR: a count with no slowest tenth.
-      press(within(steps[3]).getByRole("button", { name: "What Review means" }));
-      expect(within(steps[3]).getByRole("note")).toHaveTextContent(/Merged: 1 run$/);
+      // One merged PR: a typical time with no slowest tenth.
+      press(within(table).getByRole("button", { name: "What Review means" }));
+      expect(within(table).getByRole("note")).toHaveTextContent(/Merged: 22h 31m typical over 1 run$/);
       // A click elsewhere closes it, and so does Escape.
-      expect(within(steps[0]).queryByRole("note")).not.toBeInTheDocument();
       fireEvent.pointerDown(document.body);
       expect(screen.queryByRole("note")).not.toBeInTheDocument();
       fireEvent.click(help);
       fireEvent.keyDown(document, { key: "Escape" });
       expect(screen.queryByRole("note")).not.toBeInTheDocument();
-      expect(screen.getByRole("region", { name: "Where runs go" })).toBeInTheDocument();
     });
 
     it("opens up the encode run into its parts and the tries its loop used", () => {
@@ -755,11 +755,14 @@ describe("OpsPipeline", () => {
       ]);
     });
 
-    it("opens up the tests on main into the wait, the run, and the first result", () => {
+    it("puts the tests on main's wait, run, and first results behind its \"?\"", () => {
       const runs = runRows([
         mergedAttempt({
           id: "a",
           pr_merged_at: "2026-09-21T09:00:00Z",
+          synced_at: "S",
+          index_status: "indexed",
+          tests_status: "pass",
           tests_first_started_at: "2026-09-21T09:16:00Z",
           tests_first_at: "2026-09-21T11:07:00Z",
           tests_first_status: "pass",
@@ -770,26 +773,23 @@ describe("OpsPipeline", () => {
           view={pipelineView(attempts, NOW)}
           queued={null}
           flow={dispatchFlow(runs)}
+          times={stepTimes(runs, NOW)}
           testParts={testsParts(runs)}
           referenceMs={NOW}
         />
       );
-      const section = screen.getByRole("region", { name: "Inside the tests on main" });
-      expect(within(section).getAllByRole("listitem").map((part) => part.textContent)).toEqual([
-        "Wait to start?16m",
-        "Validation run?1h 51m",
-      ]);
-      expect(within(section).getByText("First result").closest("div")?.parentElement).toHaveTextContent(/^First result\?Pass1Fail0$/);
+      expect(screen.queryByRole("region", { name: "Inside the tests on main" })).not.toBeInTheDocument();
+      expect(stepRows().at(-1)).toBe("Tests on main?2h 7m1 of 1—");
+      fireEvent.click(screen.getByRole("button", { name: "What Tests on main means" }));
+      expect(screen.getByRole("note")).toHaveTextContent(
+        /Wait to start: 16m typical over 1 runValidation run: 1h 51m typical over 1 runFirst result at the merge: 1 pass, 0 fail$/
+      );
     });
 
-    it("stops the lines after a step nothing went on from", () => {
+    it("stops the rows after a step nothing went on from", () => {
       const cancelled = runRows([pipelineAttempt({ run_conclusion: "cancelled", cancel_stage: "approval" })]);
       render(<OpsPipeline view={pipelineView(attempts, NOW)} queued={null} flow={dispatchFlow(cancelled)} referenceMs={NOW} />);
-      const flow = screen.getByRole("list", { name: "Runs through each step" });
-      expect(within(flow).getAllByRole("listitem").map((row) => row.textContent)).toEqual([
-        "1dispatched",
-        "0approved1 cancelled",
-      ]);
+      expect(stepRows()).toEqual(["Signing approval?—0 of 11 cancelled"]);
     });
 
     it("pages a long run log, and says when it cannot load", async () => {

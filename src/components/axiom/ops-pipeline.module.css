@@ -474,15 +474,6 @@
   white-space: normal;
 }
 
-.timeSteps {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 10px;
-  padding: 0;
-  list-style: none;
-}
-
 .timeStep {
   display: grid;
   align-content: start;
@@ -578,59 +569,85 @@
   color: var(--color-ink);
 }
 
-.chain {
-  display: grid;
-  margin: 10px 0 0;
-  padding: 0;
-  list-style: none;
+.stepTable {
+  width: 100%;
+  margin-top: 10px;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
 }
 
-.chainRow {
-  display: grid;
-  grid-template-columns: 64px minmax(110px, max-content) minmax(0, 1fr);
-  align-items: baseline;
-  column-gap: 14px;
-  padding: 7px 0;
+.stepTable thead th {
+  padding: 6px 12px 6px 0;
   border-bottom: 1px solid var(--color-rule);
+  font-size: 11px;
+  font-weight: 500;
+  text-align: left;
+  color: var(--color-ink-muted);
 }
 
-.chainRow:last-child {
-  border-bottom: 0;
+.stepTable tbody th,
+.stepTable tbody td {
+  padding: 10px 12px 10px 0;
+  border-bottom: 1px solid var(--color-rule);
+  text-align: left;
+  vertical-align: baseline;
 }
 
-.chainCount {
-  justify-self: end;
+.stepTable tbody th {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-ink);
+  white-space: nowrap;
+}
+
+.stepName {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stepTime {
+  font-size: 15px;
+  color: var(--color-ink);
+  white-space: nowrap;
+}
+
+.stepWent {
+  white-space: nowrap;
+}
+
+.stepWent button {
   padding: 0;
   border: 0;
   background: none;
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 500;
-  line-height: 1.2;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
   color: var(--color-ink);
-}
-
-button.chainCount {
   cursor: pointer;
 }
 
-button.chainCount:hover {
+.stepWent button:hover {
   color: var(--color-accent);
 }
 
-.chainLabel {
-  font-size: 14px;
-  color: var(--color-ink);
+.stepOf {
+  font-size: 13px;
+  color: var(--color-ink-muted);
 }
 
-.chainSide {
+.stepNone {
+  color: var(--color-ink-muted);
+}
+
+.stopList {
   display: flex;
   flex-wrap: wrap;
   gap: 2px 16px;
 }
 
-.chainItem {
+.stopItem {
   padding: 0;
   border: 0;
   background: none;
@@ -640,20 +657,22 @@ button.chainCount:hover {
   cursor: pointer;
 }
 
-.chainItem:hover,
-.chainItem[aria-expanded="true"] {
+.stopItem:hover,
+.stopItem[aria-expanded="true"] {
   color: var(--color-accent);
 }
 
-.chainReasons {
-  display: flex;
-  flex-wrap: wrap;
-  grid-column: 3;
-  gap: 4px 6px;
-  margin-top: 8px;
+.stepReasons td {
+  padding-top: 0;
 }
 
-.chainReason {
+.reasonList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+
+.reasonChip {
   display: inline-flex;
   align-items: baseline;
   gap: 6px;
@@ -666,11 +685,11 @@ button.chainCount:hover {
   cursor: pointer;
 }
 
-.chainReason:hover {
+.reasonChip:hover {
   border-color: var(--color-accent);
 }
 
-.chainReason strong {
+.reasonChip strong {
   font-weight: 600;
   color: var(--color-ink);
   font-variant-numeric: tabular-nums;
@@ -1418,8 +1437,7 @@ button.chainCount:hover {
 
 @media (max-width: 1180px) {
   .flow,
-  .flowWide,
-  .timeSteps {
+  .flowWide {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
@@ -1437,8 +1455,7 @@ button.chainCount:hover {
   }
 
   .flow,
-  .flowWide,
-  .timeSteps {
+  .flowWide {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -1446,13 +1463,35 @@ button.chainCount:hover {
     grid-auto-flow: row;
   }
 
-  .chainRow {
-    grid-template-columns: 44px minmax(0, 1fr);
+  /* The step table stacks: name and time, then went on, then what stopped. */
+  .stepTable thead {
+    display: none;
   }
 
-  .chainSide,
-  .chainReasons {
+  .stepTable tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--color-rule);
+  }
+
+  .stepTable tbody th,
+  .stepTable tbody td {
+    display: block;
+    padding: 0;
+    border: 0;
+  }
+
+  .stepTable .stepTime {
+    grid-row: 1;
     grid-column: 2;
+    text-align: right;
+  }
+
+  .stepTable .stepStopped,
+  .stepReasons td {
+    grid-column: 1 / -1;
   }
 
   .tileValue {
