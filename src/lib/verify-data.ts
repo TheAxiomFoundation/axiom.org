@@ -197,7 +197,7 @@ export const goldenHousehold = {
     ["snap_net_income", "226"],
   ] as const,
   certificate:
-    "certified: 0 — certification is automatic when the harness computes completeness and fidelity green; we expect no current encoding passes yet.",
+    "certified: 0 — the API's certified ledger is empty. A program certifies only when axiom-oracles computes all four premises (conformant, exercised, closed, executable) true with zero open defects; this program's certificate reads unavailable because no producer computes closed or executable yet.",
 };
 
 export const closurePredicate =
