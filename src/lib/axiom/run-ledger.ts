@@ -5,7 +5,9 @@
  * so failures with no encoder record count too.
  */
 
-import type { RunRow } from "./encoding-pipeline-runs";
+import { causeHeadline, type RunRow } from "./encoding-pipeline-runs";
+
+export { causeHeadline };
 import { ownLevelName } from "./jurisdiction-names";
 import {
   corpusPathForDocumentKey,
@@ -146,26 +148,6 @@ export interface SectionOverview {
   /** What stopped the runs that failed, by headline, largest first; `detail` is one full message. */
   causes: Array<{ label: string; count: number; detail: string }>;
   latest: RunRow;
-}
-
-/** Prefixes that name where an error came from rather than what it says. */
-const CAUSE_SOURCE_RE = /^(?:ci|compile|error|RuntimeError|ValueError|TypeError|KeyError|AssertionError):\s*/i;
-const CAUSE_HEADLINE_MAX = 72;
-
-/**
- * A failure cause in a few words: a completeness rule by its name, else the
- * message's own first clause without where it came from ("ci: Ungrounded
- * generated numeric literal: N does not…" is "Ungrounded generated numeric
- * literal"). Causes with one headline count together.
- */
-export function causeHeadline(cause: string): string {
-  const rule = cause.match(/^complete-source-unit:([a-z0-9-]+)$/i);
-  if (rule) return `Completeness rule: ${rule[1]}`;
-  let text = cause.trim();
-  while (CAUSE_SOURCE_RE.test(text)) text = text.replace(CAUSE_SOURCE_RE, "");
-  const clause = text.split(/:\s/)[0];
-  const headline = (clause.length >= 12 ? clause : text).replace(/[.\s]+$/, "");
-  return headline.length > CAUSE_HEADLINE_MAX ? `${headline.slice(0, CAUSE_HEADLINE_MAX - 1)}…` : headline;
 }
 
 function counted<T extends { count: number; label: string }>(groups: Map<string, T>): T[] {

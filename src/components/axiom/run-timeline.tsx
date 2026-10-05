@@ -2,6 +2,9 @@ import styles from "./run-timeline.module.css";
 import { durationLabel } from "@/lib/axiom/encoding-pipeline";
 import { shortDuration, type RunTimeline as Timeline } from "@/lib/axiom/encoding-pipeline-runs";
 
+/** A try's estimated cost: cents, or "<$0.01" below a cent. */
+const cost = (usd: number | null) => (usd === null ? "" : usd < 0.01 ? "<$0.01" : `$${usd.toFixed(2)}`);
+
 /** Axis steps, in minutes: the first that gives at most four ticks across the run. */
 const TICK_MINUTES = [1, 2, 5, 10, 15, 30, 60, 120, 240, 480, 720, 1440];
 
@@ -57,6 +60,35 @@ export function RunTimeline({ timeline }: { timeline: Timeline }) {
               </li>
             ))}
           </ol>
+          {timeline.tries.length > 0 && (
+            <div className={styles.tries}>
+              <p className={styles.triesHead}>
+                Tries in the encode loop
+                {timeline.modelMs !== null && (
+                  <span>
+                    model time {shortDuration(timeline.modelMs)}
+                    {timeline.loopMs !== null && ` of the ${shortDuration(timeline.loopMs)} loop; the rest is checks and review`}
+                  </span>
+                )}
+              </p>
+              <ol className={styles.triesList} aria-label="Tries in the encode loop">
+                {timeline.tries.map((attempt) => (
+                  <li key={attempt.attempt} data-ok={attempt.ok}>
+                    <span className={styles.tryNumber}>{attempt.attempt}</span>
+                    <span className={styles.tryModel}>{attempt.model ?? "—"}</span>
+                    <span className={styles.time}>{attempt.ms === null ? "—" : shortDuration(attempt.ms)}</span>
+                    <span className={styles.tryCost}>{cost(attempt.cost)}</span>
+                    <span
+                      className={styles.tryResult}
+                      title={attempt.ok ? "The loop accepted this candidate; later checks can still fail the run." : (attempt.error ?? undefined)}
+                    >
+                      {attempt.ok ? "accepted" : (attempt.headline ?? "failed")}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
           {timeline.stopped && <p className={styles.stopped}>Stopped: {timeline.stopped}</p>}
         </section>
       )}

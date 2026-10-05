@@ -99,5 +99,10 @@ describe("causeHeadline", () => {
     expect(causeHeadline("compile: Axiom rules engine compile failed: failed to load RuleSpec module …")).toBe("Axiom rules engine compile failed");
     expect(causeHeadline("RuntimeError: reviewed candidate validation produced …")).toBe("reviewed candidate validation produced …");
     expect(causeHeadline("x".repeat(100))).toHaveLength(72);
+    // A raw encoder message: its file, its check, and a bracketed rule.
+    expect(causeHeadline("statutes/42/416/l.yaml: ci: [complete-source-unit:structure] Source branch (A) at …")).toBe(
+      "Completeness rule: structure"
+    );
+    expect(causeHeadline("statutes/42/402/q.yaml: ci: Embedded scalar literal: old_age line 6 embeds 5")).toBe("Embedded scalar literal");
   });
 });

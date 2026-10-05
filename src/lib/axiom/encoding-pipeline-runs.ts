@@ -10,6 +10,7 @@ import {
   encodeGate,
   failureReason,
   type PipelineAttempt,
+  type PipelineTry,
 } from "./encoding-pipeline";
 import { attemptJurisdiction } from "./encoding-pipeline-insights";
 
@@ -32,6 +33,8 @@ export interface RunRow {
   phases: { setupMs: number | null; encodeMs: number | null; publishMs: number | null };
   /** Generation attempts the encoder made, when its record says. */
   attempts: number | null;
+  /** Each try of the encode loop, when the encoder's record has them. */
+  tries: PipelineTry[] | null;
   outcome: RunOutcome;
   /** In a few words: "Encoded", "Validation rules", "Cancelled at approval". */
   outcomeLabel: string;
@@ -120,6 +123,7 @@ export function runRow(attempt: PipelineAttempt): RunRow {
       publishMs: secondsMs(attempt.publish_seconds),
     },
     attempts: attempt.generation_attempts,
+    tries: attempt.tries ?? null,
     ...outcomeOf(attempt),
     runUrl: attempt.run_url,
     pr:
@@ -416,6 +420,12 @@ function timedPart(key: string, label: string, span: string, measures: string, .
   return { key, label, span, measures, untimed: kept.length ? null : "Not timed yet", timings: kept };
 }
 
+/** The model's own time across a run's tries, when the encoder recorded it. */
+const modelTime = (row: RunRow) => {
+  const timed = (row.tries ?? []).filter((attempt) => attempt.ms !== null);
+  return timed.length ? timed.reduce((sum, attempt) => sum + attempt.ms!, 0) : null;
+};
+
 export function encodeParts(rows: RunRow[]): EncodeParts {
   const finished = rows.filter((row) => row.outcome === "encoded" || row.outcome === "failed");
   // Setup is timed over runs that got past it, so a run stopped in setup does not shorten it.
@@ -435,6 +445,14 @@ export function encodeParts(rows: RunRow[]): EncodeParts {
       "The \"Encode, review, validate, and apply\" step: the model writes a candidate, the compile and completeness checks run, and failed checks go back as repair prompts, up to four tries, before a review.",
       timing("Encoded", finished.filter((row) => row.outcome === "encoded").map((row) => row.phases.encodeMs)),
       timing("Failed", finished.filter((row) => row.outcome === "failed").map((row) => row.phases.encodeMs))
+    ),
+    timedPart(
+      "model",
+      "Model time",
+      "the model writing, all tries",
+      "The model's own time across the encode loop's tries, from the encoder's record (runs that have one). The rest of the loop is the checks and the review.",
+      timing("Encoded", finished.filter((row) => row.outcome === "encoded").map(modelTime)),
+      timing("Failed", finished.filter((row) => row.outcome === "failed").map(modelTime))
     ),
     timedPart(
       "publish",
@@ -519,11 +537,28 @@ export interface TimelineStep {
   href: string | null;
 }
 
+/** One try of the encode loop as a timeline shows it: the model, its own time and cost, and what failed it. */
+export interface TimelineTry {
+  attempt: number;
+  model: string | null;
+  ms: number | null;
+  cost: number | null;
+  ok: boolean;
+  /** What sent the try back, in a few words; `error` is the full message. */
+  headline: string | null;
+  error: string | null;
+}
+
 /** One run from its dispatch: the encode run as bars on one clock, then the slower steps after the PR. */
 export interface RunTimeline {
   title: string;
   totalMs: number;
   bars: TimelineBar[];
+  /** The encode loop's tries, from the encoder's record; empty without one. */
+  tries: TimelineTry[];
+  /** The model's own time across the tries, and the encode loop's whole time, to tell writing from checking. */
+  modelMs: number | null;
+  loopMs: number | null;
   /** What stopped a run that did not encode. */
   stopped: string | null;
   after: TimelineStep[];
@@ -647,5 +682,37 @@ export function runTimeline(row: RunRow, referenceMs: number, details: TimelineD
     });
     after.push(...(details.extra ?? []));
   }
-  return { title, totalMs: total, bars, stopped, after };
+  const tries: TimelineTry[] = (row.tries ?? []).map((attempt) => ({
+    attempt: attempt.attempt,
+    model: attempt.model,
+    ms: attempt.ms,
+    cost: attempt.cost,
+    ok: attempt.ok,
+    headline: attempt.error ? causeHeadline(attempt.error) : null,
+    error: attempt.error,
+  }));
+  const timed = tries.filter((attempt) => attempt.ms !== null);
+  const modelMs = timed.length ? timed.reduce((sum, attempt) => sum + attempt.ms!, 0) : null;
+  return { title, totalMs: total, bars, tries, modelMs, loopMs: row.phases.encodeMs, stopped, after };
+}
+
+/** Prefixes that name where an error came from rather than what it says. */
+const CAUSE_SOURCE_RE = /^(?:ci|compile|error|RuntimeError|ValueError|TypeError|KeyError|AssertionError):\s*/i;
+const CAUSE_HEADLINE_MAX = 72;
+
+/**
+ * A failure cause in a few words: a completeness rule by its name, else the
+ * message's own first clause without the file and the check it came from
+ * ("ci: Ungrounded generated numeric literal: N does not…" is "Ungrounded
+ * generated numeric literal"). Causes with one headline count together.
+ */
+export function causeHeadline(cause: string): string {
+  // A raw encoder message leads with its file ("statutes/42/402/q.yaml: ci: …").
+  let text = cause.trim().replace(/^[\w./-]+\.ya?ml:\s*/i, "");
+  while (CAUSE_SOURCE_RE.test(text)) text = text.replace(CAUSE_SOURCE_RE, "");
+  const rule = text.match(/^\[?complete-source-unit:([a-z0-9-]+)\]?/i);
+  if (rule) return `Completeness rule: ${rule[1]}`;
+  const clause = text.split(/:\s/)[0];
+  const headline = (clause.length >= 12 ? clause : text).replace(/[.\s]+$/, "");
+  return headline.length > CAUSE_HEADLINE_MAX ? `${headline.slice(0, CAUSE_HEADLINE_MAX - 1)}…` : headline;
 }

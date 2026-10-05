@@ -240,6 +240,7 @@ describe("encodeParts", () => {
     expect(summary).toEqual([
       ["setup", [":3:260"]],
       ["encode", ["Encoded:2:480", "Failed:1:1200"]],
+      ["model", []],
       ["publish", [":2:35"]],
     ]);
   });
@@ -260,7 +261,7 @@ describe("encodeParts", () => {
 
   it("says when no part is timed", () => {
     const { parts, tries } = encodeParts([]);
-    expect(parts.map((part) => part.untimed)).toEqual(["Not timed yet", "Not timed yet", "Not timed yet"]);
+    expect(parts.map((part) => part.untimed)).toEqual(["Not timed yet", "Not timed yet", "Not timed yet", "Not timed yet"]);
     expect(tries).toEqual({ tries: [], encoded: [], failed: [], recorded: 0, finished: 0 });
   });
 });
@@ -377,5 +378,36 @@ describe("runTimeline", () => {
     expect(review.after).toEqual([
       { key: "review", label: "Review", ms: 3 * 24 * 60 * MIN, state: "waiting", detail: "In review so far · shard us fails", href: "u" },
     ]);
+  });
+});
+
+describe("encode loop tries", () => {
+  const tries = [
+    { attempt: 1, model: "gpt-6-luna", ms: 37_000, cost: 0.0075, ok: false, error: "statutes/42/416/l.yaml: ci: [complete-source-unit:structure] Source branch (A) is neither encoded nor precisely deferred." },
+    { attempt: 2, model: "gpt-6-sol", ms: 20_000, cost: 0.14, ok: true, error: null },
+  ];
+
+  it("shows each try in a run's timeline, with the model's time against the loop's", () => {
+    const row = runRow(pipelineAttempt({ run_conclusion: "success", encode_started_at: "2026-09-20T10:01:00Z", setup_seconds: 180, encode_seconds: 600, tries }));
+    expect(row.tries).toEqual(tries);
+    const timeline = runTimeline(row, 0);
+    expect(timeline.tries.map((t) => [t.attempt, t.model, t.ms, t.ok, t.headline])).toEqual([
+      [1, "gpt-6-luna", 37_000, false, "Completeness rule: structure"],
+      [2, "gpt-6-sol", 20_000, true, null],
+    ]);
+    expect([timeline.modelMs, timeline.loopMs]).toEqual([57_000, 600_000]);
+    expect(runTimeline(runRow(pipelineAttempt({})), 0)).toMatchObject({ tries: [], modelMs: null });
+  });
+
+  it("times the model across a run's tries in the encode run's parts", () => {
+    const { parts } = encodeParts(
+      runRows([
+        pipelineAttempt({ id: "e", run_conclusion: "success", tries }),
+        pipelineAttempt({ id: "f", run_conclusion: "failure", tries: [{ ...tries[0], ms: 120_000 }] }),
+        pipelineAttempt({ id: "n", run_conclusion: "failure" }),
+      ])
+    );
+    const model = parts.find((part) => part.key === "model")!;
+    expect(model.timings.map((t) => `${t.label}:${t.runs}:${t.medianMs / 1000}`)).toEqual(["Encoded:1:57", "Failed:1:120"]);
   });
 });

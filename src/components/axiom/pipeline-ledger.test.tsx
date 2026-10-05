@@ -101,6 +101,32 @@ describe("PipelineLedger", () => {
     expect(screen.queryByRole("region", { name: "Encode run" })).not.toBeInTheDocument();
   });
 
+  it("shows the latest run's tries in the encode loop", async () => {
+    serve({
+      rows: runRows([
+        pipelineAttempt({
+          id: "t",
+          citation: "us/statute/42/416/l",
+          jurisdiction: "us",
+          encode_seconds: 600,
+          tries: [
+            { attempt: 1, model: "gpt-6-luna", ms: 37_000, cost: 0.0075, ok: false, error: "statutes/42/416/l.yaml: ci: [complete-source-unit:structure] Source branch (A)" },
+            { attempt: 2, model: "gpt-6-sol", ms: 20_000, cost: 0.14, ok: false, error: "statutes/42/416/l.yaml: ci: Embedded scalar literal: 5" },
+          ],
+        }),
+      ]),
+    });
+    render(<PipelineLedger scope={null} scopeName={null} referenceMs={NOW} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Runs of us/statute/42/416/l" }));
+    expect(screen.getByText("Latest run").parentElement).toHaveTextContent(/2 tries/);
+    const tries = within(screen.getByRole("list", { name: "Tries in the encode loop" })).getAllByRole("listitem");
+    expect(tries.map((row) => row.textContent)).toEqual([
+      "1gpt-6-luna37s<$0.01Completeness rule: structure",
+      "2gpt-6-sol20s$0.14Embedded scalar literal",
+    ]);
+    expect(screen.getByText(/^model time 57s of the 10m loop; the rest is checks and review$/)).toBeInTheDocument();
+  });
+
   it("shows ten documents at a time", async () => {
     serve({
       rows: runRows(

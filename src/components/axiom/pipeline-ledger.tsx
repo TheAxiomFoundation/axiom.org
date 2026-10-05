@@ -358,6 +358,11 @@ function SectionRuns({ section, referenceMs }: { section: LedgerSection; referen
         <a href={latest.runUrl} target="_blank" rel="noreferrer" data-outcome={latest.outcome}>
           {latest.outcomeLabel}
         </a>
+        {latest.tries && (
+          <span>
+            {latest.tries.length} {latest.tries.length === 1 ? "try" : "tries"}
+          </span>
+        )}
         {latest.cause && <span title={latest.cause}>{causeHeadline(latest.cause)}</span>}
         {latest.pr && (
           <a href={latest.pr.url} target="_blank" rel="noreferrer">

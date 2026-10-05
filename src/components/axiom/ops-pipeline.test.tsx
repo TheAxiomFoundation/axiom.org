@@ -721,6 +721,7 @@ describe("OpsPipeline", () => {
       expect(parts.map((part) => part.textContent)).toEqual([
         "Setup?4m",
         "Encode loop?Encoded6mFailed20m",
+        "Model time?Not timed yet",
         "Sign and open the PR?35s",
       ]);
       fireEvent.click(within(parts[1]).getByRole("button", { name: "What Encode loop means" }));
