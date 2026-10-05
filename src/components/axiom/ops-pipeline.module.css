@@ -695,6 +695,36 @@
   font-variant-numeric: tabular-nums;
 }
 
+.logToggleCell {
+  width: 28px;
+  padding-right: 0;
+}
+
+.logToggle {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--color-rule);
+  border-radius: 6px;
+  background: var(--color-paper);
+  font-size: 11px;
+  color: var(--color-ink-muted);
+  cursor: pointer;
+}
+
+.logToggle:hover,
+.logToggle[aria-expanded="true"] {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.logTimelineRow td {
+  padding: 12px 16px 16px;
+  background: color-mix(in srgb, var(--color-ink) 3%, var(--color-paper));
+}
+
 .runLog {
   margin-top: 14px;
 }

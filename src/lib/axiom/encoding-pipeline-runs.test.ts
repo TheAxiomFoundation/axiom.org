@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dispatchFlow, encodeParts, runRow, runRows, stepTimes, testsParts } from "./encoding-pipeline-runs";
+import { dispatchFlow, encodeParts, runRow, runRows, runTimeline, shortDuration, stepTimes, testsParts } from "./encoding-pipeline-runs";
 import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 
 describe("runRow", () => {
@@ -289,5 +289,93 @@ describe("testsParts", () => {
     ]);
     expect(first).toEqual({ pass: 1, fail: 1 });
     expect(testsParts([]).parts.map((part) => part.untimed)).toEqual(["Not timed yet", "Not timed yet"]);
+  });
+});
+
+describe("runTimeline", () => {
+  const MIN = 60_000;
+  const at = (minutes: number) => new Date(Date.parse("2026-09-14T19:00:00Z") + minutes * MIN).toISOString();
+
+  it("lays a merged run's parts on one clock, then times review, the index, and the tests on main", () => {
+    const row = runRow(
+      mergedAttempt({
+        dispatched_at: at(0),
+        encode_started_at: at(2),
+        setup_seconds: 180,
+        encode_seconds: 720,
+        publish_seconds: 15,
+        generation_attempts: 3,
+        pr_created_at: at(17),
+        pr_merged_at: at(42),
+        indexed_at: at(42 + 240),
+        index_status: "indexed",
+        synced_at: at(42 + 240),
+        tests_first_started_at: at(58),
+        tests_first_at: at(169),
+        tests_first_status: "fail",
+        tests_status: "pass",
+        tests_run_url: "T",
+      })
+    );
+    const timeline = runTimeline(row, Date.parse(at(600)));
+    expect(timeline.title).toBe("Dispatch to draft PR");
+    expect(timeline.bars.map((bar) => [bar.label, bar.startMs / 1000, bar.ms / 1000, bar.state])).toEqual([
+      ["Wait for approval", 0, 120, "done"],
+      ["Setup", 120, 180, "done"],
+      ["Encode loop · 3 tries", 300, 720, "done"],
+      ["Sign and open the PR", 1020, 15, "done"],
+    ]);
+    expect(timeline.totalMs).toBe(1035_000);
+    expect(timeline.stopped).toBeNull();
+    expect(timeline.after.map((step) => [step.label, step.ms === null ? null : shortDuration(step.ms), step.state, step.detail])).toEqual([
+      ["Review", "25m", "done", "Merged into main"],
+      ["Index", "4h", "done", "Indexed"],
+      ["Tests on main", "2h 7m", "done", "wait 16m · run 1h 51m · first result fail · latest pass"],
+    ]);
+  });
+
+  it("marks where a run stopped, and falls back to one bar before its parts are recorded", () => {
+    const failed = runTimeline(
+      runRow(
+        pipelineAttempt({
+          dispatched_at: at(0),
+          encode_started_at: at(1),
+          setup_seconds: 200,
+          encode_seconds: 1200,
+          generation_attempts: 4,
+          encoder_error_rule: "complete-source-unit:tests",
+          encoder_error: "x [complete-source-unit:tests] y",
+          failure_source: "diagnostics",
+        })
+      ),
+      0
+    );
+    expect(failed.title).toBe("Dispatch to failure");
+    expect(failed.bars.map((bar) => `${bar.label}:${bar.state}`)).toEqual([
+      "Wait for approval:done",
+      "Setup:done",
+      "Encode loop · 4 tries:failed",
+    ]);
+    expect(failed.stopped).toBe("Validation rules: complete-source-unit:tests");
+    expect(failed.after).toEqual([]);
+    // Before step times were recorded: the run as one bar.
+    const early = runTimeline(runRow(pipelineAttempt({ dispatched_at: at(0), encode_started_at: at(1), finished_at: at(31), run_conclusion: "cancelled", cancel_stage: "running" })), 0);
+    expect(early.bars.map((bar) => `${bar.label}:${bar.ms / MIN}:${bar.state}`)).toEqual(["Wait for approval:1:done", "Encode run:30:cancelled"]);
+    expect(early.stopped).toBe("Cancelled mid-run");
+    // Details a caller knows better replace the row's own.
+    expect(runTimeline(runRow(pipelineAttempt({})), 0, { stopped: "Setup: checkout failed" }).stopped).toBe("Setup: checkout failed");
+  });
+
+  it("times a run still waiting or running up to now, and a PR still in review", () => {
+    const waiting = runTimeline(runRow(pipelineAttempt({ dispatched_at: at(0), run_status: "waiting", run_conclusion: null })), Date.parse(at(45)));
+    expect(waiting.bars.map((bar) => `${bar.label}:${bar.ms / MIN}:${bar.state}`)).toEqual(["Waiting for approval:45:running"]);
+    expect(waiting.title).toBe("So far");
+    const review = runTimeline(
+      runRow(pipelineAttempt({ run_conclusion: "success", pr_state: "draft", pr_url: "u", pr_created_at: at(0), pr_check_error: "shard us fails" })),
+      Date.parse(at(60 * 24 * 3))
+    );
+    expect(review.after).toEqual([
+      { key: "review", label: "Review", ms: 3 * 24 * 60 * MIN, state: "waiting", detail: "In review so far · shard us fails", href: "u" },
+    ]);
   });
 });

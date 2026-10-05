@@ -5,6 +5,7 @@
  */
 
 import {
+  durationLabel,
   ENCODE_GATE_LABELS,
   encodeGate,
   failureReason,
@@ -491,4 +492,160 @@ export function testsParts(rows: RunRow[]): TestsParts {
       fail: merges.filter((row) => row.testsFirst === "fail").length,
     },
   };
+}
+
+/** Seconds under a minute; otherwise as the rest of /ops writes durations. */
+export function shortDuration(ms: number): string {
+  return ms < 60_000 ? `${Math.round(ms / 1000)}s` : durationLabel(ms);
+}
+
+/** One part of the encode run on the run's own clock, from its dispatch. */
+export interface TimelineBar {
+  key: "approval" | "setup" | "encode" | "publish" | "run";
+  label: string;
+  startMs: number;
+  ms: number;
+  state: "done" | "failed" | "cancelled" | "running";
+}
+
+/** One step after the PR opened: how long it took from the step before, and how it went. */
+export interface TimelineStep {
+  key: string;
+  label: string;
+  /** Null when the step is not timed. */
+  ms: number | null;
+  state: "done" | "failed" | "waiting";
+  detail: string | null;
+  href: string | null;
+}
+
+/** One run from its dispatch: the encode run as bars on one clock, then the slower steps after the PR. */
+export interface RunTimeline {
+  title: string;
+  totalMs: number;
+  bars: TimelineBar[];
+  /** What stopped a run that did not encode. */
+  stopped: string | null;
+  after: TimelineStep[];
+}
+
+/** Text a caller knows better than a run row: the journey page's details, by step. */
+export interface TimelineDetails {
+  stopped?: string | null;
+  review?: string | null;
+  index?: string | null;
+  /** Steps to add after the tests on main, such as the compile sweep and the oracle. */
+  extra?: TimelineStep[];
+}
+
+const TIMELINE_TITLES: Record<RunOutcome, string> = {
+  encoded: "Dispatch to draft PR",
+  failed: "Dispatch to failure",
+  cancelled: "Dispatch until it stopped",
+  running: "So far",
+  waiting: "So far",
+};
+
+const LAST_BAR_STATE: Partial<Record<RunOutcome, TimelineBar["state"]>> = {
+  failed: "failed",
+  cancelled: "cancelled",
+  running: "running",
+};
+
+/**
+ * A run's timeline. The encode run is split by its job's parts once they are
+ * recorded (one bar for the run before that), so the wait for approval, setup,
+ * the encode loop, and signing read on one clock; the last bar of a run that
+ * stopped carries how. After a PR opened come review, the index, and the
+ * tests on main, each timed from the step before.
+ */
+export function runTimeline(row: RunRow, referenceMs: number, details: TimelineDetails = {}): RunTimeline {
+  const bars: TimelineBar[] = [];
+  const add = (key: TimelineBar["key"], label: string, ms: number | null) => {
+    if (ms === null) return;
+    const last = bars.at(-1);
+    bars.push({ key, label, startMs: last ? last.startMs + last.ms : 0, ms, state: "done" });
+  };
+  const dispatched = Date.parse(row.dispatchedAt);
+  if (row.outcome === "waiting") {
+    add("approval", "Waiting for approval", Math.max(0, referenceMs - dispatched));
+    bars[0].state = "running";
+  } else {
+    add("approval", "Wait for approval", row.approvalMs);
+  }
+  const { setupMs, encodeMs, publishMs } = row.phases;
+  if (setupMs !== null || encodeMs !== null) {
+    add("setup", "Setup", setupMs);
+    const tries = row.attempts ? ` · ${row.attempts} ${row.attempts === 1 ? "try" : "tries"}` : "";
+    add("encode", `Encode loop${tries}`, encodeMs);
+    add("publish", "Sign and open the PR", publishMs);
+  } else if (row.outcome === "running" && row.approvalMs !== null) {
+    add("run", "Running", Math.max(0, referenceMs - dispatched - row.approvalMs));
+  } else if (row.outcome !== "waiting") {
+    add("run", "Encode run", row.runMs);
+  }
+  const lastBar = bars.at(-1);
+  if (lastBar && LAST_BAR_STATE[row.outcome]) lastBar.state = LAST_BAR_STATE[row.outcome]!;
+  const total = bars.reduce((end, bar) => Math.max(end, bar.startMs + bar.ms), 0);
+  const title = TIMELINE_TITLES[row.outcome];
+  const stopped =
+    row.outcome === "failed" || row.outcome === "cancelled"
+      ? (details.stopped ?? ([row.outcomeLabel, row.cause].filter(Boolean).join(": ") || null))
+      : null;
+
+  const after: TimelineStep[] = [];
+  const pr = row.pr;
+  if (pr?.openedAt) {
+    const end = pr.mergedAt ?? (pr.state === "closed" ? pr.closedAt : null);
+    after.push({
+      key: "review",
+      label: "Review",
+      ms: ms(pr.openedAt, end ?? new Date(referenceMs).toISOString()),
+      state: row.merged === "main" ? "done" : row.merged === "off main" || pr.state === "closed" ? "failed" : "waiting",
+      detail:
+        details.review ??
+        (row.merged === "main"
+          ? "Merged into main"
+          : row.merged === "off main"
+            ? "Merged into a side branch"
+            : pr.state === "closed"
+              ? "Closed without merging"
+              : ["In review so far", pr.error].filter(Boolean).join(" · ")),
+      href: pr.url,
+    });
+  }
+  if (row.merged === "main" && pr?.mergedAt) {
+    after.push({
+      key: "index",
+      label: "Index",
+      ms: ms(pr.mergedAt, row.indexedAt),
+      state: row.index === "indexed" ? "done" : row.index === "missing" ? "failed" : "waiting",
+      detail:
+        details.index ??
+        (row.index === "indexed" ? "Indexed" : row.index === "missing" ? "Missing from the index" : "Waiting for the index"),
+      href: null,
+    });
+    const wait = ms(pr.mergedAt, row.testsStartedAt);
+    const run = ms(row.testsStartedAt, row.testsAt);
+    const latest = row.tests && row.testsFirst && row.tests !== row.testsFirst ? `latest ${row.tests}` : null;
+    after.push({
+      key: "tests",
+      label: "Tests on main",
+      ms: ms(pr.mergedAt, row.testsAt),
+      state: row.tests === "pass" || row.tests === "waived" ? "done" : row.tests === "fail" ? "failed" : "waiting",
+      detail:
+        [
+          wait !== null ? `wait ${shortDuration(wait)}` : null,
+          run !== null ? `run ${shortDuration(run)}` : null,
+          row.testsFirst ? `first result ${row.testsFirst}` : null,
+          latest,
+          !row.testsFirst && row.tests ? `result ${row.tests}` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ") || "No result yet",
+      href: row.testsUrl,
+    });
+    after.push(...(details.extra ?? []));
+  }
+  return { title, totalMs: total, bars, stopped, after };
 }

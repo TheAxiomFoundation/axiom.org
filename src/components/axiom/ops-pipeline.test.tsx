@@ -651,6 +651,24 @@ describe("OpsPipeline", () => {
       expect(fetch).toHaveBeenCalledTimes(1);
     });
 
+    it("opens a run's timeline under its row in the run log", async () => {
+      renderFlow();
+      fireEvent.click(screen.getByRole("tab", { name: "Run log" }));
+      const toggle = await screen.findByRole("button", { name: /^Timeline of us\/m, dispatched/ });
+      expect(toggle).toHaveAttribute("aria-expanded", "false");
+      fireEvent.click(toggle);
+      expect(toggle).toHaveAttribute("aria-expanded", "true");
+      const after = screen.getByRole("region", { name: "After the PR" });
+      expect(within(after).getAllByRole("listitem").map((row) => row.querySelector("span")?.textContent)).toEqual([
+        "Review",
+        "Index",
+        "Tests on main",
+      ]);
+      expect(screen.getByRole("region", { name: "Encode run" })).toBeInTheDocument();
+      fireEvent.click(toggle);
+      expect(screen.queryByRole("region", { name: "After the PR" })).not.toBeInTheDocument();
+    });
+
     it("filters the run log and exports it", async () => {
       renderFlow();
       fireEvent.click(screen.getByRole("tab", { name: "Run log" }));

@@ -33,13 +33,16 @@ import {
   type CorpusView,
 } from "@/lib/axiom/corpus-releases";
 import { jurisdictionName, ownLevelName } from "@/lib/axiom/jurisdiction-names";
+import { RunTimeline } from "./run-timeline";
 import {
   dispatchFlow,
   type FlowGate,
   type FlowSegment,
   type EncodeParts,
   type GateKey,
+  runTimeline,
   type RunRow,
+  shortDuration,
   type StepTimes,
   type StepTiming,
   type TestsParts,
@@ -1476,11 +1479,6 @@ function StepTable({
   );
 }
 
-/** Seconds under a minute; otherwise as the rest of the page writes durations. */
-function shortDuration(ms: number): string {
-  return ms < 60_000 ? `${Math.round(ms / 1000)}s` : durationLabel(ms);
-}
-
 /**
  * A "?" that opens a short note on what something means, so the page shows
  * names and numbers and explains them only when asked. Closes on a click
@@ -1805,6 +1803,7 @@ function RunLog({ load, referenceMs }: { load: () => Promise<RunRow[]>; referenc
   const [outcome, setOutcome] = useState("");
   const [encoder, setEncoder] = useState("");
   const [limit, setLimit] = useState(LOG_PAGE);
+  const [openRun, setOpenRun] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
     load().then(
@@ -1894,6 +1893,9 @@ function RunLog({ load, referenceMs }: { load: () => Promise<RunRow[]>; referenc
         <table className={styles.logTable}>
           <thead>
             <tr>
+              <th scope="col">
+                <span className="sr-only">Timeline</span>
+              </th>
               <th scope="col">Dispatched</th>
               <th scope="col">Citation</th>
               <th scope="col">Encoder</th>
@@ -1906,55 +1908,75 @@ function RunLog({ load, referenceMs }: { load: () => Promise<RunRow[]>; referenc
           </thead>
           <tbody>
             {filtered.slice(0, limit).map((row) => (
-              <tr key={row.id}>
-                <td title={row.dispatchedAt}>
-                  {ageLabel(row.dispatchedAt, referenceMs)} ago
-                  {row.by && <span className={styles.logSub}>{row.by}</span>}
-                </td>
-                <td className={styles.logCitation}>
-                  <a href={journeyHref(row.citation)}>{row.citation}</a>
-                </td>
-                <td className={styles.logMono}>{row.encoder ?? "—"}</td>
-                <td>{row.approvalMs === null ? "—" : durationLabel(row.approvalMs)}</td>
-                <td>{row.runMs === null ? "—" : durationLabel(row.runMs)}</td>
-                <td className={styles.logOutcome} data-outcome={row.outcome}>
-                  <a href={row.runUrl} target="_blank" rel="noreferrer">
-                    {row.outcomeLabel}
-                  </a>
-                  {row.cause && (
-                    <span className={styles.logSub} title={row.cause}>
-                      {row.cause}
-                    </span>
-                  )}
-                </td>
-                <td>
-                  {row.pr ? (
-                    <>
-                      <a href={row.pr.url} target="_blank" rel="noreferrer">
-                        {row.pr.label}
-                      </a>
-                      <span className={styles.logSub} title={row.pr.error ?? undefined}>
-                        {row.pr.state}
-                        {row.pr.error ? ` · ${row.pr.error}` : ""}
+              <Fragment key={row.id}>
+                <tr>
+                  <td className={styles.logToggleCell}>
+                    <button
+                      type="button"
+                      className={styles.logToggle}
+                      aria-expanded={openRun === row.id}
+                      aria-label={`Timeline of ${row.citation}, dispatched ${formatDay(row.dispatchedAt)}`}
+                      onClick={() => setOpenRun((open) => (open === row.id ? null : row.id))}
+                    >
+                      <span aria-hidden>{openRun === row.id ? "▾" : "▸"}</span>
+                    </button>
+                  </td>
+                  <td title={row.dispatchedAt}>
+                    {ageLabel(row.dispatchedAt, referenceMs)} ago
+                    {row.by && <span className={styles.logSub}>{row.by}</span>}
+                  </td>
+                  <td className={styles.logCitation}>
+                    <a href={journeyHref(row.citation)}>{row.citation}</a>
+                  </td>
+                  <td className={styles.logMono}>{row.encoder ?? "—"}</td>
+                  <td>{row.approvalMs === null ? "—" : durationLabel(row.approvalMs)}</td>
+                  <td>{row.runMs === null ? "—" : durationLabel(row.runMs)}</td>
+                  <td className={styles.logOutcome} data-outcome={row.outcome}>
+                    <a href={row.runUrl} target="_blank" rel="noreferrer">
+                      {row.outcomeLabel}
+                    </a>
+                    {row.cause && (
+                      <span className={styles.logSub} title={row.cause}>
+                        {row.cause}
                       </span>
-                    </>
-                  ) : (
-                    "—"
-                  )}
-                </td>
-                <td>
-                  {row.merged ? (
-                    <>
-                      {row.merged === "main" ? "main" : "off main"}
-                      <span className={styles.logSub}>
-                        {[row.index, row.tests ? `tests ${row.tests}` : null].filter(Boolean).join(" · ")}
-                      </span>
-                    </>
-                  ) : (
-                    "—"
-                  )}
-                </td>
-              </tr>
+                    )}
+                  </td>
+                  <td>
+                    {row.pr ? (
+                      <>
+                        <a href={row.pr.url} target="_blank" rel="noreferrer">
+                          {row.pr.label}
+                        </a>
+                        <span className={styles.logSub} title={row.pr.error ?? undefined}>
+                          {row.pr.state}
+                          {row.pr.error ? ` · ${row.pr.error}` : ""}
+                        </span>
+                      </>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                  <td>
+                    {row.merged ? (
+                      <>
+                        {row.merged === "main" ? "main" : "off main"}
+                        <span className={styles.logSub}>
+                          {[row.index, row.tests ? `tests ${row.tests}` : null].filter(Boolean).join(" · ")}
+                        </span>
+                      </>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                </tr>
+                {openRun === row.id && (
+                  <tr className={styles.logTimelineRow}>
+                    <td colSpan={9}>
+                      <RunTimeline timeline={runTimeline(row, referenceMs)} />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             ))}
           </tbody>
         </table>
