@@ -89,7 +89,7 @@ export function RunTimeline({ timeline }: { timeline: Timeline }) {
               </ol>
             </div>
           )}
-          {timeline.stopped && <p className={styles.stopped}>Stopped: {timeline.stopped}</p>}
+          {timeline.stopped && <p className={styles.stopped}>{timeline.stopped}</p>}
         </section>
       )}
       {timeline.after.length > 0 && (

@@ -554,7 +554,7 @@ describe("OpsPipeline", () => {
     const blockers = screen.getByRole("group", { name: "Top blockers" });
     const rows = within(within(blockers).getByRole("list")).getAllByRole("button");
     expect(rows.map((row) => row.textContent)).toEqual([
-      "EncodeValidation rules3",
+      "EncodeFailed validation3",
       "ReviewFails its own checks1",
       "MergeMerged off main1",
     ]);
@@ -645,11 +645,11 @@ describe("OpsPipeline", () => {
       expect(failed).toHaveAttribute("aria-expanded", "false");
       fireEvent.click(failed);
       const reasons = within(flow).getByRole("group", { name: "Why encode runs failed" });
-      fireEvent.click(within(reasons).getByRole("button", { name: "Validation rules 1" }));
-      const list = await screen.findByRole("region", { name: "Encode run: Validation rules runs" });
+      fireEvent.click(within(reasons).getByRole("button", { name: "Failed validation 1" }));
+      const list = await screen.findByRole("region", { name: "Encode run: Failed validation runs" });
       expect(fetch).toHaveBeenCalledWith("/ops/runs?j=us&only=1");
       expect(within(list).getByRole("link", { name: "us/v" })).toHaveAttribute("href", "/ops/journey?citation=us%2Fv");
-      expect(within(list).getByText("Validation rules · rule-a")).toBeInTheDocument();
+      expect(within(list).getByText("Failed validation · rule-a")).toBeInTheDocument();
       expect(within(list).getByText(/by Pavel · encoder 0.2.9/)).toBeInTheDocument();
       // Every number opens its runs, reusing the runs already loaded.
       fireEvent.click(within(flow).getByRole("button", { name: "1 tests pass" }));

@@ -27,7 +27,7 @@ describe("runRow", () => {
       approvalMs: 120_000,
       runMs: 1_800_000,
       outcome: "failed",
-      outcomeLabel: "Validation rules",
+      outcomeLabel: "Failed validation",
       cause: "complete-source-unit:tests",
       pr: null,
       merged: null,
@@ -131,7 +131,7 @@ describe("dispatchFlow", () => {
       [
         "run",
         14,
-        ["continue:Encoded:9", "pending:Running:1", "loss:Validation rules:2", "loss:Setup:1", "loss:Cancelled or timed out:1"],
+        ["continue:Encoded:9", "pending:Running:1", "loss:Failed validation:2", "loss:Failed in setup:1", "loss:Cancelled or timed out:1"],
       ],
       ["pr", 9, ["continue:PR opened:8", "loss:No PR:1"]],
       ["review", 8, ["continue:Merged:6", "pending:In review:1", "loss:Closed:1"]],
@@ -357,7 +357,7 @@ describe("runTimeline", () => {
       "Setup:done",
       "Encode loop · 4 tries:failed",
     ]);
-    expect(failed.stopped).toBe("Validation rules: complete-source-unit:tests");
+    expect(failed.stopped).toBe("Failed validation: Completeness rule: tests");
     expect(failed.after).toEqual([]);
     // Before step times were recorded: the run as one bar.
     const early = runTimeline(runRow(pipelineAttempt({ dispatched_at: at(0), encode_started_at: at(1), finished_at: at(31), run_conclusion: "cancelled", cancel_stage: "running" })), 0);

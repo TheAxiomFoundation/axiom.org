@@ -9,7 +9,7 @@ describe("sectionStatus", () => {
   it("reads a section's status from its latest run", () => {
     const status = (overrides: Parameters<typeof pipelineAttempt>[0]) => sectionStatus(runRow(pipelineAttempt(overrides)));
     expect(status({ run_status: "waiting", run_conclusion: null })).toEqual({ status: "Waiting for approval", tone: "waiting" });
-    expect(status({ encoder_error_rule: "rule-a", failure_source: "diagnostics" })).toEqual({ status: "Validation rules", tone: "failed" });
+    expect(status({ encoder_error_rule: "rule-a", failure_source: "diagnostics" })).toEqual({ status: "Failed validation", tone: "failed" });
     expect(status({ run_conclusion: "cancelled", cancel_stage: "approval" })).toEqual({ status: "Cancelled at approval", tone: "failed" });
     expect(status({ run_conclusion: "success" })).toEqual({ status: "Without a PR", tone: "failed" });
     expect(status({ run_conclusion: "success", pr_state: "draft", pr_url: "u" })).toEqual({ status: "In review", tone: "waiting" });
@@ -46,7 +46,7 @@ describe("runLedger", () => {
     const statute = federal.documents[1];
     expect(statute.sections.map((s) => [s.designator, s.label, s.status, s.runs.map((r) => r.id)])).toEqual([
       ["2015/f", "Disqualification", "Tests pass", ["a2", "a1"]],
-      ["2017/a", null, "Cause not looked up yet", ["b"]],
+      ["2017/a", null, "Failed, cause not looked up yet", ["b"]],
     ]);
     expect(statute.lastAt).toBe(day(3));
   });
@@ -79,9 +79,9 @@ describe("sectionOverview", () => {
     const overview = sectionOverview(section);
     expect(overview).toMatchObject({ runs: 4, firstAt: day(1), lastAt: day(4), encoders: { from: "0.2.2018", to: "0.2.2087" } });
     expect(overview.ended.map((e) => `${e.label}:${e.tone}:${e.count}`)).toEqual([
-      "Validation rules:failed:2",
+      "Failed validation:failed:2",
+      "Failed at an unknown step:failed:1",
       "Merged into another branch:failed:1",
-      expect.stringMatching(/:failed:1$/),
     ]);
     expect(overview.causes[0]).toEqual({ label: "Completeness rule: tests", count: 2, detail: "complete-source-unit:tests" });
     expect(overview.latest.id).toBe("4");

@@ -36,7 +36,7 @@ export interface RunRow {
   /** Each try of the encode loop, when the encoder's record has them. */
   tries: PipelineTry[] | null;
   outcome: RunOutcome;
-  /** In a few words: "Encoded", "Validation rules", "Cancelled at approval". */
+  /** In a few words: "Encoded", "Failed validation", "Cancelled at approval". */
   outcomeLabel: string;
   /** For a failure, what stopped it: the validator rule, step, or error. */
   cause: string | null;
@@ -625,7 +625,7 @@ export function runTimeline(row: RunRow, referenceMs: number, details: TimelineD
   const title = TIMELINE_TITLES[row.outcome];
   const stopped =
     row.outcome === "failed" || row.outcome === "cancelled"
-      ? (details.stopped ?? ([row.outcomeLabel, row.cause].filter(Boolean).join(": ") || null))
+      ? (details.stopped ?? ([row.outcomeLabel, row.cause && causeText(row.cause)].filter(Boolean).join(": ") || null))
       : null;
 
   const after: TimelineStep[] = [];
@@ -700,6 +700,28 @@ export function runTimeline(row: RunRow, referenceMs: number, details: TimelineD
 const CAUSE_SOURCE_RE = /^(?:ci|compile|error|RuntimeError|ValueError|TypeError|KeyError|AssertionError):\s*/i;
 const CAUSE_HEADLINE_MAX = 72;
 
+const COMPLETENESS_RULE_RE = /^\[?complete-source-unit:([a-z0-9-]+)\]?\s*/i;
+
+/** A cause without the file and the check it came from. */
+function causeBody(cause: string): string {
+  // A raw encoder message leads with its file ("statutes/42/402/q.yaml: ci: …").
+  let text = cause.trim().replace(/^[\w./-]+\.ya?ml:\s*/i, "");
+  while (CAUSE_SOURCE_RE.test(text)) text = text.replace(CAUSE_SOURCE_RE, "");
+  return text;
+}
+
+/**
+ * A failure cause in full, as a reader takes it: without the file and the
+ * check it came from, and a completeness rule by its name.
+ */
+export function causeText(cause: string): string {
+  const text = causeBody(cause);
+  const rule = text.match(COMPLETENESS_RULE_RE);
+  if (!rule) return text;
+  const rest = text.slice(rule[0].length);
+  return `Completeness rule: ${rule[1]}${rest ? ` — ${rest}` : ""}`;
+}
+
 /**
  * A failure cause in a few words: a completeness rule by its name, else the
  * message's own first clause without the file and the check it came from
@@ -707,10 +729,8 @@ const CAUSE_HEADLINE_MAX = 72;
  * generated numeric literal"). Causes with one headline count together.
  */
 export function causeHeadline(cause: string): string {
-  // A raw encoder message leads with its file ("statutes/42/402/q.yaml: ci: …").
-  let text = cause.trim().replace(/^[\w./-]+\.ya?ml:\s*/i, "");
-  while (CAUSE_SOURCE_RE.test(text)) text = text.replace(CAUSE_SOURCE_RE, "");
-  const rule = text.match(/^\[?complete-source-unit:([a-z0-9-]+)\]?/i);
+  const text = causeBody(cause);
+  const rule = text.match(COMPLETENESS_RULE_RE);
   if (rule) return `Completeness rule: ${rule[1]}`;
   const clause = text.split(/:\s/)[0];
   const headline = (clause.length >= 12 ? clause : text).replace(/[.\s]+$/, "");

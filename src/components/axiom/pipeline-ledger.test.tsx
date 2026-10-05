@@ -39,7 +39,7 @@ describe("PipelineLedger", () => {
     const row = screen.getByRole("button", { name: "Runs of us/statute/7/2015/f" }).closest("tr")!;
     expect(row).toHaveTextContent(/2015\/f.*Disqualification.*Tests pass.*2/);
     expect(within(row).getByRole("link", { name: "2015/f" })).toHaveAttribute("href", "/ops/journey?citation=us%2Fstatute%2F7%2F2015%2Ff");
-    expect(screen.getByRole("button", { name: "Runs of us-la/statute/47/32" }).closest("tr")).toHaveTextContent("Validation rules");
+    expect(screen.getByRole("button", { name: "Runs of us-la/statute/47/32" }).closest("tr")).toHaveTextContent("Failed validation");
   });
 
   it("drops down an overview of a section's runs with the latest run's timeline, and every run on request", async () => {
@@ -69,7 +69,7 @@ describe("PipelineLedger", () => {
     // A summary line, then two count-first lists, then the latest run.
     expect(screen.getByText("12 runs").parentElement).toHaveTextContent("12 runs29d ago → 18d agoencoder 0.2.2000 → 0.2.2011");
     const list = (name: string) => within(screen.getByRole("list", { name })).getAllByRole("listitem").map((item) => item.textContent);
-    expect(list("Outcome of each run")).toEqual(["8No detail recorded", "4Validation rules"]);
+    expect(list("Outcome of each run")).toEqual(["8Failed at an unknown step", "4Failed validation"]);
     expect(list("Why they failed")).toEqual([
       "4Completeness rule: tests",
       "1cause b",
@@ -82,7 +82,7 @@ describe("PipelineLedger", () => {
     expect(list("Why they failed")).toHaveLength(10);
     fireEvent.click(screen.getByRole("button", { name: "Show fewer" }));
     expect(list("Why they failed")).toHaveLength(5);
-    expect(screen.getByText("Latest run").parentElement).toHaveTextContent("Latest run18d agoNo detail recordedcause l");
+    expect(screen.getByText("Latest run").parentElement).toHaveTextContent("Latest run18d agoFailed at an unknown stepcause l");
     // The latest run's timeline shows under the overview, with nothing to open.
     expect(screen.queryByRole("button", { name: /^Timeline of / })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Encode run" })).toBeInTheDocument();
@@ -91,7 +91,7 @@ describe("PipelineLedger", () => {
     fireEvent.click(every);
     const lines = within(screen.getByRole("list", { name: "Every run" })).getAllByRole("listitem");
     expect(lines).toHaveLength(12);
-    expect(lines[11]).toHaveTextContent("▸29d ago0.2.2000Validation rulesCompleteness rule: tests");
+    expect(lines[11]).toHaveTextContent("▸29d ago0.2.2000Failed validationCompleteness rule: tests");
     fireEvent.click(within(lines[11]).getByRole("button", { name: "Timeline of us/statute/7/2015/f, run r0" }));
     expect(screen.getAllByRole("region", { name: "Encode run" })).toHaveLength(2);
     fireEvent.click(screen.getByRole("button", { name: "Hide the runs" }));

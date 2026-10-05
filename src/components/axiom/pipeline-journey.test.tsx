@@ -43,7 +43,7 @@ describe("PipelineJourney", () => {
     const [offMain, closed] = screen.getAllByRole("region", { name: "After the PR" });
     expect(within(offMain).getByText(/Into codex\/x, not the default branch$/)).toBeInTheDocument();
     expect(within(closed).getByRole("link", { name: "Closed" })).toHaveAttribute("href", "https://github.com/x/pull/9");
-    expect(screen.getByText("Stopped: Validation rules: rule-a — detail")).toBeInTheDocument();
+    expect(screen.getByText("Failed validation: rule-a — detail")).toBeInTheDocument();
   });
 
   it("follows a merge into main through the index, its tests, the compile sweep, and the oracle", () => {

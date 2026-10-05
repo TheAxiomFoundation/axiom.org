@@ -253,7 +253,7 @@ function DocumentSections({
   );
 }
 
-/** One overview list, count first: "9  Validation rules", the largest few until "+N more" opens the rest. A row's tooltip holds a full message. */
+/** One overview list, count first: "9  Failed validation", the largest few until "+N more" opens the rest. A row's tooltip holds a full message. */
 function CountList({
   title,
   groups,
