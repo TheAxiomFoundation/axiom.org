@@ -998,7 +998,7 @@ function SummaryFunnel({
   onQueue: () => void;
 }) {
   const steps = [
-    { label: "dispatched", value: funnel.citations },
+    { label: "citations", value: funnel.citations },
     { label: "encoded", value: funnel.encoded },
     { label: "merged", value: funnel.merged },
     { label: "in main", value: funnel.mergedMain },
@@ -1007,10 +1007,11 @@ function SummaryFunnel({
   return (
     <div className={styles.summaryFunnel}>
       <div className={styles.summaryFunnelHead}>
-        <span className={styles.miniLabel}>Ever reached</span>
-        <Explain label="Ever reached">
-          How many citations ever got this far, over all their runs. The chips between the numbers are where the
-          others are now; click one to list them.
+        <span className={styles.miniLabel}>Citations: how far each got</span>
+        <Explain label="Citations: how far each got">
+          Each number counts citations, not runs. A citation counts at a step if any of its runs got there, even if
+          a later run failed. The chips show where the rest are now; click one to list them. The Flow tab counts
+          runs.
         </Explain>
         {queued && queued.pending > 0 && (
           <button type="button" className={styles.gapChip} onClick={onQueue}>
@@ -1018,7 +1019,7 @@ function SummaryFunnel({
           </button>
         )}
       </div>
-      <ol className={styles.funnelSteps} aria-label="Citations that ever reached each step">
+      <ol className={styles.funnelSteps} aria-label="How far each citation got">
         {steps.map((step, index) => (
           <li key={step.label} className={styles.funnelStep}>
             <span className={styles.funnelValue}>{number(step.value)}</span>

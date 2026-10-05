@@ -462,8 +462,8 @@ describe("OpsPipeline", () => {
     fireEvent.change(select, { target: { value: "" } });
     expect(push).toHaveBeenLastCalledWith("/ops?j=us#pipeline-title");
 
-    const funnel = screen.getByRole("list", { name: "Citations that ever reached each step" });
-    expect(funnel).toHaveTextContent(/^3dispatched.*2encoded.*1merged.*1in main.*1tests pass$/);
+    const funnel = screen.getByRole("list", { name: "How far each citation got" });
+    expect(funnel).toHaveTextContent(/^3citations.*2encoded.*1merged.*1in main.*1tests pass$/);
     // Between the steps: what is stuck there now.
     expect(within(funnel).getByRole("button", { name: "1 failed" })).toBeInTheDocument();
     expect(within(funnel).getByRole("button", { name: "1 in review" })).toBeInTheDocument();
@@ -526,8 +526,8 @@ describe("OpsPipeline", () => {
     expect(screen.getByRole("list", { name: "Pipeline stages" })).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "Why encodes fail" })).toBeInTheDocument();
 
-    const funnel = screen.getByRole("list", { name: "Citations that ever reached each step" });
-    expect(funnel).toHaveTextContent(/^6dispatched.*3encoded.*2merged.*1in main.*1tests pass$/);
+    const funnel = screen.getByRole("list", { name: "How far each citation got" });
+    expect(funnel).toHaveTextContent(/^6citations.*3encoded.*2merged.*1in main.*1tests pass$/);
     fireEvent.click(within(funnel).getByRole("button", { name: "3 failed" }));
     expect(within(openList()).getByRole("heading", { name: /Last encode failed\s*3/ })).toBeInTheDocument();
     expect(within(funnel).getByRole("button", { name: "3 failed" })).toHaveAttribute("aria-pressed", "true");
@@ -554,7 +554,8 @@ describe("OpsPipeline", () => {
     expect(within(trend).getByRole("note")).toHaveTextContent(/last 8 weeks\. The number is the last full week\./);
     // Names and numbers only; meanings sit behind each "?".
     expect(screen.queryByText(/stages · corpus/)).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "What Ever reached means" })).toBeInTheDocument();
+    press(screen.getByRole("button", { name: "What Citations: how far each got means" }));
+    expect(screen.getByRole("note")).toHaveTextContent(/^Each number counts citations, not runs/);
     expect(within(blockers).getByRole("button", { name: "What Top blockers means" })).toBeInTheDocument();
 
   });
