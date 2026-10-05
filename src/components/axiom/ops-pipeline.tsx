@@ -1264,7 +1264,7 @@ function FlowView({
         <li key={gate.key} className={styles.flowGate}>
           <div className={styles.flowGateHead}>
             <span className={styles.flowGateName}>{gate.label}</span>
-            <span className={styles.flowGateIn}>{number(gate.input)} in</span>
+            <span className={styles.flowGateIn}>{number(gate.input)} runs reached this step</span>
           </div>
           {gate.input === 0 ? (
             <p className={styles.empty}>No runs reached this gate.</p>

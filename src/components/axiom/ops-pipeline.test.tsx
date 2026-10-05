@@ -582,7 +582,7 @@ describe("OpsPipeline", () => {
       renderFlow({ jurisdiction: "us", only: true });
       expect(screen.getByRole("tab", { name: "Flow" })).toHaveAttribute("aria-selected", "true");
       const flow = screen.getByRole("list", { name: "Dispatches through each gate" });
-      expect(flow).toHaveTextContent(/Signing approval3 in/);
+      expect(flow).toHaveTextContent(/Signing approval3 runs reached this step/);
       fireEvent.click(within(flow).getByRole("button", { name: /^Validation rules\s*1\s*50%$/ }));
       const list = await screen.findByRole("region", { name: "Encode run: Validation rules runs" });
       expect(fetch).toHaveBeenCalledWith("/ops/runs?j=us&only=1");
