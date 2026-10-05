@@ -14,7 +14,7 @@ import {
   scopeOptions,
 } from "@/lib/axiom/encoding-pipeline-insights";
 import { opsPipelineVisible } from "@/lib/axiom/ops-pipeline-visibility";
-import { dispatchFlow, runRows } from "@/lib/axiom/encoding-pipeline-runs";
+import { dispatchFlow, runRows, stepTimes } from "@/lib/axiom/encoding-pipeline-runs";
 import { getEncodingStatus, getRecentCorpusScopes } from "@/lib/corpus-status";
 import { SITE_URL } from "@/lib/urls";
 
@@ -50,6 +50,7 @@ export default async function OpsPage({
   const keep = (jurisdiction: string) => inScope(jurisdiction, scope);
   const attempts = pipeline?.attempts ?? [];
   const scoped = attempts.filter((attempt) => keep(attemptJurisdiction(attempt)));
+  const runs = runRows(scoped);
   return (
     <OpsDashboard
       initialStatus={encodingStatus.value}
@@ -67,10 +68,11 @@ export default async function OpsPage({
             queued={scopeQueued(queuedSummary(queues), keep)}
             corpus={corpus && scopeCorpus(corpus, scope ? rootJurisdiction(scope.jurisdiction) : null)}
             // Counts only: the runs behind each part load on demand from /ops/runs.
-            flow={dispatchFlow(runRows(scoped)).map((gate) => ({
+            flow={dispatchFlow(runs).map((gate) => ({
               ...gate,
               segments: gate.segments.map((segment) => ({ ...segment, ids: [] })),
             }))}
+            times={stepTimes(runs, referenceMs)}
             referenceMs={referenceMs}
           />
         ) : null

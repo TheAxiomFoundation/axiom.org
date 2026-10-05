@@ -39,6 +39,9 @@ export interface RunRow {
     state: "draft" | "open" | "merged" | "closed";
     /** What the PR's first failing check printed, if it fails. */
     error: string | null;
+    openedAt: string | null;
+    mergedAt: string | null;
+    closedAt: string | null;
   } | null;
   merged: "main" | "off main" | null;
   index: "indexed" | "missing" | "awaiting" | null;
@@ -106,6 +109,9 @@ export function runRow(attempt: PipelineAttempt): RunRow {
             url: attempt.pr_url,
             state: attempt.pr_state,
             error: clip(attempt.pr_check_error ?? null),
+            openedAt: attempt.pr_created_at,
+            mergedAt: attempt.pr_merged_at,
+            closedAt: attempt.pr_closed_at,
           }
         : null,
     merged,
@@ -139,16 +145,28 @@ export interface FlowSegment {
 }
 
 export interface FlowGate {
-  key: string;
+  key: GateKey;
   label: string;
   /** Runs that reached this gate. */
   input: number;
   segments: FlowSegment[];
 }
 
+/** The gates in order, and what each is called on the page. */
+export const GATE_LABELS = {
+  approval: "Signing approval",
+  run: "Encode run",
+  pr: "Pull request",
+  review: "Review",
+  main: "Default branch",
+  index: "Index",
+  tests: "Tests on main",
+} as const;
+
+export type GateKey = keyof typeof GATE_LABELS;
+
 function gate(
-  key: string,
-  label: string,
+  key: GateKey,
   input: RunRow[],
   parts: Array<{ key: string; label: string; kind: FlowSegment["kind"]; test: (row: RunRow) => boolean }>
 ): { gate: FlowGate; next: RunRow[] } {
@@ -160,7 +178,7 @@ function gate(
     .filter((segment) => segment.count > 0);
   const onward = new Set(segments.filter((s) => s.kind === "continue").flatMap((s) => s.ids));
   return {
-    gate: { key, label, input: input.length, segments },
+    gate: { key, label: GATE_LABELS[key], input: input.length, segments },
     next: input.filter((row) => onward.has(row.id)),
   };
 }
@@ -179,7 +197,7 @@ export function dispatchFlow(rows: RunRow[]): FlowGate[] {
     gates.push(result);
     input = next;
   };
-  add("approval", "Signing approval", input, [
+  add("approval", input, [
     {
       key: "approved",
       label: "Approved",
@@ -194,7 +212,7 @@ export function dispatchFlow(rows: RunRow[]): FlowGate[] {
   for (const row of input) {
     if (row.outcome === "failed") failedAt.set(row.outcomeLabel, (failedAt.get(row.outcomeLabel) ?? 0) + 1);
   }
-  add("run", "Encode run", input, [
+  add("run", input, [
     { key: "encoded", label: "Encoded", kind: "continue", test: (r) => r.outcome === "encoded" },
     { key: "running", label: "Running", kind: "pending", test: (r) => r.outcome === "running" },
     ...[...failedAt]
@@ -207,28 +225,133 @@ export function dispatchFlow(rows: RunRow[]): FlowGate[] {
       })),
     { key: "cancelled", label: "Cancelled or timed out", kind: "loss", test: (r) => r.outcome === "cancelled" },
   ]);
-  add("pr", "Pull request", input, [
+  add("pr", input, [
     { key: "opened", label: "PR opened", kind: "continue", test: (r) => r.pr !== null },
     { key: "none", label: "No PR", kind: "loss", test: (r) => r.pr === null },
   ]);
-  add("review", "Review", input, [
+  add("review", input, [
     { key: "merged", label: "Merged", kind: "continue", test: (r) => r.pr?.state === "merged" },
     { key: "open", label: "In review", kind: "pending", test: (r) => r.pr?.state === "draft" || r.pr?.state === "open" },
     { key: "closed", label: "Closed", kind: "loss", test: (r) => r.pr?.state === "closed" },
   ]);
-  add("main", "Default branch", input, [
+  add("main", input, [
     { key: "main", label: "Into main", kind: "continue", test: (r) => r.merged === "main" },
     { key: "off", label: "Off main", kind: "loss", test: (r) => r.merged === "off main" },
   ]);
-  add("index", "Index", input, [
+  add("index", input, [
     { key: "indexed", label: "Indexed", kind: "continue", test: (r) => r.index === "indexed" },
     { key: "awaiting", label: "Awaiting the index", kind: "pending", test: (r) => r.index === "awaiting" },
     { key: "missing", label: "Missing from the index", kind: "loss", test: (r) => r.index === "missing" },
   ]);
-  add("tests", "Tests on main", input, [
+  add("tests", input, [
     { key: "pass", label: "Tests pass", kind: "continue", test: (r) => r.tests === "pass" },
     { key: "pending", label: "No result yet", kind: "pending", test: (r) => r.tests === null || r.tests === "waived" },
     { key: "fail", label: "Tests fail", kind: "loss", test: (r) => r.tests === "fail" },
   ]);
   return gates;
+}
+
+/** How long runs spent at one step: the median, and the slowest tenth when there are enough runs. */
+export interface StepTiming {
+  label: string;
+  runs: number;
+  medianMs: number;
+  /** What the slowest 10% of runs took at least; null below TAIL_MIN_RUNS runs. */
+  slowMs: number | null;
+}
+
+export interface StepTimes {
+  key: GateKey;
+  label: string;
+  /** What is timed, in a few words: "dispatch → job start". */
+  span: string;
+  /** What is timed, from when to when, or why a step is not timed. */
+  measures: string;
+  /** Why a step has no times: it takes none, or the data cannot time it yet. */
+  untimed: "No wait" | "Not timed yet" | null;
+  timings: StepTiming[];
+}
+
+const TAIL_MIN_RUNS = 10;
+
+function timing(label: string, values: Array<number | null>): StepTiming | null {
+  const sorted = values.filter((v): v is number => v !== null).sort((a, b) => a - b);
+  if (sorted.length === 0) return null;
+  const mid = Math.floor(sorted.length / 2);
+  return {
+    label,
+    runs: sorted.length,
+    medianMs: sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2,
+    slowMs: sorted.length >= TAIL_MIN_RUNS ? sorted[Math.ceil(sorted.length * 0.9) - 1] : null,
+  };
+}
+
+/**
+ * How long each gate takes, in the flow's order. The index and the tests on
+ * main are not timed: the collector records the index sync it first saw a
+ * module in and the latest validation run, not the first ones after the merge.
+ */
+export function stepTimes(rows: RunRow[], referenceMs: number): StepTimes[] {
+  const timed = (key: GateKey, span: string, measures: string, ...timings: Array<StepTiming | null>): StepTimes => ({
+    key,
+    label: GATE_LABELS[key],
+    span,
+    measures,
+    untimed: null,
+    timings: timings.filter((t): t is StepTiming => t !== null),
+  });
+  const untimed = (key: GateKey, span: string, why: NonNullable<StepTimes["untimed"]>, measures: string): StepTimes => ({
+    key,
+    label: GATE_LABELS[key],
+    span,
+    measures,
+    untimed: why,
+    timings: [],
+  });
+  // Only runs whose job start is known: before it was recorded, a run's time
+  // counted from the workflow's start and so held the approval wait too.
+  const jobTimed = rows.filter((row) => row.approvalMs !== null);
+  const withPr = rows.filter((row) => row.pr?.openedAt);
+  const prMs = (row: RunRow, end: string | null | undefined) => ms(row.pr?.openedAt, end);
+  const now = new Date(referenceMs).toISOString();
+  return [
+    timed(
+      "approval",
+      "dispatch → job start",
+      "From the dispatch until a person approves the signing and the encode job starts.",
+      timing("Wait", rows.map((row) => row.approvalMs))
+    ),
+    timed(
+      "run",
+      "job start → job end",
+      "From the start of the encode job until it ends: setup, the encode and repair loop, signing, the PR.",
+      timing("Encoded", jobTimed.filter((row) => row.outcome === "encoded").map((row) => row.runMs)),
+      timing("Failed", jobTimed.filter((row) => row.outcome === "failed").map((row) => row.runMs))
+    ),
+    untimed("pr", "opened by the run", "No wait", "The encode run opens the draft PR before it ends."),
+    timed(
+      "review",
+      "PR opened → merged or closed",
+      "From the PR's opening until it merges or closes; PRs still open, until now.",
+      timing("Merged", withPr.filter((row) => row.pr?.state === "merged").map((row) => prMs(row, row.pr?.mergedAt))),
+      timing("Closed", withPr.filter((row) => row.pr?.state === "closed").map((row) => prMs(row, row.pr?.closedAt))),
+      timing(
+        "Open now",
+        withPr.filter((row) => row.pr?.state === "draft" || row.pr?.state === "open").map((row) => prMs(row, now))
+      )
+    ),
+    untimed("main", "set at the merge", "No wait", "The PR's base branch decides it at the merge."),
+    untimed(
+      "index",
+      "merge → index sync",
+      "Not timed yet",
+      "The collector records a later index sync, not the first one after the merge."
+    ),
+    untimed(
+      "tests",
+      "merge → tests on main",
+      "Not timed yet",
+      "The collector records the latest validation run on main, not the first one after the merge."
+    ),
+  ];
 }

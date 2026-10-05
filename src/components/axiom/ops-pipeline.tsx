@@ -37,6 +37,7 @@ import {
   type FlowGate,
   type FlowSegment,
   type RunRow,
+  type StepTimes,
 } from "@/lib/axiom/encoding-pipeline-runs";
 
 /** The stages a citation moves through, in order, with a short status when nothing is stuck. */
@@ -110,6 +111,7 @@ export function OpsPipeline({
   queued,
   corpus = null,
   flow = null,
+  times = null,
   referenceMs,
 }: {
   view: PipelineView;
@@ -121,6 +123,8 @@ export function OpsPipeline({
   corpus?: CorpusView | null;
   /** Every dispatch's path through the gates, counts only; rows load on demand. */
   flow?: FlowGate[] | null;
+  /** How long each of the flow's gates takes. */
+  times?: StepTimes[] | null;
   referenceMs: number;
 }) {
   const [listing, setListing] = useState<Listing | null>(null);
@@ -286,7 +290,7 @@ export function OpsPipeline({
               ))}
             </div>
           )}
-          {flow && detailsTab === "flow" && <FlowView gates={flow} onOpen={openSegment} />}
+          {flow && detailsTab === "flow" && <FlowView gates={flow} times={times} onOpen={openSegment} />}
           {flow && detailsTab === "log" && <RunLog load={loadRuns} referenceMs={referenceMs} />}
           {detailsTab === "cards" && (
           <>
@@ -1251,55 +1255,103 @@ const SEGMENT_CLASS: Record<FlowSegment["kind"], string> = {
  * reached it, split into those that went on, those still waiting, and those
  * lost there. Each part opens its runs.
  */
+/** One run's path, read left to right: how long each step takes. */
+function StepTimeRow({ steps }: { steps: StepTimes[] }) {
+  return (
+    <section className={styles.flowPart} aria-labelledby="flow-times-title">
+      <div className={styles.flowPartHead}>
+        <h4 id="flow-times-title">Time per step</h4>
+        <span>the typical run (median), and how long the slowest 10% take</span>
+      </div>
+      <ol className={styles.timeSteps}>
+        {steps.map((step) => (
+          <li key={step.key} className={styles.timeStep} title={step.measures}>
+            <span className={styles.tileLabel}>{step.label}</span>
+            <span className={styles.timeSpan}>{step.span}</span>
+            {step.timings.length === 0 ? (
+              <span className={styles.timeNone}>{step.untimed ?? "No runs timed"}</span>
+            ) : (
+              <dl className={styles.timeStats}>
+                {step.timings.map((timing) => (
+                  <div key={timing.label}>
+                    <dt>
+                      {timing.label} <span>· {number(timing.runs)} {timing.runs === 1 ? "run" : "runs"}</span>
+                    </dt>
+                    <dd>
+                      <strong>{durationLabel(timing.medianMs)}</strong>
+                      {timing.slowMs !== null && <span>slowest 10%: {durationLabel(timing.slowMs)}+</span>}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 function FlowView({
   gates,
+  times,
   onOpen,
 }: {
   gates: FlowGate[];
+  times: StepTimes[] | null;
   onOpen: (gate: FlowGate, segment: FlowSegment) => void;
 }) {
   return (
-    <ol className={styles.flowGates} aria-label="Dispatches through each gate">
-      {gates.map((gate) => (
-        <li key={gate.key} className={styles.flowGate}>
-          <div className={styles.flowGateHead}>
-            <span className={styles.flowGateName}>{gate.label}</span>
-            <span className={styles.flowGateIn}>{number(gate.input)} runs reached this step</span>
-          </div>
-          {gate.input === 0 ? (
-            <p className={styles.empty}>No runs reached this gate.</p>
-          ) : (
-            <>
-              <div className={styles.flowBar} aria-hidden>
-                {gate.segments.map((segment) => (
-                  <span
-                    key={segment.key}
-                    className={`${styles.flowSeg} ${SEGMENT_CLASS[segment.kind]}`}
-                    style={{ flexGrow: segment.count }}
-                    title={`${segment.label}: ${number(segment.count)}`}
-                  />
-                ))}
+    <>
+      {times && <StepTimeRow steps={times} />}
+      <section className={styles.flowPart} aria-labelledby="flow-gates-title">
+        <div className={styles.flowPartHead}>
+          <h4 id="flow-gates-title">Where runs go</h4>
+          <span>each step counts the runs that passed the step before</span>
+        </div>
+        <ol className={styles.flowGates} aria-label="Dispatches through each gate">
+          {gates.map((gate) => (
+            <li key={gate.key} className={styles.flowGate}>
+              <div className={styles.flowGateHead}>
+                <span className={styles.flowGateName}>{gate.label}</span>
+                <span className={styles.flowGateIn}>{number(gate.input)} runs reached this step</span>
               </div>
-              <div className={styles.flowLegend}>
-                {gate.segments.map((segment) => (
-                  <button
-                    key={segment.key}
-                    type="button"
-                    className={styles.flowChip}
-                    onClick={() => onOpen(gate, segment)}
-                  >
-                    <span className={`${styles.flowDot} ${SEGMENT_CLASS[segment.kind]}`} aria-hidden />
-                    {segment.label}
-                    <strong>{number(segment.count)}</strong>
-                    <span className={styles.flowShare}>{percent(segment.count, gate.input)}%</span>
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </li>
-      ))}
-    </ol>
+              {gate.input === 0 ? (
+                <p className={styles.empty}>No runs reached this gate.</p>
+              ) : (
+                <>
+                  <div className={styles.flowBar} aria-hidden>
+                    {gate.segments.map((segment) => (
+                      <span
+                        key={segment.key}
+                        className={`${styles.flowSeg} ${SEGMENT_CLASS[segment.kind]}`}
+                        style={{ flexGrow: segment.count }}
+                        title={`${segment.label}: ${number(segment.count)}`}
+                      />
+                    ))}
+                  </div>
+                  <div className={styles.flowLegend}>
+                    {gate.segments.map((segment) => (
+                      <button
+                        key={segment.key}
+                        type="button"
+                        className={styles.flowChip}
+                        onClick={() => onOpen(gate, segment)}
+                      >
+                        <span className={`${styles.flowDot} ${SEGMENT_CLASS[segment.kind]}`} aria-hidden />
+                        {segment.label}
+                        <strong>{number(segment.count)}</strong>
+                        <span className={styles.flowShare}>{percent(segment.count, gate.input)}%</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </li>
+          ))}
+        </ol>
+      </section>
+    </>
   );
 }
 

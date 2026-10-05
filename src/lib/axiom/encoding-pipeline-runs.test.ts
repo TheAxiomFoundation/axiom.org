@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dispatchFlow, runRow, runRows } from "./encoding-pipeline-runs";
+import { dispatchFlow, runRow, runRows, stepTimes } from "./encoding-pipeline-runs";
 import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 
 describe("runRow", () => {
@@ -54,7 +54,13 @@ describe("runRow", () => {
     );
     expect(merged).toMatchObject({
       outcome: "encoded",
-      pr: { label: "rulespec-us#42", state: "merged", error: null },
+      pr: {
+        label: "rulespec-us#42",
+        state: "merged",
+        error: null,
+        openedAt: "2026-09-20T10:29:00Z",
+        mergedAt: "2026-09-21T09:00:00Z",
+      },
       merged: "main",
       index: "indexed",
       tests: "pass",
@@ -121,5 +127,54 @@ describe("dispatchFlow", () => {
     const flow = dispatchFlow(runRows([pipelineAttempt({ run_conclusion: "cancelled", cancel_stage: "approval" })]));
     expect(flow.map((gate) => gate.input)).toEqual([1, 0, 0, 0, 0, 0, 0]);
     expect(flow[1].segments).toEqual([]);
+  });
+});
+
+describe("stepTimes", () => {
+  const MIN = 60_000;
+  const at = (minutes: number) => new Date(Date.parse("2026-09-20T10:00:00Z") + minutes * MIN).toISOString();
+
+  it("times the approval wait, the run by outcome, and review by where the PR went", () => {
+    const run = (id: string, wait: number, length: number, conclusion: string) =>
+      pipelineAttempt({ id, encode_started_at: at(wait), finished_at: at(wait + length), run_conclusion: conclusion });
+    const rows = runRows([
+      run("e1", 1, 10, "success"),
+      run("e2", 3, 20, "success"),
+      run("f1", 2, 5, "failure"),
+      run("f2", 2, 15, "failure"),
+      run("f3", 30, 60, "failure"),
+      // A cancelled run, and a run from before job starts were recorded, leave the run times alone.
+      run("c", 0, 99, "cancelled"),
+      pipelineAttempt({ id: "old", encode_started_at: null }),
+      mergedAttempt({ id: "m", pr_created_at: at(0), pr_merged_at: at(30) }),
+      pipelineAttempt({ id: "x", run_conclusion: "success", pr_state: "closed", pr_url: "u", pr_created_at: at(0), pr_closed_at: at(12) }),
+      pipelineAttempt({ id: "o", run_conclusion: "success", pr_state: "draft", pr_url: "u", pr_created_at: at(0) }),
+    ]);
+    const times = stepTimes(rows, Date.parse(at(60 * 24 * 2)));
+    expect(times.map((step) => step.key)).toEqual(["approval", "run", "pr", "review", "main", "index", "tests"]);
+    const summary = Object.fromEntries(
+      times.map((step) => [step.key, step.timings.map((t) => `${t.label}:${t.runs}:${t.medianMs / MIN}:${t.slowMs}`)])
+    );
+    expect(summary).toEqual({
+      approval: ["Wait:6:2:null"],
+      run: ["Encoded:2:15:null", "Failed:3:15:null"],
+      pr: [],
+      review: ["Merged:1:30:null", "Closed:1:12:null", "Open now:1:2880:null"],
+      main: [],
+      index: [],
+      tests: [],
+    });
+    expect(times[0]).toMatchObject({ label: "Signing approval", span: "dispatch → job start", untimed: null });
+    expect(times.map((step) => step.untimed)).toEqual([null, null, "No wait", null, "No wait", "Not timed yet", "Not timed yet"]);
+  });
+
+  it("gives the slowest tenth once ten runs are timed", () => {
+    const rows = runRows(
+      Array.from({ length: 10 }, (_, i) =>
+        pipelineAttempt({ id: `r${i}`, dispatched_at: at(0), encode_started_at: at(i + 1) })
+      )
+    );
+    const [wait] = stepTimes(rows, 0)[0].timings;
+    expect(wait).toEqual({ label: "Wait", runs: 10, medianMs: 5.5 * MIN, slowMs: 9 * MIN });
   });
 });

@@ -6,7 +6,7 @@ import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 import type { QueuedSummary, QueueItemView } from "@/lib/axiom/encoding-queues";
 import type { CorpusJurisdiction, CorpusView } from "@/lib/axiom/corpus-releases";
 import { pipelineInsights, scopeOptions } from "@/lib/axiom/encoding-pipeline-insights";
-import { dispatchFlow, runRows } from "@/lib/axiom/encoding-pipeline-runs";
+import { dispatchFlow, runRows, stepTimes } from "@/lib/axiom/encoding-pipeline-runs";
 import { act, waitFor } from "@testing-library/react";
 
 const push = vi.fn();
@@ -629,6 +629,48 @@ describe("OpsPipeline", () => {
       expect(header.split(",").slice(0, 3)).toEqual(["dispatched_at", "citation", "jurisdiction"]);
       expect(line).toContain("us/c");
       expect(line).toContain("Cancelled at approval");
+    });
+
+    it("times each step above the flow, and says which steps take no time or are not timed", () => {
+      const minute = (n: number) => new Date(Date.parse("2026-09-20T10:00:00Z") + n * 60_000).toISOString();
+      const timed = runRows([
+        ...Array.from({ length: 10 }, (_, i) =>
+          pipelineAttempt({
+            id: `t${i}`,
+            encode_started_at: minute(i + 1),
+            finished_at: minute(i + 11),
+            run_conclusion: "success",
+          })
+        ),
+        mergedAttempt({ id: "m" }),
+      ]);
+      render(
+        <OpsPipeline
+          view={pipelineView(attempts, NOW)}
+          queued={null}
+          flow={dispatchFlow(timed)}
+          times={stepTimes(timed, NOW)}
+          referenceMs={NOW}
+        />
+      );
+      const steps = within(screen.getByRole("region", { name: "Time per step" })).getAllByRole("listitem");
+      expect(steps.map((step) => step.querySelector("span")?.textContent)).toEqual([
+        "Signing approval",
+        "Encode run",
+        "Pull request",
+        "Review",
+        "Default branch",
+        "Index",
+        "Tests on main",
+      ]);
+      expect(steps[0]).toHaveTextContent("dispatch → job startWait · 10 runs6mslowest 10%: 9m+");
+      expect(steps[0]).toHaveAttribute("title", expect.stringMatching(/^From the dispatch until a person approves/));
+      expect(steps[1]).toHaveTextContent("Encoded · 10 runs10mslowest 10%: 10m+");
+      expect(steps[2]).toHaveTextContent("opened by the runNo wait");
+      // One merged PR: a median with no slowest tenth.
+      expect(steps[3]).toHaveTextContent(/Merged · 1 run22h 31m$/);
+      expect(steps[5]).toHaveTextContent("Not timed yet");
+      expect(screen.getByRole("region", { name: "Where runs go" })).toBeInTheDocument();
     });
 
     it("says when no run reached a gate", () => {
