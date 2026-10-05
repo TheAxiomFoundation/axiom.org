@@ -98,11 +98,10 @@ type Listing =
   | { kind: "corpus" }
   | { kind: "runs"; title: string; rows: RunRow[] };
 
-type DetailsTab = "flow" | "log" | "cards";
+type DetailsTab = "flow" | "cards";
 
 const DETAILS_TABS: Array<{ id: DetailsTab; label: string }> = [
   { id: "flow", label: "Flow" },
-  { id: "log", label: "Ledger" },
   { id: "cards", label: "Breakdowns" },
 ];
 
@@ -259,6 +258,19 @@ export function OpsPipeline({
 
       {scopes.roots.length > 1 && <ScopeBar scope={scope} scopes={scopes} />}
 
+      {flow && (
+        <section className={styles.ledgerPart} aria-labelledby="pipeline-ledger-title">
+          <div className={styles.ledgerHead}>
+            <h3 id="pipeline-ledger-title">Ledger</h3>
+            <Explain label="Ledger">
+              Every run in this scope, by jurisdiction, source document, and section. A section&apos;s status is how far
+              its latest run got, or what stopped it. Open a section for its newest runs, and a run for its timeline.
+            </Explain>
+          </div>
+          <RunLedger load={loadRuns} referenceMs={referenceMs} />
+        </section>
+      )}
+
       {insights && (
         <SummaryFunnel
           funnel={insights.funnel}
@@ -315,7 +327,6 @@ export function OpsPipeline({
             </div>
           )}
           {flow && detailsTab === "flow" && <FlowView gates={flow} times={times} parts={parts} testParts={testParts} onOpen={openSegment} />}
-          {flow && detailsTab === "log" && <RunLedger load={loadRuns} referenceMs={referenceMs} />}
           {detailsTab === "cards" && (
           <>
       <ol
@@ -1800,8 +1811,8 @@ interface RunsPayload {
   documentPaths?: Record<string, string>;
 }
 
-/** Sections shown before "Show more". */
-const LEDGER_PAGE = 40;
+/** Sections shown before "Show more": the ledger sits above the summary, so it starts short. */
+const LEDGER_PAGE = 20;
 /** Runs an open section lists; the journey page has every one. */
 const SECTION_RUNS = 10;
 

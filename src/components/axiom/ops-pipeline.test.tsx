@@ -653,7 +653,9 @@ describe("OpsPipeline", () => {
 
     it("opens a section's runs in the ledger, and a run's timeline under it", async () => {
       renderFlow();
-      fireEvent.click(screen.getByRole("tab", { name: "Ledger" }));
+      // The ledger sits above the summary, not behind a Details tab.
+      expect(screen.getByRole("region", { name: "Ledger" })).toBeInTheDocument();
+      expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Flow", "Breakdowns"]);
       const section = await screen.findByRole("button", { name: "Runs of us/m" });
       expect(section).toHaveAttribute("aria-expanded", "false");
       expect(screen.queryByRole("button", { name: /^Timeline of us\/m/ })).not.toBeInTheDocument();
@@ -683,7 +685,6 @@ describe("OpsPipeline", () => {
       );
       vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ rows: many }) }) as Response));
       render(<OpsPipeline view={pipelineView(attempts, NOW)} queued={null} flow={dispatchFlow(rows)} referenceMs={NOW} />);
-      fireEvent.click(screen.getByRole("tab", { name: "Ledger" }));
       fireEvent.click(await screen.findByRole("button", { name: "Runs of us/statute/7/2015/f" }));
       expect(screen.getAllByRole("button", { name: /^Timeline of / })).toHaveLength(10);
       expect(screen.getByRole("link", { name: "All 12 runs, each with its timeline" })).toHaveAttribute(
@@ -694,7 +695,6 @@ describe("OpsPipeline", () => {
 
     it("filters the ledger's sections and exports their runs", async () => {
       renderFlow();
-      fireEvent.click(screen.getByRole("tab", { name: "Ledger" }));
       expect(screen.getByText("Loading runs…")).toBeInTheDocument();
       await screen.findByText("3 of 3 sections · 3 runs");
       expect(fetch).toHaveBeenCalledWith("/ops/runs");
@@ -860,11 +860,12 @@ describe("OpsPipeline", () => {
       render(
         <OpsPipeline view={pipelineView(attempts, NOW)} queued={null} flow={dispatchFlow(rows)} referenceMs={NOW} />
       );
-      fireEvent.click(screen.getByRole("tab", { name: "Ledger" }));
       await screen.findByText("60 of 60 sections · 60 runs");
-      expect(screen.getAllByRole("button", { name: /^Runs of / })).toHaveLength(40);
+      expect(screen.getAllByRole("button", { name: /^Runs of / })).toHaveLength(20);
+      fireEvent.click(screen.getByRole("button", { name: "Show 20 more sections" }));
       fireEvent.click(screen.getByRole("button", { name: "Show 20 more sections" }));
       expect(screen.getAllByRole("button", { name: /^Runs of / })).toHaveLength(60);
+      expect(screen.queryByRole("button", { name: /^Show \d+ more sections$/ })).not.toBeInTheDocument();
       // Sections under their source document, with their names from the corpus.
       expect(screen.getByText("Agriculture")).toBeInTheDocument();
       expect(screen.getByText("The zeroth rule")).toBeInTheDocument();
@@ -872,7 +873,6 @@ describe("OpsPipeline", () => {
 
       vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 503 }) as Response));
       render(<OpsPipeline view={pipelineView(attempts, NOW)} queued={null} flow={dispatchFlow(rows)} referenceMs={NOW} />);
-      fireEvent.click(screen.getByRole("tab", { name: "Ledger" }));
       await screen.findByText("The ledger could not load. Try again later.");
       // The breakdowns are still one tab away.
       await act(async () => {

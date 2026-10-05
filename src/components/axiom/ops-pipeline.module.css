@@ -332,6 +332,23 @@
   color: var(--color-ink-muted);
 }
 
+.ledgerPart {
+  margin-top: 20px;
+}
+
+.ledgerHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ledgerHead h3 {
+  font-size: 16px;
+  font-weight: 550;
+  letter-spacing: -0.02em;
+  color: var(--color-ink);
+}
+
 .detailsHead h3 {
   font-size: 16px;
   font-weight: 550;
