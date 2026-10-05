@@ -107,7 +107,7 @@ describe("OpsDashboard", () => {
     expect(screen.getByText(/in progress · started/)).toBeInTheDocument();
   });
 
-  it("keeps the encoding ledger until the pipeline section, with its own ledger, shows", () => {
+  it("shows a ledger the page passes in place of the one from encoder records", () => {
     const props = {
       initialStatus: status({}),
       encodingError: null,
@@ -115,11 +115,11 @@ describe("OpsDashboard", () => {
       recentScopes: [],
     };
     render(<OpsDashboard {...props} />);
-    expect(screen.getByRole("region", { name: "Latest encodings" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Latest encodings" })).toBeInTheDocument();
     cleanup();
-    render(<OpsDashboard {...props} pipeline={<section aria-label="Pipeline" />} />);
-    expect(screen.queryByRole("region", { name: "Latest encodings" })).not.toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Pipeline" })).toBeInTheDocument();
+    render(<OpsDashboard {...props} ledger={<section aria-label="Every run" />} />);
+    expect(screen.queryByRole("heading", { name: "Latest encodings" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Every run" })).toBeInTheDocument();
   });
 
   it("shows stalled runs when the heartbeat dies", () => {

@@ -93,22 +93,6 @@
   margin-top: 32px;
 }
 
-/* With the pipeline's own ledger: the queue and recent corpus side by side. */
-.sidebarOnly {
-  margin-top: 32px;
-}
-
-.sidebarOnly .sidebar {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: start;
-}
-
-@media (max-width: 900px) {
-  .sidebarOnly .sidebar {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
 .sidebar {
   display: grid;
   gap: 24px;
@@ -218,6 +202,92 @@
 
 .documentBand > div > span:last-child {
   font-size: 10px;
+}
+
+/* ── Ledger dropdowns: a section's runs, a run's timeline ── */
+
+.ledgerToggle {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-right: 8px;
+  padding: 0;
+  border: 1px solid var(--color-rule);
+  border-radius: 5px;
+  background: var(--color-paper);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-size: 9px;
+  color: var(--color-ink-muted);
+  cursor: pointer;
+  vertical-align: 1px;
+}
+
+.ledgerToggle:hover,
+.ledgerToggle[aria-expanded="true"] {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.ledgerTable .ledgerRunCell {
+  padding: 8px 24px 8px 48px;
+  background: color-mix(in srgb, var(--color-ink) 3%, var(--color-paper));
+  white-space: normal;
+}
+
+.ledgerRunLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  font-size: 12px;
+  color: var(--color-ink-secondary);
+}
+
+.ledgerRunLine .ledgerToggle {
+  margin-right: 0;
+}
+
+.ledgerRunLine a {
+  color: var(--color-ink);
+  text-decoration: underline;
+  text-decoration-color: var(--color-rule-strong);
+}
+
+.ledgerRunLine a[data-outcome="failed"],
+.ledgerRunLine a[data-outcome="cancelled"] {
+  color: var(--color-warning);
+}
+
+.ledgerRunMuted {
+  color: var(--color-ink-muted);
+}
+
+.ledgerRunCause {
+  overflow: hidden;
+  max-width: 420px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-ink-muted);
+}
+
+.ledgerTimeline {
+  margin-top: 10px;
+}
+
+.ledgerMore {
+  margin: 12px 24px 20px;
+  padding: 6px 12px;
+  border: 1px solid var(--color-rule);
+  border-radius: 8px;
+  background: var(--color-paper);
+  font-size: 12px;
+  color: var(--color-ink-secondary);
+  cursor: pointer;
+}
+
+.ledgerMore:hover {
+  border-color: var(--color-accent);
 }
 
 .status {

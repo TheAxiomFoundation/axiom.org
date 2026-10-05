@@ -66,6 +66,8 @@ interface OpsDashboardProps {
   recentScopes: RecentCorpusScope[];
   /** The end-to-end pipeline section, rendered server-side by the page. */
   pipeline?: ReactNode;
+  /** A ledger of every run, in place of the one built from encoder records. */
+  ledger?: ReactNode;
 }
 
 type LiveRunState = "running" | "stale" | "finished" | "expired";
@@ -221,6 +223,7 @@ export function OpsDashboard({
   queues,
   recentScopes,
   pipeline,
+  ledger,
 }: OpsDashboardProps) {
   const [status, setStatus] = useState(initialStatus);
   const [nowMs, setNowMs] = useState<number | null>(null);
@@ -306,18 +309,14 @@ export function OpsDashboard({
           labels={labels}
         />
 
-        {/* The pipeline section carries the full ledger (every run, failures
-            included), so this one shows only while that section is hidden. */}
         <div
           className={
-            pipeline
-              ? styles.sidebarOnly
-              : queues.length || recentScopes.length
-                ? styles.workspace
-                : styles.ledgerOnly
+            queues.length || recentScopes.length
+              ? styles.workspace
+              : styles.ledgerOnly
           }
         >
-          {!pipeline && (
+          {ledger ?? (
             <LatestEncodings
               documents={documents}
               referenceMs={referenceMs}
