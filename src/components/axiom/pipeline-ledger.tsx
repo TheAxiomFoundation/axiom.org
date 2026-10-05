@@ -286,8 +286,45 @@ function CountList({
   );
 }
 
-/** An open section: its runs in a few lines, the latest run's timeline, and a link to every run. */
+/** Every run of a section, one line each, newest first; a line opens its run's timeline. */
+function RunLines({ runs, referenceMs }: { runs: RunRow[]; referenceMs: number }) {
+  const [open, setOpen] = useState<string | null>(null);
+  return (
+    <ol className={styles.ledgerRuns} aria-label="Every run">
+      {runs.map((run) => (
+        <li key={run.id}>
+          <div className={styles.ledgerRunLine}>
+            <button
+              type="button"
+              className={styles.ledgerToggle}
+              aria-expanded={open === run.id}
+              aria-label={`Timeline of ${run.citation}, run ${run.id}`}
+              onClick={() => setOpen((current) => (current === run.id ? null : run.id))}
+            >
+              <span aria-hidden>{open === run.id ? "▾" : "▸"}</span>
+            </button>
+            <span title={run.dispatchedAt}>{relativeTime(run.dispatchedAt, referenceMs)}</span>
+            {run.encoder && <span className="font-mono">{run.encoder}</span>}
+            <a href={run.runUrl} target="_blank" rel="noreferrer" data-outcome={run.outcome}>
+              {run.outcomeLabel}
+            </a>
+            {run.cause && <span title={run.cause}>{causeHeadline(run.cause)}</span>}
+            {run.pr && (
+              <a href={run.pr.url} target="_blank" rel="noreferrer">
+                {run.pr.label} · {run.pr.state}
+              </a>
+            )}
+          </div>
+          {open === run.id && <RunTimeline timeline={runTimeline(run, referenceMs)} />}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** An open section: its runs in a few lines, the latest run's timeline, and every run on request. */
 function SectionRuns({ section, referenceMs }: { section: LedgerSection; referenceMs: number }) {
+  const [everyRun, setEveryRun] = useState(false);
   const overview = sectionOverview(section);
   const latest = overview.latest;
   const { encoders } = overview;
@@ -329,9 +366,17 @@ function SectionRuns({ section, referenceMs }: { section: LedgerSection; referen
         )}
       </p>
       <RunTimeline timeline={runTimeline(latest, referenceMs)} />
-      <a className={styles.ledgerAll} href={journeyHref(section.citation)}>
-        {overview.runs === 1 ? "This run on the journey page" : `All ${overview.runs} runs, each with its timeline`} →
-      </a>
+      {overview.runs > 1 && (
+        <button
+          type="button"
+          className={styles.ledgerShowMore}
+          aria-expanded={everyRun}
+          onClick={() => setEveryRun((open) => !open)}
+        >
+          {everyRun ? "Hide the runs" : `Show all ${overview.runs} runs`}
+        </button>
+      )}
+      {everyRun && <RunLines runs={section.runs} referenceMs={referenceMs} />}
     </div>
   );
 }

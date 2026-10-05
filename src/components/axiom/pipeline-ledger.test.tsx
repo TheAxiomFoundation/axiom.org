@@ -42,7 +42,7 @@ describe("PipelineLedger", () => {
     expect(screen.getByRole("button", { name: "Runs of us-la/statute/47/32" }).closest("tr")).toHaveTextContent("Validation rules");
   });
 
-  it("drops down an overview of a section's runs with the latest run's timeline, and links to every run", async () => {
+  it("drops down an overview of a section's runs with the latest run's timeline, and every run on request", async () => {
     const cause = (i: number) => (i % 3 === 0 ? "complete-source-unit:tests" : `ci: cause ${"abcdefghijkl"[i]}`);
     // Each "ci: cause x" headline is the message without its source: "cause x".
     serve({
@@ -86,10 +86,16 @@ describe("PipelineLedger", () => {
     // The latest run's timeline shows under the overview, with nothing to open.
     expect(screen.queryByRole("button", { name: /^Timeline of / })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Encode run" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "All 12 runs, each with its timeline →" })).toHaveAttribute(
-      "href",
-      "/ops/journey?citation=us%2Fstatute%2F7%2F2015%2Ff"
-    );
+    // Every run opens on the page, one line each, and a line opens its run's timeline.
+    const every = screen.getByRole("button", { name: "Show all 12 runs" });
+    fireEvent.click(every);
+    const lines = within(screen.getByRole("list", { name: "Every run" })).getAllByRole("listitem");
+    expect(lines).toHaveLength(12);
+    expect(lines[11]).toHaveTextContent("▸29d ago0.2.2000Validation rulesCompleteness rule: tests");
+    fireEvent.click(within(lines[11]).getByRole("button", { name: "Timeline of us/statute/7/2015/f, run r0" }));
+    expect(screen.getAllByRole("region", { name: "Encode run" })).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "Hide the runs" }));
+    expect(screen.queryByRole("list", { name: "Every run" })).not.toBeInTheDocument();
     // Closing the section closes its overview.
     fireEvent.click(section);
     expect(screen.queryByRole("region", { name: "Encode run" })).not.toBeInTheDocument();
