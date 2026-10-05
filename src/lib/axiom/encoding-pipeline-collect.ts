@@ -394,8 +394,8 @@ function shardFor(
   return sharded ? null : shards.get("") ?? null;
 }
 
-/** A merge commit's shard time for the jurisdiction, by the same rule as shardFor. */
-function shardTime(shards: Map<string, string>, jurisdiction: string | null): string | null {
+/** A merge commit's shard run for the jurisdiction, by the same rule as shardFor. */
+function shardAtMerge(shards: Map<string, ShardRun>, jurisdiction: string | null): ShardRun | null {
   const own = jurisdiction ? shards.get(jurisdiction) : undefined;
   if (own) return own;
   const sharded = [...shards.keys()].some((key) => key !== "");
@@ -627,7 +627,9 @@ export function parseRunJobs(jobs: RunJob[], conclusion: string | null): RunDeta
 /**
  * Finished runs whose jobs have not been read, cancelled ones first (their
  * story is in the jobs), then newest first. With `steps`, runs read before
- * step times were recorded are read once more, after every unread run.
+ * step times were recorded are read once more, after every unread run. A
+ * run named after no citation and never stored is left out: nothing would
+ * keep what its jobs say, so every pass would read it again first.
  */
 export function runDetailLookups(
   runs: WorkflowRun[],
@@ -637,8 +639,9 @@ export function runDetailLookups(
 ): WorkflowRun[] {
   const unread = (run: WorkflowRun) => !previous.get(String(run.id))?.jobs_checked_at;
   const stepsUnread = (run: WorkflowRun) => steps && !previous.get(String(run.id))?.steps_read_at;
+  const storable = (run: WorkflowRun) => !!parseRunTitle(run.display_title) || previous.has(String(run.id));
   return runs
-    .filter((run) => run.status === "completed" && (unread(run) || stepsUnread(run)))
+    .filter((run) => run.status === "completed" && storable(run) && (unread(run) || stepsUnread(run)))
     .sort(
       (a, b) =>
         Number(unread(b)) - Number(unread(a)) ||
@@ -695,11 +698,18 @@ export function firstSyncAfter(syncs: SyncRun[], mergedAt: string): string | nul
   return first?.updated_at ?? null;
 }
 
+/** A validate shard's first decisive run at a merge commit. */
+export interface ShardRun {
+  startedAt: string | null;
+  completedAt: string;
+  conclusion: "success" | "failure";
+}
+
 /**
- * Per repo and merge commit, when each validate shard finished there
- * ("" for an unsharded validate job), from the decisive check runs.
+ * Per repo and merge commit, each validate shard's first decisive run there
+ * ("" for an unsharded validate job).
  */
-export type MergeValidation = Map<string, Map<string, string>>;
+export type MergeValidation = Map<string, Map<string, ShardRun>>;
 
 export function mergeValidationKey(repo: string, commit: string): string {
   return `${repo}:${commit}`;
@@ -707,16 +717,25 @@ export function mergeValidationKey(repo: string, commit: string): string {
 
 /**
  * Default-branch merges whose first validation on main is not recorded yet,
- * newest first: the merge commit's own check runs say when it finished.
+ * newest first: the merge commit's own check runs say when it started and
+ * finished, and how. With `detail`, a merge recorded before its start and
+ * result were kept is read once more.
  */
 export function mergeValidationLookups(
   prs: ManifestPr[],
   previous: Map<string, Partial<PipelineAttempt>>,
-  limit: number
+  limit: number,
+  { detail = false }: { detail?: boolean } = {}
 ): Array<{ repo: string; commit: string }> {
   const recorded = new Set(
     [...previous.values()]
-      .filter((attempt) => attempt.tests_first_at && attempt.pr_merge_commit && attempt.pr_repo)
+      .filter(
+        (attempt) =>
+          attempt.tests_first_at &&
+          (!detail || attempt.tests_first_status) &&
+          attempt.pr_merge_commit &&
+          attempt.pr_repo
+      )
       .map((attempt) => mergeValidationKey(attempt.pr_repo!, attempt.pr_merge_commit!))
   );
   const lookups = new Map<string, { repo: string; commit: string; mergedAt: string }>();
@@ -879,12 +898,20 @@ function withPr(
   if (state !== "merged" || targetsDefault === false || !pr.mergedAt) return attempt;
   const mergeCommit = pr.mergeCommit ?? null;
 
-  // When the merge commit's own validation on main finished: the first
-  // tests the merge got there.
+  // The merge commit's own validation on main: the first tests the merge
+  // got there, when they started and finished, and how they ended.
   const atMerge = mergeCommit ? context.mergeValidation.get(mergeValidationKey(pr.repo, mergeCommit)) : undefined;
-  const firstTests = atMerge ? shardTime(atMerge, attempt.jurisdiction) : null;
-  if (previous?.tests_first_at || firstTests) {
-    attempt.tests_first_at = previous?.tests_first_at ?? firstTests;
+  const first = atMerge ? shardAtMerge(atMerge, attempt.jurisdiction) : null;
+  if (previous?.tests_first_status) {
+    attempt.tests_first_at = previous.tests_first_at ?? null;
+    attempt.tests_first_started_at = previous.tests_first_started_at ?? null;
+    attempt.tests_first_status = previous.tests_first_status;
+  } else if (first) {
+    attempt.tests_first_at = first.completedAt;
+    attempt.tests_first_started_at = first.startedAt;
+    attempt.tests_first_status = first.conclusion === "success" ? "pass" : "fail";
+  } else if (previous?.tests_first_at) {
+    attempt.tests_first_at = previous.tests_first_at;
   }
 
   const mirrorRows = modules.map((path) => mirror.byPath.get(`${pr.repo}:${path}`));

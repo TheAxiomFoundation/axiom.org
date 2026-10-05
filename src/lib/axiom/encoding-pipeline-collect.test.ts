@@ -553,17 +553,34 @@ describe("stage joins", () => {
     expect(build({ syncRuns: syncs, mirror: [] })).not.toHaveProperty("indexed_at");
   });
 
-  it("times the merge's first tests on main from its merge commit's shard", () => {
-    const atMerge = (shards: Array<[string, string]>) =>
+  it("records the merge's first tests on main from its merge commit's shard: start, end, and result", () => {
+    const shardRun = (completedAt: string, conclusion: "success" | "failure" = "success", startedAt: string | null = "2026-09-30T01:05:00Z") => ({
+      startedAt,
+      completedAt,
+      conclusion,
+    });
+    const atMerge = (shards: Array<[string, ReturnType<typeof shardRun>]>) =>
       new Map([[mergeValidationKey("rulespec-us", MERGE), new Map(shards)]]);
     const build = (override: Partial<CollectInputs>) => buildAttempts(inputs({ prs: [merged()], ...override }))[0];
-    expect(build({ mergeValidation: atMerge([["us", "2026-09-30T01:20:00Z"], ["us-az", "X"]]) }).tests_first_at)
-      .toBe("2026-09-30T01:20:00Z");
-    expect(build({ mergeValidation: atMerge([["", "2026-09-30T01:25:00Z"]]) }).tests_first_at).toBe("2026-09-30T01:25:00Z");
+    expect(build({ mergeValidation: atMerge([["us", shardRun("2026-09-30T01:20:00Z")], ["us-az", shardRun("X")]]) })).toMatchObject({
+      tests_first_at: "2026-09-30T01:20:00Z",
+      tests_first_started_at: "2026-09-30T01:05:00Z",
+      tests_first_status: "pass",
+    });
+    expect(build({ mergeValidation: atMerge([["", shardRun("2026-09-30T01:25:00Z", "failure", null)]]) })).toMatchObject({
+      tests_first_at: "2026-09-30T01:25:00Z",
+      tests_first_started_at: null,
+      tests_first_status: "fail",
+    });
     // A sharded repo whose shard for the module did not finish at the merge.
-    expect(build({ mergeValidation: atMerge([["", "A"], ["us-az", "X"]]) })).not.toHaveProperty("tests_first_at");
-    expect(build({ previous: new Map([["501", { tests_first_at: "T" }]]) }).tests_first_at).toBe("T");
-    expect(buildAttempts(inputs({ prs: [merged({ baseRefName: "codex/x" })], mergeValidation: atMerge([["us", "Y"]]) }))[0])
+    expect(build({ mergeValidation: atMerge([["", shardRun("A")], ["us-az", shardRun("X")]]) })).not.toHaveProperty("tests_first_at");
+    // A full record is kept; one from before the start and result were kept waits for them.
+    expect(build({ previous: new Map([["501", { tests_first_at: "T", tests_first_started_at: "S", tests_first_status: "fail" as const }]]) }))
+      .toMatchObject({ tests_first_at: "T", tests_first_started_at: "S", tests_first_status: "fail" });
+    const early = build({ previous: new Map([["501", { tests_first_at: "T" }]]) });
+    expect(early.tests_first_at).toBe("T");
+    expect(early).not.toHaveProperty("tests_first_status");
+    expect(buildAttempts(inputs({ prs: [merged({ baseRefName: "codex/x" })], mergeValidation: atMerge([["us", shardRun("Y")]]) }))[0])
       .not.toHaveProperty("tests_first_at");
   });
 
@@ -582,6 +599,10 @@ describe("stage joins", () => {
       { repo: "rulespec-us", commit: "a" },
     ]);
     expect(mergeValidationLookups(prs, previous, 1)).toHaveLength(1);
+    // Once start and result are kept, a merge recorded without them is read once more.
+    expect(mergeValidationLookups(prs, previous, 10, { detail: true }).map((l) => l.commit)).toEqual(["b", "c", "a"]);
+    const full = new Map([["7", { pr_repo: "rulespec-us", pr_merge_commit: "c", tests_first_at: "T", tests_first_status: "pass" as const }]]);
+    expect(mergeValidationLookups(prs, full, 10, { detail: true }).map((l) => l.commit)).toEqual(["b", "a"]);
   });
 
   it("takes tests from the module's jurisdiction shard on a commit with the merge", () => {
@@ -846,6 +867,10 @@ describe("run details", () => {
     expect(runDetailLookups(runs, previous, 10, { steps: true }).map((r) => r.id)).toEqual([2, 3, 1, 5]);
     const stepsRead = new Map([["5", { jobs_checked_at: "T", steps_read_at: "T" }]]);
     expect(runDetailLookups(runs, stepsRead, 10, { steps: true }).map((r) => r.id)).toEqual([2, 3, 1]);
+    // An early run named after no citation is read only once a collection has stored it.
+    const unnamed = run({ id: 6, conclusion: "cancelled", display_title: "Targeted signed RuleSpec re-encode" });
+    expect(runDetailLookups([unnamed, ...runs], previous, 10).map((r) => r.id)).toEqual([2, 3, 1]);
+    expect(runDetailLookups([unnamed], new Map([["6", { citation: "us/x" }]]), 10).map((r) => r.id)).toEqual([6]);
   });
 
   it("records the dispatcher and run detail, fresh or carried from the previous collection", () => {
