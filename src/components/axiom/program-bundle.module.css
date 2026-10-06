@@ -1,38 +1,45 @@
-/* A program bundle's tiers, documents and provisions.
+/* A program bundle as a map of the program: rows by part, a square per unit.
 
-   Provision states are status colors, checked with the dataviz palette
-   validator on the paper surface: encoded is the success green, in progress
-   an amber, failed a red that also carries a hatch (green and red sit close
-   for deutan readers, so failed never relies on color alone), and not
-   started a neutral. Every state also has its name beside its count. */
+   States are status colors, checked with the dataviz palette validator on the
+   paper surface: encoded is the success green (partly encoded the same green,
+   lighter), in progress an amber, failed a red that also carries a hatch
+   (green and red sit close for deutan readers, so failed never relies on
+   color alone), not encoded a neutral, and not in the corpus an outline.
+   Every state also has its name beside its count. */
 
 .page {
   --state-encoded: #166534;
+  --state-partly: color-mix(in srgb, #166534 38%, var(--color-paper));
   --state-in-progress: #d39a3e;
   --state-failed: #b42318;
-  --state-not-started: color-mix(in srgb, var(--color-ink) 11%, var(--color-paper));
+  --state-none: color-mix(in srgb, var(--color-ink) 13%, var(--color-paper));
   --state-missing: color-mix(in srgb, var(--color-ink) 38%, var(--color-paper));
   color: var(--color-ink);
 }
 
 .page [data-state="encoded"] {
-  --state-fill: var(--state-encoded);
+  --fill: var(--state-encoded);
+}
+
+.page [data-state="partly"] {
+  --fill: var(--state-partly);
 }
 
 .page [data-state="in_progress"] {
-  --state-fill: var(--state-in-progress);
+  --fill: var(--state-in-progress);
 }
 
 .page [data-state="failed"] {
-  --state-fill: repeating-linear-gradient(
+  --fill: repeating-linear-gradient(
     135deg,
-    var(--state-failed) 0 3px,
-    color-mix(in srgb, var(--state-failed) 55%, var(--color-paper)) 3px 5px
+    var(--state-failed) 0 2px,
+    color-mix(in srgb, var(--state-failed) 50%, var(--color-paper)) 2px 4px
   );
 }
 
+.page [data-state="not_encoded"],
 .page [data-state="not_started"] {
-  --state-fill: var(--state-not-started);
+  --fill: var(--state-none);
 }
 
 .back {
@@ -64,34 +71,102 @@
   color: var(--color-ink-secondary);
 }
 
-.swatch {
-  flex: none;
+.muted {
+  color: var(--color-ink-muted);
+}
+
+.mono {
+  font-family: var(--font-mono), monospace;
+  overflow-wrap: anywhere;
+}
+
+/* ── Squares ── */
+
+.square {
+  position: relative;
   display: inline-block;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 3px;
+  background: var(--fill, var(--state-none));
+  vertical-align: -2px;
+}
+
+.page .square[data-state="not_in_corpus"],
+.page .square[data-status="not_in_corpus"] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--state-missing);
+}
+
+button.square {
+  cursor: pointer;
+  transition: opacity 120ms ease;
+}
+
+button.square:hover {
+  outline: 2px solid color-mix(in srgb, var(--color-ink) 45%, transparent);
+  outline-offset: 1px;
+}
+
+button.square[aria-pressed="true"] {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 2px;
+}
+
+.square[data-dim] {
+  opacity: 0.18;
+}
+
+/* A section's square fills from the bottom by the share of its provisions encoded. */
+.sectionSquare,
+.square[data-status] {
+  background: var(--state-none);
+}
+
+.sectionSquare {
+  width: 20px;
+  height: 20px;
+}
+
+.square[data-status] > i {
+  position: absolute;
+  inset: auto 0 0 0;
+  display: block;
+  background: var(--state-encoded);
+}
+
+.swatch {
+  display: inline-block;
+  flex: none;
   width: 10px;
   height: 10px;
   border-radius: 3px;
-  background: var(--state-fill);
-  vertical-align: -1px;
+  background: var(--fill, var(--state-none));
 }
 
-/* A bar split by state; the segments add up to the whole. */
 .stateBar {
   display: flex;
+  height: 10px;
   overflow: hidden;
-  background: var(--state-not-started);
+  border-radius: 4px;
+  background: var(--state-none);
 }
 
 .stateBar > span {
   flex: none;
   height: 100%;
-  background: var(--state-fill);
+  background: var(--fill);
 }
 
 /* ── Tiers ── */
 
 .tier {
   margin-top: 24px;
-  padding: 22px 22px 24px;
+  padding: 22px 24px 20px;
   border: 1px solid var(--color-rule);
   border-radius: 14px;
   background: var(--color-paper-elevated);
@@ -100,12 +175,12 @@
 .tierHead {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 10px;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px 24px;
 }
 
 .tierIndex {
-  flex-basis: 100%;
   font-family: var(--font-mono), monospace;
   font-size: 11px;
   letter-spacing: 0.08em;
@@ -113,157 +188,177 @@
   color: var(--color-ink-muted);
 }
 
-.tierHead h2 {
+.tierTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.tierTitle h2 {
   font-size: 20px;
   font-weight: 600;
   letter-spacing: -0.01em;
 }
 
-.explainLine {
-  display: block;
-  color: var(--color-ink-muted);
-}
-
 .headline {
   display: flex;
-  flex-wrap: wrap;
   align-items: baseline;
-  gap: 4px 14px;
-  margin-left: auto;
-  font-size: 14px;
+  gap: 8px;
   color: var(--color-ink-secondary);
 }
 
 .headline strong {
-  margin-right: -10px;
-  font-size: 30px;
+  font-size: 34px;
   font-weight: 500;
   letter-spacing: -0.03em;
+  line-height: 1;
   color: var(--color-ink);
   font-variant-numeric: tabular-nums;
 }
 
 .headline span {
-  color: var(--color-ink-muted);
+  font-size: 14px;
 }
 
-.tierBody {
-  display: grid;
-  grid-template-columns: 270px minmax(0, 1fr);
-  gap: 28px;
-  margin-top: 18px;
-}
-
-.tierSide {
-  display: grid;
-  align-content: start;
-  gap: 10px;
-}
-
-.sideLabel {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.headline em {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--state-encoded) 12%, var(--color-paper));
   font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--color-ink-muted);
+  font-style: normal;
+  color: var(--state-encoded);
+  font-variant-numeric: tabular-nums;
 }
 
-.tierBar {
-  height: 14px;
-  border-radius: 4px;
-}
-
-.statusRows {
-  display: grid;
-  gap: 1px;
-  margin: 0 0 0 -8px;
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 4px;
+  margin: 16px 0 0 -8px;
   padding: 0;
   list-style: none;
 }
 
-.statusRow {
-  display: grid;
-  grid-template-columns: 10px minmax(0, 1fr) auto 40px;
+.legend button {
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 6px 8px;
+  gap: 7px;
+  padding: 5px 8px;
   border: 0;
   border-radius: 6px;
   background: none;
-  font-size: 14px;
-  color: var(--color-ink);
-  text-align: left;
+  font-size: 13px;
+  color: var(--color-ink-secondary);
   cursor: pointer;
 }
 
-.statusRow strong {
+.legend button strong {
+  font-weight: 600;
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.legend button:hover:not(:disabled),
+.legend button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--color-ink) 6%, transparent);
+}
+
+.legend button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.legendNote {
+  margin-left: 4px;
+}
+
+/* One row per part: its name, its squares, and how many are done. */
+.lanes {
+  display: grid;
+  margin-top: 8px;
+  border-top: 1px solid var(--color-rule);
+}
+
+.lane {
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr) 64px;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.laneName {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.squares {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.squares li {
+  display: flex;
+}
+
+.laneCount {
   text-align: right;
+  font-size: 14px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
-.statusShare {
-  text-align: right;
-  font-size: 12px;
+.laneCount span {
+  font-weight: 400;
   color: var(--color-ink-muted);
-  font-variant-numeric: tabular-nums;
 }
 
-.statusRow:hover:not(:disabled),
-.statusRow[aria-pressed="true"] {
-  background: color-mix(in srgb, var(--color-ink) 5%, transparent);
-}
-
-.statusRow:disabled {
-  color: var(--color-ink-muted);
-  cursor: default;
-}
-
-.stats {
+/* The documents and provisions under a tier's map, in two lines. */
+.facts {
   display: grid;
-  gap: 10px;
-  margin: 4px 0 0;
-  padding-top: 14px;
-  border-top: 1px solid var(--color-rule);
+  gap: 8px;
+  margin: 14px 0 0;
 }
 
-.stats > div {
+.facts > div {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 210px minmax(0, 1fr);
   align-items: baseline;
-  gap: 2px 12px;
+  gap: 16px;
   font-size: 13px;
 }
 
-.stats dt {
+.facts dt {
   display: flex;
   align-items: center;
   gap: 6px;
-  min-width: 0;
   color: var(--color-ink-secondary);
 }
 
-.stats dd {
+.facts dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
   margin: 0;
-  text-align: right;
-  color: var(--color-ink);
+  color: var(--color-ink-secondary);
   font-variant-numeric: tabular-nums;
 }
 
-/* A stat whose value is a phrase: the value goes on its own line. */
-.stats > .statWide {
-  grid-template-columns: minmax(0, 1fr);
+.facts dd strong {
+  font-weight: 600;
+  color: var(--color-ink);
 }
 
-.stats > .statWide dd {
-  text-align: left;
-}
-
-.link {
+.factButton {
   padding: 0;
   border: 0;
   background: none;
@@ -272,121 +367,33 @@
   cursor: pointer;
 }
 
-.link:disabled {
+.factButton:disabled {
   color: var(--color-ink-muted);
   cursor: default;
 }
 
-.link[aria-pressed="true"] {
+.factButton[aria-pressed="true"] {
   font-weight: 600;
+  text-decoration: underline;
 }
 
-/* ── The map: a treemap, a band per kind and a cell per document ── */
-
-.mapFigure {
-  display: grid;
-  gap: 8px;
-  margin: 0;
-}
-
-.treemap {
-  position: relative;
-  width: 100%;
-}
-
-.band {
-  position: absolute;
-  box-sizing: border-box;
-  border: 1px solid var(--color-rule);
-  border-radius: 6px;
-  background: var(--color-paper);
-}
-
-.bandLabel {
-  position: absolute;
-  top: 4px;
-  left: 8px;
-  right: 8px;
-  display: flex;
+.factItem {
+  display: inline-flex;
+  align-items: center;
   gap: 6px;
-  overflow: hidden;
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--color-ink-secondary);
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
-.bandLabel span {
-  font-weight: 400;
-  color: var(--color-ink-muted);
-}
-
-.cell {
-  position: absolute;
-  box-sizing: border-box;
-  display: flex;
-  align-items: flex-start;
+.link {
   padding: 0;
-  overflow: hidden;
-  border: 1.5px solid var(--color-paper);
-  border-radius: 5px;
-  background: var(--state-not-started);
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--color-accent);
   text-align: left;
   cursor: pointer;
-  transition: opacity 120ms ease;
 }
 
-.cell[data-corpus="missing"] {
-  background: var(--color-paper);
-  border: 1.5px dashed var(--state-missing);
-}
-
-.cell[data-dim] {
-  opacity: 0.2;
-}
-
-.cellFill {
-  position: absolute;
-  inset: 0;
-}
-
-.cellName {
-  position: relative;
-  max-width: calc(100% - 8px);
-  margin: 4px;
-  padding: 1px 5px;
-  overflow: hidden;
-  border-radius: 3px;
-  background: color-mix(in srgb, var(--color-paper) 88%, transparent);
-  font-size: 11px;
-  line-height: 1.3;
-  color: var(--color-ink);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cell:hover {
-  z-index: 2;
-  outline: 2px solid color-mix(in srgb, var(--color-ink) 45%, transparent);
-}
-
-.cell[aria-pressed="true"] {
-  z-index: 3;
-  outline: 2px solid var(--color-ink);
-}
-
-.mapCaption {
-  font-size: 11px;
-  color: var(--color-ink-muted);
-}
-
-.empty {
-  font-size: 13px;
-  color: var(--color-ink-muted);
-}
-
-/* ── The document drawer ── */
+/* ── The drawer ── */
 
 .detail {
   position: fixed;
@@ -426,6 +433,9 @@
 }
 
 .detailStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -450,6 +460,41 @@ p.detailPath {
   color: var(--color-ink-muted);
 }
 
+.detailNote {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-ink-muted);
+  overflow-wrap: anywhere;
+}
+
+.detailNote a,
+.detailFacts a {
+  color: var(--color-accent);
+}
+
+.detailFacts {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-rule);
+}
+
+.detailFacts > div {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  gap: 8px;
+  font-size: 12px;
+}
+
+.detailFacts dt {
+  color: var(--color-ink-muted);
+}
+
+.detailFacts dd {
+  margin: 0;
+}
+
 .detailBlock {
   display: grid;
   gap: 8px;
@@ -470,11 +515,6 @@ p.detailPath {
   font-weight: 400;
   color: var(--color-ink);
   font-variant-numeric: tabular-nums;
-}
-
-.meter {
-  height: 10px;
-  border-radius: 4px;
 }
 
 .detailStates {
@@ -499,29 +539,17 @@ p.detailPath {
   font-variant-numeric: tabular-nums;
 }
 
-.detailNote {
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--color-ink-muted);
-}
-
-.detailNote a {
-  color: var(--color-accent);
-}
-
-.openList,
-.citedList {
+.openList {
   display: grid;
-  gap: 2px;
-  max-height: 220px;
+  gap: 3px;
+  max-height: 240px;
   margin: 0;
   padding: 0;
   overflow-y: auto;
   list-style: none;
 }
 
-.openList li,
-.citedList li {
+.openList li {
   display: grid;
   grid-template-columns: 10px minmax(0, 1fr) auto;
   align-items: center;
@@ -531,33 +559,6 @@ p.detailPath {
 
 .openList a {
   color: var(--color-accent);
-}
-
-.citedMark {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  box-shadow: inset 0 0 0 1.5px var(--state-missing);
-}
-
-.citedList li[data-state="encoded"] .citedMark {
-  background: var(--state-encoded);
-  box-shadow: none;
-}
-
-.citedList li[data-state="within"] .citedMark {
-  background: color-mix(in srgb, var(--state-encoded) 40%, var(--color-paper));
-  box-shadow: none;
-}
-
-.citedPath {
-  font-family: var(--font-mono), monospace;
-  overflow-wrap: anywhere;
-}
-
-.citedState {
-  color: var(--color-ink-muted);
-  white-space: nowrap;
 }
 
 .detailSources {
@@ -703,21 +704,34 @@ p.detailPath {
   cursor: pointer;
 }
 
-button.rowName:hover {
+.rowName:hover {
   color: var(--color-accent);
 }
 
-.age {
+.rowStatus {
+  display: block;
+  font-size: 11px;
+  color: var(--color-ink-muted);
+}
+
+.empty {
+  font-size: 13px;
   color: var(--color-ink-muted);
 }
 
 @media (max-width: 760px) {
-  .tierBody {
-    grid-template-columns: minmax(0, 1fr);
+  .lane,
+  .facts > div {
+    grid-template-columns: minmax(0, 1fr) 56px;
   }
 
-  .headline {
-    margin-left: 0;
+  .laneName,
+  .facts dt {
+    grid-column: 1 / -1;
+  }
+
+  .facts dd {
+    grid-column: 1 / -1;
   }
 
   .detail {

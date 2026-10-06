@@ -3,12 +3,14 @@ import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 import {
   bundleIndex,
   bundleMemberships,
-  documentGroup,
+  designation,
   measureDocument,
-  tierCounts,
+  moduleSources,
   provisionCounts,
+  tierCounts,
   tiersLabel,
   type BundleFileDocument,
+  type ModuleSource,
 } from "./program-bundles";
 
 const AT = "2026-10-06T12:00:00Z";
@@ -17,6 +19,7 @@ const doc = (overrides: Partial<BundleFileDocument> = {}): BundleFileDocument =>
   key: "us/statute/7/2014",
   name: "7 USC 2014",
   layer: "federal",
+  part: "Income",
   citation_path: "us/statute/7/2014",
   source_url: null,
   sources: ["plan", "policyengine-references"],
@@ -24,152 +27,168 @@ const doc = (overrides: Partial<BundleFileDocument> = {}): BundleFileDocument =>
   ...overrides,
 });
 
-const tree = ["us/statute/7/2014", "us/statute/7/2014/a", "us/statute/7/2014/b", "us/statute/7/2014/c"];
+// 7 USC 2014: (a) and (b) are leaves; (c) holds (c)(1) and (c)(2).
+const nodes = [
+  { path: "us/statute/7/2014", child_count: 3 },
+  { path: "us/statute/7/2014/a", child_count: 0 },
+  { path: "us/statute/7/2014/b", child_count: 0 },
+  { path: "us/statute/7/2014/c", child_count: 2 },
+  { path: "us/statute/7/2014/c/1", child_count: 0 },
+  { path: "us/statute/7/2014/c/2", child_count: 0 },
+];
+const module = (path: string, yaml?: string): ModuleSource => ({ module: path, sources: [path], yaml });
+
+describe("moduleSources", () => {
+  it("takes a statute or regulation module's own path, and a policy module's declared non-law sources", () => {
+    expect(moduleSources({ citation_path: "us/statute/7/2014/a", declared_sources: ["us/statute/7/2014"] })).toEqual([
+      "us/statute/7/2014/a",
+    ]);
+    // A tax pipeline that cites 26 USC 1402 does not encode 1402.
+    expect(
+      moduleSources({
+        citation_path: "us-az/policy/des/faa5/x",
+        declared_sources: ["us-az/manual/des/faa5/x/block-3", "us/statute/26/1402"],
+      })
+    ).toEqual(["us-az/manual/des/faa5/x/block-3"]);
+  });
+});
+
+describe("designation", () => {
+  it("names a paragraph inside its section as a module writes it", () => {
+    expect(designation("us/regulation/7/273/9/a/1", "us/regulation/7/273/9")).toBe("273.9(a)(1)");
+    expect(designation("us/statute/7/2015/e/3", "us/statute/7/2015/e")).toBe("2015(e)(3)");
+    expect(designation("us/statute/7/2015", "us/statute/7/2015")).toBeNull();
+  });
+});
 
 describe("measureDocument", () => {
-  it("counts a provision encoded when a rule cites it or a deeper path the corpus does not split", () => {
+  it("counts only text-bearing provisions, each in one state, adding up to all of them", () => {
     const row = measureDocument(
       "us-az/snap",
-      "screener",
+      "full",
       doc(),
       {
-        nodes: tree,
-        ruleCitations: [
-          // A module's own path, deeper than the corpus: counts toward 2014(a).
-          { citation_path: "us/statute/7/2014/a/1", rule: "a#x" },
-          { citation_path: "us/statute/7/2014/c", rule: "c#y" },
-          { citation_path: "us/statute/7/2014/c", rule: "c#z" },
-          // Another section never counts.
-          { citation_path: "us/statute/7/2015/e", rule: "e#w" },
-        ],
+        nodes,
+        // (a) encoded whole; (c) encoded whole, so (c)(1) and (c)(2) are; a module below (b) leaves it partly.
+        modules: [module("us/statute/7/2014/a"), module("us/statute/7/2014/c"), module("us/statute/7/2014/b/2")],
         attempts: [],
       },
       AT
     );
-    expect(row).toMatchObject({ in_corpus: true, provisions: 4, encoded_provisions: 2, rules: 3, status: "partly_encoded" });
+    expect(row.provisions).toBe(4);
+    expect(provisionCounts(row)).toEqual({ encoded: 3, partly: 1, in_progress: 0, failed: 0, not_started: 0 });
+    expect(row).toMatchObject({ status: "partly", modules: 3, units: [] });
   });
 
-  it("grades each PolicyEngine-cited provision: encoded, inside an encoded provision, or not", () => {
+  it("marks provisions with a running or failed newest run, and lists them", () => {
+    const row = measureDocument(
+      "us-az/snap",
+      "full",
+      doc(),
+      {
+        nodes,
+        modules: [module("us/statute/7/2014/a")],
+        attempts: [
+          pipelineAttempt({ id: "1", citation: "us/statute/7/2014/b", run_status: "in_progress", run_conclusion: null }),
+          // A run on (c) touches both its provisions.
+          pipelineAttempt({ id: "2", citation: "us/statute/7/2014/c", dispatched_at: "2026-10-02T00:00:00Z" }),
+        ],
+      },
+      AT
+    );
+    expect(provisionCounts(row)).toEqual({ encoded: 1, partly: 0, in_progress: 1, failed: 2, not_started: 0 });
+    expect(row.open_provisions.map((p) => [p.path, p.state])).toEqual([
+      ["us/statute/7/2014/c/1", "failed"],
+      ["us/statute/7/2014/c/2", "failed"],
+      ["us/statute/7/2014/b", "in_progress"],
+    ]);
+  });
+
+  it("is complete when every provision is encoded, and not in the corpus when the corpus lacks it", () => {
+    const whole = measureDocument("b", "full", doc(), { nodes, modules: [module("us/statute/7/2014")], attempts: [] }, AT);
+    expect(whole.status).toBe("complete");
+    const missing = measureDocument("b", "full", doc(), { nodes: [], modules: [], attempts: [] }, AT);
+    expect(missing).toMatchObject({ in_corpus: false, provisions: 0, status: "not_in_corpus" });
+    const excluded = measureDocument("b", "full", doc({ scope: "excluded", reason: "Back-year table" }), null, AT);
+    expect(excluded).toMatchObject({ status: null, reason: "Back-year table" });
+  });
+
+  it("grades each provision PolicyEngine cites by the parity rule", () => {
     const row = measureDocument(
       "us-az/snap",
       "screener",
       doc({
         cited: [
-          { path: "us/statute/7/2014/a", references: 2 },
-          { path: "us/statute/7/2014/b/1", references: 1 },
-          { path: "us/statute/7/2014/c", references: 1 },
+          { path: "us/statute/7/2014/a", references: 2, part: "Income" },
+          { path: "us/statute/7/2014/c/1", references: 1, part: "Deductions" },
+          { path: "us/statute/7/2014/c/2", references: 1, part: "Deductions" },
+          { path: "us/statute/7/2014/b", references: 1, part: "Income" },
         ],
       }),
       {
-        nodes: tree,
-        ruleCitations: [
-          { citation_path: "us/statute/7/2014/a/1", rule: "a#x" },
-          { citation_path: "us/statute/7/2014/b", rule: "b#y" },
-        ],
-        attempts: [],
+        nodes,
+        modules: [module("us/statute/7/2014/a"), module("us/statute/7/2014/c", "source: 7 U.S.C. 2014(c)(1) income")],
+        attempts: [pipelineAttempt({ id: "9", citation: "us/statute/7/2014/b", run_status: "in_progress", run_conclusion: null })],
       },
       AT
     );
-    expect(row.cited.map((c) => c.state)).toEqual(["encoded", "within", "missing"]);
-    expect(row).toMatchObject({ cited_total: 3, cited_covered: 1, cited_within: 1 });
+    expect(row.units.map((u) => [u.path, u.state, u.part])).toEqual([
+      ["us/statute/7/2014/a", "encoded", "Income"],
+      ["us/statute/7/2014/c/1", "encoded", "Deductions"],
+      ["us/statute/7/2014/c/2", "partly", "Deductions"],
+      ["us/statute/7/2014/b", "in_progress", "Income"],
+    ]);
+    expect(row.units[1].detail).toBe("us/statute/7/2014/c names 2014(c)(1)");
+    expect(row.units[2].detail).toBe("us/statute/7/2014/c does not name 2014(c)(2)");
   });
 
-  it("marks a document the corpus does not serve, and takes no measure from it", () => {
-    const row = measureDocument("us-az/snap", "screener", doc(), { nodes: [], ruleCitations: [], attempts: [] }, AT);
-    expect(row).toMatchObject({ in_corpus: false, provisions: 0, status: "not_in_corpus" });
+  it("makes a cited document without cited provisions one unit, graded by its provisions", () => {
+    const poms = measureDocument(
+      "b",
+      "screener",
+      doc({ key: "us/statute/7/2014", cited: undefined, part: "Assets" }),
+      { nodes, modules: [module("us/statute/7/2014/a")], attempts: [] },
+      AT
+    );
+    expect(poms.units).toMatchObject([{ path: "us/statute/7/2014", state: "partly", part: "Assets", detail: "1 of 4 provisions encoded" }]);
     const web = measureDocument(
-      "us-az/snap",
+      "b",
       "screener",
-      doc({ key: "https://www.fns.usda.gov/snap/work-requirements", citation_path: null, source_url: "https://www.fns.usda.gov/snap/work-requirements" }),
+      doc({ key: "https://fns.usda.gov/x", citation_path: null, source_url: "https://fns.usda.gov/x", part: "Deductions" }),
       null,
       AT
     );
-    expect(web).toMatchObject({ in_corpus: false, status: "not_in_corpus", source_url: "https://www.fns.usda.gov/snap/work-requirements" });
+    expect(web.units).toMatchObject([{ path: null, url: "https://fns.usda.gov/x", state: "not_in_corpus" }]);
   });
 
-  it("keeps an excluded document's reason and gives it no status", () => {
+  it("counts a provision whose newest run reached the index as encoded", () => {
     const row = measureDocument(
-      "us-az/snap",
-      "screener",
-      doc({ scope: "excluded", reason: "Back-year table: not current law" }),
-      null,
-      AT
-    );
-    expect(row).toMatchObject({ scope: "excluded", reason: "Back-year table: not current law", status: null });
-  });
-
-  it("takes the newest encode run under the document", () => {
-    const row = measureDocument(
-      "us-az/snap",
-      "screener",
-      doc(),
-      {
-        nodes: tree,
-        ruleCitations: [],
-        attempts: [
-          pipelineAttempt({ id: "1", citation: "us/statute/7/2014/a", dispatched_at: "2026-10-01T00:00:00Z" }),
-          pipelineAttempt({ id: "2", citation: "us/statute/7/2014/c", dispatched_at: "2026-10-03T00:00:00Z", run_url: "r2" }),
-          pipelineAttempt({ id: "3", citation: "us/statute/7/2015", dispatched_at: "2026-10-05T00:00:00Z" }),
-        ],
-      },
-      AT
-    );
-    expect(row).toMatchObject({ runs: 2, latest_citation: "us/statute/7/2014/c", latest_run_url: "r2", latest_stage: "encode_failed" });
-  });
-});
-
-describe("provision states", () => {
-  it("gives every provision one state from the rule index and its latest run, adding up to all provisions", () => {
-    const nodes = [...tree, "us/statute/7/2014/d", "us/statute/7/2014/e"];
-    const row = measureDocument(
-      "us-az/snap",
-      "screener",
+      "b",
+      "full",
       doc(),
       {
         nodes,
-        ruleCitations: [{ citation_path: "us/statute/7/2014/a", rule: "a#x" }],
-        attempts: [
-          // Encoded already: a newer failed run does not undo it.
-          pipelineAttempt({ id: "1", citation: "us/statute/7/2014/a", dispatched_at: "2026-10-04T00:00:00Z" }),
-          // Running now.
-          pipelineAttempt({ id: "2", citation: "us/statute/7/2014/b/1", run_status: "in_progress", run_conclusion: null }),
-          // Failed, then failed again: one failed provision.
-          pipelineAttempt({ id: "3", citation: "us/statute/7/2014/c", dispatched_at: "2026-10-01T00:00:00Z" }),
-          pipelineAttempt({ id: "4", citation: "us/statute/7/2014/c", dispatched_at: "2026-10-02T00:00:00Z" }),
-          // Merged and indexed, though no rule cites this exact path yet.
-          mergedAttempt({ id: "5", citation: "us/statute/7/2014/d", synced_at: "2026-10-03T00:00:00Z", index_status: "indexed" }),
-        ],
+        modules: [],
+        attempts: [mergedAttempt({ id: "5", citation: "us/statute/7/2014/a", synced_at: "2026-10-03T00:00:00Z", index_status: "indexed" })],
       },
       AT
     );
-    expect(provisionCounts(row)).toEqual({ encoded: 2, in_progress: 1, failed: 1, not_started: 2 });
-    expect(row.open_provisions.map((p) => [p.path, p.state, p.stage])).toEqual([
-      ["us/statute/7/2014/c", "failed", "encode_failed"],
-      ["us/statute/7/2014/b", "in_progress", "encoding"],
-    ]);
-    expect(row.open_provisions[1].citation).toBe("us/statute/7/2014/b/1");
+    expect(provisionCounts(row).encoded).toBe(1);
   });
 });
 
 describe("tierCounts", () => {
-  it("counts documents in scope by status, and adds their provisions and cited provisions", () => {
+  it("adds up documents, provisions and cited units by state", () => {
     const rows = [
-      measureDocument("b", "screener", doc(), { nodes: tree, ruleCitations: [{ citation_path: "us/statute/7/2014", rule: "r" }], attempts: [] }, AT),
-      measureDocument("b", "screener", doc({ key: "k2", citation_path: "us/statute/7/2017" }), { nodes: [], ruleCitations: [], attempts: [] }, AT),
+      measureDocument("b", "screener", doc({ cited: [{ path: "us/statute/7/2014/a", references: 1 }] }), { nodes, modules: [module("us/statute/7/2014/a")], attempts: [] }, AT),
+      measureDocument("b", "screener", doc({ key: "k2", citation_path: "us/statute/7/2017" }), { nodes: [], modules: [], attempts: [] }, AT),
       measureDocument("b", "screener", doc({ key: "k3", scope: "excluded", reason: "Secondary source: not law" }), null, AT),
     ];
     const counts = tierCounts(rows);
-    expect(counts).toMatchObject({ documents: 2, excluded: 1, provisions: 4, encodedProvisions: 1 });
-    expect(counts.byStatus).toEqual({ encoded: 0, partly_encoded: 1, not_encoded: 0, not_in_corpus: 1 });
-    expect(counts.byProvisionState).toEqual({ encoded: 1, in_progress: 0, failed: 0, not_started: 3 });
-  });
-});
-
-describe("documentGroup", () => {
-  it("groups by level and kind of source", () => {
-    expect(documentGroup({ citation_path: "us/regulation/7/273/9", layer: "federal" })).toBe("Federal regulations");
-    expect(documentGroup({ citation_path: "us-az/manual/des/faa5/x", layer: "state" })).toBe("State manuals");
-    expect(documentGroup({ citation_path: null, layer: "federal" })).toBe("Federal sources not in the corpus");
+    expect(counts).toMatchObject({ documents: 2, excluded: 1, provisions: 4, units: 2 });
+    expect(counts.byStatus).toEqual({ complete: 0, partly: 1, not_started: 0, not_in_corpus: 1 });
+    expect(counts.byProvisionState).toEqual({ encoded: 1, partly: 0, in_progress: 0, failed: 0, not_started: 3 });
+    expect(counts.byUnitState).toMatchObject({ encoded: 1, not_in_corpus: 1 });
   });
 });
 
@@ -178,32 +197,23 @@ describe("bundleMemberships", () => {
     {
       id: "us-az/snap",
       title: "Arizona SNAP",
-      program: "snap",
-      jurisdiction: "us-az",
-      as_of: "2026-10-06",
       tiers: [
         { id: "screener" as const, title: "Screener-level parity", definition: "", membership: {} },
         { id: "full" as const, title: "Full document bundle", definition: "", membership: {} },
       ],
-      source: null,
-      collected_at: AT,
     },
   ];
   const rows = [
-    measureDocument("us-az/snap", "screener", doc(), null, AT),
-    measureDocument("us-az/snap", "screener", doc({ key: "faa5/med", name: "FAA5 medical", citation_path: "us-az/manual/des/faa5/med" }), null, AT),
-    measureDocument("us-az/snap", "full", doc({ key: "faa5/med", name: "FAA5 medical", citation_path: "us-az/manual/des/faa5/med" }), null, AT),
-    measureDocument("us-az/snap", "full", doc({ key: "faa5/ca", citation_path: "us-az/manual/des/faa5/ca", scope: "excluded", reason: "not SNAP" }), null, AT),
+    { bundle_id: "us-az/snap", tier: "screener" as const, name: "7 USC 2014", scope: "in" as const, citation_path: "us/statute/7/2014" },
+    { bundle_id: "us-az/snap", tier: "screener" as const, name: "FAA5 medical", scope: "in" as const, citation_path: "us-az/manual/des/faa5/med" },
+    { bundle_id: "us-az/snap", tier: "full" as const, name: "FAA5 medical", scope: "in" as const, citation_path: "us-az/manual/des/faa5/med" },
+    { bundle_id: "us-az/snap", tier: "full" as const, name: "CA", scope: "excluded" as const, citation_path: "us-az/manual/des/faa5/ca" },
   ];
   const index = bundleIndex(bundles, rows);
 
   it("names the bundle and every tier whose document holds the citation", () => {
     const [membership] = bundleMemberships("us-az/manual/des/faa5/med/block-2", index);
     expect(membership).toMatchObject({ bundle_id: "us-az/snap", bundle_title: "Arizona SNAP" });
-    expect(membership.tiers.map((t) => [t.index, t.document])).toEqual([
-      [1, "FAA5 medical"],
-      [2, "FAA5 medical"],
-    ]);
     expect(tiersLabel(membership)).toBe("Tiers 1, 2");
     expect(tiersLabel(bundleMemberships("us/statute/7/2014/e/6/A", index)[0])).toBe("Tier 1");
   });

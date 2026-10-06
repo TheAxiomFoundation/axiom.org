@@ -1,9 +1,22 @@
 /**
  * Program bundles: the documents that make up each delivery tier of one
  * program in one jurisdiction (axiom-corpus manifests/program-bundles), and
- * how far each document has come. Membership comes from the bundle file;
- * progress is telemetry the collector reads from the served corpus, the
- * RuleSpec rule index and the encoding runs, so the two never drift.
+ * how far each has come. Membership comes from the bundle file; progress is
+ * telemetry the collector reads from the served corpus, the RuleSpec module
+ * mirror and the encoding runs, so the two never drift.
+ *
+ * Two measures, each truthful about what it counts:
+ *
+ * - A document's provisions: its text-bearing provisions in the corpus (the
+ *   leaves; a heading that only holds others is not counted). A provision is
+ *   encoded when a module's declared source is the provision or one above it
+ *   (the module claims it whole, and the encoder's completeness rules make it
+ *   encode or defer every branch), partly encoded when a module's source sits
+ *   below it (the corpus does not split it as finely as the module).
+ * - A screener tier's units: each provision PolicyEngine cites, as its
+ *   parity model reads it. Encoded when a module encodes it, or a module for
+ *   a section above it names it ("273.9(a)(1)"); partly encoded when that
+ *   module does not name it, or only part of it is encoded.
  */
 import { attemptStage, type PipelineAttempt, type PipelineStage } from "./encoding-pipeline";
 
@@ -14,6 +27,8 @@ export interface BundleFileDocument {
   key: string;
   name?: string | null;
   layer?: string | null;
+  /** The part of the program it feeds: a calculation part, or a manual part. */
+  part?: string | null;
   citation_path: string | null;
   source_url: string | null;
   sources?: string[];
@@ -21,8 +36,8 @@ export interface BundleFileDocument {
   manifest?: string;
   scope: "in" | "excluded";
   reason?: string | null;
-  /** The provisions PolicyEngine cites in this document. */
-  cited?: Array<{ path: string; references: number }>;
+  /** The provisions PolicyEngine cites in this document, and the part each feeds. */
+  cited?: Array<{ path: string; references: number; part?: string | null }>;
 }
 
 export interface BundleFileTier {
@@ -45,48 +60,74 @@ export interface BundleFile {
   tiers: BundleFileTier[];
 }
 
-/** Where a document stands, from first to last. */
-export type DocumentStatus = "not_in_corpus" | "not_encoded" | "partly_encoded" | "encoded";
+/** Where one provision stands; every text-bearing provision has exactly one. */
+export type ProvisionState = "encoded" | "partly" | "in_progress" | "failed" | "not_started";
 
-export const DOCUMENT_STATUSES: DocumentStatus[] = ["encoded", "partly_encoded", "not_encoded", "not_in_corpus"];
-
-export const STATUS_LABELS: Record<DocumentStatus, string> = {
-  encoded: "Encoded",
-  partly_encoded: "Partly encoded",
-  not_encoded: "No rules yet",
-  not_in_corpus: "Not in the corpus",
-};
-
-/**
- * Where one provision stands; every provision of a document has exactly one.
- * Encoded: a rule in the index cites it or a provision below it, or its
- * latest run's module reached the index. In progress: its latest run is
- * running, waiting for approval, in review, or merged and waiting for the
- * index. Failed: its latest run failed, or its PR closed or merged into
- * another branch. Not started: no rule and no run.
- */
-export type ProvisionState = "encoded" | "in_progress" | "failed" | "not_started";
-
-export const PROVISION_STATES: ProvisionState[] = ["encoded", "in_progress", "failed", "not_started"];
+export const PROVISION_STATES: ProvisionState[] = ["encoded", "partly", "in_progress", "failed", "not_started"];
 
 export const PROVISION_LABELS: Record<ProvisionState, string> = {
   encoded: "Encoded",
+  partly: "Partly encoded",
   in_progress: "In progress",
   failed: "Failed",
   not_started: "Not started",
 };
 
+/** Where one screener unit (a provision PolicyEngine cites) stands. */
+export type UnitState = "encoded" | "partly" | "in_progress" | "failed" | "not_encoded" | "not_in_corpus";
+
+export const UNIT_STATES: UnitState[] = ["encoded", "partly", "in_progress", "failed", "not_encoded", "not_in_corpus"];
+
+export const UNIT_LABELS: Record<UnitState, string> = {
+  encoded: "Encoded",
+  partly: "Partly encoded",
+  in_progress: "In progress",
+  failed: "Failed",
+  not_encoded: "Not encoded",
+  not_in_corpus: "Not in the corpus",
+};
+
+/** Where a whole document stands. */
+export type DocumentStatus = "complete" | "partly" | "not_started" | "not_in_corpus";
+
+export const DOCUMENT_STATUSES: DocumentStatus[] = ["complete", "partly", "not_started", "not_in_corpus"];
+
+export const STATUS_LABELS: Record<DocumentStatus, string> = {
+  complete: "Complete",
+  partly: "Partly encoded",
+  not_started: "Not started",
+  not_in_corpus: "Not in the corpus",
+};
+
 const IN_INDEX: PipelineStage[] = ["indexed", "runs", "verified", "compile_failed", "tests_failing", "oracle_disagrees"];
 const UNDER_WAY: PipelineStage[] = ["encoding", "review", "awaiting_sync", "not_indexed"];
 
-/** A provision whose latest run is under way or failed, for the document's drill-down. */
-export interface OpenProvision {
-  path: string;
-  state: "in_progress" | "failed";
+/** The newest run that touches a provision, as the drill-down shows it. */
+export interface RunMark {
   stage: PipelineStage;
-  /** The run's own citation, for its journey (it may be below the provision). */
+  /** The run's own citation, for its journey. */
   citation: string;
   at: string;
+}
+
+/** A provision whose newest run is under way or failed. */
+export interface OpenProvision extends RunMark {
+  path: string;
+  state: "in_progress" | "failed";
+}
+
+/** One screener unit: a provision PolicyEngine cites, or a cited document as a whole. */
+export interface ParityUnit {
+  key: string;
+  name: string;
+  path: string | null;
+  url: string | null;
+  part: string;
+  references: number;
+  state: UnitState;
+  /** Why it has that state: the module that encodes or names it, or the gap. */
+  detail: string | null;
+  run: RunMark | null;
 }
 
 /** One row of encodings.program_bundle_documents: a document and its measure. */
@@ -96,6 +137,7 @@ export interface BundleDocumentRow {
   key: string;
   name: string;
   layer: string;
+  part: string;
   scope: "in" | "excluded";
   reason: string | null;
   citation_path: string | null;
@@ -104,21 +146,18 @@ export interface BundleDocumentRow {
   manifest: string | null;
   /** The corpus serves the citation path. */
   in_corpus: boolean;
-  /** Provisions the corpus serves under the document, itself included. */
+  /** Text-bearing provisions under the document, and how many are in each state. */
   provisions: number;
-  /** Of those: encoded, in progress, failed; the rest are not started. */
   encoded_provisions: number;
+  partly_provisions: number;
   provisions_in_progress: number;
   provisions_failed: number;
   /** The provisions in progress or failed, newest run first. */
   open_provisions: OpenProvision[];
-  /** Distinct rules that cite the document. */
-  rules: number;
-  /** PolicyEngine-cited provisions of the document: how many, how many a rule encodes, how many sit inside an encoded provision. */
-  cited_total: number;
-  cited_covered: number;
-  cited_within: number;
-  cited: CitedProvision[];
+  /** Distinct modules whose source is in the document. */
+  modules: number;
+  /** The screener tier's units in this document; empty in other tiers. */
+  units: ParityUnit[];
   /** Targeted encode runs for citations in the document, and the newest. */
   runs: number;
   latest_citation: string | null;
@@ -149,53 +188,78 @@ export interface BundleSnapshotRow {
   counts: TierCounts;
 }
 
+/** A RuleSpec module: its path, the provisions it declares as its source, and its YAML when read. */
+export interface ModuleSource {
+  module: string;
+  sources: string[];
+  yaml?: string | null;
+}
+
+const isLaw = (path: string) => ["statute", "regulation"].includes(path.split("/")[1]);
+
 /**
- * A provision PolicyEngine cites, by how a rule reaches it: a rule encodes it
- * or a provision below it ("encoded"); a rule encodes only a provision above
- * it, which may or may not carry it ("within"); or no rule reaches it.
+ * The provisions a module encodes. A statute or regulation module's own path
+ * is its provision (7 USC 2014(a) is us/statute/7/2014/a). A policy module
+ * (us-az/policy/...) encodes the manual, guidance or form provision it
+ * declares as its module source; a statute or regulation it builds on stays
+ * that law's own modules' to encode, so a tax pipeline that cites 26 USC 1402
+ * does not encode 1402.
  */
-export interface CitedProvision {
-  path: string;
-  references: number;
-  state: "encoded" | "within" | "missing";
+export function moduleSources(row: { citation_path: string; declared_sources: string[] }): string[] {
+  if (isLaw(row.citation_path)) return [row.citation_path];
+  return row.declared_sources.filter((source) => !isLaw(source));
 }
 
 /** What the collector reads for one document. */
 export interface DocumentTelemetry {
-  /** Every corpus path under the document's citation path, itself included. */
-  nodes: string[];
-  /** Every provision path a rule cites under the document, with the rule. */
-  ruleCitations: Array<{ citation_path: string; rule: string }>;
-  /** Targeted encode runs whose citation is the document or under it. */
+  /** Every corpus provision under the document's citation path, itself included. */
+  nodes: Array<{ path: string; child_count: number }>;
+  /** The modules whose source is in the document or above it. */
+  modules: ModuleSource[];
+  /** Targeted encode runs whose citation is in the document. */
   attempts: PipelineAttempt[];
 }
 
 const under = (path: string, root: string) => path === root || path.startsWith(`${root}/`);
+const strictlyUnder = (path: string, root: string) => path.startsWith(`${root}/`);
 
-/** The nearest corpus node at or above a cited path, or null when none holds it. */
-function holdingNode(path: string, nodes: Set<string>): string | null {
-  for (let at = path; at; at = at.slice(0, Math.max(0, at.lastIndexOf("/")))) {
-    if (nodes.has(at)) return at;
-    if (!at.includes("/")) break;
-  }
+/**
+ * The marker a section's module uses for a paragraph inside it, as the parity
+ * model reads it: us/regulation/7/273/9/a/1 under .../273/9 is "273.9(a)(1)";
+ * us/statute/7/2015/e/3 under .../2015/e is "2015(e)(3)".
+ */
+export function designation(cited: string, parent: string): string | null {
+  if (!strictlyUnder(cited, parent)) return null;
+  const c = cited.split("/");
+  if (c[1] === "statute" && c.length >= 4) return c[3] + c.slice(4).map((d) => `(${d})`).join("");
+  if (c[1] === "regulation" && c.length >= 5) return `${c[3]}.${c[4]}` + c.slice(5).map((d) => `(${d})`).join("");
   return null;
 }
 
-export function documentStatus(row: Pick<BundleDocumentRow, "scope" | "in_corpus" | "provisions" | "encoded_provisions">): DocumentStatus | null {
-  if (row.scope === "excluded") return null;
-  if (!row.in_corpus) return "not_in_corpus";
-  if (row.encoded_provisions === 0) return "not_encoded";
-  return row.encoded_provisions < row.provisions ? "partly_encoded" : "encoded";
+/** The newest run that touches a path: at it, above it, or below it. */
+function newestRun(path: string, attempts: PipelineAttempt[]): PipelineAttempt | null {
+  let newest: PipelineAttempt | null = null;
+  for (const attempt of attempts) {
+    if (!attempt.citation || !(under(path, attempt.citation) || strictlyUnder(attempt.citation, path))) continue;
+    if (!newest || attempt.dispatched_at > newest.dispatched_at) newest = attempt;
+  }
+  return newest;
 }
 
-/**
- * A document's measure. A provision counts as encoded when a rule cites it or
- * a provision below it, or its module encodes one; a path deeper than the
- * corpus splits counts toward the deepest provision that holds it. A
- * PolicyEngine-cited provision is encoded when a rule reaches it or a
- * provision below it, and "within" when a rule reaches only a provision above
- * it in the same document.
- */
+const mark = (attempt: PipelineAttempt): RunMark => ({
+  stage: attemptStage(attempt),
+  citation: attempt.citation,
+  at: attempt.dispatched_at,
+});
+
+function documentStatus(row: Pick<BundleDocumentRow, "scope" | "in_corpus" | "provisions" | "encoded_provisions" | "partly_provisions">): DocumentStatus | null {
+  if (row.scope === "excluded") return null;
+  if (!row.in_corpus) return "not_in_corpus";
+  if (row.provisions > 0 && row.encoded_provisions === row.provisions) return "complete";
+  return row.encoded_provisions + row.partly_provisions > 0 ? "partly" : "not_started";
+}
+
+/** A document's measure, and in the screener tier its parity units. */
 export function measureDocument(
   bundleId: string,
   tier: BundleTierId,
@@ -204,52 +268,60 @@ export function measureDocument(
   collectedAt: string
 ): BundleDocumentRow {
   const root = doc.citation_path;
-  const nodes = new Set(telemetry?.nodes ?? []);
-  const inCorpus = Boolean(root && nodes.has(root));
-  const citations = (telemetry?.ruleCitations ?? []).filter((c) => root && under(c.citation_path, root));
-  const encoded = new Set<string>();
-  for (const citation of citations) {
-    const node = holdingNode(citation.citation_path, nodes);
-    if (node) encoded.add(node);
-  }
-  // Each provision's latest run: a run on a path deeper than the corpus
-  // splits counts toward the provision that holds it.
-  const latestRun = new Map<string, PipelineAttempt>();
-  for (const attempt of telemetry?.attempts ?? []) {
-    const node = attempt.citation ? holdingNode(attempt.citation, nodes) : null;
-    if (!node || !root || !under(node, root)) continue;
-    const seen = latestRun.get(node);
-    if (!seen || attempt.dispatched_at > seen.dispatched_at) latestRun.set(node, attempt);
-  }
-  const open: OpenProvision[] = [];
-  for (const [node, attempt] of latestRun) {
-    if (encoded.has(node)) continue;
-    const stage = attemptStage(attempt);
-    if (IN_INDEX.includes(stage)) {
-      encoded.add(node);
-    } else {
-      open.push({
-        path: node,
-        state: UNDER_WAY.includes(stage) ? "in_progress" : "failed",
-        stage,
-        citation: attempt.citation,
-        at: attempt.dispatched_at,
-      });
-    }
-  }
-  open.sort((a, b) => b.at.localeCompare(a.at));
-  const cited: CitedProvision[] = (doc.cited ?? []).map(({ path, references }) => ({
-    path,
-    references,
-    state: citations.some((c) => under(c.citation_path, path))
-      ? "encoded"
-      : citations.some((c) => root && under(c.citation_path, root) && under(path, c.citation_path))
-        ? "within"
-        : "missing",
-  }));
+  const nodes = telemetry?.nodes ?? [];
+  const inCorpus = Boolean(root && nodes.some((n) => n.path === root));
+  const leaves = inCorpus ? nodes.filter((n) => n.child_count === 0).map((n) => n.path) : [];
+  const modules = telemetry?.modules ?? [];
+  const sources = modules.flatMap((m) => m.sources.map((source) => ({ source, module: m })));
   const attempts = [...(telemetry?.attempts ?? [])]
     .filter((a) => root && a.citation && under(a.citation, root))
     .sort((a, b) => b.dispatched_at.localeCompare(a.dispatched_at));
+
+  // Each leaf's state.
+  const states = new Map<string, ProvisionState>();
+  const open: OpenProvision[] = [];
+  for (const leaf of leaves) {
+    if (sources.some((s) => under(leaf, s.source))) {
+      states.set(leaf, "encoded");
+      continue;
+    }
+    if (sources.some((s) => strictlyUnder(s.source, leaf))) {
+      states.set(leaf, "partly");
+      continue;
+    }
+    const run = newestRun(leaf, attempts);
+    const stage = run ? attemptStage(run) : null;
+    if (run && stage && !IN_INDEX.includes(stage)) {
+      const state = UNDER_WAY.includes(stage) ? "in_progress" : "failed";
+      states.set(leaf, state);
+      open.push({ path: leaf, state, ...mark(run) });
+    } else {
+      states.set(leaf, run ? "encoded" : "not_started");
+    }
+  }
+  open.sort((a, b) => b.at.localeCompare(a.at));
+  const count = (state: ProvisionState) => [...states.values()].filter((s) => s === state).length;
+  const leafStates = (path: string) => leaves.filter((leaf) => under(leaf, path)).map((leaf) => states.get(leaf));
+
+  const units: ParityUnit[] = [];
+  if (tier === "screener" && doc.scope === "in") {
+    const cited = doc.cited?.length
+      ? doc.cited
+      : [{ path: root ?? "", references: doc.references ?? 0, part: doc.part ?? null }];
+    for (const c of cited) {
+      const path = c.path || null;
+      units.push({
+        key: path ?? doc.key,
+        name: path && path !== root ? `${doc.name ?? doc.key} ${path.slice((root ?? "").length)}` : (doc.name ?? doc.key),
+        path,
+        url: path ? null : doc.source_url,
+        part: c.part ?? doc.part ?? "Other",
+        references: c.references,
+        ...unitState(path, inCorpus, sources, leafStates, attempts),
+      });
+    }
+  }
+
   const latest = attempts[0] ?? null;
   const row: BundleDocumentRow = {
     bundle_id: bundleId,
@@ -257,6 +329,7 @@ export function measureDocument(
     key: doc.key,
     name: doc.name ?? doc.key,
     layer: doc.layer ?? (root?.startsWith("us/") ? "federal" : "state"),
+    part: doc.part ?? "Other",
     scope: doc.scope,
     reason: doc.scope === "excluded" ? (doc.reason ?? null) : null,
     citation_path: root,
@@ -264,16 +337,14 @@ export function measureDocument(
     sources: doc.sources ?? [],
     manifest: doc.manifest ?? null,
     in_corpus: inCorpus,
-    provisions: inCorpus ? nodes.size : 0,
-    encoded_provisions: inCorpus ? encoded.size : 0,
-    provisions_in_progress: inCorpus ? open.filter((p) => p.state === "in_progress").length : 0,
-    provisions_failed: inCorpus ? open.filter((p) => p.state === "failed").length : 0,
-    open_provisions: inCorpus ? open : [],
-    rules: new Set(citations.map((c) => c.rule)).size,
-    cited_total: cited.length,
-    cited_covered: cited.filter((c) => c.state === "encoded").length,
-    cited_within: cited.filter((c) => c.state === "within").length,
-    cited,
+    provisions: leaves.length,
+    encoded_provisions: count("encoded"),
+    partly_provisions: count("partly"),
+    provisions_in_progress: count("in_progress"),
+    provisions_failed: count("failed"),
+    open_provisions: open,
+    modules: new Set(sources.filter((s) => root && under(s.source, root)).map((s) => s.module.module)).size,
+    units,
     runs: attempts.length,
     latest_citation: latest?.citation ?? null,
     latest_run_at: latest?.dispatched_at ?? null,
@@ -286,56 +357,118 @@ export function measureDocument(
   return row;
 }
 
+/** A screener unit's state, by the parity rule, then its leaves, then its newest run. */
+function unitState(
+  path: string | null,
+  inCorpus: boolean,
+  sources: Array<{ source: string; module: ModuleSource }>,
+  leafStates: (path: string) => Array<ProvisionState | undefined>,
+  attempts: PipelineAttempt[]
+): Pick<ParityUnit, "state" | "detail" | "run"> {
+  if (!path || !inCorpus) return { state: "not_in_corpus", detail: null, run: null };
+  const exact = sources.find((s) => s.source === path);
+  if (exact) return { state: "encoded", detail: `Encoded by ${exact.module.module}`, run: null };
+  // A module for a section above it: credit only when the module names it.
+  const above = sources
+    .filter((s) => strictlyUnder(path, s.source))
+    .sort((a, b) => b.source.length - a.source.length)[0];
+  if (above) {
+    const marker = designation(path, above.source);
+    if (!marker) return { state: "encoded", detail: `Inside ${above.module.module}`, run: null };
+    if (above.module.yaml?.includes(marker)) {
+      return { state: "encoded", detail: `${above.module.module} names ${marker}`, run: null };
+    }
+    return { state: "partly", detail: `${above.module.module} does not name ${marker}`, run: null };
+  }
+  const leaves = leafStates(path);
+  const encoded = leaves.filter((s) => s === "encoded").length;
+  if (leaves.length && encoded === leaves.length) {
+    return { state: "encoded", detail: `All ${leaves.length} provisions encoded`, run: null };
+  }
+  if (sources.some((s) => strictlyUnder(s.source, path)) || leaves.some((s) => s === "encoded" || s === "partly")) {
+    return { state: "partly", detail: `${encoded} of ${leaves.length} provisions encoded`, run: null };
+  }
+  const run = newestRun(path, attempts);
+  const stage = run ? attemptStage(run) : null;
+  if (run && stage && !IN_INDEX.includes(stage)) {
+    return { state: UNDER_WAY.includes(stage) ? "in_progress" : "failed", detail: null, run: mark(run) };
+  }
+  return { state: "not_encoded", detail: null, run: run ? mark(run) : null };
+}
+
 export interface TierCounts {
   documents: number;
   excluded: number;
   byStatus: Record<DocumentStatus, number>;
   provisions: number;
-  encodedProvisions: number;
   /** Provisions by state; they add up to the provisions. */
   byProvisionState: Record<ProvisionState, number>;
-  citedTotal: number;
-  citedCovered: number;
-  citedWithin: number;
-  rules: number;
+  /** Screener units by state; they add up to the units. */
+  units: number;
+  byUnitState: Record<UnitState, number>;
+}
+
+/** A document's provisions by state; they add up to its provisions. */
+export function provisionCounts(
+  row: Pick<
+    BundleDocumentRow,
+    "provisions" | "encoded_provisions" | "partly_provisions" | "provisions_in_progress" | "provisions_failed"
+  >
+): Record<ProvisionState, number> {
+  const known = row.encoded_provisions + row.partly_provisions + row.provisions_in_progress + row.provisions_failed;
+  return {
+    encoded: row.encoded_provisions,
+    partly: row.partly_provisions,
+    in_progress: row.provisions_in_progress,
+    failed: row.provisions_failed,
+    not_started: Math.max(0, row.provisions - known),
+  };
 }
 
 export function tierCounts(rows: BundleDocumentRow[]): TierCounts {
   const inScope = rows.filter((r) => r.scope === "in");
   const byStatus = Object.fromEntries(DOCUMENT_STATUSES.map((s) => [s, 0])) as Record<DocumentStatus, number>;
   for (const row of inScope) if (row.status) byStatus[row.status]++;
-  const sum = (f: (r: BundleDocumentRow) => number) => inScope.reduce((total, r) => total + f(r), 0);
+  const byProvisionState = Object.fromEntries(PROVISION_STATES.map((s) => [s, 0])) as Record<ProvisionState, number>;
+  for (const row of inScope) {
+    const counts = provisionCounts(row);
+    for (const state of PROVISION_STATES) byProvisionState[state] += counts[state];
+  }
+  const units = inScope.flatMap((r) => r.units);
+  const byUnitState = Object.fromEntries(UNIT_STATES.map((s) => [s, 0])) as Record<UnitState, number>;
+  for (const unit of units) byUnitState[unit.state]++;
   return {
     documents: inScope.length,
     excluded: rows.length - inScope.length,
     byStatus,
-    provisions: sum((r) => r.provisions),
-    encodedProvisions: sum((r) => r.encoded_provisions),
-    byProvisionState: {
-      encoded: sum((r) => r.encoded_provisions),
-      in_progress: sum((r) => r.provisions_in_progress),
-      failed: sum((r) => r.provisions_failed),
-      not_started: sum((r) => r.provisions - r.encoded_provisions - r.provisions_in_progress - r.provisions_failed),
-    },
-    citedTotal: sum((r) => r.cited_total),
-    citedCovered: sum((r) => r.cited_covered),
-    citedWithin: sum((r) => r.cited_within),
-    rules: sum((r) => r.rules),
+    provisions: inScope.reduce((total, r) => total + r.provisions, 0),
+    byProvisionState,
+    units: units.length,
+    byUnitState,
   };
 }
 
-/** A family of documents, for grouping the map: what kind of source, at which level. */
-export function documentGroup(row: Pick<BundleDocumentRow, "citation_path" | "layer">): string {
-  const path = row.citation_path ?? "";
-  const level = row.layer === "state" ? "State" : "Federal";
-  if (!path) return `${level} sources not in the corpus`;
-  const kind = path.split("/")[1];
-  if (kind === "statute") return `${level} statutes`;
-  if (kind === "regulation") return `${level} regulations`;
-  if (kind === "manual") return `${level} manuals`;
-  if (kind === "policy") return `${level} state plans`;
-  if (kind === "form") return `${level} forms`;
-  return `${level} guidance`;
+/** The parts of a tier in reading order: the program's calculation order, then the rest by name. */
+export const PART_ORDER = [
+  "Household and eligibility",
+  "Income",
+  "Deductions",
+  "Assets",
+  "Work requirements",
+  "Benefit amount",
+  "Definitions from other programs",
+  "Benefit determination",
+  "Expenses and deductions",
+  "Benefit amounts",
+  "Work registration",
+  "EBT and replacement",
+  "Regulations, plans and waivers",
+  "Other",
+];
+
+export function partRank(part: string): number {
+  const index = PART_ORDER.indexOf(part);
+  return index < 0 ? PART_ORDER.length - 1 : index;
 }
 
 /** One in-scope bundle document, as the reverse lookup from an encoding needs it. */
@@ -358,7 +491,10 @@ export interface BundleMembership {
 }
 
 /** The in-scope documents of every bundle, flattened for the reverse lookup. */
-export function bundleIndex(bundles: BundleRow[], documents: BundleDocumentRow[]): BundleIndexEntry[] {
+export function bundleIndex(
+  bundles: Array<Pick<BundleRow, "id" | "title" | "tiers">>,
+  documents: Array<Pick<BundleDocumentRow, "bundle_id" | "tier" | "name" | "scope" | "citation_path">>
+): BundleIndexEntry[] {
   const byId = new Map(bundles.map((b) => [b.id, b]));
   return documents.flatMap((doc) => {
     const bundle = byId.get(doc.bundle_id);
@@ -385,7 +521,7 @@ export function bundleIndex(bundles: BundleRow[], documents: BundleDocumentRow[]
 export function bundleMemberships(citation: string, index: BundleIndexEntry[]): BundleMembership[] {
   const out = new Map<string, BundleMembership>();
   for (const entry of index) {
-    if (citation !== entry.citation_path && !citation.startsWith(`${entry.citation_path}/`)) continue;
+    if (!under(citation, entry.citation_path)) continue;
     const membership = out.get(entry.bundle_id) ?? { bundle_id: entry.bundle_id, bundle_title: entry.bundle_title, tiers: [] };
     if (!membership.tiers.some((t) => t.tier === entry.tier)) {
       membership.tiers.push({ tier: entry.tier, index: entry.tier_index, title: entry.tier_title, document: entry.document });
@@ -401,14 +537,4 @@ export function bundleMemberships(citation: string, index: BundleIndexEntry[]): 
 export function tiersLabel(membership: BundleMembership): string {
   const indexes = membership.tiers.map((t) => t.index);
   return `${indexes.length === 1 ? "Tier" : "Tiers"} ${indexes.join(", ")}`;
-}
-
-/** A document's provisions by state; they add up to its provisions. */
-export function provisionCounts(row: Pick<BundleDocumentRow, "provisions" | "encoded_provisions" | "provisions_in_progress" | "provisions_failed">): Record<ProvisionState, number> {
-  return {
-    encoded: row.encoded_provisions,
-    in_progress: row.provisions_in_progress,
-    failed: row.provisions_failed,
-    not_started: Math.max(0, row.provisions - row.encoded_provisions - row.provisions_in_progress - row.provisions_failed),
-  };
 }

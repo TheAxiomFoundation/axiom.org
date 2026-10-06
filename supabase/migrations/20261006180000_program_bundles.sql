@@ -27,6 +27,7 @@ create table if not exists encodings.program_bundle_documents (
   key                 text not null,       -- citation path, or source URL for a document the corpus does not hold
   name                text not null,
   layer               text not null,       -- federal | state | other state
+  part                text not null,       -- the part of the program it feeds (calculation or manual part)
   scope               text not null,       -- in | excluded
   reason              text,                -- why an excluded document is out
   citation_path       text,
@@ -34,26 +35,26 @@ create table if not exists encodings.program_bundle_documents (
   sources             text[] not null default '{}',  -- plan | policyengine-references
   manifest            text,                -- the source manifest that registers it
   in_corpus           boolean not null,
-  provisions          integer not null,    -- corpus provisions under the document, itself included
-  -- Every provision has one state: encoded (a rule in the index cites it, or
-  -- its latest run's module reached the index), in progress (latest run under
-  -- way, in review, or merged and waiting for the index), failed (latest run
-  -- failed, PR closed or merged into another branch), or not started (the rest).
+  -- The document's text-bearing provisions (corpus leaves), each in one
+  -- state: encoded (a module's source is it or a provision above it),
+  -- partly (a module encodes only part of it), in progress or failed (its
+  -- newest encode run), or not started (the rest).
+  provisions              integer not null,
   encoded_provisions      integer not null,
+  partly_provisions       integer not null,
   provisions_in_progress  integer not null,
   provisions_failed       integer not null,
   open_provisions         jsonb not null default '[]',  -- [{path, state, stage, citation, at}], newest first
-  rules               integer not null,    -- distinct rules that cite the document
-  cited_total         integer not null,    -- provisions PolicyEngine cites in the document
-  cited_covered       integer not null,    -- of those, encoded by a rule at or below them
-  cited_within        integer not null,    -- of those, only inside a provision a rule encodes
-  cited               jsonb not null default '[]',   -- [{path, references, state}]
+  modules             integer not null,    -- distinct modules whose source is in the document
+  -- Screener tier only: each provision PolicyEngine cites, graded by the
+  -- parity rule: [{key, name, path, url, part, references, state, detail, run}].
+  units               jsonb not null default '[]',
   runs                integer not null,    -- targeted encode runs for citations in the document
   latest_citation     text,
   latest_run_at       timestamptz,
   latest_stage        text,                -- the pipeline stage of the newest run
   latest_run_url      text,
-  status              text,                -- not_in_corpus | not_encoded | partly_encoded | encoded; null when excluded
+  status              text,                -- complete | partly | not_started | not_in_corpus; null when excluded
   collected_at        timestamptz not null,
   primary key (bundle_id, tier, key)
 );
@@ -63,7 +64,7 @@ create table if not exists encodings.program_bundle_snapshots (
   bundle_id  text not null references encodings.program_bundles (id) on delete cascade,
   tier       text not null,
   day        date not null,
-  counts     jsonb not null,               -- documents, excluded, byStatus, provisions, byProvisionState, cited*
+  counts     jsonb not null,               -- documents, excluded, byStatus, provisions, byProvisionState, units, byUnitState
   primary key (bundle_id, tier, day)
 );
 

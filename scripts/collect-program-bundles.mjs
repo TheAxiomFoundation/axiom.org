@@ -29,7 +29,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import yaml from "js-yaml";
-import { measureDocument, tierCounts } from "../src/lib/axiom/program-bundles.ts";
+import { measureDocument, moduleSources, tierCounts } from "../src/lib/axiom/program-bundles.ts";
 
 const CORPUS_REPO = "TheAxiomFoundation/axiom-corpus";
 const BUNDLE_DIR = "manifests/program-bundles";
@@ -101,59 +101,93 @@ async function pages(build) {
   }
 }
 
-/** A path and everything under it. LIKE escapes, so a path's own "_" or "%" match only themselves. */
-const likeUnder = (path) => `${path.replace(/[\\%_]/g, (c) => `\\${c}`)}/%`;
-
-async function subtree(schema, table, column, select, root) {
-  const query = () => supabase.schema(schema).from(table).select(select);
-  const [self, below] = await Promise.all([
-    pages(() => query().eq(column, root)),
-    pages(() => query().like(column, likeUnder(root))),
-  ]);
-  return [...self, ...below];
-}
-
 /**
- * A document's corpus paths, walked level by level through parent_path: a
- * LIKE on navigation_nodes.path has no index to use and times out.
+ * A document's corpus provisions with their child counts, walked level by
+ * level through parent_path: a LIKE on navigation_nodes.path has no index to
+ * use and times out.
  */
 async function corpusTree(root) {
   const nodes = () => supabase.schema("corpus").from("navigation_nodes").select("path,child_count");
   const self = await pages(() => nodes().eq("path", root));
-  const paths = self.map((n) => n.path);
+  const out = self.map((n) => ({ path: n.path, child_count: n.child_count }));
   let level = self.filter((n) => n.child_count > 0).map((n) => n.path);
   while (level.length) {
     const next = [];
     for (let i = 0; i < level.length; i += 100) {
       const batch = level.slice(i, i + 100);
       const children = await pages(() => nodes().in("parent_path", batch).order("path"));
-      paths.push(...children.map((n) => n.path));
+      out.push(...children.map((n) => ({ path: n.path, child_count: n.child_count })));
       next.push(...children.filter((n) => n.child_count > 0).map((n) => n.path));
     }
     level = next;
   }
-  return paths;
+  return out;
 }
 
-async function telemetryFor(root, attempts) {
-  const select = "citation_path,module_citation_path,rule_name";
-  // A rule cites provisions (citation_path) and belongs to a module that
-  // encodes one (module_citation_path); either may be the deeper of the two.
-  const [nodes, cited, modules] = await Promise.all([
-    corpusTree(root),
-    subtree("encodings", "rule_citations", "citation_path", select, root),
-    subtree("encodings", "rule_citations", "module_citation_path", select, root),
+const under = (path, root) => path === root || path.startsWith(`${root}/`);
+
+/**
+ * Every module of the jurisdictions a bundle draws on, with the provisions it
+ * encodes. A policy module's declared source is its rules' module-source rows
+ * in the rule index.
+ */
+async function readModules(jurisdictions) {
+  const [rows, declared] = await Promise.all([
+    pages(() =>
+      supabase
+        .from("rulespec_files")
+        .select("citation_path")
+        .in("jurisdiction", jurisdictions)
+        .not("citation_path", "is", null)
+        .order("citation_path")
+    ),
+    pages(() =>
+      supabase
+        .from("rule_citations")
+        .select("module_citation_path,citation_path")
+        .eq("is_module_source", true)
+        .like("module_citation_path", "%/policy/%")
+        .order("module_citation_path")
+        .order("citation_path")
+    ),
   ]);
-  const rules = new Map();
-  for (const c of [...cited, ...modules]) {
-    const rule = `${c.module_citation_path}#${c.rule_name}`;
-    rules.set(`${rule}|${c.citation_path}`, { citation_path: c.citation_path, rule });
-    rules.set(`${rule}|${c.module_citation_path}`, { citation_path: c.module_citation_path, rule });
+  const sources = new Map();
+  for (const row of declared) {
+    sources.set(row.module_citation_path, [...new Set([...(sources.get(row.module_citation_path) ?? []), row.citation_path])]);
   }
+  return rows.map((row) => ({
+    module: row.citation_path,
+    sources: moduleSources({ citation_path: row.citation_path, declared_sources: sources.get(row.citation_path) ?? [] }),
+  }));
+}
+
+/** The YAML of modules the parity rule must read, by module path. */
+async function readYaml(modulePaths) {
+  const out = new Map();
+  for (let i = 0; i < modulePaths.length; i += 50) {
+    const { data, error } = await supabase
+      .from("rulespec_files")
+      .select("citation_path,raw_yaml")
+      .in("citation_path", modulePaths.slice(i, i + 50));
+    if (error) throw new Error(error.message);
+    for (const row of data) out.set(row.citation_path, row.raw_yaml);
+  }
+  return out;
+}
+
+async function telemetryFor(doc, modules, attempts) {
+  const root = doc.citation_path;
+  const nodes = await corpusTree(root);
+  // Modules whose source is in the document or holds it.
+  const relevant = modules.filter((m) => m.sources.some((s) => under(s, root) || under(root, s)));
+  // A section module credits a cited paragraph only when its YAML names it.
+  const cited = (doc.cited ?? []).map((c) => c.path);
+  const readers = relevant.filter((m) => m.sources.some((s) => cited.some((c) => c.startsWith(`${s}/`))));
+  const yaml = readers.length ? await readYaml(readers.map((m) => m.module)) : new Map();
   return {
     nodes,
-    ruleCitations: [...rules.values()],
-    attempts: attempts.filter((a) => a.citation === root || a.citation?.startsWith(`${root}/`)),
+    modules: relevant.map((m) => (yaml.has(m.module) ? { ...m, yaml: yaml.get(m.module) } : m)),
+    attempts: attempts.filter((a) => a.citation && under(a.citation, root)),
   };
 }
 
@@ -172,27 +206,34 @@ async function main() {
   const documentRows = [];
   const snapshotRows = [];
   for (const { source, bundle } of bundles) {
+    const modules = await readModules([...new Set(["us", bundle.jurisdiction])]);
+    console.log(`${bundle.id}: read ${modules.length} modules`);
     const cache = new Map();
     for (const tier of bundle.tiers) {
       const rows = [];
       for (const doc of tier.documents) {
         let telemetry = null;
         if (doc.scope === "in" && doc.citation_path) {
-          if (!cache.has(doc.citation_path)) cache.set(doc.citation_path, await telemetryFor(doc.citation_path, attempts));
-          telemetry = cache.get(doc.citation_path);
+          const key = `${doc.citation_path}|${(doc.cited ?? []).map((c) => c.path).join(",")}`;
+          if (!cache.has(key)) cache.set(key, await telemetryFor(doc, modules, attempts));
+          telemetry = cache.get(key);
         }
         rows.push(measureDocument(bundle.id, tier.id, doc, telemetry, collectedAt));
       }
       documentRows.push(...rows);
       const counts = tierCounts(rows);
       snapshotRows.push({ bundle_id: bundle.id, tier: tier.id, day, counts });
-      const done = counts.byStatus.encoded;
+      const done = counts.byStatus.complete;
+      const p = counts.byProvisionState;
+      const u = counts.byUnitState;
       console.log(
-        `${bundle.id} ${tier.id}: ${counts.documents} documents in scope (${counts.excluded} excluded), ` +
-          `${done} encoded, ${counts.byStatus.partly_encoded} partly, ${counts.byStatus.not_encoded} without rules, ` +
-          `${counts.byStatus.not_in_corpus} not in the corpus; provisions ${counts.encodedProvisions}/${counts.provisions}` +
-          (counts.citedTotal
-            ? `; PolicyEngine-cited ${counts.citedCovered} encoded, ${counts.citedWithin} within, of ${counts.citedTotal}`
+        `${bundle.id} ${tier.id}: ${counts.documents} documents in scope (${counts.excluded} excluded): ` +
+          `${done} complete, ${counts.byStatus.partly} partly, ${counts.byStatus.not_started} not started, ` +
+          `${counts.byStatus.not_in_corpus} not in the corpus; ${counts.provisions} provisions: ${p.encoded} encoded, ` +
+          `${p.partly} partly, ${p.in_progress} in progress, ${p.failed} failed, ${p.not_started} not started` +
+          (counts.units
+            ? `; ${counts.units} cited units: ${u.encoded} encoded, ${u.partly} partly, ${u.in_progress} in progress, ` +
+              `${u.failed} failed, ${u.not_encoded} not encoded, ${u.not_in_corpus} not in the corpus`
             : "")
       );
     }
