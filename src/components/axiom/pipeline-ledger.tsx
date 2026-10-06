@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { journeyHref } from "@/lib/axiom/encoding-pipeline";
 import { scopeSearch, type PipelineScope } from "@/lib/axiom/encoding-pipeline-insights";
 import { runTimeline, type RunRow } from "@/lib/axiom/encoding-pipeline-runs";
+import { bundleMemberships, tiersLabel, type BundleIndexEntry } from "@/lib/axiom/program-bundles";
 import {
   causeHeadline,
   runLedger,
@@ -23,6 +24,8 @@ interface RunsPayload {
   rows: RunRow[];
   labels?: Record<string, string>;
   documentPaths?: Record<string, string>;
+  /** Program bundle documents that hold some run's citation. */
+  bundles?: BundleIndexEntry[];
 }
 
 /** Documents shown before "Show more", as the encoding ledger always showed. */
@@ -151,6 +154,7 @@ export function PipelineLedger({
                     key={document.key}
                     document={document}
                     referenceMs={referenceMs}
+                    bundles={payload?.bundles ?? []}
                     openSection={openSection}
                     onSection={(citation) => setOpenSection((open) => (open === citation ? null : citation))}
                   />
@@ -176,11 +180,14 @@ export function PipelineLedger({
 function DocumentSections({
   document,
   referenceMs,
+  bundles,
   openSection,
   onSection,
 }: {
   document: LedgerDocument;
   referenceMs: number;
+  /** Bundle documents, to name the bundle and tier each section belongs to. */
+  bundles: BundleIndexEntry[];
   openSection: string | null;
   onSection: (citation: string) => void;
 }) {
@@ -225,6 +232,16 @@ function DocumentSections({
               </TableCell>
               <TableCell className="px-2 py-1.5 align-baseline whitespace-normal text-[var(--color-ink-secondary)]">
                 {label}
+                {bundleMemberships(section.citation, bundles).map((membership) => (
+                  <a
+                    key={membership.bundle_id}
+                    className={styles.ledgerBundle}
+                    href={`/ops/bundles/${membership.bundle_id}`}
+                    title={membership.tiers.map((t) => `${t.title}: ${t.document}`).join("\n")}
+                  >
+                    {membership.bundle_title} · {tiersLabel(membership)}
+                  </a>
+                ))}
               </TableCell>
               <TableCell className="px-2 py-1.5 align-baseline whitespace-nowrap">
                 <span className={`${styles.status} ${TONE_CLASS[section.tone]}`} data-tone={section.tone}>

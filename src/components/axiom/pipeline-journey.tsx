@@ -10,6 +10,7 @@ import {
   stageSince,
   type PipelineAttempt,
 } from "@/lib/axiom/encoding-pipeline";
+import { tiersLabel, type BundleMembership } from "@/lib/axiom/program-bundles";
 import {
   runRow,
   runTimeline,
@@ -22,11 +23,14 @@ export function PipelineJourney({
   citation,
   attempts,
   available,
+  bundles = [],
   referenceMs,
 }: {
   citation: string | null;
   attempts: PipelineAttempt[];
   available: boolean;
+  /** The program bundles whose documents hold this citation. */
+  bundles?: BundleMembership[];
   referenceMs: number;
 }) {
   const latest = attempts[0] ?? null;
@@ -56,6 +60,17 @@ export function PipelineJourney({
                 : available
                   ? "No targeted re-encode dispatch has been recorded for this citation."
                   : "The pipeline index is not available yet."}
+            </p>
+          )}
+          {bundles.length > 0 && (
+            <p className={styles.bundles}>
+              Part of
+              {bundles.map((membership) => (
+                <a key={membership.bundle_id} href={`/ops/bundles/${membership.bundle_id}`}>
+                  {membership.bundle_title} · {tiersLabel(membership)}
+                  <span>{membership.tiers[0].document}</span>
+                </a>
+              ))}
             </p>
           )}
         </header>

@@ -40,6 +40,14 @@ generate `/axiom/v2/...` hrefs. The app root and marketing pages stay on v1.
   `scripts/collect-encoding-pipeline.mjs` rebuilds it every 30 minutes from
   GitHub and Supabase (and dispatches the index sync after merges); `/ops`
   and `/ops/journey` read only the table, never GitHub at request time.
+- **Program bundles** (`encodings.program_bundle_documents`): the documents of
+  each delivery tier of a program in a jurisdiction (axiom-corpus
+  `manifests/program-bundles/*.yaml`: screener-level parity and the full
+  document bundle), each measured against the served corpus, the rule index
+  and `pipeline_attempts`. `scripts/collect-program-bundles.mjs` rebuilds them
+  in the pipeline collector's workflow; `/ops/bundles/<jurisdiction>/<program>`
+  reads only the tables, and the ledger and journey name each encoding's
+  bundle and tier from them.
 - **Everything executable** (packages, graphs, calculate): the hosted
   axiom-api via `src/lib/axiom/runtime/api.ts`, server-side only.
 
@@ -58,6 +66,10 @@ Dev needs `.env.local` (gitignored) with:
 - `AXIOM_OPS_PIPELINE_FILE` — optional, dev only: a collector dry run
   (`bun scripts/collect-encoding-pipeline.mjs --out <file>`) that `/ops`
   reads instead of `encodings.pipeline_attempts`.
+- `AXIOM_OPS_BUNDLES_FILE` — optional, dev only: a bundle collector dry run
+  (`bun scripts/collect-program-bundles.mjs --out <file>`, `--bundle <yaml>`
+  for a bundle file not yet on axiom-corpus main) that `/ops/bundles` reads
+  instead of the tables.
 - `NEXT_PUBLIC_GRAPH_VIEWER_URL` / `NEXT_PUBLIC_BUILDER_URL` — optional
   overrides for the graph-viewer / dashboard-builder deep-link targets.
 

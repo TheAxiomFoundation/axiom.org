@@ -79,3 +79,28 @@
 .runTimeline {
   margin-top: 14px;
 }
+
+/* The program bundles that hold this citation. */
+.bundles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--color-ink-muted);
+}
+
+.bundles a {
+  display: inline-flex;
+  gap: 6px;
+  padding: 2px 10px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 35%, var(--color-rule));
+  border-radius: 999px;
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+.bundles a span {
+  color: var(--color-ink-muted);
+}

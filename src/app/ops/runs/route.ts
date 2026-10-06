@@ -3,14 +3,15 @@ import { getPipelineAttempts } from "@/lib/axiom/encoding-pipeline-data";
 import { attemptJurisdiction, inScope, parseScope } from "@/lib/axiom/encoding-pipeline-insights";
 import { runRows } from "@/lib/axiom/encoding-pipeline-runs";
 import { getCitationMetadata } from "@/lib/corpus-status";
+import { getBundleIndex } from "@/lib/axiom/program-bundles-data";
 import { opsPipelineVisible } from "@/lib/axiom/ops-pipeline-visibility";
 
 export const dynamic = "force-dynamic";
 
 /**
  * Every dispatch in a scope (`?j=us`, `?j=us&only=1`), newest first, with
- * its citations' names and source documents, for the /ops ledger and the
- * flow drill-downs. Fetched only when they open, so the page itself carries
+ * its citations' names and source documents, and the program bundle
+ * documents that hold them, for the /ops ledger and the flow drill-downs. Fetched only when they open, so the page itself carries
  * just the flow's counts. Hidden with the pipeline section.
  */
 export async function GET(request: Request) {
@@ -23,6 +24,10 @@ export async function GET(request: Request) {
   }
   const attempts = pipeline.attempts.filter((attempt) => inScope(attemptJurisdiction(attempt), scope));
   const rows = runRows(attempts);
-  const metadata = await getCitationMetadata(rows.map((row) => row.citation));
-  return NextResponse.json({ rows, ...metadata }, { headers: { "Cache-Control": "no-store" } });
+  const [metadata, index] = await Promise.all([getCitationMetadata(rows.map((row) => row.citation)), getBundleIndex()]);
+  // Only the bundle documents some run's citation sits in.
+  const bundles = index.filter((entry) =>
+    rows.some((row) => row.citation === entry.citation_path || row.citation.startsWith(`${entry.citation_path}/`))
+  );
+  return NextResponse.json({ rows, ...metadata, bundles }, { headers: { "Cache-Control": "no-store" } });
 }

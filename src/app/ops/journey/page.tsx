@@ -4,6 +4,8 @@ import { PipelineJourney } from "@/components/axiom/pipeline-journey";
 import { citationJourney } from "@/lib/axiom/encoding-pipeline";
 import { getPipelineAttempts } from "@/lib/axiom/encoding-pipeline-data";
 import { opsPipelineVisible } from "@/lib/axiom/ops-pipeline-visibility";
+import { bundleMemberships } from "@/lib/axiom/program-bundles";
+import { getBundleIndex } from "@/lib/axiom/program-bundles-data";
 import { SITE_URL } from "@/lib/urls";
 
 export const dynamic = "force-dynamic";
@@ -25,12 +27,13 @@ export default async function OpsJourneyPage({
   // Hidden with the /ops pipeline section until it is made public.
   if (!opsPipelineVisible()) notFound();
   const { citation } = await searchParams;
-  const pipeline = citation ? await getPipelineAttempts() : null;
+  const [pipeline, index] = citation ? await Promise.all([getPipelineAttempts(), getBundleIndex()]) : [null, []];
   return (
     <PipelineJourney
       citation={citation ?? null}
       attempts={citation && pipeline ? citationJourney(pipeline.attempts, citation) : []}
       available={pipeline?.available ?? true}
+      bundles={citation ? bundleMemberships(citation, index) : []}
       referenceMs={Date.now()}
     />
   );

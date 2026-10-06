@@ -26,6 +26,9 @@ describe("PipelineLedger", () => {
         pipelineAttempt({ id: "b", citation: "us-la/statute/47/32", jurisdiction: "us-la", encoder_error_rule: "rule-a", failure_source: "diagnostics" }),
       ]),
       labels: { "us/statute/7": "Agriculture", "us/statute/7/2015/f": "Disqualification" },
+      bundles: [
+        { bundle_id: "us-az/snap", bundle_title: "Arizona SNAP", tier: "screener", tier_index: 1, tier_title: "Screener-level parity", document: "7 USC 2015", citation_path: "us/statute/7/2015" },
+      ],
     });
     render(<PipelineLedger scope={{ jurisdiction: "us", only: false }} scopeName="United States" referenceMs={NOW} />);
     expect(screen.getByText("Loading runs…")).toBeInTheDocument();
@@ -39,6 +42,9 @@ describe("PipelineLedger", () => {
     const row = screen.getByRole("button", { name: "Runs of us/statute/7/2015/f" }).closest("tr")!;
     expect(row).toHaveTextContent(/2015\/f.*Disqualification.*Tests pass.*2/);
     expect(within(row).getByRole("link", { name: "2015/f" })).toHaveAttribute("href", "/ops/journey?citation=us%2Fstatute%2F7%2F2015%2Ff");
+    // The program bundle and tier the section belongs to.
+    expect(within(row).getByRole("link", { name: "Arizona SNAP · Tier 1" })).toHaveAttribute("href", "/ops/bundles/us-az/snap");
+    expect(within(screen.getByRole("button", { name: "Runs of us-la/statute/47/32" }).closest("tr")!).queryByRole("link", { name: /SNAP/ })).toBeNull();
     expect(screen.getByRole("button", { name: "Runs of us-la/statute/47/32" }).closest("tr")).toHaveTextContent("Failed validation");
   });
 

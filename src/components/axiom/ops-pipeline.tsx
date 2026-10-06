@@ -1491,7 +1491,7 @@ function StepTable({
  * names and numbers and explains them only when asked. Closes on a click
  * elsewhere or Escape, and opens leftward when it would run off the screen.
  */
-function Explain({ label, children }: { label: string; children: ReactNode }) {
+export function Explain({ label, children }: { label: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [alignRight, setAlignRight] = useState(false);
   const root = useRef<HTMLSpanElement>(null);
