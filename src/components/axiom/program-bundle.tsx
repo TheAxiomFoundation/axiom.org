@@ -65,41 +65,75 @@ const STATUS_SHADE: Record<DocumentStatus, Shade> = {
   not_in_corpus: "missing",
 };
 
-/** One cell of the matrix: a part of the program in one tier. */
+/** What every cell counts, in both tiers alike. */
+type Count = "documents" | "provisions";
+
+const PROVISION_SHADE: Record<ProvisionState, Shade> = {
+  encoded: "encoded",
+  partly: "partly",
+  in_progress: "in_progress",
+  failed: "failed",
+  not_started: "none",
+};
+
+/** One cell of the matrix: a part of the program in one tier, counted in documents or provisions. */
 interface Cell {
   tier: BundleTierId;
   part: string;
-  units: ParityUnit[];
+  count: Count;
   documents: BundleDocumentRow[];
   shades: Record<Shade, number>;
   done: number;
   total: number;
+  /** Provisions only: documents the corpus does not hold, whose provisions cannot be counted. */
+  uncounted: number;
 }
 
-function cellOf(tier: BundleTierId, part: string, rows: BundleDocumentRow[]): Cell {
+function cellOf(tier: BundleTierId, part: string, rows: BundleDocumentRow[], count: Count): Cell {
   const shades = Object.fromEntries(SHADES.map((s) => [s, 0])) as Record<Shade, number>;
-  if (tier === "screener") {
-    const units = rows.flatMap((r) => r.units).filter((u) => u.part === part);
-    for (const unit of units) shades[UNIT_SHADE[unit.state]]++;
-    return { tier, part, units, documents: [], shades, done: shades.encoded, total: units.length };
-  }
   const documents = rows.filter((r) => r.part === part);
-  for (const row of documents) if (row.status) shades[STATUS_SHADE[row.status]]++;
-  return { tier, part, units: [], documents, shades, done: shades.encoded, total: documents.length };
+  if (count === "documents") {
+    for (const row of documents) if (row.status) shades[STATUS_SHADE[row.status]]++;
+    return { tier, part, count, documents, shades, done: shades.encoded, total: documents.length, uncounted: 0 };
+  }
+  let total = 0;
+  for (const row of documents) {
+    if (!row.in_corpus) continue;
+    total += row.provisions;
+    const states = provisionCounts(row);
+    for (const state of PROVISION_STATES) shades[PROVISION_SHADE[state]] += states[state];
+  }
+  return {
+    tier,
+    part,
+    count,
+    documents,
+    shades,
+    done: shades.encoded,
+    total,
+    uncounted: documents.filter((r) => !r.in_corpus).length,
+  };
 }
+
+const COUNT_WORDS: Record<Count, [string, string, string]> = {
+  documents: ["document", "documents", "complete"],
+  provisions: ["provision", "provisions", "encoded"],
+};
+const countWord = (count: Count, n: number) => COUNT_WORDS[count][n === 1 ? 0 : 1];
 
 type Selection =
   | { kind: "cell"; tier: BundleTierId; part: string }
+  | { kind: "parity"; tier: BundleTierId }
   | { kind: "unit"; tier: BundleTierId; key: string }
   | { kind: "document"; tier: BundleTierId; key: string };
 
 /**
  * One program bundle as a matrix: a row per part of the program, a column per
- * delivery tier. Every cell is a bar of its own units' states, so a tier with
- * more units does not look further along, and under it the exact count. In
- * the screener tier a unit is a provision PolicyEngine cites; in the full
- * bundle, a source section. A cell opens its list; the table below gives
- * every document's provisions by state.
+ * delivery tier, and one unit for both tiers, documents or provisions, chosen
+ * with a switch. Every cell is a bar of its own units' states, so a tier with
+ * more units does not look further along, and under it the exact count. The
+ * screener tier's header also gives its PolicyEngine parity. A cell opens its
+ * documents; the table below gives every document's provisions by state.
  */
 export function ProgramBundle({
   bundle,
@@ -116,6 +150,7 @@ export function ProgramBundle({
   const [tableTier, setTableTier] = useState<BundleTierId>(tiers[0]?.id ?? "screener");
   const [tableFilter, setTableFilter] = useState<DocumentStatus | "excluded" | null>(null);
   const [selected, setSelected] = useState<Selection | null>(null);
+  const [count, setCount] = useState<Count>("documents");
 
   const inScope = useMemo(() => {
     const out = new Map<BundleTierId, BundleDocumentRow[]>();
@@ -123,14 +158,10 @@ export function ProgramBundle({
     return out;
   }, [documents]);
   const byTier = (tier: BundleTierId) => documents.filter((r) => r.tier === tier);
-  // The bundle's parts that hold anything, in its order; parts the bundle does not list go last.
+  // The bundle's parts that hold a document, in its order; parts the bundle does not list go last.
   const parts = useMemo(() => {
     const used = new Set<string>();
-    for (const row of documents) {
-      if (row.scope !== "in") continue;
-      if (row.tier === "screener") for (const u of row.units) used.add(u.part);
-      else used.add(row.part);
-    }
+    for (const row of documents) if (row.scope === "in") used.add(row.part);
     const listed = (bundle?.parts ?? []).filter((p) => used.has(p));
     return [...listed, ...[...used].filter((p) => !listed.includes(p)).sort()];
   }, [bundle, documents]);
@@ -152,10 +183,18 @@ export function ProgramBundle({
     const tier = tiers.find((t) => t.id === selected.tier);
     drawer = tier && (
       <CellDetail
-        cell={cellOf(selected.tier, selected.part, inScope.get(selected.tier) ?? [])}
+        cell={cellOf(selected.tier, selected.part, inScope.get(selected.tier) ?? [], count)}
         tierTitle={tier.title}
-        onUnit={(key) => setSelected({ kind: "unit", tier: selected.tier, key })}
         onDocument={(key) => setSelected({ kind: "document", tier: selected.tier, key })}
+        onClose={() => setSelected(null)}
+      />
+    );
+  } else if (selected?.kind === "parity") {
+    drawer = (
+      <ParityDetail
+        rows={inScope.get(selected.tier) ?? []}
+        parts={bundle?.parts ?? []}
+        onUnit={(key) => setSelected({ kind: "unit", tier: selected.tier, key })}
         onClose={() => setSelected(null)}
       />
     );
@@ -175,7 +214,16 @@ export function ProgramBundle({
     }
   } else if (selected?.kind === "document") {
     const row = byTier(selected.tier).find((r) => r.key === selected.key);
-    if (row) drawer = <DocumentDetail row={row} referenceMs={referenceMs} onClose={() => setSelected(null)} />;
+    if (row) {
+      drawer = (
+        <DocumentDetail
+          row={row}
+          referenceMs={referenceMs}
+          onUnit={(key) => setSelected({ kind: "unit", tier: selected.tier, key })}
+          onClose={() => setSelected(null)}
+        />
+      );
+    }
   }
 
   return (
@@ -203,6 +251,25 @@ export function ProgramBundle({
 
         {tiers.length > 0 && (
           <section className={styles.matrixCard} aria-label="Progress by part of the program">
+            <div className={styles.countSwitch} role="radiogroup" aria-label="Count">
+              <span>Count</span>
+              {(["documents", "provisions"] as Count[]).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={count === value}
+                  onClick={() => setCount(value)}
+                >
+                  {value === "documents" ? "Documents" : "Provisions"}
+                </button>
+              ))}
+              <Explain label="Count">
+                Documents: each document counts once, complete when every one of its provisions is encoded. Provisions:
+                every text-bearing provision of the documents in the corpus; a document the corpus does not hold has
+                no provisions to count, so it shows apart.
+              </Explain>
+            </div>
             <div
               className={styles.matrix}
               style={{ gridTemplateColumns: `minmax(150px, 220px) repeat(${tiers.length}, minmax(0, 1fr))` }}
@@ -214,7 +281,14 @@ export function ProgramBundle({
                   Part of the program
                 </span>
                 {tiers.map((tier, index) => (
-                  <TierHeader key={tier.id} index={index + 1} tier={tier} rows={inScope.get(tier.id) ?? []} />
+                  <TierHeader
+                    key={tier.id}
+                    index={index + 1}
+                    tier={tier}
+                    rows={inScope.get(tier.id) ?? []}
+                    count={count}
+                    onParity={() => select({ kind: "parity", tier: tier.id })}
+                  />
                 ))}
               </div>
               {parts.map((part) => (
@@ -223,21 +297,31 @@ export function ProgramBundle({
                     {part}
                   </span>
                   {tiers.map((tier) => {
-                    const cell = cellOf(tier.id, part, inScope.get(tier.id) ?? []);
+                    const cell = cellOf(tier.id, part, inScope.get(tier.id) ?? [], count);
                     return (
                       <span key={tier.id} role="cell" className={styles.matrixCell}>
-                        {cell.total ? (
+                        {cell.documents.length ? (
                           <button
                             type="button"
                             className={styles.cellButton}
                             aria-pressed={selected?.kind === "cell" && selected.tier === tier.id && selected.part === part}
-                            aria-label={`${part}, ${tier.title}: ${cell.done} of ${cell.total} ${unitWord(tier.id, cell.total)}`}
+                            aria-label={`${part}, ${tier.title}: ${cell.done} of ${cell.total} ${countWord(count, cell.total)} ${COUNT_WORDS[count][2]}`}
                             onClick={() => select({ kind: "cell", tier: tier.id, part })}
                           >
-                            <ShadeBar shades={cell.shades} total={cell.total} />
+                            {cell.total ? (
+                              <ShadeBar shades={cell.shades} total={cell.total} />
+                            ) : (
+                              <span className={styles.shadeBar} data-empty aria-hidden />
+                            )}
                             <span className={styles.cellCount}>
                               <span>
                                 <strong>{number(cell.done)}</strong> of {number(cell.total)}
+                                {cell.uncounted > 0 && (
+                                  <span className={styles.uncounted}>
+                                    {" "}
+                                    + {number(cell.uncounted)} not in the corpus
+                                  </span>
+                                )}
                               </span>
                               <span>{percent(cell.done, cell.total)}</span>
                             </span>
@@ -260,10 +344,13 @@ export function ProgramBundle({
               <FactsRow label="Provisions" tiers={tiers} render={(tier) => <ProvisionFacts rows={inScope.get(tier.id) ?? []} />} />
             </div>
             <ul className={styles.legend} aria-label="States">
-              {SHADES.map((shade) => (
+              {(count === "documents"
+                ? (["encoded", "partly", "none", "missing"] as Shade[])
+                : (["encoded", "partly", "in_progress", "failed", "none"] as Shade[])
+              ).map((shade) => (
                 <li key={shade}>
                   <i className={styles.swatch} data-shade={shade} aria-hidden />
-                  {SHADE_LABELS[shade]}
+                  {(count === "documents" ? DOCUMENT_SHADE_LABELS : SHADE_LABELS)[shade]}
                 </li>
               ))}
             </ul>
@@ -319,8 +406,11 @@ export function ProgramBundle({
   );
 }
 
-const unitWord = (tier: BundleTierId, n: number) =>
-  tier === "screener" ? (n === 1 ? "cited provision" : "cited provisions") : n === 1 ? "section" : "sections";
+const DOCUMENT_SHADE_LABELS: Record<Shade, string> = {
+  ...SHADE_LABELS,
+  encoded: "Complete",
+  none: "Not started",
+};
 
 /** A bar of one cell's units by state; its segments fill the cell whatever the count. */
 function ShadeBar({ shades, total }: { shades: Record<Shade, number>; total: number }) {
@@ -333,27 +423,40 @@ function ShadeBar({ shades, total }: { shades: Record<Shade, number>; total: num
   );
 }
 
-/** A tier's column head: its name, what it means, and how far it has come. */
-function TierHeader({ index, tier, rows }: { index: number; tier: BundleRow["tiers"][number]; rows: BundleDocumentRow[] }) {
+/** A tier's column head: its name, what it means, how far it has come in the chosen count, and its parity. */
+function TierHeader({
+  index,
+  tier,
+  rows,
+  count,
+  onParity,
+}: {
+  index: number;
+  tier: BundleRow["tiers"][number];
+  rows: BundleDocumentRow[];
+  count: Count;
+  onParity: () => void;
+}) {
   const counts = tierCounts(rows);
-  const done = tier.id === "screener" ? counts.byUnitState.encoded : counts.byStatus.complete;
-  const total = tier.id === "screener" ? counts.units : counts.documents;
+  const done = count === "documents" ? counts.byStatus.complete : counts.byProvisionState.encoded;
+  const total = count === "documents" ? counts.documents : counts.provisions;
   return (
     <span role="columnheader" className={styles.tierHeader}>
       <span className={styles.tierIndex}>Tier {index}</span>
       <span className={styles.tierTitle}>
         {tier.title}
-        <Explain label={tier.title}>
-          {tier.definition}{" "}
-          {tier.id === "screener"
-            ? "Each unit is a provision PolicyEngine cites, as its parity model reads it: encoded when a module encodes it or its section's module names it."
-            : "Each unit is a source section, complete when every one of its provisions is encoded."}
-        </Explain>
+        <Explain label={tier.title}>{tier.definition}</Explain>
       </span>
       <span className={styles.tierTotal}>
-        <strong>{number(done)}</strong> of {number(total)} {unitWord(tier.id, total)} {tier.id === "screener" ? "encoded" : "complete"}
+        <strong>{number(done)}</strong> of {number(total)} {countWord(count, total)} {COUNT_WORDS[count][2]}
         <em>{percent(done, total)}</em>
       </span>
+      {counts.units > 0 && (
+        <button type="button" className={styles.parityLine} onClick={onParity}>
+          PolicyEngine parity: <strong>{number(counts.byUnitState.encoded)}</strong> of {number(counts.units)} cited
+          provisions · {percent(counts.byUnitState.encoded, counts.units)}
+        </button>
+      )}
     </span>
   );
 }
@@ -464,70 +567,135 @@ function DrawerTop({ label, shade, onClose }: { label: string; shade?: Shade; on
   );
 }
 
-/** One cell's units: how many in each state, and each one to open. */
+/** One cell: its documents, how many in each state (in the chosen count), and each one to open. */
 function CellDetail({
   cell,
   tierTitle,
-  onUnit,
   onDocument,
   onClose,
 }: {
   cell: Cell;
   tierTitle: string;
-  onUnit: (key: string) => void;
   onDocument: (key: string) => void;
   onClose: () => void;
 }) {
   useEscape(onClose);
+  const labels = cell.count === "documents" ? DOCUMENT_SHADE_LABELS : SHADE_LABELS;
   return (
     <aside className={styles.detail} aria-label="Part of the program">
       <DrawerTop label={tierTitle} onClose={onClose} />
       <h3 className={styles.detailName}>{cell.part}</h3>
       <div className={styles.detailBlock}>
         <p className={styles.detailLabel}>
-          {cell.tier === "screener" ? "Cited provisions" : "Sections"}
+          {cell.count === "documents" ? "Documents" : "Provisions"}
           <span>
-            {number(cell.done)} of {number(cell.total)} {cell.tier === "screener" ? "encoded" : "complete"}
+            {number(cell.done)} of {number(cell.total)} {COUNT_WORDS[cell.count][2]}
           </span>
         </p>
-        <ShadeBar shades={cell.shades} total={cell.total} />
+        {cell.total > 0 && <ShadeBar shades={cell.shades} total={cell.total} />}
         <ul className={styles.detailStates}>
           {SHADES.filter((shade) => cell.shades[shade] > 0).map((shade) => (
             <li key={shade}>
               <i className={styles.swatch} data-shade={shade} aria-hidden />
-              {SHADE_LABELS[shade]}
+              {labels[shade]}
               <strong>{number(cell.shades[shade])}</strong>
             </li>
           ))}
         </ul>
+        {cell.uncounted > 0 && (
+          <p className={styles.detailNote}>
+            {number(cell.uncounted)} {cell.uncounted === 1 ? "document is" : "documents are"} not in the corpus, so
+            their provisions are not counted.
+          </p>
+        )}
       </div>
       <ul className={styles.memberList}>
-        {cell.tier === "screener"
-          ? [...cell.units]
-              .sort((a, b) => UNIT_STATES.indexOf(a.state) - UNIT_STATES.indexOf(b.state) || a.name.localeCompare(b.name))
-              .map((unit) => (
-                <li key={unit.key}>
-                  <button type="button" onClick={() => onUnit(unit.key)} title={unit.detail ?? undefined}>
-                    <i className={styles.swatch} data-shade={UNIT_SHADE[unit.state]} aria-hidden />
-                    <span>{unit.name}</span>
-                    <span className={styles.muted}>{UNIT_LABELS[unit.state].toLowerCase()}</span>
-                  </button>
-                </li>
-              ))
-          : [...cell.documents]
-              .sort((a, b) => (b.provisions ? b.encoded_provisions / b.provisions : -1) - (a.provisions ? a.encoded_provisions / a.provisions : -1) || a.name.localeCompare(b.name))
-              .map((row) => (
-                <li key={row.key}>
-                  <button type="button" onClick={() => onDocument(row.key)}>
-                    <i className={styles.swatch} data-shade={row.status ? STATUS_SHADE[row.status] : "none"} aria-hidden />
-                    <span>{row.name}</span>
-                    <span className={styles.muted}>
-                      {row.in_corpus ? `${number(row.encoded_provisions)} of ${number(row.provisions)}` : "not in the corpus"}
-                    </span>
-                  </button>
-                </li>
-              ))}
+        {[...cell.documents]
+          .sort(
+            (a, b) =>
+              (b.provisions ? b.encoded_provisions / b.provisions : -1) -
+                (a.provisions ? a.encoded_provisions / a.provisions : -1) || a.name.localeCompare(b.name)
+          )
+          .map((row) => (
+            <li key={row.key}>
+              <button type="button" onClick={() => onDocument(row.key)}>
+                <i className={styles.swatch} data-shade={row.status ? STATUS_SHADE[row.status] : "none"} aria-hidden />
+                <span>{row.name}</span>
+                <span className={styles.muted}>
+                  {row.in_corpus
+                    ? `${number(row.encoded_provisions)} of ${number(row.provisions)} encoded`
+                    : "not in the corpus"}
+                </span>
+              </button>
+            </li>
+          ))}
       </ul>
+    </aside>
+  );
+}
+
+/**
+ * The screener tier's PolicyEngine parity by part: every provision
+ * PolicyEngine cites, as its parity model reads it, each one to open.
+ */
+function ParityDetail({
+  rows,
+  parts,
+  onUnit,
+  onClose,
+}: {
+  rows: BundleDocumentRow[];
+  parts: string[];
+  onUnit: (key: string) => void;
+  onClose: () => void;
+}) {
+  useEscape(onClose);
+  const units = rows.flatMap((r) => r.units);
+  const byPart = new Map<string, ParityUnit[]>();
+  for (const unit of units) byPart.set(unit.part, [...(byPart.get(unit.part) ?? []), unit]);
+  const rank = (part: string) => (parts.includes(part) ? parts.indexOf(part) : parts.length);
+  const encoded = units.filter((u) => u.state === "encoded").length;
+  return (
+    <aside className={styles.detail} aria-label="PolicyEngine parity">
+      <DrawerTop label="PolicyEngine parity" onClose={onClose} />
+      <h3 className={styles.detailName}>
+        {number(encoded)} of {number(units.length)} cited provisions encoded
+      </h3>
+      <p className={styles.detailNote}>
+        Each provision PolicyEngine cites for this program, as its parity model reads it: encoded when a module encodes
+        it or the module for its section names it; partly encoded when that module does not name it, or only part of
+        it is encoded.
+      </p>
+      {[...byPart.entries()]
+        .sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
+        .map(([part, members]) => {
+          const shades = Object.fromEntries(SHADES.map((s) => [s, 0])) as Record<Shade, number>;
+          for (const unit of members) shades[UNIT_SHADE[unit.state]]++;
+          return (
+            <div key={part} className={styles.detailBlock}>
+              <p className={styles.detailLabel}>
+                {part}
+                <span>
+                  {number(shades.encoded)} of {number(members.length)}
+                </span>
+              </p>
+              <ShadeBar shades={shades} total={members.length} />
+              <ul className={styles.memberList}>
+                {[...members]
+                  .sort((a, b) => UNIT_STATES.indexOf(a.state) - UNIT_STATES.indexOf(b.state) || a.name.localeCompare(b.name))
+                  .map((unit) => (
+                    <li key={unit.key}>
+                      <button type="button" onClick={() => onUnit(unit.key)} title={unit.detail ?? undefined}>
+                        <i className={styles.swatch} data-shade={UNIT_SHADE[unit.state]} aria-hidden />
+                        <span>{unit.name}</span>
+                        <span className={styles.muted}>{UNIT_LABELS[unit.state].toLowerCase()}</span>
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          );
+        })}
     </aside>
   );
 }
@@ -605,10 +773,12 @@ function UnitDetail({
 function DocumentDetail({
   row,
   referenceMs,
+  onUnit,
   onClose,
 }: {
   row: BundleDocumentRow;
   referenceMs: number;
+  onUnit: (key: string) => void;
   onClose: () => void;
 }) {
   useEscape(onClose);
@@ -703,12 +873,14 @@ function DocumentDetail({
           <p className={styles.detailLabel}>
             PolicyEngine cites<span>{number(row.units.length)}</span>
           </p>
-          <ul className={styles.openList}>
+          <ul className={styles.memberList}>
             {row.units.map((u) => (
-              <li key={u.key} title={u.detail ?? undefined}>
-                <i className={styles.swatch} data-shade={UNIT_SHADE[u.state]} aria-hidden />
-                <span className={styles.mono}>{u.path?.slice((row.citation_path ?? "").length) || "the whole document"}</span>
-                <span className={styles.muted}>{UNIT_LABELS[u.state].toLowerCase()}</span>
+              <li key={u.key}>
+                <button type="button" onClick={() => onUnit(u.key)} title={u.detail ?? undefined}>
+                  <i className={styles.swatch} data-shade={UNIT_SHADE[u.state]} aria-hidden />
+                  <span className={styles.mono}>{u.path?.slice((row.citation_path ?? "").length) || "the whole document"}</span>
+                  <span className={styles.muted}>{UNIT_LABELS[u.state].toLowerCase()}</span>
+                </button>
               </li>
             ))}
           </ul>

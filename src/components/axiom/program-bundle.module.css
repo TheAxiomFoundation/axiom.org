@@ -122,9 +122,70 @@
 
 /* ── The matrix ── */
 
+.countSwitch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 16px;
+  font-size: 12px;
+  color: var(--color-ink-muted);
+}
+
+.countSwitch > span:first-child {
+  margin-right: 4px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.countSwitch [role="radio"] {
+  padding: 4px 12px;
+  border: 1px solid var(--color-rule);
+  border-radius: 999px;
+  background: none;
+  font-size: 12px;
+  color: var(--color-ink-secondary);
+  cursor: pointer;
+}
+
+.countSwitch [role="radio"][aria-checked="true"] {
+  border-color: var(--color-ink);
+  background: var(--color-ink);
+  color: var(--color-paper);
+}
+
+.parityLine {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 12px;
+  color: var(--color-accent);
+  text-align: left;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+
+.parityLine strong {
+  font-weight: 600;
+}
+
+.parityLine:hover {
+  text-decoration: underline;
+}
+
+.uncounted {
+  color: var(--color-ink-muted);
+}
+
+.shadeBar[data-empty] {
+  display: block;
+  background: repeating-linear-gradient(135deg, var(--state-missing) 0 1px, var(--color-paper) 1px 4px);
+}
+
 .matrixCard {
   margin-top: 28px;
-  padding: 8px 24px 20px;
+  padding: 0 24px 20px;
   border: 1px solid var(--color-rule);
   border-radius: 14px;
   background: var(--color-paper-elevated);
@@ -156,7 +217,7 @@
 
 .tierHeader {
   display: grid;
-  align-content: end;
+  align-content: start;
   gap: 4px;
   padding-top: 16px !important;
 }

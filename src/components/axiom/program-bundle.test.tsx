@@ -85,26 +85,39 @@ const documents = [
 describe("ProgramBundle", () => {
   const withParts = { ...bundle, parts: ["Income", "Deductions", "Benefit determination"] };
 
-  it("lays out a row per part and a column per tier, each cell its own units' share", () => {
+  it("counts documents in both tiers by default, a row per part, each cell its own share", () => {
     render(<ProgramBundle bundle={withParts} documents={documents} available referenceMs={NOW} />);
     expect(screen.getByRole("heading", { name: "Arizona SNAP" })).toBeInTheDocument();
     const matrix = screen.getByRole("table", { name: "Parts of the program by tier" });
     const headers = within(matrix).getAllByRole("columnheader");
-    expect(headers[1]).toHaveTextContent(/Screener-level parity.*1 of 2 cited provisions encoded50%/);
-    expect(headers[2]).toHaveTextContent(/Full document bundle.*0 of 1 section complete0%/);
+    expect(headers[1]).toHaveTextContent(/Screener-level parity.*0 of 1 document complete0%/);
+    // The screener tier also gives its PolicyEngine parity.
+    expect(headers[1]).toHaveTextContent("PolicyEngine parity: 1 of 2 cited provisions · 50%");
+    expect(headers[2]).toHaveTextContent(/Full document bundle.*0 of 1 document complete0%/);
     // Rows in the bundle's order of parts.
     expect(within(matrix).getAllByRole("rowheader").map((h) => h.textContent)).toEqual([
       "Income",
-      "Deductions",
       "Benefit determination",
       "Documents?",
       "Provisions?",
     ]);
-    expect(within(matrix).getByRole("button", { name: "Income, Screener-level parity: 1 of 1 cited provision" })).toHaveTextContent(
-      "1 of 1100%"
-    );
-    expect(within(matrix).getByRole("button", { name: "Deductions, Screener-level parity: 0 of 1 cited provision" })).toBeInTheDocument();
-    expect(within(matrix).getByRole("button", { name: "Benefit determination, Full document bundle: 0 of 1 section" })).toBeInTheDocument();
+    expect(
+      within(matrix).getByRole("button", { name: "Income, Screener-level parity: 0 of 1 document complete" })
+    ).toHaveTextContent("0 of 10%");
+  });
+
+  it("switches every cell to provisions, counting documents the corpus lacks apart", () => {
+    render(<ProgramBundle bundle={withParts} documents={documents} available referenceMs={NOW} />);
+    fireEvent.click(screen.getByRole("radio", { name: "Provisions" }));
+    const matrix = screen.getByRole("table", { name: "Parts of the program by tier" });
+    const headers = within(matrix).getAllByRole("columnheader");
+    expect(headers[1]).toHaveTextContent(/1 of 2 provisions encoded50%/);
+    expect(
+      within(matrix).getByRole("button", { name: "Income, Screener-level parity: 1 of 2 provisions encoded" })
+    ).toHaveTextContent("1 of 250%");
+    expect(
+      within(matrix).getByRole("button", { name: "Benefit determination, Full document bundle: 0 of 0 provisions encoded" })
+    ).toHaveTextContent("0 of 0 + 1 not in the corpus");
   });
 
   it("counts each tier's documents and provisions exactly", () => {
@@ -115,17 +128,21 @@ describe("ProgramBundle", () => {
     expect(cells.at(-2)).toHaveTextContent("21 encoded1 not started");
   });
 
-  it("opens a cell's list, then a cited provision, then its document", () => {
+  it("opens a cell's documents, and the parity drawer's cited provisions", () => {
     render(<ProgramBundle bundle={withParts} documents={documents} available referenceMs={NOW} />);
-    fireEvent.click(screen.getByRole("button", { name: "Deductions, Screener-level parity: 0 of 1 cited provision" }));
+    fireEvent.click(screen.getByRole("button", { name: "Income, Screener-level parity: 0 of 1 document complete" }));
     const cell = screen.getByRole("complementary", { name: "Part of the program" });
-    expect(within(cell).getByRole("heading", { name: "Deductions" })).toBeInTheDocument();
-    fireEvent.click(within(cell).getByRole("button", { name: /7 USC 2014 \/b/ }));
-    const drawer = screen.getByRole("complementary", { name: "Cited provision" });
-    expect(within(drawer).getByRole("link", { name: "us/statute/7/2014/b" })).toHaveAttribute("href", "/us/statute/7/2014/b");
-    fireEvent.click(within(drawer).getByRole("button", { name: "7 USC 2014" }));
+    expect(within(cell).getByRole("heading", { name: "Income" })).toBeInTheDocument();
+    fireEvent.click(within(cell).getByRole("button", { name: /7 USC 2014/ }));
     const document = screen.getByRole("complementary", { name: "Document" });
     expect(within(document).getByText("Encoded").parentElement).toHaveTextContent("Encoded1");
+    fireEvent.click(screen.getByRole("button", { name: /PolicyEngine parity: 1 of 2/ }));
+    const parity = screen.getByRole("complementary", { name: "PolicyEngine parity" });
+    expect(within(parity).getByRole("heading", { name: "1 of 2 cited provisions encoded" })).toBeInTheDocument();
+    fireEvent.click(within(parity).getByRole("button", { name: /7 USC 2014 \/b/ }));
+    const unit = screen.getByRole("complementary", { name: "Cited provision" });
+    expect(within(unit).getByRole("link", { name: "us/statute/7/2014/b" })).toHaveAttribute("href", "/us/statute/7/2014/b");
+    expect(within(unit).getByText("Deductions")).toBeInTheDocument();
   });
 
   it("lists excluded documents with their reasons in the table", () => {
