@@ -886,10 +886,12 @@ function CorpusList({
   );
 }
 
-/** A URL for a scope, landing back on the pipeline section. */
+/** A URL for a scope, landing back on the pipeline tab and section. */
 function scopeHref(pathname: string, scope: PipelineScope | null): string {
-  if (!scope) return `${pathname}#pipeline-title`;
-  const query = new URLSearchParams({ j: scope.jurisdiction, ...(scope.only ? { only: "1" } : {}) });
+  const query = new URLSearchParams({
+    tab: "pipeline",
+    ...(scope ? { j: scope.jurisdiction, ...(scope.only ? { only: "1" } : {}) } : {}),
+  });
   return `${pathname}?${query}#pipeline-title`;
 }
 

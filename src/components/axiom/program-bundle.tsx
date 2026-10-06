@@ -265,7 +265,7 @@ export function ProgramBundle({
   return (
     <div className={`${dashboard.dashboard} ${styles.page} min-h-screen pt-28 pb-16`}>
       <div className="max-w-[1100px] mx-auto px-5 md:px-10">
-        <a href="/ops" className={styles.back}>
+        <a href="/ops?tab=bundles" className={styles.back}>
           <ArrowLeft size={13} aria-hidden /> Operations
         </a>
         <header className={dashboard.header}>

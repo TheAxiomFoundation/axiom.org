@@ -81,6 +81,41 @@
   margin-top: 12px;
 }
 
+/* One section at a time: the ledger, the program bundles, the pipeline. */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 32px;
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.tabs [role="tab"] {
+  margin-bottom: -1px;
+  padding: 10px 16px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-ink-secondary);
+  cursor: pointer;
+}
+
+.tabs [role="tab"]:hover {
+  color: var(--color-ink);
+}
+
+.tabs [role="tab"][aria-selected="true"] {
+  border-bottom-color: var(--color-accent);
+  color: var(--color-ink);
+}
+
+.tabs + .workspace,
+.tabs + .ledgerOnly {
+  margin-top: 24px;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 340px;
@@ -468,4 +503,9 @@
 
 .ledgerBundle:hover {
   background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+}
+
+.workspace[hidden],
+.ledgerOnly[hidden] {
+  display: none;
 }

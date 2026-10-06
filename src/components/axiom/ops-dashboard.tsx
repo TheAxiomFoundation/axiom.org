@@ -70,7 +70,17 @@ interface OpsDashboardProps {
   ledger?: ReactNode;
   /** The entry to the program bundles, shown with the pipeline section. */
   bundles?: ReactNode;
+  /** The tab to open on (?tab=bundles or ?tab=pipeline); the ledger otherwise. */
+  initialTab?: OpsTab;
 }
+
+export type OpsTab = "ledger" | "bundles" | "pipeline";
+
+const TAB_LABELS: Record<OpsTab, string> = {
+  ledger: "Ledger",
+  bundles: "Program bundles",
+  pipeline: "Pipeline",
+};
 
 type LiveRunState = "running" | "stale" | "finished" | "expired";
 
@@ -227,8 +237,22 @@ export function OpsDashboard({
   pipeline,
   ledger,
   bundles,
+  initialTab = "ledger",
 }: OpsDashboardProps) {
   const [status, setStatus] = useState(initialStatus);
+  // One section at a time: the ledger, the program bundles, the pipeline.
+  const tabs = (["ledger", "bundles", "pipeline"] as OpsTab[]).filter(
+    (tab) => tab === "ledger" || (tab === "bundles" ? Boolean(bundles) : Boolean(pipeline))
+  );
+  const [tab, setTab] = useState<OpsTab>(tabs.includes(initialTab) ? initialTab : "ledger");
+  const choose = (next: OpsTab) => {
+    setTab(next);
+    // Keep the tab in the address, so a link or a reload opens it.
+    const url = new URL(window.location.href);
+    if (next === "ledger") url.searchParams.delete("tab");
+    else url.searchParams.set("tab", next);
+    window.history.replaceState(null, "", url);
+  };
   const [nowMs, setNowMs] = useState<number | null>(null);
 
   useEffect(() => {
@@ -312,7 +336,29 @@ export function OpsDashboard({
           labels={labels}
         />
 
+        {tabs.length > 1 && (
+          <div className={styles.tabs} role="tablist" aria-label="Operations">
+            {tabs.map((value) => (
+              <button
+                key={value}
+                id={`ops-tab-${value}`}
+                type="button"
+                role="tab"
+                aria-selected={tab === value}
+                aria-controls={`ops-panel-${value}`}
+                onClick={() => choose(value)}
+              >
+                {TAB_LABELS[value]}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div
+          id="ops-panel-ledger"
+          role={tabs.length > 1 ? "tabpanel" : undefined}
+          aria-labelledby={tabs.length > 1 ? "ops-tab-ledger" : undefined}
+          hidden={tab !== "ledger"}
           className={
             queues.length || recentScopes.length
               ? styles.workspace
@@ -337,9 +383,17 @@ export function OpsDashboard({
           )}
         </div>
 
-        {bundles}
+        {bundles && (
+          <div id="ops-panel-bundles" role="tabpanel" aria-labelledby="ops-tab-bundles" hidden={tab !== "bundles"}>
+            {bundles}
+          </div>
+        )}
 
-        {pipeline}
+        {pipeline && (
+          <div id="ops-panel-pipeline" role="tabpanel" aria-labelledby="ops-tab-pipeline" hidden={tab !== "pipeline"}>
+            {pipeline}
+          </div>
+        )}
       </div>
     </div>
   );

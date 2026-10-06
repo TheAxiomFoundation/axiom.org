@@ -39,7 +39,10 @@ export default async function OpsPage({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   // ?j=us narrows the pipeline section to one jurisdiction (and those under it).
-  const scope = parseScope((await searchParams) ?? {});
+  const params = (await searchParams) ?? {};
+  const scope = parseScope(params);
+  // ?tab=bundles or ?tab=pipeline opens that section; the ledger otherwise.
+  const tab = params.tab === "bundles" || params.tab === "pipeline" ? params.tab : "ledger";
   // Hidden on the public site for now (see opsPipelineVisible): skip its reads too.
   const showPipeline = opsPipelineVisible();
   const [encodingStatus, queues, recentScopes, pipeline, corpus, bundles] = await Promise.all([
@@ -63,6 +66,7 @@ export default async function OpsPage({
       queues={queues}
       recentScopes={recentScopes}
       bundles={bundles.length ? <BundleOverview bundles={bundles} /> : undefined}
+      initialTab={tab}
       // With the pipeline shown, the ledger is built from every run rather
       // than the encoder's own records, and follows the page's scope.
       ledger={
