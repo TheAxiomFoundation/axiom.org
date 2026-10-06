@@ -9,6 +9,7 @@ import { ageLabel, STAGE_COPY } from "@/lib/axiom/encoding-pipeline";
 import {
   documentType,
   DOCUMENT_STATUSES,
+  measured,
   PROVISION_LABELS,
   PROVISION_STATES,
   provisionCounts,
@@ -108,22 +109,34 @@ interface Cell {
 /** Encoded, validated or not: what "done" counts everywhere on the page. */
 const doneDocuments = (byStatus: Record<DocumentStatus, number>) => byStatus.complete + byStatus.unvalidated;
 const doneProvisions = (byState: Record<ProvisionState, number>) => byState.encoded + byState.unvalidated;
-const doneUnits = (byState: Record<UnitState, number>) => byState.encoded + byState.unvalidated;
 
 function cellOf(tier: BundleTierId, part: string, rows: BundleDocumentRow[], count: Count): Cell {
   const shades = Object.fromEntries(SHADES.map((s) => [s, 0])) as Record<Shade, number>;
-  const documents = rows.filter((r) => r.part === part);
   if (count === "documents") {
+    const documents = rows.filter((r) => r.part === part);
     for (const row of documents) if (row.status) shades[STATUS_SHADE[row.status]]++;
     const done = shades.encoded + shades.unvalidated;
     return { tier, part, count, documents, shades, done, total: documents.length, uncounted: 0 };
   }
+  if (tier === "screener") {
+    // Each provision PolicyEngine cites feeds its own part.
+    const documents = rows.filter((r) => r.units.some((u) => u.part === part));
+    let total = 0;
+    for (const row of documents) {
+      for (const unit of row.units.filter((u) => u.part === part)) {
+        total++;
+        shades[UNIT_SHADE[unit.state]]++;
+      }
+    }
+    return { tier, part, count, documents, shades, done: shades.encoded + shades.unvalidated, total, uncounted: 0 };
+  }
+  const documents = rows.filter((r) => r.part === part);
   let total = 0;
   for (const row of documents) {
     if (!row.in_corpus) continue;
-    total += row.provisions;
-    const states = provisionCounts(row);
-    for (const state of PROVISION_STATES) shades[PROVISION_SHADE[state]] += states[state];
+    const counted = measured(row);
+    total += counted.total;
+    for (const state of PROVISION_STATES) shades[PROVISION_SHADE[state]] += counted.byState[state];
   }
   return {
     tier,
@@ -141,7 +154,9 @@ const COUNT_WORDS: Record<Count, [string, string, string]> = {
   documents: ["document", "documents", "complete"],
   provisions: ["provision", "provisions", "encoded"],
 };
-const countWord = (count: Count, n: number) => COUNT_WORDS[count][n === 1 ? 0 : 1];
+/** The screener tier counts only the provisions PolicyEngine cites, and says so. */
+const countWord = (count: Count, n: number, tier?: BundleTierId) =>
+  (count === "provisions" && tier === "screener" ? "cited " : "") + COUNT_WORDS[count][n === 1 ? 0 : 1];
 
 type Selection =
   | { kind: "cell"; tier: BundleTierId; part: string }
@@ -181,12 +196,17 @@ export function ProgramBundle({
   }, [documents]);
   const byTier = (tier: BundleTierId) => documents.filter((r) => r.tier === tier);
   // The bundle's parts that hold a document, in its order; parts the bundle does not list go last.
+  // Counting provisions, Tier 1's cited provisions feed their own parts, so those parts count too.
   const parts = useMemo(() => {
     const used = new Set<string>();
-    for (const row of documents) if (row.scope === "in") used.add(row.part);
+    for (const row of documents) {
+      if (row.scope !== "in") continue;
+      used.add(row.part);
+      if (count === "provisions") for (const unit of row.units) used.add(unit.part);
+    }
     const listed = (bundle?.parts ?? []).filter((p) => used.has(p));
     return [...listed, ...[...used].filter((p) => !listed.includes(p)).sort()];
-  }, [bundle, documents]);
+  }, [bundle, documents, count]);
   const collectedAt = documents[0]?.collected_at ?? bundle?.collected_at ?? null;
 
   const select = (next: Selection) =>
@@ -289,9 +309,11 @@ export function ProgramBundle({
                 </button>
               ))}
               <Explain label="Count">
-                Documents: each document counts once, complete when every one of its provisions is encoded. Provisions:
-                every text-bearing provision of the documents in the corpus; a document the corpus does not hold has
-                no provisions to count, so it shows apart.
+                Tier 1 is PolicyEngine parity, so it counts only what PolicyEngine cites: a document is complete when
+                every provision PolicyEngine cites in it is encoded, and Provisions counts those cited provisions. Tier 2
+                counts every text-bearing provision of its documents in the corpus; a document the corpus does not hold
+                has no provisions to count there, so it shows apart. In Tier 1 PolicyEngine names the provisions, so they
+                count even before the corpus holds them.
               </Explain>
             </div>
             <div
@@ -331,7 +353,7 @@ export function ProgramBundle({
                             type="button"
                             className={styles.cellButton}
                             aria-pressed={selected?.kind === "cell" && selected.tier === tier.id && selected.part === part}
-                            aria-label={`${part}, ${tier.title}: ${cell.done} of ${cell.total} ${countWord(count, cell.total)} ${COUNT_WORDS[count][2]}`}
+                            aria-label={`${part}, ${tier.title}: ${cell.done} of ${cell.total} ${countWord(count, cell.total, tier.id)} ${COUNT_WORDS[count][2]}`}
                             onClick={() => select({ kind: "cell", tier: tier.id, part })}
                           >
                             {cell.total ? (
@@ -367,7 +389,11 @@ export function ProgramBundle({
                   onFilter={(value) => filterTable(tier.id, value)}
                 />
               )} />
-              <FactsRow label="Provisions" tiers={tiers} render={(tier) => <ProvisionFacts rows={inScope.get(tier.id) ?? []} />} />
+              <FactsRow
+                label="Provisions"
+                tiers={tiers}
+                render={(tier) => <ProvisionFacts tier={tier.id} rows={inScope.get(tier.id) ?? []} />}
+              />
             </div>
           </section>
         )}
@@ -462,7 +488,6 @@ function TierHeader({
   const counts = tierCounts(rows);
   const done = count === "documents" ? doneDocuments(counts.byStatus) : doneProvisions(counts.byProvisionState);
   const total = count === "documents" ? counts.documents : counts.provisions;
-  const unitsDone = doneUnits(counts.byUnitState);
   const screener = tier.id === "screener";
   const stale = olderVersion(parity?.policyengine_us ?? null, newest);
   return (
@@ -473,15 +498,9 @@ function TierHeader({
         <Explain label={tier.title}>{tier.definition}</Explain>
       </span>
       <span className={styles.tierTotal}>
-        <strong>{number(done)}</strong> of {number(total)} {countWord(count, total)} {COUNT_WORDS[count][2]}
+        <strong>{number(done)}</strong> of {number(total)} {countWord(count, total, tier.id)} {COUNT_WORDS[count][2]}
         <em>{percent(done, total)}</em>
       </span>
-      {counts.units > 0 && (
-        <button type="button" className={styles.parityLine} onClick={onParity}>
-          Provisions PolicyEngine cites: <strong>{number(unitsDone)}</strong> of {number(counts.units)} encoded ·{" "}
-          {percent(unitsDone, counts.units)}
-        </button>
-      )}
       {screener && (
         <div className={styles.parityHead}>
           <span className={styles.parityLabel}>
@@ -535,8 +554,8 @@ function FactsRow({
         {label}
         <Explain label={label}>
           {label === "Documents"
-            ? "Every document of the tier. Complete: a rule cites every one of its provisions. Not validated: some of those rules merged under a validation waiver. Not in the corpus: the corpus does not hold it yet, so its provisions cannot be counted."
-            : "The text-bearing provisions of the tier's documents in the corpus. Encoded: a rule cites the provision or one above it, and nothing in it is deferred. Not validated: every such rule merged under a validation waiver. Partly encoded: rules cite only parts of it, or defer a part. Deferred: a module defers it and no rule cites it. A module's declared source alone is not counted; encode runs only mark in progress or failed."}
+            ? "Every document of the tier. Complete: a rule cites every one of its provisions (in Tier 1, every provision PolicyEngine cites in it). Not validated: some of those rules merged under a validation waiver. Not in the corpus: the corpus does not hold it yet, so its provisions cannot be counted."
+            : "Tier 1: the provisions PolicyEngine cites. Tier 2: every text-bearing provision of the tier's documents in the corpus. Encoded: a rule cites the provision or one above it, and nothing in it is deferred. Not validated: every such rule merged under a validation waiver. Partly encoded: rules cite only parts of it, or defer a part. Deferred: a module defers it and no rule cites it. A module's declared source alone is not counted; encode runs only mark in progress or failed."}
         </Explain>
       </span>
       {tiers.map((tier) => (
@@ -644,18 +663,22 @@ function DocumentFacts({
   );
 }
 
-function ProvisionFacts({ rows }: { rows: BundleDocumentRow[] }) {
+function ProvisionFacts({ tier, rows }: { tier: BundleTierId; rows: BundleDocumentRow[] }) {
   const counts = tierCounts(rows);
+  const missing = rows.reduce((total, row) => total + measured(row).missing, 0);
+  const items: BreakdownItem[] = PROVISION_STATES.map((state) => ({
+    key: state,
+    shade: PROVISION_SHADE[state],
+    label: PROVISION_LABELS[state],
+    value: counts.byProvisionState[state],
+  }));
+  // Cited provisions in documents the corpus does not hold still count.
+  if (tier === "screener") items.push({ key: "missing", shade: "missing", label: "Not in the corpus", value: missing });
   return (
     <Breakdown
       total={counts.provisions}
-      totalLabel="in the corpus"
-      items={PROVISION_STATES.map((state) => ({
-        key: state,
-        shade: PROVISION_SHADE[state],
-        label: PROVISION_LABELS[state],
-        value: counts.byProvisionState[state],
-      }))}
+      totalLabel={tier === "screener" ? "cited by PolicyEngine" : "in the corpus"}
+      items={items}
     />
   );
 }
@@ -683,6 +706,12 @@ function DrawerTop({ label, shade, onClose }: { label: string; shade?: Shade; on
       </button>
     </div>
   );
+}
+
+/** A document's share encoded, in what its tier counts; -1 when there is nothing to count. */
+function doneShare(row: BundleDocumentRow): number {
+  const { total, byState } = measured(row);
+  return row.in_corpus && total ? (byState.encoded + byState.unvalidated) / total : -1;
 }
 
 /** One cell: its documents, how many in each state (in the chosen count), and each one to open. */
@@ -731,9 +760,7 @@ function CellDetail({
         {[...cell.documents]
           .sort(
             (a, b) =>
-              (b.provisions ? (b.encoded_provisions + b.unvalidated_provisions) / b.provisions : -1) -
-                (a.provisions ? (a.encoded_provisions + a.unvalidated_provisions) / a.provisions : -1) ||
-              a.name.localeCompare(b.name)
+              doneShare(b) - doneShare(a) || a.name.localeCompare(b.name)
           )
           .map((row) => (
             <li key={row.key}>
@@ -742,7 +769,7 @@ function CellDetail({
                 <span>{row.name}</span>
                 <span className={styles.muted}>
                   {row.in_corpus
-                    ? `${number(row.encoded_provisions + row.unvalidated_provisions)} of ${number(row.provisions)} encoded`
+                    ? `${number(measured(row).byState.encoded + measured(row).byState.unvalidated)} of ${number(measured(row).total)} encoded`
                     : "not in the corpus"}
                 </span>
               </button>
@@ -1014,7 +1041,8 @@ function DocumentDetail({
       {row.in_corpus ? (
         <div className={styles.detailBlock}>
           <p className={styles.detailLabel}>
-            Provisions<span>{number(row.provisions)}</span>
+            {row.tier === "screener" ? "All provisions in the document" : "Provisions"}
+            <span>{number(row.provisions)}</span>
           </p>
           <span className={styles.shadeBar} aria-hidden>
             {PROVISION_STATES.map((state) =>
@@ -1237,7 +1265,8 @@ function sortValue(row: BundleDocumentRow, key: SortKey, rank: (part: string) =>
   if (key === "part") return rank(row.part);
   if (key === "run") return row.latest_run_at ?? "";
   if (!row.in_corpus) return -1;
-  return key === "provisions" ? row.provisions : provisionCounts(row)[key];
+  const counted = measured(row);
+  return key === "provisions" ? counted.total : counted.byState[key];
 }
 
 interface Group {
@@ -1345,11 +1374,11 @@ function DocumentTable({
   const totals = Object.fromEntries(PROVISION_STATES.map((s) => [s, 0])) as Record<ProvisionState, number>;
   let provisions = 0;
   for (const row of rows) {
-    if (!row.in_corpus) continue;
-    provisions += row.provisions;
-    const states = provisionCounts(row);
-    for (const state of PROVISION_STATES) totals[state] += states[state];
+    const counted = measured(row);
+    provisions += counted.total;
+    for (const state of PROVISION_STATES) totals[state] += counted.byState[state];
   }
+  const cited = rows[0]?.tier === "screener";
 
   return (
     <>
@@ -1385,7 +1414,12 @@ function DocumentTable({
                 <>
                   {head("part", "Part")}
                   {PROVISION_STATES.map((state) => head(state, SHORT_LABELS[state], styles.num, PROVISION_LABELS[state]))}
-                  {head("provisions", "Provisions", styles.num)}
+                  {head(
+                    "provisions",
+                    cited ? "Cited" : "Provisions",
+                    styles.num,
+                    cited ? "Provisions PolicyEngine cites in the document" : undefined
+                  )}
                   {head("run", "Latest run")}
                 </>
               )}
@@ -1402,7 +1436,8 @@ function DocumentTable({
                 </tr>
                 {expanded &&
                   group.rows.map((row) => {
-                    const states = provisionCounts(row);
+                    const counted = measured(row);
+                    const states = counted.byState;
                     return (
                       <tr key={row.key} aria-selected={row.key === selectedKey}>
                         <th scope="row">
@@ -1423,7 +1458,7 @@ function DocumentTable({
                                     {number(states[state])}
                                   </td>
                                 ))}
-                                <td className={styles.num}>{number(row.provisions)}</td>
+                                <td className={styles.num}>{number(counted.total)}</td>
                               </>
                             ) : (
                               <td colSpan={PROVISION_STATES.length + 1} className={styles.notHeld}>
@@ -1484,11 +1519,12 @@ function GroupHead({
   const shades = Object.fromEntries(SHADES.map((s) => [s, 0])) as Record<Shade, number>;
   let total = 0;
   for (const row of group.rows) {
-    if (!row.in_corpus) continue;
-    total += row.provisions;
-    const states = provisionCounts(row);
-    for (const state of PROVISION_STATES) shades[PROVISION_SHADE[state]] += states[state];
+    const counted = measured(row);
+    total += counted.total;
+    shades.missing += counted.missing;
+    for (const state of PROVISION_STATES) shades[PROVISION_SHADE[state]] += counted.byState[state];
   }
+  const cited = group.rows[0]?.tier === "screener";
   const done = shades.encoded + shades.unvalidated;
   const complete = group.rows.filter((r) => r.status === "complete" || r.status === "unvalidated").length;
   const missing = group.rows.filter((r) => r.scope === "in" && !r.in_corpus).length;
@@ -1506,7 +1542,8 @@ function GroupHead({
         <span className={styles.groupProgress}>
           {total > 0 ? <ShadeBar shades={shades} total={total} /> : <span className={styles.shadeBar} data-empty aria-hidden />}
           <span>
-            {number(done)} of {number(total)} provisions encoded
+            {number(done)} of {number(total)} {cited ? "cited " : ""}
+            {total === 1 ? "provision" : "provisions"} encoded
           </span>
         </span>
       )}

@@ -164,26 +164,6 @@
   color: var(--color-paper);
 }
 
-.parityLine {
-  justify-self: start;
-  padding: 0;
-  border: 0;
-  background: none;
-  font-size: 12px;
-  color: var(--color-accent);
-  text-align: left;
-  cursor: pointer;
-  font-variant-numeric: tabular-nums;
-}
-
-.parityLine strong {
-  font-weight: 600;
-}
-
-.parityLine:hover {
-  text-decoration: underline;
-}
-
 .uncounted {
   color: var(--color-ink-muted);
 }

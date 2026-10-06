@@ -143,13 +143,11 @@ describe("ProgramBundle", () => {
     const matrix = screen.getByRole("table", { name: "Parts of the program by tier" });
     const headers = within(matrix).getAllByRole("columnheader");
     // Both tiers lead with how much is encoded; under the screener tier's, its comparison run.
-    expect(headers[1]).toHaveTextContent(/Screener-level parity\?0 of 1 document complete0%Provisions PolicyEngine cites/);
+    expect(headers[1]).toHaveTextContent(/Screener-level parity\?0 of 1 document complete0%Comparison run against PolicyEngine/);
     // The comparison run is a result, and says why it is 0%.
     expect(headers[1]).toHaveTextContent(
       "0% of eligible households matchAxiom finds no household eligible: held by rulespec-us#1116597 mismatches to fix in Axiom · run Jul 28, 2026 · PolicyEngine-US 1.767.3 (newest 2.29.10)"
     );
-    // It also gives how many provisions PolicyEngine cites are encoded.
-    expect(headers[1]).toHaveTextContent("Provisions PolicyEngine cites: 1 of 2 encoded · 50%");
     expect(headers[2]).toHaveTextContent(/Full document bundle.*0 of 1 document complete0%/);
     // Rows in the bundle's order of parts.
     expect(within(matrix).getAllByRole("rowheader").map((h) => h.textContent)).toEqual([
@@ -168,10 +166,14 @@ describe("ProgramBundle", () => {
     fireEvent.click(screen.getByRole("radio", { name: "Provisions" }));
     const matrix = screen.getByRole("table", { name: "Parts of the program by tier" });
     const headers = within(matrix).getAllByRole("columnheader");
-    expect(headers[1]).toHaveTextContent(/1 of 2 provisions encoded50%/);
+    // Tier 1 is PolicyEngine parity: it counts the provisions PolicyEngine cites, each in its own part.
+    expect(headers[1]).toHaveTextContent(/1 of 2 cited provisions encoded50%/);
     expect(
-      within(matrix).getByRole("button", { name: "Income, Screener-level parity: 1 of 2 provisions encoded" })
-    ).toHaveTextContent("1 of 250%");
+      within(matrix).getByRole("button", { name: "Income, Screener-level parity: 1 of 1 cited provision encoded" })
+    ).toHaveTextContent("1 of 1100%");
+    expect(
+      within(matrix).getByRole("button", { name: "Deductions, Screener-level parity: 0 of 1 cited provision encoded" })
+    ).toHaveTextContent("0 of 10%");
     expect(
       within(matrix).getByRole("button", { name: "Benefit determination, Full document bundle: 0 of 0 provisions encoded" })
     ).toHaveTextContent("0 of 0 + 1 not in the corpus");
@@ -188,7 +190,7 @@ describe("ProgramBundle", () => {
     expect(within(cells.at(-4)!).getByRole("button", { name: "1 excluded" })).toBeEnabled();
     expect(within(cells.at(-4)!).getByRole("button", { name: "0 complete" })).toBeDisabled();
     expect(cells.at(-2)).toHaveTextContent(
-      "2 in the corpusEncoded1Encoded, not validated0Partly encoded0Deferred1In progress0Failed0Not started0"
+      "2 cited by PolicyEngineEncoded1Encoded, not validated0Partly encoded0Deferred1In progress0Failed0Not started0Not in the corpus0"
     );
   });
 
@@ -252,14 +254,18 @@ describe("ProgramBundle", () => {
     fireEvent.click(within(panel).getByRole("radio", { name: "Part" }));
     const income = within(panel).getByRole("button", { name: /^Income/ });
     expect(income).toHaveAttribute("aria-expanded", "false");
-    expect(income).toHaveTextContent("Income2 documents · 0 complete1 of 5 provisions encoded");
+    // Tier 1 counts the provisions PolicyEngine cites: two in 7 USC 2014, the whole of 7 USC 2017.
+    expect(income).toHaveTextContent("Income2 documents · 0 complete1 of 3 cited provisions encoded");
     expect(within(panel).getByRole("button", { name: /^Deductions/ })).toHaveTextContent(
-      "Deductions1 document · 0 complete · 1 not in the corpus0 of 0 provisions encoded"
+      "Deductions1 document · 0 complete · 1 not in the corpus0 of 1 cited provision encoded"
     );
     expect(within(panel).queryByRole("button", { name: "7 USC 2017" })).toBeNull();
     fireEvent.click(income);
-    // Biggest first by default.
+    // Most cited provisions first by default.
     const names = () => [...panel.querySelectorAll('tbody th[scope="row"] button')].map((b) => b.textContent);
+    expect(names().slice(0, 2)).toEqual(["7 USC 2014", "7 USC 2017"]);
+    fireEvent.click(within(panel).getByRole("button", { name: "Cited" }));
+    expect(within(panel).getByRole("columnheader", { name: "Cited" })).toHaveAttribute("aria-sort", "ascending");
     expect(names().slice(0, 2)).toEqual(["7 USC 2017", "7 USC 2014"]);
     fireEvent.click(within(panel).getByRole("button", { name: "Encoded" }));
     expect(within(panel).getByRole("columnheader", { name: "Encoded" })).toHaveAttribute("aria-sort", "descending");

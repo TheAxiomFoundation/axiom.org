@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { pipelineAttempt } from "@/test/pipeline-attempt";
 import {
   documentType,
+  measured,
   bundleIndex,
   bundleMemberships,
   measureDocument,
@@ -226,25 +227,25 @@ describe("measureDocument", () => {
 });
 
 describe("tierCounts", () => {
-  it("adds up documents, provisions and cited units by state", () => {
-    const rows = [
+  it("counts the provisions PolicyEngine cites in the screener tier, and every provision in the full bundle", () => {
+    const screener = [
       measureDocument("b", "screener", doc({ cited: [{ path: "us/statute/7/2014/a", references: 1 }] }), { nodes, modules: [module("us/statute/7/2014/a")], attempts: [] }, AT),
       measureDocument("b", "screener", doc({ key: "k2", citation_path: "us/statute/7/2017" }), { nodes: [], modules: [], attempts: [] }, AT),
       measureDocument("b", "screener", doc({ key: "k3", scope: "excluded", reason: "Secondary source: not law" }), null, AT),
     ];
-    const counts = tierCounts(rows);
-    expect(counts).toMatchObject({ documents: 2, excluded: 1, provisions: 4, units: 2 });
-    expect(counts.byStatus).toEqual({ complete: 0, unvalidated: 0, partly: 1, not_started: 0, not_in_corpus: 1 });
-    expect(counts.byProvisionState).toEqual({
-      encoded: 1,
-      unvalidated: 0,
-      partly: 0,
-      deferred: 0,
-      in_progress: 0,
-      failed: 0,
-      not_started: 3,
-    });
-    expect(counts.byUnitState).toMatchObject({ encoded: 1, not_in_corpus: 1 });
+    const counts = tierCounts(screener);
+    // 7 USC 2014 is complete: the one provision PolicyEngine cites in it is encoded. 7 USC 2017's
+    // citation counts too, though the corpus does not hold it yet.
+    expect(counts).toMatchObject({ documents: 2, excluded: 1, provisions: 2, units: 2 });
+    expect(counts.byStatus).toEqual({ complete: 1, unvalidated: 0, partly: 0, not_started: 0, not_in_corpus: 1 });
+    expect(counts.byProvisionState).toMatchObject({ encoded: 1, not_started: 0 });
+    expect(measured(screener[1])).toMatchObject({ total: 1, missing: 1 });
+
+    const full = tierCounts([
+      measureDocument("b", "full", doc(), { nodes, modules: [module("us/statute/7/2014/a")], attempts: [] }, AT),
+    ]);
+    expect(full).toMatchObject({ provisions: 4, byStatus: { partly: 1 } });
+    expect(full.byProvisionState).toMatchObject({ encoded: 1, not_started: 3 });
   });
 });
 

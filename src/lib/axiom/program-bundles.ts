@@ -19,6 +19,9 @@
  *   credit);
  * - not started: the rest.
  * A screener unit (a provision PolicyEngine cites) is graded the same way.
+ * The screener tier is PolicyEngine parity, so it counts only its units: a
+ * document there is complete when every provision PolicyEngine cites in it is
+ * encoded. The full bundle counts every provision.
  */
 import { attemptStage, type PipelineAttempt, type PipelineStage } from "./encoding-pipeline";
 import type { ScreenerParity } from "./screener-parity";
@@ -419,8 +422,20 @@ export function measureDocument(
     status: null,
     collected_at: collectedAt,
   };
-  row.status = documentStatus(row);
+  row.status = tier === "screener" && row.scope === "in" && inCorpus ? citedStatus(units) : documentStatus(row);
   return row;
+}
+
+/**
+ * A screener-tier document's status, by the provisions PolicyEngine cites in
+ * it: complete when every one is encoded.
+ */
+function citedStatus(units: ParityUnit[]): DocumentStatus {
+  const done = units.filter((u) => u.state === "encoded" || u.state === "unvalidated").length;
+  if (units.length > 0 && done === units.length) {
+    return units.some((u) => u.state === "unvalidated") ? "unvalidated" : "complete";
+  }
+  return done > 0 || units.some((u) => u.state === "partly") ? "partly" : "not_started";
 }
 
 /** A screener unit's state: by the rules that reach it, then by its provisions, then by its newest run. */
@@ -453,6 +468,7 @@ export interface TierCounts {
   documents: number;
   excluded: number;
   byStatus: Record<DocumentStatus, number>;
+  /** What the tier counts (see measured): cited provisions in the screener tier, every provision in the full bundle. */
   provisions: number;
   /** Provisions by state; they add up to the provisions. */
   byProvisionState: Record<ProvisionState, number>;
@@ -492,14 +508,66 @@ export function provisionCounts(
   };
 }
 
+/** A cited provision's state on the provision scale; null for one the corpus does not hold. */
+const UNIT_AS_PROVISION: Record<UnitState, ProvisionState | null> = {
+  encoded: "encoded",
+  unvalidated: "unvalidated",
+  partly: "partly",
+  deferred: "deferred",
+  in_progress: "in_progress",
+  failed: "failed",
+  not_encoded: "not_started",
+  not_in_corpus: null,
+};
+
+/**
+ * What a document counts toward its tier. The screener tier is PolicyEngine
+ * parity, so it counts the provisions PolicyEngine cites (its units); the
+ * full bundle counts every text-bearing provision. Both on one state scale.
+ */
+export function measured(
+  row: Pick<
+    BundleDocumentRow,
+    | "tier"
+    | "units"
+    | "in_corpus"
+    | "provisions"
+    | "encoded_provisions"
+    | "unvalidated_provisions"
+    | "partly_provisions"
+    | "deferred_provisions"
+    | "provisions_in_progress"
+    | "provisions_failed"
+  >
+): {
+  /** Everything the document counts; in the screener tier, cited provisions not in the corpus included. */
+  total: number;
+  byState: Record<ProvisionState, number>;
+  /** Screener tier: cited provisions in a document the corpus does not hold. */
+  missing: number;
+} {
+  if (row.tier !== "screener") return { total: row.provisions, byState: provisionCounts(row), missing: 0 };
+  const byState = Object.fromEntries(PROVISION_STATES.map((s) => [s, 0])) as Record<ProvisionState, number>;
+  let missing = 0;
+  for (const unit of row.units) {
+    const state = UNIT_AS_PROVISION[unit.state];
+    if (state) byState[state]++;
+    else missing++;
+  }
+  // PolicyEngine cites them, so they count, as not in the corpus.
+  return { total: row.units.length, byState, missing };
+}
+
 export function tierCounts(rows: BundleDocumentRow[]): TierCounts {
   const inScope = rows.filter((r) => r.scope === "in");
   const byStatus = Object.fromEntries(DOCUMENT_STATUSES.map((s) => [s, 0])) as Record<DocumentStatus, number>;
   for (const row of inScope) if (row.status) byStatus[row.status]++;
   const byProvisionState = Object.fromEntries(PROVISION_STATES.map((s) => [s, 0])) as Record<ProvisionState, number>;
+  let provisions = 0;
   for (const row of inScope) {
-    const counts = provisionCounts(row);
-    for (const state of PROVISION_STATES) byProvisionState[state] += counts[state];
+    const counts = measured(row);
+    provisions += counts.total;
+    for (const state of PROVISION_STATES) byProvisionState[state] += counts.byState[state];
   }
   const units = inScope.flatMap((r) => r.units);
   const byUnitState = Object.fromEntries(UNIT_STATES.map((s) => [s, 0])) as Record<UnitState, number>;
@@ -508,7 +576,7 @@ export function tierCounts(rows: BundleDocumentRow[]): TierCounts {
     documents: inScope.length,
     excluded: rows.length - inScope.length,
     byStatus,
-    provisions: inScope.reduce((total, r) => total + r.provisions, 0),
+    provisions,
     byProvisionState,
     units: units.length,
     byUnitState,
