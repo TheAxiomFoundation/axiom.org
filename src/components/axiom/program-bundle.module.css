@@ -262,6 +262,54 @@
   font-variant-numeric: tabular-nums;
 }
 
+.tierCount {
+  font-size: 12px;
+  color: var(--color-ink-secondary);
+}
+
+.tierCount strong {
+  margin-right: 3px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.tierCount em {
+  margin-left: 6px;
+  font-size: 11px;
+  font-style: normal;
+  color: var(--color-ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.parityHead {
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.parityHead:hover .tierTotal {
+  text-decoration: underline;
+  text-decoration-color: var(--color-ink-muted);
+}
+
+.parityFacts {
+  font-size: 12px;
+  color: var(--color-ink-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.stale {
+  color: var(--state-failed);
+}
+
 .tierTotal em {
   margin-left: 8px;
   padding: 1px 7px;

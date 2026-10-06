@@ -21,6 +21,7 @@
  * A screener unit (a provision PolicyEngine cites) is graded the same way.
  */
 import { attemptStage, type PipelineAttempt, type PipelineStage } from "./encoding-pipeline";
+import type { ScreenerParity } from "./screener-parity";
 
 export type BundleTierId = "screener" | "full";
 
@@ -217,6 +218,10 @@ export interface BundleRow {
   parts: string[];
   tiers: Array<Pick<BundleFileTier, "id" | "title" | "definition" | "membership" | "notes">>;
   source: string | null;
+  /** The screener tier's headline, from the comparison its membership names; null without one. */
+  parity: ScreenerParity | null;
+  /** The newest policyengine-us version published on PyPI when the collector ran. */
+  policyengine_latest: string | null;
   collected_at: string;
 }
 

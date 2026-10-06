@@ -4,8 +4,9 @@
 -- documents of each delivery tier of one program in one jurisdiction: the
 -- screener-level parity tier and the full document bundle. These tables hold
 -- how far each document has come. scripts/collect-program-bundles.mjs
--- rebuilds them from the bundle files, the served corpus, the RuleSpec rule
--- index and encodings.pipeline_attempts; nothing else writes here, so every
+-- rebuilds them from the bundle files, the served corpus, the RuleSpec
+-- modules, encodings.pipeline_attempts and the axiom-oracles comparison
+-- reports; nothing else writes here, so every
 -- column is derived and safe to recompute.
 
 -- One row per bundle: its header and its tiers' definitions.
@@ -18,6 +19,10 @@ create table if not exists encodings.program_bundles (
   parts         jsonb not null default '[]', -- the parts of the program, in reading order
   tiers         jsonb not null,            -- [{id, title, definition, membership, notes}]
   source        text,                      -- the bundle file read: <repo>@main:<path>#<blob sha>
+  -- The screener tier's headline: screener-level parity from the
+  -- axiom-oracles comparison the tier names (see src/lib/axiom/screener-parity.ts).
+  parity        jsonb,
+  policyengine_latest text,                -- the newest policyengine-us release on PyPI
   collected_at  timestamptz not null
 );
 

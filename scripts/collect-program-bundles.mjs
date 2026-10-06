@@ -4,7 +4,9 @@
  * (axiom-corpus manifests/program-bundles/*.yaml), whether the corpus serves
  * it, how many of its provisions a RuleSpec rule cites (read from each
  * module's YAML, with its deferrals and validation waivers), which of the
- * provisions PolicyEngine cites are covered, and its newest encode run. The
+ * provisions PolicyEngine cites are covered, and its newest encode run; and
+ * each bundle's screener-level parity, from the axiom-oracles comparison its
+ * screener tier names, with the newest policyengine-us release. The
  * /ops/bundles pages read only the tables this writes.
  *
  * Usage:
@@ -32,6 +34,7 @@ import { createClient } from "@supabase/supabase-js";
 import yaml from "js-yaml";
 import { measureDocument, tierCounts } from "../src/lib/axiom/program-bundles.ts";
 import { moduleFacts, waivedModules } from "../src/lib/axiom/program-bundles-modules.ts";
+import { screenerParity } from "../src/lib/axiom/screener-parity.ts";
 
 const CORPUS_REPO = "TheAxiomFoundation/axiom-corpus";
 const BUNDLE_DIR = "manifests/program-bundles";
@@ -182,6 +185,31 @@ async function readModules(jurisdictions) {
   return rows.map((row) => moduleFacts(row, sources.get(row.citation_path) ?? [], waivers));
 }
 
+/** The newest policyengine-us version on PyPI; null when PyPI does not answer. */
+async function newestPolicyEngine() {
+  try {
+    const res = await fetch("https://pypi.org/pypi/policyengine-us/json", { headers: { "User-Agent": "axiom-program-bundles" } });
+    return res.ok ? (await res.json()).info.version : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A bundle's screener-level parity from the comparison report its screener tier names. */
+async function readParity(bundle) {
+  const source = bundle.tiers.find((tier) => tier.id === "screener")?.membership?.comparison;
+  if (!source?.repo || !source?.report) return null;
+  // The raw host: no API rate limit for a public repo, and the token for a private one.
+  const res = await fetch(`https://raw.githubusercontent.com/${source.repo}/main/${source.report}`, {
+    headers: githubHeaders,
+  });
+  if (!res.ok) {
+    console.warn(`${bundle.id}: comparison report ${source.report}: HTTP ${res.status}`);
+    return null;
+  }
+  return screenerParity(await res.json(), source);
+}
+
 async function telemetryFor(doc, modules, attempts) {
   const root = doc.citation_path;
   const nodes = await corpusTree(root);
@@ -205,6 +233,8 @@ async function main() {
   }
   const attempts = await pages(() => supabase.from("pipeline_attempts").select("*").order("id"));
   console.log(`read ${attempts.length} pipeline attempts`);
+  const policyengineLatest = await newestPolicyEngine();
+  console.log(`newest policyengine-us release: ${policyengineLatest ?? "unknown"}`);
 
   const bundleRows = [];
   const documentRows = [];
@@ -235,6 +265,15 @@ async function main() {
           (counts.units ? `; ${counts.units} cited units: ${list(counts.byUnitState)}` : "")
       );
     }
+    const parity = await readParity(bundle);
+    if (parity) {
+      const share = (v) => (v == null ? "n/a" : `${(v * 100).toFixed(1)}%`);
+      console.log(
+        `${bundle.id} parity (${parity.suite}, policyengine-us ${parity.policyengine_us}, ${parity.generated_at}): ` +
+          `${share(parity.eligible_matching)} of eligible households match; ${parity.households_matching} of ` +
+          `${parity.households} households; ${parity.axiom_errors} of ${parity.mismatches} mismatches are Axiom's to fix`
+      );
+    }
     bundleRows.push({
       id: bundle.id,
       title: bundle.title,
@@ -244,6 +283,8 @@ async function main() {
       parts: bundle.parts ?? [],
       tiers: bundle.tiers.map(({ id, title, definition, membership, notes }) => ({ id, title, definition, membership, notes })),
       source,
+      parity,
+      policyengine_latest: policyengineLatest,
       collected_at: collectedAt,
     });
   }

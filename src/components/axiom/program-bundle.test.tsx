@@ -34,6 +34,29 @@ const bundle: BundleRow = {
     },
   ],
   source: "local",
+  parity: {
+    suite: "az-snap-ecps",
+    report_url: "https://github.com/TheAxiomFoundation/axiom-oracles/blob/main/dashboard/public/data/r.json",
+    generated_at: "2026-07-28T22:20:39Z",
+    run_kind: "manual",
+    reemitted: false,
+    policyengine_us: "1.767.3",
+    rulespec_sha: "c13cdf7",
+    households: 1341,
+    households_matching: 1035,
+    eligible_policyengine: 0.2789,
+    eligible_axiom: 0,
+    eligible_matching: 0,
+    mismatches: 597,
+    axiom_errors: 597,
+    by_disposition: { axiom_encoding_gap: 597 },
+    issues: [{ url: "https://github.com/TheAxiomFoundation/rulespec-us/issues/1116", mismatches: 597 }],
+    outputs: [
+      { concept: "us:statutes/7/2014/o#snap_eligible", description: "SNAP eligibility", mismatches: 306 },
+      { concept: "us:statutes/7/2014/u#snap_benefit", description: "SNAP benefit amount", mismatches: 291 },
+    ],
+  },
+  policyengine_latest: "2.29.10",
   collected_at: AT,
 };
 
@@ -119,8 +142,11 @@ describe("ProgramBundle", () => {
     expect(screen.getByRole("heading", { name: "Arizona SNAP" })).toBeInTheDocument();
     const matrix = screen.getByRole("table", { name: "Parts of the program by tier" });
     const headers = within(matrix).getAllByRole("columnheader");
-    expect(headers[1]).toHaveTextContent(/Screener-level parity.*0 of 1 document complete0%/);
-    // The screener tier also gives how many PolicyEngine citations are encoded.
+    // The screener tier's headline is screener-level parity, from the comparison against PolicyEngine.
+    expect(headers[1]).toHaveTextContent("0% of eligible households match PolicyEngine");
+    expect(headers[1]).toHaveTextContent("597 Axiom errors to fix · PolicyEngine-US 1.767.3 (newest 2.29.10) · Jul 28, 2026");
+    expect(headers[1]).toHaveTextContent(/0 of 1 document complete0%/);
+    // It also gives how many PolicyEngine citations are encoded.
     expect(headers[1]).toHaveTextContent("PolicyEngine citations encoded: 1 of 2 · 50%");
     expect(headers[2]).toHaveTextContent(/Full document bundle.*0 of 1 document complete0%/);
     // Rows in the bundle's order of parts.
@@ -159,7 +185,7 @@ describe("ProgramBundle", () => {
     expect(cells.at(-2)).toHaveTextContent("21 encoded1 deferred");
   });
 
-  it("opens a cell's documents, and the drawer of PolicyEngine's cited provisions", () => {
+  it("opens a cell's documents, and the screener-level parity drawer", () => {
     render(<ProgramBundle bundle={withParts} documents={documents} available referenceMs={NOW} />);
     fireEvent.click(screen.getByRole("button", { name: "Income, Screener-level parity: 0 of 1 document complete" }));
     const cell = screen.getByRole("complementary", { name: "Part of the program" });
@@ -167,9 +193,16 @@ describe("ProgramBundle", () => {
     fireEvent.click(within(cell).getByRole("button", { name: /7 USC 2014/ }));
     const document = screen.getByRole("complementary", { name: "Document" });
     expect(within(document).getByText("Encoded").parentElement).toHaveTextContent("Encoded1");
-    fireEvent.click(screen.getByRole("button", { name: /PolicyEngine citations encoded: 1 of 2/ }));
-    const parity = screen.getByRole("complementary", { name: "PolicyEngine citations" });
-    expect(within(parity).getByRole("heading", { name: "1 of 2 cited provisions encoded" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /0% of eligible households match PolicyEngine/ }));
+    const parity = screen.getByRole("complementary", { name: "Screener-level parity" });
+    expect(within(parity).getByRole("heading", { name: "0% of eligible households match PolicyEngine" })).toBeInTheDocument();
+    expect(parity).toHaveTextContent("Eligible householdsPolicyEngine 27.9% · Axiom 0%");
+    expect(parity).toHaveTextContent("Axiom errors to fix597 of 597 mismatches");
+    expect(within(parity).getByRole("link", { name: "rulespec-us#1116" })).toHaveAttribute(
+      "href",
+      "https://github.com/TheAxiomFoundation/rulespec-us/issues/1116"
+    );
+    expect(parity).toHaveTextContent("PolicyEngine citations1 of 2 encoded");
     fireEvent.click(within(parity).getByRole("button", { name: /7 USC 2014 \/b/ }));
     const unit = screen.getByRole("complementary", { name: "Cited provision" });
     expect(within(unit).getByRole("link", { name: "us/statute/7/2014/b" })).toHaveAttribute("href", "/us/statute/7/2014/b");
@@ -187,7 +220,8 @@ describe("ProgramBundle", () => {
   it("says where each tier's numbers come from", () => {
     render(<ProgramBundle bundle={withParts} documents={documents} available referenceMs={NOW} />);
     const provenance = screen.getByRole("region", { name: "Where the numbers come from" });
-    expect(provenance).toHaveTextContent("2.29.11 (4c900b6d3d), 448 references");
+    expect(provenance).toHaveTextContent("2.29.11 (4c900b6d3d), 448 references; the newest release");
+    expect(provenance).toHaveTextContent("az-snap-ecps, PolicyEngine-US 1.767.3, Jul 28, 2026");
     expect(provenance).toHaveTextContent("FY2027");
     expect(provenance).toHaveTextContent("12 known state sources");
   });

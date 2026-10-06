@@ -23,9 +23,13 @@ import {
   type ProvisionState,
   type UnitState,
 } from "@/lib/axiom/program-bundles";
+import { olderVersion, type ScreenerParity } from "@/lib/axiom/screener-parity";
 
 const number = (value: number) => value.toLocaleString("en-US");
 const percent = (part: number, whole: number) => (whole ? `${Math.round((part / whole) * 100)}%` : "—");
+const share = (value: number | null) => (value == null ? "—" : `${Math.round(value * 1000) / 10}%`);
+const day = (iso: string | null) =>
+  iso ? new Date(iso).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : "—";
 
 /** Provision states as the table's column heads. */
 const SHORT_LABELS: Record<ProvisionState, string> = {
@@ -207,6 +211,8 @@ export function ProgramBundle({
   } else if (selected?.kind === "parity") {
     drawer = (
       <ParityDetail
+        parity={bundle?.parity ?? null}
+        newest={bundle?.policyengine_latest ?? null}
         rows={inScope.get(selected.tier) ?? []}
         parts={bundle?.parts ?? []}
         onUnit={(key) => setSelected({ kind: "unit", tier: selected.tier, key })}
@@ -302,6 +308,8 @@ export function ProgramBundle({
                     tier={tier}
                     rows={inScope.get(tier.id) ?? []}
                     count={count}
+                    parity={tier.id === "screener" ? (bundle?.parity ?? null) : null}
+                    newest={bundle?.policyengine_latest ?? null}
                     onParity={() => select({ kind: "parity", tier: tier.id })}
                   />
                 ))}
@@ -441,24 +449,35 @@ function ShadeBar({ shades, total }: { shades: Record<Shade, number>; total: num
   );
 }
 
-/** A tier's column head: its name, what it means, how far it has come in the chosen count, and its parity. */
+/**
+ * A tier's column head: its name and what it means, its headline, and how far
+ * its documents have come in the chosen count. The screener tier's headline
+ * is screener-level parity, from its comparison against PolicyEngine; its
+ * document counts follow as the work behind it.
+ */
 function TierHeader({
   index,
   tier,
   rows,
   count,
+  parity,
+  newest,
   onParity,
 }: {
   index: number;
   tier: BundleRow["tiers"][number];
   rows: BundleDocumentRow[];
   count: Count;
+  parity: ScreenerParity | null;
+  newest: string | null;
   onParity: () => void;
 }) {
   const counts = tierCounts(rows);
   const done = count === "documents" ? doneDocuments(counts.byStatus) : doneProvisions(counts.byProvisionState);
   const total = count === "documents" ? counts.documents : counts.provisions;
   const unitsDone = doneUnits(counts.byUnitState);
+  const screener = tier.id === "screener";
+  const stale = olderVersion(parity?.policyengine_us ?? null, newest);
   return (
     <span role="columnheader" className={styles.tierHeader}>
       <span className={styles.tierIndex}>Tier {index}</span>
@@ -466,7 +485,25 @@ function TierHeader({
         {tier.title}
         <Explain label={tier.title}>{tier.definition}</Explain>
       </span>
-      <span className={styles.tierTotal}>
+      {screener && (
+        <button type="button" className={styles.parityHead} onClick={onParity}>
+          {parity?.eligible_matching != null ? (
+            <>
+              <span className={styles.tierTotal}>
+                <strong>{share(parity.eligible_matching)}</strong> of eligible households match PolicyEngine
+              </span>
+              <span className={styles.parityFacts}>
+                {number(parity.axiom_errors)} Axiom {parity.axiom_errors === 1 ? "error" : "errors"} to fix ·
+                PolicyEngine-US {parity.policyengine_us ?? "?"}
+                {stale && <span className={styles.stale}> (newest {newest})</span>} · {day(parity.generated_at)}
+              </span>
+            </>
+          ) : (
+            <span className={styles.parityFacts}>No comparison against PolicyEngine yet</span>
+          )}
+        </button>
+      )}
+      <span className={screener ? styles.tierCount : styles.tierTotal}>
         <strong>{number(done)}</strong> of {number(total)} {countWord(count, total)} {COUNT_WORDS[count][2]}
         <em>{percent(done, total)}</em>
       </span>
@@ -655,15 +692,20 @@ function CellDetail({
 }
 
 /**
- * The screener tier's PolicyEngine parity by part: every provision
- * PolicyEngine cites, as its parity model reads it, each one to open.
+ * The screener tier's headline in full: the comparison against PolicyEngine
+ * (households, eligibility, mismatches and who fixes them), then every
+ * provision PolicyEngine cites by part, each one to open.
  */
 function ParityDetail({
+  parity,
+  newest,
   rows,
   parts,
   onUnit,
   onClose,
 }: {
+  parity: ScreenerParity | null;
+  newest: string | null;
   rows: BundleDocumentRow[];
   parts: string[];
   onUnit: (key: string) => void;
@@ -676,11 +718,89 @@ function ParityDetail({
   const rank = (part: string) => (parts.includes(part) ? parts.indexOf(part) : parts.length);
   const encoded = units.filter((u) => u.state === "encoded" || u.state === "unvalidated").length;
   return (
-    <aside className={styles.detail} aria-label="PolicyEngine citations">
-      <DrawerTop label="PolicyEngine citations" onClose={onClose} />
-      <h3 className={styles.detailName}>
-        {number(encoded)} of {number(units.length)} cited provisions encoded
-      </h3>
+    <aside className={styles.detail} aria-label="Screener-level parity">
+      <DrawerTop label="Screener-level parity" onClose={onClose} />
+      {parity ? (
+        <>
+          <h3 className={styles.detailName}>
+            {share(parity.eligible_matching)} of eligible households match PolicyEngine
+          </h3>
+          <p className={styles.detailNote}>
+            Of the households either engine finds eligible, the share that gets the same eligibility and benefit from
+            Axiom and PolicyEngine (survey-weighted). Households neither engine finds eligible match trivially, so they
+            are left out.
+          </p>
+          <dl className={styles.detailFacts}>
+            <div>
+              <dt>Eligible households</dt>
+              <dd>
+                PolicyEngine {share(parity.eligible_policyengine)} · Axiom {share(parity.eligible_axiom)}
+              </dd>
+            </div>
+            <div>
+              <dt>Survey households</dt>
+              <dd>
+                {number(parity.households_matching)} of {number(parity.households)} match on every output
+              </dd>
+            </div>
+            {parity.outputs.map((output) => (
+              <div key={output.concept}>
+                <dt>{output.description}</dt>
+                <dd>{number(output.mismatches)} households differ</dd>
+              </div>
+            ))}
+            <div>
+              <dt>Axiom errors to fix</dt>
+              <dd>
+                {number(parity.axiom_errors)} of {number(parity.mismatches)} mismatches
+              </dd>
+            </div>
+            {Object.entries(parity.by_disposition).map(([disposition, n]) => (
+              <div key={disposition}>
+                <dt className={styles.mono}>{disposition}</dt>
+                <dd>{number(n)}</dd>
+              </div>
+            ))}
+            {parity.issues.map((issue) => (
+              <div key={issue.url}>
+                <dt>Held by</dt>
+                <dd>
+                  <a href={issue.url} target="_blank" rel="noreferrer">
+                    {issue.url.replace("https://github.com/TheAxiomFoundation/", "").replace("/issues/", "#")}
+                  </a>{" "}
+                  · {number(issue.mismatches)} mismatches
+                </dd>
+              </div>
+            ))}
+            <div>
+              <dt>PolicyEngine-US</dt>
+              <dd>
+                {parity.policyengine_us ?? "?"}
+                {olderVersion(parity.policyengine_us, newest) && <span className={styles.stale}> · newest is {newest}</span>}
+              </dd>
+            </div>
+            <div>
+              <dt>Comparison</dt>
+              <dd>
+                <a href={parity.report_url} target="_blank" rel="noreferrer">
+                  {parity.suite}
+                </a>{" "}
+                · {day(parity.generated_at)}
+                {parity.run_kind ? ` · ${parity.run_kind} run` : ""}
+                {parity.reemitted ? " · re-emitted" : ""}
+              </dd>
+            </div>
+          </dl>
+        </>
+      ) : (
+        <h3 className={styles.detailName}>No comparison against PolicyEngine yet</h3>
+      )}
+      <p className={styles.detailLabel}>
+        PolicyEngine citations
+        <span>
+          {number(encoded)} of {number(units.length)} encoded
+        </span>
+      </p>
       <p className={styles.detailNote}>
         Each provision PolicyEngine cites for this program at the pinned release: encoded when a rule cites it or a
         provision above it and nothing in it is deferred; partly encoded when rules cite only parts of it; deferred when
@@ -964,7 +1084,18 @@ function Provenance({
                   [
                     "PolicyEngine-US",
                     text(m.policyengine_us_version) &&
-                      `${text(m.policyengine_us_version)} (${String(m.policyengine_us_commit ?? "").slice(0, 10)}), ${text(m.reference_count)} references`,
+                      `${text(m.policyengine_us_version)} (${String(m.policyengine_us_commit ?? "").slice(0, 10)}), ${text(m.reference_count)} references` +
+                        (olderVersion(text(m.policyengine_us_version), bundle?.policyengine_latest ?? null)
+                          ? `; newest is ${bundle?.policyengine_latest}`
+                          : bundle?.policyengine_latest
+                            ? "; the newest release"
+                            : ""),
+                  ],
+                  [
+                    "Comparison",
+                    bundle?.parity
+                      ? `${bundle.parity.suite}, PolicyEngine-US ${bundle.parity.policyengine_us ?? "?"}, ${day(bundle.parity.generated_at)}`
+                      : null,
                   ],
                   ["Plan", text(m.plan_as_of) && `${text(m.plan_documents)} documents, ${text(m.plan_as_of)}`],
                   ["Fiscal year", text(m.fiscal_year) && `FY${text(m.fiscal_year)}`],
