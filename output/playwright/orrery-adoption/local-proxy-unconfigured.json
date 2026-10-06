@@ -1,0 +1,32 @@
+{
+  "target": "http://127.0.0.1:4792/axiom/graph/orrery?program=us-co/co-snap",
+  "status": "running",
+  "pageErrors": [],
+  "console": [
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+    },
+    {
+      "type": "warning",
+      "text": "The resource http://127.0.0.1:4792/_next/static/chunks/0t5ctadv2rn70.css was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it wasn't preloaded for nothing."
+    }
+  ],
+  "api": [
+    {
+      "url": "http://127.0.0.1:4792/api/axiom/runtime/packages",
+      "status": 503
+    },
+    {
+      "url": "http://127.0.0.1:4792/api/axiom/runtime/packages/us-co/co-snap/graph",
+      "status": 503
+    }
+  ],
+  "checks": [],
+  "error": "TimeoutError: locator.waitFor: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('.ge-explorer') to be visible\u001b[22m\n",
+  "body": "COVERAGE\nVALIDATION\nWHAT'S POSSIBLE\nBLOG\nABOUT\nTEAM\nGET STARTED\nOrrery by Axiom\n\nDependency preview · read-only\n\nProgram\nOpen Axiom viewer ↗\nNative Axiom program dependencies. Run calculations and use the rule lens in the Axiom viewer.\n\nThe program list is unavailable. Existing program links can still be opened.\n\nThe native Axiom graph could not be loaded. Try the current viewer or choose another program.\n\nOpen the Axiom viewer\n\nComputable law for all.\n\nOpen, machine-readable encodings of the world's rules — starting with tax and benefit policy.\n\nPRODUCT\nAxiom platform\nDemos\nCoverage\nValidation\nDocumentation\nFOUNDATION\nAbout\nTeam\nBlog\nPrivacy\nCONNECT\nContact\nGet updates\nhello@axiom.org\n\n© 2026 Axiom Foundation · Doing the public-interest work\n\n∀ OPEN INFRASTRUCTURE FOR ENCODED LAW"
+}

@@ -1,0 +1,27 @@
+{
+  "target": "http://127.0.0.1:4792/axiom/graph/orrery?program=us-co/co-snap",
+  "status": "passed",
+  "pageErrors": [],
+  "console": [],
+  "api": [
+    {
+      "url": "http://127.0.0.1:4792/api/axiom/runtime/packages",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:4792/api/axiom/runtime/packages/us-co/co-snap/graph",
+      "status": 200
+    }
+  ],
+  "checks": [
+    "Production host calls native same-origin API and renders all 374 nodes / 445 authored edges",
+    "Exact record search and native inspector link retain program and legal ID; focused geometry renders",
+    "Mobile Inspect and Graph remain usable",
+    "Back restores selected record without exploration focus"
+  ],
+  "transport": "Actual local production API proxy configured with public https://axiom.org/api/axiom base; no browser interception or credential access",
+  "initialCounts": {
+    "nodes": 374,
+    "edges": 445
+  }
+}

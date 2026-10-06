@@ -1,0 +1,21 @@
+{
+  "status": "passed",
+  "checks": [
+    "Native no-hash focus is canonicalized in place; selection then Back restores original selected rule and 4-node neighborhood",
+    "Same-program native query focus changes resolve immediately without requiring a document change",
+    "Explicit Whole graph retains precise selection and survives reload without reviving native entry focus"
+  ],
+  "errors": [],
+  "warnings": [],
+  "original": {
+    "url": "http://127.0.0.1:4792/axiom/graph/orrery?program=us-co/co-snap&focus=us%3Apolicies%2Fusda%2Fsnap%2Ffy-2026-cola%2Fmaximum-allotments%23snap_maximum_allotment#selectedId=us%3Apolicies%2Fusda%2Fsnap%2Ffy-2026-cola%2Fmaximum-allotments%23snap_maximum_allotment&selectedType=node&focusId=us%3Apolicies%2Fusda%2Fsnap%2Ffy-2026-cola%2Fmaximum-allotments%23snap_maximum_allotment&direction=both&depth=1",
+    "location": {
+      "selectedId": "us:policies/usda/snap/fy-2026-cola/maximum-allotments#snap_maximum_allotment",
+      "selectedType": "node",
+      "focusId": "us:policies/usda/snap/fy-2026-cola/maximum-allotments#snap_maximum_allotment",
+      "direction": "both",
+      "depth": "1"
+    },
+    "nodes": 4
+  }
+}

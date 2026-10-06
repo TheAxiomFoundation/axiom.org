@@ -1,0 +1,13 @@
+{
+  "sha256": "503511b843d1dda8d61efc5d4deba806cd9f38a2c18d8680657d6138e08c109e",
+  "files": 50,
+  "allInstalledFilesMatch": true,
+  "source": "3f603ec5d84b3623ac300162c0dce8aeca63dd1e",
+  "changedFromHistoricalCandidate": [
+    "docs/migration.md",
+    "docs/oss-landscape.md",
+    "docs/react-hosts.md",
+    "docs/thesis-walkthrough.md"
+  ],
+  "distIdentical": true
+}
