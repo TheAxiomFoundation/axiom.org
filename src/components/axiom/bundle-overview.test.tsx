@@ -59,6 +59,17 @@ describe("BundleOverview", () => {
     expect(screen.getByRole("table", { name: "Medicaid by state" })).toBeInTheDocument();
   });
 
+  it("summarizes the programs by either tier, and sorts the states by it", () => {
+    render(<BundleOverview bundles={bundles} />);
+    const toggle = screen.getByRole("radiogroup", { name: "Median state, by tier" });
+    fireEvent.click(within(toggle).getByRole("radio", { name: "Tier 2" }));
+    // Median of Arizona (4 of 187) and California (5 of 190) documents complete.
+    expect(within(screen.getByRole("list", { name: "Programs" })).getByRole("button", { name: /SNAP/ })).toHaveTextContent(
+      "SNAP2%"
+    );
+    expect(screen.getByRole("columnheader", { name: "Tier 2 · full bundle" })).toHaveAttribute("aria-sort", "descending");
+  });
+
   it("sorts the states by name", () => {
     render(<BundleOverview bundles={bundles} />);
     fireEvent.click(screen.getByRole("button", { name: "State" }));

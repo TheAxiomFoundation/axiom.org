@@ -79,6 +79,12 @@ export function BundleOverview({ bundles }: { bundles: BundleSummary[] }) {
   const [count, setCount] = useState<Count>("documents");
   const [program, setProgram] = useState(programs[0]);
   const [sort, setSort] = useState<Sort>("screener");
+  // The tier the program list summarizes; choosing one also sorts the states by it.
+  const [tier, setTier] = useState<BundleTierId>("screener");
+  const chooseTier = (next: BundleTierId) => {
+    setTier(next);
+    setSort(next);
+  };
   if (!bundles.length) return null;
 
   const byId = new Map(bundles.map((b) => [b.id, b]));
@@ -128,28 +134,45 @@ export function BundleOverview({ bundles }: { bundles: BundleSummary[] }) {
       </div>
 
       <div className={styles.layout}>
-        <ul className={styles.programs} aria-label="Programs">
+        <div className={styles.programsPane}>
+          <div className={styles.columnHead}>
+            <span>Program</span>
+            <span className={styles.tierToggle} role="radiogroup" aria-label="Median state, by tier">
+              <span>Median state</span>
+              {(["screener", "full"] as BundleTierId[]).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={tier === value}
+                  onClick={() => chooseTier(value)}
+                >
+                  {value === "screener" ? "Tier 1" : "Tier 2"}
+                </button>
+              ))}
+            </span>
+          </div>
+          <ul className={styles.programs} aria-label="Programs">
           {programs.map((p) => {
-            const tier1 = medianOf(p, "screener");
+            const middle = medianOf(p, tier);
             return (
               <li key={p}>
                 <button type="button" aria-pressed={p === program} onClick={() => setProgram(p)}>
                   <span className={styles.programName}>{title(p)}</span>
                   <span className={styles.track} aria-hidden>
-                    <span className={styles.fill} style={{ width: `${(tier1 ?? 0) * 100}%` }} />
+                    <span className={styles.fill} style={{ width: `${(middle ?? 0) * 100}%` }} />
                   </span>
                   <span className={styles.programFigure}>
-                    {tier1 == null ? "—" : `${Math.round(tier1 * 100)}%`}
+                    {middle == null ? "—" : `${Math.round(middle * 100)}%`}
                   </span>
                 </button>
               </li>
             );
           })}
-          <li className={styles.programsNote}>Tier 1, median state</li>
-        </ul>
+          </ul>
+        </div>
 
         <div className={styles.states}>
-          <h3 className={styles.statesTitle}>{title(program)}</h3>
           <table className={styles.table} aria-label={`${title(program)} by state`}>
             <thead>
               <tr>
