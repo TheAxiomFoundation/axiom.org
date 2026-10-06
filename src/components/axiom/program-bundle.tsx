@@ -468,6 +468,8 @@ function TierHeader({
   const counts = tierCounts(rows);
   const done = count === "documents" ? doneDocuments(counts.byStatus) : doneProvisions(counts.byProvisionState);
   const total = count === "documents" ? counts.documents : counts.provisions;
+  // Done without resting on a validation waiver: what a verified count credits.
+  const validated = count === "documents" ? counts.byStatus.complete : counts.byProvisionState.encoded;
   const screener = tier.id === "screener";
   const stale = olderVersion(parity?.policyengine_us ?? null, newest);
   return (
@@ -480,6 +482,14 @@ function TierHeader({
       <span className={styles.tierTotal}>
         <strong>{number(done)}</strong> of {number(total)} {countWord(count, total, tier.id)} {COUNT_WORDS[count][2]}
         <em>{percent(done, total)}</em>
+      </span>
+      <span className={styles.tierValidated}>
+        {number(validated)} {COUNT_WORDS[count][2]} and validated · {percent(validated, total)}
+        <Explain label="Validated">
+          Validated: done without resting on a validation waiver. A module in a RuleSpec repo&apos;s
+          known-validation-gaps.yaml merged without validation, so what only such modules encode counts as done
+          but not validated. The plan&apos;s verified-document credit corresponds to this count.
+        </Explain>
       </span>
       {screener && (
         <div className={styles.parityHead}>

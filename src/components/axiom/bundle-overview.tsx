@@ -13,21 +13,39 @@ type View = "program" | "jurisdiction";
 interface Share {
   done: number;
   total: number;
+  /** Done without resting on a validation waiver. */
+  validated: number;
 }
 
-const ZERO: Share = { done: 0, total: 0 };
+const ZERO: Share = { done: 0, total: 0, validated: 0 };
 
 /** A tier's headline, as its bundle page leads with it: documents complete, or provisions encoded. */
 function shareOf(counts: TierCounts | undefined, count: Count): Share {
   if (!counts) return ZERO;
   if (count === "documents") {
-    return { done: counts.byStatus.complete + counts.byStatus.unvalidated, total: counts.documents };
+    return {
+      done: counts.byStatus.complete + counts.byStatus.unvalidated,
+      total: counts.documents,
+      validated: counts.byStatus.complete,
+    };
   }
-  return { done: counts.byProvisionState.encoded + counts.byProvisionState.unvalidated, total: counts.provisions };
+  return {
+    done: counts.byProvisionState.encoded + counts.byProvisionState.unvalidated,
+    total: counts.provisions,
+    validated: counts.byProvisionState.encoded,
+  };
 }
 
-const add = (a: Share, b: Share): Share => ({ done: a.done + b.done, total: a.total + b.total });
-const less = (a: Share, b: Share): Share => ({ done: a.done - b.done, total: a.total - b.total });
+const add = (a: Share, b: Share): Share => ({
+  done: a.done + b.done,
+  total: a.total + b.total,
+  validated: a.validated + b.validated,
+});
+const less = (a: Share, b: Share): Share => ({
+  done: a.done - b.done,
+  total: a.total - b.total,
+  validated: a.validated - b.validated,
+});
 const ratio = (s: Share) => (s.total ? s.done / s.total : 0);
 const percent = (s: Share) => formatShare(s.done, s.total);
 /** A bar's width: its share, and at least a sliver when anything is done. */
@@ -42,7 +60,7 @@ function Meter({ share, unit }: { share: Share; unit: string }) {
       </span>
       <strong className={styles.percent}>{percent(share)}</strong>
       <span className={styles.figure}>
-        {number(share.done)} of {number(share.total)} {unit}
+        {number(share.done)} of {number(share.total)} {unit} · {number(share.validated)} validated
       </span>
     </span>
   );
@@ -188,7 +206,8 @@ export function BundleOverview({ bundles }: { bundles: BundleSummary[] }) {
               : "Provisions encoded (Tier 1: the provisions PolicyEngine cites), as each bundle's page counts them."}{" "}
             {view === "program"
               ? "A state's bundle includes the program's federal law."
-              : "By state, each jurisdiction counts only its own documents: the federal law has its own row."}
+              : "By state, each jurisdiction counts only its own documents: the federal law has its own row."}{" "}
+            Validated: done without resting on a validation waiver.
           </p>
         </div>
         <div className={styles.switches}>
@@ -246,7 +265,9 @@ export function BundleOverview({ bundles }: { bundles: BundleSummary[] }) {
                     type="button"
                     aria-pressed={g.key === selected}
                     onClick={() => select(g.key)}
-                    title={`${g.label}: ${number(whole.done)} of ${number(whole.total)} ${unit(tier)} ${verb}, ${g.note}`}
+                    title={`${g.label}: ${number(whole.done)} of ${number(whole.total)} ${unit(tier)} ${verb} (${number(
+                      whole.validated
+                    )} validated), ${g.note}`}
                   >
                     <span className={styles.programName}>{g.label}</span>
                     <span className={styles.track} aria-hidden>

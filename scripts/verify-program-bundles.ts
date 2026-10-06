@@ -8,10 +8,10 @@
  *
  * It checks that each tier's header equals the stored counts, that states and
  * statuses add up to the totals, that the matrix cells add up to the header,
- * that Tier 2 never shows fewer provisions, encoded provisions or complete
- * documents than Tier 1, that each program's completeness counts every
- * document once, and that shares never round into a wrong impression. It
- * exits 1 on any failure.
+ * that validated is part of done, that Tier 2 holds every Tier 1 document and
+ * never shows fewer provisions, encoded or validated provisions than Tier 1,
+ * that each program's completeness counts every document once, and that shares
+ * never round into a wrong impression. It exits 1 on any failure.
  */
 import { readFileSync } from "node:fs";
 import {
@@ -50,12 +50,25 @@ for (const b of data.bundles) {
     // 5. The matrix cells (documents) add up to the documents.
     check(inScope.length === page.documents, `document cells ${b.id} ${tier}`);
   }
-  // 6. Tier 2 holds Tier 1: never fewer provisions, encoded provisions or complete documents.
-  const s = b.counts!.screener!, f = b.counts!.full!;
-  check(f.provisions >= s.provisions && done(f) >= done(s), `tier 2 provisions below tier 1 ${b.id}`);
-  check(f.byStatus.complete + f.byStatus.unvalidated >= s.byStatus.complete + s.byStatus.unvalidated, `tier 2 documents below tier 1 ${b.id}`);
+  // 6. Validated is part of done.
+  for (const tier of ["screener", "full"] as const) {
+    const c = b.counts![tier]!;
+    check(c.byProvisionState.encoded <= done(c), `validated within done ${b.id} ${tier}`);
+  }
+  // 7. Tier 2 holds Tier 1: every Tier 1 document, and never fewer provisions,
+  // encoded provisions or validated provisions. (Not complete documents: a
+  // document is complete in Tier 1 when its cited provisions are encoded, in
+  // Tier 2 only when all of them are.)
+  const keys = (tier: string) => new Set(rows.filter((r) => r.tier === tier && r.scope === "in").map((r) => `${r.bundle_id}|${r.key}`));
+  const tier2 = keys("full");
+  check([...keys("screener")].every((k) => tier2.has(k)), `tier 2 lacks a tier 1 document ${b.id}`);
+  const s1 = b.counts!.screener!, f2 = b.counts!.full!;
+  check(
+    f2.provisions >= s1.provisions && done(f2) >= done(s1) && f2.byProvisionState.encoded >= s1.byProvisionState.encoded,
+    `tier 2 provisions below tier 1 ${b.id}`
+  );
 }
-// 7. The overview's program completeness (federal + each state's own) equals every document row counted once.
+// 8. The overview's program completeness (federal + each state's own) equals every document row counted once.
 for (const p of [...new Set(data.bundles.map((b) => b.program))]) {
   for (const tier of ["screener", "full"] as const) {
     const all = data.documents.filter((d) => d.bundle_id.endsWith(`/${p}`) && d.tier === tier);
@@ -68,7 +81,7 @@ for (const p of [...new Set(data.bundles.map((b) => b.program))]) {
     check(total === direct.provisions && dn === done(direct), `overview completeness ${p} ${tier}: ${dn}/${total} vs ${done(direct)}/${direct.provisions}`);
   }
 }
-// 8. The share formatter never rounds into a wrong impression.
+// 9. The share formatter never rounds into a wrong impression.
 check(formatShare(1, 1160) === "<1%" && formatShare(999, 1000) === ">99%" && formatShare(0, 5) === "0%" && formatShare(5, 5) === "100%" && formatShare(0, 0) === "—", "formatShare");
 console.log(`${checks} checks, ${failures} failures`);
 if (failures) {

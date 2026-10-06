@@ -143,7 +143,9 @@ describe("ProgramBundle", () => {
     const matrix = screen.getByRole("table", { name: "Parts of the program by tier" });
     const headers = within(matrix).getAllByRole("columnheader");
     // Both tiers lead with how much is encoded; under the screener tier's, its comparison run.
-    expect(headers[1]).toHaveTextContent(/Screener-level parity\?0 of 1 document complete0%Comparison run against PolicyEngine/);
+    expect(headers[1]).toHaveTextContent(
+      /Screener-level parity\?0 of 1 document complete0%0 complete and validated · 0%\?Comparison run against PolicyEngine/
+    );
     // The comparison run is a result, and says why it is 0%.
     expect(headers[1]).toHaveTextContent(
       "0% of eligible households matchAxiom finds no household eligible: held by rulespec-us#1116597 mismatches to fix in Axiom · run Jul 28, 2026 · PolicyEngine-US 1.767.3 (newest 2.29.10)"
