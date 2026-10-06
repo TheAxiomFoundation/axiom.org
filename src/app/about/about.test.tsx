@@ -52,7 +52,7 @@ describe('AboutPage', () => {
   it('derives the how-we-verify counts and keeps its sentence spacing', () => {
     const { container } = render(<AboutPage />)
     const text = container.textContent ?? ''
-    expect(text).toContain('In September 2026, 20,780 of our 34,810 US rules had no comparison.')
+    expect(text).toContain('In September 2026, our coverage map tied 14,030 of our 34,810 US rules to a program that a live comparison exercises, though a comparison of a program does not check each of its rules.')
     expect(text).toContain('SNAP quality-control cases from six states')
     expect(text).toContain("leaves eligibility untested. Open isn't enough")
   })

@@ -9,7 +9,6 @@ import {
   PENDING_OUTPUTS,
   RULE_COVERAGE,
   ruleCoverageClause,
-  rulesWithoutComparison,
   SNAP_QC_REPLAYS,
   snapQcTotals,
   SOUTHMOD_CAVEATS,
@@ -27,10 +26,11 @@ import {
 // each source names. These pins fail when a row changes without its total
 // (or the reverse), so a refresh has to touch both.
 describe("verification evidence: pinned totals", () => {
-  it("US rule coverage: 20,780 of 34,810 rules on no compared surface", () => {
-    expect(rulesWithoutComparison()).toBe(20_780);
+  it("US rule coverage: 14,030 of 34,810 rules on a compared program surface", () => {
+    expect(RULE_COVERAGE.totalRules).toBe(34_810);
+    expect(RULE_COVERAGE.rulesOnComparedSurface).toBe(14_030);
     expect(ruleCoverageClause()).toBe(
-      "In September 2026, 20,780 of our 34,810 US rules had no comparison",
+      "In September 2026, our coverage map tied 14,030 of our 34,810 US rules to a program that a live comparison exercises, though a comparison of a program does not check each of its rules",
     );
     expect(RULE_COVERAGE.source.commit).toMatch(/^[0-9a-f]{40}$/);
   });
@@ -144,8 +144,9 @@ describe("verification evidence: literal copy in verify-data.ts", () => {
 });
 
 // Invariants of the derivations, for any rows: totals are exact sums, so
-// they do not depend on row order and add over concatenation; a count of
-// rules without a comparison never goes negative or above the total.
+// they do not depend on row order and add over concatenation; the rule
+// coverage clause states the counts it is given and never claims that the
+// rest of the rules had no comparison (the file does not measure that).
 describe("verification evidence: invariants", () => {
   const suiteRow: fc.Arbitrary<SouthmodSuite> = fc
     .record({
@@ -200,14 +201,18 @@ describe("verification evidence: invariants", () => {
     );
   });
 
-  it("rules without a comparison stay within [0, total]", () => {
+  it("the rule coverage clause states the on-surface count of the total, and no uncompared count", () => {
+    expect(RULE_COVERAGE.rulesOnComparedSurface).toBeLessThanOrEqual(RULE_COVERAGE.totalRules);
     fc.assert(
       fc.property(fc.nat(100_000), fc.nat(100_000), (x, y) => {
         const totalRules = Math.max(x, y);
         const rulesOnComparedSurface = Math.min(x, y);
-        const without = rulesWithoutComparison({ totalRules, rulesOnComparedSurface });
-        expect(without).toBeGreaterThanOrEqual(0);
-        expect(without + rulesOnComparedSurface).toBe(totalRules);
+        const clause = ruleCoverageClause({ month: "May 2027", totalRules, rulesOnComparedSurface });
+        expect(clause).toContain(
+          `tied ${formatCount(rulesOnComparedSurface)} of our ${formatCount(totalRules)} US rules to a program that a live comparison exercises`,
+        );
+        expect(clause).toContain("does not check each of its rules");
+        expect(clause).not.toMatch(/no comparison/i);
       }),
     );
   });

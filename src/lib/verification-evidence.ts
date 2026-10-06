@@ -31,11 +31,18 @@ export function formatCount(n: number): string {
 /**
  * rule_verification_summary.json, `rules.total` and
  * `rules.on_oracle_surface`, as generated on 2026-09-28 against rulespec-us
- * 54d90a72. A rule counts as compared when a live comparison exercises its
- * program surface; the file's own comment calls that a lower bound, so the
- * true number of rules without a comparison is at least the difference.
- * The 2026-09-28 snapshot is the one axiom.org#304's waiver and manifest
- * counts use, so every page quotes the same total.
+ * 54d90a72. scripts/rule_verification.py maps each rule's path to a program
+ * surface in coverage_overview.json (`classify()`), and a rule counts as on
+ * an oracle surface when that surface's status says a live comparison
+ * exercises it. The file measures the surface, not the rule: its comment
+ * says a compared surface does not mean each of its rules was compared.
+ * The difference from the total is not a count of uncompared rules either:
+ * 16,716 rules map to no surface at all (`family: None`), so they are
+ * never on an oracle surface, and some are compared directly (us_tariff_duty
+ * in axiom-usitc-us-tariff.json, nj_pit_pilot_income_tax_liability in
+ * axiom-policyengine-taxsim-nj-income-tax-liability.json). Copy states only
+ * the on-surface count. The 2026-09-28 snapshot is the one axiom.org#304's
+ * waiver and manifest counts use, so every page quotes the same total.
  */
 export const RULE_COVERAGE = {
   month: "September 2026",
@@ -51,16 +58,17 @@ export const RULE_COVERAGE = {
   } satisfies EvidenceSource,
 } as const;
 
-export function rulesWithoutComparison(coverage: {
+/**
+ * "In September 2026, our coverage map tied 14,030 of our 34,810 US rules to
+ * a program that a live comparison exercises, though a comparison of a
+ * program does not check each of its rules"
+ */
+export function ruleCoverageClause(coverage: {
+  month: string;
   totalRules: number;
   rulesOnComparedSurface: number;
-} = RULE_COVERAGE): number {
-  return coverage.totalRules - coverage.rulesOnComparedSurface;
-}
-
-/** "In September 2026, 20,780 of our 34,810 US rules had no comparison" */
-export function ruleCoverageClause(): string {
-  return `In ${RULE_COVERAGE.month}, ${formatCount(rulesWithoutComparison())} of our ${formatCount(RULE_COVERAGE.totalRules)} US rules had no comparison`;
+} = RULE_COVERAGE): string {
+  return `In ${coverage.month}, our coverage map tied ${formatCount(coverage.rulesOnComparedSurface)} of our ${formatCount(coverage.totalRules)} US rules to a program that a live comparison exercises, though a comparison of a program does not check each of its rules`;
 }
 
 /**

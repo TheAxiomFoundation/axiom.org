@@ -17,11 +17,14 @@ import { SOUTHMOD_CAVEATS } from '@/lib/verification-evidence'
 
 // The verification copy must describe what the oracle harness does.
 // - Coverage is partial. axiom-oracles dashboard/public/data/
-//   rule_verification_summary.json (2026-09-28) puts 20,780 of 34,810
-//   rulespec-us rules on no surface a live comparison exercises, and
+//   rule_verification_summary.json (2026-09-28) ties 14,030 of 34,810
+//   rulespec-us rules to a program surface a live comparison exercises, and
 //   rulespec-us oracle-coverage-pending.yaml declares 14,952 outputs the
 //   shared CI gate admits without a comparison. "Every encoding" claims are
-//   false.
+//   false. The summary does not count rules without a comparison: it maps
+//   16,716 rules to no surface at all, and some of those are compared
+//   directly (the US tariff duty, the NJ pilot income tax), so no page
+//   turns the difference into "N rules had no comparison".
 // - PolicyEngine is not independent of Axiom: Max Ghenis is CEO of both and
 //   PSL Foundation fiscally sponsors both. TAXSIM is not independent of
 //   PolicyEngine: the axiom-oracles TAXSIM adapter runs the executable
@@ -86,6 +89,7 @@ describe('verification claims', () => {
       expect(text).not.toMatch(/never grades its own work/i)
       expect(text).not.toMatch(/adjudicated cases/i)
       expect(text).not.toMatch(/no engine.?s quirks leak/i)
+      expect(text).not.toMatch(/US rules (had|have) no comparison/i)
     })
 
     it(`${route} discloses the PolicyEngine tie wherever it names PolicyEngine`, () => {

@@ -80,7 +80,7 @@ describe('ValidationPage', () => {
   it('derives the SNAP QC and coverage counts from the evidence rows', () => {
     render(<ValidationPage />)
     expect(screen.getByText(/For 5,175 reviewed FY 2024 households in six states/)).toBeInTheDocument()
-    expect(screen.getByText(/In September 2026, 20,780 of our 34,810 US rules had no comparison; a/)).toBeInTheDocument()
+    expect(screen.getByText(/In September 2026, our coverage map tied 14,030 of our 34,810 US rules to a program that a live comparison exercises, though a comparison of a program does not check each of its rules; a/)).toBeInTheDocument()
   })
 
   it('embeds the live validation dashboard', () => {
