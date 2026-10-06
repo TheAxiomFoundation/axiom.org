@@ -13,14 +13,18 @@ import VerifyPage from '@/app/verify/page'
 import ReceiptsPage from '@/app/receipts/page'
 import { EncodedLawSection } from '@/components/landing/encoded-law-section'
 import { EncoderSection } from '@/components/landing/encoder-section'
+import { SOUTHMOD_CAVEATS } from '@/lib/verification-evidence'
 
 // The verification copy must describe what the oracle harness does.
 // - Coverage is partial. axiom-oracles dashboard/public/data/
-//   rule_verification_summary.json (2026-09-28) puts 20,780 of 34,810
-//   rulespec-us rules on no surface a live comparison exercises, and
+//   rule_verification_summary.json (2026-09-28) ties 14,030 of 34,810
+//   rulespec-us rules to a program surface a live comparison exercises, and
 //   rulespec-us oracle-coverage-pending.yaml declares 14,952 outputs the
 //   shared CI gate admits without a comparison. "Every encoding" claims are
-//   false.
+//   false. The summary does not count rules without a comparison: it maps
+//   16,716 rules to no surface at all, and some of those are compared
+//   directly (the US tariff duty, the NJ pilot income tax), so no page
+//   turns the difference into "N rules had no comparison".
 // - PolicyEngine is not independent of Axiom: Max Ghenis is CEO of both and
 //   PSL Foundation fiscally sponsors both. TAXSIM is not independent of
 //   PolicyEngine: the axiom-oracles TAXSIM adapter runs the executable
@@ -30,6 +34,18 @@ import { EncoderSection } from '@/components/landing/encoder-section'
 //   keeps only eligible households and the replay feeds the eligibility gates
 //   passing values (axiom-oracles bridges/snap_qc_compare.py). A page that
 //   names SNAP QC says eligibility is untested.
+// - SOUTHMOD is compared (40 suites on axiom-oracles main since 2026-10-04),
+//   with three caveats a page that names it states: the runs are manual on
+//   the licensed machine (SOUTHMOD_A4.0 Adhesion Agreement clause 4; every
+//   config declares `ci: manual`), the compared rulespec-gh/ug/zm/et/rw
+//   modules carry no encoder apply manifest, and every household is
+//   synthetic, with no Rwandan microdata at all. The evidence for each is in
+//   src/lib/verification-evidence.ts.
+// - The adapters do not keep engine quirks out of the comparison. axiom-oracles
+//   dispositions/README.md defines `bridge_artifact` as a mismatch where "the
+//   comparison harness fed the engines different inputs", and
+//   conformance/scoreboard.json (main 8826215d) counts 3,938 of them for the
+//   PolicyEngine US suites.
 const SURFACES = [
   ['/about', () => render(<AboutPage />)],
   ['/validation', () => render(<ValidationPage />)],
@@ -72,6 +88,16 @@ describe('verification claims', () => {
       expect(text).not.toMatch(/engines we don.t control/i)
       expect(text).not.toMatch(/never grades its own work/i)
       expect(text).not.toMatch(/adjudicated cases/i)
+      expect(text).not.toMatch(/no engine.?s quirks leak/i)
+      expect(text).not.toMatch(/US rules (had|have) no comparison/i)
+      // The adapters are not thin: axiom_oracles/adapters/axiom/ holds about
+      // 7,500 lines of Python (tax_projection.py alone is 4,310).
+      expect(text).not.toMatch(/thin adapter/i)
+      expect(text).not.toMatch(/every engine/i)
+      // Published reports carry unexplained mismatches (summary.dispositioned.
+      // unexplained_count; the dashboard's countUnexplained), so no surface
+      // says every disagreement gets explained.
+      expect(text).not.toMatch(/disagreements get explained/i)
     })
 
     it(`${route} discloses the PolicyEngine tie wherever it names PolicyEngine`, () => {
@@ -86,6 +112,17 @@ describe('verification claims', () => {
       if (!/TAXSIM/.test(text)) return
 
       expect(text).toMatch(/TAXSIM executable that PolicyEngine packages/)
+    })
+
+    it(`${route} states the SOUTHMOD caveats wherever it names SOUTHMOD`, () => {
+      const text = textOf(renderSurface)
+      if (!/SOUTHMOD/.test(text)) return
+
+      for (const caveat of Object.values(SOUTHMOD_CAVEATS)) {
+        expect(text).toContain(caveat.marker)
+      }
+      // It has published comparisons, so no page lists it as unconnected.
+      expect(text).not.toMatch(/SOUTHMOD[^.]{0,120}(not connected|no published comparison)/)
     })
 
     it(`${route} scopes the SNAP QC replay to benefit arithmetic`, () => {

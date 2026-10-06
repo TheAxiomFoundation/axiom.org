@@ -2,12 +2,28 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { DemoThumb } from "@/components/landing/demo-thumb";
 import { Reveal, RevealGroup, RevealItem } from "@/components/landing/reveal";
+import {
+  countWord,
+  ruleCoverageClause,
+  snapQcTotals,
+  SOUTHMOD_FACTS,
+} from "@/lib/verification-evidence";
 
 export const metadata: Metadata = {
   title: "About — Axiom Foundation",
   description:
     "The Axiom Foundation publishes open, machine-readable encodings of the world's rules, starting with tax and benefit policy — cited, time-aware, and executable.",
 };
+
+// Each clause is backed by a generated file; see src/lib/verification-evidence.ts.
+const HOW_WE_VERIFY = [
+  "We compare encodings with other calculators and datasets and publish the results.",
+  `${ruleCoverageClause()}.`,
+  "The calculators include PolicyEngine, TAXSIM, UKMOD, EUROMOD, UNU-WIDER's SOUTHMOD, and Statistics Canada's SPSD/M.",
+  "Max Ghenis is CEO of both Axiom and PolicyEngine, which he co-founded, and our TAXSIM runs use the TAXSIM executable that PolicyEngine packages.",
+  `SOUTHMOD's licence bars giving its models to anyone else, so we run them ${SOUTHMOD_FACTS.caveats.manualRuns.marker}, on synthetic households (the bundle has ${SOUTHMOD_FACTS.caveats.syntheticHouseholds.marker} at all), and none of the rules they check went through our ${SOUTHMOD_FACTS.caveats.notEncoderOutput.marker}.`,
+  `We also replay USDA's SNAP quality-control cases from ${countWord(snapQcTotals().states)} states to check our benefit arithmetic; the file keeps only eligible households, so the replay leaves eligibility untested.`,
+].join(" ");
 
 const BUILD = [
   {
@@ -170,16 +186,8 @@ export default function AboutPage() {
 
         <ProseBand label="How we verify">
           <p className="m-0 font-body text-[1.05rem] text-[var(--color-ink-secondary)] leading-relaxed text-pretty">
-            We compare encodings with other calculators and datasets and
-            publish the results. In September 2026, 20,780 of our 34,810 US
-            rules had no comparison. The calculators include PolicyEngine,
-            TAXSIM, UKMOD, EUROMOD, and Statistics Canada&apos;s SPSD/M. Max
-            Ghenis is CEO of both Axiom and PolicyEngine, which he co-founded,
-            and our TAXSIM runs use the TAXSIM executable that PolicyEngine
-            packages. We also replay USDA&apos;s SNAP quality-control cases
-            from six states to check our benefit arithmetic; the file keeps
-            only eligible households, so the replay leaves eligibility
-            untested. Open isn&apos;t enough &mdash; the point is that{" "}
+            {HOW_WE_VERIFY}{" "}
+            Open isn&apos;t enough &mdash; the point is that{" "}
             <span className="serif-italic text-[var(--color-ink)]">
               you can check our work
             </span>

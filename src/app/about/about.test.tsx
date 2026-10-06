@@ -46,6 +46,17 @@ describe('AboutPage', () => {
     expect(screen.getByText(/founding team is Max Ghenis/i)).toBeInTheDocument()
   })
 
+  // The paragraph is built from src/lib/verification-evidence.ts. Next's
+  // build dropped the space in `{HOW_WE_VERIFY} Open` (Vitest's transform
+  // keeps it), so the page writes an explicit {" "}; this pins the text.
+  it('derives the how-we-verify counts and keeps its sentence spacing', () => {
+    const { container } = render(<AboutPage />)
+    const text = container.textContent ?? ''
+    expect(text).toContain('In September 2026, our coverage map tied 14,030 of our 34,810 US rules to a program that a live comparison exercises, though a comparison of a program does not check each of its rules.')
+    expect(text).toContain('SNAP quality-control cases from six states')
+    expect(text).toContain("leaves eligibility untested. Open isn't enough")
+  })
+
   it('links to the team page', () => {
     render(<AboutPage />)
     expect(screen.getByText(/meet the team/i).closest('a')).toHaveAttribute('href', '/team')

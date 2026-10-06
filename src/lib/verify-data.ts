@@ -173,7 +173,7 @@ export const usEvidenceRows: UsEvidenceRow[] = [
     reference: "USDA SNAP QC",
     scale: "856 real FY 2024 administrative cases",
     result:
-      "All 856 reproduce the benefit Mathematica computes for USDA, at each of six compared stages. The file keeps only eligible households, so eligibility is untested.",
+      "All 856 match at zero tolerance on the benefit Mathematica computes for USDA from each case record and on four intermediate values in the file: gross income, the standard and excess-shelter deductions, and net income. The maximum allotment matches USDA's FY 2024 table in all 856. The file keeps only eligible households, so eligibility is untested.",
     href: "/reports/colorado-snap-qc-fy2024",
     linkLabel: "Read the QC report",
   },
@@ -197,7 +197,7 @@ export const goldenHousehold = {
     ["snap_net_income", "226"],
   ] as const,
   certificate:
-    "certified: 0 — certification is automatic when the harness computes completeness and fidelity green; we expect no current encoding passes yet.",
+    "certified: 0 — the API's certified ledger is empty. A program certifies only when axiom-oracles computes all four premises (conformant, exercised, closed, executable) true with zero open defects; this program's certificate reads unavailable because no producer computes closed or executable yet.",
 };
 
 export const closurePredicate =

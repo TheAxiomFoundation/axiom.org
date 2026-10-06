@@ -19,7 +19,6 @@ import {
   getProvisionCoverage,
   type ProvisionProgramCoverage,
 } from "@/lib/axiom/runtime/coverage";
-import { listParityCases } from "@/lib/axiom/runtime/api";
 import {
   getSectionEncoding,
   type SectionEncoding,
@@ -133,18 +132,6 @@ export interface SectionPageData {
    * section has no subsection structure to measure against.
    */
   encodedCoverage: { encodedUnits: number; totalUnits: number } | null;
-  /**
-   * Oracle verification for the section's covering programs.
-   * Only external-oracle comparisons earn "verified" — golden
-   * expectations alone are self-graded (executable, not verified).
-   */
-  parity: {
-    oracle: string;
-    caseCount: number;
-    programId: string;
-    jurisdiction: string;
-    caseDescriptions: string[];
-  } | null;
 }
 
 /**
@@ -1116,7 +1103,7 @@ export async function getSectionPageDataFromResolution(
   const { citationPath, focusAnchor, prefetchedSubtree } = resolution;
   let root = resolution.root;
 
-  const [subtree, rootRefs, node, sectionEncoding, programs, parityCases] =
+  const [subtree, rootRefs, node, sectionEncoding, programs] =
     await Promise.all([
       prefetchedSubtree ?? getSubtreeProvisions(citationPath),
       getRuleReferences(citationPath).catch(() => [] as RuleReference[]),
@@ -1132,7 +1119,6 @@ export async function getSectionPageDataFromResolution(
       getProvisionCoverage(citationPath).catch(
         () => [] as ProvisionProgramCoverage[],
       ),
-      listParityCases().catch(() => []),
     ]);
   const encoding = sectionEncoding.encoding;
 
@@ -1219,28 +1205,6 @@ export async function getSectionPageDataFromResolution(
         }
       : null;
 
-  // Oracle verification: the first covering program with an
-  // external-oracle parity comparison.
-  let parity: SectionPageData["parity"] = null;
-  for (const program of programs) {
-    const cases = parityCases.filter(
-      (item) =>
-        item.jurisdiction === program.jurisdiction &&
-        item.program_id === program.programId &&
-        item.oracles.length > 0,
-    );
-    if (cases.length > 0) {
-      parity = {
-        oracle: cases[0].oracles[0],
-        caseCount: cases.length,
-        programId: program.programId,
-        jurisdiction: program.jurisdiction,
-        caseDescriptions: cases.map((item) => item.description),
-      };
-      break;
-    }
-  }
-
   return {
     citationPath,
     root,
@@ -1262,7 +1226,6 @@ export async function getSectionPageDataFromResolution(
     next,
     truncated: subtree.truncated,
     encodedCoverage,
-    parity,
   };
 }
 

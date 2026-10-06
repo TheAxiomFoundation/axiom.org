@@ -2497,13 +2497,13 @@ export function GraphViewerApp({
                     (item) => programKey(item) === programKey(program),
                   )
                 : null;
-              const awaiting = summary?.outputCount ?? summary?.inputCount;
+              const awaiting = summary?.outputCount;
               return (
                 <div className="empty-state" role="status">
                   Nothing certified yet for this program
                   {awaiting != null && (
                     <>
-                      <br />— {awaiting} nodes await the certification sweep
+                      <br />— {awaiting} outputs are not in the certified ledger yet
                     </>
                   )}
                 </div>

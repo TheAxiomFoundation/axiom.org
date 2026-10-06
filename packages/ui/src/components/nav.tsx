@@ -73,7 +73,7 @@ const DEFAULT_LINKS: NavLink[] = [
       {
         label: "Ground AI models in citable law",
         items: [
-          { href: "/demos?d=chatbot", label: "Get accurate answers" },
+          { href: "/demos?d=chatbot", label: "Ask about benefits and taxes" },
         ],
       },
       {

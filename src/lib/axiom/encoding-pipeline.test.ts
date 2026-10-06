@@ -223,7 +223,7 @@ describe("journeySteps", () => {
   it("stops a failed encode at the encode step with its reason", () => {
     const steps = journeySteps(pipelineAttempt({ encoder_error_rule: "rule-a", encoder_error: "detail" }));
     expect(steps.map((s) => s.state)).toEqual(["done", "failed", "pending", "pending", "pending", "pending", "pending", "pending"]);
-    expect(steps[1].detail).toBe("Validation rules: rule-a — detail");
+    expect(steps[1].detail).toBe("Failed validation: rule-a — detail");
     expect(steps[0].detail).toBe("Ad hoc dispatch");
   });
 
@@ -505,10 +505,10 @@ describe("tests and oracle stages", () => {
     );
     expect(view.gates.map((g) => [g.label, g.count])).toEqual([
       ["Cancelled or timed out", 1],
-      ["Validation rules", 1],
+      ["Failed validation", 1],
     ]);
     expect(view.holds).toMatchObject([{ key: "ci_cancelled", count: 1 }]);
-    expect(view.stages.encode_failed.items.find((i) => i.citation === "c/1")?.gate).toBe("Validation rules");
+    expect(view.stages.encode_failed.items.find((i) => i.citation === "c/1")?.gate).toBe("Failed validation");
     const verified = view.stages.verified.items.find((i) => i.citation === "c/4")!;
     expect(verified).toMatchObject({ oracle: "Matches PolicyEngine", reason: "Matches PolicyEngine", testsRunUrl: "R" });
     expect(view.stages.verified.items.find((i) => i.citation === "c/9")?.reason).toBe("No oracle report covers it");
@@ -606,7 +606,7 @@ describe("errors without a rule id", () => {
       errorGroupLabel(
         "statutes/42/402/q.yaml: ci: Test case `auto_output_widow` output `benefit` expected decimal 12.3456789, got decimal 13."
       )
-    ).toBe("ci: Test case … output … expected decimal N, got decimal N.");
+    ).toBe("Test case … output … expected decimal N, got decimal N.");
     const failed = (citation: string, error: string, extra: Partial<Parameters<typeof pipelineAttempt>[0]> = {}) =>
       pipelineAttempt({ citation, failure_source: "log", failed_step: "encode_apply", encoder_error: error, ...extra });
     const a = failed("us-nm/a", "ValueError: No local corpus source text found for 'us-nm/a'");
@@ -623,8 +623,8 @@ describe("errors without a rule id", () => {
       encoder_status: "apply_blocked_validation",
     });
     expect(failureReason(issue)).toEqual({
-      key: "error:ci: Proof source evidence not found: rule … proof atom N",
-      label: "ci: Proof source evidence not found: rule … proof atom N",
+      key: "error:Proof source evidence not found: rule … proof atom N",
+      label: "Proof source evidence not found: rule … proof atom N",
       kind: "validator",
     });
     // The step still says where it stopped.
