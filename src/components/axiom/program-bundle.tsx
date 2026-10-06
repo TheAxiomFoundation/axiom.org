@@ -29,6 +29,8 @@ import { olderVersion, type ScreenerParity } from "@/lib/axiom/screener-parity";
 const number = (value: number) => value.toLocaleString("en-US");
 const percent = (part: number, whole: number) => (whole ? `${Math.round((part / whole) * 100)}%` : "—");
 const share = (value: number | null) => (value == null ? "—" : `${Math.round(value * 1000) / 10}%`);
+/** https://github.com/TheAxiomFoundation/rulespec-us/issues/1116 → rulespec-us#1116 */
+const issueName = (url: string) => url.replace(/^https:\/\/github\.com\/[^/]+\//, "").replace("/issues/", "#");
 const day = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : "—";
 
@@ -435,9 +437,10 @@ function ShadeBar({ shades, total }: { shades: Record<Shade, number>; total: num
 
 /**
  * A tier's column head: its name and what it means, then its headline: how
- * much of it is encoded, in the chosen count. Under the screener tier's
- * headline come the comparison run against PolicyEngine (how many eligible
- * households match) and how many of PolicyEngine's citations are encoded.
+ * much of it is encoded, in the chosen count. Under the screener tier's come
+ * the provisions PolicyEngine cites, then the
+ * comparison run against PolicyEngine: a result, not a count, with its cause
+ * when Axiom finds nobody eligible.
  */
 function TierHeader({
   index,
@@ -473,30 +476,45 @@ function TierHeader({
         <strong>{number(done)}</strong> of {number(total)} {countWord(count, total)} {COUNT_WORDS[count][2]}
         <em>{percent(done, total)}</em>
       </span>
-      {screener && (
-        <button type="button" className={styles.parityHead} onClick={onParity}>
-          <span className={styles.parityLabel}>Comparison run against PolicyEngine</span>
-          {parity?.eligible_matching != null ? (
-            <>
-              <span className={styles.parityMain}>
-                <strong>{share(parity.eligible_matching)}</strong> of eligible households match
-              </span>
-              <span className={styles.parityFacts}>
-                {number(parity.axiom_errors)} {parity.axiom_errors === 1 ? "mismatch" : "mismatches"} to fix in Axiom ·
-                run {day(parity.generated_at)} · PolicyEngine-US {parity.policyengine_us ?? "?"}
-                {stale && <span className={styles.stale}> (newest {newest})</span>}
-              </span>
-            </>
-          ) : (
-            <span className={styles.parityFacts}>No run yet</span>
-          )}
-        </button>
-      )}
       {counts.units > 0 && (
         <button type="button" className={styles.parityLine} onClick={onParity}>
-          PolicyEngine citations encoded: <strong>{number(unitsDone)}</strong> of {number(counts.units)} ·{" "}
+          Provisions PolicyEngine cites: <strong>{number(unitsDone)}</strong> of {number(counts.units)} encoded ·{" "}
           {percent(unitsDone, counts.units)}
         </button>
+      )}
+      {screener && (
+        <div className={styles.parityHead}>
+          <span className={styles.parityLabel}>
+            Comparison run against PolicyEngine
+            <Explain label="Comparison run">
+              A result, not a count. The counts above add up provision by provision. A household&apos;s result needs every
+              rule on its path to work together, so one missing link can make every household differ however many
+              provisions are encoded. The run is a snapshot: encodings merged after its date count above but not here.
+            </Explain>
+          </span>
+          <button type="button" className={styles.parityBody} onClick={onParity}>
+            {parity?.eligible_matching != null ? (
+              <>
+                <span className={styles.parityMain}>
+                  <strong>{share(parity.eligible_matching)}</strong> of eligible households match
+                </span>
+                {parity.eligible_axiom === 0 && (parity.eligible_policyengine ?? 0) > 0 && (
+                  <span className={styles.parityCause}>
+                    Axiom finds no household eligible
+                    {parity.issues[0] ? `: held by ${issueName(parity.issues[0].url)}` : ""}
+                  </span>
+                )}
+                <span className={styles.parityFacts}>
+                  {number(parity.axiom_errors)} {parity.axiom_errors === 1 ? "mismatch" : "mismatches"} to fix in Axiom ·
+                  run {day(parity.generated_at)} · PolicyEngine-US {parity.policyengine_us ?? "?"}
+                  {stale && <span className={styles.stale}> (newest {newest})</span>}
+                </span>
+              </>
+            ) : (
+              <span className={styles.parityFacts}>No run yet</span>
+            )}
+          </button>
+        </div>
       )}
     </span>
   );
@@ -810,7 +828,7 @@ function ParityDetail({
                 <dt>Held by</dt>
                 <dd>
                   <a href={issue.url} target="_blank" rel="noreferrer">
-                    {issue.url.replace("https://github.com/TheAxiomFoundation/", "").replace("/issues/", "#")}
+                    {issueName(issue.url)}
                   </a>{" "}
                   · {number(issue.mismatches)} mismatches
                 </dd>
