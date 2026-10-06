@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowUp, ChevronRight, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import dashboard from "./ops-dashboard.module.css";
 import styles from "./program-bundle.module.css";
@@ -385,13 +385,7 @@ export function ProgramBundle({
         {tiers.length > 0 && (
           <section className={styles.panel} aria-labelledby="bundle-documents">
             <div className={styles.panelHead}>
-              <h2 id="bundle-documents">
-                Documents
-                <span className={styles.panelCount}>
-                  {tableFilter ? `${tableFilter === "excluded" ? "Excluded" : STATUS_LABELS[tableFilter]} · ` : ""}
-                  {number(tableRows.length)}
-                </span>
-              </h2>
+              <h2 id="bundle-documents">Documents</h2>
               <div className={styles.tableTabs} role="tablist" aria-label="Tier">
                 {tiers.map((tier) => (
                   <button
@@ -409,7 +403,7 @@ export function ProgramBundle({
                 ))}
                 {tableFilter && (
                   <button type="button" className={styles.clear} onClick={() => setTableFilter(null)}>
-                    Show all
+                    {tableFilter === "excluded" ? "Excluded" : STATUS_LABELS[tableFilter]} · Show all
                   </button>
                 )}
               </div>
@@ -1160,7 +1154,37 @@ function sourceWords(sources: string[], manifest: string | null): string {
   return [...words].join(", ") || "a source manifest";
 }
 
-/** Every document with its exact provision counts, or the excluded list with reasons. */
+type GroupBy = "part" | "layer" | "status";
+type SortKey = "name" | "part" | ProvisionState | "provisions" | "run";
+interface Sort {
+  key: SortKey;
+  dir: "asc" | "desc";
+}
+
+const GROUP_BY_LABELS: Record<GroupBy, string> = { part: "Part", layer: "Layer", status: "Status" };
+const LAYER_ORDER = ["federal", "state", "other state"];
+const LAYER_LABELS: Record<string, string> = { federal: "Federal", state: "State", "other state": "Other state" };
+
+/** A row's value for a sort column; a document the corpus does not hold sorts below every count. */
+function sortValue(row: BundleDocumentRow, key: SortKey, rank: (part: string) => number): number | string {
+  if (key === "name") return row.name.toLowerCase();
+  if (key === "part") return rank(row.part);
+  if (key === "run") return row.latest_run_at ?? "";
+  if (!row.in_corpus) return -1;
+  return key === "provisions" ? row.provisions : provisionCounts(row)[key];
+}
+
+interface Group {
+  key: string;
+  label: string;
+  rows: BundleDocumentRow[];
+}
+
+/**
+ * Every document of the tier, in collapsible groups (by part of the program,
+ * layer or status; the excluded list by reason), each group headed by its
+ * documents and provisions at a glance. Every column sorts.
+ */
 function DocumentTable({
   title,
   rows,
@@ -1178,12 +1202,79 @@ function DocumentTable({
   onSelect: (key: string) => void;
   referenceMs: number;
 }) {
-  const rank = (part: string) => (parts.includes(part) ? parts.indexOf(part) : parts.length);
-  const sorted = [...rows].sort((a, b) =>
-    excluded
-      ? (a.reason ?? "").localeCompare(b.reason ?? "") || a.name.localeCompare(b.name)
-      : rank(a.part) - rank(b.part) || a.name.localeCompare(b.name)
+  const [groupBy, setGroupBy] = useState<GroupBy>("part");
+  const [sort, setSort] = useState<Sort>({ key: "provisions", dir: "desc" });
+  const [open, setOpen] = useState<Set<string>>(new Set());
+
+  const groups = useMemo<Group[]>(() => {
+    const rank = (part: string) => (parts.includes(part) ? parts.indexOf(part) : parts.length);
+    const keyOf = (row: BundleDocumentRow) =>
+      excluded
+        ? (row.reason ?? "No reason recorded")
+        : groupBy === "part"
+          ? row.part
+          : groupBy === "layer"
+            ? row.layer
+            : (row.status ?? "not_started");
+    const byKey = new Map<string, BundleDocumentRow[]>();
+    for (const row of rows) byKey.set(keyOf(row), [...(byKey.get(keyOf(row)) ?? []), row]);
+    const order = (key: string) =>
+      excluded
+        ? -(byKey.get(key)?.length ?? 0)
+        : groupBy === "part"
+          ? rank(key)
+          : groupBy === "layer"
+            ? LAYER_ORDER.indexOf(key)
+            : DOCUMENT_STATUSES.indexOf(key as DocumentStatus);
+    const label = (key: string) =>
+      excluded || groupBy === "part"
+        ? key
+        : groupBy === "layer"
+          ? (LAYER_LABELS[key] ?? key)
+          : STATUS_LABELS[key as DocumentStatus];
+    const compare = (a: BundleDocumentRow, b: BundleDocumentRow) => {
+      const [x, y] = [sortValue(a, sort.key, rank), sortValue(b, sort.key, rank)];
+      const by = x < y ? -1 : x > y ? 1 : 0;
+      return (sort.dir === "asc" ? by : -by) || a.name.localeCompare(b.name);
+    };
+    return [...byKey.keys()]
+      .sort((a, b) => order(a) - order(b) || a.localeCompare(b))
+      .map((key) => ({ key, label: label(key), rows: [...(byKey.get(key) ?? [])].sort(compare) }));
+  }, [rows, excluded, groupBy, sort, parts]);
+
+  // A selected document's group stays open; so does a lone group.
+  const isOpen = (group: Group) =>
+    open.has(group.key) || groups.length === 1 || group.rows.some((r) => r.key === selectedKey);
+  const toggle = (key: string) =>
+    setOpen((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  const allOpen = groups.every(isOpen);
+  const sortBy = (key: SortKey) =>
+    setSort((current) =>
+      current.key === key ? { key, dir: current.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "name" || key === "part" ? "asc" : "desc" }
+    );
+
+  const columns = excluded ? 2 : PROVISION_STATES.length + 4;
+  const head = (key: SortKey, label: string, className?: string, hint?: string) => (
+    <th
+      key={key}
+      scope="col"
+      className={className}
+      title={hint}
+      aria-sort={sort.key === key ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}
+    >
+      <button type="button" className={styles.sortButton} onClick={() => sortBy(key)}>
+        {label}
+        {sort.key === key &&
+          (sort.dir === "asc" ? <ArrowUp size={11} aria-hidden /> : <ArrowDown size={11} aria-hidden />)}
+      </button>
+    </th>
   );
+
   const totals = Object.fromEntries(PROVISION_STATES.map((s) => [s, 0])) as Record<ProvisionState, number>;
   let provisions = 0;
   for (const row of rows) {
@@ -1192,92 +1283,166 @@ function DocumentTable({
     const states = provisionCounts(row);
     for (const state of PROVISION_STATES) totals[state] += states[state];
   }
+
   return (
-    <div className={styles.tableWrap}>
-      <table className={styles.table} aria-label={`${title} documents`}>
-        <thead>
-          <tr>
-            <th scope="col">Document</th>
-            {excluded ? (
-              <th scope="col">Why it is excluded</th>
-            ) : (
-              <>
-                <th scope="col">Part</th>
-                {PROVISION_STATES.map((state) => (
-                  <th key={state} scope="col" className={styles.num} title={PROVISION_LABELS[state]}>
-                    {SHORT_LABELS[state]}
-                  </th>
-                ))}
-                <th scope="col" className={styles.num}>
-                  Provisions
-                </th>
-                <th scope="col">Latest run</th>
-              </>
-            )}
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((row) => {
-            const states = provisionCounts(row);
+    <>
+      <div className={styles.tableTools}>
+        {!excluded && (
+          <div className={styles.countSwitch} role="radiogroup" aria-label="Group by">
+            <span>Group by</span>
+            {(Object.keys(GROUP_BY_LABELS) as GroupBy[]).map((value) => (
+              <button key={value} type="button" role="radio" aria-checked={groupBy === value} onClick={() => setGroupBy(value)}>
+                {GROUP_BY_LABELS[value]}
+              </button>
+            ))}
+          </div>
+        )}
+        {groups.length > 1 && (
+          <button
+            type="button"
+            className={styles.clear}
+            onClick={() => setOpen(allOpen ? new Set() : new Set(groups.map((g) => g.key)))}
+          >
+            {allOpen ? "Collapse all" : "Expand all"}
+          </button>
+        )}
+      </div>
+      <div className={styles.tableWrap}>
+        <table className={styles.table} aria-label={`${title} documents`}>
+          <thead>
+            <tr>
+              {head("name", "Document")}
+              {excluded ? (
+                <th scope="col">Why it is excluded</th>
+              ) : (
+                <>
+                  {head("part", "Part")}
+                  {PROVISION_STATES.map((state) => head(state, SHORT_LABELS[state], styles.num, PROVISION_LABELS[state]))}
+                  {head("provisions", "Provisions", styles.num)}
+                  {head("run", "Latest run")}
+                </>
+              )}
+            </tr>
+          </thead>
+          {groups.map((group) => {
+            const expanded = isOpen(group);
             return (
-              <tr key={row.key} aria-selected={row.key === selectedKey}>
-                <th scope="row">
-                  <button type="button" className={styles.rowName} onClick={() => onSelect(row.key)}>
-                    {row.name}
-                  </button>
-                  {!excluded && row.status && <span className={styles.rowStatus}>{STATUS_LABELS[row.status]}</span>}
-                </th>
-                {excluded ? (
-                  <td>{row.reason ?? "—"}</td>
-                ) : (
-                  <>
-                    <td className={styles.muted}>{row.part}</td>
-                    {row.in_corpus ? (
-                      <>
-                        {PROVISION_STATES.map((state) => (
-                          <td key={state} className={styles.num} data-zero={states[state] === 0 ? true : undefined}>
-                            {number(states[state])}
-                          </td>
-                        ))}
-                        <td className={styles.num}>{number(row.provisions)}</td>
-                      </>
-                    ) : (
-                      <td colSpan={PROVISION_STATES.length + 1} className={styles.notHeld}>
-                        Not in the corpus yet
-                      </td>
-                    )}
-                    <td>
-                      {row.latest_stage && row.latest_citation ? (
-                        <a href={`/ops/journey?citation=${encodeURIComponent(row.latest_citation)}`}>
-                          {STAGE_COPY[row.latest_stage].label}
-                          <span className={styles.muted}> · {ageLabel(row.latest_run_at, referenceMs)}</span>
-                        </a>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                  </>
-                )}
-              </tr>
+              <tbody key={group.key}>
+                <tr className={styles.groupRow}>
+                  <th scope="rowgroup" colSpan={columns}>
+                    <GroupHead group={group} expanded={expanded} excluded={excluded} onToggle={() => toggle(group.key)} />
+                  </th>
+                </tr>
+                {expanded &&
+                  group.rows.map((row) => {
+                    const states = provisionCounts(row);
+                    return (
+                      <tr key={row.key} aria-selected={row.key === selectedKey}>
+                        <th scope="row">
+                          <button type="button" className={styles.rowName} onClick={() => onSelect(row.key)}>
+                            {row.name}
+                          </button>
+                          {!excluded && row.status && <span className={styles.rowStatus}>{STATUS_LABELS[row.status]}</span>}
+                        </th>
+                        {excluded ? (
+                          <td>{row.reason ?? "—"}</td>
+                        ) : (
+                          <>
+                            <td className={styles.muted}>{row.part}</td>
+                            {row.in_corpus ? (
+                              <>
+                                {PROVISION_STATES.map((state) => (
+                                  <td key={state} className={styles.num} data-zero={states[state] === 0 ? true : undefined}>
+                                    {number(states[state])}
+                                  </td>
+                                ))}
+                                <td className={styles.num}>{number(row.provisions)}</td>
+                              </>
+                            ) : (
+                              <td colSpan={PROVISION_STATES.length + 1} className={styles.notHeld}>
+                                Not in the corpus yet
+                              </td>
+                            )}
+                            <td>
+                              {row.latest_stage && row.latest_citation ? (
+                                <a href={`/ops/journey?citation=${encodeURIComponent(row.latest_citation)}`}>
+                                  {STAGE_COPY[row.latest_stage].label}
+                                  <span className={styles.muted}> · {ageLabel(row.latest_run_at, referenceMs)}</span>
+                                </a>
+                              ) : (
+                                "—"
+                              )}
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    );
+                  })}
+              </tbody>
             );
           })}
-        </tbody>
-        {!excluded && rows.length > 1 && (
-          <tfoot>
-            <tr>
-              <th scope="row">Total</th>
-              <td />
-              {PROVISION_STATES.map((state) => (
-                <td key={state} className={styles.num}>
-                  {number(totals[state])}
-                </td>
-              ))}
-              <td className={styles.num}>{number(provisions)}</td>
-              <td />
-            </tr>
-          </tfoot>
-        )}
-      </table>
-    </div>
+          {!excluded && rows.length > 1 && (
+            <tfoot>
+              <tr>
+                <th scope="row">Total</th>
+                <td />
+                {PROVISION_STATES.map((state) => (
+                  <td key={state} className={styles.num}>
+                    {number(totals[state])}
+                  </td>
+                ))}
+                <td className={styles.num}>{number(provisions)}</td>
+                <td />
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+    </>
+  );
+}
+
+/** A group's head: its name, its documents, and its provisions as a bar and a count. */
+function GroupHead({
+  group,
+  expanded,
+  excluded,
+  onToggle,
+}: {
+  group: Group;
+  expanded: boolean;
+  excluded: boolean;
+  onToggle: () => void;
+}) {
+  const shades = Object.fromEntries(SHADES.map((s) => [s, 0])) as Record<Shade, number>;
+  let total = 0;
+  for (const row of group.rows) {
+    if (!row.in_corpus) continue;
+    total += row.provisions;
+    const states = provisionCounts(row);
+    for (const state of PROVISION_STATES) shades[PROVISION_SHADE[state]] += states[state];
+  }
+  const done = shades.encoded + shades.unvalidated;
+  const complete = group.rows.filter((r) => r.status === "complete" || r.status === "unvalidated").length;
+  const missing = group.rows.filter((r) => r.scope === "in" && !r.in_corpus).length;
+  const n = group.rows.length;
+  return (
+    <button type="button" className={styles.groupToggle} aria-expanded={expanded} onClick={onToggle}>
+      <ChevronRight size={14} aria-hidden className={styles.groupChevron} />
+      <span className={styles.groupName}>{group.label}</span>
+      <span className={styles.groupMeta}>
+        {number(n)} {n === 1 ? "document" : "documents"}
+        {!excluded && ` · ${number(complete)} complete`}
+        {!excluded && missing > 0 && ` · ${number(missing)} not in the corpus`}
+      </span>
+      {!excluded && (
+        <span className={styles.groupProgress}>
+          {total > 0 ? <ShadeBar shades={shades} total={total} /> : <span className={styles.shadeBar} data-empty aria-hidden />}
+          <span>
+            {number(done)} of {number(total)} provisions encoded
+          </span>
+        </span>
+      )}
+    </button>
   );
 }

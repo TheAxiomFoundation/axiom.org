@@ -210,11 +210,65 @@ describe("ProgramBundle", () => {
     expect(within(unit).getByText("Deferred by us/statute/7/2014/b.")).toBeInTheDocument();
   });
 
+  it("groups the documents by part, each group closed with its provisions at a glance, and sorts every column", () => {
+    const moreDocuments = [
+      ...documents,
+      measureDocument(
+        "us-az/snap",
+        "screener",
+        doc({ key: "us/statute/7/2017", name: "7 USC 2017", citation_path: "us/statute/7/2017" }),
+        {
+          nodes: [
+            { path: "us/statute/7/2017", child_count: 3 },
+            { path: "us/statute/7/2017/a", child_count: 0 },
+            { path: "us/statute/7/2017/b", child_count: 0 },
+            { path: "us/statute/7/2017/c", child_count: 0 },
+          ],
+          modules: [],
+          attempts: [],
+        },
+        AT
+      ),
+      measureDocument(
+        "us-az/snap",
+        "screener",
+        doc({ key: "us/statute/7/2015", name: "7 USC 2015", citation_path: "us/statute/7/2015", part: "Deductions" }),
+        { nodes: [], modules: [], attempts: [] },
+        AT
+      ),
+    ];
+    render(<ProgramBundle bundle={withParts} documents={moreDocuments} available referenceMs={NOW} />);
+    const panel = screen.getByRole("region", { name: "Documents" });
+    expect(within(panel).getByRole("heading", { name: "Documents" })).toHaveTextContent(/^Documents$/);
+    const income = within(panel).getByRole("button", { name: /^Income/ });
+    expect(income).toHaveAttribute("aria-expanded", "false");
+    expect(income).toHaveTextContent("Income2 documents · 0 complete1 of 5 provisions encoded");
+    expect(within(panel).getByRole("button", { name: /^Deductions/ })).toHaveTextContent(
+      "Deductions1 document · 0 complete · 1 not in the corpus0 of 0 provisions encoded"
+    );
+    expect(within(panel).queryByRole("button", { name: "7 USC 2017" })).toBeNull();
+    fireEvent.click(income);
+    // Biggest first by default.
+    const names = () => [...panel.querySelectorAll('tbody th[scope="row"] button')].map((b) => b.textContent);
+    expect(names().slice(0, 2)).toEqual(["7 USC 2017", "7 USC 2014"]);
+    fireEvent.click(within(panel).getByRole("button", { name: "Encoded" }));
+    expect(within(panel).getByRole("columnheader", { name: "Encoded" })).toHaveAttribute("aria-sort", "descending");
+    expect(names().slice(0, 2)).toEqual(["7 USC 2014", "7 USC 2017"]);
+    fireEvent.click(within(panel).getByRole("radio", { name: "Status" }));
+    expect(within(panel).getByRole("button", { name: /^Partly encoded/ })).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: /^Not started/ })).toBeInTheDocument();
+  });
+
   it("lists excluded documents with their reasons in the table", () => {
     render(<ProgramBundle bundle={withParts} documents={documents} available referenceMs={NOW} />);
     fireEvent.click(screen.getByRole("button", { name: "1 excluded" }));
     const table = screen.getByRole("table", { name: "Screener-level parity documents" });
-    expect(within(table).getByText("Back-year table: not current law")).toBeInTheDocument();
+    // Grouped by reason; a lone group is open.
+    expect(within(table).getByRole("button", { name: /^Back-year table: not current law1 document/ })).toHaveAttribute(
+      "aria-expanded",
+      "true"
+    );
+    expect(within(table).getByRole("cell", { name: "Back-year table: not current law" })).toBeInTheDocument();
   });
 
   it("says where each tier's numbers come from", () => {

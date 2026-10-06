@@ -677,13 +677,6 @@ p.detailPath {
   font-weight: 600;
 }
 
-.panelCount {
-  margin-left: 10px;
-  font-size: 13px;
-  font-weight: 400;
-  color: var(--color-ink-muted);
-}
-
 .tableTabs {
   display: flex;
   flex-wrap: wrap;
@@ -717,9 +710,108 @@ p.detailPath {
   cursor: pointer;
 }
 
+.tableTools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.tableTools .countSwitch {
+  padding-top: 0;
+}
+
 .tableWrap {
-  margin-top: 16px;
+  margin-top: 10px;
   overflow-x: auto;
+}
+
+.sortButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.sortButton:hover,
+.table th[aria-sort] .sortButton {
+  color: var(--color-ink);
+}
+
+.num .sortButton {
+  justify-content: flex-end;
+}
+
+.groupRow th {
+  padding: 0 !important;
+  background: color-mix(in srgb, var(--color-ink) 3%, transparent);
+}
+
+.groupToggle {
+  display: grid;
+  grid-template-columns: 16px minmax(140px, 260px) minmax(0, 1fr) minmax(220px, 300px);
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--color-ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.groupToggle:hover {
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+}
+
+.groupChevron {
+  color: var(--color-ink-muted);
+  transition: transform 120ms ease;
+}
+
+.groupToggle[aria-expanded="true"] .groupChevron {
+  transform: rotate(90deg);
+}
+
+.groupName {
+  font-weight: 600;
+}
+
+.groupMeta {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-ink-muted);
+}
+
+.groupProgress {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-ink-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 760px) {
+  .groupToggle {
+    grid-template-columns: 16px minmax(0, 1fr);
+  }
+
+  .groupMeta,
+  .groupProgress {
+    grid-column: 2;
+  }
 }
 
 .table {
