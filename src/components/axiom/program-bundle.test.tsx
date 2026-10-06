@@ -210,7 +210,7 @@ describe("ProgramBundle", () => {
     expect(within(unit).getByText("Deferred by us/statute/7/2014/b.")).toBeInTheDocument();
   });
 
-  it("groups the documents by part, each group closed with its provisions at a glance, and sorts every column", () => {
+  it("groups the documents by type, or by part, each group closed with its provisions at a glance, and sorts every column", () => {
     const moreDocuments = [
       ...documents,
       measureDocument(
@@ -240,6 +240,9 @@ describe("ProgramBundle", () => {
     render(<ProgramBundle bundle={withParts} documents={moreDocuments} available referenceMs={NOW} />);
     const panel = screen.getByRole("region", { name: "Documents" });
     expect(within(panel).getByRole("heading", { name: "Documents" })).toHaveTextContent(/^Documents$/);
+    // By document type first: the three statutes and the FNS page apart.
+    expect(within(panel).getByRole("button", { name: /^Federal statutes and public laws3 documents/ })).toBeInTheDocument();
+    fireEvent.click(within(panel).getByRole("radio", { name: "Part" }));
     const income = within(panel).getByRole("button", { name: /^Income/ });
     expect(income).toHaveAttribute("aria-expanded", "false");
     expect(income).toHaveTextContent("Income2 documents · 0 complete1 of 5 provisions encoded");

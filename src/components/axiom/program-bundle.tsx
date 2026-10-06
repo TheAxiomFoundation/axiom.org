@@ -7,6 +7,7 @@ import styles from "./program-bundle.module.css";
 import { Explain } from "./ops-pipeline";
 import { ageLabel, STAGE_COPY } from "@/lib/axiom/encoding-pipeline";
 import {
+  documentType,
   DOCUMENT_STATUSES,
   PROVISION_LABELS,
   PROVISION_STATES,
@@ -1154,16 +1155,14 @@ function sourceWords(sources: string[], manifest: string | null): string {
   return [...words].join(", ") || "a source manifest";
 }
 
-type GroupBy = "part" | "layer" | "status";
+type GroupBy = "type" | "part" | "status";
 type SortKey = "name" | "part" | ProvisionState | "provisions" | "run";
 interface Sort {
   key: SortKey;
   dir: "asc" | "desc";
 }
 
-const GROUP_BY_LABELS: Record<GroupBy, string> = { part: "Part", layer: "Layer", status: "Status" };
-const LAYER_ORDER = ["federal", "state", "other state"];
-const LAYER_LABELS: Record<string, string> = { federal: "Federal", state: "State", "other state": "Other state" };
+const GROUP_BY_LABELS: Record<GroupBy, string> = { type: "Document type", part: "Part", status: "Status" };
 
 /** A row's value for a sort column; a document the corpus does not hold sorts below every count. */
 function sortValue(row: BundleDocumentRow, key: SortKey, rank: (part: string) => number): number | string {
@@ -1181,8 +1180,8 @@ interface Group {
 }
 
 /**
- * Every document of the tier, in collapsible groups (by part of the program,
- * layer or status; the excluded list by reason), each group headed by its
+ * Every document of the tier, in collapsible groups (by document type, part
+ * of the program or status; the excluded list by reason), each group headed by its
  * documents and provisions at a glance. Every column sorts.
  */
 function DocumentTable({
@@ -1202,20 +1201,21 @@ function DocumentTable({
   onSelect: (key: string) => void;
   referenceMs: number;
 }) {
-  const [groupBy, setGroupBy] = useState<GroupBy>("part");
+  const [groupBy, setGroupBy] = useState<GroupBy>("type");
   const [sort, setSort] = useState<Sort>({ key: "provisions", dir: "desc" });
   const [open, setOpen] = useState<Set<string>>(new Set());
 
   const groups = useMemo<Group[]>(() => {
     const rank = (part: string) => (parts.includes(part) ? parts.indexOf(part) : parts.length);
-    const keyOf = (row: BundleDocumentRow) =>
-      excluded
-        ? (row.reason ?? "No reason recorded")
-        : groupBy === "part"
-          ? row.part
-          : groupBy === "layer"
-            ? row.layer
-            : (row.status ?? "not_started");
+    const types = new Map<string, { label: string; order: number }>();
+    const keyOf = (row: BundleDocumentRow) => {
+      if (excluded) return row.reason ?? "No reason recorded";
+      if (groupBy === "part") return row.part;
+      if (groupBy === "status") return row.status ?? "not_started";
+      const type = documentType(row);
+      types.set(type.key, type);
+      return type.key;
+    };
     const byKey = new Map<string, BundleDocumentRow[]>();
     for (const row of rows) byKey.set(keyOf(row), [...(byKey.get(keyOf(row)) ?? []), row]);
     const order = (key: string) =>
@@ -1223,14 +1223,14 @@ function DocumentTable({
         ? -(byKey.get(key)?.length ?? 0)
         : groupBy === "part"
           ? rank(key)
-          : groupBy === "layer"
-            ? LAYER_ORDER.indexOf(key)
+          : groupBy === "type"
+            ? (types.get(key)?.order ?? 0)
             : DOCUMENT_STATUSES.indexOf(key as DocumentStatus);
     const label = (key: string) =>
       excluded || groupBy === "part"
         ? key
-        : groupBy === "layer"
-          ? (LAYER_LABELS[key] ?? key)
+        : groupBy === "type"
+          ? (types.get(key)?.label ?? key)
           : STATUS_LABELS[key as DocumentStatus];
     const compare = (a: BundleDocumentRow, b: BundleDocumentRow) => {
       const [x, y] = [sortValue(a, sort.key, rank), sortValue(b, sort.key, rank)];

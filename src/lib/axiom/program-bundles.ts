@@ -515,6 +515,58 @@ export function tierCounts(rows: BundleDocumentRow[]): TierCounts {
   };
 }
 
+type DocumentKind = "statute" | "regulation" | "guidance" | "manual" | "form" | "policy" | "other";
+
+/** The document types, in reading order: federal law first, then the state's own sources. */
+const DOCUMENT_TYPES: Array<{ layer: "federal" | "state"; kind: DocumentKind; label: string }> = [
+  { layer: "federal", kind: "statute", label: "Federal statutes and public laws" },
+  { layer: "federal", kind: "regulation", label: "Federal regulations" },
+  { layer: "federal", kind: "guidance", label: "Federal guidance (FNS, HHS)" },
+  { layer: "federal", kind: "manual", label: "Federal manuals (SSA POMS)" },
+  { layer: "federal", kind: "form", label: "Federal forms" },
+  { layer: "federal", kind: "policy", label: "Federal policy documents" },
+  { layer: "state", kind: "statute", label: "State statutes" },
+  { layer: "state", kind: "regulation", label: "State regulations" },
+  { layer: "state", kind: "manual", label: "State policy manual" },
+  { layer: "state", kind: "policy", label: "State plans, notices and waivers" },
+  { layer: "state", kind: "guidance", label: "Federal letters to the state" },
+];
+
+const KINDS: DocumentKind[] = ["statute", "regulation", "guidance", "manual", "form", "policy"];
+
+/** What kind of document a web page the corpus does not hold is, by its address. */
+function urlKind(url: string): DocumentKind {
+  if (/congress\.gov\/.+\/(plaws|bills)\/|govinfo\.gov\/.*(PLAW-|USCODE-)|law\.cornell\.edu\/uscode|uscode\.house\.gov/i.test(url))
+    return "statute";
+  if (/ecfr\.gov|law\.cornell\.edu\/cfr|federalregister\.gov|govinfo\.gov\/.*FR-/i.test(url)) return "regulation";
+  if (/ssa\.gov\/poms|dbmefaapolicy\.azdes\.gov/i.test(url)) return "manual";
+  if (/(fns|fna)\.usda\.gov|usda\.gov\/sites\/default\/files\/guidance|fns-prod\.azureedge|aspe\.hhs\.gov/i.test(url))
+    return "guidance";
+  return "other";
+}
+
+/**
+ * A document's type for grouping: its layer and its kind (statute,
+ * regulation, guidance, manual, form, policy), from the citation path's kind
+ * segment, or from the address of a page the corpus does not hold.
+ */
+export function documentType(row: Pick<BundleDocumentRow, "layer" | "citation_path" | "source_url">): {
+  key: string;
+  label: string;
+  order: number;
+} {
+  const segment = row.citation_path?.split("/")[1] ?? "";
+  const kind: DocumentKind = (KINDS as string[]).includes(segment)
+    ? (segment as DocumentKind)
+    : row.citation_path
+      ? "other"
+      : urlKind(row.source_url ?? "");
+  const layer = row.layer === "state" ? "state" : "federal";
+  const index = DOCUMENT_TYPES.findIndex((t) => t.layer === layer && t.kind === kind);
+  if (index < 0) return { key: `${layer}:other`, label: "Other documents", order: DOCUMENT_TYPES.length };
+  return { key: `${layer}:${kind}`, label: DOCUMENT_TYPES[index].label, order: index };
+}
+
 /** One in-scope bundle document, as the reverse lookup from an encoding needs it. */
 export interface BundleIndexEntry {
   bundle_id: string;
