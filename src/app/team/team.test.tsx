@@ -31,6 +31,18 @@ describe('TeamPage', () => {
     expect(screen.getByAltText('Pavel Makarchuk')).toBeInTheDocument()
   })
 
+  // Max 2026-10-05: describe him as a leader through his organizations'
+  // missions, never as the builder of a format, pipeline or benchmark.
+  it("describes Max through the organizations he leads, with no builder lines", () => {
+    render(<TeamPage />)
+    const section = screen.getByRole('heading', { name: 'Max Ghenis' }).closest('section')!
+    const bio = Array.from(section.querySelectorAll('p'), (p) => p.textContent).join(' ')
+    expect(bio).toMatch(/Axiom Foundation/)
+    expect(bio).toMatch(/PolicyEngine/)
+    expect(bio).not.toMatch(/\bhe (also )?(builds|built|creates|created)\b/i)
+    expect(bio).not.toMatch(/encoder pipeline|RuleSpec format|PolicyBench/i)
+  })
+
   it('renders LinkedIn links but no GitHub link-outs', () => {
     render(<TeamPage />)
     const linkedin = screen.getAllByText('LinkedIn')
