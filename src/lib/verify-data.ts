@@ -81,7 +81,7 @@ export const surfaces: Surface[] = [
       "Fetch a US corpus release from the public mirror and recompute its canonical sha256.",
     expect: "Recomputed hash matches the published manifest.",
     limit:
-      "Coverage is per-program and partial. The programs list is the coverage claim; there is no blanket one.",
+      "Coverage is per-program and partial. The programs list is the coverage claim; there is no blanket one. CI skips validation, companion tests, and proof checks for modules on a public waiver list, counted under What is broken right now.",
   },
   {
     id: "oracles",
@@ -272,7 +272,7 @@ export const enforcement = [
   "Citations cannot dangle. Non-URL sources are repo paths and must exist.",
   "Dispositions expire with their sources. When a mismatch moves or disappears, its disposition stops applying rather than silently relabelling a new residual.",
   "The ratchet only turns one way. Covered may rise; unexplained and Axiom-attributed may only fall. CI refuses regressions.",
-  "Coverage is tracked separately. CI fails an executable output unless it is mapped to an oracle concept, ruled not comparable, or listed in a public pending file (14,952 US outputs in October 2026), and fails a mapped output its companion tests leave out.",
+  "Coverage is tracked separately. CI fails an executable output unless it is mapped to an oracle concept, ruled not comparable, or listed in a public pending file (14,952 US outputs in October 2026), and fails a mapped output its companion tests leave out. That check reads the test files without running them; the step that runs companion tests skips modules on the public waiver list below.",
 ];
 
 export interface OpenIssue {
@@ -290,6 +290,22 @@ export interface OpenIssue {
  * worth. Entries leave only when the check passes, not when the copy improves.
  */
 export const openIssues: OpenIssue[] = [
+  {
+    // rulespec-us known-validation-gaps.yaml at 2066cef61; the skips are in
+    // TheAxiomFoundation/.github validate-rulespec.yml@df2dfb53 (the ref
+    // rulespec-us pins). Rule counts join the waived module paths to
+    // axiom-oracles dashboard/public/data/rule_verification.json (rulespec
+    // 54d90a72, generated 2026-09-28).
+    id: "validation-waivers",
+    title:
+      "CI skips validation, companion tests, and proof checks for 1,940 US modules on a public waiver list",
+    status: "Open — counted 2026-10-02",
+    detail:
+      "rulespec-us keeps a waiver list, known-validation-gaps.yaml. Modules with an active waiver skip three steps of the shared validation workflow: RuleSpec validation, companion tests, and proof and claim checks. On October 2, 2026, 1,940 modules carried an active waiver, and they hold 23,735 of our 34,810 US rules (counted against axiom-oracles' per-rule file of September 28). Each waiver names an owner, an issue, and an expiry date: all 1,940 expire on December 21, 2026, and 1,650 link to rulespec-us#782, which tracks the waiver list as a merge bypass.",
+    evidence:
+      "git clone https://github.com/TheAxiomFoundation/rulespec-us && cd rulespec-us\ngit show 2066cef61:known-validation-gaps.yaml | grep -c '^    active:'\n1940",
+    fix: "Repair a waived module until it validates, then delete its waiver.",
+  },
   {
     id: "api-rounding",
     title:

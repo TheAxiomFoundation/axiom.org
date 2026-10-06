@@ -233,16 +233,19 @@ export function PlanningModelPage() {
         <section className="mb-14">
           <SectionHeading>The measured base</SectionHeading>
           <p className="font-body text-[1rem] text-[var(--color-ink-secondary)] leading-relaxed mb-4">
-            As of 2026-10-03, each rule module is produced by an agentic
-            encoder loop: the agent reads the provision from a signed,
-            hash-pinned corpus release and writes the module and its companion
-            tests, then the harness runs deterministic checks, including
-            rules-engine compile, the companion tests, grounding of numeric
-            literals in the cited source text, and import resolution. When the
-            checks reject a candidate, the encoder retries with the failures as
-            feedback, by default making up to two attempts on its default
-            model and up to two more on an escalation model (retries since
-            2026-07-17). Oracle comparisons run outside this loop: in
+            In September 2026, about 16,300 of our 34,810 US rules matched a
+            signed manifest that names the encoder&apos;s apply step, and about
+            15,300 more (mostly the generated US tariff schedule) were signed
+            in by manual attestation. As of 2026-10-03, when the encoder writes
+            a module it runs an agentic loop: the agent reads the provision
+            from a signed, hash-pinned corpus release and writes the module and
+            its companion tests, then the harness runs deterministic checks,
+            including rules-engine compile, the companion tests, grounding of
+            numeric literals in the cited source text, and import resolution.
+            When the checks reject a candidate, the encoder retries with the
+            failures as feedback, by default making up to two attempts on its
+            default model and up to two more on an escalation model (retries
+            since 2026-07-17). Oracle comparisons run outside this loop: in
             axiom-oracles, and in axiom-encode&apos;s separate validate and
             eval-suite commands. The module is the provision-level increment
             every figure below counts — for example,{" "}
