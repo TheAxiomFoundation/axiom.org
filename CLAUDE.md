@@ -43,8 +43,12 @@ generate `/axiom/v2/...` hrefs. The app root and marketing pages stay on v1.
 - **Program bundles** (`encodings.program_bundle_documents`): the documents of
   each delivery tier of a program in a jurisdiction (axiom-corpus
   `manifests/program-bundles/*.yaml`: screener-level parity and the full
-  document bundle), each measured against the served corpus, the rule index
-  and `pipeline_attempts`. `scripts/collect-program-bundles.mjs` rebuilds them
+  document bundle), each measured against the served corpus, every module's
+  rules and deferrals (`rulespec_files.raw_yaml`), the RuleSpec repos'
+  `known-validation-gaps.yaml` waivers and `pipeline_attempts`. A provision
+  counts as encoded only when a rule cites it; a module's declared source,
+  and section-wide proof atoms, are not proof.
+  `scripts/collect-program-bundles.mjs` rebuilds them
   in the pipeline collector's workflow; `/ops/bundles/<jurisdiction>/<program>`
   reads only the tables, and the ledger and journey name each encoding's
   bundle and tier from them.

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ProgramBundle } from "./program-bundle";
-import { measureDocument, type BundleFileDocument, type BundleRow, type ModuleSource } from "@/lib/axiom/program-bundles";
+import { measureDocument, type BundleFileDocument, type BundleRow, type ModuleFacts } from "@/lib/axiom/program-bundles";
 
 const AT = "2026-10-06T12:00:00Z";
 const NOW = Date.parse("2026-10-06T12:30:00Z");
@@ -14,8 +14,24 @@ const bundle: BundleRow = {
   as_of: "2026-10-06",
   parts: [],
   tiers: [
-    { id: "screener", title: "Screener-level parity", definition: "Every PolicyEngine-cited document.", membership: {} },
-    { id: "full", title: "Full document bundle", definition: "Every primary source.", membership: {} },
+    {
+      id: "screener",
+      title: "Screener-level parity",
+      definition: "Every PolicyEngine-cited document.",
+      membership: {
+        rule: "The plan's documents and PolicyEngine's references",
+        policyengine_us_version: "2.29.11",
+        policyengine_us_commit: "4c900b6d3d808c4a9cf56d11afcedad9898f732f",
+        reference_count: 448,
+        fiscal_year: 2027,
+      },
+    },
+    {
+      id: "full",
+      title: "Full document bundle",
+      definition: "Every relevant document.",
+      membership: { rule: "The screener tier, the federal law and the state's sources", known_sources: 12 },
+    },
   ],
   source: "local",
   collected_at: AT,
@@ -38,7 +54,15 @@ const nodes = [
   { path: "us/statute/7/2014/a", child_count: 0 },
   { path: "us/statute/7/2014/b", child_count: 0 },
 ];
-const module = (path: string): ModuleSource => ({ module: path, sources: [path] });
+const module = (path: string, facts: Partial<ModuleFacts> = {}): ModuleFacts => ({
+  module: path,
+  sources: [path],
+  cited: [path],
+  deferred: [],
+  rules: 1,
+  waived: false,
+  ...facts,
+});
 
 const documents = [
   measureDocument(
@@ -50,7 +74,12 @@ const documents = [
         { path: "us/statute/7/2014/b", references: 1, part: "Deductions" },
       ],
     }),
-    { nodes, modules: [module("us/statute/7/2014/a")], attempts: [] },
+    // (a) is encoded; a module with no rules defers (b).
+    {
+      nodes,
+      modules: [module("us/statute/7/2014/a"), module("us/statute/7/2014/b", { cited: [], deferred: ["us/statute/7/2014/b"], rules: 0 })],
+      attempts: [],
+    },
     AT
   ),
   measureDocument(
@@ -91,8 +120,8 @@ describe("ProgramBundle", () => {
     const matrix = screen.getByRole("table", { name: "Parts of the program by tier" });
     const headers = within(matrix).getAllByRole("columnheader");
     expect(headers[1]).toHaveTextContent(/Screener-level parity.*0 of 1 document complete0%/);
-    // The screener tier also gives its PolicyEngine parity.
-    expect(headers[1]).toHaveTextContent("PolicyEngine parity: 1 of 2 cited provisions · 50%");
+    // The screener tier also gives how many PolicyEngine citations are encoded.
+    expect(headers[1]).toHaveTextContent("PolicyEngine citations encoded: 1 of 2 · 50%");
     expect(headers[2]).toHaveTextContent(/Full document bundle.*0 of 1 document complete0%/);
     // Rows in the bundle's order of parts.
     expect(within(matrix).getAllByRole("rowheader").map((h) => h.textContent)).toEqual([
@@ -124,11 +153,13 @@ describe("ProgramBundle", () => {
     render(<ProgramBundle bundle={withParts} documents={documents} available referenceMs={NOW} />);
     const matrix = screen.getByRole("table", { name: "Parts of the program by tier" });
     const cells = within(matrix).getAllByRole("cell");
-    expect(cells.at(-4)).toHaveTextContent("10 complete1 partly encoded0 not started0 not in the corpus1 excluded");
-    expect(cells.at(-2)).toHaveTextContent("21 encoded1 not started");
+    expect(cells.at(-4)).toHaveTextContent(
+      "10 complete0 complete, not validated1 partly encoded0 not started0 not in the corpus1 excluded"
+    );
+    expect(cells.at(-2)).toHaveTextContent("21 encoded1 deferred");
   });
 
-  it("opens a cell's documents, and the parity drawer's cited provisions", () => {
+  it("opens a cell's documents, and the drawer of PolicyEngine's cited provisions", () => {
     render(<ProgramBundle bundle={withParts} documents={documents} available referenceMs={NOW} />);
     fireEvent.click(screen.getByRole("button", { name: "Income, Screener-level parity: 0 of 1 document complete" }));
     const cell = screen.getByRole("complementary", { name: "Part of the program" });
@@ -136,13 +167,14 @@ describe("ProgramBundle", () => {
     fireEvent.click(within(cell).getByRole("button", { name: /7 USC 2014/ }));
     const document = screen.getByRole("complementary", { name: "Document" });
     expect(within(document).getByText("Encoded").parentElement).toHaveTextContent("Encoded1");
-    fireEvent.click(screen.getByRole("button", { name: /PolicyEngine parity: 1 of 2/ }));
-    const parity = screen.getByRole("complementary", { name: "PolicyEngine parity" });
+    fireEvent.click(screen.getByRole("button", { name: /PolicyEngine citations encoded: 1 of 2/ }));
+    const parity = screen.getByRole("complementary", { name: "PolicyEngine citations" });
     expect(within(parity).getByRole("heading", { name: "1 of 2 cited provisions encoded" })).toBeInTheDocument();
     fireEvent.click(within(parity).getByRole("button", { name: /7 USC 2014 \/b/ }));
     const unit = screen.getByRole("complementary", { name: "Cited provision" });
     expect(within(unit).getByRole("link", { name: "us/statute/7/2014/b" })).toHaveAttribute("href", "/us/statute/7/2014/b");
     expect(within(unit).getByText("Deductions")).toBeInTheDocument();
+    expect(within(unit).getByText("Deferred by us/statute/7/2014/b.")).toBeInTheDocument();
   });
 
   it("lists excluded documents with their reasons in the table", () => {
@@ -150,6 +182,14 @@ describe("ProgramBundle", () => {
     fireEvent.click(screen.getByRole("button", { name: "1 excluded" }));
     const table = screen.getByRole("table", { name: "Screener-level parity documents" });
     expect(within(table).getByText("Back-year table: not current law")).toBeInTheDocument();
+  });
+
+  it("says where each tier's numbers come from", () => {
+    render(<ProgramBundle bundle={withParts} documents={documents} available referenceMs={NOW} />);
+    const provenance = screen.getByRole("region", { name: "Where the numbers come from" });
+    expect(provenance).toHaveTextContent("2.29.11 (4c900b6d3d), 448 references");
+    expect(provenance).toHaveTextContent("FY2027");
+    expect(provenance).toHaveTextContent("12 known state sources");
   });
 
   it("says when the bundle tables are not there yet", () => {

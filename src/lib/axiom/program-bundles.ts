@@ -5,18 +5,20 @@
  * telemetry the collector reads from the served corpus, the RuleSpec module
  * mirror and the encoding runs, so the two never drift.
  *
- * Two measures, each truthful about what it counts:
- *
- * - A document's provisions: its text-bearing provisions in the corpus (the
- *   leaves; a heading that only holds others is not counted). A provision is
- *   encoded when a module's declared source is the provision or one above it
- *   (the module claims it whole, and the encoder's completeness rules make it
- *   encode or defer every branch), partly encoded when a module's source sits
- *   below it (the corpus does not split it as finely as the module).
- * - A screener tier's units: each provision PolicyEngine cites, as its
- *   parity model reads it. Encoded when a module encodes it, or a module for
- *   a section above it names it ("273.9(a)(1)"); partly encoded when that
- *   module does not name it, or only part of it is encoded.
+ * A provision counts as encoded only when a rule cites it: a module's
+ * declared source is not proof, since a module can defer branches of its
+ * source or hold no rules at all (the encoder's completeness check is off by
+ * default). So each text-bearing provision (a corpus leaf) is:
+ * - encoded: a rule cites it or a provision above it, and nothing at or under
+ *   it is deferred; "unvalidated" when every such module merged under a
+ *   validation waiver;
+ * - partly encoded: rules cite only parts of it, or a branch of it is
+ *   deferred (a CFR section is one corpus leaf, so most land here);
+ * - deferred: a module defers it and no rule cites it;
+ * - in progress or failed: by its newest targeted encode run (runs give no
+ *   credit);
+ * - not started: the rest.
+ * A screener unit (a provision PolicyEngine cites) is graded the same way.
  */
 import { attemptStage, type PipelineAttempt, type PipelineStage } from "./encoding-pipeline";
 
@@ -36,6 +38,8 @@ export interface BundleFileDocument {
   manifest?: string;
   scope: "in" | "excluded";
   reason?: string | null;
+  /** Why a known source is listed though the corpus does not hold it yet. */
+  note?: string | null;
   /** The provisions PolicyEngine cites in this document, and the part each feeds. */
   cited?: Array<{ path: string; references: number; part?: string | null }>;
 }
@@ -63,26 +67,55 @@ export interface BundleFile {
 }
 
 /** Where one provision stands; every text-bearing provision has exactly one. */
-export type ProvisionState = "encoded" | "partly" | "in_progress" | "failed" | "not_started";
+export type ProvisionState = "encoded" | "unvalidated" | "partly" | "deferred" | "in_progress" | "failed" | "not_started";
 
-export const PROVISION_STATES: ProvisionState[] = ["encoded", "partly", "in_progress", "failed", "not_started"];
+export const PROVISION_STATES: ProvisionState[] = [
+  "encoded",
+  "unvalidated",
+  "partly",
+  "deferred",
+  "in_progress",
+  "failed",
+  "not_started",
+];
 
 export const PROVISION_LABELS: Record<ProvisionState, string> = {
   encoded: "Encoded",
+  unvalidated: "Encoded, not validated",
   partly: "Partly encoded",
+  deferred: "Deferred",
   in_progress: "In progress",
   failed: "Failed",
   not_started: "Not started",
 };
 
 /** Where one screener unit (a provision PolicyEngine cites) stands. */
-export type UnitState = "encoded" | "partly" | "in_progress" | "failed" | "not_encoded" | "not_in_corpus";
+export type UnitState =
+  | "encoded"
+  | "unvalidated"
+  | "partly"
+  | "deferred"
+  | "in_progress"
+  | "failed"
+  | "not_encoded"
+  | "not_in_corpus";
 
-export const UNIT_STATES: UnitState[] = ["encoded", "partly", "in_progress", "failed", "not_encoded", "not_in_corpus"];
+export const UNIT_STATES: UnitState[] = [
+  "encoded",
+  "unvalidated",
+  "partly",
+  "deferred",
+  "in_progress",
+  "failed",
+  "not_encoded",
+  "not_in_corpus",
+];
 
 export const UNIT_LABELS: Record<UnitState, string> = {
   encoded: "Encoded",
+  unvalidated: "Encoded, not validated",
   partly: "Partly encoded",
+  deferred: "Deferred",
   in_progress: "In progress",
   failed: "Failed",
   not_encoded: "Not encoded",
@@ -90,19 +123,20 @@ export const UNIT_LABELS: Record<UnitState, string> = {
 };
 
 /** Where a whole document stands. */
-export type DocumentStatus = "complete" | "partly" | "not_started" | "not_in_corpus";
+export type DocumentStatus = "complete" | "unvalidated" | "partly" | "not_started" | "not_in_corpus";
 
-export const DOCUMENT_STATUSES: DocumentStatus[] = ["complete", "partly", "not_started", "not_in_corpus"];
+export const DOCUMENT_STATUSES: DocumentStatus[] = ["complete", "unvalidated", "partly", "not_started", "not_in_corpus"];
 
 export const STATUS_LABELS: Record<DocumentStatus, string> = {
   complete: "Complete",
+  unvalidated: "Complete, not validated",
   partly: "Partly encoded",
   not_started: "Not started",
   not_in_corpus: "Not in the corpus",
 };
 
-const IN_INDEX: PipelineStage[] = ["indexed", "runs", "verified", "compile_failed", "tests_failing", "oracle_disagrees"];
 const UNDER_WAY: PipelineStage[] = ["encoding", "review", "awaiting_sync", "not_indexed"];
+const FAILED: PipelineStage[] = ["encode_failed", "no_pr", "closed", "merged_off_main"];
 
 /** The newest run that touches a provision, as the drill-down shows it. */
 export interface RunMark {
@@ -127,7 +161,7 @@ export interface ParityUnit {
   part: string;
   references: number;
   state: UnitState;
-  /** Why it has that state: the module that encodes or names it, or the gap. */
+  /** Why it has that state: the module whose rule cites it, what defers it, or the gap. */
   detail: string | null;
   run: RunMark | null;
 }
@@ -142,6 +176,7 @@ export interface BundleDocumentRow {
   part: string;
   scope: "in" | "excluded";
   reason: string | null;
+  note: string | null;
   citation_path: string | null;
   source_url: string | null;
   sources: string[];
@@ -151,12 +186,14 @@ export interface BundleDocumentRow {
   /** Text-bearing provisions under the document, and how many are in each state. */
   provisions: number;
   encoded_provisions: number;
+  unvalidated_provisions: number;
   partly_provisions: number;
+  deferred_provisions: number;
   provisions_in_progress: number;
   provisions_failed: number;
   /** The provisions in progress or failed, newest run first. */
   open_provisions: OpenProvision[];
-  /** Distinct modules whose source is in the document. */
+  /** Distinct modules with a rule that cites the document. */
   modules: number;
   /** The screener tier's units in this document; empty in other tiers. */
   units: ParityUnit[];
@@ -191,53 +228,32 @@ export interface BundleSnapshotRow {
   counts: TierCounts;
 }
 
-/** A RuleSpec module: its path, the provisions it declares as its source, and its YAML when read. */
-export interface ModuleSource {
+/**
+ * What a RuleSpec module encodes, read from its YAML (program-bundles-modules.ts):
+ * the provisions it declares as its source, the provisions its rules cite,
+ * the provisions it defers, and whether it merged under a validation waiver.
+ */
+export interface ModuleFacts {
   module: string;
   sources: string[];
-  yaml?: string | null;
-}
-
-const isLaw = (path: string) => ["statute", "regulation"].includes(path.split("/")[1]);
-
-/**
- * The provisions a module encodes. A statute or regulation module's own path
- * is its provision (7 USC 2014(a) is us/statute/7/2014/a). A policy module
- * (us-az/policy/...) encodes the manual, guidance or form provision it
- * declares as its module source; a statute or regulation it builds on stays
- * that law's own modules' to encode, so a tax pipeline that cites 26 USC 1402
- * does not encode 1402.
- */
-export function moduleSources(row: { citation_path: string; declared_sources: string[] }): string[] {
-  if (isLaw(row.citation_path)) return [row.citation_path];
-  return row.declared_sources.filter((source) => !isLaw(source));
+  cited: string[];
+  deferred: string[];
+  rules: number;
+  waived: boolean;
 }
 
 /** What the collector reads for one document. */
 export interface DocumentTelemetry {
   /** Every corpus provision under the document's citation path, itself included. */
   nodes: Array<{ path: string; child_count: number }>;
-  /** The modules whose source is in the document or above it. */
-  modules: ModuleSource[];
+  /** The modules whose rules cite, or whose outputs defer, a provision in the document or above it. */
+  modules: ModuleFacts[];
   /** Targeted encode runs whose citation is in the document. */
   attempts: PipelineAttempt[];
 }
 
 const under = (path: string, root: string) => path === root || path.startsWith(`${root}/`);
 const strictlyUnder = (path: string, root: string) => path.startsWith(`${root}/`);
-
-/**
- * The marker a section's module uses for a paragraph inside it, as the parity
- * model reads it: us/regulation/7/273/9/a/1 under .../273/9 is "273.9(a)(1)";
- * us/statute/7/2015/e/3 under .../2015/e is "2015(e)(3)".
- */
-export function designation(cited: string, parent: string): string | null {
-  if (!strictlyUnder(cited, parent)) return null;
-  const c = cited.split("/");
-  if (c[1] === "statute" && c.length >= 4) return c[3] + c.slice(4).map((d) => `(${d})`).join("");
-  if (c[1] === "regulation" && c.length >= 5) return `${c[3]}.${c[4]}` + c.slice(5).map((d) => `(${d})`).join("");
-  return null;
-}
 
 /** The newest run that touches a path: at it, above it, or below it. */
 function newestRun(path: string, attempts: PipelineAttempt[]): PipelineAttempt | null {
@@ -255,11 +271,54 @@ const mark = (attempt: PipelineAttempt): RunMark => ({
   at: attempt.dispatched_at,
 });
 
-function documentStatus(row: Pick<BundleDocumentRow, "scope" | "in_corpus" | "provisions" | "encoded_provisions" | "partly_provisions">): DocumentStatus | null {
+/** A run under way or failed; any other stage gives no state, and no credit. */
+function runState(run: PipelineAttempt | null): "in_progress" | "failed" | null {
+  if (!run) return null;
+  const stage = attemptStage(run);
+  return UNDER_WAY.includes(stage) ? "in_progress" : FAILED.includes(stage) ? "failed" : null;
+}
+
+interface Grade {
+  state: "encoded" | "unvalidated" | "partly" | "deferred" | null;
+  detail: string | null;
+}
+
+/**
+ * How the modules reach one path. A rule citing it or a provision above it
+ * encodes it, unless something at or under it is deferred; rules citing only
+ * provisions under it, or a deferred branch under a cited path, make it
+ * partly encoded; a deferral at or above it, with no rule citing it, defers it.
+ */
+function grade(path: string, modules: ModuleFacts[]): Grade {
+  const covering = modules.filter((m) => m.cited.some((c) => under(path, c)));
+  const below = modules.filter((m) => m.cited.some((c) => strictlyUnder(c, path)));
+  const deferredAbove = modules.find((m) => m.deferred.some((d) => under(path, d)));
+  const deferredBelow = modules.find((m) => m.deferred.some((d) => strictlyUnder(d, path)));
+  if (covering.length) {
+    if (deferredAbove) return { state: "deferred", detail: `Deferred by ${deferredAbove.module}` };
+    if (deferredBelow) return { state: "partly", detail: `${deferredBelow.module} defers part of it` };
+    const validated = covering.find((m) => !m.waived);
+    return validated
+      ? { state: "encoded", detail: `A rule in ${validated.module} cites it` }
+      : { state: "unvalidated", detail: `${covering[0].module} merged under a validation waiver` };
+  }
+  if (below.length) return { state: "partly", detail: `Rules in ${below[0].module} cite parts of it` };
+  if (deferredAbove) return { state: "deferred", detail: `Deferred by ${deferredAbove.module}` };
+  if (deferredBelow) return { state: "partly", detail: `${deferredBelow.module} defers part of it` };
+  return { state: null, detail: null };
+}
+
+function documentStatus(
+  row: Pick<
+    BundleDocumentRow,
+    "scope" | "in_corpus" | "provisions" | "encoded_provisions" | "unvalidated_provisions" | "partly_provisions"
+  >
+): DocumentStatus | null {
   if (row.scope === "excluded") return null;
   if (!row.in_corpus) return "not_in_corpus";
-  if (row.provisions > 0 && row.encoded_provisions === row.provisions) return "complete";
-  return row.encoded_provisions + row.partly_provisions > 0 ? "partly" : "not_started";
+  const encoded = row.encoded_provisions + row.unvalidated_provisions;
+  if (row.provisions > 0 && encoded === row.provisions) return row.unvalidated_provisions ? "unvalidated" : "complete";
+  return encoded + row.partly_provisions > 0 ? "partly" : "not_started";
 }
 
 /** A document's measure, and in the screener tier its parity units. */
@@ -275,31 +334,25 @@ export function measureDocument(
   const inCorpus = Boolean(root && nodes.some((n) => n.path === root));
   const leaves = inCorpus ? nodes.filter((n) => n.child_count === 0).map((n) => n.path) : [];
   const modules = telemetry?.modules ?? [];
-  const sources = modules.flatMap((m) => m.sources.map((source) => ({ source, module: m })));
   const attempts = [...(telemetry?.attempts ?? [])]
     .filter((a) => root && a.citation && under(a.citation, root))
     .sort((a, b) => b.dispatched_at.localeCompare(a.dispatched_at));
 
-  // Each leaf's state.
   const states = new Map<string, ProvisionState>();
   const open: OpenProvision[] = [];
   for (const leaf of leaves) {
-    if (sources.some((s) => under(leaf, s.source))) {
-      states.set(leaf, "encoded");
-      continue;
-    }
-    if (sources.some((s) => strictlyUnder(s.source, leaf))) {
-      states.set(leaf, "partly");
+    const { state } = grade(leaf, modules);
+    if (state) {
+      states.set(leaf, state);
       continue;
     }
     const run = newestRun(leaf, attempts);
-    const stage = run ? attemptStage(run) : null;
-    if (run && stage && !IN_INDEX.includes(stage)) {
-      const state = UNDER_WAY.includes(stage) ? "in_progress" : "failed";
-      states.set(leaf, state);
-      open.push({ path: leaf, state, ...mark(run) });
+    const ran = runState(run);
+    if (run && ran) {
+      states.set(leaf, ran);
+      open.push({ path: leaf, state: ran, ...mark(run) });
     } else {
-      states.set(leaf, run ? "encoded" : "not_started");
+      states.set(leaf, "not_started");
     }
   }
   open.sort((a, b) => b.at.localeCompare(a.at));
@@ -320,7 +373,7 @@ export function measureDocument(
         url: path ? null : doc.source_url,
         part: c.part ?? doc.part ?? "Other",
         references: c.references,
-        ...unitState(path, inCorpus, sources, leafStates, attempts),
+        ...unitState(path, inCorpus, modules, leafStates, attempts),
       });
     }
   }
@@ -335,6 +388,7 @@ export function measureDocument(
     part: doc.part ?? "Other",
     scope: doc.scope,
     reason: doc.scope === "excluded" ? (doc.reason ?? null) : null,
+    note: doc.note ?? null,
     citation_path: root,
     source_url: doc.source_url,
     sources: doc.sources ?? [],
@@ -342,11 +396,15 @@ export function measureDocument(
     in_corpus: inCorpus,
     provisions: leaves.length,
     encoded_provisions: count("encoded"),
+    unvalidated_provisions: count("unvalidated"),
     partly_provisions: count("partly"),
+    deferred_provisions: count("deferred"),
     provisions_in_progress: count("in_progress"),
     provisions_failed: count("failed"),
     open_provisions: open,
-    modules: new Set(sources.filter((s) => root && under(s.source, root)).map((s) => s.module.module)).size,
+    modules: new Set(
+      modules.filter((m) => root && m.cited.some((c) => under(c, root) || under(root, c))).map((m) => m.module)
+    ).size,
     units,
     runs: attempts.length,
     latest_citation: latest?.citation ?? null,
@@ -360,42 +418,29 @@ export function measureDocument(
   return row;
 }
 
-/** A screener unit's state, by the parity rule, then its leaves, then its newest run. */
+/** A screener unit's state: by the rules that reach it, then by its provisions, then by its newest run. */
 function unitState(
   path: string | null,
   inCorpus: boolean,
-  sources: Array<{ source: string; module: ModuleSource }>,
+  modules: ModuleFacts[],
   leafStates: (path: string) => Array<ProvisionState | undefined>,
   attempts: PipelineAttempt[]
 ): Pick<ParityUnit, "state" | "detail" | "run"> {
   if (!path || !inCorpus) return { state: "not_in_corpus", detail: null, run: null };
-  const exact = sources.find((s) => s.source === path);
-  if (exact) return { state: "encoded", detail: `Encoded by ${exact.module.module}`, run: null };
-  // A module for a section above it: credit only when the module names it.
-  const above = sources
-    .filter((s) => strictlyUnder(path, s.source))
-    .sort((a, b) => b.source.length - a.source.length)[0];
-  if (above) {
-    const marker = designation(path, above.source);
-    if (!marker) return { state: "encoded", detail: `Inside ${above.module.module}`, run: null };
-    if (above.module.yaml?.includes(marker)) {
-      return { state: "encoded", detail: `${above.module.module} names ${marker}`, run: null };
-    }
-    return { state: "partly", detail: `${above.module.module} does not name ${marker}`, run: null };
-  }
+  const { state, detail } = grade(path, modules);
+  if (state) return { state, detail, run: null };
+  // A whole cited document, or a path the corpus splits: by its provisions.
   const leaves = leafStates(path);
-  const encoded = leaves.filter((s) => s === "encoded").length;
-  if (leaves.length && encoded === leaves.length) {
+  const done = leaves.filter((s) => s === "encoded" || s === "unvalidated").length;
+  if (leaves.length && done === leaves.length) {
     return { state: "encoded", detail: `All ${leaves.length} provisions encoded`, run: null };
   }
-  if (sources.some((s) => strictlyUnder(s.source, path)) || leaves.some((s) => s === "encoded" || s === "partly")) {
-    return { state: "partly", detail: `${encoded} of ${leaves.length} provisions encoded`, run: null };
+  if (leaves.some((s) => s === "encoded" || s === "unvalidated" || s === "partly")) {
+    return { state: "partly", detail: `${done} of ${leaves.length} provisions encoded`, run: null };
   }
   const run = newestRun(path, attempts);
-  const stage = run ? attemptStage(run) : null;
-  if (run && stage && !IN_INDEX.includes(stage)) {
-    return { state: UNDER_WAY.includes(stage) ? "in_progress" : "failed", detail: null, run: mark(run) };
-  }
+  const ran = runState(run);
+  if (run && ran) return { state: ran, detail: null, run: mark(run) };
   return { state: "not_encoded", detail: null, run: run ? mark(run) : null };
 }
 
@@ -415,13 +460,27 @@ export interface TierCounts {
 export function provisionCounts(
   row: Pick<
     BundleDocumentRow,
-    "provisions" | "encoded_provisions" | "partly_provisions" | "provisions_in_progress" | "provisions_failed"
+    | "provisions"
+    | "encoded_provisions"
+    | "unvalidated_provisions"
+    | "partly_provisions"
+    | "deferred_provisions"
+    | "provisions_in_progress"
+    | "provisions_failed"
   >
 ): Record<ProvisionState, number> {
-  const known = row.encoded_provisions + row.partly_provisions + row.provisions_in_progress + row.provisions_failed;
+  const known =
+    row.encoded_provisions +
+    row.unvalidated_provisions +
+    row.partly_provisions +
+    row.deferred_provisions +
+    row.provisions_in_progress +
+    row.provisions_failed;
   return {
     encoded: row.encoded_provisions,
+    unvalidated: row.unvalidated_provisions,
     partly: row.partly_provisions,
+    deferred: row.deferred_provisions,
     in_progress: row.provisions_in_progress,
     failed: row.provisions_failed,
     not_started: Math.max(0, row.provisions - known),

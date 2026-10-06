@@ -30,7 +30,9 @@ const percent = (part: number, whole: number) => (whole ? `${Math.round((part / 
 /** Provision states as the table's column heads. */
 const SHORT_LABELS: Record<ProvisionState, string> = {
   encoded: "Encoded",
+  unvalidated: "Unvalidated",
   partly: "Partly",
+  deferred: "Deferred",
   in_progress: "Running",
   failed: "Failed",
   not_started: "To do",
@@ -40,11 +42,13 @@ const SHORT_LABELS: Record<ProvisionState, string> = {
  * One state scale for both tiers: a cited provision's state in the screener
  * tier, a section's status in the full bundle. The bar and legend use these.
  */
-type Shade = "encoded" | "partly" | "in_progress" | "failed" | "none" | "missing";
-const SHADES: Shade[] = ["encoded", "partly", "in_progress", "failed", "none", "missing"];
+type Shade = "encoded" | "unvalidated" | "partly" | "deferred" | "in_progress" | "failed" | "none" | "missing";
+const SHADES: Shade[] = ["encoded", "unvalidated", "partly", "deferred", "in_progress", "failed", "none", "missing"];
 const SHADE_LABELS: Record<Shade, string> = {
   encoded: "Encoded",
+  unvalidated: "Encoded, not validated",
   partly: "Partly encoded",
+  deferred: "Deferred",
   in_progress: "In progress",
   failed: "Failed",
   none: "Not encoded yet",
@@ -52,7 +56,9 @@ const SHADE_LABELS: Record<Shade, string> = {
 };
 const UNIT_SHADE: Record<UnitState, Shade> = {
   encoded: "encoded",
+  unvalidated: "unvalidated",
   partly: "partly",
+  deferred: "deferred",
   in_progress: "in_progress",
   failed: "failed",
   not_encoded: "none",
@@ -60,6 +66,7 @@ const UNIT_SHADE: Record<UnitState, Shade> = {
 };
 const STATUS_SHADE: Record<DocumentStatus, Shade> = {
   complete: "encoded",
+  unvalidated: "unvalidated",
   partly: "partly",
   not_started: "none",
   not_in_corpus: "missing",
@@ -70,7 +77,9 @@ type Count = "documents" | "provisions";
 
 const PROVISION_SHADE: Record<ProvisionState, Shade> = {
   encoded: "encoded",
+  unvalidated: "unvalidated",
   partly: "partly",
+  deferred: "deferred",
   in_progress: "in_progress",
   failed: "failed",
   not_started: "none",
@@ -89,12 +98,18 @@ interface Cell {
   uncounted: number;
 }
 
+/** Encoded, validated or not: what "done" counts everywhere on the page. */
+const doneDocuments = (byStatus: Record<DocumentStatus, number>) => byStatus.complete + byStatus.unvalidated;
+const doneProvisions = (byState: Record<ProvisionState, number>) => byState.encoded + byState.unvalidated;
+const doneUnits = (byState: Record<UnitState, number>) => byState.encoded + byState.unvalidated;
+
 function cellOf(tier: BundleTierId, part: string, rows: BundleDocumentRow[], count: Count): Cell {
   const shades = Object.fromEntries(SHADES.map((s) => [s, 0])) as Record<Shade, number>;
   const documents = rows.filter((r) => r.part === part);
   if (count === "documents") {
     for (const row of documents) if (row.status) shades[STATUS_SHADE[row.status]]++;
-    return { tier, part, count, documents, shades, done: shades.encoded, total: documents.length, uncounted: 0 };
+    const done = shades.encoded + shades.unvalidated;
+    return { tier, part, count, documents, shades, done, total: documents.length, uncounted: 0 };
   }
   let total = 0;
   for (const row of documents) {
@@ -109,7 +124,7 @@ function cellOf(tier: BundleTierId, part: string, rows: BundleDocumentRow[], cou
     count,
     documents,
     shades,
-    done: shades.encoded,
+    done: shades.encoded + shades.unvalidated,
     total,
     uncounted: documents.filter((r) => !r.in_corpus).length,
   };
@@ -345,8 +360,8 @@ export function ProgramBundle({
             </div>
             <ul className={styles.legend} aria-label="States">
               {(count === "documents"
-                ? (["encoded", "partly", "none", "missing"] as Shade[])
-                : (["encoded", "partly", "in_progress", "failed", "none"] as Shade[])
+                ? (["encoded", "unvalidated", "partly", "none", "missing"] as Shade[])
+                : (["encoded", "unvalidated", "partly", "deferred", "in_progress", "failed", "none"] as Shade[])
               ).map((shade) => (
                 <li key={shade}>
                   <i className={styles.swatch} data-shade={shade} aria-hidden />
@@ -356,6 +371,8 @@ export function ProgramBundle({
             </ul>
           </section>
         )}
+
+        {tiers.length > 0 && <Provenance bundle={bundle} tiers={tiers} rows={documents} />}
 
         {tiers.length > 0 && (
           <section className={styles.panel} aria-labelledby="bundle-documents">
@@ -409,6 +426,7 @@ export function ProgramBundle({
 const DOCUMENT_SHADE_LABELS: Record<Shade, string> = {
   ...SHADE_LABELS,
   encoded: "Complete",
+  unvalidated: "Complete, not validated",
   none: "Not started",
 };
 
@@ -438,8 +456,9 @@ function TierHeader({
   onParity: () => void;
 }) {
   const counts = tierCounts(rows);
-  const done = count === "documents" ? counts.byStatus.complete : counts.byProvisionState.encoded;
+  const done = count === "documents" ? doneDocuments(counts.byStatus) : doneProvisions(counts.byProvisionState);
   const total = count === "documents" ? counts.documents : counts.provisions;
+  const unitsDone = doneUnits(counts.byUnitState);
   return (
     <span role="columnheader" className={styles.tierHeader}>
       <span className={styles.tierIndex}>Tier {index}</span>
@@ -453,8 +472,8 @@ function TierHeader({
       </span>
       {counts.units > 0 && (
         <button type="button" className={styles.parityLine} onClick={onParity}>
-          PolicyEngine parity: <strong>{number(counts.byUnitState.encoded)}</strong> of {number(counts.units)} cited
-          provisions · {percent(counts.byUnitState.encoded, counts.units)}
+          PolicyEngine citations encoded: <strong>{number(unitsDone)}</strong> of {number(counts.units)} ·{" "}
+          {percent(unitsDone, counts.units)}
         </button>
       )}
     </span>
@@ -476,8 +495,8 @@ function FactsRow({
         {label}
         <Explain label={label}>
           {label === "Documents"
-            ? "Every document of the tier. Complete: every one of its provisions is encoded. Not in the corpus: the corpus does not hold it yet, so its provisions cannot be counted."
-            : "The text-bearing provisions of the tier's documents in the corpus. Encoded: a module's source is the provision or one above it. Partly encoded: a module encodes only part of it."}
+            ? "Every document of the tier. Complete: a rule cites every one of its provisions. Not validated: some of those rules merged under a validation waiver. Not in the corpus: the corpus does not hold it yet, so its provisions cannot be counted."
+            : "The text-bearing provisions of the tier's documents in the corpus. Encoded: a rule cites the provision or one above it, and nothing in it is deferred. Not validated: every such rule merged under a validation waiver. Partly encoded: rules cite only parts of it, or defer a part. Deferred: a module defers it and no rule cites it. A module's declared source alone is not counted; encode runs only mark in progress or failed."}
         </Explain>
       </span>
       {tiers.map((tier) => (
@@ -613,8 +632,9 @@ function CellDetail({
         {[...cell.documents]
           .sort(
             (a, b) =>
-              (b.provisions ? b.encoded_provisions / b.provisions : -1) -
-                (a.provisions ? a.encoded_provisions / a.provisions : -1) || a.name.localeCompare(b.name)
+              (b.provisions ? (b.encoded_provisions + b.unvalidated_provisions) / b.provisions : -1) -
+                (a.provisions ? (a.encoded_provisions + a.unvalidated_provisions) / a.provisions : -1) ||
+              a.name.localeCompare(b.name)
           )
           .map((row) => (
             <li key={row.key}>
@@ -623,7 +643,7 @@ function CellDetail({
                 <span>{row.name}</span>
                 <span className={styles.muted}>
                   {row.in_corpus
-                    ? `${number(row.encoded_provisions)} of ${number(row.provisions)} encoded`
+                    ? `${number(row.encoded_provisions + row.unvalidated_provisions)} of ${number(row.provisions)} encoded`
                     : "not in the corpus"}
                 </span>
               </button>
@@ -654,17 +674,18 @@ function ParityDetail({
   const byPart = new Map<string, ParityUnit[]>();
   for (const unit of units) byPart.set(unit.part, [...(byPart.get(unit.part) ?? []), unit]);
   const rank = (part: string) => (parts.includes(part) ? parts.indexOf(part) : parts.length);
-  const encoded = units.filter((u) => u.state === "encoded").length;
+  const encoded = units.filter((u) => u.state === "encoded" || u.state === "unvalidated").length;
   return (
-    <aside className={styles.detail} aria-label="PolicyEngine parity">
-      <DrawerTop label="PolicyEngine parity" onClose={onClose} />
+    <aside className={styles.detail} aria-label="PolicyEngine citations">
+      <DrawerTop label="PolicyEngine citations" onClose={onClose} />
       <h3 className={styles.detailName}>
         {number(encoded)} of {number(units.length)} cited provisions encoded
       </h3>
       <p className={styles.detailNote}>
-        Each provision PolicyEngine cites for this program, as its parity model reads it: encoded when a module encodes
-        it or the module for its section names it; partly encoded when that module does not name it, or only part of
-        it is encoded.
+        Each provision PolicyEngine cites for this program at the pinned release: encoded when a rule cites it or a
+        provision above it and nothing in it is deferred; partly encoded when rules cite only parts of it; deferred when
+        a module defers it. This is coverage of what PolicyEngine cites, not a comparison of results: the comparison
+        against PolicyEngine is its own check.
       </p>
       {[...byPart.entries()]
         .sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
@@ -676,7 +697,7 @@ function ParityDetail({
               <p className={styles.detailLabel}>
                 {part}
                 <span>
-                  {number(shades.encoded)} of {number(members.length)}
+                  {number(shades.encoded + shades.unvalidated)} of {number(members.length)}
                 </span>
               </p>
               <ShadeBar shades={shades} total={members.length} />
@@ -818,7 +839,7 @@ function DocumentDetail({
               states[state] > 0 ? (
                 <span
                   key={state}
-                  data-shade={state === "not_started" ? "none" : state}
+                  data-shade={PROVISION_SHADE[state]}
                   style={{ width: `${(states[state] / Math.max(1, row.provisions)) * 100}%` }}
                 />
               ) : null
@@ -827,14 +848,15 @@ function DocumentDetail({
           <ul className={styles.detailStates}>
             {PROVISION_STATES.map((state) => (
               <li key={state}>
-                <i className={styles.swatch} data-shade={state === "not_started" ? "none" : state} aria-hidden />
+                <i className={styles.swatch} data-shade={PROVISION_SHADE[state]} aria-hidden />
                 {PROVISION_LABELS[state]}
                 <strong>{number(states[state])}</strong>
               </li>
             ))}
           </ul>
           <p className={styles.detailNote}>
-            {number(row.modules)} {row.modules === 1 ? "module encodes" : "modules encode"} provisions of this document.
+            {number(row.modules)} {row.modules === 1 ? "module has a rule that cites" : "modules have rules that cite"}{" "}
+            this document.
           </p>
         </div>
       ) : (
@@ -903,14 +925,108 @@ function DocumentDetail({
         )}
       </div>
 
+      {row.note && <p className={styles.detailNote}>{row.note}.</p>}
       <p className={styles.detailSources}>
-        Part: {row.part}. In the bundle from{" "}
-        {row.sources.map((s) => (s === "plan" ? "the plan" : "PolicyEngine references")).join(" and ") ||
-          "a source manifest"}
-        {row.manifest && ` (${row.manifest})`}.
+        Part: {row.part}. In the tier from {sourceWords(row.sources, row.manifest)}.
       </p>
     </aside>
   );
+}
+
+/**
+ * Where the numbers come from: each tier's membership rule and its pinned
+ * inputs, read from the bundle file, and the documents by layer.
+ */
+function Provenance({
+  bundle,
+  tiers,
+  rows,
+}: {
+  bundle: BundleRow | null;
+  tiers: BundleRow["tiers"];
+  rows: BundleDocumentRow[];
+}) {
+  const text = (value: unknown) => (typeof value === "string" || typeof value === "number" ? String(value) : null);
+  return (
+    <section className={styles.panel} aria-labelledby="bundle-provenance">
+      <div className={styles.panelHead}>
+        <h2 id="bundle-provenance">Where the numbers come from</h2>
+      </div>
+      <div className={styles.provenance}>
+        {tiers.map((tier, index) => {
+          const m = tier.membership;
+          const inScope = rows.filter((r) => r.tier === tier.id && r.scope === "in");
+          const layers = new Map<string, number>();
+          for (const row of inScope) layers.set(row.layer, (layers.get(row.layer) ?? 0) + 1);
+          const inputs: Array<[string, string | null]> =
+            tier.id === "screener"
+              ? [
+                  [
+                    "PolicyEngine-US",
+                    text(m.policyengine_us_version) &&
+                      `${text(m.policyengine_us_version)} (${String(m.policyengine_us_commit ?? "").slice(0, 10)}), ${text(m.reference_count)} references`,
+                  ],
+                  ["Plan", text(m.plan_as_of) && `${text(m.plan_documents)} documents, ${text(m.plan_as_of)}`],
+                  ["Fiscal year", text(m.fiscal_year) && `FY${text(m.fiscal_year)}`],
+                ]
+              : [
+                  ["Screener tier", text(m.screener_documents) && `${text(m.screener_documents)} documents, all included`],
+                  ["Federal law", text(m.federal_schema)],
+                  ["State manifests", Array.isArray(m.manifests) ? `${m.manifests.length} manifests` : null],
+                  ["Not in the corpus yet", text(m.known_sources) && `${text(m.known_sources)} known state sources`],
+                ];
+          return (
+            <div key={tier.id} className={styles.provenanceTier}>
+              <p className={styles.detailLabel}>
+                Tier {index + 1}: {tier.title}
+                <span>{number(inScope.length)} documents</span>
+              </p>
+              <p className={styles.detailNote}>{text(m.rule)}.</p>
+              <dl className={styles.detailFacts}>
+                {inputs
+                  .filter(([, value]) => value)
+                  .map(([label, value]) => (
+                    <div key={label}>
+                      <dt>{label}</dt>
+                      <dd>{value}</dd>
+                    </div>
+                  ))}
+                <div>
+                  <dt>By layer</dt>
+                  <dd>
+                    {[...layers.entries()]
+                      .sort(([a], [b]) => a.localeCompare(b))
+                      .map(([layer, n]) => `${number(n)} ${layer}`)
+                      .join(", ")}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+          );
+        })}
+      </div>
+      <p className={styles.detailSources}>
+        Membership: {bundle?.source ?? "the bundle file"}, built from its config in axiom-corpus. Progress: the served
+        corpus, every RuleSpec module&apos;s rules and deferrals, the validation waivers, and the encode runs, read by the
+        collector every 30 minutes.
+      </p>
+    </section>
+  );
+}
+
+/** Where a document's place in its tier comes from, in words. */
+function sourceWords(sources: string[], manifest: string | null): string {
+  const words = new Set<string>();
+  for (const source of sources) {
+    if (source === "plan") words.add("the plan");
+    else if (source === "policyengine-references") words.add("PolicyEngine references");
+    else if (source === "screener") words.add("the screener tier");
+    else if (source.startsWith("schema:")) words.add("the federal law of the program (needs-closure schema)");
+    else if (source === "known-source") words.add("the list of state sources the corpus does not hold yet");
+    else words.add(`a source manifest (${source})`);
+  }
+  if (!words.size && manifest) words.add(`a source manifest (${manifest})`);
+  return [...words].join(", ") || "a source manifest";
 }
 
 /** Every document with its exact provision counts, or the excluded list with reasons. */

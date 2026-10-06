@@ -1,16 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
+import { pipelineAttempt } from "@/test/pipeline-attempt";
 import {
   bundleIndex,
   bundleMemberships,
-  designation,
   measureDocument,
-  moduleSources,
   provisionCounts,
   tierCounts,
   tiersLabel,
   type BundleFileDocument,
-  type ModuleSource,
+  type ModuleFacts,
 } from "./program-bundles";
 
 const AT = "2026-10-06T12:00:00Z";
@@ -36,29 +34,14 @@ const nodes = [
   { path: "us/statute/7/2014/c/1", child_count: 0 },
   { path: "us/statute/7/2014/c/2", child_count: 0 },
 ];
-const module = (path: string, yaml?: string): ModuleSource => ({ module: path, sources: [path], yaml });
-
-describe("moduleSources", () => {
-  it("takes a statute or regulation module's own path, and a policy module's declared non-law sources", () => {
-    expect(moduleSources({ citation_path: "us/statute/7/2014/a", declared_sources: ["us/statute/7/2014"] })).toEqual([
-      "us/statute/7/2014/a",
-    ]);
-    // A tax pipeline that cites 26 USC 1402 does not encode 1402.
-    expect(
-      moduleSources({
-        citation_path: "us-az/policy/des/faa5/x",
-        declared_sources: ["us-az/manual/des/faa5/x/block-3", "us/statute/26/1402"],
-      })
-    ).toEqual(["us-az/manual/des/faa5/x/block-3"]);
-  });
-});
-
-describe("designation", () => {
-  it("names a paragraph inside its section as a module writes it", () => {
-    expect(designation("us/regulation/7/273/9/a/1", "us/regulation/7/273/9")).toBe("273.9(a)(1)");
-    expect(designation("us/statute/7/2015/e/3", "us/statute/7/2015/e")).toBe("2015(e)(3)");
-    expect(designation("us/statute/7/2015", "us/statute/7/2015")).toBeNull();
-  });
+const module = (path: string, facts: Partial<ModuleFacts> = {}): ModuleFacts => ({
+  module: path,
+  sources: [path],
+  cited: [path],
+  deferred: [],
+  rules: 1,
+  waived: false,
+  ...facts,
 });
 
 describe("measureDocument", () => {
@@ -69,18 +52,73 @@ describe("measureDocument", () => {
       doc(),
       {
         nodes,
-        // (a) encoded whole; (c) encoded whole, so (c)(1) and (c)(2) are; a module below (b) leaves it partly.
+        // A rule cites (a); a rule cites (c), so (c)(1) and (c)(2) are encoded; a rule cites only part of (b).
         modules: [module("us/statute/7/2014/a"), module("us/statute/7/2014/c"), module("us/statute/7/2014/b/2")],
         attempts: [],
       },
       AT
     );
     expect(row.provisions).toBe(4);
-    expect(provisionCounts(row)).toEqual({ encoded: 3, partly: 1, in_progress: 0, failed: 0, not_started: 0 });
+    expect(provisionCounts(row)).toEqual({
+      encoded: 3,
+      unvalidated: 0,
+      partly: 1,
+      deferred: 0,
+      in_progress: 0,
+      failed: 0,
+      not_started: 0,
+    });
     expect(row).toMatchObject({ status: "partly", modules: 3, units: [] });
   });
 
-  it("marks provisions with a running or failed newest run, and lists them", () => {
+  it("credits a provision only when a rule cites it, never a module's declared source", () => {
+    const row = measureDocument(
+      "b",
+      "full",
+      doc(),
+      {
+        nodes,
+        modules: [
+          // A module with no rules defers its whole source.
+          module("us/statute/7/2014/a", { cited: [], deferred: ["us/statute/7/2014/a"], rules: 0 }),
+          // A module that encodes (c) but defers (c)(2) leaves (c)(1) encoded and (c)(2) deferred.
+          module("us/statute/7/2014/c", { deferred: ["us/statute/7/2014/c/2"] }),
+          // A waived module's provision is encoded but not validated.
+          module("us/statute/7/2014/b", { waived: true }),
+        ],
+        attempts: [],
+      },
+      AT
+    );
+    expect(provisionCounts(row)).toEqual({
+      encoded: 1,
+      unvalidated: 1,
+      partly: 0,
+      deferred: 2,
+      in_progress: 0,
+      failed: 0,
+      not_started: 0,
+    });
+  });
+
+  it("makes a provision with a deferred branch partly encoded", () => {
+    // A CFR section is one corpus provision; its module defers a paragraph of it.
+    const section = [{ path: "us/regulation/7/273/9", child_count: 0 }];
+    const row = measureDocument(
+      "b",
+      "full",
+      doc({ key: "us/regulation/7/273/9", citation_path: "us/regulation/7/273/9" }),
+      {
+        nodes: section,
+        modules: [module("us/regulation/7/273/9", { deferred: ["us/regulation/7/273/9/d/6"] })],
+        attempts: [],
+      },
+      AT
+    );
+    expect(row).toMatchObject({ partly_provisions: 1, encoded_provisions: 0, status: "partly" });
+  });
+
+  it("marks provisions with a running or failed newest run, and gives runs no credit", () => {
     const row = measureDocument(
       "us-az/snap",
       "full",
@@ -96,7 +134,7 @@ describe("measureDocument", () => {
       },
       AT
     );
-    expect(provisionCounts(row)).toEqual({ encoded: 1, partly: 0, in_progress: 1, failed: 2, not_started: 0 });
+    expect(provisionCounts(row)).toMatchObject({ encoded: 1, in_progress: 1, failed: 2, not_started: 0 });
     expect(row.open_provisions.map((p) => [p.path, p.state])).toEqual([
       ["us/statute/7/2014/c/1", "failed"],
       ["us/statute/7/2014/c/2", "failed"],
@@ -107,13 +145,21 @@ describe("measureDocument", () => {
   it("is complete when every provision is encoded, and not in the corpus when the corpus lacks it", () => {
     const whole = measureDocument("b", "full", doc(), { nodes, modules: [module("us/statute/7/2014")], attempts: [] }, AT);
     expect(whole.status).toBe("complete");
+    const waived = measureDocument(
+      "b",
+      "full",
+      doc(),
+      { nodes, modules: [module("us/statute/7/2014", { waived: true })], attempts: [] },
+      AT
+    );
+    expect(waived.status).toBe("unvalidated");
     const missing = measureDocument("b", "full", doc(), { nodes: [], modules: [], attempts: [] }, AT);
     expect(missing).toMatchObject({ in_corpus: false, provisions: 0, status: "not_in_corpus" });
     const excluded = measureDocument("b", "full", doc({ scope: "excluded", reason: "Back-year table" }), null, AT);
     expect(excluded).toMatchObject({ status: null, reason: "Back-year table" });
   });
 
-  it("grades each provision PolicyEngine cites by the parity rule", () => {
+  it("grades each provision PolicyEngine cites by the rules that cite it", () => {
     const row = measureDocument(
       "us-az/snap",
       "screener",
@@ -123,11 +169,16 @@ describe("measureDocument", () => {
           { path: "us/statute/7/2014/c/1", references: 1, part: "Deductions" },
           { path: "us/statute/7/2014/c/2", references: 1, part: "Deductions" },
           { path: "us/statute/7/2014/b", references: 1, part: "Income" },
+          { path: "us/statute/7/2014", references: 1, part: "Income" },
         ],
       }),
       {
         nodes,
-        modules: [module("us/statute/7/2014/a"), module("us/statute/7/2014/c", "source: 7 U.S.C. 2014(c)(1) income")],
+        modules: [
+          module("us/statute/7/2014/a"),
+          // The (c) module's rules cite (c)(1) only, and defer (c)(2).
+          module("us/statute/7/2014/c", { cited: ["us/statute/7/2014/c/1"], deferred: ["us/statute/7/2014/c/2"] }),
+        ],
         attempts: [pipelineAttempt({ id: "9", citation: "us/statute/7/2014/b", run_status: "in_progress", run_conclusion: null })],
       },
       AT
@@ -135,22 +186,33 @@ describe("measureDocument", () => {
     expect(row.units.map((u) => [u.path, u.state, u.part])).toEqual([
       ["us/statute/7/2014/a", "encoded", "Income"],
       ["us/statute/7/2014/c/1", "encoded", "Deductions"],
-      ["us/statute/7/2014/c/2", "partly", "Deductions"],
+      ["us/statute/7/2014/c/2", "deferred", "Deductions"],
       ["us/statute/7/2014/b", "in_progress", "Income"],
+      // The whole section, as PolicyEngine cites it: rules cite parts of it.
+      ["us/statute/7/2014", "partly", "Income"],
     ]);
-    expect(row.units[1].detail).toBe("us/statute/7/2014/c names 2014(c)(1)");
-    expect(row.units[2].detail).toBe("us/statute/7/2014/c does not name 2014(c)(2)");
+    expect(row.units[1].detail).toBe("A rule in us/statute/7/2014/c cites it");
+    expect(row.units[2].detail).toBe("Deferred by us/statute/7/2014/c");
+    expect(row.units[4].name).toBe("7 USC 2014");
   });
 
   it("makes a cited document without cited provisions one unit, graded by its provisions", () => {
-    const poms = measureDocument(
+    const manual = measureDocument(
       "b",
       "screener",
-      doc({ key: "us/statute/7/2014", cited: undefined, part: "Assets" }),
-      { nodes, modules: [module("us/statute/7/2014/a")], attempts: [] },
+      doc({ key: "us-az/manual/x", citation_path: "us-az/manual/x", cited: undefined, part: "Assets" }),
+      {
+        nodes: [
+          { path: "us-az/manual/x", child_count: 2 },
+          { path: "us-az/manual/x/block-1", child_count: 0 },
+          { path: "us-az/manual/x/block-2", child_count: 0 },
+        ],
+        modules: [module("us-az/policy/x", { sources: ["us-az/manual/x/block-1"], cited: ["us-az/manual/x/block-1"] })],
+        attempts: [],
+      },
       AT
     );
-    expect(poms.units).toMatchObject([{ path: "us/statute/7/2014", state: "partly", part: "Assets", detail: "1 of 4 provisions encoded" }]);
+    expect(manual.units).toMatchObject([{ path: "us-az/manual/x", state: "partly", part: "Assets" }]);
     const web = measureDocument(
       "b",
       "screener",
@@ -159,21 +221,6 @@ describe("measureDocument", () => {
       AT
     );
     expect(web.units).toMatchObject([{ path: null, url: "https://fns.usda.gov/x", state: "not_in_corpus" }]);
-  });
-
-  it("counts a provision whose newest run reached the index as encoded", () => {
-    const row = measureDocument(
-      "b",
-      "full",
-      doc(),
-      {
-        nodes,
-        modules: [],
-        attempts: [mergedAttempt({ id: "5", citation: "us/statute/7/2014/a", synced_at: "2026-10-03T00:00:00Z", index_status: "indexed" })],
-      },
-      AT
-    );
-    expect(provisionCounts(row).encoded).toBe(1);
   });
 });
 
@@ -186,8 +233,16 @@ describe("tierCounts", () => {
     ];
     const counts = tierCounts(rows);
     expect(counts).toMatchObject({ documents: 2, excluded: 1, provisions: 4, units: 2 });
-    expect(counts.byStatus).toEqual({ complete: 0, partly: 1, not_started: 0, not_in_corpus: 1 });
-    expect(counts.byProvisionState).toEqual({ encoded: 1, partly: 0, in_progress: 0, failed: 0, not_started: 3 });
+    expect(counts.byStatus).toEqual({ complete: 0, unvalidated: 0, partly: 1, not_started: 0, not_in_corpus: 1 });
+    expect(counts.byProvisionState).toEqual({
+      encoded: 1,
+      unvalidated: 0,
+      partly: 0,
+      deferred: 0,
+      in_progress: 0,
+      failed: 0,
+      not_started: 3,
+    });
     expect(counts.byUnitState).toMatchObject({ encoded: 1, not_in_corpus: 1 });
   });
 });

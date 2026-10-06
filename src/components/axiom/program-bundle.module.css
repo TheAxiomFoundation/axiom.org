@@ -2,10 +2,11 @@
    tier, every cell a bar of its own units' states.
 
    States are status colors, checked with the dataviz palette validator on the
-   paper surface: encoded is the success green (partly encoded the same green,
-   lighter), in progress an amber, failed a red that also carries a hatch
-   (green and red sit close for deutan readers, so failed never relies on
-   color alone), not encoded yet a neutral, and not in the corpus a hatched
+   paper surface: encoded is the success green (encoded but not validated the
+   same green with a hatch, partly encoded the same green, lighter), deferred
+   a darker neutral, in progress an amber, failed a red that also carries a
+   hatch (green and red sit close for deutan readers, so failed never relies
+   on color alone), not encoded yet a neutral, and not in the corpus a hatched
    outline. Every state also has its name in the legend and the drawers. */
 
 .page {
@@ -13,6 +14,7 @@
   --state-partly: color-mix(in srgb, #166534 38%, var(--color-paper));
   --state-in-progress: #d39a3e;
   --state-failed: #b42318;
+  --state-deferred: color-mix(in srgb, var(--color-ink) 40%, var(--color-paper));
   --state-none: color-mix(in srgb, var(--color-ink) 13%, var(--color-paper));
   --state-missing: color-mix(in srgb, var(--color-ink) 38%, var(--color-paper));
   color: var(--color-ink);
@@ -22,8 +24,16 @@
   --fill: var(--state-encoded);
 }
 
+.page [data-shade="unvalidated"] {
+  --fill: repeating-linear-gradient(45deg, var(--state-encoded) 0 2px, var(--state-partly) 2px 4px);
+}
+
 .page [data-shade="partly"] {
   --fill: var(--state-partly);
+}
+
+.page [data-shade="deferred"] {
+  --fill: var(--state-deferred);
 }
 
 .page [data-shade="in_progress"] {
@@ -774,4 +784,14 @@ p.detailPath {
     border-top: 1px solid var(--color-rule);
     border-left: 0;
   }
+}
+
+.provenance {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px 28px;
+}
+
+.provenanceTier {
+  min-width: 0;
 }

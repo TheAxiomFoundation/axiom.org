@@ -2,7 +2,8 @@
 /**
  * Measure every program bundle: for each document of each delivery tier
  * (axiom-corpus manifests/program-bundles/*.yaml), whether the corpus serves
- * it, how many of its provisions a RuleSpec rule cites, which of the
+ * it, how many of its provisions a RuleSpec rule cites (read from each
+ * module's YAML, with its deferrals and validation waivers), which of the
  * provisions PolicyEngine cites are covered, and its newest encode run. The
  * /ops/bundles pages read only the tables this writes.
  *
@@ -29,7 +30,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import yaml from "js-yaml";
-import { measureDocument, moduleSources, tierCounts } from "../src/lib/axiom/program-bundles.ts";
+import { measureDocument, tierCounts } from "../src/lib/axiom/program-bundles.ts";
+import { moduleFacts, waivedModules } from "../src/lib/axiom/program-bundles-modules.ts";
 
 const CORPUS_REPO = "TheAxiomFoundation/axiom-corpus";
 const BUNDLE_DIR = "manifests/program-bundles";
@@ -91,13 +93,13 @@ async function readBundles() {
 }
 
 /** Every row a query returns, a page at a time. */
-async function pages(build) {
+async function pages(build, size = PAGE_SIZE) {
   const rows = [];
-  for (let offset = 0; ; offset += PAGE_SIZE) {
-    const { data, error } = await build().range(offset, offset + PAGE_SIZE - 1);
+  for (let offset = 0; ; offset += size) {
+    const { data, error } = await build().range(offset, offset + size - 1);
     if (error) throw new Error(error.message);
     rows.push(...data);
-    if (data.length < PAGE_SIZE) return rows;
+    if (data.length < size) return rows;
   }
 }
 
@@ -127,19 +129,40 @@ async function corpusTree(root) {
 const under = (path, root) => path === root || path.startsWith(`${root}/`);
 
 /**
- * Every module of the jurisdictions a bundle draws on, with the provisions it
- * encodes. A policy module's declared source is its rules' module-source rows
- * in the rule index.
+ * The module files each jurisdiction's RuleSpec repo merged under a
+ * validation waiver (its known-validation-gaps.yaml on main); a repo without
+ * the file waives nothing.
+ */
+async function readWaivers(jurisdictions) {
+  const waivers = new Set();
+  for (const jurisdiction of jurisdictions) {
+    const res = await fetch(
+      `https://raw.githubusercontent.com/TheAxiomFoundation/rulespec-${jurisdiction}/main/known-validation-gaps.yaml`,
+      { headers: { "User-Agent": "axiom-program-bundles" } }
+    );
+    if (res.status === 404) continue;
+    if (!res.ok) throw new Error(`read rulespec-${jurisdiction} known-validation-gaps.yaml: HTTP ${res.status}`);
+    for (const key of waivedModules(await res.text())) waivers.add(key);
+  }
+  return waivers;
+}
+
+/**
+ * Every module of the jurisdictions a bundle draws on, as the provisions its
+ * rules cite and defer (program-bundles-modules.ts). A policy module's
+ * declared source is its rules' module-source rows in the rule index.
  */
 async function readModules(jurisdictions) {
-  const [rows, declared] = await Promise.all([
-    pages(() =>
-      supabase
-        .from("rulespec_files")
-        .select("citation_path")
-        .in("jurisdiction", jurisdictions)
-        .not("citation_path", "is", null)
-        .order("citation_path")
+  const [rows, declared, waivers] = await Promise.all([
+    pages(
+      () =>
+        supabase
+          .from("rulespec_files")
+          .select("citation_path,jurisdiction,file_path,raw_yaml,source_citation_paths")
+          .in("jurisdiction", jurisdictions)
+          .not("citation_path", "is", null)
+          .order("citation_path"),
+      200
     ),
     pages(() =>
       supabase
@@ -150,43 +173,24 @@ async function readModules(jurisdictions) {
         .order("module_citation_path")
         .order("citation_path")
     ),
+    readWaivers(jurisdictions),
   ]);
   const sources = new Map();
   for (const row of declared) {
     sources.set(row.module_citation_path, [...new Set([...(sources.get(row.module_citation_path) ?? []), row.citation_path])]);
   }
-  return rows.map((row) => ({
-    module: row.citation_path,
-    sources: moduleSources({ citation_path: row.citation_path, declared_sources: sources.get(row.citation_path) ?? [] }),
-  }));
-}
-
-/** The YAML of modules the parity rule must read, by module path. */
-async function readYaml(modulePaths) {
-  const out = new Map();
-  for (let i = 0; i < modulePaths.length; i += 50) {
-    const { data, error } = await supabase
-      .from("rulespec_files")
-      .select("citation_path,raw_yaml")
-      .in("citation_path", modulePaths.slice(i, i + 50));
-    if (error) throw new Error(error.message);
-    for (const row of data) out.set(row.citation_path, row.raw_yaml);
-  }
-  return out;
+  return rows.map((row) => moduleFacts(row, sources.get(row.citation_path) ?? [], waivers));
 }
 
 async function telemetryFor(doc, modules, attempts) {
   const root = doc.citation_path;
   const nodes = await corpusTree(root);
-  // Modules whose source is in the document or holds it.
-  const relevant = modules.filter((m) => m.sources.some((s) => under(s, root) || under(root, s)));
-  // A section module credits a cited paragraph only when its YAML names it.
-  const cited = (doc.cited ?? []).map((c) => c.path);
-  const readers = relevant.filter((m) => m.sources.some((s) => cited.some((c) => c.startsWith(`${s}/`))));
-  const yaml = readers.length ? await readYaml(readers.map((m) => m.module)) : new Map();
+  // Modules that cite, defer or declare a provision in the document or above it.
+  const touches = (p) => under(p, root) || under(root, p);
+  const relevant = modules.filter((m) => [...m.sources, ...m.cited, ...m.deferred].some(touches));
   return {
     nodes,
-    modules: relevant.map((m) => (yaml.has(m.module) ? { ...m, yaml: yaml.get(m.module) } : m)),
+    modules: relevant,
     attempts: attempts.filter((a) => a.citation && under(a.citation, root)),
   };
 }
@@ -207,34 +211,28 @@ async function main() {
   const snapshotRows = [];
   for (const { source, bundle } of bundles) {
     const modules = await readModules([...new Set(["us", bundle.jurisdiction])]);
-    console.log(`${bundle.id}: read ${modules.length} modules`);
+    const deferred = modules.filter((m) => m.deferred.length).length;
+    const waived = modules.filter((m) => m.waived).length;
+    console.log(`${bundle.id}: read ${modules.length} modules (${deferred} defer something, ${waived} waived)`);
     const cache = new Map();
     for (const tier of bundle.tiers) {
       const rows = [];
       for (const doc of tier.documents) {
         let telemetry = null;
         if (doc.scope === "in" && doc.citation_path) {
-          const key = `${doc.citation_path}|${(doc.cited ?? []).map((c) => c.path).join(",")}`;
-          if (!cache.has(key)) cache.set(key, await telemetryFor(doc, modules, attempts));
-          telemetry = cache.get(key);
+          if (!cache.has(doc.citation_path)) cache.set(doc.citation_path, await telemetryFor(doc, modules, attempts));
+          telemetry = cache.get(doc.citation_path);
         }
         rows.push(measureDocument(bundle.id, tier.id, doc, telemetry, collectedAt));
       }
       documentRows.push(...rows);
       const counts = tierCounts(rows);
       snapshotRows.push({ bundle_id: bundle.id, tier: tier.id, day, counts });
-      const done = counts.byStatus.complete;
-      const p = counts.byProvisionState;
-      const u = counts.byUnitState;
+      const list = (counts) => Object.entries(counts).map(([state, n]) => `${n} ${state}`).join(", ");
       console.log(
         `${bundle.id} ${tier.id}: ${counts.documents} documents in scope (${counts.excluded} excluded): ` +
-          `${done} complete, ${counts.byStatus.partly} partly, ${counts.byStatus.not_started} not started, ` +
-          `${counts.byStatus.not_in_corpus} not in the corpus; ${counts.provisions} provisions: ${p.encoded} encoded, ` +
-          `${p.partly} partly, ${p.in_progress} in progress, ${p.failed} failed, ${p.not_started} not started` +
-          (counts.units
-            ? `; ${counts.units} cited units: ${u.encoded} encoded, ${u.partly} partly, ${u.in_progress} in progress, ` +
-              `${u.failed} failed, ${u.not_encoded} not encoded, ${u.not_in_corpus} not in the corpus`
-            : "")
+          `${list(counts.byStatus)}; ${counts.provisions} provisions: ${list(counts.byProvisionState)}` +
+          (counts.units ? `; ${counts.units} cited units: ${list(counts.byUnitState)}` : "")
       );
     }
     bundleRows.push({

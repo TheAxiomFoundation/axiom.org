@@ -31,31 +31,37 @@ create table if not exists encodings.program_bundle_documents (
   part                text not null,       -- the part of the program it feeds (calculation or manual part)
   scope               text not null,       -- in | excluded
   reason              text,                -- why an excluded document is out
+  note                text,                -- why a known source is listed though the corpus lacks it
   citation_path       text,
   source_url          text,
-  sources             text[] not null default '{}',  -- plan | policyengine-references
+  sources             text[] not null default '{}',  -- plan | policyengine-references | screener | schema:<element> | <manifest> | known-source
   manifest            text,                -- the source manifest that registers it
   in_corpus           boolean not null,
   -- The document's text-bearing provisions (corpus leaves), each in one
-  -- state: encoded (a module's source is it or a provision above it),
-  -- partly (a module encodes only part of it), in progress or failed (its
-  -- newest encode run), or not started (the rest).
+  -- state: encoded (a rule cites it or a provision above it, and nothing in
+  -- it is deferred), unvalidated (encoded, but every such module merged
+  -- under a validation waiver), partly (rules cite only parts of it, or a
+  -- part is deferred), deferred (a module defers it and no rule cites it),
+  -- in progress or failed (its newest encode run; runs give no credit), or
+  -- not started (the rest).
   provisions              integer not null,
   encoded_provisions      integer not null,
+  unvalidated_provisions  integer not null,
   partly_provisions       integer not null,
+  deferred_provisions     integer not null,
   provisions_in_progress  integer not null,
   provisions_failed       integer not null,
   open_provisions         jsonb not null default '[]',  -- [{path, state, stage, citation, at}], newest first
-  modules             integer not null,    -- distinct modules whose source is in the document
+  modules             integer not null,    -- distinct modules with a rule that cites the document
   -- Screener tier only: each provision PolicyEngine cites, graded by the
-  -- parity rule: [{key, name, path, url, part, references, state, detail, run}].
+  -- same rule: [{key, name, path, url, part, references, state, detail, run}].
   units               jsonb not null default '[]',
   runs                integer not null,    -- targeted encode runs for citations in the document
   latest_citation     text,
   latest_run_at       timestamptz,
   latest_stage        text,                -- the pipeline stage of the newest run
   latest_run_url      text,
-  status              text,                -- complete | partly | not_started | not_in_corpus; null when excluded
+  status              text,                -- complete | unvalidated | partly | not_started | not_in_corpus; null when excluded
   collected_at        timestamptz not null,
   primary key (bundle_id, tier, key)
 );
