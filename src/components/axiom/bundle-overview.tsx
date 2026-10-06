@@ -7,26 +7,8 @@ import type { BundleSummary } from "@/lib/axiom/program-bundles-data";
 
 const number = (value: number) => value.toLocaleString("en-US");
 
-/** The core programs, in the order the plan names them. */
-const PROGRAM_ORDER = [
-  "snap",
-  "medicaid",
-  "chip",
-  "tanf",
-  "ssi",
-  "ccdf",
-  "liheap",
-  "wic",
-  "ui",
-  "medicare",
-  "income_tax",
-  "eitc",
-  "ctc",
-];
-
 type Count = "documents" | "provisions";
 type View = "program" | "jurisdiction";
-type Sort = BundleTierId | "name";
 
 interface Share {
   done: number;
@@ -94,22 +76,22 @@ interface Row {
  * documents in each program, so the federal and the state parts stay apart.
  */
 export function BundleOverview({ bundles }: { bundles: BundleSummary[] }) {
-  const programs = [...new Set(bundles.map((b) => b.program))].sort(
-    (a, b) => (PROGRAM_ORDER.indexOf(a) + 1 || 99) - (PROGRAM_ORDER.indexOf(b) + 1 || 99) || a.localeCompare(b)
-  );
-  const jurisdictions = [...new Set(bundles.map((b) => b.jurisdiction).filter((j) => j !== "us"))];
-  const [view, setView] = useState<View>("program");
-  const [count, setCount] = useState<Count>("documents");
-  const [program, setProgram] = useState(programs[0]);
-  const [jurisdiction, setJurisdiction] = useState("us");
-  const [sort, setSort] = useState<Sort>("screener");
-  // The tier the left list summarizes; choosing one also sorts the right side by it.
-  const [tier, setTier] = useState<BundleTierId>("screener");
-  if (!bundles.length) return null;
-
   const byId = new Map(bundles.map((b) => [b.id, b]));
   const programTitle = (p: string) =>
     byId.get(`us/${p}`)?.title.replace(/: federal law$/, "") ?? p.toUpperCase();
+  // Everything in alphabetical order.
+  const alphabetical = <T,>(items: T[], label: (item: T) => string) =>
+    [...items].sort((a, b) => label(a).localeCompare(label(b)));
+  const programs = alphabetical([...new Set(bundles.map((b) => b.program))], programTitle);
+  const jurisdictions = [...new Set(bundles.map((b) => b.jurisdiction).filter((j) => j !== "us"))];
+  const [view, setView] = useState<View>("program");
+  const [count, setCount] = useState<Count>("documents");
+  const [program, setProgram] = useState(programs.includes("snap") ? "snap" : programs[0]);
+  const [jurisdiction, setJurisdiction] = useState("us");
+  // The tier the left list summarizes.
+  const [tier, setTier] = useState<BundleTierId>("screener");
+  if (!bundles.length) return null;
+
   const stateName = (j: string) => {
     const any = bundles.find((b) => b.jurisdiction === j);
     return any ? any.title.replace(new RegExp(` ${programTitle(any.program)}$`), "") : j;
@@ -187,32 +169,9 @@ export function BundleOverview({ bundles }: { bundles: BundleSummary[] }) {
             href: link(`${jurisdiction}/${p}`),
             share: (t: BundleTierId) => ownShare(jurisdiction, p, t),
           }));
-  const pinned = rows.filter((r) => r.pinned);
-  const sorted = rows
-    .filter((r) => !r.pinned)
-    .sort((a, b) =>
-      sort === "name"
-        ? view === "program"
-          ? a.label.localeCompare(b.label)
-          : PROGRAM_ORDER.indexOf(a.key.split("/")[1]) - PROGRAM_ORDER.indexOf(b.key.split("/")[1])
-        : // Nothing to count yet goes last.
-          Number(!a.share(sort).total) - Number(!b.share(sort).total) ||
-          ratio(b.share(sort)) - ratio(a.share(sort)) ||
-          a.label.localeCompare(b.label)
-    );
-
+  // The federal law first, then the rest in alphabetical order.
+  const ordered = [...rows.filter((r) => r.pinned), ...alphabetical(rows.filter((r) => !r.pinned), (r) => r.label)];
   const selectedLabel = groups.find((g) => g.key === selected)?.label ?? selected;
-  const head = (key: Sort, label: string) => (
-    <th scope="col" aria-sort={sort === key ? (key === "name" ? "ascending" : "descending") : undefined}>
-      <button type="button" onClick={() => setSort(key)}>
-        {label}
-      </button>
-    </th>
-  );
-  const chooseTier = (next: BundleTierId) => {
-    setTier(next);
-    setSort(next);
-  };
 
   return (
     <section className={styles.card} aria-labelledby="ops-bundles">
@@ -238,10 +197,7 @@ export function BundleOverview({ bundles }: { bundles: BundleSummary[] }) {
                 type="button"
                 role="radio"
                 aria-checked={view === value}
-                onClick={() => {
-                  setView(value);
-                  setSort(tier);
-                }}
+                onClick={() => setView(value)}
               >
                 {value === "program" ? "By program" : "By state"}
               </button>
@@ -269,7 +225,7 @@ export function BundleOverview({ bundles }: { bundles: BundleSummary[] }) {
                   type="button"
                   role="radio"
                   aria-checked={tier === value}
-                  onClick={() => chooseTier(value)}
+                  onClick={() => setTier(value)}
                 >
                   {value === "screener" ? "Tier 1" : "Tier 2"}
                 </button>
@@ -309,13 +265,13 @@ export function BundleOverview({ bundles }: { bundles: BundleSummary[] }) {
           >
             <thead>
               <tr>
-                {head("name", view === "program" ? "State" : "Program")}
-                {head("screener", "Tier 1 · screener parity")}
-                {head("full", "Tier 2 · full bundle")}
+                <th scope="col">{view === "program" ? "State" : "Program"}</th>
+                <th scope="col">Tier 1 · screener parity</th>
+                <th scope="col">Tier 2 · full bundle</th>
               </tr>
             </thead>
             <tbody>
-              {[...pinned, ...sorted].map((row) => (
+              {ordered.map((row) => (
                 <tr key={row.key} className={row.pinned ? styles.federal : undefined}>
                   <th scope="row">
                     <a href={row.href}>{row.label}</a>

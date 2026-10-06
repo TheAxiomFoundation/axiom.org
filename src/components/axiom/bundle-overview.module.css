@@ -230,21 +230,6 @@
   vertical-align: middle;
 }
 
-.table thead button {
-  padding: 0;
-  border: 0;
-  background: none;
-  font: inherit;
-  letter-spacing: inherit;
-  text-transform: inherit;
-  color: inherit;
-  cursor: pointer;
-}
-
-.table thead th[aria-sort] button {
-  color: var(--color-ink);
-}
-
 .table tbody th {
   font-weight: 500;
   white-space: nowrap;

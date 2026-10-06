@@ -44,13 +44,19 @@ describe("BundleOverview", () => {
     );
     const table = screen.getByRole("table", { name: "SNAP by state" });
     const rows = within(table).getAllByRole("row").slice(1);
+    // The federal law first, then the states in alphabetical order.
     expect(rows.map((r) => within(r).getByRole("rowheader").textContent)).toEqual([
       "Federal lawshared by every state",
-      "California",
       "Arizona",
+      "California",
     ]);
-    expect(rows[2]).toHaveTextContent("2%1 of 58 documents2%4 of 187 documents");
-    expect(within(rows[2]).getByRole("link", { name: "Arizona" })).toHaveAttribute("href", "/ops/bundles/us-az/snap");
+    expect(rows[1]).toHaveTextContent("2%1 of 58 documents2%4 of 187 documents");
+    expect(within(rows[1]).getByRole("link", { name: "Arizona" })).toHaveAttribute("href", "/ops/bundles/us-az/snap");
+    // The programs in alphabetical order too.
+    expect(within(programs).getAllByRole("button").map((b) => b.textContent?.replace(/\d+%$/, ""))).toEqual([
+      "Medicaid",
+      "SNAP",
+    ]);
   });
 
   it("counts provisions on request, opening each bundle in that count, and switches program", () => {
@@ -64,7 +70,7 @@ describe("BundleOverview", () => {
     expect(screen.getByRole("table", { name: "Medicaid by state" })).toBeInTheDocument();
   });
 
-  it("gives the programs' completeness in either tier, and sorts the states by it", () => {
+  it("gives the programs' completeness in either tier", () => {
     render(<BundleOverview bundles={bundles} />);
     const toggle = screen.getByRole("radiogroup", { name: "Completeness, by tier" });
     fireEvent.click(within(toggle).getByRole("radio", { name: "Tier 2" }));
@@ -73,7 +79,6 @@ describe("BundleOverview", () => {
       "title",
       "SNAP: 8 of 233 documents complete, across the federal law and 2 states"
     );
-    expect(screen.getByRole("columnheader", { name: "Tier 2 · full bundle" })).toHaveAttribute("aria-sort", "descending");
   });
 
   it("views by state: the federal law and each state count only their own documents", () => {
@@ -96,12 +101,5 @@ describe("BundleOverview", () => {
     const snap = within(arizona).getByRole("link", { name: "SNAP" });
     expect(snap).toHaveAttribute("href", "/ops/bundles/us-az/snap");
     expect(snap.closest("tr")).toHaveTextContent("SNAP0%0 of 2 documents7%3 of 43 documents");
-  });
-
-  it("sorts the states by name", () => {
-    render(<BundleOverview bundles={bundles} />);
-    fireEvent.click(screen.getByRole("button", { name: "State" }));
-    const rows = within(screen.getByRole("table", { name: "SNAP by state" })).getAllByRole("row").slice(2);
-    expect(rows.map((r) => within(r).getByRole("rowheader").textContent)).toEqual(["Arizona", "California"]);
   });
 });
