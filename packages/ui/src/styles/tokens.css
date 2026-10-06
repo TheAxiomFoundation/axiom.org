@@ -32,6 +32,7 @@
   /* Code surfaces */
   --color-code-bg: #1c1917;
   --color-code-text: #e7e5e4;
+  --color-code-selection: #755b1c;
   --color-code-comment: #a8a29e;
   --color-code-keyword: #fbbf24;
   --color-code-string: #fdba74;
@@ -116,6 +117,15 @@ body::after {
 ::selection {
   background: rgba(146, 64, 14, 0.15);
   color: var(--color-ink);
+}
+
+/* The paper selection puts near-black ink on a faint amber wash, which
+   vanishes on the near-black code surface. Selected code reads as code
+   text on a solid amber band instead (5.12:1). */
+.code-syntax::selection,
+.code-syntax ::selection {
+  background: var(--color-code-selection);
+  color: var(--color-code-text);
 }
 
 h1, h2, h3, h4, h5, h6 {
