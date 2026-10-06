@@ -1,15 +1,21 @@
-import { ArrowLeft, Check, Circle, Dot, X } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import dashboard from "./ops-dashboard.module.css";
 import styles from "./pipeline-journey.module.css";
+import { RunTimeline } from "./run-timeline";
 import {
   ageLabel,
   attemptStage,
   journeySteps,
   STAGE_COPY,
   stageSince,
-  type JourneyStep,
   type PipelineAttempt,
 } from "@/lib/axiom/encoding-pipeline";
+import {
+  runRow,
+  runTimeline,
+  type TimelineDetails,
+  type TimelineStep,
+} from "@/lib/axiom/encoding-pipeline-runs";
 
 /** One citation's every dispatch, each as the row of stages it reached. */
 export function PipelineJourney({
@@ -69,11 +75,9 @@ export function PipelineJourney({
                   {attempt.cost_usd != null && ` · $${Number(attempt.cost_usd).toFixed(2)}`}
                 </span>
               </div>
-              <ol className={styles.steps}>
-                {journeySteps(attempt).map((step) => (
-                  <Step key={step.key} step={step} />
-                ))}
-              </ol>
+              <div className={styles.runTimeline}>
+                <RunTimeline timeline={runTimeline(runRow(attempt), referenceMs, journeyDetails(attempt))} />
+              </div>
             </li>
           ))}
         </ol>
@@ -82,45 +86,37 @@ export function PipelineJourney({
   );
 }
 
-const STATE_ICON = {
-  done: Check,
-  active: Dot,
-  failed: X,
-  pending: Circle,
-} as const;
-
-const STATE_TEXT = {
+const STEP_STATE: Record<"done" | "active" | "failed" | "pending", TimelineStep["state"]> = {
   done: "done",
-  active: "in progress",
-  failed: "stopped here",
-  pending: "not reached",
-} as const;
+  active: "waiting",
+  failed: "failed",
+  pending: "waiting",
+};
 
-function Step({ step }: { step: JourneyStep }) {
-  const Icon = STATE_ICON[step.state];
-  return (
-    <li className={styles.step} data-state={step.state}>
-      <span className={styles.marker}>
-        <Icon size={12} strokeWidth={2.5} aria-hidden />
-        <span className="sr-only">{STATE_TEXT[step.state]}</span>
-      </span>
-      <div className={styles.stepBody}>
-        <p className={styles.stepLabel}>
-          {step.href ? (
-            <a href={step.href} target="_blank" rel="noreferrer">
-              {step.label}
-            </a>
-          ) : (
-            step.label
-          )}
-        </p>
-        {step.at && step.state !== "pending" && (
-          <p className={styles.stepTime}>{formatTime(step.at)}</p>
-        )}
-        {step.detail && <p className={styles.stepDetail}>{step.detail}</p>}
-      </div>
-    </li>
-  );
+/**
+ * What the journey knows beyond a run row, for its timeline: the full
+ * failure text, the PR's checks and review and the branch it merged into,
+ * the modules indexed, and, after the tests on main, the compile sweep and
+ * the oracle comparison.
+ */
+function journeyDetails(attempt: PipelineAttempt): TimelineDetails {
+  const steps = Object.fromEntries(journeySteps(attempt).map((step) => [step.key, step]));
+  const review = [steps.pr.detail, steps.merged.detail].filter(Boolean).join(" · ");
+  return {
+    stopped: steps.encoded.state === "failed" ? steps.encoded.detail : null,
+    review: review || null,
+    index: steps.indexed.detail,
+    extra: [steps.compiled, steps.oracle]
+      .filter((step) => step.state !== "pending" || step.detail)
+      .map((step) => ({
+        key: step.key,
+        label: step.label,
+        ms: null,
+        state: STEP_STATE[step.state],
+        detail: step.detail,
+        href: step.href,
+      })),
+  };
 }
 
 function formatTime(iso: string): string {
