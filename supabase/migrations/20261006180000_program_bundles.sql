@@ -35,7 +35,14 @@ create table if not exists encodings.program_bundle_documents (
   manifest            text,                -- the source manifest that registers it
   in_corpus           boolean not null,
   provisions          integer not null,    -- corpus provisions under the document, itself included
-  encoded_provisions  integer not null,    -- of those, the ones a rule cites or a module encodes
+  -- Every provision has one state: encoded (a rule in the index cites it, or
+  -- its latest run's module reached the index), in progress (latest run under
+  -- way, in review, or merged and waiting for the index), failed (latest run
+  -- failed, PR closed or merged into another branch), or not started (the rest).
+  encoded_provisions      integer not null,
+  provisions_in_progress  integer not null,
+  provisions_failed       integer not null,
+  open_provisions         jsonb not null default '[]',  -- [{path, state, stage, citation, at}], newest first
   rules               integer not null,    -- distinct rules that cite the document
   cited_total         integer not null,    -- provisions PolicyEngine cites in the document
   cited_covered       integer not null,    -- of those, encoded by a rule at or below them
@@ -56,7 +63,7 @@ create table if not exists encodings.program_bundle_snapshots (
   bundle_id  text not null references encodings.program_bundles (id) on delete cascade,
   tier       text not null,
   day        date not null,
-  counts     jsonb not null,               -- documents, excluded, byStatus, provisions, encodedProvisions, cited*
+  counts     jsonb not null,               -- documents, excluded, byStatus, provisions, byProvisionState, cited*
   primary key (bundle_id, tier, day)
 );
 

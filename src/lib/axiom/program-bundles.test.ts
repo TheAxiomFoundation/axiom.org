@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { pipelineAttempt } from "@/test/pipeline-attempt";
+import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 import {
   bundleIndex,
   bundleMemberships,
   documentGroup,
   measureDocument,
   tierCounts,
+  provisionCounts,
   tiersLabel,
   type BundleFileDocument,
 } from "./program-bundles";
@@ -117,6 +118,39 @@ describe("measureDocument", () => {
   });
 });
 
+describe("provision states", () => {
+  it("gives every provision one state from the rule index and its latest run, adding up to all provisions", () => {
+    const nodes = [...tree, "us/statute/7/2014/d", "us/statute/7/2014/e"];
+    const row = measureDocument(
+      "us-az/snap",
+      "screener",
+      doc(),
+      {
+        nodes,
+        ruleCitations: [{ citation_path: "us/statute/7/2014/a", rule: "a#x" }],
+        attempts: [
+          // Encoded already: a newer failed run does not undo it.
+          pipelineAttempt({ id: "1", citation: "us/statute/7/2014/a", dispatched_at: "2026-10-04T00:00:00Z" }),
+          // Running now.
+          pipelineAttempt({ id: "2", citation: "us/statute/7/2014/b/1", run_status: "in_progress", run_conclusion: null }),
+          // Failed, then failed again: one failed provision.
+          pipelineAttempt({ id: "3", citation: "us/statute/7/2014/c", dispatched_at: "2026-10-01T00:00:00Z" }),
+          pipelineAttempt({ id: "4", citation: "us/statute/7/2014/c", dispatched_at: "2026-10-02T00:00:00Z" }),
+          // Merged and indexed, though no rule cites this exact path yet.
+          mergedAttempt({ id: "5", citation: "us/statute/7/2014/d", synced_at: "2026-10-03T00:00:00Z", index_status: "indexed" }),
+        ],
+      },
+      AT
+    );
+    expect(provisionCounts(row)).toEqual({ encoded: 2, in_progress: 1, failed: 1, not_started: 2 });
+    expect(row.open_provisions.map((p) => [p.path, p.state, p.stage])).toEqual([
+      ["us/statute/7/2014/c", "failed", "encode_failed"],
+      ["us/statute/7/2014/b", "in_progress", "encoding"],
+    ]);
+    expect(row.open_provisions[1].citation).toBe("us/statute/7/2014/b/1");
+  });
+});
+
 describe("tierCounts", () => {
   it("counts documents in scope by status, and adds their provisions and cited provisions", () => {
     const rows = [
@@ -127,6 +161,7 @@ describe("tierCounts", () => {
     const counts = tierCounts(rows);
     expect(counts).toMatchObject({ documents: 2, excluded: 1, provisions: 4, encodedProvisions: 1 });
     expect(counts.byStatus).toEqual({ encoded: 0, partly_encoded: 1, not_encoded: 0, not_in_corpus: 1 });
+    expect(counts.byProvisionState).toEqual({ encoded: 1, in_progress: 0, failed: 0, not_started: 3 });
   });
 });
 

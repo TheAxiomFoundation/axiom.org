@@ -65,28 +65,30 @@ const documents = [
 ];
 
 describe("ProgramBundle", () => {
-  it("shows each tier's encoded documents, a status bar and the status counts", () => {
+  it("counts each tier's provisions by state, exactly and adding up to all of them", () => {
     render(<ProgramBundle bundle={bundle} documents={documents} available referenceMs={NOW} />);
     expect(screen.getByRole("heading", { name: "Arizona SNAP" })).toBeInTheDocument();
+    const tier = screen.getByRole("region", { name: "Screener-level parity" });
+    expect(within(tier).getByText(/of 3 provisions encoded/)).toHaveTextContent("2 of 3 provisions encoded");
+    const rows = within(tier).getByRole("list", { name: "Screener-level parity provisions by state" });
+    expect(within(rows).getAllByRole("button").map((b) => b.textContent)).toEqual([
+      "Encoded267%",
+      "In progress00%",
+      "Failed00%",
+      "Not started133%",
+    ]);
+    expect(within(tier).getByText(/1 encoded · 0 inside · 0 not encoded/)).toBeInTheDocument();
     const tabs = screen.getAllByRole("tab");
     expect(tabs.map((t) => t.textContent)).toEqual(["Screener-level parity", "Full document bundle"]);
-    const legend = screen.getByRole("list", { name: "Screener-level parity by status" });
-    expect(within(legend).getAllByRole("button").map((b) => b.textContent)).toEqual([
-      "Encoded1",
-      "Partly encoded1",
-      "No rules yet0",
-      "Not in the corpus0",
-    ]);
-    expect(screen.getByText(/1 encoded · 0 inside · 0 not encoded/)).toBeInTheDocument();
   });
 
   it("opens a document from the map, with its provisions and what PolicyEngine cites", () => {
     render(<ProgramBundle bundle={bundle} documents={documents} available referenceMs={NOW} />);
-    fireEvent.click(screen.getByRole("button", { name: "7 USC 2014: Partly encoded" }));
+    fireEvent.click(screen.getByRole("button", { name: "7 USC 2014: 1 encoded · 1 not started" }));
     const detail = screen.getByRole("complementary", { name: "Document" });
     expect(within(detail).getByRole("heading", { name: "7 USC 2014" })).toBeInTheDocument();
     expect(within(detail).getByRole("link", { name: "us/statute/7/2014" })).toHaveAttribute("href", "/us/statute/7/2014");
-    expect(within(detail).getByText("1 of 2")).toBeInTheDocument();
+    expect(within(detail).getByText("Not started").parentElement).toHaveTextContent("Not started1");
     expect(within(detail).getByText("/a")).toBeInTheDocument();
   });
 

@@ -57,6 +57,38 @@ export const STATUS_LABELS: Record<DocumentStatus, string> = {
   not_in_corpus: "Not in the corpus",
 };
 
+/**
+ * Where one provision stands; every provision of a document has exactly one.
+ * Encoded: a rule in the index cites it or a provision below it, or its
+ * latest run's module reached the index. In progress: its latest run is
+ * running, waiting for approval, in review, or merged and waiting for the
+ * index. Failed: its latest run failed, or its PR closed or merged into
+ * another branch. Not started: no rule and no run.
+ */
+export type ProvisionState = "encoded" | "in_progress" | "failed" | "not_started";
+
+export const PROVISION_STATES: ProvisionState[] = ["encoded", "in_progress", "failed", "not_started"];
+
+export const PROVISION_LABELS: Record<ProvisionState, string> = {
+  encoded: "Encoded",
+  in_progress: "In progress",
+  failed: "Failed",
+  not_started: "Not started",
+};
+
+const IN_INDEX: PipelineStage[] = ["indexed", "runs", "verified", "compile_failed", "tests_failing", "oracle_disagrees"];
+const UNDER_WAY: PipelineStage[] = ["encoding", "review", "awaiting_sync", "not_indexed"];
+
+/** A provision whose latest run is under way or failed, for the document's drill-down. */
+export interface OpenProvision {
+  path: string;
+  state: "in_progress" | "failed";
+  stage: PipelineStage;
+  /** The run's own citation, for its journey (it may be below the provision). */
+  citation: string;
+  at: string;
+}
+
 /** One row of encodings.program_bundle_documents: a document and its measure. */
 export interface BundleDocumentRow {
   bundle_id: string;
@@ -74,8 +106,12 @@ export interface BundleDocumentRow {
   in_corpus: boolean;
   /** Provisions the corpus serves under the document, itself included. */
   provisions: number;
-  /** Of those, the ones a rule cites, itself or below it. */
+  /** Of those: encoded, in progress, failed; the rest are not started. */
   encoded_provisions: number;
+  provisions_in_progress: number;
+  provisions_failed: number;
+  /** The provisions in progress or failed, newest run first. */
+  open_provisions: OpenProvision[];
   /** Distinct rules that cite the document. */
   rules: number;
   /** PolicyEngine-cited provisions of the document: how many, how many a rule encodes, how many sit inside an encoded provision. */
@@ -176,6 +212,32 @@ export function measureDocument(
     const node = holdingNode(citation.citation_path, nodes);
     if (node) encoded.add(node);
   }
+  // Each provision's latest run: a run on a path deeper than the corpus
+  // splits counts toward the provision that holds it.
+  const latestRun = new Map<string, PipelineAttempt>();
+  for (const attempt of telemetry?.attempts ?? []) {
+    const node = attempt.citation ? holdingNode(attempt.citation, nodes) : null;
+    if (!node || !root || !under(node, root)) continue;
+    const seen = latestRun.get(node);
+    if (!seen || attempt.dispatched_at > seen.dispatched_at) latestRun.set(node, attempt);
+  }
+  const open: OpenProvision[] = [];
+  for (const [node, attempt] of latestRun) {
+    if (encoded.has(node)) continue;
+    const stage = attemptStage(attempt);
+    if (IN_INDEX.includes(stage)) {
+      encoded.add(node);
+    } else {
+      open.push({
+        path: node,
+        state: UNDER_WAY.includes(stage) ? "in_progress" : "failed",
+        stage,
+        citation: attempt.citation,
+        at: attempt.dispatched_at,
+      });
+    }
+  }
+  open.sort((a, b) => b.at.localeCompare(a.at));
   const cited: CitedProvision[] = (doc.cited ?? []).map(({ path, references }) => ({
     path,
     references,
@@ -204,6 +266,9 @@ export function measureDocument(
     in_corpus: inCorpus,
     provisions: inCorpus ? nodes.size : 0,
     encoded_provisions: inCorpus ? encoded.size : 0,
+    provisions_in_progress: inCorpus ? open.filter((p) => p.state === "in_progress").length : 0,
+    provisions_failed: inCorpus ? open.filter((p) => p.state === "failed").length : 0,
+    open_provisions: inCorpus ? open : [],
     rules: new Set(citations.map((c) => c.rule)).size,
     cited_total: cited.length,
     cited_covered: cited.filter((c) => c.state === "encoded").length,
@@ -227,6 +292,8 @@ export interface TierCounts {
   byStatus: Record<DocumentStatus, number>;
   provisions: number;
   encodedProvisions: number;
+  /** Provisions by state; they add up to the provisions. */
+  byProvisionState: Record<ProvisionState, number>;
   citedTotal: number;
   citedCovered: number;
   citedWithin: number;
@@ -244,6 +311,12 @@ export function tierCounts(rows: BundleDocumentRow[]): TierCounts {
     byStatus,
     provisions: sum((r) => r.provisions),
     encodedProvisions: sum((r) => r.encoded_provisions),
+    byProvisionState: {
+      encoded: sum((r) => r.encoded_provisions),
+      in_progress: sum((r) => r.provisions_in_progress),
+      failed: sum((r) => r.provisions_failed),
+      not_started: sum((r) => r.provisions - r.encoded_provisions - r.provisions_in_progress - r.provisions_failed),
+    },
     citedTotal: sum((r) => r.cited_total),
     citedCovered: sum((r) => r.cited_covered),
     citedWithin: sum((r) => r.cited_within),
@@ -328,4 +401,14 @@ export function bundleMemberships(citation: string, index: BundleIndexEntry[]): 
 export function tiersLabel(membership: BundleMembership): string {
   const indexes = membership.tiers.map((t) => t.index);
   return `${indexes.length === 1 ? "Tier" : "Tiers"} ${indexes.join(", ")}`;
+}
+
+/** A document's provisions by state; they add up to its provisions. */
+export function provisionCounts(row: Pick<BundleDocumentRow, "provisions" | "encoded_provisions" | "provisions_in_progress" | "provisions_failed">): Record<ProvisionState, number> {
+  return {
+    encoded: row.encoded_provisions,
+    in_progress: row.provisions_in_progress,
+    failed: row.provisions_failed,
+    not_started: Math.max(0, row.provisions - row.encoded_provisions - row.provisions_in_progress - row.provisions_failed),
+  };
 }
