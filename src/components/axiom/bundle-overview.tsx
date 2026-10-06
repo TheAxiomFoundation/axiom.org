@@ -25,6 +25,7 @@ const PROGRAM_ORDER = [
 ];
 
 type Count = "documents" | "provisions";
+type View = "program" | "jurisdiction";
 type Sort = BundleTierId | "name";
 
 interface Share {
@@ -32,18 +33,21 @@ interface Share {
   total: number;
 }
 
+const ZERO: Share = { done: 0, total: 0 };
+
 /** A tier's headline, as its bundle page leads with it: documents complete, or provisions encoded. */
 function shareOf(counts: TierCounts | undefined, count: Count): Share {
-  if (!counts) return { done: 0, total: 0 };
+  if (!counts) return ZERO;
   if (count === "documents") {
     return { done: counts.byStatus.complete + counts.byStatus.unvalidated, total: counts.documents };
   }
   return { done: counts.byProvisionState.encoded + counts.byProvisionState.unvalidated, total: counts.provisions };
 }
 
+const add = (a: Share, b: Share): Share => ({ done: a.done + b.done, total: a.total + b.total });
+const less = (a: Share, b: Share): Share => ({ done: a.done - b.done, total: a.total - b.total });
 const ratio = (s: Share) => (s.total ? s.done / s.total : 0);
 const percent = (s: Share) => (s.total ? `${Math.round(ratio(s) * 100)}%` : "—");
-
 
 /** One share as a bar: encoded in green on a grey track, the exact count beside it. */
 function Meter({ share, unit }: { share: Share; unit: string }) {
@@ -60,56 +64,144 @@ function Meter({ share, unit }: { share: Share; unit: string }) {
   );
 }
 
+/** A left-hand row: a program, or a jurisdiction, with its completeness. */
+interface Group {
+  key: string;
+  label: string;
+  share: (tier: BundleTierId) => Share;
+  note: string;
+}
+
+/** A right-hand row: one bundle (or one layer of it), with both tiers. */
+interface Row {
+  key: string;
+  label: string;
+  sub?: string;
+  href: string;
+  share: (tier: BundleTierId) => Share;
+  pinned?: boolean;
+}
+
 /**
- * Every program bundle, in two steps: the programs, each with its
- * completeness across the federal law and every state; then the chosen
- * program's federal law and each state, with
- * both tiers side by side and the exact counts. Each share is the number the
- * bundle's page leads with, in the same count; a state opens its bundle.
+ * Every program bundle, in two steps, viewed by program or by jurisdiction.
+ *
+ * By program: the programs, each with its completeness (the federal law once
+ * and each state's own documents once); then the chosen program's federal law
+ * and each state's bundle as its page shows it (the state and the federal law).
+ *
+ * By state: the federal law and each state, each with the completeness of its
+ * own documents across every program; then the chosen jurisdiction's own
+ * documents in each program, so the federal and the state parts stay apart.
  */
 export function BundleOverview({ bundles }: { bundles: BundleSummary[] }) {
   const programs = [...new Set(bundles.map((b) => b.program))].sort(
     (a, b) => (PROGRAM_ORDER.indexOf(a) + 1 || 99) - (PROGRAM_ORDER.indexOf(b) + 1 || 99) || a.localeCompare(b)
   );
+  const jurisdictions = [...new Set(bundles.map((b) => b.jurisdiction).filter((j) => j !== "us"))];
+  const [view, setView] = useState<View>("program");
   const [count, setCount] = useState<Count>("documents");
   const [program, setProgram] = useState(programs[0]);
+  const [jurisdiction, setJurisdiction] = useState("us");
   const [sort, setSort] = useState<Sort>("screener");
-  // The tier the program list summarizes; choosing one also sorts the states by it.
+  // The tier the left list summarizes; choosing one also sorts the right side by it.
   const [tier, setTier] = useState<BundleTierId>("screener");
-  const chooseTier = (next: BundleTierId) => {
-    setTier(next);
-    setSort(next);
-  };
   if (!bundles.length) return null;
 
   const byId = new Map(bundles.map((b) => [b.id, b]));
-  const title = (p: string) => byId.get(`us/${p}`)?.title.replace(/: federal law$/, "") ?? p.toUpperCase();
-  const unit = (tier: BundleTierId) =>
-    count === "documents" ? "documents" : tier === "screener" ? "cited provisions" : "provisions";
-  const statesOf = (p: string) => bundles.filter((b) => b.program === p && b.jurisdiction !== "us");
-  /**
-   * A program's completeness: every document (or provision) of its bundles,
-   * each once. A state's counts add the federal layer, and counts add up, so
-   * the federal layer counts once and each state adds only its own.
-   */
-  const completeness = (p: string, t: BundleTierId): Share => {
-    const federalShare = shareOf(byId.get(`us/${p}`)?.counts[t], count);
-    return statesOf(p).reduce(
-      (sum, b) => {
-        const s = shareOf(b.counts[t], count);
-        return { done: sum.done + s.done - federalShare.done, total: sum.total + s.total - federalShare.total };
-      },
-      { ...federalShare }
-    );
+  const programTitle = (p: string) =>
+    byId.get(`us/${p}`)?.title.replace(/: federal law$/, "") ?? p.toUpperCase();
+  const stateName = (j: string) => {
+    const any = bundles.find((b) => b.jurisdiction === j);
+    return any ? any.title.replace(new RegExp(` ${programTitle(any.program)}$`), "") : j;
   };
-
-  const federal = byId.get(`us/${program}`);
-  const states = [...statesOf(program)].sort((a, b) =>
-    sort === "name"
-      ? a.title.localeCompare(b.title)
-      : ratio(shareOf(b.counts[sort], count)) - ratio(shareOf(a.counts[sort], count)) || a.title.localeCompare(b.title)
-  );
+  const unit = (t: BundleTierId) =>
+    count === "documents" ? "documents" : t === "screener" ? "cited provisions" : "provisions";
+  const verb = count === "documents" ? "complete" : "encoded";
   const link = (id: string) => `/ops/bundles/${id}${count === "provisions" ? "?count=provisions" : ""}`;
+
+  // A bundle's share as its page shows it; a state's own layer is that less the federal law.
+  const pageShare = (id: string, t: BundleTierId) => shareOf(byId.get(id)?.counts[t], count);
+  const ownShare = (j: string, p: string, t: BundleTierId) =>
+    j === "us"
+      ? pageShare(`us/${p}`, t)
+      : byId.has(`${j}/${p}`)
+        ? less(pageShare(`${j}/${p}`, t), pageShare(`us/${p}`, t))
+        : ZERO;
+  const statesOf = (p: string) => bundles.filter((b) => b.program === p && b.jurisdiction !== "us");
+
+  const groups: Group[] =
+    view === "program"
+      ? programs.map((p) => ({
+          key: p,
+          label: programTitle(p),
+          share: (t) =>
+            statesOf(p).reduce((sum, b) => add(sum, ownShare(b.jurisdiction, p, t)), pageShare(`us/${p}`, t)),
+          note: `across the federal law and ${statesOf(p).length} states`,
+        }))
+      : [
+          {
+            key: "us",
+            label: "Federal law",
+            share: (t) => programs.reduce((sum, p) => add(sum, ownShare("us", p, t)), ZERO),
+            note: `the federal law of ${programs.length} programs`,
+          },
+          ...jurisdictions
+            .map((j) => ({
+              key: j,
+              label: stateName(j),
+              share: (t: BundleTierId) => programs.reduce((sum, p) => add(sum, ownShare(j, p, t)), ZERO),
+              note: `the state's own documents in ${programs.length} programs`,
+            }))
+            .sort((a, b) => a.label.localeCompare(b.label)),
+        ];
+  const selected = view === "program" ? program : jurisdiction;
+  const select = (key: string) => (view === "program" ? setProgram(key) : setJurisdiction(key));
+
+  const rows: Row[] =
+    view === "program"
+      ? [
+          ...(byId.has(`us/${program}`)
+            ? [
+                {
+                  key: `us/${program}`,
+                  label: "Federal law",
+                  sub: "shared by every state",
+                  href: link(`us/${program}`),
+                  share: (t: BundleTierId) => pageShare(`us/${program}`, t),
+                  pinned: true,
+                },
+              ]
+            : []),
+          ...statesOf(program).map((b) => ({
+            key: b.id,
+            label: stateName(b.jurisdiction),
+            href: link(b.id),
+            share: (t: BundleTierId) => pageShare(b.id, t),
+          })),
+        ]
+      : programs
+          .filter((p) => byId.has(`${jurisdiction}/${p}`))
+          .map((p) => ({
+            key: `${jurisdiction}/${p}`,
+            label: programTitle(p),
+            href: link(`${jurisdiction}/${p}`),
+            share: (t: BundleTierId) => ownShare(jurisdiction, p, t),
+          }));
+  const pinned = rows.filter((r) => r.pinned);
+  const sorted = rows
+    .filter((r) => !r.pinned)
+    .sort((a, b) =>
+      sort === "name"
+        ? view === "program"
+          ? a.label.localeCompare(b.label)
+          : PROGRAM_ORDER.indexOf(a.key.split("/")[1]) - PROGRAM_ORDER.indexOf(b.key.split("/")[1])
+        : // Nothing to count yet goes last.
+          Number(!a.share(sort).total) - Number(!b.share(sort).total) ||
+          ratio(b.share(sort)) - ratio(a.share(sort)) ||
+          a.label.localeCompare(b.label)
+    );
+
+  const selectedLabel = groups.find((g) => g.key === selected)?.label ?? selected;
   const head = (key: Sort, label: string) => (
     <th scope="col" aria-sort={sort === key ? (key === "name" ? "ascending" : "descending") : undefined}>
       <button type="button" onClick={() => setSort(key)}>
@@ -117,6 +209,10 @@ export function BundleOverview({ bundles }: { bundles: BundleSummary[] }) {
       </button>
     </th>
   );
+  const chooseTier = (next: BundleTierId) => {
+    setTier(next);
+    setSort(next);
+  };
 
   return (
     <section className={styles.card} aria-labelledby="ops-bundles">
@@ -129,22 +225,42 @@ export function BundleOverview({ bundles }: { bundles: BundleSummary[] }) {
             {count === "documents"
               ? "Documents complete, as each bundle's page leads with them."
               : "Provisions encoded (Tier 1: the provisions PolicyEngine cites), as each bundle's page counts them."}{" "}
-            A state&apos;s bundle includes the program&apos;s federal law.
+            {view === "program"
+              ? "A state's bundle includes the program's federal law."
+              : "By state, each jurisdiction counts only its own documents: the federal law has its own row."}
           </p>
         </div>
-        <div className={styles.switch} role="radiogroup" aria-label="Count">
-          {(["documents", "provisions"] as Count[]).map((value) => (
-            <button key={value} type="button" role="radio" aria-checked={count === value} onClick={() => setCount(value)}>
-              {value === "documents" ? "Documents" : "Provisions"}
-            </button>
-          ))}
+        <div className={styles.switches}>
+          <div className={styles.switch} role="radiogroup" aria-label="View by">
+            {(["program", "jurisdiction"] as View[]).map((value) => (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={view === value}
+                onClick={() => {
+                  setView(value);
+                  setSort(tier);
+                }}
+              >
+                {value === "program" ? "By program" : "By state"}
+              </button>
+            ))}
+          </div>
+          <div className={styles.switch} role="radiogroup" aria-label="Count">
+            {(["documents", "provisions"] as Count[]).map((value) => (
+              <button key={value} type="button" role="radio" aria-checked={count === value} onClick={() => setCount(value)}>
+                {value === "documents" ? "Documents" : "Provisions"}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       <div className={styles.layout}>
         <div className={styles.programsPane}>
           <div className={styles.columnHead}>
-            <span>Program</span>
+            <span>{view === "program" ? "Program" : "State"}</span>
             <span className={styles.tierToggle} role="radiogroup" aria-label="Completeness, by tier">
               <span>Completeness</span>
               {(["screener", "full"] as BundleTierId[]).map((value) => (
@@ -160,66 +276,56 @@ export function BundleOverview({ bundles }: { bundles: BundleSummary[] }) {
               ))}
             </span>
           </div>
-          <ul className={styles.programs} aria-label="Programs">
-          {programs.map((p) => {
-            const whole = completeness(p, tier);
-            const states = statesOf(p).length;
-            return (
-              <li key={p}>
-                <button
-                  type="button"
-                  aria-pressed={p === program}
-                  onClick={() => setProgram(p)}
-                  title={`${title(p)}: ${number(whole.done)} of ${number(whole.total)} ${unit(tier)} ${
-                    count === "documents" ? "complete" : "encoded"
-                  }, across the federal law and ${states} ${states === 1 ? "state" : "states"}`}
-                >
-                  <span className={styles.programName}>{title(p)}</span>
-                  <span className={styles.track} aria-hidden>
-                    <span className={styles.fill} style={{ width: `${ratio(whole) * 100}%` }} />
-                  </span>
-                  <span className={styles.programFigure}>{percent(whole)}</span>
-                </button>
-              </li>
-            );
-          })}
+          <ul
+            className={`${styles.programs} ${view === "jurisdiction" ? styles.scrolling : ""}`}
+            aria-label={view === "program" ? "Programs" : "Jurisdictions"}
+          >
+            {groups.map((g) => {
+              const whole = g.share(tier);
+              return (
+                <li key={g.key}>
+                  <button
+                    type="button"
+                    aria-pressed={g.key === selected}
+                    onClick={() => select(g.key)}
+                    title={`${g.label}: ${number(whole.done)} of ${number(whole.total)} ${unit(tier)} ${verb}, ${g.note}`}
+                  >
+                    <span className={styles.programName}>{g.label}</span>
+                    <span className={styles.track} aria-hidden>
+                      <span className={styles.fill} style={{ width: `${ratio(whole) * 100}%` }} />
+                    </span>
+                    <span className={styles.programFigure}>{percent(whole)}</span>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         </div>
 
         <div className={styles.states}>
-          <table className={styles.table} aria-label={`${title(program)} by state`}>
+          <table
+            className={styles.table}
+            aria-label={view === "program" ? `${selectedLabel} by state` : `${selectedLabel} by program`}
+          >
             <thead>
               <tr>
-                {head("name", "State")}
+                {head("name", view === "program" ? "State" : "Program")}
                 {head("screener", "Tier 1 · screener parity")}
                 {head("full", "Tier 2 · full bundle")}
               </tr>
             </thead>
             <tbody>
-              {federal && (
-                <tr className={styles.federal}>
+              {[...pinned, ...sorted].map((row) => (
+                <tr key={row.key} className={row.pinned ? styles.federal : undefined}>
                   <th scope="row">
-                    <a href={link(federal.id)}>Federal law</a>
-                    <span>shared by every state</span>
+                    <a href={row.href}>{row.label}</a>
+                    {row.sub && <span>{row.sub}</span>}
                   </th>
                   <td>
-                    <Meter share={shareOf(federal.counts.screener, count)} unit={unit("screener")} />
+                    <Meter share={row.share("screener")} unit={unit("screener")} />
                   </td>
                   <td>
-                    <Meter share={shareOf(federal.counts.full, count)} unit={unit("full")} />
-                  </td>
-                </tr>
-              )}
-              {states.map((b) => (
-                <tr key={b.id}>
-                  <th scope="row">
-                    <a href={link(b.id)}>{b.title.replace(new RegExp(` ${title(program)}$`), "")}</a>
-                  </th>
-                  <td>
-                    <Meter share={shareOf(b.counts.screener, count)} unit={unit("screener")} />
-                  </td>
-                  <td>
-                    <Meter share={shareOf(b.counts.full, count)} unit={unit("full")} />
+                    <Meter share={row.share("full")} unit={unit("full")} />
                   </td>
                 </tr>
               ))}

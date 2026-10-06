@@ -76,6 +76,28 @@ describe("BundleOverview", () => {
     expect(screen.getByRole("columnheader", { name: "Tier 2 · full bundle" })).toHaveAttribute("aria-sort", "descending");
   });
 
+  it("views by state: the federal law and each state count only their own documents", () => {
+    render(<BundleOverview bundles={bundles} />);
+    fireEvent.click(screen.getByRole("radio", { name: "By state" }));
+    const list = screen.getByRole("list", { name: "Jurisdictions" });
+    const federal = within(list).getByRole("button", { name: /Federal law/ });
+    expect(federal).toHaveAttribute("aria-pressed", "true");
+    // SNAP's federal law (1 of 56) and Medicaid's (0 of 115).
+    expect(federal).toHaveAttribute("title", "Federal law: 1 of 171 documents complete, the federal law of 2 programs");
+    const federalTable = screen.getByRole("table", { name: "Federal law by program" });
+    expect(within(federalTable).getByRole("link", { name: "SNAP" })).toHaveAttribute("href", "/ops/bundles/us/snap");
+    fireEvent.click(within(list).getByRole("button", { name: /Arizona/ }));
+    // Arizona's own: SNAP 0 of 2 (1 of 58 less the federal 1 of 56), Medicaid 0 of 5.
+    expect(within(list).getByRole("button", { name: /Arizona/ })).toHaveAttribute(
+      "title",
+      "Arizona: 0 of 7 documents complete, the state's own documents in 2 programs"
+    );
+    const arizona = screen.getByRole("table", { name: "Arizona by program" });
+    const snap = within(arizona).getByRole("link", { name: "SNAP" });
+    expect(snap).toHaveAttribute("href", "/ops/bundles/us-az/snap");
+    expect(snap.closest("tr")).toHaveTextContent("SNAP0%0 of 2 documents7%3 of 43 documents");
+  });
+
   it("sorts the states by name", () => {
     render(<BundleOverview bundles={bundles} />);
     fireEvent.click(screen.getByRole("button", { name: "State" }));
