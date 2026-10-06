@@ -20,28 +20,37 @@ CHROME="${CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
 [ -x "$CHROME" ] || CHROME="$(command -v google-chrome || command -v chromium || true)"
 [ -n "$CHROME" ] || { echo "Chrome not found; set CHROME=/path/to/chrome"; exit 1; }
 
+# Snapshot the source first. The render and the hash stamped below both read
+# this copy, so an edit saved mid-render can't produce a PDF labelled with a
+# hash it wasn't rendered from.
+WORK="$(mktemp -d)"
+# The inlined page must sit next to the source so relative assets (the
+# wordmark SVG) resolve.
+TMP="$DIR/.render-inlined-$$.html"
+trap 'rm -rf "$WORK" "$TMP"' EXIT
+SRC="$WORK/source.html"
+cp "$DIR/$BASE" "$SRC"
+
 # Inline @import url("fonts-embed.css") so the PDF bakes in real glyphs.
-TMP="$DIR/.render-inlined.html"
-python3 - "$DIR/$BASE" "$TMP" <<'PY'
+python3 - "$SRC" "$DIR" "$TMP" <<'PY'
 import sys, os, re
-src_path, tmp_path = sys.argv[1], sys.argv[2]
+src_path, asset_dir, tmp_path = sys.argv[1], sys.argv[2], sys.argv[3]
 html = open(src_path).read()
-d = os.path.dirname(src_path)
 def inline(m):
-    css = open(os.path.join(d, m.group(1))).read()
+    css = open(os.path.join(asset_dir, m.group(1))).read()
     return f"/* inlined {m.group(1)} */\n{css}"
 html = re.sub(r'@import\s+url\(["\']([^"\')]+)["\']\);', inline, html)
 open(tmp_path, "w").write(html)
 PY
-trap 'rm -f "$TMP"' EXIT
 
-# Remove any earlier output first: Chrome's exit status is swallowed by the
-# filter below, so a failed render would otherwise leave the old PDF in place
-# for the stamp step to certify as fresh.
-rm -f "$OUT"
+# Render to a scratch file. Chrome's exit status is swallowed by the filter
+# below, so check that it wrote something; $OUT is only replaced, atomically,
+# once the stamped PDF exists. A failed render leaves the previous $OUT with
+# its own (now stale) stamp, which the overview test catches.
+RAW="$WORK/rendered.pdf"
 "$CHROME" --headless --disable-gpu --no-sandbox --no-pdf-header-footer \
-  --print-to-pdf="$OUT" "file://$TMP" 2>&1 | grep -iE "written|error" || true
-[ -s "$OUT" ] || { echo "Chrome wrote no PDF to $OUT" >&2; exit 1; }
+  --print-to-pdf="$RAW" "file://$TMP" 2>&1 | grep -iE "written|error" || true
+[ -s "$RAW" ] || { echo "Chrome wrote no PDF" >&2; exit 1; }
 
 # Stamp the source HTML's SHA-256 into the PDF's metadata. The overview test
 # (src/components/overview/overview.test.tsx) recomputes it from the HTML in
@@ -49,20 +58,21 @@ rm -f "$OUT"
 # leaving the published PDF making the old claims.
 STAMP_PY='
 import hashlib, os, sys, pypdf
-pdf, html = sys.argv[1], sys.argv[2]
-sha = hashlib.sha256(open(html, "rb").read()).hexdigest()
-writer = pypdf.PdfWriter(clone_from=pdf)
+raw, src, out = sys.argv[1], sys.argv[2], sys.argv[3]
+sha = hashlib.sha256(open(src, "rb").read()).hexdigest()
+writer = pypdf.PdfWriter(clone_from=raw)
 writer.add_metadata({"/AxiomSourceSHA256": sha})
-with open(pdf + ".stamped", "wb") as f:
+staged = out + ".staged"
+with open(staged, "wb") as f:
     writer.write(f)
-os.replace(pdf + ".stamped", pdf)
-print("pages:", len(pypdf.PdfReader(pdf).pages))
+os.replace(staged, out)
+print("pages:", len(pypdf.PdfReader(out).pages))
 print("source sha256:", sha)
 '
 if python3 -c "import pypdf" 2>/dev/null; then
-  python3 -c "$STAMP_PY" "$OUT" "$DIR/$BASE"
+  python3 -c "$STAMP_PY" "$RAW" "$SRC" "$OUT"
 else
-  uv run --quiet --with pypdf python3 -c "$STAMP_PY" "$OUT" "$DIR/$BASE"
+  uv run --quiet --with pypdf python3 -c "$STAMP_PY" "$RAW" "$SRC" "$OUT"
 fi
 
 echo "wrote $OUT"

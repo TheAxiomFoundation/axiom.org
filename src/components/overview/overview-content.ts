@@ -75,8 +75,11 @@ export interface DoCard {
  *   one (3 more entries were pending only, which don't skip); joined to the
  *   2026-09-28 rule_verification.json they hold 23,735 of 34,810 rules,
  *   11,201 of them the generated tariff schedule. Each names an owner, an
- *   issue and an expiry date. Branch protection exempts admins
- *   (enforcement_level non_admins).
+ *   issue and an expiry date.
+ * - Admins: branch protection exempts them (enforcement_level non_admins),
+ *   and they have used it: rulespec-us#1364 merged 2026-09-14T19:00:01Z
+ *   while its required `validate / validate` was still running; the check
+ *   finished as a failure at 19:22.
  * - Tests: axiom-encode 6f08e25c src/axiom_encode/harness/evals.py
  *   10642-10656 asks one model response for the RuleSpec file and its test
  *   cases, expected outputs included. That is why "never grades its own
@@ -114,7 +117,7 @@ export const WHAT_WE_DO: readonly DoCard[] = [
     label: "Verify",
     title: "Automated checks gate what merges",
     body:
-      "A draft encoding must compile and pass its test suite before it merges, unless its module has an active waiver on a public list (1,940 modules holding 23,735 of our 34,810 US rules on October 2, 2026). When the encoder drafts a module, it writes those tests too. Separately, we compare results with other calculators, including PolicyEngine, and publish the comparisons. They don't gate merges, and 20,780 of the 34,810 rules had none in September 2026. Max Ghenis is CEO of both Axiom and PolicyEngine.",
+      "A draft encoding must compile and pass its test suite before it merges, unless its module has an active waiver on a public list (1,940 modules holding 23,735 of our 34,810 US rules on October 2, 2026). Repository admins can override the check. When the encoder drafts a module, it writes those tests too. Separately, we compare results with other calculators, including PolicyEngine, and publish the comparisons. They don't gate merges, and 20,780 of the 34,810 rules had none in September 2026. Max Ghenis is CEO of both Axiom and PolicyEngine.",
   },
   {
     n: "3",

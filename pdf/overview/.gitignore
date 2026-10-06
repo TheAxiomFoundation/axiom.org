@@ -1,3 +1,6 @@
 # Render output — the shipped copy lives at public/Axiom-Foundation-Overview.pdf.
 # Keeping both in git would double the weight and churn on every render.
 axiom-overview.pdf
+# render.sh scratch files, removed when it exits.
+.render-inlined-*.html
+*.staged
