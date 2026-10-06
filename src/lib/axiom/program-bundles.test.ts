@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { pipelineAttempt } from "@/test/pipeline-attempt";
 import {
   documentType,
+  formatShare,
   measured,
+  measuredByPart,
   bundleIndex,
   bundleMemberships,
   measureDocument,
@@ -333,5 +335,46 @@ describe("documentType", () => {
     const order = (layer: string, path: string) => documentType({ layer, citation_path: path, source_url: null }).order;
     expect(order("federal", "us/statute/7/2014")).toBeLessThan(order("federal", "us/regulation/7/273/9"));
     expect(order("federal", "us/manual/ssa/x")).toBeLessThan(order("state", "us-az/statute/46"));
+  });
+});
+
+describe("formatShare", () => {
+  it("never rounds a share into a wrong impression", () => {
+    expect(formatShare(0, 0)).toBe("—");
+    expect(formatShare(0, 1160)).toBe("0%");
+    expect(formatShare(1, 1160)).toBe("<1%");
+    expect(formatShare(40, 157)).toBe("25%");
+    expect(formatShare(999, 1000)).toBe(">99%");
+    expect(formatShare(5, 5)).toBe("100%");
+  });
+});
+
+describe("measuredByPart", () => {
+  it("splits a screener document by its citations' parts, and adds up to its measure", () => {
+    const row = measureDocument(
+      "b",
+      "screener",
+      doc({
+        cited: [
+          { path: "us/statute/7/2014/a", references: 1, part: "Income" },
+          { path: "us/statute/7/2014/b", references: 1, part: "Deductions" },
+        ],
+      }),
+      { nodes, modules: [module("us/statute/7/2014/a")], attempts: [] },
+      AT
+    );
+    const parts = measuredByPart(row);
+    expect([...parts.keys()]).toEqual(["Income", "Deductions"]);
+    expect(parts.get("Income")).toMatchObject({ total: 1, byState: { encoded: 1 } });
+    expect([...parts.values()].reduce((t, m) => t + m.total, 0)).toBe(measured(row).total);
+    // Cited whole: every provision, in the citation's part.
+    const whole = measureDocument(
+      "b",
+      "screener",
+      doc({ cited: [{ path: "us/statute/7/2014", references: 1, part: "Assets" }] }),
+      { nodes, modules: [module("us/statute/7/2014/a")], attempts: [] },
+      AT
+    );
+    expect([...measuredByPart(whole).entries()]).toEqual([["Assets", measured(whole)]]);
   });
 });

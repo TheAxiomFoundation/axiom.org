@@ -9,7 +9,9 @@ import { ageLabel, STAGE_COPY } from "@/lib/axiom/encoding-pipeline";
 import {
   documentType,
   DOCUMENT_STATUSES,
+  formatShare,
   measured,
+  measuredByPart,
   PROVISION_LABELS,
   PROVISION_STATES,
   provisionCounts,
@@ -28,8 +30,8 @@ import {
 import { olderVersion, type ScreenerParity } from "@/lib/axiom/screener-parity";
 
 const number = (value: number) => value.toLocaleString("en-US");
-const percent = (part: number, whole: number) => (whole ? `${Math.round((part / whole) * 100)}%` : "—");
-const share = (value: number | null) => (value == null ? "—" : `${Math.round(value * 1000) / 10}%`);
+const percent = formatShare;
+const share = (value: number | null) => (value == null ? "—" : formatShare(value * 1e6, 1e6));
 /** https://github.com/TheAxiomFoundation/rulespec-us/issues/1116 → rulespec-us#1116 */
 const issueName = (url: string) => url.replace(/^https:\/\/github\.com\/[^/]+\//, "").replace("/issues/", "#");
 const day = (iso: string | null) =>
@@ -116,22 +118,13 @@ function cellOf(tier: BundleTierId, part: string, rows: BundleDocumentRow[], cou
     const done = shades.encoded + shades.unvalidated;
     return { tier, part, count, documents, shades, done, total: documents.length };
   }
-  if (tier === "screener") {
-    // Each provision PolicyEngine cites feeds its own part.
-    const documents = rows.filter((r) => r.units.some((u) => u.part === part));
-    let total = 0;
-    for (const row of documents) {
-      for (const unit of row.units.filter((u) => u.part === part)) {
-        total++;
-        shades[UNIT_SHADE[unit.state]]++;
-      }
-    }
-    return { tier, part, count, documents, shades, done: shades.encoded + shades.unvalidated, total };
-  }
-  const documents = rows.filter((r) => r.part === part);
+  // The same measure as the tier's header, split by part, so the cells add up to it.
+  const documents: BundleDocumentRow[] = [];
   let total = 0;
-  for (const row of documents) {
-    const counted = measured(row);
+  for (const row of rows) {
+    const counted = measuredByPart(row).get(part);
+    if (!counted) continue;
+    documents.push(row);
     total += counted.total;
     shades.missing += counted.missing;
     for (const state of PROVISION_STATES) shades[PROVISION_SHADE[state]] += counted.byState[state];
@@ -786,7 +779,21 @@ function ParityDetail({
   const byPart = new Map<string, ParityUnit[]>();
   for (const unit of units) byPart.set(unit.part, [...(byPart.get(unit.part) ?? []), unit]);
   const rank = (part: string) => (parts.includes(part) ? parts.indexOf(part) : parts.length);
-  const encoded = units.filter((u) => u.state === "encoded" || u.state === "unvalidated").length;
+  // The tier's own measure (a document cited whole counts all its provisions), by part.
+  const counts = tierCounts(rows);
+  const encoded = counts.byProvisionState.encoded + counts.byProvisionState.unvalidated;
+  const partShades = (part: string) => {
+    const shades = Object.fromEntries(SHADES.map((s) => [s, 0])) as Record<Shade, number>;
+    let total = 0;
+    for (const row of rows) {
+      const m = measuredByPart(row).get(part);
+      if (!m) continue;
+      total += m.total;
+      shades.missing += m.missing;
+      for (const state of PROVISION_STATES) shades[PROVISION_SHADE[state]] += m.byState[state];
+    }
+    return { shades, total };
+  };
   return (
     <aside className={styles.detail} aria-label="Screener-level parity">
       <DrawerTop label="Screener-level parity" onClose={onClose} />
@@ -868,11 +875,12 @@ function ParityDetail({
       <p className={styles.detailLabel}>
         PolicyEngine citations
         <span>
-          {number(encoded)} of {number(units.length)} encoded
+          {number(encoded)} of {number(counts.provisions)} encoded
         </span>
       </p>
       <p className={styles.detailNote}>
-        Each provision PolicyEngine cites for this program at the pinned release: encoded when a rule cites it or a
+        Each provision PolicyEngine cites for this program at the pinned release (a document cited whole, or by page,
+        counts all its provisions): encoded when a rule cites it or a
         provision above it and nothing in it is deferred; partly encoded when rules cite only parts of it; deferred when
         a module defers it. This is coverage of what PolicyEngine cites, not a comparison of results: the comparison
         against PolicyEngine is its own check.
@@ -880,17 +888,16 @@ function ParityDetail({
       {[...byPart.entries()]
         .sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
         .map(([part, members]) => {
-          const shades = Object.fromEntries(SHADES.map((s) => [s, 0])) as Record<Shade, number>;
-          for (const unit of members) shades[UNIT_SHADE[unit.state]]++;
+          const { shades, total } = partShades(part);
           return (
             <div key={part} className={styles.detailBlock}>
               <p className={styles.detailLabel}>
                 {part}
                 <span>
-                  {number(shades.encoded + shades.unvalidated)} of {number(members.length)}
+                  {number(shades.encoded + shades.unvalidated)} of {number(total)}
                 </span>
               </p>
-              <ShadeBar shades={shades} total={members.length} />
+              {total > 0 && <ShadeBar shades={shades} total={total} />}
               <ul className={styles.memberList}>
                 {[...members]
                   .sort((a, b) => UNIT_STATES.indexOf(a.state) - UNIT_STATES.indexOf(b.state) || a.name.localeCompare(b.name))

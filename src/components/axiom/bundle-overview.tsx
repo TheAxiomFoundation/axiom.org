@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import styles from "./bundle-overview.module.css";
-import type { BundleTierId, TierCounts } from "@/lib/axiom/program-bundles";
+import { formatShare, type BundleTierId, type TierCounts } from "@/lib/axiom/program-bundles";
 import type { BundleSummary } from "@/lib/axiom/program-bundles-data";
 
 const number = (value: number) => value.toLocaleString("en-US");
@@ -29,14 +29,16 @@ function shareOf(counts: TierCounts | undefined, count: Count): Share {
 const add = (a: Share, b: Share): Share => ({ done: a.done + b.done, total: a.total + b.total });
 const less = (a: Share, b: Share): Share => ({ done: a.done - b.done, total: a.total - b.total });
 const ratio = (s: Share) => (s.total ? s.done / s.total : 0);
-const percent = (s: Share) => (s.total ? `${Math.round(ratio(s) * 100)}%` : "—");
+const percent = (s: Share) => formatShare(s.done, s.total);
+/** A bar's width: its share, and at least a sliver when anything is done. */
+const width = (s: Share) => `${s.done > 0 ? Math.max(ratio(s) * 100, 1.5) : 0}%`;
 
 /** One share as a bar: encoded in green on a grey track, the exact count beside it. */
 function Meter({ share, unit }: { share: Share; unit: string }) {
   return (
     <span className={styles.meter}>
       <span className={styles.track} aria-hidden>
-        <span className={styles.fill} style={{ width: `${ratio(share) * 100}%` }} />
+        <span className={styles.fill} style={{ width: width(share) }} />
       </span>
       <strong className={styles.percent}>{percent(share)}</strong>
       <span className={styles.figure}>
@@ -248,7 +250,7 @@ export function BundleOverview({ bundles }: { bundles: BundleSummary[] }) {
                   >
                     <span className={styles.programName}>{g.label}</span>
                     <span className={styles.track} aria-hidden>
-                      <span className={styles.fill} style={{ width: `${ratio(whole) * 100}%` }} />
+                      <span className={styles.fill} style={{ width: width(whole) }} />
                     </span>
                     <span className={styles.programFigure}>{percent(whole)}</span>
                   </button>

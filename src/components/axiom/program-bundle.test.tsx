@@ -213,7 +213,7 @@ describe("ProgramBundle", () => {
     fireEvent.click(screen.getByRole("button", { name: /0% of eligible households match/ }));
     const parity = screen.getByRole("complementary", { name: "Screener-level parity" });
     expect(within(parity).getByRole("heading", { name: "0% of eligible households match PolicyEngine" })).toBeInTheDocument();
-    expect(parity).toHaveTextContent("Eligible householdsPolicyEngine 27.9% · Axiom 0%");
+    expect(parity).toHaveTextContent("Eligible householdsPolicyEngine 28% · Axiom 0%");
     expect(parity).toHaveTextContent("Axiom errors to fix597 of 597 mismatches");
     expect(within(parity).getByRole("link", { name: "rulespec-us#1116" })).toHaveAttribute(
       "href",

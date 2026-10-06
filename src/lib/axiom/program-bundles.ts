@@ -609,6 +609,49 @@ export function measured(
   return { total: row.units.length, byState, missing };
 }
 
+type Measure = ReturnType<typeof measured>;
+
+/**
+ * A document's measure split by the part of the program each piece feeds, so
+ * the matrix's cells add up to the tier's total: in the screener tier each
+ * cited provision feeds its own part (a document cited whole feeds its
+ * citation's part); in the full bundle the document feeds its part.
+ */
+export function measuredByPart(row: BundleDocumentRow): Map<string, Measure> {
+  const out = new Map<string, Measure>();
+  const whole = row.in_corpus && row.provisions > 0 && row.units.find((u) => u.path && u.path === row.citation_path);
+  if (row.tier !== "screener" || whole || !row.units.length) {
+    out.set((row.tier === "screener" && whole ? whole.part : null) ?? row.part, measured(row));
+    return out;
+  }
+  for (const unit of row.units) {
+    const held =
+      out.get(unit.part) ??
+      ({ total: 0, byState: Object.fromEntries(PROVISION_STATES.map((s) => [s, 0])), missing: 0 } as Measure);
+    const state = UNIT_AS_PROVISION[unit.state];
+    held.total++;
+    if (state) held.byState[state]++;
+    else held.missing++;
+    out.set(unit.part, held);
+  }
+  return out;
+}
+
+/**
+ * A share as the pages print it, never rounded into a wrong impression:
+ * "—" with nothing to count, "<1%" when something is done but under one
+ * percent, ">99%" when nearly but not all of it is.
+ */
+export function formatShare(done: number, total: number): string {
+  if (!total) return "—";
+  if (done <= 0) return "0%";
+  if (done >= total) return "100%";
+  const percent = (done / total) * 100;
+  if (percent < 1) return "<1%";
+  if (percent > 99) return ">99%";
+  return `${Math.round(percent)}%`;
+}
+
 export function tierCounts(rows: BundleDocumentRow[]): TierCounts {
   const inScope = rows.filter((r) => r.scope === "in");
   const byStatus = Object.fromEntries(DOCUMENT_STATUSES.map((s) => [s, 0])) as Record<DocumentStatus, number>;
