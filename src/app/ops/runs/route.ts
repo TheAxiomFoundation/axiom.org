@@ -24,7 +24,7 @@ export async function GET(request: Request) {
   }
   const attempts = pipeline.attempts.filter((attempt) => inScope(attemptJurisdiction(attempt), scope));
   const rows = runRows(attempts);
-  const [metadata, index] = await Promise.all([getCitationMetadata(rows.map((row) => row.citation)), getBundleIndex()]);
+  const [metadata, index] = await Promise.all([getCitationMetadata(rows.map((row) => row.citation)), getBundleIndex(rows.map((row) => row.citation))]);
   // Only the bundle documents some run's citation sits in.
   const bundles = index.filter((entry) =>
     rows.some((row) => row.citation === entry.citation_path || row.citation.startsWith(`${entry.citation_path}/`))

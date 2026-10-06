@@ -41,17 +41,19 @@ generate `/axiom/v2/...` hrefs. The app root and marketing pages stay on v1.
   GitHub and Supabase (and dispatches the index sync after merges); `/ops`
   and `/ops/journey` read only the table, never GitHub at request time.
 - **Program bundles** (`encodings.program_bundle_documents`): the documents of
-  each delivery tier of a program in a jurisdiction (axiom-corpus
-  `manifests/program-bundles/*.yaml`: screener-level parity and the full
-  document bundle), each measured against the served corpus, every module's
+  each delivery tier of the 13 core programs (axiom-corpus
+  `manifests/program-bundles/<program>.yaml`: screener-level parity and the
+  full document bundle, a federal layer `us/<program>` plus a layer per state
+  `us-<st>/<program>`; a state's page and counts add the federal layer), each
+  measured against the served corpus, every module's
   rules and deferrals (`rulespec_files.raw_yaml`), the RuleSpec repos'
   `known-validation-gaps.yaml` waivers and `pipeline_attempts`. A provision
   counts as encoded only when a rule cites it; a module's declared source,
   and section-wide proof atoms, are not proof.
-  `scripts/collect-program-bundles.mjs` rebuilds them
-  in the pipeline collector's workflow; `/ops/bundles/<jurisdiction>/<program>`
-  reads only the tables, and the ledger and journey name each encoding's
-  bundle and tier from them.
+  `scripts/collect-program-bundles.mjs` rebuilds them every six hours in the
+  pipeline collector's workflow; `/ops` (a programs × states grid) and
+  `/ops/bundles/<jurisdiction>/<program>` read only the tables, and the ledger
+  and journey name each encoding's bundle and tier from them.
 - **Everything executable** (packages, graphs, calculate): the hosted
   axiom-api via `src/lib/axiom/runtime/api.ts`, server-side only.
 

@@ -57,17 +57,22 @@ export interface BundleFileTier {
   documents: BundleFileDocument[];
 }
 
-/** A bundle file: manifests/program-bundles/<jurisdiction>-<program>.yaml. */
+/**
+ * A bundle file: manifests/program-bundles/<program>.yaml, one per core
+ * program, with a federal layer (shared by every state) and a layer per state.
+ */
 export interface BundleFile {
-  schema: string;
+  schema: "axiom-program-bundle/v2";
   id: string;
   program: string;
-  jurisdiction: string;
   title: string;
   as_of: string;
   /** The parts of the program, in reading order: the matrix's rows. */
   parts: string[];
-  tiers: BundleFileTier[];
+  /** The comparison suite behind each state's screener-level parity: {st} is the state code. */
+  comparison?: { repo: string; suite: string } | null;
+  tiers: Array<Omit<BundleFileTier, "documents">>;
+  layers: Array<{ jurisdiction: string; screener: BundleFileDocument[]; full: BundleFileDocument[] }>;
 }
 
 /** Where one provision stands; every text-bearing provision has exactly one. */
@@ -225,6 +230,8 @@ export interface BundleRow {
   parity: ScreenerParity | null;
   /** The newest policyengine-us version published on PyPI when the collector ran. */
   policyengine_latest: string | null;
+  /** Each tier's counts; a state's include the program's federal layer. */
+  counts?: Partial<Record<BundleTierId, TierCounts>> | null;
   collected_at: string;
 }
 
@@ -589,8 +596,8 @@ type DocumentKind = "statute" | "regulation" | "guidance" | "manual" | "form" | 
 const DOCUMENT_TYPES: Array<{ layer: "federal" | "state"; kind: DocumentKind; label: string }> = [
   { layer: "federal", kind: "statute", label: "Federal statutes and public laws" },
   { layer: "federal", kind: "regulation", label: "Federal regulations" },
-  { layer: "federal", kind: "guidance", label: "Federal guidance (FNS, HHS)" },
-  { layer: "federal", kind: "manual", label: "Federal manuals (SSA POMS)" },
+  { layer: "federal", kind: "guidance", label: "Federal guidance" },
+  { layer: "federal", kind: "manual", label: "Federal manuals" },
   { layer: "federal", kind: "form", label: "Federal forms" },
   { layer: "federal", kind: "policy", label: "Federal policy documents" },
   { layer: "state", kind: "statute", label: "State statutes" },
@@ -631,7 +638,11 @@ export function documentType(row: Pick<BundleDocumentRow, "layer" | "citation_pa
       : urlKind(row.source_url ?? "");
   const layer = row.layer === "state" ? "state" : "federal";
   const index = DOCUMENT_TYPES.findIndex((t) => t.layer === layer && t.kind === kind);
-  if (index < 0) return { key: `${layer}:other`, label: "Other documents", order: DOCUMENT_TYPES.length };
+  if (index < 0) {
+    // A page the corpus does not hold, at an address that names no kind.
+    const label = row.citation_path ? `Other ${layer} documents` : `Other ${layer} web pages`;
+    return { key: `${layer}:other:${row.citation_path ? "path" : "web"}`, label, order: DOCUMENT_TYPES.length + (layer === "state" ? 1 : 0) };
+  }
   return { key: `${layer}:${kind}`, label: DOCUMENT_TYPES[index].label, order: index };
 }
 

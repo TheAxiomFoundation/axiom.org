@@ -5,7 +5,8 @@ name: Collect encoding pipeline
 # axiom-api compile sweep. The /ops pipeline view reads only that table.
 # After writing, it dispatches sync-rulespec-index.yml when a merge is
 # waiting for the index, so merges don't wait out the 6-hour sync cron.
-# A second step measures every program bundle (encodings.program_bundle_*).
+# A second step measures every program bundle (encodings.program_bundle_*)
+# every six hours.
 on:
   schedule:
     - cron: "7,37 * * * *"
@@ -55,9 +56,19 @@ jobs:
           # compile sweep's artifact. Optional: unset leaves the compile
           # stage unchecked.
           AXIOM_API_ARTIFACTS_TOKEN: ${{ secrets.AXIOM_API_ARTIFACTS_TOKEN }}
-      # Program bundles (axiom-corpus manifests/program-bundles) measured
-      # against the corpus, the rule index and the attempts just written.
-      - run: bun scripts/collect-program-bundles.mjs
+      # Program bundles (axiom-corpus manifests/program-bundles: 13 programs,
+      # federal and every state, about 37,000 documents) measured against the
+      # corpus, every module's rules and the attempts just written. Every six
+      # hours (and on a manual run): a pass reads a quarter of a million corpus
+      # nodes and rewrites every row.
+      - id: bundle-due
+        run: |
+          hour=$(date -u +%H); minute=$(date -u +%M)
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || { [ $((10#$hour % 6)) -eq 0 ] && [ $((10#$minute)) -lt 30 ]; }; then
+            echo "due=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.bundle-due.outputs.due == 'true'
+        run: bun scripts/collect-program-bundles.mjs
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

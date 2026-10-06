@@ -288,8 +288,8 @@ describe("documentType", () => {
   it("reads the kind from the citation path, and the layer apart", () => {
     expect(type("federal", "us/statute/7/2014")).toBe("Federal statutes and public laws");
     expect(type("federal", "us/regulation/7/273/9")).toBe("Federal regulations");
-    expect(type("federal", "us/guidance/usda/fns/snap-fy2027-cola")).toBe("Federal guidance (FNS, HHS)");
-    expect(type("federal", "us/manual/ssa/poms/si/01140.200")).toBe("Federal manuals (SSA POMS)");
+    expect(type("federal", "us/guidance/usda/fns/snap-fy2027-cola")).toBe("Federal guidance");
+    expect(type("federal", "us/manual/ssa/poms/si/01140.200")).toBe("Federal manuals");
     expect(type("state", "us-az/manual/des/faa5/x")).toBe("State policy manual");
     expect(type("state", "us-az/policy/des/x")).toBe("State plans, notices and waivers");
     expect(type("state", "us-az/statute/46")).toBe("State statutes");
@@ -299,9 +299,9 @@ describe("documentType", () => {
     expect(type("federal", null, "https://www.congress.gov/119/plaws/publ21/PLAW-119publ21.pdf")).toBe(
       "Federal statutes and public laws"
     );
-    expect(type("federal", null, "https://www.fns.usda.gov/snap/work-requirements")).toBe("Federal guidance (FNS, HHS)");
+    expect(type("federal", null, "https://www.fns.usda.gov/snap/work-requirements")).toBe("Federal guidance");
     expect(type("state", null, "https://www.fns.usda.gov/x/az-abawd-response-fy2025.pdf")).toBe("Federal letters to the state");
-    expect(type("federal", null, "https://example.org/x")).toBe("Other documents");
+    expect(type("federal", null, "https://example.org/x")).toBe("Other federal web pages");
   });
 
   it("orders federal law before the state's sources", () => {

@@ -9,9 +9,12 @@
 -- reports; nothing else writes here, so every
 -- column is derived and safe to recompute.
 
--- One row per bundle: its header and its tiers' definitions.
+-- One row per bundle: its header and its tiers' definitions. A bundle is one
+-- program in one jurisdiction: us/<program> holds the federal layer, shared by
+-- every state; us-<st>/<program> holds the state's own documents, and its page
+-- and counts add the federal layer.
 create table if not exists encodings.program_bundles (
-  id            text primary key,          -- <jurisdiction>/<program>, e.g. us-az/snap
+  id            text primary key,          -- <jurisdiction>/<program>, e.g. us-az/snap or us/snap
   title         text not null,
   program       text not null,
   jurisdiction  text not null,
@@ -23,6 +26,7 @@ create table if not exists encodings.program_bundles (
   -- axiom-oracles comparison the tier names (see src/lib/axiom/screener-parity.ts).
   parity        jsonb,
   policyengine_latest text,                -- the newest policyengine-us release on PyPI
+  counts        jsonb,                     -- {screener, full}: each tier's counts; a state's include its federal layer
   collected_at  timestamptz not null
 );
 
@@ -70,6 +74,11 @@ create table if not exists encodings.program_bundle_documents (
   collected_at        timestamptz not null,
   primary key (bundle_id, tier, key)
 );
+
+-- The reverse lookup from an encoding's citation to the bundles that hold it.
+create index if not exists program_bundle_documents_citation_path
+  on encodings.program_bundle_documents (citation_path)
+  where scope = 'in';
 
 -- Each tier's counts once a day, for progress over time.
 create table if not exists encodings.program_bundle_snapshots (

@@ -27,7 +27,7 @@ export default async function OpsJourneyPage({
   // Hidden with the /ops pipeline section until it is made public.
   if (!opsPipelineVisible()) notFound();
   const { citation } = await searchParams;
-  const [pipeline, index] = citation ? await Promise.all([getPipelineAttempts(), getBundleIndex()]) : [null, []];
+  const [pipeline, index] = citation ? await Promise.all([getPipelineAttempts(), getBundleIndex([citation])]) : [null, []];
   return (
     <PipelineJourney
       citation={citation ?? null}

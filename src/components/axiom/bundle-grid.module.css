@@ -1,0 +1,165 @@
+/* The /ops grid of program bundles: a row per program, a column per state. */
+
+.card {
+  margin-top: 24px;
+  padding: 16px 18px 14px;
+  border: 1px solid var(--color-rule);
+  border-radius: 12px;
+  background: var(--color-paper-elevated);
+  --step-0: #166534;
+  --step-1: color-mix(in srgb, #166534 70%, var(--color-paper));
+  --step-2: color-mix(in srgb, #166534 45%, var(--color-paper));
+  --step-3: color-mix(in srgb, #166534 22%, var(--color-paper));
+  --step-4: color-mix(in srgb, var(--color-ink) 10%, var(--color-paper));
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.heading {
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+}
+
+.switch {
+  display: flex;
+  gap: 6px;
+}
+
+.switch button {
+  padding: 3px 10px;
+  border: 1px solid var(--color-rule);
+  border-radius: 999px;
+  background: none;
+  font-size: 12px;
+  color: var(--color-ink-secondary);
+  cursor: pointer;
+}
+
+.switch button[aria-checked="true"] {
+  border-color: var(--color-ink);
+  background: var(--color-ink);
+  color: var(--color-paper);
+}
+
+.note {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--color-ink-muted);
+}
+
+.scroll {
+  margin-top: 10px;
+  overflow-x: auto;
+}
+
+.grid {
+  border-collapse: separate;
+  border-spacing: 2px;
+  font-size: 11px;
+}
+
+.corner {
+  text-align: left;
+  font-weight: 500;
+  color: var(--color-ink-muted);
+}
+
+.state {
+  min-width: 18px;
+  font-family: var(--font-mono), monospace;
+  font-size: 9.5px;
+  font-weight: 500;
+  color: var(--color-ink-muted);
+  text-align: center;
+}
+
+.program {
+  padding-right: 10px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.program a {
+  color: var(--color-ink);
+  text-decoration: none;
+}
+
+.program a:hover {
+  color: var(--color-accent);
+}
+
+.cell {
+  padding: 0;
+}
+
+.swatch {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  background: var(--step-4);
+}
+
+i.swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+}
+
+a.swatch:hover {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.swatch[data-step="0"] {
+  background: var(--step-0);
+}
+
+.swatch[data-step="1"] {
+  background: var(--step-1);
+}
+
+.swatch[data-step="2"] {
+  background: var(--step-2);
+}
+
+.swatch[data-step="3"] {
+  background: var(--step-3);
+}
+
+.swatch[data-step="empty"] {
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--color-ink) 22%, var(--color-paper)) 0 1px,
+    transparent 1px 4px
+  );
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 11.5px;
+  color: var(--color-ink-secondary);
+}
+
+.legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

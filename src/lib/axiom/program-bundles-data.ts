@@ -1,8 +1,7 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { getSupabaseRestConfig, readSupabaseRows } from "@/lib/corpus-status";
 import {
   bundleIndex,
-  tierCounts,
   type BundleDocumentRow,
   type BundleIndexEntry,
   type BundleRow,
@@ -38,13 +37,15 @@ interface BundlesFile {
  * be built before the tables exist.
  */
 export async function getProgramBundle(id: string): Promise<ProgramBundleData> {
+  // A state's bundle is its own layer and the program's federal layer together.
+  const ids = layerIds(id);
   const file = process.env.AXIOM_OPS_BUNDLES_FILE;
   if (file && process.env.NODE_ENV === "development") {
     try {
-      const data = JSON.parse(await readFile(file, "utf8")) as BundlesFile;
+      const data = await readBundlesFile(file);
       return {
         bundle: data.bundles.find((b) => b.id === id) ?? null,
-        documents: data.documents.filter((d) => d.bundle_id === id),
+        documents: data.documents.filter((d) => ids.includes(d.bundle_id)),
         snapshots: data.snapshots.filter((s) => s.bundle_id === id),
         available: true,
         error: null,
@@ -75,8 +76,8 @@ export async function getProgramBundle(id: string): Promise<ProgramBundleData> {
         "program_bundle_documents",
         {
           select: "*",
-          bundle_id: `eq.${id}`,
-          order: "tier.asc,key.asc",
+          bundle_id: `in.(${ids.map((b) => `"${b}"`).join(",")})`,
+          order: "bundle_id.asc,tier.asc,key.asc",
           limit: String(PAGE_SIZE),
           offset: String(page * PAGE_SIZE),
         },
@@ -94,17 +95,50 @@ export async function getProgramBundle(id: string): Promise<ProgramBundleData> {
   }
 }
 
+/** The bundles whose rows make up a bundle's page: a state's own and its program's federal layer. */
+export function layerIds(id: string): string[] {
+  const [jurisdiction, program] = id.split("/");
+  return jurisdiction === "us" || !program ? [id] : [id, `us/${program}`];
+}
+
+/** Every path a citation sits under, itself included: the document paths that can hold it. */
+function citationAncestors(citations: string[]): string[] {
+  const out = new Set<string>();
+  for (const citation of citations) {
+    const parts = citation.split("/");
+    for (let n = 2; n <= parts.length; n++) out.add(parts.slice(0, n).join("/"));
+  }
+  return [...out];
+}
+
+// The dry-run file is tens of megabytes: read it once per change.
+let cachedFile: { path: string; mtimeMs: number; data: BundlesFile } | null = null;
+async function readBundlesFile(path: string): Promise<BundlesFile> {
+  const { mtimeMs } = await stat(path);
+  if (cachedFile?.path === path && cachedFile.mtimeMs === mtimeMs) return cachedFile.data;
+  const data = JSON.parse(await readFile(path, "utf8")) as BundlesFile;
+  cachedFile = { path, mtimeMs, data };
+  return data;
+}
+
 /**
- * Every bundle's in-scope documents, flattened for the reverse lookup from an
- * encoding to its bundles. Empty when the tables are not there yet, so pages
- * that show memberships simply show none.
+ * The in-scope bundle documents that hold any of the citations (a document
+ * whose path is the citation or one above it), flattened for the reverse
+ * lookup from an encoding to its bundles. Empty when the tables are not there
+ * yet, so pages that show memberships simply show none.
  */
-export async function getBundleIndex(): Promise<BundleIndexEntry[]> {
+export async function getBundleIndex(citations: string[]): Promise<BundleIndexEntry[]> {
+  const paths = citationAncestors(citations);
+  if (!paths.length) return [];
   const file = process.env.AXIOM_OPS_BUNDLES_FILE;
   if (file && process.env.NODE_ENV === "development") {
     try {
-      const data = JSON.parse(await readFile(file, "utf8")) as BundlesFile;
-      return bundleIndex(data.bundles, data.documents);
+      const data = await readBundlesFile(file);
+      const wanted = new Set(paths);
+      return bundleIndex(
+        data.bundles,
+        data.documents.filter((d) => d.scope === "in" && d.citation_path && wanted.has(d.citation_path))
+      );
     } catch {
       return [];
     }
@@ -112,47 +146,59 @@ export async function getBundleIndex(): Promise<BundleIndexEntry[]> {
   const config = getSupabaseRestConfig();
   if (!config) return [];
   try {
-    const [bundles, documents] = await Promise.all([
-      readSupabaseRows<BundleRow>(config, "encodings", "program_bundles", { select: "id,title,tiers" }, { fresh: true }),
-      readSupabaseRows<BundleDocumentRow>(
-        config,
-        "encodings",
-        "program_bundle_documents",
-        { select: "bundle_id,tier,name,scope,citation_path", scope: "eq.in", citation_path: "not.is.null", limit: "10000" },
-        { fresh: true }
-      ),
-    ]);
+    const documents: BundleDocumentRow[] = [];
+    for (let i = 0; i < paths.length; i += 100) {
+      const batch = paths.slice(i, i + 100).map((p) => `"${p}"`).join(",");
+      documents.push(
+        ...(await readSupabaseRows<BundleDocumentRow>(
+          config,
+          "encodings",
+          "program_bundle_documents",
+          { select: "bundle_id,tier,name,scope,citation_path", scope: "eq.in", citation_path: `in.(${batch})` },
+          { fresh: true }
+        ))
+      );
+    }
+    const ids = [...new Set(documents.map((d) => d.bundle_id))];
+    if (!ids.length) return [];
+    const bundles = await readSupabaseRows<BundleRow>(
+      config,
+      "encodings",
+      "program_bundles",
+      { select: "id,title,tiers", id: `in.(${ids.map((b) => `"${b}"`).join(",")})` },
+      { fresh: true }
+    );
     return bundleIndex(bundles, documents);
   } catch {
     return [];
   }
 }
 
-/** One bundle at a glance, for the /ops entry to its page. */
+/** One bundle at a glance, for the /ops grid of programs and states. */
 export interface BundleSummary {
   id: string;
   title: string;
-  tiers: Array<{ id: BundleTierId; title: string; counts: TierCounts }>;
+  program: string;
+  jurisdiction: string;
+  counts: Partial<Record<BundleTierId, TierCounts>>;
 }
 
 /**
- * Every bundle with its tiers' counts, from each tier's newest daily snapshot
- * (the collector writes one per pass). Empty when the tables are not there.
+ * Every bundle with its tiers' counts (a state's with the federal layer
+ * included), as the collector stored them. Empty when the tables are not there.
  */
 export async function getBundleSummaries(): Promise<BundleSummary[]> {
+  const pick = (b: BundleRow): BundleSummary => ({
+    id: b.id,
+    title: b.title,
+    program: b.program,
+    jurisdiction: b.jurisdiction,
+    counts: b.counts ?? {},
+  });
   const file = process.env.AXIOM_OPS_BUNDLES_FILE;
   if (file && process.env.NODE_ENV === "development") {
     try {
-      const data = JSON.parse(await readFile(file, "utf8")) as BundlesFile;
-      return data.bundles.map((bundle) => ({
-        id: bundle.id,
-        title: bundle.title,
-        tiers: bundle.tiers.map((tier) => ({
-          id: tier.id,
-          title: tier.title,
-          counts: tierCounts(data.documents.filter((d) => d.bundle_id === bundle.id && d.tier === tier.id)),
-        })),
-      }));
+      return (await readBundlesFile(file)).bundles.map(pick);
     } catch {
       return [];
     }
@@ -160,24 +206,14 @@ export async function getBundleSummaries(): Promise<BundleSummary[]> {
   const config = getSupabaseRestConfig();
   if (!config) return [];
   try {
-    const [bundles, snapshots] = await Promise.all([
-      readSupabaseRows<BundleRow>(config, "encodings", "program_bundles", { select: "id,title,tiers", order: "title.asc" }, { fresh: true }),
-      readSupabaseRows<BundleSnapshotRow>(
-        config,
-        "encodings",
-        "program_bundle_snapshots",
-        { select: "*", order: "day.desc", limit: "200" },
-        { fresh: true }
-      ),
-    ]);
-    return bundles.map((bundle) => ({
-      id: bundle.id,
-      title: bundle.title,
-      tiers: bundle.tiers.flatMap((tier) => {
-        const newest = snapshots.find((s) => s.bundle_id === bundle.id && s.tier === tier.id);
-        return newest ? [{ id: tier.id, title: tier.title, counts: newest.counts }] : [];
-      }),
-    }));
+    const rows = await readSupabaseRows<BundleRow>(
+      config,
+      "encodings",
+      "program_bundles",
+      { select: "id,title,program,jurisdiction,counts", order: "id.asc", limit: "2000" },
+      { fresh: true }
+    );
+    return rows.map(pick);
   } catch {
     return [];
   }

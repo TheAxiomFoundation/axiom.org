@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { OpsDashboard } from "@/components/axiom/ops-dashboard";
-import { BundleStrip } from "@/components/axiom/bundle-strip";
+import { BundleGrid } from "@/components/axiom/bundle-grid";
 import { OpsPipeline } from "@/components/axiom/ops-pipeline";
 import { PipelineLedger } from "@/components/axiom/pipeline-ledger";
 import { pipelineView } from "@/lib/axiom/encoding-pipeline";
@@ -62,7 +62,7 @@ export default async function OpsPage({
       encodingError={encodingStatus.error}
       queues={queues}
       recentScopes={recentScopes}
-      bundles={bundles.length ? <BundleStrip bundles={bundles} /> : undefined}
+      bundles={bundles.length ? <BundleGrid bundles={bundles} /> : undefined}
       // With the pipeline shown, the ledger is built from every run rather
       // than the encoder's own records, and follows the page's scope.
       ledger={

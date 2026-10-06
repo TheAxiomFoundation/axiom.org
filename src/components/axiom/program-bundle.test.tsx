@@ -293,7 +293,7 @@ describe("ProgramBundle", () => {
     expect(provenance).toHaveTextContent("2.29.11 (4c900b6d3d), 448 references; the newest release");
     expect(provenance).toHaveTextContent("az-snap-ecps, PolicyEngine-US 1.767.3, Jul 28, 2026");
     expect(provenance).toHaveTextContent("FY2027");
-    expect(provenance).toHaveTextContent("12 known state sources");
+    expect(provenance).toHaveTextContent("12 known sources");
   });
 
   it("says when the bundle tables are not there yet", () => {

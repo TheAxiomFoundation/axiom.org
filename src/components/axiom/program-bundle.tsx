@@ -763,7 +763,7 @@ function CellDetail({
               doneShare(b) - doneShare(a) || a.name.localeCompare(b.name)
           )
           .map((row) => (
-            <li key={row.key}>
+            <li key={`${row.bundle_id}:${row.key}`}>
               <button type="button" onClick={() => onDocument(row.key)}>
                 <i className={styles.swatch} data-shade={row.status ? STATUS_SHADE[row.status] : "none"} aria-hidden />
                 <span>{row.name}</span>
@@ -1187,14 +1187,15 @@ function Provenance({
                       ? `${bundle.parity.suite}, PolicyEngine-US ${bundle.parity.policyengine_us ?? "?"}, ${day(bundle.parity.generated_at)}`
                       : null,
                   ],
-                  ["Plan", text(m.plan_as_of) && `${text(m.plan_documents)} documents, ${text(m.plan_as_of)}`],
+                  ["Plan", m.plan_documents != null ? `${text(m.plan_documents)} documents for the program` : null],
                   ["Fiscal year", text(m.fiscal_year) && `FY${text(m.fiscal_year)}`],
                 ]
               : [
-                  ["Screener tier", text(m.screener_documents) && `${text(m.screener_documents)} documents, all included`],
-                  ["Federal law", text(m.federal_schema)],
-                  ["State manifests", Array.isArray(m.manifests) ? `${m.manifests.length} manifests` : null],
-                  ["Not in the corpus yet", text(m.known_sources) && `${text(m.known_sources)} known state sources`],
+                  ["Screener tier", "every in-scope document, included"],
+                  ["Federal law", text(m.federal_schema) ?? "no needs-closure schema yet"],
+                  ["Federal guidance", text(m.federal_manifests) && `manifests matching ${text(m.federal_manifests)}`],
+                  ["State sources", text(m.state_manifests) && `the state's manifests matching ${text(m.state_manifests)}`],
+                  ["Not in the corpus yet", m.known_sources ? `${text(m.known_sources)} known sources` : null],
                 ];
           return (
             <div key={tier.id} className={styles.provenanceTier}>
@@ -1439,7 +1440,7 @@ function DocumentTable({
                     const counted = measured(row);
                     const states = counted.byState;
                     return (
-                      <tr key={row.key} aria-selected={row.key === selectedKey}>
+                      <tr key={`${row.bundle_id}:${row.key}`} aria-selected={row.key === selectedKey}>
                         <th scope="row">
                           <button type="button" className={styles.rowName} onClick={() => onSelect(row.key)}>
                             {row.name}
