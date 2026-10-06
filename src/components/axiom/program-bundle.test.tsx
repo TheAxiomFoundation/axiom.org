@@ -174,9 +174,10 @@ describe("ProgramBundle", () => {
     expect(
       within(matrix).getByRole("button", { name: "Deductions, Screener-level parity: 0 of 1 cited provision encoded" })
     ).toHaveTextContent("0 of 10%");
+    // A document the corpus does not hold counts once, as not in the corpus.
     expect(
-      within(matrix).getByRole("button", { name: "Benefit determination, Full document bundle: 0 of 0 provisions encoded" })
-    ).toHaveTextContent("0 of 0 + 1 not in the corpus");
+      within(matrix).getByRole("button", { name: "Benefit determination, Full document bundle: 0 of 1 provision encoded" })
+    ).toHaveTextContent("0 of 10%");
   });
 
   it("opens in the count the /ops grid showed", () => {
@@ -261,8 +262,8 @@ describe("ProgramBundle", () => {
     fireEvent.click(within(panel).getByRole("radio", { name: "Part" }));
     const income = within(panel).getByRole("button", { name: /^Income/ });
     expect(income).toHaveAttribute("aria-expanded", "false");
-    // Tier 1 counts the provisions PolicyEngine cites: two in 7 USC 2014, the whole of 7 USC 2017.
-    expect(income).toHaveTextContent("Income2 documents · 0 complete1 of 3 cited provisions encoded");
+    // Tier 1 counts the provisions PolicyEngine cites: two in 7 USC 2014, and all three of 7 USC 2017, cited whole.
+    expect(income).toHaveTextContent("Income2 documents · 0 complete1 of 5 cited provisions encoded");
     expect(within(panel).getByRole("button", { name: /^Deductions/ })).toHaveTextContent(
       "Deductions1 document · 0 complete · 1 not in the corpus0 of 1 cited provision encoded"
     );
@@ -270,10 +271,10 @@ describe("ProgramBundle", () => {
     fireEvent.click(income);
     // Most cited provisions first by default.
     const names = () => [...panel.querySelectorAll('tbody th[scope="row"] button')].map((b) => b.textContent);
-    expect(names().slice(0, 2)).toEqual(["7 USC 2014", "7 USC 2017"]);
+    expect(names().slice(0, 2)).toEqual(["7 USC 2017", "7 USC 2014"]);
     fireEvent.click(within(panel).getByRole("button", { name: "Cited" }));
     expect(within(panel).getByRole("columnheader", { name: "Cited" })).toHaveAttribute("aria-sort", "ascending");
-    expect(names().slice(0, 2)).toEqual(["7 USC 2017", "7 USC 2014"]);
+    expect(names().slice(0, 2)).toEqual(["7 USC 2014", "7 USC 2017"]);
     fireEvent.click(within(panel).getByRole("button", { name: "Encoded" }));
     expect(within(panel).getByRole("columnheader", { name: "Encoded" })).toHaveAttribute("aria-sort", "descending");
     expect(names().slice(0, 2)).toEqual(["7 USC 2014", "7 USC 2017"]);

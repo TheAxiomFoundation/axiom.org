@@ -65,6 +65,7 @@ create table if not exists encodings.program_bundle_documents (
   -- Screener tier only: each provision PolicyEngine cites, graded by the
   -- same rule: [{key, name, path, url, part, references, state, detail, run}].
   units               jsonb not null default '[]',
+  also_in             text[] not null default '{}',  -- other programs whose bundles hold the document, same jurisdiction
   runs                integer not null,    -- targeted encode runs for citations in the document
   latest_citation     text,
   latest_run_at       timestamptz,

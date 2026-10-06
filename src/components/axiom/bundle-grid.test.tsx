@@ -31,7 +31,7 @@ const bundles = [
 ];
 
 describe("BundleGrid", () => {
-  it("lays out a row per program and a column per state, each cell shaded by its page's headline number", () => {
+  it("lays out a row per program and a column per state, each cell a small copy of its page's bar", () => {
     render(<BundleGrid bundles={bundles} />);
     // Documents complete by default, as each bundle page opens.
     const grid = screen.getByRole("table", { name: "Program bundles, Tier 1, documents" });
@@ -39,7 +39,8 @@ describe("BundleGrid", () => {
     expect(within(grid).getAllByRole("rowheader").map((h) => h.textContent)).toEqual(["SNAP", "Medicaid"]);
     const az = within(grid).getByRole("link", { name: "Arizona SNAP: 0 of 1 documents complete (0%)" });
     expect(az).toHaveAttribute("href", "/ops/bundles/us-az/snap");
-    expect(az).toHaveAttribute("data-step", "4");
+    // The page's colors, in its order: here one partly encoded document.
+    expect([...az.querySelectorAll("[data-shade]")].map((s) => s.getAttribute("data-shade"))).toEqual(["partly"]);
     expect(within(grid).getByRole("link", { name: "Medicaid" })).toHaveAttribute("href", "/ops/bundles/us/medicaid");
   });
 
@@ -49,17 +50,21 @@ describe("BundleGrid", () => {
     const grid = screen.getByRole("table", { name: "Program bundles, Tier 1, provisions" });
     const az = within(grid).getByRole("link", { name: "Arizona SNAP: 40 of 157 cited provisions encoded (25%)" });
     expect(az).toHaveAttribute("href", "/ops/bundles/us-az/snap?count=provisions");
-    expect(az).toHaveAttribute("data-step", "1");
+    const segments = [...az.querySelectorAll<HTMLElement>("[data-shade]")];
+    expect(segments.map((s) => [s.getAttribute("data-shade"), s.style.flexGrow])).toEqual([
+      ["encoded", "40"],
+      ["none", "117"],
+    ]);
     // Nothing to count yet is its own mark.
     expect(within(grid).getByRole("link", { name: "California SNAP: 0 of 0 cited provisions encoded" })).toHaveAttribute(
-      "data-step",
-      "empty"
+      "data-empty",
+      "true"
     );
     fireEvent.click(screen.getByRole("radio", { name: "Tier 2 · full bundle" }));
     expect(
       within(screen.getByRole("table", { name: "Program bundles, Tier 2, provisions" })).getByRole("link", {
         name: "Arizona SNAP: 70 of 1,271 provisions encoded (6%)",
       })
-    ).toHaveAttribute("data-step", "3");
+    ).toBeInTheDocument();
   });
 });

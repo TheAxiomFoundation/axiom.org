@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import styles from "./bundle-grid.module.css";
-import type { BundleTierId } from "@/lib/axiom/program-bundles";
+import type { BundleTierId, TierCounts } from "@/lib/axiom/program-bundles";
 import type { BundleSummary } from "@/lib/axiom/program-bundles-data";
 
 const number = (value: number) => value.toLocaleString("en-US");
@@ -24,24 +24,63 @@ const PROGRAM_ORDER = [
   "ctc",
 ];
 
-/** Shares encoded, as five steps of one green. */
-const STEPS = [
-  { min: 0.5, label: "50% or more" },
-  { min: 0.25, label: "25–49%" },
-  { min: 0.1, label: "10–24%" },
-  { min: Number.MIN_VALUE, label: "Under 10%" },
-  { min: 0, label: "None yet" },
-];
-const step = (share: number) => STEPS.findIndex((s) => share >= s.min);
-
 type Count = "documents" | "provisions";
+type Shade = "encoded" | "unvalidated" | "partly" | "deferred" | "in_progress" | "failed" | "none" | "missing";
+
+/** The bundle page's states and colors, in its order, for each count. */
+const LEGEND: Record<Count, Array<[Shade, string]>> = {
+  documents: [
+    ["encoded", "Complete"],
+    ["unvalidated", "Complete, not validated"],
+    ["partly", "Partly encoded"],
+    ["none", "Not started"],
+    ["missing", "Not in the corpus"],
+  ],
+  provisions: [
+    ["encoded", "Encoded"],
+    ["unvalidated", "Encoded, not validated"],
+    ["partly", "Partly encoded"],
+    ["deferred", "Deferred"],
+    ["in_progress", "In progress"],
+    ["failed", "Failed"],
+    ["none", "Not started"],
+    ["missing", "Not in the corpus"],
+  ],
+};
+
+/** A tier's counts as the page's bar segments, in its order. */
+function segments(counts: TierCounts, count: Count): Array<[Shade, number]> {
+  if (count === "documents") {
+    const s = counts.byStatus;
+    return [
+      ["encoded", s.complete],
+      ["unvalidated", s.unvalidated],
+      ["partly", s.partly],
+      ["none", s.not_started],
+      ["missing", s.not_in_corpus],
+    ];
+  }
+  const p = counts.byProvisionState;
+  const known = p.encoded + p.unvalidated + p.partly + p.deferred + p.in_progress + p.failed + p.not_started;
+  return [
+    ["encoded", p.encoded],
+    ["unvalidated", p.unvalidated],
+    ["partly", p.partly],
+    ["deferred", p.deferred],
+    ["in_progress", p.in_progress],
+    ["failed", p.failed],
+    ["none", p.not_started],
+    // Tier 1 counts the provisions PolicyEngine cites in documents the corpus does not hold.
+    ["missing", Math.max(0, counts.provisions - known)],
+  ];
+}
 
 /**
  * Every program bundle at a glance: a row per core program, a column for its
- * federal layer and one per state. Each cell is shaded by the same number its
- * bundle page leads with, in the same tier and count: documents complete, or
- * provisions encoded (Tier 1: the provisions PolicyEngine cites). A cell opens
- * its bundle in that count.
+ * federal layer and one per state. Each cell is a small copy of its bundle
+ * page's bar, in the same tier and count, with the page's colors: documents by
+ * status, or provisions by state (Tier 1: the provisions PolicyEngine cites).
+ * A cell opens its bundle in that count.
  */
 export function BundleGrid({ bundles }: { bundles: BundleSummary[] }) {
   const [tier, setTier] = useState<BundleTierId>("screener");
@@ -82,7 +121,7 @@ export function BundleGrid({ bundles }: { bundles: BundleSummary[] }) {
         </div>
       </div>
       <p className={styles.note}>
-        {`Share of ${unit} ${verb}, by program and state: the number each bundle's page leads with. A state's bundle includes the program's federal law.`}
+        {`Each cell is its bundle page's bar: ${unit} by state, left to right as on the page. A state's bundle includes the program's federal law.`}
       </p>
       <div className={styles.scroll}>
         <table
@@ -120,15 +159,21 @@ export function BundleGrid({ bundles }: { bundles: BundleSummary[] }) {
                   const text = `${bundle.title}: ${number(done)} of ${number(total)} ${unit} ${verb}${
                     total ? ` (${Math.round(share * 100)}%)` : ""
                   }`;
+                  const parts = segments(counts, count);
+                  const width = parts.reduce((t, [, n]) => t + n, 0);
                   return (
                     <td key={j} className={styles.cell}>
                       <a
                         href={`/ops/bundles/${bundle.id}${count === "provisions" ? "?count=provisions" : ""}`}
-                        className={styles.swatch}
-                        data-step={total ? step(share) : "empty"}
+                        className={styles.bar}
+                        data-empty={width ? undefined : true}
                         title={text}
                         aria-label={text}
-                      />
+                      >
+                        {parts.map(([shade, n]) =>
+                          n > 0 ? <span key={shade} data-shade={shade} style={{ flexGrow: n }} /> : null
+                        )}
+                      </a>
                     </td>
                   );
                 })}
@@ -137,15 +182,15 @@ export function BundleGrid({ bundles }: { bundles: BundleSummary[] }) {
           </tbody>
         </table>
       </div>
-      <ul className={styles.legend} aria-label={`Share ${verb}`}>
-        {STEPS.map((s, index) => (
-          <li key={s.label}>
-            <i className={styles.swatch} data-step={index} aria-hidden />
-            {s.label}
+      <ul className={styles.legend} aria-label="States">
+        {LEGEND[count].map(([shade, name]) => (
+          <li key={shade}>
+            <i className={styles.swatch} data-shade={shade} aria-hidden />
+            {name}
           </li>
         ))}
         <li>
-          <i className={styles.swatch} data-step="empty" aria-hidden />
+          <i className={styles.swatch} data-empty aria-hidden />
           Nothing to count yet
         </li>
       </ul>

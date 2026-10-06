@@ -102,8 +102,6 @@ interface Cell {
   shades: Record<Shade, number>;
   done: number;
   total: number;
-  /** Provisions only: documents the corpus does not hold, whose provisions cannot be counted. */
-  uncounted: number;
 }
 
 /** Encoded, validated or not: what "done" counts everywhere on the page. */
@@ -116,7 +114,7 @@ function cellOf(tier: BundleTierId, part: string, rows: BundleDocumentRow[], cou
     const documents = rows.filter((r) => r.part === part);
     for (const row of documents) if (row.status) shades[STATUS_SHADE[row.status]]++;
     const done = shades.encoded + shades.unvalidated;
-    return { tier, part, count, documents, shades, done, total: documents.length, uncounted: 0 };
+    return { tier, part, count, documents, shades, done, total: documents.length };
   }
   if (tier === "screener") {
     // Each provision PolicyEngine cites feeds its own part.
@@ -128,26 +126,17 @@ function cellOf(tier: BundleTierId, part: string, rows: BundleDocumentRow[], cou
         shades[UNIT_SHADE[unit.state]]++;
       }
     }
-    return { tier, part, count, documents, shades, done: shades.encoded + shades.unvalidated, total, uncounted: 0 };
+    return { tier, part, count, documents, shades, done: shades.encoded + shades.unvalidated, total };
   }
   const documents = rows.filter((r) => r.part === part);
   let total = 0;
   for (const row of documents) {
-    if (!row.in_corpus) continue;
     const counted = measured(row);
     total += counted.total;
+    shades.missing += counted.missing;
     for (const state of PROVISION_STATES) shades[PROVISION_SHADE[state]] += counted.byState[state];
   }
-  return {
-    tier,
-    part,
-    count,
-    documents,
-    shades,
-    done: shades.encoded + shades.unvalidated,
-    total,
-    uncounted: documents.filter((r) => !r.in_corpus).length,
-  };
+  return { tier, part, count, documents, shades, done: shades.encoded + shades.unvalidated, total };
 }
 
 const COUNT_WORDS: Record<Count, [string, string, string]> = {
@@ -313,10 +302,11 @@ export function ProgramBundle({
               ))}
               <Explain label="Count">
                 Tier 1 is PolicyEngine parity, so it counts only what PolicyEngine cites: a document is complete when
-                every provision PolicyEngine cites in it is encoded, and Provisions counts those cited provisions. Tier 2
-                counts every text-bearing provision of its documents in the corpus; a document the corpus does not hold
-                has no provisions to count there, so it shows apart. In Tier 1 PolicyEngine names the provisions, so they
-                count even before the corpus holds them.
+                every provision PolicyEngine cites in it is encoded, and Provisions counts those cited provisions; a
+                document PolicyEngine cites whole, or by page, counts all its provisions. Tier 2
+                counts every text-bearing provision of its documents. A document the corpus does not hold counts as not
+                in the corpus: each provision PolicyEngine cites in it in Tier 1, once in Tier 2, until the corpus holds
+                it.
               </Explain>
             </div>
             <div
@@ -367,12 +357,6 @@ export function ProgramBundle({
                             <span className={styles.cellCount}>
                               <span>
                                 <strong>{number(cell.done)}</strong> of {number(cell.total)}
-                                {cell.uncounted > 0 && (
-                                  <span className={styles.uncounted}>
-                                    {" "}
-                                    + {number(cell.uncounted)} not in the corpus
-                                  </span>
-                                )}
                               </span>
                               <span>{percent(cell.done, cell.total)}</span>
                             </span>
@@ -675,8 +659,8 @@ function ProvisionFacts({ tier, rows }: { tier: BundleTierId; rows: BundleDocume
     label: PROVISION_LABELS[state],
     value: counts.byProvisionState[state],
   }));
-  // Cited provisions in documents the corpus does not hold still count.
-  if (tier === "screener") items.push({ key: "missing", shade: "missing", label: "Not in the corpus", value: missing });
+  // Documents the corpus does not hold still count: each cited provision in Tier 1, once each in Tier 2.
+  items.push({ key: "missing", shade: "missing", label: "Not in the corpus", value: missing });
   return (
     <Breakdown
       total={counts.provisions}
@@ -752,12 +736,6 @@ function CellDetail({
             </li>
           ))}
         </ul>
-        {cell.uncounted > 0 && (
-          <p className={styles.detailNote}>
-            {number(cell.uncounted)} {cell.uncounted === 1 ? "document is" : "documents are"} not in the corpus, so
-            their provisions are not counted.
-          </p>
-        )}
       </div>
       <ul className={styles.memberList}>
         {[...cell.documents]
@@ -1139,6 +1117,12 @@ function DocumentDetail({
       </div>
 
       {row.note && <p className={styles.detailNote}>{row.note}.</p>}
+      {row.also_in?.length ? (
+        <p className={styles.detailNote}>
+          Also in the {row.also_in.join(", ")} {row.also_in.length === 1 ? "bundle" : "bundles"}: its encodings count in
+          each.
+        </p>
+      ) : null}
       <p className={styles.detailSources}>
         Part: {row.part}. In the tier from {sourceWords(row.sources, row.manifest)}.
       </p>
@@ -1448,7 +1432,12 @@ function DocumentTable({
                           <button type="button" className={styles.rowName} onClick={() => onSelect(row.key)}>
                             {row.name}
                           </button>
-                          {!excluded && row.status && <span className={styles.rowStatus}>{STATUS_LABELS[row.status]}</span>}
+                          {!excluded && row.status && (
+                            <span className={styles.rowStatus}>
+                              {STATUS_LABELS[row.status]}
+                              {row.also_in?.length ? ` · also in ${row.also_in.join(", ")}` : ""}
+                            </span>
+                          )}
                         </th>
                         {excluded ? (
                           <td>{row.reason ?? "—"}</td>

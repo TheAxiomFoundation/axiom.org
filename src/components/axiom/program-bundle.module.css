@@ -164,10 +164,6 @@
   color: var(--color-paper);
 }
 
-.uncounted {
-  color: var(--color-ink-muted);
-}
-
 .shadeBar[data-empty] {
   display: block;
   background: repeating-linear-gradient(135deg, var(--state-missing) 0 1px, var(--color-paper) 1px 4px);

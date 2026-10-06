@@ -364,6 +364,23 @@ async function main() {
         `full ${share(fed.counts.full)} provisions`
     );
   }
+  // Documents more than one program's bundle holds, in the same jurisdiction:
+  // an encoding of one counts in each, so each row names the others.
+  const titles = new Map(bundles.map(({ bundle }) => [bundle.program, bundle.title]));
+  const holders = new Map();
+  for (const row of documentRows) {
+    if (row.scope !== "in") continue;
+    const [jurisdiction, program] = row.bundle_id.split("/");
+    const key = `${jurisdiction}|${row.key}`;
+    holders.set(key, new Set([...(holders.get(key) ?? []), program]));
+  }
+  for (const row of documentRows) {
+    const [jurisdiction, program] = row.bundle_id.split("/");
+    row.also_in = [...(holders.get(`${jurisdiction}|${row.key}`) ?? [])]
+      .filter((p) => p !== program)
+      .map((p) => titles.get(p) ?? p)
+      .sort();
+  }
   console.log(`${bundleRows.length} bundles, ${documentRows.length} document rows, ${snapshotRows.length} snapshots`);
 
   if (dryRun) {

@@ -206,6 +206,8 @@ export interface BundleDocumentRow {
   modules: number;
   /** The screener tier's units in this document; empty in other tiers. */
   units: ParityUnit[];
+  /** Other programs whose bundles hold this document in the same jurisdiction, by title. */
+  also_in?: string[];
   /** Targeted encode runs for citations in the document, and the newest. */
   runs: number;
   latest_citation: string | null;
@@ -529,13 +531,17 @@ const UNIT_AS_PROVISION: Record<UnitState, ProvisionState | null> = {
 
 /**
  * What a document counts toward its tier. The screener tier is PolicyEngine
- * parity, so it counts the provisions PolicyEngine cites (its units); the
- * full bundle counts every text-bearing provision. Both on one state scale.
+ * parity, so it counts the provisions PolicyEngine cites (its units); where
+ * PolicyEngine cites the whole document (or a page of it, which the corpus
+ * cannot place), every provision of the document counts, as in the full
+ * bundle. The full bundle counts every text-bearing provision. Both on one
+ * state scale.
  */
 export function measured(
   row: Pick<
     BundleDocumentRow,
     | "tier"
+    | "citation_path"
     | "units"
     | "in_corpus"
     | "provisions"
@@ -550,10 +556,19 @@ export function measured(
   /** Everything the document counts; in the screener tier, cited provisions not in the corpus included. */
   total: number;
   byState: Record<ProvisionState, number>;
-  /** Screener tier: cited provisions in a document the corpus does not hold. */
+  /** Provisions in a document the corpus does not hold: each cited one in the screener tier, one per document in the full bundle. */
   missing: number;
 } {
-  if (row.tier !== "screener") return { total: row.provisions, byState: provisionCounts(row), missing: 0 };
+  if (row.tier !== "screener") {
+    // A document the corpus does not hold counts once, as not in the corpus, in both tiers.
+    if (!row.in_corpus) {
+      const none = Object.fromEntries(PROVISION_STATES.map((s) => [s, 0])) as Record<ProvisionState, number>;
+      return { total: 1, byState: none, missing: 1 };
+    }
+    return { total: row.provisions, byState: provisionCounts(row), missing: 0 };
+  }
+  const whole = row.in_corpus && row.provisions > 0 && row.units.some((u) => u.path && u.path === row.citation_path);
+  if (whole) return { total: row.provisions, byState: provisionCounts(row), missing: 0 };
   const byState = Object.fromEntries(PROVISION_STATES.map((s) => [s, 0])) as Record<ProvisionState, number>;
   let missing = 0;
   for (const unit of row.units) {

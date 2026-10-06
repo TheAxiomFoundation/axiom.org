@@ -6,11 +6,14 @@
   border: 1px solid var(--color-rule);
   border-radius: 12px;
   background: var(--color-paper-elevated);
-  --step-0: #166534;
-  --step-1: color-mix(in srgb, #166534 70%, var(--color-paper));
-  --step-2: color-mix(in srgb, #166534 45%, var(--color-paper));
-  --step-3: color-mix(in srgb, #166534 22%, var(--color-paper));
-  --step-4: color-mix(in srgb, var(--color-ink) 10%, var(--color-paper));
+  /* The bundle page's state colors (program-bundle.module.css). */
+  --state-encoded: #166534;
+  --state-partly: color-mix(in srgb, #166534 38%, var(--color-paper));
+  --state-deferred: color-mix(in srgb, var(--color-ink) 40%, var(--color-paper));
+  --state-in-progress: #d39a3e;
+  --state-failed: #b42318;
+  --state-none: color-mix(in srgb, var(--color-ink) 13%, var(--color-paper));
+  --state-missing: color-mix(in srgb, var(--color-ink) 38%, var(--color-paper));
 }
 
 .head {
@@ -81,7 +84,7 @@
 }
 
 .state {
-  min-width: 18px;
+  min-width: 22px;
   font-family: var(--font-mono), monospace;
   font-size: 9.5px;
   font-weight: 500;
@@ -110,47 +113,80 @@
   padding: 0;
 }
 
-.swatch {
-  display: block;
-  width: 18px;
+/* A cell: the bundle page's bar, scaled to a square. Colors as the page's
+   states (program-bundle.module.css). */
+.bar {
+  display: flex;
+  width: 22px;
   height: 18px;
+  overflow: hidden;
   border-radius: 3px;
-  background: var(--step-4);
+  background: var(--state-none);
 }
 
-i.swatch {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
+/* Exact shares, as on the page: a state too small to see there is too small here. */
+.bar > span {
+  flex-basis: 0;
+  min-width: 0;
+  background: var(--fill);
 }
 
-a.swatch:hover {
+.bar:hover {
   outline: 2px solid var(--color-accent);
   outline-offset: 1px;
 }
 
-.swatch[data-step="0"] {
-  background: var(--step-0);
-}
-
-.swatch[data-step="1"] {
-  background: var(--step-1);
-}
-
-.swatch[data-step="2"] {
-  background: var(--step-2);
-}
-
-.swatch[data-step="3"] {
-  background: var(--step-3);
-}
-
-.swatch[data-step="empty"] {
+.bar[data-empty],
+.swatch[data-empty] {
   background: repeating-linear-gradient(
     135deg,
     color-mix(in srgb, var(--color-ink) 22%, var(--color-paper)) 0 1px,
     transparent 1px 4px
   );
+}
+
+.swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--fill, var(--state-none));
+}
+
+.card [data-shade="encoded"] {
+  --fill: var(--state-encoded);
+}
+
+.card [data-shade="unvalidated"] {
+  --fill: repeating-linear-gradient(45deg, var(--state-encoded) 0 2px, var(--state-partly) 2px 4px);
+}
+
+.card [data-shade="partly"] {
+  --fill: var(--state-partly);
+}
+
+.card [data-shade="deferred"] {
+  --fill: var(--state-deferred);
+}
+
+.card [data-shade="in_progress"] {
+  --fill: var(--state-in-progress);
+}
+
+.card [data-shade="failed"] {
+  --fill: repeating-linear-gradient(
+    135deg,
+    var(--state-failed) 0 2px,
+    color-mix(in srgb, var(--state-failed) 50%, var(--color-paper)) 2px 4px
+  );
+}
+
+.card [data-shade="none"] {
+  --fill: var(--state-none);
+}
+
+.card [data-shade="missing"] {
+  --fill: repeating-linear-gradient(135deg, var(--state-missing) 0 1px, var(--color-paper) 1px 4px);
 }
 
 .legend {

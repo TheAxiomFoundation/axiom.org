@@ -243,8 +243,13 @@ describe("tierCounts", () => {
 
     const full = tierCounts([
       measureDocument("b", "full", doc(), { nodes, modules: [module("us/statute/7/2014/a")], attempts: [] }, AT),
+      // A document the corpus does not hold counts once.
+      measureDocument("b", "full", doc({ key: "k2", citation_path: "us/statute/7/2017" }), { nodes: [], modules: [], attempts: [] }, AT),
     ]);
-    expect(full).toMatchObject({ provisions: 4, byStatus: { partly: 1 } });
+    expect(full).toMatchObject({ provisions: 5, byStatus: { partly: 1, not_in_corpus: 1 } });
+    // A document PolicyEngine cites whole counts all its provisions in Tier 1 too.
+    const whole = measureDocument("b", "screener", doc({ cited: [{ path: "us/statute/7/2014", references: 1 }] }), { nodes, modules: [module("us/statute/7/2014/a")], attempts: [] }, AT);
+    expect(measured(whole)).toMatchObject({ total: 4, missing: 0, byState: { encoded: 1, not_started: 3 } });
     expect(full.byProvisionState).toMatchObject({ encoded: 1, not_started: 3 });
   });
 });
