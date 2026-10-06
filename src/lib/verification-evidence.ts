@@ -131,8 +131,6 @@ export const SNAP_QC_REPLAYS: readonly SnapQcReplay[] = [
   { state: "New York", suite: "ny-snap-qc", households: 847 },
 ];
 
-export const SNAP_QC_STAGES = 6;
-
 export const SNAP_QC_SOURCE: EvidenceSource = {
   repo: ORACLES_REPO,
   path: "dashboard/public/data/axiom-snapqc-*-snap.json",

@@ -38,15 +38,6 @@
   letter-spacing: -0.035em;
 }
 
-.sub,
-.updated {
-  margin-top: 4px;
-  font-size: 12px;
-  color: var(--color-ink-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-
 /* ── Scope and funnel ── */
 
 .pipeline h2 {
@@ -55,40 +46,56 @@
 }
 
 .scopes {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.scopeRow {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
   gap: 6px;
-  margin-top: 16px;
 }
 
 .scope {
   display: inline-flex;
   align-items: baseline;
-  gap: 6px;
-  padding: 4px 10px;
+  gap: 7px;
+  padding: 5px 12px;
   border: 1px solid var(--color-rule);
   border-radius: 999px;
-  font-family: var(--font-mono), monospace;
-  font-size: 12px;
+  background: var(--color-paper);
+  font-size: 13px;
   color: var(--color-ink-secondary);
   text-decoration: none;
+  white-space: nowrap;
 }
 
 .scope:hover {
   border-color: var(--color-rule-strong);
+  color: var(--color-ink);
 }
 
 .scope[aria-current="page"] {
   border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-paper));
   color: var(--color-ink);
-  box-shadow: inset 0 0 0 1px var(--color-accent);
+  font-weight: 550;
 }
 
 .scopeCount {
-  font-size: 11px;
+  font-size: 12px;
+  font-weight: 400;
   color: var(--color-ink-muted);
   font-variant-numeric: tabular-nums;
+}
+
+.scopeWithin {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--color-ink-secondary);
 }
 
 .scopeSelect {
@@ -101,10 +108,66 @@
   color: var(--color-ink);
 }
 
-/* ── Summary: funnel, top blockers, weekly trend ── */
-
-.summaryFunnel {
+.citationStates {
   margin-top: 20px;
+}
+
+/* One row per group, in pipeline order: name, count, and a bar for its share of all citations. */
+.stateList {
+  display: grid;
+  gap: 2px;
+  max-width: 640px;
+  /* The rows' padding is for their hover; the text lines up with the heading. */
+  margin: 12px 0 0 -8px;
+  padding: 0;
+  list-style: none;
+}
+
+.stateRow {
+  display: grid;
+  grid-template-columns: 140px 40px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 12px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.stateRow:hover,
+.stateRow[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--color-ink) 5%, transparent);
+}
+
+.stateLabel {
+  color: var(--color-ink);
+}
+
+.stateCount {
+  text-align: right;
+  font-weight: 600;
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.stateTrack {
+  display: block;
+}
+
+.stateBar {
+  display: block;
+  min-width: 2px;
+  height: 8px;
+  border-radius: 0 4px 4px 0;
+  background: color-mix(in srgb, var(--color-ink) 30%, var(--color-paper));
+}
+
+.stateRow[aria-pressed="true"] .stateBar {
+  background: var(--color-accent);
 }
 
 .summaryFunnelHead {
@@ -115,55 +178,6 @@
 
 .summaryFunnelHead .miniLabel {
   margin-top: 0;
-}
-
-.funnelSteps {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 0;
-  margin-top: 10px;
-  padding: 0;
-  list-style: none;
-}
-
-.funnelStep {
-  position: relative;
-  display: grid;
-  align-content: start;
-  gap: 2px;
-  min-width: 0;
-  padding-right: 12px;
-}
-
-.funnelValue {
-  font-size: 34px;
-  font-weight: 500;
-  line-height: 1.1;
-  letter-spacing: -0.035em;
-  font-variant-numeric: tabular-nums;
-  color: var(--color-ink);
-}
-
-.funnelName {
-  font-size: 12px;
-  color: var(--color-ink-muted);
-}
-
-/* What is stuck before the next step, under the arrow to it. */
-.funnelGap {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-  margin-top: 8px;
-}
-
-.funnelArrow {
-  position: absolute;
-  top: 10px;
-  right: 6px;
-  font-size: 16px;
-  color: var(--color-ink-muted);
 }
 
 .gapChip {
@@ -184,11 +198,6 @@
   font-weight: 600;
   color: var(--color-ink);
   font-variant-numeric: tabular-nums;
-}
-
-.gapChipStuck {
-  border-color: color-mix(in srgb, var(--color-warning) 35%, transparent);
-  background: color-mix(in srgb, var(--color-warning) 7%, transparent);
 }
 
 .gapChip:hover,
@@ -303,47 +312,426 @@
   color: var(--color-ink);
 }
 
-.trendNote {
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--color-ink-muted);
-}
-
-.detailsToggle {
+.detailsHead {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  margin-top: 20px;
-  padding: 10px 2px;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 24px;
+  padding-top: 14px;
   border-top: 1px solid var(--color-rule);
-  background: transparent;
-  font-size: 13px;
-  font-weight: 550;
-  color: var(--color-ink);
-  text-align: left;
-  cursor: pointer;
 }
 
-.detailsChevron {
-  transition: transform 120ms ease;
+.detailsScope {
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--color-accent);
 }
 
-.detailsToggle[aria-expanded="true"] .detailsChevron {
-  transform: rotate(180deg);
-}
-
-.detailsHint {
-  overflow: hidden;
-  font-size: 12px;
-  font-weight: 400;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.detailsScope::before {
+  content: "· ";
   color: var(--color-ink-muted);
+}
+
+.detailsHead h3 {
+  font-size: 16px;
+  font-weight: 550;
+  letter-spacing: -0.02em;
+  color: var(--color-ink);
 }
 
 .details {
   padding-top: 2px;
+}
+
+/* ── Details: tabs, flow, run log ── */
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.tab {
+  padding: 8px 12px;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  font-size: 13px;
+  color: var(--color-ink-muted);
+  cursor: pointer;
+}
+
+.tab[aria-selected="true"] {
+  border-bottom-color: var(--color-accent);
+  color: var(--color-ink);
+  font-weight: 550;
+}
+
+.flowPart {
+  margin-top: 18px;
+}
+
+.flowPart + .flowPart {
+  margin-top: 26px;
+}
+
+.flowPartHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.flowPartHead h4 {
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--color-ink);
+}
+
+/* ── "?" notes: names and numbers on the page, meanings on request ── */
+
+.explain {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+
+.explainButton {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid var(--color-rule-strong);
+  border-radius: 50%;
+  background: transparent;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--color-ink-muted);
+  cursor: pointer;
+}
+
+.explainButton:hover,
+.explainButton[aria-expanded="true"] {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.explainNote {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: -8px;
+  z-index: 20;
+  display: grid;
+  gap: 6px;
+  width: 260px;
+  max-width: calc(100vw - 32px);
+  padding: 10px 12px;
+  border: 1px solid var(--color-rule);
+  border-radius: 10px;
+  background: var(--color-paper);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--color-ink) 12%, transparent);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+  letter-spacing: normal;
+  text-align: left;
+  text-transform: none;
+  white-space: normal;
+  color: var(--color-ink-secondary);
+}
+
+.explainNote[data-align="right"] {
+  right: -8px;
+  left: auto;
+}
+
+.explainList {
+  display: grid;
+  gap: 2px;
+  color: var(--color-ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.cardHead,
+.cellHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cellHead {
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+/* A step's name wraps rather than hide behind its "?". */
+.cellHead .tileLabel {
+  line-height: 1.5;
+  white-space: normal;
+}
+
+.timeStep {
+  display: grid;
+  align-content: start;
+  gap: 3px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--color-rule);
+  border-radius: 10px;
+  background: var(--color-paper);
+}
+
+.timeNone {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--color-ink-muted);
+}
+
+.timeStats {
+  display: grid;
+  gap: 8px;
+  margin: 6px 0 0;
+}
+
+.timeStats > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.timeStats dt {
+  font-size: 12px;
+  color: var(--color-ink-secondary);
+}
+
+.timeStats dd {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.partsRow {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.partsSteps {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.triesTable {
+  width: 100%;
+  margin-top: 6px;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.triesTable th,
+.triesTable td {
+  padding: 3px 4px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.triesTable th:first-child {
+  padding-left: 0;
+  text-align: left;
+}
+
+.triesTable thead th {
+  font-weight: 400;
+  color: var(--color-ink-muted);
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.triesTable tbody th {
+  font-weight: 400;
+  color: var(--color-ink-secondary);
+}
+
+.triesTable td {
+  color: var(--color-ink);
+}
+
+.stepTable {
+  width: 100%;
+  margin-top: 10px;
+  border: 1px solid var(--color-rule);
+  border-radius: 12px;
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+  background: var(--color-paper);
+  font-variant-numeric: tabular-nums;
+}
+
+.stepColName {
+  width: 26%;
+}
+
+.stepColTime {
+  width: 14%;
+}
+
+.stepColWent {
+  width: 16%;
+}
+
+.stepTable thead th {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--color-rule);
+  background: var(--color-paper-elevated);
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-align: left;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+}
+
+.stepTable tbody th,
+.stepTable tbody td {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--color-rule);
+  text-align: left;
+  vertical-align: baseline;
+}
+
+.stepTable tbody tr:last-child th,
+.stepTable tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.stepTable .stepNumber,
+.stepTable .stepTime,
+.stepTable .stepWent {
+  text-align: right;
+}
+
+/* Clear space between the right-aligned counts and what stopped. */
+.stepTable thead th:last-child,
+.stepTable .stepStopped {
+  padding-left: 32px;
+}
+
+.stepTable tbody th {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-ink);
+  white-space: nowrap;
+}
+
+.stepName {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stepTime {
+  font-size: 15px;
+  color: var(--color-ink);
+  white-space: nowrap;
+}
+
+.stepWent {
+  white-space: nowrap;
+}
+
+.stepWent button {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ink);
+  cursor: pointer;
+}
+
+.stepWent button:hover {
+  color: var(--color-accent);
+}
+
+.stepOf {
+  font-size: 13px;
+  color: var(--color-ink-muted);
+}
+
+.stepNone {
+  color: var(--color-ink-muted);
+}
+
+.stopList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 16px;
+}
+
+.stopItem {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ink-muted);
+  cursor: pointer;
+}
+
+.stopItem:hover,
+.stopItem[aria-expanded="true"] {
+  color: var(--color-accent);
+}
+
+.stepReasons td {
+  padding-top: 0;
+}
+
+.reasonList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+
+.reasonChip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid var(--color-rule);
+  border-radius: 999px;
+  background: var(--color-paper);
+  font-size: 12px;
+  color: var(--color-ink-secondary);
+  cursor: pointer;
+}
+
+.reasonChip:hover {
+  border-color: var(--color-accent);
+}
+
+.reasonChip strong {
+  font-weight: 600;
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── Stage strip ── */
@@ -417,15 +805,7 @@
   white-space: nowrap;
 }
 
-.tileHint {
-  overflow: hidden;
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--color-ink-muted);
-}
-
-.tileStuck .tileHint,
+.tileStuck .tileValue,
 .warn {
   color: var(--color-warning);
 }
@@ -979,7 +1359,8 @@
 }
 
 @media (max-width: 900px) {
-  .cards {
+  .cards,
+  .partsRow {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -992,6 +1373,61 @@
   .flow,
   .flowWide {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .partsSteps {
+    grid-auto-flow: row;
+  }
+
+  .stateRow {
+    grid-template-columns: 112px 32px minmax(0, 1fr);
+  }
+
+  /* The step table stacks: name and time, then went on, then what stopped. */
+  .stepTable,
+  .stepTable tbody {
+    display: block;
+  }
+
+  .stepTable thead,
+  .stepTable colgroup {
+    display: none;
+  }
+
+  .stepTable tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 12px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--color-rule);
+  }
+
+  .stepTable tbody tr:last-child {
+    border-bottom: 0;
+  }
+
+  .stepTable .stepWent,
+  .stepTable .stepStopped {
+    padding-left: 0;
+    text-align: left;
+  }
+
+  .stepTable tbody th,
+  .stepTable tbody td {
+    display: block;
+    padding: 0;
+    border: 0;
+  }
+
+  .stepTable .stepTime {
+    grid-row: 1;
+    grid-column: 2;
+    text-align: right;
+  }
+
+  .stepTable .stepStopped,
+  .stepReasons td {
+    grid-column: 1 / -1;
   }
 
   .tileValue {
@@ -1054,36 +1490,5 @@
 @media (max-width: 900px) {
   .summaryRow {
     grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-@media (max-width: 640px) {
-  .funnelSteps {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 10px;
-  }
-
-  .funnelStep {
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: baseline;
-    column-gap: 10px;
-    padding-right: 0;
-  }
-
-  .funnelValue {
-    font-size: 26px;
-  }
-
-  .funnelGap {
-    grid-column: 1 / -1;
-    margin-top: 2px;
-  }
-
-  .funnelArrow {
-    display: none;
-  }
-
-  .detailsHint {
-    display: none;
   }
 }

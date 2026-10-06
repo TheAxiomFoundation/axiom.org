@@ -59,6 +59,7 @@ import {
   resolveSection,
   rulespecSourceCitationPath,
 } from "./section-page";
+import { _resetRuntimeApiCache } from "@/lib/axiom/runtime/api";
 
 
 // A synthetic gated ("xg") family: with every real family public, the
@@ -381,6 +382,67 @@ describe("getSectionPageData", () => {
     expect(data!.encoding).toBeNull();
     expect(data!.prev).toBeNull();
     expect(data!.next).toBeNull();
+  });
+
+  it("reads no parity cases, even when the API publishes a comparison result", async () => {
+    // d875 ("approve, but hide"): section pages show no external
+    // comparison chip. The hosted API serves a result for co-snap's
+    // PolicyEngine comparison (a known difference, not a match); the
+    // page must not request it.
+    vi.stubEnv("AXIOM_RUNTIME_API_KEY", "test-key");
+    _resetRuntimeApiCache();
+    const envelope = (data: unknown) => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: "ok", data }),
+    });
+    const requested: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        requested.push(url);
+        if (url.includes("/runtime/packages")) return envelope({ packages: [] });
+        if (url.includes("/parity/cases")) {
+          return envelope({
+            cases: [
+              {
+                id: "co-snap-us-co-family-1",
+                program_id: "co-snap",
+                jurisdiction: "us-co",
+                external_comparisons: [
+                  {
+                    id: "co-snap-policyengine-current",
+                    engine: "policyengine",
+                    latest_result: { status: "known_difference" },
+                  },
+                ],
+              },
+            ],
+          });
+        }
+        return { ok: false, status: 404, json: async () => ({}) };
+      }),
+    );
+    try {
+      getProvisionByCitationPathMock.mockResolvedValue(rule("us/statute/7/2014"));
+      queueTables({
+        current_provisions: [{ data: [], error: null }],
+        navigation_nodes: [{ data: null, error: null }],
+      });
+
+      const data = await getSectionPageData(["us", "statute", "7", "2014"]);
+      expect(data).not.toBeNull();
+      // The runtime is live for this page: coverage asked it for packages.
+      expect(requested.some((url) => url.includes("/runtime/packages"))).toBe(true);
+      expect(requested.filter((url) => url.includes("/parity"))).toEqual([]);
+      expect(data).not.toHaveProperty("parity");
+      expect(data).not.toHaveProperty("externalComparisons");
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      _resetRuntimeApiCache();
+    }
   });
 });
 

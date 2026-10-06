@@ -51,13 +51,6 @@ function formatDate(value: string | null): string | null {
   });
 }
 
-const ORACLE_LABELS: Readonly<Record<string, string>> = {
-  policyengine: "PolicyEngine",
-  taxsim: "TAXSIM",
-  ukmod: "UKMOD",
-  euromod: "EUROMOD",
-};
-
 /** Past this many subsections the segment map gives way to numerals. */
 const COVERAGE_MAP_MAX_UNITS = 16;
 
@@ -65,16 +58,19 @@ const CHIP_CLASS =
   "inline-flex items-center gap-2 rounded-full border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-3 py-1.5 text-[12px] font-medium leading-none text-[var(--color-ink-secondary)]";
 
 /**
- * The section's trust row — three quiet status chips in the app's
- * sans, product-style rather than typewriter-style:
+ * The section's trust row — quiet status chips in the app's sans,
+ * product-style rather than typewriter-style:
  *
- *   (∀ 8 rules) (▰▱▱▱▱▱ 1 of 6 subsections) (✓ Verified · PolicyEngine)
+ *   (∀ 8 rules) (▰▱▱▱▱▱ 1 of 6 subsections)
  *
  * Coverage is a map, not a meter: one segment per top-level
  * subsection in document order, filled where rules exist; each
- * segment links to its subsection. The verified chip appears only
- * for external-oracle parity comparisons — golden expectations are
- * self-graded and earn nothing. Denominators always shown.
+ * segment links to its subsection. Denominators always shown.
+ *
+ * The row names no external engine. A green "Verified · PolicyEngine"
+ * chip once appeared here on the strength of a parity case's declared
+ * comparison alone (axiom.org#295). A chip built on external
+ * comparison results needs its own reviewed design first.
  */
 function EncodingStatusLine({ data }: { data: SectionPageData }) {
   if (data.encodedRules.length === 0) return null;
@@ -139,33 +135,6 @@ function EncodingStatusLine({ data }: { data: SectionPageData }) {
           {encodedCount === unitAnchors.length
             ? `All ${unitAnchors.length} subsections`
             : `${encodedCount} of ${unitAnchors.length} subsections`}
-        </span>
-      )}
-
-      {data.parity && (
-        <span
-          className="inline-flex cursor-help items-center gap-2 rounded-full border border-[rgba(22,101,52,0.25)] bg-[rgba(22,101,52,0.06)] px-3 py-1.5 text-[12px] font-medium leading-none text-[var(--color-success)]"
-          title={`⊨ Externally verified: ${data.parity.programId} (${data.parity.jurisdiction}) agrees with ${
-            ORACLE_LABELS[data.parity.oracle] ?? data.parity.oracle
-          } — ${data.parity.caseDescriptions.join(" — ")}`}
-        >
-          <svg
-            aria-hidden
-            viewBox="0 0 12 12"
-            className="h-3 w-3"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M2 6.2 4.8 9 10 3.4" />
-          </svg>
-          Verified · {ORACLE_LABELS[data.parity.oracle] ?? data.parity.oracle}
-          <span className="opacity-60">
-            {data.parity.caseCount}{" "}
-            {data.parity.caseCount === 1 ? "case" : "cases"}
-          </span>
         </span>
       )}
     </div>

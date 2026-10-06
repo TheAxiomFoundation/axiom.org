@@ -11,7 +11,6 @@ import {
   ruleCoverageClause,
   rulesWithoutComparison,
   SNAP_QC_REPLAYS,
-  SNAP_QC_STAGES,
   snapQcTotals,
   SOUTHMOD_CAVEATS,
   SOUTHMOD_FACTS,
@@ -136,7 +135,10 @@ describe("verification evidence: literal copy in verify-data.ts", () => {
     const row = usEvidenceRows.find((r) => r.id === "co-snap-qc");
     expect(row?.scale).toBe(`${co.households} real FY 2024 administrative cases`);
     expect(row?.result).toContain(
-      `All ${co.households} reproduce the benefit Mathematica computes for USDA, at each of ${countWord(SNAP_QC_STAGES)} compared stages.`,
+      `All ${co.households} match at zero tolerance on the benefit Mathematica computes for USDA`,
+    );
+    expect(row?.result).toContain(
+      `The maximum allotment matches USDA's FY 2024 table in all ${co.households}`,
     );
   });
 });

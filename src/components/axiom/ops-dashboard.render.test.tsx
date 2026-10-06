@@ -107,6 +107,21 @@ describe("OpsDashboard", () => {
     expect(screen.getByText(/in progress · started/)).toBeInTheDocument();
   });
 
+  it("shows a ledger the page passes in place of the one from encoder records", () => {
+    const props = {
+      initialStatus: status({}),
+      encodingError: null,
+      queues: [],
+      recentScopes: [],
+    };
+    render(<OpsDashboard {...props} />);
+    expect(screen.getByRole("heading", { name: "Latest encodings" })).toBeInTheDocument();
+    cleanup();
+    render(<OpsDashboard {...props} ledger={<section aria-label="Every run" />} />);
+    expect(screen.queryByRole("heading", { name: "Latest encodings" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Every run" })).toBeInTheDocument();
+  });
+
   it("shows stalled runs when the heartbeat dies", () => {
     render(
       <OpsDashboard
