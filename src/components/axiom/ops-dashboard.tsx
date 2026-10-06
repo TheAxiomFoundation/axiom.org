@@ -68,6 +68,8 @@ interface OpsDashboardProps {
   pipeline?: ReactNode;
   /** A ledger of every run, in place of the one built from encoder records. */
   ledger?: ReactNode;
+  /** The entry to the program bundles, shown with the pipeline section. */
+  bundles?: ReactNode;
 }
 
 type LiveRunState = "running" | "stale" | "finished" | "expired";
@@ -224,6 +226,7 @@ export function OpsDashboard({
   recentScopes,
   pipeline,
   ledger,
+  bundles,
 }: OpsDashboardProps) {
   const [status, setStatus] = useState(initialStatus);
   const [nowMs, setNowMs] = useState<number | null>(null);
@@ -308,6 +311,8 @@ export function OpsDashboard({
           referenceMs={referenceMs}
           labels={labels}
         />
+
+        {bundles}
 
         <div
           className={

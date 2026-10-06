@@ -1,6 +1,15 @@
 import { readFile } from "node:fs/promises";
 import { getSupabaseRestConfig, readSupabaseRows } from "@/lib/corpus-status";
-import { bundleIndex, type BundleDocumentRow, type BundleIndexEntry, type BundleRow, type BundleSnapshotRow } from "./program-bundles";
+import {
+  bundleIndex,
+  tierCounts,
+  type BundleDocumentRow,
+  type BundleIndexEntry,
+  type BundleRow,
+  type BundleSnapshotRow,
+  type BundleTierId,
+  type TierCounts,
+} from "./program-bundles";
 
 const PAGE_SIZE = 1000;
 const MAX_PAGES = 20;
@@ -114,6 +123,61 @@ export async function getBundleIndex(): Promise<BundleIndexEntry[]> {
       ),
     ]);
     return bundleIndex(bundles, documents);
+  } catch {
+    return [];
+  }
+}
+
+/** One bundle at a glance, for the /ops entry to its page. */
+export interface BundleSummary {
+  id: string;
+  title: string;
+  tiers: Array<{ id: BundleTierId; title: string; counts: TierCounts }>;
+}
+
+/**
+ * Every bundle with its tiers' counts, from each tier's newest daily snapshot
+ * (the collector writes one per pass). Empty when the tables are not there.
+ */
+export async function getBundleSummaries(): Promise<BundleSummary[]> {
+  const file = process.env.AXIOM_OPS_BUNDLES_FILE;
+  if (file && process.env.NODE_ENV === "development") {
+    try {
+      const data = JSON.parse(await readFile(file, "utf8")) as BundlesFile;
+      return data.bundles.map((bundle) => ({
+        id: bundle.id,
+        title: bundle.title,
+        tiers: bundle.tiers.map((tier) => ({
+          id: tier.id,
+          title: tier.title,
+          counts: tierCounts(data.documents.filter((d) => d.bundle_id === bundle.id && d.tier === tier.id)),
+        })),
+      }));
+    } catch {
+      return [];
+    }
+  }
+  const config = getSupabaseRestConfig();
+  if (!config) return [];
+  try {
+    const [bundles, snapshots] = await Promise.all([
+      readSupabaseRows<BundleRow>(config, "encodings", "program_bundles", { select: "id,title,tiers", order: "title.asc" }, { fresh: true }),
+      readSupabaseRows<BundleSnapshotRow>(
+        config,
+        "encodings",
+        "program_bundle_snapshots",
+        { select: "*", order: "day.desc", limit: "200" },
+        { fresh: true }
+      ),
+    ]);
+    return bundles.map((bundle) => ({
+      id: bundle.id,
+      title: bundle.title,
+      tiers: bundle.tiers.flatMap((tier) => {
+        const newest = snapshots.find((s) => s.bundle_id === bundle.id && s.tier === tier.id);
+        return newest ? [{ id: tier.id, title: tier.title, counts: newest.counts }] : [];
+      }),
+    }));
   } catch {
     return [];
   }

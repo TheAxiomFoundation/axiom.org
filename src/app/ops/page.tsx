@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { OpsDashboard } from "@/components/axiom/ops-dashboard";
+import { BundleStrip } from "@/components/axiom/bundle-strip";
 import { OpsPipeline } from "@/components/axiom/ops-pipeline";
 import { PipelineLedger } from "@/components/axiom/pipeline-ledger";
 import { pipelineView } from "@/lib/axiom/encoding-pipeline";
@@ -17,6 +18,7 @@ import {
 } from "@/lib/axiom/encoding-pipeline-insights";
 import { opsPipelineVisible } from "@/lib/axiom/ops-pipeline-visibility";
 import { dispatchFlow, encodeParts, runRows, stepTimes, testsParts } from "@/lib/axiom/encoding-pipeline-runs";
+import { getBundleSummaries } from "@/lib/axiom/program-bundles-data";
 import { getEncodingStatus, getRecentCorpusScopes } from "@/lib/corpus-status";
 import { SITE_URL } from "@/lib/urls";
 
@@ -40,12 +42,13 @@ export default async function OpsPage({
   const scope = parseScope((await searchParams) ?? {});
   // Hidden on the public site for now (see opsPipelineVisible): skip its reads too.
   const showPipeline = opsPipelineVisible();
-  const [encodingStatus, queues, recentScopes, pipeline, corpus] = await Promise.all([
+  const [encodingStatus, queues, recentScopes, pipeline, corpus, bundles] = await Promise.all([
     getEncodingStatus(),
     getEncodingQueues(),
     getRecentCorpusScopes(),
     showPipeline ? getPipelineAttempts() : null,
     showPipeline ? getCorpusView() : null,
+    showPipeline ? getBundleSummaries() : [],
   ]);
   // One clock for the server render and the client's first paint.
   const referenceMs = Date.now();
@@ -59,6 +62,7 @@ export default async function OpsPage({
       encodingError={encodingStatus.error}
       queues={queues}
       recentScopes={recentScopes}
+      bundles={bundles.length ? <BundleStrip bundles={bundles} /> : undefined}
       // With the pipeline shown, the ledger is built from every run rather
       // than the encoder's own records, and follows the page's scope.
       ledger={
