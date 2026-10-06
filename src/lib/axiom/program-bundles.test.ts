@@ -226,6 +226,26 @@ describe("measureDocument", () => {
   });
 });
 
+describe("the full bundle never counts more coarsely than the screener tier", () => {
+  it("counts a corpus provision with cited paragraphs under it as those paragraphs", () => {
+    // The corpus holds 7 CFR 273.11 as one provision; PolicyEngine cites three of its paragraphs.
+    const section = [{ path: "us/regulation/7/273/11", child_count: 0 }];
+    const cited = ["c/1", "c/2", "d"].map((p) => ({ path: `us/regulation/7/273/11/${p}`, references: 1 }));
+    const doc11 = doc({ key: "us/regulation/7/273/11", citation_path: "us/regulation/7/273/11", cited });
+    const t = {
+      nodes: section,
+      modules: [module("us/regulation/7/273/11", { cited: ["us/regulation/7/273/11/c/1", "us/regulation/7/273/11/c/2"] })],
+      attempts: [],
+    };
+    const screener = measureDocument("b", "screener", doc11, t, AT);
+    const full = measureDocument("b", "full", doc11, t, AT);
+    expect(measured(screener)).toMatchObject({ total: 3, byState: { encoded: 2 } });
+    // Without the paragraphs the section would be one partly encoded provision: none encoded.
+    expect(measured(full)).toMatchObject({ total: 3, byState: { encoded: 2, not_started: 1 } });
+    expect(full.status).toBe("partly");
+  });
+});
+
 describe("tierCounts", () => {
   it("counts the provisions PolicyEngine cites in the screener tier, and every provision in the full bundle", () => {
     const screener = [

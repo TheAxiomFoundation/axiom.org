@@ -318,10 +318,14 @@ async function main() {
     for (const layer of bundle.layers) {
       const bundleId = `${layer.jurisdiction}/${bundle.program}`;
       const rows = [];
+      // A full-bundle document PolicyEngine also cites takes its cited provisions,
+      // so it never counts more coarsely than in the screener tier.
+      const cited = new Map(layer.screener.filter((d) => d.cited?.length).map((d) => [d.key, d.cited]));
       for (const tier of ["screener", "full"]) {
         for (const doc of layer[tier]) {
           const t = doc.scope === "in" && doc.citation_path ? telemetryFor(doc.citation_path) : null;
-          rows.push(measureDocument(bundleId, tier, doc, t, collectedAt));
+          const withCited = tier === "full" && cited.has(doc.key) ? { ...doc, cited: cited.get(doc.key) } : doc;
+          rows.push(measureDocument(bundleId, tier, withCited, t, collectedAt));
         }
       }
       byLayer.set(layer.jurisdiction, rows);

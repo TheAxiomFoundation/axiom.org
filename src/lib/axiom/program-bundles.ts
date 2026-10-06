@@ -376,8 +376,10 @@ export function measureDocument(
   const count = (state: ProvisionState) => [...states.values()].filter((s) => s === state).length;
   const leafStates = (path: string) => leaves.filter((leaf) => under(leaf, path)).map((leaf) => states.get(leaf));
 
+  // The screener tier's units; a full-bundle document PolicyEngine also cites
+  // carries them too (the collector passes them on), so it can count as finely.
   const units: ParityUnit[] = [];
-  if (tier === "screener" && doc.scope === "in") {
+  if (doc.scope === "in" && (tier === "screener" || doc.cited?.length)) {
     const cited = doc.cited?.length
       ? doc.cited
       : [{ path: root ?? "", references: doc.references ?? 0, part: doc.part ?? null }];
@@ -431,6 +433,31 @@ export function measureDocument(
     status: null,
     collected_at: collectedAt,
   };
+  // The full bundle never counts a document more coarsely than the screener
+  // tier: a corpus provision with cited provisions under it (the corpus holds
+  // a CFR section as one provision while PolicyEngine cites its paragraphs)
+  // counts as those cited provisions.
+  if (tier === "full" && inCorpus && units.length) {
+    const finest: ProvisionState[] = [];
+    for (const leaf of leaves) {
+      const below = units.filter((u) => u.path && strictlyUnder(u.path, leaf));
+      if (!below.length) finest.push(states.get(leaf) ?? "not_started");
+      for (const u of below) {
+        const state = UNIT_AS_PROVISION[u.state];
+        if (state) finest.push(state);
+      }
+    }
+    const of = (state: ProvisionState) => finest.filter((s) => s === state).length;
+    Object.assign(row, {
+      provisions: finest.length,
+      encoded_provisions: of("encoded"),
+      unvalidated_provisions: of("unvalidated"),
+      partly_provisions: of("partly"),
+      deferred_provisions: of("deferred"),
+      provisions_in_progress: of("in_progress"),
+      provisions_failed: of("failed"),
+    });
+  }
   row.status = tier === "screener" && row.scope === "in" && inCorpus ? citedStatus(units) : documentStatus(row);
   return row;
 }
@@ -560,15 +587,17 @@ export function measured(
   missing: number;
 } {
   if (row.tier !== "screener") {
-    // A document the corpus does not hold counts once, as not in the corpus, in both tiers.
+    // A document the corpus does not hold counts as not in the corpus: once,
+    // or once per provision PolicyEngine cites in it, as in the screener tier.
     if (!row.in_corpus) {
       const none = Object.fromEntries(PROVISION_STATES.map((s) => [s, 0])) as Record<ProvisionState, number>;
-      return { total: 1, byState: none, missing: 1 };
+      const missing = Math.max(1, row.units.length);
+      return { total: missing, byState: none, missing };
     }
     return { total: row.provisions, byState: provisionCounts(row), missing: 0 };
   }
   const whole = row.in_corpus && row.provisions > 0 && row.units.some((u) => u.path && u.path === row.citation_path);
-  if (whole) return { total: row.provisions, byState: provisionCounts(row), missing: 0 };
+  if (whole && row.tier === "screener") return { total: row.provisions, byState: provisionCounts(row), missing: 0 };
   const byState = Object.fromEntries(PROVISION_STATES.map((s) => [s, 0])) as Record<ProvisionState, number>;
   let missing = 0;
   for (const unit of row.units) {
