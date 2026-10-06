@@ -108,15 +108,26 @@ async function readBundles() {
   return out;
 }
 
-/** Every row a query returns, a page at a time. */
+/** A query error worth another try: the statement timeout, or a gateway error page. */
+const transient = (message) => /statement timeout|fetch failed|<!DOCTYPE html>/i.test(message ?? "");
+
+/** Every row a query returns, a page at a time; a page that fails for a transient reason is tried twice more. */
 async function pages(build, size = PAGE_SIZE) {
   const rows = [];
   for (let offset = 0; ; offset += size) {
-    const query = build();
-    const { data, error } = await query.range(offset, offset + size - 1);
-    if (error) throw new Error(`${error.message} (${query.url?.pathname ?? "query"}, offset ${offset})`);
-    rows.push(...data);
-    if (data.length < size) return rows;
+    let result;
+    for (let attempt = 1; ; attempt++) {
+      const query = build();
+      result = await query.range(offset, offset + size - 1);
+      if (!result.error) break;
+      if (attempt === 3 || !transient(result.error.message)) {
+        const message = result.error.message.startsWith("<") ? "gateway error" : result.error.message;
+        throw new Error(`${message} (${query.url?.pathname ?? "query"}, offset ${offset})`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2000 * attempt));
+    }
+    rows.push(...result.data);
+    if (result.data.length < size) return rows;
   }
 }
 
@@ -142,39 +153,101 @@ async function inBatches(items, size, job, concurrency = 6) {
   return out;
 }
 
+/** A PostgREST filter value, quoted: paths hold dots, commas and parentheses. */
+const literal = (value) => `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+
 /**
- * The corpus provisions under each document root, with child counts, walked
- * level by level through parent_path for every root at once: path and
- * parent_path are indexed, while a LIKE on path or a read by jurisdiction
- * runs into the statement timeout.
+ * The corpus nodes in each document: under its path, and linked under it.
+ * The nodes under a root are the paths from "<root>/" up to "<root>0" ("0"
+ * follows "/"; the path index orders bytes), read as index ranges, a batch of
+ * roots per query; a LIKE on path or a read by jurisdiction runs into the
+ * statement timeout. The parent links reach further: a chapter or a subpart
+ * links sections that are not under its path (us-mi/statute/chapter-206 holds
+ * us-mi/statute/206.1), so a node with linked children not yet read has them
+ * read by parent_path, with everything under them. Neither alone suffices: a
+ * section can have no parent link (us/statute/26/1 under Title 26).
+ *
+ * A leaf is a node with no linked children and nothing under its path.
  */
 async function corpusTrees(roots) {
-  const nodes = () => supabase.schema("corpus").from("navigation_nodes").select("path,child_count");
+  const nodes = () => supabase.schema("corpus").from("navigation_nodes").select("path,parent_path,child_count");
   const found = new Map();
   const keep = (rows) => {
-    for (const n of rows) found.set(n.path, n.child_count);
-    return rows.filter((n) => n.child_count > 0).map((n) => n.path);
+    const added = [];
+    for (const n of rows) {
+      if (found.has(n.path)) continue;
+      found.set(n.path, n);
+      added.push(n.path);
+    }
+    return added;
   };
-  let level = keep(await inBatches(roots, 100, (batch) => pages(() => nodes().in("path", batch))));
-  for (let depth = 1; level.length; depth++) {
-    level = keep(await inBatches(level, 100, (batch) => pages(() => nodes().in("parent_path", batch).order("path"))));
+  const ranges = (batch) =>
+    pages(() =>
+      nodes()
+        .or(batch.map((root) => `and(path.gte.${literal(`${root}/`)},path.lt.${literal(`${root}0`)})`).join(","))
+        .order("path")
+    );
+  // Only the outermost paths need a range: a nested path's nodes lie in its ancestor's.
+  const outermost = (paths) => {
+    const set = new Set(paths);
+    return paths.filter((path) => !ancestors(path).slice(1).some((a) => set.has(a)));
+  };
+  keep(await inBatches(roots, 100, (batch) => pages(() => nodes().in("path", batch))));
+  keep(await inBatches(outermost(roots), 25, ranges));
+  // Linked children not yet read, and everything under them, until none are left.
+  for (let round = 0; ; round++) {
+    const linked = new Map();
+    for (const n of found.values()) if (n.parent_path) linked.set(n.parent_path, (linked.get(n.parent_path) ?? 0) + 1);
+    const short = [...found.values()].filter((n) => n.child_count > (linked.get(n.path) ?? 0)).map((n) => n.path);
+    if (!short.length || round === 10) break;
+    console.log(`corpus links, round ${round + 1}: ${short.length} nodes with linked children not read (${short.slice(0, 3).join(", ")})`);
+    const added = keep(await inBatches(short, 20, (batch) => pages(() => nodes().in("parent_path", batch).order("path"))));
+    if (!added.length) break;
+    keep(await inBatches(outermost(added), 25, ranges));
   }
+  // JavaScript compares strings by UTF-16 code units, which orders these
+  // ASCII paths as the index does.
   const paths = [...found.keys()].sort();
-  const trees = new Map();
-  for (const root of roots) {
-    // The nodes at or under the root: a contiguous run in path order.
+  const lowerBound = (value) => {
     let lo = 0;
     let hi = paths.length;
     while (lo < hi) {
       const mid = (lo + hi) >> 1;
-      if (paths[mid] < root) lo = mid + 1;
+      if (paths[mid] < value) lo = mid + 1;
       else hi = mid;
     }
-    const tree = [];
-    for (let i = lo; i < paths.length && (paths[i] === root || paths[i].startsWith(`${root}/`)); i++) {
-      tree.push({ path: paths[i], child_count: found.get(paths[i]) });
+    return lo;
+  };
+  const underPath = (path) => paths.slice(lowerBound(`${path}/`), lowerBound(`${path}0`));
+  const childrenOf = new Map();
+  for (const n of found.values()) {
+    if (n.parent_path) childrenOf.set(n.parent_path, [...(childrenOf.get(n.parent_path) ?? []), n.path]);
+  }
+  const trees = new Map();
+  for (const root of roots) {
+    if (!found.has(root)) {
+      trees.set(root, []);
+      continue;
     }
-    trees.set(root, tree);
+    // Everything reachable from the root by path or by link.
+    const seen = new Set([root]);
+    const queue = [root];
+    while (queue.length) {
+      const path = queue.pop();
+      for (const next of [...underPath(path), ...(childrenOf.get(path) ?? [])]) {
+        if (seen.has(next)) continue;
+        seen.add(next);
+        queue.push(next);
+      }
+    }
+    trees.set(
+      root,
+      [...seen].map((path) => ({
+        path,
+        // Linked children, or failing those the nodes under the path.
+        child_count: Math.max(found.get(path).child_count ?? 0, lowerBound(`${path}0`) - lowerBound(`${path}/`)),
+      }))
+    );
   }
   console.log(`corpus: ${found.size} nodes for ${roots.length} documents`);
   return trees;
@@ -222,7 +295,7 @@ async function readModules() {
   const byAncestor = new Map();
   const byPath = new Map();
   for (const m of modules) {
-    for (const path of new Set([...m.sources, ...m.cited, ...m.deferred])) {
+    for (const path of new Set([...m.sources, ...m.cited, ...m.broad, ...m.deferred])) {
       byPath.set(path, [...(byPath.get(path) ?? []), m]);
       for (const a of ancestors(path)) byAncestor.set(a, [...(byAncestor.get(a) ?? []), m]);
     }
@@ -237,6 +310,72 @@ async function readModules() {
       `${modules.filter((m) => m.waived).length} waived)`
   );
   return touching;
+}
+
+/** A section number as its corpus path segment and a web page's path both spell it: 7 AAC 45.280, 7-AAC-45.280. */
+const sectionKey = (text) => text.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/** The section a state-law web page names in its last path segment, when it names one. */
+function urlSection(url) {
+  let last;
+  try {
+    last = new URL(url).pathname.split("/").filter(Boolean).pop();
+  } catch {
+    return null;
+  }
+  if (!last) return null;
+  const key = sectionKey(
+    decodeURIComponent(last)
+      .toLowerCase()
+      .replace(/^(section|sec|rule)-/, "")
+      .replace(/\.(html?|pdf|aspx?)$/, "")
+  );
+  return key.length >= 5 && /\d/.test(key) ? key : null;
+}
+
+/**
+ * The state-law web pages the corpus holds under their section numbers
+ * (Justia's section-40-18-15 is us-al/statute/40-18-15, Cornell's
+ * 7-AAC-45.280 is us-ak/regulation/aac/title-7/chapter-45/7 AAC 45.280): a
+ * state layer's in-scope document with no citation path takes the one path
+ * of its state's statutes and regulations whose last segment spells its
+ * section. A page whose section matches no path, or more than one, stays a
+ * web page.
+ */
+async function matchSections(bundles) {
+  const webPages = [];
+  for (const { bundle } of bundles)
+    for (const layer of bundle.layers) {
+      if (layer.jurisdiction === "us") continue;
+      for (const tier of ["screener", "full"])
+        for (const doc of layer[tier]) {
+          const key = !doc.citation_path && doc.scope === "in" && doc.source_url ? urlSection(doc.source_url) : null;
+          if (key) webPages.push({ doc, jurisdiction: layer.jurisdiction, key });
+        }
+    }
+  const jurisdictions = [...new Set(webPages.map((p) => p.jurisdiction))];
+  const nodes = () => supabase.schema("corpus").from("navigation_nodes").select("path");
+  const ranges = jurisdictions.flatMap((j) => [`${j}/statute`, `${j}/regulation`]);
+  const paths = await inBatches(
+    ranges,
+    1,
+    ([root]) => pages(() => nodes().gte("path", `${root}/`).lt("path", `${root}0`).order("path")),
+    3
+  );
+  const bySection = new Map();
+  for (const { path } of paths) {
+    const key = `${path.split("/")[0]}|${sectionKey(path.split("/").pop())}`;
+    bySection.set(key, [...(bySection.get(key) ?? []), path]);
+  }
+  let matched = 0;
+  for (const { doc, jurisdiction, key } of webPages) {
+    const found = bySection.get(`${jurisdiction}|${key}`) ?? [];
+    if (found.length !== 1) continue;
+    doc.citation_path = found[0];
+    doc.note = [doc.note, `Found in the corpus as ${found[0]}, by its section number`].filter(Boolean).join(" ");
+    matched++;
+  }
+  console.log(`corpus sections: ${matched} of ${webPages.length} state-law web pages matched (${paths.length} paths read)`);
 }
 
 /** The newest policyengine-us version on PyPI; null when PyPI does not answer. */
@@ -294,6 +433,25 @@ async function main() {
   console.log(`read ${attempts.length} pipeline attempts; newest policyengine-us release: ${policyengineLatest ?? "unknown"}`);
   const attemptsUnder = (root) => attempts.filter((a) => a.citation && under(a.citation, root));
 
+  await matchSections(bundles);
+  // A document a layer's tier holds twice (a web page found in the corpus, or
+  // two editions of one page) counts once: as the row keyed by its path, or
+  // the first.
+  for (const { bundle } of bundles)
+    for (const layer of bundle.layers)
+      for (const tier of ["screener", "full"]) {
+        const held = new Map();
+        const docs = layer[tier].filter((d) => d.scope === "in" && d.citation_path);
+        for (const doc of [...docs.filter((d) => d.key === d.citation_path), ...docs.filter((d) => d.key !== d.citation_path)]) {
+          if (!held.has(doc.citation_path)) {
+            held.set(doc.citation_path, doc);
+            continue;
+          }
+          doc.scope = "excluded";
+          doc.reason = `The same document as ${held.get(doc.citation_path).key}, counted there`;
+        }
+      }
+
   // Every in-scope document root, measured once.
   const roots = new Set();
   for (const { bundle } of bundles)
@@ -322,10 +480,31 @@ async function main() {
       // so it never counts more coarsely than in the screener tier.
       const cited = new Map(layer.screener.filter((d) => d.cited?.length).map((d) => [d.key, d.cited]));
       for (const tier of ["screener", "full"]) {
+        // Each document counts only its own provisions, none that a document
+        // under it in this tier holds (a manual and its sections, a part and
+        // the sections PolicyEngine cites), so no provision counts twice.
+        const roots = [
+          ...new Set(layer[tier].filter((d) => d.scope === "in" && d.citation_path).map((d) => d.citation_path)),
+        ].sort();
+        const nestedIn = (root) => {
+          const out = [];
+          let i = roots.findIndex((r) => r >= `${root}/`);
+          for (; i >= 0 && i < roots.length && roots[i] < `${root}0`; i++) out.push(roots[i]);
+          return out;
+        };
         for (const doc of layer[tier]) {
-          const t = doc.scope === "in" && doc.citation_path ? telemetryFor(doc.citation_path) : null;
-          const withCited = tier === "full" && cited.has(doc.key) ? { ...doc, cited: cited.get(doc.key) } : doc;
-          rows.push(measureDocument(bundleId, tier, withCited, t, collectedAt));
+          let t = doc.scope === "in" && doc.citation_path ? telemetryFor(doc.citation_path) : null;
+          let measuredDoc = tier === "full" && cited.has(doc.key) ? { ...doc, cited: cited.get(doc.key) } : doc;
+          const nested = t ? nestedIn(doc.citation_path) : [];
+          if (nested.length) {
+            t = { ...t, nodes: t.nodes.filter((n) => !nested.some((r) => under(n.path, r))) };
+            // Nothing of its own left: its documents hold it all.
+            if (t.nodes.some((n) => n.path === doc.citation_path) && !t.nodes.some((n) => n.child_count === 0)) {
+              const reason = `Counted through the ${nested.length} document${nested.length === 1 ? "" : "s"} under it`;
+              measuredDoc = { ...measuredDoc, scope: "excluded", reason };
+            }
+          }
+          rows.push(measureDocument(bundleId, tier, measuredDoc, t, collectedAt));
         }
       }
       byLayer.set(layer.jurisdiction, rows);

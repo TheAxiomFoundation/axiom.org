@@ -42,6 +42,7 @@ const module = (path: string, facts: Partial<ModuleFacts> = {}): ModuleFacts => 
   module: path,
   sources: [path],
   cited: [path],
+  broad: [],
   deferred: [],
   rules: 1,
   waived: false,
@@ -103,6 +104,49 @@ describe("measureDocument", () => {
       failed: 0,
       not_started: 0,
     });
+  });
+
+  it("makes a provision a module names only as part of a whole partly encoded, not encoded", () => {
+    const row = measureDocument(
+      "b",
+      "full",
+      doc(),
+      {
+        nodes,
+        // A rule cites (a); another module names only the whole section.
+        modules: [
+          module("us/statute/7/2014/a"),
+          module("us/statute/7/2014", { cited: [], broad: ["us/statute/7/2014"] }),
+        ],
+        attempts: [],
+      },
+      AT
+    );
+    expect(provisionCounts(row)).toMatchObject({ encoded: 1, partly: 3, not_started: 0 });
+    expect(row.status).toBe("partly");
+  });
+
+  it("grades a cited path the corpus splits by its provisions", () => {
+    const cited = [{ path: "us/statute/7/2014/c", references: 1, part: "Income" }];
+    const t = (facts: Partial<ModuleFacts>) => ({
+      nodes,
+      modules: [module("us/statute/7/2014/c", facts)],
+      attempts: [],
+    });
+    // Rules cite both paragraphs of (c): (c) is encoded, though no rule cites (c) itself.
+    const both = measureDocument("b", "screener", doc({ cited }), t({ cited: ["us/statute/7/2014/c/1", "us/statute/7/2014/c/2"] }), AT);
+    expect(both.units).toMatchObject([{ path: "us/statute/7/2014/c", state: "encoded", detail: "All 2 provisions encoded" }]);
+    // Under a waiver: encoded, not validated.
+    const waived = measureDocument(
+      "b",
+      "screener",
+      doc({ cited }),
+      t({ cited: ["us/statute/7/2014/c/1", "us/statute/7/2014/c/2"], waived: true }),
+      AT
+    );
+    expect(waived.units[0].state).toBe("unvalidated");
+    const one = measureDocument("b", "screener", doc({ cited }), t({ cited: ["us/statute/7/2014/c/1"] }), AT);
+    expect(one.units).toMatchObject([{ state: "partly", detail: "1 of 2 provisions encoded" }]);
   });
 
   it("makes a provision with a deferred branch partly encoded", () => {

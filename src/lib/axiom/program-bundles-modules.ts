@@ -80,9 +80,11 @@ function proofPaths(rule: Yaml): string[] {
 
 /**
  * A module's facts. Its rules' cited paths are each rule's own source text
- * (when it names a code or CFR provision) and its proof atoms' corpus paths
- * below a law section; a module whose rules name nothing readable falls back
- * to its source (a law module's own path, a policy module's non-law sources).
+ * (when it names a code or CFR provision below a section) and its proof
+ * atoms' corpus paths below a law section. What it names only as a whole is
+ * broad: a rule source naming a whole section, and, when its rules name
+ * nothing readable, its own source (a law module's own path, a policy
+ * module's non-law sources); a broad path makes provisions partly encoded.
  * A deferred module, or one with no rules, cites nothing and defers its
  * source. Policy modules keep only non-law sources: a pipeline that builds on
  * a statute does not encode it.
@@ -106,19 +108,23 @@ export function moduleFacts(row: ModuleRow, declared: string[], waivers: Set<str
   const deferredModule = module.status === "deferred" || rules.length === 0;
 
   const cited = new Set<string>();
+  const broad = new Set<string>();
   if (!deferredModule) {
     for (const rule of rules) {
       const fromText = typeof rule.source === "string" ? sourceTextPath(rule.source) : null;
-      if (fromText) cited.add(fromText);
+      // A source naming a whole law section says no more than a section-wide proof atom.
+      if (fromText) (isLaw(fromText) && sectionOrAbove(fromText) ? broad : cited).add(fromText);
       for (const path of proofPaths(rule)) cited.add(path);
     }
-    // Rules that name nothing a path can be read from: the module's own source.
-    if (cited.size === 0) for (const source of sources) cited.add(source);
+    // Rules that name nothing a path can be read from: the module touches its
+    // own source, without saying which of its provisions it encodes.
+    if (cited.size === 0 && broad.size === 0) for (const source of sources) broad.add(source);
   }
   return {
     module: row.citation_path,
     sources,
     cited: [...cited],
+    broad: [...broad],
     deferred: [...new Set([...deferredOutputs, ...(deferredModule ? sources : [])])],
     rules: rules.length,
     waived: waivers.has(`${row.jurisdiction}/${row.file_path}`),

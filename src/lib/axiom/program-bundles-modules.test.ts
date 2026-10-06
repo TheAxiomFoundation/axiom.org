@@ -54,7 +54,16 @@ rules:
       new Set()
     );
     expect(facts.cited.sort()).toEqual(["us/statute/7/2015/d/2/C", "us/statute/7/2015/e/1"]);
-    expect(facts).toMatchObject({ rules: 1, deferred: [], waived: false });
+    expect(facts).toMatchObject({ broad: [], rules: 1, deferred: [], waived: false });
+  });
+
+  it("names a whole section broadly, never as cited", () => {
+    const facts = moduleFacts(
+      row("us/statute/26/62", "rules:\n  - name: agi\n    source: 26 U.S.C. 62\n  - name: educator\n    source: 26 U.S.C. 62(a)(2)(D)\n"),
+      [],
+      new Set()
+    );
+    expect(facts).toMatchObject({ cited: ["us/statute/26/62/a/2/D"], broad: ["us/statute/26/62"] });
   });
 
   it("defers a deferred module's source and its deferred outputs", () => {
@@ -98,10 +107,11 @@ rules:
       ["us-az/manual/des/faa5/x/block-3", "us/statute/26/1402"],
       waivedModules("validate_failures:\n  us-az/policies/des/faa5/x.yaml: [schema]\n")
     );
-    // Its rule names its source in prose, so the module's own source stands in.
+    // Its rule names its source in prose: the module touches its own source, without saying which provisions.
     expect(facts).toMatchObject({
       sources: ["us-az/manual/des/faa5/x/block-3"],
-      cited: ["us-az/manual/des/faa5/x/block-3"],
+      cited: [],
+      broad: ["us-az/manual/des/faa5/x/block-3"],
       waived: true,
     });
   });

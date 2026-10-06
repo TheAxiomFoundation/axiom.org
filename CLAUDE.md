@@ -49,7 +49,11 @@ generate `/axiom/v2/...` hrefs. The app root and marketing pages stay on v1.
   rules and deferrals (`rulespec_files.raw_yaml`), the RuleSpec repos'
   `known-validation-gaps.yaml` waivers and `pipeline_attempts`. A provision
   counts as encoded only when a rule cites it; a module's declared source,
-  and section-wide proof atoms, are not proof.
+  section-wide proof atoms and rule sources naming a whole section are not
+  proof (they make it partly encoded). A document's provisions are the corpus
+  nodes under its path and linked under it (`parent_path` misses some
+  sections, and a chapter or subpart links sections outside its path), less
+  any document under it in the same tier, so each provision counts once.
   `scripts/collect-program-bundles.mjs` rebuilds them every six hours in the
   pipeline collector's workflow; `/ops` (a programs × states grid) and
   `/ops/bundles/<jurisdiction>/<program>` read only the tables, and the ledger

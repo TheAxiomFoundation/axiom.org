@@ -253,7 +253,10 @@ export interface BundleSnapshotRow {
 export interface ModuleFacts {
   module: string;
   sources: string[];
+  /** Provisions its rules cite: each rule's source and proof atoms, below a law section. */
   cited: string[];
+  /** Paths it names only as a whole: a rule source naming a whole section, or its own source when its rules name nothing readable. */
+  broad: string[];
   deferred: string[];
   rules: number;
   waived: boolean;
@@ -304,13 +307,16 @@ interface Grade {
  * How the modules reach one path. A rule citing it or a provision above it
  * encodes it, unless something at or under it is deferred; rules citing only
  * provisions under it, or a deferred branch under a cited path, make it
- * partly encoded; a deferral at or above it, with no rule citing it, defers it.
+ * partly encoded; a deferral at or above it, with no rule citing it, defers
+ * it; a module that names it only as part of a whole (a whole section, its own
+ * source) makes it partly encoded.
  */
 function grade(path: string, modules: ModuleFacts[]): Grade {
   const covering = modules.filter((m) => m.cited.some((c) => under(path, c)));
   const below = modules.filter((m) => m.cited.some((c) => strictlyUnder(c, path)));
   const deferredAbove = modules.find((m) => m.deferred.some((d) => under(path, d)));
   const deferredBelow = modules.find((m) => m.deferred.some((d) => strictlyUnder(d, path)));
+  const broadly = modules.find((m) => m.broad.some((b) => under(path, b) || strictlyUnder(b, path)));
   if (covering.length) {
     if (deferredAbove) return { state: "deferred", detail: `Deferred by ${deferredAbove.module}` };
     if (deferredBelow) return { state: "partly", detail: `${deferredBelow.module} defers part of it` };
@@ -322,6 +328,7 @@ function grade(path: string, modules: ModuleFacts[]): Grade {
   if (below.length) return { state: "partly", detail: `Rules in ${below[0].module} cite parts of it` };
   if (deferredAbove) return { state: "deferred", detail: `Deferred by ${deferredAbove.module}` };
   if (deferredBelow) return { state: "partly", detail: `${deferredBelow.module} defers part of it` };
+  if (broadly) return { state: "partly", detail: `${broadly.module} names it only as part of a whole` };
   return { state: null, detail: null };
 }
 
@@ -374,7 +381,9 @@ export function measureDocument(
   }
   open.sort((a, b) => b.at.localeCompare(a.at));
   const count = (state: ProvisionState) => [...states.values()].filter((s) => s === state).length;
-  const leafStates = (path: string) => leaves.filter((leaf) => under(leaf, path)).map((leaf) => states.get(leaf));
+  // The provisions a path splits into: none when the path is a provision itself, or finer than one.
+  const leafStates = (path: string) =>
+    states.has(path) ? [] : leaves.filter((leaf) => strictlyUnder(leaf, path)).map((leaf) => states.get(leaf));
 
   // The screener tier's units; a full-bundle document PolicyEngine also cites
   // carries them too (the collector passes them on), so it can count as finely.
@@ -422,7 +431,9 @@ export function measureDocument(
     provisions_failed: count("failed"),
     open_provisions: open,
     modules: new Set(
-      modules.filter((m) => root && m.cited.some((c) => under(c, root) || under(root, c))).map((m) => m.module)
+      modules
+        .filter((m) => root && [...m.cited, ...m.broad].some((c) => under(c, root) || under(root, c)))
+        .map((m) => m.module)
     ).size,
     units,
     runs: attempts.length,
@@ -474,7 +485,12 @@ function citedStatus(units: ParityUnit[]): DocumentStatus {
   return done > 0 || units.some((u) => u.state === "partly") ? "partly" : "not_started";
 }
 
-/** A screener unit's state: by the rules that reach it, then by its provisions, then by its newest run. */
+/**
+ * A screener unit's state. A path the corpus splits into provisions: by
+ * them, encoded only when every one is (validated only when none rests on a
+ * waiver). A provision, or a path finer than one: by the rules that reach it.
+ * Then by its newest run.
+ */
 function unitState(
   path: string | null,
   inCorpus: boolean,
@@ -483,16 +499,25 @@ function unitState(
   attempts: PipelineAttempt[]
 ): Pick<ParityUnit, "state" | "detail" | "run"> {
   if (!path || !inCorpus) return { state: "not_in_corpus", detail: null, run: null };
-  const { state, detail } = grade(path, modules);
-  if (state) return { state, detail, run: null };
-  // A whole cited document, or a path the corpus splits: by its provisions.
   const leaves = leafStates(path);
-  const done = leaves.filter((s) => s === "encoded" || s === "unvalidated").length;
-  if (leaves.length && done === leaves.length) {
-    return { state: "encoded", detail: `All ${leaves.length} provisions encoded`, run: null };
-  }
-  if (leaves.some((s) => s === "encoded" || s === "unvalidated" || s === "partly")) {
-    return { state: "partly", detail: `${done} of ${leaves.length} provisions encoded`, run: null };
+  if (leaves.length) {
+    const done = leaves.filter((s) => s === "encoded" || s === "unvalidated").length;
+    if (done === leaves.length) {
+      return {
+        state: leaves.includes("unvalidated") ? "unvalidated" : "encoded",
+        detail: `All ${leaves.length} provisions encoded`,
+        run: null,
+      };
+    }
+    if (done > 0 || leaves.some((s) => s === "partly" || s === "deferred")) {
+      if (!done && leaves.every((s) => s === "deferred")) {
+        return { state: "deferred", detail: `All ${leaves.length} provisions deferred`, run: null };
+      }
+      return { state: "partly", detail: `${done} of ${leaves.length} provisions encoded`, run: null };
+    }
+  } else {
+    const { state, detail } = grade(path, modules);
+    if (state) return { state, detail, run: null };
   }
   const run = newestRun(path, attempts);
   const ran = runState(run);

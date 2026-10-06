@@ -81,6 +81,7 @@ const module = (path: string, facts: Partial<ModuleFacts> = {}): ModuleFacts => 
   module: path,
   sources: [path],
   cited: [path],
+  broad: [],
   deferred: [],
   rules: 1,
   waived: false,

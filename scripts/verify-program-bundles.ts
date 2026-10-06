@@ -10,7 +10,9 @@
  * statuses add up to the totals, that the matrix cells add up to the header,
  * that validated is part of done, that Tier 2 holds every Tier 1 document and
  * never shows fewer provisions, encoded or validated provisions than Tier 1,
- * that each program's completeness counts every document once, and that shares
+ * that each program's completeness counts every document once, that each
+ * provision counts once (a corpus document has provisions, the federal layer
+ * holds no state's document, no page holds a document twice), and that shares
  * never round into a wrong impression. It exits 1 on any failure.
  */
 import { readFileSync } from "node:fs";
@@ -59,7 +61,10 @@ for (const b of data.bundles) {
   // encoded provisions or validated provisions. (Not complete documents: a
   // document is complete in Tier 1 when its cited provisions are encoded, in
   // Tier 2 only when all of them are.)
-  const keys = (tier: string) => new Set(rows.filter((r) => r.tier === tier && r.scope === "in").map((r) => `${r.bundle_id}|${r.key}`));
+  // A document by its corpus path when it has one: a web page found in the
+  // corpus can be the same document as another tier's row for that path.
+  const keys = (tier: string) =>
+    new Set(rows.filter((r) => r.tier === tier && r.scope === "in").map((r) => `${r.bundle_id}|${r.citation_path ?? r.key}`));
   const tier2 = keys("full");
   check([...keys("screener")].every((k) => tier2.has(k)), `tier 2 lacks a tier 1 document ${b.id}`);
   const s1 = b.counts!.screener!, f2 = b.counts!.full!;
@@ -81,7 +86,25 @@ for (const p of [...new Set(data.bundles.map((b) => b.program))]) {
     check(total === direct.provisions && dn === done(direct), `overview completeness ${p} ${tier}: ${dn}/${total} vs ${done(direct)}/${direct.provisions}`);
   }
 }
-// 9. The share formatter never rounds into a wrong impression.
+// 9. Each provision counts once. A document the corpus holds has provisions; a
+// federal layer holds no state's document; and no page (a state's layer and
+// the federal layer) holds one document twice in a tier.
+for (const d of data.documents) {
+  if (d.scope !== "in") continue;
+  check(!d.in_corpus || d.provisions > 0, `no provisions in a corpus document ${d.bundle_id} ${d.tier} ${d.citation_path}`);
+  if (d.bundle_id.startsWith("us/") && d.citation_path) {
+    check(d.citation_path.startsWith("us/"), `a state document in the federal layer ${d.bundle_id} ${d.citation_path}`);
+  }
+}
+for (const b of data.bundles) {
+  const [j, p] = b.id.split("/");
+  const page = j === "us" ? (rowsOf.get(b.id) ?? []) : [...(rowsOf.get(`us/${p}`) ?? []), ...(rowsOf.get(b.id) ?? [])];
+  for (const tier of ["screener", "full"] as const) {
+    const ids = page.filter((r) => r.tier === tier && r.scope === "in").map((r) => r.citation_path ?? r.key);
+    check(new Set(ids).size === ids.length, `a document twice on ${b.id} ${tier}`);
+  }
+}
+// 10. The share formatter never rounds into a wrong impression.
 check(formatShare(1, 1160) === "<1%" && formatShare(999, 1000) === ">99%" && formatShare(0, 5) === "0%" && formatShare(5, 5) === "100%" && formatShare(0, 0) === "—", "formatShare");
 console.log(`${checks} checks, ${failures} failures`);
 if (failures) {
