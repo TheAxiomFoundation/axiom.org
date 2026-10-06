@@ -434,10 +434,10 @@ function ShadeBar({ shades, total }: { shades: Record<Shade, number>; total: num
 }
 
 /**
- * A tier's column head: its name and what it means, its headline, and how far
- * its documents have come in the chosen count. The screener tier's headline
- * is screener-level parity, from its comparison against PolicyEngine; its
- * document counts follow as the work behind it.
+ * A tier's column head: its name and what it means, then its headline: how
+ * much of it is encoded, in the chosen count. Under the screener tier's
+ * headline come the comparison run against PolicyEngine (how many eligible
+ * households match) and how many of PolicyEngine's citations are encoded.
  */
 function TierHeader({
   index,
@@ -469,28 +469,29 @@ function TierHeader({
         {tier.title}
         <Explain label={tier.title}>{tier.definition}</Explain>
       </span>
-      {screener && (
-        <button type="button" className={styles.parityHead} onClick={onParity}>
-          {parity?.eligible_matching != null ? (
-            <>
-              <span className={styles.tierTotal}>
-                <strong>{share(parity.eligible_matching)}</strong> of eligible households match PolicyEngine
-              </span>
-              <span className={styles.parityFacts}>
-                {number(parity.axiom_errors)} Axiom {parity.axiom_errors === 1 ? "error" : "errors"} to fix ·
-                PolicyEngine-US {parity.policyengine_us ?? "?"}
-                {stale && <span className={styles.stale}> (newest {newest})</span>} · {day(parity.generated_at)}
-              </span>
-            </>
-          ) : (
-            <span className={styles.parityFacts}>No comparison against PolicyEngine yet</span>
-          )}
-        </button>
-      )}
-      <span className={screener ? styles.tierCount : styles.tierTotal}>
+      <span className={styles.tierTotal}>
         <strong>{number(done)}</strong> of {number(total)} {countWord(count, total)} {COUNT_WORDS[count][2]}
         <em>{percent(done, total)}</em>
       </span>
+      {screener && (
+        <button type="button" className={styles.parityHead} onClick={onParity}>
+          <span className={styles.parityLabel}>Comparison run against PolicyEngine</span>
+          {parity?.eligible_matching != null ? (
+            <>
+              <span className={styles.parityMain}>
+                <strong>{share(parity.eligible_matching)}</strong> of eligible households match
+              </span>
+              <span className={styles.parityFacts}>
+                {number(parity.axiom_errors)} {parity.axiom_errors === 1 ? "mismatch" : "mismatches"} to fix in Axiom ·
+                run {day(parity.generated_at)} · PolicyEngine-US {parity.policyengine_us ?? "?"}
+                {stale && <span className={styles.stale}> (newest {newest})</span>}
+              </span>
+            </>
+          ) : (
+            <span className={styles.parityFacts}>No run yet</span>
+          )}
+        </button>
+      )}
       {counts.units > 0 && (
         <button type="button" className={styles.parityLine} onClick={onParity}>
           PolicyEngine citations encoded: <strong>{number(unitsDone)}</strong> of {number(counts.units)} ·{" "}

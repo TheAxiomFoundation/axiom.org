@@ -142,10 +142,11 @@ describe("ProgramBundle", () => {
     expect(screen.getByRole("heading", { name: "Arizona SNAP" })).toBeInTheDocument();
     const matrix = screen.getByRole("table", { name: "Parts of the program by tier" });
     const headers = within(matrix).getAllByRole("columnheader");
-    // The screener tier's headline is screener-level parity, from the comparison against PolicyEngine.
-    expect(headers[1]).toHaveTextContent("0% of eligible households match PolicyEngine");
-    expect(headers[1]).toHaveTextContent("597 Axiom errors to fix · PolicyEngine-US 1.767.3 (newest 2.29.10) · Jul 28, 2026");
-    expect(headers[1]).toHaveTextContent(/0 of 1 document complete0%/);
+    // Both tiers lead with how much is encoded; under the screener tier's, its comparison run.
+    expect(headers[1]).toHaveTextContent(/Screener-level parity\?0 of 1 document complete0%Comparison run/);
+    expect(headers[1]).toHaveTextContent(
+      "Comparison run against PolicyEngine0% of eligible households match597 mismatches to fix in Axiom · run Jul 28, 2026 · PolicyEngine-US 1.767.3 (newest 2.29.10)"
+    );
     // It also gives how many PolicyEngine citations are encoded.
     expect(headers[1]).toHaveTextContent("PolicyEngine citations encoded: 1 of 2 · 50%");
     expect(headers[2]).toHaveTextContent(/Full document bundle.*0 of 1 document complete0%/);
@@ -198,7 +199,7 @@ describe("ProgramBundle", () => {
     fireEvent.click(within(cell).getByRole("button", { name: /7 USC 2014/ }));
     const document = screen.getByRole("complementary", { name: "Document" });
     expect(within(document).getByText("Encoded").parentElement).toHaveTextContent("Encoded1");
-    fireEvent.click(screen.getByRole("button", { name: /0% of eligible households match PolicyEngine/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Comparison run against PolicyEngine/ }));
     const parity = screen.getByRole("complementary", { name: "Screener-level parity" });
     expect(within(parity).getByRole("heading", { name: "0% of eligible households match PolicyEngine" })).toBeInTheDocument();
     expect(parity).toHaveTextContent("Eligible householdsPolicyEngine 27.9% · Axiom 0%");
