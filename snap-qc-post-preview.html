@@ -1,0 +1,100 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Draft preview: SNAP quality control cases, matched to the dollar in six states</title>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500&family=Newsreader:opsz,wght@6..72,300;6..72,400&family=JetBrains+Mono&display=swap" rel="stylesheet">
+<style>
+:root{--color-paper:#faf9f6;--color-ink:#1c1917;--color-ink-secondary:#57534e;--color-ink-muted:#78716c;--color-rule:#e7e5e4;--color-accent:#92400e;--f-mono:"JetBrains Mono",monospace}
+body{margin:0;background:var(--color-paper);color:var(--color-ink);font-family:Geist,-apple-system,sans-serif}
+.banner{background:#fef3c7;color:#78350f;font:500 0.85rem/1.4 Geist,sans-serif;padding:10px 16px;text-align:center;border-bottom:1px solid #fcd34d}
+article{max-width:720px;margin:0 auto;padding:64px 16px 96px}
+.meta{font:0.72rem var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--color-ink-muted)}
+h1{font-family:Newsreader,serif;font-weight:300;font-size:2.6rem;line-height:1.15;margin:12px 0 16px}
+.excerpt{font-size:1.2rem;color:var(--color-ink-secondary);line-height:1.6;margin:0 0 40px}
+.cover{aspect-ratio:3/2;border:1px dashed var(--color-ink-muted);border-radius:4px;display:flex;align-items:center;justify-content:center;color:var(--color-ink-muted);font:0.8rem var(--f-mono);margin-bottom:48px}
+.blog-prose p{font-size:1.08rem;line-height:1.75;margin:0 0 1.4em}
+.blog-prose a{color:var(--color-accent)}
+</style></head><body>
+<div class="banner">DRAFT PREVIEW: Ghost draft 6ab328f3, status draft, not published. Styling approximates axiom.org; cover attached.</div>
+<article><p class="meta">Max Ghenis</p><h1>SNAP quality control cases, matched to the dollar in six states</h1><p class="excerpt">Our RuleSpec SNAP encodings reproduce USDA&#x27;s recomputed FY2024 benefit for all 5,175 in-scope quality control reviews in six states, each to the dollar.</p>
+<img src="https://storage.ghost.io/c/ba/31/ba31d6a7-1229-400d-81bb-66eb217e74c0/content/images/2026/09/snap-quality-control-cover.jpg" alt="Sepia illustration: an open ledger of case records beside a stack of case folders, with a ruler laid across both." style="width:100%;border:1px solid var(--color-rule);border-radius:4px;margin-bottom:48px">
+<div class="blog-prose"><p>The Axiom Foundation's RuleSpec SNAP encodings reproduce USDA's recomputed FY2024 benefit for every in-scope review in the <a href="https://snapqcdata.net/datafiles">SNAP Quality Control public-use file</a> for six states: Colorado, New York, California, Arizona, Georgia and Maryland. That is 5,175 reviews, each benefit matched to the dollar, and each of six compared stages matched exactly, 31,050 stage comparisons in all. We set the tolerance to zero for the benefit and for every stage. We ran the replay on September 22, 2026, against <a href="https://github.com/TheAxiomFoundation/rulespec-us">rulespec-us</a> at commit f43dec52 and our rules engine at ffd8213; the run and its reports are in <a href="https://github.com/TheAxiomFoundation/axiom-oracles/pull/548">axiom-oracles#548</a>.</p>
+<!--kg-card-begin: html-->
+<div style="overflow-x:auto;margin:1.8em 0">
+<table style="width:100%;margin:0;border-collapse:collapse;font-size:0.95rem;line-height:1.5;font-variant-numeric:tabular-nums;border-top:1px solid var(--color-rule)">
+<thead>
+<tr>
+<th style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);font-family:var(--f-mono);font-size:0.72rem;font-weight:400;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-ink-muted);text-align:left">State</th>
+<th style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);font-family:var(--f-mono);font-size:0.72rem;font-weight:400;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-ink-muted);text-align:right">FY2024 reviews in file</th>
+<th style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);font-family:var(--f-mono);font-size:0.72rem;font-weight:400;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-ink-muted);text-align:right">Excluded</th>
+<th style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);font-family:var(--f-mono);font-size:0.72rem;font-weight:400;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-ink-muted);text-align:right">Replayed</th>
+<th style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);font-family:var(--f-mono);font-size:0.72rem;font-weight:400;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-ink-muted);text-align:right">Benefits exact</th>
+<th style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);font-family:var(--f-mono);font-size:0.72rem;font-weight:400;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-ink-muted);text-align:right">Stage comparisons, all exact</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:left">Colorado</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">856</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">0</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">856</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">856</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">5,136</td>
+</tr>
+<tr>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:left">New York</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">885</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">38</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">847</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">847</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">5,082</td>
+</tr>
+<tr>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:left">California</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">883</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">0</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">883</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">883</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">5,298</td>
+</tr>
+<tr>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:left">Arizona</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">925</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">3</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">922</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">922</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">5,532</td>
+</tr>
+<tr>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:left">Georgia</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">945</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">0</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">945</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">945</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">5,670</td>
+</tr>
+<tr>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:left">Maryland</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">745</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">23</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">722</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">722</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">4,332</td>
+</tr>
+<tr>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:left">Total</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">5,239</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">64</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">5,175</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">5,175</td>
+<td style="padding:0.55em 0.75em;border-bottom:1px solid var(--color-rule);color:var(--color-ink);text-align:right">31,050</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!--kg-card-end: html-->
+<p>USDA publishes the QC file each year: a nationally representative sample of active SNAP cases, 44,891 units in FY2024, with each household's income, size, deductions and benefit. For each sampled case a state reviewer gathers the case file, reinterviews the participants and determines whether the household received the correct benefit amount. We score against FSBEN, the file's final calculated benefit, which Mathematica computes for USDA from the reviewed and edited case record. The amount the state actually issued sits in a separate field, RAWBEN. Two models can agree because they share one reading of the law. FSBEN is USDA's own computation for real reviewed cases, so matching it tests an encoding against the program's arithmetic.</p>
+<p>For each review, the <a href="https://github.com/TheAxiomFoundation/axiom-oracles/blob/main/axiom_oracles/bridges/snap_qc_compare.py">comparison program</a> feeds the household's income, size, shelter and utility costs, deductions and categorical-eligibility finding into the state's encoded rules and calculates the benefit. It then compares six stages in order: gross income, standard deduction, excess shelter deduction, net income, maximum allotment and benefit. Five compare to values the file records: FSGRINC, FSSTDDED, FSSLTDED, FSNETINC and FSBEN. Colorado excludes child support paid from gross income rather than deducting it, so for Colorado the program subtracts the file's child-support deduction from FSGRINC before comparing. The maximum allotment compares to the FY2024 table by household size, which equals the file's BENMAX for every record. Benefits match when both amounts round to the same whole dollar; the other five stages must be identical.</p>
+<p>The replay checks benefit arithmetic and takes eligibility as given. The public file holds only completed reviews of eligible cases with a positive benefit, so the program feeds the eligibility gates passing values. Medical, dependent care and child support deductions come from the file as applied there, and where a state's rules take it as an input, so does the homeless shelter deduction. The utility amount the QC record applied is taken as given too: where it matches an encoded allowance for the household's tier (and, in Arizona, its household-size bracket), the encoded allowance applies, and otherwise the amount is added to shelter costs. Households receiving the standard homeless deduction skip that step. The <a href="https://github.com/TheAxiomFoundation/axiom-oracles/blob/main/axiom_oracles/populations/snap_qc.py">loader</a> excludes Minnesota's MFIP cases and SSI combined-application cases other than New York's NYSCAP, which uses the regular calculation. In these six states that removes 64 combined-application units: 38 in New York, 3 in Arizona and 23 in Maryland.</p>
+<p>The rulespec-us checkout imports the FY2026 cost-of-living modules, and its encoded <a href="https://github.com/TheAxiomFoundation/rulespec-us/blob/f43dec520dd392bc5333934f56dad7498363e704/us/regulations/7-cfr/273/10.yaml">7 CFR 273.10</a> rules carry an October 1, 2025 effective date. To evaluate FY2024, the program compiles a copy of the rules with the three cost-of-living modules (maximum allotments, <a href="https://github.com/TheAxiomFoundation/rulespec-us/blob/f43dec520dd392bc5333934f56dad7498363e704/us/policies/usda/snap/fy-2024-cola/deductions.yaml">deductions</a> and income eligibility standards) swapped for their FY2024 versions, which rulespec-us carries beside the current ones. It also substitutes the FY2024 utility allowances from Table F.7 of the file's <a href="https://snapqcdata.net/sites/default/files/2026-08/FY-2024-Tech-Doc.pdf">technical documentation</a>; California's heating and cooling allowance, for example, changes from $663 to $596. California's other utility tiers and Maryland's October to December 2023 rates enter through the recorded utility amount. Before replacing an encoded utility amount, the program checks its expected starting value and stops if that value has changed. The calculation logic stays this checkout's, and every case is evaluated at a nominal January 2026 date.</p>
+<p>Five of the six state encodings build on one shared federal module, <a href="https://github.com/TheAxiomFoundation/rulespec-us/blob/f43dec520dd392bc5333934f56dad7498363e704/us/policies/usda/snap/state-plan-composition.yaml">state-plan-composition</a>. It combines the federal eligibility and benefit rules and sets the benefit to the regular or initial-month allotment for an eligible household, and to zero otherwise. <a href="https://github.com/TheAxiomFoundation/rulespec-us/blob/f43dec520dd392bc5333934f56dad7498363e704/us-ny/policies/otda/snap/fy-2026-benefit-calculation.yaml">New York</a>, <a href="https://github.com/TheAxiomFoundation/rulespec-us/blob/f43dec520dd392bc5333934f56dad7498363e704/us-ca/policies/cdss/snap/fy-2026-benefit-calculation.yaml">California</a>, <a href="https://github.com/TheAxiomFoundation/rulespec-us/blob/f43dec520dd392bc5333934f56dad7498363e704/us-az/policies/des/faa5/na-eligibility-and-benefit-determination/fy-2026-benefit-calculation.yaml">Arizona</a>, <a href="https://github.com/TheAxiomFoundation/rulespec-us/blob/f43dec520dd392bc5333934f56dad7498363e704/us-ga/policies/dfcs/snap/fy-2026-benefit-calculation.yaml">Georgia</a> and <a href="https://github.com/TheAxiomFoundation/rulespec-us/blob/f43dec520dd392bc5333934f56dad7498363e704/us-md/policies/dhs/fia/snap/fy-2026-benefit-calculation.yaml">Maryland</a> each add their own modules on top, the utility allowances among them. <a href="https://github.com/TheAxiomFoundation/rulespec-us/blob/f43dec520dd392bc5333934f56dad7498363e704/us-co/policies/cdhs/snap/fy-2026-benefit-calculation.yaml">Colorado</a>'s chain stands on its own: it imports the federal regulation, statute and cost-of-living modules directly alongside its 10 CCR 2506-1 rules, and Colorado's allotment rule, section 4.207.2, produces the scored benefit.</p>
+<p>Two other public projects work from the QC files. Ben Molin of <a href="https://www.snapscreener.com/blog/qc-data">SNAP Screener</a> tested its calculator against the FY2023 file and reports 36,507 of 37,009 estimates within $2 of the actual benefit amount, with eligibility tests skipped and some states and utility cases excluded. Eric Giannella at Georgetown publishes <a href="https://github.com/giannella/snap_qc">code and data</a> for modeling SNAP payment errors as interpretable, easy-to-implement decision rules, with a ready-made workbook per state.</p>
+<p>The state encodings and the federal module are in rulespec-us under <a href="https://github.com/TheAxiomFoundation/rulespec-us/blob/f43dec520dd392bc5333934f56dad7498363e704/LICENSE">CC BY 4.0</a>. The comparison code, the FY2024 settings and the <a href="https://github.com/TheAxiomFoundation/axiom-oracles/blob/main/docs/snap-qc-oracle-playbook.md">playbook</a> for adding a state or a fiscal year are open-source software in <a href="https://github.com/TheAxiomFoundation/axiom-oracles">axiom-oracles</a> under <a href="https://github.com/TheAxiomFoundation/axiom-oracles/blob/main/LICENSE">MIT</a>. The <a href="https://axiom.org/oracles/?oracle=snap-qc">oracle dashboard</a> lists each state's aggregate results. The loader verifies the August 2026 file's checksum when it downloads it, and each report records that checksum, the rulespec-us commit and hashes of the rule files rewritten for FY2024.</p></div></article></body></html>
