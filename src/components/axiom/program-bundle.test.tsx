@@ -179,6 +179,13 @@ describe("ProgramBundle", () => {
     ).toHaveTextContent("0 of 0 + 1 not in the corpus");
   });
 
+  it("opens in the count the /ops grid showed", () => {
+    render(<ProgramBundle bundle={withParts} documents={documents} available referenceMs={NOW} initialCount="provisions" />);
+    expect(screen.getByRole("radio", { name: "Provisions" })).toHaveAttribute("aria-checked", "true");
+    const headers = within(screen.getByRole("table", { name: "Parts of the program by tier" })).getAllByRole("columnheader");
+    expect(headers[1]).toHaveTextContent(/1 of 2 cited provisions encoded50%/);
+  });
+
   it("counts each tier's documents and provisions exactly", () => {
     render(<ProgramBundle bundle={withParts} documents={documents} available referenceMs={NOW} />);
     const matrix = screen.getByRole("table", { name: "Parts of the program by tier" });

@@ -312,8 +312,6 @@ export function OpsDashboard({
           labels={labels}
         />
 
-        {bundles}
-
         <div
           className={
             queues.length || recentScopes.length
@@ -338,6 +336,8 @@ export function OpsDashboard({
             </aside>
           )}
         </div>
+
+        {bundles}
 
         {pipeline}
       </div>

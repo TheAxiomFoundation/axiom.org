@@ -31,29 +31,35 @@ const bundles = [
 ];
 
 describe("BundleGrid", () => {
-  it("lays out a row per program and a column per state, each cell linking its bundle", () => {
+  it("lays out a row per program and a column per state, each cell shaded by its page's headline number", () => {
     render(<BundleGrid bundles={bundles} />);
-    const grid = screen.getByRole("table", { name: "Program bundles, Tier 1" });
+    // Documents complete by default, as each bundle page opens.
+    const grid = screen.getByRole("table", { name: "Program bundles, Tier 1, documents" });
     expect(within(grid).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Program", "US", "AZ", "CA"]);
     expect(within(grid).getAllByRole("rowheader").map((h) => h.textContent)).toEqual(["SNAP", "Medicaid"]);
-    const az = within(grid).getByRole("link", { name: "Arizona SNAP: 40 of 157 cited provisions encoded (25%)" });
+    const az = within(grid).getByRole("link", { name: "Arizona SNAP: 0 of 1 documents complete (0%)" });
     expect(az).toHaveAttribute("href", "/ops/bundles/us-az/snap");
+    expect(az).toHaveAttribute("data-step", "4");
+    expect(within(grid).getByRole("link", { name: "Medicaid" })).toHaveAttribute("href", "/ops/bundles/us/medicaid");
+  });
+
+  it("counts provisions on request, and opens the bundle page in that count", () => {
+    render(<BundleGrid bundles={bundles} />);
+    fireEvent.click(screen.getByRole("radio", { name: "Provisions" }));
+    const grid = screen.getByRole("table", { name: "Program bundles, Tier 1, provisions" });
+    const az = within(grid).getByRole("link", { name: "Arizona SNAP: 40 of 157 cited provisions encoded (25%)" });
+    expect(az).toHaveAttribute("href", "/ops/bundles/us-az/snap?count=provisions");
     expect(az).toHaveAttribute("data-step", "1");
     // Nothing to count yet is its own mark.
     expect(within(grid).getByRole("link", { name: "California SNAP: 0 of 0 cited provisions encoded" })).toHaveAttribute(
       "data-step",
       "empty"
     );
-    expect(within(grid).getByRole("link", { name: "Medicaid" })).toHaveAttribute("href", "/ops/bundles/us/medicaid");
-  });
-
-  it("switches every cell to Tier 2", () => {
-    render(<BundleGrid bundles={bundles} />);
     fireEvent.click(screen.getByRole("radio", { name: "Tier 2 · full bundle" }));
-    const grid = screen.getByRole("table", { name: "Program bundles, Tier 2" });
-    expect(within(grid).getByRole("link", { name: "Arizona SNAP: 70 of 1,271 provisions encoded (6%)" })).toHaveAttribute(
-      "data-step",
-      "3"
-    );
+    expect(
+      within(screen.getByRole("table", { name: "Program bundles, Tier 2, provisions" })).getByRole("link", {
+        name: "Arizona SNAP: 70 of 1,271 provisions encoded (6%)",
+      })
+    ).toHaveAttribute("data-step", "3");
   });
 });

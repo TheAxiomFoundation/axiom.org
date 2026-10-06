@@ -18,12 +18,26 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   };
 }
 
-export default async function OpsBundlePage({ params }: { params: Promise<{ id: string[] }> }) {
+export default async function OpsBundlePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string[] }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   // Hidden with the /ops pipeline section until it is made public.
   if (!opsPipelineVisible()) notFound();
   const id = (await params).id.join("/");
+  // ?count=provisions opens the page in the count the /ops grid showed.
+  const count = (await searchParams)?.count === "provisions" ? "provisions" : "documents";
   const data = await getProgramBundle(id);
   return (
-    <ProgramBundle bundle={data.bundle} documents={data.documents} available={data.available} referenceMs={Date.now()} />
+    <ProgramBundle
+      bundle={data.bundle}
+      documents={data.documents}
+      available={data.available}
+      referenceMs={Date.now()}
+      initialCount={count}
+    />
   );
 }

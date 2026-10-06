@@ -34,14 +34,18 @@ const STEPS = [
 ];
 const step = (share: number) => STEPS.findIndex((s) => share >= s.min);
 
+type Count = "documents" | "provisions";
+
 /**
  * Every program bundle at a glance: a row per core program, a column for its
- * federal layer and one per state, each cell shaded by how much of the tier is
- * encoded (Tier 1: the provisions PolicyEngine cites; Tier 2: every provision
- * in the corpus). A cell opens its bundle.
+ * federal layer and one per state. Each cell is shaded by the same number its
+ * bundle page leads with, in the same tier and count: documents complete, or
+ * provisions encoded (Tier 1: the provisions PolicyEngine cites). A cell opens
+ * its bundle in that count.
  */
 export function BundleGrid({ bundles }: { bundles: BundleSummary[] }) {
   const [tier, setTier] = useState<BundleTierId>("screener");
+  const [count, setCount] = useState<Count>("documents");
   if (!bundles.length) return null;
   const programs = [...new Set(bundles.map((b) => b.program))].sort(
     (a, b) => (PROGRAM_ORDER.indexOf(a) + 1 || 99) - (PROGRAM_ORDER.indexOf(b) + 1 || 99) || a.localeCompare(b)
@@ -51,7 +55,8 @@ export function BundleGrid({ bundles }: { bundles: BundleSummary[] }) {
   const byId = new Map(bundles.map((b) => [b.id, b]));
   const programTitle = (program: string) =>
     byId.get(`us/${program}`)?.title.replace(/: federal law$/, "") ?? program.toUpperCase();
-  const unit = tier === "screener" ? "cited provisions" : "provisions";
+  const unit = count === "documents" ? "documents" : tier === "screener" ? "cited provisions" : "provisions";
+  const verb = count === "documents" ? "complete" : "encoded";
 
   return (
     <section className={styles.card} aria-labelledby="ops-bundles">
@@ -59,19 +64,31 @@ export function BundleGrid({ bundles }: { bundles: BundleSummary[] }) {
         <h2 id="ops-bundles" className={styles.heading}>
           Program bundles
         </h2>
-        <div className={styles.switch} role="radiogroup" aria-label="Tier">
-          {(["screener", "full"] as BundleTierId[]).map((value) => (
-            <button key={value} type="button" role="radio" aria-checked={tier === value} onClick={() => setTier(value)}>
-              {value === "screener" ? "Tier 1 · screener parity" : "Tier 2 · full bundle"}
-            </button>
-          ))}
+        <div className={styles.switches}>
+          <div className={styles.switch} role="radiogroup" aria-label="Tier">
+            {(["screener", "full"] as BundleTierId[]).map((value) => (
+              <button key={value} type="button" role="radio" aria-checked={tier === value} onClick={() => setTier(value)}>
+                {value === "screener" ? "Tier 1 · screener parity" : "Tier 2 · full bundle"}
+              </button>
+            ))}
+          </div>
+          <div className={styles.switch} role="radiogroup" aria-label="Count">
+            {(["documents", "provisions"] as Count[]).map((value) => (
+              <button key={value} type="button" role="radio" aria-checked={count === value} onClick={() => setCount(value)}>
+                {value === "documents" ? "Documents" : "Provisions"}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
       <p className={styles.note}>
-        {`Share of ${unit} encoded, by program and state. A state's bundle includes the program's federal law.`}
+        {`Share of ${unit} ${verb}, by program and state: the number each bundle's page leads with. A state's bundle includes the program's federal law.`}
       </p>
       <div className={styles.scroll}>
-        <table className={styles.grid} aria-label={`Program bundles, ${tier === "screener" ? "Tier 1" : "Tier 2"}`}>
+        <table
+          className={styles.grid}
+          aria-label={`Program bundles, ${tier === "screener" ? "Tier 1" : "Tier 2"}, ${count}`}
+        >
           <thead>
             <tr>
               <th scope="col" className={styles.corner}>
@@ -94,16 +111,19 @@ export function BundleGrid({ bundles }: { bundles: BundleSummary[] }) {
                   const bundle = byId.get(`${j}/${program}`);
                   const counts = bundle?.counts[tier];
                   if (!bundle || !counts) return <td key={j} className={styles.cell} />;
-                  const done = counts.byProvisionState.encoded + counts.byProvisionState.unvalidated;
-                  const total = counts.provisions;
+                  const done =
+                    count === "documents"
+                      ? counts.byStatus.complete + counts.byStatus.unvalidated
+                      : counts.byProvisionState.encoded + counts.byProvisionState.unvalidated;
+                  const total = count === "documents" ? counts.documents : counts.provisions;
                   const share = total ? done / total : 0;
-                  const text = `${bundle.title}: ${number(done)} of ${number(total)} ${unit} encoded${
+                  const text = `${bundle.title}: ${number(done)} of ${number(total)} ${unit} ${verb}${
                     total ? ` (${Math.round(share * 100)}%)` : ""
                   }`;
                   return (
                     <td key={j} className={styles.cell}>
                       <a
-                        href={`/ops/bundles/${bundle.id}`}
+                        href={`/ops/bundles/${bundle.id}${count === "provisions" ? "?count=provisions" : ""}`}
                         className={styles.swatch}
                         data-step={total ? step(share) : "empty"}
                         title={text}
@@ -117,7 +137,7 @@ export function BundleGrid({ bundles }: { bundles: BundleSummary[] }) {
           </tbody>
         </table>
       </div>
-      <ul className={styles.legend} aria-label="Share encoded">
+      <ul className={styles.legend} aria-label={`Share ${verb}`}>
         {STEPS.map((s, index) => (
           <li key={s.label}>
             <i className={styles.swatch} data-step={index} aria-hidden />

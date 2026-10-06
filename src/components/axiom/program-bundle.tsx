@@ -177,17 +177,20 @@ export function ProgramBundle({
   documents,
   available,
   referenceMs,
+  initialCount = "documents",
 }: {
   bundle: BundleRow | null;
   documents: BundleDocumentRow[];
   available: boolean;
   referenceMs: number;
+  /** The count to open in: the one the /ops grid showed. */
+  initialCount?: Count;
 }) {
   const tiers = bundle?.tiers ?? [];
   const [tableTier, setTableTier] = useState<BundleTierId>(tiers[0]?.id ?? "screener");
   const [tableFilter, setTableFilter] = useState<DocumentStatus | "excluded" | null>(null);
   const [selected, setSelected] = useState<Selection | null>(null);
-  const [count, setCount] = useState<Count>("documents");
+  const [count, setCount] = useState<Count>(initialCount);
 
   const inScope = useMemo(() => {
     const out = new Map<BundleTierId, BundleDocumentRow[]>();
