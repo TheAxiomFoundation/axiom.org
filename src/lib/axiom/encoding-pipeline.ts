@@ -93,6 +93,20 @@ export interface PipelineAttempt {
   /** When that first shard run started, and how it ended. */
   tests_first_started_at?: string | null;
   tests_first_status?: "pass" | "fail" | null;
+  /** Each try of the encode loop, from the encoder's own record. */
+  tries?: PipelineTry[] | null;
+}
+
+/** One try of the encode loop: the model that wrote the candidate, its time and cost, and what sent it back. */
+export interface PipelineTry {
+  attempt: number;
+  model: string | null;
+  /** The model's own time on this try, in milliseconds. */
+  ms: number | null;
+  cost: number | null;
+  ok: boolean;
+  /** The first check that failed this try's candidate. */
+  error: string | null;
 }
 
 /** Where one attempt sits. Main-line stages first, then the ways out. */
@@ -388,15 +402,20 @@ const CANCEL_LABELS: Record<NonNullable<PipelineAttempt["cancel_stage"]>, string
   running: "Cancelled mid-run",
 };
 
+/** An encoder error without the module file it was raised for or the check that raised it. */
+export function errorMessage(error: string): string {
+  return error.replace(/^\S+\.ya?ml:\s*/, "").replace(/^(?:ci|compile|grounding|proof|oracle|review):\s*/, "");
+}
+
 /**
  * An error as the group runs failing the same way share: without the module
- * file it was raised for, the exception's module path, quoted or backticked
- * values (citations, rule and test names, paths), or numbers.
+ * file it was raised for, the check that raised it, the exception's module
+ * path, quoted or backticked values (citations, rule and test names, paths),
+ * or numbers.
  */
 export function errorGroupLabel(error: string): string {
   return checkErrorLabel(
-    error
-      .replace(/^\S+\.ya?ml:\s*/, "")
+    errorMessage(error)
       .replace(/^(?:[a-z_][\w]*\.)+(?=[A-Z]\w*(?:Error|Exception|Exit)\b)/, "")
       .replace(/`[^`]*`|'[^']*'|"[^"]*"/g, "…")
       // Before checkErrorLabel, so a long number is not taken for a hash.
@@ -465,19 +484,20 @@ export type EncodeGate =
   | "pending"
   | "unknown";
 
+/** A failed run's outcome, named by the step that stopped it. */
 export const ENCODE_GATE_LABELS: Record<EncodeGate, string> = {
   budget: "Attempt budget used up",
-  setup: "Setup",
-  generate: "Generate",
-  compile: "Compile",
-  validate: "Validation rules",
-  review: "Review",
-  sign: "Sign and package",
-  publish: "Open the PR",
-  encode: "Inside the encode step (no detail)",
+  setup: "Failed in setup",
+  generate: "Failed to generate",
+  compile: "Failed to compile",
+  validate: "Failed validation",
+  review: "Failed review",
+  sign: "Failed to sign",
+  publish: "Failed to open the PR",
+  encode: "Failed in the encode step",
   cancelled: "Cancelled or timed out",
-  pending: "Cause not looked up yet",
-  unknown: "No detail recorded",
+  pending: "Failed, cause not looked up yet",
+  unknown: "Failed at an unknown step",
 };
 
 /** The validator's issue prefix: "<file>.yaml: <check>: ...". */
@@ -848,7 +868,7 @@ export function journeySteps(attempt: PipelineAttempt): JourneyStep[] {
       detail: failedEncode
         ? [
             `${ENCODE_GATE_LABELS[encodeGate(attempt)]}: ${reason?.label}`,
-            attempt.encoder_error ?? cancellationDetail(attempt),
+            attempt.encoder_error ? errorMessage(attempt.encoder_error) : cancellationDetail(attempt),
           ]
             .filter(Boolean)
             .join(" — ")
