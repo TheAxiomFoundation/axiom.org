@@ -248,6 +248,17 @@ export function inScope(jurisdiction: string, scope: PipelineScope | null): bool
 /** The top-level jurisdiction: "us" for "us-la", "uk" for "uk-wakefield". */
 export const rootJurisdiction = (jurisdiction: string) => jurisdiction.split("-")[0];
 
+/** The query string that asks for a scope: "?j=us", "?j=us&only=1", or "" for everything. */
+export function scopeSearch(scope: PipelineScope | null): string {
+  if (!scope) return "";
+  return `?${new URLSearchParams({ j: scope.jurisdiction, ...(scope.only ? { only: "1" } : {}) })}`;
+}
+
+/** What a scope covers, by name: "United States", "North Carolina", "US Federal only". */
+export function scopeName(scope: PipelineScope): string {
+  return scope.only ? `${ownLevelName(scope.jurisdiction)} only` : jurisdictionName(scope.jurisdiction);
+}
+
 /** The scope a URL asks for (`?j=us`, `?j=us&only=1`), or null for everything. */
 export function parseScope(params: Record<string, string | string[] | undefined>): PipelineScope | null {
   const value = params.j;
