@@ -221,9 +221,8 @@ export default function ValidationPage() {
 
         <Reveal className="border-t border-[var(--color-rule)] pt-12 text-center">
           <p className="m-0 mb-6 font-body text-[1rem] text-[var(--color-ink-secondary)] leading-relaxed max-w-[640px] mx-auto">
-            The comparison harness is open, and every engine behind a thin
-            adapter makes the whole ecosystem harder to fool. If you maintain
-            a calculator, a screener, or an eligibility system,{" "}
+            The comparison harness is open source. If you maintain a
+            calculator, a screener, or an eligibility system,{" "}
             <span className="serif-italic text-[var(--color-ink)]">
               plug it in and put us to the test.
             </span>

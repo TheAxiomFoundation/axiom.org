@@ -90,6 +90,14 @@ describe('verification claims', () => {
       expect(text).not.toMatch(/adjudicated cases/i)
       expect(text).not.toMatch(/no engine.?s quirks leak/i)
       expect(text).not.toMatch(/US rules (had|have) no comparison/i)
+      // The adapters are not thin: axiom_oracles/adapters/axiom/ holds about
+      // 7,500 lines of Python (tax_projection.py alone is 4,310).
+      expect(text).not.toMatch(/thin adapter/i)
+      expect(text).not.toMatch(/every engine/i)
+      // Published reports carry unexplained mismatches (summary.dispositioned.
+      // unexplained_count; the dashboard's countUnexplained), so no surface
+      // says every disagreement gets explained.
+      expect(text).not.toMatch(/disagreements get explained/i)
     })
 
     it(`${route} discloses the PolicyEngine tie wherever it names PolicyEngine`, () => {

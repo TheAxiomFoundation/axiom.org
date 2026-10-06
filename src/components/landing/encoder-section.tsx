@@ -41,7 +41,8 @@ export function EncoderSection() {
         >
           The encoder logs every decision.{" "}
           <span className="serif-italic text-[var(--color-ink-secondary)]">
-            Disagreements get explained, not erased.
+            Disagreements are classified and published, including the ones
+            not yet explained.
           </span>
         </Reveal>
 
