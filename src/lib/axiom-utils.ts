@@ -1,4 +1,5 @@
 import type { Rule, RuleEncodingData } from "@/lib/supabase";
+import { formatNhRuleSection } from "@/lib/axiom/citation/nh-admin-rules";
 
 /** True when the encoding was fetched from a GitHub rulespec-* repo (not from the encoding DB). */
 export function isGitHubEncoding(encoding: RuleEncodingData | null): boolean {
@@ -151,13 +152,18 @@ function formatCitationPath(
   }
 
   if (jurisdiction.startsWith("us-") && docType === "regulation") {
-    // State regulation section identifiers (``He-W 734.01``) are
-    // already self-contained citations.
-    const [, , , section, ...subsections] = parts;
+    // State regulation sections are cited by their own identifier. A
+    // New Hampshire section minted as a bare number
+    // (``he-w-800/801.01``) takes its rule prefix from the chapter slug
+    // ("He-W 801.01"); a legacy segment that already carries it
+    // (``He-W 734.01``) is used as is.
+    const [, , chapter, section, ...subsections] = parts;
     if (!section) {
       return null;
     }
-    return `${section}${formatSubsectionSuffix(subsections)}`;
+    const label =
+      jurisdiction === "us-nh" ? formatNhRuleSection(chapter, section) : section;
+    return `${label}${formatSubsectionSuffix(subsections)}`;
   }
 
   if (jurisdiction === "us-co" && docType === "statute") {
