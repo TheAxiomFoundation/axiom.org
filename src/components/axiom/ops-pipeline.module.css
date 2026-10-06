@@ -112,51 +112,22 @@
   margin-top: 20px;
 }
 
-.stateBar {
-  display: flex;
-  gap: 2px;
-  height: 14px;
-  margin-top: 10px;
-  overflow: hidden;
-  border-radius: 4px;
-}
-
-.stateBar span {
-  min-width: 3px;
-}
-
-.stateBar span[data-tone="fail"],
-.stateSwatch[data-tone="fail"] {
-  background: color-mix(in srgb, var(--color-warning) 80%, var(--color-paper));
-}
-
-.stateBar span[data-tone="work"],
-.stateSwatch[data-tone="work"] {
-  background: color-mix(in srgb, var(--color-ink) 22%, var(--color-paper));
-}
-
-.stateBar span[data-tone="done"],
-.stateSwatch[data-tone="done"] {
-  background: var(--color-success);
-}
-
-/* Groups fill down, then across, so they still read in pipeline order. */
+/* One row per group, in pipeline order: name, count, and a bar for its share of all citations. */
 .stateList {
   display: grid;
-  grid-auto-flow: column;
-  grid-template-rows: repeat(4, auto);
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  column-gap: 32px;
-  margin: 10px 0 0;
+  gap: 2px;
+  max-width: 640px;
+  /* The rows' padding is for their hover; the text lines up with the heading. */
+  margin: 12px 0 0 -8px;
   padding: 0;
   list-style: none;
 }
 
 .stateRow {
   display: grid;
-  grid-template-columns: 40px 10px minmax(110px, max-content) minmax(0, 1fr);
-  align-items: baseline;
-  column-gap: 10px;
+  grid-template-columns: 140px 40px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 12px;
   width: 100%;
   padding: 5px 8px;
   border: 0;
@@ -172,29 +143,31 @@
   background: color-mix(in srgb, var(--color-ink) 5%, transparent);
 }
 
+.stateLabel {
+  color: var(--color-ink);
+}
+
 .stateCount {
   text-align: right;
-  font-size: 15px;
   font-weight: 600;
   color: var(--color-ink);
   font-variant-numeric: tabular-nums;
 }
 
-.stateSwatch {
-  align-self: center;
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
+.stateTrack {
+  display: block;
 }
 
-.stateLabel {
-  font-weight: 500;
-  color: var(--color-ink);
+.stateBar {
+  display: block;
+  min-width: 2px;
+  height: 8px;
+  border-radius: 0 4px 4px 0;
+  background: color-mix(in srgb, var(--color-ink) 30%, var(--color-paper));
 }
 
-.stateDetail {
-  font-size: 12px;
-  color: var(--color-ink-muted);
+.stateRow[aria-pressed="true"] .stateBar {
+  background: var(--color-accent);
 }
 
 .summaryFunnelHead {
@@ -1406,18 +1379,8 @@
     grid-auto-flow: row;
   }
 
-  .stateList {
-    grid-auto-flow: row;
-    grid-template-rows: none;
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .stateRow {
-    grid-template-columns: 36px 10px minmax(0, 1fr);
-  }
-
-  .stateDetail {
-    grid-column: 3;
+    grid-template-columns: 112px 32px minmax(0, 1fr);
   }
 
   /* The step table stacks: name and time, then went on, then what stopped. */

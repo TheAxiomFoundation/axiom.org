@@ -483,10 +483,11 @@ describe("OpsPipeline", () => {
     // Each citation once, where its latest run left it, in pipeline order.
     expect(screen.getByText("3 citations · where each one is now")).toBeInTheDocument();
     const states = screen.getByRole("list", { name: "Where each citation is now" });
-    expect(within(states).getAllByRole("button").map((row) => row.textContent)).toEqual([
-      "1Encoding failslatest run failed",
-      "1In reviewPR open",
-      "1In main1 pending index",
+    // A row is a name and a count; what it means is the tooltip.
+    expect(within(states).getAllByRole("button").map((row) => [row.textContent, row.title])).toEqual([
+      ["Encoding fails1", "latest run failed"],
+      ["In review1", "PR open"],
+      ["In main1", "1 pending index"],
     ]);
 
     const runs = screen.getByRole("group", { name: "Runs and retries" });
@@ -548,10 +549,10 @@ describe("OpsPipeline", () => {
     expect(screen.getByRole("group", { name: "Why encodes fail" })).toBeInTheDocument();
 
     const states = screen.getByRole("list", { name: "Where each citation is now" });
-    fireEvent.click(within(states).getByRole("button", { name: /^3\s*Encoding fails/ }));
+    fireEvent.click(within(states).getByRole("button", { name: /^Encoding fails\s*3$/ }));
     expect(within(openList()).getByRole("heading", { name: /Encoding fails\s*3/ })).toBeInTheDocument();
-    expect(within(states).getByRole("button", { name: /^3\s*Encoding fails/ })).toHaveAttribute("aria-pressed", "true");
-    fireEvent.click(within(states).getByRole("button", { name: /^1\s*Merged elsewhere/ }));
+    expect(within(states).getByRole("button", { name: /^Encoding fails\s*3$/ })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(within(states).getByRole("button", { name: /^Merged elsewhere\s*1$/ }));
     expect(within(openList()).getByText("Merged into codex/x")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "935 queued" }));
     expect(screen.getByRole("region", { name: "Queued items" })).toBeInTheDocument();
@@ -591,12 +592,12 @@ describe("OpsPipeline", () => {
     expect(screen.getByText("4 citations · where each one is now")).toBeInTheDocument();
     const states = screen.getByRole("list", { name: "Where each citation is now" });
     // A group of several stages names its parts.
-    expect(within(states).getAllByRole("button").map((row) => row.textContent)).toEqual([
-      "1Encoding failslatest run failed",
-      "2No open PR1 without a PR · 1 PR closed",
-      "1Donetests pass on main",
+    expect(within(states).getAllByRole("button").map((row) => [row.textContent, row.title])).toEqual([
+      ["Encoding fails1", "latest run failed"],
+      ["No open PR2", "1 without a PR · 1 PR closed"],
+      ["Done1", "tests pass on main"],
     ]);
-    fireEvent.click(within(states).getByRole("button", { name: /^2\s*No open PR/ }));
+    fireEvent.click(within(states).getByRole("button", { name: /^No open PR\s*2$/ }));
     const list = screen.getByRole("region", { name: /^No open PR/ });
     expect(within(list).getByRole("link", { name: "us/b" })).toBeInTheDocument();
     expect(within(list).getByRole("link", { name: "us/c" })).toBeInTheDocument();

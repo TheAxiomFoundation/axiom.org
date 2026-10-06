@@ -981,45 +981,41 @@ const GAP_LABELS: Partial<Record<PipelineStage, string>> = {
   oracle_disagrees: "oracle disagrees",
 };
 
-/** The stages that sit between each pair of funnel steps. */
-
 /** Where a citation can be now, in pipeline order; every stage belongs to exactly one group. */
 const CITATION_GROUPS: Array<{
   key: string;
   label: string;
   stages: PipelineStage[];
-  tone: "fail" | "work" | "done";
-  /** What the group means; groups of several stages list their parts instead. */
+  /** What the group means (a row's tooltip); groups of several stages list their parts instead. */
   detail: string | null;
 }> = [
-  { key: "failing", label: "Encoding fails", stages: ["encode_failed"], tone: "fail", detail: "latest run failed" },
-  { key: "encoding", label: "Encoding", stages: ["encoding"], tone: "work", detail: "a run is in progress" },
-  { key: "no-pr", label: "No open PR", stages: ["no_pr", "closed"], tone: "fail", detail: null },
-  { key: "review", label: "In review", stages: ["review"], tone: "work", detail: "PR open" },
-  { key: "elsewhere", label: "Merged elsewhere", stages: ["merged_off_main"], tone: "fail", detail: "merged into another branch" },
+  { key: "failing", label: "Encoding fails", stages: ["encode_failed"], detail: "latest run failed" },
+  { key: "encoding", label: "Encoding", stages: ["encoding"], detail: "a run is in progress" },
+  { key: "no-pr", label: "No open PR", stages: ["no_pr", "closed"], detail: null },
+  { key: "review", label: "In review", stages: ["review"], detail: "PR open" },
+  { key: "elsewhere", label: "Merged elsewhere", stages: ["merged_off_main"], detail: "merged into another branch" },
   {
     key: "main",
     label: "In main",
     stages: ["awaiting_sync", "not_indexed", "indexed", "runs", "compile_failed", "tests_failing", "oracle_disagrees"],
-    tone: "work",
     detail: null,
   },
-  { key: "done", label: "Done", stages: ["verified"], tone: "done", detail: "tests pass on main" },
+  { key: "done", label: "Done", stages: ["verified"], detail: "tests pass on main" },
 ];
 
 interface CitationGroup {
   key: string;
   label: string;
   stages: PipelineStage[];
-  tone: "fail" | "work" | "done";
   count: number;
   description: string;
 }
 
 /**
  * Every citation in the scope, once each, at the stage its latest run
- * reached: one bar split in pipeline order, and a row per group that lists
- * its citations. The groups add up to all citations.
+ * reached: a row per group in pipeline order, with its count and a bar for
+ * its share of all citations, that lists its citations. The groups add up
+ * to all citations.
  */
 function CitationStates({
   view,
@@ -1067,16 +1063,6 @@ function CitationStates({
           </button>
         )}
       </div>
-      <div className={styles.stateBar} aria-hidden>
-        {groups.map((group) => (
-          <span
-            key={group.key}
-            data-tone={group.tone}
-            style={{ flexGrow: group.count }}
-            title={`${group.label}: ${number(group.count)}`}
-          />
-        ))}
-      </div>
       <ul className={styles.stateList} aria-label="Where each citation is now">
         {groups.map((group) => (
           <li key={group.key}>
@@ -1084,12 +1070,14 @@ function CitationStates({
               type="button"
               className={styles.stateRow}
               aria-pressed={isOpen(group.label)}
+              title={group.description}
               onClick={() => onGroup(group)}
             >
-              <span className={styles.stateCount}>{number(group.count)}</span>
-              <span className={styles.stateSwatch} data-tone={group.tone} aria-hidden />
               <span className={styles.stateLabel}>{group.label}</span>
-              <span className={styles.stateDetail}>{group.description}</span>
+              <span className={styles.stateCount}>{number(group.count)}</span>
+              <span className={styles.stateTrack} aria-hidden>
+                <span className={styles.stateBar} style={{ width: `${(group.count / total) * 100}%` }} />
+              </span>
             </button>
           </li>
         ))}
