@@ -443,4 +443,48 @@ describe("SectionReader", () => {
     expect(screen.getByText("Child body text.")).toBeInTheDocument();
     expect(document.getElementById("a-1")).not.toBeNull();
   });
+
+  describe("external comparisons", () => {
+    // 7 USC 2014 and 7 CFR 273.10 are covered by co-snap (us-co), whose
+    // parity case co-snap-us-co-family-1 declares a PolicyEngine
+    // comparison. The trust row used to show a green "Verified ·
+    // PolicyEngine" chip for it. It now shows no comparison chip at all
+    // (Max, d875: "approve, but hide").
+    const coSnap = {
+      jurisdiction: "us-co",
+      programId: "co-snap",
+      mode: "compiled" as const,
+      status: "ready" as const,
+      ruleCount: 1,
+      anchors: ["a"],
+      ruleNames: ["snap_benefit_amount"],
+    };
+
+    it.each([
+      ["us/statute/7/2014", "Eligible households"],
+      ["us/regulation/7/273/10", "Determining household eligibility and benefit levels"],
+    ])("shows only the rule and coverage chips on %s", (citationPath, heading) => {
+      const { container } = render(
+        <SectionReader
+          data={makeData({
+            citationPath,
+            root: { ...ROOT, citation_path: citationPath, heading },
+            encodedRules: [
+              { name: "snap_benefit_amount", kind: "derived", anchors: ["a", "b"] },
+            ],
+            programs: [coSnap],
+          })}
+        />,
+      );
+      const row = screen.getByText("∀").parentElement!.parentElement!;
+      expect(Array.from(row.children, (chip) => chip.textContent)).toEqual([
+        "∀1 rule",
+        "All 2 subsections",
+      ]);
+      // Markup and attributes both: the old claim lived in a title.
+      expect(container.innerHTML).not.toMatch(/PolicyEngine/);
+      expect(container.innerHTML).not.toMatch(/verified|agrees with|comparison/i);
+      expect(container.innerHTML).not.toContain("⊨");
+    });
+  });
 });

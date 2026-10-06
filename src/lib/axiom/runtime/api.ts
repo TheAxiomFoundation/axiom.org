@@ -447,45 +447,6 @@ export async function runCalculateRoot(request: {
   }
 }
 
-export interface ParityCaseSummary {
-  id: string;
-  description: string;
-  program_id: string;
-  jurisdiction: string;
-  /** External oracle engines this case is compared against
-   *  (empty = golden expectations only — executable, not verified). */
-  oracles: string[];
-}
-
-/**
- * Canonical parity cases from the hosted API, reduced to what the
- * app's trust surfaces need. Cached like the registry reads.
- */
-export async function listParityCases(): Promise<ParityCaseSummary[]> {
-  const data = await runtimeGet<{
-    cases: Array<{
-      id: string;
-      description?: string;
-      program_id: string;
-      jurisdiction: string;
-      external_comparisons?: Array<{ engine?: string }>;
-    }>;
-  }>("/parity/cases");
-  return (data?.cases ?? []).map((item) => ({
-    id: item.id,
-    description: item.description ?? "",
-    program_id: item.program_id,
-    jurisdiction: item.jurisdiction,
-    oracles: Array.from(
-      new Set(
-        (item.external_comparisons ?? [])
-          .map((comparison) => comparison.engine)
-          .filter((engine): engine is string => Boolean(engine))
-      )
-    ),
-  }));
-}
-
 export async function getProgramGraph(
   jurisdiction: string,
   programId: string
