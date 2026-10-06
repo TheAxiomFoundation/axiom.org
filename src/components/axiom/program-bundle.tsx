@@ -367,17 +367,6 @@ export function ProgramBundle({
               )} />
               <FactsRow label="Provisions" tiers={tiers} render={(tier) => <ProvisionFacts rows={inScope.get(tier.id) ?? []} />} />
             </div>
-            <ul className={styles.legend} aria-label="States">
-              {(count === "documents"
-                ? (["encoded", "unvalidated", "partly", "none", "missing"] as Shade[])
-                : (["encoded", "unvalidated", "partly", "deferred", "in_progress", "failed", "none"] as Shade[])
-              ).map((shade) => (
-                <li key={shade}>
-                  <i className={styles.swatch} data-shade={shade} aria-hidden />
-                  {(count === "documents" ? DOCUMENT_SHADE_LABELS : SHADE_LABELS)[shade]}
-                </li>
-              ))}
-            </ul>
           </section>
         )}
 
@@ -540,6 +529,65 @@ function FactsRow({
   );
 }
 
+interface BreakdownItem {
+  key: string;
+  shade: Shade | null;
+  label: string;
+  value: number;
+  pressed?: boolean;
+  onClick?: () => void;
+  /** Outside the total: shown apart. */
+  apart?: boolean;
+}
+
+/**
+ * A tier's count by state: one line per state with its swatch, name and
+ * number, in the same order in every tier so the columns line up. A state
+ * with none stays, dimmed. The swatches are the matrix's legend.
+ */
+function Breakdown({ total, totalLabel, items }: { total: number; totalLabel: string; items: BreakdownItem[] }) {
+  return (
+    <div className={styles.breakdown}>
+      <p className={styles.breakdownTotal}>
+        <strong>{number(total)}</strong> {totalLabel}
+      </p>
+      <ul className={styles.breakdownList}>
+        {items.map((item) => {
+          const inner = (
+            <>
+              {item.shade ? (
+                <i className={styles.swatch} data-shade={item.shade} aria-hidden />
+              ) : (
+                <i className={styles.swatchBlank} aria-hidden />
+              )}
+              <span>{item.label}</span>
+              <span className={styles.breakdownValue}>{number(item.value)}</span>
+            </>
+          );
+          return (
+            <li key={item.key} data-zero={item.value === 0 ? true : undefined} data-apart={item.apart || undefined}>
+              {item.onClick ? (
+                <button
+                  type="button"
+                  className={styles.breakdownItem}
+                  aria-label={`${number(item.value)} ${item.label.toLowerCase()}`}
+                  aria-pressed={item.pressed}
+                  disabled={item.value === 0}
+                  onClick={item.onClick}
+                >
+                  {inner}
+                </button>
+              ) : (
+                <span className={styles.breakdownItem}>{inner}</span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 function DocumentFacts({
   rows,
   pressed,
@@ -551,45 +599,45 @@ function DocumentFacts({
 }) {
   const counts = tierCounts(rows);
   return (
-    <>
-      <strong>{number(counts.documents)}</strong>
-      {DOCUMENT_STATUSES.map((status) => (
-        <button
-          key={status}
-          type="button"
-          className={styles.factButton}
-          aria-pressed={pressed === status}
-          disabled={counts.byStatus[status] === 0}
-          onClick={() => onFilter(status)}
-        >
-          {number(counts.byStatus[status])} {STATUS_LABELS[status].toLowerCase()}
-        </button>
-      ))}
-      <button
-        type="button"
-        className={styles.factButton}
-        aria-pressed={pressed === "excluded"}
-        disabled={counts.excluded === 0}
-        onClick={() => onFilter("excluded")}
-      >
-        {number(counts.excluded)} excluded
-      </button>
-    </>
+    <Breakdown
+      total={counts.documents}
+      totalLabel="in scope"
+      items={[
+        ...DOCUMENT_STATUSES.map((status) => ({
+          key: status,
+          shade: STATUS_SHADE[status],
+          label: STATUS_LABELS[status],
+          value: counts.byStatus[status],
+          pressed: pressed === status,
+          onClick: () => onFilter(status),
+        })),
+        {
+          key: "excluded",
+          shade: null,
+          label: "Excluded",
+          value: counts.excluded,
+          pressed: pressed === "excluded",
+          onClick: () => onFilter("excluded"),
+          apart: true,
+        },
+      ]}
+    />
   );
 }
 
 function ProvisionFacts({ rows }: { rows: BundleDocumentRow[] }) {
   const counts = tierCounts(rows);
-  const p = counts.byProvisionState;
   return (
-    <>
-      <strong>{number(counts.provisions)}</strong>
-      {PROVISION_STATES.filter((state) => p[state] > 0).map((state) => (
-        <span key={state} className={styles.factItem}>
-          {number(p[state])} {PROVISION_LABELS[state].toLowerCase()}
-        </span>
-      ))}
-    </>
+    <Breakdown
+      total={counts.provisions}
+      totalLabel="in the corpus"
+      items={PROVISION_STATES.map((state) => ({
+        key: state,
+        shade: PROVISION_SHADE[state],
+        label: PROVISION_LABELS[state],
+        value: counts.byProvisionState[state],
+      }))}
+    />
   );
 }
 

@@ -179,10 +179,15 @@ describe("ProgramBundle", () => {
     render(<ProgramBundle bundle={withParts} documents={documents} available referenceMs={NOW} />);
     const matrix = screen.getByRole("table", { name: "Parts of the program by tier" });
     const cells = within(matrix).getAllByRole("cell");
+    // One line per state, in the same order in every tier; excluded documents sit apart.
     expect(cells.at(-4)).toHaveTextContent(
-      "10 complete0 complete, not validated1 partly encoded0 not started0 not in the corpus1 excluded"
+      "1 in scopeComplete0Complete, not validated0Partly encoded1Not started0Not in the corpus0Excluded1"
     );
-    expect(cells.at(-2)).toHaveTextContent("21 encoded1 deferred");
+    expect(within(cells.at(-4)!).getByRole("button", { name: "1 excluded" })).toBeEnabled();
+    expect(within(cells.at(-4)!).getByRole("button", { name: "0 complete" })).toBeDisabled();
+    expect(cells.at(-2)).toHaveTextContent(
+      "2 in the corpusEncoded1Encoded, not validated0Partly encoded0Deferred1In progress0Failed0Not started0"
+    );
   });
 
   it("opens a cell's documents, and the screener-level parity drawer", () => {

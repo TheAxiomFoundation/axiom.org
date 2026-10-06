@@ -370,7 +370,25 @@
 
 .factsRow > * {
   border-bottom: 0;
-  padding: 10px 0 0;
+  padding: 14px 0 0;
+}
+
+/* The label sits level with its count, not in the middle of the list. */
+.factsRow > .factsLabel {
+  align-self: start;
+  padding-top: 16px;
+}
+
+.factsRow + .factsRow > * {
+  margin-top: 6px;
+  border-top: 1px solid var(--color-rule);
+}
+
+/* Excluded documents are outside the tier's count, so they sit apart. */
+.breakdownList li[data-apart] {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--color-rule);
 }
 
 .factsLabel {
@@ -385,59 +403,88 @@
 }
 
 .facts {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 12px;
+  min-width: 0;
   font-size: 12px;
   color: var(--color-ink-secondary);
   font-variant-numeric: tabular-nums;
 }
 
-.facts strong {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--color-ink);
+.breakdown {
+  display: grid;
+  gap: 6px;
+  max-width: 320px;
 }
 
-.factButton {
-  padding: 0;
-  border: 0;
-  background: none;
-  font: inherit;
-  color: var(--color-accent);
-  cursor: pointer;
-}
-
-.factButton:disabled {
-  color: var(--color-ink-muted);
-  cursor: default;
-}
-
-.factButton[aria-pressed="true"] {
-  font-weight: 600;
-  text-decoration: underline;
-}
-
-.factItem {
-  white-space: nowrap;
-}
-
-.legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 18px;
-  margin: 18px 0 0;
-  padding: 0;
-  list-style: none;
+.breakdownTotal {
   font-size: 12px;
   color: var(--color-ink-secondary);
 }
 
-.legend li {
-  display: inline-flex;
+.breakdownTotal strong {
+  margin-right: 2px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.breakdownList {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.breakdownItem {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
+  width: 100%;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font: inherit;
+  color: var(--color-ink-secondary);
+  text-align: left;
+}
+
+button.breakdownItem {
+  cursor: pointer;
+}
+
+button.breakdownItem:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-accent) 7%, transparent);
+  color: var(--color-ink);
+}
+
+button.breakdownItem[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  color: var(--color-ink);
+  font-weight: 500;
+}
+
+button.breakdownItem:disabled {
+  cursor: default;
+}
+
+.breakdownList li[data-zero] {
+  opacity: 0.45;
+}
+
+.breakdownValue {
+  font-weight: 500;
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.swatchBlank {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1px dashed var(--color-ink-muted);
+  border-radius: 3px;
 }
 
 .link {
