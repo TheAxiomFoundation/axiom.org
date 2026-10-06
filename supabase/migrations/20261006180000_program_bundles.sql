@@ -15,6 +15,7 @@ create table if not exists encodings.program_bundles (
   program       text not null,
   jurisdiction  text not null,
   as_of         date,                      -- when the bundle file was generated
+  parts         jsonb not null default '[]', -- the parts of the program, in reading order
   tiers         jsonb not null,            -- [{id, title, definition, membership, notes}]
   source        text,                      -- the bundle file read: <repo>@main:<path>#<blob sha>
   collected_at  timestamptz not null

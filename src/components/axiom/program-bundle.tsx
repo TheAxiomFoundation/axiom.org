@@ -8,7 +8,6 @@ import { Explain } from "./ops-pipeline";
 import { ageLabel, STAGE_COPY } from "@/lib/axiom/encoding-pipeline";
 import {
   DOCUMENT_STATUSES,
-  partRank,
   PROVISION_LABELS,
   PROVISION_STATES,
   provisionCounts,
@@ -21,41 +20,86 @@ import {
   type BundleTierId,
   type DocumentStatus,
   type ParityUnit,
+  type ProvisionState,
   type UnitState,
 } from "@/lib/axiom/program-bundles";
 
 const number = (value: number) => value.toLocaleString("en-US");
+const percent = (part: number, whole: number) => (whole ? `${Math.round((part / whole) * 100)}%` : "—");
 
 /** Provision states as the table's column heads. */
-const SHORT_LABELS: Record<(typeof PROVISION_STATES)[number], string> = {
+const SHORT_LABELS: Record<ProvisionState, string> = {
   encoded: "Encoded",
   partly: "Partly",
   in_progress: "Running",
   failed: "Failed",
   not_started: "To do",
 };
-const percent = (part: number, whole: number) => (whole ? `${Math.round((part / whole) * 100)}%` : "—");
-
-/** A filter on one tier: a unit state (screener squares) or a document status. */
-type Filter = { tier: BundleTierId; kind: "unit"; value: UnitState } | { tier: BundleTierId; kind: "document"; value: DocumentStatus | "excluded" };
-
-/** What the drawer shows: one screener unit, or one document. */
-type Selection = { kind: "unit"; tier: BundleTierId; key: string } | { kind: "document"; tier: BundleTierId; key: string };
-
-/** Parts in reading order, each with its members. */
-function byPart<T>(items: T[], partOf: (item: T) => string): Array<[string, T[]]> {
-  const parts = new Map<string, T[]>();
-  for (const item of items) parts.set(partOf(item), [...(parts.get(partOf(item)) ?? []), item]);
-  return [...parts.entries()].sort(([a], [b]) => partRank(a) - partRank(b) || a.localeCompare(b));
-}
 
 /**
- * One program bundle as a map of the program: each tier's work in rows by
- * the part of the program it feeds, one square per unit of work. In the
- * screener tier a square is a provision PolicyEngine cites, colored by its
- * parity state; in the full bundle a square is a source section, filled by
- * the share of its provisions encoded. Every count is exact and adds up. A
- * square opens its detail; the table below lists every document.
+ * One state scale for both tiers: a cited provision's state in the screener
+ * tier, a section's status in the full bundle. The bar and legend use these.
+ */
+type Shade = "encoded" | "partly" | "in_progress" | "failed" | "none" | "missing";
+const SHADES: Shade[] = ["encoded", "partly", "in_progress", "failed", "none", "missing"];
+const SHADE_LABELS: Record<Shade, string> = {
+  encoded: "Encoded",
+  partly: "Partly encoded",
+  in_progress: "In progress",
+  failed: "Failed",
+  none: "Not encoded yet",
+  missing: "Not in the corpus",
+};
+const UNIT_SHADE: Record<UnitState, Shade> = {
+  encoded: "encoded",
+  partly: "partly",
+  in_progress: "in_progress",
+  failed: "failed",
+  not_encoded: "none",
+  not_in_corpus: "missing",
+};
+const STATUS_SHADE: Record<DocumentStatus, Shade> = {
+  complete: "encoded",
+  partly: "partly",
+  not_started: "none",
+  not_in_corpus: "missing",
+};
+
+/** One cell of the matrix: a part of the program in one tier. */
+interface Cell {
+  tier: BundleTierId;
+  part: string;
+  units: ParityUnit[];
+  documents: BundleDocumentRow[];
+  shades: Record<Shade, number>;
+  done: number;
+  total: number;
+}
+
+function cellOf(tier: BundleTierId, part: string, rows: BundleDocumentRow[]): Cell {
+  const shades = Object.fromEntries(SHADES.map((s) => [s, 0])) as Record<Shade, number>;
+  if (tier === "screener") {
+    const units = rows.flatMap((r) => r.units).filter((u) => u.part === part);
+    for (const unit of units) shades[UNIT_SHADE[unit.state]]++;
+    return { tier, part, units, documents: [], shades, done: shades.encoded, total: units.length };
+  }
+  const documents = rows.filter((r) => r.part === part);
+  for (const row of documents) if (row.status) shades[STATUS_SHADE[row.status]]++;
+  return { tier, part, units: [], documents, shades, done: shades.encoded, total: documents.length };
+}
+
+type Selection =
+  | { kind: "cell"; tier: BundleTierId; part: string }
+  | { kind: "unit"; tier: BundleTierId; key: string }
+  | { kind: "document"; tier: BundleTierId; key: string };
+
+/**
+ * One program bundle as a matrix: a row per part of the program, a column per
+ * delivery tier. Every cell is a bar of its own units' states, so a tier with
+ * more units does not look further along, and under it the exact count. In
+ * the screener tier a unit is a provision PolicyEngine cites; in the full
+ * bundle, a source section. A cell opens its list; the table below gives
+ * every document's provisions by state.
  */
 export function ProgramBundle({
   bundle,
@@ -70,53 +114,68 @@ export function ProgramBundle({
 }) {
   const tiers = bundle?.tiers ?? [];
   const [tableTier, setTableTier] = useState<BundleTierId>(tiers[0]?.id ?? "screener");
-  const [filter, setFilter] = useState<Filter | null>(null);
+  const [tableFilter, setTableFilter] = useState<DocumentStatus | "excluded" | null>(null);
   const [selected, setSelected] = useState<Selection | null>(null);
 
-  const byTier = useMemo(() => {
+  const inScope = useMemo(() => {
     const out = new Map<BundleTierId, BundleDocumentRow[]>();
-    for (const row of documents) out.set(row.tier, [...(out.get(row.tier) ?? []), row]);
+    for (const row of documents) if (row.scope === "in") out.set(row.tier, [...(out.get(row.tier) ?? []), row]);
     return out;
   }, [documents]);
+  const byTier = (tier: BundleTierId) => documents.filter((r) => r.tier === tier);
+  // The bundle's parts that hold anything, in its order; parts the bundle does not list go last.
+  const parts = useMemo(() => {
+    const used = new Set<string>();
+    for (const row of documents) {
+      if (row.scope !== "in") continue;
+      if (row.tier === "screener") for (const u of row.units) used.add(u.part);
+      else used.add(row.part);
+    }
+    const listed = (bundle?.parts ?? []).filter((p) => used.has(p));
+    return [...listed, ...[...used].filter((p) => !listed.includes(p)).sort()];
+  }, [bundle, documents]);
   const collectedAt = documents[0]?.collected_at ?? bundle?.collected_at ?? null;
 
-  const toggle = (next: Filter) => {
-    setFilter((current) =>
-      current && current.tier === next.tier && current.kind === next.kind && current.value === next.value ? null : next
-    );
-    if (next.kind === "document") setTableTier(next.tier);
-  };
   const select = (next: Selection) =>
-    setSelected((current) =>
-      current && current.kind === next.kind && current.tier === next.tier && current.key === next.key ? null : next
-    );
+    setSelected((current) => (JSON.stringify(current) === JSON.stringify(next) ? null : next));
+  const filterTable = (tier: BundleTierId, value: DocumentStatus | "excluded") => {
+    setTableTier(tier);
+    setTableFilter((current) => (tableTier === tier && current === value ? null : value));
+  };
 
-  const tableFilter = filter?.tier === tableTier && filter.kind === "document" ? filter.value : null;
-  const tableRows = (byTier.get(tableTier) ?? []).filter((r) =>
+  const tableRows = byTier(tableTier).filter((r) =>
     tableFilter === "excluded" ? r.scope === "excluded" : r.scope === "in" && (!tableFilter || r.status === tableFilter)
   );
 
   let drawer: React.ReactNode = null;
-  if (selected) {
-    const rows = byTier.get(selected.tier) ?? [];
-    if (selected.kind === "unit") {
-      const owner = rows.find((r) => r.units.some((u) => u.key === selected.key));
-      const unit = owner?.units.find((u) => u.key === selected.key);
-      if (owner && unit) {
-        drawer = (
-          <UnitDetail
-            unit={unit}
-            document={owner}
-            referenceMs={referenceMs}
-            onDocument={() => setSelected({ kind: "document", tier: selected.tier, key: owner.key })}
-            onClose={() => setSelected(null)}
-          />
-        );
-      }
-    } else {
-      const row = rows.find((r) => r.key === selected.key);
-      if (row) drawer = <DocumentDetail row={row} referenceMs={referenceMs} onClose={() => setSelected(null)} />;
+  if (selected?.kind === "cell") {
+    const tier = tiers.find((t) => t.id === selected.tier);
+    drawer = tier && (
+      <CellDetail
+        cell={cellOf(selected.tier, selected.part, inScope.get(selected.tier) ?? [])}
+        tierTitle={tier.title}
+        onUnit={(key) => setSelected({ kind: "unit", tier: selected.tier, key })}
+        onDocument={(key) => setSelected({ kind: "document", tier: selected.tier, key })}
+        onClose={() => setSelected(null)}
+      />
+    );
+  } else if (selected?.kind === "unit") {
+    const owner = (inScope.get(selected.tier) ?? []).find((r) => r.units.some((u) => u.key === selected.key));
+    const unit = owner?.units.find((u) => u.key === selected.key);
+    if (owner && unit) {
+      drawer = (
+        <UnitDetail
+          unit={unit}
+          document={owner}
+          referenceMs={referenceMs}
+          onDocument={() => setSelected({ kind: "document", tier: selected.tier, key: owner.key })}
+          onClose={() => setSelected(null)}
+        />
+      );
     }
+  } else if (selected?.kind === "document") {
+    const row = byTier(selected.tier).find((r) => r.key === selected.key);
+    if (row) drawer = <DocumentDetail row={row} referenceMs={referenceMs} onClose={() => setSelected(null)} />;
   }
 
   return (
@@ -131,7 +190,7 @@ export function ProgramBundle({
           <p className={styles.summary}>
             {bundle ? (
               <>
-                What each delivery tier holds, by the part of the program it feeds, and how far each piece has come.
+                Each part of the program, and how far each delivery tier has come in it.
                 {collectedAt && ` Updated ${ageLabel(collectedAt, referenceMs) ?? "just now"} ago.`}
               </>
             ) : available ? (
@@ -142,32 +201,73 @@ export function ProgramBundle({
           </p>
         </header>
 
-        {tiers.map((tier, index) =>
-          tier.id === "screener" ? (
-            <ScreenerTier
-              key={tier.id}
-              index={index + 1}
-              title={tier.title}
-              definition={tier.definition}
-              rows={byTier.get(tier.id) ?? []}
-              filter={filter?.tier === tier.id ? filter : null}
-              selectedKey={selected?.tier === tier.id ? selected.key : null}
-              onFilter={(f) => toggle({ ...f, tier: tier.id } as Filter)}
-              onUnit={(key) => select({ kind: "unit", tier: tier.id, key })}
-            />
-          ) : (
-            <BundleTier
-              key={tier.id}
-              index={index + 1}
-              title={tier.title}
-              definition={tier.definition}
-              rows={byTier.get(tier.id) ?? []}
-              filter={filter?.tier === tier.id ? filter : null}
-              selectedKey={selected?.tier === tier.id ? selected.key : null}
-              onFilter={(f) => toggle({ ...f, tier: tier.id } as Filter)}
-              onDocument={(key) => select({ kind: "document", tier: tier.id, key })}
-            />
-          )
+        {tiers.length > 0 && (
+          <section className={styles.matrixCard} aria-label="Progress by part of the program">
+            <div
+              className={styles.matrix}
+              style={{ gridTemplateColumns: `minmax(150px, 220px) repeat(${tiers.length}, minmax(0, 1fr))` }}
+              role="table"
+              aria-label="Parts of the program by tier"
+            >
+              <div role="row" className={styles.matrixRow}>
+                <span role="columnheader" className={styles.matrixCorner}>
+                  Part of the program
+                </span>
+                {tiers.map((tier, index) => (
+                  <TierHeader key={tier.id} index={index + 1} tier={tier} rows={inScope.get(tier.id) ?? []} />
+                ))}
+              </div>
+              {parts.map((part) => (
+                <div key={part} role="row" className={styles.matrixRow}>
+                  <span role="rowheader" className={styles.partName}>
+                    {part}
+                  </span>
+                  {tiers.map((tier) => {
+                    const cell = cellOf(tier.id, part, inScope.get(tier.id) ?? []);
+                    return (
+                      <span key={tier.id} role="cell" className={styles.matrixCell}>
+                        {cell.total ? (
+                          <button
+                            type="button"
+                            className={styles.cellButton}
+                            aria-pressed={selected?.kind === "cell" && selected.tier === tier.id && selected.part === part}
+                            aria-label={`${part}, ${tier.title}: ${cell.done} of ${cell.total} ${unitWord(tier.id, cell.total)}`}
+                            onClick={() => select({ kind: "cell", tier: tier.id, part })}
+                          >
+                            <ShadeBar shades={cell.shades} total={cell.total} />
+                            <span className={styles.cellCount}>
+                              <span>
+                                <strong>{number(cell.done)}</strong> of {number(cell.total)}
+                              </span>
+                              <span>{percent(cell.done, cell.total)}</span>
+                            </span>
+                          </button>
+                        ) : (
+                          <span className={styles.cellEmpty}>—</span>
+                        )}
+                      </span>
+                    );
+                  })}
+                </div>
+              ))}
+              <FactsRow label="Documents" tiers={tiers} render={(tier) => (
+                <DocumentFacts
+                  rows={byTier(tier.id)}
+                  pressed={tableTier === tier.id ? tableFilter : null}
+                  onFilter={(value) => filterTable(tier.id, value)}
+                />
+              )} />
+              <FactsRow label="Provisions" tiers={tiers} render={(tier) => <ProvisionFacts rows={inScope.get(tier.id) ?? []} />} />
+            </div>
+            <ul className={styles.legend} aria-label="States">
+              {SHADES.map((shade) => (
+                <li key={shade}>
+                  <i className={styles.swatch} data-shade={shade} aria-hidden />
+                  {SHADE_LABELS[shade]}
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
 
         {tiers.length > 0 && (
@@ -187,13 +287,16 @@ export function ProgramBundle({
                     type="button"
                     role="tab"
                     aria-selected={tier.id === tableTier}
-                    onClick={() => setTableTier(tier.id)}
+                    onClick={() => {
+                      setTableTier(tier.id);
+                      setTableFilter(null);
+                    }}
                   >
                     {tier.title}
                   </button>
                 ))}
                 {tableFilter && (
-                  <button type="button" className={styles.clear} onClick={() => setFilter(null)}>
+                  <button type="button" className={styles.clear} onClick={() => setTableFilter(null)}>
                     Show all
                   </button>
                 )}
@@ -202,6 +305,7 @@ export function ProgramBundle({
             <DocumentTable
               title={tiers.find((t) => t.id === tableTier)?.title ?? ""}
               rows={tableRows}
+              parts={parts}
               excluded={tableFilter === "excluded"}
               selectedKey={selected?.kind === "document" && selected.tier === tableTier ? selected.key : null}
               onSelect={(key) => select({ kind: "document", tier: tableTier, key })}
@@ -215,315 +319,125 @@ export function ProgramBundle({
   );
 }
 
-/** A tier's header: its number, name, meaning, and the one number that says how far it has come. */
-function TierHead({
-  index,
-  title,
-  definition,
-  done,
-  total,
-  unit,
+const unitWord = (tier: BundleTierId, n: number) =>
+  tier === "screener" ? (n === 1 ? "cited provision" : "cited provisions") : n === 1 ? "section" : "sections";
+
+/** A bar of one cell's units by state; its segments fill the cell whatever the count. */
+function ShadeBar({ shades, total }: { shades: Record<Shade, number>; total: number }) {
+  return (
+    <span className={styles.shadeBar} aria-hidden>
+      {SHADES.map((shade) =>
+        shades[shade] > 0 ? <span key={shade} data-shade={shade} style={{ width: `${(shades[shade] / total) * 100}%` }} /> : null
+      )}
+    </span>
+  );
+}
+
+/** A tier's column head: its name, what it means, and how far it has come. */
+function TierHeader({ index, tier, rows }: { index: number; tier: BundleRow["tiers"][number]; rows: BundleDocumentRow[] }) {
+  const counts = tierCounts(rows);
+  const done = tier.id === "screener" ? counts.byUnitState.encoded : counts.byStatus.complete;
+  const total = tier.id === "screener" ? counts.units : counts.documents;
+  return (
+    <span role="columnheader" className={styles.tierHeader}>
+      <span className={styles.tierIndex}>Tier {index}</span>
+      <span className={styles.tierTitle}>
+        {tier.title}
+        <Explain label={tier.title}>
+          {tier.definition}{" "}
+          {tier.id === "screener"
+            ? "Each unit is a provision PolicyEngine cites, as its parity model reads it: encoded when a module encodes it or its section's module names it."
+            : "Each unit is a source section, complete when every one of its provisions is encoded."}
+        </Explain>
+      </span>
+      <span className={styles.tierTotal}>
+        <strong>{number(done)}</strong> of {number(total)} {unitWord(tier.id, total)} {tier.id === "screener" ? "encoded" : "complete"}
+        <em>{percent(done, total)}</em>
+      </span>
+    </span>
+  );
+}
+
+function FactsRow({
+  label,
+  tiers,
+  render,
 }: {
-  index: number;
-  title: string;
-  definition: string;
-  done: number;
-  total: number;
-  unit: string;
+  label: string;
+  tiers: BundleRow["tiers"];
+  render: (tier: BundleRow["tiers"][number]) => React.ReactNode;
 }) {
   return (
-    <div className={styles.tierHead}>
-      <div>
-        <p className={styles.tierIndex}>Tier {index}</p>
-        <div className={styles.tierTitle}>
-          <h2 id={`tier-${index}`}>{title}</h2>
-          <Explain label={title}>{definition}</Explain>
-        </div>
-      </div>
-      <p className={styles.headline}>
-        <strong>{number(done)}</strong>
-        <span>
-          of {number(total)} {unit}
-          <em>{percent(done, total)}</em>
+    <div role="row" className={`${styles.matrixRow} ${styles.factsRow}`}>
+      <span role="rowheader" className={styles.factsLabel}>
+        {label}
+        <Explain label={label}>
+          {label === "Documents"
+            ? "Every document of the tier. Complete: every one of its provisions is encoded. Not in the corpus: the corpus does not hold it yet, so its provisions cannot be counted."
+            : "The text-bearing provisions of the tier's documents in the corpus. Encoded: a module's source is the provision or one above it. Partly encoded: a module encodes only part of it."}
+        </Explain>
+      </span>
+      {tiers.map((tier) => (
+        <span key={tier.id} role="cell" className={styles.facts}>
+          {render(tier)}
         </span>
-      </p>
+      ))}
     </div>
   );
 }
 
-/** The documents of a tier in one line: how many, by status, each a filter on the table. */
-function DocumentLine({
+function DocumentFacts({
   rows,
-  filter,
+  pressed,
   onFilter,
 }: {
   rows: BundleDocumentRow[];
-  filter: Filter | null;
-  onFilter: (f: { kind: "document"; value: DocumentStatus | "excluded" }) => void;
+  pressed: DocumentStatus | "excluded" | null;
+  onFilter: (value: DocumentStatus | "excluded") => void;
 }) {
+  const counts = tierCounts(rows);
+  return (
+    <>
+      <strong>{number(counts.documents)}</strong>
+      {DOCUMENT_STATUSES.map((status) => (
+        <button
+          key={status}
+          type="button"
+          className={styles.factButton}
+          aria-pressed={pressed === status}
+          disabled={counts.byStatus[status] === 0}
+          onClick={() => onFilter(status)}
+        >
+          {number(counts.byStatus[status])} {STATUS_LABELS[status].toLowerCase()}
+        </button>
+      ))}
+      <button
+        type="button"
+        className={styles.factButton}
+        aria-pressed={pressed === "excluded"}
+        disabled={counts.excluded === 0}
+        onClick={() => onFilter("excluded")}
+      >
+        {number(counts.excluded)} excluded
+      </button>
+    </>
+  );
+}
+
+function ProvisionFacts({ rows }: { rows: BundleDocumentRow[] }) {
   const counts = tierCounts(rows);
   const p = counts.byProvisionState;
   return (
-    <dl className={styles.facts}>
-      <div>
-        <dt>
-          Documents
-          <Explain label="Documents">
-            Every document of the tier. Complete: every one of its provisions is encoded. Partly encoded: some are.
-            Not in the corpus: the corpus does not hold it yet, so its provisions cannot be counted.
-          </Explain>
-        </dt>
-        <dd>
-          <strong>{number(counts.documents)}</strong>
-          {DOCUMENT_STATUSES.map((status) => (
-            <button
-              key={status}
-              type="button"
-              className={styles.factButton}
-              aria-pressed={filter?.kind === "document" && filter.value === status}
-              disabled={counts.byStatus[status] === 0}
-              onClick={() => onFilter({ kind: "document", value: status })}
-            >
-              {number(counts.byStatus[status])} {STATUS_LABELS[status].toLowerCase()}
-            </button>
-          ))}
-          <button
-            type="button"
-            className={styles.factButton}
-            aria-pressed={filter?.kind === "document" && filter.value === "excluded"}
-            disabled={counts.excluded === 0}
-            onClick={() => onFilter({ kind: "document", value: "excluded" })}
-          >
-            {number(counts.excluded)} excluded
-          </button>
-        </dd>
-      </div>
-      <div>
-        <dt>
-          Provisions
-          <Explain label="Provisions">
-            The text-bearing provisions of the documents in the corpus. Encoded: a module&apos;s source is the
-            provision or one above it. Partly encoded: a module encodes only a part of it.
-          </Explain>
-        </dt>
-        <dd>
-          <strong>{number(counts.provisions)}</strong>
-          {PROVISION_STATES.filter((state) => p[state] > 0).map((state) => (
-            <span key={state} className={styles.factItem}>
-              <i className={styles.swatch} data-state={state} aria-hidden />
-              {number(p[state])} {PROVISION_LABELS[state].toLowerCase()}
-            </span>
-          ))}
-        </dd>
-      </div>
-    </dl>
+    <>
+      <strong>{number(counts.provisions)}</strong>
+      {PROVISION_STATES.filter((state) => p[state] > 0).map((state) => (
+        <span key={state} className={styles.factItem}>
+          {number(p[state])} {PROVISION_LABELS[state].toLowerCase()}
+        </span>
+      ))}
+    </>
   );
 }
-
-/**
- * The screener tier: every provision PolicyEngine cites, one square each, in
- * rows by the part of the SNAP calculation it feeds.
- */
-function ScreenerTier({
-  index,
-  title,
-  definition,
-  rows,
-  filter,
-  selectedKey,
-  onFilter,
-  onUnit,
-}: {
-  index: number;
-  title: string;
-  definition: string;
-  rows: BundleDocumentRow[];
-  filter: Filter | null;
-  selectedKey: string | null;
-  onFilter: (f: Omit<Filter, "tier">) => void;
-  onUnit: (key: string) => void;
-}) {
-  const counts = tierCounts(rows);
-  const units = rows.filter((r) => r.scope === "in").flatMap((r) => r.units);
-  const parts = byPart(units, (u) => u.part);
-  const unitFilter = filter?.kind === "unit" ? filter.value : null;
-  return (
-    <section className={styles.tier} aria-labelledby={`tier-${index}`}>
-      <TierHead
-        index={index}
-        title={title}
-        definition={definition}
-        done={counts.byUnitState.encoded}
-        total={counts.units}
-        unit="cited provisions encoded"
-      />
-      <ul className={styles.legend} aria-label={`${title} by state`}>
-        {UNIT_STATES.map((state) => (
-          <li key={state}>
-            <button
-              type="button"
-              aria-pressed={unitFilter === state}
-              disabled={counts.byUnitState[state] === 0}
-              onClick={() => onFilter({ kind: "unit", value: state })}
-            >
-              <i className={styles.square} data-state={state} aria-hidden />
-              {UNIT_LABELS[state]}
-              <strong>{number(counts.byUnitState[state])}</strong>
-            </button>
-          </li>
-        ))}
-        <li className={styles.legendNote}>
-          <Explain label="Cited provision states">
-            Each square is a provision PolicyEngine cites for this program here, as its parity model reads it. Encoded:
-            a module encodes it, or the module for its section names it. Partly encoded: the section&apos;s module
-            does not name it, or only part of it is encoded. In progress and failed: its newest encode run. Not in
-            the corpus: the corpus does not hold the source yet.
-          </Explain>
-        </li>
-      </ul>
-      <div className={styles.lanes} role="group" aria-label={`${title}: cited provisions by part of the calculation`}>
-        {parts.map(([part, members]) => {
-          const encoded = members.filter((u) => u.state === "encoded").length;
-          return (
-            <div key={part} className={styles.lane}>
-              <p className={styles.laneName}>{part}</p>
-              <ul className={styles.squares}>
-                {members
-                  .slice()
-                  .sort((a, b) => UNIT_STATES.indexOf(a.state) - UNIT_STATES.indexOf(b.state) || a.key.localeCompare(b.key))
-                  .map((unit) => (
-                    <li key={unit.key}>
-                      <button
-                        type="button"
-                        className={styles.square}
-                        data-state={unit.state}
-                        data-dim={unitFilter && unit.state !== unitFilter ? true : undefined}
-                        aria-pressed={unit.key === selectedKey}
-                        aria-label={`${unit.name}: ${UNIT_LABELS[unit.state]}`}
-                        title={`${unit.name}\n${UNIT_LABELS[unit.state]}${unit.detail ? ` · ${unit.detail}` : ""}`}
-                        onClick={() => onUnit(unit.key)}
-                      />
-                    </li>
-                  ))}
-              </ul>
-              <p className={styles.laneCount}>
-                {number(encoded)} <span>/ {number(members.length)}</span>
-              </p>
-            </div>
-          );
-        })}
-      </div>
-      <DocumentLine rows={rows} filter={filter} onFilter={onFilter} />
-    </section>
-  );
-}
-
-/**
- * The full bundle: every source section, one square each, in rows by the part
- * of the program's manual it belongs to; a square's fill is the share of its
- * provisions encoded.
- */
-function BundleTier({
-  index,
-  title,
-  definition,
-  rows,
-  filter,
-  selectedKey,
-  onFilter,
-  onDocument,
-}: {
-  index: number;
-  title: string;
-  definition: string;
-  rows: BundleDocumentRow[];
-  filter: Filter | null;
-  selectedKey: string | null;
-  onFilter: (f: Omit<Filter, "tier">) => void;
-  onDocument: (key: string) => void;
-}) {
-  const counts = tierCounts(rows);
-  const inScope = rows.filter((r) => r.scope === "in");
-  const parts = byPart(inScope, (r) => r.part);
-  const statusFilter = filter?.kind === "document" && filter.value !== "excluded" ? filter.value : null;
-  return (
-    <section className={styles.tier} aria-labelledby={`tier-${index}`}>
-      <TierHead
-        index={index}
-        title={title}
-        definition={definition}
-        done={counts.byStatus.complete}
-        total={counts.documents}
-        unit="sections complete"
-      />
-      <ul className={styles.legend} aria-label={`${title} by status`}>
-        {DOCUMENT_STATUSES.map((status) => (
-          <li key={status}>
-            <button
-              type="button"
-              aria-pressed={statusFilter === status}
-              disabled={counts.byStatus[status] === 0}
-              onClick={() => onFilter({ kind: "document", value: status })}
-            >
-              <i className={styles.square} data-status={status} aria-hidden>
-                <i style={{ height: status === "complete" ? "100%" : status === "partly" ? "45%" : "0%" }} />
-              </i>
-              {STATUS_LABELS[status]}
-              <strong>{number(counts.byStatus[status])}</strong>
-            </button>
-          </li>
-        ))}
-        <li className={styles.legendNote}>
-          <Explain label="Section squares">
-            Each square is a source section of the program here. Its fill is the share of its provisions encoded:
-            full when complete. A dashed square is a section the corpus does not hold yet.
-          </Explain>
-        </li>
-      </ul>
-      <div className={styles.lanes} role="group" aria-label={`${title}: sections by part`}>
-        {parts.map(([part, members]) => {
-          const complete = members.filter((r) => r.status === "complete").length;
-          return (
-            <div key={part} className={styles.lane}>
-              <p className={styles.laneName}>{part}</p>
-              <ul className={styles.squares}>
-                {members
-                  .slice()
-                  .sort((a, b) => share(b) - share(a) || a.name.localeCompare(b.name))
-                  .map((row) => (
-                    <li key={row.key}>
-                      <button
-                        type="button"
-                        className={`${styles.square} ${styles.sectionSquare}`}
-                        data-status={row.status ?? undefined}
-                        data-dim={statusFilter && row.status !== statusFilter ? true : undefined}
-                        aria-pressed={row.key === selectedKey}
-                        aria-label={`${row.name}: ${row.status ? STATUS_LABELS[row.status] : ""}`}
-                        title={`${row.name}\n${
-                          row.in_corpus
-                            ? `${number(row.encoded_provisions)} of ${number(row.provisions)} provisions encoded`
-                            : STATUS_LABELS.not_in_corpus
-                        }`}
-                        onClick={() => onDocument(row.key)}
-                      >
-                        <i style={{ height: `${share(row) * 100}%` }} aria-hidden />
-                      </button>
-                    </li>
-                  ))}
-              </ul>
-              <p className={styles.laneCount}>
-                {number(complete)} <span>/ {number(members.length)}</span>
-              </p>
-            </div>
-          );
-        })}
-      </div>
-      <DocumentLine rows={rows} filter={filter} onFilter={onFilter} />
-    </section>
-  );
-}
-
-const share = (row: BundleDocumentRow) => (row.provisions ? row.encoded_provisions / row.provisions : 0);
 
 /** Esc closes a drawer. */
 function useEscape(onClose: () => void) {
@@ -534,6 +448,88 @@ function useEscape(onClose: () => void) {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
+}
+
+function DrawerTop({ label, shade, onClose }: { label: string; shade?: Shade; onClose: () => void }) {
+  return (
+    <div className={styles.detailTop}>
+      <p className={styles.detailStatus}>
+        {shade && <i className={styles.swatch} data-shade={shade} aria-hidden />}
+        {label}
+      </p>
+      <button type="button" className={styles.close} aria-label="Close" onClick={onClose}>
+        <X size={16} aria-hidden />
+      </button>
+    </div>
+  );
+}
+
+/** One cell's units: how many in each state, and each one to open. */
+function CellDetail({
+  cell,
+  tierTitle,
+  onUnit,
+  onDocument,
+  onClose,
+}: {
+  cell: Cell;
+  tierTitle: string;
+  onUnit: (key: string) => void;
+  onDocument: (key: string) => void;
+  onClose: () => void;
+}) {
+  useEscape(onClose);
+  return (
+    <aside className={styles.detail} aria-label="Part of the program">
+      <DrawerTop label={tierTitle} onClose={onClose} />
+      <h3 className={styles.detailName}>{cell.part}</h3>
+      <div className={styles.detailBlock}>
+        <p className={styles.detailLabel}>
+          {cell.tier === "screener" ? "Cited provisions" : "Sections"}
+          <span>
+            {number(cell.done)} of {number(cell.total)} {cell.tier === "screener" ? "encoded" : "complete"}
+          </span>
+        </p>
+        <ShadeBar shades={cell.shades} total={cell.total} />
+        <ul className={styles.detailStates}>
+          {SHADES.filter((shade) => cell.shades[shade] > 0).map((shade) => (
+            <li key={shade}>
+              <i className={styles.swatch} data-shade={shade} aria-hidden />
+              {SHADE_LABELS[shade]}
+              <strong>{number(cell.shades[shade])}</strong>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <ul className={styles.memberList}>
+        {cell.tier === "screener"
+          ? [...cell.units]
+              .sort((a, b) => UNIT_STATES.indexOf(a.state) - UNIT_STATES.indexOf(b.state) || a.name.localeCompare(b.name))
+              .map((unit) => (
+                <li key={unit.key}>
+                  <button type="button" onClick={() => onUnit(unit.key)} title={unit.detail ?? undefined}>
+                    <i className={styles.swatch} data-shade={UNIT_SHADE[unit.state]} aria-hidden />
+                    <span>{unit.name}</span>
+                    <span className={styles.muted}>{UNIT_LABELS[unit.state].toLowerCase()}</span>
+                  </button>
+                </li>
+              ))
+          : [...cell.documents]
+              .sort((a, b) => (b.provisions ? b.encoded_provisions / b.provisions : -1) - (a.provisions ? a.encoded_provisions / a.provisions : -1) || a.name.localeCompare(b.name))
+              .map((row) => (
+                <li key={row.key}>
+                  <button type="button" onClick={() => onDocument(row.key)}>
+                    <i className={styles.swatch} data-shade={row.status ? STATUS_SHADE[row.status] : "none"} aria-hidden />
+                    <span>{row.name}</span>
+                    <span className={styles.muted}>
+                      {row.in_corpus ? `${number(row.encoded_provisions)} of ${number(row.provisions)}` : "not in the corpus"}
+                    </span>
+                  </button>
+                </li>
+              ))}
+      </ul>
+    </aside>
+  );
 }
 
 /** One cited provision: its state and why, how often PolicyEngine cites it, its document, and its newest run. */
@@ -553,15 +549,7 @@ function UnitDetail({
   useEscape(onClose);
   return (
     <aside className={styles.detail} aria-label="Cited provision">
-      <div className={styles.detailTop}>
-        <p className={styles.detailStatus}>
-          <i className={styles.square} data-state={unit.state} aria-hidden />
-          {UNIT_LABELS[unit.state]}
-        </p>
-        <button type="button" className={styles.close} aria-label="Close" onClick={onClose}>
-          <X size={16} aria-hidden />
-        </button>
-      </div>
+      <DrawerTop label={UNIT_LABELS[unit.state]} shade={UNIT_SHADE[unit.state]} onClose={onClose} />
       <h3 className={styles.detailName}>{unit.name}</h3>
       {unit.path ? (
         document.in_corpus ? (
@@ -581,7 +569,7 @@ function UnitDetail({
       {unit.detail && <p className={styles.detailNote}>{unit.detail}.</p>}
       <dl className={styles.detailFacts}>
         <div>
-          <dt>Part of the calculation</dt>
+          <dt>Part of the program</dt>
           <dd>{unit.part}</dd>
         </div>
         <div>
@@ -627,12 +615,11 @@ function DocumentDetail({
   const states = provisionCounts(row);
   return (
     <aside className={styles.detail} aria-label="Document">
-      <div className={styles.detailTop}>
-        <p className={styles.detailStatus}>{row.status ? STATUS_LABELS[row.status] : "Excluded"}</p>
-        <button type="button" className={styles.close} aria-label="Close" onClick={onClose}>
-          <X size={16} aria-hidden />
-        </button>
-      </div>
+      <DrawerTop
+        label={row.status ? STATUS_LABELS[row.status] : "Excluded"}
+        shade={row.status ? STATUS_SHADE[row.status] : undefined}
+        onClose={onClose}
+      />
       <h3 className={styles.detailName}>{row.name}</h3>
       {row.citation_path ? (
         row.in_corpus ? (
@@ -656,17 +643,21 @@ function DocumentDetail({
           <p className={styles.detailLabel}>
             Provisions<span>{number(row.provisions)}</span>
           </p>
-          <span className={styles.stateBar} aria-hidden>
+          <span className={styles.shadeBar} aria-hidden>
             {PROVISION_STATES.map((state) =>
               states[state] > 0 ? (
-                <span key={state} data-state={state} style={{ width: `${(states[state] / Math.max(1, row.provisions)) * 100}%` }} />
+                <span
+                  key={state}
+                  data-shade={state === "not_started" ? "none" : state}
+                  style={{ width: `${(states[state] / Math.max(1, row.provisions)) * 100}%` }}
+                />
               ) : null
             )}
           </span>
           <ul className={styles.detailStates}>
             {PROVISION_STATES.map((state) => (
               <li key={state}>
-                <i className={styles.swatch} data-state={state} aria-hidden />
+                <i className={styles.swatch} data-shade={state === "not_started" ? "none" : state} aria-hidden />
                 {PROVISION_LABELS[state]}
                 <strong>{number(states[state])}</strong>
               </li>
@@ -694,7 +685,7 @@ function DocumentDetail({
           <ul className={styles.openList}>
             {row.open_provisions.map((p) => (
               <li key={p.path}>
-                <i className={styles.swatch} data-state={p.state} aria-hidden />
+                <i className={styles.swatch} data-shade={p.state} aria-hidden />
                 <a href={`/ops/journey?citation=${encodeURIComponent(p.citation)}`} className={styles.mono}>
                   {p.path.slice((row.citation_path ?? "").length) || p.path}
                 </a>
@@ -715,7 +706,7 @@ function DocumentDetail({
           <ul className={styles.openList}>
             {row.units.map((u) => (
               <li key={u.key} title={u.detail ?? undefined}>
-                <i className={styles.swatch} data-state={u.state} aria-hidden />
+                <i className={styles.swatch} data-shade={UNIT_SHADE[u.state]} aria-hidden />
                 <span className={styles.mono}>{u.path?.slice((row.citation_path ?? "").length) || "the whole document"}</span>
                 <span className={styles.muted}>{UNIT_LABELS[u.state].toLowerCase()}</span>
               </li>
@@ -754,6 +745,7 @@ function DocumentDetail({
 function DocumentTable({
   title,
   rows,
+  parts,
   excluded,
   selectedKey,
   onSelect,
@@ -761,17 +753,19 @@ function DocumentTable({
 }: {
   title: string;
   rows: BundleDocumentRow[];
+  parts: string[];
   excluded: boolean;
   selectedKey: string | null;
   onSelect: (key: string) => void;
   referenceMs: number;
 }) {
+  const rank = (part: string) => (parts.includes(part) ? parts.indexOf(part) : parts.length);
   const sorted = [...rows].sort((a, b) =>
     excluded
       ? (a.reason ?? "").localeCompare(b.reason ?? "") || a.name.localeCompare(b.name)
-      : partRank(a.part) - partRank(b.part) || a.name.localeCompare(b.name)
+      : rank(a.part) - rank(b.part) || a.name.localeCompare(b.name)
   );
-  const totals = Object.fromEntries(PROVISION_STATES.map((s) => [s, 0])) as Record<(typeof PROVISION_STATES)[number], number>;
+  const totals = Object.fromEntries(PROVISION_STATES.map((s) => [s, 0])) as Record<ProvisionState, number>;
   let provisions = 0;
   for (const row of rows) {
     if (!row.in_corpus) continue;

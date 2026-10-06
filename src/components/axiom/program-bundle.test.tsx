@@ -12,6 +12,7 @@ const bundle: BundleRow = {
   program: "snap",
   jurisdiction: "us-az",
   as_of: "2026-10-06",
+  parts: [],
   tiers: [
     { id: "screener", title: "Screener-level parity", definition: "Every PolicyEngine-cited document.", membership: {} },
     { id: "full", title: "Full document bundle", definition: "Every primary source.", membership: {} },
@@ -82,49 +83,54 @@ const documents = [
 ];
 
 describe("ProgramBundle", () => {
-  it("shows each tier's headline and its work in rows by part, one square per unit", () => {
-    render(<ProgramBundle bundle={bundle} documents={documents} available referenceMs={NOW} />);
+  const withParts = { ...bundle, parts: ["Income", "Deductions", "Benefit determination"] };
+
+  it("lays out a row per part and a column per tier, each cell its own units' share", () => {
+    render(<ProgramBundle bundle={withParts} documents={documents} available referenceMs={NOW} />);
     expect(screen.getByRole("heading", { name: "Arizona SNAP" })).toBeInTheDocument();
-    const screener = screen.getByRole("region", { name: "Screener-level parity" });
-    expect(within(screener).getByText(/cited provisions encoded/).parentElement).toHaveTextContent(
-      "1of 2 cited provisions encoded50%"
+    const matrix = screen.getByRole("table", { name: "Parts of the program by tier" });
+    const headers = within(matrix).getAllByRole("columnheader");
+    expect(headers[1]).toHaveTextContent(/Screener-level parity.*1 of 2 cited provisions encoded50%/);
+    expect(headers[2]).toHaveTextContent(/Full document bundle.*0 of 1 section complete0%/);
+    // Rows in the bundle's order of parts.
+    expect(within(matrix).getAllByRole("rowheader").map((h) => h.textContent)).toEqual([
+      "Income",
+      "Deductions",
+      "Benefit determination",
+      "Documents?",
+      "Provisions?",
+    ]);
+    expect(within(matrix).getByRole("button", { name: "Income, Screener-level parity: 1 of 1 cited provision" })).toHaveTextContent(
+      "1 of 1100%"
     );
-    const map = within(screener).getByRole("group", { name: /by part of the calculation/ });
-    expect(within(map).getByText("Income").parentElement).toHaveTextContent("Income1 / 1");
-    expect(within(map).getByText("Deductions").parentElement).toHaveTextContent("Deductions0 / 1");
-    expect(within(screener).getByRole("list", { name: "Screener-level parity by state" })).toHaveTextContent(
-      "Encoded1Partly encoded0In progress0Failed0Not encoded1Not in the corpus0"
-    );
-    const full = screen.getByRole("region", { name: "Full document bundle" });
-    expect(within(full).getByText(/sections complete/).parentElement).toHaveTextContent("0of 1 sections complete0%");
+    expect(within(matrix).getByRole("button", { name: "Deductions, Screener-level parity: 0 of 1 cited provision" })).toBeInTheDocument();
+    expect(within(matrix).getByRole("button", { name: "Benefit determination, Full document bundle: 0 of 1 section" })).toBeInTheDocument();
   });
 
-  it("counts a tier's documents and provisions exactly", () => {
-    render(<ProgramBundle bundle={bundle} documents={documents} available referenceMs={NOW} />);
-    const screener = screen.getByRole("region", { name: "Screener-level parity" });
-    expect(within(screener).getByText("Documents").closest("div")).toHaveTextContent(
-      "Documents?10 complete1 partly encoded0 not started0 not in the corpus1 excluded"
-    );
-    expect(within(screener).getByText("Provisions").closest("div")).toHaveTextContent(
-      /^Provisions\?21 encoded1 not started$/
-    );
+  it("counts each tier's documents and provisions exactly", () => {
+    render(<ProgramBundle bundle={withParts} documents={documents} available referenceMs={NOW} />);
+    const matrix = screen.getByRole("table", { name: "Parts of the program by tier" });
+    const cells = within(matrix).getAllByRole("cell");
+    expect(cells.at(-4)).toHaveTextContent("10 complete1 partly encoded0 not started0 not in the corpus1 excluded");
+    expect(cells.at(-2)).toHaveTextContent("21 encoded1 not started");
   });
 
-  it("opens a cited provision from its square, with its state, part and document", () => {
-    render(<ProgramBundle bundle={bundle} documents={documents} available referenceMs={NOW} />);
-    fireEvent.click(screen.getByRole("button", { name: "7 USC 2014 /b: Not encoded" }));
+  it("opens a cell's list, then a cited provision, then its document", () => {
+    render(<ProgramBundle bundle={withParts} documents={documents} available referenceMs={NOW} />);
+    fireEvent.click(screen.getByRole("button", { name: "Deductions, Screener-level parity: 0 of 1 cited provision" }));
+    const cell = screen.getByRole("complementary", { name: "Part of the program" });
+    expect(within(cell).getByRole("heading", { name: "Deductions" })).toBeInTheDocument();
+    fireEvent.click(within(cell).getByRole("button", { name: /7 USC 2014 \/b/ }));
     const drawer = screen.getByRole("complementary", { name: "Cited provision" });
     expect(within(drawer).getByRole("link", { name: "us/statute/7/2014/b" })).toHaveAttribute("href", "/us/statute/7/2014/b");
-    expect(within(drawer).getByText("Deductions")).toBeInTheDocument();
     fireEvent.click(within(drawer).getByRole("button", { name: "7 USC 2014" }));
     const document = screen.getByRole("complementary", { name: "Document" });
     expect(within(document).getByText("Encoded").parentElement).toHaveTextContent("Encoded1");
   });
 
   it("lists excluded documents with their reasons in the table", () => {
-    render(<ProgramBundle bundle={bundle} documents={documents} available referenceMs={NOW} />);
-    const screener = screen.getByRole("region", { name: "Screener-level parity" });
-    fireEvent.click(within(screener).getByRole("button", { name: "1 excluded" }));
+    render(<ProgramBundle bundle={withParts} documents={documents} available referenceMs={NOW} />);
+    fireEvent.click(screen.getByRole("button", { name: "1 excluded" }));
     const table = screen.getByRole("table", { name: "Screener-level parity documents" });
     expect(within(table).getByText("Back-year table: not current law")).toBeInTheDocument();
   });

@@ -1,11 +1,12 @@
-/* A program bundle as a map of the program: rows by part, a square per unit.
+/* A program bundle as a matrix: a row per part of the program, a column per
+   tier, every cell a bar of its own units' states.
 
    States are status colors, checked with the dataviz palette validator on the
    paper surface: encoded is the success green (partly encoded the same green,
    lighter), in progress an amber, failed a red that also carries a hatch
    (green and red sit close for deutan readers, so failed never relies on
-   color alone), not encoded a neutral, and not in the corpus an outline.
-   Every state also has its name beside its count. */
+   color alone), not encoded yet a neutral, and not in the corpus a hatched
+   outline. Every state also has its name in the legend and the drawers. */
 
 .page {
   --state-encoded: #166534;
@@ -17,19 +18,19 @@
   color: var(--color-ink);
 }
 
-.page [data-state="encoded"] {
+.page [data-shade="encoded"] {
   --fill: var(--state-encoded);
 }
 
-.page [data-state="partly"] {
+.page [data-shade="partly"] {
   --fill: var(--state-partly);
 }
 
-.page [data-state="in_progress"] {
+.page [data-shade="in_progress"] {
   --fill: var(--state-in-progress);
 }
 
-.page [data-state="failed"] {
+.page [data-shade="failed"] {
   --fill: repeating-linear-gradient(
     135deg,
     var(--state-failed) 0 2px,
@@ -37,9 +38,16 @@
   );
 }
 
-.page [data-state="not_encoded"],
-.page [data-state="not_started"] {
+.page [data-shade="none"] {
   --fill: var(--state-none);
+}
+
+.page [data-shade="missing"] {
+  --fill: repeating-linear-gradient(
+    135deg,
+    var(--state-missing) 0 1px,
+    var(--color-paper) 1px 4px
+  );
 }
 
 .back {
@@ -80,65 +88,6 @@
   overflow-wrap: anywhere;
 }
 
-/* ── Squares ── */
-
-.square {
-  position: relative;
-  display: inline-block;
-  flex: none;
-  width: 14px;
-  height: 14px;
-  padding: 0;
-  overflow: hidden;
-  border: 0;
-  border-radius: 3px;
-  background: var(--fill, var(--state-none));
-  vertical-align: -2px;
-}
-
-.page .square[data-state="not_in_corpus"],
-.page .square[data-status="not_in_corpus"] {
-  background: transparent;
-  box-shadow: inset 0 0 0 1.5px var(--state-missing);
-}
-
-button.square {
-  cursor: pointer;
-  transition: opacity 120ms ease;
-}
-
-button.square:hover {
-  outline: 2px solid color-mix(in srgb, var(--color-ink) 45%, transparent);
-  outline-offset: 1px;
-}
-
-button.square[aria-pressed="true"] {
-  outline: 2px solid var(--color-ink);
-  outline-offset: 2px;
-}
-
-.square[data-dim] {
-  opacity: 0.18;
-}
-
-/* A section's square fills from the bottom by the share of its provisions encoded. */
-.sectionSquare,
-.square[data-status] {
-  background: var(--state-none);
-}
-
-.sectionSquare {
-  width: 20px;
-  height: 20px;
-}
-
-.square[data-status] > i {
-  position: absolute;
-  inset: auto 0 0 0;
-  display: block;
-  background: var(--state-encoded);
-}
-
 .swatch {
   display: inline-block;
   flex: none;
@@ -148,36 +97,68 @@ button.square[aria-pressed="true"] {
   background: var(--fill, var(--state-none));
 }
 
-.stateBar {
+.page .swatch[data-shade="missing"] {
+  box-shadow: inset 0 0 0 1px var(--state-missing);
+}
+
+/* A bar of states; its segments always fill it, whatever the count. */
+.shadeBar {
   display: flex;
-  height: 10px;
+  height: 12px;
   overflow: hidden;
-  border-radius: 4px;
+  border-radius: 3px;
   background: var(--state-none);
 }
 
-.stateBar > span {
+.shadeBar > span {
   flex: none;
   height: 100%;
   background: var(--fill);
 }
 
-/* ── Tiers ── */
+.shadeBar > span + span {
+  box-shadow: inset 1px 0 0 var(--color-paper-elevated);
+}
 
-.tier {
-  margin-top: 24px;
-  padding: 22px 24px 20px;
+/* ── The matrix ── */
+
+.matrixCard {
+  margin-top: 28px;
+  padding: 8px 24px 20px;
   border: 1px solid var(--color-rule);
   border-radius: 14px;
   background: var(--color-paper-elevated);
 }
 
-.tierHead {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 8px 24px;
+.matrix {
+  display: grid;
+  column-gap: 28px;
+}
+
+/* A row's cells sit in the matrix's own grid, so every column lines up. */
+.matrixRow {
+  display: contents;
+}
+
+.matrixRow > * {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.matrixCorner {
+  align-self: end;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+}
+
+.tierHeader {
+  display: grid;
+  align-content: end;
+  gap: 4px;
+  padding-top: 16px !important;
 }
 
 .tierIndex {
@@ -192,36 +173,25 @@ button.square[aria-pressed="true"] {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 4px;
-}
-
-.tierTitle h2 {
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 600;
-  letter-spacing: -0.01em;
 }
 
-.headline {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
+.tierTotal {
+  font-size: 13px;
   color: var(--color-ink-secondary);
 }
 
-.headline strong {
-  font-size: 34px;
+.tierTotal strong {
+  margin-right: 4px;
+  font-size: 26px;
   font-weight: 500;
   letter-spacing: -0.03em;
-  line-height: 1;
   color: var(--color-ink);
   font-variant-numeric: tabular-nums;
 }
 
-.headline span {
-  font-size: 14px;
-}
-
-.headline em {
+.tierTotal em {
   margin-left: 8px;
   padding: 1px 7px;
   border-radius: 999px;
@@ -232,128 +202,81 @@ button.square[aria-pressed="true"] {
   font-variant-numeric: tabular-nums;
 }
 
-.legend {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px 4px;
-  margin: 16px 0 0 -8px;
-  padding: 0;
-  list-style: none;
-}
-
-.legend button {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 5px 8px;
-  border: 0;
-  border-radius: 6px;
-  background: none;
-  font-size: 13px;
-  color: var(--color-ink-secondary);
-  cursor: pointer;
-}
-
-.legend button strong {
-  font-weight: 600;
-  color: var(--color-ink);
-  font-variant-numeric: tabular-nums;
-}
-
-.legend button:hover:not(:disabled),
-.legend button[aria-pressed="true"] {
-  background: color-mix(in srgb, var(--color-ink) 6%, transparent);
-}
-
-.legend button:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-.legendNote {
-  margin-left: 4px;
-}
-
-/* One row per part: its name, its squares, and how many are done. */
-.lanes {
-  display: grid;
-  margin-top: 8px;
-  border-top: 1px solid var(--color-rule);
-}
-
-.lane {
-  display: grid;
-  grid-template-columns: 210px minmax(0, 1fr) 64px;
-  align-items: center;
-  gap: 16px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--color-rule);
-}
-
-.laneName {
-  font-size: 13px;
+.partName {
+  align-self: center;
+  font-size: 14px;
   font-weight: 500;
 }
 
-.squares {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
+.matrixCell {
+  align-self: center;
 }
 
-.squares li {
-  display: flex;
+.cellButton {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  margin: -6px -8px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  box-sizing: content-box;
 }
 
-.laneCount {
-  text-align: right;
-  font-size: 14px;
-  font-weight: 600;
+.cellButton:hover,
+.cellButton[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--color-ink) 5%, transparent);
+}
+
+.cellCount {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--color-ink-secondary);
   font-variant-numeric: tabular-nums;
 }
 
-.laneCount span {
-  font-weight: 400;
+.cellCount strong {
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.cellEmpty {
+  font-size: 13px;
   color: var(--color-ink-muted);
 }
 
-/* The documents and provisions under a tier's map, in two lines. */
-.facts {
-  display: grid;
-  gap: 8px;
-  margin: 14px 0 0;
+.factsRow > * {
+  border-bottom: 0;
+  padding: 10px 0 0;
 }
 
-.facts > div {
-  display: grid;
-  grid-template-columns: 210px minmax(0, 1fr);
-  align-items: baseline;
-  gap: 16px;
-  font-size: 13px;
-}
-
-.facts dt {
+.factsLabel {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: var(--color-ink-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
 }
 
-.facts dd {
+.facts {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 4px 14px;
-  margin: 0;
+  gap: 2px 12px;
+  font-size: 12px;
   color: var(--color-ink-secondary);
   font-variant-numeric: tabular-nums;
 }
 
-.facts dd strong {
+.facts strong {
+  font-size: 14px;
   font-weight: 600;
   color: var(--color-ink);
 }
@@ -378,9 +301,24 @@ button.square[aria-pressed="true"] {
 }
 
 .factItem {
+  white-space: nowrap;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--color-ink-secondary);
+}
+
+.legend li {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
 }
 
 .link {
@@ -404,7 +342,7 @@ button.square[aria-pressed="true"] {
   display: grid;
   align-content: start;
   gap: 12px;
-  width: min(380px, 100vw);
+  width: min(400px, 100vw);
   padding: 88px 20px 24px;
   overflow-y: auto;
   border-left: 1px solid var(--color-rule);
@@ -444,7 +382,7 @@ button.square[aria-pressed="true"] {
 }
 
 .detailName {
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 600;
   line-height: 1.35;
 }
@@ -482,7 +420,7 @@ p.detailPath {
 
 .detailFacts > div {
   display: grid;
-  grid-template-columns: 130px minmax(0, 1fr);
+  grid-template-columns: 140px minmax(0, 1fr);
   gap: 8px;
   font-size: 12px;
 }
@@ -537,6 +475,35 @@ p.detailPath {
   margin-left: auto;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+
+.memberList {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--color-rule);
+  list-style: none;
+}
+
+.memberList button {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 6px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  font-size: 12px;
+  color: var(--color-ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.memberList button:hover {
+  background: color-mix(in srgb, var(--color-ink) 5%, transparent);
 }
 
 .openList {
@@ -714,24 +681,27 @@ p.detailPath {
   color: var(--color-ink-muted);
 }
 
-.empty {
-  font-size: 13px;
-  color: var(--color-ink-muted);
-}
-
 @media (max-width: 760px) {
-  .lane,
-  .facts > div {
-    grid-template-columns: minmax(0, 1fr) 56px;
+  .matrixCard {
+    padding: 8px 14px 16px;
   }
 
-  .laneName,
-  .facts dt {
-    grid-column: 1 / -1;
+  .matrix {
+    column-gap: 14px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
   }
 
-  .facts dd {
+  /* On a phone a part's name takes its own line above its two cells. */
+  .partName,
+  .matrixCorner,
+  .factsLabel {
     grid-column: 1 / -1;
+    padding-bottom: 0 !important;
+    border-bottom: 0 !important;
+  }
+
+  .matrixCorner {
+    display: none;
   }
 
   .detail {

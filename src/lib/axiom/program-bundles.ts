@@ -57,6 +57,8 @@ export interface BundleFile {
   jurisdiction: string;
   title: string;
   as_of: string;
+  /** The parts of the program, in reading order: the matrix's rows. */
+  parts: string[];
   tiers: BundleFileTier[];
 }
 
@@ -175,6 +177,7 @@ export interface BundleRow {
   program: string;
   jurisdiction: string;
   as_of: string;
+  parts: string[];
   tiers: Array<Pick<BundleFileTier, "id" | "title" | "definition" | "membership" | "notes">>;
   source: string | null;
   collected_at: string;
@@ -446,29 +449,6 @@ export function tierCounts(rows: BundleDocumentRow[]): TierCounts {
     units: units.length,
     byUnitState,
   };
-}
-
-/** The parts of a tier in reading order: the program's calculation order, then the rest by name. */
-export const PART_ORDER = [
-  "Household and eligibility",
-  "Income",
-  "Deductions",
-  "Assets",
-  "Work requirements",
-  "Benefit amount",
-  "Definitions from other programs",
-  "Benefit determination",
-  "Expenses and deductions",
-  "Benefit amounts",
-  "Work registration",
-  "EBT and replacement",
-  "Regulations, plans and waivers",
-  "Other",
-];
-
-export function partRank(part: string): number {
-  const index = PART_ORDER.indexOf(part);
-  return index < 0 ? PART_ORDER.length - 1 : index;
 }
 
 /** One in-scope bundle document, as the reverse lookup from an encoding needs it. */

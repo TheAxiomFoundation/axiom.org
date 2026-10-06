@@ -243,6 +243,7 @@ async function main() {
       program: bundle.program,
       jurisdiction: bundle.jurisdiction,
       as_of: bundle.as_of,
+      parts: bundle.parts ?? [],
       tiers: bundle.tiers.map(({ id, title, definition, membership, notes }) => ({ id, title, definition, membership, notes })),
       source,
       collected_at: collectedAt,
