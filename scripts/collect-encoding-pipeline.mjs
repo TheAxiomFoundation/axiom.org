@@ -37,6 +37,10 @@
  *                        failing job's log is read for what it printed.
  *                        Each lookup costs 2-3 GitHub requests, and the Actions
  *                        token's 1,000/hour is shared with the index sync.
+ *   --merge-test-lookups N  default-branch merges whose merge commit's check
+ *                        runs to read per pass (default 40): when the module's
+ *                        validation shard first finished on main. Read until
+ *                        found, newest merge first.
  *   --check-error-lookups N  failing PR jobs whose log to read per pass
  *                        (default 60): what the check printed before failing.
  *                        One request each, read once per job.
@@ -68,6 +72,8 @@ import {
   containmentQueries,
   containsKey,
   failureLookups,
+  mergeValidationKey,
+  mergeValidationLookups,
   needsLogRead,
   oldestUnsyncedMerge,
   oracleVerdicts,
@@ -76,6 +82,7 @@ import {
   parseVersion,
   prCitation,
   runDetailLookups,
+  syncWindowStart,
   versionLookups,
 } from "../src/lib/axiom/encoding-pipeline-collect.ts";
 import { GITHUB_ORG, githubHeaders } from "./lib/rulespec-discovery.mjs";
@@ -94,6 +101,7 @@ const outPath = argValue("--out");
 const lookupLimit = Number(argValue("--failure-lookups") ?? 60);
 const runDetailLimit = Number(argValue("--run-detail-lookups") ?? 80);
 const checkErrorLimit = Number(argValue("--check-error-lookups") ?? 60);
+const mergeTestLimit = Number(argValue("--merge-test-lookups") ?? 40);
 const dryRun = Boolean(outPath);
 
 function argValue(name) {
@@ -183,7 +191,7 @@ async function readAll(table, select, build = (query) => query) {
 }
 
 const ENCODER_COLUMNS =
-  "id,timestamp,citation,status:outcome->>status,apply_error:outcome->>apply_error,note,generation_attempt_count,estimated_cost_usd";
+  "id,timestamp,citation,status:outcome->>status,apply_error:outcome->>apply_error,note,generation_attempt_count,estimated_cost_usd,iterations";
 
 /** Encoder records, with their Actions run id once axiom-encode's migration 008 adds it. */
 async function readEncoderRuns(since) {
@@ -200,6 +208,15 @@ async function readEncoderRuns(since) {
 const ORACLE_CARRIED = ["oracle_status", "oracle_report", "oracle_engine", "oracle_checked_at"];
 const RUN_CARRIED = ["encode_started_at", "cancel_stage", "jobs_checked_at"];
 const VERSION_CARRIED = ["encoder_sha", "encoder_version", "pr_check_error", "pr_check_job_id"];
+const TIME_CARRIED = [
+  "setup_seconds",
+  "encode_seconds",
+  "publish_seconds",
+  "steps_read_at",
+  "indexed_at",
+  "tests_first_at",
+];
+const FIRST_TESTS_CARRIED = ["tests_first_started_at", "tests_first_status"];
 
 async function columnsExist(columns) {
   const { error } = await supabase.from("pipeline_attempts").select(columns.join(",")).limit(1);
@@ -212,7 +229,8 @@ async function readPrevious() {
     const rows = JSON.parse(readFileSync(previousFile, "utf8"));
     return new Map(rows.map((row) => [row.id, row]));
   }
-  const base = "id,citation,synced_at,failure_source,failed_step,encoder_error,encoder_error_rule";
+  const base =
+    "id,citation,synced_at,failure_source,failed_step,encoder_error,encoder_error_rule,pr_repo,pr_number";
   const read = (columns) => readAll("pipeline_attempts", columns, (query) => query.order("id"));
   try {
     // Carried columns arrive by migration; read each group only once it exists.
@@ -220,6 +238,9 @@ async function readPrevious() {
     for (const group of [ORACLE_CARRIED, RUN_CARRIED, VERSION_CARRIED]) {
       if (await columnsExist(group)) columns += `,${group.join(",")}`;
     }
+    // With the merge commit, these say which merges are timed already.
+    if (await columnsExist(TIME_CARRIED)) columns += `,${TIME_CARRIED.join(",")},pr_merge_commit`;
+    if (await columnsExist(FIRST_TESTS_CARRIED)) columns += `,${FIRST_TESTS_CARRIED.join(",")}`;
     const rows = await read(columns);
     return new Map(rows.map((row) => [row.id, row]));
   } catch (error) {
@@ -754,12 +775,24 @@ const RUN_COLUMNS = ["dispatched_by", ...RUN_CARRIED];
 // Added by the 2026-10-02 versions migration.
 const VERSION_COLUMNS = VERSION_CARRIED;
 
+// Added by the 2026-10-05 step-times migration.
+const TIME_COLUMNS = TIME_CARRIED;
+
+// Added by the 2026-10-05 first-tests migration.
+const FIRST_TESTS_COLUMNS = FIRST_TESTS_CARRIED;
+
+// Added by the 2026-10-06 tries migration: derived from encoder records each pass.
+const TRIES_COLUMNS = ["tries"];
+
 async function upsert(rows) {
   // Each migration's columns are written only once that migration is applied.
   for (const [name, group] of [
     ["stage", STAGE_COLUMNS],
     ["run detail", RUN_COLUMNS],
     ["version", VERSION_COLUMNS],
+    ["step time", TIME_COLUMNS],
+    ["first tests", FIRST_TESTS_COLUMNS],
+    ["tries", TRIES_COLUMNS],
   ]) {
     if (await columnsExist(group)) continue;
     console.log(`${name} columns not written yet (migration not applied)`);
@@ -778,9 +811,76 @@ async function upsert(rows) {
   }
 }
 
+const SYNC_PAGES_MAX = 10;
+
+function syncRepo() {
+  return process.env.GITHUB_REPOSITORY ?? `${GITHUB_ORG}/axiom-foundation.org`;
+}
+
+/** Successful index syncs started since `since`: when each read the default branches and finished. */
+async function readSyncRuns(since) {
+  if (!since) return [];
+  const runs = [];
+  try {
+    for (let page = 1; page <= SYNC_PAGES_MAX; page++) {
+      const body = await githubJson(
+        `repos/${syncRepo()}/actions/workflows/${SYNC_WORKFLOW}/runs?status=success&created=${encodeURIComponent(`>=${since}`)}&per_page=100&page=${page}`,
+      );
+      const listed = body.workflow_runs ?? [];
+      for (const run of listed) runs.push({ created_at: run.created_at, updated_at: run.updated_at });
+      if (listed.length < 100) break;
+    }
+  } catch (error) {
+    console.warn(`sync runs: ${error.message}`);
+    return null;
+  }
+  return runs;
+}
+
+/** Per merge commit, each validate shard's first decisive run there: when it started and finished, and how. */
+async function readMergeValidation(lookups) {
+  const results = new Map();
+  const queue = [...lookups];
+  await Promise.all(
+    Array.from({ length: LOOKUP_CONCURRENCY }, async () => {
+      for (let item = queue.shift(); item; item = queue.shift()) {
+        const shards = new Map();
+        try {
+          for (let page = 1; page <= 3; page++) {
+            const body = await githubJson(
+              `repos/${GITHUB_ORG}/${item.repo}/commits/${item.commit}/check-runs?filter=all&per_page=100&page=${page}`,
+            );
+            const checks = body.check_runs ?? [];
+            // Every attempt, so a re-run does not hide when the first one finished.
+            for (const check of checks) {
+              const match = check.name.match(VALIDATE_JOB_RE);
+              if (!match || !check.completed_at) continue;
+              if (check.conclusion !== "success" && check.conclusion !== "failure") continue;
+              const shard = match[1] ?? "";
+              const known = shards.get(shard);
+              if (!known || check.completed_at < known.completedAt) {
+                shards.set(shard, {
+                  startedAt: check.started_at ?? null,
+                  completedAt: check.completed_at,
+                  conclusion: check.conclusion,
+                });
+              }
+            }
+            if (checks.length < 100) break;
+          }
+          results.set(mergeValidationKey(item.repo, item.commit), shards);
+        } catch (error) {
+          console.warn(`checks at ${item.repo}@${item.commit}: ${error.message}`);
+        }
+      }
+    }),
+  );
+  return results;
+}
+
 async function dispatchSyncIfNeeded(oldestMerge) {
   if (!oldestMerge) return;
-  const repo = process.env.GITHUB_REPOSITORY ?? `${GITHUB_ORG}/axiom-foundation.org`;
+  const repo = syncRepo();
   const body = await githubJson(
     `repos/${repo}/actions/workflows/${SYNC_WORKFLOW}/runs?per_page=5`,
   );
@@ -844,7 +944,9 @@ async function main() {
   const lookups = failureLookups(runs, encoderRuns, previous, nowMs, lookupLimit);
   const failureDetails = await lookUpFailures(lookups, previous);
   console.log(`looked up ${failureDetails.size} of ${lookups.length} unexplained failures`);
-  const detailRuns = runDetailLookups(runs, previous, runDetailLimit);
+  // A dry run times every step it reads; a pass writes them once the migration is in.
+  const timesTracked = dryRun || (await columnsExist(TIME_COLUMNS));
+  const detailRuns = runDetailLookups(runs, previous, runDetailLimit, { steps: timesTracked });
   const runDetails = await lookUpRunDetails(detailRuns);
   console.log(`read jobs for ${runDetails.size} of ${detailRuns.length} runs`);
   const shas = versionLookups(runs, previous);
@@ -853,6 +955,17 @@ async function main() {
   const errorJobs = checkErrorLookups(prs, previous, checkErrorLimit);
   const checkErrors = await readCheckErrors(errorJobs);
   console.log(`read ${checkErrors.size} of ${errorJobs.length} failing PR check logs`);
+  const syncSince = timesTracked ? syncWindowStart(prs, previous, nowMs) : null;
+  const syncRuns = timesTracked ? await readSyncRuns(syncSince) : null;
+  const firstTestsTracked = dryRun || (await columnsExist(FIRST_TESTS_COLUMNS));
+  const mergeLookups = timesTracked
+    ? mergeValidationLookups(prs, previous, mergeTestLimit, { detail: firstTestsTracked })
+    : [];
+  const mergeValidation = await readMergeValidation(mergeLookups);
+  console.log(
+    `read ${syncRuns?.length ?? 0} index syncs since ${syncSince ?? "-"}, ` +
+      `validation at ${mergeValidation.size} of ${mergeLookups.length} merge commits`,
+  );
 
   const attempts = buildAttempts({
     runs,
@@ -870,6 +983,8 @@ async function main() {
     runDetails,
     encoderVersions,
     checkErrors,
+    syncRuns: syncRuns ?? undefined,
+    mergeValidation,
   });
 
   if (dryRun) {
