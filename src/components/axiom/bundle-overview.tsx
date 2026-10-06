@@ -44,12 +44,6 @@ function shareOf(counts: TierCounts | undefined, count: Count): Share {
 const ratio = (s: Share) => (s.total ? s.done / s.total : 0);
 const percent = (s: Share) => (s.total ? `${Math.round(ratio(s) * 100)}%` : "—");
 
-function median(values: number[]): number | null {
-  if (!values.length) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = sorted.length >> 1;
-  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-}
 
 /** One share as a bar: encoded in green on a grey track, the exact count beside it. */
 function Meter({ share, unit }: { share: Share; unit: string }) {
@@ -67,8 +61,9 @@ function Meter({ share, unit }: { share: Share; unit: string }) {
 }
 
 /**
- * Every program bundle, in two steps: the programs, each with its states'
- * median share; then the chosen program's federal law and each state, with
+ * Every program bundle, in two steps: the programs, each with its
+ * completeness across the federal law and every state; then the chosen
+ * program's federal law and each state, with
  * both tiers side by side and the exact counts. Each share is the number the
  * bundle's page leads with, in the same count; a state opens its bundle.
  */
@@ -92,8 +87,21 @@ export function BundleOverview({ bundles }: { bundles: BundleSummary[] }) {
   const unit = (tier: BundleTierId) =>
     count === "documents" ? "documents" : tier === "screener" ? "cited provisions" : "provisions";
   const statesOf = (p: string) => bundles.filter((b) => b.program === p && b.jurisdiction !== "us");
-  const medianOf = (p: string, tier: BundleTierId) =>
-    median(statesOf(p).map((b) => shareOf(b.counts[tier], count)).filter((s) => s.total).map(ratio));
+  /**
+   * A program's completeness: every document (or provision) of its bundles,
+   * each once. A state's counts add the federal layer, and counts add up, so
+   * the federal layer counts once and each state adds only its own.
+   */
+  const completeness = (p: string, t: BundleTierId): Share => {
+    const federalShare = shareOf(byId.get(`us/${p}`)?.counts[t], count);
+    return statesOf(p).reduce(
+      (sum, b) => {
+        const s = shareOf(b.counts[t], count);
+        return { done: sum.done + s.done - federalShare.done, total: sum.total + s.total - federalShare.total };
+      },
+      { ...federalShare }
+    );
+  };
 
   const federal = byId.get(`us/${program}`);
   const states = [...statesOf(program)].sort((a, b) =>
@@ -137,8 +145,8 @@ export function BundleOverview({ bundles }: { bundles: BundleSummary[] }) {
         <div className={styles.programsPane}>
           <div className={styles.columnHead}>
             <span>Program</span>
-            <span className={styles.tierToggle} role="radiogroup" aria-label="Median state, by tier">
-              <span>Median state</span>
+            <span className={styles.tierToggle} role="radiogroup" aria-label="Completeness, by tier">
+              <span>Completeness</span>
               {(["screener", "full"] as BundleTierId[]).map((value) => (
                 <button
                   key={value}
@@ -154,17 +162,23 @@ export function BundleOverview({ bundles }: { bundles: BundleSummary[] }) {
           </div>
           <ul className={styles.programs} aria-label="Programs">
           {programs.map((p) => {
-            const middle = medianOf(p, tier);
+            const whole = completeness(p, tier);
+            const states = statesOf(p).length;
             return (
               <li key={p}>
-                <button type="button" aria-pressed={p === program} onClick={() => setProgram(p)}>
+                <button
+                  type="button"
+                  aria-pressed={p === program}
+                  onClick={() => setProgram(p)}
+                  title={`${title(p)}: ${number(whole.done)} of ${number(whole.total)} ${unit(tier)} ${
+                    count === "documents" ? "complete" : "encoded"
+                  }, across the federal law and ${states} ${states === 1 ? "state" : "states"}`}
+                >
                   <span className={styles.programName}>{title(p)}</span>
                   <span className={styles.track} aria-hidden>
-                    <span className={styles.fill} style={{ width: `${(middle ?? 0) * 100}%` }} />
+                    <span className={styles.fill} style={{ width: `${ratio(whole) * 100}%` }} />
                   </span>
-                  <span className={styles.programFigure}>
-                    {middle == null ? "—" : `${Math.round(middle * 100)}%`}
-                  </span>
+                  <span className={styles.programFigure}>{percent(whole)}</span>
                 </button>
               </li>
             );

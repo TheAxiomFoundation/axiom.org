@@ -31,12 +31,17 @@ const bundles = [
 ];
 
 describe("BundleOverview", () => {
-  it("lists the programs by their median state, and the chosen program's federal law and states", () => {
+  it("lists the programs by their completeness, and the chosen program's federal law and states", () => {
     render(<BundleOverview bundles={bundles} />);
     const programs = screen.getByRole("list", { name: "Programs" });
     expect(within(programs).getByRole("button", { name: /SNAP/ })).toHaveAttribute("aria-pressed", "true");
-    // Median of Arizona (1 of 58) and California (4 of 60) documents complete.
-    expect(within(programs).getByRole("button", { name: /SNAP/ })).toHaveTextContent("SNAP4%");
+    // Every document once: the federal law (1 of 56), Arizona's own (0 of 2), California's own (3 of 4).
+    const snap = within(programs).getByRole("button", { name: /SNAP/ });
+    expect(snap).toHaveTextContent("SNAP6%");
+    expect(snap).toHaveAttribute(
+      "title",
+      "SNAP: 4 of 62 documents complete, across the federal law and 2 states"
+    );
     const table = screen.getByRole("table", { name: "SNAP by state" });
     const rows = within(table).getAllByRole("row").slice(1);
     expect(rows.map((r) => within(r).getByRole("rowheader").textContent)).toEqual([
@@ -59,13 +64,14 @@ describe("BundleOverview", () => {
     expect(screen.getByRole("table", { name: "Medicaid by state" })).toBeInTheDocument();
   });
 
-  it("summarizes the programs by either tier, and sorts the states by it", () => {
+  it("gives the programs' completeness in either tier, and sorts the states by it", () => {
     render(<BundleOverview bundles={bundles} />);
-    const toggle = screen.getByRole("radiogroup", { name: "Median state, by tier" });
+    const toggle = screen.getByRole("radiogroup", { name: "Completeness, by tier" });
     fireEvent.click(within(toggle).getByRole("radio", { name: "Tier 2" }));
-    // Median of Arizona (4 of 187) and California (5 of 190) documents complete.
-    expect(within(screen.getByRole("list", { name: "Programs" })).getByRole("button", { name: /SNAP/ })).toHaveTextContent(
-      "SNAP2%"
+    // The federal law (1 of 144), Arizona's own (3 of 43), California's own (4 of 46).
+    expect(within(screen.getByRole("list", { name: "Programs" })).getByRole("button", { name: /SNAP/ })).toHaveAttribute(
+      "title",
+      "SNAP: 8 of 233 documents complete, across the federal law and 2 states"
     );
     expect(screen.getByRole("columnheader", { name: "Tier 2 · full bundle" })).toHaveAttribute("aria-sort", "descending");
   });
