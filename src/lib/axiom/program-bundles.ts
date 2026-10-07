@@ -834,8 +834,39 @@ export function bundleMemberships(citation: string, index: BundleIndexEntry[]): 
     .sort((a, b) => a.bundle_title.localeCompare(b.bundle_title));
 }
 
-/** "Tier 1" or "Tiers 1, 2". */
+/**
+ * The innermost tier a citation sits in: "Tier 1" (Tier 2 always holds Tier
+ * 1's documents, so naming both says nothing more), else "Tier 2".
+ */
 export function tiersLabel(membership: BundleMembership): string {
-  const indexes = membership.tiers.map((t) => t.index);
-  return `${indexes.length === 1 ? "Tier" : "Tiers"} ${indexes.join(", ")}`;
+  return `Tier ${Math.min(...membership.tiers.map((t) => t.index))}`;
+}
+
+/** The program a bundle measures, without its jurisdiction: "SNAP: federal law" and "Arizona SNAP" are "SNAP". */
+export function bundleProgram(membership: Pick<BundleMembership, "bundle_id" | "bundle_title">): string {
+  const program = membership.bundle_id.split("/")[1] ?? "";
+  return PROGRAM_NAMES[program] ?? membership.bundle_title.replace(/: federal law$/, "");
+}
+
+const PROGRAM_NAMES: Record<string, string> = {
+  snap: "SNAP",
+  medicaid: "Medicaid",
+  chip: "CHIP",
+  tanf: "TANF",
+  ssi: "SSI",
+  ccdf: "CCDF",
+  liheap: "LIHEAP",
+  wic: "WIC",
+  ui: "Unemployment insurance",
+  medicare: "Medicare",
+  income_tax: "Income tax",
+  eitc: "EITC",
+  ctc: "CTC",
+};
+
+/** A membership in full, for a tooltip: "Arizona SNAP — Tier 1, Screener-level parity: ARS 46-292; Tier 2, …". */
+export function membershipDetail(membership: BundleMembership): string {
+  return `${membership.bundle_title} — ${membership.tiers
+    .map((t) => `Tier ${t.index}, ${t.title}: ${t.document}`)
+    .join("; ")}`;
 }

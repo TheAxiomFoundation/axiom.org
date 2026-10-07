@@ -11,6 +11,8 @@ import {
   provisionCounts,
   tierCounts,
   tiersLabel,
+  bundleProgram,
+  membershipDetail,
   type BundleFileDocument,
   type ModuleFacts,
 } from "./program-bundles";
@@ -372,7 +374,12 @@ describe("bundleMemberships", () => {
   it("names the bundle and every tier whose document holds the citation", () => {
     const [membership] = bundleMemberships("us-az/manual/des/faa5/med/block-2", index);
     expect(membership).toMatchObject({ bundle_id: "us-az/snap", bundle_title: "Arizona SNAP" });
-    expect(tiersLabel(membership)).toBe("Tiers 1, 2");
+    // The innermost tier: Tier 2 holds every Tier 1 document.
+    expect(tiersLabel(membership)).toBe("Tier 1");
+    expect(bundleProgram(membership)).toBe("SNAP");
+    expect(bundleProgram({ bundle_id: "us/snap", bundle_title: "SNAP: federal law" })).toBe("SNAP");
+    expect(bundleProgram({ bundle_id: "us/new_program", bundle_title: "New program: federal law" })).toBe("New program");
+    expect(membershipDetail(membership)).toMatch(/^Arizona SNAP — Tier 1, Screener-level parity: .+; Tier 2, Full document bundle: /);
     expect(tiersLabel(bundleMemberships("us/statute/7/2014/e/6/A", index)[0])).toBe("Tier 1");
   });
 

@@ -8,7 +8,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { journeyHref } from "@/lib/axiom/encoding-pipeline";
 import { scopeSearch, type PipelineScope } from "@/lib/axiom/encoding-pipeline-insights";
 import { runTimeline, type RunRow } from "@/lib/axiom/encoding-pipeline-runs";
-import { bundleMemberships, tiersLabel, type BundleIndexEntry } from "@/lib/axiom/program-bundles";
+import {
+  bundleMemberships,
+  bundleProgram,
+  membershipDetail,
+  tiersLabel,
+  type BundleIndexEntry,
+} from "@/lib/axiom/program-bundles";
 import {
   causeHeadline,
   runLedger,
@@ -131,6 +137,9 @@ export function PipelineLedger({
                 <TableHead className="h-8 px-2 font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]">
                   Provision
                 </TableHead>
+                <TableHead className="h-8 w-40 px-2 font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]">
+                  Bundle
+                </TableHead>
                 <TableHead className="h-8 w-36 px-2 font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]">
                   Status
                 </TableHead>
@@ -145,7 +154,7 @@ export function PipelineLedger({
             {firstDocuments(ledger, shown).map((jurisdiction) => (
               <TableBody key={jurisdiction.code}>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead colSpan={5} scope="rowgroup" className={styles.jurisdictionBand}>
+                  <TableHead colSpan={6} scope="rowgroup" className={styles.jurisdictionBand}>
                     {jurisdiction.name}
                   </TableHead>
                 </TableRow>
@@ -194,7 +203,7 @@ function DocumentSections({
   return (
     <>
       <TableRow className="border-b border-[var(--color-rule)] hover:bg-transparent">
-        <TableCell colSpan={5} className={styles.documentBand}>
+        <TableCell colSpan={6} className={styles.documentBand}>
           <span
             className="text-sm font-semibold text-[var(--color-ink)]"
             title={document.titled ? undefined : "Document identifier; source title not yet indexed"}
@@ -232,16 +241,22 @@ function DocumentSections({
               </TableCell>
               <TableCell className="px-2 py-1.5 align-baseline whitespace-normal text-[var(--color-ink-secondary)]">
                 {label}
-                {bundleMemberships(section.citation, bundles).map((membership) => (
-                  <a
-                    key={membership.bundle_id}
-                    className={styles.ledgerBundle}
-                    href={`/ops/bundles/${membership.bundle_id}`}
-                    title={membership.tiers.map((t) => `${t.title}: ${t.document}`).join("\n")}
-                  >
-                    {membership.bundle_title} · {tiersLabel(membership)}
-                  </a>
-                ))}
+              </TableCell>
+              <TableCell className="px-2 py-1.5 align-baseline">
+                <span className={styles.ledgerBundles}>
+                  {bundleMemberships(section.citation, bundles).map((membership) => (
+                    <a
+                      key={membership.bundle_id}
+                      className={styles.ledgerBundle}
+                      href={`/ops/bundles/${membership.bundle_id}`}
+                      aria-label={`${membership.bundle_title} · ${tiersLabel(membership)}`}
+                      title={membershipDetail(membership)}
+                    >
+                      {bundleProgram(membership)}
+                      <span>{tiersLabel(membership)}</span>
+                    </a>
+                  ))}
+                </span>
               </TableCell>
               <TableCell className="px-2 py-1.5 align-baseline whitespace-nowrap">
                 <span className={`${styles.status} ${TONE_CLASS[section.tone]}`} data-tone={section.tone}>
@@ -258,7 +273,7 @@ function DocumentSections({
             </TableRow>
             {open && (
               <TableRow className="hover:bg-transparent">
-                <TableCell colSpan={5} className={styles.ledgerRunCell}>
+                <TableCell colSpan={6} className={styles.ledgerRunCell}>
                   <SectionRuns section={section} referenceMs={referenceMs} />
                 </TableCell>
               </TableRow>
