@@ -59,6 +59,7 @@ export function RunTimeline({
       ? timeline.loopMs - timeline.modelMs
       : null;
   const lastBranch = checksMs === null && (split?.outsideMs ?? null) === null;
+  const checkTools = split?.kinds.find((kind) => kind.kind === "checks")?.tools ?? [];
   const loopKey =
     ["encode", "run"].find((key) => timeline.bars.some((bar) => bar.key === key)) ?? timeline.bars.at(-1)?.key;
   const pct = (ms: number) => `${(ms / scale) * 100}%`;
@@ -85,8 +86,8 @@ export function RunTimeline({
             {timeline.bars.map((bar) => (
               <Fragment key={bar.key}>
                 <li className={styles.row}>
-                  <span className={styles.label}>{bar.label}</span>
-                  <span className={styles.time}>{shortDuration(bar.ms)}</span>
+                  <span className={styles.label}>{bar.label}</span>{" "}
+                  <span className={styles.time}>{shortDuration(bar.ms)}</span>{" "}
                   <span className={styles.track}>
                     <span
                       className={styles.bar}
@@ -96,55 +97,66 @@ export function RunTimeline({
                     />
                   </span>
                 </li>
+                {/* Where the loop's time went: its shares as one bar under the loop's bar, then a legend. */}
+                {bar.key === loopKey && split && (
+                  <li className={`${styles.row} ${styles.compose}`}>
+                    <span className={styles.composeLabel}>Where the time went</span>{" "}
+                    <span />
+                    <span className={styles.composeBody}>
+                      <span className={styles.lane} aria-hidden>
+                        {(() => {
+                          const total = split.shares.reduce((sum, share) => sum + share.ms, 0);
+                          let at = bar.startMs;
+                          return split.shares.map((share) => {
+                            const ms = total ? (bar.ms * share.ms) / total : 0;
+                            const left = at;
+                            at += ms;
+                            return (
+                              <span
+                                key={share.key}
+                                className={styles.segment}
+                                data-kind={share.kind}
+                                data-part={share.part ?? undefined}
+                                style={{ left: pct(left), width: pct(ms) }}
+                                title={`${share.label} · ${shortDuration(share.ms)}`}
+                              />
+                            );
+                          });
+                        })()}
+                      </span>
+                      <span className={styles.legend}>
+                        {split.shares.map((share, i) => (
+                          <Fragment key={share.key}>
+                            {i > 0 && <span className={styles.sep}> · </span>}
+                            <span className={styles.legendItem}>
+                              <span
+                                className={styles.swatch}
+                                data-kind={share.kind}
+                                data-part={share.part ?? undefined}
+                                aria-hidden
+                              />
+                              {share.label} <strong>{shortDuration(share.ms)}</strong>
+                            </span>
+                          </Fragment>
+                        ))}
+                      </span>
+                      {checkTools.length > 0 && (
+                        <span className={styles.legendNote}>Checks by tool: {toolsText(checkTools, 4)}</span>
+                      )}
+                    </span>
+                  </li>
+                )}
                 {/* The encode loop's tries, as its children: each try's time under the bars' times. */}
                 {bar.key === loopKey && timeline.tries.length > 0 && (
                   <li className={styles.tries}>
-                    {split && (
-                      <p className={`${styles.row} ${styles.split}`}>
-                        <span className={styles.tryWho}>
-                          <span className={styles.tryBranch} aria-hidden>
-                            ├
-                          </span>
-                          <span>Time by kind</span>
-                        </span>
-                        <span />
-                        <span className={styles.kinds}>
-                          <span className={styles.kindLine}>
-                            {split.kinds
-                              .filter((kind) => kind.ms > 0)
-                              .map((kind) => (
-                                <span key={kind.kind} className={styles.kind}>
-                                  <span className={styles.swatch} data-kind={kind.kind} aria-hidden />
-                                  {kind.label} <strong>{shortDuration(kind.ms)}</strong>
-                                </span>
-                              ))}
-                          </span>
-                          {split.kinds
-                            .filter((kind) => kind.parts.length > 1 || kind.tools.length > 0)
-                            .map((kind) => (
-                              <span key={kind.kind} className={styles.kindDetail}>
-                                {kind.label}:
-                                {kind.parts.length > 1 &&
-                                  kind.parts.map((part) => (
-                                    <span key={part.part} className={styles.kindPart}>
-                                      <span className={styles.swatch} data-kind={kind.kind} data-part={part.part} aria-hidden />
-                                      {part.label} {shortDuration(part.ms)}
-                                    </span>
-                                  ))}
-                                {kind.tools.length > 0 && <span>by tool: {toolsText(kind.tools)}</span>}
-                              </span>
-                            ))}
-                        </span>
-                      </p>
-                    )}
-                    <ol className={styles.triesList} aria-label="Tries in the encode loop">
+                    <ol className={styles.triesList} aria-label="Inside the encode loop">
                       {timeline.tries.map((attempt, index) => {
                         const last = index === timeline.tries.length - 1;
                         const branch = last && lastBranch ? "└" : "├";
                         const stoppedRun = last && !attempt.ok && timeline.stopped !== null;
                         const result = (
                           <span className={styles.tryWhat}>
-                            <span className={styles.tryCost}>{cost(attempt.cost)}</span>
+                            <span className={styles.tryCost}>{cost(attempt.cost)}</span>{" "}
                             <span
                               className={styles.tryResult}
                               title={
@@ -165,9 +177,9 @@ export function RunTimeline({
                               <span className={styles.tryBranch} aria-hidden>
                                 {branch}
                               </span>
-                              <span className={styles.tryNumber}>Try {attempt.attempt}</span>
+                              <span className={styles.tryNumber}>Try {attempt.attempt}</span>{" "}
                               <span className={styles.tryModel}>{attempt.model ?? "—"}</span>
-                            </span>
+                            </span>{" "}
                             {phased ? (
                               <>
                                 <span
@@ -177,7 +189,7 @@ export function RunTimeline({
                                   }`}
                                 >
                                   {shortDuration(attempt.wallMs!)}
-                                </span>
+                                </span>{" "}
                                 <span className={styles.tryTrack}>
                                   <span className={styles.lane}>
                                     {attempt.phases.map((phase, i) => (
@@ -201,45 +213,45 @@ export function RunTimeline({
                                   title="The model's time for this try; its checks are in the row below"
                                 >
                                   {attempt.ms === null ? "—" : shortDuration(attempt.ms)}
-                                </span>
+                                </span>{" "}
                                 {result}
                               </>
                             )}
                           </li>
                         );
                       })}
+                      {split && split.outsideMs !== null && (
+                        <li className={`${styles.row} ${styles.triesRest}`}>
+                          <span className={styles.tryWho}>
+                            <span className={styles.tryBranch} aria-hidden>
+                              └
+                            </span>
+                            <span>Outside the tries</span>
+                          </span>{" "}
+                          <span className={styles.time}>{shortDuration(split.outsideMs)}</span>{" "}
+                          <span className={styles.triesNote}>
+                            {split.outside.length
+                              ? split.outside.map((part) => `${part.label} ${shortDuration(part.ms)}`).join(" · ")
+                              : "the encode step's time before, between, and after the tries"}
+                          </span>
+                        </li>
+                      )}
+                      {checksMs !== null && (
+                        <li className={`${styles.row} ${styles.triesRest}`}>
+                          <span className={styles.tryWho}>
+                            <span className={styles.tryBranch} aria-hidden>
+                              └
+                            </span>
+                            <span>Checks and review</span>
+                          </span>{" "}
+                          <span className={styles.time}>{shortDuration(checksMs)}</span>{" "}
+                          <span className={styles.triesNote}>
+                            between and after the tries, not timed per try; with the tries&apos; model time (
+                            {shortDuration(timeline.modelMs!)}) the loop&apos;s {shortDuration(timeline.loopMs!)}
+                          </span>
+                        </li>
+                      )}
                     </ol>
-                    {split && split.outsideMs !== null && (
-                      <p className={`${styles.row} ${styles.triesRest}`}>
-                        <span className={styles.tryWho}>
-                          <span className={styles.tryBranch} aria-hidden>
-                            └
-                          </span>
-                          <span>Outside the tries</span>
-                        </span>
-                        <span className={styles.time}>{shortDuration(split.outsideMs)}</span>
-                        <span className={styles.triesNote}>
-                          {split.outside.length
-                            ? split.outside.map((part) => `${part.label} ${shortDuration(part.ms)}`).join(" · ")
-                            : "the encode step's time before, between, and after the tries"}
-                        </span>
-                      </p>
-                    )}
-                    {checksMs !== null && (
-                      <p className={`${styles.row} ${styles.triesRest}`}>
-                        <span className={styles.tryWho}>
-                          <span className={styles.tryBranch} aria-hidden>
-                            └
-                          </span>
-                          <span>Checks and review</span>
-                        </span>
-                        <span className={styles.time}>{shortDuration(checksMs)}</span>
-                        <span className={styles.triesNote}>
-                          between and after the tries, not timed per try; with the tries&apos; model time (
-                          {shortDuration(timeline.modelMs!)}) the loop&apos;s {shortDuration(timeline.loopMs!)}
-                        </span>
-                      </p>
-                    )}
                   </li>
                 )}
               </Fragment>

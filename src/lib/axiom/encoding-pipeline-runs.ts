@@ -610,10 +610,21 @@ export interface LoopSplit {
     parts: Array<{ part: CheckPart; label: string; ms: number }>;
     tools: TimelineTool[];
   }>;
+  /** The loop's time as shares that add up to it: the model, each part of the checks, other, outside the tries. */
+  shares: LoopShare[];
   /** The encode step's time outside the tries, when the step was timed and every try has phases. */
   outsideMs: number | null;
   /** That time's parts, when the encoder's loop clock gives them. */
   outside: Array<{ label: string; ms: number }>;
+}
+
+/** One share of the encode loop's time, for its stacked bar and legend. */
+export interface LoopShare {
+  key: string;
+  kind: PhaseKind | "outside";
+  part: CheckPart | null;
+  label: string;
+  ms: number;
 }
 
 const PHASE_LABELS: Record<string, string> = {
@@ -907,7 +918,16 @@ function loopSplit(row: RunRow, tries: TimelineTry[]): LoopSplit | null {
     add("after the last try", loop.finalizeMs);
     add("other work in the step", stepMs! - loop.wallMs > 0 ? stepMs! - loop.wallMs : null);
   }
-  return { kinds, outsideMs, outside };
+  const [model, checks, other] = kinds;
+  const shares: LoopShare[] = [
+    { key: "model", kind: "model", part: null, label: "model", ms: model.ms },
+    ...(checks.parts.length > 1
+      ? checks.parts.map((part) => ({ key: part.part, kind: "checks" as const, part: part.part, label: `checks on ${part.label}`, ms: part.ms }))
+      : [{ key: "checks", kind: "checks" as const, part: null, label: "checks", ms: checks.ms }]),
+    { key: "other", kind: "other", part: null, label: "other", ms: other.ms },
+    { key: "outside", kind: "outside", part: null, label: "outside the tries", ms: outsideMs ?? 0 },
+  ];
+  return { kinds, shares: shares.filter((share) => share.ms > 0), outsideMs, outside };
 }
 
 /** Prefixes that name where an error came from rather than what it says. */

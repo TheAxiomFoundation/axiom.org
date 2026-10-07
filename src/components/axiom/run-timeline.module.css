@@ -1,6 +1,6 @@
 .timeline {
   /* A try's phases: the model in the accent, the checks in a blue that stays apart from it under
-     color-vision deficiency, the work between them in gray (each also named in the "Time by kind" row). */
+     color-vision deficiency, the work between them in gray (each also named in the "Where the time went" legend). */
   --phase-model: var(--color-accent);
   --phase-checks: #1f6fa8;
   --phase-other: color-mix(in srgb, var(--color-ink) 22%, transparent);
@@ -213,46 +213,54 @@
   color: var(--color-success);
 }
 
-/* "Time by kind": a swatch, the kind, its time, and the checks' longest tools. */
-.split {
-  margin: 0 0 2px;
+/* "Where the time went": the loop's shares as one bar under the loop's bar, then a legend. */
+.compose {
+  margin: 0 0 4px;
+  align-items: start;
+}
+
+.composeLabel {
+  padding-left: 30px;
+  font-size: 12px;
+  color: var(--color-ink-muted);
+}
+
+.composeBody {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding-top: 3px;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
   font-size: 12px;
   color: var(--color-ink-secondary);
 }
 
-.kinds {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.kindLine {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px 14px;
-}
-
-/* The checks by part and by tool, under the kinds. */
-.kindDetail {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 10px;
-  font-size: 11px;
-  color: var(--color-ink-muted);
-}
-
-.kind {
+.legendItem {
   display: inline-flex;
   align-items: baseline;
   gap: 5px;
   white-space: nowrap;
 }
 
-.kind strong {
+.legendItem strong {
   font-weight: 550;
   color: var(--color-ink);
   font-variant-numeric: tabular-nums;
+}
+
+.sep {
+  color: var(--color-rule-strong);
+}
+
+.legendNote {
+  font-size: 11px;
+  color: var(--color-ink-muted);
 }
 
 .swatch {
@@ -297,22 +305,26 @@
   background: color-mix(in srgb, var(--phase-checks) 55%, var(--color-paper));
 }
 
-.kindPart {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 4px;
-  white-space: nowrap;
-}
-
 .swatch[data-kind="other"],
 .segment[data-kind="other"] {
   background: var(--phase-other);
 }
 
+/* The encode step's time outside the tries: a faint fill with an outline. */
+.swatch[data-kind="outside"],
+.segment[data-kind="outside"] {
+  background: color-mix(in srgb, var(--color-ink) 6%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-ink) 25%, transparent);
+}
+
 @media (max-width: 640px) {
   .tryTrack,
-  .kinds {
+  .composeBody {
     grid-column: 1 / -1;
+  }
+
+  .composeLabel {
+    padding-left: 0;
   }
 
   .tryWhat {

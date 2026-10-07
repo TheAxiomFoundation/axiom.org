@@ -492,6 +492,13 @@ describe("timed tries", () => {
       ["compile", 20],
       ["other", 60],
     ]);
+    expect(split!.shares.map((x) => `${x.label} ${x.ms / 1000}`)).toEqual([
+      "model 85",
+      "checks on the candidate 100",
+      "checks on dependent modules 250",
+      "other 25",
+      "outside the tries 140",
+    ]);
     expect(split!.outsideMs).toBe(140_000);
     expect(split!.outside.map((o) => `${o.label} ${o.ms / 1000}`)).toEqual([
       "before the first try 20",

@@ -125,15 +125,13 @@ describe("PipelineLedger", () => {
     render(<PipelineLedger scope={null} scopeName={null} referenceMs={NOW} />);
     fireEvent.click(await screen.findByRole("button", { name: "Runs of us/statute/42/416/l" }));
     expect(screen.getByText("The run").parentElement).toHaveTextContent(/2 tries/);
-    const tries = within(screen.getByRole("list", { name: "Tries in the encode loop" })).getAllByRole("listitem");
-    expect(tries.map((row) => row.textContent)).toEqual([
-      "├Try 1gpt-6-luna37s<$0.01Completeness rule: structure",
-      "├Try 2gpt-6-sol20s$0.14Embedded scalar literal · stopped the run",
-    ]);
+    const rows = within(screen.getByRole("list", { name: "Inside the encode loop" })).getAllByRole("listitem");
     // The encoder times each try's model call only: the rest of the loop is one row, so the group sums to the loop.
-    expect(screen.getByText("Checks and review").closest("p")).toHaveTextContent(
-      "Checks and review9mbetween and after the tries, not timed per try; with the tries' model time (57s) the loop's 10m"
-    );
+    expect(rows.map((row) => row.textContent)).toEqual([
+      "├Try 1 gpt-6-luna 37s <$0.01 Completeness rule: structure",
+      "├Try 2 gpt-6-sol 20s $0.14 Embedded scalar literal · stopped the run",
+      "└Checks and review 9m between and after the tries, not timed per try; with the tries' model time (57s) the loop's 10m",
+    ]);
   });
 
   it("shows ten documents at a time", async () => {
