@@ -124,7 +124,7 @@ describe("PipelineLedger", () => {
     });
     render(<PipelineLedger scope={null} scopeName={null} referenceMs={NOW} />);
     fireEvent.click(await screen.findByRole("button", { name: "Runs of us/statute/42/416/l" }));
-    expect(screen.getByText("Latest run").parentElement).toHaveTextContent(/2 tries/);
+    expect(screen.getByText("The run").parentElement).toHaveTextContent(/2 tries/);
     const tries = within(screen.getByRole("list", { name: "Tries in the encode loop" })).getAllByRole("listitem");
     expect(tries.map((row) => row.textContent)).toEqual([
       "1gpt-6-luna37s<$0.01Completeness rule: structure",

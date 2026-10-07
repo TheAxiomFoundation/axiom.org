@@ -354,7 +354,7 @@ function RunLines({ runs, referenceMs }: { runs: RunRow[]; referenceMs: number }
               </a>
             )}
           </div>
-          {open === run.id && <RunTimeline timeline={runTimeline(run, referenceMs)} />}
+          {open === run.id && <RunTimeline timeline={runTimeline(run, referenceMs)} showStopped={false} />}
         </li>
       ))}
     </ol>
@@ -367,25 +367,22 @@ function SectionRuns({ section, referenceMs }: { section: LedgerSection; referen
   const overview = sectionOverview(section);
   const latest = overview.latest;
   const failedShare =
-    overview.failed === 0
-      ? null
-      : overview.failed === overview.runs
-        ? overview.runs === 1
-          ? "failed"
-          : "all failed"
-        : `${overview.failed} failed`;
+    overview.failed === 0 ? null : overview.failed === overview.runs ? "all failed" : `${overview.failed} failed`;
   return (
     <div className={styles.ledgerOverview}>
-      <p className={styles.ledgerSummary}>
-        <strong>
-          {overview.runs} {overview.runs === 1 ? "run" : "runs"}
-        </strong>
-        {failedShare && <span>{failedShare}</span>}
-        <span>latest {relativeTime(overview.lastAt, referenceMs)}</span>
-      </p>
-      <CountList title="Where each run stopped, and why" groups={overview.stops} />
+      {/* One run: its own line says it all. */}
+      {overview.runs > 1 && (
+        <>
+          <p className={styles.ledgerSummary}>
+            <strong>{overview.runs} runs</strong>
+            {failedShare && <span>{failedShare}</span>}
+            <span>latest {relativeTime(overview.lastAt, referenceMs)}</span>
+          </p>
+          <CountList title="Where each run stopped, and why" groups={overview.stops} />
+        </>
+      )}
       <p className={styles.ledgerLatest}>
-        <span className={styles.ledgerLabel}>Latest run</span>
+        <span className={styles.ledgerLabel}>{overview.runs === 1 ? "The run" : "Latest run"}</span>
         <span title={latest.dispatchedAt}>{relativeTime(latest.dispatchedAt, referenceMs)}</span>
         <a href={latest.runUrl} target="_blank" rel="noreferrer" data-outcome={latest.outcome}>
           {latest.outcomeLabel}
@@ -402,7 +399,7 @@ function SectionRuns({ section, referenceMs }: { section: LedgerSection; referen
           </a>
         )}
       </p>
-      <RunTimeline timeline={runTimeline(latest, referenceMs)} />
+      <RunTimeline timeline={runTimeline(latest, referenceMs)} showStopped={false} />
       {overview.runs > 1 && (
         <button
           type="button"

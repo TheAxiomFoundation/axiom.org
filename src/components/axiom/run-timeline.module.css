@@ -150,14 +150,28 @@
   list-style: none;
 }
 
-/* Number, model, time, cost, then what failed the try. */
+/*
+ * A try lines up with the bars above it (the .row grid): its number and model
+ * in the label column, its time under the bars' times, then its cost and what
+ * failed it where the bars start.
+ */
 .triesList li {
-  display: grid;
-  grid-template-columns: 20px minmax(90px, 120px) 48px 48px minmax(0, 1fr);
-  align-items: baseline;
-  column-gap: 10px;
   font-size: 12px;
   color: var(--color-ink-secondary);
+}
+
+.tryWho {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  column-gap: 8px;
+  align-items: baseline;
+}
+
+.tryWhat {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  column-gap: 10px;
+  align-items: baseline;
 }
 
 .tryNumber {
@@ -186,16 +200,12 @@
 }
 
 @media (max-width: 640px) {
-  .triesList li {
-    grid-template-columns: 20px minmax(0, 1fr) auto;
+  .tryWhat {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .tryCost {
     display: none;
-  }
-
-  .tryResult {
-    grid-column: 2 / -1;
   }
 
   .row {

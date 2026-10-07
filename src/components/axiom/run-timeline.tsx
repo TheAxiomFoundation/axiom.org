@@ -22,7 +22,14 @@ function ticks(scaleMs: number): number[] {
  * if it stopped, and then the slower steps after the PR, each with the time
  * it took from the step before.
  */
-export function RunTimeline({ timeline }: { timeline: Timeline }) {
+export function RunTimeline({
+  timeline,
+  showStopped = true,
+}: {
+  timeline: Timeline;
+  /** Repeat what stopped the run under its bars; off where the run's own line already says it. */
+  showStopped?: boolean;
+}) {
   const scale = Math.max(timeline.totalMs, 60_000);
   const pct = (ms: number) => `${(ms / scale) * 100}%`;
   return (
@@ -73,23 +80,27 @@ export function RunTimeline({ timeline }: { timeline: Timeline }) {
               </p>
               <ol className={styles.triesList} aria-label="Tries in the encode loop">
                 {timeline.tries.map((attempt) => (
-                  <li key={attempt.attempt} data-ok={attempt.ok}>
-                    <span className={styles.tryNumber}>{attempt.attempt}</span>
-                    <span className={styles.tryModel}>{attempt.model ?? "—"}</span>
+                  <li key={attempt.attempt} className={styles.row} data-ok={attempt.ok}>
+                    <span className={styles.tryWho}>
+                      <span className={styles.tryNumber}>{attempt.attempt}</span>
+                      <span className={styles.tryModel}>{attempt.model ?? "—"}</span>
+                    </span>
                     <span className={styles.time}>{attempt.ms === null ? "—" : shortDuration(attempt.ms)}</span>
-                    <span className={styles.tryCost}>{cost(attempt.cost)}</span>
-                    <span
-                      className={styles.tryResult}
-                      title={attempt.ok ? "The loop accepted this candidate; later checks can still fail the run." : (attempt.error ?? undefined)}
-                    >
-                      {attempt.ok ? "accepted" : (attempt.headline ?? "failed")}
+                    <span className={styles.tryWhat}>
+                      <span className={styles.tryCost}>{cost(attempt.cost)}</span>
+                      <span
+                        className={styles.tryResult}
+                        title={attempt.ok ? "The loop accepted this candidate; later checks can still fail the run." : (attempt.error ?? undefined)}
+                      >
+                        {attempt.ok ? "accepted" : (attempt.headline ?? "failed")}
+                      </span>
                     </span>
                   </li>
                 ))}
               </ol>
             </div>
           )}
-          {timeline.stopped && <p className={styles.stopped}>{timeline.stopped}</p>}
+          {showStopped && timeline.stopped && <p className={styles.stopped}>{timeline.stopped}</p>}
         </section>
       )}
       {timeline.after.length > 0 && (
