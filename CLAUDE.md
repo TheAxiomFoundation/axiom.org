@@ -55,8 +55,11 @@ generate `/axiom/v2/...` hrefs. The app root and marketing pages stay on v1.
   sections, and a chapter or subpart links sections outside its path), less
   any document under it in the same tier, so each provision counts once.
   In Tier 1 a whole citation of a section counts its provisions; a whole
-  citation of a title, chapter, part or whole manual (read from the served
-  identifiers and labels) is one reference and counts once.
+  citation of a container (a title, chapter, part, public or session law,
+  register issue, compilation or whole manual, read from the served
+  identifiers and labels) is one reference and counts once. A collector dry
+  run with `--local-scopes <release TSV> --local-base <data/corpus>` previews
+  what activating a release changes.
   `scripts/collect-program-bundles.mjs` rebuilds them every six hours in the
   pipeline collector's workflow; `/ops` (a programs × states grid) and
   `/ops/bundles/<jurisdiction>/<program>` read only the tables, and the ledger

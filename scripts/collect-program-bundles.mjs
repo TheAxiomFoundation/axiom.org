@@ -26,6 +26,11 @@
  * Options:
  *   --bundle F   measure a local bundle file instead of the ones on
  *                axiom-corpus main (repeatable), e.g. a draft under review.
+ *   --local-scopes TSV --local-base DIR
+ *                dry run only: also count the scopes a release would add
+ *                (TSV of jurisdiction, document_class, version) from their
+ *                local provisions under DIR, as if they were served: a
+ *                preview of what activating the release changes.
  *
  * Tables: encodings.program_bundles (one row per bundle: its header, tier
  * definitions, parity and counts), encodings.program_bundle_documents (one row
@@ -51,6 +56,9 @@ const args = process.argv.slice(2);
 const outPath = argValue("--out");
 const localBundles = argValues("--bundle");
 const dryRun = Boolean(outPath);
+const localScopes = argValue("--local-scopes");
+const localBase = argValue("--local-base");
+if (localScopes && !dryRun) throw new Error("--local-scopes previews a release: use it with --out only");
 
 function argValue(name) {
   const index = args.indexOf(name);
@@ -169,7 +177,27 @@ const literal = (value) => `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')
  *
  * A leaf is a node with no linked children and nothing under its path.
  */
-async function corpusTrees(roots) {
+/** The citation paths of the scopes a release would add, from their local provisions files (preview only). */
+const previewFacts = new Map();
+function localScopePaths() {
+  if (!localScopes) return [];
+  const paths = [];
+  const rows = readFileSync(localScopes, "utf8").trim().split("\n").slice(1);
+  for (const row of rows) {
+    const [jurisdiction, documentClass, version] = row.split("\t");
+    const file = `${localBase}/provisions/${jurisdiction}/${documentClass}/${version}.jsonl`;
+    for (const line of readFileSync(file, "utf8").split("\n")) {
+      if (!line) continue;
+      const row = JSON.parse(line);
+      paths.push(row.citation_path);
+      previewFacts.set(row.citation_path, { kind: row.kind, subtype: row.metadata?.document_subtype ?? "" });
+    }
+  }
+  console.log(`preview: ${paths.length} provisions of ${rows.length} release scopes counted as served`);
+  return paths;
+}
+
+async function corpusTrees(roots, previewPaths = []) {
   const nodes = () => supabase.schema("corpus").from("navigation_nodes").select("path,parent_path,child_count");
   const found = new Map();
   const keep = (rows) => {
@@ -194,6 +222,8 @@ async function corpusTrees(roots) {
   };
   keep(await inBatches(roots, 100, (batch) => pages(() => nodes().in("path", batch))));
   keep(await inBatches(outermost(roots), 25, ranges));
+  // A release preview: the scopes it would add, contained by path.
+  for (const path of previewPaths) if (!found.has(path)) found.set(path, { path, parent_path: null, child_count: 0 });
   // Linked children not yet read, and everything under them, until none are left.
   for (let round = 0; ; round++) {
     const linked = new Map();
@@ -322,15 +352,21 @@ const SECTION_KEY = /(^|[:_])section$/;
 /** A label or legal identifier that names a numbered container: "Chapter 17-676", "42 CFR part 435", "Title 16". */
 const CONTAINER_WORD = /\b(title|chapter|subchapter|part|subpart|article|subtitle|division)\s+\d/i;
 const CONTAINER_SEGMENT = /^(title|chapter|subchapter|part|subpart|article|subtitle|division)-/;
+/** A path inside a collection of acts: a public law or session law is a container of sections. */
+const ACT_PATH = /\/(public-law|session-laws?|acts?)\//;
+/** Unit kinds and document subtypes (local provisions, for a release preview) that collect citable units. */
+const CONTAINER_KIND = /^(title|chapter|subchapter|part|subpart|article|subtitle|division)$/;
+const CONTAINER_SUBTYPE = /manual|compilation|register|public_law|session_law|title|code_edition|code_chapter/;
 
 /**
  * The document roots that are a title, chapter, part or whole manual, not a
  * section, read from the served corpus: identifiers naming a container and
  * no section (IC 6, 42 CFR part 435, MCL chapter 206); a path or label naming
- * a numbered container (HAR Chapter 17-676); a manual whose label names a
- * manual, handbook or notebook and nothing in it ("West Virginia Income
- * Maintenance Manual", not "Texas Works Handbook: A-1320"). A citation of all
- * of such a document is one reference.
+ * a numbered container (HAR Chapter 17-676); a public or session law, a
+ * register issue or a statute compilation (collections of citable units); a
+ * manual whose label names a manual, handbook or notebook and nothing in it
+ * ("West Virginia Income Maintenance Manual", not "Texas Works Handbook:
+ * A-1320"). A citation of all of such a document is one reference.
  */
 async function containerRoots(roots) {
   const labels = new Map();
@@ -351,6 +387,19 @@ async function containerRoots(roots) {
     facts.set(p.citation_path, p);
   const containers = new Set();
   for (const root of roots) {
+    // A root a release preview adds: its unit kind from the local provisions.
+    const local = previewFacts.get(root);
+    if (local && !facts.has(root)) {
+      if (
+        CONTAINER_KIND.test(local.kind ?? "") ||
+        CONTAINER_SUBTYPE.test(local.subtype) ||
+        ACT_PATH.test(root) ||
+        CONTAINER_SEGMENT.test(root.split("/").pop())
+      ) {
+        containers.add(root);
+      }
+      continue;
+    }
     const fact = facts.get(root) ?? {};
     const label = labels.get(root) ?? "";
     const keys = Object.keys(fact.identifiers ?? {});
@@ -359,6 +408,8 @@ async function containerRoots(roots) {
       ? false
       : keys.some((k) => CONTAINER_KEY.test(k)) ||
         CONTAINER_SEGMENT.test(root.split("/").pop()) ||
+        ACT_PATH.test(root) ||
+        /\b(register|compilation)\b/i.test(label) ||
         (CONTAINER_WORD.test(text) && !/§|\bsection\b|\bsec\./i.test(text)) ||
         (["manual", "policy"].includes(fact.doc_type) && /\b(manual|handbook|notebook)\b/i.test(label) && !label.includes(":"));
     if (container) containers.add(root);
@@ -513,7 +564,7 @@ async function main() {
     for (const layer of bundle.layers)
       for (const tier of ["screener", "full"])
         for (const doc of layer[tier]) if (doc.scope === "in" && doc.citation_path) roots.add(doc.citation_path);
-  const trees = await corpusTrees([...roots]);
+  const trees = await corpusTrees([...roots], localScopePaths());
   // The screener documents' roots that are containers, so a citation of all of one counts once.
   const screenerRoots = new Set();
   for (const { bundle } of bundles)
