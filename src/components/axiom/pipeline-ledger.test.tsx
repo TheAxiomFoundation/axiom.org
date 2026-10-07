@@ -88,7 +88,7 @@ describe("PipelineLedger", () => {
     expect(list(stops)).toHaveLength(10);
     fireEvent.click(screen.getByRole("button", { name: "Show fewer" }));
     expect(list(stops)).toHaveLength(5);
-    expect(screen.getByText("Latest run").parentElement).toHaveTextContent("Latest run18d agoFailed validationcause l");
+    expect(screen.getByText("Latest run").parentElement).toHaveTextContent("Latest runFailed validationcause ldispatched 18d agoRun on GitHub ↗");
     // The latest run's timeline shows under the overview, with nothing to open.
     expect(screen.queryByRole("button", { name: /^Timeline of / })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Encode run" })).toBeInTheDocument();
@@ -127,10 +127,10 @@ describe("PipelineLedger", () => {
     expect(screen.getByText("The run").parentElement).toHaveTextContent(/2 tries/);
     const tries = within(screen.getByRole("list", { name: "Tries in the encode loop" })).getAllByRole("listitem");
     expect(tries.map((row) => row.textContent)).toEqual([
-      "1gpt-6-luna37s<$0.01Completeness rule: structure",
-      "2gpt-6-sol20s$0.14Embedded scalar literal",
+      "├Try 1gpt-6-luna37s<$0.01Completeness rule: structure",
+      "└Try 2gpt-6-sol20s$0.14Embedded scalar literal · stopped the run",
     ]);
-    expect(screen.getByText(/^model time 57s of the 10m loop; the rest is checks and review$/)).toBeInTheDocument();
+    expect(screen.getByText(/^Model time 57s of the 10m loop; the rest is checks and review$/)).toBeInTheDocument();
   });
 
   it("shows ten documents at a time", async () => {

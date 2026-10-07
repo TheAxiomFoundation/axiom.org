@@ -345,28 +345,64 @@
   text-decoration: underline;
 }
 
-.ledgerLatest {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 12px;
-  font-size: 12px;
-  color: var(--color-ink-secondary);
+.ledgerVerdict {
+  display: grid;
+  gap: 3px;
 }
 
-.ledgerLatest .ledgerLabel {
+.ledgerVerdict .ledgerLabel {
   margin: 0;
 }
 
-.ledgerLatest a {
+.ledgerVerdictLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 0;
+  font-size: 14px;
   color: var(--color-ink);
-  text-decoration: underline;
-  text-decoration-color: var(--color-rule-strong);
 }
 
-.ledgerLatest a[data-outcome="failed"],
-.ledgerLatest a[data-outcome="cancelled"] {
+.ledgerOutcome {
+  padding: 1px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 12%, transparent);
+}
+
+.ledgerOutcome[data-outcome="failed"],
+.ledgerOutcome[data-outcome="cancelled"] {
   color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+}
+
+.ledgerOutcome[data-outcome="running"],
+.ledgerOutcome[data-outcome="waiting"] {
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+
+.ledgerVerdictCause {
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+
+.ledgerVerdictMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-ink-muted);
+}
+
+.ledgerVerdictMeta a {
+  color: var(--color-ink-secondary);
+  text-decoration: underline;
+  text-decoration-color: var(--color-rule-strong);
 }
 
 .ledgerRuns {

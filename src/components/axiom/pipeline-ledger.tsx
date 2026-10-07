@@ -381,24 +381,36 @@ function SectionRuns({ section, referenceMs }: { section: LedgerSection; referen
           <CountList title="Where each run stopped, and why" groups={overview.stops} />
         </>
       )}
-      <p className={styles.ledgerLatest}>
-        <span className={styles.ledgerLabel}>{overview.runs === 1 ? "The run" : "Latest run"}</span>
-        <span title={latest.dispatchedAt}>{relativeTime(latest.dispatchedAt, referenceMs)}</span>
-        <a href={latest.runUrl} target="_blank" rel="noreferrer" data-outcome={latest.outcome}>
-          {latest.outcomeLabel}
-        </a>
-        {latest.tries && (
-          <span>
-            {latest.tries.length} {latest.tries.length === 1 ? "try" : "tries"}
+      {/* What happened first, then where the time went, then the tries inside the loop. */}
+      <div className={styles.ledgerVerdict} aria-label={overview.runs === 1 ? "The run" : "Latest run"}>
+        <p className={styles.ledgerLabel}>{overview.runs === 1 ? "The run" : "Latest run"}</p>
+        <p className={styles.ledgerVerdictLine}>
+          <span className={styles.ledgerOutcome} data-outcome={latest.outcome}>
+            {latest.outcomeLabel}
           </span>
-        )}
-        {latest.cause && <span title={latest.cause}>{causeHeadline(latest.cause)}</span>}
-        {latest.pr && (
-          <a href={latest.pr.url} target="_blank" rel="noreferrer">
-            {latest.pr.label} · {latest.pr.state}
+          {latest.cause && (
+            <span className={styles.ledgerVerdictCause} title={latest.cause}>
+              {causeHeadline(latest.cause)}
+            </span>
+          )}
+        </p>
+        <p className={styles.ledgerVerdictMeta}>
+          <span title={latest.dispatchedAt}>dispatched {relativeTime(latest.dispatchedAt, referenceMs)}</span>
+          {latest.tries && (
+            <span>
+              {latest.tries.length} {latest.tries.length === 1 ? "try" : "tries"} in the encode loop
+            </span>
+          )}
+          {latest.pr && (
+            <a href={latest.pr.url} target="_blank" rel="noreferrer">
+              {latest.pr.label} · {latest.pr.state}
+            </a>
+          )}
+          <a href={latest.runUrl} target="_blank" rel="noreferrer">
+            Run on GitHub ↗
           </a>
-        )}
-      </p>
+        </p>
+      </div>
       <RunTimeline timeline={runTimeline(latest, referenceMs)} showStopped={false} />
       {overview.runs > 1 && (
         <button

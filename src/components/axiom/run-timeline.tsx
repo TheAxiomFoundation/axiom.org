@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import styles from "./run-timeline.module.css";
 import { durationLabel } from "@/lib/axiom/encoding-pipeline";
 import { shortDuration, type RunTimeline as Timeline } from "@/lib/axiom/encoding-pipeline-runs";
@@ -31,6 +32,9 @@ export function RunTimeline({
   showStopped?: boolean;
 }) {
   const scale = Math.max(timeline.totalMs, 60_000);
+  // The tries nest under the encode loop's bar, or under the run's one bar before its parts are recorded.
+  const loopKey =
+    ["encode", "run"].find((key) => timeline.bars.some((bar) => bar.key === key)) ?? timeline.bars.at(-1)?.key;
   const pct = (ms: number) => `${(ms / scale) * 100}%`;
   return (
     <div className={styles.timeline}>
@@ -53,53 +57,65 @@ export function RunTimeline({
           </div>
           <ol className={styles.list}>
             {timeline.bars.map((bar) => (
-              <li key={bar.key} className={styles.row}>
-                <span className={styles.label}>{bar.label}</span>
-                <span className={styles.time}>{shortDuration(bar.ms)}</span>
-                <span className={styles.track}>
-                  <span
-                    className={styles.bar}
-                    data-key={bar.key}
-                    data-state={bar.state}
-                    style={{ left: pct(bar.startMs), width: pct(bar.ms) }}
-                  />
-                </span>
-              </li>
+              <Fragment key={bar.key}>
+                <li className={styles.row}>
+                  <span className={styles.label}>{bar.label}</span>
+                  <span className={styles.time}>{shortDuration(bar.ms)}</span>
+                  <span className={styles.track}>
+                    <span
+                      className={styles.bar}
+                      data-key={bar.key}
+                      data-state={bar.state}
+                      style={{ left: pct(bar.startMs), width: pct(bar.ms) }}
+                    />
+                  </span>
+                </li>
+                {/* The encode loop's tries, as its children: each try's time under the bars' times. */}
+                {bar.key === loopKey && timeline.tries.length > 0 && (
+                  <li className={styles.tries}>
+                    <ol className={styles.triesList} aria-label="Tries in the encode loop">
+                      {timeline.tries.map((attempt, index) => {
+                        const last = index === timeline.tries.length - 1;
+                        const stoppedRun = last && !attempt.ok && timeline.stopped !== null;
+                        return (
+                          <li key={attempt.attempt} className={styles.row} data-ok={attempt.ok}>
+                            <span className={styles.tryWho}>
+                              <span className={styles.tryBranch} aria-hidden>
+                                {last ? "└" : "├"}
+                              </span>
+                              <span className={styles.tryNumber}>Try {attempt.attempt}</span>
+                              <span className={styles.tryModel}>{attempt.model ?? "—"}</span>
+                            </span>
+                            <span className={styles.time}>{attempt.ms === null ? "—" : shortDuration(attempt.ms)}</span>
+                            <span className={styles.tryWhat}>
+                              <span className={styles.tryCost}>{cost(attempt.cost)}</span>
+                              <span
+                                className={styles.tryResult}
+                                title={
+                                  attempt.ok
+                                    ? "The loop accepted this candidate; later checks can still fail the run."
+                                    : (attempt.error ?? undefined)
+                                }
+                              >
+                                {attempt.ok ? "accepted" : (attempt.headline ?? "failed")}
+                                {stoppedRun && <span className={styles.tryStopped}> · stopped the run</span>}
+                              </span>
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ol>
+                    {timeline.modelMs !== null && (
+                      <p className={styles.triesNote}>
+                        Model time {shortDuration(timeline.modelMs)}
+                        {timeline.loopMs !== null && ` of the ${shortDuration(timeline.loopMs)} loop; the rest is checks and review`}
+                      </p>
+                    )}
+                  </li>
+                )}
+              </Fragment>
             ))}
           </ol>
-          {timeline.tries.length > 0 && (
-            <div className={styles.tries}>
-              <p className={styles.triesHead}>
-                Tries in the encode loop
-                {timeline.modelMs !== null && (
-                  <span>
-                    model time {shortDuration(timeline.modelMs)}
-                    {timeline.loopMs !== null && ` of the ${shortDuration(timeline.loopMs)} loop; the rest is checks and review`}
-                  </span>
-                )}
-              </p>
-              <ol className={styles.triesList} aria-label="Tries in the encode loop">
-                {timeline.tries.map((attempt) => (
-                  <li key={attempt.attempt} className={styles.row} data-ok={attempt.ok}>
-                    <span className={styles.tryWho}>
-                      <span className={styles.tryNumber}>{attempt.attempt}</span>
-                      <span className={styles.tryModel}>{attempt.model ?? "—"}</span>
-                    </span>
-                    <span className={styles.time}>{attempt.ms === null ? "—" : shortDuration(attempt.ms)}</span>
-                    <span className={styles.tryWhat}>
-                      <span className={styles.tryCost}>{cost(attempt.cost)}</span>
-                      <span
-                        className={styles.tryResult}
-                        title={attempt.ok ? "The loop accepted this candidate; later checks can still fail the run." : (attempt.error ?? undefined)}
-                      >
-                        {attempt.ok ? "accepted" : (attempt.headline ?? "failed")}
-                      </span>
-                    </span>
-                  </li>
-                ))}
-              </ol>
-            </div>
-          )}
           {showStopped && timeline.stopped && <p className={styles.stopped}>{timeline.stopped}</p>}
         </section>
       )}
