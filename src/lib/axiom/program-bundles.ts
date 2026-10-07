@@ -46,6 +46,8 @@ export interface BundleFileDocument {
   note?: string | null;
   /** The provisions PolicyEngine cites in this document, and the part each feeds. */
   cited?: Array<{ path: string; references: number; part?: string | null }>;
+  /** Set by the collector: the document is a title, chapter, part or whole manual (see BundleDocumentRow.container). */
+  container?: boolean;
 }
 
 export interface BundleFileTier {
@@ -192,6 +194,12 @@ export interface BundleDocumentRow {
   manifest: string | null;
   /** The corpus serves the citation path. */
   in_corpus: boolean;
+  /**
+   * The document is a title, chapter, part or whole manual, not a section: a
+   * citation of all of it is one reference, so the screener tier counts it as
+   * one cited provision, not as every provision in it.
+   */
+  container?: boolean;
   /** Text-bearing provisions under the document, and how many are in each state. */
   provisions: number;
   encoded_provisions: number;
@@ -422,6 +430,7 @@ export function measureDocument(
     sources: doc.sources ?? [],
     manifest: doc.manifest ?? null,
     in_corpus: inCorpus,
+    container: Boolean(doc.container),
     provisions: leaves.length,
     encoded_provisions: count("encoded"),
     unvalidated_provisions: count("unvalidated"),
@@ -586,8 +595,9 @@ const UNIT_AS_PROVISION: Record<UnitState, ProvisionState | null> = {
  * parity, so it counts the provisions PolicyEngine cites (its units); where
  * PolicyEngine cites the whole document (or a page of it, which the corpus
  * cannot place), every provision of the document counts, as in the full
- * bundle. The full bundle counts every text-bearing provision. Both on one
- * state scale.
+ * bundle, unless the document is a title, chapter, part or whole manual: a
+ * citation of all of that is one reference, and counts as one. The full
+ * bundle counts every text-bearing provision. Both on one state scale.
  */
 export function measured(
   row: Pick<
@@ -596,6 +606,7 @@ export function measured(
     | "citation_path"
     | "units"
     | "in_corpus"
+    | "container"
     | "provisions"
     | "encoded_provisions"
     | "unvalidated_provisions"
@@ -621,7 +632,8 @@ export function measured(
     }
     return { total: row.provisions, byState: provisionCounts(row), missing: 0 };
   }
-  const whole = row.in_corpus && row.provisions > 0 && row.units.some((u) => u.path && u.path === row.citation_path);
+  const whole =
+    row.in_corpus && !row.container && row.provisions > 0 && row.units.some((u) => u.path && u.path === row.citation_path);
   if (whole && row.tier === "screener") return { total: row.provisions, byState: provisionCounts(row), missing: 0 };
   const byState = Object.fromEntries(PROVISION_STATES.map((s) => [s, 0])) as Record<ProvisionState, number>;
   let missing = 0;
@@ -644,7 +656,8 @@ type Measure = ReturnType<typeof measured>;
  */
 export function measuredByPart(row: BundleDocumentRow): Map<string, Measure> {
   const out = new Map<string, Measure>();
-  const whole = row.in_corpus && row.provisions > 0 && row.units.find((u) => u.path && u.path === row.citation_path);
+  const whole =
+    row.in_corpus && !row.container && row.provisions > 0 && row.units.find((u) => u.path && u.path === row.citation_path);
   if (row.tier !== "screener" || whole || !row.units.length) {
     out.set((row.tier === "screener" && whole ? whole.part : null) ?? row.part, measured(row));
     return out;

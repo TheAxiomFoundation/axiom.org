@@ -272,6 +272,21 @@ describe("measureDocument", () => {
   });
 });
 
+describe("a whole citation of a title, chapter, part or whole manual", () => {
+  it("counts once in the screener tier, graded by its provisions, and every provision in the full bundle", () => {
+    const title = doc({ cited: [{ path: "us/statute/7/2014", references: 1, part: "Income" }] });
+    const t = { nodes, modules: [module("us/statute/7/2014/a")], attempts: [] };
+    // A section cited whole counts every provision in it.
+    const section = measureDocument("b", "screener", title, t, AT);
+    expect(measured(section)).toMatchObject({ total: 4, byState: { encoded: 1, not_started: 3 } });
+    // A container cited whole is one reference: partly encoded, as its provisions are.
+    const container = measureDocument("b", "screener", { ...title, container: true }, t, AT);
+    expect(container.container).toBe(true);
+    expect(measured(container)).toMatchObject({ total: 1, byState: { partly: 1 } });
+    expect(measured(measureDocument("b", "full", { ...title, container: true }, t, AT))).toMatchObject({ total: 4 });
+  });
+});
+
 describe("the full bundle never counts more coarsely than the screener tier", () => {
   it("counts a corpus provision with cited paragraphs under it as those paragraphs", () => {
     // The corpus holds 7 CFR 273.11 as one provision; PolicyEngine cites three of its paragraphs.

@@ -46,6 +46,7 @@ create table if not exists encodings.program_bundle_documents (
   sources             text[] not null default '{}',  -- plan | policyengine-references | screener | schema:<element> | <manifest> | known-source
   manifest            text,                -- the source manifest that registers it
   in_corpus           boolean not null,
+  container           boolean not null default false, -- a title, chapter, part or whole manual: a whole citation counts once
   -- The document's text-bearing provisions (corpus leaves), each in one
   -- state: encoded (a rule cites it or a provision above it, and nothing in
   -- it is deferred), unvalidated (encoded, but every such module merged

@@ -54,6 +54,9 @@ generate `/axiom/v2/...` hrefs. The app root and marketing pages stay on v1.
   nodes under its path and linked under it (`parent_path` misses some
   sections, and a chapter or subpart links sections outside its path), less
   any document under it in the same tier, so each provision counts once.
+  In Tier 1 a whole citation of a section counts its provisions; a whole
+  citation of a title, chapter, part or whole manual (read from the served
+  identifiers and labels) is one reference and counts once.
   `scripts/collect-program-bundles.mjs` rebuilds them every six hours in the
   pipeline collector's workflow; `/ops` (a programs × states grid) and
   `/ops/bundles/<jurisdiction>/<program>` read only the tables, and the ledger

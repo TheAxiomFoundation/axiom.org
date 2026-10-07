@@ -312,6 +312,57 @@ async function readModules() {
   return touching;
 }
 
+/** An identifier key that names a container (indiana:title, ecfr:part, nmsa_chapter), or a section. */
+const CONTAINER_KEY = /(^|[:_])(title|code_title|chapter|subchapter|part|subpart|article|subtitle|division|act)$/;
+const SECTION_KEY = /(^|[:_])section$/;
+/** A label or legal identifier that names a numbered container: "Chapter 17-676", "42 CFR part 435", "Title 16". */
+const CONTAINER_WORD = /\b(title|chapter|subchapter|part|subpart|article|subtitle|division)\s+\d/i;
+const CONTAINER_SEGMENT = /^(title|chapter|subchapter|part|subpart|article|subtitle|division)-/;
+
+/**
+ * The document roots that are a title, chapter, part or whole manual, not a
+ * section, read from the served corpus: identifiers naming a container and
+ * no section (IC 6, 42 CFR part 435, MCL chapter 206); a path or label naming
+ * a numbered container (HAR Chapter 17-676); a manual whose label names a
+ * manual, handbook or notebook and nothing in it ("West Virginia Income
+ * Maintenance Manual", not "Texas Works Handbook: A-1320"). A citation of all
+ * of such a document is one reference.
+ */
+async function containerRoots(roots) {
+  const labels = new Map();
+  for (const n of await inBatches(roots, 100, (batch) =>
+    pages(() => supabase.schema("corpus").from("navigation_nodes").select("path,label").in("path", batch))
+  ))
+    labels.set(n.path, n.label ?? "");
+  const facts = new Map();
+  for (const p of await inBatches(roots, 100, (batch) =>
+    pages(() =>
+      supabase
+        .schema("corpus")
+        .from("current_provisions")
+        .select("citation_path,legal_identifier,identifiers,doc_type")
+        .in("citation_path", batch)
+    )
+  ))
+    facts.set(p.citation_path, p);
+  const containers = new Set();
+  for (const root of roots) {
+    const fact = facts.get(root) ?? {};
+    const label = labels.get(root) ?? "";
+    const keys = Object.keys(fact.identifiers ?? {});
+    const text = [fact.legal_identifier, label].filter(Boolean).join(" ");
+    const container = keys.some((k) => SECTION_KEY.test(k))
+      ? false
+      : keys.some((k) => CONTAINER_KEY.test(k)) ||
+        CONTAINER_SEGMENT.test(root.split("/").pop()) ||
+        (CONTAINER_WORD.test(text) && !/§|\bsection\b|\bsec\./i.test(text)) ||
+        (["manual", "policy"].includes(fact.doc_type) && /\b(manual|handbook|notebook)\b/i.test(label) && !label.includes(":"));
+    if (container) containers.add(root);
+  }
+  console.log(`containers: ${containers.size} of ${roots.length} screener document roots`);
+  return containers;
+}
+
 /** A section number as its corpus path segment and a web page's path both spell it: 7 AAC 45.280, 7-AAC-45.280. */
 const sectionKey = (text) => text.toLowerCase().replace(/[^a-z0-9]/g, "");
 
@@ -459,6 +510,12 @@ async function main() {
       for (const tier of ["screener", "full"])
         for (const doc of layer[tier]) if (doc.scope === "in" && doc.citation_path) roots.add(doc.citation_path);
   const trees = await corpusTrees([...roots]);
+  // The screener documents' roots that are containers, so a citation of all of one counts once.
+  const screenerRoots = new Set();
+  for (const { bundle } of bundles)
+    for (const layer of bundle.layers)
+      for (const doc of layer.screener) if (doc.scope === "in" && doc.citation_path) screenerRoots.add(doc.citation_path);
+  const containers = await containerRoots([...screenerRoots].filter((root) => trees.get(root)?.length));
   const telemetry = new Map();
   const telemetryFor = (root) => {
     if (!telemetry.has(root)) {
@@ -495,6 +552,7 @@ async function main() {
         for (const doc of layer[tier]) {
           let t = doc.scope === "in" && doc.citation_path ? telemetryFor(doc.citation_path) : null;
           let measuredDoc = tier === "full" && cited.has(doc.key) ? { ...doc, cited: cited.get(doc.key) } : doc;
+          if (doc.citation_path && containers.has(doc.citation_path)) measuredDoc = { ...measuredDoc, container: true };
           const nested = t ? nestedIn(doc.citation_path) : [];
           if (nested.length) {
             t = { ...t, nodes: t.nodes.filter((n) => !nested.some((r) => under(n.path, r))) };
