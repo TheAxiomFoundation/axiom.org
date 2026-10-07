@@ -10,7 +10,7 @@ import {
   stageSince,
   type PipelineAttempt,
 } from "@/lib/axiom/encoding-pipeline";
-import { bundleProgram, membershipDetail, tiersLabel, type BundleMembership } from "@/lib/axiom/program-bundles";
+import { bundleHref, bundleProgram, membershipDetail, tiersLabel, type BundleMembership } from "@/lib/axiom/program-bundles";
 import {
   runRow,
   runTimeline,
@@ -66,7 +66,7 @@ export function PipelineJourney({
             <p className={styles.bundles}>
               Part of
               {bundles.map((membership) => (
-                <a key={membership.bundle_id} href={`/ops/bundles/${membership.bundle_id}`} title={membershipDetail(membership)}>
+                <a key={membership.bundle_id} href={bundleHref(membership.bundle_id)} title={membershipDetail(membership)}>
                   {bundleProgram(membership)} · {tiersLabel(membership)}
                   <span>{membership.tiers[0].document}</span>
                 </a>

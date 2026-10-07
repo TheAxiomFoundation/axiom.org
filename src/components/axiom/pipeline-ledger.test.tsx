@@ -43,7 +43,7 @@ describe("PipelineLedger", () => {
     expect(row).toHaveTextContent(/2015\/f.*Disqualification.*Tests pass.*2/);
     expect(within(row).getByRole("link", { name: "2015/f" })).toHaveAttribute("href", "/ops/journey?citation=us%2Fstatute%2F7%2F2015%2Ff");
     // The program bundle and tier the section belongs to.
-    expect(within(row).getByRole("link", { name: "Arizona SNAP · Tier 1" })).toHaveAttribute("href", "/ops/bundles/us-az/snap");
+    expect(within(row).getByRole("link", { name: "Arizona SNAP · Tier 1" })).toHaveAttribute("href", "/ops?tab=bundles&bundle=us-az/snap");
     expect(within(screen.getByRole("button", { name: "Runs of us-la/statute/47/32" }).closest("tr")!).queryByRole("link", { name: /SNAP/ })).toBeNull();
     expect(screen.getByRole("button", { name: "Runs of us-la/statute/47/32" }).closest("tr")).toHaveTextContent("Failed validation");
   });

@@ -2,11 +2,11 @@
 
 import { ArrowDown, ArrowLeft, ArrowUp, ChevronRight, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import dashboard from "./ops-dashboard.module.css";
 import styles from "./program-bundle.module.css";
 import { Explain } from "./ops-pipeline";
 import { ageLabel, STAGE_COPY } from "@/lib/axiom/encoding-pipeline";
 import {
+  bundlesTabHref,
   documentType,
   DOCUMENT_STATUSES,
   formatShare,
@@ -256,14 +256,13 @@ export function ProgramBundle({
   }
 
   return (
-    <div className={`${dashboard.dashboard} ${styles.page} min-h-screen pt-28 pb-16`}>
-      <div className="max-w-[1100px] mx-auto px-5 md:px-10">
-        <a href="/ops?tab=bundles" className={styles.back}>
-          <ArrowLeft size={13} aria-hidden /> Operations
+    <div className={styles.page}>
+      <div>
+        <a href={bundlesTabHref(bundle?.program, count)} className={styles.back}>
+          <ArrowLeft size={13} aria-hidden /> All program bundles
         </a>
-        <header className={dashboard.header}>
-          <p className={dashboard.eyebrow}>Axiom / Operations / Bundles</p>
-          <h1 className={styles.title}>{bundle?.title ?? "No bundle"}</h1>
+        <header className={styles.header}>
+          <h2 className={styles.title}>{bundle?.title ?? "No bundle"}</h2>
           <p className={styles.summary}>
             {bundle ? (
               <>

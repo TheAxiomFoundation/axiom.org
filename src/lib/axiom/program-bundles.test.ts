@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { pipelineAttempt } from "@/test/pipeline-attempt";
 import {
+  bundleHref,
+  bundlesTabHref,
   documentType,
   formatShare,
   measured,
@@ -457,5 +459,15 @@ describe("measuredByPart", () => {
       AT
     );
     expect([...measuredByPart(whole).entries()]).toEqual([["Assets", measured(whole)]]);
+  });
+});
+
+describe("bundle links", () => {
+  it("opens a bundle in the /ops bundles tab, and goes back to the tab's grid on its program", () => {
+    expect(bundleHref("us-az/snap")).toBe("/ops?tab=bundles&bundle=us-az/snap");
+    expect(bundleHref("us/snap", "provisions")).toBe("/ops?tab=bundles&bundle=us/snap&count=provisions");
+    expect(bundlesTabHref("snap")).toBe("/ops?tab=bundles&program=snap");
+    expect(bundlesTabHref("snap", "provisions")).toBe("/ops?tab=bundles&program=snap&count=provisions");
+    expect(bundlesTabHref(null)).toBe("/ops?tab=bundles");
   });
 });

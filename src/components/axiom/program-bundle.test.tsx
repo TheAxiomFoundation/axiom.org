@@ -141,6 +141,8 @@ describe("ProgramBundle", () => {
   it("counts documents in both tiers by default, a row per part, each cell its own share", () => {
     render(<ProgramBundle bundle={withParts} documents={documents} available referenceMs={NOW} />);
     expect(screen.getByRole("heading", { name: "Arizona SNAP" })).toBeInTheDocument();
+    // The page sits in the /ops bundles tab; its back link returns to the grid on its program.
+    expect(screen.getByRole("link", { name: "All program bundles" })).toHaveAttribute("href", "/ops?tab=bundles&program=snap");
     const matrix = screen.getByRole("table", { name: "Parts of the program by tier" });
     const headers = within(matrix).getAllByRole("columnheader");
     // Both tiers lead with how much is encoded; under the screener tier's, its comparison run.

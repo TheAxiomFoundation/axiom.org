@@ -65,9 +65,11 @@ generate `/axiom/v2/...` hrefs. The app root and marketing pages stay on v1.
   run with `--local-scopes <release TSV> --local-base <data/corpus>` previews
   what activating a release changes.
   `scripts/collect-program-bundles.mjs` rebuilds them every six hours in the
-  pipeline collector's workflow; `/ops` (a programs × states grid) and
-  `/ops/bundles/<jurisdiction>/<program>` read only the tables, and the ledger
-  and journey name each encoding's bundle and tier from them.
+  pipeline collector's workflow; the `/ops` "Program bundles" tab (a
+  programs × states grid, `?tab=bundles&program=<program>`, and one bundle's
+  page, `?tab=bundles&bundle=<jurisdiction>/<program>`) reads only the tables,
+  and the ledger and journey name each encoding's bundle and tier from them
+  and link into that tab. The old `/ops/bundles/<id>` address only redirects.
 - **Everything executable** (packages, graphs, calculate): the hosted
   axiom-api via `src/lib/axiom/runtime/api.ts`, server-side only.
 
@@ -88,7 +90,7 @@ Dev needs `.env.local` (gitignored) with:
   reads instead of `encodings.pipeline_attempts`.
 - `AXIOM_OPS_BUNDLES_FILE` — optional, dev only: a bundle collector dry run
   (`bun scripts/collect-program-bundles.mjs --out <file>`, `--bundle <yaml>`
-  for a bundle file not yet on axiom-corpus main) that `/ops/bundles` reads
+  for a bundle file not yet on axiom-corpus main) that the bundles tab reads
   instead of the tables.
 - `NEXT_PUBLIC_GRAPH_VIEWER_URL` / `NEXT_PUBLIC_BUILDER_URL` — optional
   overrides for the graph-viewer / dashboard-builder deep-link targets.

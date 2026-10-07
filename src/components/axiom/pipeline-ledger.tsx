@@ -9,6 +9,7 @@ import { journeyHref } from "@/lib/axiom/encoding-pipeline";
 import { scopeSearch, type PipelineScope } from "@/lib/axiom/encoding-pipeline-insights";
 import { runTimeline, type RunRow } from "@/lib/axiom/encoding-pipeline-runs";
 import {
+  bundleHref,
   bundleMemberships,
   bundleProgram,
   membershipDetail,
@@ -248,7 +249,7 @@ function DocumentSections({
                     <a
                       key={membership.bundle_id}
                       className={styles.ledgerBundle}
-                      href={`/ops/bundles/${membership.bundle_id}`}
+                      href={bundleHref(membership.bundle_id)}
                       aria-label={`${membership.bundle_title} · ${tiersLabel(membership)}`}
                       title={membershipDetail(membership)}
                     >

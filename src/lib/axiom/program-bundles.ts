@@ -838,6 +838,18 @@ export function bundleMemberships(citation: string, index: BundleIndexEntry[]): 
  * The innermost tier a citation sits in: "Tier 1" (Tier 2 always holds Tier
  * 1's documents, so naming both says nothing more), else "Tier 2".
  */
+/** Where a bundle opens: its page in the /ops "Program bundles" tab, in the count a link chose. */
+export function bundleHref(id: string, count?: "documents" | "provisions"): string {
+  return `/ops?tab=bundles&bundle=${encodeURI(id)}${count === "provisions" ? "&count=provisions" : ""}`;
+}
+
+/** The "Program bundles" tab's grid, back on a program and in a count. */
+export function bundlesTabHref(program?: string | null, count?: "documents" | "provisions"): string {
+  return `/ops?tab=bundles${program ? `&program=${encodeURIComponent(program)}` : ""}${
+    count === "provisions" ? "&count=provisions" : ""
+  }`;
+}
+
 export function tiersLabel(membership: BundleMembership): string {
   return `Tier ${Math.min(...membership.tiers.map((t) => t.index))}`;
 }

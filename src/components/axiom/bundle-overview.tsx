@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import styles from "./bundle-overview.module.css";
-import { formatShare, type BundleTierId, type TierCounts } from "@/lib/axiom/program-bundles";
+import { bundleHref, formatShare, type BundleTierId, type TierCounts } from "@/lib/axiom/program-bundles";
 import type { BundleSummary } from "@/lib/axiom/program-bundles-data";
 
 const number = (value: number) => value.toLocaleString("en-US");
@@ -95,7 +95,16 @@ interface Row {
  * own documents across every program; then the chosen jurisdiction's own
  * documents in each program, so the federal and the state parts stay apart.
  */
-export function BundleOverview({ bundles }: { bundles: BundleSummary[] }) {
+export function BundleOverview({
+  bundles,
+  initialProgram,
+  initialCount = "documents",
+}: {
+  bundles: BundleSummary[];
+  /** The program to open on, as a bundle's "All program bundles" link names it. */
+  initialProgram?: string;
+  initialCount?: Count;
+}) {
   const byId = new Map(bundles.map((b) => [b.id, b]));
   const programTitle = (p: string) =>
     byId.get(`us/${p}`)?.title.replace(/: federal law$/, "") ?? p.toUpperCase();
@@ -105,8 +114,10 @@ export function BundleOverview({ bundles }: { bundles: BundleSummary[] }) {
   const programs = alphabetical([...new Set(bundles.map((b) => b.program))], programTitle);
   const jurisdictions = [...new Set(bundles.map((b) => b.jurisdiction).filter((j) => j !== "us"))];
   const [view, setView] = useState<View>("program");
-  const [count, setCount] = useState<Count>("documents");
-  const [program, setProgram] = useState(programs.includes("snap") ? "snap" : programs[0]);
+  const [count, setCount] = useState<Count>(initialCount);
+  const [program, setProgram] = useState(
+    initialProgram && programs.includes(initialProgram) ? initialProgram : programs.includes("snap") ? "snap" : programs[0]
+  );
   const [jurisdiction, setJurisdiction] = useState("us");
   // The tier the left list summarizes.
   const [tier, setTier] = useState<BundleTierId>("screener");
@@ -119,7 +130,7 @@ export function BundleOverview({ bundles }: { bundles: BundleSummary[] }) {
   const unit = (t: BundleTierId) =>
     count === "documents" ? "documents" : t === "screener" ? "cited provisions" : "provisions";
   const verb = count === "documents" ? "complete" : "encoded";
-  const link = (id: string) => `/ops/bundles/${id}${count === "provisions" ? "?count=provisions" : ""}`;
+  const link = (id: string) => bundleHref(id, count);
 
   // A bundle's share as its page shows it; a state's own layer is that less the federal law.
   const pageShare = (id: string, t: BundleTierId) => shareOf(byId.get(id)?.counts[t], count);
