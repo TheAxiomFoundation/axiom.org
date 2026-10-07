@@ -75,6 +75,7 @@ import {
   mergeValidationKey,
   mergeValidationLookups,
   needsLogRead,
+  needsStepRead,
   oldestUnsyncedMerge,
   oracleVerdicts,
   parseDiagnostics,
@@ -611,6 +612,23 @@ async function logError(runId) {
 }
 
 async function lookUpFailure(run, known) {
+  // A run its log explains, without its step: only the step needs reading.
+  if (known && needsStepRead(known)) {
+    try {
+      const { failed_step } = await jobsDetail(run.id);
+      if (!failed_step) return null;
+      return {
+        source: "log",
+        citation: known.citation ?? null,
+        failed_step,
+        error: known.encoder_error ?? null,
+        rule: known.encoder_error_rule ?? null,
+      };
+    } catch (error) {
+      console.warn(`jobs for run ${run.id}: ${error.message}`);
+      return null;
+    }
+  }
   // A run already explained by its step alone only needs its log read.
   let detail = known && needsLogRead(known)
     ? {
@@ -636,6 +654,15 @@ async function lookUpFailure(run, known) {
   if (detail && !detail.error && !detail.rule) {
     const printed = await logError(run.id);
     if (printed !== undefined) detail = { ...detail, source: "log", error: printed };
+  }
+  // The step that failed, from the jobs API, when the diagnostics bundle did not name it.
+  if (detail && !detail.failed_step) {
+    try {
+      const { failed_step } = await jobsDetail(run.id);
+      if (failed_step) detail = { ...detail, failed_step };
+    } catch (error) {
+      console.warn(`jobs for run ${run.id}: ${error.message}`);
+    }
   }
   return detail;
 }

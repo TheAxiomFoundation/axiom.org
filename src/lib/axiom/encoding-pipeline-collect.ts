@@ -1255,6 +1255,14 @@ export function needsLogRead(known: Partial<PipelineAttempt>): boolean {
 }
 
 /**
+ * A failure its log explains whose step the jobs API was never asked for
+ * ("jq: error: …" read from the log, no step): read the step, once.
+ */
+export function needsStepRead(known: Partial<PipelineAttempt>): boolean {
+  return known.failure_source === "log" && !known.failed_step;
+}
+
+/**
  * Failed runs whose cause is still unknown, in the order /ops needs them:
  * each citation's latest dispatch first (the view shows only that one),
  * then older dispatches, newest first within each. A cancelled or
@@ -1283,7 +1291,7 @@ export function failureLookups(
       if (!isFailedRun(run)) return false;
       if (run.conclusion === "cancelled" || run.conclusion === "timed_out") return false;
       const known = previous.get(String(run.id));
-      if (known?.failure_source && !needsLogRead(known)) return false;
+      if (known?.failure_source && !needsLogRead(known) && !needsStepRead(known)) return false;
       // An unnamed early run has no citation to match an encoder record by.
       const parsed = parseRunTitle(run.display_title);
       const encoder = parsed

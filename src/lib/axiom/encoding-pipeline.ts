@@ -500,8 +500,8 @@ export const ENCODE_GATE_LABELS: Record<EncodeGate, string> = {
   unknown: "Failed at an unknown step",
 };
 
-/** The validator's issue prefix: "<file>.yaml: <check>: ...". */
-const ERROR_CHECK_RE = /^\S+?\.ya?ml:\s*([a-z_-]+):/;
+/** The validator's issue prefix: "<file>.yaml: <check>: ...", or the check alone ("compile: ..."). */
+const ERROR_CHECK_RE = /^(?:\S+?\.ya?ml:\s*)?([a-z_-]+):/;
 const ERROR_CHECK_GATES: Record<string, EncodeGate> = {
   ci: "validate",
   compile: "compile",
@@ -514,7 +514,7 @@ const ERROR_CHECK_GATES: Record<string, EncodeGate> = {
 /** Workflow steps (by diagnostics id or job/step name) and the gate they belong to. */
 const STEP_GATES: Array<[RegExp, EncodeGate]> = [
   [/budget/i, "budget"],
-  [/repair[ _]candidate|checkout identities|corpus release|signing supervisor|compose runtime|routing|existing signed imports/i, "setup"],
+  [/repair[ _]candidate|checkout identities|corpus release|signing supervisor|compose runtime|routing|existing signed imports|source inputs/i, "setup"],
   [/package|provenance|commit[ _]reviewed/i, "sign"],
   [/pull request|publish_lane|push lane/i, "publish"],
   [/encode_apply|encode, review, validate, and apply/i, "encode"],

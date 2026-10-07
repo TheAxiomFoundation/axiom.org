@@ -72,23 +72,23 @@ describe("PipelineLedger", () => {
     expect(screen.getByText(/^Every run, grouped/)).toBeInTheDocument();
     fireEvent.click(section);
     expect(section).toHaveAttribute("aria-expanded", "true");
-    // A summary line, then two count-first lists, then the latest run.
-    expect(screen.getByText("12 runs").parentElement).toHaveTextContent("12 runs29d ago → 18d agoencoder 0.2.2000 → 0.2.2011");
+    // A summary line, then where and why each run stopped (count first), then the latest run.
+    expect(screen.getByText("12 runs").parentElement).toHaveTextContent("12 runsall failedlatest 18d ago");
     const list = (name: string) => within(screen.getByRole("list", { name })).getAllByRole("listitem").map((item) => item.textContent);
-    expect(list("Outcome of each run")).toEqual(["8Failed at an unknown step", "4Failed validation"]);
-    expect(list("Why they failed")).toEqual([
-      "4Completeness rule: tests",
-      "1cause b",
-      "1cause c",
-      "1cause e",
+    const stops = "Where each run stopped, and why";
+    expect(list(stops)).toEqual([
+      "4Failed validation — Completeness rule: tests",
+      "1Failed validation — cause l",
+      "1Failed validation — cause k",
+      "1Failed validation — cause i",
       "+5 more",
     ]);
     // "+5 more" opens the rest of the list, and "Show fewer" folds it again.
     fireEvent.click(screen.getByRole("button", { name: "+5 more" }));
-    expect(list("Why they failed")).toHaveLength(10);
+    expect(list(stops)).toHaveLength(10);
     fireEvent.click(screen.getByRole("button", { name: "Show fewer" }));
-    expect(list("Why they failed")).toHaveLength(5);
-    expect(screen.getByText("Latest run").parentElement).toHaveTextContent("Latest run18d agoFailed at an unknown stepcause l");
+    expect(list(stops)).toHaveLength(5);
+    expect(screen.getByText("Latest run").parentElement).toHaveTextContent("Latest run18d agoFailed validationcause l");
     // The latest run's timeline shows under the overview, with nothing to open.
     expect(screen.queryByRole("button", { name: /^Timeline of / })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Encode run" })).toBeInTheDocument();

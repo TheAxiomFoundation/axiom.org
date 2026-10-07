@@ -728,10 +728,27 @@ export function causeText(cause: string): string {
  * ("ci: Ungrounded generated numeric literal: N does not…" is "Ungrounded
  * generated numeric literal"). Causes with one headline count together.
  */
+/** A command-line tool's error: "jq: error: syntax error, unexpected …". */
+const TOOL_ERROR_RE = /^([a-z][\w-]{1,20}):\s*error:\s*([\s\S]+)$/i;
+/** An exception raised under its module path: "axiom_encode.corpus_resolver.CorpusLayoutError: …". */
+const MODULE_EXCEPTION_RE = /^(?:[a-z_][\w]*\.)+([A-Z]\w*?)(Error|Exception):\s*/;
+
+/** "CorpusLayout" as "Corpus layout". */
+const words = (camel: string) => {
+  const spaced = camel.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+};
+
 export function causeHeadline(cause: string): string {
   const text = causeBody(cause);
   const rule = text.match(COMPLETENESS_RULE_RE);
   if (rule) return `Completeness rule: ${rule[1]}`;
+  // A tool's error by the tool and its first clause: "jq: syntax error".
+  const tool = text.match(TOOL_ERROR_RE);
+  if (tool) return `${tool[1]}: ${tool[2].split(/[,:]\s/)[0].replace(/[.\s]+$/, "")}`;
+  // An exception by its class in words: "Corpus layout error".
+  const raised = text.match(MODULE_EXCEPTION_RE);
+  if (raised) return `${words(raised[1])} ${raised[2].toLowerCase()}`;
   const clause = text.split(/:\s/)[0];
   const headline = (clause.length >= 12 ? clause : text).replace(/[.\s]+$/, "");
   return headline.length > CAUSE_HEADLINE_MAX ? `${headline.slice(0, CAUSE_HEADLINE_MAX - 1)}…` : headline;

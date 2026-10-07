@@ -19,6 +19,7 @@ import {
   checkErrorFromLog,
   checkErrorLookups,
   needsLogRead,
+  needsStepRead,
   parseVersion,
   versionLookups,
   errorRule,
@@ -432,9 +433,13 @@ describe("failureLookups", () => {
       run({ id: 6, status: "in_progress", conclusion: null }),
     ];
     const encoder = [encoderRow({ timestamp: "2026-09-04T00:20:00Z" })];
-    const previous = new Map([["2", { failure_source: "log" }]]);
+    const previous = new Map([["2", { failure_source: "log", failed_step: "job / Verify immutable checkout identities" }]]);
     expect(failureLookups(runs, encoder, previous, NOW, 10).map((r) => r.id)).toEqual([5, 1]);
     expect(failureLookups(runs, encoder, previous, NOW, 1).map((r) => r.id)).toEqual([5]);
+    // A failure its log explains without the step it failed in is read again, for the step.
+    const stepless = new Map([["2", { failure_source: "log", encoder_error: "jq: error: syntax error" }]]);
+    expect(needsStepRead(stepless.get("2")!)).toBe(true);
+    expect(failureLookups(runs, encoder, stepless, NOW, 10).map((r) => r.id)).toEqual([5, 2, 1]);
   });
 
   it("looks up each citation's latest failure first and never a cancelled run", () => {

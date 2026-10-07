@@ -270,13 +270,17 @@ function DocumentSections({
   );
 }
 
-/** One overview list, count first: "9  Failed validation", the largest few until "+N more" opens the rest. A row's tooltip holds a full message. */
+/**
+ * One overview list, count first: "2  Failed to compile — Axiom rules engine
+ * compile failed", the largest few until "+N more" opens the rest. A row's
+ * tooltip holds a full message.
+ */
 function CountList({
   title,
   groups,
 }: {
   title: string;
-  groups: Array<{ label: string; count: number; detail?: string }>;
+  groups: Array<{ label: string; count: number; cause?: string | null; detail?: string | null }>;
 }) {
   const [all, setAll] = useState(false);
   const more = groups.length - OVERVIEW_GROUPS;
@@ -285,9 +289,12 @@ function CountList({
       <p className={styles.ledgerLabel}>{title}</p>
       <ul className={styles.ledgerCounts} aria-label={title}>
         {(all ? groups : groups.slice(0, OVERVIEW_GROUPS)).map((group) => (
-          <li key={group.label} title={group.detail ?? group.label}>
+          <li key={`${group.label}|${group.cause ?? ""}`} title={group.detail ?? group.label}>
             <span className={styles.ledgerCount}>{group.count}</span>
-            <span>{group.label}</span>
+            <span>
+              <span className={styles.ledgerStop}>{group.label}</span>
+              {group.cause && <span className={styles.ledgerCause}> — {group.cause}</span>}
+            </span>
           </li>
         ))}
         {more > 0 && (
@@ -339,36 +346,29 @@ function RunLines({ runs, referenceMs }: { runs: RunRow[]; referenceMs: number }
   );
 }
 
-/** An open section: its runs in a few lines, the latest run's timeline, and every run on request. */
+/** An open section: how many runs, where and why each stopped, the latest run's timeline, and every run on request. */
 function SectionRuns({ section, referenceMs }: { section: LedgerSection; referenceMs: number }) {
   const [everyRun, setEveryRun] = useState(false);
   const overview = sectionOverview(section);
   const latest = overview.latest;
-  const { encoders } = overview;
+  const failedShare =
+    overview.failed === 0
+      ? null
+      : overview.failed === overview.runs
+        ? overview.runs === 1
+          ? "failed"
+          : "all failed"
+        : `${overview.failed} failed`;
   return (
     <div className={styles.ledgerOverview}>
       <p className={styles.ledgerSummary}>
         <strong>
           {overview.runs} {overview.runs === 1 ? "run" : "runs"}
         </strong>
-        <span>
-          {overview.runs === 1
-            ? relativeTime(overview.lastAt, referenceMs)
-            : `${relativeTime(overview.firstAt, referenceMs)} → ${relativeTime(overview.lastAt, referenceMs)}`}
-        </span>
-        {encoders && (
-          <span>
-            encoder{" "}
-            <span className="font-mono">
-              {encoders.from === encoders.to ? encoders.to : `${encoders.from} → ${encoders.to}`}
-            </span>
-          </span>
-        )}
+        {failedShare && <span>{failedShare}</span>}
+        <span>latest {relativeTime(overview.lastAt, referenceMs)}</span>
       </p>
-      <div className={styles.ledgerColumns}>
-        <CountList title="Outcome of each run" groups={overview.ended} />
-        {overview.causes.length > 0 && <CountList title="Why they failed" groups={overview.causes} />}
-      </div>
+      <CountList title="Where each run stopped, and why" groups={overview.stops} />
       <p className={styles.ledgerLatest}>
         <span className={styles.ledgerLabel}>Latest run</span>
         <span title={latest.dispatchedAt}>{relativeTime(latest.dispatchedAt, referenceMs)}</span>
