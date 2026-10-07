@@ -33,6 +33,11 @@ export function RunTimeline({
 }) {
   const scale = Math.max(timeline.totalMs, 60_000);
   // The tries nest under the encode loop's bar, or under the run's one bar before its parts are recorded.
+  // The encoder times each try's model call only; the rest of the loop is its checks and review.
+  const checksMs =
+    timeline.loopMs !== null && timeline.modelMs !== null && timeline.loopMs > timeline.modelMs
+      ? timeline.loopMs - timeline.modelMs
+      : null;
   const loopKey =
     ["encode", "run"].find((key) => timeline.bars.some((bar) => bar.key === key)) ?? timeline.bars.at(-1)?.key;
   const pct = (ms: number) => `${(ms / scale) * 100}%`;
@@ -76,17 +81,20 @@ export function RunTimeline({
                     <ol className={styles.triesList} aria-label="Tries in the encode loop">
                       {timeline.tries.map((attempt, index) => {
                         const last = index === timeline.tries.length - 1;
+                        const branch = last && checksMs === null ? "└" : "├";
                         const stoppedRun = last && !attempt.ok && timeline.stopped !== null;
                         return (
                           <li key={attempt.attempt} className={styles.row} data-ok={attempt.ok}>
                             <span className={styles.tryWho}>
                               <span className={styles.tryBranch} aria-hidden>
-                                {last ? "└" : "├"}
+                                {branch}
                               </span>
                               <span className={styles.tryNumber}>Try {attempt.attempt}</span>
                               <span className={styles.tryModel}>{attempt.model ?? "—"}</span>
                             </span>
-                            <span className={styles.time}>{attempt.ms === null ? "—" : shortDuration(attempt.ms)}</span>
+                            <span className={styles.time} title="The model's time for this try; its checks are in the row below">
+                              {attempt.ms === null ? "—" : shortDuration(attempt.ms)}
+                            </span>
                             <span className={styles.tryWhat}>
                               <span className={styles.tryCost}>{cost(attempt.cost)}</span>
                               <span
@@ -105,10 +113,19 @@ export function RunTimeline({
                         );
                       })}
                     </ol>
-                    {timeline.modelMs !== null && (
-                      <p className={styles.triesNote}>
-                        Model time {shortDuration(timeline.modelMs)}
-                        {timeline.loopMs !== null && ` of the ${shortDuration(timeline.loopMs)} loop; the rest is checks and review`}
+                    {checksMs !== null && (
+                      <p className={`${styles.row} ${styles.triesRest}`}>
+                        <span className={styles.tryWho}>
+                          <span className={styles.tryBranch} aria-hidden>
+                            └
+                          </span>
+                          <span>Checks and review</span>
+                        </span>
+                        <span className={styles.time}>{shortDuration(checksMs)}</span>
+                        <span className={styles.triesNote}>
+                          between and after the tries, not timed per try; with the tries&apos; model time (
+                          {shortDuration(timeline.modelMs!)}) the loop&apos;s {shortDuration(timeline.loopMs!)}
+                        </span>
                       </p>
                     )}
                   </li>
