@@ -89,6 +89,13 @@ describe("Nav", () => {
     );
   });
 
+  it("lists the slides index under the About dropdown", () => {
+    render(<Nav />);
+    for (const el of screen.getAllByText("Slides")) {
+      expect(el.closest("a")).toHaveAttribute("href", "/slides");
+    }
+  });
+
   it("highlights active link based on pathname", () => {
     render(<Nav pathname="/about" />);
     const browseLinks = screen.getAllByText("About");
