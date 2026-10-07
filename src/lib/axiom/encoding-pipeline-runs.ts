@@ -9,6 +9,7 @@ import {
   ENCODE_GATE_LABELS,
   encodeGate,
   failureReason,
+  type EncodeLoopTiming,
   type PipelineAttempt,
   type PipelineTry,
 } from "./encoding-pipeline";
@@ -35,6 +36,8 @@ export interface RunRow {
   attempts: number | null;
   /** Each try of the encode loop, when the encoder's record has them. */
   tries: PipelineTry[] | null;
+  /** The encode loop's own clock, when the encoder's record has it. */
+  loop: EncodeLoopTiming | null;
   outcome: RunOutcome;
   /** In a few words: "Encoded", "Failed validation", "Cancelled at approval". */
   outcomeLabel: string;
@@ -124,6 +127,7 @@ export function runRow(attempt: PipelineAttempt): RunRow {
     },
     attempts: attempt.generation_attempts,
     tries: attempt.tries ?? null,
+    loop: attempt.encode_loop ?? null,
     ...outcomeOf(attempt),
     runUrl: attempt.run_url,
     pr:
@@ -426,6 +430,17 @@ const modelTime = (row: RunRow) => {
   return timed.length ? timed.reduce((sum, attempt) => sum + attempt.ms!, 0) : null;
 };
 
+/** The check phases' time across a run's tries, when the encoder recorded its phases. */
+const checkTime = (row: RunRow) => {
+  const phased = (row.tries ?? []).filter((attempt) => attempt.phases);
+  if (!phased.length) return null;
+  return phased.reduce(
+    (sum, attempt) =>
+      sum + attempt.phases!.filter((phase) => phaseKind(phase.name) === "checks").reduce((n, phase) => n + phase.ms, 0),
+    0
+  );
+};
+
 export function encodeParts(rows: RunRow[]): EncodeParts {
   const finished = rows.filter((row) => row.outcome === "encoded" || row.outcome === "failed");
   // Setup is timed over runs that got past it, so a run stopped in setup does not shorten it.
@@ -453,6 +468,14 @@ export function encodeParts(rows: RunRow[]): EncodeParts {
       "The model's own time across the encode loop's tries, from the encoder's record (runs that have one). The rest of the loop is the checks and the review.",
       timing("Encoded", finished.filter((row) => row.outcome === "encoded").map(modelTime)),
       timing("Failed", finished.filter((row) => row.outcome === "failed").map(modelTime))
+    ),
+    timedPart(
+      "checks",
+      "Check time",
+      "compile, tests, completeness, all tries",
+      "The encoder's check phases across the encode loop's tries: the candidate's compile, static checks, test cases, and source completeness, and the validation of the modules that depend on it. Recorded by axiom-encode 0.2.2135 and later.",
+      timing("Encoded", finished.filter((row) => row.outcome === "encoded").map(checkTime)),
+      timing("Failed", finished.filter((row) => row.outcome === "failed").map(checkTime))
     ),
     timedPart(
       "publish",
@@ -547,6 +570,112 @@ export interface TimelineTry {
   /** What sent the try back, in a few words; `error` is the full message. */
   headline: string | null;
   error: string | null;
+  /** The try's whole time with its checks, when the encoder timed its phases. */
+  wallMs: number | null;
+  /** Its phases on the timeline's clock (from the dispatch); empty before the encoder timed them. */
+  phases: TimelinePhase[];
+}
+
+/** What the encoder spends a try's time on: the model, the checks, or the work between them. */
+export type PhaseKind = "model" | "checks" | "other";
+
+/** One phase of a try on the timeline's clock. */
+export interface TimelinePhase {
+  name: string;
+  label: string;
+  kind: PhaseKind;
+  /** For a check phase: whether it checked the candidate itself or the modules that depend on it. */
+  part: CheckPart | null;
+  startMs: number;
+  ms: number;
+  /** A check phase's time by tool, longest first. */
+  tools: TimelineTool[];
+}
+
+export type CheckPart = "candidate" | "dependents";
+
+export interface TimelineTool {
+  name: string;
+  label: string;
+  ms: number;
+}
+
+/** Where the encode loop's time went, from the tries' phases: by kind, and around the tries. */
+export interface LoopSplit {
+  /** Model, checks, and other, in that order, summed over the timed tries; the checks also by part and tool. */
+  kinds: Array<{
+    kind: PhaseKind;
+    label: string;
+    ms: number;
+    parts: Array<{ part: CheckPart; label: string; ms: number }>;
+    tools: TimelineTool[];
+  }>;
+  /** The encode step's time outside the tries, when the step was timed and every try has phases. */
+  outsideMs: number | null;
+  /** That time's parts, when the encoder's loop clock gives them. */
+  outside: Array<{ label: string; ms: number }>;
+}
+
+const PHASE_LABELS: Record<string, string> = {
+  prepare: "Prepare the try",
+  retained_candidate_preflight: "Recheck the kept candidate",
+  model_call: "Model writes",
+  stage_candidate: "Stage the candidate",
+  repair_overlay: "Repair overlay",
+  candidate_validation: "Check the candidate",
+  review_model_call: "Model reviews",
+  artifact_repair: "Repair artifacts",
+  record_result: "Record the result",
+  apply_repair: "Apply a repair",
+  overlay_validation: "Check dependent modules",
+  apply_write: "Write the files",
+  retry_handoff: "Hand off to the next try",
+  other: "Other",
+};
+
+const MODEL_PHASES = new Set(["model_call", "review_model_call"]);
+const CHECK_PHASES = new Set(["retained_candidate_preflight", "candidate_validation", "overlay_validation"]);
+
+export function phaseKind(name: string): PhaseKind {
+  return MODEL_PHASES.has(name) ? "model" : CHECK_PHASES.has(name) ? "checks" : "other";
+}
+
+const KIND_LABELS: Record<PhaseKind, string> = { model: "model", checks: "checks", other: "other" };
+
+const CHECK_PARTS: Record<string, CheckPart> = {
+  retained_candidate_preflight: "candidate",
+  candidate_validation: "candidate",
+  overlay_validation: "dependents",
+};
+
+const PART_LABELS: Record<CheckPart, string> = { candidate: "the candidate", dependents: "dependent modules" };
+
+const TOOL_LABELS: Record<string, string> = {
+  rules_engine_compile: "compile",
+  ci_static_checks: "static checks",
+  ci_test_cases: "test cases",
+  source_completeness_checks: "source completeness",
+  policyengine_oracle: "PolicyEngine oracle",
+  other: "other",
+};
+
+const phaseLabel = (name: string) => PHASE_LABELS[name] ?? name.replaceAll("_", " ");
+
+function toolList(tools: Record<string, number> | undefined): TimelineTool[] {
+  return Object.entries(tools ?? {})
+    .filter(([, ms]) => ms > 0)
+    .map(([name, ms]) => ({ name, label: TOOL_LABELS[name] ?? name.replaceAll("_", " "), ms }))
+    .sort((a, b) => b.ms - a.ms);
+}
+
+/** Tool times summed across phases, longest first, "other" last. */
+function mergeTools(lists: TimelineTool[][]): TimelineTool[] {
+  const byName = new Map<string, TimelineTool>();
+  for (const tool of lists.flat()) {
+    const seen = byName.get(tool.name);
+    byName.set(tool.name, seen ? { ...seen, ms: seen.ms + tool.ms } : { ...tool });
+  }
+  return [...byName.values()].sort((a, b) => (a.name === "other" ? 1 : b.name === "other" ? -1 : b.ms - a.ms));
 }
 
 /** One run from its dispatch: the encode run as bars on one clock, then the slower steps after the PR. */
@@ -559,6 +688,8 @@ export interface RunTimeline {
   /** The model's own time across the tries, and the encode loop's whole time, to tell writing from checking. */
   modelMs: number | null;
   loopMs: number | null;
+  /** Where the loop's time went, once the encoder timed its tries' phases. */
+  split: LoopSplit | null;
   /** What stopped a run that did not encode. */
   stopped: string | null;
   after: TimelineStep[];
@@ -682,18 +813,101 @@ export function runTimeline(row: RunRow, referenceMs: number, details: TimelineD
     });
     after.push(...(details.extra ?? []));
   }
-  const tries: TimelineTry[] = (row.tries ?? []).map((attempt) => ({
-    attempt: attempt.attempt,
-    model: attempt.model,
-    ms: attempt.ms,
-    cost: attempt.cost,
-    ok: attempt.ok,
-    headline: attempt.error ? causeHeadline(attempt.error) : null,
-    error: attempt.error,
-  }));
+  // A timed try sits on the timeline's clock at its own start: the clock counts from the dispatch.
+  // It stays inside the encode step's bar (the runner's clock and GitHub's can differ by a little).
+  const dispatched0 = Date.parse(row.dispatchedAt);
+  const loopBar = bars.find((bar) => bar.key === "encode");
+  const lane = loopBar ? { from: loopBar.startMs, to: loopBar.startMs + loopBar.ms } : { from: 0, to: total };
+  const clamp = (at: number) => Math.min(Math.max(at, lane.from), lane.to);
+  const tries: TimelineTry[] = (row.tries ?? []).map((attempt) => {
+    const phases: TimelinePhase[] = [];
+    if (attempt.phases && attempt.startedAt) {
+      let at = Date.parse(attempt.startedAt) - dispatched0;
+      for (const phase of attempt.phases) {
+        const start = clamp(at);
+        phases.push({
+          name: phase.name,
+          label: phaseLabel(phase.name),
+          kind: phaseKind(phase.name),
+          part: CHECK_PARTS[phase.name] ?? null,
+          startMs: start,
+          ms: clamp(at + phase.ms) - start,
+          tools: toolList(phase.tools),
+        });
+        at += phase.ms;
+      }
+    }
+    return {
+      attempt: attempt.attempt,
+      model: attempt.model,
+      ms: attempt.ms,
+      cost: attempt.cost,
+      ok: attempt.ok,
+      headline: attempt.error ? causeHeadline(attempt.error) : null,
+      error: attempt.error,
+      wallMs: attempt.phases ? (attempt.wallMs ?? null) : null,
+      phases,
+    };
+  });
   const timed = tries.filter((attempt) => attempt.ms !== null);
   const modelMs = timed.length ? timed.reduce((sum, attempt) => sum + attempt.ms!, 0) : null;
-  return { title, totalMs: total, bars, tries, modelMs, loopMs: row.phases.encodeMs, stopped, after };
+  return {
+    title,
+    totalMs: total,
+    bars,
+    tries,
+    modelMs,
+    loopMs: row.phases.encodeMs,
+    split: loopSplit(row, tries),
+    stopped,
+    after,
+  };
+}
+
+/**
+ * Where an encode loop's time went: the timed tries' phases by kind (with the
+ * check phases' time by tool), then the encode step's time outside the tries.
+ * The encoder's loop clock splits that into the time before the first try,
+ * between tries, and after the last; the rest of the step is its other work
+ * (other encoder passes over sources or dependents, and the signing helpers).
+ */
+function loopSplit(row: RunRow, tries: TimelineTry[]): LoopSplit | null {
+  const source = (row.tries ?? []).filter((attempt) => attempt.phases);
+  if (!source.length) return null;
+  const phases = source.flatMap((attempt) => attempt.phases!);
+  const kinds = (["model", "checks", "other"] as const).map((kind) => {
+    const own = phases.filter((phase) => phaseKind(phase.name) === kind);
+    const parts = (["candidate", "dependents"] as const)
+      .map((part) => ({
+        part,
+        label: PART_LABELS[part],
+        ms: own.filter((phase) => CHECK_PARTS[phase.name] === part).reduce((sum, phase) => sum + phase.ms, 0),
+      }))
+      .filter((part) => part.ms > 0);
+    return {
+      kind,
+      label: KIND_LABELS[kind],
+      ms: own.reduce((sum, phase) => sum + phase.ms, 0),
+      parts: kind === "checks" ? parts : [],
+      tools: kind === "checks" ? mergeTools(own.map((phase) => toolList(phase.tools))) : [],
+    };
+  });
+  const stepMs = row.phases.encodeMs;
+  const allTimed = source.length === tries.length;
+  const triesMs = source.reduce((sum, attempt) => sum + (attempt.wallMs ?? 0), 0);
+  const outsideMs = stepMs !== null && allTimed ? Math.max(0, stepMs - triesMs) : null;
+  const outside: LoopSplit["outside"] = [];
+  const loop = row.loop;
+  if (outsideMs !== null && loop) {
+    const add = (label: string, ms: number | null) => {
+      if (ms !== null && ms >= 1000) outside.push({ label, ms });
+    };
+    add("before the first try", loop.setupMs);
+    add("between tries", loop.betweenMs);
+    add("after the last try", loop.finalizeMs);
+    add("other work in the step", stepMs! - loop.wallMs > 0 ? stepMs! - loop.wallMs : null);
+  }
+  return { kinds, outsideMs, outside };
 }
 
 /** Prefixes that name where an error came from rather than what it says. */

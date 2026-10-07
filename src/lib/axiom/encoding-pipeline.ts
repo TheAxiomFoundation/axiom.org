@@ -95,6 +95,8 @@ export interface PipelineAttempt {
   tests_first_status?: "pass" | "fail" | null;
   /** Each try of the encode loop, from the encoder's own record. */
   tries?: PipelineTry[] | null;
+  /** The encode loop's own clock, from the encoder's record (axiom-encode 0.2.2135 on). */
+  encode_loop?: EncodeLoopTiming | null;
 }
 
 /** One try of the encode loop: the model that wrote the candidate, its time and cost, and what sent it back. */
@@ -107,6 +109,30 @@ export interface PipelineTry {
   ok: boolean;
   /** The first check that failed this try's candidate. */
   error: string | null;
+  /** When the try started, and its whole time with its checks (encoder 0.2.2135 on). */
+  startedAt?: string;
+  wallMs?: number;
+  /** What the try did, in order and back to back; the phases add up to its whole time. */
+  phases?: PipelineTryPhase[];
+}
+
+/** One phase of a try: what the encoder did, for how long, and a check phase's time by tool. */
+export interface PipelineTryPhase {
+  /** The encoder's phase name: model_call, candidate_validation, overlay_validation, ... */
+  name: string;
+  ms: number;
+  /** A check phase's time by tool (ci_test_cases, rules_engine_compile, ...), the rest under "other". */
+  tools?: Record<string, number>;
+}
+
+/** One encoder process's loop: its start and whole time, and its time before, between, and after the tries. */
+export interface EncodeLoopTiming {
+  startedAt: string | null;
+  wallMs: number;
+  setupMs: number | null;
+  triesMs: number | null;
+  betweenMs: number | null;
+  finalizeMs: number | null;
 }
 
 /** Where one attempt sits. Main-line stages first, then the ways out. */

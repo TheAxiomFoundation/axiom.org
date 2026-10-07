@@ -1,4 +1,9 @@
 .timeline {
+  /* A try's phases: the model in the accent, the checks in a blue that stays apart from it under
+     color-vision deficiency, the work between them in gray (each also named in the "Time by kind" row). */
+  --phase-model: var(--color-accent);
+  --phase-checks: #1f6fa8;
+  --phase-other: color-mix(in srgb, var(--color-ink) 22%, transparent);
   display: grid;
   gap: 14px;
   padding: 4px 0;
@@ -208,7 +213,108 @@
   color: var(--color-success);
 }
 
+/* "Time by kind": a swatch, the kind, its time, and the checks' longest tools. */
+.split {
+  margin: 0 0 2px;
+  font-size: 12px;
+  color: var(--color-ink-secondary);
+}
+
+.kinds {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.kindLine {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+}
+
+/* The checks by part and by tool, under the kinds. */
+.kindDetail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  font-size: 11px;
+  color: var(--color-ink-muted);
+}
+
+.kind {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.kind strong {
+  font-weight: 550;
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.swatch {
+  align-self: center;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+
+/* A timed try: its phases on the run's clock, then its cost and what sent it back. */
+.tryTrack {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.lane {
+  position: relative;
+  height: 8px;
+}
+
+.segment {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 1px;
+}
+
+.swatch[data-kind="model"],
+.segment[data-kind="model"] {
+  background: var(--phase-model);
+}
+
+.swatch[data-kind="checks"],
+.segment[data-kind="checks"] {
+  background: var(--phase-checks);
+}
+
+/* The dependent modules' checks: the checks' blue, lighter. */
+.swatch[data-part="dependents"],
+.segment[data-part="dependents"] {
+  background: color-mix(in srgb, var(--phase-checks) 55%, var(--color-paper));
+}
+
+.kindPart {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.swatch[data-kind="other"],
+.segment[data-kind="other"] {
+  background: var(--phase-other);
+}
+
 @media (max-width: 640px) {
+  .tryTrack,
+  .kinds {
+    grid-column: 1 / -1;
+  }
+
   .tryWhat {
     grid-template-columns: minmax(0, 1fr);
   }
