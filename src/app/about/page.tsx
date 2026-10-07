@@ -2,12 +2,28 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { DemoThumb } from "@/components/landing/demo-thumb";
 import { Reveal, RevealGroup, RevealItem } from "@/components/landing/reveal";
+import {
+  countWord,
+  ruleCoverageClause,
+  snapQcTotals,
+  SOUTHMOD_FACTS,
+} from "@/lib/verification-evidence";
 
 export const metadata: Metadata = {
   title: "About — Axiom Foundation",
   description:
     "The Axiom Foundation publishes open, machine-readable encodings of the world's rules, starting with tax and benefit policy — cited, time-aware, and executable.",
 };
+
+// Each clause is backed by a generated file; see src/lib/verification-evidence.ts.
+const HOW_WE_VERIFY = [
+  "We compare encodings with other calculators and datasets and publish the results.",
+  `${ruleCoverageClause()}.`,
+  "The calculators include PolicyEngine, TAXSIM, UKMOD, EUROMOD, UNU-WIDER's SOUTHMOD, and Statistics Canada's SPSD/M.",
+  "Max Ghenis is CEO of both Axiom and PolicyEngine, which he co-founded, and our TAXSIM runs use the TAXSIM executable that PolicyEngine packages.",
+  `SOUTHMOD's licence bars giving its models to anyone else, so we run them ${SOUTHMOD_FACTS.caveats.manualRuns.marker}, on synthetic households (the bundle has ${SOUTHMOD_FACTS.caveats.syntheticHouseholds.marker} at all), and none of the rules they check went through our ${SOUTHMOD_FACTS.caveats.notEncoderOutput.marker}.`,
+  `We also replay USDA's SNAP quality-control cases from ${countWord(snapQcTotals().states)} states to check our benefit arithmetic; the file keeps only eligible households, so the replay leaves eligibility untested.`,
+].join(" ");
 
 const BUILD = [
   {
@@ -32,7 +48,7 @@ const BUILD = [
   {
     n: "04",
     title: "Validation",
-    desc: "The harness that runs every encoding against engines we don't control — and publishes the comparison so anyone can re-run it.",
+    desc: "The open-source harness that runs test cases through our encodings and another calculator or dataset, and publishes the results.",
     href: "/validation",
   },
 ];
@@ -170,10 +186,8 @@ export default function AboutPage() {
 
         <ProseBand label="How we verify">
           <p className="m-0 font-body text-[1.05rem] text-[var(--color-ink-secondary)] leading-relaxed text-pretty">
-            We cross-check every encoding against independent engines and
-            datasets: PolicyEngine, TAXSIM, UKMOD, EUROMOD, SOUTHMOD, the PSL
-            Tax-Calculator, and SNAP quality-control data. Open isn&apos;t
-            enough &mdash; the point is that{" "}
+            {HOW_WE_VERIFY}{" "}
+            Open isn&apos;t enough &mdash; the point is that{" "}
             <span className="serif-italic text-[var(--color-ink)]">
               you can check our work
             </span>
@@ -199,7 +213,8 @@ export default function AboutPage() {
             >
               PSL Foundation
             </a>
-            . Our code, our data, and our encoding decisions are public.
+            , which also sponsors PolicyEngine. Our code, our data, and our
+            encoding decisions are public.
           </p>
           <a
             href="https://github.com/TheAxiomFoundation"

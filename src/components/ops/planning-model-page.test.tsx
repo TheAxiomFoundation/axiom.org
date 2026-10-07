@@ -120,6 +120,75 @@ describe("PlanningModelPage", () => {
     expect(screen.getByText("The development fleet.")).toBeInTheDocument();
   });
 
+  it("reports the SNAP QC replay as it stands and discloses the PolicyEngine tie", () => {
+    const { container } = render(<PlanningModelPage />);
+    const text = (container.textContent ?? "").replace(/\s+/g, " ");
+
+    expect(text).toMatch(
+      /all 856 Colorado FY 2024 cases match the benefit Mathematica computes for USDA from each case record/,
+    );
+    expect(text).toMatch(/eligibility is untested/);
+    expect(text).toMatch(/Max Ghenis is CEO of both Axiom and PolicyEngine/);
+    expect(text).toMatch(/TAXSIM executable that PolicyEngine packages/);
+    // The July first run (816 of 856) is superseded, and FSBEN is a
+    // computed benefit rather than a determination. axiom-encode's judge-*
+    // commands are standalone (cli.py registers and dispatches them as their
+    // own subcommands; nothing else in src imports the judges package, as of
+    // axiom-encode 13bd0ded), and judges/client.py refuses any non-Claude
+    // judge, so no claim that cross-family judges review every run.
+    expect(text).not.toMatch(/95\.3%/);
+    expect(text).not.toMatch(/quality-control determinations/i);
+    expect(text).not.toMatch(/independent oracle/i);
+    expect(text).not.toMatch(/judge models review every/i);
+    expect(PLANNING_MODEL.tiers[0].scope).not.toMatch(/independent/i);
+  });
+
+  it("states the SOUTHMOD result with its three caveats", () => {
+    const { container } = render(<PlanningModelPage />);
+    const text = (container.textContent ?? "").replace(/\s+/g, " ");
+
+    // axiom-oracles main merged the SOUTHMOD suites (#205 through #260) on
+    // 2026-10-04: 40 suites under comparisons/{gh,ug,zm,et,rw}-*.yaml, whose
+    // committed reports (dashboard/public/data/axiom-euromod-*.json, all
+    // generated 2026-10-04 with run_kind "manual") sum to 245 comparisons,
+    // 242 matches and 3 mismatches, each dispositioned upstream_engine_gap
+    // (dispositions/et-business-mat.yaml, gh-income-tax-rate-schedule.yaml).
+    // The configs name SOUTHMOD_A4.0 and EM_Executable 1.0.0, the version
+    // details the Adhesion Agreement's clause 2 asks outputs to state.
+    expect(text).toMatch(
+      /Against SOUTHMOD A4\.0, UNU-WIDER's models for Ghana, Uganda, Zambia, Ethiopia and Rwanda run on EUROMOD EM_Executable 1\.0\.0, 242 of 245 comparisons match as of 2026-10-04/,
+    );
+    expect(text).toMatch(/the other 3 are recorded as gaps in those models/);
+    // The dashboard's SOUTHMOD record carries the full acknowledgement
+    // (axiom-oracles dashboard/src/utils/suites.js southmodAcknowledgement).
+    expect(
+      screen.getByRole("link", { name: "SOUTHMOD A4.0" }),
+    ).toHaveAttribute("href", "https://axiom.org/oracles?oracle=southmod");
+
+    // (a) Every SOUTHMOD suite declares `ci: manual`: Adhesion Agreement
+    // clause 4 bars providing SOUTHMOD or its input datasets to any third
+    // party, so no shared CI runner can hold the bundle.
+    expect(text).toMatch(
+      /the runs are manual, on our licensed machine rather than in CI, because the license bars giving the model or its data to third parties/,
+    );
+    // (b) In rulespec-gh, -ug, -zm and -et every compared module's
+    // .axiom/encoding-manifests entry has backend "manual" and runner
+    // "manual-attestation" (axiom-encode sign-applied-files), not
+    // `encode --apply`; rulespec-rw has no encoding manifests at all.
+    expect(text).toMatch(
+      /the compared rule modules are not encoder output \(Rwanda's carry no encoding record, and the other four countries' carry manual attestations\)/,
+    );
+    // (c) Every suite runs `population: synthetic`; GHAMOD, UGAMOD,
+    // MicroZAMOD and ETMOD read only their dataset's variable list, and the
+    // bundle ships no Rwandan microdata (rw-*.yaml build a header-only file).
+    expect(text).toMatch(
+      /every compared household is synthetic, with no microdata at all for Rwanda/,
+    );
+
+    // The pre-#297 unqualified mention stays retired.
+    expect(text).not.toMatch(/SOUTHMOD country models, plus state administrative/);
+  });
+
   it("links example rule modules so the increment is concrete", () => {
     render(<PlanningModelPage />);
     expect(
@@ -147,11 +216,12 @@ describe("PlanningModelPage", () => {
     expect(PLANNING_MODEL.tiers[0].scope).toBe(
       "Policies checkable against an oracle: the 137 PolicyEngine-US policies in axiom-oracles' conformance scope as of 2026-07-11 (127 as of 2026-10-03), state income taxes among them, plus state benefit manuals",
     );
-    // axiom-encode 6f08e25c: encode runs compile, companion tests, literal
+    // Scoped to modules the encoder writes: about 15,300 US rules were signed in
+    // by manual attestation (#304). axiom-encode 6f08e25c: encode runs compile, companion tests, literal
     // grounding and import checks with oracle="none"; corpus releases are
     // Ed25519-signed; validator-rejected candidates retry (b5b2c670).
     expect(text).toMatch(
-      /As of 2026-10-03, each rule module is produced by an agentic encoder loop: the agent reads the provision from a signed, hash-pinned corpus release and writes the module and its companion tests, then the harness runs deterministic checks, including rules-engine compile, the companion tests, grounding of numeric literals in the cited source text, and import resolution\./,
+      /As of 2026-10-03, when the encoder writes a module it runs an agentic loop: the agent reads the provision from a signed, hash-pinned corpus release and writes the module and its companion tests, then the harness runs deterministic checks, including rules-engine compile, the companion tests, grounding of numeric literals in the cited source text, and import resolution\./,
     );
     expect(text).toMatch(
       /the encoder retries with the failures as feedback, by default making up to two attempts on its default model and up to two more on an escalation model \(retries since 2026-07-17\)/,
