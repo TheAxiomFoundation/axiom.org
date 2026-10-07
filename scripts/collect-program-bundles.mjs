@@ -225,13 +225,17 @@ async function corpusTrees(roots) {
   }
   const trees = new Map();
   for (const root of roots) {
-    if (!found.has(root)) {
+    // A root the corpus holds no node for, with nodes under its path (a whole
+    // agency's rules held chapter by chapter): the document is those nodes.
+    const start = lowerBound(`${root}/`);
+    const end = lowerBound(`${root}0`);
+    if (!found.has(root) && start === end) {
       trees.set(root, []);
       continue;
     }
     // Everything reachable from the root by path or by link.
-    const seen = new Set([root]);
-    const queue = [root];
+    const seen = new Set(found.has(root) ? [root] : paths.slice(start, end));
+    const queue = [...seen];
     while (queue.length) {
       const path = queue.pop();
       for (const next of [...underPath(path), ...(childrenOf.get(path) ?? [])]) {
@@ -555,9 +559,10 @@ async function main() {
           if (doc.citation_path && containers.has(doc.citation_path)) measuredDoc = { ...measuredDoc, container: true };
           const nested = t ? nestedIn(doc.citation_path) : [];
           if (nested.length) {
+            const held = t.nodes.length > 0;
             t = { ...t, nodes: t.nodes.filter((n) => !nested.some((r) => under(n.path, r))) };
             // Nothing of its own left: its documents hold it all.
-            if (t.nodes.some((n) => n.path === doc.citation_path) && !t.nodes.some((n) => n.child_count === 0)) {
+            if (held && !t.nodes.some((n) => n.child_count === 0)) {
               const reason = `Counted through the ${nested.length} document${nested.length === 1 ? "" : "s"} under it`;
               measuredDoc = { ...measuredDoc, scope: "excluded", reason };
             }

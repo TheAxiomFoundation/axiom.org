@@ -63,8 +63,12 @@ for (const b of data.bundles) {
   // Tier 2 only when all of them are.)
   // A document by its corpus path when it has one: a web page found in the
   // corpus can be the same document as another tier's row for that path.
+  // A container counted through the documents under it holds its text in the tier too.
+  const counted = (r: BundleDocumentRow) => r.scope === "in" || (r.reason ?? "").startsWith("Counted through");
   const keys = (tier: string) =>
-    new Set(rows.filter((r) => r.tier === tier && r.scope === "in").map((r) => `${r.bundle_id}|${r.citation_path ?? r.key}`));
+    new Set(
+      rows.filter((r) => r.tier === tier && (tier === "full" ? counted(r) : r.scope === "in")).map((r) => `${r.bundle_id}|${r.citation_path ?? r.key}`)
+    );
   const tier2 = keys("full");
   check([...keys("screener")].every((k) => tier2.has(k)), `tier 2 lacks a tier 1 document ${b.id}`);
   const s1 = b.counts!.screener!, f2 = b.counts!.full!;

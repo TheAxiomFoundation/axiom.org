@@ -363,7 +363,8 @@ export function measureDocument(
 ): BundleDocumentRow {
   const root = doc.citation_path;
   const nodes = telemetry?.nodes ?? [];
-  const inCorpus = Boolean(root && nodes.some((n) => n.path === root));
+  // The corpus holds the document: its root, or (a container the corpus has no node for) nodes under it.
+  const inCorpus = Boolean(root && nodes.some((n) => n.path === root || n.path.startsWith(`${root}/`)));
   const leaves = inCorpus ? nodes.filter((n) => n.child_count === 0).map((n) => n.path) : [];
   const modules = telemetry?.modules ?? [];
   const attempts = [...(telemetry?.attempts ?? [])]

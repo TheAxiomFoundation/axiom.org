@@ -272,6 +272,21 @@ describe("measureDocument", () => {
   });
 });
 
+describe("a document whose root the corpus has no node for", () => {
+  it("is in the corpus when the corpus holds nodes under it", () => {
+    const agency = doc({ key: "us-ia/regulation/iac/701", citation_path: "us-ia/regulation/iac/701", cited: undefined });
+    const chapters = [
+      { path: "us-ia/regulation/iac/701/300", child_count: 2 },
+      { path: "us-ia/regulation/iac/701/300/1", child_count: 0 },
+      { path: "us-ia/regulation/iac/701/300/2", child_count: 0 },
+    ];
+    const row = measureDocument("b", "full", agency, { nodes: chapters, modules: [], attempts: [] }, AT);
+    expect(row).toMatchObject({ in_corpus: true, provisions: 2, status: "not_started" });
+    const none = measureDocument("b", "full", agency, { nodes: [], modules: [], attempts: [] }, AT);
+    expect(none).toMatchObject({ in_corpus: false, status: "not_in_corpus" });
+  });
+});
+
 describe("a whole citation of a title, chapter, part or whole manual", () => {
   it("counts once in the screener tier, graded by its provisions, and every provision in the full bundle", () => {
     const title = doc({ cited: [{ path: "us/statute/7/2014", references: 1, part: "Income" }] });
