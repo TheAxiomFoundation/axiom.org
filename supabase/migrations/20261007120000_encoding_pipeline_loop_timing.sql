@@ -1,6 +1,6 @@
 -- The encode loop's own clock, from the encoder's record.
 --
--- From axiom-encode 0.2.2135 (axiom-encode#1802) each encodings.encoding_runs
+-- From axiom-encode 0.2.2138 (axiom-encode#1802) each encodings.encoding_runs
 -- row times its whole loop in outcome.encode_loop_timing: its start, its whole
 -- time, and its time before the first try, between tries, and after the last
 -- (they add up to the whole). Each entry of iterations also gains its start,

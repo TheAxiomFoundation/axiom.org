@@ -95,7 +95,7 @@ export interface PipelineAttempt {
   tests_first_status?: "pass" | "fail" | null;
   /** Each try of the encode loop, from the encoder's own record. */
   tries?: PipelineTry[] | null;
-  /** The encode loop's own clock, from the encoder's record (axiom-encode 0.2.2135 on). */
+  /** The encode loop's own clock, from the encoder's record (axiom-encode 0.2.2138 on). */
   encode_loop?: EncodeLoopTiming | null;
 }
 
@@ -109,7 +109,7 @@ export interface PipelineTry {
   ok: boolean;
   /** The first check that failed this try's candidate. */
   error: string | null;
-  /** When the try started, and its whole time with its checks (encoder 0.2.2135 on). */
+  /** When the try started, and its whole time with its checks (encoder 0.2.2138 on). */
   startedAt?: string;
   wallMs?: number;
   /** What the try did, in order and back to back; the phases add up to its whole time. */

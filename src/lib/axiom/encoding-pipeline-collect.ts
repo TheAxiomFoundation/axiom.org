@@ -46,7 +46,7 @@ export interface EncoderRunRow {
   github_run_id?: string | null;
   /** One entry per generation attempt: model, time, tokens, cost, and the errors that sent it back. */
   iterations?: unknown;
-  /** The record's `outcome.encode_loop_timing`: its loop's clock (axiom-encode 0.2.2135 on). */
+  /** The record's `outcome.encode_loop_timing`: its loop's clock (axiom-encode 0.2.2138 on). */
   loop_timing?: unknown;
 }
 
@@ -176,7 +176,7 @@ export function encoderTries(row: EncoderRunRow): PipelineTry[] | null {
         ok: entry.success === true,
         error: truncateError(typeof first?.message === "string" ? first.message : null),
       };
-      // Encoder 0.2.2135 on also times the whole try, phase by phase; older records keep the model time only.
+      // Encoder 0.2.2138 on also times the whole try, phase by phase; older records keep the model time only.
       const startedAt = typeof entry.started_at === "string" ? entry.started_at : null;
       const wallMs = number(entry.wall_duration_ms);
       const phases = tryPhases(entry.phases);
@@ -208,7 +208,7 @@ function tryPhases(value: unknown): PipelineTryPhase[] | null {
   return phases.length ? phases : null;
 }
 
-/** The encoder record's loop clock: its start, its whole time, and its time around the tries. Null before 0.2.2135. */
+/** The encoder record's loop clock: its start, its whole time, and its time around the tries. Null before 0.2.2138. */
 export function encoderLoop(row: EncoderRunRow): EncodeLoopTiming | null {
   const loop = row.loop_timing;
   if (!loop || typeof loop !== "object") return null;
