@@ -15,13 +15,14 @@ const MEMBERS = [
     // by his organizations' missions, with no builder lines. Wording from his
     // own Aspen (2026-06-15) and Center for Civic Futures (2026-06-07) bios;
     // facts carried from the version he confirmed 2026-07-12 and revised
-    // 2026-07-14 (Round1-Website-Copy.md §3).
+    // 2026-07-14 (Round1-Website-Copy.md §3). Google line narrowed to
+    // "data scientist at Google" by Max 2026-10-08.
     title: "Chief Executive Officer and Founder",
     image: "/team/max-ghenis.jpg",
     linkedin: "https://www.linkedin.com/in/maxghenis",
     bio: [
       "Max leads the Axiom Foundation, which publishes open, machine-readable encodings of the world's rules — starting with tax and benefit policy — so anyone can run, audit, or reform them. He is also co-founder and CEO of PolicyEngine, a nonprofit whose open-source software computes how taxes and benefits affect households and populations in the US and UK, and how proposed reforms would change eligibility, costs, and poverty. The Joint Economic Committee, the Bureau of Economic Analysis, and 10 Downing Street use PolicyEngine, and it powers the benefit screeners several partners run to connect families with programs they qualify for.",
-      "Before PolicyEngine, he founded the UBI Center, a think tank whose team published 60+ open studies of universal basic income and cash transfers. Earlier, he spent eight years at Google and YouTube as a data scientist and people-analytics manager. He holds a bachelor's in operations research from UC Berkeley and a master's in Data, Economics, and Development Policy from MIT, and is an elected member of the National Academy of Social Insurance.",
+      "Before PolicyEngine, he founded the UBI Center, a think tank whose team published 60+ open studies of universal basic income and cash transfers. Earlier, he spent eight years at Google as a data scientist. He holds a bachelor's in operations research from UC Berkeley and a master's in Data, Economics, and Development Policy from MIT, and is an elected member of the National Academy of Social Insurance.",
     ],
   },
   {
