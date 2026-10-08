@@ -5,6 +5,12 @@ import {
   conceptModuleKeys,
   containmentQueries,
   containsKey,
+  encoderTries,
+  firstSyncAfter,
+  jobPhases,
+  mergeValidationKey,
+  mergeValidationLookups,
+  syncWindowStart,
   oracleVerdicts,
   parseRunJobs,
   runDetailLookups,
@@ -514,6 +520,92 @@ describe("stage joins", () => {
     expect(buildMirrorIndex(mirrorWithCommit).repoCommit.get("rulespec-us")).toBe(INDEX);
   });
 
+  it("times the merge's first index sync from the sync runs, keeping a stored one", () => {
+    const syncs = [
+      { created_at: "2026-09-30T00:30:00Z", updated_at: "2026-09-30T00:40:00Z" },
+      { created_at: "2026-09-30T06:00:00Z", updated_at: "2026-09-30T06:17:00Z" },
+      { created_at: "2026-09-30T02:00:00Z", updated_at: "2026-09-30T02:12:00Z" },
+    ];
+    expect(firstSyncAfter(syncs, "2026-09-30T01:00:00Z")).toBe("2026-09-30T02:12:00Z");
+    expect(firstSyncAfter(syncs, "2026-09-30T07:00:00Z")).toBeNull();
+    // Sync runs are listed from the oldest indexed (or recent) merge with no first sync recorded.
+    const prs = [
+      merged({ number: 1, mergedAt: "2026-09-01T00:00:00Z" }),
+      merged({ number: 2, mergedAt: "2026-09-02T00:00:00Z" }),
+      merged({ number: 3, mergedAt: "2026-08-01T00:00:00Z", baseRefName: "codex/x" }),
+      merged({ number: 4, mergedAt: "2026-09-28T00:00:00Z" }),
+      merged({ number: 5, mergedAt: "2026-08-15T00:00:00Z" }),
+    ];
+    const previous = new Map([
+      ["a", { pr_repo: "rulespec-us", pr_number: 1, synced_at: "S", indexed_at: "I" }],
+      ["b", { pr_repo: "rulespec-us", pr_number: 2, synced_at: "S" }],
+    ]);
+    expect(syncWindowStart(prs, previous, NOW)).toBe("2026-09-02T00:00:00Z");
+    // Never indexed and not recent (number 5): it does not hold the window open.
+    expect(syncWindowStart(prs, new Map(), NOW)).toBe("2026-09-28T00:00:00Z");
+    expect(syncWindowStart([pr()], new Map(), NOW)).toBeNull();
+    const build = (override: Partial<CollectInputs>) =>
+      buildAttempts(inputs({ prs: [merged()], mirror: [mirrorRow()], ...override }))[0];
+    expect(build({ syncRuns: syncs })).toMatchObject({ synced_at: "2026-09-30T06:17:00Z", indexed_at: "2026-09-30T02:12:00Z" });
+    expect(build({ syncRuns: syncs, previous: new Map([["501", { synced_at: "S", indexed_at: "I" }]]) }).indexed_at).toBe("I");
+    // No sync runs read: nothing to time it by.
+    expect(build({})).not.toHaveProperty("indexed_at");
+    // Not indexed: no first sync either.
+    expect(build({ syncRuns: syncs, mirror: [] })).not.toHaveProperty("indexed_at");
+  });
+
+  it("records the merge's first tests on main from its merge commit's shard: start, end, and result", () => {
+    const shardRun = (completedAt: string, conclusion: "success" | "failure" = "success", startedAt: string | null = "2026-09-30T01:05:00Z") => ({
+      startedAt,
+      completedAt,
+      conclusion,
+    });
+    const atMerge = (shards: Array<[string, ReturnType<typeof shardRun>]>) =>
+      new Map([[mergeValidationKey("rulespec-us", MERGE), new Map(shards)]]);
+    const build = (override: Partial<CollectInputs>) => buildAttempts(inputs({ prs: [merged()], ...override }))[0];
+    expect(build({ mergeValidation: atMerge([["us", shardRun("2026-09-30T01:20:00Z")], ["us-az", shardRun("X")]]) })).toMatchObject({
+      tests_first_at: "2026-09-30T01:20:00Z",
+      tests_first_started_at: "2026-09-30T01:05:00Z",
+      tests_first_status: "pass",
+    });
+    expect(build({ mergeValidation: atMerge([["", shardRun("2026-09-30T01:25:00Z", "failure", null)]]) })).toMatchObject({
+      tests_first_at: "2026-09-30T01:25:00Z",
+      tests_first_started_at: null,
+      tests_first_status: "fail",
+    });
+    // A sharded repo whose shard for the module did not finish at the merge.
+    expect(build({ mergeValidation: atMerge([["", shardRun("A")], ["us-az", shardRun("X")]]) })).not.toHaveProperty("tests_first_at");
+    // A full record is kept; one from before the start and result were kept waits for them.
+    expect(build({ previous: new Map([["501", { tests_first_at: "T", tests_first_started_at: "S", tests_first_status: "fail" as const }]]) }))
+      .toMatchObject({ tests_first_at: "T", tests_first_started_at: "S", tests_first_status: "fail" });
+    const early = build({ previous: new Map([["501", { tests_first_at: "T" }]]) });
+    expect(early.tests_first_at).toBe("T");
+    expect(early).not.toHaveProperty("tests_first_status");
+    expect(buildAttempts(inputs({ prs: [merged({ baseRefName: "codex/x" })], mergeValidation: atMerge([["us", shardRun("Y")]]) }))[0])
+      .not.toHaveProperty("tests_first_at");
+  });
+
+  it("looks up each default-branch merge's own validation until it is recorded, newest first", () => {
+    const prs = [
+      merged({ number: 1, mergeCommit: "a", mergedAt: "2026-09-01T00:00:00Z" }),
+      merged({ number: 2, mergeCommit: "b", mergedAt: "2026-09-03T00:00:00Z" }),
+      merged({ number: 3, mergeCommit: "c", mergedAt: "2026-09-02T00:00:00Z" }),
+      merged({ number: 4, mergeCommit: "d", baseRefName: "codex/x" }),
+      merged({ number: 5, mergeCommit: null }),
+      pr({ number: 6 }),
+    ];
+    const previous = new Map([["7", { pr_repo: "rulespec-us", pr_merge_commit: "c", tests_first_at: "T" }]]);
+    expect(mergeValidationLookups(prs, previous, 10)).toEqual([
+      { repo: "rulespec-us", commit: "b" },
+      { repo: "rulespec-us", commit: "a" },
+    ]);
+    expect(mergeValidationLookups(prs, previous, 1)).toHaveLength(1);
+    // Once start and result are kept, a merge recorded without them is read once more.
+    expect(mergeValidationLookups(prs, previous, 10, { detail: true }).map((l) => l.commit)).toEqual(["b", "c", "a"]);
+    const full = new Map([["7", { pr_repo: "rulespec-us", pr_merge_commit: "c", tests_first_at: "T", tests_first_status: "pass" as const }]]);
+    expect(mergeValidationLookups(prs, full, 10, { detail: true }).map((l) => l.commit)).toEqual(["b", "a"]);
+  });
+
   it("takes tests from the module's jurisdiction shard on a commit with the merge", () => {
     const tests = (
       shards: Array<[string, ShardResult]>,
@@ -718,13 +810,47 @@ describe("run details", () => {
   const budget = { name: "Enforce failed-attempt budget", steps: [{ conclusion: "success", started_at: "2026-09-30T00:00:10Z" }] };
 
   it("reads when encoding started and how far a cancelled run got", () => {
+    const none = { setup: null, encode: null, publish: null };
     expect(parseRunJobs([budget, encodeJob([{ conclusion: "success", started_at: "2026-09-30T01:00:00Z" }, { conclusion: "skipped" }])], "success"))
-      .toEqual({ encodeStartedAt: "2026-09-30T01:00:00Z", cancelStage: null });
-    expect(parseRunJobs([budget, encodeJob([])], "cancelled")).toEqual({ encodeStartedAt: null, cancelStage: "approval" });
+      .toMatchObject({ encodeStartedAt: "2026-09-30T01:00:00Z", cancelStage: null });
+    expect(parseRunJobs([budget, encodeJob([])], "cancelled")).toEqual({ encodeStartedAt: null, cancelStage: "approval", phases: none });
     expect(parseRunJobs([budget, encodeJob([{ conclusion: "cancelled", started_at: "2026-09-30T01:00:00Z" }])], "cancelled"))
-      .toEqual({ encodeStartedAt: "2026-09-30T01:00:00Z", cancelStage: "running" });
-    expect(parseRunJobs([budget], "cancelled")).toEqual({ encodeStartedAt: null, cancelStage: "before_job" });
-    expect(parseRunJobs([{ name: "build", steps: null }], "failure")).toEqual({ encodeStartedAt: null, cancelStage: null });
+      .toMatchObject({ encodeStartedAt: "2026-09-30T01:00:00Z", cancelStage: "running" });
+    expect(parseRunJobs([budget], "cancelled")).toEqual({ encodeStartedAt: null, cancelStage: "before_job", phases: none });
+    expect(parseRunJobs([{ name: "build", steps: null }], "failure")).toEqual({ encodeStartedAt: null, cancelStage: null, phases: none });
+  });
+
+  it("splits the encode job into setup, the encode step, and publishing", () => {
+    const step = (name: string, from: string, to: string, conclusion = "success") => ({
+      name,
+      conclusion,
+      started_at: `2026-10-01T21:${from}Z`,
+      completed_at: `2026-10-01T21:${to}Z`,
+    });
+    const setup = [step("Set up job", "20:27", "20:29"), step("Checkout axiom-corpus", "20:50", "27:08")];
+    const encode = step("Encode, review, validate, and apply", "29:04", "50:19");
+    const publish = [
+      step("Summarize model spend", "50:19", "50:19"),
+      step("Verify generated provenance", "50:19", "50:37"),
+      step("Push lane branch and open draft pull request", "50:48", "50:52"),
+      step("Package failed re-encode diagnostics", "50:52", "50:52", "skipped"),
+      step("Post Checkout axiom-corpus", "50:58", "50:59"),
+      step("Complete job", "50:59", "51:30"),
+    ];
+    expect(jobPhases([...setup, encode, ...publish])).toEqual({ setup: 517, encode: 1275, publish: 33 });
+    // A failed encode step: its failure bundle is not publishing.
+    expect(
+      jobPhases([
+        ...setup,
+        { ...encode, conclusion: "failure" },
+        step("Package failed re-encode diagnostics", "50:20", "50:40"),
+        step("Upload failed re-encode diagnostics", "50:40", "50:45"),
+      ])
+    ).toEqual({ setup: 517, encode: 1275, publish: null });
+    // Stopped in setup: the time it ran, and nothing after.
+    expect(jobPhases([step("Set up job", "20:27", "20:29"), step("Verify immutable checkout identities", "20:29", "20:31", "failure")]))
+      .toEqual({ setup: 4, encode: null, publish: null });
+    expect(jobPhases([{ name: "Set up job", conclusion: "skipped" }])).toEqual({ setup: null, encode: null, publish: null });
   });
 
   it("reads each finished run's jobs once, cancelled runs first", () => {
@@ -738,20 +864,55 @@ describe("run details", () => {
     const previous = new Map([["5", { jobs_checked_at: "2026-09-30T00:00:00Z" }]]);
     expect(runDetailLookups(runs, previous, 10).map((r) => r.id)).toEqual([2, 3, 1]);
     expect(runDetailLookups(runs, previous, 1).map((r) => r.id)).toEqual([2]);
+    // Once step times are recorded, runs read before them are read once more, last.
+    expect(runDetailLookups(runs, previous, 10, { steps: true }).map((r) => r.id)).toEqual([2, 3, 1, 5]);
+    const stepsRead = new Map([["5", { jobs_checked_at: "T", steps_read_at: "T" }]]);
+    expect(runDetailLookups(runs, stepsRead, 10, { steps: true }).map((r) => r.id)).toEqual([2, 3, 1]);
+    // An early run named after no citation is read only once a collection has stored it.
+    const unnamed = run({ id: 6, conclusion: "cancelled", display_title: "Targeted signed RuleSpec re-encode" });
+    expect(runDetailLookups([unnamed, ...runs], previous, 10).map((r) => r.id)).toEqual([2, 3, 1]);
+    expect(runDetailLookups([unnamed], new Map([["6", { citation: "us/x" }]]), 10).map((r) => r.id)).toEqual([6]);
   });
 
   it("records the dispatcher and run detail, fresh or carried from the previous collection", () => {
     const [fresh] = buildAttempts(
       inputs({
         runs: [run({ conclusion: "cancelled", triggering_actor: "PavelMakarchuk" })],
-        runDetails: new Map([["501", { encodeStartedAt: null, cancelStage: "approval" as const }]]),
+        runDetails: new Map([
+          ["501", { encodeStartedAt: null, cancelStage: "approval" as const, phases: { setup: 240, encode: 600, publish: null } }],
+        ]),
       })
     );
-    expect(fresh).toMatchObject({ dispatched_by: "PavelMakarchuk", cancel_stage: "approval", encode_started_at: null, jobs_checked_at: "2026-09-30T12:00:00.000Z" });
+    expect(fresh).toMatchObject({
+      dispatched_by: "PavelMakarchuk",
+      cancel_stage: "approval",
+      encode_started_at: null,
+      jobs_checked_at: "2026-09-30T12:00:00.000Z",
+      setup_seconds: 240,
+      encode_seconds: 600,
+      publish_seconds: null,
+      steps_read_at: "2026-09-30T12:00:00.000Z",
+    });
     const [carried] = buildAttempts(
-      inputs({ previous: new Map([["501", { jobs_checked_at: "T", cancel_stage: "running" as const, encode_started_at: "S" }]]) })
+      inputs({
+        previous: new Map([
+          ["501", { jobs_checked_at: "T", cancel_stage: "running" as const, encode_started_at: "S", steps_read_at: "T", setup_seconds: 5, encode_seconds: 6, publish_seconds: 7 }],
+        ]),
+      })
     );
-    expect(carried).toMatchObject({ cancel_stage: "running", encode_started_at: "S", jobs_checked_at: "T", dispatched_by: null });
+    expect(carried).toMatchObject({
+      cancel_stage: "running",
+      encode_started_at: "S",
+      jobs_checked_at: "T",
+      dispatched_by: null,
+      setup_seconds: 5,
+      encode_seconds: 6,
+      publish_seconds: 7,
+      steps_read_at: "T",
+    });
+    // Read before step times were recorded: none to carry.
+    const [early] = buildAttempts(inputs({ previous: new Map([["501", { jobs_checked_at: "T" }]]) }));
+    expect(early).not.toHaveProperty("steps_read_at");
     const [unread] = buildAttempts(inputs());
     expect(unread).not.toHaveProperty("jobs_checked_at");
   });
@@ -921,5 +1082,39 @@ describe("causes from the failing job's log", () => {
     });
     const [kept] = buildAttempts(inputs({ previous: new Map([["501", attempt]]) }));
     expect(kept).toMatchObject({ failure_source: "log", encoder_error: attempt.encoder_error });
+  });
+});
+
+describe("encoder tries", () => {
+  it("keeps each try's model, time, cost, outcome, and first error from the encoder's record", () => {
+    const iterations = [
+      {
+        attempt: 1,
+        model: "gpt-6-luna",
+        success: false,
+        duration_ms: 18226,
+        estimated_cost_usd: 0.0096,
+        errors: [{ message: "statutes/42/402/q.yaml: ci: Embedded scalar literal: 5", error_type: "validation" }],
+      },
+      { attempt: 2, model: "gpt-6-sol", success: true, duration_ms: 41164, estimated_cost_usd: 0.25, errors: [] },
+      "not a try",
+    ];
+    expect(encoderTries(encoderRow({ iterations }))).toEqual([
+      { attempt: 1, model: "gpt-6-luna", ms: 18226, cost: 0.0096, ok: false, error: "statutes/42/402/q.yaml: ci: Embedded scalar literal: 5" },
+      { attempt: 2, model: "gpt-6-sol", ms: 41164, cost: 0.25, ok: true, error: null },
+    ]);
+    expect(encoderTries(encoderRow({ iterations: null }))).toBeNull();
+    expect(encoderTries(encoderRow({ iterations: [] }))).toBeNull();
+    // A record with no attempt numbers counts its tries in order.
+    expect(encoderTries(encoderRow({ iterations: [{ model: "m" }] }))?.[0]).toMatchObject({ attempt: 1, ms: null, ok: false });
+  });
+
+  it("puts the matched encoder record's tries on the attempt", () => {
+    const [attempt] = buildAttempts(
+      inputs({ encoderRuns: [encoderRow({ iterations: [{ attempt: 1, model: "m", duration_ms: 5 }] })] })
+    );
+    expect(attempt.tries).toEqual([{ attempt: 1, model: "m", ms: 5, cost: null, ok: false, error: null }]);
+    const [unmatched] = buildAttempts(inputs());
+    expect(unmatched).not.toHaveProperty("tries");
   });
 });

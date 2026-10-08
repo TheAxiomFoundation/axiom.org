@@ -1,9 +1,10 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { SectionReader } from "./section-reader";
-import type {
-  DeclaredExternalComparisons,
-  SectionPageData,
+import {
+  declaredExternalComparisons,
+  type DeclaredExternalComparisons,
+  type SectionPageData,
 } from "@/lib/axiom/section-page";
 import type { Rule } from "@/lib/supabase";
 import { _resetRawFetchCache } from "@/lib/axiom/rulespec/raw-cache";
@@ -79,6 +80,8 @@ function makeData(overrides: Partial<SectionPageData> = {}): SectionPageData {
     prev: { citationPath: "us/statute/26/31", label: "§ 31" },
     next: { citationPath: "us/statute/26/33", label: "§ 33" },
     truncated: false,
+    encodedCoverage: null,
+    externalComparisons: null,
     ...overrides,
   };
 }
@@ -448,15 +451,14 @@ describe("SectionReader", () => {
   });
 
   describe("external comparison chip", () => {
-    /** The chip's visible label: every part except its sr-only description. */
+    /** The chip's visible label excludes its screen-reader description. */
     function visibleLabel(chip: HTMLElement): string {
       return Array.from(chip.childNodes)
         .filter(
           (node) =>
-            !(node instanceof HTMLElement && node.classList.contains("sr-only"))
+            !(node instanceof HTMLElement && node.classList.contains("sr-only")),
         )
         .map((node) => node.textContent ?? "")
-        // The chip separates its parts with flex gap, not text.
         .join(" ")
         .replace(/\s+/g, " ")
         .trim();
@@ -482,58 +484,33 @@ describe("SectionReader", () => {
       engines: [engineEntry(engine)],
     });
 
-    it("labels a declared comparison without a result without claiming it passed", () => {
+    // Invariant (d1020): the chip appears iff every declared case's
+    // latest comparison result matches and is fresh (at most 7 days old).
+    it("hides a declared comparison with no published result", () => {
       const { container } = render(
-        <SectionReader data={makeData({ externalComparisons: coSnap() })} />
+        <SectionReader data={makeData({ externalComparisons: coSnap() })} />,
       );
-      const chip = screen.getByText(/PolicyEngine comparison/);
-      expect(visibleLabel(chip)).toBe("PolicyEngine comparison 1 case");
-      expect(chip.querySelector("svg")).toBeNull();
-      // Neutral styling: the grey chip, never the green success one.
-      expect(chip.className).toContain("border-[var(--color-rule)]");
-      expect(chip.className).not.toMatch(/success|22,101,52/);
-      const description =
-        "1 test case for co-snap (us-co) declares a comparison with " +
-        "PolicyEngine (Colorado SNAP canonical two-person household). " +
-        "No current result is published for it, so this chip does not " +
-        "say whether Axiom and PolicyEngine agree. Max Ghenis is CEO of " +
-        "both Axiom and PolicyEngine.";
-      expect(chip).toHaveAttribute("title", description);
-      // The disclosure must not depend on a hover tooltip.
-      const srText = within(chip).getByText(description);
-      expect(srText).toHaveClass("sr-only");
-      // Markup and attributes both: the old claim lived in a title.
-      expect(container.innerHTML).not.toMatch(/verified/i);
-      expect(container.innerHTML).not.toMatch(/agrees with|matches/i);
+      expect(container.innerHTML).not.toMatch(/PolicyEngine|verified|agrees with/i);
       expect(container.innerHTML).not.toContain("⊨");
     });
 
-    it("keeps the neutral chip for a documented known difference and says so", () => {
-      // The live case: the API's measurement of co-snap-policyengine-current
-      // for January 2026 (household.api.policyengine.org, bundle 2.9.0) is a
-      // known difference, 543 against Axiom's 478. That is never a match.
-      const { container } = render(
-        <SectionReader
-          data={makeData({
-            externalComparisons: coSnap({
-              resultCounts: { ...NO_RESULT, known_difference: 1, none: 0 },
-            }),
-          })}
-        />
-      );
-      const chip = screen.getByText(/PolicyEngine comparison/);
-      expect(visibleLabel(chip)).toBe("PolicyEngine comparison 1 case");
-      expect(chip).toHaveAttribute(
-        "title",
-        "1 test case for co-snap (us-co) declares a comparison with " +
-          "PolicyEngine (Colorado SNAP canonical two-person household). " +
-          "The latest published results show no match: 1 documented known difference. " +
-          "Max Ghenis is CEO of both Axiom and PolicyEngine."
-      );
-      expect(container.innerHTML).not.toMatch(/matches/i);
-    });
+    it.each(["known_difference", "diff", "errored"] as const)(
+      "hides a latest %s result without a neutral comparison chip",
+      (status) => {
+        const { container } = render(
+          <SectionReader
+            data={makeData({
+              externalComparisons: coSnap({
+                resultCounts: { ...NO_RESULT, [status]: 1, none: 0 },
+              }),
+            })}
+          />,
+        );
+        expect(container.innerHTML).not.toMatch(/PolicyEngine|matches/i);
+      },
+    );
 
-    it("says Matches only for matching cases, with N of M and the oldest observation date", () => {
+    it("hides partial matches when any case has a known difference", () => {
       const { container } = render(
         <SectionReader
           data={makeData({
@@ -546,23 +523,73 @@ describe("SectionReader", () => {
               resultCounts: { match: 1, known_difference: 1, diff: 0, errored: 0, none: 0 },
             }),
           })}
-        />
+        />,
+      );
+      expect(container.innerHTML).not.toMatch(/PolicyEngine|matches/i);
+    });
+
+    it("hides matching results older than seven days", () => {
+      const externalComparisons = declaredExternalComparisons(
+        [{ programId: "co-snap", jurisdiction: "us-co" }],
+        [{
+          id: "co-snap-current",
+          description: "Colorado SNAP canonical two-person household.",
+          program_id: "co-snap",
+          jurisdiction: "us-co",
+          comparisonEngines: ["policyengine"],
+          comparisonResults: [{
+            engine: "policyengine",
+            status: "match",
+            observedAt: "2026-10-01T11:59:59.999Z",
+            engineVersion: "2.9.0",
+          }],
+        }],
+        new Date("2026-10-08T12:00:00.000Z"),
+      );
+      const { container } = render(
+        <SectionReader data={makeData({ externalComparisons })} />,
+      );
+      expect(container.innerHTML).not.toMatch(/PolicyEngine|matches/i);
+    });
+
+    it("never renders the neutral PolicyEngine comparison text", () => {
+      const { container } = render(
+        <SectionReader data={makeData({ externalComparisons: coSnap() })} />,
+      );
+      expect(container.innerHTML).not.toContain("PolicyEngine comparison");
+    });
+
+    it("says Matches when all latest cases match, with N of M and the oldest observation date", () => {
+      const { container } = render(
+        <SectionReader
+          data={makeData({
+            externalComparisons: coSnap({
+              caseCount: 2,
+              caseDescriptions: ["Household A.", "Household B"],
+              matchingCaseCount: 2,
+              matchingAsOf: "2026-10-03T12:41:07.512Z",
+              matchingEngineVersions: ["2.9.0"],
+              resultCounts: { match: 2, known_difference: 0, diff: 0, errored: 0, none: 0 },
+            }),
+          })}
+        />,
       );
       const chip = screen.getByText(/Matches PolicyEngine/);
-      expect(visibleLabel(chip)).toBe("Matches PolicyEngine 1 of 2 cases · Oct 3, 2026");
-      expect(chip).toHaveAttribute(
-        "title",
+      expect(visibleLabel(chip)).toBe("Matches PolicyEngine 2 of 2 cases · Oct 3, 2026");
+      const description =
         "2 test cases for co-snap (us-co) declare a comparison with " +
-          "PolicyEngine (Household A; Household B). In the latest published results, " +
-          "as of Oct 3, 2026, 1 of 2 match PolicyEngine on every compared " +
-          "output, within each comparison's tolerance (PolicyEngine model " +
-          "version 2.9.0). The rest: 1 documented known difference. Max " +
-          "Ghenis is CEO of both Axiom and PolicyEngine."
-      );
-      // Still the neutral chip: no check mark, no "verified".
+        "PolicyEngine (Household A; Household B). In the latest published results, " +
+        "as of Oct 3, 2026, 2 of 2 match PolicyEngine on every compared " +
+        "output, within each comparison's tolerance (PolicyEngine model " +
+        "version 2.9.0). Max Ghenis is CEO of both Axiom and PolicyEngine.";
+      expect(chip).toHaveAttribute("title", description);
+      // Disclosure must be accessible without relying on a hover tooltip.
+      expect(within(chip).getByText(description)).toHaveClass("sr-only");
       expect(chip.querySelector("svg")).toBeNull();
+      expect(chip.className).toContain("border-[var(--color-rule)]");
       expect(chip.className).not.toMatch(/success|22,101,52/);
       expect(container.innerHTML).not.toMatch(/verified/i);
+      expect(container.innerHTML).not.toContain("PolicyEngine comparison");
     });
 
     it("reads a single fully matching case in the singular", () => {
@@ -575,12 +602,12 @@ describe("SectionReader", () => {
               resultCounts: { ...NO_RESULT, match: 1, none: 0 },
             }),
           })}
-        />
+        />,
       );
       const chip = screen.getByText(/Matches PolicyEngine/);
       expect(visibleLabel(chip)).toBe("Matches PolicyEngine 1 of 1 case · Oct 3, 2026");
       expect(chip.getAttribute("title")).toContain(
-        "In the latest published results, as of Oct 3, 2026, 1 of 1 case matches PolicyEngine on every compared output, within each comparison's tolerance."
+        "In the latest published results, as of Oct 3, 2026, 1 of 1 case matches PolicyEngine on every compared output, within each comparison's tolerance.",
       );
     });
 
@@ -591,24 +618,30 @@ describe("SectionReader", () => {
             externalComparisons: {
               programId: "snap",
               jurisdiction: "us-ca",
-              engines: [engineEntry({ engine: "constructor", caseDescriptions: [] })],
+              engines: [engineEntry({
+                engine: "constructor",
+                caseDescriptions: [],
+                matchingCaseCount: 1,
+                matchingAsOf: "2026-10-03T12:41:07.512Z",
+                resultCounts: { ...NO_RESULT, match: 1, none: 0 },
+              })],
             },
           })}
-        />
+        />,
       );
-      const chip = screen.getByText(/constructor comparison/);
+      const chip = screen.getByText(/Matches constructor/);
       expect(chip.getAttribute("title")).not.toContain("native code");
     });
 
     it("shows no comparison chip when no covering program declares one", () => {
       const { container } = render(
-        <SectionReader data={makeData({ externalComparisons: null })} />
+        <SectionReader data={makeData({ externalComparisons: null })} />,
       );
       expect(screen.queryByText(/comparison/i)).not.toBeInTheDocument();
       expect(container.innerHTML).not.toMatch(/PolicyEngine|verified/i);
     });
 
-    it("gives each declared engine its own chip and case count", () => {
+    it("gives each fully matching engine its own chip and case count", () => {
       render(
         <SectionReader
           data={makeData({
@@ -619,27 +652,80 @@ describe("SectionReader", () => {
                 engineEntry({
                   caseCount: 2,
                   caseDescriptions: ["Household A.", "Household B"],
-                  resultCounts: { ...NO_RESULT, none: 2 },
+                  matchingCaseCount: 2,
+                  matchingAsOf: "2026-10-03T12:41:07.512Z",
+                  resultCounts: { ...NO_RESULT, match: 2, none: 0 },
                 }),
-                engineEntry({ engine: "ukmod", caseDescriptions: [] }),
+                engineEntry({
+                  engine: "ukmod",
+                  caseDescriptions: [],
+                  matchingCaseCount: 1,
+                  matchingAsOf: "2026-10-03T12:41:07.512Z",
+                  resultCounts: { ...NO_RESULT, match: 1, none: 0 },
+                }),
               ],
             },
           })}
-        />
+        />,
       );
-      const policyengine = screen.getByText(/PolicyEngine comparison/);
-      expect(visibleLabel(policyengine)).toBe("PolicyEngine comparison 2 cases");
+      const policyengine = screen.getByText(/Matches PolicyEngine/);
+      expect(visibleLabel(policyengine)).toBe("Matches PolicyEngine 2 of 2 cases · Oct 3, 2026");
       expect(policyengine.getAttribute("title")).toMatch(
-        /^2 test cases for snap \(us-ca\) declare a comparison with PolicyEngine \(Household A; Household B\)\. No current result is published for them, /
+        /^2 test cases for snap \(us-ca\) declare a comparison with PolicyEngine \(Household A; Household B\)\./,
       );
-      const ukmod = screen.getByText(/UKMOD comparison/);
-      expect(visibleLabel(ukmod)).toBe("UKMOD comparison 1 case");
+      const ukmod = screen.getByText(/Matches UKMOD/);
+      expect(visibleLabel(ukmod)).toBe("Matches UKMOD 1 of 1 case · Oct 3, 2026");
       expect(ukmod).toHaveAttribute(
         "title",
         "1 test case for snap (us-ca) declares a comparison with UKMOD. " +
-          "No current result is published for it, so this chip does not " +
-          "say whether Axiom and UKMOD agree."
+          "In the latest published results, as of Oct 3, 2026, 1 of 1 case " +
+          "matches UKMOD on every compared output, within each comparison's tolerance.",
       );
+    });
+  });
+
+  describe("external comparisons without published results", () => {
+    // 7 USC 2014 and 7 CFR 273.10 are covered by co-snap (us-co), whose
+    // parity case co-snap-us-co-family-1 declares a PolicyEngine
+    // comparison. The trust row used to show a green "Verified ·
+    // PolicyEngine" chip for it. Without published results, it still
+    // shows no comparison chip (Max, d875: "approve, but hide"; d1020).
+    const coSnap = {
+      jurisdiction: "us-co",
+      programId: "co-snap",
+      mode: "compiled" as const,
+      status: "ready" as const,
+      ruleCount: 1,
+      anchors: ["a"],
+      ruleNames: ["snap_benefit_amount"],
+    };
+
+    it.each([
+      ["us/statute/7/2014", "Eligible households"],
+      ["us/regulation/7/273/10", "Determining household eligibility and benefit levels"],
+    ])("shows only the rule and coverage chips on %s", (citationPath, heading) => {
+      const { container } = render(
+        <SectionReader
+          data={makeData({
+            citationPath,
+            root: { ...ROOT, citation_path: citationPath, heading },
+            encodedRules: [
+              { name: "snap_benefit_amount", kind: "derived", anchors: ["a", "b"] },
+            ],
+            programs: [coSnap],
+            externalComparisons: null,
+          })}
+        />,
+      );
+      const row = screen.getByText("∀").parentElement!.parentElement!;
+      expect(Array.from(row.children, (chip) => chip.textContent)).toEqual([
+        "∀1 rule",
+        "All 2 subsections",
+      ]);
+      // Markup and attributes both: the old claim lived in a title.
+      expect(container.innerHTML).not.toMatch(/PolicyEngine/);
+      expect(container.innerHTML).not.toMatch(/verified|agrees with|comparison/i);
+      expect(container.innerHTML).not.toContain("⊨");
     });
   });
 });

@@ -206,6 +206,37 @@ export async function getRecentCorpusScopes(): Promise<RecentCorpusScope[]> {
 }
 
 const CITATION_LABEL_LOOKUP_LIMIT = 200;
+/** Citations per batched lookup: their ancestor paths stay under the lookup limit. */
+const CITATION_METADATA_BATCH = 25;
+
+export interface CitationMetadata {
+  labels: Record<string, string>;
+  documentPaths: Record<string, string>;
+}
+
+/**
+ * Names and source documents for any number of citations (the /ops
+ * ledger's), read in batches so a whole jurisdiction fits the lookup
+ * limit. Empty where Supabase is not configured or a batch fails.
+ */
+export async function getCitationMetadata(citations: string[]): Promise<CitationMetadata> {
+  const config = getSupabaseRestConfig();
+  if (!config) return { labels: {}, documentPaths: {} };
+  const unique = [...new Set(citations)];
+  const batches: string[][] = [];
+  for (let i = 0; i < unique.length; i += CITATION_METADATA_BATCH) {
+    batches.push(unique.slice(i, i + CITATION_METADATA_BATCH));
+  }
+  const results = await Promise.all(
+    batches.map((batch) =>
+      readCitationMetadata(config, batch, {}).catch(() => ({ labels: {}, documentPaths: {} }))
+    )
+  );
+  return {
+    labels: Object.assign({}, ...results.map((result) => result.labels)),
+    documentPaths: Object.assign({}, ...results.map((result) => result.documentPaths)),
+  };
+}
 
 /**
  * Resolve human-readable labels for run citations from corpus navigation

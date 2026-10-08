@@ -145,21 +145,11 @@ const CHIP_CLASS =
   "inline-flex items-center gap-2 rounded-full border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-3 py-1.5 text-[12px] font-medium leading-none text-[var(--color-ink-secondary)]";
 
 /**
- * The section's trust row — quiet status chips in the app's sans,
- * product-style rather than typewriter-style:
- *
- *   (∀ 8 rules) (▰▱▱▱▱▱ 1 of 6 subsections) (PolicyEngine comparison 1 case)
- *   (Matches PolicyEngine 1 of 2 cases · Oct 3, 2026)
- *
- * Coverage is a map, not a meter: one segment per top-level
- * subsection in document order, filled where rules exist; each
- * segment links to its subsection. A comparison chip appears for
- * each engine a covering program's parity cases declare. It says
- * "Matches" only for cases whose latest published results all match,
- * observed within EXTERNAL_MATCH_MAX_AGE_DAYS, with the oldest of
- * those observations as its date; otherwise it stays a neutral
- * "comparison" chip. Never "verified", never a check mark.
- * Denominators always shown.
+ * The section's trust row: encoded rules, subsection coverage, and
+ * a comparison chip only when every declared case for an engine has
+ * fresh latest matches. The data assembly enforces the seven-day
+ * window; the chip includes N of M and the oldest matching date.
+ * Missing, stale, and nonmatching results leave the chip hidden.
  */
 function EncodingStatusLine({ data }: { data: SectionPageData }) {
   if (data.encodedRules.length === 0) return null;
@@ -229,6 +219,13 @@ function EncodingStatusLine({ data }: { data: SectionPageData }) {
       )}
 
       {declared?.engines.map((comparison) => {
+        if (
+          comparison.caseCount === 0 ||
+          comparison.matchingCaseCount !== comparison.caseCount ||
+          !comparison.matchingAsOf
+        ) {
+          return null;
+        }
         const description = externalComparisonTitle(declared, comparison);
         const cases = comparison.caseCount === 1 ? "case" : "cases";
         const asOf = formatDate(comparison.matchingAsOf);
@@ -238,23 +235,11 @@ function EncodingStatusLine({ data }: { data: SectionPageData }) {
             className={`${CHIP_CLASS} cursor-help`}
             title={description}
           >
-            {comparison.matchingCaseCount > 0 ? (
-              <>
-                Matches {oracleLabel(comparison.engine)}
-                <span className="opacity-60">
-                  {comparison.matchingCaseCount} of {comparison.caseCount}{" "}
-                  {cases}
-                  {asOf ? ` · ${asOf}` : ""}
-                </span>
-              </>
-            ) : (
-              <>
-                {oracleLabel(comparison.engine)} comparison
-                <span className="opacity-60">
-                  {comparison.caseCount} {cases}
-                </span>
-              </>
-            )}
+            Matches {oracleLabel(comparison.engine)}
+            <span className="opacity-60">
+              {comparison.matchingCaseCount} of {comparison.caseCount} {cases}
+              {asOf ? ` · ${asOf}` : ""}
+            </span>
             <span className="sr-only">{description}</span>
           </span>
         );

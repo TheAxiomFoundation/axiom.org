@@ -61,7 +61,7 @@ describe('Landing sections', () => {
   it('renders the encoder section with the journey film', () => {
     render(<EncoderSection />)
     expect(
-      screen.getByRole('heading', { name: /statutes encoded and verified/i }),
+      screen.getByRole('heading', { name: /how a statute gets encoded/i }),
     ).toBeInTheDocument()
     // The terminal animation gave way to the journey film (scroll-
     // scrubbed on wide viewports, self-running elsewhere).
@@ -93,6 +93,28 @@ describe('Landing sections', () => {
     expect(text).not.toMatch(/experts? (verify|review|check)/i)
   })
 
+  // The AI-labs card links the chatbot: an OpenAI model with tool access to
+  // the rules engine, used for US benefit and tax estimates (finbot-snap-demo
+  // src/lib/model.ts, src/lib/tools.ts). 23 of its 34 headline outputs carry
+  // no legal id and 18 are flagged incomplete, so no card may promise
+  // accurate, certified, or verifiable answers.
+  it('describes the chatbot without accuracy or certification claims', () => {
+    const { container } = render(<ApplicationsSection />)
+    const labels = [...container.querySelectorAll('[aria-label], [title]')].map(
+      (el) => `${el.getAttribute('aria-label') ?? ''} ${el.getAttribute('title') ?? ''}`,
+    )
+    const text = [container.textContent ?? '', ...labels].join(' ')
+
+    expect(text).not.toMatch(/ground truth/i)
+    expect(text).not.toMatch(/\baccurate\b/i)
+    expect(text).not.toMatch(/\b(certified|verified|official)\b/i)
+    expect(text).not.toMatch(/verifiable answers?/i)
+    expect(text).not.toMatch(/every answer/i)
+    expect(
+      screen.getByRole('link', { name: /open demo: benefits and tax chatbot/i }),
+    ).toHaveAttribute('href', '/demos?d=chatbot')
+  })
+
   it('serves the four demo previews as posters, not live iframes, off desktop', () => {
     // Regression for the mobile-Safari crash guard: with the default
     // non-desktop media environment, no card may mount a live app
@@ -119,7 +141,7 @@ describe('Landing sections', () => {
       screen.getByRole('heading', { name: /calculators that audit themselves/i }),
     ).toBeInTheDocument()
     expect(
-      screen.getByRole('heading', { name: /ground truth for AI/i }),
+      screen.getByRole('heading', { name: /rules a model can call/i }),
     ).toBeInTheDocument()
     expect(
       screen.getByRole('heading', { name: /reform without rewriting/i }),

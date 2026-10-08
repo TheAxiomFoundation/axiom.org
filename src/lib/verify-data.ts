@@ -81,18 +81,18 @@ export const surfaces: Surface[] = [
       "Fetch a US corpus release from the public mirror and recompute its canonical sha256.",
     expect: "Recomputed hash matches the published manifest.",
     limit:
-      "Coverage is per-program and partial. The programs list is the coverage claim; there is no blanket one.",
+      "Coverage is per-program and partial. The programs list is the coverage claim; there is no blanket one. CI skips validation, companion tests, and proof checks for modules on a public waiver list, counted under What is broken right now.",
   },
   {
     id: "oracles",
-    name: "US validation against independent evidence",
+    name: "US validation against other calculators and USDA data",
     tier: "verified",
     claim:
       "Where a policy is covered, every disagreement with the reference calculator is classified with evidence: reconciled arithmetically, traced to a bug in the other engine, or attributed to the comparison harness itself (bridge artifacts) — a bounded class we disclose rather than blend in.",
     check:
       "git clone https://github.com/TheAxiomFoundation/axiom-oracles\ncat conformance/scoreboard.json\nuv run scripts/apply_dispositions.py --check",
     expect:
-      "The scoreboard's own predicate: covered == in_scope, unexplained == 0, Axiom-attributed == 0. The dispositions check recomputes every classification's arithmetic from the committed evidence.",
+      "The scoreboard's own predicate: covered == in_scope, unexplained == 0, Axiom-attributed == 0. For the US, unexplained and Axiom-attributed are 0, but live suites cover 36 of 127 in-scope PolicyEngine policies, so the US row is not yet conformant. The dispositions check recomputes every classification's arithmetic from the committed evidence.",
     limit:
       "Coverage is evidence-set specific. Agreement only shows two implementations agree; where both misread a provision the same way, it shows nothing.",
   },
@@ -169,11 +169,11 @@ export const usEvidenceRows: UsEvidenceRow[] = [
   },
   {
     id: "co-snap-qc",
-    check: "Colorado SNAP QC reality check",
+    check: "Colorado SNAP QC benefit replay",
     reference: "USDA SNAP QC",
     scale: "856 real FY 2024 administrative cases",
     result:
-      "All cases reproduce the federal computation exactly, case by case and stage by stage.",
+      "All 856 match at zero tolerance on the benefit Mathematica computes for USDA from each case record and on four intermediate values in the file: gross income, the standard and excess-shelter deductions, and net income. The maximum allotment matches USDA's FY 2024 table in all 856. The file keeps only eligible households, so eligibility is untested.",
     href: "/reports/colorado-snap-qc-fy2024",
     linkLabel: "Read the QC report",
   },
@@ -197,7 +197,7 @@ export const goldenHousehold = {
     ["snap_net_income", "226"],
   ] as const,
   certificate:
-    "certified: 0 — certification is automatic when the harness computes completeness and fidelity green; we expect no current encoding passes yet.",
+    "certified: 0 — the API's certified ledger is empty. A program certifies only when axiom-oracles computes all four premises (conformant, exercised, closed, executable) true with zero open defects; this program's certificate reads unavailable because no producer computes closed or executable yet.",
 };
 
 export const closurePredicate =
@@ -272,7 +272,7 @@ export const enforcement = [
   "Citations cannot dangle. Non-URL sources are repo paths and must exist.",
   "Dispositions expire with their sources. When a mismatch moves or disappears, its disposition stops applying rather than silently relabelling a new residual.",
   "The ratchet only turns one way. Covered may rise; unexplained and Axiom-attributed may only fall. CI refuses regressions.",
-  "Coverage is gated separately: every executable output must be mapped to an oracle concept and covered by companion tests, or the build fails.",
+  "Coverage is tracked separately. CI fails an executable output unless it is mapped to an oracle concept, ruled not comparable, or listed in a public pending file (14,952 US outputs in October 2026), and fails a mapped output its companion tests leave out. That check reads the test files without running them; the step that runs companion tests skips modules on the public waiver list below.",
 ];
 
 export interface OpenIssue {
@@ -290,6 +290,22 @@ export interface OpenIssue {
  * worth. Entries leave only when the check passes, not when the copy improves.
  */
 export const openIssues: OpenIssue[] = [
+  {
+    // rulespec-us known-validation-gaps.yaml at 2066cef61; the skips are in
+    // TheAxiomFoundation/.github validate-rulespec.yml@df2dfb53 (the ref
+    // rulespec-us pins). Rule counts join the waived module paths to
+    // axiom-oracles dashboard/public/data/rule_verification.json (rulespec
+    // 54d90a72, generated 2026-09-28).
+    id: "validation-waivers",
+    title:
+      "CI skips validation, companion tests, and proof checks for 1,940 US modules on a public waiver list",
+    status: "Open — counted 2026-10-02",
+    detail:
+      "rulespec-us keeps a waiver list, known-validation-gaps.yaml. Modules with an active waiver skip three steps of the shared validation workflow: RuleSpec validation, companion tests, and proof and claim checks. On October 2, 2026, 1,940 modules carried an active waiver, and they hold 23,735 of our 34,810 US rules (counted against axiom-oracles' per-rule file of September 28). Each waiver names an owner, an issue, and an expiry date: all 1,940 expire on December 21, 2026, and 1,650 link to rulespec-us#782, which tracks the waiver list as a merge bypass.",
+    evidence:
+      "git clone https://github.com/TheAxiomFoundation/rulespec-us && cd rulespec-us\ngit show 2066cef61:known-validation-gaps.yaml | grep -c '^    active:'\n1940",
+    fix: "Repair a waived module until it validates, then delete its waiver.",
+  },
   {
     id: "api-rounding",
     title:

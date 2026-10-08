@@ -1,10 +1,19 @@
 import fc from "fast-check";
-import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it, vi } from "vitest";
+import { SectionReader } from "@/components/axiom/section/section-reader";
 import {
   EXTERNAL_MATCH_MAX_AGE_DAYS,
   declaredExternalComparisons,
+  type SectionPageData,
 } from "./section-page";
 import type { ParityCaseSummary } from "./runtime/api";
+
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => null,
+  useRouter: () => ({ push: vi.fn() }),
+}));
 
 // Small alphabets so programs, jurisdictions, and engines collide often:
 // the selection and per-engine counts can only go wrong when they do.
@@ -63,7 +72,106 @@ const casesOf = (
       item.jurisdiction === target.jurisdiction,
   );
 
+// A section with an encoding, so comparison visibility is exercised
+// independently of the existing no-encoding hide rule.
+const readerData: SectionPageData = {
+  citationPath: "us/statute/26/32",
+  root: {
+    id: "root",
+    jurisdiction: "us",
+    doc_type: "statute",
+    parent_id: null,
+    level: 3,
+    ordinal: 32,
+    heading: "Earned income",
+    body: null,
+    effective_date: null,
+    repeal_date: null,
+    source_url: null,
+    source_path: null,
+    citation_path: "us/statute/26/32",
+    rulespec_path: null,
+    has_rulespec: true,
+    created_at: "",
+    updated_at: "",
+  },
+  breadcrumbs: [],
+  provisions: [],
+  intro: null,
+  bodyChunks: [],
+  toc: [],
+  rootRefs: [],
+  encoding: null,
+  encodedRules: [{ name: "eitc", kind: "derived", anchors: [] }],
+  programs: [],
+  ruleFiles: {},
+  citedByFiles: [],
+  citedByOverflow: 0,
+  focusAnchor: null,
+  prev: null,
+  next: null,
+  truncated: false,
+  encodedCoverage: null,
+  externalComparisons: null,
+};
+
 describe("declaredExternalComparisons invariants", () => {
+  it("shows a chip iff every latest result matches and is fresh", () => {
+    const result = fc.oneof(
+      { weight: 3, arbitrary: fc.constant({
+        engine: "policyengine",
+        status: "match" as const,
+        observedAt: NOW.toISOString(),
+        engineVersion: "2.9.0",
+      }) },
+      { weight: 1, arbitrary: comparisonResult.map((entry) => ({
+        ...entry,
+        engine: "policyengine",
+      })) },
+    );
+    fc.assert(
+      fc.property(
+        fc.array(fc.array(result, { maxLength: 3 }), { maxLength: 4 }),
+        (resultsByCase) => {
+          const cases: ParityCaseSummary[] = resultsByCase.map((results, index) => ({
+            id: String(index),
+            description: "Household",
+            program_id: "co-snap",
+            jurisdiction: "us-co",
+            comparisonEngines: ["policyengine"],
+            comparisonResults: results,
+          }));
+          // Independent oracle: empty declarations/results are hidden;
+          // every comparison of every case must have a fresh latest match.
+          const shouldShow = resultsByCase.length > 0 && resultsByCase.every(
+            (results) => results.length > 0 && results.every((entry) =>
+              entry.status === "match" && entry.observedAt !== null &&
+              Date.parse(entry.observedAt) >= NOW.getTime() - 7 * DAY,
+            ),
+          );
+          const html = renderToStaticMarkup(createElement(SectionReader, {
+            data: {
+              ...readerData,
+              externalComparisons: declaredExternalComparisons(
+                [{ programId: "co-snap", jurisdiction: "us-co" }], cases, NOW,
+              ),
+            },
+          }));
+          expect(html.includes("Matches PolicyEngine")).toBe(shouldShow);
+          expect(html).not.toContain("PolicyEngine comparison");
+          if (shouldShow) {
+            const text = document.createElement("div");
+            text.innerHTML = html;
+            expect(text.textContent).toContain(
+              `${cases.length} of ${cases.length} ${cases.length === 1 ? "case" : "cases"}`,
+            );
+          }
+        },
+      ),
+      { numRuns: 500, seed: 2991020 },
+    );
+  });
+
   it("picks the first covering program whose cases declare any engine, or none", () => {
     fc.assert(
       fc.property(scenario, ({ programs, cases }) => {

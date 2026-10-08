@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Reveal } from "@/components/landing/reveal";
-import { axiomAppHref } from "@/lib/urls";
 import { SITE_URL } from "@/lib/urls";
 
 export const metadata: Metadata = {
@@ -11,8 +10,8 @@ export const metadata: Metadata = {
 };
 
 // Every row links a PUBLIC surface — the receipt is only a receipt if a
-// stranger can follow it. (ops is private; certification status is public
-// through the app, which mirrors the certified ledger.)
+// stranger can follow it. (ops is private; the certified ledger is public
+// at /api/axiom/certified, which proxies axiom-api's ledger read.)
 const receipts = [
   {
     name: "The receipt package",
@@ -38,23 +37,23 @@ const receipts = [
   {
     name: "Encodings",
     what:
-      "Every rule cites the provision of law it encodes and lands with a companion test. The repositories are the receipt: the citation, the test, and the history of both are public.",
+      "Every rule cites the provision of law it encodes, and modules carry companion tests. CI runs a module's tests unless it sits on a public waiver list: 1,940 rulespec-us modules carried an active validation waiver on October 2, 2026, and they hold 23,735 of our 34,810 US rules (rule counts as of September 28). The repositories are the receipt: the citations, the tests, the waiver list, and their history are public.",
     href: "https://github.com/TheAxiomFoundation/rulespec-us",
     label: "rulespec-us",
   },
   {
     name: "Validation",
     what:
-      "Encodings are compared against independent implementations in the open, and disagreements are recorded rather than resolved quietly.",
+      "Encodings are compared with other calculators and datasets in the open, and the disagreements are recorded.",
     href: "https://github.com/TheAxiomFoundation/axiom-oracles",
     label: "axiom-oracles",
   },
   {
     name: "Certification",
     what:
-      "Computed, not granted: the harness derives completeness and fidelity, and a node certifies itself — nobody, including us, grants it by hand. Every node wears its tier in the app, including the empty certified tier at launch. The emptiness is the credibility.",
-    href: axiomAppHref(),
-    label: "the Axiom app",
+      "A program certifies only when axiom-oracles computes all four premises — conformant, exercised, closed, executable — true with zero open defects, and no flag is set by hand. None passes yet. The API serves a rule as certified only when it is in the certified ledger, where every entry names its claim — computed by a verifier, or attested by a human signature — and pins its evidence. That ledger is empty. The emptiness is the credibility.",
+    href: "/api/axiom/certified",
+    label: "the certified ledger",
   },
 ];
 
@@ -112,8 +111,11 @@ export default function ReceiptsPage() {
         <Reveal as="section">
           <h2 className="heading-section mb-3">What&apos;s next</h2>
           <p className="max-w-[720px] font-body text-[1rem] leading-relaxed text-[var(--color-ink-secondary)]">
-            We intend to publish the full agent logs behind every encoding —
-            the complete record of how each rule came to say what it says.
+            We intend to publish the agent logs behind the rules our encoder
+            wrote. In September 2026, about 16,300 of our 34,810 US rules
+            matched a signed manifest that names the encoder&apos;s apply step.
+            About 15,300 more (mostly the generated US tariff schedule) were
+            signed in by manual attestation, and their manifests name no model.
           </p>
         </Reveal>
       </div>

@@ -38,6 +38,7 @@ export const colors = {
   // Code surfaces (high-contrast white-on-near-black; independent palette).
   codeBg: "#1c1917",
   codeText: "#e7e5e4",
+  codeSelection: "#755b1c",
 
   // Status fill colors. All AA on paper when used as text. Bumped warning
   // from #b45309 (4.77:1, no margin) to #92400e (6.73:1) to give small-text
@@ -139,6 +140,12 @@ export const contrastPairs: readonly ContrastPair[] = [
     description: "codeText on codeBg",
     fg: colors.codeText,
     bg: colors.codeBg,
+    minRatio: 4.5,
+  },
+  {
+    description: "codeText on codeSelection (selected code)",
+    fg: colors.codeText,
+    bg: colors.codeSelection,
     minRatio: 4.5,
   },
   // SC 1.4.11 non-text — focus rings and form input borders
