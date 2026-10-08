@@ -272,14 +272,16 @@
 
 .ledgerOverview {
   display: grid;
-  gap: 12px;
+  gap: 16px;
+  padding: 6px 0 4px;
 }
 
 .ledgerSummary {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 2px 14px;
+  gap: 2px 0;
+  margin: 0;
   font-size: 13px;
   color: var(--color-ink-secondary);
 }
@@ -345,9 +347,20 @@
   text-decoration: underline;
 }
 
+/* The latest run as one unit; under a summary of several runs, a rule sets it apart. */
+.ledgerLatest {
+  display: grid;
+  gap: 14px;
+}
+
+.ledgerLatest[data-after-summary] {
+  padding-top: 16px;
+  border-top: 1px solid var(--color-rule);
+}
+
 .ledgerVerdict {
   display: grid;
-  gap: 3px;
+  gap: 6px;
 }
 
 .ledgerVerdict .ledgerLabel {
@@ -357,18 +370,21 @@
 .ledgerVerdictLine {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 10px;
+  align-items: center;
+  gap: 6px 10px;
   margin: 0;
-  font-size: 14px;
+  font-size: 15px;
+  line-height: 1.35;
   color: var(--color-ink);
 }
 
 .ledgerOutcome {
-  padding: 1px 8px;
+  padding: 2px 8px;
   border-radius: 4px;
   font-size: 12px;
   font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
   color: var(--color-success);
   background: color-mix(in srgb, var(--color-success) 12%, transparent);
 }
@@ -386,23 +402,32 @@
 }
 
 .ledgerVerdictCause {
-  font-weight: 550;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 
 .ledgerVerdictMeta {
   display: flex;
   flex-wrap: wrap;
-  gap: 2px 14px;
+  align-items: baseline;
+  gap: 2px 0;
   margin: 0;
   font-size: 12px;
+  line-height: 1.5;
   color: var(--color-ink-muted);
+}
+
+.ledgerVerdictSep {
+  padding: 0 8px;
+  color: var(--color-rule-strong);
+  white-space: pre;
 }
 
 .ledgerVerdictMeta a {
   color: var(--color-ink-secondary);
   text-decoration: underline;
   text-decoration-color: var(--color-rule-strong);
+  text-underline-offset: 2px;
 }
 
 .ledgerRuns {

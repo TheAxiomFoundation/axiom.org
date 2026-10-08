@@ -376,43 +376,74 @@ function SectionRuns({ section, referenceMs }: { section: LedgerSection; referen
         <>
           <p className={styles.ledgerSummary}>
             <strong>{overview.runs} runs</strong>
-            {failedShare && <span>{failedShare}</span>}
+            {failedShare && (
+              <>
+                <span className={styles.ledgerVerdictSep} aria-hidden>
+                  {" · "}
+                </span>
+                <span>{failedShare}</span>
+              </>
+            )}
+            <span className={styles.ledgerVerdictSep} aria-hidden>
+              {" · "}
+            </span>
             <span>latest {relativeTime(overview.lastAt, referenceMs)}</span>
           </p>
           <CountList title="Where each run stopped, and why" groups={overview.stops} />
         </>
       )}
-      {/* What happened first, then where the time went, then the tries inside the loop. */}
-      <div className={styles.ledgerVerdict} aria-label={overview.runs === 1 ? "The run" : "Latest run"}>
-        <p className={styles.ledgerLabel}>{overview.runs === 1 ? "The run" : "Latest run"}</p>
-        <p className={styles.ledgerVerdictLine}>
-          <span className={styles.ledgerOutcome} data-outcome={latest.outcome}>
-            {latest.outcomeLabel}
-          </span>
-          {latest.cause && (
-            <span className={styles.ledgerVerdictCause} title={latest.cause}>
-              {causeHeadline(latest.cause)}
-            </span>
-          )}
-        </p>
-        <p className={styles.ledgerVerdictMeta}>
-          <span title={latest.dispatchedAt}>dispatched {relativeTime(latest.dispatchedAt, referenceMs)}</span>
-          {latest.tries && (
-            <span>
-              {latest.tries.length} {latest.tries.length === 1 ? "try" : "tries"} in the encode loop
-            </span>
-          )}
-          {latest.pr && (
-            <a href={latest.pr.url} target="_blank" rel="noreferrer">
-              {latest.pr.label} · {latest.pr.state}
-            </a>
-          )}
-          <a href={latest.runUrl} target="_blank" rel="noreferrer">
-            Run on GitHub ↗
-          </a>
-        </p>
-      </div>
-      <RunTimeline timeline={runTimeline(latest, referenceMs)} showStopped={false} />
+      {/* The latest run as one unit: what happened, then where the time went, then the tries inside the loop. */}
+      <section
+        className={styles.ledgerLatest}
+        data-after-summary={overview.runs > 1 || undefined}
+        aria-label={overview.runs === 1 ? "The run" : "Latest run"}
+      >
+        <div className={styles.ledgerVerdict}>
+          <p className={styles.ledgerLabel}>{overview.runs === 1 ? "The run" : "Latest run"}</p>
+          <p className={styles.ledgerVerdictLine}>
+            <span className={styles.ledgerOutcome} data-outcome={latest.outcome}>
+              {latest.outcomeLabel}
+            </span>{" "}
+            {latest.cause && (
+              <span className={styles.ledgerVerdictCause} title={latest.cause}>
+                {causeHeadline(latest.cause)}
+              </span>
+            )}
+          </p>
+          <p className={styles.ledgerVerdictMeta}>
+            {[
+              <span key="dispatched" title={latest.dispatchedAt}>
+                dispatched {relativeTime(latest.dispatchedAt, referenceMs)}
+              </span>,
+              latest.tries && (
+                <span key="tries">
+                  {latest.tries.length} {latest.tries.length === 1 ? "try" : "tries"} in the encode loop
+                </span>
+              ),
+              latest.pr && (
+                <a key="pr" href={latest.pr.url} target="_blank" rel="noreferrer">
+                  {latest.pr.label} · {latest.pr.state}
+                </a>
+              ),
+              <a key="run" href={latest.runUrl} target="_blank" rel="noreferrer">
+                Run on GitHub ↗
+              </a>,
+            ]
+              .filter(Boolean)
+              .map((item, index) => (
+                <Fragment key={index}>
+                  {index > 0 && (
+                    <span className={styles.ledgerVerdictSep} aria-hidden>
+                      {" · "}
+                    </span>
+                  )}
+                  {item}
+                </Fragment>
+              ))}
+          </p>
+        </div>
+        <RunTimeline timeline={runTimeline(latest, referenceMs)} showStopped={false} />
+      </section>
       {overview.runs > 1 && (
         <button
           type="button"

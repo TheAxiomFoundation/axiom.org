@@ -73,7 +73,7 @@ describe("PipelineLedger", () => {
     fireEvent.click(section);
     expect(section).toHaveAttribute("aria-expanded", "true");
     // A summary line, then where and why each run stopped (count first), then the latest run.
-    expect(screen.getByText("12 runs").parentElement).toHaveTextContent("12 runsall failedlatest 18d ago");
+    expect(screen.getByText("12 runs").parentElement).toHaveTextContent("12 runs · all failed · latest 18d ago");
     const list = (name: string) => within(screen.getByRole("list", { name })).getAllByRole("listitem").map((item) => item.textContent);
     const stops = "Where each run stopped, and why";
     expect(list(stops)).toEqual([
@@ -88,7 +88,7 @@ describe("PipelineLedger", () => {
     expect(list(stops)).toHaveLength(10);
     fireEvent.click(screen.getByRole("button", { name: "Show fewer" }));
     expect(list(stops)).toHaveLength(5);
-    expect(screen.getByText("Latest run").parentElement).toHaveTextContent("Latest runFailed validationcause ldispatched 18d agoRun on GitHub ↗");
+    expect(screen.getByText("Latest run").parentElement).toHaveTextContent("Latest runFailed validation cause ldispatched 18d ago · Run on GitHub ↗");
     // The latest run's timeline shows under the overview, with nothing to open.
     expect(screen.queryByRole("button", { name: /^Timeline of / })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Encode run" })).toBeInTheDocument();
