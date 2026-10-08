@@ -8,6 +8,11 @@ import type { RunSummary } from "@/lib/aspen/results";
 
 const PARTICIPANT_KEY = "aspen.participant";
 const PROFILE_KEY = "aspen.profile";
+const RUN_KEY = "aspen.run";
+/** The saved conversation from Try it. It belongs to one run. */
+export const CHAT_KEY = "aspen.chat.v1";
+/** Set once this device has shared its Rate it answers. It belongs to one run. */
+export const OVERALL_KEY = "aspen.overall.v1";
 
 let fallbackId: string | null = null;
 
@@ -79,6 +84,31 @@ export function writeStored(key: string, value: unknown, session = false) {
   } catch {
     // Private mode or a full quota: the page works without it.
   }
+}
+
+/**
+ * Ties this device's saved chat and Rate it answers to the room's run. When
+ * the presenter starts a new run (after a rehearsal), a device that saved
+ * them under the old run drops them, so a test phone starts clean on the
+ * night. A device with no recorded run adopts the current one and keeps
+ * what it has. Returns true when it dropped anything.
+ */
+export function enterRun(runId: string): boolean {
+  const previous = readStored<string>(RUN_KEY);
+  if (previous === runId) return false;
+  writeStored(RUN_KEY, runId);
+  if (previous === null) return false;
+  let dropped = false;
+  for (const key of [CHAT_KEY, OVERALL_KEY]) {
+    try {
+      if (window.localStorage.getItem(key) === null) continue;
+      window.localStorage.removeItem(key);
+      dropped = true;
+    } catch {
+      // Blocked storage holds nothing to drop.
+    }
+  }
+  return dropped;
 }
 
 export async function postJson<T = Record<string, unknown>>(

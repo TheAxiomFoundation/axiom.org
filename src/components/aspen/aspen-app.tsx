@@ -6,6 +6,7 @@ import { CHAT_KEY, ChatWindow, type SavedChat } from "./chat-window";
 import { OverallRating } from "./overall-rating";
 import {
   EMPTY_PROFILE,
+  enterRun,
   loadProfile,
   participantId,
   readStored,
@@ -96,6 +97,19 @@ export function AspenApp() {
     if (live && live === view && !follow) setFollow(true);
   }, [live, view, follow]);
 
+  // A new run on the presenter view (after a rehearsal) starts this device
+  // clean: the chat and Rate it remount without the old run's answers, and
+  // the page follows the room again. Only a live control row counts, so a
+  // database error (which falls back to the default run) never clears a phone.
+  const [runEpoch, setRunEpoch] = useState(0);
+  useEffect(() => {
+    if (!hydrated || !control?.live) return;
+    if (enterRun(control.runId)) {
+      setRunEpoch((n) => n + 1);
+      setFollow(true);
+    }
+  }, [hydrated, control?.live, control?.runId]);
+
   useEffect(() => {
     if (hydrated) sendEvent("stage_view", { stage: view, followed: follow }, view);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -105,7 +119,7 @@ export function AspenApp() {
   const [thread, setThread] = useState<ThreadQuestion | null>(null);
   useEffect(() => {
     setThread(readThread());
-  }, [view]);
+  }, [view, runEpoch]);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRoot = useRef<HTMLDivElement>(null);
@@ -247,6 +261,7 @@ export function AspenApp() {
 
         <div hidden={view !== "try"}>
           <ChatWindow
+            key={runEpoch}
             perspective={profile.perspective}
             stage={view}
             rulesUnlocked={rulesUnlocked}
@@ -255,7 +270,7 @@ export function AspenApp() {
           />
         </div>
 
-        {view === "rate" && <OverallRating stage={view} />}
+        {view === "rate" && <OverallRating key={runEpoch} stage={view} />}
 
         {view === "reveal" &&
           (results ? (

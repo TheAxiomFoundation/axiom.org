@@ -1,7 +1,10 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  CHAT_KEY,
   EMPTY_PROFILE,
+  OVERALL_KEY,
+  enterRun,
   formatValue,
   loadProfile,
   newId,
@@ -121,6 +124,49 @@ describe("readStored / writeStored", () => {
       throw new Error("quota");
     });
     expect(() => writeStored("k", 1)).not.toThrow();
+  });
+});
+
+describe("enterRun", () => {
+  it("adopts the run on a device with no recorded run and keeps what it saved", () => {
+    localStorage.setItem(CHAT_KEY, "{}");
+    expect(enterRun("rehearsal")).toBe(false);
+    expect(readStored("aspen.run")).toBe("rehearsal");
+    expect(localStorage.getItem(CHAT_KEY)).toBe("{}");
+  });
+
+  it("does nothing while the run stays the same", () => {
+    writeStored("aspen.run", "phoenix");
+    localStorage.setItem(OVERALL_KEY, "true");
+    expect(enterRun("phoenix")).toBe(false);
+    expect(localStorage.getItem(OVERALL_KEY)).toBe("true");
+  });
+
+  it("drops the old run's chat and shared ratings when the run changes", () => {
+    writeStored("aspen.run", "rehearsal");
+    localStorage.setItem(CHAT_KEY, "{}");
+    localStorage.setItem(OVERALL_KEY, "true");
+    localStorage.setItem("aspen.participant", "p-1");
+    expect(enterRun("phoenix")).toBe(true);
+    expect(localStorage.getItem(CHAT_KEY)).toBeNull();
+    expect(localStorage.getItem(OVERALL_KEY)).toBeNull();
+    expect(localStorage.getItem("aspen.participant")).toBe("p-1");
+    expect(readStored("aspen.run")).toBe("phoenix");
+  });
+
+  it("records a new run without reporting a drop when nothing was saved", () => {
+    writeStored("aspen.run", "rehearsal");
+    expect(enterRun("phoenix")).toBe(false);
+    expect(readStored("aspen.run")).toBe("phoenix");
+  });
+
+  it("never throws when storage is blocked", () => {
+    writeStored("aspen.run", "rehearsal");
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation((key: string) => {
+      if (key === "aspen.run") return JSON.stringify("rehearsal");
+      throw new Error("blocked");
+    });
+    expect(enterRun("phoenix")).toBe(false);
   });
 });
 

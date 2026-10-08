@@ -8,10 +8,8 @@ import {
   RATING_SCALES,
   SOURCE_OF_TRUTH,
 } from "@/lib/aspen/content";
-import { readStored, sendEvent, writeStored } from "./client";
+import { OVERALL_KEY, readStored, sendEvent, writeStored } from "./client";
 import { BUTTON, Chip, FIELD } from "./ui";
-
-const OVERALL_KEY = "aspen.overall.v1";
 
 /** One category on a 1–5 scale: five equal buttons; the ends are labelled once above the list. */
 export function ScaleRow({

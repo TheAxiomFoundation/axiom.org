@@ -335,3 +335,57 @@ describe("AspenApp thread", () => {
     expect(screen.getByText(/You haven't asked the AI yet/)).toBeInTheDocument();
   });
 });
+
+describe("AspenApp after a new run", () => {
+  const asked: Partial<SavedChat> = {
+    perspective: "resident",
+    householdId: "az-savings",
+    turns: [
+      { key: "u", role: "user", content: "Q" },
+      { key: "a", role: "assistant", content: "A", status: "done", promptId: "p" },
+    ],
+    rated: [],
+  };
+
+  it("drops a rehearsal's chat and shared ratings, and follows the room again", async () => {
+    localStorage.setItem("aspen.run", JSON.stringify("rehearsal"));
+    localStorage.setItem("aspen.overall.v1", "true");
+    storeChat(asked);
+    sessionStorage.setItem("aspen.view", JSON.stringify({ view: "scale", follow: false }));
+    render(<AspenApp />);
+
+    await onView("welcome");
+    await waitFor(() => expect(localStorage.getItem("aspen.run")).toBe(JSON.stringify("phoenix")));
+    expect(JSON.parse(localStorage.getItem(CHAT_KEY) ?? "{}").turns).toEqual([]);
+
+    fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
+    await onView("reveal");
+    expect(screen.getByText(/You haven't asked the AI yet/)).toBeInTheDocument();
+
+    fireEvent.click(nav().getByRole("button", { name: /Rate it/ }));
+    await onView("rate");
+    expect(screen.getByRole("button", { name: "Share my ratings" })).toBeInTheDocument();
+  });
+
+  it("keeps the chat while the run stays the same", async () => {
+    localStorage.setItem("aspen.run", JSON.stringify("phoenix"));
+    storeChat(asked);
+    render(<AspenApp />);
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === "/api/aspen/state")).toBe(true));
+    fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
+    await onView("reveal");
+    expect(screen.getByText(/You asked about “Disabled, with savings”\. Rate the answer/)).toBeInTheDocument();
+  });
+
+  it("keeps the chat when the control row is not live (a database error)", async () => {
+    control = { runId: "rehearsal", stage: "welcome", live: false, updatedAt: null };
+    localStorage.setItem("aspen.run", JSON.stringify("phoenix"));
+    storeChat(asked);
+    render(<AspenApp />);
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === "/api/aspen/state")).toBe(true));
+    fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
+    await onView("reveal");
+    expect(screen.getByText(/You asked about “Disabled, with savings”\. Rate the answer/)).toBeInTheDocument();
+    expect(localStorage.getItem("aspen.run")).toBe(JSON.stringify("phoenix"));
+  });
+});

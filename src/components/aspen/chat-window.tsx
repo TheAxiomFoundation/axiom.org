@@ -16,7 +16,7 @@ import {
 import type { ChatSource } from "@/lib/aspen/openai";
 import { AnswerText } from "./answer-text";
 import { RatingCard, RulesCheck } from "./answer-feedback";
-import { newId, participantId, readStored, sendEvent, writeStored } from "./client";
+import { CHAT_KEY, newId, participantId, readStored, sendEvent, writeStored } from "./client";
 import { Disclosure } from "./disclosure";
 import { BUTTON, Chip, FIELD } from "./ui";
 
@@ -40,7 +40,7 @@ export interface Turn {
 }
 
 const OWN = "own";
-export const CHAT_KEY = "aspen.chat.v1";
+export { CHAT_KEY };
 
 export interface SavedChat {
   perspective: PerspectiveId;
