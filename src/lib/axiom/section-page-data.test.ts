@@ -397,10 +397,16 @@ describe("getSectionPageData", () => {
     { status: "known_difference", observedAt: "2026-10-03T12:00:00.000Z", showsChip: false },
     { status: "diff", observedAt: "2026-10-03T12:00:00.000Z", showsChip: false },
     { status: "match", observedAt: "2026-09-26T12:00:00.000Z", showsChip: false },
+    // Dated ahead of the clock (set below to 08:00:00.000Z): hidden,
+    // except within the five-minute clock-skew tolerance.
+    { status: "match", observedAt: "2099-10-08T12:00:00.000Z", showsChip: false },
+    { status: "match", observedAt: "2026-10-04T08:05:00.000Z", showsChip: true },
+    { status: "match", observedAt: "2026-10-04T08:05:00.001Z", showsChip: false },
     { status: null, observedAt: null, showsChip: false },
-  ])("reads latest $status results without running parity; chip visibility is $showsChip", async ({ status, observedAt, showsChip }) => {
+  ])("reads latest $status results observed $observedAt without running parity; chip visibility is $showsChip", async ({ status, observedAt, showsChip }) => {
     // d1020: published fresh matches may show a chip; d875's hiding
-    // behavior remains for missing, stale, and nonmatching results.
+    // behavior remains for missing, stale, future-dated, and nonmatching
+    // results.
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-04T08:00:00.000Z"));
     vi.stubEnv("AXIOM_RUNTIME_API_KEY", "test-key");

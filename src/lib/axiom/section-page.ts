@@ -149,12 +149,22 @@ export interface SectionPageData {
  *  measurements stopped reaching the deployment. */
 export const EXTERNAL_MATCH_MAX_AGE_DAYS = 7;
 
+/** How far ahead of this server's clock a result may be dated and still
+ *  count. The timestamp comes from the hosted API, not from this clock,
+ *  so five minutes of tolerance absorbs skew between the two. A result
+ *  dated further ahead is not a current one: without this bound it
+ *  would count from now until seven days after whatever date it
+ *  carries. */
+export const EXTERNAL_MATCH_CLOCK_SKEW_MS = 5 * 60_000;
+
 export interface ExternalResultCounts {
   match: number;
   known_difference: number;
   diff: number;
   errored: number;
-  /** No result, or a result older than EXTERNAL_MATCH_MAX_AGE_DAYS. */
+  /** No result, or a result outside the freshness window: older than
+   *  EXTERNAL_MATCH_MAX_AGE_DAYS, or dated more than
+   *  EXTERNAL_MATCH_CLOCK_SKEW_MS ahead of now. */
   none: number;
 }
 
@@ -179,6 +189,11 @@ export interface DeclaredExternalComparisons {
   }>;
 }
 
+/**
+ * Whether a published result still counts: it has a status and was
+ * observed within [now - EXTERNAL_MATCH_MAX_AGE_DAYS,
+ * now + EXTERNAL_MATCH_CLOCK_SKEW_MS], both ends included.
+ */
 function currentResult(
   result: ParityCaseSummary["comparisonResults"][number],
   now: Date,
@@ -189,7 +204,14 @@ function currentResult(
   if (!result.status || !result.observedAt) return false;
   const observed = Date.parse(result.observedAt);
   if (Number.isNaN(observed)) return false;
-  return now.getTime() - observed <= EXTERNAL_MATCH_MAX_AGE_DAYS * 86_400_000;
+  // 0 <= age <= the maximum, with the lower bound relaxed by the
+  // clock-skew tolerance. A result dated further ahead than that is
+  // not fresh, so it shows no chip.
+  const age = now.getTime() - observed;
+  return (
+    age >= -EXTERNAL_MATCH_CLOCK_SKEW_MS &&
+    age <= EXTERNAL_MATCH_MAX_AGE_DAYS * 86_400_000
+  );
 }
 
 /**

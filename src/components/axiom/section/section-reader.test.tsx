@@ -485,7 +485,8 @@ describe("SectionReader", () => {
     });
 
     // Invariant (d1020): the chip appears iff every declared case's
-    // latest comparison result matches and is fresh (at most 7 days old).
+    // latest comparison result matches and is fresh: observed at most
+    // 7 days ago and at most 5 minutes (clock skew) ahead of now.
     it("hides a declared comparison with no published result", () => {
       const { container } = render(
         <SectionReader data={makeData({ externalComparisons: coSnap() })} />,
@@ -550,6 +551,62 @@ describe("SectionReader", () => {
         <SectionReader data={makeData({ externalComparisons })} />,
       );
       expect(container.innerHTML).not.toMatch(/PolicyEngine|matches/i);
+    });
+
+    const NOW = new Date("2026-10-08T12:00:00.000Z");
+    const SEVEN_DAYS = 7 * 86_400_000;
+    const FIVE_MINUTES = 5 * 60_000;
+    /** One case whose only PolicyEngine result is a match observed then. */
+    const matchObserved = (observedAt: string) =>
+      declaredExternalComparisons(
+        [{ programId: "co-snap", jurisdiction: "us-co" }],
+        [{
+          id: "co-snap-current",
+          description: "Colorado SNAP canonical two-person household.",
+          program_id: "co-snap",
+          jurisdiction: "us-co",
+          comparisonEngines: ["policyengine"],
+          comparisonResults: [{
+            engine: "policyengine",
+            status: "match",
+            observedAt,
+            engineVersion: "2.9.0",
+          }],
+        }],
+        NOW,
+      );
+
+    it("hides a matching result dated in the future", () => {
+      // The probe from the review of #299: a match dated 2099 showed the chip.
+      const { container } = render(
+        <SectionReader
+          data={makeData({ externalComparisons: matchObserved("2099-10-08T00:00:00.000Z") })}
+        />,
+      );
+      expect(container.innerHTML).not.toMatch(/PolicyEngine|matches/i);
+    });
+
+    it.each([
+      { when: "exactly seven days old", offsetMs: -SEVEN_DAYS, shown: true },
+      { when: "one millisecond older than seven days", offsetMs: -SEVEN_DAYS - 1, shown: false },
+      { when: "exactly at the clock-skew tolerance", offsetMs: FIVE_MINUTES, shown: true },
+      { when: "one millisecond past the clock-skew tolerance", offsetMs: FIVE_MINUTES + 1, shown: false },
+    ])("a match $when shows the chip: $shown", ({ offsetMs, shown }) => {
+      const { container } = render(
+        <SectionReader
+          data={makeData({
+            externalComparisons: matchObserved(
+              new Date(NOW.getTime() + offsetMs).toISOString(),
+            ),
+          })}
+        />,
+      );
+      if (shown) {
+        const chip = screen.getByText(/Matches PolicyEngine/);
+        expect(visibleLabel(chip)).toMatch(/^Matches PolicyEngine 1 of 1 case · /);
+      } else {
+        expect(container.innerHTML).not.toMatch(/PolicyEngine|matches/i);
+      }
     });
 
     it("never renders the neutral PolicyEngine comparison text", () => {
