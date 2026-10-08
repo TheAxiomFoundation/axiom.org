@@ -233,16 +233,19 @@ export function PlanningModelPage() {
         <section className="mb-14">
           <SectionHeading>The measured base</SectionHeading>
           <p className="font-body text-[1rem] text-[var(--color-ink-secondary)] leading-relaxed mb-4">
-            As of 2026-10-03, each rule module is produced by an agentic
-            encoder loop: the agent reads the provision from a signed,
-            hash-pinned corpus release and writes the module and its companion
-            tests, then the harness runs deterministic checks, including
-            rules-engine compile, the companion tests, grounding of numeric
-            literals in the cited source text, and import resolution. When the
-            checks reject a candidate, the encoder retries with the failures as
-            feedback, by default making up to two attempts on its default
-            model and up to two more on an escalation model (retries since
-            2026-07-17). Oracle comparisons run outside this loop: in
+            In September 2026, about 16,300 of our 34,810 US rules matched a
+            signed manifest that names the encoder&apos;s apply step, and about
+            15,300 more (mostly the generated US tariff schedule) were signed
+            in by manual attestation. As of 2026-10-03, when the encoder writes
+            a module it runs an agentic loop: the agent reads the provision
+            from a signed, hash-pinned corpus release and writes the module and
+            its companion tests, then the harness runs deterministic checks,
+            including rules-engine compile, the companion tests, grounding of
+            numeric literals in the cited source text, and import resolution.
+            When the checks reject a candidate, the encoder retries with the
+            failures as feedback, by default making up to two attempts on its
+            default model and up to two more on an escalation model (retries
+            since 2026-07-17). Oracle comparisons run outside this loop: in
             axiom-oracles, and in axiom-encode&apos;s separate validate and
             eval-suite commands. The module is the provision-level increment
             every figure below counts — for example,{" "}
@@ -279,12 +282,32 @@ export function PlanningModelPage() {
             below 0.6 and refuse a judge outside the Claude family or from the
             generator&apos;s family. The development
             fleet runs Claude main loops alongside codex lanes, per the usage
-            table below. Oracle conformance runs
-            against PolicyEngine, TAXSIM, EUROMOD/UKMOD, and the SOUTHMOD
-            country models, plus state administrative records (95.3%
-            exact-match against Colorado SNAP quality-control determinations{" "}
-            <Provenance kind="M" />); cross-family judge models review every
-            audit-logged run.
+            table below. Oracle comparisons run
+            against PolicyEngine, TAXSIM, EUROMOD/UKMOD, and SOUTHMOD, plus
+            USDA&apos;s SNAP quality-control records (all 856 Colorado FY 2024
+            cases match the benefit Mathematica computes for USDA from each
+            case record{" "}
+            <Provenance kind="M" />; the file keeps only eligible households,
+            so eligibility is untested). Max Ghenis is CEO of both Axiom and
+            PolicyEngine, and our TAXSIM runs use the TAXSIM executable that
+            PolicyEngine packages. Against{" "}
+            <a
+              href="https://axiom.org/oracles?oracle=southmod"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              SOUTHMOD A4.0
+            </a>
+            , UNU-WIDER&apos;s models for Ghana, Uganda, Zambia, Ethiopia and
+            Rwanda run on EUROMOD EM_Executable 1.0.0, 242 of 245 comparisons
+            match as of 2026-10-04 <Provenance kind="M" />; the other 3 are
+            recorded as gaps in those models. Three caveats: the runs are
+            manual, on our licensed machine rather than in CI, because the
+            license bars giving the model or its data to third parties; the
+            compared rule modules are not encoder output (Rwanda&apos;s carry
+            no encoding record, and the other four countries&apos; carry
+            manual attestations); and every compared household is synthetic,
+            with no microdata at all for Rwanda.
           </p>
           <ul className="font-body text-[1rem] text-[var(--color-ink-secondary)] leading-relaxed space-y-2 list-disc pl-5">
             <li>

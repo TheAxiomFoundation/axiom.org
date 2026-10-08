@@ -104,6 +104,7 @@ const DEFAULT_LINKS: NavLink[] = [
     items: [
       { href: "/about", label: "Axiom" },
       { href: "/citations", label: "Citations" },
+      { href: "/slides", label: "Slides" },
     ],
   },
   { href: "/team", label: "Team" },
