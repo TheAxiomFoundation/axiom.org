@@ -1,5 +1,13 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import type { Rule } from "@/lib/supabase";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { SectionReader } from "@/components/axiom/section/section-reader";
+import type { Rule, RuleEncodingData } from "@/lib/supabase";
+
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => null,
+  useRouter: () => ({ push: vi.fn() }),
+}));
 
 /**
  * Integration-shaped tests for getSectionPageData: the Supabase
@@ -384,11 +392,17 @@ describe("getSectionPageData", () => {
     expect(data!.next).toBeNull();
   });
 
-  it("reads no parity cases, even when the API publishes a comparison result", async () => {
-    // d875 ("approve, but hide"): section pages show no external
-    // comparison chip. The hosted API serves a result for co-snap's
-    // PolicyEngine comparison (a known difference, not a match); the
-    // page must not request it.
+  it.each([
+    { status: "match", observedAt: "2026-10-03T12:00:00.000Z", showsChip: true },
+    { status: "known_difference", observedAt: "2026-10-03T12:00:00.000Z", showsChip: false },
+    { status: "diff", observedAt: "2026-10-03T12:00:00.000Z", showsChip: false },
+    { status: "match", observedAt: "2026-09-26T12:00:00.000Z", showsChip: false },
+    { status: null, observedAt: null, showsChip: false },
+  ])("reads latest $status results without running parity; chip visibility is $showsChip", async ({ status, observedAt, showsChip }) => {
+    // d1020: published fresh matches may show a chip; d875's hiding
+    // behavior remains for missing, stale, and nonmatching results.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-04T08:00:00.000Z"));
     vi.stubEnv("AXIOM_RUNTIME_API_KEY", "test-key");
     _resetRuntimeApiCache();
     const envelope = (data: unknown) => ({
@@ -402,7 +416,18 @@ describe("getSectionPageData", () => {
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
         requested.push(url);
-        if (url.includes("/runtime/packages")) return envelope({ packages: [] });
+        if (url.includes("/runtime/packages/us-co/co-snap/graph")) {
+          return envelope({ graph: { rules: [{
+            legalId: "us-co:regulations/10-ccr/4.410/a#rule_a",
+            fileLegalId: "us-co:regulations/10-ccr/4.410/a",
+            name: "rule_a",
+          }] } });
+        }
+        if (url.includes("/runtime/packages")) {
+          return envelope({ packages: [{
+            program_id: "co-snap", jurisdiction: "us-co", mode: "compiled", status: "ready",
+          }] });
+        }
         if (url.includes("/parity/cases")) {
           return envelope({
             cases: [
@@ -414,7 +439,7 @@ describe("getSectionPageData", () => {
                   {
                     id: "co-snap-policyengine-current",
                     engine: "policyengine",
-                    latest_result: { status: "known_difference" },
+                    latest_result: status ? { status, observed_at: observedAt } : null,
                   },
                 ],
               },
@@ -425,20 +450,44 @@ describe("getSectionPageData", () => {
       }),
     );
     try {
-      getProvisionByCitationPathMock.mockResolvedValue(rule("us/statute/7/2014"));
+      getProvisionByCitationPathMock.mockResolvedValue(rule("us-co/regulation/10-ccr/4.410", {
+        jurisdiction: "us-co", doc_type: "regulation",
+      }));
+      getRuleEncodingMock.mockResolvedValue({
+        encoding_run_id: "test-run",
+        citation: "10 CCR 4.410",
+        session_id: null,
+        file_path: "regulations/10-ccr/4.410.yaml",
+        rulespec_content: YAML,
+        final_scores: null,
+        iterations: null,
+        total_duration_ms: null,
+        agent_type: null,
+        agent_model: null,
+        data_source: null,
+        has_issues: null,
+        note: null,
+        timestamp: null,
+        encoder_version: null,
+      } satisfies RuleEncodingData);
       queueTables({
         current_provisions: [{ data: [], error: null }],
         navigation_nodes: [{ data: null, error: null }],
       });
 
-      const data = await getSectionPageData(["us", "statute", "7", "2014"]);
+      const data = await getSectionPageData(["us-co", "regulation", "10-ccr", "4.410"]);
       expect(data).not.toBeNull();
       // The runtime is live for this page: coverage asked it for packages.
       expect(requested.some((url) => url.includes("/runtime/packages"))).toBe(true);
-      expect(requested.filter((url) => url.includes("/parity"))).toEqual([]);
+      expect(requested.filter((url) => url.includes("/parity/cases"))).toHaveLength(1);
+      expect(requested.filter((url) => url.includes("/parity/run"))).toEqual([]);
       expect(data).not.toHaveProperty("parity");
-      expect(data).not.toHaveProperty("externalComparisons");
+      expect(data!.externalComparisons?.engines[0].matchingCaseCount).toBe(showsChip ? 1 : 0);
+      const html = renderToStaticMarkup(createElement(SectionReader, { data: data! }));
+      expect(html.includes("Matches PolicyEngine")).toBe(showsChip);
+      expect(html).not.toContain("PolicyEngine comparison");
     } finally {
+      vi.useRealTimers();
       vi.unstubAllEnvs();
       vi.unstubAllGlobals();
       _resetRuntimeApiCache();

@@ -20,6 +20,10 @@ import {
   type ProvisionProgramCoverage,
 } from "@/lib/axiom/runtime/coverage";
 import {
+  listParityCases,
+  type ParityCaseSummary,
+} from "@/lib/axiom/runtime/api";
+import {
   getSectionEncoding,
   type SectionEncoding,
 } from "@/lib/axiom/section-encoding";
@@ -132,6 +136,152 @@ export interface SectionPageData {
    * section has no subsection structure to measure against.
    */
   encodedCoverage: { encodedUnits: number; totalUnits: number } | null;
+  /**
+   * External comparisons declared by the parity cases of the first
+   * covering program that has any, with their latest published
+   * results (see `listParityCases`).
+   */
+  externalComparisons: DeclaredExternalComparisons | null;
+}
+
+/** A match observed longer ago than this no longer counts. The API
+ *  measures each comparison daily; a result this old means the
+ *  measurements stopped reaching the deployment. */
+export const EXTERNAL_MATCH_MAX_AGE_DAYS = 7;
+
+export interface ExternalResultCounts {
+  match: number;
+  known_difference: number;
+  diff: number;
+  errored: number;
+  /** No result, or a result older than EXTERNAL_MATCH_MAX_AGE_DAYS. */
+  none: number;
+}
+
+export interface DeclaredExternalComparisons {
+  programId: string;
+  jurisdiction: string;
+  /** One entry per engine, in first-declared order. */
+  engines: Array<{
+    engine: string;
+    /** Parity cases of this program that declare this engine. */
+    caseCount: number;
+    caseDescriptions: string[];
+    /** Cases whose every comparison with this engine has a current
+     *  `match` result. Never more than caseCount. */
+    matchingCaseCount: number;
+    /** The oldest observation behind those matches (ISO), or null. */
+    matchingAsOf: string | null;
+    /** The engine versions those matches reported. */
+    matchingEngineVersions: string[];
+    /** This engine's declared comparisons by current result status. */
+    resultCounts: ExternalResultCounts;
+  }>;
+}
+
+function currentResult(
+  result: ParityCaseSummary["comparisonResults"][number],
+  now: Date,
+): result is ParityCaseSummary["comparisonResults"][number] & {
+  status: NonNullable<ParityCaseSummary["comparisonResults"][number]["status"]>;
+  observedAt: string;
+} {
+  if (!result.status || !result.observedAt) return false;
+  const observed = Date.parse(result.observedAt);
+  if (Number.isNaN(observed)) return false;
+  return now.getTime() - observed <= EXTERNAL_MATCH_MAX_AGE_DAYS * 86_400_000;
+}
+
+/**
+ * The first covering program (in coverage order) with a parity case
+ * that declares an external comparison, grouped by engine so each
+ * engine's case count covers only the cases that name it. A case
+ * counts as matching an engine only when every comparison it declares
+ * with that engine has a current `match` result.
+ */
+export function declaredExternalComparisons(
+  programs: ReadonlyArray<Pick<ProvisionProgramCoverage, "programId" | "jurisdiction">>,
+  parityCases: ReadonlyArray<ParityCaseSummary>,
+  now: Date = new Date(),
+): DeclaredExternalComparisons | null {
+  for (const program of programs) {
+    const byEngine = new Map<string, ParityCaseSummary[]>();
+    for (const item of parityCases) {
+      if (
+        item.jurisdiction !== program.jurisdiction ||
+        item.program_id !== program.programId
+      ) {
+        continue;
+      }
+      for (const engine of new Set(item.comparisonEngines)) {
+        const cases = byEngine.get(engine) ?? [];
+        cases.push(item);
+        byEngine.set(engine, cases);
+      }
+    }
+    if (byEngine.size > 0) {
+      return {
+        programId: program.programId,
+        jurisdiction: program.jurisdiction,
+        engines: Array.from(byEngine, ([engine, cases]) => {
+          const resultCounts: ExternalResultCounts = {
+            match: 0,
+            known_difference: 0,
+            diff: 0,
+            errored: 0,
+            none: 0,
+          };
+          const matched: Array<{ observedAt: string; engineVersion: string | null }> = [];
+          let matchingCaseCount = 0;
+          for (const item of cases) {
+            const results = (item.comparisonResults ?? []).filter(
+              (result) => result.engine === engine,
+            );
+            for (const result of results) {
+              resultCounts[currentResult(result, now) ? result.status! : "none"] += 1;
+            }
+            if (
+              results.length > 0 &&
+              results.every(
+                (result) => currentResult(result, now) && result.status === "match",
+              )
+            ) {
+              matchingCaseCount += 1;
+              matched.push(
+                ...results.map((result) => ({
+                  observedAt: result.observedAt!,
+                  engineVersion: result.engineVersion,
+                })),
+              );
+            }
+          }
+          const oldest = matched.reduce<string | null>(
+            (current, entry) =>
+              current === null || Date.parse(entry.observedAt) < Date.parse(current)
+                ? entry.observedAt
+                : current,
+            null,
+          );
+          return {
+            engine,
+            caseCount: cases.length,
+            caseDescriptions: cases.map((item) => item.description).filter(Boolean),
+            matchingCaseCount,
+            matchingAsOf: oldest,
+            matchingEngineVersions: Array.from(
+              new Set(
+                matched
+                  .map((entry) => entry.engineVersion)
+                  .filter((version): version is string => Boolean(version)),
+              ),
+            ),
+            resultCounts,
+          };
+        }),
+      };
+    }
+  }
+  return null;
 }
 
 /**
@@ -1103,7 +1253,7 @@ export async function getSectionPageDataFromResolution(
   const { citationPath, focusAnchor, prefetchedSubtree } = resolution;
   let root = resolution.root;
 
-  const [subtree, rootRefs, node, sectionEncoding, programs] =
+  const [subtree, rootRefs, node, sectionEncoding, programs, parityCases] =
     await Promise.all([
       prefetchedSubtree ?? getSubtreeProvisions(citationPath),
       getRuleReferences(citationPath).catch(() => [] as RuleReference[]),
@@ -1119,6 +1269,7 @@ export async function getSectionPageDataFromResolution(
       getProvisionCoverage(citationPath).catch(
         () => [] as ProvisionProgramCoverage[],
       ),
+      listParityCases().catch(() => []),
     ]);
   const encoding = sectionEncoding.encoding;
 
@@ -1226,6 +1377,7 @@ export async function getSectionPageDataFromResolution(
     next,
     truncated: subtree.truncated,
     encodedCoverage,
+    externalComparisons: declaredExternalComparisons(programs, parityCases),
   };
 }
 
