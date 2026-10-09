@@ -10,7 +10,9 @@ const cache = new Map<string, {expires: number; value: CompositionScope}>();
 /** Inspect source declarations because compose can omit relations. The
  * scenario editor supports one unit instance; a single typed Person–unit
  * relation runs under the membership convention, several need explicit
- * per-person roles, and anything else cannot be represented. */
+ * per-person roles, a unit–instance relation (a tax unit's payments) needs
+ * its instances allocated and linked, and anything else cannot be
+ * represented. */
 // Verified through the live app payload: CDCC counts, Colorado household checks,
 // and Massachusetts TANF child checks and conditional income sums.
 export function sourceRelationships(content: string, fileLegalId = ""): RelationDecl[] {
@@ -21,9 +23,12 @@ export function sourceRelationships(content: string, fileLegalId = ""): Relation
     .map(rule => describeRelation(rule, fileLegalId));
 }
 
-/** The membership-convention test: at most one relation, and it supported. */
-export function relationshipsSupported(relations: Array<{supported: boolean}>): boolean {
-  return relations.length <= 1 && relations.every(relation => relation.supported);
+/** The membership-convention test: at most one relation, and it a
+ *  supported Person–unit relation. A unit–instance relation (payments)
+ *  never runs on the convention: its instances exist only as a scenario
+ *  allocates them. */
+export function relationshipsSupported(relations: Array<{supported: boolean; instanceEntity?: string}>): boolean {
+  return relations.length <= 1 && relations.every(relation => relation.supported && !relation.instanceEntity);
 }
 
 export async function compositionScope(root: string): Promise<CompositionScope> {

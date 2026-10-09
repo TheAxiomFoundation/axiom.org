@@ -55,4 +55,43 @@ for (const c of explicitCases) {
   console.log(JSON.stringify({name:c.name, expected:c.expected, actual, membership, pass}));
   if (!pass) failed = true;
 }
+
+// Per-request instances (26 USC 22 payments of the tax unit). Needs a
+// runtime that allocates Payment per request (axiom-api#268): the payments
+// travel as household.instances, the tax unit's links as explicit tuples
+// naming their keys, and each case must come back with the runtime's
+// allocated_instances echo naming every payment. Single filer aged 66, AGI
+// 8,500, 1,500 of excluded Title II benefits; payment_1 a 1,000
+// service-injury pension (excluded under 104(a)(4)), payment_2 a 400 one.
+// Expected credit: 15% x (5,000 - max(0, 1,500 - linked exclusions) - 500).
+const S22 = 'us:statutes/26/22';
+const PENSION = {payment_received_as_pension_annuity_or_similar_allowance: true};
+const s22Instances = {Payment: {
+ payment_1: {payment_amount: 1000, ...PENSION, personal_injuries_or_sickness_resulted_from_active_service_in_public_health_service: true},
+ payment_2: {payment_amount: 400, ...PENSION, personal_injuries_or_sickness_resulted_from_active_service_in_armed_forces_of_any_country: true},
+}};
+const s22Cases: Array<{name: string; linked: string[]; exclusion: number; credit: number}> = [
+ {name: 'S22-pension-linked', linked: ['payment_1'], exclusion: 1000, credit: 600},
+ {name: 'S22-both-linked', linked: ['payment_1', 'payment_2'], exclusion: 1400, credit: 660},
+ {name: 'S22-none-linked', linked: [], exclusion: 0, credit: 450},
+];
+for (const c of s22Cases) {
+  const result = await runCalculateRoot({
+    root: S22,
+    facts: {age: 66, filing_status: 0, adjusted_gross_income: 8500, social_security_title_ii_benefits_excluded_from_gross_income: 1500},
+    variables: ['section_22_service_injury_payment_exclusion', 'elderly_disabled_credit'],
+    relations: [
+      {name: `${S22}#relation.taxpayer_or_spouse_of_tax_unit`, tuples: [['household:1', 'person:1:1']]},
+      {name: `${S22}#relation.section_22_payment_of_tax_unit`, tuples: c.linked.map(key => ['household:1', key])},
+    ],
+    instances: s22Instances,
+  });
+  const outputs = result.kind === "ok" ? result.result.outputs : {};
+  const allocated = result.kind === "ok" ? result.allocatedInstances as Record<string, Record<string, string>> | null : null;
+  const confirmed = Boolean(allocated?.Payment?.payment_1 && allocated.Payment.payment_2);
+  const pass = result.kind === "ok" && result.relationMembership === "explicit" && confirmed &&
+    outputs.section_22_service_injury_payment_exclusion === c.exclusion && outputs.elderly_disabled_credit === c.credit;
+  console.log(JSON.stringify({name: c.name, expected: {exclusion: c.exclusion, credit: c.credit}, outputs, allocated, pass}));
+  if (!pass) failed = true;
+}
 if (failed) process.exitCode = 1;

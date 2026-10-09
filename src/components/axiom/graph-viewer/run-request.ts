@@ -14,7 +14,12 @@ import type { LegalId, ProgramGraph } from "./types";
  * so an upstream that predates the shape sees an unchanged request.
  *
  * `relations` carries explicit relation roles (relation legal id →
- * member ids) for scopes whose catalog asks for them; omitted otherwise.
+ * member ids, or linked instance keys for a unit–instance relation) for
+ * scopes whose catalog asks for them; omitted otherwise.
+ *
+ * `instances` carries the scenario's per-request instances (kind → key →
+ * answers, e.g. payments) for scopes that allocate them; every kind
+ * travels, an empty object included, since `{}` is the answer "none".
  */
 export function buildRunRequestBody(
   composeFocus: string | null,
@@ -23,6 +28,7 @@ export function buildRunRequestBody(
   variables: string[],
   people?: Record<string, Record<string, number | boolean>>,
   relations?: Record<string, string[]>,
+  instances?: Record<string, Record<string, Record<string, number | boolean>>>,
 ): Record<string, unknown> {
   if (composeFocus) {
     return {
@@ -31,6 +37,7 @@ export function buildRunRequestBody(
       ...(people && Object.keys(people).length > 0 ? { people } : {}),
       // Explicit roles travel whole — an empty list is an answer.
       ...(relations ? { relations } : {}),
+      ...(instances && Object.keys(instances).length > 0 ? { instances } : {}),
       variables,
     };
   }
@@ -104,6 +111,8 @@ const USER_FIXABLE_REFUSALS = new Set([
   "relation_roles_required",
   "unknown_member",
   "unknown_relation",
+  "unknown_instance_kind",
+  "unknown_instance",
 ]);
 
 /**

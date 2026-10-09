@@ -679,6 +679,21 @@ body:has(.has-workspace) .nav-bar { display: none; }
 .relation-roles-quick { white-space: nowrap; }
 .relation-roles-quick button { margin-left: 4px; padding: 3px 8px; border: 1px solid var(--color-rule); border-radius: 4px; background: var(--color-paper-elevated); font: inherit; font-size: 11px; }
 
+/* Unit–instance relations (payments of the tax unit): one row per tuple. */
+.relation-tuples { margin-top: 20px; }
+.relation-tuples header { display: block; margin-bottom: 12px; }
+.relation-tuples header p { margin: 4px 0 0; font-size: 12px; color: var(--color-ink-secondary); }
+.relation-tuples-relation { padding: 12px 0; border-top: 1px solid var(--color-rule); }
+.relation-tuples-relation h4 { margin: 0; font-size: 13px; font-weight: 500; }
+.relation-tuples table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; display: block; overflow-x: auto; }
+.relation-tuples th, .relation-tuples td { padding: 8px; border-bottom: 1px solid var(--color-rule); text-align: left; }
+.relation-tuples select { font: inherit; font-size: 13px; }
+.relation-tuples-slot { font-size: 11px; font-weight: 400; color: var(--color-ink-secondary); }
+.relation-tuples-empty { color: var(--color-ink-secondary); font-size: 12px; }
+.relation-tuples-actions { margin-top: 8px; }
+.relation-tuples-actions button:first-child { margin-left: 0; }
+.household-empty { margin: 0 0 4px; padding: 0 10px; font-size: 12px; color: var(--color-ink-secondary); }
+
 /* A scope that cannot run says why, where the Run tab would be. */
 .workspace-run-unavailable { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0 0; padding: 8px 12px; border: 1px solid var(--color-rule); border-radius: 6px; color: var(--color-ink-muted); font-size: 13px; line-height: 1.5; }
 .workspace-run-unavailable svg { flex-shrink: 0; margin-top: 3px; }

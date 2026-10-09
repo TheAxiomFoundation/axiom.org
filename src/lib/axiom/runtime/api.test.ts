@@ -202,6 +202,7 @@ describe("runtime api client", () => {
     });
     expect(outcome).toEqual({
       kind: "ok",
+      allocatedInstances: null,
       result: { outputs: { net_income: 1200 } },
       relationMembership: "convention",
     });

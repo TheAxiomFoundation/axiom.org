@@ -3,6 +3,27 @@ import { buildRunRequestBody, mergeRunBatches, scenarioKey, traceRootIds, classi
 import type { ProgramGraph, RuleNode } from "./types";
 
 describe("buildRunRequestBody", () => {
+  it("compose mode: per-request instances travel whole, an empty kind included", () => {
+    const body = buildRunRequestBody(
+      "us:statutes/26/22",
+      null,
+      { adjusted_gross_income: 8500 },
+      ["elderly_disabled_credit"],
+      {},
+      { "us:statutes/26/22#section_22_payment_of_tax_unit": ["payment_1"] },
+      { Payment: { payment_1: { payment_amount: 1000 } } },
+    );
+    expect(body).toEqual({
+      root: "us:statutes/26/22",
+      facts: { adjusted_gross_income: 8500 },
+      relations: { "us:statutes/26/22#section_22_payment_of_tax_unit": ["payment_1"] },
+      instances: { Payment: { payment_1: { payment_amount: 1000 } } },
+      variables: ["elderly_disabled_credit"],
+    });
+    expect(buildRunRequestBody("us:statutes/26/22", null, {}, [], undefined, {}, { Payment: {} })).toMatchObject({ instances: { Payment: {} } });
+    expect(buildRunRequestBody("us:statutes/26/22", null, {}, [], undefined, undefined, {})).not.toHaveProperty("instances");
+  });
+
   it("compose mode: typed values travel verbatim as facts on the root shape", () => {
     const body = buildRunRequestBody(
       "us-co:regulations/10-ccr-2506-1/4.410#some_rule",
