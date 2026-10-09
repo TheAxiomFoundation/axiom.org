@@ -402,6 +402,9 @@ describe("getSectionPageData", () => {
     { status: "match", observedAt: "2099-10-08T12:00:00.000Z", showsChip: false },
     { status: "match", observedAt: "2026-10-04T08:05:00.000Z", showsChip: true },
     { status: "match", observedAt: "2026-10-04T08:05:00.001Z", showsChip: false },
+    // No UTC offset: hidden whatever the server's timezone.
+    { status: "match", observedAt: "2026-10-04T07:30:00", showsChip: false },
+    { status: "match", observedAt: "2026-10-04T09:30:00+02:00", showsChip: true },
     { status: null, observedAt: null, showsChip: false },
   ])("reads latest $status results observed $observedAt without running parity; chip visibility is $showsChip", async ({ status, observedAt, showsChip }) => {
     // d1020: published fresh matches may show a chip; d875's hiding

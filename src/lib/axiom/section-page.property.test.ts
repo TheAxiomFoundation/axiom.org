@@ -26,10 +26,35 @@ const NOW = new Date("2026-10-04T08:00:00.000Z");
 const DAY = 86_400_000;
 const MAX_AGE = EXTERNAL_MATCH_MAX_AGE_DAYS * DAY;
 const SKEW = EXTERNAL_MATCH_CLOCK_SKEW_MS;
-const at = (offsetMs: number) => new Date(NOW.getTime() + offsetMs).toISOString();
-// Timestamps at most the clock-skew tolerance ahead of NOW: fresh, each
-// edge of the window, just past the old edge, anywhere from two days
-// before the window opens, unparseable, absent.
+/** The instant `ms` written with a UTC offset of `hours` (0 writes Z),
+ *  or, for null, as UTC wall-clock time with no offset at all. */
+const write = (ms: number, hours: number | null) => {
+  if (hours === null) return new Date(ms).toISOString().slice(0, -1);
+  if (hours === 0) return new Date(ms).toISOString();
+  const local = new Date(ms + hours * 3_600_000).toISOString().slice(0, -1);
+  return `${local}${hours < 0 ? "-" : "+"}${String(Math.abs(hours)).padStart(2, "0")}:00`;
+};
+const at = (offsetMs: number) => write(NOW.getTime() + offsetMs, 0);
+const atOffset = (offsetMs: number, hours: number) => write(NOW.getTime() + offsetMs, hours);
+const zoneless = (offsetMs: number) => write(NOW.getTime() + offsetMs, null);
+/** NOW + offsetMs, mostly written in UTC, sometimes with another
+ *  offset, sometimes with none. */
+const written = (offsetMs: fc.Arbitrary<number>) =>
+  fc.oneof(
+    { weight: 4, arbitrary: offsetMs.map(at) },
+    {
+      weight: 1,
+      arbitrary: fc
+        .tuple(offsetMs, fc.constantFrom(2, -5, 14, -12))
+        .map(([ms, hours]) => atOffset(ms, hours)),
+    },
+    { weight: 1, arbitrary: offsetMs.map(zoneless) },
+  );
+// Timestamps naming an instant at most the clock-skew tolerance ahead
+// of NOW: fresh, each edge of the window, just past the old edge,
+// anywhere from two days before the window opens, in UTC or another
+// offset. Also ones that name no instant, so never count: without an
+// offset, unparseable, absent.
 const observedNotAhead = fc.oneof(
   fc.constantFrom<string | null>(
     "2026-10-03T12:41:07.512Z",
@@ -38,11 +63,15 @@ const observedNotAhead = fc.oneof(
     at(0),
     at(1),
     at(SKEW),
+    atOffset(-MAX_AGE, 14),
+    atOffset(SKEW, -12),
+    zoneless(0),
+    zoneless(-DAY),
     "not a date",
     null,
   ),
-  fc.integer({ min: -MAX_AGE - 2 * DAY, max: SKEW }).map(at),
-  fc.integer({ min: -2 * SKEW, max: 2 * SKEW }).map((offsetMs) => at(offsetMs - MAX_AGE)),
+  written(fc.integer({ min: -MAX_AGE - 2 * DAY, max: SKEW })),
+  written(fc.integer({ min: -2 * SKEW, max: 2 * SKEW }).map((offsetMs) => offsetMs - MAX_AGE)),
 );
 // Any timestamp: the above, plus ones dated ahead of NOW on both sides
 // of the tolerance, one millisecond past it, days ahead, decades ahead.
@@ -51,9 +80,14 @@ const observedAt = fc.oneof(
   {
     weight: 1,
     arbitrary: fc.oneof(
-      fc.constantFrom<string | null>(at(SKEW + 1), at(DAY), "2099-10-08T00:00:00.000Z"),
-      fc.integer({ min: -SKEW, max: 2 * SKEW }).map(at),
-      fc.integer({ min: SKEW + 1, max: 2 * MAX_AGE }).map(at),
+      fc.constantFrom<string | null>(
+        at(SKEW + 1),
+        atOffset(SKEW + 1, 2),
+        at(DAY),
+        "2099-10-08T00:00:00.000Z",
+      ),
+      written(fc.integer({ min: -SKEW, max: 2 * SKEW })),
+      written(fc.integer({ min: SKEW + 1, max: 2 * MAX_AGE })),
     ),
   },
 );
@@ -88,10 +122,15 @@ const comparisonResult = comparisonResultAt(observedAt);
 const parityCase = parityCaseAt(observedAt);
 const scenario = scenarioAt(observedAt);
 
-// A result is current when it has a status and its timestamp lies in
-// [now - 7 days, now + clock-skew tolerance], both ends included.
+// Whether a timestamp ends in a UTC offset. Over the strings these
+// generators make, that is exactly the RFC 3339 date-times.
+const namesOffset = (observedAt: string) => /(?:Z|[+-]\d\d:\d\d)$/.test(observedAt);
+// A result is current when it has a status and its timestamp names a
+// UTC offset and lies in [now - 7 days, now + clock-skew tolerance],
+// both ends included.
 const current = (result: ParityCaseSummary["comparisonResults"][number], now: Date) => {
   if (result.status === null || result.observedAt === null) return false;
+  if (!namesOffset(result.observedAt)) return false;
   const age = now.getTime() - Date.parse(result.observedAt);
   return age >= -SKEW && age <= MAX_AGE;
 };
@@ -166,9 +205,10 @@ describe("declaredExternalComparisons invariants", () => {
         engine: "policyengine",
       })) },
     );
-    // Runs decided by one bound of the window alone, counted so the
-    // generators cannot drift away from either edge unnoticed.
-    const seen = { shown: 0, hiddenOnlyAsStale: 0, hiddenOnlyAsAhead: 0 };
+    // Runs decided by one condition alone, counted so the generators
+    // cannot drift away from either edge, or from offset-less
+    // timestamps, unnoticed.
+    const seen = { shown: 0, hiddenOnlyAsStale: 0, hiddenOnlyAsAhead: 0, hiddenOnlyAsNoOffset: 0 };
     fc.assert(
       fc.property(
         fc.array(fc.array(result, { maxLength: 3 }), { maxLength: 4 }),
@@ -184,21 +224,28 @@ describe("declaredExternalComparisons invariants", () => {
           // Independent oracle: empty declarations/results are hidden;
           // every comparison of every case must have a latest match
           // observed no more than 7 days ago and no more than 5 minutes
-          // (clock skew) ahead of now. The window is written out here,
-          // not imported, so it cannot move with the constants.
-          const everyMatch = (inWindow: (observed: number) => boolean) =>
+          // (clock skew) ahead of now. A timestamp without a UTC offset
+          // names no instant, so it is within no window. The window is
+          // written out here, not imported, so it cannot move with the
+          // constants.
+          const everyMatch = (accept: (observedAt: string) => boolean) =>
             resultsByCase.length > 0 && resultsByCase.every(
               (results) => results.length > 0 && results.every((entry) =>
                 entry.status === "match" && entry.observedAt !== null &&
-                inWindow(Date.parse(entry.observedAt)),
+                accept(entry.observedAt),
               ),
             );
-          const notStale = (observed: number) => observed >= NOW.getTime() - 7 * DAY;
-          const notAhead = (observed: number) => observed <= NOW.getTime() + 5 * 60_000;
-          const shouldShow = everyMatch((observed) => notStale(observed) && notAhead(observed));
+          const notStale = (observedAt: string) =>
+            Date.parse(observedAt) >= NOW.getTime() - 7 * DAY;
+          const notAhead = (observedAt: string) =>
+            Date.parse(observedAt) <= NOW.getTime() + 5 * 60_000;
+          const shouldShow = everyMatch(
+            (when) => namesOffset(when) && notStale(when) && notAhead(when),
+          );
           if (shouldShow) seen.shown += 1;
-          else if (everyMatch(notAhead)) seen.hiddenOnlyAsStale += 1;
-          else if (everyMatch(notStale)) seen.hiddenOnlyAsAhead += 1;
+          else if (everyMatch((when) => namesOffset(when) && notAhead(when))) seen.hiddenOnlyAsStale += 1;
+          else if (everyMatch((when) => namesOffset(when) && notStale(when))) seen.hiddenOnlyAsAhead += 1;
+          else if (everyMatch((when) => notStale(when) && notAhead(when))) seen.hiddenOnlyAsNoOffset += 1;
           const html = renderToStaticMarkup(createElement(SectionReader, {
             data: {
               ...readerData,
@@ -223,11 +270,13 @@ describe("declaredExternalComparisons invariants", () => {
     expect(seen.shown).toBeGreaterThan(0);
     expect(seen.hiddenOnlyAsStale).toBeGreaterThan(0);
     expect(seen.hiddenOnlyAsAhead).toBeGreaterThan(0);
+    expect(seen.hiddenOnlyAsNoOffset).toBeGreaterThan(0);
   });
 
-  it("counts a lone match from the tolerance before its timestamp until 7 days after it, whenever it was observed", () => {
+  it("counts a lone match from the tolerance before its timestamp until 7 days after it, whenever it was observed and whatever offset it is written in", () => {
     // The result depends only on now - timestamp, and is current over
     // one unbroken stretch of time: [timestamp - 5 minutes, timestamp + 7 days].
+    // A timestamp without a UTC offset is never current.
     const elapsed = fc.oneof(
       fc.constantFrom(-5 * 60_000 - 1, -5 * 60_000, -1, 0, 1, 7 * DAY, 7 * DAY + 1),
       fc.integer({ min: -10 * 60_000, max: 10 * 60_000 }),
@@ -237,7 +286,8 @@ describe("declaredExternalComparisons invariants", () => {
       fc.property(
         fc.integer({ min: Date.UTC(1971, 0, 1), max: Date.UTC(2100, 0, 1) }),
         elapsed,
-        (observedMs, elapsedMs) => {
+        fc.constantFrom<number | null>(0, 0, 0, 2, -5, 14, -12, null),
+        (observedMs, elapsedMs, hours) => {
           const outcome = declaredExternalComparisons(
             [{ programId: "co-snap", jurisdiction: "us-co" }],
             [{
@@ -249,14 +299,14 @@ describe("declaredExternalComparisons invariants", () => {
               comparisonResults: [{
                 engine: "policyengine",
                 status: "match",
-                observedAt: new Date(observedMs).toISOString(),
+                observedAt: write(observedMs, hours),
                 engineVersion: "2.9.0",
               }],
             }],
             new Date(observedMs + elapsedMs),
           );
           expect(outcome!.engines[0]!.matchingCaseCount).toBe(
-            elapsedMs >= -5 * 60_000 && elapsedMs <= 7 * DAY ? 1 : 0,
+            hours !== null && elapsedMs >= -5 * 60_000 && elapsedMs <= 7 * DAY ? 1 : 0,
           );
         },
       ),
@@ -367,7 +417,8 @@ describe("declaredExternalComparisons invariants", () => {
     // Intended exception, and the reason for the narrower generator: a
     // result dated further ahead than the tolerance is not current yet
     // and becomes current when the clock reaches it. Every timestamp
-    // here is at most the tolerance ahead of NOW.
+    // here names an instant at most the tolerance ahead of NOW, or
+    // names none and never counts.
     const elapsed = fc.oneof(
       fc.integer({ min: 0, max: 30 }).map((days) => days * DAY),
       fc.integer({ min: 0, max: 30 * DAY }),

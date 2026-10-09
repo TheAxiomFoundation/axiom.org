@@ -586,6 +586,17 @@ describe("SectionReader", () => {
       expect(container.innerHTML).not.toMatch(/PolicyEngine|matches/i);
     });
 
+    it("hides a matching result whose timestamp names no UTC offset", () => {
+      // Half an hour old if read as UTC, but Date.parse reads it in the
+      // server's timezone, so it never counts.
+      const { container } = render(
+        <SectionReader
+          data={makeData({ externalComparisons: matchObserved("2026-10-08T11:30:00") })}
+        />,
+      );
+      expect(container.innerHTML).not.toMatch(/PolicyEngine|matches/i);
+    });
+
     it.each([
       { when: "exactly seven days old", offsetMs: -SEVEN_DAYS, shown: true },
       { when: "one millisecond older than seven days", offsetMs: -SEVEN_DAYS - 1, shown: false },

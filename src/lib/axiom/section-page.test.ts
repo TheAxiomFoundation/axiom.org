@@ -771,6 +771,96 @@ describe("declaredExternalComparisons", () => {
     });
   });
 
+  // Each of these names 07:30Z on NOW's day, half an hour before NOW.
+  it.each([
+    "2026-10-04T07:30:00Z",
+    "2026-10-04T07:30:00.000Z",
+    "2026-10-04T07:30:00.123456Z",
+    "2026-10-04t07:30:00z",
+    "2026-10-04T09:30:00+02:00",
+    "2026-10-04T02:30:00-05:00",
+    "2026-10-04T07:30:00.5+00:00",
+  ])("counts an RFC 3339 date-time with a UTC offset: %s", (observedAt) => {
+    const outcome = declaredExternalComparisons(
+      [coSnap],
+      [parityCase({ comparisonResults: [result("match", observedAt)] })],
+      NOW,
+    );
+    expect(outcome!.engines[0]).toMatchObject({ matchingCaseCount: 1, matchingAsOf: observedAt });
+  });
+
+  it.each([
+    // Read in the server's timezone: half an hour old in UTC, seven and
+    // a half hours ahead in Los Angeles, eleven and a half hours old in
+    // Auckland.
+    "2026-10-04T07:30:00",
+    "2026-10-04T07:30:00.000",
+    "2026-10-04 07:30:00",
+    "2026-10-04",
+    "Sun, 04 Oct 2026 07:30:00 GMT",
+    "Oct 4, 2026",
+    "10/04/2026",
+    // Unambiguous, but not RFC 3339.
+    "2026-10-04 07:30:00Z",
+    "2026-10-04T07:30Z",
+    "2026-10-04T09:30:00+0200",
+    "+002026-10-04T07:30:00Z",
+    " 2026-10-04T07:30:00Z",
+  ])("counts a timestamp that is not an RFC 3339 date-time with a UTC offset as no current result: %j", (observedAt) => {
+    const outcome = declaredExternalComparisons(
+      [coSnap],
+      [parityCase({ comparisonResults: [result("match", observedAt)] })],
+      NOW,
+    );
+    expect(outcome!.engines[0]).toMatchObject(NO_CURRENT_RESULT);
+  });
+
+  it("decides the same way whatever timezone the server runs in", () => {
+    const timestamps = [
+      "2026-10-04T07:30:00Z",
+      "2026-10-04T09:30:00+02:00",
+      "2026-10-04T07:30:00",
+      "2026-10-04T20:00:00",
+      "2026-10-04",
+      "Oct 4, 2026",
+      observed(-SEVEN_DAYS),
+      observed(FIVE_MINUTES),
+      observed(FIVE_MINUTES + 1),
+    ];
+    const outcomes = (tz: string) => {
+      process.env.TZ = tz;
+      return timestamps.map((observedAt) => [
+        observedAt,
+        declaredExternalComparisons(
+          [coSnap],
+          [parityCase({ comparisonResults: [result("match", observedAt)] })],
+          NOW,
+        )!.engines[0]!.matchingCaseCount,
+      ]);
+    };
+    const original = process.env.TZ;
+    try {
+      // The zone switch must take effect, or this test proves nothing.
+      process.env.TZ = "Pacific/Auckland";
+      const auckland = Date.parse("2026-10-04T07:30:00");
+      process.env.TZ = "America/Los_Angeles";
+      expect(Date.parse("2026-10-04T07:30:00")).not.toBe(auckland);
+      const utc = outcomes("UTC");
+      expect(utc.filter(([, count]) => count === 1).map(([when]) => when)).toEqual([
+        "2026-10-04T07:30:00Z",
+        "2026-10-04T09:30:00+02:00",
+        observed(-SEVEN_DAYS),
+        observed(FIVE_MINUTES),
+      ]);
+      for (const tz of ["Pacific/Auckland", "America/Los_Angeles", "Pacific/Kiritimati", "Pacific/Pago_Pago"]) {
+        expect(outcomes(tz)).toEqual(utc);
+      }
+    } finally {
+      if (original === undefined) delete process.env.TZ;
+      else process.env.TZ = original;
+    }
+  });
+
   it("never counts a case that reports no comparison results, as older API responses do", () => {
     const outcome = declaredExternalComparisons(
       [coSnap],
