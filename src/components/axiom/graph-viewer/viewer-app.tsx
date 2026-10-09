@@ -1269,8 +1269,8 @@ export function GraphViewerApp({
             // roles is a run error, not a blocked scope: Run stays.
             if (classifyRunRefusal(payload.error) === "user_fixable") {
               // The server's relation set moved since the grid loaded:
-              // reload the catalog so the grid shows the relations a run
-              // must answer (roles start over).
+              // re-read the catalog so the grid shows the relations a run
+              // must answer (answers for relations still declared are kept).
               if (payload.error === "relation_roles_required" || payload.error === "unknown_relation") {
                 setCatalogNonce((n) => n + 1);
               }
