@@ -83,6 +83,14 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+// The served corpus is public: read its views with the anon key, as the site does.
+// The service role has no grant on corpus.current_provisions; it reads and writes
+// the encodings tables only.
+const corpusDb = createClient(supabaseUrl, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? supabaseKey, {
+  db: { schema: "corpus" },
+  auth: { autoRefreshToken: false, persistSession: false },
+});
+
 const githubHeaders = {
   Accept: "application/vnd.github+json",
   "User-Agent": "axiom-program-bundles",
@@ -198,7 +206,7 @@ function localScopePaths() {
 }
 
 async function corpusTrees(roots, previewPaths = []) {
-  const nodes = () => supabase.schema("corpus").from("navigation_nodes").select("path,parent_path,child_count");
+  const nodes = () => corpusDb.from("navigation_nodes").select("path,parent_path,child_count");
   const found = new Map();
   const keep = (rows) => {
     const added = [];
@@ -371,14 +379,13 @@ const CONTAINER_SUBTYPE = /manual|compilation|register|public_law|session_law|ti
 async function containerRoots(roots) {
   const labels = new Map();
   for (const n of await inBatches(roots, 100, (batch) =>
-    pages(() => supabase.schema("corpus").from("navigation_nodes").select("path,label").in("path", batch))
+    pages(() => corpusDb.from("navigation_nodes").select("path,label").in("path", batch))
   ))
     labels.set(n.path, n.label ?? "");
   const facts = new Map();
   for (const p of await inBatches(roots, 100, (batch) =>
     pages(() =>
-      supabase
-        .schema("corpus")
+      corpusDb
         .from("current_provisions")
         .select("citation_path,legal_identifier,identifiers,doc_type")
         .in("citation_path", batch)
@@ -460,7 +467,7 @@ async function matchSections(bundles) {
         }
     }
   const jurisdictions = [...new Set(webPages.map((p) => p.jurisdiction))];
-  const nodes = () => supabase.schema("corpus").from("navigation_nodes").select("path");
+  const nodes = () => corpusDb.from("navigation_nodes").select("path");
   const ranges = jurisdictions.flatMap((j) => [`${j}/statute`, `${j}/regulation`]);
   const paths = await inBatches(
     ranges,
