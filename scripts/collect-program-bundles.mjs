@@ -85,8 +85,10 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
 
 // corpus.current_provisions is granted to anon and authenticated only, so the
 // service role cannot read it: read it with the public anon key, as the site does.
-// navigation_nodes stays on the service role, which has no statement timeout (the
-// anon role's short one cancels its path-range reads).
+// The navigation tree comes from corpus.current_navigation_nodes on the service
+// role: the view holds only the served release scopes (the service role bypasses
+// the row security that limits navigation_nodes to them for anon), and the service
+// role has no statement timeout (the anon role's short one cancels path-range reads).
 const corpusDb = createClient(supabaseUrl, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? supabaseKey, {
   db: { schema: "corpus" },
   auth: { autoRefreshToken: false, persistSession: false },
@@ -207,7 +209,7 @@ function localScopePaths() {
 }
 
 async function corpusTrees(roots, previewPaths = []) {
-  const nodes = () => supabase.schema("corpus").from("navigation_nodes").select("path,parent_path,child_count");
+  const nodes = () => supabase.schema("corpus").from("current_navigation_nodes").select("path,parent_path,child_count");
   const found = new Map();
   const keep = (rows) => {
     const added = [];
@@ -380,7 +382,7 @@ const CONTAINER_SUBTYPE = /manual|compilation|register|public_law|session_law|ti
 async function containerRoots(roots) {
   const labels = new Map();
   for (const n of await inBatches(roots, 100, (batch) =>
-    pages(() => supabase.schema("corpus").from("navigation_nodes").select("path,label").in("path", batch))
+    pages(() => supabase.schema("corpus").from("current_navigation_nodes").select("path,label").in("path", batch))
   ))
     labels.set(n.path, n.label ?? "");
   const facts = new Map();
@@ -468,7 +470,7 @@ async function matchSections(bundles) {
         }
     }
   const jurisdictions = [...new Set(webPages.map((p) => p.jurisdiction))];
-  const nodes = () => supabase.schema("corpus").from("navigation_nodes").select("path");
+  const nodes = () => supabase.schema("corpus").from("current_navigation_nodes").select("path");
   const ranges = jurisdictions.flatMap((j) => [`${j}/statute`, `${j}/regulation`]);
   const paths = await inBatches(
     ranges,
