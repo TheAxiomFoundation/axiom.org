@@ -473,7 +473,7 @@ export function encodeParts(rows: RunRow[]): EncodeParts {
       "checks",
       "Check time",
       "compile, tests, completeness, all tries",
-      "The encoder's check phases across the encode loop's tries: the candidate's compile, static checks, test cases, and source completeness, and the validation of the modules that depend on it. Recorded by axiom-encode 0.2.2156 and later.",
+      "The encoder's check phases across the encode loop's tries: the candidate's compile, static checks, test cases, and source completeness, and the validation of the modules that depend on it. Recorded by axiom-encode 0.2.2157 and later.",
       timing("Encoded", finished.filter((row) => row.outcome === "encoded").map(checkTime)),
       timing("Failed", finished.filter((row) => row.outcome === "failed").map(checkTime))
     ),
