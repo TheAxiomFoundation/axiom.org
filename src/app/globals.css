@@ -987,3 +987,17 @@ body:has(.embed-page) {
 body:has(.graph-viewer-root) > footer {
   display: none;
 }
+
+/* ── /aspen convening page: inline links and link-styled buttons ── */
+.aspen-link {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.aspen-link:hover {
+  color: var(--color-accent-hover);
+}
