@@ -204,6 +204,18 @@ export function rolesForRun(
   );
 }
 
+/** Roles carried across a re-read of the same scope's catalog (a retry, or
+ *  the relation set moving on the server): every answer whose relation is
+ *  still declared is kept exactly, answers for relations that left are
+ *  dropped, and a newly declared relation starts unanswered. */
+export function reconcileRoles(roles: RoleMembership, relations: RelationDecl[]): RoleMembership {
+  return Object.fromEntries(
+    relations
+      .filter((relation) => Array.isArray(roles[relation.legalId]))
+      .map((relation) => [relation.legalId, [...roles[relation.legalId]!]]),
+  );
+}
+
 /** Roles folded into scenario-identity keys, so a role edit marks results stale. */
 export function flattenRoles(roles: RoleMembership): Record<string, boolean> {
   const flat: Record<string, boolean> = {};

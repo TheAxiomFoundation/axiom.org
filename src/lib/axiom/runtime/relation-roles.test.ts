@@ -6,6 +6,7 @@ import {
   describeRelation,
   flattenRoles,
   membershipTuples,
+  reconcileRoles,
   relationLabel,
   rolesForRun,
   upstreamAcceptsExplicitRoles,
@@ -201,5 +202,29 @@ describe("scenario roles", () => {
     for (const body of [null, {}, { data: {} }, { data: { relations: "x" } }, { data: { relations: [{}] } }]) {
       expect(upstreamRelationsMatch(body, [decl("us:x", "r", ["TaxUnit", "Person"])])).toBe(false);
     }
+  });
+});
+
+describe("reconcileRoles (re-reading the same scope's catalog)", () => {
+  it("keeps every answer whose relation is still declared, drops departed ones, and leaves new ones unanswered", () => {
+    fc.assert(
+      fc.property(scenarioArb, fc.nat(), fc.boolean(), ({ relations, membership }, pick, addNew) => {
+        const departed = relations[pick % relations.length]!;
+        const added = decl("us:statutes/26/99", "newly_declared", ["TaxUnit", "Person"]);
+        const next = [...relations.filter((relation) => relation !== departed), ...(addNew ? [added] : [])];
+        const kept = reconcileRoles(membership, next);
+        for (const relation of next) {
+          if (relation === added) expect(kept[relation.legalId]).toBeUndefined();
+          else expect(kept[relation.legalId]).toEqual(membership[relation.legalId]);
+        }
+        expect(kept[departed.legalId]).toBeUndefined();
+        // A new relation stays unanswered here. membershipTuples refuses an
+        // unanswered relation; the client's rolesForRun sends it as empty,
+        // the same starting state every relation has in a fresh scope.
+        if (addNew) {
+          expect(membershipTuples(next, kept, ["person_1"])).toMatchObject({ ok: false, error: "relation_roles_required" });
+        }
+      }),
+    );
   });
 });

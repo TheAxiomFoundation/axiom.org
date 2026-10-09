@@ -3,7 +3,7 @@ import { NodeMetadata } from "./node-metadata";
 
 import { HouseholdComposer } from "./household-composer";
 import { ConventionNote, RelationRoles } from "./relation-roles";
-import { flattenRoles, rolesForRun, type RelationDecl, type RoleMembership } from "@/lib/axiom/runtime/relation-roles";
+import { flattenRoles, reconcileRoles, rolesForRun, type RelationDecl, type RoleMembership } from "@/lib/axiom/runtime/relation-roles";
 import { ResultExplanation, inputAwareEvidence, recordedTableRow } from "./result-explanation";
 import { ParameterTableView } from "./parameter-table";
 import { GraphLoading } from "./graph-loading";
@@ -1717,13 +1717,20 @@ export function GraphViewerApp({
 
   // Compilation capability is independent of whether an empty household can
   // produce a result. The input catalog compiles without executing a scenario.
+  const catalogFocusRef = useRef<string | null | undefined>(undefined);
   useEffect(() => {
-    setComposeRunReady(null);
+    // A new scope starts clean; a re-read of the same scope (retry, or the
+    // relation set moving on the server) keeps what the user stated.
+    const focusChanged = catalogFocusRef.current !== composeFocus;
+    catalogFocusRef.current = composeFocus;
     setRunBlocked(null);
     setRunUnavailableReason(null);
-    setRootRelations({ relations: [], mode: "convention" });
-    // Every scope starts with no roles stated (relation-roles.tsx).
-    setRelationRoles({});
+    if (focusChanged) {
+      setComposeRunReady(null);
+      setRootRelations({ relations: [], mode: "convention" });
+      // Every scope starts with no roles stated (relation-roles.tsx).
+      setRelationRoles({});
+    }
     if (!composeFocus) return;
     let cancelled = false;
     const root = fileLegalIdOf(composeFocus);
@@ -1731,6 +1738,7 @@ export function GraphViewerApp({
       .then((catalog) => {
         if (cancelled) return;
         setRootRelations({ relations: catalog.relations, mode: catalog.relationMembership });
+        if (!focusChanged) setRelationRoles((current) => reconcileRoles(current, catalog.relations));
         rememberRunCapability(root, true);
         setComposeRunReady(true);
       })
@@ -2509,7 +2517,7 @@ export function GraphViewerApp({
             onRun={() => void runScenario()}
             running={running}
             members={extraMembers}
-            roles={composeFocus && rootRelations.mode === "explicit" ? (runResult?.submittedRoles ?? rolesForRun(rootRelations.relations, relationRoles, ["person_1", ...extraMembers])) : undefined}
+            roles={composeFocus ? (runResult?.submittedRoles ?? (rootRelations.mode === "explicit" ? rolesForRun(rootRelations.relations, relationRoles, ["person_1", ...extraMembers]) : undefined)) : undefined}
             run={runResult}
             renderInput={(id, selectedMember) => {
               const input = graph.inputs.find(item => item.legalId === id);
