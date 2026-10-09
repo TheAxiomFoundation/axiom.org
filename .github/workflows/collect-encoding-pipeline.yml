@@ -68,7 +68,8 @@ jobs:
             echo "due=true" >> "$GITHUB_OUTPUT"
           fi
       - if: steps.bundle-due.outputs.due == 'true'
-        run: bun scripts/collect-program-bundles.mjs
+        # .env.production holds the public anon key that reads the served corpus.
+        run: bun --env-file=.env.production scripts/collect-program-bundles.mjs
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
