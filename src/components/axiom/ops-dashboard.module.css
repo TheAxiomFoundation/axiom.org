@@ -81,6 +81,41 @@
   margin-top: 12px;
 }
 
+/* One section at a time: the ledger, the program bundles, the pipeline. */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 32px;
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.tabs [role="tab"] {
+  margin-bottom: -1px;
+  padding: 10px 16px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-ink-secondary);
+  cursor: pointer;
+}
+
+.tabs [role="tab"]:hover {
+  color: var(--color-ink);
+}
+
+.tabs [role="tab"][aria-selected="true"] {
+  border-bottom-color: var(--color-accent);
+  color: var(--color-ink);
+}
+
+.tabs + .workspace,
+.tabs + .ledgerOnly {
+  margin-top: 24px;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 340px;
@@ -237,14 +272,16 @@
 
 .ledgerOverview {
   display: grid;
-  gap: 12px;
+  gap: 16px;
+  padding: 6px 0 4px;
 }
 
 .ledgerSummary {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 2px 14px;
+  gap: 2px 0;
+  margin: 0;
   font-size: 13px;
   color: var(--color-ink-secondary);
 }
@@ -252,12 +289,6 @@
 .ledgerSummary strong {
   font-weight: 600;
   color: var(--color-ink);
-}
-
-.ledgerColumns {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px 32px;
 }
 
 .ledgerLabel {
@@ -287,6 +318,14 @@
   color: var(--color-ink-secondary);
 }
 
+.ledgerStop {
+  color: var(--color-ink);
+}
+
+.ledgerCause {
+  color: var(--color-ink-secondary);
+}
+
 .ledgerCount {
   text-align: right;
   font-weight: 600;
@@ -308,28 +347,87 @@
   text-decoration: underline;
 }
 
+/* The latest run as one unit; under a summary of several runs, a rule sets it apart. */
 .ledgerLatest {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 12px;
-  font-size: 12px;
-  color: var(--color-ink-secondary);
+  display: grid;
+  gap: 14px;
 }
 
-.ledgerLatest .ledgerLabel {
+.ledgerLatest[data-after-summary] {
+  padding-top: 16px;
+  border-top: 1px solid var(--color-rule);
+}
+
+.ledgerVerdict {
+  display: grid;
+  gap: 6px;
+}
+
+.ledgerVerdict .ledgerLabel {
   margin: 0;
 }
 
-.ledgerLatest a {
+.ledgerVerdictLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.35;
   color: var(--color-ink);
-  text-decoration: underline;
-  text-decoration-color: var(--color-rule-strong);
 }
 
-.ledgerLatest a[data-outcome="failed"],
-.ledgerLatest a[data-outcome="cancelled"] {
+.ledgerOutcome {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
+  color: var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 12%, transparent);
+}
+
+.ledgerOutcome[data-outcome="failed"],
+.ledgerOutcome[data-outcome="cancelled"] {
   color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+}
+
+.ledgerOutcome[data-outcome="running"],
+.ledgerOutcome[data-outcome="waiting"] {
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+
+.ledgerVerdictCause {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.ledgerVerdictMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 0;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-ink-muted);
+}
+
+.ledgerVerdictSep {
+  padding: 0 8px;
+  color: var(--color-rule-strong);
+  white-space: pre;
+}
+
+.ledgerVerdictMeta a {
+  color: var(--color-ink-secondary);
+  text-decoration: underline;
+  text-decoration-color: var(--color-rule-strong);
+  text-underline-offset: 2px;
 }
 
 .ledgerRuns {
@@ -363,12 +461,6 @@
 .ledgerRunLine a[data-outcome="failed"],
 .ledgerRunLine a[data-outcome="cancelled"] {
   color: var(--color-warning);
-}
-
-@media (max-width: 700px) {
-  .ledgerColumns {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 .ledgerMore {
@@ -450,4 +542,40 @@
   font-size: 14px;
   font-weight: 600;
   letter-spacing: -0.01em;
+}
+
+/* The program bundle and tiers a ledger section belongs to. */
+.ledgerBundles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.ledgerBundle {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 0 7px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 35%, var(--color-rule));
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--color-accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.ledgerBundle span {
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  color: var(--color-ink-muted);
+}
+
+.ledgerBundle:hover {
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+}
+
+.workspace[hidden],
+.ledgerOnly[hidden] {
+  display: none;
 }

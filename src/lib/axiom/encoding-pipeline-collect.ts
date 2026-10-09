@@ -15,7 +15,7 @@
  * Kept free of I/O so every join rule is unit-tested.
  */
 
-import type { PipelineAttempt, PipelineTry } from "./encoding-pipeline";
+import type { EncodeLoopTiming, PipelineAttempt, PipelineTry, PipelineTryPhase } from "./encoding-pipeline";
 
 export interface WorkflowRun {
   id: number;
@@ -46,6 +46,8 @@ export interface EncoderRunRow {
   github_run_id?: string | null;
   /** One entry per generation attempt: model, time, tokens, cost, and the errors that sent it back. */
   iterations?: unknown;
+  /** The record's `outcome.encode_loop_timing`: its loop's clock (axiom-encode 0.2.2157 on). */
+  loop_timing?: unknown;
 }
 
 export interface ManifestPr {
@@ -166,7 +168,7 @@ export function encoderTries(row: EncoderRunRow): PipelineTry[] | null {
       const first = errors.find((error) => error && typeof error === "object" && "message" in error) as
         | { message?: unknown }
         | undefined;
-      return {
+      const attempt: PipelineTry = {
         attempt: number(entry.attempt) ?? index + 1,
         model: typeof entry.model === "string" ? entry.model : null,
         ms: number(entry.duration_ms),
@@ -174,8 +176,53 @@ export function encoderTries(row: EncoderRunRow): PipelineTry[] | null {
         ok: entry.success === true,
         error: truncateError(typeof first?.message === "string" ? first.message : null),
       };
+      // Encoder 0.2.2157 on also times the whole try, phase by phase; older records keep the model time only.
+      const startedAt = typeof entry.started_at === "string" ? entry.started_at : null;
+      const wallMs = number(entry.wall_duration_ms);
+      const phases = tryPhases(entry.phases);
+      if (startedAt && wallMs !== null && phases) Object.assign(attempt, { startedAt, wallMs, phases });
+      return attempt;
     });
   return tries.length ? tries : null;
+}
+
+/** A try's phases as the encoder lists them, each with its time and, for a check phase, its time by tool. */
+function tryPhases(value: unknown): PipelineTryPhase[] | null {
+  if (!Array.isArray(value)) return null;
+  const phases: PipelineTryPhase[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") continue;
+    const { name, duration_ms, breakdown_ms } = entry as Record<string, unknown>;
+    const ms = number(duration_ms);
+    if (typeof name !== "string" || ms === null) continue;
+    const tools =
+      breakdown_ms && typeof breakdown_ms === "object"
+        ? Object.fromEntries(
+            Object.entries(breakdown_ms as Record<string, unknown>).filter(
+              (pair): pair is [string, number] => number(pair[1]) !== null
+            )
+          )
+        : {};
+    phases.push(Object.keys(tools).length ? { name, ms, tools } : { name, ms });
+  }
+  return phases.length ? phases : null;
+}
+
+/** The encoder record's loop clock: its start, its whole time, and its time around the tries. Null before 0.2.2157. */
+export function encoderLoop(row: EncoderRunRow): EncodeLoopTiming | null {
+  const loop = row.loop_timing;
+  if (!loop || typeof loop !== "object") return null;
+  const timing = loop as Record<string, unknown>;
+  const wallMs = number(timing.wall_duration_ms);
+  if (wallMs === null) return null;
+  return {
+    startedAt: typeof timing.started_at === "string" ? timing.started_at : null,
+    wallMs,
+    setupMs: number(timing.setup_ms),
+    triesMs: number(timing.tries_ms),
+    betweenMs: number(timing.between_tries_ms),
+    finalizeMs: number(timing.finalize_ms),
+  };
 }
 
 export function truncateError(message: string | null | undefined): string | null {
@@ -1194,6 +1241,8 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
       attempt.cost_usd = encoder.estimated_cost_usd;
       const tries = encoderTries(encoder);
       if (tries) attempt.tries = tries;
+      const loop = encoderLoop(encoder);
+      if (loop) attempt.encode_loop = loop;
       const error = encoderError(encoder);
       if (error) {
         attempt.encoder_error = error;
@@ -1255,6 +1304,14 @@ export function needsLogRead(known: Partial<PipelineAttempt>): boolean {
 }
 
 /**
+ * A failure its log explains whose step the jobs API was never asked for
+ * ("jq: error: …" read from the log, no step): read the step, once.
+ */
+export function needsStepRead(known: Partial<PipelineAttempt>): boolean {
+  return known.failure_source === "log" && !known.failed_step;
+}
+
+/**
  * Failed runs whose cause is still unknown, in the order /ops needs them:
  * each citation's latest dispatch first (the view shows only that one),
  * then older dispatches, newest first within each. A cancelled or
@@ -1283,7 +1340,7 @@ export function failureLookups(
       if (!isFailedRun(run)) return false;
       if (run.conclusion === "cancelled" || run.conclusion === "timed_out") return false;
       const known = previous.get(String(run.id));
-      if (known?.failure_source && !needsLogRead(known)) return false;
+      if (known?.failure_source && !needsLogRead(known) && !needsStepRead(known)) return false;
       // An unnamed early run has no citation to match an encoder record by.
       const parsed = parseRunTitle(run.display_title);
       const encoder = parsed
