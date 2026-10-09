@@ -2,16 +2,14 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CHAT_KEY,
-  EMPTY_PROFILE,
   OVERALL_KEY,
+  VOTE_KEY,
   enterRun,
   formatValue,
-  loadProfile,
   newId,
   participantId,
   postJson,
   readStored,
-  saveProfile,
   sendEvent,
   useControl,
   usePoll,
@@ -72,31 +70,6 @@ describe("newId", () => {
   });
 });
 
-describe("profile storage", () => {
-  it("returns the empty profile when nothing is saved", () => {
-    expect(loadProfile()).toEqual(EMPTY_PROFILE);
-  });
-
-  it("round-trips a saved profile and fills missing fields", () => {
-    saveProfile({ perspective: "caseworker", state: "Arizona", role: null });
-    expect(loadProfile()).toEqual({ perspective: "caseworker", state: "Arizona", role: null });
-    localStorage.setItem("aspen.profile", JSON.stringify({ state: "Ohio" }));
-    expect(loadProfile()).toEqual({ perspective: null, state: "Ohio", role: null });
-  });
-
-  it("returns the empty profile for unreadable JSON", () => {
-    localStorage.setItem("aspen.profile", "{not json");
-    expect(loadProfile()).toEqual(EMPTY_PROFILE);
-  });
-
-  it("ignores a storage failure on save", () => {
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-      throw new Error("quota");
-    });
-    expect(() => saveProfile({ perspective: "resident", state: null, role: null })).not.toThrow();
-  });
-});
-
 describe("readStored / writeStored", () => {
   it("reads and writes JSON in localStorage", () => {
     writeStored("k", { a: 1 });
@@ -146,10 +119,12 @@ describe("enterRun", () => {
     writeStored("aspen.run", "rehearsal");
     localStorage.setItem(CHAT_KEY, "{}");
     localStorage.setItem(OVERALL_KEY, "true");
+    localStorage.setItem(VOTE_KEY, JSON.stringify("project"));
     localStorage.setItem("aspen.participant", "p-1");
     expect(enterRun("phoenix")).toBe(true);
     expect(localStorage.getItem(CHAT_KEY)).toBeNull();
     expect(localStorage.getItem(OVERALL_KEY)).toBeNull();
+    expect(localStorage.getItem(VOTE_KEY)).toBeNull();
     expect(localStorage.getItem("aspen.participant")).toBe("p-1");
     expect(readStored("aspen.run")).toBe("phoenix");
   });

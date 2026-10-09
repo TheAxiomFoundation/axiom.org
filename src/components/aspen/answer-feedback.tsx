@@ -63,10 +63,15 @@ export function RatingCard({ promptId, onRated }: { promptId: string; onRated?: 
   const setOther = praise ? setWentWrong : setWentWell;
 
   return (
-    <div className="flex flex-col gap-5 rounded-xl border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] p-4">
-      <Eyebrow className="text-[var(--color-accent)]">Rate the answer</Eyebrow>
+    <div className="flex flex-col gap-5 rounded-xl border-2 border-[var(--color-accent)] bg-[var(--color-paper-elevated)] p-4">
+      <div>
+        <Eyebrow className="text-[var(--color-accent)]">Rate this answer</Eyebrow>
+        <p className="m-0 mt-1 font-body text-[0.92rem] text-[var(--color-ink-muted)]">
+          Three quick questions. Your rating counts in the room&apos;s results.
+        </p>
+      </div>
       <fieldset className="m-0 border-0 p-0">
-        <legend className="mb-2.5 font-body text-[0.95rem] text-[var(--color-ink)]">Does it look right?</legend>
+        <legend className="mb-2.5 font-body text-[1.02rem] text-[var(--color-ink)]">Does it look right?</legend>
         <div className="grid grid-cols-3 gap-2">
           {VERDICTS.map((v) => (
             <Segment key={v.id} selected={verdict === v.id} onClick={() => setVerdict(v.id)}>
@@ -77,7 +82,7 @@ export function RatingCard({ promptId, onRated }: { promptId: string; onRated?: 
       </fieldset>
       {verdict && (
         <fieldset className="m-0 border-0 p-0">
-          <legend className="mb-2.5 font-body text-[0.95rem] text-[var(--color-ink)]">Would you act on it?</legend>
+          <legend className="mb-2.5 font-body text-[1.02rem] text-[var(--color-ink)]">Would you act on it?</legend>
           <div className="grid grid-cols-3 gap-2">
             {WOULD_ACT.map((v) => (
               <Segment key={v.id} selected={wouldAct === v.id} onClick={() => setWouldAct(v.id)}>
@@ -89,7 +94,7 @@ export function RatingCard({ promptId, onRated }: { promptId: string; onRated?: 
       )}
       {verdict && wouldAct && (
         <fieldset className="m-0 border-0 p-0">
-          <legend className="mb-2.5 font-body text-[0.95rem] text-[var(--color-ink)]">
+          <legend className="mb-2.5 font-body text-[1.02rem] text-[var(--color-ink)]">
             What would a resident do next?
           </legend>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -103,7 +108,7 @@ export function RatingCard({ promptId, onRated }: { promptId: string; onRated?: 
       )}
       {verdict && wouldAct && residentAction && (
         <fieldset className="m-0 border-0 p-0">
-          <legend className="mb-2.5 font-body text-[0.95rem] text-[var(--color-ink)]">
+          <legend className="mb-2.5 font-body text-[1.02rem] text-[var(--color-ink)]">
             {praise ? "What went well?" : "What went wrong?"}{" "}
             <span className="text-[0.82rem] text-[var(--color-ink-muted)]">Optional</span>
           </legend>
@@ -131,7 +136,7 @@ export function RatingCard({ promptId, onRated }: { promptId: string; onRated?: 
       )}
       {verdict && wouldAct && residentAction && (
         <>
-          <label className="flex flex-col gap-2 font-body text-[0.92rem] text-[var(--color-ink)]">
+          <label className="flex flex-col gap-2 font-body text-[1rem] text-[var(--color-ink)]">
             <span>
               Anything the room should know about this answer? <span className="text-[var(--color-ink-muted)]">(optional)</span>
             </span>
@@ -171,7 +176,7 @@ function Segment({
       type="button"
       aria-pressed={selected}
       onClick={onClick}
-      className={`whitespace-nowrap rounded-lg border px-1 py-2.5 font-body text-[0.84rem] transition-colors ${
+      className={`whitespace-nowrap rounded-lg border px-1 py-3 font-body text-[0.95rem] transition-colors ${
         selected
           ? "border-[var(--color-ink)] bg-[var(--color-ink)] text-white"
           : "border-[var(--color-rule)] bg-[var(--color-paper)] text-[var(--color-ink)] hover:border-[var(--color-accent)]"
@@ -265,7 +270,7 @@ export function RulesCheck({
   if (!unlocked) {
     return (
       <p className="m-0 rounded-md bg-[var(--color-rule-subtle)] px-3 py-2 font-body text-[0.88rem] text-[var(--color-ink-secondary)]">
-        Later tonight you&apos;ll check this answer against the encoded rules.
+        Later in the session, you&apos;ll check this answer against the encoded rules.
       </p>
     );
   }

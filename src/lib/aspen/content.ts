@@ -5,9 +5,9 @@
  * 2026, a 90-minute reception that flows into the cohort dinner.
  *
  * Follows the session plan sent to Aspen on Oct 7: participants try the
- * problem before we name it, and the evening builds to one idea: a single
+ * problem before we name it, and the session builds to one idea: a single
  * set of open, validated rules changes what's possible for benefits
- * delivery.
+ * delivery. The copy avoids "tonight" and "this evening" (Ariel's notes).
  */
 
 export const EVENT = {
@@ -37,16 +37,16 @@ export const STAGE_IDS = [
 export type StageId = (typeof STAGE_IDS)[number];
 
 /**
- * The evening's red thread: each stage's summary picks up where the last
- * one left off, so the page reads as one story from the question residents
- * already ask to the states that go first. No clock times: the room sets
- * the pace.
+ * The red thread: each stage's summary picks up where the last one left
+ * off, so the page reads as one story from the question residents already
+ * ask to the states that go first. No clock times: the room sets the pace.
+ * Copy stays short, so it reads at phone size.
  */
 export interface Stage {
   id: StageId;
   label: string;
   title: string;
-  /** One line for the evening's agenda. */
+  /** One line for the agenda. */
   agenda: string;
   /** The thread: how this stage follows from the one before. */
   summary: string;
@@ -59,55 +59,50 @@ export const STAGES: readonly Stage[] = [
     id: "welcome",
     label: "Welcome",
     title: "Welcome",
-    agenda: "Aspen opens the evening and introduces Ariel and Max.",
-    summary:
-      "Residents already ask AI about benefits. Tonight we follow one question all the way through: what does it tell them, and how would anyone know if it's right?",
+    agenda: "Aspen opens and introduces Ariel and Max.",
+    summary: "Residents already ask AI about benefits. What does it tell them, and is it right?",
   },
   {
     id: "try",
     label: "Try it",
     title: "Ask the AI",
     agenda: "Ask the AI a benefits question, then rate the answer.",
-    summary:
-      "Start where residents start: ask the AI a benefits question, then judge the answer yourself.",
+    summary: "Ask what a resident would ask. Then rate the answer.",
   },
   {
     id: "rate",
     label: "Rate it",
     title: "How did AI do?",
-    agenda: "Rate how AI did, before we see the room's results.",
-    summary:
-      "You've seen an answer up close. Before we look at the room's results, rate how AI did overall, and how your agency has found it so far.",
+    agenda: "Rate how AI did overall.",
+    summary: "Rate the AI, and how AI has worked at your agency.",
   },
   {
     id: "reveal",
     label: "What we saw",
     title: "What we saw",
-    agenda: "Could residents act on the answers? Then discussion.",
-    summary: "Could a resident act on these answers? Here's what this room found, and where the answers broke down.",
+    agenda: "The room's results, then discussion.",
+    summary: "Could a resident act on these answers?",
   },
   {
     id: "scale",
     label: "At scale",
-    title: "How AI performs at scale",
-    agenda: "PolicyBench: how 46 AI models do on benefits.",
-    summary:
-      "Was this room unlucky? PolicyBench asked 46 AI models to calculate benefits for real households, and scored every answer.",
+    title: "AI gets it wrong at scale",
+    agenda: "PolicyBench: 46 AI models on SNAP.",
+    summary: "We asked 46 AI models to calculate SNAP for real households. Many told families who qualify they'd get $0.",
   },
   {
     id: "foundation",
     label: "Shared foundation",
     title: "A shared foundation",
-    agenda: "One open set of rules for every tool, and what it takes.",
-    summary:
-      "The answers go wrong because every tool rebuilds your rules on its own. One open, validated set of rules gives every tool the same correct answer.",
+    agenda: "One open set of rules for every tool.",
+    summary: "Every tool rebuilds your rules on its own. One open, validated set gives them all the right answer.",
   },
   {
     id: "groups",
     label: "Small groups",
-    title: "What would your team do with it?",
-    agenda: "What your team would build on open rules.",
-    summary: "With rules your team can see, test and change, what would you build first? Pick one and talk it through.",
+    title: "How would you use it?",
+    agenda: "Vote on what to build first, then talk it through in groups.",
+    summary: "With rules your team can see, test and change, what would you build first? Vote, then talk it through with your group.",
     optional: true,
   },
   {
@@ -115,16 +110,14 @@ export const STAGES: readonly Stage[] = [
     label: "Next steps",
     title: "Next steps",
     agenda: "A short form for states that want to go further.",
-    summary:
-      "We have the opportunity to solve this nationally. A few states going first will show it works. Tell us how you'd like to go further.",
+    summary: "Tell us if your state wants to go further.",
   },
   {
     id: "dinner",
     label: "Thank you",
     title: "Thank you",
     agenda: "Thank you, then dinner.",
-    summary:
-      "We started with a question residents already ask. Thank you for asking it with us, and enjoy dinner on the other side of the room.",
+    summary: "Thank you for asking the question with us. Enjoy dinner.",
   },
 ];
 
@@ -137,7 +130,7 @@ export function isStageId(value: unknown): value is StageId {
 }
 
 // ---------------------------------------------------------------------------
-// Who you are tonight
+// Who the participant asks as
 // ---------------------------------------------------------------------------
 
 export const PERSPECTIVE_IDS = ["resident", "caseworker"] as const;
@@ -167,15 +160,6 @@ export const PERSPECTIVES: readonly {
 export function isPerspectiveId(value: unknown): value is PerspectiveId {
   return PERSPECTIVE_IDS.includes(value as PerspectiveId);
 }
-
-export const ROLES = [
-  "Secretary or commissioner",
-  "Deputy secretary or director",
-  "Program or policy lead",
-  "Workforce or labor leader",
-  "Aspen staff or adviser",
-  "Other",
-] as const;
 
 export const US_STATES = [
   "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado",
@@ -522,7 +506,7 @@ export type ResidentActionId = (typeof RESIDENT_ACTIONS)[number]["id"];
  */
 export const SOURCE_OF_TRUTH = {
   id: "source-of-truth",
-  title: "Before tonight",
+  title: "Checking answers today",
   question: "Can a resident, a screener or an AI check an answer against your state's official rules today?",
   options: [
     { id: "yes", label: "Yes" },
@@ -565,7 +549,7 @@ export interface RatingScale {
  */
 export const RATING_SCALES: Partial<Record<DiscussionQuestionId, RatingScale>> = {
   performance: {
-    title: "How did the AI do tonight?",
+    title: "How did the AI do?",
     low: "Not at all",
     high: "Fully",
     categories: [
@@ -605,7 +589,7 @@ export const DISCUSSION_TOPICS = [
   "Reporting and renewals",
 ] as const;
 
-/** The small-group uses, from the session plan. */
+/** The uses people vote on before the small groups, from the session plan. */
 export const USE_CASES = [
   {
     id: "see-edit",
@@ -726,6 +710,12 @@ export const NEXT_STEPS = {
     },
   ],
 } as const;
+
+/**
+ * Shown with every AI answer: the answers are a demo of an unmodified
+ * general-purpose model, and the model's maker has no part in the page.
+ */
+export const DEMO_NOTE = "A demo. Answers come from OpenAI's GPT model, unedited. OpenAI does not sponsor or endorse this page.";
 
 export const DISCLOSURE = {
   short:

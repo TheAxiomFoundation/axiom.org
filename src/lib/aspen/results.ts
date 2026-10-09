@@ -131,7 +131,7 @@ export interface RunSummary {
   viability: Viability;
   breakdown: BreakdownRow[];
   spotlight: Spotlight[];
-  /** Before tonight: can anyone check an answer against the state's official rules? (Rate it) */
+  /** Can anyone check an answer against the state's official rules today? (Rate it) */
   sourceOfTruth: Count[];
   /** Notes people wrote when they rated an answer or in Rate it, newest first. */
   voices: { text: string; verdict: string | null }[];
@@ -142,6 +142,8 @@ export interface RunSummary {
     /** The room's average 1–5 score per rated category, by question. */
     scales: ScaleSummary[];
   };
+  /** Vote: what people would build first, one vote each. */
+  votes: Count[];
   breakouts: { useCases: Count[]; notes: { useCase: string; text: string }[] };
   pledges: { people: number; states: string[]; accurateAi: number; stateSystems: number };
 }
@@ -275,6 +277,7 @@ export function summarizeRun(data: RunData): RunSummary {
 
   const discussion = events.filter((e) => e.kind === "discussion");
   const breakouts = events.filter((e) => e.kind === "breakout");
+  const votes = events.filter((e) => e.kind === "vote");
 
   const householdLabel = new Map(HOUSEHOLDS.map((h) => [h.id, h.label]));
   const perspectiveLabel = new Map<string, string>(PERSPECTIVES.map((p) => [p.id, p.label]));
@@ -394,6 +397,10 @@ export function summarizeRun(data: RunData): RunSummary {
         .reverse(),
       scales: summarizeScales(discussion),
     },
+    votes: countBy(
+      votes.map((e) => payloadString(e.payload, "useCase")),
+      USE_CASES.map((u) => ({ id: u.id, label: u.label })),
+    ),
     breakouts: {
       useCases: countBy(
         breakouts.map((e) => payloadString(e.payload, "useCase")),

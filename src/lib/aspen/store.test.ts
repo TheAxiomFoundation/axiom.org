@@ -121,7 +121,7 @@ describe('supabase store', () => {
     const pledgeQuery = calls.find((c) => c.url.includes('aspen_pledges'))!.url
     expect(pledgeQuery).toContain('select=state,accurate_ai,state_systems,show_state,created_at')
     expect(pledgeQuery).not.toContain('email')
-    expect(calls.find((c) => c.url.includes('aspen_events'))!.url).toContain('kind=in.(discussion,breakout,survey)')
+    expect(calls.find((c) => c.url.includes('aspen_events'))!.url).toContain('kind=in.(discussion,breakout,survey,vote)')
   })
 
   it('raises on HTTP errors and tolerates 204', async () => {

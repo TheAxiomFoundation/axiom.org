@@ -3,7 +3,7 @@ import { SOURCE_OF_TRUTH } from "@/lib/aspen/content";
 import { formatValue } from "./client";
 import { Bars, Card, Eyebrow, Stat } from "./ui";
 
-/** The room's results: counts, the framed reveal, the scale averages and the live question feed. */
+/** The room's results: counts, the framed reveal and the scale averages. */
 
 const VERDICT_TONE: Record<string, string> = {
   right: "text-[var(--color-success)]",
@@ -63,8 +63,7 @@ export function ScaleCard({ scale }: { scale: ScaleSummary }) {
   );
 }
 
-/** The room's results; a card appears once it has something to show. */
-/** Before tonight: can anyone check an answer against the state's official rules? */
+/** Can anyone check an answer against the state's official rules today? */
 export function SourceOfTruthCard({ counts }: { counts: Count[] }) {
   const total = counts.reduce((sum, c) => sum + c.count, 0);
   const no = counts.find((c) => c.id === "no")?.count ?? 0;
@@ -107,7 +106,7 @@ function Section({ title, prompt, children }: { title: string; prompt?: string; 
 }
 
 /** A single bar split into parts, with a legend underneath. */
-function SplitBar({ parts }: { parts: { label: string; count: number; color: string }[] }) {
+export function SplitBar({ parts }: { parts: { label: string; count: number; color: string }[] }) {
   const total = parts.reduce((sum, p) => sum + p.count, 0);
   return (
     <div className="flex flex-col gap-2">
@@ -134,9 +133,9 @@ function SplitBar({ parts }: { parts: { label: string; count: number; color: str
   );
 }
 
-const GOOD = "var(--color-success)";
-const BAD = "var(--color-error)";
-const MAYBE = "var(--color-rule-strong)";
+export const GOOD = "var(--color-success)";
+export const BAD = "var(--color-error)";
+export const MAYBE = "var(--color-rule-strong)";
 
 function ViabilityPanel({ summary }: { summary: RunSummary }) {
   const v = summary.viability;
@@ -322,7 +321,7 @@ function SpotlightList({ summary }: { summary: RunSummary }) {
  * where did they break down, which ones to talk about, how it felt, and
  * what people said.
  */
-export function ResultsBoard({ summary, wide = false }: { summary: RunSummary; wide?: boolean }) {
+export function ResultsBoard({ summary }: { summary: RunSummary }) {
   const scales = summary.discussion.scales.filter((sc) => sc.categories.some((c) => c.count > 0));
   if (summary.rated === 0 && scales.length === 0 && !any(summary.sourceOfTruth)) {
     return (
@@ -333,7 +332,7 @@ export function ResultsBoard({ summary, wide = false }: { summary: RunSummary; w
     );
   }
   return (
-    <div className={`flex flex-col ${wide ? "gap-10" : "gap-12"}`}>
+    <div className="flex flex-col gap-12">
       <ResultsCounts summary={summary} />
       {summary.rated > 0 && (
         <Section title="Could a resident act on these answers?" prompt="Would you let a resident act on what they got?">
@@ -382,51 +381,6 @@ export function ResultsBoard({ summary, wide = false }: { summary: RunSummary; w
           </ul>
         </Section>
       )}
-    </div>
-  );
-}
-
-export function AnswerFeed({ summary, limit = 8 }: { summary: RunSummary; limit?: number }) {
-  if (summary.feed.length === 0) {
-    return (
-      <p className="m-0 font-body text-[0.92rem] text-[var(--color-ink-muted)]">
-        Answers appear here as people ask.
-      </p>
-    );
-  }
-  return (
-    <div>
-      <Eyebrow className="mb-3">Latest answers</Eyebrow>
-      <ul className="m-0 grid list-none gap-3 p-0 sm:grid-cols-2">
-        {summary.feed.slice(0, limit).map((item) => (
-          <li key={item.id}>
-            <Card className="flex h-full flex-col gap-2">
-              <span className="font-mono text-[0.66rem] uppercase tracking-[0.14em] text-[var(--color-ink-muted)]">
-                {[item.perspective, item.household].filter(Boolean).join(" · ") || "Question"}
-              </span>
-              <p className="m-0 font-body text-[0.9rem] font-medium leading-snug text-[var(--color-ink)]">
-                {item.prompt}
-              </p>
-              {item.answer && (
-                <p className="m-0 font-body text-[0.85rem] leading-relaxed text-[var(--color-ink-secondary)]">
-                  {item.answer}
-                </p>
-              )}
-              <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 font-body text-[0.8rem]">
-                {item.verdict && (
-                  <span className={VERDICT_TONE[item.verdict] ?? ""}>{VERDICT_LABEL[item.verdict] ?? item.verdict}</span>
-                )}
-                {item.rulesAmount !== null && (
-                  <span className="text-[var(--color-ink-secondary)]">
-                    The rules say{" "}
-                    <strong className="text-[var(--color-accent)]">{formatValue(item.rulesAmount, "USD")}</strong>
-                  </span>
-                )}
-              </div>
-            </Card>
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }

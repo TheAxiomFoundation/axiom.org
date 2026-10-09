@@ -3,11 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EVENT } from "@/lib/aspen/content";
 import { SignInForm } from "./sign-in-form";
 
-const assign = vi.fn();
+const replace = vi.fn();
 
 beforeEach(() => {
-  assign.mockReset();
-  vi.stubGlobal("location", { ...window.location, assign });
+  replace.mockReset();
+  vi.stubGlobal("location", { ...window.location, replace });
 });
 
 afterEach(() => {
@@ -52,7 +52,7 @@ describe("SignInForm", () => {
       body: JSON.stringify({ password: "phoenix" }),
     });
     resolve({ ok: true, json: async () => ({ ok: true }) } as unknown as Response);
-    await vi.waitFor(() => expect(assign).toHaveBeenCalledWith("/aspen?from=sign-in"));
+    await vi.waitFor(() => expect(replace).toHaveBeenCalledWith("/aspen?from=sign-in"));
   });
 
   it("shows the server's error for a wrong password", async () => {
@@ -65,7 +65,7 @@ describe("SignInForm", () => {
     fireEvent.submit(screen.getByRole("button", { name: "Join" }).closest("form")!);
     expect(await screen.findByRole("alert")).toHaveTextContent("Wrong password.");
     expect(screen.getByRole("button", { name: "Join" })).toBeEnabled();
-    expect(assign).not.toHaveBeenCalled();
+    expect(replace).not.toHaveBeenCalled();
   });
 
   it("shows a generic error when the response is not JSON", async () => {
@@ -85,6 +85,6 @@ describe("SignInForm", () => {
     typePassword("phoenix");
     fireEvent.click(screen.getByRole("button", { name: "Join" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("That didn't work. Try again.");
-    expect(assign).not.toHaveBeenCalled();
+    expect(replace).not.toHaveBeenCalled();
   });
 });
