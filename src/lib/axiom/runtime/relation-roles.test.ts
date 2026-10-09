@@ -185,6 +185,9 @@ describe("scenario roles", () => {
         expect(upstreamRelationsMatch({ data: { relations: [...listed, { name: "us:x#relation.extra" }] } }, relations)).toBe(false);
         // A declared relation the runtime does not bind.
         expect(upstreamRelationsMatch({ data: { relations: listed.filter((_, index) => index !== pick % listed.length) } }, relations)).toBe(false);
+        // A relation the runtime only guesses cannot take explicit roles.
+        const guessed = listed.map((relation, index) => (index === pick % listed.length ? { ...relation, explicit: false } : { ...relation, explicit: true }));
+        expect(upstreamRelationsMatch({ data: { relations: guessed } }, relations)).toBe(false);
       }),
     );
     for (const body of [null, {}, { data: {} }, { data: { relations: "x" } }, { data: { relations: [{}] } }]) {

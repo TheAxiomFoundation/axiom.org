@@ -209,7 +209,8 @@ export function upstreamAcceptsExplicitRoles(body: unknown): boolean {
 }
 
 /** Whether the relations the runtime compiled for this root are exactly
- *  the ones the source declarations name. The scenario sends one entry per
+ *  the ones the source declarations name, each one able to take explicit
+ *  membership. The scenario sends one entry per
  *  declared relation; a relation the runtime binds but the scenario never
  *  names would keep the convention, and one the runtime lacks would be
  *  refused, so the two sets must agree before roles are offered. */
@@ -220,6 +221,9 @@ export function upstreamRelationsMatch(body: unknown, relations: RelationDecl[])
   for (const relation of listed) {
     const name = (relation as {name?: unknown} | null)?.name;
     if (typeof name !== "string") return false;
+    // The runtime cannot take explicit membership for a relation whose
+    // declaration it only guesses (axiom-api#267 `explicit: false`).
+    if ((relation as {explicit?: unknown}).explicit === false) return false;
     upstream.add(name);
   }
   const declared = new Set(relations.map((relation) => relation.relationId));
