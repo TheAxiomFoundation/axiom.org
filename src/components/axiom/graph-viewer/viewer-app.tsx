@@ -54,7 +54,7 @@ import {
   filterStandaloneRules,
   focusedComposeRule,
 } from "./compose-filter";
-import { buildRunRequestBody, classifyRunRefusal, mergeRunBatches, scenarioKey, traceRootIds, TRACE_BATCH_SIZE, type RunPayload } from "./run-request";
+import { buildRunRequestBody, classifyRunRefusal, mergeRunBatches, runValueMaps, scenarioKey, traceRootIds, TRACE_BATCH_SIZE, type RunPayload } from "./run-request";
 import { trackAxiomEvent } from "@/lib/analytics";
 import {
   DEFAULT_LAUNCHER_MODE,
@@ -2201,41 +2201,7 @@ export function GraphViewerApp({
         executed: new Set<string>(),
         valueOf: () => undefined as unknown,
       };
-    const valueByFragment = new Map<string, unknown>();
-    const valueByLegalId = new Map<string, unknown>();
-    const record = (variable: string, value: unknown) => {
-      if (variable.includes("#")) valueByLegalId.set(variable, value);
-      else valueByFragment.set(variable, value);
-    };
-    for (const entry of runResult.trace) {
-      // Entity-scoped rules arrive per instance: one member shows its
-      // exact value; several show each member's, joined.
-      const instanceValues = (entry.instances ?? []).map(
-        (item) => item.value,
-      );
-      const value =
-        entry.value ??
-        (instanceValues.length === 1
-          ? instanceValues[0]
-          : instanceValues.length > 1
-            ? instanceValues
-                .map((item) =>
-                  typeof item === "boolean"
-                    ? item
-                      ? "✓"
-                      : "✗"
-                    : String(item ?? "—"),
-                )
-                .join(" · ")
-            : entry.value);
-      record(entry.variable, value);
-    }
-    for (const [name, value] of Object.entries(runResult.outputs)) {
-      // A rule with several instances (two people, two payments) has no
-      // single output value: keep the per-instance values its trace joined.
-      if (value === null && (valueByLegalId.get(name) ?? valueByFragment.get(name)) !== undefined) continue;
-      record(name, value);
-    }
+    const { valueByFragment, valueByLegalId } = runValueMaps(runResult);
     // Inputs of a per-request kind (payments) are answered per instance,
     // never as flat facts: show each instance's answer, joined like the
     // per-instance rule values above.
@@ -2259,13 +2225,18 @@ export function GraphViewerApp({
         valueByLegalId.get(node.legalId) ?? valueByFragment.get(fragment);
       const scenarioValue =
         node.dtype === "input"
-          ? debouncedScenario[fragment.replace(/^input\./, "")] ??
-            instanceInputValues.get(fragment.replace(/^input\./, ""))
+          ? debouncedScenario[fragment.replace(/^input\./, "")]
           : undefined;
-      if (ranValue !== undefined || scenarioValue !== undefined) {
+      // A per-request input (payments) shows each instance's answer,
+      // joined, beside the member rows its card lists.
+      const instanceValue =
+        node.dtype === "input"
+          ? instanceInputValues.get(fragment.replace(/^input\./, ""))
+          : undefined;
+      if (ranValue !== undefined || scenarioValue !== undefined || instanceValue !== undefined) {
         executed.add(node.legalId);
       }
-      let value: unknown = ranValue ?? scenarioValue;
+      let value: unknown = ranValue ?? scenarioValue ?? instanceValue;
       // The engine traces no parameters: a table shows the row the
       // run's recorded index picked.
       if (value === undefined && node.ruleKind === "parameter" && graph) {

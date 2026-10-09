@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildRunRequestBody, mergeRunBatches, scenarioKey, traceRootIds, classifyRunRefusal } from "./run-request";
+import { buildRunRequestBody, mergeRunBatches, runValueMaps, scenarioKey, traceRootIds, classifyRunRefusal } from "./run-request";
 import type { ProgramGraph, RuleNode } from "./types";
 
 describe("buildRunRequestBody", () => {
@@ -183,5 +183,26 @@ describe("classifyRunRefusal", () => {
     for (const code of ["compile_failed", "closure_incomplete", "relationships_unsupported", "uncertified_node", undefined]) {
       expect(classifyRunRefusal(code)).toBe("scope_blocked");
     }
+  });
+});
+
+describe("runValueMaps", () => {
+  it("keeps every instance's value when a rule has several, and never lets a null output erase them", () => {
+    const { valueByFragment, valueByLegalId } = runValueMaps({
+      outputs: { excluded_amount: null, unit_exclusion: 1400, single: null, missing: null },
+      trace: [
+        { variable: "excluded_amount", value: null, instances: [{ entity_id: "payment:1:1", value: 1000 }, { entity_id: "payment:1:2", value: 400 }] },
+        { variable: "us:x#applies", value: null, instances: [{ entity_id: "payment:1:1", value: true }, { entity_id: "payment:1:2", value: false }] },
+        { variable: "single", value: null, instances: [{ entity_id: "person:1:1", value: 7 }] },
+        { variable: "unit_exclusion", value: 1400 },
+      ],
+    });
+    expect(valueByFragment.get("excluded_amount")).toBe("1000 · 400");
+    expect(valueByLegalId.get("us:x#applies")).toBe("✓ · ✗");
+    expect(valueByFragment.get("single")).toBe(7);
+    expect(valueByFragment.get("unit_exclusion")).toBe(1400);
+    // An output nothing traced keeps its null: "no value", not a guess.
+    expect(valueByFragment.has("missing")).toBe(true);
+    expect(valueByFragment.get("missing")).toBeNull();
   });
 });

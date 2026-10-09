@@ -104,6 +104,43 @@ export function mergeRunBatches<T extends RunPayload>(primary: T, extra: RunPayl
   };
 }
 
+/**
+ * The values a run lit, by legal id and by bare name. A per-instance rule
+ * (two people, two payments) shows one member's exact value, or every
+ * member's joined ("1000 · 400", "✓ · ✗"); its null scalar output never
+ * overwrites that, since null only means "no single value". Scalar outputs
+ * fill in everything else.
+ */
+export function runValueMaps(run: Pick<RunPayload, "outputs" | "trace">): {
+  valueByFragment: Map<string, unknown>;
+  valueByLegalId: Map<string, unknown>;
+} {
+  const valueByFragment = new Map<string, unknown>();
+  const valueByLegalId = new Map<string, unknown>();
+  const record = (variable: string, value: unknown) => {
+    if (variable.includes("#")) valueByLegalId.set(variable, value);
+    else valueByFragment.set(variable, value);
+  };
+  for (const entry of run.trace) {
+    const instanceValues = (entry.instances ?? []).map((item) => item.value);
+    const value =
+      entry.value ??
+      (instanceValues.length === 1
+        ? instanceValues[0]
+        : instanceValues.length > 1
+          ? instanceValues
+              .map((item) => (typeof item === "boolean" ? (item ? "✓" : "✗") : String(item ?? "—")))
+              .join(" · ")
+          : entry.value);
+    record(entry.variable, value);
+  }
+  for (const [name, value] of Object.entries(run.outputs)) {
+    if (value === null && (valueByLegalId.get(name) ?? valueByFragment.get(name)) !== undefined) continue;
+    record(name, value);
+  }
+  return { valueByFragment, valueByLegalId };
+}
+
 /** Refusals that describe the household as entered (members, roles), not
  *  the scope: they surface as a run error and leave Run available. */
 const USER_FIXABLE_REFUSALS = new Set([
