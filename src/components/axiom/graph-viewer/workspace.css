@@ -669,3 +669,17 @@ body:has(.has-workspace) .nav-bar { display: none; }
 .parameter-table tr.is-selected td:first-child { box-shadow: inset 3px 0 0 var(--color-accent); }
 .parameter-table td small { margin-left: 8px; font-size: 11px; font-weight: 400; color: var(--color-accent); }
 .parameter-table-note { margin: 6px 0 0; font-size: 12px; color: var(--color-ink-secondary); }
+/* Relationship roles: one row per declared Person–unit relation, one checkbox per person. */
+.relation-roles header { display: block; margin-bottom: 12px; }
+.relation-roles header p { margin: 4px 0 0; font-size: 12px; color: var(--color-ink-secondary); }
+.relation-roles table { width: 100%; border-collapse: collapse; font-size: 13px; display: block; overflow-x: auto; }
+.relation-roles th, .relation-roles td { padding: 10px 8px; border-bottom: 1px solid var(--color-rule); text-align: center; vertical-align: top; }
+.relation-roles th[scope=row] { text-align: left; font-weight: 500; min-width: 220px; }
+.relation-roles-source, .relation-roles-description { display: block; margin-top: 2px; font-size: 11px; font-weight: 400; color: var(--color-ink-secondary); }
+.relation-roles-quick { white-space: nowrap; }
+.relation-roles-quick button { margin-left: 4px; padding: 3px 8px; border: 1px solid var(--color-rule); border-radius: 4px; background: var(--color-paper-elevated); font: inherit; font-size: 11px; }
+
+/* A scope that cannot run says why, where the Run tab would be. */
+.workspace-run-unavailable { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0 0; padding: 8px 12px; border: 1px solid var(--color-rule); border-radius: 6px; color: var(--color-ink-muted); font-size: 13px; line-height: 1.5; }
+.workspace-run-unavailable svg { flex-shrink: 0; margin-top: 3px; }
+.workspace-run-unavailable strong { color: var(--color-ink); font-weight: 600; }

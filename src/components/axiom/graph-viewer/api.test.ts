@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchRootInputs } from "./api";
+import { fetchRootCatalog, fetchRootInputs } from "./api";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -29,6 +29,7 @@ describe("root input readiness", () => {
     [404, "root_not_found", "serving catalog"],
     [422, "composition_root", "assembles a program"],
     [422, "composition_in_closure", "depends on a program"],
+    [422, "relationships_unsupported", "relates people to units"],
   ])("explains HTTP %s %s without a server message", async (status, code, message) => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ error: { code } }, { status: Number(status) })));
     await expect(fetchRootInputs("us:policies/example")).rejects.toThrow(String(message));
@@ -40,5 +41,21 @@ describe("root input readiness", () => {
   it("explains a non-JSON outage", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Service unavailable", { status: 503 })));
     await expect(fetchRootInputs("us:statutes/tt/1")).rejects.toThrow("Try again later");
+  });
+});
+
+describe("root relation catalog", () => {
+  const relation = { legalId: "us:statutes/26/32#qualifying_child_of_tax_unit", relationId: "us:statutes/26/32#relation.qualifying_child_of_tax_unit", fileLegalId: "us:statutes/26/32", name: "qualifying_child_of_tax_unit", arity: 2, arguments: ["TaxUnit", "Person"], supported: true, personSlot: 1, unitEntity: "TaxUnit" };
+  it("reads the closure's relations and whether roles must be stated", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ data: { inputs: [], relations: [relation], relation_membership: "explicit" } })));
+    await expect(fetchRootCatalog("us:statutes/26/32")).resolves.toEqual({ inputs: [], relations: [relation], relationMembership: "explicit" });
+  });
+  it("treats an older proxy payload as the membership convention with no relations", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ data: { inputs: [] } })));
+    await expect(fetchRootCatalog("us:statutes/26/21")).resolves.toEqual({ inputs: [], relations: [], relationMembership: "convention" });
+  });
+  it("refuses an explicit catalog that names no relations", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ data: { inputs: [], relation_membership: "explicit" } })));
+    await expect(fetchRootCatalog("us:statutes/26/32")).rejects.toThrow("incomplete relationship catalog");
   });
 });

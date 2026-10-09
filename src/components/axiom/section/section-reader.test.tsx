@@ -1,7 +1,11 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { SectionReader } from "./section-reader";
-import type { SectionPageData } from "@/lib/axiom/section-page";
+import {
+  declaredExternalComparisons,
+  type DeclaredExternalComparisons,
+  type SectionPageData,
+} from "@/lib/axiom/section-page";
 import type { Rule } from "@/lib/supabase";
 import { _resetRawFetchCache } from "@/lib/axiom/rulespec/raw-cache";
 
@@ -76,6 +80,8 @@ function makeData(overrides: Partial<SectionPageData> = {}): SectionPageData {
     prev: { citationPath: "us/statute/26/31", label: "§ 31" },
     next: { citationPath: "us/statute/26/33", label: "§ 33" },
     truncated: false,
+    encodedCoverage: null,
+    externalComparisons: null,
     ...overrides,
   };
 }
@@ -444,12 +450,246 @@ describe("SectionReader", () => {
     expect(document.getElementById("a-1")).not.toBeNull();
   });
 
-  describe("external comparisons", () => {
+  describe("external comparison chip", () => {
+    /** The chip's visible label excludes its screen-reader description. */
+    function visibleLabel(chip: HTMLElement): string {
+      return Array.from(chip.childNodes)
+        .filter(
+          (node) =>
+            !(node instanceof HTMLElement && node.classList.contains("sr-only")),
+        )
+        .map((node) => node.textContent ?? "")
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    const NO_RESULT = { match: 0, known_difference: 0, diff: 0, errored: 0, none: 1 };
+    type EngineEntry = DeclaredExternalComparisons["engines"][number];
+    function engineEntry(overrides: Partial<EngineEntry> = {}): EngineEntry {
+      return {
+        engine: "policyengine",
+        caseCount: 1,
+        caseDescriptions: ["Colorado SNAP canonical two-person household."],
+        matchingCaseCount: 0,
+        matchingAsOf: null,
+        matchingEngineVersions: [],
+        resultCounts: NO_RESULT,
+        ...overrides,
+      };
+    }
+    const coSnap = (engine: Partial<EngineEntry> = {}) => ({
+      programId: "co-snap",
+      jurisdiction: "us-co",
+      engines: [engineEntry(engine)],
+    });
+
+    // Invariant (d1020): the chip appears iff every declared case's
+    // latest comparison result matches and is fresh (at most 7 days old).
+    it("hides a declared comparison with no published result", () => {
+      const { container } = render(
+        <SectionReader data={makeData({ externalComparisons: coSnap() })} />,
+      );
+      expect(container.innerHTML).not.toMatch(/PolicyEngine|verified|agrees with/i);
+      expect(container.innerHTML).not.toContain("⊨");
+    });
+
+    it.each(["known_difference", "diff", "errored"] as const)(
+      "hides a latest %s result without a neutral comparison chip",
+      (status) => {
+        const { container } = render(
+          <SectionReader
+            data={makeData({
+              externalComparisons: coSnap({
+                resultCounts: { ...NO_RESULT, [status]: 1, none: 0 },
+              }),
+            })}
+          />,
+        );
+        expect(container.innerHTML).not.toMatch(/PolicyEngine|matches/i);
+      },
+    );
+
+    it("hides partial matches when any case has a known difference", () => {
+      const { container } = render(
+        <SectionReader
+          data={makeData({
+            externalComparisons: coSnap({
+              caseCount: 2,
+              caseDescriptions: ["Household A.", "Household B"],
+              matchingCaseCount: 1,
+              matchingAsOf: "2026-10-03T12:41:07.512Z",
+              matchingEngineVersions: ["2.9.0"],
+              resultCounts: { match: 1, known_difference: 1, diff: 0, errored: 0, none: 0 },
+            }),
+          })}
+        />,
+      );
+      expect(container.innerHTML).not.toMatch(/PolicyEngine|matches/i);
+    });
+
+    it("hides matching results older than seven days", () => {
+      const externalComparisons = declaredExternalComparisons(
+        [{ programId: "co-snap", jurisdiction: "us-co" }],
+        [{
+          id: "co-snap-current",
+          description: "Colorado SNAP canonical two-person household.",
+          program_id: "co-snap",
+          jurisdiction: "us-co",
+          comparisonEngines: ["policyengine"],
+          comparisonResults: [{
+            engine: "policyengine",
+            status: "match",
+            observedAt: "2026-10-01T11:59:59.999Z",
+            engineVersion: "2.9.0",
+          }],
+        }],
+        new Date("2026-10-08T12:00:00.000Z"),
+      );
+      const { container } = render(
+        <SectionReader data={makeData({ externalComparisons })} />,
+      );
+      expect(container.innerHTML).not.toMatch(/PolicyEngine|matches/i);
+    });
+
+    it("never renders the neutral PolicyEngine comparison text", () => {
+      const { container } = render(
+        <SectionReader data={makeData({ externalComparisons: coSnap() })} />,
+      );
+      expect(container.innerHTML).not.toContain("PolicyEngine comparison");
+    });
+
+    it("says Matches when all latest cases match, with N of M and the oldest observation date", () => {
+      const { container } = render(
+        <SectionReader
+          data={makeData({
+            externalComparisons: coSnap({
+              caseCount: 2,
+              caseDescriptions: ["Household A.", "Household B"],
+              matchingCaseCount: 2,
+              matchingAsOf: "2026-10-03T12:41:07.512Z",
+              matchingEngineVersions: ["2.9.0"],
+              resultCounts: { match: 2, known_difference: 0, diff: 0, errored: 0, none: 0 },
+            }),
+          })}
+        />,
+      );
+      const chip = screen.getByText(/Matches PolicyEngine/);
+      expect(visibleLabel(chip)).toBe("Matches PolicyEngine 2 of 2 cases · Oct 3, 2026");
+      const description =
+        "2 test cases for co-snap (us-co) declare a comparison with " +
+        "PolicyEngine (Household A; Household B). In the latest published results, " +
+        "as of Oct 3, 2026, 2 of 2 match PolicyEngine on every compared " +
+        "output, within each comparison's tolerance (PolicyEngine model " +
+        "version 2.9.0). Max Ghenis is CEO of both Axiom and PolicyEngine.";
+      expect(chip).toHaveAttribute("title", description);
+      // Disclosure must be accessible without relying on a hover tooltip.
+      expect(within(chip).getByText(description)).toHaveClass("sr-only");
+      expect(chip.querySelector("svg")).toBeNull();
+      expect(chip.className).toContain("border-[var(--color-rule)]");
+      expect(chip.className).not.toMatch(/success|22,101,52/);
+      expect(container.innerHTML).not.toMatch(/verified/i);
+      expect(container.innerHTML).not.toContain("PolicyEngine comparison");
+    });
+
+    it("reads a single fully matching case in the singular", () => {
+      render(
+        <SectionReader
+          data={makeData({
+            externalComparisons: coSnap({
+              matchingCaseCount: 1,
+              matchingAsOf: "2026-10-03T12:41:07.512Z",
+              resultCounts: { ...NO_RESULT, match: 1, none: 0 },
+            }),
+          })}
+        />,
+      );
+      const chip = screen.getByText(/Matches PolicyEngine/);
+      expect(visibleLabel(chip)).toBe("Matches PolicyEngine 1 of 1 case · Oct 3, 2026");
+      expect(chip.getAttribute("title")).toContain(
+        "In the latest published results, as of Oct 3, 2026, 1 of 1 case matches PolicyEngine on every compared output, within each comparison's tolerance.",
+      );
+    });
+
+    it("labels an engine named like an Object prototype key literally", () => {
+      render(
+        <SectionReader
+          data={makeData({
+            externalComparisons: {
+              programId: "snap",
+              jurisdiction: "us-ca",
+              engines: [engineEntry({
+                engine: "constructor",
+                caseDescriptions: [],
+                matchingCaseCount: 1,
+                matchingAsOf: "2026-10-03T12:41:07.512Z",
+                resultCounts: { ...NO_RESULT, match: 1, none: 0 },
+              })],
+            },
+          })}
+        />,
+      );
+      const chip = screen.getByText(/Matches constructor/);
+      expect(chip.getAttribute("title")).not.toContain("native code");
+    });
+
+    it("shows no comparison chip when no covering program declares one", () => {
+      const { container } = render(
+        <SectionReader data={makeData({ externalComparisons: null })} />,
+      );
+      expect(screen.queryByText(/comparison/i)).not.toBeInTheDocument();
+      expect(container.innerHTML).not.toMatch(/PolicyEngine|verified/i);
+    });
+
+    it("gives each fully matching engine its own chip and case count", () => {
+      render(
+        <SectionReader
+          data={makeData({
+            externalComparisons: {
+              programId: "snap",
+              jurisdiction: "us-ca",
+              engines: [
+                engineEntry({
+                  caseCount: 2,
+                  caseDescriptions: ["Household A.", "Household B"],
+                  matchingCaseCount: 2,
+                  matchingAsOf: "2026-10-03T12:41:07.512Z",
+                  resultCounts: { ...NO_RESULT, match: 2, none: 0 },
+                }),
+                engineEntry({
+                  engine: "ukmod",
+                  caseDescriptions: [],
+                  matchingCaseCount: 1,
+                  matchingAsOf: "2026-10-03T12:41:07.512Z",
+                  resultCounts: { ...NO_RESULT, match: 1, none: 0 },
+                }),
+              ],
+            },
+          })}
+        />,
+      );
+      const policyengine = screen.getByText(/Matches PolicyEngine/);
+      expect(visibleLabel(policyengine)).toBe("Matches PolicyEngine 2 of 2 cases · Oct 3, 2026");
+      expect(policyengine.getAttribute("title")).toMatch(
+        /^2 test cases for snap \(us-ca\) declare a comparison with PolicyEngine \(Household A; Household B\)\./,
+      );
+      const ukmod = screen.getByText(/Matches UKMOD/);
+      expect(visibleLabel(ukmod)).toBe("Matches UKMOD 1 of 1 case · Oct 3, 2026");
+      expect(ukmod).toHaveAttribute(
+        "title",
+        "1 test case for snap (us-ca) declares a comparison with UKMOD. " +
+          "In the latest published results, as of Oct 3, 2026, 1 of 1 case " +
+          "matches UKMOD on every compared output, within each comparison's tolerance.",
+      );
+    });
+  });
+
+  describe("external comparisons without published results", () => {
     // 7 USC 2014 and 7 CFR 273.10 are covered by co-snap (us-co), whose
     // parity case co-snap-us-co-family-1 declares a PolicyEngine
     // comparison. The trust row used to show a green "Verified ·
-    // PolicyEngine" chip for it. It now shows no comparison chip at all
-    // (Max, d875: "approve, but hide").
+    // PolicyEngine" chip for it. Without published results, it still
+    // shows no comparison chip (Max, d875: "approve, but hide"; d1020).
     const coSnap = {
       jurisdiction: "us-co",
       programId: "co-snap",
@@ -473,6 +713,7 @@ describe("SectionReader", () => {
               { name: "snap_benefit_amount", kind: "derived", anchors: ["a", "b"] },
             ],
             programs: [coSnap],
+            externalComparisons: null,
           })}
         />,
       );
