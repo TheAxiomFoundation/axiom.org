@@ -1,8 +1,14 @@
 import { compositionScope } from "@/lib/axiom/runtime/composition-readiness";
 import {
+  instanceKindsOf,
+  instancesConfirmed,
   membershipTuples,
+  scenarioInstances,
   upstreamAcceptsExplicitRoles,
+  upstreamAllocatesInstances,
   upstreamRelationsMatch,
+  type InstanceAnswers,
+  type InstanceKeys,
 } from "@/lib/axiom/runtime/relation-roles";
 import { NextResponse } from "next/server";
 import {
@@ -84,6 +90,7 @@ export async function POST(request: Request) {
     facts?: unknown;
     people?: unknown;
     relations?: unknown;
+    instances?: unknown;
     variables?: unknown;
   };
   try {
@@ -150,16 +157,39 @@ export async function POST(request: Request) {
     // another tax unit), so the scenario must state each person's roles,
     // and the runtime must confirm it applied them instead.
     let relations: Array<{ name: string; tuples: string[][] }> | undefined;
+    // Per-request instances (payments): every kind the scope's relations
+    // allocate travels, `{}` for none, so the runtime never stands a flat
+    // fact in for an instance the scenario did not create.
+    let instances: InstanceAnswers | undefined;
+    let instanceKeys: InstanceKeys = {};
+    if (readiness === "roles_required" && instanceKindsOf(scope.relations).length > 0) {
+      const allocated = scenarioInstances(scope.relations, body.instances, sanitizeValues);
+      if (!allocated.ok) {
+        const message =
+          allocated.error === "unknown_instance_kind"
+            ? `${allocated.detail} is not an entity this scope allocates.`
+            : `${allocated.detail} is not an instance this scenario can hold.`;
+        return NextResponse.json(
+          { error: allocated.error, message },
+          { status: 422, headers: { "cache-control": "no-store" } }
+        );
+      }
+      instances = allocated.instances;
+      instanceKeys = allocated.keys;
+      droppedFacts.push(...allocated.dropped);
+    }
     if (readiness === "roles_required") {
       const order = ["person_1", ...Object.keys(people ?? {})];
-      const built = membershipTuples(scope.relations, body.relations, order);
+      const built = membershipTuples(scope.relations, body.relations, order, instanceKeys);
       if (!built.ok) {
         const message =
           built.error === "relation_roles_required"
             ? `Say who belongs to each relationship before running (unanswered: ${built.detail}).`
             : built.error === "unknown_member"
               ? `${built.detail} is not a person in this scenario.`
-              : `${built.detail} is not a relationship in this scope.`;
+              : built.error === "unknown_instance"
+                ? `${built.detail} is not an instance in this scenario.`
+                : `${built.detail} is not a relationship in this scope.`;
         return NextResponse.json(
           { error: built.error, message },
           { status: 422, headers: { "cache-control": "no-store" } }
@@ -184,6 +214,7 @@ export async function POST(request: Request) {
       }
       if (
         !upstreamAcceptsExplicitRoles(catalog.body) ||
+        !upstreamAllocatesInstances(catalog.body, scope.relations) ||
         !upstreamRelationsMatch(catalog.body, scope.relations)
       ) {
         return NextResponse.json(
@@ -195,7 +226,14 @@ export async function POST(request: Request) {
         );
       }
     }
-    const outcome = await runCalculateRoot({ root, facts, people, variables, ...(relations ? { relations } : {}) });
+    const outcome = await runCalculateRoot({
+      root,
+      facts,
+      people,
+      variables,
+      ...(relations ? { relations } : {}),
+      ...(instances ? { instances } : {}),
+    });
     if (outcome.kind === "unsupported") {
       return NextResponse.json(
         { error: "root_calculate_unsupported" },
@@ -225,6 +263,17 @@ export async function POST(request: Request) {
         { status: 422, headers: { "cache-control": "no-store" } }
       );
     }
+    if (instances && !instancesConfirmed(outcome.allocatedInstances, instanceKeys)) {
+      // A runtime that predates household.instances computed without the
+      // scenario's payments: its numbers answer a different household.
+      return NextResponse.json(
+        {
+          error: "relationships_unsupported",
+          message: "The runtime did not confirm the scenario's payments and other instances, so its result is withheld.",
+        },
+        { status: 422, headers: { "cache-control": "no-store" } }
+      );
+    }
     return NextResponse.json(
       {
         outputs: outcome.result.outputs,
@@ -233,6 +282,9 @@ export async function POST(request: Request) {
         provenance: outcome.result.provenance ?? null,
         applied: Object.keys(facts),
         dropped: droppedFacts,
+        // The runtime's own key → instance id map, so per-instance trace
+        // values can be labelled by the scenario's keys.
+        ...(instances ? { allocated_instances: outcome.allocatedInstances } : {}),
       },
       { headers: { "cache-control": "no-store" } }
     );

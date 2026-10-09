@@ -5,11 +5,18 @@ import {
   defaultRoles,
   describeRelation,
   flattenRoles,
+  instanceIdTemplate,
+  instanceKindsOf,
+  instancesConfirmed,
+  kindStem,
+  MAX_KIND_INSTANCES,
   membershipTuples,
   reconcileRoles,
   relationLabel,
   rolesForRun,
+  scenarioInstances,
   upstreamAcceptsExplicitRoles,
+  upstreamAllocatesInstances,
   upstreamRelationsMatch,
   UNIT_INSTANCE,
 } from "./relation-roles";
@@ -114,24 +121,42 @@ describe("membershipTuples (explicit relation roles → engine tuples)", () => {
 });
 
 describe("relation declarations", () => {
-  it("supports exactly one Person slot beside one modelled unit, in either order", () => {
+  it("supports one Person, or one per-request kind, beside one modelled unit, in either order", () => {
     const entities = fc.constantFrom("Person", "TaxUnit", "Household", "TanfUnit", "Payment", "SnapUnit", null);
     fc.assert(
       fc.property(fc.array(entities, { maxLength: 3 }), (args) => {
         const relation = decl("us:x", "r", args.map((entity) => (entity === null ? { name: "slot" } : entity)));
         const persons = args.filter((entity) => entity === "Person").length;
         const units = args.filter((entity) => entity !== null && (UNITS as readonly string[]).includes(entity)).length;
-        expect(relation.supported).toBe(args.length === 2 && persons === 1 && units === 1);
-        if (relation.supported) expect(args[relation.personSlot!]).toBe("Person");
+        const others = args.filter((entity) => entity === "Payment" || entity === "SnapUnit").length;
+        const personUnit = args.length === 2 && persons === 1 && units === 1;
+        const unitInstance = args.length === 2 && persons === 0 && units === 1 && others === 1;
+        expect(relation.supported).toBe(personUnit || unitInstance);
+        if (personUnit) {
+          expect(args[relation.personSlot!]).toBe("Person");
+          expect(relation.instanceEntity).toBeUndefined();
+        }
+        if (unitInstance) {
+          expect(relation.personSlot).toBeUndefined();
+          expect(args[relation.instanceSlot!]).toBe(relation.instanceEntity);
+          expect(relation.unitEntity).toBe(args[1 - relation.instanceSlot!]);
+        }
       }),
     );
   });
 
-  it("classifies by shape: any unrepresentable relation refuses, two or more need roles", () => {
+  it("classifies by shape: any unrepresentable relation refuses; two or more, or any unit–instance one, need roles", () => {
     fc.assert(
-      fc.property(relationsArb, fc.boolean(), (relations, poison) => {
-        const all = poison ? [...relations, decl("us:statutes/26/22", "section_22_payment_of_tax_unit", ["TaxUnit", "Payment"])] : relations;
-        expect(classifyRelations(all)).toBe(poison ? "relationships_unsupported" : relations.length === 1 ? "ready" : "roles_required");
+      fc.property(relationsArb, fc.constantFrom("none", "payment", "poison"), (relations, extra) => {
+        const all =
+          extra === "payment"
+            ? [...relations, decl("us:statutes/26/22", "section_22_payment_of_tax_unit", ["TaxUnit", "Payment"])]
+            : extra === "poison"
+              ? [...relations, decl("us:x", "payee", ["Person", "Payment"])]
+              : relations;
+        expect(classifyRelations(all)).toBe(
+          extra === "poison" ? "relationships_unsupported" : extra === "payment" || relations.length > 1 ? "roles_required" : "ready",
+        );
       }),
     );
   });
@@ -226,5 +251,169 @@ describe("reconcileRoles (re-reading the same scope's catalog)", () => {
         }
       }),
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Unit–instance relations (26 USC 22's section_22_payment_of_tax_unit):
+// the scenario allocates per-request instances (payments) and links them.
+//
+// Invariants (fast-check):
+//   P1 Every declared relation is sent once; an instance relation carries one
+//      tuple per distinct linked key, the unit and the key in declared slots,
+//      and decoding the tuples returns exactly the linked keys (round trip).
+//   P2 Links name only instances the scenario holds, of the relation's kind;
+//      anything else is refused (unknown_instance), never dropped.
+//   P3 A run sends exactly the closure's relations, links limited to the
+//      present instances of each relation's kind, in scenario order.
+//   P4 Every kind the scope allocates travels (an empty object for none);
+//      kinds the scope does not allocate and malformed keys are refused.
+//   P5 Roles are offered only when the runtime allocates each kind with the
+//      declared template and lists every relation in its declared layout.
+//   P6 A result is shown only when the echo names every instance sent.
+// ---------------------------------------------------------------------------
+
+const PAY = decl("us:statutes/26/22", "section_22_payment_of_tax_unit", ["TaxUnit", "Payment"]);
+const FILER = decl("us:statutes/26/22", "taxpayer_or_spouse_of_tax_unit", ["TaxUnit", "Person"]);
+const sanitizeAll = (values: unknown) => ({
+  sanitized: Object.fromEntries(Object.entries(values as Record<string, unknown>).filter(([, value]) => typeof value === "number" || typeof value === "boolean")) as Record<string, number | boolean>,
+  rejected: Object.entries(values as Record<string, unknown>).filter(([, value]) => typeof value !== "number" && typeof value !== "boolean").map(([name]) => name),
+});
+
+/** A scenario with 0..12 payments (any keys of the kind's pattern, any
+ *  order) and a link answer per instance relation, in either slot order. */
+const instanceScenarioArb = fc
+  .tuple(
+    fc.shuffledSubarray(Array.from({ length: MAX_KIND_INSTANCES }, (_, index) => `payment_${index + 1}`)),
+    fc.boolean(),
+    fc.boolean(),
+  )
+  .chain(([keys, paymentFirst, withPeople]) => {
+    const pay = decl("us:statutes/26/22", "payment_link", paymentFirst ? ["Payment", "TaxUnit"] : ["TaxUnit", "Payment"]);
+    const relations = withPeople ? [FILER, pay] : [pay];
+    return fc.tuple(fc.subarray(keys), fc.subarray(["person_1"])).map(([linked, filers]) => ({
+      relations,
+      pay,
+      keys,
+      membership: Object.fromEntries(relations.map((relation) => [relation.legalId, relation === pay ? linked : filers])),
+    }));
+  });
+
+describe("unit–instance relations (payments of the tax unit)", () => {
+  it("describes 26 USC 22's payment relation as a per-request Payment linked to the tax unit", () => {
+    expect(PAY).toMatchObject({ supported: true, instanceEntity: "Payment", instanceSlot: 1, unitEntity: "TaxUnit" });
+    expect(instanceKindsOf([FILER, PAY, PAY])).toEqual(["Payment"]);
+    expect(kindStem("RetirementAccount")).toBe("retirement_account");
+    expect(instanceIdTemplate("Payment")).toBe("payment:1:{index}");
+  });
+
+  it("P1: one entry per relation, one tuple per linked key in declared slots, round-tripping", () => {
+    fc.assert(
+      fc.property(instanceScenarioArb, ({ relations, pay, keys, membership }) => {
+        const result = membershipTuples(relations, membership, ["person_1"], { Payment: keys });
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        expect(result.entries.map((entry) => entry.name)).toEqual(relations.map((relation) => relation.relationId));
+        const entry = result.entries.find((item) => item.name === pay.relationId)!;
+        expect(entry.tuples).toHaveLength(new Set(membership[pay.legalId]).size);
+        for (const tuple of entry.tuples) {
+          expect(tuple[1 - pay.instanceSlot!]).toBe(UNIT_INSTANCE);
+          expect(keys).toContain(tuple[pay.instanceSlot!]);
+        }
+        expect(entry.tuples.map((tuple) => tuple[pay.instanceSlot!]).sort()).toEqual([...new Set(membership[pay.legalId])].sort());
+      }),
+    );
+  });
+
+  it("P2: refuses a link to an instance the scenario does not hold, or of another kind", () => {
+    fc.assert(
+      fc.property(instanceScenarioArb, fc.constantFrom("payment_13", "payment_0", "person_1", "asset_1", "pay_1", "household:1"), ({ relations, pay, keys, membership }, ghost) => {
+        const absent = keys.length < MAX_KIND_INSTANCES ? Array.from({ length: MAX_KIND_INSTANCES }, (_, index) => `payment_${index + 1}`).find((key) => !keys.includes(key))! : ghost;
+        for (const bad of [absent, ghost]) {
+          if (keys.includes(bad)) continue;
+          expect(membershipTuples(relations, { ...membership, [pay.legalId]: [bad] }, ["person_1"], { Payment: keys })).toMatchObject({ ok: false, error: "unknown_instance" });
+        }
+      }),
+    );
+  });
+
+  it("P3: a run sends every relation, links limited to the payments present, in scenario order", () => {
+    fc.assert(
+      fc.property(instanceScenarioArb, fc.array(fc.constantFrom("payment_99", "person_1"), { maxLength: 2 }), ({ relations, pay, keys, membership }, ghosts) => {
+        const stale = { ...membership, [pay.legalId]: [...ghosts, ...[...membership[pay.legalId]!].reverse()] };
+        const sent = rolesForRun(relations, stale, ["person_1"], { Payment: keys });
+        expect(Object.keys(sent).sort()).toEqual(relations.map((relation) => relation.legalId).sort());
+        expect(sent[pay.legalId]).toEqual(keys.filter((key) => membership[pay.legalId]!.includes(key)));
+        expect(membershipTuples(relations, sent, ["person_1"], { Payment: keys }).ok).toBe(true);
+      }),
+    );
+  });
+
+  it("P4: every allocated kind travels; foreign kinds, bad keys and too many instances are refused", () => {
+    fc.assert(
+      fc.property(fc.shuffledSubarray(Array.from({ length: MAX_KIND_INSTANCES }, (_, index) => `payment_${index + 1}`)), (keys) => {
+        const raw = { Payment: Object.fromEntries(keys.map((key, index) => [key, { payment_amount: index * 100, flag: index % 2 === 0, note: "x" }])) };
+        const result = scenarioInstances([FILER, PAY], raw, sanitizeAll);
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        expect(result.keys).toEqual({ Payment: keys });
+        for (const key of keys) expect(result.instances.Payment![key]).not.toHaveProperty("note");
+        expect(result.dropped).toEqual(keys.map((key) => `${key}:note`));
+      }),
+    );
+    // No answers at all: the kind still travels, empty.
+    expect(scenarioInstances([PAY], undefined, sanitizeAll)).toMatchObject({ ok: true, instances: { Payment: {} }, keys: { Payment: [] } });
+    // A scope without unit–instance relations allocates nothing.
+    expect(scenarioInstances([FILER], undefined, sanitizeAll)).toMatchObject({ ok: true, instances: {}, keys: {} });
+    expect(scenarioInstances([PAY], { Asset: {} }, sanitizeAll)).toMatchObject({ ok: false, error: "unknown_instance_kind" });
+    for (const key of ["person_2", "payment_13", "payment_x", "Payment_1", "__proto__"]) {
+      expect(scenarioInstances([PAY], { Payment: JSON.parse(`{"${key}": {}}`) }, sanitizeAll)).toMatchObject({ ok: false, error: "unknown_instance" });
+    }
+    expect(scenarioInstances([PAY], { Payment: { payment_1: 5 } }, sanitizeAll)).toMatchObject({ ok: false, error: "unknown_instance" });
+  });
+
+  it("P5: offers roles only when the runtime allocates the kind and lists the relation in its declared layout", () => {
+    fc.assert(
+      fc.property(fc.boolean(), (paymentFirst) => {
+        const pay = decl("us:statutes/26/22", "payment_link", paymentFirst ? ["Payment", "TaxUnit"] : ["TaxUnit", "Payment"]);
+        const relations = [FILER, pay];
+        const tuple = paymentFirst ? ["payment:1:{index}", "household:1"] : ["household:1", "payment:1:{index}"];
+        const listed = [
+          { name: FILER.relationId, tuple: ["household:1", "person:1:{index}"], explicit: true },
+          { name: pay.relationId, tuple, explicit: true },
+        ];
+        const kinds = [{ entity: "Payment", id_template: "payment:1:{index}" }];
+        expect(upstreamRelationsMatch({ data: { relations: listed, instance_kinds: kinds } }, relations)).toBe(true);
+        expect(upstreamAllocatesInstances({ data: { instance_kinds: kinds } }, relations)).toBe(true);
+        // A runtime that predates per-request instances.
+        expect(upstreamRelationsMatch({ data: { relations: listed } }, relations)).toBe(false);
+        expect(upstreamAllocatesInstances({ data: {} }, relations)).toBe(false);
+        expect(upstreamAllocatesInstances({ data: { instance_kinds: [] } }, relations)).toBe(false);
+        // A guessed or swapped Payment relation, or a different template.
+        expect(upstreamRelationsMatch({ data: { relations: [listed[0], { ...listed[1], explicit: false }], instance_kinds: kinds } }, relations)).toBe(false);
+        expect(upstreamRelationsMatch({ data: { relations: [listed[0], { ...listed[1], tuple: [...tuple].reverse() }], instance_kinds: kinds } }, relations)).toBe(false);
+        expect(upstreamRelationsMatch({ data: { relations: listed, instance_kinds: [{ entity: "Payment", id_template: "payment:{index}" }] } }, relations)).toBe(false);
+        expect(upstreamRelationsMatch({ data: { relations: [listed[0], { ...listed[1], tuple: tuple.map((part) => part.replace("payment", "pmt")) }], instance_kinds: [{ entity: "Payment", id_template: "pmt:1:{index}" }] } }, relations)).toBe(false);
+      }),
+    );
+    // Scopes without unit–instance relations need no instance support.
+    expect(upstreamAllocatesInstances({ data: {} }, [FILER])).toBe(true);
+  });
+
+  it("P6: a result counts only when the echo names every instance sent", () => {
+    fc.assert(
+      fc.property(fc.shuffledSubarray(["payment_1", "payment_2", "payment_3"]), fc.nat(), (keys, drop) => {
+        const echo = { Payment: Object.fromEntries(keys.map((key, index) => [key, `payment:1:${index + 1}`])) };
+        expect(instancesConfirmed(echo, { Payment: keys })).toBe(true);
+        if (keys.length > 0) {
+          const missing = keys[drop % keys.length]!;
+          const { [missing]: _gone, ...rest } = echo.Payment;
+          expect(instancesConfirmed({ Payment: rest }, { Payment: keys })).toBe(false);
+        }
+        expect(instancesConfirmed(null, { Payment: keys })).toBe(false);
+        expect(instancesConfirmed({}, { Payment: keys })).toBe(false);
+      }),
+    );
+    expect(instancesConfirmed(undefined, {})).toBe(true);
   });
 });

@@ -3,7 +3,8 @@ import { NodeMetadata } from "./node-metadata";
 
 import { HouseholdComposer } from "./household-composer";
 import { ConventionNote, RelationRoles } from "./relation-roles";
-import { flattenRoles, reconcileRoles, rolesForRun, type RelationDecl, type RoleMembership } from "@/lib/axiom/runtime/relation-roles";
+import { RelationTuples } from "./relation-tuples";
+import { flattenRoles, instanceKindsOf, kindStem, MAX_KIND_INSTANCES, reconcileRoles, rolesForRun, type RelationDecl, type RoleMembership } from "@/lib/axiom/runtime/relation-roles";
 import { ResultExplanation, inputAwareEvidence, recordedTableRow } from "./result-explanation";
 import { ParameterTableView } from "./parameter-table";
 import { GraphLoading } from "./graph-loading";
@@ -53,7 +54,7 @@ import {
   filterStandaloneRules,
   focusedComposeRule,
 } from "./compose-filter";
-import { buildRunRequestBody, classifyRunRefusal, mergeRunBatches, scenarioKey, traceRootIds, TRACE_BATCH_SIZE, type RunPayload } from "./run-request";
+import { buildRunRequestBody, classifyRunRefusal, mergeRunBatches, runValueMaps, scenarioKey, traceRootIds, TRACE_BATCH_SIZE, type RunPayload } from "./run-request";
 import { trackAxiomEvent } from "@/lib/analytics";
 import {
   DEFAULT_LAUNCHER_MODE,
@@ -117,12 +118,27 @@ export function GraphViewerApp({
   // roots (the §151 relations recur under §32, §63(c), §25B); only the
   // current closure's relations ever travel.
   const [relationRoles, setRelationRoles] = useState<RoleMembership>({});
+  // Per-request instances (payments, …) by entity kind, in scenario order:
+  // `{ Payment: ["payment_1", "payment_2"] }`. Each key's answers live in
+  // memberScenario beside the people's; a run sends only the kinds the
+  // current scope allocates (household.instances, axiom-api#268).
+  const [instanceItems, setInstanceItems] = useState<Record<string, string[]>>({});
   // The current root's relation catalog: "explicit" scopes must state
   // roles; "convention" scopes bind everyone to their one relation.
   const [rootRelations, setRootRelations] = useState<{
     relations: RelationDecl[];
     mode: "explicit" | "convention";
   }>({ relations: [], mode: "convention" });
+  // The per-request kinds the current scope allocates, and the scenario's
+  // instances of each (only those kinds travel in a run).
+  const scopeInstanceKinds = useMemo(
+    () => (rootRelations.mode === "explicit" ? instanceKindsOf(rootRelations.relations) : []),
+    [rootRelations],
+  );
+  const scopeInstanceKeys = useMemo(
+    () => Object.fromEntries(scopeInstanceKinds.map((kind) => [kind, instanceItems[kind] ?? []])) as Record<string, string[]>,
+    [scopeInstanceKinds, instanceItems],
+  );
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
   // Post-run edits mark the sheet stale until the NEXT explicit run
@@ -1120,6 +1136,7 @@ export function GraphViewerApp({
     setExtraMembers([]);
     setMemberScenario({});
     setRelationRoles({});
+    setInstanceItems({});
     setResultsStale(false);
     ranScenarioKey.current = null;
     setInputMeta({ dtypes: {}, defaults: {} });
@@ -1155,11 +1172,19 @@ export function GraphViewerApp({
     setResultsStale(false);
     const runRoles =
       composeFocus && rootRelations.mode === "explicit"
-        ? rolesForRun(rootRelations.relations, relationRoles, ["person_1", ...extraMembers])
+        ? rolesForRun(rootRelations.relations, relationRoles, ["person_1", ...extraMembers], scopeInstanceKeys)
         : undefined;
+    // Every kind the scope allocates travels, `{}` when the scenario has
+    // none of it: the runtime then never stands flat facts in for one.
+    const runInstances = composeFocus && scopeInstanceKinds.length > 0
+      ? Object.fromEntries(scopeInstanceKinds.map((kind) => [
+          kind,
+          Object.fromEntries((scopeInstanceKeys[kind] ?? []).map((key) => [key, memberScenario[key] ?? {}])),
+        ]))
+      : undefined;
     ranScenarioKey.current = scenarioKey({
       ...scenario,
-      ...flattenMemberAnswers(extraMembers, memberScenario),
+      ...flattenMemberAnswers([...extraMembers, ...Object.values(scopeInstanceKeys).flat()], memberScenario),
       ...flattenRoles(runRoles ?? {}),
     });
     try {
@@ -1200,6 +1225,7 @@ export function GraphViewerApp({
           variables,
           composeFocus ? people : undefined,
           runRoles,
+          runInstances,
         );
       const attempt = async (variables: string[]) => {
         const response = await fetch("/api/axiom/runtime/calculate", {
@@ -1398,7 +1424,13 @@ export function GraphViewerApp({
           // Rate limited or refused: the primary batch stands alone.
         }
       }
-      setRunResult({ ...data, submittedFacts: { ...scenario }, submittedPersonIds: Object.fromEntries(["person_1", ...extraMembers].map((id, index) => [id, `person:1:${index + 1}`])), ...(runRoles ? { submittedRoles: runRoles } : {}) });
+      // Scenario key → engine instance id: people by household order, and
+      // per-request instances (payments) as the runtime echoed them.
+      const allocatedIds = Object.values(
+        ((data as { allocated_instances?: unknown }).allocated_instances ?? {}) as Record<string, Record<string, string>>,
+      ).flatMap((byKey) => (byKey && typeof byKey === "object" ? Object.entries(byKey) : []))
+        .filter((entry): entry is [string, string] => typeof entry[1] === "string");
+      setRunResult({ ...data, submittedFacts: { ...scenario }, submittedPersonIds: Object.fromEntries([...["person_1", ...extraMembers].map((id, index) => [id, `person:1:${index + 1}`]), ...allocatedIds]), ...(runRoles ? { submittedRoles: runRoles } : {}) });
       setEditingRunInputs(false);
       trackRun("ok");
     } catch (err) {
@@ -1862,6 +1894,13 @@ export function GraphViewerApp({
     () => inputCatalog.filter((input) => input.entity === "Person"),
     [inputCatalog],
   );
+  // Inputs of a per-request kind (payments): answered per instance in the
+  // household composer, never on a canvas card, whose flat answer the
+  // runtime would not route to any instance.
+  const instanceCatalog = useMemo(
+    () => inputCatalog.filter((input) => input.entity && scopeInstanceKinds.includes(input.entity)),
+    [inputCatalog, scopeInstanceKinds],
+  );
   const inputEditValues = useMemo(() => {
     // Every registry input is genuinely settable (grafted onto its
     // owning entity server-side) — so every one gets a live field.
@@ -1869,6 +1908,7 @@ export function GraphViewerApp({
     const values: Record<string, number | boolean> = {};
     if (!runModeActive) return values;
     for (const input of inputCatalog) {
+      if (input.entity && scopeInstanceKinds.includes(input.entity)) continue;
       const fromScenario = scenario[input.name];
       if (
         typeof fromScenario === "number" ||
@@ -1882,10 +1922,16 @@ export function GraphViewerApp({
       }
     }
     return values;
-  }, [inputCatalog, scenario, runModeActive]);
+  }, [inputCatalog, scenario, runModeActive, scopeInstanceKinds]);
   const inputEditCtx = useMemo(
     () => ({
-      answered: new Set(Object.keys(scenario)),
+      answered: new Set([
+        ...Object.keys(scenario),
+        // A per-request input is answered once any instance answers it.
+        ...instanceCatalog
+          .filter((input) => (scopeInstanceKeys[input.entity!] ?? []).some((key) => memberScenario[key]?.[input.name] !== undefined))
+          .map((input) => input.name),
+      ]),
       values: inputEditValues,
       // Registry defaults, so an unanswered card can say WHICH value
       // held for the run — the default applies whether or not the
@@ -1899,20 +1945,29 @@ export function GraphViewerApp({
       // Person-level cards show every member's answer (read-only
       // beyond Person 1 — the inspector and run panel edit members).
       memberValues:
-        extraMembers.length > 0
-          ? Object.fromEntries(
-              personCatalog
-                .map((input) => [
-                  input.name,
-                  [
-                    { label: "P1", value: scenario[input.name] ?? null },
-                    ...extraMembers.map((member) => ({
-                      label: `P${member.split("_")[1] ?? "?"}`,
-                      value: memberScenario[member]?.[input.name] ?? null,
-                    })),
-                  ],
-                ]),
-            )
+        extraMembers.length > 0 || instanceCatalog.length > 0
+          ? Object.fromEntries([
+              ...(extraMembers.length > 0
+                ? personCatalog.map((input) => [
+                    input.name,
+                    [
+                      { label: "P1", value: scenario[input.name] ?? null },
+                      ...extraMembers.map((member) => ({
+                        label: `P${member.split("_")[1] ?? "?"}`,
+                        value: memberScenario[member]?.[input.name] ?? null,
+                      })),
+                    ],
+                  ] as const)
+                : []),
+              // Each payment's own answer, labelled by the instance.
+              ...instanceCatalog.map((input) => [
+                input.name,
+                (scopeInstanceKeys[input.entity!] ?? []).map((key) => ({
+                  label: humanize(key),
+                  value: memberScenario[key]?.[input.name] ?? null,
+                })),
+              ] as const),
+            ])
           : undefined,
       onChange: (name: string, value: number | boolean) =>
         setScenario((current) => {
@@ -1924,7 +1979,7 @@ export function GraphViewerApp({
           return { ...current, [name]: value };
         }),
     }),
-    [inputEditValues, scenario, inputMeta, personCatalog, extraMembers, memberScenario],
+    [inputEditValues, scenario, inputMeta, personCatalog, extraMembers, memberScenario, instanceCatalog, scopeInstanceKeys],
   );
 
   const structureTraces = useMemo(
@@ -2125,16 +2180,16 @@ export function GraphViewerApp({
   useEffect(() => {
     const key = scenarioKey({
       ...debouncedScenario,
-      ...flattenMemberAnswers(extraMembers, memberScenario),
+      ...flattenMemberAnswers([...extraMembers, ...Object.values(scopeInstanceKeys).flat()], memberScenario),
       ...flattenRoles(
         composeFocus && rootRelations.mode === "explicit"
-          ? rolesForRun(rootRelations.relations, relationRoles, ["person_1", ...extraMembers])
+          ? rolesForRun(rootRelations.relations, relationRoles, ["person_1", ...extraMembers], scopeInstanceKeys)
           : {},
       ),
     });
     if (ranScenarioKey.current === null) return; // nothing ran yet
     setResultsStale(runResult !== null && key !== ranScenarioKey.current);
-  }, [debouncedScenario, extraMembers, memberScenario, runResult, relationRoles, rootRelations, composeFocus]);
+  }, [debouncedScenario, extraMembers, memberScenario, runResult, relationRoles, rootRelations, composeFocus, scopeInstanceKeys]);
 
   // Execution overlay: clone the structural traces and light them
   // with the run's computed values (rules by durable id or bare
@@ -2146,37 +2201,19 @@ export function GraphViewerApp({
         executed: new Set<string>(),
         valueOf: () => undefined as unknown,
       };
-    const valueByFragment = new Map<string, unknown>();
-    const valueByLegalId = new Map<string, unknown>();
-    const record = (variable: string, value: unknown) => {
-      if (variable.includes("#")) valueByLegalId.set(variable, value);
-      else valueByFragment.set(variable, value);
-    };
-    for (const entry of runResult.trace) {
-      // Entity-scoped rules arrive per instance: one member shows its
-      // exact value; several show each member's, joined.
-      const instanceValues = (entry.instances ?? []).map(
-        (item) => item.value,
+    const { valueByFragment, valueByLegalId } = runValueMaps(runResult);
+    // Inputs of a per-request kind (payments) are answered per instance,
+    // never as flat facts: show each instance's answer, joined like the
+    // per-instance rule values above.
+    const instanceInputValues = new Map<string, string>();
+    for (const field of allScenarioFields) {
+      if (!field.entity || !scopeInstanceKinds.includes(field.entity)) continue;
+      const answers = (scopeInstanceKeys[field.entity] ?? []).map((key) => memberScenario[key]?.[field.name]);
+      if (answers.every((answer) => answer === undefined)) continue;
+      instanceInputValues.set(
+        field.name,
+        answers.map((answer) => (typeof answer === "boolean" ? (answer ? "✓" : "✗") : String(answer ?? "—"))).join(" · "),
       );
-      const value =
-        entry.value ??
-        (instanceValues.length === 1
-          ? instanceValues[0]
-          : instanceValues.length > 1
-            ? instanceValues
-                .map((item) =>
-                  typeof item === "boolean"
-                    ? item
-                      ? "✓"
-                      : "✗"
-                    : String(item ?? "—"),
-                )
-                .join(" · ")
-            : entry.value);
-      record(entry.variable, value);
-    }
-    for (const [name, value] of Object.entries(runResult.outputs)) {
-      record(name, value);
     }
     const executed = new Set<string>();
     const seen = new Map<TraceNode, TraceNode>();
@@ -2190,10 +2227,16 @@ export function GraphViewerApp({
         node.dtype === "input"
           ? debouncedScenario[fragment.replace(/^input\./, "")]
           : undefined;
-      if (ranValue !== undefined || scenarioValue !== undefined) {
+      // A per-request input (payments) shows each instance's answer,
+      // joined, beside the member rows its card lists.
+      const instanceValue =
+        node.dtype === "input"
+          ? instanceInputValues.get(fragment.replace(/^input\./, ""))
+          : undefined;
+      if (ranValue !== undefined || scenarioValue !== undefined || instanceValue !== undefined) {
         executed.add(node.legalId);
       }
-      let value: unknown = ranValue ?? scenarioValue;
+      let value: unknown = ranValue ?? scenarioValue ?? instanceValue;
       // The engine traces no parameters: a table shows the row the
       // run's recorded index picked.
       if (value === undefined && node.ruleKind === "parameter" && graph) {
@@ -2205,7 +2248,8 @@ export function GraphViewerApp({
           value === undefined ? node.value : (value as TraceNode["value"]),
         inputSource:
           node.dtype === "input" &&
-          fragment.replace(/^input\./, "") in scenario
+          (fragment.replace(/^input\./, "") in scenario ||
+            instanceInputValues.has(fragment.replace(/^input\./, "")))
             ? "user"
             : node.inputSource,
       };
@@ -2222,7 +2266,8 @@ export function GraphViewerApp({
         valueByLegalId.get(legalId) ?? valueByFragment.get(fragment);
       if (ran !== undefined) return ran;
       if (fragment.startsWith("input.")) {
-        return debouncedScenario[fragment.replace(/^input\./, "")];
+        const name = fragment.replace(/^input\./, "");
+        return debouncedScenario[name] ?? instanceInputValues.get(name);
       }
       return undefined;
     };
@@ -2236,7 +2281,7 @@ export function GraphViewerApp({
       executed,
       valueOf,
     };
-  }, [structureTraces, runResult, debouncedScenario, graph]);
+  }, [structureTraces, runResult, debouncedScenario, graph, allScenarioFields, scopeInstanceKinds, scopeInstanceKeys, memberScenario]);
 
   useEffect(() => {
     if (!runResult) return;
@@ -2306,16 +2351,46 @@ export function GraphViewerApp({
           canAddPeople={Boolean(composeFocus)}
           running={running}
           relationships={!composeFocus ? undefined : rootRelations.mode === "explicit"
-            ? <RelationRoles
-                relations={rootRelations.relations}
-                members={extraMembers}
-                roles={relationRoles}
-                running={running}
-                onChange={(relation, ids) => setRelationRoles(current => ({ ...current, [relation]: ids }))}
-                inUse={summitRelations}
-                usedBy={summitOutput ? humanize(summitOutput.split("#").pop() ?? summitOutput) : undefined}
-              />
+            ? <>
+                <RelationRoles
+                  relations={rootRelations.relations.filter(relation => !relation.instanceEntity)}
+                  members={extraMembers}
+                  roles={relationRoles}
+                  running={running}
+                  onChange={(relation, ids) => setRelationRoles(current => ({ ...current, [relation]: ids }))}
+                  inUse={summitRelations}
+                  usedBy={summitOutput ? humanize(summitOutput.split("#").pop() ?? summitOutput) : undefined}
+                />
+                <RelationTuples
+                  relations={rootRelations.relations}
+                  instances={scopeInstanceKeys}
+                  roles={relationRoles}
+                  running={running}
+                  onChange={(relation, keys) => setRelationRoles(current => ({ ...current, [relation]: keys }))}
+                />
+              </>
             : rootRelations.relations.length === 1 ? <ConventionNote relation={rootRelations.relations[0]} /> : undefined}
+          collections={composeFocus ? scopeInstanceKinds.map(kind => ({
+            entity: kind,
+            items: scopeInstanceKeys[kind] ?? [],
+            max: MAX_KIND_INSTANCES,
+            onAdd: () => setInstanceItems(current => {
+              const used = new Set(current[kind] ?? []);
+              for (let index = 1; index <= MAX_KIND_INSTANCES; index++) {
+                const key = `${kindStem(kind)}_${index}`;
+                if (!used.has(key)) return { ...current, [kind]: [...(current[kind] ?? []), key] };
+              }
+              return current;
+            }),
+            onRemove: (key: string) => {
+              setInstanceItems(current => ({ ...current, [kind]: (current[kind] ?? []).filter(id => id !== key) }));
+              setRelationRoles(current => Object.fromEntries(Object.entries(current).map(([relation, ids]) => [relation, ids.filter(id => id !== key)])));
+              setMemberScenario(current => {
+                const { [key]: removed, ...rest } = current;
+                return rest;
+              });
+            },
+          })) : []}
           onAddPerson={() => setExtraMembers(current => {
             const used = new Set(current);
             for (let index = 2; index <= 12; index++) if (!used.has(`person_${index}`)) return [...current, `person_${index}`];
@@ -2517,14 +2592,16 @@ export function GraphViewerApp({
             onRun={() => void runScenario()}
             running={running}
             members={extraMembers}
-            roles={composeFocus ? (runResult?.submittedRoles ?? (rootRelations.mode === "explicit" ? rolesForRun(rootRelations.relations, relationRoles, ["person_1", ...extraMembers]) : undefined)) : undefined}
+            roles={composeFocus ? (runResult?.submittedRoles ?? (rootRelations.mode === "explicit" ? rolesForRun(rootRelations.relations, relationRoles, ["person_1", ...extraMembers], scopeInstanceKeys) : undefined)) : undefined}
             run={runResult}
             renderInput={(id, selectedMember) => {
               const input = graph.inputs.find(item => item.legalId === id);
               if (!input || !(input.name in inputMeta.dtypes)) return null;
               const name = input.name;
               const fallback = inputMeta.defaults[name];
-              const members = selectedMember !== undefined ? [selectedMember] : input.entity === "Person" ? [null, ...extraMembers] : [null];
+              const instanceKind = input.entity && scopeInstanceKinds.includes(input.entity) ? input.entity : null;
+              const members = selectedMember !== undefined ? [selectedMember] : input.entity === "Person" ? [null, ...extraMembers] : instanceKind ? scopeInstanceKeys[instanceKind] ?? [] : [null];
+              if (members.length === 0) return <p className="run-hint">No {humanize(kindStem(instanceKind ?? "item"))} instances in this scenario yet. Add one in the household composer.</p>;
               return <div className="relationship-inputs">{members.map(member => {
                 const draft = member ? memberScenario[member]?.[name] : scenario[name];
                 const effective = draft ?? fallback;

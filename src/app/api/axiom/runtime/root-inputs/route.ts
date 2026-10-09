@@ -1,5 +1,10 @@
 import { compositionScope } from "@/lib/axiom/runtime/composition-readiness";
-import { upstreamAcceptsExplicitRoles, upstreamRelationsMatch } from "@/lib/axiom/runtime/relation-roles";
+import {
+  instanceKindsOf,
+  upstreamAcceptsExplicitRoles,
+  upstreamAllocatesInstances,
+  upstreamRelationsMatch,
+} from "@/lib/axiom/runtime/relation-roles";
 import { NextResponse } from "next/server";
 import { runtimeProxyGet } from "@/lib/axiom/runtime/api";
 
@@ -30,7 +35,12 @@ export async function GET(request: Request) {
   // AND compiled exactly the relations the source declares: the scenario
   // sends one entry per declared relation, and any relation it leaves
   // unnamed would fall back to binding every person.
-  const accepts = scope.readiness === "roles_required" && upstreamAcceptsExplicitRoles(body);
+  // Per-request instances (payments) also need a runtime that allocates
+  // each kind the scope's relations link (axiom-api#268 instance_kinds).
+  const accepts =
+    scope.readiness === "roles_required" &&
+    upstreamAcceptsExplicitRoles(body) &&
+    upstreamAllocatesInstances(body, scope.relations);
   const explicit = accepts && upstreamRelationsMatch(body, scope.relations);
   if (scope.readiness !== "ready" && !explicit) {
     const code = scope.readiness === "unavailable" ? "unavailable" : "relationships_unsupported";
@@ -41,7 +51,9 @@ export async function GET(request: Request) {
           ? "This source relates people to units in a way a scenario cannot represent yet."
           : accepts
             ? "The runtime's compiled relationships do not match this source's declarations, so roles cannot be offered."
-            : "This source needs each person's relationship roles, and the connected runtime cannot take them yet.";
+            : instanceKindsOf(scope.relations).length > 0
+              ? "This source links instances such as payments to a unit, and the connected runtime cannot allocate them yet."
+              : "This source needs each person's relationship roles, and the connected runtime cannot take them yet.";
     return NextResponse.json(
       { status: "error", error: { code, message } },
       { status: code === "unavailable" ? 503 : 422, headers: { "cache-control": "no-store" } }

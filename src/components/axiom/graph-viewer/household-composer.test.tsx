@@ -78,3 +78,30 @@ it("offers no relationships entry when the scope declares none", () => {
  render(<HouseholdComposer fields={fields} members={[]} canAddPeople running={false} onAddPerson={vi.fn()} onRemovePerson={vi.fn()} renderControl={() => <input />} />);
  expect(screen.queryByRole("button", {name:"Relationships"})).not.toBeInTheDocument();
 });
+
+it("gives a per-request kind its own branch of instances, each with its own answers", () => {
+  const paymentFields = [...fields, {name: "payment_amount", label: "payment_amount", entity: "Payment"}];
+  const onAdd = vi.fn(), onRemove = vi.fn();
+  const renderControl = vi.fn((field, member) => <input aria-label={`${field.name}:${member ?? "primary"}`} />);
+  const props = {fields: paymentFields, members: [], canAddPeople: true, running: false, onAddPerson: vi.fn(), onRemovePerson: vi.fn(), renderControl};
+  const {rerender} = render(<HouseholdComposer {...props} collections={[{entity: "Payment", items: [], max: 12, onAdd, onRemove}]} />);
+  // No payments yet: no flat Payment entry, an empty branch, an add button.
+  const branch = screen.getByRole("region", {name: "Payments"});
+  expect(branch).toHaveTextContent("No payments in this scenario.");
+  expect(screen.queryByRole("button", {name: "Payment"})).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", {name: /Add payment/}));
+  expect(onAdd).toHaveBeenCalledOnce();
+  rerender(<HouseholdComposer {...props} collections={[{entity: "Payment", items: ["payment_1", "payment_3"], max: 12, onAdd, onRemove}]} />);
+  fireEvent.click(screen.getByRole("button", {name: "Payment 3"}));
+  expect(screen.getByRole("textbox", {name: "payment_amount:payment_3"})).toBeInTheDocument();
+  expect(screen.queryByRole("textbox", {name: "payment_amount:primary"})).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", {name: "Remove Payment 1"}));
+  expect(onRemove).toHaveBeenCalledWith("payment_1");
+  // At the cap, adding is disabled.
+  rerender(<HouseholdComposer {...props} collections={[{entity: "Payment", items: ["payment_1", "payment_2"], max: 2, onAdd, onRemove}]} />);
+  expect(screen.getByRole("button", {name: /Add payment/})).toBeDisabled();
+  // Search reaches every instance's fields.
+  fireEvent.change(screen.getByRole("searchbox"), {target: {value: "payment amount"}});
+  expect(screen.getByRole("textbox", {name: "payment_amount:payment_1"})).toBeInTheDocument();
+  expect(screen.getByRole("textbox", {name: "payment_amount:payment_2"})).toBeInTheDocument();
+});

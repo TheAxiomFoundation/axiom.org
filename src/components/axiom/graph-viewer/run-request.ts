@@ -14,7 +14,12 @@ import type { LegalId, ProgramGraph } from "./types";
  * so an upstream that predates the shape sees an unchanged request.
  *
  * `relations` carries explicit relation roles (relation legal id →
- * member ids) for scopes whose catalog asks for them; omitted otherwise.
+ * member ids, or linked instance keys for a unit–instance relation) for
+ * scopes whose catalog asks for them; omitted otherwise.
+ *
+ * `instances` carries the scenario's per-request instances (kind → key →
+ * answers, e.g. payments) for scopes that allocate them; every kind
+ * travels, an empty object included, since `{}` is the answer "none".
  */
 export function buildRunRequestBody(
   composeFocus: string | null,
@@ -23,6 +28,7 @@ export function buildRunRequestBody(
   variables: string[],
   people?: Record<string, Record<string, number | boolean>>,
   relations?: Record<string, string[]>,
+  instances?: Record<string, Record<string, Record<string, number | boolean>>>,
 ): Record<string, unknown> {
   if (composeFocus) {
     return {
@@ -31,6 +37,7 @@ export function buildRunRequestBody(
       ...(people && Object.keys(people).length > 0 ? { people } : {}),
       // Explicit roles travel whole — an empty list is an answer.
       ...(relations ? { relations } : {}),
+      ...(instances && Object.keys(instances).length > 0 ? { instances } : {}),
       variables,
     };
   }
@@ -97,6 +104,43 @@ export function mergeRunBatches<T extends RunPayload>(primary: T, extra: RunPayl
   };
 }
 
+/**
+ * The values a run lit, by legal id and by bare name. A per-instance rule
+ * (two people, two payments) shows one member's exact value, or every
+ * member's joined ("1000 · 400", "✓ · ✗"); its null scalar output never
+ * overwrites that, since null only means "no single value". Scalar outputs
+ * fill in everything else.
+ */
+export function runValueMaps(run: Pick<RunPayload, "outputs" | "trace">): {
+  valueByFragment: Map<string, unknown>;
+  valueByLegalId: Map<string, unknown>;
+} {
+  const valueByFragment = new Map<string, unknown>();
+  const valueByLegalId = new Map<string, unknown>();
+  const record = (variable: string, value: unknown) => {
+    if (variable.includes("#")) valueByLegalId.set(variable, value);
+    else valueByFragment.set(variable, value);
+  };
+  for (const entry of run.trace) {
+    const instanceValues = (entry.instances ?? []).map((item) => item.value);
+    const value =
+      entry.value ??
+      (instanceValues.length === 1
+        ? instanceValues[0]
+        : instanceValues.length > 1
+          ? instanceValues
+              .map((item) => (typeof item === "boolean" ? (item ? "✓" : "✗") : String(item ?? "—")))
+              .join(" · ")
+          : entry.value);
+    record(entry.variable, value);
+  }
+  for (const [name, value] of Object.entries(run.outputs)) {
+    if (value === null && (valueByLegalId.get(name) ?? valueByFragment.get(name)) !== undefined) continue;
+    record(name, value);
+  }
+  return { valueByFragment, valueByLegalId };
+}
+
 /** Refusals that describe the household as entered (members, roles), not
  *  the scope: they surface as a run error and leave Run available. */
 const USER_FIXABLE_REFUSALS = new Set([
@@ -104,6 +148,8 @@ const USER_FIXABLE_REFUSALS = new Set([
   "relation_roles_required",
   "unknown_member",
   "unknown_relation",
+  "unknown_instance_kind",
+  "unknown_instance",
 ]);
 
 /**

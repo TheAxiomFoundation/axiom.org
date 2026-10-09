@@ -86,12 +86,25 @@ it("asks for explicit roles when a closure declares several typed Person–unit 
  });
 });
 
-it("still refuses a closure with any relation a scenario cannot represent", async () => {
+it("asks for roles and payment tuples for 26 USC 22's TaxUnit–Payment relation", async () => {
  const {compositionScope} = await import("./composition-readiness");
  mocks.compose.mockImplementation(async (root: string) => ({status:200,body:{data:{files:[root],graph:{relations:[]}}}}));
  // 26 USC 22: a typed Person relation beside a TaxUnit–Payment relation.
  mocks.rows.mockResolvedValueOnce(closureRows({"statutes/26/22.yaml": `rules: [${rel("22", "taxpayer_or_spouse_of_tax_unit", "TaxUnit, Person")}, ${rel("22", "section_22_payment_of_tax_unit", "TaxUnit, Payment")}]`}));
- expect((await compositionScope("us:statutes/26/22")).readiness).toBe("relationships_unsupported");
+ const scope = await compositionScope("us:statutes/26/22");
+ expect(scope.readiness).toBe("roles_required");
+ expect(scope.relations.find(relation => relation.name === "section_22_payment_of_tax_unit")).toMatchObject({
+  supported: true, instanceEntity: "Payment", instanceSlot: 1, unitEntity: "TaxUnit", relationId: "us:statutes/26/22#relation.section_22_payment_of_tax_unit",
+ });
+ expect(scope.relations.find(relation => relation.name === "taxpayer_or_spouse_of_tax_unit")).toMatchObject({personSlot: 1, unitEntity: "TaxUnit"});
+});
+
+it("still refuses a closure with any relation a scenario cannot represent", async () => {
+ const {compositionScope} = await import("./composition-readiness");
+ mocks.compose.mockImplementation(async (root: string) => ({status:200,body:{data:{files:[root],graph:{relations:[]}}}}));
+ // A payment related to a person directly: no unit slot to hang it on.
+ mocks.rows.mockResolvedValueOnce(closureRows({"statutes/26/x.yaml": `rules: [${rel("x", "payee", "Person, Payment")}]`}));
+ expect((await compositionScope("us:statutes/26/x")).readiness).toBe("relationships_unsupported");
  // 26 USC 25A: arity 2 with no declared slot entities.
  mocks.rows.mockResolvedValueOnce(closureRows({"statutes/26/25A.yaml": "rules: [{name: education_credit_member_of_tax_unit, kind: data_relation, data_relation: {arity: 2}}]"}));
  expect((await compositionScope("us:statutes/26/25A")).readiness).toBe("relationships_unsupported");
@@ -104,9 +117,12 @@ it("classifies relation shapes without reading names or descriptions", async () 
  expect(classifyRelations([])).toBe("ready");
  expect(classifyRelations(one("Person, Household"))).toBe("ready");
  expect(classifyRelations([...one("TaxUnit, Person"), ...sourceRelationships(`rules: [${rel("y", "s", "Person, TanfUnit")}]`, "us:y")])).toBe("roles_required");
- for (const args of ["Person, Person", "TaxUnit, Payment", "SnapUnit, Person", "TaxUnit, Household"]) {
+ for (const args of ["Person, Person", "Person, Payment", "SnapUnit, Person", "TaxUnit, Household", "SnapUnit, Payment"]) {
   expect(classifyRelations([...one("TaxUnit, Person"), ...sourceRelationships(`rules: [${rel("z", "t", args)}]`, "us:z")])).toBe("relationships_unsupported");
  }
+ // A unit–instance relation always needs its instances stated, even alone.
+ expect(classifyRelations(one("TaxUnit, Payment"))).toBe("roles_required");
+ expect(classifyRelations(one("Payment, Household"))).toBe("roles_required");
  // The same declaration twice is not two relations.
  expect(classifyRelations([...one("TaxUnit, Person"), ...one("TaxUnit, Person")])).toBe("relationships_unsupported");
  // A name or description that sounds like a household role changes nothing.
