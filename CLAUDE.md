@@ -36,7 +36,7 @@ generate `/axiom/v2/...` hrefs. The app root and marketing pages stay on v1.
   what holds it: failing or cancelled checks, reviewers), the merge, the
   `rulespec_files` index (matched by commit), axiom-api's nightly compile
   sweep, its jurisdiction's validation on main (waiver-aware), and any
-  axiom-oracles comparison report. From axiom-encode 0.2.2138 each try in
+  axiom-oracles comparison report. From axiom-encode 0.2.2156 each try in
   `tries` also carries its start, whole time and phases (with a check
   phase's time by tool), and `encode_loop` keeps the encoder's loop clock;
   the ledger timeline draws the tries on the run's clock from them. Older
