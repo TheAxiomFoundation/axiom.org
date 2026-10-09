@@ -50,6 +50,18 @@ describe("buildRunRequestBody", () => {
     });
   });
 
+  it("compose mode: explicit relation roles travel whole, empty answers included", () => {
+    const roles = { "us:statutes/26/32#qualifying_child_of_tax_unit": ["person_2"], "us:statutes/26/151#senior_deduction_individual_of_tax_unit": [] };
+    expect(buildRunRequestBody("us:statutes/26/32#eitc", null, {}, ["eitc"], {}, roles)).toEqual({
+      root: "us:statutes/26/32",
+      facts: {},
+      relations: roles,
+      variables: ["eitc"],
+    });
+    // Program coordinates never carry roles.
+    expect(buildRunRequestBody(null, { jurisdiction: "us", programId: "fiit" }, {}, [], {}, roles)).not.toHaveProperty("relations");
+  });
+
   it("program mode keeps coordinates and values", () => {
     const body = buildRunRequestBody(
       null,

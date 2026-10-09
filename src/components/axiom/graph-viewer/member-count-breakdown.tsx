@@ -27,8 +27,10 @@ export function personResult(graph: ProgramGraph, run: ExplanationRun | null, pr
   return trace?.instances?.find(item => item.entity_id === (run?.submittedPersonIds?.[personId] ?? personId))?.value;
 }
 
-export function MemberCountBreakdown({ graph, selectedId, members, run, stale, renderInput, valueOf, onSelect }: {
+export function MemberCountBreakdown({ graph, selectedId, members, run, stale, renderInput, valueOf, onSelect, roles }: {
   graph: ProgramGraph; selectedId: string; members: string[]; run: ExplanationRun | null; stale: boolean;
+  /** Explicit relation roles (relation legal id → member ids), when the scope states them. */
+  roles?: Record<string, string[]>;
   renderInput?: (id: string, member?: string | null) => ReactNode;
   valueOf: (id: string) => unknown; onSelect: (id: string) => void;
 }) {
@@ -45,6 +47,11 @@ export function MemberCountBreakdown({ graph, selectedId, members, run, stale, r
     <header><div><h3>Tax unit 1</h3><p>{humanizeRuleName(count.rule.name)}</p></div><div className="member-count-total"><span>{stale ? "Previous count" : "Calculated count"}</span><strong>{run ? typeof total === "number" || typeof total === "string" ? String(total) : "Not reported" : "Not run"}</strong></div></header>
     {!evaluatedPeople?.length && <p className="member-count-evidence">The runtime has not reported this relationship’s membership. Scenario people are shown below; their contribution to this count is unconfirmed.</p>}
     <div className="member-count-people">{["person_1", ...members].map(personId => {
+      const outside = roles?.[count.relationId] !== undefined && !roles[count.relationId]!.includes(personId);
+      if (outside) return <section className="member-count-person" key={personId} aria-label={humanizeRuleName(personId)}>
+        <header><h4>{humanizeRuleName(personId)}</h4><span>Not in {humanizeRuleName(count.relationId.split("#").at(-1) ?? count.relationId)}</span></header>
+        <p className="member-count-contribution">Outside this relationship, so never counted.</p>
+      </section>;
       const evaluated = evaluatedPeople?.find(item => item.entity_id === (run?.submittedPersonIds?.[personId] ?? personId));
       const result = evaluated ? evaluated.value : personResult(graph, run, count.predicateId, personId);
       return <section className="member-count-person" key={personId} aria-label={humanizeRuleName(personId)}>

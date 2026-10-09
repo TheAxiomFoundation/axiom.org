@@ -12,6 +12,9 @@ import type { LegalId, ProgramGraph } from "./types";
  * each additional member travels as `people.person_N` with their own
  * Person-level answers. Omitted entirely for the single-filer case,
  * so an upstream that predates the shape sees an unchanged request.
+ *
+ * `relations` carries explicit relation roles (relation legal id →
+ * member ids) for scopes whose catalog asks for them; omitted otherwise.
  */
 export function buildRunRequestBody(
   composeFocus: string | null,
@@ -19,12 +22,15 @@ export function buildRunRequestBody(
   scenario: Record<string, number | boolean>,
   variables: string[],
   people?: Record<string, Record<string, number | boolean>>,
+  relations?: Record<string, string[]>,
 ): Record<string, unknown> {
   if (composeFocus) {
     return {
       root: fileLegalIdOf(composeFocus),
       facts: scenario,
       ...(people && Object.keys(people).length > 0 ? { people } : {}),
+      // Explicit roles travel whole — an empty list is an answer.
+      ...(relations ? { relations } : {}),
       variables,
     };
   }
