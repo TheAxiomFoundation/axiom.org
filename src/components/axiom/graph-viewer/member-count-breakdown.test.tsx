@@ -34,3 +34,10 @@ it("shows contributions only from the count's recorded dependency evaluations", 
  expect(screen.getByText("Does not contribute to the count")).toBeInTheDocument();
  expect(screen.queryByText(/contribution.*unconfirmed/)).not.toBeInTheDocument();
 });
+
+it("says who is outside the relationship when roles are explicit", () => {
+ render(<MemberCountBreakdown graph={graph} selectedId="law#count" members={["person_2"]} roles={{"law#members": ["person_2"]}} run={{outputs: {count: 1}, trace: []}} stale={false} valueOf={() => 1} onSelect={vi.fn()} />);
+ expect(screen.getByText("Not in Members")).toBeInTheDocument();
+ expect(screen.getByText("Outside this relationship, so never counted.")).toBeInTheDocument();
+ expect(screen.getAllByRole("button", {name: "Inspect qualifying rule →"})).toHaveLength(1);
+});

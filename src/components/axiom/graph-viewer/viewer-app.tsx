@@ -2,6 +2,8 @@
 import { NodeMetadata } from "./node-metadata";
 
 import { HouseholdComposer } from "./household-composer";
+import { ConventionNote, RelationRoles } from "./relation-roles";
+import { flattenRoles, reconcileRoles, rolesForRun, type RelationDecl, type RoleMembership } from "@/lib/axiom/runtime/relation-roles";
 import { ResultExplanation, inputAwareEvidence, recordedTableRow } from "./result-explanation";
 import { ParameterTableView } from "./parameter-table";
 import { GraphLoading } from "./graph-loading";
@@ -38,6 +40,7 @@ import {
   displayNameForProgram,
   fetchAllPrograms,
   fetchComposedGraph,
+  fetchRootCatalog,
   fetchRootInputs,
   fetchInputMeta,
   fetchProgramGraph,
@@ -50,7 +53,7 @@ import {
   filterStandaloneRules,
   focusedComposeRule,
 } from "./compose-filter";
-import { buildRunRequestBody, mergeRunBatches, scenarioKey, traceRootIds, TRACE_BATCH_SIZE, type RunPayload } from "./run-request";
+import { buildRunRequestBody, classifyRunRefusal, mergeRunBatches, scenarioKey, traceRootIds, TRACE_BATCH_SIZE, type RunPayload } from "./run-request";
 import { trackAxiomEvent } from "@/lib/analytics";
 import {
   DEFAULT_LAUNCHER_MODE,
@@ -58,6 +61,7 @@ import {
 } from "./launcher-mode";
 import { loadCorpusModules } from "@/lib/axiom/corpus-live";
 import type { CorpusModule } from "@/lib/axiom/corpus-field";
+
 
 export function GraphViewerApp({
   onBackToOverview,
@@ -108,6 +112,17 @@ export function GraphViewerApp({
   const [memberScenario, setMemberScenario] = useState<
     Record<string, Record<string, number | boolean>>
   >({});
+  // Relation roles, keyed by the declaring rule's legal id: who belongs
+  // to each Person–unit relation the composed scope declares. Kept across
+  // roots (the §151 relations recur under §32, §63(c), §25B); only the
+  // current closure's relations ever travel.
+  const [relationRoles, setRelationRoles] = useState<RoleMembership>({});
+  // The current root's relation catalog: "explicit" scopes must state
+  // roles; "convention" scopes bind everyone to their one relation.
+  const [rootRelations, setRootRelations] = useState<{
+    relations: RelationDecl[];
+    mode: "explicit" | "convention";
+  }>({ relations: [], mode: "convention" });
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
   // Post-run edits mark the sheet stale until the NEXT explicit run
@@ -254,6 +269,9 @@ export function GraphViewerApp({
   const [runResult, setRunResult] = useState<{
     submittedFacts?: Record<string, unknown>;
     submittedPersonIds?: Record<string, string>;
+    /** The relation roles this run used, so a stale result is explained by
+     *  the roles that produced it, not the ones being edited. */
+    submittedRoles?: RoleMembership;
     outputs: Record<string, number | string | boolean | null>;
     trace: Array<{
       variable: string;
@@ -323,6 +341,9 @@ export function GraphViewerApp({
   // Bumped by Retry buttons — re-fires the program load effect after
   // a transient graph/registry failure.
   const [reloadNonce, setReloadNonce] = useState(0);
+  // Re-reads the root catalog alone (not the graph) when the server's
+  // relation set has moved under a roles run.
+  const [catalogNonce, setCatalogNonce] = useState(0);
 
   const lastRunRequest = useRef<Record<string, unknown> | null>(null);
   // The results sheet's quick-adjust strip pages through answered
@@ -475,6 +496,24 @@ export function GraphViewerApp({
         : null,
     [graph],
   );
+  // Relations the summit's dependency closure reads: compose links a
+  // relation reference as a rule dependency on its declaring node.
+  const summitRelations = useMemo(() => {
+    const found = new Set<string>();
+    if (!summitOutput) return found;
+    const seen = new Set<string>();
+    const stack = [summitOutput];
+    while (stack.length > 0) {
+      const current = stack.pop()!;
+      if (seen.has(current)) continue;
+      seen.add(current);
+      const rule = walkRuleById.get(current);
+      if (!rule) continue;
+      if (rule.kind === "relation") found.add(current);
+      stack.push(...rule.ruleDeps, ...(rule.relationDeps ?? []));
+    }
+    return found;
+  }, [summitOutput, walkRuleById]);
   const consumersOf = (legalId: string) =>
     (graph?.rules ?? []).filter(
       (rule) =>
@@ -582,6 +621,8 @@ export function GraphViewerApp({
   // closure_incomplete): the API's own message, surfaced as a styled
   // state in the run panel — never a silent failure.
   const [runBlocked, setRunBlocked] = useState<string | null>(null);
+  // The capability probe's refusal, in the gate's or runtime's own words.
+  const [runUnavailableReason, setRunUnavailableReason] = useState<string | null>(null);
 
   // Load the full program registry once; countries and the per-country program
   // list are derived from it, so a newly compiled program appears here with no
@@ -1078,6 +1119,7 @@ export function GraphViewerApp({
     setScenario({});
     setExtraMembers([]);
     setMemberScenario({});
+    setRelationRoles({});
     setResultsStale(false);
     ranScenarioKey.current = null;
     setInputMeta({ dtypes: {}, defaults: {} });
@@ -1111,9 +1153,14 @@ export function GraphViewerApp({
     // An explicit run consumes the pending edits: the stale flag
     // clears and the edit tracker syncs to what this run computes.
     setResultsStale(false);
+    const runRoles =
+      composeFocus && rootRelations.mode === "explicit"
+        ? rolesForRun(rootRelations.relations, relationRoles, ["person_1", ...extraMembers])
+        : undefined;
     ranScenarioKey.current = scenarioKey({
       ...scenario,
       ...flattenMemberAnswers(extraMembers, memberScenario),
+      ...flattenRoles(runRoles ?? {}),
     });
     try {
       // Trace the selected outputs plus their reachable rules so the
@@ -1152,6 +1199,7 @@ export function GraphViewerApp({
           scenario,
           variables,
           composeFocus ? people : undefined,
+          runRoles,
         );
       const attempt = async (variables: string[]) => {
         const response = await fetch("/api/axiom/runtime/calculate", {
@@ -1167,6 +1215,11 @@ export function GraphViewerApp({
         // upstream predates the `people` shape — keep the affordance
         // and say what to change.
         if (composeFocus && response.status === 404) {
+          if (runRoles) {
+            throw new Error(
+              "This deployment doesn't accept relationship roles yet, so this scope can't run here.",
+            );
+          }
           if (extraMembers.length > 0) {
             throw new Error(
               "This deployment doesn't accept per-member answers yet — remove the added household members to run.",
@@ -1176,6 +1229,18 @@ export function GraphViewerApp({
           throw new Error(
             "Running composed views isn't available on this deployment yet.",
           );
+        }
+        // The route could not reach what it needs (the runtime's relation
+        // catalog, or the runtime itself): probing chunks would only repeat
+        // the same upstream reads. Stop with the route's own words.
+        if (composeFocus && response.status === 503) {
+          let payload: { message?: string | null } = {};
+          try {
+            payload = await response.clone().json();
+          } catch {
+            // No body: the generic message below.
+          }
+          throw new Error(payload.message ?? "The runtime is unavailable right now. Try again shortly.");
         }
         // Rate limited: more requests only dig deeper — stop the whole
         // run (including chunk probing) with an honest message.
@@ -1200,7 +1265,20 @@ export function GraphViewerApp({
             // shed — return non-ok instead of blocking the whole run.
             // If even the bare run refuses, the caller styles the
             // blocked state from this same payload.
-            if (payload.error !== "runtime_error") {
+            // A refusal the user can fix by editing the household or its
+            // roles is a run error, not a blocked scope: Run stays.
+            if (classifyRunRefusal(payload.error) === "user_fixable") {
+              // The server's relation set moved since the grid loaded:
+              // re-read the catalog so the grid shows the relations a run
+              // must answer (answers for relations still declared are kept).
+              if (payload.error === "relation_roles_required" || payload.error === "unknown_relation") {
+                setCatalogNonce((n) => n + 1);
+              }
+              throw new Error(
+                payload.message ?? "The runtime refused this household as entered.",
+              );
+            }
+            if (classifyRunRefusal(payload.error) === "scope_blocked") {
               const blocked = new Error(
                 payload.message ??
                   "the engine declined this computation without a message.",
@@ -1320,7 +1398,7 @@ export function GraphViewerApp({
           // Rate limited or refused: the primary batch stands alone.
         }
       }
-      setRunResult({ ...data, submittedFacts: { ...scenario }, submittedPersonIds: Object.fromEntries(["person_1", ...extraMembers].map((id, index) => [id, `person:1:${index + 1}`])) });
+      setRunResult({ ...data, submittedFacts: { ...scenario }, submittedPersonIds: Object.fromEntries(["person_1", ...extraMembers].map((id, index) => [id, `person:1:${index + 1}`])), ...(runRoles ? { submittedRoles: runRoles } : {}) });
       setEditingRunInputs(false);
       trackRun("ok");
     } catch (err) {
@@ -1639,15 +1717,28 @@ export function GraphViewerApp({
 
   // Compilation capability is independent of whether an empty household can
   // produce a result. The input catalog compiles without executing a scenario.
+  const catalogFocusRef = useRef<string | null | undefined>(undefined);
   useEffect(() => {
-    setComposeRunReady(null);
+    // A new scope starts clean; a re-read of the same scope (retry, or the
+    // relation set moving on the server) keeps what the user stated.
+    const focusChanged = catalogFocusRef.current !== composeFocus;
+    catalogFocusRef.current = composeFocus;
     setRunBlocked(null);
+    setRunUnavailableReason(null);
+    if (focusChanged) {
+      setComposeRunReady(null);
+      setRootRelations({ relations: [], mode: "convention" });
+      // Every scope starts with no roles stated (relation-roles.tsx).
+      setRelationRoles({});
+    }
     if (!composeFocus) return;
     let cancelled = false;
     const root = fileLegalIdOf(composeFocus);
-    fetchRootInputs(root)
-      .then(() => {
+    fetchRootCatalog(root)
+      .then((catalog) => {
         if (cancelled) return;
+        setRootRelations({ relations: catalog.relations, mode: catalog.relationMembership });
+        if (!focusChanged) setRelationRoles((current) => reconcileRoles(current, catalog.relations));
         rememberRunCapability(root, true);
         setComposeRunReady(true);
       })
@@ -1655,6 +1746,7 @@ export function GraphViewerApp({
         if (!cancelled && error instanceof Error && error.name === "RunUnavailableError") {
           rememberRunCapability(root, false);
           setComposeRunReady(false);
+          setRunUnavailableReason(error.message);
           return;
         }
         // Unavailability is not evidence that the encoding cannot execute.
@@ -1662,7 +1754,7 @@ export function GraphViewerApp({
         if (!cancelled) setComposeRunReady(null);
       });
     return () => { cancelled = true; };
-  }, [composeFocus, reloadNonce]);
+  }, [composeFocus, reloadNonce, catalogNonce]);
   // The run affordance exists in compose mode only once the probe
   // confirms the API can execute a composed root.
   const runAffordanceReady = !runBlocked && (!composeFocus || composeRunReady === true);
@@ -2034,10 +2126,15 @@ export function GraphViewerApp({
     const key = scenarioKey({
       ...debouncedScenario,
       ...flattenMemberAnswers(extraMembers, memberScenario),
+      ...flattenRoles(
+        composeFocus && rootRelations.mode === "explicit"
+          ? rolesForRun(rootRelations.relations, relationRoles, ["person_1", ...extraMembers])
+          : {},
+      ),
     });
     if (ranScenarioKey.current === null) return; // nothing ran yet
     setResultsStale(runResult !== null && key !== ranScenarioKey.current);
-  }, [debouncedScenario, extraMembers, memberScenario, runResult]);
+  }, [debouncedScenario, extraMembers, memberScenario, runResult, relationRoles, rootRelations, composeFocus]);
 
   // Execution overlay: clone the structural traces and light them
   // with the run's computed values (rules by durable id or bare
@@ -2208,6 +2305,17 @@ export function GraphViewerApp({
           members={extraMembers}
           canAddPeople={Boolean(composeFocus)}
           running={running}
+          relationships={!composeFocus ? undefined : rootRelations.mode === "explicit"
+            ? <RelationRoles
+                relations={rootRelations.relations}
+                members={extraMembers}
+                roles={relationRoles}
+                running={running}
+                onChange={(relation, ids) => setRelationRoles(current => ({ ...current, [relation]: ids }))}
+                inUse={summitRelations}
+                usedBy={summitOutput ? humanize(summitOutput.split("#").pop() ?? summitOutput) : undefined}
+              />
+            : rootRelations.relations.length === 1 ? <ConventionNote relation={rootRelations.relations[0]} /> : undefined}
           onAddPerson={() => setExtraMembers(current => {
             const used = new Set(current);
             for (let index = 2; index <= 12; index++) if (!used.has(`person_${index}`)) return [...current, `person_${index}`];
@@ -2215,6 +2323,7 @@ export function GraphViewerApp({
           })}
           onRemovePerson={member => {
             setExtraMembers(current => current.filter(id => id !== member));
+            setRelationRoles(current => Object.fromEntries(Object.entries(current).map(([relation, ids]) => [relation, ids.filter(id => id !== member)])));
             setMemberScenario(current => {
               const { [member]: removed, ...rest } = current;
               return rest;
@@ -2404,9 +2513,11 @@ export function GraphViewerApp({
             scopeLabel={composeFocus ? humanizeCitation(fileLegalIdOf(composeFocus)) : effectiveProgram?.displayName ?? "Program"}
             truncated={composedTruncated}
             runReady={runAffordanceReady}
+            runUnavailableReason={runBlocked ?? runUnavailableReason}
             onRun={() => void runScenario()}
             running={running}
             members={extraMembers}
+            roles={composeFocus ? (runResult?.submittedRoles ?? (rootRelations.mode === "explicit" ? rolesForRun(rootRelations.relations, relationRoles, ["person_1", ...extraMembers]) : undefined)) : undefined}
             run={runResult}
             renderInput={(id, selectedMember) => {
               const input = graph.inputs.find(item => item.legalId === id);

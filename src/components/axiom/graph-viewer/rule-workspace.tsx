@@ -99,7 +99,7 @@ function SourceReader({ rule, id, consumers }: { rule?: RuleNode; id: string; co
   </section>;
 }
 
-export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, onViewChange, scopeLabel, truncated, runReady, scenario, graphControls, onOverview, valueOf, hasRun, stale, renderInput, onRun, running, members = [], run = null, explanationTrail = [], onExplanationTrailChange }: {
+export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, onViewChange, scopeLabel, truncated, runReady, scenario, graphControls, onOverview, valueOf, hasRun, stale, renderInput, onRun, running, members = [], run = null, explanationTrail = [], onExplanationTrailChange, roles, runUnavailableReason = null }: {
   graph: ProgramGraph; rootTarget?: string; selectedId: string; onSelect: (id: string) => void;
   view: WorkspaceView; onViewChange: (view: WorkspaceView) => void;
   scopeLabel: string; truncated: boolean; runReady: boolean; scenario: ReactNode;
@@ -108,6 +108,11 @@ export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, o
   renderInput?: (id: string, member?: string | null) => ReactNode;
   onRun?: () => void; running?: boolean;
   members?: string[]; run?: ExplanationRun | null;
+  /** Explicit relation roles, when the scope states them. */
+  roles?: Record<string, string[]>;
+  /** Why this scope cannot run (the runtime's or the gate's own words);
+   *  shown wherever the Run affordance would otherwise just vanish. */
+  runUnavailableReason?: string | null;
   onOverview?: () => void;
   valueOf: (id: string) => unknown; hasRun: boolean; stale: boolean;
 }) {
@@ -255,6 +260,7 @@ export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, o
         </> : <button ref={searchButtonRef} className="workspace-nav-search" onClick={() => setNavigatorOpen(true)} aria-expanded={false}><Search size={16} /> Find a rule</button>}
       </div>
     </nav>
+    {!runReady && runUnavailableReason && <p className="workspace-run-unavailable" role="status"><Play size={14} aria-hidden /><span><strong>Run unavailable.</strong> {runUnavailableReason}</span></p>}
     <div className="workspace-subject">
       <div className="workspace-return-actions">
         {onOverview && <button type="button" className="workspace-button" data-testid="back-to-overview" onClick={onOverview} title="Back to the corpus overview">Overview</button>}
@@ -281,10 +287,10 @@ export function RuleWorkspace({ graph, rootTarget, selectedId, onSelect, view, o
         <NeighborColumn title="Used by" ids={consumers.map((item) => item.legalId)} entries={entries} label={label} onSelect={navigate} hasRun={hasRun} value={value} activeId={activeDependency} onHighlight={setActiveDependency} empty="No consumers recorded in this scope." />
       </div></RelationshipDiagram>
       <NodeMetadata key={selectedId} id={selectedId} entry={rule ?? graph.inputs.find(item => item.legalId === selectedId) ?? graph.relations.find(item => item.legalId === selectedId) ?? {}} />
-      <MemberCountBreakdown graph={graph} selectedId={selectedId} members={members} run={run} stale={stale} renderInput={renderInput} valueOf={valueOf} onSelect={navigate} />
+      <MemberCountBreakdown graph={graph} selectedId={selectedId} members={members} run={run} stale={stale} renderInput={renderInput} valueOf={valueOf} onSelect={navigate} roles={roles} />
       {truncated && <p className="workspace-footnote">This graph is partial; additional relationships may exist.</p>}
     </section>}
-    {view === "run" && <section className="workspace-run" aria-label="Scenario workspace"><div className="workspace-section-heading"><h2>Household scenario</h2></div>{runReady ? scenario : <p role="status">Execution is not available for this scope. You can still read and explore its rules.</p>}</section>}
+    {view === "run" && <section className="workspace-run" aria-label="Scenario workspace"><div className="workspace-section-heading"><h2>Household scenario</h2></div>{runReady ? scenario : <p role="status">{runUnavailableReason ?? "Execution is not available for this scope."} You can still read and explore its rules.</p>}</section>}
   </div>;
 }
 
