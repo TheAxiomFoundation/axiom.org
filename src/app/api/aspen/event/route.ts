@@ -3,13 +3,11 @@ import {
   DISCUSSION_TOPICS,
   QUESTION_IDS,
   RATING_SCALES,
-  ROLES,
   SOURCE_OF_TRUTH,
   TWIST_IDS,
   USE_CASES,
   isPerspectiveId,
   isStageId,
-  isUsState,
 } from "@/lib/aspen/content";
 import { apiAccess, json, readBody } from "@/lib/aspen/http";
 import { isRateLimited } from "@/lib/aspen/limit";
@@ -36,11 +34,6 @@ function cleanRatings(
 
 /** Each kind keeps only the fields it is allowed to carry. */
 const CLEANERS: Record<string, (raw: Payload) => Payload | null> = {
-  profile: (raw) => ({
-    perspective: isPerspectiveId(raw.perspective) ? raw.perspective : null,
-    state: isUsState(raw.state) ? raw.state : null,
-    role: cleanChoice(raw.role, ROLES),
-  }),
   stage_view: (raw) => (isStageId(raw.stage) ? { stage: raw.stage, followed: raw.followed === true } : null),
   chip: (raw) => ({
     perspective: isPerspectiveId(raw.perspective) ? raw.perspective : null,
@@ -60,6 +53,10 @@ const CLEANERS: Record<string, (raw: Payload) => Payload | null> = {
     const note = clipText(raw.note, 2000);
     return useCase || note ? { useCase, note } : null;
   },
+  vote: (raw) => {
+    const useCase = cleanChoice(raw.useCase, USE_CASES.map((u) => u.id));
+    return useCase ? { useCase } : null;
+  },
   disclosure: (raw) => ({ opened: raw.opened === true }),
   survey: (raw) => {
     if (raw.question !== SOURCE_OF_TRUTH.id) return null;
@@ -68,7 +65,7 @@ const CLEANERS: Record<string, (raw: Payload) => Payload | null> = {
   },
 };
 
-/** Everything else a participant does: profile, stage views, chip taps, discussion and breakout notes. */
+/** Everything else a participant does: stage views, chip taps, ratings in Rate it, votes and group notes. */
 export async function POST(request: Request) {
   const { denied } = await apiAccess("participant");
   if (denied) return denied;
@@ -89,22 +86,9 @@ export async function POST(request: Request) {
   const control = await readControl(store);
   const userAgent = request.headers.get("user-agent")?.slice(0, 300) ?? null;
 
-  if (kind === "profile") {
-    await safely("participant upsert", () =>
-      store.upsertParticipant({
-        id: participantId,
-        run_id: control.runId,
-        perspective: payload.perspective as string | null,
-        state: payload.state as string | null,
-        role: payload.role as string | null,
-        user_agent: userAgent,
-      }),
-    );
-  } else {
-    await safely("participant touch", () =>
-      store.upsertParticipant({ id: participantId, run_id: control.runId }),
-    );
-  }
+  await safely("participant touch", () =>
+    store.upsertParticipant({ id: participantId, run_id: control.runId, user_agent: userAgent }),
+  );
   const saved = await safely("event insert", () =>
     store.insertEvent({
       run_id: control.runId,

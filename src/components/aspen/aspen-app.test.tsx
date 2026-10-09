@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EVENT, STAGES, type StageId } from "@/lib/aspen/content";
 import { EMPTY_SUMMARY, type RunSummary } from "@/lib/aspen/results";
@@ -116,7 +116,7 @@ describe("AspenApp following the presenter", () => {
     fireEvent.click(menu());
     expect(screen.getByRole("navigation", { name: "Session" })).toBeInTheDocument();
     // A click inside the menu keeps it open.
-    fireEvent.mouseDown(screen.getByText("The evening", { selector: "nav span" }));
+    fireEvent.mouseDown(screen.getByText("Agenda", { selector: "nav span" }));
     expect(screen.getByRole("navigation", { name: "Session" })).toBeInTheDocument();
     fireEvent.mouseDown(document.body);
     expect(screen.queryByRole("navigation", { name: "Session" })).not.toBeInTheDocument();
@@ -219,61 +219,92 @@ describe("AspenApp without a live presenter", () => {
     control.stage = "reveal";
   });
 
-  it("starts at Welcome, saves the profile and opens Try it", async () => {
+  it("starts at Welcome without asking who you are, and opens Try it", async () => {
     render(<AspenApp />);
     await onView("welcome");
     expect(screen.queryByText("Now")).not.toBeInTheDocument();
     expect(screen.getByText("Aspen Institute")).toBeInTheDocument();
     expect(screen.getByText(`${EVENT.place} · ${EVENT.shortDate}`)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /The room has moved on/ })).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: /A caseworker/ }));
-    expect(JSON.parse(localStorage.getItem("aspen.profile") ?? "null")).toEqual({
-      perspective: "caseworker",
-      state: null,
-      role: null,
-    });
-    await waitFor(() =>
-      expect(events()).toContainEqual(
-        expect.objectContaining({ kind: "profile", payload: { perspective: "caseworker", state: null, role: null } }),
-      ),
-    );
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Start: ask the AI/ }));
     await onView("try");
-    expect(screen.getByRole("button", { name: "A caseworker" })).toHaveAttribute("aria-pressed", "true");
+    // Who you ask as is picked in the chat itself, a resident to start.
+    expect(screen.getByRole("button", { name: "A resident" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "Ask the AI" })).toBeInTheDocument();
+    // Try it ends with a rated answer: Next waits for one.
+    const next = screen.getByRole("button", { name: /^Next/ });
+    expect(next).toBeDisabled();
+    expect(next).toHaveTextContent("Rate your answer to continue");
 
     fireEvent.click(screen.getByRole("button", { name: "What we keep" }));
     await waitFor(() =>
       expect(events()).toContainEqual(expect.objectContaining({ kind: "disclosure", payload: { opened: true }, stage: "try" })),
     );
 
-    // Switching perspective in the chat updates the profile too.
-    fireEvent.click(screen.getByRole("button", { name: "A resident" }));
-    expect(JSON.parse(localStorage.getItem("aspen.profile") ?? "null")).toMatchObject({ perspective: "resident" });
-
     fireEvent.click(screen.getByRole("button", { name: "Back to the start" }));
     await onView("welcome");
   });
 
-  it("opens a stage from the agenda and walks through every later stage", async () => {
-    localStorage.setItem("aspen.profile", JSON.stringify({ perspective: null, state: "Arizona", role: null }));
-    summary = { ...EMPTY_SUMMARY, prompts: 4, rated: 2 };
+  it("opens Next from Try it once an answer is rated", async () => {
+    storeChat({
+      perspective: "resident",
+      householdId: "az-retiree",
+      turns: [
+        { key: "u", role: "user", content: "Q" },
+        { key: "a", role: "assistant", content: "A", status: "done", promptId: "p" },
+      ],
+      rated: ["p"],
+    });
+    render(<AspenApp />);
+    fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
+    await onView("try");
+    await waitFor(() => expect(nextTo("rate")).toBeEnabled());
+    fireEvent.click(nextTo("rate"));
+    await onView("rate");
+  });
+
+  it("goes back to the last stage it opened with the browser's Back button", async () => {
+    render(<AspenApp />);
+    await onView("welcome");
+    expect(window.history.state).toMatchObject({ aspenStage: "welcome" });
+    fireEvent.click(screen.getByRole("button", { name: /Start: ask the AI/ }));
+    await onView("try");
+    expect(window.history.state).toMatchObject({ aspenStage: "try" });
+    fireEvent.click(nav().getByRole("button", { name: /At scale/ }));
+    await onView("scale");
+
+    act(() => {
+      window.dispatchEvent(new PopStateEvent("popstate", { state: { aspenStage: "try" } }));
+    });
+    await onView("try");
+    // An entry that is not ours (e.g. from the router) changes nothing.
+    act(() => {
+      window.dispatchEvent(new PopStateEvent("popstate", { state: { other: true } }));
+    });
+    await onView("try");
+  });
+
+  it("walks from the vote through the small groups and next steps to the thank-you", async () => {
     render(<AspenApp />);
     await onView("welcome");
 
-    fireEvent.click(screen.getByRole("button", { name: /Small groups/ }));
+    fireEvent.click(nav().getByRole("button", { name: /Vote/ }));
+    await onView("vote");
+    expect(screen.getByRole("button", { name: "Vote" })).toBeDisabled();
+
+    fireEvent.click(nextTo("groups"));
     await onView("groups");
-    expect(screen.getByRole("button", { name: "Save our ideas" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Share with the room" })).toBeInTheDocument();
 
     fireEvent.click(nextTo("next"));
     await onView("next");
-    expect(screen.getByRole("combobox", { name: "State" })).toHaveValue("Arizona");
+    expect(screen.getByRole("combobox", { name: "State" })).toHaveValue("");
 
     fireEvent.click(nextTo("dinner"));
     await onView("dinner");
-    expect(await screen.findByText("Tonight, this room")).toBeInTheDocument();
+    expect(screen.getByText(/Thank you to the Aspen Institute/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Next/ })).not.toBeInTheDocument();
   });
 });

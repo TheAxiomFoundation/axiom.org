@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  DEMO_NOTE,
   HOUSEHOLDS,
   PERSPECTIVES,
   QUESTIONS,
@@ -23,8 +24,15 @@ import { BUTTON, Chip, FIELD } from "./ui";
 /**
  * The hands-on segment: pick a perspective and a household, send the
  * composed (and editable) question to the chatbot, rate the answer,
- * and, once the presenter reaches "The fix", check it against the rules.
+ * and, once the presenter reaches "A shared foundation", check it against
+ * the rules. A new question waits until the last answer is rated.
  */
+
+/** What the shell needs from the chat: whether an answer came back, and whether one is rated. */
+export interface ChatStatus {
+  asked: boolean;
+  rated: boolean;
+}
 
 export interface Turn {
   key: string;
@@ -90,21 +98,18 @@ export async function readNdjson(
 }
 
 export function ChatWindow({
-  perspective: initialPerspective,
   stage,
   rulesUnlocked,
-  onPerspective,
   onRateOverall,
+  onStatus,
 }: {
-  perspective: string | null;
   stage: string;
   rulesUnlocked: boolean;
-  onPerspective?: (id: PerspectiveId) => void;
   /** Opens the "Rate it" stage once the answer is rated. */
   onRateOverall?: () => void;
+  onStatus?: (status: ChatStatus) => void;
 }) {
-  const startPerspective: PerspectiveId = isPerspectiveId(initialPerspective) ? initialPerspective : "resident";
-  const [perspective, setPerspective] = useState<PerspectiveId>(startPerspective);
+  const [perspective, setPerspective] = useState<PerspectiveId>("resident");
   // Nothing is picked until the participant picks: a default would skew "Households picked".
   const [householdId, setHouseholdId] = useState<string | null>(null);
   const [questionId, setQuestionId] = useState<QuestionId>("amount");
@@ -119,6 +124,7 @@ export function ChatWindow({
   const [followUp, setFollowUp] = useState(false);
   const threadEnd = useRef<HTMLDivElement>(null);
   const draftBox = useRef<HTMLTextAreaElement>(null);
+  const ratingBox = useRef<HTMLElement>(null);
   // False until the saved conversation is read, so the first render never overwrites it.
   const [hydrated, setHydrated] = useState(false);
 
@@ -158,13 +164,10 @@ export function ChatWindow({
     } satisfies SavedChat);
   }, [hydrated, perspective, householdId, questionId, twists, draft, template, conversationId, turns, rated]);
 
-  // A perspective picked on the welcome screen arrives after first render.
+  const asked = turns.some((t) => t.role === "assistant" && t.status === "done");
   useEffect(() => {
-    if (hydrated && isPerspectiveId(initialPerspective) && initialPerspective !== perspective && turns.length === 0) {
-      choose(initialPerspective, householdId, questionId, twists);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated, initialPerspective]);
+    if (hydrated) onStatus?.({ asked, rated: rated.size > 0 });
+  }, [hydrated, asked, rated, onStatus]);
 
   // The question box grows to show the whole question, so nobody scrolls inside it on a phone.
   useEffect(() => {
@@ -206,7 +209,6 @@ export function ChatWindow({
         : [...twists, next.twist]
       : twists;
     choose(p, h, q, t);
-    if (next.p) onPerspective?.(next.p);
     sendEvent("chip", { perspective: p, householdId: h, questionId: q, twists: t }, stage);
   }
 
@@ -301,6 +303,8 @@ export function ChatWindow({
           messages: turns.slice(0, latestIndex).map((t) => ({ role: t.role, content: t.content })),
         }
       : null;
+  // Rating is not optional: a follow-up or a new question waits for it.
+  const mustRate = Boolean(latest?.promptId && !rated.has(latest.promptId));
 
   const tile = (selected: boolean) =>
     `flex flex-col items-start justify-start rounded-lg border px-3 py-2.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-[var(--color-accent)] ${
@@ -313,13 +317,15 @@ export function ChatWindow({
     <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] lg:gap-8">
       <div className="rounded-xl border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] shadow-[0_1px_3px_rgba(28,25,23,0.05)]">
         <div className="flex items-center justify-between gap-3 border-b border-[var(--color-rule)] px-4 py-3">
-          <span className="font-body text-[0.85rem] text-[var(--color-ink-secondary)]">
+          <span className="font-body text-[0.95rem] text-[var(--color-ink-secondary)]">
             {started ? "Your conversation" : "Ask as"}
           </span>
           {started ? (
-            <button type="button" className="aspen-link font-body text-[0.85rem]" onClick={startOver}>
-              New question
-            </button>
+            !mustRate && (
+              <button type="button" className="aspen-link font-body text-[0.95rem]" onClick={startOver}>
+                New question
+              </button>
+            )
           ) : (
             <div role="group" aria-label="Ask as" className="inline-flex rounded-full border border-[var(--color-rule)] bg-[var(--color-paper)] p-0.5">
               {PERSPECTIVES.map((p) => (
@@ -329,7 +335,7 @@ export function ChatWindow({
                   aria-label={p.label}
                   aria-pressed={perspective === p.id}
                   onClick={() => pick({ p: p.id })}
-                  className={`rounded-full px-3 py-1 font-body text-[0.8rem] transition-colors ${
+                  className={`rounded-full px-3.5 py-1.5 font-body text-[0.9rem] transition-colors ${
                     perspective === p.id ? "bg-[var(--color-ink)] text-white" : "text-[var(--color-ink-secondary)]"
                   }`}
                 >
@@ -343,7 +349,7 @@ export function ChatWindow({
         {!started && (
           <div className="flex flex-col gap-4 px-4 pt-4">
             <fieldset className="m-0 border-0 p-0">
-              <legend className="mb-2 font-body text-[0.85rem] text-[var(--color-ink-secondary)]">
+              <legend className="mb-2 font-body text-[0.98rem] text-[var(--color-ink-secondary)]">
                 Pick a household
               </legend>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -355,10 +361,10 @@ export function ChatWindow({
                     onClick={() => pick({ h: h.id })}
                     className={tile(householdId === h.id)}
                   >
-                    <span className="block font-body text-[0.88rem] font-medium leading-snug text-[var(--color-ink)]">
+                    <span className="block font-body text-[0.98rem] font-medium leading-snug text-[var(--color-ink)]">
                       {h.label}
                     </span>
-                    <span className="block font-body text-[0.75rem] text-[var(--color-ink-muted)]">{h.state}</span>
+                    <span className="block font-body text-[0.84rem] text-[var(--color-ink-muted)]">{h.state}</span>
                   </button>
                 ))}
                 <button
@@ -367,16 +373,16 @@ export function ChatWindow({
                   onClick={() => pick({ h: OWN })}
                   className={`${tile(householdId === OWN)} col-span-2 border-dashed sm:col-span-3`}
                 >
-                  <span className="block font-body text-[0.88rem] font-medium text-[var(--color-ink)]">
+                  <span className="block font-body text-[0.98rem] font-medium text-[var(--color-ink)]">
                     Your own question
                   </span>
-                  <span className="block font-body text-[0.75rem] text-[var(--color-ink-muted)]">Any benefit, any state</span>
+                  <span className="block font-body text-[0.84rem] text-[var(--color-ink-muted)]">Any benefit, any state</span>
                 </button>
               </div>
             </fieldset>
             {household && (
               <fieldset className="m-0 border-0 p-0">
-                <legend className="mb-2 font-body text-[0.85rem] text-[var(--color-ink-secondary)]">
+                <legend className="mb-2 font-body text-[0.98rem] text-[var(--color-ink-secondary)]">
                   Add details <span className="text-[var(--color-ink-muted)]">(optional)</span>
                 </legend>
                 <div role="group" aria-label="Details" className="flex flex-wrap gap-1.5">
@@ -385,7 +391,7 @@ export function ChatWindow({
                       key={t.id}
                       selected={twists.includes(t.id)}
                       onClick={() => pick({ twist: t.id })}
-                      className="px-3 py-1 text-[0.82rem]"
+                      className="px-3 py-1.5 text-[0.92rem]"
                     >
                       {twists.includes(t.id) ? "✓ " : "+ "}
                       {t.label}
@@ -412,7 +418,7 @@ export function ChatWindow({
               turn.role === "user" ? (
                 <div
                   key={turn.key}
-                  className="ml-auto max-w-[90%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-[var(--color-ink)] px-4 py-2.5 font-body text-[0.92rem] leading-relaxed text-white"
+                  className="ml-auto max-w-[90%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-[var(--color-ink)] px-4 py-2.5 font-body text-[1rem] leading-relaxed text-white"
                 >
                   {turn.content}
                 </div>
@@ -425,7 +431,7 @@ export function ChatWindow({
                       {turn.content ? (
                         <AnswerText
                           text={turn.content}
-                          className="flex flex-col gap-2.5 font-body text-[0.95rem] leading-relaxed text-[var(--color-ink)]"
+                          className="flex flex-col gap-2.5 font-body text-[1.02rem] leading-relaxed text-[var(--color-ink)]"
                         />
                       ) : (
                         <p className="m-0 flex items-center gap-2 font-body text-[0.92rem] text-[var(--color-ink-muted)]" role="status">
@@ -450,7 +456,7 @@ export function ChatWindow({
                               ))}
                             </div>
                           )}
-                          <span className="font-mono text-[0.64rem] text-[var(--color-ink-muted)]">
+                          <span className="font-mono text-[0.7rem] text-[var(--color-ink-muted)]">
                             {turn.model}
                             {turn.webSearch ? " · web search on" : " · no web search"}
                           </span>
@@ -466,15 +472,29 @@ export function ChatWindow({
         )}
 
         {started && !followUp ? (
-          <div className="border-t border-[var(--color-rule)] px-4 py-3">
-            <button
-              type="button"
-              className="aspen-link font-body text-[0.88rem]"
-              disabled={sending}
-              onClick={() => setFollowUp(true)}
-            >
-              Ask a follow-up
-            </button>
+          <div className="flex flex-col gap-2 border-t border-[var(--color-rule)] px-4 py-3">
+            {mustRate ? (
+              <p className="m-0 font-body text-[0.98rem] text-[var(--color-ink)]">
+                Rate this answer to ask another question.{" "}
+                <button
+                  type="button"
+                  className="aspen-link whitespace-nowrap font-medium lg:hidden"
+                  onClick={() => ratingBox.current?.scrollIntoView?.({ behavior: "smooth", block: "start" })}
+                >
+                  Rate it ↓
+                </button>
+              </p>
+            ) : (
+              <button
+                type="button"
+                className="aspen-link self-start font-body text-[0.98rem]"
+                disabled={sending}
+                onClick={() => setFollowUp(true)}
+              >
+                Ask a follow-up
+              </button>
+            )}
+            <p className="m-0 font-body text-[0.8rem] leading-snug text-[var(--color-ink-muted)]">{DEMO_NOTE}</p>
           </div>
         ) : (
           <div className={`flex flex-col gap-3 px-4 pb-4 ${started ? "border-t border-[var(--color-rule)] pt-3" : "pt-4"}`}>
@@ -504,19 +524,16 @@ export function ChatWindow({
               {sending ? "Asking…" : started ? "Send" : "Ask the AI"}
             </button>
             {!started && (
-              <Disclosure
-                lead="Your question goes to OpenAI's GPT model, the one behind ChatGPT."
-                onOpen={() => sendEvent("disclosure", { opened: true }, stage)}
-              />
+              <Disclosure lead={DEMO_NOTE} onOpen={() => sendEvent("disclosure", { opened: true }, stage)} />
             )}
           </div>
         )}
       </div>
 
       {latest?.promptId ? (
-        <section aria-label="Your verdict" className="flex flex-col gap-4 lg:sticky lg:top-24">
+        <section ref={ratingBox} aria-label="Your verdict" className="flex scroll-mt-20 flex-col gap-4 lg:sticky lg:top-24">
           {rated.has(latest.promptId) ? (
-            <p className="m-0 font-body text-[0.92rem] text-[var(--color-success)]">Your rating is saved. Thank you.</p>
+            <p className="m-0 font-body text-[1rem] text-[var(--color-success)]">Your rating is saved. Thank you.</p>
           ) : (
             <RatingCard
               key={latest.promptId}
@@ -528,7 +545,7 @@ export function ChatWindow({
             <button
               type="button"
               onClick={onRateOverall}
-              className="flex items-center justify-between gap-3 rounded-xl border border-[var(--color-accent)] bg-[var(--color-accent-light)] px-4 py-3 text-left font-body text-[0.95rem] text-[var(--color-ink)]"
+              className="flex items-center justify-between gap-3 rounded-xl border border-[var(--color-accent)] bg-[var(--color-accent-light)] px-4 py-3 text-left font-body text-[1rem] text-[var(--color-ink)]"
             >
               Next: rate how AI did overall
               <span aria-hidden className="text-[var(--color-accent)]">→</span>
@@ -552,7 +569,7 @@ export function ChatWindow({
             <li>Pick a household, add details if you like, and ask.</li>
             <li>Rate the answer you get.</li>
             <li>Then rate how AI did overall, in Rate it.</li>
-            <li>Later tonight, check the answer against the encoded rules.</li>
+            <li>Later, check the answer against the encoded rules.</li>
           </ol>
         </aside>
       )}

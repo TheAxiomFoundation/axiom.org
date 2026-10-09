@@ -1,22 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { EVENT, STAGES, findHousehold, stageIndex, type StageId } from "@/lib/aspen/content";
-import { CHAT_KEY, ChatWindow, type SavedChat } from "./chat-window";
+import { EVENT, STAGES, findHousehold, isStageId, stageIndex, type StageId } from "@/lib/aspen/content";
+import { CHAT_KEY, ChatWindow, type ChatStatus, type SavedChat } from "./chat-window";
 import { OverallRating } from "./overall-rating";
-import {
-  EMPTY_PROFILE,
-  enterRun,
-  loadProfile,
-  participantId,
-  readStored,
-  saveProfile,
-  sendEvent,
-  useControl,
-  useResults,
-  writeStored,
-  type Profile,
-} from "./client";
+import { enterRun, participantId, readStored, sendEvent, useControl, useResults, writeStored } from "./client";
 import { ResultsBoard } from "./results-board";
 import {
   Agenda,
@@ -25,6 +13,7 @@ import {
   NextStepsForm,
   PolicyBenchContent,
   ThankYouContent,
+  VoteCard,
   WelcomeLanding,
   YourThread,
   type ThreadQuestion,
@@ -50,32 +39,41 @@ function readThread(): ThreadQuestion | null {
 }
 
 /** Stages whose screens show the room's live results. */
-const RESULT_STAGES: readonly StageId[] = ["reveal", "foundation", "dinner"];
+const RESULT_STAGES: readonly StageId[] = ["reveal", "foundation"];
+
+/** The stage a history entry belongs to, if it is one of ours. */
+function historyStage(state: unknown): StageId | null {
+  const stage = (state as { aspenStage?: unknown } | null)?.aspenStage;
+  return isStageId(stage) ? stage : null;
+}
 
 /**
  * The participant's page at axiom.org/aspen: a guided run of the session.
  * It follows the presenter's stage (polled from /api/aspen/state) until
  * the participant taps another stage, and keeps the chat mounted across
- * stages so a conversation survives the reveal.
+ * stages so a conversation survives the reveal. Stages the participant
+ * opens are browser history entries, so Back returns to the last stage
+ * instead of leaving the page.
  */
 export function AspenApp() {
   const { data: control } = useControl();
-  const [profile, setProfile] = useState<Profile>(EMPTY_PROFILE);
   const [view, setView] = useState<StageId>("welcome");
   const [follow, setFollow] = useState(true);
   // False until the stored stage is read, so the first render never overwrites it.
   const [hydrated, setHydrated] = useState(false);
+  const [tryStatus, setTryStatus] = useState<ChatStatus>({ asked: false, rated: false });
   const live = control?.live && stageIndex(control.stage) >= 0 ? (control.stage as StageId) : null;
   const top = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setProfile(loadProfile());
     participantId();
-    const saved = readStored<{ view: StageId; follow: boolean }>(VIEW_KEY, true);
-    if (saved && stageIndex(saved.view) >= 0) {
+    const stored = readStored<{ view: StageId; follow: boolean }>(VIEW_KEY, true);
+    const saved = stored && stageIndex(stored.view) >= 0 ? stored : null;
+    if (saved) {
       setView(saved.view);
       setFollow(saved.follow !== false);
     }
+    window.history.replaceState({ aspenStage: saved?.view ?? "welcome" }, "");
     setHydrated(true);
   }, []);
 
@@ -83,10 +81,24 @@ export function AspenApp() {
     if (hydrated) writeStored(VIEW_KEY, { view, follow }, true);
   }, [hydrated, view, follow]);
 
-  // Follow the presenter until the participant goes their own way.
+  // Back and Forward move between the stages this participant opened.
+  useEffect(() => {
+    const onPop = (event: PopStateEvent) => {
+      const stage = historyStage(event.state);
+      if (!stage) return;
+      setView(stage);
+      setFollow(live === null || stage === live);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [live]);
+
+  // Follow the presenter until the participant goes their own way. A move
+  // by the room replaces the history entry, so Back skips it.
   useEffect(() => {
     if (hydrated && follow && live && live !== view) {
       setView(live);
+      window.history.replaceState({ aspenStage: live }, "");
       window.scrollTo?.({ top: 0, behavior: "smooth" });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -96,6 +108,11 @@ export function AspenApp() {
   useEffect(() => {
     if (live && live === view && !follow) setFollow(true);
   }, [live, view, follow]);
+
+  useEffect(() => {
+    if (hydrated) sendEvent("stage_view", { stage: view, followed: follow }, view);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, view]);
 
   // A new run on the presenter view (after a rehearsal) starts this device
   // clean: the chat and Rate it remount without the old run's answers, and
@@ -109,11 +126,6 @@ export function AspenApp() {
       setFollow(true);
     }
   }, [hydrated, control?.live, control?.runId]);
-
-  useEffect(() => {
-    if (hydrated) sendEvent("stage_view", { stage: view, followed: follow }, view);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated, view]);
 
   const { data: results } = useResults(RESULT_STAGES.includes(view), 5000);
   const [thread, setThread] = useState<ThreadQuestion | null>(null);
@@ -145,16 +157,11 @@ export function AspenApp() {
   }, [menuOpen]);
 
   function go(stage: StageId) {
+    if (stage !== view) window.history.pushState({ aspenStage: stage }, "");
     setView(stage);
     setFollow(live === null || stage === live);
     setMenuOpen(false);
     window.scrollTo?.({ top: 0, behavior: "smooth" });
-  }
-
-  function updateProfile(next: Profile) {
-    setProfile(next);
-    saveProfile(next);
-    sendEvent("profile", { ...next }, view);
   }
 
   // "A shared foundation" unlocks the rules check. Without a live presenter it is always open.
@@ -162,13 +169,15 @@ export function AspenApp() {
   const current = STAGES.find((s) => s.id === view) ?? STAGES[0];
   const index = stageIndex(view);
   const nextStage = STAGES[index + 1];
+  // Try it ends with a rated answer: the Next link waits for one.
+  const mustRate = view === "try" && !tryStatus.rated;
   // One wide frame for every stage; text inside keeps its own reading width.
   const frame = "max-w-[1120px] sm:px-6";
   // Only nudge a participant who fell behind the room; one who went ahead is left alone.
   const behind = live !== null && stageIndex(live) > index;
 
   return (
-    <div ref={top} className={`relative z-1 min-h-screen bg-[var(--color-paper)] ${view === "welcome" ? "" : "pb-24"}`}>
+    <div ref={top} data-aspen-page className={`relative z-1 min-h-screen bg-[var(--color-paper)] ${view === "welcome" ? "" : "pb-24"}`}>
       <header className="sticky top-0 z-30 bg-[var(--color-paper)]/95 backdrop-blur">
         <div className={`mx-auto flex items-center justify-between gap-3 px-4 py-2.5 ${frame}`}>
           <button
@@ -196,13 +205,13 @@ export function AspenApp() {
               aria-controls="aspen-stages"
               aria-haspopup="true"
               onClick={() => setMenuOpen((v) => !v)}
-              className={`flex items-center gap-2 whitespace-nowrap rounded-full border py-1 pl-3 pr-2.5 font-body text-[0.8rem] text-[var(--color-ink)] transition-colors ${
+              className={`flex items-center gap-2 whitespace-nowrap rounded-full border py-1.5 pl-3 pr-2.5 font-body text-[0.88rem] text-[var(--color-ink)] transition-colors ${
                 menuOpen
                   ? "border-[var(--color-accent)] bg-[var(--color-accent-light)]"
                   : "border-[var(--color-rule)] bg-[var(--color-paper-elevated)] hover:border-[var(--color-accent)]"
               }`}
             >
-              <span className="font-mono text-[0.68rem] tabular-nums text-[var(--color-ink-muted)]">
+              <span className="font-mono text-[0.72rem] tabular-nums text-[var(--color-ink-muted)]">
                 {index + 1}/{STAGES.length}
               </span>
               {current.label}
@@ -217,7 +226,7 @@ export function AspenApp() {
                 className="absolute right-0 top-[calc(100%+0.5rem)] z-40 max-h-[calc(100dvh-5rem)] w-[min(17rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] p-2 shadow-[0_12px_32px_rgba(28,25,23,0.14)]"
               >
                 <span className="block px-2 pb-1 pt-1 font-mono text-[0.6rem] uppercase tracking-[0.18em] text-[var(--color-ink-muted)]">
-                  The evening
+                  Agenda
                 </span>
                 <Agenda live={live} current={view} onPick={go} compact />
               </nav>
@@ -234,7 +243,7 @@ export function AspenApp() {
           <button
             type="button"
             onClick={() => go(live)}
-            className="flex w-full items-center justify-center gap-2 bg-[var(--color-accent)] px-4 py-2 font-body text-[0.84rem] text-white"
+            className="flex w-full items-center justify-center gap-2 bg-[var(--color-accent)] px-4 py-2 font-body text-[0.9rem] text-white"
           >
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
             The room has moved on to {STAGES[stageIndex(live)].label}
@@ -245,13 +254,7 @@ export function AspenApp() {
 
       <div className={`mx-auto px-4 ${frame} ${view === "welcome" ? "" : "pt-8"}`}>
         {view === "welcome" ? (
-          <WelcomeLanding
-            profile={profile}
-            live={live}
-            onProfile={updateProfile}
-            onStart={() => go("try")}
-            onPick={go}
-          />
+          <WelcomeLanding onStart={() => go("try")} />
         ) : (
           <>
             <StageHeading title={current.title} summary={current.summary} />
@@ -262,11 +265,10 @@ export function AspenApp() {
         <div hidden={view !== "try"}>
           <ChatWindow
             key={runEpoch}
-            perspective={profile.perspective}
             stage={view}
             rulesUnlocked={rulesUnlocked}
-            onPerspective={(perspective) => updateProfile({ ...profile, perspective })}
             onRateOverall={() => go("rate")}
+            onStatus={setTryStatus}
           />
         </div>
 
@@ -276,28 +278,35 @@ export function AspenApp() {
           (results ? (
             <ResultsBoard summary={results.summary} />
           ) : (
-            <p className="m-0 font-body text-[0.92rem] text-[var(--color-ink-muted)]">Loading the room&apos;s results…</p>
+            <p className="m-0 font-body text-[0.95rem] text-[var(--color-ink-muted)]">Loading the room&apos;s results…</p>
           ))}
 
         {view === "scale" && <PolicyBenchContent />}
         {view === "foundation" && <FoundationContent sourceOfTruth={results?.summary.sourceOfTruth} />}
+        {view === "vote" && <VoteCard key={runEpoch} stage={view} />}
         {view === "groups" && <GroupsCard stage={view} />}
-        {view === "next" && <NextStepsForm profile={profile} />}
-        {view === "dinner" && <ThankYouContent summary={results?.summary} />}
+        {view === "next" && <NextStepsForm />}
+        {view === "dinner" && <ThankYouContent />}
 
         {nextStage && view !== "welcome" && (
           <button
             type="button"
             onClick={() => go(nextStage.id)}
-            className="group mt-16 flex w-full items-center justify-between gap-4 border-t-2 border-[var(--color-accent)] pt-4 text-left"
+            disabled={mustRate}
+            className="group mt-16 flex w-full items-center justify-between gap-4 border-t-2 border-[var(--color-accent)] pt-4 text-left disabled:cursor-not-allowed disabled:border-[var(--color-rule)]"
           >
             <span>
-              <span className="block font-mono text-[0.6rem] uppercase tracking-[0.18em] text-[var(--color-accent)]">Next</span>
-              <span className="block font-body text-[1.05rem] text-[var(--color-ink)] group-hover:text-[var(--color-accent)]">
-                {nextStage.title}
+              <span className="block font-mono text-[0.62rem] uppercase tracking-[0.18em] text-[var(--color-accent)] group-disabled:text-[var(--color-ink-muted)]">
+                Next
+              </span>
+              <span className="block font-body text-[1.08rem] text-[var(--color-ink)] group-hover:text-[var(--color-accent)] group-disabled:text-[var(--color-ink-muted)]">
+                {mustRate ? "Rate your answer to continue" : nextStage.title}
               </span>
             </span>
-            <span aria-hidden className="font-display text-[1.4rem] text-[var(--color-accent)] transition-transform group-hover:translate-x-1">
+            <span
+              aria-hidden
+              className="font-display text-[1.4rem] text-[var(--color-accent)] transition-transform group-hover:translate-x-1 group-disabled:text-[var(--color-ink-muted)]"
+            >
               →
             </span>
           </button>

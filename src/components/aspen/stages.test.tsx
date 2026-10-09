@@ -1,9 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DISCLOSURE, EVENT, GOLDEN_A, ONE_SET_OF_RULES, STAGES } from "@/lib/aspen/content";
-import { EMPTY_SUMMARY, type RunSummary } from "@/lib/aspen/results";
+import { BREAKOUT_PROMPT, DISCLOSURE, EVENT, GOLDEN_A, ONE_SET_OF_RULES, STAGES } from "@/lib/aspen/content";
 import { countWord, snapQcTotals } from "@/lib/verification-evidence";
-import { EMPTY_PROFILE } from "./client";
 import {
   Agenda,
   Disclosure,
@@ -12,8 +10,8 @@ import {
   GroupsCard,
   NextStepsForm,
   PolicyBenchContent,
-  ProfileForm,
   ThankYouContent,
+  VoteCard,
   WelcomeLanding,
   YourThread,
   type ThreadQuestion,
@@ -76,43 +74,6 @@ describe("Agenda", () => {
   });
 });
 
-describe("ProfileForm", () => {
-  it("reports perspective, state and role changes", () => {
-    const onChange = vi.fn();
-    const profile = { perspective: "resident", state: "Arizona", role: null };
-    render(<ProfileForm profile={profile} onChange={onChange} />);
-
-    expect(screen.getByRole("button", { name: /A resident/ })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: /A caseworker/ })).toHaveAttribute("aria-pressed", "false");
-    expect(screen.queryByRole("button", { name: /Start: ask the AI/ })).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: /A caseworker/ }));
-    expect(onChange).toHaveBeenLastCalledWith({ ...profile, perspective: "caseworker" });
-
-    const state = screen.getByRole("combobox", { name: /Your state/ });
-    expect(state).toHaveValue("Arizona");
-    fireEvent.change(state, { target: { value: "Ohio" } });
-    expect(onChange).toHaveBeenLastCalledWith({ ...profile, state: "Ohio" });
-    fireEvent.change(state, { target: { value: "" } });
-    expect(onChange).toHaveBeenLastCalledWith({ ...profile, state: null });
-
-    const role = screen.getByRole("combobox", { name: /Your role/ });
-    expect(role).toHaveValue("");
-    fireEvent.change(role, { target: { value: "Other" } });
-    expect(onChange).toHaveBeenLastCalledWith({ ...profile, role: "Other" });
-    fireEvent.change(role, { target: { value: "" } });
-    expect(onChange).toHaveBeenLastCalledWith({ ...profile, role: null });
-  });
-
-  it("shows the start button when onDone is given", () => {
-    const onDone = vi.fn();
-    render(<ProfileForm profile={EMPTY_PROFILE} onChange={vi.fn()} onDone={onDone} />);
-    expect(screen.getByRole("combobox", { name: /Your state/ })).toHaveValue("");
-    fireEvent.click(screen.getByRole("button", { name: /Start: ask the AI/ }));
-    expect(onDone).toHaveBeenCalledTimes(1);
-  });
-});
-
 describe("Disclosure", () => {
   it("opens and closes the details, reporting each opening", () => {
     const onOpen = vi.fn();
@@ -140,42 +101,17 @@ describe("Disclosure", () => {
 });
 
 describe("WelcomeLanding", () => {
-  it("shows the hero and the agenda before 'Start here'", () => {
-    stubFetch();
-    render(<WelcomeLanding profile={EMPTY_PROFILE} live={null} onProfile={vi.fn()} onStart={vi.fn()} onPick={vi.fn()} />);
-    const hero = screen.getByRole("heading", { level: 1, name: EVENT.title });
-    const agenda = screen.getByRole("heading", { level: 2, name: "The evening" });
-    const start = screen.getByRole("heading", { level: 2, name: /^Start here · Tonight, ask as$/ });
-    expect(hero.compareDocumentPosition(agenda) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(agenda.compareDocumentPosition(start) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.getByText(new RegExp(EVENT.date))).toBeInTheDocument();
-    expect(screen.getByText(new RegExp(`With ${EVENT.hosts}`))).toBeInTheDocument();
-    // The landing's agenda is two short threads (1–4, 5–8) of labels, without the description lines.
-    expect(screen.queryByText(STAGES[1].agenda)).not.toBeInTheDocument();
-    const threads = agenda.parentElement!.querySelectorAll("ol");
-    expect(threads).toHaveLength(2);
-    expect(threads[0]).toHaveTextContent(/^1Welcome2Try it3Rate it4What we saw5At scale$/);
-    expect(threads[1].querySelectorAll("li")).toHaveLength(4);
-    // The start form is the compact one: no descriptions, labels for screen readers only.
-    expect(screen.queryByText("Asking for yourself.")).not.toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Your state" })).toBeInTheDocument();
-    expect(screen.getByText("Your state (optional)")).toHaveClass("sr-only");
-    expect(screen.getByText("Tonight, ask as", { selector: "legend" })).toHaveClass("sr-only");
-  });
-
-  it("wires the agenda, the profile form and the disclosure", async () => {
+  it("says what this is and starts with one button, without asking who you are", async () => {
     const fetchMock = stubFetch();
-    const onProfile = vi.fn();
     const onStart = vi.fn();
-    const onPick = vi.fn();
-    render(<WelcomeLanding profile={EMPTY_PROFILE} live="scale" onProfile={onProfile} onStart={onStart} onPick={onPick} />);
-
-    expect(screen.getByText("Now")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /At scale/ }));
-    expect(onPick).toHaveBeenCalledWith("scale");
-
-    fireEvent.click(screen.getByRole("button", { name: /A caseworker/ }));
-    expect(onProfile).toHaveBeenCalledWith({ ...EMPTY_PROFILE, perspective: "caseworker" });
+    render(<WelcomeLanding onStart={onStart} />);
+    expect(screen.getByRole("heading", { level: 1, name: EVENT.title })).toBeInTheDocument();
+    expect(screen.getByText(STAGES[0].summary)).toBeInTheDocument();
+    expect(screen.getByText(`With ${EVENT.hosts}`)).toBeInTheDocument();
+    // No agenda and no profile form on the landing: the stage menu holds the agenda.
+    expect(screen.queryByRole("list")).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.queryByText(/tonight|evening/i)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Start: ask the AI/ }));
     expect(onStart).toHaveBeenCalledTimes(1);
@@ -266,37 +202,68 @@ describe("YourThread", () => {
   });
 });
 
-describe("GroupsCard", () => {
-  it("saves the group's use case and ideas", async () => {
+describe("VoteCard", () => {
+  it("sends one vote and remembers it", async () => {
     const fetchMock = stubFetch();
-    render(<GroupsCard stage="groups" />);
-    const save = screen.getByRole("button", { name: "Save our ideas" });
-    expect(save).toBeDisabled();
-
+    const { unmount } = render(<VoteCard stage="vote" />);
+    const vote = screen.getByRole("button", { name: "Vote" });
+    expect(vote).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /See and edit the rules/ }));
     const project = screen.getByRole("button", { name: /Project policy changes/ });
     fireEvent.click(project);
     expect(project).toHaveAttribute("aria-pressed", "true");
-    expect(save).toBeEnabled();
-    fireEvent.click(save);
-    expect(screen.getByText("Saved.")).toBeInTheDocument();
+    fireEvent.click(vote);
+    expect(screen.getByText("You voted: Project policy changes")).toBeInTheDocument();
     await waitFor(() =>
-      expect(bodies(fetchMock, "/api/aspen/event")[0]).toEqual({
-        participantId: "p-1",
-        kind: "breakout",
-        payload: { useCase: "project", note: "" },
-        stage: "groups",
-      }),
+      expect(bodies(fetchMock, "/api/aspen/event")).toEqual([
+        { participantId: "p-1", kind: "vote", payload: { useCase: "project" }, stage: "vote" },
+      ]),
     );
-
-    fireEvent.change(screen.getByPlaceholderText("Your group's ideas"), { target: { value: "Train staff" } });
-    expect(screen.queryByText("Saved.")).not.toBeInTheDocument();
+    unmount();
+    // Back on the stage later, the vote is still there and cannot be cast twice.
+    render(<VoteCard stage="vote" />);
+    expect(await screen.findByText("You voted: Project policy changes")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Vote" })).not.toBeInTheDocument();
   });
 
-  it("can save ideas without a use case", () => {
-    stubFetch();
+  it("ignores a stored vote it does not know", () => {
+    localStorage.setItem("aspen.vote.v1", JSON.stringify("bogus"));
+    render(<VoteCard stage="vote" />);
+    expect(screen.getByRole("button", { name: "Vote" })).toBeDisabled();
+  });
+});
+
+describe("GroupsCard", () => {
+  it("shares the group's best idea with the room, more than once", async () => {
+    const fetchMock = stubFetch();
     render(<GroupsCard stage="groups" />);
-    fireEvent.change(screen.getByPlaceholderText("Your group's ideas"), { target: { value: "Screeners" } });
-    expect(screen.getByRole("button", { name: "Save our ideas" })).toBeEnabled();
+    expect(screen.getByText(BREAKOUT_PROMPT)).toBeInTheDocument();
+    const share = screen.getByRole("button", { name: "Share with the room" });
+    expect(share).toBeDisabled();
+
+    const project = screen.getByRole("button", { name: "Project policy changes" });
+    fireEvent.click(project);
+    expect(project).toHaveAttribute("aria-pressed", "true");
+    // A use case alone is not an idea.
+    expect(share).toBeDisabled();
+    fireEvent.change(screen.getByRole("textbox", { name: /Your group's best idea/ }), {
+      target: { value: "Model the shelter cap" },
+    });
+    fireEvent.click(share);
+    expect(screen.getByText("Shared. It's on the big screen.")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /Your group's best idea/ })).toHaveValue("");
+
+    // Tapping the use case again clears it.
+    fireEvent.click(project);
+    expect(project).toHaveAttribute("aria-pressed", "false");
+    fireEvent.change(screen.getByRole("textbox", { name: /Your group's best idea/ }), { target: { value: "Train staff" } });
+    fireEvent.click(share);
+    await waitFor(() =>
+      expect(bodies(fetchMock, "/api/aspen/event")).toEqual([
+        { participantId: "p-1", kind: "breakout", payload: { useCase: "project", note: "Model the shelter cap" }, stage: "groups" },
+        { participantId: "p-1", kind: "breakout", payload: { useCase: null, note: "Train staff" }, stage: "groups" },
+      ]),
+    );
   });
 });
 
@@ -310,7 +277,7 @@ describe("NextStepsForm", () => {
 
   it("stays disabled until an email and a topic are given", () => {
     stubFetch();
-    render(<NextStepsForm profile={EMPTY_PROFILE} />);
+    render(<NextStepsForm />);
     const send = screen.getByRole("button", { name: "Send" });
     expect(send).toBeDisabled();
     fireEvent.change(screen.getByRole("textbox", { name: "Email" }), { target: { value: "ada@az.gov" } });
@@ -329,8 +296,8 @@ describe("NextStepsForm", () => {
   it("sends the pledge and thanks the participant", async () => {
     let resolve: (r: Response) => void = () => {};
     const fetchMock = stubFetch(() => new Promise<Response>((r) => (resolve = r)));
-    render(<NextStepsForm profile={{ perspective: null, state: "Arizona", role: null }} />);
-    expect(screen.getByRole("combobox", { name: "State" })).toHaveValue("Arizona");
+    render(<NextStepsForm />);
+    expect(screen.getByRole("combobox", { name: "State" })).toHaveValue("");
     fill();
     fireEvent.change(screen.getByRole("combobox", { name: "State" }), { target: { value: "Nevada" } });
     fireEvent.click(screen.getByRole("checkbox", { name: /Accurate AI answers/ }));
@@ -356,7 +323,7 @@ describe("NextStepsForm", () => {
 
   it("shows the server's error message", async () => {
     stubFetch(async () => jsonResponse({ error: "Enter a valid email." }, false));
-    render(<NextStepsForm profile={EMPTY_PROFILE} />);
+    render(<NextStepsForm />);
     fill();
     fireEvent.click(screen.getByRole("checkbox", { name: /State systems/ }));
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
@@ -366,7 +333,7 @@ describe("NextStepsForm", () => {
 
   it("falls back to a generic error when the request fails", async () => {
     stubFetch(() => Promise.reject(new Error("offline")));
-    render(<NextStepsForm profile={EMPTY_PROFILE} />);
+    render(<NextStepsForm />);
     fill();
     fireEvent.click(screen.getByRole("checkbox", { name: /State systems/ }));
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
@@ -375,7 +342,7 @@ describe("NextStepsForm", () => {
 
   it("falls back to a generic error when the server gives no reason", async () => {
     stubFetch(async () => jsonResponse({}, false));
-    render(<NextStepsForm profile={EMPTY_PROFILE} />);
+    render(<NextStepsForm />);
     fill();
     fireEvent.click(screen.getByRole("checkbox", { name: /State systems/ }));
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
@@ -384,17 +351,10 @@ describe("NextStepsForm", () => {
 });
 
 describe("ThankYouContent", () => {
-  const withPrompts = (states: string[]): RunSummary => ({
-    ...EMPTY_SUMMARY,
-    prompts: 12,
-    rated: 7,
-    pledges: { ...EMPTY_SUMMARY.pledges, states },
-  });
-
-  it("thanks the room and links onward without a summary", () => {
+  it("thanks the room and links onward, without the room's numbers", () => {
     render(<ThankYouContent />);
-    expect(screen.queryByText("Tonight, this room")).not.toBeInTheDocument();
     expect(screen.getByText(/Thank you to the Aspen Institute/)).toBeInTheDocument();
+    expect(screen.queryByText(/ready to go further|questions asked/)).not.toBeInTheDocument();
     const links = screen.getAllByRole("link");
     expect(links.map((a) => a.getAttribute("href"))).toEqual([
       "https://axiom.org/gallery/chatbot",
@@ -403,36 +363,15 @@ describe("ThankYouContent", () => {
     ]);
     for (const link of links) expect(link).toHaveAttribute("rel", "noopener noreferrer");
   });
-
-  it("hides the room's numbers when nobody asked", () => {
-    render(<ThankYouContent summary={EMPTY_SUMMARY} />);
-    expect(screen.queryByText("Tonight, this room")).not.toBeInTheDocument();
-  });
-
-  it("shows questions and ratings without a states column when no state pledged", () => {
-    render(<ThankYouContent summary={withPrompts([])} />);
-    expect(screen.getByText("Tonight, this room")).toBeInTheDocument();
-    expect(screen.getByText("12")).toBeInTheDocument();
-    expect(screen.getByText("7")).toBeInTheDocument();
-    expect(screen.queryByText(/ready to go further/)).not.toBeInTheDocument();
-  });
-
-  it("counts one state in the singular and several in the plural", () => {
-    const { rerender } = render(<ThankYouContent summary={withPrompts(["Arizona"])} />);
-    expect(screen.getByText("state ready to go further")).toBeInTheDocument();
-    rerender(<ThankYouContent summary={withPrompts(["Arizona", "Ohio"])} />);
-    expect(screen.getByText("states ready to go further")).toBeInTheDocument();
-    expect(screen.getByText("2")).toBeInTheDocument();
-  });
 });
 
 describe("PolicyBenchContent", () => {
-  it("shows the wrongful-denial shares and the Arizona case", () => {
+  it("shows the one number and the Arizona household every model got wrong", () => {
     render(<PolicyBenchContent />);
     expect(screen.getByText("41%")).toBeInTheDocument();
-    expect(screen.getByText("78%")).toBeInTheDocument();
-    expect(screen.getByText("242 of 591 answers from 46 models, for 13 households that qualify.")).toBeInTheDocument();
+    expect(screen.getByText("242 of 591 answers, from 46 models.")).toBeInTheDocument();
     expect(screen.getByText(/An Arizona household · 46 of 46 models said \$0/)).toBeInTheDocument();
+    expect(screen.getByText("The rules: eligible, $24 a month.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "policybench.org" })).toHaveAttribute("href", "https://policybench.org");
   });
 });

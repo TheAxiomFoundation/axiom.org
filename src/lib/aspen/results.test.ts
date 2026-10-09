@@ -194,6 +194,25 @@ describe('aspen results', () => {
     ])
   })
 
+  it('counts the votes on what to build first, in the order of the choices', () => {
+    const { votes, breakouts } = summarizeRun({
+      ...DATA,
+      events: [
+        { run_id: 'r', kind: 'vote', payload: { useCase: 'project' } },
+        { run_id: 'r', kind: 'vote', payload: { useCase: 'project' } },
+        { run_id: 'r', kind: 'vote', payload: { useCase: 'apply' } },
+      ],
+    })
+    expect(votes.map((c) => [c.id, c.count])).toEqual([
+      ['see-edit', 0],
+      ['project', 2],
+      ['flows', 0],
+      ['apply', 1],
+    ])
+    // Votes are not group ideas.
+    expect(breakouts.useCases.every((c) => c.count === 0)).toBe(true)
+  })
+
   it('counts the source-of-truth answers from Rate it', () => {
     const { sourceOfTruth } = summarizeRun({
       ...DATA,

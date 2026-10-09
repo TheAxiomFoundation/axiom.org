@@ -20,7 +20,8 @@ export function SignInForm({ open, next, presenter }: { open: boolean; next: str
       body: JSON.stringify({ password }),
     }).catch(() => null);
     if (response?.ok) {
-      window.location.assign(next);
+      // Replace, so Back from the page never lands on this form again.
+      window.location.replace(next);
       return;
     }
     const data = (await response?.json().catch(() => ({}))) as { error?: string } | undefined;
@@ -29,7 +30,7 @@ export function SignInForm({ open, next, presenter }: { open: boolean; next: str
   }
 
   return (
-    <div className="relative z-1 flex min-h-screen items-center justify-center bg-[var(--color-paper)] px-4">
+    <div data-aspen-page className="relative z-1 flex min-h-screen items-center justify-center bg-[var(--color-paper)] px-4">
       <div className="w-full max-w-[420px]">
         <BrandLogo className="mb-10 h-10" />
         <span className="kicker mb-5 inline-flex">

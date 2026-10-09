@@ -88,7 +88,7 @@ export function OverallRating({ stage }: { stage: string }) {
     }
     if (truth) sendEvent("survey", { question: SOURCE_OF_TRUTH.id, answer: truth }, stage);
     if (topics.length) sendEvent("discussion", { question: "misunderstood", topics, ratings: {}, note: "" }, stage);
-    // A note about the evening as a whole, not about one scale.
+    // A note about the session as a whole, not about one scale.
     if (note.trim()) sendEvent("discussion", { question: null, ratings: {}, topics: [], note }, stage);
     writeStored(OVERALL_KEY, true);
     setDone(true);
@@ -171,7 +171,7 @@ export function OverallRating({ stage }: { stage: string }) {
           value={note}
           onChange={(e) => setNote(e.target.value)}
           className={FIELD}
-          placeholder="A story, a worry or a surprise, from tonight or from your agency"
+          placeholder="A story, a worry or a surprise, from here or from your agency"
         />
       </label>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
