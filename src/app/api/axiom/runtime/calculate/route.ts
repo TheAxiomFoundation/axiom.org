@@ -1,10 +1,15 @@
 import { compositionScope } from "@/lib/axiom/runtime/composition-readiness";
-import { membershipTuples } from "@/lib/axiom/runtime/relation-roles";
+import {
+  membershipTuples,
+  upstreamAcceptsExplicitRoles,
+  upstreamRelationsMatch,
+} from "@/lib/axiom/runtime/relation-roles";
 import { NextResponse } from "next/server";
 import {
   getRuntimePackage,
   runCalculate,
   runCalculateRoot,
+  runtimeProxyGet,
   isRuntimeApiConfigured,
 } from "@/lib/axiom/runtime/api";
 import { clientKey, isRateLimited } from "../run/limiter";
@@ -161,6 +166,33 @@ export async function POST(request: Request) {
         );
       }
       relations = built.entries;
+      // The runtime keeps the convention for any relation no entry names,
+      // so the entries must cover exactly what IT binds for this root, not
+      // only what the source declares. Check its own catalog (cached
+      // upstream) before running; a probe the client skipped, a stale
+      // root-inputs response or mirror/runtime drift all land here.
+      const catalog = await runtimeProxyGet(
+        `/runtime/root-inputs?root=${encodeURIComponent(root)}`,
+        { timeoutMs: 20_000 }
+      );
+      if (catalog.status !== 200) {
+        return NextResponse.json(
+          { error: "unavailable", message: "The runtime's relationship catalog could not be read. Try again." },
+          { status: 503, headers: { "cache-control": "no-store" } }
+        );
+      }
+      if (
+        !upstreamAcceptsExplicitRoles(catalog.body) ||
+        !upstreamRelationsMatch(catalog.body, scope.relations)
+      ) {
+        return NextResponse.json(
+          {
+            error: "relationships_unsupported",
+            message: "The runtime's relationships for this scope do not match its declarations, so roles cannot be applied.",
+          },
+          { status: 422, headers: { "cache-control": "no-store" } }
+        );
+      }
     }
     const outcome = await runCalculateRoot({ root, facts, people, variables, ...(relations ? { relations } : {}) });
     if (outcome.kind === "unsupported") {

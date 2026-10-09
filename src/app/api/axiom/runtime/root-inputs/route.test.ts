@@ -49,7 +49,7 @@ it('offers Run for a several-relation scope only when the runtime accepts explic
  const refusal = (await older.json()).error;
  expect(refusal.code).toBe('relationships_unsupported');
  expect(refusal.message).toMatch(/cannot take them yet/);
- const runtimeRelations = EITC.map(relation => ({name:relation.relationId, slot_entities:['TaxUnit','Person'], tuple:['household:1','person:1:{index}']}));
+ const runtimeRelations = EITC.map(relation => ({name:relation.relationId, slot_entities:['TaxUnit','Person'], tuple:['household:1','person:1:{index}'], explicit:true}));
  vi.mocked(runtimeProxyGet).mockResolvedValueOnce({status:200,body:{status:'ok',data:{inputs:[],relation_membership:['convention','explicit'],relations:runtimeRelations.slice(1)}}});
  const mismatched = await GET(request());
  expect(mismatched.status).toBe(422);

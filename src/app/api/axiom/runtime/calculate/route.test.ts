@@ -7,11 +7,13 @@ const {
   runCalculateMock,
   runCalculateRootMock,
   isConfiguredMock,
+  runtimeProxyGetMock,
 } = vi.hoisted(() => ({
   getRuntimePackageMock: vi.fn(),
   runCalculateMock: vi.fn(),
   runCalculateRootMock: vi.fn(),
   isConfiguredMock: vi.fn(),
+  runtimeProxyGetMock: vi.fn(),
 }));
 
 vi.mock("@/lib/axiom/runtime/api", () => ({
@@ -19,6 +21,7 @@ vi.mock("@/lib/axiom/runtime/api", () => ({
   runCalculate: runCalculateMock,
   runCalculateRoot: runCalculateRootMock,
   isRuntimeApiConfigured: isConfiguredMock,
+  runtimeProxyGet: runtimeProxyGetMock,
 }));
 
 import { POST } from "./route";
@@ -246,6 +249,60 @@ describe("explicit relation roles (roles_required scopes)", () => {
     runCalculateRootMock.mockReset();
     isConfiguredMock.mockReturnValue(true);
     vi.mocked(compositionScope).mockResolvedValue({ readiness: "roles_required", relations: EITC });
+    runtimeProxyGetMock.mockReset();
+    runtimeProxyGetMock.mockResolvedValue(catalogFor(EITC));
+  });
+
+  /** The runtime's root-inputs payload for these declarations (axiom-api#267). */
+  const catalogFor = (relations: typeof EITC, patch: (entry: Record<string, unknown>, index: number) => Record<string, unknown> = (entry) => entry) => ({
+    status: 200,
+    body: {
+      status: "ok",
+      data: {
+        inputs: [],
+        relation_membership: ["convention", "explicit"],
+        relations: relations.map((relation, index) =>
+          patch(
+            {
+              name: relation.relationId,
+              slot_entities: relation.arguments,
+              tuple: relation.personSlot === 0 ? ["person:1:{index}", "household:1"] : ["household:1", "person:1:{index}"],
+              explicit: true,
+            },
+            index,
+          ),
+        ),
+      },
+    },
+  });
+
+  it("refuses before running when the runtime binds a relation the source does not declare, or cannot take explicit roles", async () => {
+    const extra = describeRelation({ name: "hidden_extra", kind: "data_relation", data_relation: { arity: 2, arguments: ["TaxUnit", "Person"] } }, "us:statutes/26/99");
+    for (const catalog of [
+      catalogFor([...EITC, extra]),
+      catalogFor(EITC, (entry, index) => (index === 0 ? { ...entry, explicit: false } : entry)),
+      catalogFor(EITC, (entry, index) => (index === 0 ? { ...entry, tuple: [...(entry.tuple as string[])].reverse() } : entry)),
+      { status: 200, body: { status: "ok", data: { inputs: [], relations: [] } } },
+    ]) {
+      runtimeProxyGetMock.mockResolvedValueOnce(catalog);
+      const response = await POST(post({ root: "us:statutes/26/32", facts: {}, people: { person_4: {} }, relations: roles, variables: ["eitc"] }));
+      expect(response.status).toBe(422);
+      expect((await response.json()).error).toBe("relationships_unsupported");
+    }
+    runtimeProxyGetMock.mockResolvedValueOnce({ status: 502, body: {} });
+    const unreadable = await POST(post({ root: "us:statutes/26/32", facts: {}, people: { person_4: {} }, relations: roles, variables: ["eitc"] }));
+    expect(unreadable.status).toBe(503);
+    expect(runCalculateRootMock).not.toHaveBeenCalled();
+  });
+
+  it("bounds role answers and never echoes arbitrary input", async () => {
+    const tooMany = { ...roles, "us:statutes/26/32#qualifying_child_of_tax_unit": Array.from({ length: 13 }, () => "person_2") };
+    const response = await POST(post({ root: "us:statutes/26/32", facts: {}, people: { person_2: {} }, relations: tooMany, variables: [] }));
+    expect(response.status).toBe(422);
+    expect((await response.json()).message).toMatch(/more than 12 members/);
+    const hostile = { ...roles, "us:statutes/26/32#qualifying_child_of_tax_unit": ["<script>alert(1)</script>"] };
+    const echoed = await POST(post({ root: "us:statutes/26/32", facts: {}, people: { person_2: {} }, relations: hostile, variables: [] }));
+    expect((await echoed.json()).message).not.toContain("<script>");
   });
 
   it("refuses to run without every relation answered, before any upstream call", async () => {

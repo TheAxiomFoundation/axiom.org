@@ -53,7 +53,7 @@ import {
   filterStandaloneRules,
   focusedComposeRule,
 } from "./compose-filter";
-import { buildRunRequestBody, mergeRunBatches, scenarioKey, traceRootIds, TRACE_BATCH_SIZE, type RunPayload } from "./run-request";
+import { buildRunRequestBody, classifyRunRefusal, mergeRunBatches, scenarioKey, traceRootIds, TRACE_BATCH_SIZE, type RunPayload } from "./run-request";
 import { trackAxiomEvent } from "@/lib/analytics";
 import {
   DEFAULT_LAUNCHER_MODE,
@@ -61,6 +61,7 @@ import {
 } from "./launcher-mode";
 import { loadCorpusModules } from "@/lib/axiom/corpus-live";
 import type { CorpusModule } from "@/lib/axiom/corpus-field";
+
 
 export function GraphViewerApp({
   onBackToOverview,
@@ -268,6 +269,9 @@ export function GraphViewerApp({
   const [runResult, setRunResult] = useState<{
     submittedFacts?: Record<string, unknown>;
     submittedPersonIds?: Record<string, string>;
+    /** The relation roles this run used, so a stale result is explained by
+     *  the roles that produced it, not the ones being edited. */
+    submittedRoles?: RoleMembership;
     outputs: Record<string, number | string | boolean | null>;
     trace: Array<{
       variable: string;
@@ -1246,7 +1250,14 @@ export function GraphViewerApp({
             // shed — return non-ok instead of blocking the whole run.
             // If even the bare run refuses, the caller styles the
             // blocked state from this same payload.
-            if (payload.error !== "runtime_error") {
+            // A refusal the user can fix by editing the household or its
+            // roles is a run error, not a blocked scope: Run stays.
+            if (classifyRunRefusal(payload.error) === "user_fixable") {
+              throw new Error(
+                payload.message ?? "The runtime refused this household as entered.",
+              );
+            }
+            if (classifyRunRefusal(payload.error) === "scope_blocked") {
               const blocked = new Error(
                 payload.message ??
                   "the engine declined this computation without a message.",
@@ -1366,7 +1377,7 @@ export function GraphViewerApp({
           // Rate limited or refused: the primary batch stands alone.
         }
       }
-      setRunResult({ ...data, submittedFacts: { ...scenario }, submittedPersonIds: Object.fromEntries(["person_1", ...extraMembers].map((id, index) => [id, `person:1:${index + 1}`])) });
+      setRunResult({ ...data, submittedFacts: { ...scenario }, submittedPersonIds: Object.fromEntries(["person_1", ...extraMembers].map((id, index) => [id, `person:1:${index + 1}`])), ...(runRoles ? { submittedRoles: runRoles } : {}) });
       setEditingRunInputs(false);
       trackRun("ok");
     } catch (err) {
@@ -1690,6 +1701,8 @@ export function GraphViewerApp({
     setRunBlocked(null);
     setRunUnavailableReason(null);
     setRootRelations({ relations: [], mode: "convention" });
+    // Every scope starts with no roles stated (relation-roles.tsx).
+    setRelationRoles({});
     if (!composeFocus) return;
     let cancelled = false;
     const root = fileLegalIdOf(composeFocus);
@@ -2475,7 +2488,7 @@ export function GraphViewerApp({
             onRun={() => void runScenario()}
             running={running}
             members={extraMembers}
-            roles={composeFocus && rootRelations.mode === "explicit" ? rolesForRun(rootRelations.relations, relationRoles, ["person_1", ...extraMembers]) : undefined}
+            roles={composeFocus && rootRelations.mode === "explicit" ? (runResult?.submittedRoles ?? rolesForRun(rootRelations.relations, relationRoles, ["person_1", ...extraMembers])) : undefined}
             run={runResult}
             renderInput={(id, selectedMember) => {
               const input = graph.inputs.find(item => item.legalId === id);

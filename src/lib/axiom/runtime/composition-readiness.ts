@@ -34,6 +34,9 @@ export async function compositionScope(root: string): Promise<CompositionScope> 
     const response = await cachedCompose(root);
     const data = (response.body as {data?: {files?: string[]; truncated?: boolean; graph?: {relations?: unknown[]}}})?.data;
     if (response.status !== 200 || !data || data.truncated || !data.files?.length) return unavailable;
+    // Compose omits relations today (always []); if it ever reports them,
+    // their shape is unverified here, so the scope fails closed until this
+    // check learns to read them. Source declarations below are the verdict.
     let value: CompositionScope = {readiness: data.graph?.relations?.length ? "relationships_unsupported" : "ready", relations: []};
     if (value.readiness === "ready") {
       const groups = new Map<string, Set<string>>();

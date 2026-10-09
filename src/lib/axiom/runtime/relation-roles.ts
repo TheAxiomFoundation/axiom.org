@@ -18,6 +18,8 @@ export const SUPPORTED_PERSON_UNITS = new Set(["TaxUnit", "Household", "TanfUnit
 export const UNIT_INSTANCE = "household:1";
 /** Scenario member ids: person_1 (the flat facts) through person_12. */
 export const MEMBER_ID_RE = /^person_(?:[1-9]|1[0-2])$/;
+/** The most people a scenario holds (person_1 … person_12). */
+export const MAX_ROLE_MEMBERS = 12;
 
 export interface RelationDecl {
   /** The declaring rule: `us:statutes/26/32#qualifying_child_of_tax_unit`. */
@@ -157,10 +159,19 @@ export function membershipTuples(
   if (unanswered) return { ok: false, error: "relation_roles_required", detail: unanswered.legalId };
   const entries: RelationEntry[] = [];
   for (const relation of relations) {
+    const answer = answers[relation.legalId] as unknown[];
+    // A scenario has at most 12 people; a longer answer cannot be honest.
+    if (answer.length > MAX_ROLE_MEMBERS) {
+      return { ok: false, error: "unknown_member", detail: `more than ${MAX_ROLE_MEMBERS} members` };
+    }
     const tuples: string[][] = [];
-    for (const member of new Set(answers[relation.legalId] as unknown[])) {
+    for (const member of new Set(answer)) {
       const index = typeof member === "string" && MEMBER_ID_RE.test(member) ? order.indexOf(member) : -1;
-      if (index < 0) return { ok: false, error: "unknown_member", detail: String(member) };
+      if (index < 0) {
+        // Echo only something shaped like a member id, never arbitrary input.
+        const detail = typeof member === "string" && /^[\w-]{1,32}$/.test(member) ? member : "an unrecognized member id";
+        return { ok: false, error: "unknown_member", detail };
+      }
       const person = `person:1:${index + 1}`;
       tuples.push(relation.personSlot === 0 ? [person, UNIT_INSTANCE] : [UNIT_INSTANCE, person]);
     }
@@ -217,15 +228,30 @@ export function upstreamAcceptsExplicitRoles(body: unknown): boolean {
 export function upstreamRelationsMatch(body: unknown, relations: RelationDecl[]): boolean {
   const listed = (body as {data?: {relations?: unknown}} | null)?.data?.relations;
   if (!Array.isArray(listed)) return false;
+  const declared = new Map(relations.map((relation) => [relation.relationId, relation]));
   const upstream = new Set<string>();
-  for (const relation of listed) {
-    const name = (relation as {name?: unknown} | null)?.name;
+  for (const entry of listed) {
+    const relation = entry as {name?: unknown; explicit?: unknown; tuple?: unknown} | null;
+    const name = relation?.name;
     if (typeof name !== "string") return false;
-    // The runtime cannot take explicit membership for a relation whose
-    // declaration it only guesses (axiom-api#267 `explicit: false`).
-    if ((relation as {explicit?: unknown}).explicit === false) return false;
+    // Only a relation the runtime marks able to take explicit membership
+    // (axiom-api#267 `explicit: true`); a guessed shape would be refused.
+    if (relation?.explicit !== true) return false;
+    // The runtime's slot layout must be the declared one: the person in the
+    // declared Person slot, the unit instance in the other.
+    const decl = declared.get(name);
+    const tuple = relation?.tuple;
+    if (decl && decl.personSlot !== undefined) {
+      if (
+        !Array.isArray(tuple) ||
+        tuple.length !== 2 ||
+        tuple[decl.personSlot] !== "person:1:{index}" ||
+        tuple[1 - decl.personSlot] !== UNIT_INSTANCE
+      ) {
+        return false;
+      }
+    }
     upstream.add(name);
   }
-  const declared = new Set(relations.map((relation) => relation.relationId));
-  return upstream.size === declared.size && [...declared].every((name) => upstream.has(name));
+  return upstream.size === declared.size && [...declared.keys()].every((name) => upstream.has(name));
 }

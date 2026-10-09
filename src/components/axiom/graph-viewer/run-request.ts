@@ -96,3 +96,26 @@ export function mergeRunBatches<T extends RunPayload>(primary: T, extra: RunPayl
     trace: [...primary.trace, ...extra.trace.filter((entry) => !traced.has(entry.variable))],
   };
 }
+
+/** Refusals that describe the household as entered (members, roles), not
+ *  the scope: they surface as a run error and leave Run available. */
+const USER_FIXABLE_REFUSALS = new Set([
+  "invalid_household",
+  "relation_roles_required",
+  "unknown_member",
+  "unknown_relation",
+]);
+
+/**
+ * How the run panel treats a compose-mode 422 by its error code:
+ * - "user_fixable": an error message, Run stays (editing can fix it);
+ * - "retry": runtime_error, usually one poisoned trace name that chunk
+ *   probing can shed;
+ * - "scope_blocked": the scope itself cannot run here (compile_failed,
+ *   closure_incomplete, relationships_unsupported, anonymous refusals).
+ */
+export function classifyRunRefusal(code: string | undefined): "user_fixable" | "retry" | "scope_blocked" {
+  if (code && USER_FIXABLE_REFUSALS.has(code)) return "user_fixable";
+  if (code === "runtime_error") return "retry";
+  return "scope_blocked";
+}
