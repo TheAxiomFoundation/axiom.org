@@ -341,6 +341,9 @@ export function GraphViewerApp({
   // Bumped by Retry buttons — re-fires the program load effect after
   // a transient graph/registry failure.
   const [reloadNonce, setReloadNonce] = useState(0);
+  // Re-reads the root catalog alone (not the graph) when the server's
+  // relation set has moved under a roles run.
+  const [catalogNonce, setCatalogNonce] = useState(0);
 
   const lastRunRequest = useRef<Record<string, unknown> | null>(null);
   // The results sheet's quick-adjust strip pages through answered
@@ -1227,6 +1230,18 @@ export function GraphViewerApp({
             "Running composed views isn't available on this deployment yet.",
           );
         }
+        // The route could not reach what it needs (the runtime's relation
+        // catalog, or the runtime itself): probing chunks would only repeat
+        // the same upstream reads. Stop with the route's own words.
+        if (composeFocus && response.status === 503) {
+          let payload: { message?: string | null } = {};
+          try {
+            payload = await response.clone().json();
+          } catch {
+            // No body: the generic message below.
+          }
+          throw new Error(payload.message ?? "The runtime is unavailable right now. Try again shortly.");
+        }
         // Rate limited: more requests only dig deeper — stop the whole
         // run (including chunk probing) with an honest message.
         if (response.status === 429) {
@@ -1253,6 +1268,12 @@ export function GraphViewerApp({
             // A refusal the user can fix by editing the household or its
             // roles is a run error, not a blocked scope: Run stays.
             if (classifyRunRefusal(payload.error) === "user_fixable") {
+              // The server's relation set moved since the grid loaded:
+              // reload the catalog so the grid shows the relations a run
+              // must answer (roles start over).
+              if (payload.error === "relation_roles_required" || payload.error === "unknown_relation") {
+                setCatalogNonce((n) => n + 1);
+              }
               throw new Error(
                 payload.message ?? "The runtime refused this household as entered.",
               );
@@ -1725,7 +1746,7 @@ export function GraphViewerApp({
         if (!cancelled) setComposeRunReady(null);
       });
     return () => { cancelled = true; };
-  }, [composeFocus, reloadNonce]);
+  }, [composeFocus, reloadNonce, catalogNonce]);
   // The run affordance exists in compose mode only once the probe
   // confirms the API can execute a composed root.
   const runAffordanceReady = !runBlocked && (!composeFocus || composeRunReady === true);

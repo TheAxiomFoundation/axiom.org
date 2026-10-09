@@ -153,7 +153,11 @@ export function membershipTuples(
   const byId = new Map(relations.map((relation) => [relation.legalId, relation]));
   const answers = membership as Record<string, unknown>;
   for (const key of Object.keys(answers)) {
-    if (!byId.has(key)) return { ok: false, error: "unknown_relation", detail: key };
+    if (!byId.has(key)) {
+      // Echo only something shaped like a relation id, never arbitrary input.
+      const detail = /^[\w:./#-]{1,256}$/.test(key) ? key : "an unrecognized relationship";
+      return { ok: false, error: "unknown_relation", detail };
+    }
   }
   const unanswered = relations.find((relation) => !Array.isArray(answers[relation.legalId]));
   if (unanswered) return { ok: false, error: "relation_roles_required", detail: unanswered.legalId };

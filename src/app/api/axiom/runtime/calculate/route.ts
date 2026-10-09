@@ -168,12 +168,13 @@ export async function POST(request: Request) {
       relations = built.entries;
       // The runtime keeps the convention for any relation no entry names,
       // so the entries must cover exactly what IT binds for this root, not
-      // only what the source declares. Check its own catalog (cached
-      // upstream) before running; a probe the client skipped, a stale
-      // root-inputs response or mirror/runtime drift all land here.
+      // only what the source declares. Read its own catalog FRESH before
+      // running (a cached catalog could itself be stale): a probe the
+      // client skipped, a stale root-inputs response or mirror/runtime
+      // drift all land here.
       const catalog = await runtimeProxyGet(
         `/runtime/root-inputs?root=${encodeURIComponent(root)}`,
-        { timeoutMs: 20_000 }
+        { timeoutMs: 20_000, fresh: true }
       );
       if (catalog.status !== 200) {
         return NextResponse.json(

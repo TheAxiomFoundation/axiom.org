@@ -293,6 +293,10 @@ describe("explicit relation roles (roles_required scopes)", () => {
     const unreadable = await POST(post({ root: "us:statutes/26/32", facts: {}, people: { person_4: {} }, relations: roles, variables: ["eitc"] }));
     expect(unreadable.status).toBe(503);
     expect(runCalculateRootMock).not.toHaveBeenCalled();
+    // The gate never trusts a cached catalog.
+    for (const call of runtimeProxyGetMock.mock.calls) {
+      expect(call).toEqual(["/runtime/root-inputs?root=us%3Astatutes%2F26%2F32", { timeoutMs: 20000, fresh: true }]);
+    }
   });
 
   it("bounds role answers and never echoes arbitrary input", async () => {
@@ -303,6 +307,10 @@ describe("explicit relation roles (roles_required scopes)", () => {
     const hostile = { ...roles, "us:statutes/26/32#qualifying_child_of_tax_unit": ["<script>alert(1)</script>"] };
     const echoed = await POST(post({ root: "us:statutes/26/32", facts: {}, people: { person_2: {} }, relations: hostile, variables: [] }));
     expect((await echoed.json()).message).not.toContain("<script>");
+    const hostileKey = await POST(post({ root: "us:statutes/26/32", facts: {}, people: { person_2: {} }, relations: { ...roles, ["<img src=x>".repeat(50)]: [] }, variables: [] }));
+    const body = await hostileKey.json();
+    expect(body.error).toBe("unknown_relation");
+    expect(body.message).not.toContain("<img");
   });
 
   it("refuses to run without every relation answered, before any upstream call", async () => {
