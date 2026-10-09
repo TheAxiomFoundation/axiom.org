@@ -359,7 +359,7 @@ export function GoldenContent() {
 // Vote, then small groups
 // ---------------------------------------------------------------------------
 
-/** One vote per phone (per run): what the team would build first. */
+/** One vote per phone (per run): what the team would build first. Once cast, it shrinks to one line. */
 export function VoteCard({ stage }: { stage: string }) {
   const [choice, setChoice] = useState<string | null>(null);
   const [voted, setVoted] = useState<string | null>(null);
@@ -371,10 +371,10 @@ export function VoteCard({ stage }: { stage: string }) {
   const votedFor = USE_CASES.find((u) => u.id === voted);
   if (votedFor) {
     return (
-      <Card className="flex flex-col gap-1 border-[var(--color-success)] p-5">
-        <span className="font-body text-[1.05rem] font-medium text-[var(--color-ink)]">You voted: {votedFor.label}</span>
-        <span className="font-body text-[0.95rem] text-[var(--color-ink-secondary)]">The room&apos;s votes are on the big screen.</span>
-      </Card>
+      <p className="m-0 font-body text-[1rem] text-[var(--color-ink)]">
+        <span aria-hidden className="mr-1.5 text-[var(--color-success)]">✓</span>
+        You voted: <strong className="font-medium">{votedFor.label}</strong>
+      </p>
     );
   }
   return (
@@ -405,6 +405,28 @@ export function VoteCard({ stage }: { stage: string }) {
       >
         Vote
       </button>
+    </div>
+  );
+}
+
+/** Small groups on one screen: vote on what to build first, then share the group's best idea. */
+export function SmallGroups({ stage }: { stage: string }) {
+  const step = "heading-sub m-0 mb-4 flex items-baseline gap-3";
+  const number = "font-mono text-[0.8rem] text-[var(--color-accent)]";
+  return (
+    <div className="flex flex-col gap-10">
+      <section>
+        <h2 className={step}>
+          <span className={number}>1</span>Vote
+        </h2>
+        <VoteCard stage={stage} />
+      </section>
+      <section>
+        <h2 className={step}>
+          <span className={number}>2</span>Talk it through
+        </h2>
+        <GroupsCard stage={stage} />
+      </section>
     </div>
   );
 }

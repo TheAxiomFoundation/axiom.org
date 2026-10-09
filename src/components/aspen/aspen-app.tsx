@@ -9,11 +9,10 @@ import { ResultsBoard } from "./results-board";
 import {
   Agenda,
   FoundationContent,
-  GroupsCard,
   NextStepsForm,
   PolicyBenchContent,
+  SmallGroups,
   ThankYouContent,
-  VoteCard,
   WelcomeLanding,
   YourThread,
   type ThreadQuestion,
@@ -283,8 +282,7 @@ export function AspenApp() {
 
         {view === "scale" && <PolicyBenchContent />}
         {view === "foundation" && <FoundationContent sourceOfTruth={results?.summary.sourceOfTruth} />}
-        {view === "vote" && <VoteCard key={runEpoch} stage={view} />}
-        {view === "groups" && <GroupsCard stage={view} />}
+        {view === "groups" && <SmallGroups key={runEpoch} stage={view} />}
         {view === "next" && <NextStepsForm />}
         {view === "dinner" && <ThankYouContent />}
 

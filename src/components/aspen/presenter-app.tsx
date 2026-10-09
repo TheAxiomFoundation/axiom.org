@@ -28,7 +28,7 @@ const SLIDE_W = 1600;
 const SLIDE_H = 900;
 
 /** Stages shown as more than one slide; the arrows step through them before moving the room. */
-const SLIDES: Partial<Record<StageId, number>> = { scale: 2, foundation: 2 };
+const SLIDES: Partial<Record<StageId, number>> = { scale: 2, foundation: 2, groups: 2 };
 const slideCount = (id: StageId) => SLIDES[id] ?? 1;
 
 /** The largest scale at which the 16:9 canvas fits the window. */
@@ -173,8 +173,8 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
                 {stage === "scale" && (sub === 0 ? <ScaleShareSlide /> : <ScaleCaseSlide />)}
                 {stage === "foundation" &&
                   (sub === 0 ? <FoundationSlide summary={summary} /> : <TiersSlide />)}
-                {stage === "vote" && <VoteSlide votes={summary.votes} />}
-                {stage === "groups" && <GroupsSlide summary={summary} />}
+                {stage === "groups" &&
+                  (sub === 0 ? <VoteSlide votes={summary.votes} /> : <GroupsSlide summary={summary} />)}
                 {stage === "next" && <NextSlide states={showStates ? summary.pledges.states : null} />}
                 {stage === "dinner" && <ThankYouSlide />}
               </div>

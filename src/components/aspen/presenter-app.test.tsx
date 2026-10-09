@@ -383,25 +383,28 @@ describe("PresenterApp stages", () => {
     expect(screen.queryByText(/In this room/)).not.toBeInTheDocument();
   });
 
-  it("shows the votes as they come in", async () => {
-    setup({ stage: "vote" });
-    await onStage("vote");
+  it("shows the votes as they come in, on the first small-groups slide", async () => {
+    setup({ stage: "groups" });
+    await onStage("groups");
+    expect(screen.getByText("1/2")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText(/· vote on your phone/)).toHaveTextContent("2 votes · vote on your phone"));
     expect(screen.getByTitle("Project policy changes").nextSibling?.nextSibling).toHaveTextContent("2");
   });
 
   it("waits for votes, and counts one in the singular", async () => {
-    setup({ stage: "vote", summary: EMPTY_SUMMARY });
-    await onStage("vote");
+    setup({ stage: "groups", summary: EMPTY_SUMMARY });
+    await onStage("groups");
     expect(screen.getByText("Votes appear here as people vote.")).toBeInTheDocument();
     cleanup();
-    setup({ stage: "vote", summary: summarizeRun({ ...DATA, events: [DATA.events[4]] }) });
+    setup({ stage: "groups", summary: summarizeRun({ ...DATA, events: [DATA.events[4]] }) });
     await waitFor(() => expect(screen.getByText(/· vote on your phone/)).toHaveTextContent("1 vote · vote on your phone"));
   });
 
-  it("shows the ideas groups share back", async () => {
+  it("shows the ideas groups share back, on the second small-groups slide", async () => {
     setup({ stage: "groups" });
     await onStage("groups");
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("2/2")).toBeInTheDocument();
     expect(screen.getByText(BREAKOUT_PROMPT)).toBeInTheDocument();
     expect(await screen.findByText("Show staff the rules")).toBeInTheDocument();
     expect(screen.getByText("See and edit the rules")).toBeInTheDocument();
@@ -411,6 +414,7 @@ describe("PresenterApp stages", () => {
   it("waits for the groups' ideas", async () => {
     setup({ stage: "groups", summary: EMPTY_SUMMARY });
     await onStage("groups");
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
     expect(screen.getByText("Ideas appear here as groups share them.")).toBeInTheDocument();
   });
 
@@ -433,8 +437,8 @@ describe("PresenterApp stages", () => {
   });
 
   it("offers the states only on next steps", async () => {
-    setup({ stage: "vote" });
-    await onStage("vote");
+    setup({ stage: "groups" });
+    await onStage("groups");
     expect(screen.queryByRole("button", { name: "Show the states going further" })).not.toBeInTheDocument();
   });
 

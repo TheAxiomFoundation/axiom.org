@@ -10,6 +10,7 @@ import {
   GroupsCard,
   NextStepsForm,
   PolicyBenchContent,
+  SmallGroups,
   ThankYouContent,
   VoteCard,
   WelcomeLanding,
@@ -213,7 +214,7 @@ describe("VoteCard", () => {
     fireEvent.click(project);
     expect(project).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(vote);
-    expect(screen.getByText("You voted: Project policy changes")).toBeInTheDocument();
+    expect(screen.getByText(/You voted:/)).toHaveTextContent("✓You voted: Project policy changes");
     await waitFor(() =>
       expect(bodies(fetchMock, "/api/aspen/event")).toEqual([
         { participantId: "p-1", kind: "vote", payload: { useCase: "project" }, stage: "vote" },
@@ -222,7 +223,7 @@ describe("VoteCard", () => {
     unmount();
     // Back on the stage later, the vote is still there and cannot be cast twice.
     render(<VoteCard stage="vote" />);
-    expect(await screen.findByText("You voted: Project policy changes")).toBeInTheDocument();
+    expect(await screen.findByText(/You voted:/)).toHaveTextContent("Project policy changes");
     expect(screen.queryByRole("button", { name: "Vote" })).not.toBeInTheDocument();
   });
 
@@ -230,6 +231,18 @@ describe("VoteCard", () => {
     localStorage.setItem("aspen.vote.v1", JSON.stringify("bogus"));
     render(<VoteCard stage="vote" />);
     expect(screen.getByRole("button", { name: "Vote" })).toBeDisabled();
+  });
+});
+
+describe("SmallGroups", () => {
+  it("puts the vote and the group's idea on one screen, in that order", () => {
+    stubFetch();
+    render(<SmallGroups stage="groups" />);
+    const vote = screen.getByRole("heading", { name: "1Vote" });
+    const talk = screen.getByRole("heading", { name: "2Talk it through" });
+    expect(vote.compareDocumentPosition(talk) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Vote" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Share with the room" })).toBeInTheDocument();
   });
 });
 

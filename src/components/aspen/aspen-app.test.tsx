@@ -286,16 +286,14 @@ describe("AspenApp without a live presenter", () => {
     await onView("try");
   });
 
-  it("walks from the vote through the small groups and next steps to the thank-you", async () => {
+  it("walks from the small groups through next steps to the thank-you", async () => {
     render(<AspenApp />);
     await onView("welcome");
 
-    fireEvent.click(nav().getByRole("button", { name: /Vote/ }));
-    await onView("vote");
-    expect(screen.getByRole("button", { name: "Vote" })).toBeDisabled();
-
-    fireEvent.click(nextTo("groups"));
+    fireEvent.click(nav().getByRole("button", { name: /Small groups/ }));
     await onView("groups");
+    // The vote and the group's idea share one screen.
+    expect(screen.getByRole("button", { name: "Vote" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Share with the room" })).toBeInTheDocument();
 
     fireEvent.click(nextTo("next"));
