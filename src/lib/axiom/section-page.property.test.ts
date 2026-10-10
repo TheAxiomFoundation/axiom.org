@@ -7,6 +7,7 @@ import {
   EXTERNAL_MATCH_CLOCK_SKEW_MS,
   EXTERNAL_MATCH_MAX_AGE_DAYS,
   declaredExternalComparisons,
+  rfc3339Instant,
   type SectionPageData,
 } from "./section-page";
 import type { ParityCaseSummary } from "./runtime/api";
@@ -26,16 +27,19 @@ const NOW = new Date("2026-10-04T08:00:00.000Z");
 const DAY = 86_400_000;
 const MAX_AGE = EXTERNAL_MATCH_MAX_AGE_DAYS * DAY;
 const SKEW = EXTERNAL_MATCH_CLOCK_SKEW_MS;
-/** The instant `ms` written with a UTC offset of `hours` (0 writes Z),
- *  or, for null, as UTC wall-clock time with no offset at all. */
-const write = (ms: number, hours: number | null) => {
-  if (hours === null) return new Date(ms).toISOString().slice(0, -1);
-  if (hours === 0) return new Date(ms).toISOString();
-  const local = new Date(ms + hours * 3_600_000).toISOString().slice(0, -1);
-  return `${local}${hours < 0 ? "-" : "+"}${String(Math.abs(hours)).padStart(2, "0")}:00`;
+const pad = (value: number, width = 2) => String(value).padStart(width, "0");
+/** The instant `ms` written with a UTC offset of `offsetMinutes` (0
+ *  writes Z) and `extra` digits after the milliseconds, or, for a null
+ *  offset, as UTC wall-clock time with no offset at all. */
+const write = (ms: number, offsetMinutes: number | null, extra = "") => {
+  const local = new Date(ms + (offsetMinutes ?? 0) * 60_000).toISOString().slice(0, 23) + extra;
+  if (offsetMinutes === null) return local;
+  if (offsetMinutes === 0) return `${local}Z`;
+  const abs = Math.abs(offsetMinutes);
+  return `${local}${offsetMinutes < 0 ? "-" : "+"}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
 };
 const at = (offsetMs: number) => write(NOW.getTime() + offsetMs, 0);
-const atOffset = (offsetMs: number, hours: number) => write(NOW.getTime() + offsetMs, hours);
+const atOffset = (offsetMs: number, hours: number) => write(NOW.getTime() + offsetMs, hours * 60);
 const zoneless = (offsetMs: number) => write(NOW.getTime() + offsetMs, null);
 /** NOW + offsetMs, mostly written in UTC, sometimes with another
  *  offset, sometimes with none. */
@@ -276,7 +280,9 @@ describe("declaredExternalComparisons invariants", () => {
   it("counts a lone match from the tolerance before its timestamp until 7 days after it, whenever it was observed and whatever offset it is written in", () => {
     // The result depends only on now - timestamp, and is current over
     // one unbroken stretch of time: [timestamp - 5 minutes, timestamp + 7 days].
-    // A timestamp without a UTC offset is never current.
+    // A timestamp without a UTC offset is never current. Digits past the
+    // millisecond put the timestamp a fraction of a millisecond later,
+    // which matters only at the newest edge.
     const elapsed = fc.oneof(
       fc.constantFrom(-5 * 60_000 - 1, -5 * 60_000, -1, 0, 1, 7 * DAY, 7 * DAY + 1),
       fc.integer({ min: -10 * 60_000, max: 10 * 60_000 }),
@@ -287,7 +293,8 @@ describe("declaredExternalComparisons invariants", () => {
         fc.integer({ min: Date.UTC(1971, 0, 1), max: Date.UTC(2100, 0, 1) }),
         elapsed,
         fc.constantFrom<number | null>(0, 0, 0, 2, -5, 14, -12, null),
-        (observedMs, elapsedMs, hours) => {
+        fc.constantFrom("", "", "000", "0001", "5", "999999"),
+        (observedMs, elapsedMs, hours, extra) => {
           const outcome = declaredExternalComparisons(
             [{ programId: "co-snap", jurisdiction: "us-co" }],
             [{
@@ -299,19 +306,127 @@ describe("declaredExternalComparisons invariants", () => {
               comparisonResults: [{
                 engine: "policyengine",
                 status: "match",
-                observedAt: write(observedMs, hours),
+                observedAt: write(observedMs, hours === null ? null : hours * 60, extra),
                 engineVersion: "2.9.0",
               }],
             }],
             new Date(observedMs + elapsedMs),
           );
+          // The timestamp is observedMs + f with 0 <= f < 1, and f > 0
+          // exactly when a digit past the millisecond is nonzero.
+          const later = /[1-9]/.test(extra);
+          const notAhead = elapsedMs > -5 * 60_000 || (elapsedMs === -5 * 60_000 && !later);
           expect(outcome!.engines[0]!.matchingCaseCount).toBe(
-            hours !== null && elapsedMs >= -5 * 60_000 && elapsedMs <= 7 * DAY ? 1 : 0,
+            hours !== null && notAhead && elapsedMs <= 7 * DAY ? 1 : 0,
           );
         },
       ),
       { numRuns: 1000 },
     );
+  });
+
+  // Instants whose written years stay within four digits under any offset.
+  const instant = fc.integer({ min: Date.UTC(1000, 0, 2), max: Date.UTC(9998, 11, 30) });
+  const offsetMinutes = fc.oneof(
+    fc.constantFrom(0, 0, 60, -300, 330, 345, -570, 780, 840, -720),
+    fc.integer({ min: -(23 * 60 + 59), max: 23 * 60 + 59 }),
+  );
+  const extraDigits = fc.array(fc.constantFrom(..."0123456789"), { maxLength: 12 }).map((d) => d.join(""));
+
+  it("reads every RFC 3339 date-time as the instant it names, as Date.parse does", () => {
+    // Differential: an independent parser (V8's) agrees on the
+    // millisecond for every valid date-time, whatever its offset or
+    // case; finer digits only mark the instant as later. V8 itself
+    // misreads some fractions of ten or more digits
+    // (".0006000000" as 6 ms), so the comparison stops at nine.
+    fc.assert(
+      fc.property(instant, offsetMinutes, extraDigits, fc.boolean(), (ms, offset, extra, lower) => {
+        const written = write(ms, offset, extra);
+        const value = lower ? written.replace("T", "t").replace("Z", "z") : written;
+        expect(rfc3339Instant(value)).toEqual({ ms, later: /[1-9]/.test(extra) });
+        if (3 + extra.length <= 9) expect(Date.parse(value)).toBe(ms);
+      }),
+      { numRuns: 1000 },
+    );
+  });
+
+  it("rejects a date-time with any field out of range", () => {
+    // Start from a valid date-time that would count at its own instant,
+    // then put one field out of range.
+    const daysIn = (year: number, month: number) => new Date(Date.UTC(year, month, 0)).getUTCDate();
+    const range = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => from + i);
+    fc.assert(
+      fc.property(
+        instant,
+        offsetMinutes,
+        fc.constantFrom("month", "day", "hour", "minute", "second", "offsetHour", "offsetMinute"),
+        fc.nat(),
+        (ms, offset, field, pick) => {
+          const local = new Date(ms + offset * 60_000);
+          const fields = {
+            year: local.getUTCFullYear(),
+            month: local.getUTCMonth() + 1,
+            day: local.getUTCDate(),
+            hour: local.getUTCHours(),
+            minute: local.getUTCMinutes(),
+            second: local.getUTCSeconds(),
+            offsetHour: Math.floor(Math.abs(offset) / 60),
+            offsetMinute: Math.abs(offset) % 60,
+          };
+          const sign = offset < 0 ? "-" : "+";
+          const assemble = (f: typeof fields) =>
+            `${pad(f.year, 4)}-${pad(f.month)}-${pad(f.day)}T${pad(f.hour)}:${pad(f.minute)}:${pad(f.second)}` +
+            `${sign}${pad(f.offsetHour)}:${pad(f.offsetMinute)}`;
+          const count = (value: string) =>
+            declaredExternalComparisons(
+              [{ programId: "co-snap", jurisdiction: "us-co" }],
+              [{
+                id: "a",
+                description: "Household",
+                program_id: "co-snap",
+                jurisdiction: "us-co",
+                comparisonEngines: ["policyengine"],
+                comparisonResults: [{ engine: "policyengine", status: "match", observedAt: value, engineVersion: null }],
+              }],
+              new Date(ms),
+            )!.engines[0]!.matchingCaseCount;
+          // Control: as written, it names `ms` to the second, so it counts.
+          expect(count(assemble(fields))).toBe(1);
+          const outOfRange = {
+            month: [0, ...range(13, 99)],
+            day: [0, ...range(daysIn(fields.year, fields.month) + 1, 99)],
+            hour: range(24, 99),
+            minute: range(60, 99),
+            second: range(60, 99),
+            offsetHour: range(24, 99),
+            offsetMinute: range(60, 99),
+          }[field];
+          const value = assemble({ ...fields, [field]: outOfRange[pick % outOfRange.length] });
+          expect(rfc3339Instant(value)).toBeNull();
+          expect(count(value)).toBe(0);
+        },
+      ),
+      { numRuns: 1000 },
+    );
+  });
+
+  it("rejects any text before or after a valid date-time", () => {
+    fc.assert(
+      fc.property(
+        instant,
+        offsetMinutes,
+        fc.string({ unit: "binary", minLength: 1, maxLength: 3 }),
+        fc.boolean(),
+        (ms, offset, text, before) => {
+          const written = write(ms, offset);
+          expect(rfc3339Instant(before ? text + written : written + text)).toBeNull();
+        },
+      ),
+      { numRuns: 1000 },
+    );
+    // The case that showed the end anchor matters: Date.parse reads it.
+    expect(Number.isNaN(Date.parse("2026-10-04T07:30:00Z\u0000"))).toBe(false);
+    expect(rfc3339Instant("2026-10-04T07:30:00Z\u0000")).toBeNull();
   });
 
   it("picks the first covering program whose cases declare any engine, or none", () => {

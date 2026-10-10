@@ -21,6 +21,7 @@ import {
   declaredExternalComparisons,
   EXTERNAL_MATCH_CLOCK_SKEW_MS,
   EXTERNAL_MATCH_MAX_AGE_DAYS,
+  rfc3339Instant,
 } from "./section-page";
 import type { ParityCaseSummary } from "./runtime/api";
 
@@ -790,9 +791,9 @@ describe("declaredExternalComparisons", () => {
   });
 
   it.each([
-    // Read in the server's timezone: half an hour old in UTC, seven and
-    // a half hours ahead in Los Angeles, eleven and a half hours old in
-    // Auckland.
+    // Date.parse reads this in the server's timezone: half an hour old
+    // in UTC, six and a half hours ahead in Los Angeles (PDT), thirteen
+    // and a half hours old in Auckland (NZDT).
     "2026-10-04T07:30:00",
     "2026-10-04T07:30:00.000",
     "2026-10-04 07:30:00",
@@ -806,6 +807,10 @@ describe("declaredExternalComparisons", () => {
     "2026-10-04T09:30:00+0200",
     "+002026-10-04T07:30:00Z",
     " 2026-10-04T07:30:00Z",
+    // Date.parse accepts a trailing NUL and reads 07:30Z.
+    "2026-10-04T07:30:00Z\u0000",
+    "2026-10-04T07:30:00Zjunk",
+    "2026-10-04T07:30:00+02:00\n",
   ])("counts a timestamp that is not an RFC 3339 date-time with a UTC offset as no current result: %j", (observedAt) => {
     const outcome = declaredExternalComparisons(
       [coSnap],
@@ -813,6 +818,61 @@ describe("declaredExternalComparisons", () => {
       NOW,
     );
     expect(outcome!.engines[0]).toMatchObject(NO_CURRENT_RESULT);
+  });
+
+  it.each([
+    // Date.parse rolls these over into an instant inside the window.
+    { observedAt: "2026-02-30T00:00:00Z", now: "2026-03-02T00:00:00Z" },
+    { observedAt: "2026-02-29T00:00:00Z", now: "2026-03-01T00:00:00Z" },
+    { observedAt: "2026-10-03T24:00:00Z", now: "2026-10-04T00:00:00Z" },
+    // Date.parse rejects these too.
+    { observedAt: "2026-10-04T07:30:60Z", now: "2026-10-04T08:00:00Z" },
+    { observedAt: "2026-10-04T07:60:00Z", now: "2026-10-04T08:00:00Z" },
+    { observedAt: "2026-13-04T07:30:00Z", now: "2026-10-04T08:00:00Z" },
+    { observedAt: "2026-00-04T07:30:00Z", now: "2026-10-04T08:00:00Z" },
+    { observedAt: "2026-10-00T07:30:00Z", now: "2026-10-04T08:00:00Z" },
+    { observedAt: "2026-10-32T07:30:00Z", now: "2026-10-04T08:00:00Z" },
+    { observedAt: "2026-10-05T07:30:00+24:00", now: "2026-10-04T08:00:00Z" },
+    { observedAt: "2026-10-04T08:30:00+00:60", now: "2026-10-04T08:00:00Z" },
+  ])("counts a date-time with a field out of range as no current result: $observedAt", ({ observedAt, now }) => {
+    const outcome = declaredExternalComparisons(
+      [coSnap],
+      [parityCase({ comparisonResults: [result("match", observedAt)] })],
+      new Date(now),
+    );
+    expect(outcome!.engines[0]).toMatchObject(NO_CURRENT_RESULT);
+  });
+
+  it.each([
+    { observedAt: "2028-02-29T00:00:00Z", now: "2028-03-01T00:00:00Z" },
+    { observedAt: "2026-10-04T07:30:00-00:00", now: "2026-10-04T08:00:00Z" },
+    { observedAt: "2026-10-04T21:29:00+13:59", now: "2026-10-04T08:00:00Z" },
+  ])("counts a valid date-time near a field's limit: $observedAt", ({ observedAt, now }) => {
+    const outcome = declaredExternalComparisons(
+      [coSnap],
+      [parityCase({ comparisonResults: [result("match", observedAt)] })],
+      new Date(now),
+    );
+    expect(outcome!.engines[0]).toMatchObject({ matchingCaseCount: 1, matchingAsOf: observedAt });
+  });
+
+  it.each([
+    // The newest edge is 08:05:00.000Z; any nonzero digit past it is later.
+    { observedAt: "2026-10-04T08:05:00.000000Z", counts: true },
+    { observedAt: "2026-10-04T08:05:00.0001Z", counts: false },
+    { observedAt: "2026-10-04T08:05:00.000000001Z", counts: false },
+    { observedAt: "2026-10-04T08:04:59.9999999Z", counts: true },
+    { observedAt: "2026-10-04T10:05:00.0001+02:00", counts: false },
+    // The oldest edge is 2026-09-27T08:00:00.000Z.
+    { observedAt: "2026-09-27T08:00:00.0000001Z", counts: true },
+    { observedAt: "2026-09-27T07:59:59.9999Z", counts: false },
+  ])("reads fractions past the millisecond exactly: $observedAt counts: $counts", ({ observedAt, counts }) => {
+    const outcome = declaredExternalComparisons(
+      [coSnap],
+      [parityCase({ comparisonResults: [result("match", observedAt)] })],
+      NOW,
+    );
+    expect(outcome!.engines[0]!.matchingCaseCount).toBe(counts ? 1 : 0);
   });
 
   it("decides the same way whatever timezone the server runs in", () => {
@@ -913,5 +973,48 @@ describe("declaredExternalComparisons", () => {
     expect(outcome?.engines).toMatchObject([
       { engine: "policyengine", caseCount: 1, caseDescriptions: [] },
     ]);
+  });
+});
+
+describe("rfc3339Instant", () => {
+  it("reads a date-time as its instant, whatever offset it is written in", () => {
+    for (const value of [
+      "2026-10-04T07:30:00Z",
+      "2026-10-04t07:30:00z",
+      "2026-10-04T09:30:00+02:00",
+      "2026-10-04T02:30:00-05:00",
+      "2026-10-04T07:30:00-00:00",
+    ]) {
+      expect(rfc3339Instant(value)).toEqual({ ms: Date.UTC(2026, 9, 4, 7, 30), later: false });
+    }
+  });
+
+  it("keeps the milliseconds and says whether finer digits put the instant after them", () => {
+    expect(rfc3339Instant("2026-10-04T07:30:00.5Z")).toEqual({ ms: Date.UTC(2026, 9, 4, 7, 30, 0, 500), later: false });
+    expect(rfc3339Instant("2026-10-04T07:30:00.123000Z")).toEqual({ ms: Date.UTC(2026, 9, 4, 7, 30, 0, 123), later: false });
+    expect(rfc3339Instant("2026-10-04T07:30:00.1230001Z")).toEqual({ ms: Date.UTC(2026, 9, 4, 7, 30, 0, 123), later: true });
+    // V8's Date.parse reads this one as 6 ms; it is 0.6 ms.
+    expect(rfc3339Instant("1970-01-01T00:00:00.0006000000Z")).toEqual({ ms: 0, later: true });
+  });
+
+  it("keeps years below 100 as written", () => {
+    // Date.UTC(50, 0, 1) is 1950; the year written is 0050.
+    expect(rfc3339Instant("0050-01-01T00:00:00Z")!.ms).toBe(Date.parse("0050-01-01T00:00:00Z"));
+    expect(new Date(rfc3339Instant("0050-01-01T00:00:00Z")!.ms).getUTCFullYear()).toBe(50);
+    expect(rfc3339Instant("0000-01-01T00:00:00Z")!.ms).toBe(Date.parse("0000-01-01T00:00:00Z"));
+  });
+
+  it.each([
+    "2026-10-04T07:30:00",
+    "2026-10-04T07:30Z",
+    "2026-10-04T07:30:00Z\u0000",
+    " 2026-10-04T07:30:00Z",
+    "2026-02-30T00:00:00Z",
+    "2026-10-04T24:00:00Z",
+    "2026-10-04T07:30:60Z",
+    "2026-10-04T07:30:00+24:00",
+    "",
+  ])("rejects %j", (value) => {
+    expect(rfc3339Instant(value)).toBeNull();
   });
 });

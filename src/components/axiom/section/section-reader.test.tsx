@@ -587,8 +587,8 @@ describe("SectionReader", () => {
     });
 
     it("hides a matching result whose timestamp names no UTC offset", () => {
-      // Half an hour old if read as UTC, but Date.parse reads it in the
-      // server's timezone, so it never counts.
+      // Half an hour old if read as UTC, but it names no offset, so
+      // Date.parse would read it in the server's timezone. It never counts.
       const { container } = render(
         <SectionReader
           data={makeData({ externalComparisons: matchObserved("2026-10-08T11:30:00") })}

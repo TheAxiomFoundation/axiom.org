@@ -154,27 +154,58 @@ export const EXTERNAL_MATCH_MAX_AGE_DAYS = 7;
  *  so five minutes of tolerance absorbs skew between the two. A result
  *  dated further ahead is not a current one: without this bound it
  *  would count from now until seven days after whatever date it
- *  carries. The chip shows the timestamp itself, so its date can lead
+ *  carries. The chip shows that timestamp's date, so the date can lead
  *  this server's clock by up to the tolerance. */
 export const EXTERNAL_MATCH_CLOCK_SKEW_MS = 5 * 60_000;
 
 /** An RFC 3339 date-time (section 5.6), which always names its UTC
  *  offset. axiom-api's OpenAPI schema declares `observed_at` as
- *  `format: date-time`. `Date.parse` reads a date-time without an
- *  offset in this server's timezone, so a string without one would
- *  count or not depending on where the page renders. It never counts. */
+ *  `format: date-time`. */
 const RFC3339_DATE_TIME =
-  /^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[Zz]|[+-]\d{2}:\d{2})$/;
+  /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(?:[Zz]|([+-])(\d{2}):(\d{2}))$/;
+
+/**
+ * The instant an RFC 3339 date-time names: its whole milliseconds since
+ * the epoch, and whether it lies strictly after them (a nonzero digit
+ * past the third fractional one). Null for anything else, so nothing
+ * here depends on how leniently `Date.parse` reads a string:
+ * - no UTC offset, which `Date.parse` reads in this server's timezone,
+ *   so the result would count or not depending on where the page
+ *   renders;
+ * - a field out of range (February 30th, hour 24, offset +24:00), which
+ *   `Date.parse` rolls over into another instant;
+ * - a leap second (:60), which `Date.parse` rejects anyway;
+ * - any other text, including text after a valid date-time.
+ */
+export function rfc3339Instant(value: string): { ms: number; later: boolean } | null {
+  const fields = RFC3339_DATE_TIME.exec(value);
+  if (!fields) return null;
+  const [year, month, day, hour, minute, second] = fields.slice(1, 7).map(Number);
+  const fraction = fields[7] ?? "";
+  const [sign, offsetHour, offsetMinute] = [fields[8], Number(fields[9] ?? 0), Number(fields[10] ?? 0)];
+  if (hour > 23 || minute > 59 || second > 59) return null;
+  if (offsetHour > 23 || offsetMinute > 59) return null;
+  // setUTCFullYear, unlike Date.UTC, keeps years 0-99 as written, and
+  // rolls an out-of-range month or day over, which the check below sees.
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+    return null;
+  }
+  date.setUTCHours(hour, minute, second, Number(fraction.slice(0, 3).padEnd(3, "0")));
+  const offset = (sign === "-" ? -1 : 1) * (offsetHour * 60 + offsetMinute) * 60_000;
+  return { ms: date.getTime() - offset, later: /[1-9]/.test(fraction.slice(3)) };
+}
 
 export interface ExternalResultCounts {
   match: number;
   known_difference: number;
   diff: number;
   errored: number;
-  /** No result; a result whose timestamp is missing, unparseable, or
-   *  not an RFC 3339 date-time with a UTC offset; or a result outside
-   *  the freshness window: older than EXTERNAL_MATCH_MAX_AGE_DAYS, or
-   *  dated more than EXTERNAL_MATCH_CLOCK_SKEW_MS ahead of now. */
+  /** No result; a result whose timestamp is missing or is not a valid
+   *  RFC 3339 date-time (see rfc3339Instant); or a result outside the
+   *  freshness window: older than EXTERNAL_MATCH_MAX_AGE_DAYS, or dated
+   *  more than EXTERNAL_MATCH_CLOCK_SKEW_MS ahead of now. */
   none: number;
 }
 
@@ -201,9 +232,10 @@ export interface DeclaredExternalComparisons {
 
 /**
  * Whether a published result still counts: it has a status, its
- * timestamp is an RFC 3339 date-time with a UTC offset, and it was
- * observed within [now - EXTERNAL_MATCH_MAX_AGE_DAYS,
- * now + EXTERNAL_MATCH_CLOCK_SKEW_MS], both ends included.
+ * timestamp is a valid RFC 3339 date-time, and the instant it names
+ * lies within [now - EXTERNAL_MATCH_MAX_AGE_DAYS,
+ * now + EXTERNAL_MATCH_CLOCK_SKEW_MS], both ends included, to the
+ * last fractional digit.
  */
 function currentResult(
   result: ParityCaseSummary["comparisonResults"][number],
@@ -213,16 +245,18 @@ function currentResult(
   observedAt: string;
 } {
   if (!result.status || !result.observedAt) return false;
-  if (!RFC3339_DATE_TIME.test(result.observedAt)) return false;
-  const observed = Date.parse(result.observedAt);
-  if (Number.isNaN(observed)) return false;
+  const observed = rfc3339Instant(result.observedAt);
+  if (!observed) return false;
   // 0 <= age <= the maximum, with the lower bound relaxed by the
   // clock-skew tolerance. A result dated further ahead than that is
-  // not fresh, so it shows no chip.
-  const age = now.getTime() - observed;
+  // not fresh, so it shows no chip. The instant is observed.ms, or a
+  // fraction of a millisecond after it when observed.later: that can
+  // only push it past the newest edge, never before the oldest.
+  const oldest = now.getTime() - EXTERNAL_MATCH_MAX_AGE_DAYS * 86_400_000;
+  const newest = now.getTime() + EXTERNAL_MATCH_CLOCK_SKEW_MS;
   return (
-    age >= -EXTERNAL_MATCH_CLOCK_SKEW_MS &&
-    age <= EXTERNAL_MATCH_MAX_AGE_DAYS * 86_400_000
+    observed.ms >= oldest &&
+    (observed.ms < newest || (observed.ms === newest && !observed.later))
   );
 }
 
@@ -289,9 +323,11 @@ export function declaredExternalComparisons(
               );
             }
           }
+          // Every matched timestamp passed currentResult, so it parses.
+          const instant = (observedAt: string) => rfc3339Instant(observedAt)!.ms;
           const oldest = matched.reduce<string | null>(
             (current, entry) =>
-              current === null || Date.parse(entry.observedAt) < Date.parse(current)
+              current === null || instant(entry.observedAt) < instant(current)
                 ? entry.observedAt
                 : current,
             null,
