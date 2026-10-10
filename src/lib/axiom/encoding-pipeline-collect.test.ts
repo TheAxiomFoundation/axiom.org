@@ -5,6 +5,7 @@ import {
   conceptModuleKeys,
   containmentQueries,
   containsKey,
+  encoderLoop,
   encoderTries,
   firstSyncAfter,
   jobPhases,
@@ -19,6 +20,7 @@ import {
   checkErrorFromLog,
   checkErrorLookups,
   needsLogRead,
+  needsStepRead,
   parseVersion,
   versionLookups,
   errorRule,
@@ -432,9 +434,13 @@ describe("failureLookups", () => {
       run({ id: 6, status: "in_progress", conclusion: null }),
     ];
     const encoder = [encoderRow({ timestamp: "2026-09-04T00:20:00Z" })];
-    const previous = new Map([["2", { failure_source: "log" }]]);
+    const previous = new Map([["2", { failure_source: "log", failed_step: "job / Verify immutable checkout identities" }]]);
     expect(failureLookups(runs, encoder, previous, NOW, 10).map((r) => r.id)).toEqual([5, 1]);
     expect(failureLookups(runs, encoder, previous, NOW, 1).map((r) => r.id)).toEqual([5]);
+    // A failure its log explains without the step it failed in is read again, for the step.
+    const stepless = new Map([["2", { failure_source: "log", encoder_error: "jq: error: syntax error" }]]);
+    expect(needsStepRead(stepless.get("2")!)).toBe(true);
+    expect(failureLookups(runs, encoder, stepless, NOW, 10).map((r) => r.id)).toEqual([5, 2, 1]);
   });
 
   it("looks up each citation's latest failure first and never a cancelled run", () => {
@@ -1116,5 +1122,78 @@ describe("encoder tries", () => {
     expect(attempt.tries).toEqual([{ attempt: 1, model: "m", ms: 5, cost: null, ok: false, error: null }]);
     const [unmatched] = buildAttempts(inputs());
     expect(unmatched).not.toHaveProperty("tries");
+  });
+
+  it("keeps a timed try's start, whole time, and phases, with a check phase's time by tool", () => {
+    const iterations = [
+      {
+        attempt: 1,
+        model: "m",
+        duration_ms: 40_000,
+        started_at: "2026-10-07T15:21:07.200Z",
+        finished_at: "2026-10-07T15:23:47.200Z",
+        wall_duration_ms: 160_000,
+        phases: [
+          { name: "prepare", started_at: "2026-10-07T15:21:07.200Z", duration_ms: 5_000 },
+          { name: "model_call", duration_ms: 40_000 },
+          {
+            name: "candidate_validation",
+            duration_ms: 100_000,
+            breakdown_ms: { ci_test_cases: 70_000, rules_engine_compile: 20_000, other: 10_000, broken: "x" },
+          },
+          { name: "retry_handoff", duration_ms: 15_000 },
+          { duration_ms: 3 },
+        ],
+      },
+    ];
+    expect(encoderTries(encoderRow({ iterations }))).toEqual([
+      {
+        attempt: 1,
+        model: "m",
+        ms: 40_000,
+        cost: null,
+        ok: false,
+        error: null,
+        startedAt: "2026-10-07T15:21:07.200Z",
+        wallMs: 160_000,
+        phases: [
+          { name: "prepare", ms: 5_000 },
+          { name: "model_call", ms: 40_000 },
+          { name: "candidate_validation", ms: 100_000, tools: { ci_test_cases: 70_000, rules_engine_compile: 20_000, other: 10_000 } },
+          { name: "retry_handoff", ms: 15_000 },
+        ],
+      },
+    ]);
+    // A try without its start or whole time keeps the model time only, as older records do.
+    const untimed = encoderTries(encoderRow({ iterations: [{ ...iterations[0], started_at: undefined }] }));
+    expect(untimed?.[0]).not.toHaveProperty("phases");
+  });
+
+  it("reads the encoder record's loop clock, and none from an older record", () => {
+    const loop_timing = {
+      schema: "axiom-encode/encode-loop-timing/v1",
+      started_at: "2026-10-07T15:20:00.000Z",
+      finished_at: "2026-10-07T15:23:20.000Z",
+      wall_duration_ms: 200_000,
+      setup_ms: 20_000,
+      tries_ms: 160_000,
+      between_tries_ms: 0,
+      finalize_ms: 20_000,
+      try_count: 1,
+    };
+    expect(encoderLoop(encoderRow({ loop_timing }))).toEqual({
+      startedAt: "2026-10-07T15:20:00.000Z",
+      wallMs: 200_000,
+      setupMs: 20_000,
+      triesMs: 160_000,
+      betweenMs: 0,
+      finalizeMs: 20_000,
+    });
+    expect(encoderLoop(encoderRow())).toBeNull();
+    expect(encoderLoop(encoderRow({ loop_timing: { setup_ms: 1 } }))).toBeNull();
+    const [attempt] = buildAttempts(inputs({ encoderRuns: [encoderRow({ loop_timing })] }));
+    expect(attempt.encode_loop).toMatchObject({ wallMs: 200_000, setupMs: 20_000 });
+    const [older] = buildAttempts(inputs({ encoderRuns: [encoderRow()] }));
+    expect(older).not.toHaveProperty("encode_loop");
   });
 });

@@ -136,17 +136,18 @@ export function runLedger(
     .sort(newest);
 }
 
-/** A section's runs in a few lines: how many and over what span, how they ended, why they failed, and the latest. */
+/** A section's runs in a few lines: how many, where and why each stopped, and the latest. */
 export interface SectionOverview {
   runs: number;
-  firstAt: string;
+  /** How many of them failed or were cancelled. */
+  failed: number;
   lastAt: string;
-  /** The oldest and newest encoder versions its runs used, when recorded. */
-  encoders: { from: string; to: string } | null;
-  /** Where each run ended, as a section's status reads, largest first. */
-  ended: Array<{ label: string; tone: LedgerTone; count: number }>;
-  /** What stopped the runs that failed, by headline, largest first; `detail` is one full message. */
-  causes: Array<{ label: string; count: number; detail: string }>;
+  /**
+   * Where each run stopped and why, one line per pair, largest first: its
+   * status as a section's status reads ("Failed to compile"), and for a failed
+   * run the cause's headline (`cause`) and one full message (`detail`).
+   */
+  stops: Array<{ label: string; cause: string | null; tone: LedgerTone; count: number; detail: string | null }>;
   latest: RunRow;
 }
 
@@ -156,28 +157,21 @@ function counted<T extends { count: number; label: string }>(groups: Map<string,
 
 export function sectionOverview(section: LedgerSection): SectionOverview {
   const runs = section.runs;
-  const ended = new Map<string, { label: string; tone: LedgerTone; count: number }>();
-  const causes = new Map<string, { label: string; count: number; detail: string }>();
+  const stops = new Map<string, SectionOverview["stops"][number]>();
+  let failed = 0;
   for (const run of runs) {
     const { status, tone } = sectionStatus(run);
-    ended.set(status, { label: status, tone, count: (ended.get(status)?.count ?? 0) + 1 });
-    if (run.cause) {
-      const label = causeHeadline(run.cause);
-      const known = causes.get(label);
-      causes.set(label, { label, count: (known?.count ?? 0) + 1, detail: known?.detail ?? run.cause });
-    }
+    if (tone === "failed" && (run.outcome === "failed" || run.outcome === "cancelled")) failed++;
+    const cause = run.cause ? causeHeadline(run.cause) : null;
+    const key = `${status}|${cause ?? ""}`;
+    const known = stops.get(key);
+    stops.set(key, {
+      label: status,
+      cause,
+      tone,
+      count: (known?.count ?? 0) + 1,
+      detail: known?.detail ?? run.cause ?? null,
+    });
   }
-  const versions = runs
-    .map((run) => run.encoder)
-    .filter((version): version is string => !!version)
-    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-  return {
-    runs: runs.length,
-    firstAt: runs.at(-1)!.dispatchedAt,
-    lastAt: runs[0].dispatchedAt,
-    encoders: versions.length ? { from: versions[0], to: versions.at(-1)! } : null,
-    ended: counted(ended),
-    causes: counted(causes),
-    latest: runs[0],
-  };
+  return { runs: runs.length, failed, lastAt: runs[0].dispatchedAt, stops: counted(stops), latest: runs[0] };
 }

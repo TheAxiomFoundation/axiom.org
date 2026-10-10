@@ -75,6 +75,7 @@ import {
   mergeValidationKey,
   mergeValidationLookups,
   needsLogRead,
+  needsStepRead,
   oldestUnsyncedMerge,
   oracleVerdicts,
   parseDiagnostics,
@@ -191,7 +192,7 @@ async function readAll(table, select, build = (query) => query) {
 }
 
 const ENCODER_COLUMNS =
-  "id,timestamp,citation,status:outcome->>status,apply_error:outcome->>apply_error,note,generation_attempt_count,estimated_cost_usd,iterations";
+  "id,timestamp,citation,status:outcome->>status,apply_error:outcome->>apply_error,note,generation_attempt_count,estimated_cost_usd,iterations,loop_timing:outcome->encode_loop_timing";
 
 /** Encoder records, with their Actions run id once axiom-encode's migration 008 adds it. */
 async function readEncoderRuns(since) {
@@ -611,6 +612,23 @@ async function logError(runId) {
 }
 
 async function lookUpFailure(run, known) {
+  // A run its log explains, without its step: only the step needs reading.
+  if (known && needsStepRead(known)) {
+    try {
+      const { failed_step } = await jobsDetail(run.id);
+      if (!failed_step) return null;
+      return {
+        source: "log",
+        citation: known.citation ?? null,
+        failed_step,
+        error: known.encoder_error ?? null,
+        rule: known.encoder_error_rule ?? null,
+      };
+    } catch (error) {
+      console.warn(`jobs for run ${run.id}: ${error.message}`);
+      return null;
+    }
+  }
   // A run already explained by its step alone only needs its log read.
   let detail = known && needsLogRead(known)
     ? {
@@ -636,6 +654,15 @@ async function lookUpFailure(run, known) {
   if (detail && !detail.error && !detail.rule) {
     const printed = await logError(run.id);
     if (printed !== undefined) detail = { ...detail, source: "log", error: printed };
+  }
+  // The step that failed, from the jobs API, when the diagnostics bundle did not name it.
+  if (detail && !detail.failed_step) {
+    try {
+      const { failed_step } = await jobsDetail(run.id);
+      if (failed_step) detail = { ...detail, failed_step };
+    } catch (error) {
+      console.warn(`jobs for run ${run.id}: ${error.message}`);
+    }
   }
   return detail;
 }
@@ -784,6 +811,9 @@ const FIRST_TESTS_COLUMNS = FIRST_TESTS_CARRIED;
 // Added by the 2026-10-06 tries migration: derived from encoder records each pass.
 const TRIES_COLUMNS = ["tries"];
 
+// Added by the 2026-10-07 loop-timing migration: derived from encoder records each pass.
+const LOOP_COLUMNS = ["encode_loop"];
+
 async function upsert(rows) {
   // Each migration's columns are written only once that migration is applied.
   for (const [name, group] of [
@@ -793,6 +823,7 @@ async function upsert(rows) {
     ["step time", TIME_COLUMNS],
     ["first tests", FIRST_TESTS_COLUMNS],
     ["tries", TRIES_COLUMNS],
+    ["loop timing", LOOP_COLUMNS],
   ]) {
     if (await columnsExist(group)) continue;
     console.log(`${name} columns not written yet (migration not applied)`);

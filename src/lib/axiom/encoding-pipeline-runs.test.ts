@@ -241,6 +241,7 @@ describe("encodeParts", () => {
       ["setup", [":3:260"]],
       ["encode", ["Encoded:2:480", "Failed:1:1200"]],
       ["model", []],
+      ["checks", []],
       ["publish", [":2:35"]],
     ]);
   });
@@ -261,7 +262,7 @@ describe("encodeParts", () => {
 
   it("says when no part is timed", () => {
     const { parts, tries } = encodeParts([]);
-    expect(parts.map((part) => part.untimed)).toEqual(["Not timed yet", "Not timed yet", "Not timed yet", "Not timed yet"]);
+    expect(parts.map((part) => part.untimed)).toEqual(Array(5).fill("Not timed yet"));
     expect(tries).toEqual({ tries: [], encoded: [], failed: [], recorded: 0, finished: 0 });
   });
 });
@@ -409,5 +410,119 @@ describe("encode loop tries", () => {
     );
     const model = parts.find((part) => part.key === "model")!;
     expect(model.timings.map((t) => `${t.label}:${t.runs}:${t.medianMs / 1000}`)).toEqual(["Encoded:1:57", "Failed:1:120"]);
+  });
+});
+
+describe("timed tries", () => {
+  // Dispatched 10:00:00, approved 10:01:00, setup 2m: the encode step's bar runs from 3m to 13m.
+  const tries = [
+    {
+      attempt: 1,
+      model: "gpt-6-luna",
+      ms: 40_000,
+      cost: 0.01,
+      ok: false,
+      error: "statutes/7/2012/j.yaml: ci: Test input assignment missing: x",
+      startedAt: "2026-09-20T10:03:20Z",
+      wallMs: 160_000,
+      phases: [
+        { name: "prepare", ms: 5_000 },
+        { name: "model_call", ms: 40_000 },
+        { name: "candidate_validation", ms: 100_000, tools: { ci_test_cases: 70_000, rules_engine_compile: 20_000, other: 10_000 } },
+        { name: "retry_handoff", ms: 15_000 },
+      ],
+    },
+    {
+      attempt: 2,
+      model: "gpt-6-sol",
+      ms: 45_000,
+      cost: 0.2,
+      ok: true,
+      error: null,
+      startedAt: "2026-09-20T10:06:10Z",
+      wallMs: 300_000,
+      phases: [
+        { name: "prepare", ms: 5_000 },
+        { name: "model_call", ms: 45_000 },
+        { name: "overlay_validation", ms: 250_000, tools: { ci_test_cases: 200_000, other: 50_000 } },
+      ],
+    },
+  ];
+  const loop = { startedAt: "2026-09-20T10:03:00Z", wallMs: 500_000, setupMs: 20_000, triesMs: 460_000, betweenMs: 10_000, finalizeMs: 10_000 };
+  const attempt = (overrides = {}) =>
+    pipelineAttempt({
+      run_conclusion: "success",
+      encode_started_at: "2026-09-20T10:01:00Z",
+      setup_seconds: 120,
+      encode_seconds: 600,
+      tries,
+      encode_loop: loop,
+      ...overrides,
+    });
+
+  it("places each try's phases on the run's clock, inside the encode step", () => {
+    const timeline = runTimeline(runRow(attempt()), 0);
+    expect(timeline.tries[0].phases.map((p) => [p.name, p.kind, p.part, p.startMs / 1000, p.ms / 1000])).toEqual([
+      ["prepare", "other", null, 200, 5],
+      ["model_call", "model", null, 205, 40],
+      ["candidate_validation", "checks", "candidate", 245, 100],
+      ["retry_handoff", "other", null, 345, 15],
+    ]);
+    expect(timeline.tries.map((t) => t.wallMs)).toEqual([160_000, 300_000]);
+    expect(timeline.tries[0].phases[2].tools.map((t) => t.label)).toEqual(["test cases", "compile", "other"]);
+    // A try that the runner's clock puts before the step starts at the step's bar.
+    const early = runTimeline(runRow(attempt({ tries: [{ ...tries[0], startedAt: "2026-09-20T10:02:00Z" }] })), 0);
+    expect(early.tries[0].phases[0].startMs).toBe(180_000);
+  });
+
+  it("splits the loop's time by kind, the checks by part and tool, and the time outside the tries", () => {
+    const { split } = runTimeline(runRow(attempt()), 0);
+    expect(split!.kinds.map((k) => [k.kind, k.ms / 1000])).toEqual([
+      ["model", 85],
+      ["checks", 350],
+      ["other", 25],
+    ]);
+    const checks = split!.kinds[1];
+    expect(checks.parts.map((p) => [p.label, p.ms / 1000])).toEqual([
+      ["the candidate", 100],
+      ["dependent modules", 250],
+    ]);
+    expect(checks.tools.map((t) => [t.label, t.ms / 1000])).toEqual([
+      ["test cases", 270],
+      ["compile", 20],
+      ["other", 60],
+    ]);
+    expect(split!.shares.map((x) => `${x.label} ${x.ms / 1000}`)).toEqual([
+      "model 85",
+      "checks on the candidate 100",
+      "checks on dependent modules 250",
+      "other 25",
+      "outside the tries 140",
+    ]);
+    expect(split!.outsideMs).toBe(140_000);
+    expect(split!.outside.map((o) => `${o.label} ${o.ms / 1000}`)).toEqual([
+      "before the first try 20",
+      "between tries 10",
+      "after the last try 10",
+      "other work in the step 100",
+    ]);
+    // Without the loop's clock the time outside the tries stays one figure.
+    expect(runTimeline(runRow(attempt({ encode_loop: null })), 0).split).toMatchObject({ outsideMs: 140_000, outside: [] });
+  });
+
+  it("leaves runs without timed tries as before", () => {
+    const untimed = tries.map(({ startedAt: _s, wallMs: _w, phases: _p, ...rest }) => rest);
+    const timeline = runTimeline(runRow(attempt({ tries: untimed, encode_loop: null })), 0);
+    expect(timeline.split).toBeNull();
+    expect(timeline.tries.map((t) => [t.wallMs, t.phases.length])).toEqual([
+      [null, 0],
+      [null, 0],
+    ]);
+  });
+
+  it("times the checks across a run's tries in the encode run's parts", () => {
+    const { parts } = encodeParts(runRows([attempt(), pipelineAttempt({ id: "old", run_conclusion: "success" })]));
+    const checks = parts.find((part) => part.key === "checks")!;
+    expect(checks.timings.map((t) => `${t.label}:${t.runs}:${t.medianMs / 1000}`)).toEqual(["Encoded:1:350"]);
   });
 });

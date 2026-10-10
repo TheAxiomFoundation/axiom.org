@@ -1,0 +1,884 @@
+/**
+ * Program bundles: the documents that make up each delivery tier of one
+ * program in one jurisdiction (axiom-corpus manifests/program-bundles), and
+ * how far each has come. Membership comes from the bundle file; progress is
+ * telemetry the collector reads from the served corpus, the RuleSpec module
+ * mirror and the encoding runs, so the two never drift.
+ *
+ * A provision counts as encoded only when a rule cites it: a module's
+ * declared source is not proof, since a module can defer branches of its
+ * source or hold no rules at all (the encoder's completeness check is off by
+ * default). So each text-bearing provision (a corpus leaf) is:
+ * - encoded: a rule cites it or a provision above it, and nothing at or under
+ *   it is deferred; "unvalidated" when every such module merged under a
+ *   validation waiver;
+ * - partly encoded: rules cite only parts of it, or a branch of it is
+ *   deferred (a CFR section is one corpus leaf, so most land here);
+ * - deferred: a module defers it and no rule cites it;
+ * - in progress or failed: by its newest targeted encode run (runs give no
+ *   credit);
+ * - not started: the rest.
+ * A screener unit (a provision PolicyEngine cites) is graded the same way.
+ * The screener tier is PolicyEngine parity, so it counts only its units: a
+ * document there is complete when every provision PolicyEngine cites in it is
+ * encoded. The full bundle counts every provision.
+ */
+import { attemptStage, type PipelineAttempt, type PipelineStage } from "./encoding-pipeline";
+import type { ScreenerParity } from "./screener-parity";
+
+export type BundleTierId = "screener" | "full";
+
+/** One document of a tier, as the bundle file lists it. */
+export interface BundleFileDocument {
+  key: string;
+  name?: string | null;
+  layer?: string | null;
+  /** The part of the program it feeds: a calculation part, or a manual part. */
+  part?: string | null;
+  citation_path: string | null;
+  source_url: string | null;
+  sources?: string[];
+  references?: number;
+  manifest?: string;
+  scope: "in" | "excluded";
+  reason?: string | null;
+  /** Why a known source is listed though the corpus does not hold it yet. */
+  note?: string | null;
+  /** The provisions PolicyEngine cites in this document, and the part each feeds. */
+  cited?: Array<{ path: string; references: number; part?: string | null }>;
+  /** Set by the collector: the document is a title, chapter, part or whole manual (see BundleDocumentRow.container). */
+  container?: boolean;
+}
+
+export interface BundleFileTier {
+  id: BundleTierId;
+  title: string;
+  definition: string;
+  membership: Record<string, unknown>;
+  notes?: string[];
+  documents: BundleFileDocument[];
+}
+
+/**
+ * A bundle file: manifests/program-bundles/<program>.yaml, one per core
+ * program, with a federal layer (shared by every state) and a layer per state.
+ */
+export interface BundleFile {
+  schema: "axiom-program-bundle/v2";
+  id: string;
+  program: string;
+  title: string;
+  as_of: string;
+  /** The parts of the program, in reading order: the matrix's rows. */
+  parts: string[];
+  /** The comparison suite behind each state's screener-level parity: {st} is the state code. */
+  comparison?: { repo: string; suite: string } | null;
+  tiers: Array<Omit<BundleFileTier, "documents">>;
+  layers: Array<{ jurisdiction: string; screener: BundleFileDocument[]; full: BundleFileDocument[] }>;
+}
+
+/** Where one provision stands; every text-bearing provision has exactly one. */
+export type ProvisionState = "encoded" | "unvalidated" | "partly" | "deferred" | "in_progress" | "failed" | "not_started";
+
+export const PROVISION_STATES: ProvisionState[] = [
+  "encoded",
+  "unvalidated",
+  "partly",
+  "deferred",
+  "in_progress",
+  "failed",
+  "not_started",
+];
+
+export const PROVISION_LABELS: Record<ProvisionState, string> = {
+  encoded: "Encoded",
+  unvalidated: "Encoded, not validated",
+  partly: "Partly encoded",
+  deferred: "Deferred",
+  in_progress: "In progress",
+  failed: "Failed",
+  not_started: "Not started",
+};
+
+/** Where one screener unit (a provision PolicyEngine cites) stands. */
+export type UnitState =
+  | "encoded"
+  | "unvalidated"
+  | "partly"
+  | "deferred"
+  | "in_progress"
+  | "failed"
+  | "not_encoded"
+  | "not_in_corpus";
+
+export const UNIT_STATES: UnitState[] = [
+  "encoded",
+  "unvalidated",
+  "partly",
+  "deferred",
+  "in_progress",
+  "failed",
+  "not_encoded",
+  "not_in_corpus",
+];
+
+export const UNIT_LABELS: Record<UnitState, string> = {
+  encoded: "Encoded",
+  unvalidated: "Encoded, not validated",
+  partly: "Partly encoded",
+  deferred: "Deferred",
+  in_progress: "In progress",
+  failed: "Failed",
+  not_encoded: "Not encoded",
+  not_in_corpus: "Not in the corpus",
+};
+
+/** Where a whole document stands. */
+export type DocumentStatus = "complete" | "unvalidated" | "partly" | "not_started" | "not_in_corpus";
+
+export const DOCUMENT_STATUSES: DocumentStatus[] = ["complete", "unvalidated", "partly", "not_started", "not_in_corpus"];
+
+export const STATUS_LABELS: Record<DocumentStatus, string> = {
+  complete: "Complete",
+  unvalidated: "Complete, not validated",
+  partly: "Partly encoded",
+  not_started: "Not started",
+  not_in_corpus: "Not in the corpus",
+};
+
+const UNDER_WAY: PipelineStage[] = ["encoding", "review", "awaiting_sync", "not_indexed"];
+const FAILED: PipelineStage[] = ["encode_failed", "no_pr", "closed", "merged_off_main"];
+
+/** The newest run that touches a provision, as the drill-down shows it. */
+export interface RunMark {
+  stage: PipelineStage;
+  /** The run's own citation, for its journey. */
+  citation: string;
+  at: string;
+}
+
+/** A provision whose newest run is under way or failed. */
+export interface OpenProvision extends RunMark {
+  path: string;
+  state: "in_progress" | "failed";
+}
+
+/** One screener unit: a provision PolicyEngine cites, or a cited document as a whole. */
+export interface ParityUnit {
+  key: string;
+  name: string;
+  path: string | null;
+  url: string | null;
+  part: string;
+  references: number;
+  state: UnitState;
+  /** Why it has that state: the module whose rule cites it, what defers it, or the gap. */
+  detail: string | null;
+  run: RunMark | null;
+}
+
+/** One row of encodings.program_bundle_documents: a document and its measure. */
+export interface BundleDocumentRow {
+  bundle_id: string;
+  tier: BundleTierId;
+  key: string;
+  name: string;
+  layer: string;
+  part: string;
+  scope: "in" | "excluded";
+  reason: string | null;
+  note: string | null;
+  citation_path: string | null;
+  source_url: string | null;
+  sources: string[];
+  manifest: string | null;
+  /** The corpus serves the citation path. */
+  in_corpus: boolean;
+  /**
+   * The document is a title, chapter, part or whole manual, not a section: a
+   * citation of all of it is one reference, so the screener tier counts it as
+   * one cited provision, not as every provision in it.
+   */
+  container?: boolean;
+  /** Text-bearing provisions under the document, and how many are in each state. */
+  provisions: number;
+  encoded_provisions: number;
+  unvalidated_provisions: number;
+  partly_provisions: number;
+  deferred_provisions: number;
+  provisions_in_progress: number;
+  provisions_failed: number;
+  /** The provisions in progress or failed, newest run first. */
+  open_provisions: OpenProvision[];
+  /** Distinct modules with a rule that cites the document. */
+  modules: number;
+  /** The screener tier's units in this document; empty in other tiers. */
+  units: ParityUnit[];
+  /** Other programs whose bundles hold this document in the same jurisdiction, by title. */
+  also_in?: string[];
+  /** Targeted encode runs for citations in the document, and the newest. */
+  runs: number;
+  latest_citation: string | null;
+  latest_run_at: string | null;
+  latest_stage: PipelineStage | null;
+  latest_run_url: string | null;
+  status: DocumentStatus | null;
+  collected_at: string;
+}
+
+/** One row of encodings.program_bundles: the bundle file's header, per collector pass. */
+export interface BundleRow {
+  id: string;
+  title: string;
+  program: string;
+  jurisdiction: string;
+  as_of: string;
+  parts: string[];
+  tiers: Array<Pick<BundleFileTier, "id" | "title" | "definition" | "membership" | "notes">>;
+  source: string | null;
+  /** The screener tier's headline, from the comparison its membership names; null without one. */
+  parity: ScreenerParity | null;
+  /** The newest policyengine-us version published on PyPI when the collector ran. */
+  policyengine_latest: string | null;
+  /** Each tier's counts; a state's include the program's federal layer. */
+  counts?: Partial<Record<BundleTierId, TierCounts>> | null;
+  collected_at: string;
+}
+
+/** One row of encodings.program_bundle_snapshots: a tier's counts on one day. */
+export interface BundleSnapshotRow {
+  bundle_id: string;
+  tier: BundleTierId;
+  day: string;
+  counts: TierCounts;
+}
+
+/**
+ * What a RuleSpec module encodes, read from its YAML (program-bundles-modules.ts):
+ * the provisions it declares as its source, the provisions its rules cite,
+ * the provisions it defers, and whether it merged under a validation waiver.
+ */
+export interface ModuleFacts {
+  module: string;
+  sources: string[];
+  /** Provisions its rules cite: each rule's source and proof atoms, below a law section. */
+  cited: string[];
+  /** Paths it names only as a whole: a rule source naming a whole section, or its own source when its rules name nothing readable. */
+  broad: string[];
+  deferred: string[];
+  rules: number;
+  waived: boolean;
+}
+
+/** What the collector reads for one document. */
+export interface DocumentTelemetry {
+  /** Every corpus provision under the document's citation path, itself included. */
+  nodes: Array<{ path: string; child_count: number }>;
+  /** The modules whose rules cite, or whose outputs defer, a provision in the document or above it. */
+  modules: ModuleFacts[];
+  /** Targeted encode runs whose citation is in the document. */
+  attempts: PipelineAttempt[];
+}
+
+const under = (path: string, root: string) => path === root || path.startsWith(`${root}/`);
+const strictlyUnder = (path: string, root: string) => path.startsWith(`${root}/`);
+
+/** The newest run that touches a path: at it, above it, or below it. */
+function newestRun(path: string, attempts: PipelineAttempt[]): PipelineAttempt | null {
+  let newest: PipelineAttempt | null = null;
+  for (const attempt of attempts) {
+    if (!attempt.citation || !(under(path, attempt.citation) || strictlyUnder(attempt.citation, path))) continue;
+    if (!newest || attempt.dispatched_at > newest.dispatched_at) newest = attempt;
+  }
+  return newest;
+}
+
+const mark = (attempt: PipelineAttempt): RunMark => ({
+  stage: attemptStage(attempt),
+  citation: attempt.citation,
+  at: attempt.dispatched_at,
+});
+
+/** A run under way or failed; any other stage gives no state, and no credit. */
+function runState(run: PipelineAttempt | null): "in_progress" | "failed" | null {
+  if (!run) return null;
+  const stage = attemptStage(run);
+  return UNDER_WAY.includes(stage) ? "in_progress" : FAILED.includes(stage) ? "failed" : null;
+}
+
+interface Grade {
+  state: "encoded" | "unvalidated" | "partly" | "deferred" | null;
+  detail: string | null;
+}
+
+/**
+ * How the modules reach one path. A rule citing it or a provision above it
+ * encodes it, unless something at or under it is deferred; rules citing only
+ * provisions under it, or a deferred branch under a cited path, make it
+ * partly encoded; a deferral at or above it, with no rule citing it, defers
+ * it; a module that names it only as part of a whole (a whole section, its own
+ * source) makes it partly encoded.
+ */
+function grade(path: string, modules: ModuleFacts[]): Grade {
+  const covering = modules.filter((m) => m.cited.some((c) => under(path, c)));
+  const below = modules.filter((m) => m.cited.some((c) => strictlyUnder(c, path)));
+  const deferredAbove = modules.find((m) => m.deferred.some((d) => under(path, d)));
+  const deferredBelow = modules.find((m) => m.deferred.some((d) => strictlyUnder(d, path)));
+  const broadly = modules.find((m) => m.broad.some((b) => under(path, b) || strictlyUnder(b, path)));
+  if (covering.length) {
+    if (deferredAbove) return { state: "deferred", detail: `Deferred by ${deferredAbove.module}` };
+    if (deferredBelow) return { state: "partly", detail: `${deferredBelow.module} defers part of it` };
+    const validated = covering.find((m) => !m.waived);
+    return validated
+      ? { state: "encoded", detail: `A rule in ${validated.module} cites it` }
+      : { state: "unvalidated", detail: `${covering[0].module} merged under a validation waiver` };
+  }
+  if (below.length) return { state: "partly", detail: `Rules in ${below[0].module} cite parts of it` };
+  if (deferredAbove) return { state: "deferred", detail: `Deferred by ${deferredAbove.module}` };
+  if (deferredBelow) return { state: "partly", detail: `${deferredBelow.module} defers part of it` };
+  if (broadly) return { state: "partly", detail: `${broadly.module} names it only as part of a whole` };
+  return { state: null, detail: null };
+}
+
+function documentStatus(
+  row: Pick<
+    BundleDocumentRow,
+    "scope" | "in_corpus" | "provisions" | "encoded_provisions" | "unvalidated_provisions" | "partly_provisions"
+  >
+): DocumentStatus | null {
+  if (row.scope === "excluded") return null;
+  if (!row.in_corpus) return "not_in_corpus";
+  const encoded = row.encoded_provisions + row.unvalidated_provisions;
+  if (row.provisions > 0 && encoded === row.provisions) return row.unvalidated_provisions ? "unvalidated" : "complete";
+  return encoded + row.partly_provisions > 0 ? "partly" : "not_started";
+}
+
+/** A document's measure, and in the screener tier its parity units. */
+export function measureDocument(
+  bundleId: string,
+  tier: BundleTierId,
+  doc: BundleFileDocument,
+  telemetry: DocumentTelemetry | null,
+  collectedAt: string
+): BundleDocumentRow {
+  const root = doc.citation_path;
+  const nodes = telemetry?.nodes ?? [];
+  // The corpus holds the document: its root, or (a container the corpus has no node for) nodes under it.
+  const inCorpus = Boolean(root && nodes.some((n) => n.path === root || n.path.startsWith(`${root}/`)));
+  const leaves = inCorpus ? nodes.filter((n) => n.child_count === 0).map((n) => n.path) : [];
+  const modules = telemetry?.modules ?? [];
+  const attempts = [...(telemetry?.attempts ?? [])]
+    .filter((a) => root && a.citation && under(a.citation, root))
+    .sort((a, b) => b.dispatched_at.localeCompare(a.dispatched_at));
+
+  const states = new Map<string, ProvisionState>();
+  const open: OpenProvision[] = [];
+  for (const leaf of leaves) {
+    const { state } = grade(leaf, modules);
+    if (state) {
+      states.set(leaf, state);
+      continue;
+    }
+    const run = newestRun(leaf, attempts);
+    const ran = runState(run);
+    if (run && ran) {
+      states.set(leaf, ran);
+      open.push({ path: leaf, state: ran, ...mark(run) });
+    } else {
+      states.set(leaf, "not_started");
+    }
+  }
+  open.sort((a, b) => b.at.localeCompare(a.at));
+  const count = (state: ProvisionState) => [...states.values()].filter((s) => s === state).length;
+  // The provisions a path splits into: none when the path is a provision itself, or finer than one.
+  const leafStates = (path: string) =>
+    states.has(path) ? [] : leaves.filter((leaf) => strictlyUnder(leaf, path)).map((leaf) => states.get(leaf));
+
+  // The screener tier's units; a full-bundle document PolicyEngine also cites
+  // carries them too (the collector passes them on), so it can count as finely.
+  const units: ParityUnit[] = [];
+  if (doc.scope === "in" && (tier === "screener" || doc.cited?.length)) {
+    const cited = doc.cited?.length
+      ? doc.cited
+      : [{ path: root ?? "", references: doc.references ?? 0, part: doc.part ?? null }];
+    for (const c of cited) {
+      const path = c.path || null;
+      units.push({
+        key: path ?? doc.key,
+        name: path && path !== root ? `${doc.name ?? doc.key} ${path.slice((root ?? "").length)}` : (doc.name ?? doc.key),
+        path,
+        url: path ? null : doc.source_url,
+        part: c.part ?? doc.part ?? "Other",
+        references: c.references,
+        ...unitState(path, inCorpus, modules, leafStates, attempts),
+      });
+    }
+  }
+
+  const latest = attempts[0] ?? null;
+  const row: BundleDocumentRow = {
+    bundle_id: bundleId,
+    tier,
+    key: doc.key,
+    name: doc.name ?? doc.key,
+    layer: doc.layer ?? (root?.startsWith("us/") ? "federal" : "state"),
+    part: doc.part ?? "Other",
+    scope: doc.scope,
+    reason: doc.scope === "excluded" ? (doc.reason ?? null) : null,
+    note: doc.note ?? null,
+    citation_path: root,
+    source_url: doc.source_url,
+    sources: doc.sources ?? [],
+    manifest: doc.manifest ?? null,
+    in_corpus: inCorpus,
+    container: Boolean(doc.container),
+    provisions: leaves.length,
+    encoded_provisions: count("encoded"),
+    unvalidated_provisions: count("unvalidated"),
+    partly_provisions: count("partly"),
+    deferred_provisions: count("deferred"),
+    provisions_in_progress: count("in_progress"),
+    provisions_failed: count("failed"),
+    open_provisions: open,
+    modules: new Set(
+      modules
+        .filter((m) => root && [...m.cited, ...m.broad].some((c) => under(c, root) || under(root, c)))
+        .map((m) => m.module)
+    ).size,
+    units,
+    runs: attempts.length,
+    latest_citation: latest?.citation ?? null,
+    latest_run_at: latest?.dispatched_at ?? null,
+    latest_stage: latest ? attemptStage(latest) : null,
+    latest_run_url: latest?.run_url ?? null,
+    status: null,
+    collected_at: collectedAt,
+  };
+  // The full bundle never counts a document more coarsely than the screener
+  // tier: a corpus provision with cited provisions under it (the corpus holds
+  // a CFR section as one provision while PolicyEngine cites its paragraphs)
+  // counts as those cited provisions.
+  if (tier === "full" && inCorpus && units.length) {
+    const finest: ProvisionState[] = [];
+    for (const leaf of leaves) {
+      const below = units.filter((u) => u.path && strictlyUnder(u.path, leaf));
+      if (!below.length) finest.push(states.get(leaf) ?? "not_started");
+      for (const u of below) {
+        const state = UNIT_AS_PROVISION[u.state];
+        if (state) finest.push(state);
+      }
+    }
+    const of = (state: ProvisionState) => finest.filter((s) => s === state).length;
+    Object.assign(row, {
+      provisions: finest.length,
+      encoded_provisions: of("encoded"),
+      unvalidated_provisions: of("unvalidated"),
+      partly_provisions: of("partly"),
+      deferred_provisions: of("deferred"),
+      provisions_in_progress: of("in_progress"),
+      provisions_failed: of("failed"),
+    });
+  }
+  row.status = tier === "screener" && row.scope === "in" && inCorpus ? citedStatus(units) : documentStatus(row);
+  return row;
+}
+
+/**
+ * A screener-tier document's status, by the provisions PolicyEngine cites in
+ * it: complete when every one is encoded.
+ */
+function citedStatus(units: ParityUnit[]): DocumentStatus {
+  const done = units.filter((u) => u.state === "encoded" || u.state === "unvalidated").length;
+  if (units.length > 0 && done === units.length) {
+    return units.some((u) => u.state === "unvalidated") ? "unvalidated" : "complete";
+  }
+  return done > 0 || units.some((u) => u.state === "partly") ? "partly" : "not_started";
+}
+
+/**
+ * A screener unit's state. A path the corpus splits into provisions: by
+ * them, encoded only when every one is (validated only when none rests on a
+ * waiver). A provision, or a path finer than one: by the rules that reach it.
+ * Then by its newest run.
+ */
+function unitState(
+  path: string | null,
+  inCorpus: boolean,
+  modules: ModuleFacts[],
+  leafStates: (path: string) => Array<ProvisionState | undefined>,
+  attempts: PipelineAttempt[]
+): Pick<ParityUnit, "state" | "detail" | "run"> {
+  if (!path || !inCorpus) return { state: "not_in_corpus", detail: null, run: null };
+  const leaves = leafStates(path);
+  if (leaves.length) {
+    const done = leaves.filter((s) => s === "encoded" || s === "unvalidated").length;
+    if (done === leaves.length) {
+      return {
+        state: leaves.includes("unvalidated") ? "unvalidated" : "encoded",
+        detail: `All ${leaves.length} provisions encoded`,
+        run: null,
+      };
+    }
+    if (done > 0 || leaves.some((s) => s === "partly" || s === "deferred")) {
+      if (!done && leaves.every((s) => s === "deferred")) {
+        return { state: "deferred", detail: `All ${leaves.length} provisions deferred`, run: null };
+      }
+      return { state: "partly", detail: `${done} of ${leaves.length} provisions encoded`, run: null };
+    }
+  } else {
+    const { state, detail } = grade(path, modules);
+    if (state) return { state, detail, run: null };
+  }
+  const run = newestRun(path, attempts);
+  const ran = runState(run);
+  if (run && ran) return { state: ran, detail: null, run: mark(run) };
+  return { state: "not_encoded", detail: null, run: run ? mark(run) : null };
+}
+
+export interface TierCounts {
+  documents: number;
+  excluded: number;
+  byStatus: Record<DocumentStatus, number>;
+  /** What the tier counts (see measured): cited provisions in the screener tier, every provision in the full bundle. */
+  provisions: number;
+  /** Provisions by state; they add up to the provisions. */
+  byProvisionState: Record<ProvisionState, number>;
+  /** Screener units by state; they add up to the units. */
+  units: number;
+  byUnitState: Record<UnitState, number>;
+}
+
+/** A document's provisions by state; they add up to its provisions. */
+export function provisionCounts(
+  row: Pick<
+    BundleDocumentRow,
+    | "provisions"
+    | "encoded_provisions"
+    | "unvalidated_provisions"
+    | "partly_provisions"
+    | "deferred_provisions"
+    | "provisions_in_progress"
+    | "provisions_failed"
+  >
+): Record<ProvisionState, number> {
+  const known =
+    row.encoded_provisions +
+    row.unvalidated_provisions +
+    row.partly_provisions +
+    row.deferred_provisions +
+    row.provisions_in_progress +
+    row.provisions_failed;
+  return {
+    encoded: row.encoded_provisions,
+    unvalidated: row.unvalidated_provisions,
+    partly: row.partly_provisions,
+    deferred: row.deferred_provisions,
+    in_progress: row.provisions_in_progress,
+    failed: row.provisions_failed,
+    not_started: Math.max(0, row.provisions - known),
+  };
+}
+
+/** A cited provision's state on the provision scale; null for one the corpus does not hold. */
+const UNIT_AS_PROVISION: Record<UnitState, ProvisionState | null> = {
+  encoded: "encoded",
+  unvalidated: "unvalidated",
+  partly: "partly",
+  deferred: "deferred",
+  in_progress: "in_progress",
+  failed: "failed",
+  not_encoded: "not_started",
+  not_in_corpus: null,
+};
+
+/**
+ * What a document counts toward its tier. The screener tier is PolicyEngine
+ * parity, so it counts the provisions PolicyEngine cites (its units); where
+ * PolicyEngine cites the whole document (or a page of it, which the corpus
+ * cannot place), every provision of the document counts, as in the full
+ * bundle, unless the document is a title, chapter, part or whole manual: a
+ * citation of all of that is one reference, and counts as one. The full
+ * bundle counts every text-bearing provision. Both on one state scale.
+ */
+export function measured(
+  row: Pick<
+    BundleDocumentRow,
+    | "tier"
+    | "citation_path"
+    | "units"
+    | "in_corpus"
+    | "container"
+    | "provisions"
+    | "encoded_provisions"
+    | "unvalidated_provisions"
+    | "partly_provisions"
+    | "deferred_provisions"
+    | "provisions_in_progress"
+    | "provisions_failed"
+  >
+): {
+  /** Everything the document counts; in the screener tier, cited provisions not in the corpus included. */
+  total: number;
+  byState: Record<ProvisionState, number>;
+  /** Provisions in a document the corpus does not hold: each cited one in the screener tier, one per document in the full bundle. */
+  missing: number;
+} {
+  if (row.tier !== "screener") {
+    // A document the corpus does not hold counts as not in the corpus: once,
+    // or once per provision PolicyEngine cites in it, as in the screener tier.
+    if (!row.in_corpus) {
+      const none = Object.fromEntries(PROVISION_STATES.map((s) => [s, 0])) as Record<ProvisionState, number>;
+      const missing = Math.max(1, row.units.length);
+      return { total: missing, byState: none, missing };
+    }
+    return { total: row.provisions, byState: provisionCounts(row), missing: 0 };
+  }
+  const whole =
+    row.in_corpus && !row.container && row.provisions > 0 && row.units.some((u) => u.path && u.path === row.citation_path);
+  if (whole && row.tier === "screener") return { total: row.provisions, byState: provisionCounts(row), missing: 0 };
+  const byState = Object.fromEntries(PROVISION_STATES.map((s) => [s, 0])) as Record<ProvisionState, number>;
+  let missing = 0;
+  for (const unit of row.units) {
+    const state = UNIT_AS_PROVISION[unit.state];
+    if (state) byState[state]++;
+    else missing++;
+  }
+  // PolicyEngine cites them, so they count, as not in the corpus.
+  return { total: row.units.length, byState, missing };
+}
+
+type Measure = ReturnType<typeof measured>;
+
+/**
+ * A document's measure split by the part of the program each piece feeds, so
+ * the matrix's cells add up to the tier's total: in the screener tier each
+ * cited provision feeds its own part (a document cited whole feeds its
+ * citation's part); in the full bundle the document feeds its part.
+ */
+export function measuredByPart(row: BundleDocumentRow): Map<string, Measure> {
+  const out = new Map<string, Measure>();
+  const whole =
+    row.in_corpus && !row.container && row.provisions > 0 && row.units.find((u) => u.path && u.path === row.citation_path);
+  if (row.tier !== "screener" || whole || !row.units.length) {
+    out.set((row.tier === "screener" && whole ? whole.part : null) ?? row.part, measured(row));
+    return out;
+  }
+  for (const unit of row.units) {
+    const held =
+      out.get(unit.part) ??
+      ({ total: 0, byState: Object.fromEntries(PROVISION_STATES.map((s) => [s, 0])), missing: 0 } as Measure);
+    const state = UNIT_AS_PROVISION[unit.state];
+    held.total++;
+    if (state) held.byState[state]++;
+    else held.missing++;
+    out.set(unit.part, held);
+  }
+  return out;
+}
+
+/**
+ * A share as the pages print it, never rounded into a wrong impression:
+ * "—" with nothing to count, "<1%" when something is done but under one
+ * percent, ">99%" when nearly but not all of it is.
+ */
+export function formatShare(done: number, total: number): string {
+  if (!total) return "—";
+  if (done <= 0) return "0%";
+  if (done >= total) return "100%";
+  const percent = (done / total) * 100;
+  if (percent < 1) return "<1%";
+  if (percent > 99) return ">99%";
+  return `${Math.round(percent)}%`;
+}
+
+export function tierCounts(rows: BundleDocumentRow[]): TierCounts {
+  const inScope = rows.filter((r) => r.scope === "in");
+  const byStatus = Object.fromEntries(DOCUMENT_STATUSES.map((s) => [s, 0])) as Record<DocumentStatus, number>;
+  for (const row of inScope) if (row.status) byStatus[row.status]++;
+  const byProvisionState = Object.fromEntries(PROVISION_STATES.map((s) => [s, 0])) as Record<ProvisionState, number>;
+  let provisions = 0;
+  for (const row of inScope) {
+    const counts = measured(row);
+    provisions += counts.total;
+    for (const state of PROVISION_STATES) byProvisionState[state] += counts.byState[state];
+  }
+  const units = inScope.flatMap((r) => r.units);
+  const byUnitState = Object.fromEntries(UNIT_STATES.map((s) => [s, 0])) as Record<UnitState, number>;
+  for (const unit of units) byUnitState[unit.state]++;
+  return {
+    documents: inScope.length,
+    excluded: rows.length - inScope.length,
+    byStatus,
+    provisions,
+    byProvisionState,
+    units: units.length,
+    byUnitState,
+  };
+}
+
+type DocumentKind = "statute" | "regulation" | "guidance" | "manual" | "form" | "policy" | "other";
+
+/** The document types, in reading order: federal law first, then the state's own sources. */
+const DOCUMENT_TYPES: Array<{ layer: "federal" | "state"; kind: DocumentKind; label: string }> = [
+  { layer: "federal", kind: "statute", label: "Federal statutes and public laws" },
+  { layer: "federal", kind: "regulation", label: "Federal regulations" },
+  { layer: "federal", kind: "guidance", label: "Federal guidance" },
+  { layer: "federal", kind: "manual", label: "Federal manuals" },
+  { layer: "federal", kind: "form", label: "Federal forms" },
+  { layer: "federal", kind: "policy", label: "Federal policy documents" },
+  { layer: "state", kind: "statute", label: "State statutes" },
+  { layer: "state", kind: "regulation", label: "State regulations" },
+  { layer: "state", kind: "manual", label: "State policy manual" },
+  { layer: "state", kind: "policy", label: "State plans, notices and waivers" },
+  { layer: "state", kind: "guidance", label: "Federal letters to the state" },
+];
+
+const KINDS: DocumentKind[] = ["statute", "regulation", "guidance", "manual", "form", "policy"];
+
+/** What kind of document a web page the corpus does not hold is, by its address. */
+function urlKind(url: string): DocumentKind {
+  if (/congress\.gov\/.+\/(plaws|bills)\/|govinfo\.gov\/.*(PLAW-|USCODE-)|law\.cornell\.edu\/uscode|uscode\.house\.gov/i.test(url))
+    return "statute";
+  if (/ecfr\.gov|law\.cornell\.edu\/cfr|federalregister\.gov|govinfo\.gov\/.*FR-/i.test(url)) return "regulation";
+  if (/ssa\.gov\/poms|dbmefaapolicy\.azdes\.gov/i.test(url)) return "manual";
+  if (/(fns|fna)\.usda\.gov|usda\.gov\/sites\/default\/files\/guidance|fns-prod\.azureedge|aspe\.hhs\.gov/i.test(url))
+    return "guidance";
+  return "other";
+}
+
+/**
+ * A document's type for grouping: its layer and its kind (statute,
+ * regulation, guidance, manual, form, policy), from the citation path's kind
+ * segment, or from the address of a page the corpus does not hold.
+ */
+export function documentType(row: Pick<BundleDocumentRow, "layer" | "citation_path" | "source_url">): {
+  key: string;
+  label: string;
+  order: number;
+} {
+  const segment = row.citation_path?.split("/")[1] ?? "";
+  const kind: DocumentKind = (KINDS as string[]).includes(segment)
+    ? (segment as DocumentKind)
+    : row.citation_path
+      ? "other"
+      : urlKind(row.source_url ?? "");
+  const layer = row.layer === "state" ? "state" : "federal";
+  const index = DOCUMENT_TYPES.findIndex((t) => t.layer === layer && t.kind === kind);
+  if (index < 0) {
+    // A page the corpus does not hold, at an address that names no kind.
+    const label = row.citation_path ? `Other ${layer} documents` : `Other ${layer} web pages`;
+    return { key: `${layer}:other:${row.citation_path ? "path" : "web"}`, label, order: DOCUMENT_TYPES.length + (layer === "state" ? 1 : 0) };
+  }
+  return { key: `${layer}:${kind}`, label: DOCUMENT_TYPES[index].label, order: index };
+}
+
+/** One in-scope bundle document, as the reverse lookup from an encoding needs it. */
+export interface BundleIndexEntry {
+  bundle_id: string;
+  bundle_title: string;
+  tier: BundleTierId;
+  /** 1 for the first tier in the bundle file, 2 for the next. */
+  tier_index: number;
+  tier_title: string;
+  document: string;
+  citation_path: string;
+}
+
+/** A bundle that holds a citation, with every tier it sits in. */
+export interface BundleMembership {
+  bundle_id: string;
+  bundle_title: string;
+  tiers: Array<{ tier: BundleTierId; index: number; title: string; document: string }>;
+}
+
+/** The in-scope documents of every bundle, flattened for the reverse lookup. */
+export function bundleIndex(
+  bundles: Array<Pick<BundleRow, "id" | "title" | "tiers">>,
+  documents: Array<Pick<BundleDocumentRow, "bundle_id" | "tier" | "name" | "scope" | "citation_path">>
+): BundleIndexEntry[] {
+  const byId = new Map(bundles.map((b) => [b.id, b]));
+  return documents.flatMap((doc) => {
+    const bundle = byId.get(doc.bundle_id);
+    const tierIndex = bundle ? bundle.tiers.findIndex((t) => t.id === doc.tier) : -1;
+    if (!bundle || tierIndex < 0 || doc.scope !== "in" || !doc.citation_path) return [];
+    return [
+      {
+        bundle_id: bundle.id,
+        bundle_title: bundle.title,
+        tier: doc.tier,
+        tier_index: tierIndex + 1,
+        tier_title: bundle.tiers[tierIndex].title,
+        document: doc.name,
+        citation_path: doc.citation_path,
+      },
+    ];
+  });
+}
+
+/**
+ * The bundles whose documents hold an encoding's citation: a document holds
+ * it when its citation path is the citation or a provision above it.
+ */
+export function bundleMemberships(citation: string, index: BundleIndexEntry[]): BundleMembership[] {
+  const out = new Map<string, BundleMembership>();
+  for (const entry of index) {
+    if (!under(citation, entry.citation_path)) continue;
+    const membership = out.get(entry.bundle_id) ?? { bundle_id: entry.bundle_id, bundle_title: entry.bundle_title, tiers: [] };
+    if (!membership.tiers.some((t) => t.tier === entry.tier)) {
+      membership.tiers.push({ tier: entry.tier, index: entry.tier_index, title: entry.tier_title, document: entry.document });
+    }
+    out.set(entry.bundle_id, membership);
+  }
+  return [...out.values()]
+    .map((m) => ({ ...m, tiers: m.tiers.sort((a, b) => a.index - b.index) }))
+    .sort((a, b) => a.bundle_title.localeCompare(b.bundle_title));
+}
+
+/**
+ * The innermost tier a citation sits in: "Tier 1" (Tier 2 always holds Tier
+ * 1's documents, so naming both says nothing more), else "Tier 2".
+ */
+/** Where a bundle opens: its page in the /ops "Program bundles" tab, in the count a link chose. */
+export function bundleHref(id: string, count?: "documents" | "provisions"): string {
+  return `/ops?tab=bundles&bundle=${encodeURI(id)}${count === "provisions" ? "&count=provisions" : ""}`;
+}
+
+/** The "Program bundles" tab's grid, back on a program and in a count. */
+export function bundlesTabHref(program?: string | null, count?: "documents" | "provisions"): string {
+  return `/ops?tab=bundles${program ? `&program=${encodeURIComponent(program)}` : ""}${
+    count === "provisions" ? "&count=provisions" : ""
+  }`;
+}
+
+export function tiersLabel(membership: BundleMembership): string {
+  return `Tier ${Math.min(...membership.tiers.map((t) => t.index))}`;
+}
+
+/** The program a bundle measures, without its jurisdiction: "SNAP: federal law" and "Arizona SNAP" are "SNAP". */
+export function bundleProgram(membership: Pick<BundleMembership, "bundle_id" | "bundle_title">): string {
+  const program = membership.bundle_id.split("/")[1] ?? "";
+  return PROGRAM_NAMES[program] ?? membership.bundle_title.replace(/: federal law$/, "");
+}
+
+const PROGRAM_NAMES: Record<string, string> = {
+  snap: "SNAP",
+  medicaid: "Medicaid",
+  chip: "CHIP",
+  tanf: "TANF",
+  ssi: "SSI",
+  ccdf: "CCDF",
+  liheap: "LIHEAP",
+  wic: "WIC",
+  ui: "Unemployment insurance",
+  medicare: "Medicare",
+  income_tax: "Income tax",
+  eitc: "EITC",
+  ctc: "CTC",
+};
+
+/** A membership in full, for a tooltip: "Arizona SNAP — Tier 1, Screener-level parity: ARS 46-292; Tier 2, …". */
+export function membershipDetail(membership: BundleMembership): string {
+  return `${membership.bundle_title} — ${membership.tiers
+    .map((t) => `Tier ${t.index}, ${t.title}: ${t.document}`)
+    .join("; ")}`;
+}

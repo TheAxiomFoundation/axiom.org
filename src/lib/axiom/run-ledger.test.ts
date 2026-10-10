@@ -68,7 +68,7 @@ describe("runLedger", () => {
 });
 
 describe("sectionOverview", () => {
-  it("sums a section's runs: span, encoders, where they ended, why they failed, and the latest", () => {
+  it("sums a section's runs: how many failed, where and why each stopped, and the latest", () => {
     const rows = runRows([
       pipelineAttempt({ id: "1", citation: "us/statute/42/416/l", dispatched_at: day(1), encoder_version: "0.2.2018", encoder_error_rule: "complete-source-unit:tests", failure_source: "diagnostics" }),
       pipelineAttempt({ id: "2", citation: "us/statute/42/416/l", dispatched_at: day(2), encoder_version: "0.2.2023", encoder_error_rule: "complete-source-unit:tests", failure_source: "diagnostics" }),
@@ -77,13 +77,13 @@ describe("sectionOverview", () => {
     ]);
     const [section] = runLedger(rows)[0].documents[0].sections;
     const overview = sectionOverview(section);
-    expect(overview).toMatchObject({ runs: 4, firstAt: day(1), lastAt: day(4), encoders: { from: "0.2.2018", to: "0.2.2087" } });
-    expect(overview.ended.map((e) => `${e.label}:${e.tone}:${e.count}`)).toEqual([
-      "Failed validation:failed:2",
-      "Failed at an unknown step:failed:1",
-      "Merged into another branch:failed:1",
+    expect(overview).toMatchObject({ runs: 4, failed: 3, lastAt: day(4) });
+    expect(overview.stops.map((s) => `${s.count} ${s.label} — ${s.cause}`)).toEqual([
+      "2 Failed validation — Completeness rule: tests",
+      "1 Failed to compile — engine failed",
+      "1 Merged into another branch — null",
     ]);
-    expect(overview.causes[0]).toEqual({ label: "Completeness rule: tests", count: 2, detail: "complete-source-unit:tests" });
+    expect(overview.stops[0].detail).toBe("complete-source-unit:tests");
     expect(overview.latest.id).toBe("4");
   });
 });
@@ -104,5 +104,13 @@ describe("causeHeadline", () => {
       "Completeness rule: structure"
     );
     expect(causeHeadline("statutes/42/402/q.yaml: ci: Embedded scalar literal: old_age line 6 embeds 5")).toBe("Embedded scalar literal");
+    // A tool's error by the tool and its first clause; an exception by its class.
+    expect(causeHeadline("jq: error: syntax error, unexpected INVALID_CHARACTER, expecting end of file")).toBe("jq: syntax error");
+    expect(
+      causeHeadline("axiom_encode.corpus_resolver.CorpusLayoutError: Canonical data/corpus/provisions directory is missing")
+    ).toBe("Corpus layout error");
+    expect(causeHeadline("error: rulespec ref is not the exact pull request base branch tip")).toBe(
+      "rulespec ref is not the exact pull request base branch tip"
+    );
   });
 });

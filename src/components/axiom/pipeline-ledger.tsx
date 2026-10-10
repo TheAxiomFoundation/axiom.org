@@ -9,6 +9,14 @@ import { journeyHref } from "@/lib/axiom/encoding-pipeline";
 import { scopeSearch, type PipelineScope } from "@/lib/axiom/encoding-pipeline-insights";
 import { runTimeline, type RunRow } from "@/lib/axiom/encoding-pipeline-runs";
 import {
+  bundleHref,
+  bundleMemberships,
+  bundleProgram,
+  membershipDetail,
+  tiersLabel,
+  type BundleIndexEntry,
+} from "@/lib/axiom/program-bundles";
+import {
   causeHeadline,
   runLedger,
   sectionOverview,
@@ -23,6 +31,8 @@ interface RunsPayload {
   rows: RunRow[];
   labels?: Record<string, string>;
   documentPaths?: Record<string, string>;
+  /** Program bundle documents that hold some run's citation. */
+  bundles?: BundleIndexEntry[];
 }
 
 /** Documents shown before "Show more", as the encoding ledger always showed. */
@@ -128,6 +138,9 @@ export function PipelineLedger({
                 <TableHead className="h-8 px-2 font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]">
                   Provision
                 </TableHead>
+                <TableHead className="h-8 w-40 px-2 font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]">
+                  Bundle
+                </TableHead>
                 <TableHead className="h-8 w-36 px-2 font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]">
                   Status
                 </TableHead>
@@ -142,7 +155,7 @@ export function PipelineLedger({
             {firstDocuments(ledger, shown).map((jurisdiction) => (
               <TableBody key={jurisdiction.code}>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead colSpan={5} scope="rowgroup" className={styles.jurisdictionBand}>
+                  <TableHead colSpan={6} scope="rowgroup" className={styles.jurisdictionBand}>
                     {jurisdiction.name}
                   </TableHead>
                 </TableRow>
@@ -151,6 +164,7 @@ export function PipelineLedger({
                     key={document.key}
                     document={document}
                     referenceMs={referenceMs}
+                    bundles={payload?.bundles ?? []}
                     openSection={openSection}
                     onSection={(citation) => setOpenSection((open) => (open === citation ? null : citation))}
                   />
@@ -176,18 +190,21 @@ export function PipelineLedger({
 function DocumentSections({
   document,
   referenceMs,
+  bundles,
   openSection,
   onSection,
 }: {
   document: LedgerDocument;
   referenceMs: number;
+  /** Bundle documents, to name the bundle and tier each section belongs to. */
+  bundles: BundleIndexEntry[];
   openSection: string | null;
   onSection: (citation: string) => void;
 }) {
   return (
     <>
       <TableRow className="border-b border-[var(--color-rule)] hover:bg-transparent">
-        <TableCell colSpan={5} className={styles.documentBand}>
+        <TableCell colSpan={6} className={styles.documentBand}>
           <span
             className="text-sm font-semibold text-[var(--color-ink)]"
             title={document.titled ? undefined : "Document identifier; source title not yet indexed"}
@@ -226,6 +243,22 @@ function DocumentSections({
               <TableCell className="px-2 py-1.5 align-baseline whitespace-normal text-[var(--color-ink-secondary)]">
                 {label}
               </TableCell>
+              <TableCell className="px-2 py-1.5 align-baseline">
+                <span className={styles.ledgerBundles}>
+                  {bundleMemberships(section.citation, bundles).map((membership) => (
+                    <a
+                      key={membership.bundle_id}
+                      className={styles.ledgerBundle}
+                      href={bundleHref(membership.bundle_id)}
+                      aria-label={`${membership.bundle_title} · ${tiersLabel(membership)}`}
+                      title={membershipDetail(membership)}
+                    >
+                      {bundleProgram(membership)}
+                      <span>{tiersLabel(membership)}</span>
+                    </a>
+                  ))}
+                </span>
+              </TableCell>
               <TableCell className="px-2 py-1.5 align-baseline whitespace-nowrap">
                 <span className={`${styles.status} ${TONE_CLASS[section.tone]}`} data-tone={section.tone}>
                   <span aria-hidden className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${TONE_DOT[section.tone]}`} />
@@ -241,7 +274,7 @@ function DocumentSections({
             </TableRow>
             {open && (
               <TableRow className="hover:bg-transparent">
-                <TableCell colSpan={5} className={styles.ledgerRunCell}>
+                <TableCell colSpan={6} className={styles.ledgerRunCell}>
                   <SectionRuns section={section} referenceMs={referenceMs} />
                 </TableCell>
               </TableRow>
@@ -253,13 +286,17 @@ function DocumentSections({
   );
 }
 
-/** One overview list, count first: "9  Failed validation", the largest few until "+N more" opens the rest. A row's tooltip holds a full message. */
+/**
+ * One overview list, count first: "2  Failed to compile — Axiom rules engine
+ * compile failed", the largest few until "+N more" opens the rest. A row's
+ * tooltip holds a full message.
+ */
 function CountList({
   title,
   groups,
 }: {
   title: string;
-  groups: Array<{ label: string; count: number; detail?: string }>;
+  groups: Array<{ label: string; count: number; cause?: string | null; detail?: string | null }>;
 }) {
   const [all, setAll] = useState(false);
   const more = groups.length - OVERVIEW_GROUPS;
@@ -268,9 +305,12 @@ function CountList({
       <p className={styles.ledgerLabel}>{title}</p>
       <ul className={styles.ledgerCounts} aria-label={title}>
         {(all ? groups : groups.slice(0, OVERVIEW_GROUPS)).map((group) => (
-          <li key={group.label} title={group.detail ?? group.label}>
+          <li key={`${group.label}|${group.cause ?? ""}`} title={group.detail ?? group.label}>
             <span className={styles.ledgerCount}>{group.count}</span>
-            <span>{group.label}</span>
+            <span>
+              <span className={styles.ledgerStop}>{group.label}</span>
+              {group.cause && <span className={styles.ledgerCause}> — {group.cause}</span>}
+            </span>
           </li>
         ))}
         {more > 0 && (
@@ -315,62 +355,95 @@ function RunLines({ runs, referenceMs }: { runs: RunRow[]; referenceMs: number }
               </a>
             )}
           </div>
-          {open === run.id && <RunTimeline timeline={runTimeline(run, referenceMs)} />}
+          {open === run.id && <RunTimeline timeline={runTimeline(run, referenceMs)} showStopped={false} />}
         </li>
       ))}
     </ol>
   );
 }
 
-/** An open section: its runs in a few lines, the latest run's timeline, and every run on request. */
+/** An open section: how many runs, where and why each stopped, the latest run's timeline, and every run on request. */
 function SectionRuns({ section, referenceMs }: { section: LedgerSection; referenceMs: number }) {
   const [everyRun, setEveryRun] = useState(false);
   const overview = sectionOverview(section);
   const latest = overview.latest;
-  const { encoders } = overview;
+  const failedShare =
+    overview.failed === 0 ? null : overview.failed === overview.runs ? "all failed" : `${overview.failed} failed`;
   return (
     <div className={styles.ledgerOverview}>
-      <p className={styles.ledgerSummary}>
-        <strong>
-          {overview.runs} {overview.runs === 1 ? "run" : "runs"}
-        </strong>
-        <span>
-          {overview.runs === 1
-            ? relativeTime(overview.lastAt, referenceMs)
-            : `${relativeTime(overview.firstAt, referenceMs)} → ${relativeTime(overview.lastAt, referenceMs)}`}
-        </span>
-        {encoders && (
-          <span>
-            encoder{" "}
-            <span className="font-mono">
-              {encoders.from === encoders.to ? encoders.to : `${encoders.from} → ${encoders.to}`}
+      {/* One run: its own line says it all. */}
+      {overview.runs > 1 && (
+        <>
+          <p className={styles.ledgerSummary}>
+            <strong>{overview.runs} runs</strong>
+            {failedShare && (
+              <>
+                <span className={styles.ledgerVerdictSep} aria-hidden>
+                  {" · "}
+                </span>
+                <span>{failedShare}</span>
+              </>
+            )}
+            <span className={styles.ledgerVerdictSep} aria-hidden>
+              {" · "}
             </span>
-          </span>
-        )}
-      </p>
-      <div className={styles.ledgerColumns}>
-        <CountList title="Outcome of each run" groups={overview.ended} />
-        {overview.causes.length > 0 && <CountList title="Why they failed" groups={overview.causes} />}
-      </div>
-      <p className={styles.ledgerLatest}>
-        <span className={styles.ledgerLabel}>Latest run</span>
-        <span title={latest.dispatchedAt}>{relativeTime(latest.dispatchedAt, referenceMs)}</span>
-        <a href={latest.runUrl} target="_blank" rel="noreferrer" data-outcome={latest.outcome}>
-          {latest.outcomeLabel}
-        </a>
-        {latest.tries && (
-          <span>
-            {latest.tries.length} {latest.tries.length === 1 ? "try" : "tries"}
-          </span>
-        )}
-        {latest.cause && <span title={latest.cause}>{causeHeadline(latest.cause)}</span>}
-        {latest.pr && (
-          <a href={latest.pr.url} target="_blank" rel="noreferrer">
-            {latest.pr.label} · {latest.pr.state}
-          </a>
-        )}
-      </p>
-      <RunTimeline timeline={runTimeline(latest, referenceMs)} />
+            <span>latest {relativeTime(overview.lastAt, referenceMs)}</span>
+          </p>
+          <CountList title="Where each run stopped, and why" groups={overview.stops} />
+        </>
+      )}
+      {/* The latest run as one unit: what happened, then where the time went, then the tries inside the loop. */}
+      <section
+        className={styles.ledgerLatest}
+        data-after-summary={overview.runs > 1 || undefined}
+        aria-label={overview.runs === 1 ? "The run" : "Latest run"}
+      >
+        <div className={styles.ledgerVerdict}>
+          <p className={styles.ledgerLabel}>{overview.runs === 1 ? "The run" : "Latest run"}</p>
+          <p className={styles.ledgerVerdictLine}>
+            <span className={styles.ledgerOutcome} data-outcome={latest.outcome}>
+              {latest.outcomeLabel}
+            </span>{" "}
+            {latest.cause && (
+              <span className={styles.ledgerVerdictCause} title={latest.cause}>
+                {causeHeadline(latest.cause)}
+              </span>
+            )}
+          </p>
+          <p className={styles.ledgerVerdictMeta}>
+            {[
+              <span key="dispatched" title={latest.dispatchedAt}>
+                dispatched {relativeTime(latest.dispatchedAt, referenceMs)}
+              </span>,
+              latest.tries && (
+                <span key="tries">
+                  {latest.tries.length} {latest.tries.length === 1 ? "try" : "tries"} in the encode loop
+                </span>
+              ),
+              latest.pr && (
+                <a key="pr" href={latest.pr.url} target="_blank" rel="noreferrer">
+                  {latest.pr.label} · {latest.pr.state}
+                </a>
+              ),
+              <a key="run" href={latest.runUrl} target="_blank" rel="noreferrer">
+                Run on GitHub ↗
+              </a>,
+            ]
+              .filter(Boolean)
+              .map((item, index) => (
+                <Fragment key={index}>
+                  {index > 0 && (
+                    <span className={styles.ledgerVerdictSep} aria-hidden>
+                      {" · "}
+                    </span>
+                  )}
+                  {item}
+                </Fragment>
+              ))}
+          </p>
+        </div>
+        <RunTimeline timeline={runTimeline(latest, referenceMs)} showStopped={false} />
+      </section>
       {overview.runs > 1 && (
         <button
           type="button"

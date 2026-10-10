@@ -203,6 +203,7 @@ describe("runtime api client", () => {
     expect(outcome).toEqual({
       kind: "ok",
       result: { outputs: { net_income: 1200 } },
+      relationMembership: "convention",
     });
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toContain("/calculate");
@@ -219,6 +220,46 @@ describe("runtime api client", () => {
     vi.stubGlobal("fetch", fetchMock);
     await runCalculateRoot({root: "us:statutes/26/21", facts: {age: 8}, people: {person_2: {age: 30}}, variables: ["count"]});
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({root: "us:statutes/26/21", facts: {age: 8}, household: {people: {person_1: {}, person_2: {age: 30}}}, variables: ["count"]});
+  });
+
+  it("sends explicit membership as household.relations and confirms it only from a complete echo", async () => {
+    vi.stubEnv("AXIOM_RUNTIME_API_KEY", "test-key");
+    const QC = "us:statutes/26/32#relation.qualifying_child_of_tax_unit";
+    const OTHER = "us:statutes/26/63/c/5#relation.exemption_individual_of_another_tax_unit";
+    const relations = [
+      { name: QC, tuples: [["household:1", "person:1:2"]] },
+      { name: OTHER, tuples: [] },
+    ];
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(okEnvelope({ outputs: { eitc: 3400 }, explicit_relations: [QC, OTHER] }))
+      .mockResolvedValueOnce(okEnvelope({ outputs: { eitc: 3400 }, explicit_relations: [QC] }))
+      .mockResolvedValueOnce(okEnvelope({ outputs: { eitc: 3400 } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const confirmed = await runCalculateRoot({ root: "us:statutes/26/32", facts: {}, people: { person_2: { age: 8 } }, variables: ["eitc"], relations });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      root: "us:statutes/26/32", facts: {}, variables: ["eitc"],
+      household: { people: { person_1: {}, person_2: { age: 8 } }, relations },
+    });
+    expect(confirmed).toMatchObject({ kind: "ok", relationMembership: "explicit" });
+    // An echo that misses a relation we sent did not apply it.
+    const partial = await runCalculateRoot({ root: "us:statutes/26/32", facts: {}, variables: ["eitc"], relations });
+    expect(partial).toMatchObject({ kind: "ok", relationMembership: "convention" });
+    // A single filer still travels as person_1; a runtime without the echo
+    // predates explicit membership.
+    const ignored = await runCalculateRoot({ root: "us:statutes/26/32", facts: {}, variables: ["eitc"], relations });
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body).household).toEqual({ people: { person_1: {} }, relations });
+    expect(ignored).toMatchObject({ kind: "ok", relationMembership: "convention" });
+  });
+
+  it("presents a refused household (400 invalid_household) instead of hiding the run", async () => {
+    vi.stubEnv("AXIOM_RUNTIME_API_KEY", "test-key");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: async () => ({ status: "error", error: { code: "invalid_household", message: "household.relations[0]: a tuple does not fit" } }),
+    }));
+    const outcome = await runCalculateRoot({ root: "us:statutes/26/32", facts: {}, variables: ["eitc"], relations: [{ name: "x", tuples: [] }] });
+    expect(outcome).toEqual({ kind: "refused", code: "invalid_household", message: "household.relations[0]: a tuple does not fit" });
   });
 
   it("feature-detects run-by-root: upstream 400/404 map to unsupported", async () => {

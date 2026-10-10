@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildRunRequestBody, mergeRunBatches, scenarioKey, traceRootIds } from "./run-request";
+import { buildRunRequestBody, mergeRunBatches, scenarioKey, traceRootIds, classifyRunRefusal } from "./run-request";
 import type { ProgramGraph, RuleNode } from "./types";
 
 describe("buildRunRequestBody", () => {
@@ -48,6 +48,18 @@ describe("buildRunRequestBody", () => {
       facts: { age: 40 },
       variables: ["eitc"],
     });
+  });
+
+  it("compose mode: explicit relation roles travel whole, empty answers included", () => {
+    const roles = { "us:statutes/26/32#qualifying_child_of_tax_unit": ["person_2"], "us:statutes/26/151#senior_deduction_individual_of_tax_unit": [] };
+    expect(buildRunRequestBody("us:statutes/26/32#eitc", null, {}, ["eitc"], {}, roles)).toEqual({
+      root: "us:statutes/26/32",
+      facts: {},
+      relations: roles,
+      variables: ["eitc"],
+    });
+    // Program coordinates never carry roles.
+    expect(buildRunRequestBody(null, { jurisdiction: "us", programId: "fiit" }, {}, [], {}, roles)).not.toHaveProperty("relations");
   });
 
   it("program mode keeps coordinates and values", () => {
@@ -136,5 +148,19 @@ describe("mergeRunBatches", () => {
       ["snap_asset_limit", 3000],
     ]);
     expect(merged.provenance).toBeNull();
+  });
+});
+
+describe("classifyRunRefusal", () => {
+  it("keeps Run for refusals the user can fix by editing the household or roles", () => {
+    for (const code of ["invalid_household", "relation_roles_required", "unknown_member", "unknown_relation"]) {
+      expect(classifyRunRefusal(code)).toBe("user_fixable");
+    }
+  });
+  it("retries runtime errors through chunk probing and blocks scope-level refusals", () => {
+    expect(classifyRunRefusal("runtime_error")).toBe("retry");
+    for (const code of ["compile_failed", "closure_incomplete", "relationships_unsupported", "uncertified_node", undefined]) {
+      expect(classifyRunRefusal(code)).toBe("scope_blocked");
+    }
   });
 });

@@ -350,7 +350,10 @@ export async function runCalculate(
  *  detector's signal: the upstream API answered 400/404 for the
  *  `{ root }` request shape, i.e. the endpoint isn't deployed yet. */
 export type RootCalculateOutcome =
-  | { kind: "ok"; result: CalculateResult }
+  /** `relationMembership` is what the runtime confirmed: "explicit" only
+   *  when its `explicit_relations` echo names every relation the request
+   *  sent, i.e. those tuples replaced the membership convention. */
+  | { kind: "ok"; result: CalculateResult; relationMembership: "explicit" | "convention" }
   /** 422: the engine declined this subtree (compile_failed /
    *  closure_incomplete / uncertified_node) — code and the API's own
    *  message carried through for honest display. */
@@ -373,6 +376,11 @@ export async function runCalculateRoot(request: {
    *  for single-filer runs so older upstreams see the old shape. */
   people?: Record<string, Record<string, number | boolean>>;
   variables?: string[];
+  /** Explicit relation membership (`household.relations`, axiom-api#267):
+   *  one entry per relation, each the complete membership of that relation
+   *  (`tuples: []` = empty). The runtime replaces the membership convention
+   *  for every relation named here. */
+  relations?: Array<{ name: string; tuples: string[][] }>;
 }): Promise<RootCalculateOutcome> {
   if (!isRuntimeApiConfigured()) return { kind: "failed" };
   const key = process.env.AXIOM_RUNTIME_API_KEY;
@@ -383,17 +391,39 @@ export async function runCalculateRoot(request: {
         "content-type": "application/json",
         ...(key ? { "x-api-key": key } : {}),
       },
-      body: JSON.stringify(request.people ? {
+      body: JSON.stringify(request.people || request.relations ? {
         root: request.root,
         facts: request.facts,
         variables: request.variables,
-        household: { people: { person_1: {}, ...request.people } },
+        household: {
+          people: { person_1: {}, ...request.people },
+          ...(request.relations ? { relations: request.relations } : {}),
+        },
       } : request),
       redirect: "error",
       signal: AbortSignal.timeout(CALCULATE_TIMEOUT_MS),
       cache: "no-store",
     });
     if (response.status === 400 || response.status === 404) {
+      // A household the runtime refused (explicit membership that does
+      // not fit the compiled relations) is a state to present, not an
+      // endpoint that is missing.
+      if (response.status === 400) {
+        try {
+          const failure = (await response.json()) as {
+            error?: { code?: string; message?: string };
+          };
+          if (failure.error?.code === "invalid_household") {
+            return {
+              kind: "refused",
+              code: "invalid_household",
+              message: failure.error.message ?? null,
+            };
+          }
+        } catch {
+          // Unparseable 400: the upstream predates the shape.
+        }
+      }
       return { kind: "unsupported" };
     }
     if (!response.ok) {
@@ -436,12 +466,24 @@ export async function runCalculateRoot(request: {
     }
     const envelope = (await response.json()) as {
       status?: string;
-      data?: CalculateResult;
+      data?: CalculateResult & { explicit_relations?: unknown };
     };
     if (envelope.status !== "ok" || !envelope.data?.outputs) {
       return { kind: "failed" };
     }
-    return { kind: "ok", result: envelope.data };
+    const echoed = Array.isArray(envelope.data.explicit_relations)
+      ? envelope.data.explicit_relations
+      : null;
+    const confirmed = Boolean(
+      request.relations &&
+        echoed &&
+        request.relations.every((relation) => echoed.includes(relation.name))
+    );
+    return {
+      kind: "ok",
+      result: envelope.data,
+      relationMembership: confirmed ? "explicit" : "convention",
+    };
   } catch {
     return { kind: "failed" };
   }

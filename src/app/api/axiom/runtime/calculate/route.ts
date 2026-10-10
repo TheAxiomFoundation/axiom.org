@@ -1,9 +1,15 @@
-import { compositionReadiness } from "@/lib/axiom/runtime/composition-readiness";
+import { compositionScope } from "@/lib/axiom/runtime/composition-readiness";
+import {
+  membershipTuples,
+  upstreamAcceptsExplicitRoles,
+  upstreamRelationsMatch,
+} from "@/lib/axiom/runtime/relation-roles";
 import { NextResponse } from "next/server";
 import {
   getRuntimePackage,
   runCalculate,
   runCalculateRoot,
+  runtimeProxyGet,
   isRuntimeApiConfigured,
 } from "@/lib/axiom/runtime/api";
 import { clientKey, isRateLimited } from "../run/limiter";
@@ -77,6 +83,7 @@ export async function POST(request: Request) {
     root?: unknown;
     facts?: unknown;
     people?: unknown;
+    relations?: unknown;
     variables?: unknown;
   };
   try {
@@ -104,8 +111,9 @@ export async function POST(request: Request) {
     if (typeof root !== "string" || !ROOT_RE.test(root)) {
       return NextResponse.json({ error: "invalid_root" }, { status: 400 });
     }
-    const readiness = await compositionReadiness(root);
-    if (readiness !== "ready") return NextResponse.json({error:readiness}, {status:readiness === "relationships_unsupported" ? 422 : 503, headers:{"cache-control":"no-store"}});
+    const scope = await compositionScope(root);
+    const readiness = scope.readiness;
+    if (readiness !== "ready" && readiness !== "roles_required") return NextResponse.json({error:readiness}, {status:readiness === "relationships_unsupported" ? 422 : 503, headers:{"cache-control":"no-store"}});
     const { sanitized: facts, rejected: droppedFacts } = sanitizeValues(
       body.facts
     );
@@ -137,7 +145,57 @@ export async function POST(request: Request) {
       }
       if (Object.keys(people).length === 0) people = undefined;
     }
-    const outcome = await runCalculateRoot({ root, facts, people, variables });
+    // Several Person–unit relations: the membership convention would put
+    // every person in every relation (a taxpayer becomes a dependent of
+    // another tax unit), so the scenario must state each person's roles,
+    // and the runtime must confirm it applied them instead.
+    let relations: Array<{ name: string; tuples: string[][] }> | undefined;
+    if (readiness === "roles_required") {
+      const order = ["person_1", ...Object.keys(people ?? {})];
+      const built = membershipTuples(scope.relations, body.relations, order);
+      if (!built.ok) {
+        const message =
+          built.error === "relation_roles_required"
+            ? `Say who belongs to each relationship before running (unanswered: ${built.detail}).`
+            : built.error === "unknown_member"
+              ? `${built.detail} is not a person in this scenario.`
+              : `${built.detail} is not a relationship in this scope.`;
+        return NextResponse.json(
+          { error: built.error, message },
+          { status: 422, headers: { "cache-control": "no-store" } }
+        );
+      }
+      relations = built.entries;
+      // The runtime keeps the convention for any relation no entry names,
+      // so the entries must cover exactly what IT binds for this root, not
+      // only what the source declares. Read its own catalog FRESH before
+      // running (a cached catalog could itself be stale): a probe the
+      // client skipped, a stale root-inputs response or mirror/runtime
+      // drift all land here.
+      const catalog = await runtimeProxyGet(
+        `/runtime/root-inputs?root=${encodeURIComponent(root)}`,
+        { timeoutMs: 20_000, fresh: true }
+      );
+      if (catalog.status !== 200) {
+        return NextResponse.json(
+          { error: "unavailable", message: "The runtime's relationship catalog could not be read. Try again." },
+          { status: 503, headers: { "cache-control": "no-store" } }
+        );
+      }
+      if (
+        !upstreamAcceptsExplicitRoles(catalog.body) ||
+        !upstreamRelationsMatch(catalog.body, scope.relations)
+      ) {
+        return NextResponse.json(
+          {
+            error: "relationships_unsupported",
+            message: "The runtime's relationships for this scope do not match its declarations, so roles cannot be applied.",
+          },
+          { status: 422, headers: { "cache-control": "no-store" } }
+        );
+      }
+    }
+    const outcome = await runCalculateRoot({ root, facts, people, variables, ...(relations ? { relations } : {}) });
     if (outcome.kind === "unsupported") {
       return NextResponse.json(
         { error: "root_calculate_unsupported" },
@@ -155,6 +213,17 @@ export async function POST(request: Request) {
     }
     if (outcome.kind === "failed") {
       return NextResponse.json({ error: "calculate_failed" }, { status: 502 });
+    }
+    if (relations && outcome.relationMembership !== "explicit") {
+      // A runtime that predates explicit membership ran the convention and
+      // ignored the roles: its numbers answer a different household.
+      return NextResponse.json(
+        {
+          error: "relationships_unsupported",
+          message: "The runtime did not confirm the relationship roles, so its result is withheld.",
+        },
+        { status: 422, headers: { "cache-control": "no-store" } }
+      );
     }
     return NextResponse.json(
       {

@@ -1,0 +1,990 @@
+/* A program bundle as a matrix: a row per part of the program, a column per
+   tier, every cell a bar of its own units' states.
+
+   States are status colors, checked with the dataviz palette validator on the
+   paper surface: encoded is the success green (encoded but not validated the
+   same green with a hatch, partly encoded the same green, lighter), deferred
+   a darker neutral, in progress an amber, failed a red that also carries a
+   hatch (green and red sit close for deutan readers, so failed never relies
+   on color alone), not encoded yet a neutral, and not in the corpus a hatched
+   outline. Every state also has its name in the legend and the drawers. */
+
+.page {
+  --state-encoded: #166534;
+  --state-partly: color-mix(in srgb, #166534 38%, var(--color-paper));
+  --state-in-progress: #d39a3e;
+  --state-failed: #b42318;
+  --state-deferred: color-mix(in srgb, var(--color-ink) 40%, var(--color-paper));
+  --state-none: color-mix(in srgb, var(--color-ink) 13%, var(--color-paper));
+  --state-missing: color-mix(in srgb, var(--color-ink) 38%, var(--color-paper));
+  color: var(--color-ink);
+}
+
+.page [data-shade="encoded"] {
+  --fill: var(--state-encoded);
+}
+
+.page [data-shade="unvalidated"] {
+  --fill: repeating-linear-gradient(45deg, var(--state-encoded) 0 2px, var(--state-partly) 2px 4px);
+}
+
+.page [data-shade="partly"] {
+  --fill: var(--state-partly);
+}
+
+.page [data-shade="deferred"] {
+  --fill: var(--state-deferred);
+}
+
+.page [data-shade="in_progress"] {
+  --fill: var(--state-in-progress);
+}
+
+.page [data-shade="failed"] {
+  --fill: repeating-linear-gradient(
+    135deg,
+    var(--state-failed) 0 2px,
+    color-mix(in srgb, var(--state-failed) 50%, var(--color-paper)) 2px 4px
+  );
+}
+
+.page [data-shade="none"] {
+  --fill: var(--state-none);
+}
+
+.page [data-shade="missing"] {
+  --fill: repeating-linear-gradient(
+    135deg,
+    var(--state-missing) 0 1px,
+    var(--color-paper) 1px 4px
+  );
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-ink-muted);
+  text-decoration: none;
+}
+
+.back:hover {
+  color: var(--color-ink);
+}
+
+/* The bundle's page inside the /ops "Program bundles" tab. */
+.header {
+  margin: 0 0 20px;
+}
+
+.title {
+  margin-top: 10px;
+  font-size: clamp(22px, 3vw, 30px);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.summary {
+  margin-top: 10px;
+  max-width: 72ch;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-ink-secondary);
+}
+
+.muted {
+  color: var(--color-ink-muted);
+}
+
+.mono {
+  font-family: var(--font-mono), monospace;
+  overflow-wrap: anywhere;
+}
+
+.swatch {
+  display: inline-block;
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--fill, var(--state-none));
+}
+
+.page .swatch[data-shade="missing"] {
+  box-shadow: inset 0 0 0 1px var(--state-missing);
+}
+
+/* A bar of states; its segments always fill it, whatever the count. */
+.shadeBar {
+  display: flex;
+  height: 12px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--state-none);
+}
+
+.shadeBar > span {
+  flex: none;
+  height: 100%;
+  background: var(--fill);
+}
+
+.shadeBar > span + span {
+  box-shadow: inset 1px 0 0 var(--color-paper-elevated);
+}
+
+/* ── The matrix ── */
+
+.countSwitch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 16px;
+  font-size: 12px;
+  color: var(--color-ink-muted);
+}
+
+.countSwitch > span:first-child {
+  margin-right: 4px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.countSwitch [role="radio"] {
+  padding: 4px 12px;
+  border: 1px solid var(--color-rule);
+  border-radius: 999px;
+  background: none;
+  font-size: 12px;
+  color: var(--color-ink-secondary);
+  cursor: pointer;
+}
+
+.countSwitch [role="radio"][aria-checked="true"] {
+  border-color: var(--color-ink);
+  background: var(--color-ink);
+  color: var(--color-paper);
+}
+
+.shadeBar[data-empty] {
+  display: block;
+  background: repeating-linear-gradient(135deg, var(--state-missing) 0 1px, var(--color-paper) 1px 4px);
+}
+
+.matrixCard {
+  margin-top: 28px;
+  padding: 0 24px 20px;
+  border: 1px solid var(--color-rule);
+  border-radius: 14px;
+  background: var(--color-paper-elevated);
+}
+
+.matrix {
+  display: grid;
+  column-gap: 28px;
+}
+
+/* A row's cells sit in the matrix's own grid, so every column lines up. */
+.matrixRow {
+  display: contents;
+}
+
+.matrixRow > * {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.matrixCorner {
+  align-self: end;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+}
+
+.tierHeader {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding-top: 16px !important;
+}
+
+.tierIndex {
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+}
+
+.tierTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.tierTotal {
+  font-size: 13px;
+  color: var(--color-ink-secondary);
+}
+
+.tierTotal strong {
+  margin-right: 4px;
+  font-size: 26px;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.parityHead {
+  display: grid;
+  gap: 2px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-rule);
+  border-radius: 8px;
+}
+
+.parityHead:hover {
+  border-color: var(--color-accent);
+}
+
+.parityBody {
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.parityCause {
+  font-size: 12px;
+  color: var(--state-failed);
+}
+
+.parityLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+}
+
+.parityMain {
+  font-size: 13px;
+  color: var(--color-ink-secondary);
+}
+
+.parityMain strong {
+  margin-right: 3px;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.parityFacts {
+  font-size: 12px;
+  color: var(--color-ink-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.stale {
+  color: var(--state-failed);
+}
+
+.tierValidated {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-ink-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.tierTotal em {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--state-encoded) 12%, var(--color-paper));
+  font-size: 12px;
+  font-style: normal;
+  color: var(--state-encoded);
+  font-variant-numeric: tabular-nums;
+}
+
+.partName {
+  align-self: center;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.matrixCell {
+  align-self: center;
+}
+
+.cellButton {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  margin: -6px -8px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  box-sizing: content-box;
+}
+
+.cellButton:hover,
+.cellButton[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--color-ink) 5%, transparent);
+}
+
+.cellCount {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--color-ink-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.cellCount strong {
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.cellEmpty {
+  font-size: 13px;
+  color: var(--color-ink-muted);
+}
+
+.factsRow > * {
+  border-bottom: 0;
+  padding: 14px 0 0;
+}
+
+/* The label sits level with its count, not in the middle of the list. */
+.factsRow > .factsLabel {
+  align-self: start;
+  padding-top: 16px;
+}
+
+.factsRow + .factsRow > * {
+  margin-top: 6px;
+  border-top: 1px solid var(--color-rule);
+}
+
+/* Excluded documents are outside the tier's count, so they sit apart. */
+.breakdownList li[data-apart] {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--color-rule);
+}
+
+.factsLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+}
+
+.facts {
+  min-width: 0;
+  font-size: 12px;
+  color: var(--color-ink-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.breakdown {
+  display: grid;
+  gap: 6px;
+  max-width: 320px;
+}
+
+.breakdownTotal {
+  font-size: 12px;
+  color: var(--color-ink-secondary);
+}
+
+.breakdownTotal strong {
+  margin-right: 2px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.breakdownList {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.breakdownItem {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font: inherit;
+  color: var(--color-ink-secondary);
+  text-align: left;
+}
+
+button.breakdownItem {
+  cursor: pointer;
+}
+
+button.breakdownItem:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-accent) 7%, transparent);
+  color: var(--color-ink);
+}
+
+button.breakdownItem[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  color: var(--color-ink);
+  font-weight: 500;
+}
+
+button.breakdownItem:disabled {
+  cursor: default;
+}
+
+.breakdownList li[data-zero] {
+  opacity: 0.45;
+}
+
+.breakdownValue {
+  font-weight: 500;
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.swatchBlank {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1px dashed var(--color-ink-muted);
+  border-radius: 3px;
+}
+
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--color-accent);
+  text-align: left;
+  cursor: pointer;
+}
+
+/* ── The drawer ── */
+
+.detail {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  width: min(400px, 100vw);
+  padding: 88px 20px 24px;
+  overflow-y: auto;
+  border-left: 1px solid var(--color-rule);
+  background: var(--color-paper);
+  box-shadow: -12px 0 32px color-mix(in srgb, var(--color-ink) 10%, transparent);
+}
+
+.detailTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.close {
+  display: inline-flex;
+  padding: 4px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--color-ink-secondary);
+  cursor: pointer;
+}
+
+.close:hover {
+  background: color-mix(in srgb, var(--color-ink) 6%, transparent);
+}
+
+.detailStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ink-secondary);
+}
+
+.detailName {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.detailPath {
+  font-family: var(--font-mono), monospace;
+  font-size: 12px;
+  color: var(--color-accent);
+  overflow-wrap: anywhere;
+}
+
+p.detailPath {
+  color: var(--color-ink-muted);
+}
+
+.detailNote {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-ink-muted);
+  overflow-wrap: anywhere;
+}
+
+.detailNote a,
+.detailFacts a {
+  color: var(--color-accent);
+}
+
+.detailFacts {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-rule);
+}
+
+.detailFacts > div {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 8px;
+  font-size: 12px;
+}
+
+.detailFacts dt {
+  color: var(--color-ink-muted);
+}
+
+.detailFacts dd {
+  margin: 0;
+}
+
+.detailBlock {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-rule);
+}
+
+.detailLabel {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-ink-secondary);
+}
+
+.detailLabel span {
+  font-weight: 400;
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.detailStates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.detailStates li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.detailStates strong {
+  margin-left: auto;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.memberList {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--color-rule);
+  list-style: none;
+}
+
+.memberList button {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 6px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  font-size: 12px;
+  color: var(--color-ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.memberList button:hover {
+  background: color-mix(in srgb, var(--color-ink) 5%, transparent);
+}
+
+.openList {
+  display: grid;
+  gap: 3px;
+  max-height: 240px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.openList li {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.openList a {
+  color: var(--color-accent);
+}
+
+.detailSources {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--color-ink-muted);
+  overflow-wrap: anywhere;
+}
+
+/* ── Documents table ── */
+
+.panel {
+  margin-top: 24px;
+  padding: 20px;
+  border: 1px solid var(--color-rule);
+  border-radius: 14px;
+  background: var(--color-paper-elevated);
+}
+
+.panelHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.panelHead h2 {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.tableTabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.tableTabs [role="tab"] {
+  padding: 4px 10px;
+  border: 1px solid var(--color-rule);
+  border-radius: 999px;
+  background: none;
+  font-size: 12px;
+  color: var(--color-ink-secondary);
+  cursor: pointer;
+}
+
+.tableTabs [role="tab"][aria-selected="true"] {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-paper));
+  color: var(--color-ink);
+}
+
+.clear {
+  padding: 4px 10px;
+  border: 1px solid var(--color-rule);
+  border-radius: 999px;
+  background: none;
+  font-size: 12px;
+  color: var(--color-ink-secondary);
+  cursor: pointer;
+}
+
+.tableTools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.tableTools .countSwitch {
+  padding-top: 0;
+}
+
+.tableWrap {
+  margin-top: 10px;
+  overflow-x: auto;
+}
+
+.sortButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.sortButton:hover,
+.table th[aria-sort] .sortButton {
+  color: var(--color-ink);
+}
+
+.num .sortButton {
+  justify-content: flex-end;
+}
+
+.groupRow th {
+  padding: 0 !important;
+  background: color-mix(in srgb, var(--color-ink) 3%, transparent);
+}
+
+.groupToggle {
+  display: grid;
+  grid-template-columns: 16px minmax(140px, 260px) minmax(0, 1fr) minmax(220px, 300px);
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--color-ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.groupToggle:hover {
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+}
+
+.groupChevron {
+  color: var(--color-ink-muted);
+  transition: transform 120ms ease;
+}
+
+.groupToggle[aria-expanded="true"] .groupChevron {
+  transform: rotate(90deg);
+}
+
+.groupName {
+  font-weight: 600;
+}
+
+.groupMeta {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-ink-muted);
+}
+
+.groupProgress {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-ink-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 760px) {
+  .groupToggle {
+    grid-template-columns: 16px minmax(0, 1fr);
+  }
+
+  .groupMeta,
+  .groupProgress {
+    grid-column: 2;
+  }
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table th,
+.table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--color-rule);
+  text-align: left;
+  vertical-align: baseline;
+}
+
+.table thead th {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+  white-space: nowrap;
+}
+
+.table tbody th {
+  font-weight: 400;
+}
+
+.table tfoot th,
+.table tfoot td {
+  border-bottom: 0;
+  font-weight: 600;
+}
+
+.table tr[aria-selected="true"] {
+  background: color-mix(in srgb, var(--color-accent) 7%, transparent);
+}
+
+.table a {
+  color: var(--color-accent);
+}
+
+.num {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.num[data-zero] {
+  color: var(--color-ink-muted);
+}
+
+.notHeld {
+  font-size: 12px;
+  font-style: italic;
+  text-align: right !important;
+  color: var(--color-ink-muted);
+}
+
+.rowName {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--color-ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.rowName:hover {
+  color: var(--color-accent);
+}
+
+.rowStatus {
+  display: block;
+  font-size: 11px;
+  color: var(--color-ink-muted);
+}
+
+@media (max-width: 760px) {
+  .matrixCard {
+    padding: 8px 14px 16px;
+  }
+
+  .matrix {
+    column-gap: 14px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  }
+
+  /* On a phone a part's name takes its own line above its two cells. */
+  .partName,
+  .matrixCorner,
+  .factsLabel {
+    grid-column: 1 / -1;
+    padding-bottom: 0 !important;
+    border-bottom: 0 !important;
+  }
+
+  .matrixCorner {
+    display: none;
+  }
+
+  .detail {
+    top: auto;
+    left: 0;
+    width: 100vw;
+    max-height: 70vh;
+    padding-top: 20px;
+    border-top: 1px solid var(--color-rule);
+    border-left: 0;
+  }
+}
+
+.provenance {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px 28px;
+}
+
+.provenanceTier {
+  min-width: 0;
+}

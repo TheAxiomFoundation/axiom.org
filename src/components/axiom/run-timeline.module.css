@@ -1,4 +1,9 @@
 .timeline {
+  /* A try's phases: the model in the accent, the checks in a blue that stays apart from it under
+     color-vision deficiency, the work between them in gray (each also named in the "Where the time went" legend). */
+  --phase-model: var(--color-accent);
+  --phase-checks: #1f6fa8;
+  --phase-other: color-mix(in srgb, var(--color-ink) 22%, transparent);
   display: grid;
   gap: 14px;
   padding: 4px 0;
@@ -122,23 +127,21 @@
   color: var(--color-warning);
 }
 
+/* The encode loop's tries, nested under its bar. */
 .tries {
-  margin-top: 10px;
+  display: grid;
+  gap: 2px;
+  margin: 0 0 4px;
 }
 
-.triesHead {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 10px;
-  margin-bottom: 4px;
+.triesRest {
+  margin: 0;
   font-size: 12px;
-  font-weight: 550;
-  color: var(--color-ink);
+  color: var(--color-ink-secondary);
 }
 
-.triesHead span {
-  font-weight: 400;
+.triesNote {
+  font-size: 11px;
   color: var(--color-ink-muted);
 }
 
@@ -150,20 +153,45 @@
   list-style: none;
 }
 
-/* Number, model, time, cost, then what failed the try. */
+/*
+ * A try lines up with the bars above it (the .row grid): its number and model
+ * in the label column, its time under the bars' times, then its cost and what
+ * failed it where the bars start.
+ */
 .triesList li {
-  display: grid;
-  grid-template-columns: 20px minmax(90px, 120px) 48px 48px minmax(0, 1fr);
-  align-items: baseline;
-  column-gap: 10px;
   font-size: 12px;
   color: var(--color-ink-secondary);
 }
 
+.tryWho {
+  display: grid;
+  grid-template-columns: 14px auto minmax(0, 1fr);
+  column-gap: 8px;
+  align-items: baseline;
+  padding-left: 8px;
+}
+
+.tryBranch {
+  font-family: var(--font-mono), monospace;
+  color: var(--color-rule-strong);
+}
+
+.tryStopped {
+  color: var(--color-warning);
+  font-weight: 550;
+}
+
+.tryWhat {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  column-gap: 10px;
+  align-items: baseline;
+}
+
 .tryNumber {
-  text-align: right;
   color: var(--color-ink-muted);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .tryModel {
@@ -185,17 +213,126 @@
   color: var(--color-success);
 }
 
+/* "Where the time went": the loop's shares as one bar under the loop's bar, then a legend. */
+.compose {
+  margin: 0 0 4px;
+  align-items: start;
+}
+
+.composeLabel {
+  padding-left: 30px;
+  font-size: 12px;
+  color: var(--color-ink-muted);
+}
+
+.composeBody {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding-top: 3px;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+  font-size: 12px;
+  color: var(--color-ink-secondary);
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.legendItem strong {
+  font-weight: 550;
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.sep {
+  color: var(--color-rule-strong);
+}
+
+.legendNote {
+  font-size: 11px;
+  color: var(--color-ink-muted);
+}
+
+.swatch {
+  align-self: center;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+
+/* A timed try: its phases on the run's clock, then its cost and what sent it back. */
+.tryTrack {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.lane {
+  position: relative;
+  height: 8px;
+}
+
+.segment {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 1px;
+}
+
+.swatch[data-kind="model"],
+.segment[data-kind="model"] {
+  background: var(--phase-model);
+}
+
+.swatch[data-kind="checks"],
+.segment[data-kind="checks"] {
+  background: var(--phase-checks);
+}
+
+/* The dependent modules' checks: the checks' blue, lighter. */
+.swatch[data-part="dependents"],
+.segment[data-part="dependents"] {
+  background: color-mix(in srgb, var(--phase-checks) 55%, var(--color-paper));
+}
+
+.swatch[data-kind="other"],
+.segment[data-kind="other"] {
+  background: var(--phase-other);
+}
+
+/* The encode step's time outside the tries: a faint fill with an outline. */
+.swatch[data-kind="outside"],
+.segment[data-kind="outside"] {
+  background: color-mix(in srgb, var(--color-ink) 6%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-ink) 25%, transparent);
+}
+
 @media (max-width: 640px) {
-  .triesList li {
-    grid-template-columns: 20px minmax(0, 1fr) auto;
+  .tryTrack,
+  .composeBody {
+    grid-column: 1 / -1;
+  }
+
+  .composeLabel {
+    padding-left: 0;
+  }
+
+  .tryWhat {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .tryCost {
     display: none;
-  }
-
-  .tryResult {
-    grid-column: 2 / -1;
   }
 
   .row {

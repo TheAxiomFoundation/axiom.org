@@ -462,9 +462,9 @@ describe("OpsPipeline", () => {
     // Details names what it is narrowed to.
     expect(screen.getByRole("heading", { name: "Details" }).parentElement).toHaveTextContent(/^DetailsUnited States$/);
     // Countries by name, each with its citation count, and All with the total.
-    expect(within(bar).getByRole("link", { name: /^All\s*3$/ })).toHaveAttribute("href", "/ops#pipeline-title");
+    expect(within(bar).getByRole("link", { name: /^All\s*3$/ })).toHaveAttribute("href", "/ops?tab=pipeline#pipeline-title");
     expect(within(bar).getByRole("link", { name: /^United States\s*2$/ })).toHaveAttribute("aria-current", "page");
-    expect(within(bar).getByRole("link", { name: /^Denmark\s*1$/ })).toHaveAttribute("href", "/ops?j=dk#pipeline-title");
+    expect(within(bar).getByRole("link", { name: /^Denmark\s*1$/ })).toHaveAttribute("href", "/ops?tab=pipeline&j=dk#pipeline-title");
     const select = within(bar).getByRole("combobox", { name: "Within United States" });
     // All first, then the federal level, then the states by name.
     expect([...select.querySelectorAll("option")].map((o) => o.textContent)).toEqual([
@@ -474,11 +474,11 @@ describe("OpsPipeline", () => {
     ]);
     expect(select.querySelector("optgroup")).toHaveAttribute("label", "States");
     fireEvent.change(select, { target: { value: "us:only" } });
-    expect(push).toHaveBeenLastCalledWith("/ops?j=us&only=1#pipeline-title");
+    expect(push).toHaveBeenLastCalledWith("/ops?tab=pipeline&j=us&only=1#pipeline-title");
     fireEvent.change(select, { target: { value: "us-la" } });
-    expect(push).toHaveBeenLastCalledWith("/ops?j=us-la#pipeline-title");
+    expect(push).toHaveBeenLastCalledWith("/ops?tab=pipeline&j=us-la#pipeline-title");
     fireEvent.change(select, { target: { value: "" } });
-    expect(push).toHaveBeenLastCalledWith("/ops?j=us#pipeline-title");
+    expect(push).toHaveBeenLastCalledWith("/ops?tab=pipeline&j=us#pipeline-title");
 
     // Each citation once, where its latest run left it, in pipeline order.
     expect(screen.getByText("3 citations · where each one is now")).toBeInTheDocument();
@@ -737,6 +737,7 @@ describe("OpsPipeline", () => {
         "Setup?4m",
         "Encode loop?Encoded6mFailed20m",
         "Model time?Not timed yet",
+        "Check time?Not timed yet",
         "Sign and open the PR?35s",
       ]);
       fireEvent.click(within(parts[1]).getByRole("button", { name: "What Encode loop means" }));

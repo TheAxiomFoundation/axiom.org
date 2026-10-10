@@ -61,3 +61,20 @@ it("searches across entities and edits each result on its owning person", () => 
  fireEvent.click(screen.getByRole("button", {name:"Clear"}));
  expect(screen.getByRole("region", {name:"Tax Unit inputs"})).toBeInTheDocument();
 });
+
+it("gives relationship roles their own composition entry", () => {
+ render(<HouseholdComposer fields={fields} members={["person_2"]} canAddPeople running={false} onAddPerson={vi.fn()} onRemovePerson={vi.fn()} renderControl={() => <input />} relationships={<p>role grid</p>} />);
+ expect(screen.queryByText("role grid")).not.toBeInTheDocument();
+ fireEvent.click(screen.getByRole("button", {name:"Relationships"}));
+ expect(screen.getByText("role grid")).toBeInTheDocument();
+ expect(screen.getByRole("region", {name:"Relationship roles panel"})).toBeInTheDocument();
+ fireEvent.change(screen.getByRole("searchbox", {name:"Find inputs across all entities"}), {target:{value:"age"}});
+ expect(screen.queryByText("role grid")).not.toBeInTheDocument();
+ fireEvent.click(screen.getByRole("button", {name:"Clear"}));
+ fireEvent.click(screen.getByRole("button", {name:"Person 2"}));
+ expect(screen.queryByText("role grid")).not.toBeInTheDocument();
+});
+it("offers no relationships entry when the scope declares none", () => {
+ render(<HouseholdComposer fields={fields} members={[]} canAddPeople running={false} onAddPerson={vi.fn()} onRemovePerson={vi.fn()} renderControl={() => <input />} />);
+ expect(screen.queryByRole("button", {name:"Relationships"})).not.toBeInTheDocument();
+});

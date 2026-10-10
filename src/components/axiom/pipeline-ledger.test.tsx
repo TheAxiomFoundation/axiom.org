@@ -26,6 +26,9 @@ describe("PipelineLedger", () => {
         pipelineAttempt({ id: "b", citation: "us-la/statute/47/32", jurisdiction: "us-la", encoder_error_rule: "rule-a", failure_source: "diagnostics" }),
       ]),
       labels: { "us/statute/7": "Agriculture", "us/statute/7/2015/f": "Disqualification" },
+      bundles: [
+        { bundle_id: "us-az/snap", bundle_title: "Arizona SNAP", tier: "screener", tier_index: 1, tier_title: "Screener-level parity", document: "7 USC 2015", citation_path: "us/statute/7/2015" },
+      ],
     });
     render(<PipelineLedger scope={{ jurisdiction: "us", only: false }} scopeName="United States" referenceMs={NOW} />);
     expect(screen.getByText("Loading runs…")).toBeInTheDocument();
@@ -39,6 +42,9 @@ describe("PipelineLedger", () => {
     const row = screen.getByRole("button", { name: "Runs of us/statute/7/2015/f" }).closest("tr")!;
     expect(row).toHaveTextContent(/2015\/f.*Disqualification.*Tests pass.*2/);
     expect(within(row).getByRole("link", { name: "2015/f" })).toHaveAttribute("href", "/ops/journey?citation=us%2Fstatute%2F7%2F2015%2Ff");
+    // The program bundle and tier the section belongs to.
+    expect(within(row).getByRole("link", { name: "Arizona SNAP · Tier 1" })).toHaveAttribute("href", "/ops?tab=bundles&bundle=us-az/snap");
+    expect(within(screen.getByRole("button", { name: "Runs of us-la/statute/47/32" }).closest("tr")!).queryByRole("link", { name: /SNAP/ })).toBeNull();
     expect(screen.getByRole("button", { name: "Runs of us-la/statute/47/32" }).closest("tr")).toHaveTextContent("Failed validation");
   });
 
@@ -66,23 +72,23 @@ describe("PipelineLedger", () => {
     expect(screen.getByText(/^Every run, grouped/)).toBeInTheDocument();
     fireEvent.click(section);
     expect(section).toHaveAttribute("aria-expanded", "true");
-    // A summary line, then two count-first lists, then the latest run.
-    expect(screen.getByText("12 runs").parentElement).toHaveTextContent("12 runs29d ago → 18d agoencoder 0.2.2000 → 0.2.2011");
+    // A summary line, then where and why each run stopped (count first), then the latest run.
+    expect(screen.getByText("12 runs").parentElement).toHaveTextContent("12 runs · all failed · latest 18d ago");
     const list = (name: string) => within(screen.getByRole("list", { name })).getAllByRole("listitem").map((item) => item.textContent);
-    expect(list("Outcome of each run")).toEqual(["8Failed at an unknown step", "4Failed validation"]);
-    expect(list("Why they failed")).toEqual([
-      "4Completeness rule: tests",
-      "1cause b",
-      "1cause c",
-      "1cause e",
+    const stops = "Where each run stopped, and why";
+    expect(list(stops)).toEqual([
+      "4Failed validation — Completeness rule: tests",
+      "1Failed validation — cause l",
+      "1Failed validation — cause k",
+      "1Failed validation — cause i",
       "+5 more",
     ]);
     // "+5 more" opens the rest of the list, and "Show fewer" folds it again.
     fireEvent.click(screen.getByRole("button", { name: "+5 more" }));
-    expect(list("Why they failed")).toHaveLength(10);
+    expect(list(stops)).toHaveLength(10);
     fireEvent.click(screen.getByRole("button", { name: "Show fewer" }));
-    expect(list("Why they failed")).toHaveLength(5);
-    expect(screen.getByText("Latest run").parentElement).toHaveTextContent("Latest run18d agoFailed at an unknown stepcause l");
+    expect(list(stops)).toHaveLength(5);
+    expect(screen.getByText("Latest run").parentElement).toHaveTextContent("Latest runFailed validation cause ldispatched 18d ago · Run on GitHub ↗");
     // The latest run's timeline shows under the overview, with nothing to open.
     expect(screen.queryByRole("button", { name: /^Timeline of / })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Encode run" })).toBeInTheDocument();
@@ -118,13 +124,14 @@ describe("PipelineLedger", () => {
     });
     render(<PipelineLedger scope={null} scopeName={null} referenceMs={NOW} />);
     fireEvent.click(await screen.findByRole("button", { name: "Runs of us/statute/42/416/l" }));
-    expect(screen.getByText("Latest run").parentElement).toHaveTextContent(/2 tries/);
-    const tries = within(screen.getByRole("list", { name: "Tries in the encode loop" })).getAllByRole("listitem");
-    expect(tries.map((row) => row.textContent)).toEqual([
-      "1gpt-6-luna37s<$0.01Completeness rule: structure",
-      "2gpt-6-sol20s$0.14Embedded scalar literal",
+    expect(screen.getByText("The run").parentElement).toHaveTextContent(/2 tries/);
+    const rows = within(screen.getByRole("list", { name: "Inside the encode loop" })).getAllByRole("listitem");
+    // The encoder times each try's model call only: the rest of the loop is one row, so the group sums to the loop.
+    expect(rows.map((row) => row.textContent)).toEqual([
+      "├Try 1 gpt-6-luna 37s <$0.01 Completeness rule: structure",
+      "├Try 2 gpt-6-sol 20s $0.14 Embedded scalar literal · stopped the run",
+      "└Checks and review 9m between and after the tries, not timed per try; with the tries' model time (57s) the loop's 10m",
     ]);
-    expect(screen.getByText(/^model time 57s of the 10m loop; the rest is checks and review$/)).toBeInTheDocument();
   });
 
   it("shows ten documents at a time", async () => {

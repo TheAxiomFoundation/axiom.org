@@ -27,6 +27,16 @@ describe("rule workspace", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
     vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
   });
+  it("says why a scope cannot run instead of silently dropping the Run tab", () => {
+    const reason = "This source needs each person's relationship roles, and the connected runtime cannot take them yet.";
+    const { rerender } = render(<RuleWorkspace graph={graph} selectedId="result" onSelect={vi.fn()} view="map" onViewChange={vi.fn()} scopeLabel="Test" truncated={false} runReady={false} runUnavailableReason={reason} scenario={null} hasRun={false} stale={false} valueOf={() => undefined} />);
+    expect(screen.getByText(reason).closest("[role=status]")?.textContent).toContain("Run unavailable.");
+    expect(screen.queryByRole("button", { name: "Run" })).toBeNull();
+    // A runnable scope shows no refusal, even if a stale reason lingers.
+    rerender(<RuleWorkspace graph={graph} selectedId="result" onSelect={vi.fn()} view="map" onViewChange={vi.fn()} scopeLabel="Test" truncated={false} runReady runUnavailableReason={reason} scenario={null} hasRun={false} stale={false} valueOf={() => undefined} />);
+    expect(screen.queryByText(reason)).toBeNull();
+    expect(screen.getByRole("button", { name: "Run" })).toBeTruthy();
+  });
   it("keeps shared dependencies and relation edges without duplicating a dependency", () => {
     const data = { ...graph, rules: [{ ...graph.rules[0]!, inputDeps: ["shared"], relationDeps: ["people"] }, ...graph.rules.slice(1)] };
     expect(neighborhood(data, "result").dependencies).toEqual(["shared", "missing", "people"]);

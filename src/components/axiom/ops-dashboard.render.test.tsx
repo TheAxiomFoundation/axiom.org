@@ -1,4 +1,4 @@
-import { render, screen, cleanup } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OpsDashboard } from "./ops-dashboard";
 import type {
@@ -120,6 +120,35 @@ describe("OpsDashboard", () => {
     render(<OpsDashboard {...props} ledger={<section aria-label="Every run" />} />);
     expect(screen.queryByRole("heading", { name: "Latest encodings" })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Every run" })).toBeInTheDocument();
+  });
+
+  it("shows the ledger, the program bundles and the pipeline one tab at a time", () => {
+    const props = {
+      initialStatus: status({}),
+      encodingError: null,
+      queues: [],
+      recentScopes: [],
+      ledger: <section aria-label="Every run" />,
+      bundles: <section aria-label="Bundles" />,
+      pipeline: <section aria-label="Where every citation is" />,
+    };
+    render(<OpsDashboard {...props} />);
+    const tabs = screen.getByRole("tablist", { name: "Operations" });
+    expect(within(tabs).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Ledger", "Program bundles", "Pipeline"]);
+    expect(screen.getByRole("region", { name: "Every run" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "Bundles", hidden: true })).not.toBeVisible();
+    fireEvent.click(within(tabs).getByRole("tab", { name: "Program bundles" }));
+    expect(screen.getByRole("region", { name: "Bundles" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "Every run", hidden: true })).not.toBeVisible();
+    expect(window.location.search).toBe("?tab=bundles");
+    cleanup();
+    render(<OpsDashboard {...props} initialTab="pipeline" />);
+    expect(screen.getByRole("region", { name: "Where every citation is" })).toBeVisible();
+    cleanup();
+    // Without the bundles and the pipeline, no tabs.
+    render(<OpsDashboard {...props} bundles={undefined} pipeline={undefined} />);
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    window.history.replaceState(null, "", "/");
   });
 
   it("shows stalled runs when the heartbeat dies", () => {
