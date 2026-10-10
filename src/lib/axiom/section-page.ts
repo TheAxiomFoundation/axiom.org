@@ -149,12 +149,32 @@ export interface SectionPageData {
  *  measurements stopped reaching the deployment. */
 export const EXTERNAL_MATCH_MAX_AGE_DAYS = 7;
 
+/** How far ahead of this server's clock a result may be dated and still
+ *  count. The timestamp comes from the hosted API, not from this clock,
+ *  so five minutes of tolerance absorbs skew between the two. A result
+ *  dated further ahead is not a current one: without this bound it
+ *  would count from now until seven days after whatever date it
+ *  carries. The chip shows the timestamp itself, so its date can lead
+ *  this server's clock by up to the tolerance. */
+export const EXTERNAL_MATCH_CLOCK_SKEW_MS = 5 * 60_000;
+
+/** An RFC 3339 date-time (section 5.6), which always names its UTC
+ *  offset. axiom-api's OpenAPI schema declares `observed_at` as
+ *  `format: date-time`. `Date.parse` reads a date-time without an
+ *  offset in this server's timezone, so a string without one would
+ *  count or not depending on where the page renders. It never counts. */
+const RFC3339_DATE_TIME =
+  /^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[Zz]|[+-]\d{2}:\d{2})$/;
+
 export interface ExternalResultCounts {
   match: number;
   known_difference: number;
   diff: number;
   errored: number;
-  /** No result, or a result older than EXTERNAL_MATCH_MAX_AGE_DAYS. */
+  /** No result; a result whose timestamp is missing, unparseable, or
+   *  not an RFC 3339 date-time with a UTC offset; or a result outside
+   *  the freshness window: older than EXTERNAL_MATCH_MAX_AGE_DAYS, or
+   *  dated more than EXTERNAL_MATCH_CLOCK_SKEW_MS ahead of now. */
   none: number;
 }
 
@@ -179,6 +199,12 @@ export interface DeclaredExternalComparisons {
   }>;
 }
 
+/**
+ * Whether a published result still counts: it has a status, its
+ * timestamp is an RFC 3339 date-time with a UTC offset, and it was
+ * observed within [now - EXTERNAL_MATCH_MAX_AGE_DAYS,
+ * now + EXTERNAL_MATCH_CLOCK_SKEW_MS], both ends included.
+ */
 function currentResult(
   result: ParityCaseSummary["comparisonResults"][number],
   now: Date,
@@ -187,9 +213,17 @@ function currentResult(
   observedAt: string;
 } {
   if (!result.status || !result.observedAt) return false;
+  if (!RFC3339_DATE_TIME.test(result.observedAt)) return false;
   const observed = Date.parse(result.observedAt);
   if (Number.isNaN(observed)) return false;
-  return now.getTime() - observed <= EXTERNAL_MATCH_MAX_AGE_DAYS * 86_400_000;
+  // 0 <= age <= the maximum, with the lower bound relaxed by the
+  // clock-skew tolerance. A result dated further ahead than that is
+  // not fresh, so it shows no chip.
+  const age = now.getTime() - observed;
+  return (
+    age >= -EXTERNAL_MATCH_CLOCK_SKEW_MS &&
+    age <= EXTERNAL_MATCH_MAX_AGE_DAYS * 86_400_000
+  );
 }
 
 /**

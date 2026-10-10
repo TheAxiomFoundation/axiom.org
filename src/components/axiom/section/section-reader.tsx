@@ -147,9 +147,11 @@ const CHIP_CLASS =
 /**
  * The section's trust row: encoded rules, subsection coverage, and
  * a comparison chip only when every declared case for an engine has
- * fresh latest matches. The data assembly enforces the seven-day
- * window; the chip includes N of M and the oldest matching date.
- * Missing, stale, and nonmatching results leave the chip hidden.
+ * fresh latest matches. The data assembly enforces the freshness
+ * window (observed at most seven days ago, and no further ahead of
+ * now than its clock-skew tolerance); the chip includes N of M and
+ * the oldest matching date. Missing, stale, future-dated, and
+ * nonmatching results leave the chip hidden.
  */
 function EncodingStatusLine({ data }: { data: SectionPageData }) {
   if (data.encodedRules.length === 0) return null;
