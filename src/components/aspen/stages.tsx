@@ -129,8 +129,8 @@ export { Disclosure };
  */
 export function WelcomeLanding({ onStart }: { onStart: () => void }) {
   return (
-    <div className="flex min-h-[calc(100dvh-4.5rem)] flex-col justify-center gap-8 py-6 md:max-w-[760px]">
-      <section>
+    <div className="mx-auto flex min-h-[calc(100dvh-4.5rem)] max-w-[760px] flex-col items-center justify-center gap-8 py-6 text-center">
+      <section className="flex flex-col items-center">
         <span className="kicker mb-4 inline-flex">
           <span className="kicker-mark">&sect;</span>
           Aspen Institute · {EVENT.place}
@@ -138,14 +138,14 @@ export function WelcomeLanding({ onStart }: { onStart: () => void }) {
         <h1 className="heading-page m-0 mb-4 text-balance" style={{ fontSize: "clamp(1.7rem, 1.1rem + 2.4vw, 2.8rem)" }}>
           {EVENT.title}
         </h1>
-        <p className="m-0 max-w-[560px] font-body text-[1.1rem] leading-relaxed text-[var(--color-ink-secondary)] text-pretty">
+        <p className="m-0 max-w-[560px] font-body text-[1.1rem] leading-relaxed text-[var(--color-ink-secondary)] text-balance">
           {STAGES[0].summary}
         </p>
         <p className="m-0 mt-3 font-mono text-[0.7rem] leading-relaxed tracking-[0.04em] text-[var(--color-ink-muted)]">
           With {EVENT.hosts}
         </p>
       </section>
-      <div className="flex max-w-[440px] flex-col gap-3">
+      <div className="flex w-full max-w-[440px] flex-col gap-3">
         <button type="button" className={`${BUTTON} w-full py-3.5 text-[1.05rem]`} onClick={onStart}>
           Start: ask the AI <span aria-hidden>→</span>
         </button>

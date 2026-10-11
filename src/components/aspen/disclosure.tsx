@@ -33,7 +33,7 @@ export function Disclosure({
         </button>
       </p>
       {open && (
-        <ul className="m-0 mt-2 flex list-disc flex-col gap-1 pl-4">
+        <ul className="m-0 mt-2 flex list-disc flex-col gap-1 pl-4 text-left">
           {DISCLOSURE.details.map((d) => (
             <li key={d}>{d}</li>
           ))}
