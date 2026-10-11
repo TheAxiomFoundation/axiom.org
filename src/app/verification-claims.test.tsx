@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join, relative } from 'node:path'
 import { render } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 
@@ -13,6 +13,8 @@ import VerifyPage from '@/app/verify/page'
 import ReceiptsPage from '@/app/receipts/page'
 import { EncodedLawSection } from '@/components/landing/encoded-law-section'
 import { EncoderSection } from '@/components/landing/encoder-section'
+import OverviewPage from '@/app/overview/page'
+import * as overviewContent from '@/components/overview/overview-content'
 import { SOUTHMOD_CAVEATS } from '@/lib/verification-evidence'
 
 // The verification copy must describe what the oracle harness does.
@@ -147,5 +149,156 @@ describe('verification claims', () => {
   it('keeps the validation metadata free of independence and coverage claims', () => {
     expect(validationMetadata.description).not.toMatch(/independent/i)
     expect(validationMetadata.description).not.toMatch(/\bevery\b/i)
+  })
+})
+
+// The encoder's record is its signed apply manifest, and nothing records its
+// decisions. Read from code on 2026-10-10:
+// - An apply manifest (axiom-encode cli.py _MODEL_APPLY_MANIFEST_FIELDS) names
+//   the citation, the runner, backend and model, and the path and SHA-256 of
+//   each file written, and is signed before it is written. It holds a trace's
+//   path and hash, never the trace.
+// - Nothing keeps the trace of an encoding that lands. On rulespec-us main
+//   (16a66771) all 686 manual-attestation manifests have trace_file null, as
+//   do 9 of the 368 `encode --apply` manifests, and 387 of the 390 trace
+//   paths recorded are local temp directories. The signed CI workflows stage
+//   no trace into the artifacts that land; only a failed targeted re-encode
+//   keeps its work files in a 90-day artifact.
+// - The run telemetry in Supabase (encodings.encoding_runs,
+//   telemetry.sdk_session_events) records a run's request, result, outcome
+//   and validation issues: about four events a run, none a decision.
+const NOT = String.raw`(?<!\bnot )(?<!n['’]t )(?<!\bnever )`
+// "Not every encoding decision is logged" negates the quantifier, not the
+// noun a pattern starts on.
+const NOT_QUANTIFIED =
+  NOT +
+  ['every', 'each', 'all']
+    .flatMap((q) => [String.raw`(?<!\bnot ${q} )`, String.raw`(?<!n['’]t ${q} )`])
+    .join('')
+// The same patterns as TheAxiomFoundation/ops comms/check_claims.py, which
+// guards the Message House and FAQ.
+const DECISION_LOG = [
+  new RegExp(String.raw`${NOT}\b(every|each|all)( \w+)? decisions? (is |are |was |were |gets? )?(logged|recorded|traced)\b`, 'i'),
+  new RegExp(String.raw`${NOT}\b(logs?|logged|logging|records?|recorded|recording|traces?|traced|tracing)\b[^.]{0,20}\b(every|each|all)( \w+)? decisions?\b`, 'i'),
+  /\bdecision[- ](trail|log)s?\b/i,
+  new RegExp(
+    String.raw`${NOT_QUANTIFIED}\b(encoding|encoder['’]?s?|model['’]?s?|agent['’]?s?) decisions? (is|are) (all )?(public|published|open|logged|recorded|traceable|auditable)\b`,
+    'i',
+  ),
+  new RegExp(String.raw`${NOT}\bpublish(es|ed|ing)? (its|our|every|each|all|the (encoder|model|agent)['’]s)( \w+)? decisions?\b`, 'i'),
+  new RegExp(
+    String.raw`${NOT}\b(publish(es|ed|ing)?|keeps?|kept|retains?|retained|archives?|archived|stores?|stored|logs?|logged|records?|recorded|saves?|saved) (every|each|all|its|their|full|complete|the full|the complete|the (encoder|model|agent)['’]s)( [\w'’-]+){0,2} (traces?|transcripts?|reasoning)\b`,
+    'i',
+  ),
+  new RegExp(
+    String.raw`${NOT}\b(every|each|all|its|their|the (encoder|model|agent)['’]s)( [\w'’-]+){0,2} (traces?|transcripts?|reasoning) (is|are|gets?) (published|public|kept|retained|archived|stored|logged|recorded|saved|available)\b`,
+    'i',
+  ),
+]
+
+function decisionLogClaims(text: string) {
+  return DECISION_LOG.flatMap((re) => {
+    const m = text.match(re)
+    return m ? [m[0]] : []
+  })
+}
+
+// Every string an exported overview constant holds, nested ones included, so
+// the audience panels the page renders one at a time are read too.
+function stringsIn(value: unknown): string[] {
+  if (typeof value === 'string') return [value]
+  if (Array.isArray(value)) return value.flatMap(stringsIn)
+  if (value && typeof value === 'object') return Object.values(value).flatMap(stringsIn)
+  return []
+}
+
+// Page copy as one line of words: comments dropped, JSX tags and entities
+// stripped, `{" "}` and line breaks read as spaces. Dropping text can only
+// hide a claim from this backstop, never invent one.
+function copyOf(source: string) {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/(^|[^:"'`\\])\/\/[^\n]*/g, '$1')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<(style|script)\b[\s\S]*?<\/\1>/g, ' ')
+    .replace(/\{" "\}/g, ' ')
+    .replace(/<\/?[A-Za-z][^<>]*>/g, ' ')
+    .replace(/&apos;|&rsquo;/g, "'")
+    .replace(/&mdash;/g, '—')
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+}
+
+function sourceFiles(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name)
+    if (entry.isDirectory()) return entry.name === 'test' ? [] : sourceFiles(path)
+    return /\.(tsx?|mdx?)$/.test(entry.name) && !/\.(test|spec)\.tsx?$|\.d\.ts$/.test(entry.name) ? [path] : []
+  })
+}
+
+describe('encoder record claims', () => {
+  it('the matcher catches the retired copy and passes the manifest wording', () => {
+    const retired = [
+      'The encoder logs every decision.',
+      'An AI-assisted pipeline that reads source law, drafts encodings subsection by subsection, and logs every decision with its provenance.',
+      'Our code, our data, and our encoding decisions are public.',
+      'Every value cites its authority, every clause carries its effective dates, and the pipeline records each encoding decision alongside the source text it came from.',
+      'Every value cites its authority, every clause carries its effective dates, and each decision is recorded alongside the source text.',
+      'Every encoding decision logged and explainable.',
+      'It logs every decision, conflict, and retry.',
+      'A draft is logged with an explainable decision trail.',
+      'The encoder keeps a decision log for every encoding.',
+      'The model’s decisions are recorded.',
+      'We publish the encoder’s decisions.',
+      'We publish every encoder trace.',
+      'The encoder keeps its full reasoning.',
+      'Every run’s trace is published.',
+      'Its traces are public.',
+    ]
+    for (const claim of retired) expect(decisionLogClaims(claim), claim).not.toEqual([])
+
+    const allowed = [
+      'Each time the encoder applies an encoding, it leaves a signed manifest naming the source citation and the model.',
+      'An AI-assisted pipeline that reads source law, drafts encodings subsection by subsection, and leaves a signed manifest naming the source citation and the model for each encoding it applies.',
+      'Our code, our data, and our encodings are public.',
+      'Every value cites its authority, every clause carries its effective dates, and each encoding the encoder applies has a signed manifest naming its source citation and model.',
+      'An apply manifest records the trace’s path and hash, never its contents.',
+      'The engine returns a determination with its citation trace.',
+      'Not every encoding decision is logged.',
+      'No encoder trace is published.',
+      'We do not publish the encoder’s traces.',
+    ]
+    for (const line of allowed) expect(decisionLogClaims(line), line).toEqual([])
+  })
+
+  const RENDERED = [
+    ...SURFACES,
+    ['/overview', () => render(<OverviewPage />)],
+  ] as const
+  for (const [route, renderSurface] of RENDERED) {
+    it(`${route} claims no decision log`, () => {
+      expect(decisionLogClaims(textOf(renderSurface))).toEqual([])
+    })
+  }
+
+  it('the overview copy, every audience panel included, claims no decision log', () => {
+    const hits = stringsIn(overviewContent).flatMap(decisionLogClaims)
+    expect(hits).toEqual([])
+  })
+
+  // The downloadable PDF is rendered from this file (pdf/overview/README.md).
+  it('the overview PDF print source claims no decision log', () => {
+    const html = readFileSync(join(process.cwd(), 'pdf/overview/axiom-overview.html'), 'utf8')
+    expect(decisionLogClaims(copyOf(html))).toEqual([])
+  })
+
+  // A backstop for pages no test renders: every non-test source file.
+  it('no source file claims a decision log', () => {
+    const root = join(process.cwd(), 'src')
+    const hits = sourceFiles(root).flatMap((path) =>
+      decisionLogClaims(copyOf(readFileSync(path, 'utf8'))).map((m) => `${relative(root, path)}: ${m}`),
+    )
+    expect(hits).toEqual([])
   })
 })

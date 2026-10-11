@@ -41,7 +41,9 @@ const BUILD = [
   {
     n: "03",
     title: "The Encoder",
-    desc: "An AI-assisted pipeline that reads source law, drafts encodings subsection by subsection, and logs every decision with its provenance.",
+    // A signed apply manifest is what the encoder records; see the comment in
+    // src/components/landing/encoder-section.tsx.
+    desc: "An AI-assisted pipeline that reads source law, drafts encodings subsection by subsection, and leaves a signed manifest naming the source citation and the model for each encoding it applies.",
     // Held back for now — the /encoder page link returns later.
     href: null,
   },
@@ -214,7 +216,7 @@ export default function AboutPage() {
               PSL Foundation
             </a>
             , which also sponsors PolicyEngine. Our code, our data, and our
-            encoding decisions are public.
+            encodings are public.
           </p>
           <a
             href="https://github.com/TheAxiomFoundation"

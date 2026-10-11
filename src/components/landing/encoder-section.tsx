@@ -37,11 +37,19 @@ export function EncoderSection() {
             terminal animation. */}
         <JourneyScrolly />
 
+        {/*
+          The encoder's record is its signed apply manifest (axiom-encode
+          cli.py _MODEL_APPLY_MANIFEST_FIELDS): the citation, the model, and
+          a hash of each file written. It holds a trace's path and hash, not
+          the trace, and nothing keeps the trace of an encoding that lands, so
+          this line claims the manifest and no per-decision record.
+        */}
         <Reveal
           as="p"
           className="mt-14 text-center font-body text-[0.95rem] text-[var(--color-ink-muted)] max-w-[640px] mx-auto leading-relaxed"
         >
-          The encoder logs every decision.{" "}
+          Each time the encoder applies an encoding, it leaves a signed
+          manifest naming the source citation and the model.{" "}
           <span className="serif-italic text-[var(--color-ink-secondary)]">
             Disagreements are classified and published, including the ones
             not yet explained.
