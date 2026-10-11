@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { summarizeRun } from "@/lib/aspen/results";
 import { OverallRating, ScaleRow } from "./overall-rating";
 
 function stubFetch() {
@@ -131,11 +132,39 @@ describe("OverallRating", () => {
     expect(bodies(fetchMock)[0].payload).toMatchObject({ question: "experience", ratings: { residents: 2 } });
   });
 
-  it("shows the thank-you once a phone has shared", async () => {
+  it("tells a phone that already shared to wait for the room's averages", async () => {
     localStorage.setItem("aspen.overall.v1", "true");
     stubFetch();
-    render(<OverallRating stage="try" />);
+    const onDone = vi.fn();
+    render(<OverallRating stage="try" onDone={onDone} />);
     expect(await screen.findByText(/Your ratings are in/)).toBeInTheDocument();
+    expect(screen.getByText("The room's averages appear here as people rate.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Share my ratings" })).not.toBeInTheDocument();
+    expect(onDone).toHaveBeenCalled();
+  });
+
+  it("shows the room's averages after sharing, so the stage is never empty", async () => {
+    stubFetch();
+    const room = summarizeRun({
+      participants: [],
+      prompts: [],
+      pledges: [],
+      events: [
+        { run_id: "r", kind: "discussion", payload: { question: "performance", ratings: { amount: 2 } } },
+        { run_id: "r", kind: "survey", payload: { question: "source-of-truth", answer: "no" } },
+      ],
+    });
+    const onDone = vi.fn();
+    render(<OverallRating stage="rate" room={room} onDone={onDone} />);
+    expect(onDone).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Got the amount right: 2 of 5" }));
+    fireEvent.click(screen.getByRole("button", { name: "Share my ratings" }));
+    expect(await screen.findByText(/Here is the room so far/)).toBeInTheDocument();
+    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("How did the AI do?")).toBeInTheDocument();
+    expect(screen.getByText("2.0")).toBeInTheDocument();
+    expect(screen.getByText("Checking answers today")).toBeInTheDocument();
+    // A scale nobody rated stays out.
+    expect(screen.queryByText("How has AI worked out at your agency so far?")).not.toBeInTheDocument();
   });
 });

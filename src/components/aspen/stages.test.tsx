@@ -364,17 +364,31 @@ describe("NextStepsForm", () => {
 });
 
 describe("ThankYouContent", () => {
-  it("thanks the room and links onward, without the room's numbers", () => {
-    render(<ThankYouContent />);
-    expect(screen.getByText(/Thank you to the Aspen Institute/)).toBeInTheDocument();
+  it("thanks the room once, then shows where to go next and how to reach us", () => {
+    const onReturn = vi.fn();
+    render(<ThankYouContent onReturn={onReturn} />);
+    expect(screen.getByRole("heading", { level: 1, name: "Thank you" })).toBeInTheDocument();
+    expect(screen.getByText("To the Aspen Institute and to every leader in the room.")).toBeInTheDocument();
+    expect(screen.getByText("Enjoy dinner.")).toBeInTheDocument();
     expect(screen.queryByText(/ready to go further|questions asked/)).not.toBeInTheDocument();
-    const links = screen.getAllByRole("link");
+    const links = screen.getAllByRole("link").filter((a) => a.getAttribute("target") === "_blank");
     expect(links.map((a) => a.getAttribute("href"))).toEqual([
       "https://axiom.org/gallery/chatbot",
       "https://policybench.org",
       "https://axiom.org",
     ]);
     for (const link of links) expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    expect(screen.getByRole("link", { name: /Try the rules chatbot/ })).toHaveTextContent(
+      "Ask the same question, answered by the encoded rules.",
+    );
+    expect(screen.getByRole("link", { name: EVENT.contactEmail })).toHaveAttribute("href", `mailto:${EVENT.contactEmail}`);
+    fireEvent.click(screen.getByRole("button", { name: "Back to your question" }));
+    expect(onReturn).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves out the way back when there is none", () => {
+    render(<ThankYouContent />);
+    expect(screen.queryByRole("button", { name: "Back to your question" })).not.toBeInTheDocument();
   });
 });
 

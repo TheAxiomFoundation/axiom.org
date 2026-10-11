@@ -97,7 +97,7 @@ export function RatingCard({ promptId, onRated }: { promptId: string; onRated?: 
           <legend className="mb-2.5 font-body text-[1.02rem] text-[var(--color-ink)]">
             What would a resident do next?
           </legend>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2">
             {RESIDENT_ACTIONS.map((a) => (
               <Segment key={a.id} selected={residentAction === a.id} onClick={() => setResidentAction(a.id)}>
                 {a.label}
@@ -161,7 +161,7 @@ export function RatingCard({ promptId, onRated }: { promptId: string; onRated?: 
   );
 }
 
-/** A large, equal-width choice button for one-handed tapping. */
+/** A large, equal-width choice button for one-handed tapping; a long label wraps instead of overflowing. */
 function Segment({
   selected,
   onClick,
@@ -176,7 +176,7 @@ function Segment({
       type="button"
       aria-pressed={selected}
       onClick={onClick}
-      className={`whitespace-nowrap rounded-lg border px-1 py-3 font-body text-[0.95rem] transition-colors ${
+      className={`min-w-0 rounded-lg border px-2 py-3 font-body text-[0.95rem] leading-tight text-balance break-words transition-colors ${
         selected
           ? "border-[var(--color-ink)] bg-[var(--color-ink)] text-white"
           : "border-[var(--color-rule)] bg-[var(--color-paper)] text-[var(--color-ink)] hover:border-[var(--color-accent)]"

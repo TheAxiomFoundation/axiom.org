@@ -300,9 +300,9 @@ export function FoundationContent({ sourceOfTruth }: { sourceOfTruth?: Count[] }
       </div>
 
       <p className="m-0 max-w-[600px] border-l-2 border-[var(--color-accent)] pl-4 font-body text-[0.98rem] leading-relaxed text-[var(--color-ink-secondary)]">
-        <span className="text-[var(--color-ink)]">SNAP benefit math already checks out.</span> We replay USDA&apos;s
-        quality-control cases from {countWord(qc.states)} states ({qc.households.toLocaleString("en-US")} households),
-        and the benefit amount matches in every case.
+        <span className="text-[var(--color-ink)]">SNAP benefit math already checks out.</span>{" "}
+        We replay USDA&apos;s quality-control cases from {countWord(qc.states)} states (
+        {qc.households.toLocaleString("en-US")} households), and the benefit amount matches in every case.
       </p>
 
       <section>
@@ -615,39 +615,74 @@ export function NextStepsForm() {
 // Thank you (and dinner)
 // ---------------------------------------------------------------------------
 
-export function ThankYouContent() {
+/**
+ * The closing page: one thank-you, where to go next and how to reach us.
+ * Centered like the landing, so the session opens and closes the same way.
+ */
+export function ThankYouContent({ onReturn }: { onReturn?: () => void }) {
   const links = [
-    { label: "Try the rules chatbot", href: "https://axiom.org/gallery/chatbot" },
-    { label: "PolicyBench", href: POLICYBENCH.url },
-    { label: "The Axiom Foundation", href: "https://axiom.org" },
+    {
+      label: "Try the rules chatbot",
+      detail: "Ask the same question, answered by the encoded rules.",
+      href: "https://axiom.org/gallery/chatbot",
+    },
+    { label: "PolicyBench", detail: "How 46 AI models do on benefits, case by case.", href: POLICYBENCH.url },
+    { label: "The Axiom Foundation", detail: "Open, validated rules for every state.", href: "https://axiom.org" },
   ];
   return (
-    <div className="flex flex-col gap-8">
-      <div className="flex flex-col gap-3">
-        <p className="m-0 max-w-[620px] font-display text-[1.45rem] font-light leading-snug text-[var(--color-ink)]">
-          Thank you to the Aspen Institute and to every leader in the room.{" "}
-          <span className="serif-italic">Enjoy dinner.</span>
+    <div className="mx-auto flex max-w-[860px] flex-col items-center gap-10 py-6 text-center">
+      <section className="flex flex-col items-center">
+        <span className="kicker mb-4 inline-flex">
+          <span className="kicker-mark">&sect;</span>
+          Aspen Institute · {EVENT.place}
+        </span>
+        <h1 className="heading-page m-0 mb-4" style={{ fontSize: "clamp(2rem, 1.3rem + 3vw, 3.4rem)" }}>
+          Thank you
+        </h1>
+        <p className="m-0 max-w-[560px] font-display text-[1.35rem] font-light leading-snug text-[var(--color-ink)] text-balance">
+          To the Aspen Institute and to every leader in the room.
         </p>
-        <p className="m-0 max-w-[620px] font-body text-[1.05rem] leading-relaxed text-[var(--color-ink-secondary)]">
-          We&apos;ll follow up with every state that asked. This page stays open this week, so you can come back to
-          your answers. Questions: {EVENT.contactEmail}.
-        </p>
-        <p className="m-0 font-body text-[0.95rem] text-[var(--color-ink-muted)]">{EVENT.hosts}</p>
-      </div>
-      <ul className="m-0 flex list-none flex-wrap gap-2 p-0">
+        <p className="m-0 mt-2 font-serif text-[1.5rem] italic text-[var(--color-accent)]">Enjoy dinner.</p>
+      </section>
+
+      <ul className="m-0 grid w-full list-none gap-3 p-0 text-left sm:grid-cols-3">
         {links.map((l) => (
           <li key={l.href}>
             <a
               href={l.href}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex rounded-full border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-4 py-2 font-body text-[0.95rem] text-[var(--color-ink)] no-underline hover:border-[var(--color-accent)]"
+              className="group flex h-full flex-col gap-1 rounded-xl border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] p-4 no-underline transition-colors hover:border-[var(--color-accent)]"
             >
-              {l.label}
+              <span className="flex items-center justify-between gap-2 font-body text-[1.02rem] font-medium text-[var(--color-ink)]">
+                {l.label}
+                <span aria-hidden className="text-[var(--color-accent)] transition-transform group-hover:translate-x-0.5">
+                  ↗
+                </span>
+              </span>
+              <span className="font-body text-[0.9rem] leading-snug text-[var(--color-ink-muted)]">{l.detail}</span>
             </a>
           </li>
         ))}
       </ul>
+
+      <section className="flex max-w-[560px] flex-col items-center gap-3">
+        <p className="m-0 font-body text-[1.02rem] leading-relaxed text-[var(--color-ink-secondary)] text-balance">
+          We&apos;ll follow up with every state that asked. Your answers stay here all week.
+        </p>
+        {onReturn && (
+          <button type="button" className="aspen-link font-body text-[1rem] font-medium" onClick={onReturn}>
+            Back to your question
+          </button>
+        )}
+      </section>
+
+      <p className="m-0 font-body text-[0.92rem] text-[var(--color-ink-muted)]">
+        {EVENT.hosts} ·{" "}
+        <a className="aspen-link" href={`mailto:${EVENT.contactEmail}`}>
+          {EVENT.contactEmail}
+        </a>
+      </p>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { EVENT, STAGES, findHousehold, isStageId, stageIndex, type StageId } from "@/lib/aspen/content";
 import { CHAT_KEY, ChatWindow, type ChatStatus, type SavedChat } from "./chat-window";
 import { OverallRating } from "./overall-rating";
@@ -38,7 +38,7 @@ function readThread(): ThreadQuestion | null {
 }
 
 /** Stages whose screens show the room's live results. */
-const RESULT_STAGES: readonly StageId[] = ["reveal", "foundation"];
+const RESULT_STAGES: readonly StageId[] = ["rate", "reveal", "foundation"];
 
 /** The stage a history entry belongs to, if it is one of ours. */
 function historyStage(state: unknown): StageId | null {
@@ -61,6 +61,9 @@ export function AspenApp() {
   // False until the stored stage is read, so the first render never overwrites it.
   const [hydrated, setHydrated] = useState(false);
   const [tryStatus, setTryStatus] = useState<ChatStatus>({ asked: false, rated: false });
+  // Once this phone shared its Rate it answers, the "as you rate" line has done its job.
+  const [overallShared, setOverallShared] = useState(false);
+  const onOverallShared = useCallback(() => setOverallShared(true), []);
   const live = control?.live && stageIndex(control.stage) >= 0 ? (control.stage as StageId) : null;
   const top = useRef<HTMLDivElement>(null);
 
@@ -122,6 +125,7 @@ export function AspenApp() {
     if (!hydrated || !control?.live) return;
     if (enterRun(control.runId)) {
       setRunEpoch((n) => n + 1);
+      setOverallShared(false);
       setFollow(true);
     }
   }, [hydrated, control?.live, control?.runId]);
@@ -268,8 +272,9 @@ export function AspenApp() {
                 {prevStage.label}
               </button>
             )}
-            <StageHeading title={current.title} summary={current.summary} />
-            <YourThread stage={view} thread={thread} onOpen={() => go("try")} />
+            {/* The thank-you is its own centered page, like the landing. */}
+            {view !== "dinner" && <StageHeading title={current.title} summary={current.summary} />}
+            {!(view === "rate" && overallShared) && <YourThread stage={view} thread={thread} onOpen={() => go("try")} />}
           </>
         )}
 
@@ -283,7 +288,9 @@ export function AspenApp() {
           />
         </div>
 
-        {view === "rate" && <OverallRating key={runEpoch} stage={view} />}
+        {view === "rate" && (
+          <OverallRating key={runEpoch} stage={view} room={results?.summary} onDone={onOverallShared} />
+        )}
 
         {view === "reveal" &&
           (results ? (
@@ -296,7 +303,7 @@ export function AspenApp() {
         {view === "foundation" && <FoundationContent sourceOfTruth={results?.summary.sourceOfTruth} />}
         {view === "groups" && <SmallGroups key={runEpoch} stage={view} />}
         {view === "next" && <NextStepsForm />}
-        {view === "dinner" && <ThankYouContent />}
+        {view === "dinner" && <ThankYouContent onReturn={() => go("try")} />}
 
         {nextStage && view !== "welcome" && (
           <button

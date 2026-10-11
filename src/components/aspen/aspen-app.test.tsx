@@ -317,8 +317,32 @@ describe("AspenApp without a live presenter", () => {
 
     fireEvent.click(nextTo("dinner"));
     await onView("dinner");
-    expect(screen.getByText(/Thank you to the Aspen Institute/)).toBeInTheDocument();
+    expect(screen.getByText("To the Aspen Institute and to every leader in the room.")).toBeInTheDocument();
+    // The thank-you is its own page: no stage summary above it.
+    expect(screen.queryByText(STAGES.find((st) => st.id === "dinner")!.summary)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Next/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Back to your question" }));
+    await onView("try");
+  });
+
+  it("drops the 'as you rate' line on Rate it once this phone has shared", async () => {
+    storeChat({
+      perspective: "resident",
+      householdId: "az-retiree",
+      turns: [
+        { key: "u", role: "user", content: "Q" },
+        { key: "a", role: "assistant", content: "A", status: "done", promptId: "p" },
+      ],
+      rated: ["p"],
+    });
+    render(<AspenApp />);
+    fireEvent.click(nav().getByRole("button", { name: /Rate it/ }));
+    await onView("rate");
+    expect(screen.getByText(/as you rate/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Got the amount right: 2 of 5" }));
+    fireEvent.click(screen.getByRole("button", { name: "Share my ratings" }));
+    expect(await screen.findByText(/Here is the room so far/)).toBeInTheDocument();
+    expect(screen.queryByText(/as you rate/)).not.toBeInTheDocument();
   });
 });
 

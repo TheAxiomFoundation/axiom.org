@@ -73,8 +73,9 @@ export function SourceOfTruthCard({ counts }: { counts: Count[] }) {
       <Eyebrow>{SOURCE_OF_TRUTH.title}</Eyebrow>
       <p className="m-0 font-display text-[1.3rem] font-light leading-snug text-[var(--color-ink)]">
         <strong className="font-normal tabular-nums">{no + partly}</strong> of{" "}
-        <strong className="font-normal tabular-nums">{total}</strong> said a resident, a screener or an AI can&apos;t
-        fully check an answer against their state&apos;s official rules today.
+        <strong className="font-normal tabular-nums">{total}</strong>{" "}
+        said a resident, a screener or an AI can&apos;t fully check an answer against their state&apos;s official
+        rules today.
       </p>
       <SplitBar
         parts={counts.map((c) => ({

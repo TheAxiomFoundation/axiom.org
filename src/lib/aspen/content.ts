@@ -117,7 +117,7 @@ export const STAGES: readonly Stage[] = [
     label: "Thank you",
     title: "Thank you",
     agenda: "Thank you, then dinner.",
-    summary: "Thank you for asking the question with us. Enjoy dinner.",
+    summary: "Thank you for joining us. Enjoy dinner.",
   },
 ];
 

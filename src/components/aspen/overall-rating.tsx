@@ -8,7 +8,9 @@ import {
   RATING_SCALES,
   SOURCE_OF_TRUTH,
 } from "@/lib/aspen/content";
+import type { RunSummary } from "@/lib/aspen/results";
 import { OVERALL_KEY, readStored, sendEvent, writeStored } from "./client";
+import { ScaleCard, SourceOfTruthCard } from "./results-board";
 import { BUTTON, Chip, FIELD } from "./ui";
 
 /** One category on a 1–5 scale: five equal buttons; the ends are labelled once above the list. */
@@ -55,9 +57,20 @@ const SCALED = DISCUSSION_QUESTIONS.flatMap((q) => {
 /**
  * The "Rate it" stage: how the AI did overall, and how the agency has found
  * AI so far. It comes before "What we saw" so the room's averages are ready
- * for the reveal. Each phone shares it once.
+ * for the reveal. Each phone shares it once; after that, the stage shows the
+ * room's averages as they come in, so it is never an empty screen.
  */
-export function OverallRating({ stage }: { stage: string }) {
+export function OverallRating({
+  stage,
+  room,
+  onDone,
+}: {
+  stage: string;
+  /** The room's results so far, for the screen after sharing. */
+  room?: RunSummary | null;
+  /** Called once this phone has shared (also when it shared earlier). */
+  onDone?: () => void;
+}) {
   const [ratings, setRatings] = useState<Record<string, Record<string, number>>>({});
   const [note, setNote] = useState("");
   const [truth, setTruth] = useState<string | null>(null);
@@ -68,11 +81,32 @@ export function OverallRating({ stage }: { stage: string }) {
     if (readStored<boolean>(OVERALL_KEY)) setDone(true);
   }, []);
 
+  useEffect(() => {
+    if (done) onDone?.();
+  }, [done, onDone]);
+
   if (done) {
+    const scales = room?.discussion.scales.filter((sc) => sc.categories.some((c) => c.count > 0)) ?? [];
+    const truth = room?.sourceOfTruth.some((c) => c.count > 0) ? room.sourceOfTruth : null;
     return (
-      <p className="m-0 font-body text-[0.92rem] text-[var(--color-success)]">
-        Your ratings are in. The room sees the averages in What we saw.
-      </p>
+      <div className="flex flex-col gap-5">
+        <p className="m-0 font-body text-[1.02rem] text-[var(--color-ink)]">
+          <span aria-hidden className="mr-1.5 text-[var(--color-success)]">✓</span>
+          Your ratings are in. Here is the room so far.
+        </p>
+        {scales.length > 0 || truth ? (
+          <div className="grid items-start gap-4 lg:grid-cols-2">
+            {scales.map((sc) => (
+              <ScaleCard key={sc.question} scale={sc} />
+            ))}
+            {truth && <SourceOfTruthCard counts={truth} />}
+          </div>
+        ) : (
+          <p className="m-0 font-body text-[0.95rem] text-[var(--color-ink-muted)]">
+            The room&apos;s averages appear here as people rate.
+          </p>
+        )}
+      </div>
     );
   }
 
