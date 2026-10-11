@@ -168,6 +168,7 @@ export function AspenApp() {
   const current = STAGES.find((s) => s.id === view) ?? STAGES[0];
   const index = stageIndex(view);
   const nextStage = STAGES[index + 1];
+  const prevStage = index > 0 ? STAGES[index - 1] : null;
   // Try it ends with a rated answer: the Next link waits for one.
   const mustRate = view === "try" && !tryStatus.rated;
   // One wide frame for every stage; text inside keeps its own reading width.
@@ -256,6 +257,17 @@ export function AspenApp() {
           <WelcomeLanding onStart={() => go("try")} />
         ) : (
           <>
+            {prevStage && (
+              <button
+                type="button"
+                onClick={() => go(prevStage.id)}
+                aria-label={`Back to ${prevStage.label}`}
+                className="mb-3 inline-flex items-center gap-1.5 rounded-md font-body text-[0.88rem] text-[var(--color-ink-muted)] transition-colors hover:text-[var(--color-accent)] focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
+              >
+                <span aria-hidden>←</span>
+                {prevStage.label}
+              </button>
+            )}
             <StageHeading title={current.title} summary={current.summary} />
             <YourThread stage={view} thread={thread} onOpen={() => go("try")} />
           </>

@@ -265,6 +265,21 @@ describe("AspenApp without a live presenter", () => {
     await onView("rate");
   });
 
+  it("goes one stage back with the small back button", async () => {
+    render(<AspenApp />);
+    await onView("welcome");
+    // The landing is the first stage: only the logo leads back to it.
+    expect(screen.queryByRole("button", { name: /^Back to (?!the start)/ })).not.toBeInTheDocument();
+    fireEvent.click(nav().getByRole("button", { name: /At scale/ }));
+    await onView("scale");
+    fireEvent.click(screen.getByRole("button", { name: "Back to What we saw" }));
+    await onView("reveal");
+    fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
+    await onView("try");
+    fireEvent.click(screen.getByRole("button", { name: "Back to Welcome" }));
+    await onView("welcome");
+  });
+
   it("goes back to the last stage it opened with the browser's Back button", async () => {
     render(<AspenApp />);
     await onView("welcome");
