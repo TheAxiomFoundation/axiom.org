@@ -41,9 +41,11 @@ const BUILD = [
   {
     n: "03",
     title: "The Encoder",
-    // A signed apply manifest is what the encoder records; see the comment in
-    // src/components/landing/encoder-section.tsx.
-    desc: "An AI-assisted pipeline that reads source law, drafts encodings subsection by subsection, and leaves a signed manifest naming the source citation and the model for each encoding it applies.",
+    // `axiom-encode encode` takes one citation and drafts that provision's
+    // encoding from its full text (cli.py run_model_eval(citations=[...]);
+    // harness/evals.py resolve_corpus_source_unit). A signed apply manifest is
+    // what it records; see src/components/landing/encoder-section.tsx.
+    desc: "An AI-assisted pipeline that reads a cited provision of source law, drafts its encoding, and leaves a signed manifest naming the source citation and the model for each encoding it applies.",
     // Held back for now — the /encoder page link returns later.
     href: null,
   },
@@ -204,6 +206,11 @@ export default function AboutPage() {
           </Link>
         </ProseBand>
 
+        {/*
+          Public: every rulespec-* repo, axiom-corpus, axiom-encode,
+          axiom-rules-engine and axiom-oracles. Not all of the code is public
+          (axiom-api, the hosted runtime, is private), so this names what is.
+        */}
         <ProseBand label="How we're organized">
           <p className="m-0 font-body text-[1.05rem] text-[var(--color-ink-secondary)] leading-relaxed text-pretty">
             The Axiom Foundation is a fiscally sponsored project of the{" "}
@@ -215,8 +222,9 @@ export default function AboutPage() {
             >
               PSL Foundation
             </a>
-            , which also sponsors PolicyEngine. Our code, our data, and our
-            encodings are public.
+            , which also sponsors PolicyEngine. Our encodings and source corpus
+            are public, and so is the code for the encoder, the rules engine
+            and the comparison harness.
           </p>
           <a
             href="https://github.com/TheAxiomFoundation"
