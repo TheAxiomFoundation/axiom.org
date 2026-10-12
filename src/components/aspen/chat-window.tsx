@@ -105,7 +105,7 @@ export function ChatWindow({
 }: {
   stage: string;
   rulesUnlocked: boolean;
-  /** Opens the "Rate it" stage once the answer is rated. */
+  /** Leads to the overall rating, below the chat, once the answer is rated. */
   onRateOverall?: () => void;
   onStatus?: (status: ChatStatus) => void;
 }) {
@@ -547,8 +547,8 @@ export function ChatWindow({
               onClick={onRateOverall}
               className="flex items-center justify-between gap-3 rounded-xl border border-[var(--color-accent)] bg-[var(--color-accent-light)] px-4 py-3 text-left font-body text-[1rem] text-[var(--color-ink)]"
             >
-              Next: rate how AI did overall
-              <span aria-hidden className="text-[var(--color-accent)]">→</span>
+              Next: how did AI do overall?
+              <span aria-hidden className="text-[var(--color-accent)]">↓</span>
             </button>
           )}
           {(rated.has(latest.promptId) || rulesUnlocked) && (
@@ -568,7 +568,7 @@ export function ChatWindow({
           <ol className="m-0 flex list-decimal flex-col gap-2 pl-5 font-body text-[0.9rem] leading-snug text-[var(--color-ink-secondary)]">
             <li>Pick a household, add details if you like, and ask.</li>
             <li>Rate the answer you get.</li>
-            <li>Then rate how AI did overall, in Rate it.</li>
+            <li>Then rate how AI did overall, right below.</li>
             <li>Later, check the answer against the encoded rules.</li>
           </ol>
         </aside>

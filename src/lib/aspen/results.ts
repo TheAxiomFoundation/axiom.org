@@ -131,9 +131,9 @@ export interface RunSummary {
   viability: Viability;
   breakdown: BreakdownRow[];
   spotlight: Spotlight[];
-  /** Can anyone check an answer against the state's official rules today? (Rate it) */
+  /** Can anyone check an answer against the state's official rules today? (asked with the overall rating) */
   sourceOfTruth: Count[];
-  /** Notes people wrote when they rated an answer or in Rate it, newest first. */
+  /** Notes people wrote when they rated an answer or AI overall, newest first. */
   voices: { text: string; verdict: string | null }[];
   discussion: {
     questions: Count[];
@@ -322,13 +322,13 @@ export function summarizeRun(data: RunData): RunSummary {
       details: (p.twists ?? []).map((id) => twistLabel.get(id) ?? id),
     }));
 
-  // Notes on single answers, and the notes people added in Rate it.
+  // Notes on single answers, and the notes people added to their overall rating.
   const voices = [
     ...rated
       .filter((p) => p.rating_note)
       .map((p) => ({ text: clip(p.rating_note, 240) as string, verdict: p.verdict ?? null, at: p.created_at ?? "" })),
     ...discussion
-      .filter((e) => e.stage === "rate" && payloadString(e.payload, "note"))
+      .filter((e) => payloadString(e.payload, "note"))
       .map((e) => ({ text: clip(payloadString(e.payload, "note"), 240) as string, verdict: null, at: e.created_at ?? "" })),
   ]
     .sort((a, b) => b.at.localeCompare(a.at))
@@ -385,9 +385,8 @@ export function summarizeRun(data: RunData): RunSummary {
         discussion.flatMap((e) => payloadList(e.payload, "topics")),
         asOptions(DISCUSSION_TOPICS),
       ).sort((a, b) => b.count - a.count),
-      // Notes from Rate it go to "In their words" (voices), not here.
+      // The same notes, by question, for the data export; the page shows them as voices.
       notes: discussion
-        .filter((e) => e.stage !== "rate")
         .map((e) => ({
           question: payloadString(e.payload, "question") ?? "",
           text: clip(payloadString(e.payload, "note"), 280) ?? "",

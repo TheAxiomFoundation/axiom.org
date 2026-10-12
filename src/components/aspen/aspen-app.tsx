@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { EVENT, STAGES, findHousehold, isStageId, stageIndex, type StageId } from "@/lib/aspen/content";
 import { CHAT_KEY, ChatWindow, type ChatStatus, type SavedChat } from "./chat-window";
 import { OverallRating } from "./overall-rating";
@@ -38,7 +38,7 @@ function readThread(): ThreadQuestion | null {
 }
 
 /** Stages whose screens show the room's live results. */
-const RESULT_STAGES: readonly StageId[] = ["rate", "reveal", "foundation"];
+const RESULT_STAGES: readonly StageId[] = ["reveal", "foundation"];
 
 /** The stage a history entry belongs to, if it is one of ours. */
 function historyStage(state: unknown): StageId | null {
@@ -61,9 +61,7 @@ export function AspenApp() {
   // False until the stored stage is read, so the first render never overwrites it.
   const [hydrated, setHydrated] = useState(false);
   const [tryStatus, setTryStatus] = useState<ChatStatus>({ asked: false, rated: false });
-  // Once this phone shared its Rate it answers, the "as you rate" line has done its job.
-  const [overallShared, setOverallShared] = useState(false);
-  const onOverallShared = useCallback(() => setOverallShared(true), []);
+  const overall = useRef<HTMLElement>(null);
   const live = control?.live && stageIndex(control.stage) >= 0 ? (control.stage as StageId) : null;
   const top = useRef<HTMLDivElement>(null);
 
@@ -117,7 +115,7 @@ export function AspenApp() {
   }, [hydrated, view]);
 
   // A new run on the presenter view (after a rehearsal) starts this device
-  // clean: the chat and Rate it remount without the old run's answers, and
+  // clean: the chat and the overall rating remount without the old run's answers, and
   // the page follows the room again. Only a live control row counts, so a
   // database error (which falls back to the default run) never clears a phone.
   const [runEpoch, setRunEpoch] = useState(0);
@@ -125,7 +123,6 @@ export function AspenApp() {
     if (!hydrated || !control?.live) return;
     if (enterRun(control.runId)) {
       setRunEpoch((n) => n + 1);
-      setOverallShared(false);
       setFollow(true);
     }
   }, [hydrated, control?.live, control?.runId]);
@@ -274,7 +271,7 @@ export function AspenApp() {
             )}
             {/* The thank-you is its own centered page, like the landing. */}
             {view !== "dinner" && <StageHeading title={current.title} summary={current.summary} />}
-            {!(view === "rate" && overallShared) && <YourThread stage={view} thread={thread} onOpen={() => go("try")} />}
+            <YourThread stage={view} thread={thread} onOpen={() => go("try")} />
           </>
         )}
 
@@ -283,14 +280,22 @@ export function AspenApp() {
             key={runEpoch}
             stage={view}
             rulesUnlocked={rulesUnlocked}
-            onRateOverall={() => go("rate")}
+            onRateOverall={() => overall.current?.scrollIntoView?.({ behavior: "smooth", block: "start" })}
             onStatus={setTryStatus}
           />
+          {/* Both ratings happen here: the answer first, then AI overall, right below. */}
+          {tryStatus.rated && (
+            <section ref={overall} aria-labelledby="aspen-overall" className="mt-12 scroll-mt-20 border-t-2 border-[var(--color-accent)] pt-6">
+              <h2 id="aspen-overall" className="heading-sub m-0">
+                One more: how did AI do overall?
+              </h2>
+              <p className="m-0 mb-6 mt-1.5 font-body text-[1rem] text-[var(--color-ink-secondary)]">
+                Think of the answers you&apos;ve seen here, and of AI at your agency.
+              </p>
+              <OverallRating key={runEpoch} stage="try" />
+            </section>
+          )}
         </div>
-
-        {view === "rate" && (
-          <OverallRating key={runEpoch} stage={view} room={results?.summary} onDone={onOverallShared} />
-        )}
 
         {view === "reveal" &&
           (results ? (

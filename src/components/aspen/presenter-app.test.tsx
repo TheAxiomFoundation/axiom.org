@@ -240,6 +240,12 @@ describe("PresenterApp navigation", () => {
   it("steps through the slides of a stage before it moves the room", async () => {
     const { posts } = setup({ stage: "reveal" });
     await onStage("reveal");
+    expect(screen.getByText("1/2")).toBeInTheDocument();
+
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("2/2")).toBeInTheDocument();
+    expect(screen.getByText("How it felt")).toBeInTheDocument();
+    expect(posts()).toEqual([]);
 
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     await onStage("scale");
@@ -266,6 +272,8 @@ describe("PresenterApp navigation", () => {
     expect(screen.getByText("1/2")).toBeInTheDocument();
     fireEvent.keyDown(document.body, { key: "ArrowLeft" });
     await onStage("reveal");
+    // Back onto the reveal lands on its last slide.
+    expect(screen.getByText("2/2")).toBeInTheDocument();
     expect(posts()).toEqual([{ stage: "scale" }, { stage: "foundation" }, { stage: "scale" }, { stage: "reveal" }]);
   });
 });
@@ -296,7 +304,7 @@ describe("PresenterApp stages", () => {
     expect(await screen.findByText("Picks appear here as people ask.")).toBeInTheDocument();
   });
 
-  it("shows the ratings coming in on Rate it", async () => {
+  it("shows the overall ratings coming in on the second reveal slide", async () => {
     const scale = (count: number): RunSummary => ({
       ...EMPTY_SUMMARY,
       discussion: {
@@ -312,19 +320,23 @@ describe("PresenterApp stages", () => {
         ],
       },
     });
-    setup({ stage: "rate", summary: scale(3) });
-    await onStage("rate");
-    await waitFor(() => expect(screen.getByText(/rated so far/)).toHaveTextContent("3 people have rated so far"));
+    setup({ stage: "reveal", summary: scale(3) });
+    await onStage("reveal");
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    await waitFor(() => expect(screen.getByText(/rated AI overall/)).toHaveTextContent("3 people have rated AI overall"));
     expect(screen.getByText("2.0")).toBeInTheDocument();
     cleanup();
-    setup({ stage: "rate", summary: scale(1) });
-    await waitFor(() => expect(screen.getByText(/rated so far/)).toHaveTextContent("1 person has rated so far"));
+    setup({ stage: "reveal", summary: scale(1) });
+    await onStage("reveal");
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    await waitFor(() => expect(screen.getByText(/rated AI overall/)).toHaveTextContent("1 person has rated AI overall"));
   });
 
   it("counts zero ratings before anyone rates", async () => {
-    setup({ stage: "rate", summary: EMPTY_SUMMARY });
-    await onStage("rate");
-    expect(screen.getByText(/rated so far/)).toHaveTextContent("0 people have rated so far");
+    setup({ stage: "reveal", summary: EMPTY_SUMMARY });
+    await onStage("reveal");
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText(/rated AI overall/)).toHaveTextContent("0 people have rated AI overall");
   });
 
   it("puts the answers that would send a resident the wrong way on the reveal", async () => {

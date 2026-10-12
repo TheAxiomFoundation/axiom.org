@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EVENT, STAGES, type StageId } from "@/lib/aspen/content";
 import { EMPTY_SUMMARY, type RunSummary } from "@/lib/aspen/results";
@@ -260,9 +260,9 @@ describe("AspenApp without a live presenter", () => {
     render(<AspenApp />);
     fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
     await onView("try");
-    await waitFor(() => expect(nextTo("rate")).toBeEnabled());
-    fireEvent.click(nextTo("rate"));
-    await onView("rate");
+    await waitFor(() => expect(nextTo("reveal")).toBeEnabled());
+    fireEvent.click(nextTo("reveal"));
+    await onView("reveal");
   });
 
   it("goes one stage back with the small back button", async () => {
@@ -325,7 +325,14 @@ describe("AspenApp without a live presenter", () => {
     await onView("try");
   });
 
-  it("drops the 'as you rate' line on Rate it once this phone has shared", async () => {
+  it("asks how AI did overall right under the chat, once the answer is rated", async () => {
+    render(<AspenApp />);
+    fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
+    await onView("try");
+    // No overall questions before the answer is rated.
+    expect(screen.queryByRole("heading", { name: "One more: how did AI do overall?" })).not.toBeInTheDocument();
+    cleanup();
+
     storeChat({
       perspective: "resident",
       householdId: "az-retiree",
@@ -335,14 +342,23 @@ describe("AspenApp without a live presenter", () => {
       ],
       rated: ["p"],
     });
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
     render(<AspenApp />);
-    fireEvent.click(nav().getByRole("button", { name: /Rate it/ }));
-    await onView("rate");
-    expect(screen.getByText(/as you rate/)).toBeInTheDocument();
+    fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
+    await onView("try");
+    expect(await screen.findByRole("heading", { name: "One more: how did AI do overall?" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Next: how did AI do overall\?/ }));
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
     fireEvent.click(screen.getByRole("button", { name: "Got the amount right: 2 of 5" }));
     fireEvent.click(screen.getByRole("button", { name: "Share my ratings" }));
-    expect(await screen.findByText(/Here is the room so far/)).toBeInTheDocument();
-    expect(screen.queryByText(/as you rate/)).not.toBeInTheDocument();
+    expect(await screen.findByText(/Your ratings are in/)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(events()).toContainEqual(
+        expect.objectContaining({ kind: "discussion", stage: "try", payload: expect.objectContaining({ question: "performance" }) }),
+      ),
+    );
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
   });
 });
 
@@ -430,9 +446,8 @@ describe("AspenApp after a new run", () => {
     await onView("reveal");
     expect(screen.getByText(/You haven't asked the AI yet/)).toBeInTheDocument();
 
-    fireEvent.click(nav().getByRole("button", { name: /Rate it/ }));
-    await onView("rate");
-    expect(screen.getByRole("button", { name: "Share my ratings" })).toBeInTheDocument();
+    // The shared-ratings flag is gone too, so the overall rating can be given again.
+    expect(localStorage.getItem("aspen.overall.v1")).toBeNull();
   });
 
   it("keeps the chat while the run stays the same", async () => {

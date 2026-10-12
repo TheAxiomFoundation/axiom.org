@@ -28,7 +28,7 @@ const SLIDE_W = 1600;
 const SLIDE_H = 900;
 
 /** Stages shown as more than one slide; the arrows step through them before moving the room. */
-const SLIDES: Partial<Record<StageId, number>> = { scale: 2, foundation: 2, groups: 2 };
+const SLIDES: Partial<Record<StageId, number>> = { reveal: 2, scale: 2, foundation: 2, groups: 2 };
 const slideCount = (id: StageId) => SLIDES[id] ?? 1;
 
 /** The largest scale at which the 16:9 canvas fits the window. */
@@ -168,8 +168,7 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
               <div className="min-h-0 flex-1">
                 {stage === "welcome" && <WelcomeSlide summary={summary} joinPassword={joinPassword} />}
                 {stage === "try" && <TrySlide summary={summary} joinPassword={joinPassword} />}
-                {stage === "rate" && <RateSlide summary={summary} />}
-                {stage === "reveal" && <RevealSlide summary={summary} />}
+                {stage === "reveal" && (sub === 0 ? <RevealSlide summary={summary} /> : <FeltSlide summary={summary} />)}
                 {stage === "scale" && (sub === 0 ? <ScaleShareSlide /> : <ScaleCaseSlide />)}
                 {stage === "foundation" &&
                   (sub === 0 ? <FoundationSlide summary={summary} /> : <TiersSlide />)}
@@ -432,13 +431,17 @@ function TrySlide({ summary, joinPassword }: { summary: RunSummary; joinPassword
   );
 }
 
-function RateSlide({ summary }: { summary: RunSummary }) {
+/** What we saw, slide 2: how the room rated AI overall, and AI at their agencies. */
+function FeltSlide({ summary }: { summary: RunSummary }) {
   const ratings = Math.max(0, ...summary.discussion.scales.flatMap((sc) => sc.categories.map((c) => c.count)));
   return (
     <div className="flex h-full flex-col gap-[20px]">
       <span className="font-body text-[26px] text-[var(--color-ink-secondary)]">
+        <span className="mr-[14px] font-mono text-[17px] uppercase tracking-[0.18em] text-[var(--color-accent)]">
+          How it felt
+        </span>
         <strong className="font-medium tabular-nums text-[var(--color-accent)]">{ratings}</strong>{" "}
-        {ratings === 1 ? "person has" : "people have"} rated so far
+        {ratings === 1 ? "person has" : "people have"} rated AI overall
       </span>
       <div className="grid grid-cols-[1.3fr_1fr] items-start gap-[32px]" style={{ zoom: 1.45 }}>
         {summary.discussion.scales.map((sc) => (

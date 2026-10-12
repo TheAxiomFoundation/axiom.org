@@ -25,7 +25,6 @@ export const EVENT = {
 export const STAGE_IDS = [
   "welcome",
   "try",
-  "rate",
   "reveal",
   "scale",
   "foundation",
@@ -66,15 +65,8 @@ export const STAGES: readonly Stage[] = [
     id: "try",
     label: "Try it",
     title: "Ask the AI",
-    agenda: "Ask the AI a benefits question, then rate the answer.",
-    summary: "Ask what a resident would ask. Then rate the answer.",
-  },
-  {
-    id: "rate",
-    label: "Rate it",
-    title: "How did AI do?",
-    agenda: "Rate how AI did overall.",
-    summary: "Rate the AI, and how AI has worked at your agency.",
+    agenda: "Ask the AI a benefits question, then rate it.",
+    summary: "Ask what a resident would ask. Rate the answer, then how AI did overall.",
   },
   {
     id: "reveal",
@@ -501,8 +493,8 @@ export const RESIDENT_ACTIONS = [
 export type ResidentActionId = (typeof RESIDENT_ACTIONS)[number]["id"];
 
 /**
- * A baseline asked in Rate it, shown on Shared foundation: is there a
- * source of truth anyone can check answers against today?
+ * A baseline asked with the overall rating in Try it, shown on Shared
+ * foundation: is there a source of truth anyone can check answers against today?
  */
 export const SOURCE_OF_TRUTH = {
   id: "source-of-truth",
@@ -534,7 +526,7 @@ export const DISCUSSION_QUESTIONS = [
 ] as const;
 export type DiscussionQuestionId = (typeof DISCUSSION_QUESTIONS)[number]["id"];
 
-/** A 1–5 scale for a discussion question: its heading in Rate it, what each category rates, and what the ends mean. */
+/** A 1–5 scale for a discussion question: its heading, what each category rates, and what the ends mean. */
 export interface RatingScale {
   title: string;
   low: string;
@@ -543,7 +535,7 @@ export interface RatingScale {
 }
 
 /**
- * The discussion questions people rate on a scale in Rate it; the third
+ * The discussion questions people rate on a scale in Try it; the third
  * (misunderstood policies) uses topic picks instead. Category labels are
  * short statements, so one scale (Not at all → Fully) reads for all of them.
  */

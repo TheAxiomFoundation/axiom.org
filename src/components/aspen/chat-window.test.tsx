@@ -136,12 +136,12 @@ describe("ChatWindow composing", () => {
     pickRetiree();
     fireEvent.click(screen.getByRole("button", { name: "Ask the AI" }));
     await screen.findByText("Ok");
-    expect(screen.queryByRole("button", { name: /Next: rate how AI did overall/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Next: how did AI do overall\?/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Looks right" }));
     fireEvent.click(screen.getByRole("button", { name: "Yes" }));
     fireEvent.click(screen.getByRole("button", { name: "Apply" }));
     fireEvent.click(screen.getByRole("button", { name: "Save rating" }));
-    fireEvent.click(await screen.findByRole("button", { name: /Next: rate how AI did overall/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Next: how did AI do overall\?/ }));
     expect(onRateOverall).toHaveBeenCalledTimes(1);
   });
 
@@ -150,7 +150,7 @@ describe("ChatWindow composing", () => {
     render(<ChatWindow stage="try" rulesUnlocked={false} />);
     expect(screen.getByRole("button", { name: "A resident" })).toHaveAttribute("aria-pressed", "true");
     // Before the first answer the side column explains the steps.
-    expect(screen.getByRole("complementary", { name: "How it works" })).toHaveTextContent("Then rate how AI did overall, in Rate it.");
+    expect(screen.getByRole("complementary", { name: "How it works" })).toHaveTextContent("Then rate how AI did overall, right below.");
     expect(draftBox().value).toBe("");
     expect(draftBox()).toHaveAttribute("placeholder", "Pick a household above, or type your own question");
     expect(screen.getByRole("button", { name: /Retiree in Phoenix/ })).toHaveAttribute("aria-pressed", "false");

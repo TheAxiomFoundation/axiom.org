@@ -177,7 +177,7 @@ export function YourThread({
   thread: ThreadQuestion | null;
   onOpen: () => void;
 }) {
-  if (!["rate", "reveal", "scale", "foundation"].includes(stage)) return null;
+  if (!["reveal", "scale", "foundation"].includes(stage)) return null;
   const asked = thread?.asked ?? false;
   const about = thread?.householdLabel ? `“${thread.householdLabel}”` : "your own question";
   let line: string;
@@ -185,8 +185,6 @@ export function YourThread({
   if (!asked) {
     line = "You haven't asked the AI yet. It takes a minute, and your answer joins the room's.";
     action = "Ask the AI";
-  } else if (stage === "rate") {
-    line = `Think of the answer about ${about}, and the others you've seen, as you rate.`;
   } else if (stage === "reveal") {
     line = thread?.rated
       ? `You asked about ${about}. Your rating is in the results below.`
