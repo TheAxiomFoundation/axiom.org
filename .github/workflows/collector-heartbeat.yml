@@ -1,0 +1,47 @@
+name: Collector heartbeat
+
+# Keeps collect-encoding-pipeline.yml on a 30-minute pace. GitHub starts that
+# workflow's own cron ("7,37 * * * *") only a few times a day, at irregular
+# minutes, so /ops ran hours behind. This job starts the collector, waits until
+# 30 minutes after that start, and repeats for about five and a half hours;
+# then it starts its own next run. A run started by the repository's
+# GITHUB_TOKEN through workflow_dispatch is allowed to start new runs.
+#
+# One heartbeat at a time: a cron start while one runs waits as the pending
+# run, and the running heartbeat's own next run replaces it. The cron below
+# restarts the chain if a run fails. Cancel a run to stop the chain until the
+# next cron start; disable the workflow to stop it for good.
+on:
+  schedule:
+    - cron: "17 */2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: collector-heartbeat
+  cancel-in-progress: false
+
+jobs:
+  beat:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Start the collector every 30 minutes
+        run: |
+          end=$(( $(date +%s) + 330 * 60 ))
+          while [ "$(date +%s)" -lt "$end" ]; do
+            start=$(date +%s)
+            gh workflow run collect-encoding-pipeline.yml --ref master \
+              || echo "::warning::could not start the collector"
+            left=$(( 1800 - ($(date +%s) - start) ))
+            if [ "$left" -gt 0 ]; then sleep "$left"; fi
+          done
+      - name: Start the next heartbeat
+        run: gh workflow run collector-heartbeat.yml --ref master
