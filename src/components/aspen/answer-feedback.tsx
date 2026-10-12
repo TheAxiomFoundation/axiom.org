@@ -262,20 +262,22 @@ export function rulesCaveats(result: { computations: Check[] }): {
   other: string[];
 } {
   const unique = (list: (string | null)[]) => [...new Set(list.filter((s): s is string => s !== null))];
-  return {
-    eligibility: unique(result.computations.map((c) => eligibilityNote(c))),
-    standards: unique(
-      result.computations.map((c) => {
-        const mismatch = standardsMismatch(c.standardsYears ?? [], c.period, c.disclosures ?? []);
-        if (!mismatch) return null;
-        const due = `FY${mismatch.due} standards (from October 1, ${mismatch.due - 1})`;
-        return `Uses ${fiscalYears(mismatch.used)} SNAP standards, but ${formatPeriod(c.period)} falls under ${due}${
-          mismatch.notEncoded ? ", which Axiom hasn't encoded yet" : ""
-        }. The amount may differ.`;
-      }),
-    ),
-    other: unique(result.computations.flatMap((c) => otherDisclosures(c))),
-  };
+  const eligibility = unique(result.computations.map((c) => eligibilityNote(c)));
+  const standards = unique(
+    result.computations.map((c) => {
+      const mismatch = standardsMismatch(c.standardsYears ?? [], c.period, c.disclosures ?? []);
+      if (!mismatch) return null;
+      const due = `FY${mismatch.due} standards (from October 1, ${mismatch.due - 1})`;
+      return `Uses ${fiscalYears(mismatch.used)} SNAP standards, but ${formatPeriod(c.period)} falls under ${due}${
+        mismatch.notEncoded ? ", which Axiom hasn't encoded yet" : ""
+      }. The amount may differ.`;
+    }),
+  );
+  // Each line once on the panel: a disclosure that is word for word one of the panel's own notes doesn't repeat.
+  const other = unique(result.computations.flatMap((c) => otherDisclosures(c))).filter(
+    (text) => !eligibility.includes(text) && !standards.includes(text),
+  );
+  return { eligibility, standards, other };
 }
 
 /**

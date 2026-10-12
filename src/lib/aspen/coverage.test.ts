@@ -178,7 +178,7 @@ describe("standards that don't match the period", () => {
 });
 
 describe("disclosures the panel states itself", () => {
-  const az = { program: "us-az-snap", period: "2026-10" };
+  const az = { program: "us-az-snap", displayName: "Arizona SNAP", period: "2026-10" };
 
   it("drops finbot's Arizona note and, for a month, its standards note", () => {
     expect(otherDisclosures({ ...az, disclosures: [AZ_NOTE, FY_NOTE] })).toEqual([]);
@@ -199,10 +199,19 @@ describe("disclosures the panel states itself", () => {
     expect(otherDisclosures({ program: "us-xx-snap", period: "2026-10", disclosures: [longer] })).toEqual([longer]);
     // A saved "tested" verdict means no panel note, so finbot's sentence stays.
     expect(otherDisclosures({ ...az, eligibilityTested: true, disclosures: [AZ_NOTE] })).toEqual([AZ_NOTE]);
+    // A limit written before the sentence's own words stays too (GPT-6.1 Sol, round 3).
+    const prefixed =
+      "Axiom's Arizona SNAP encoding omits shelter costs. This encoding doesn't test eligibility yet: every household shows as eligible, so read the amount as \"if eligible\".";
+    expect(otherDisclosures({ ...az, disclosures: [prefixed] })).toEqual([prefixed]);
+    // The sentence must name this computation's program.
+    const other = AZ_NOTE.replace("Arizona SNAP", "Arizona TANF");
+    expect(otherDisclosures({ ...az, disclosures: [other] })).toEqual([other]);
   });
 
   it("keeps everything else as the chatbot wrote it", () => {
-    expect(otherDisclosures({ ...az, program: "us-ny-snap", disclosures: [FY_NOTE, NY_NOTE, CO_NOTE] })).toEqual([NY_NOTE, CO_NOTE]);
+    expect(
+      otherDisclosures({ ...az, program: "us-ny-snap", displayName: "New York SNAP", disclosures: [FY_NOTE, NY_NOTE, CO_NOTE] }),
+    ).toEqual([NY_NOTE, CO_NOTE]);
     // A standards note with more added to it stays whole.
     const longer = `${FY_NOTE} Shelter caps also changed.`;
     expect(otherDisclosures({ ...az, disclosures: [longer] })).toEqual([longer]);

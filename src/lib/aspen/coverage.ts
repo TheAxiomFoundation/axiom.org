@@ -26,9 +26,20 @@ export const ELIGIBILITY_NOT_TESTED: readonly string[] = ["us-az-snap"];
 
 /** Any disclosure saying the rules don't test eligibility, any apostrophe: enough to mark a result untested. */
 const ELIGIBILITY_DISCLOSURE = /\b(?:does|do)(?:n['\u2019]t| not) test eligibility\b/i;
-/** finbot's whole Arizona-style sentence (catalog-overlay.ts) and nothing more: what the panel's note restates. */
-const ELIGIBILITY_DISCLOSURE_WHOLE =
-  /^Axiom['\u2019]s [^:]+ encoding (?:doesn['\u2019]t|does not) test eligibility yet: every household shows as eligible, so read the amount as ["\u201c]if eligible["\u201d]\.$/;
+/**
+ * finbot's whole sentence for a program (catalog-overlay.ts), naming the
+ * computation's own program and nothing more: what the panel's note
+ * restates. Compared after folding curly quotes to straight ones.
+ */
+function isWholeEligibilitySentence(text: string, displayName: string): boolean {
+  const plain = text.replace(/[\u2018\u2019]/g, "'").replace(/[\u201c\u201d]/g, '"');
+  return (
+    plain ===
+      `Axiom's ${displayName} encoding doesn't test eligibility yet: every household shows as eligible, so read the amount as "if eligible".` ||
+    plain ===
+      `Axiom's ${displayName} encoding does not test eligibility yet: every household shows as eligible, so read the amount as "if eligible".`
+  );
+}
 
 /**
  * True when the rules test the household's eligibility. A verdict saved
@@ -126,6 +137,7 @@ export function standardsMismatch(
  */
 export function otherDisclosures(computation: {
   program: string | null;
+  displayName: string;
   period: string | null;
   disclosures?: readonly string[] | null;
   eligibilityTested?: boolean | null;
@@ -133,6 +145,8 @@ export function otherDisclosures(computation: {
   const monthly = federalFiscalYear(computation.period) !== null;
   const noted = !testsEligibility(computation);
   return (computation.disclosures ?? []).filter(
-    (text) => !(noted && ELIGIBILITY_DISCLOSURE_WHOLE.test(text)) && !(monthly && STANDARDS_DISCLOSURE_WHOLE.test(text)),
+    (text) =>
+      !(noted && isWholeEligibilitySentence(text, computation.displayName)) &&
+      !(monthly && STANDARDS_DISCLOSURE_WHOLE.test(text)),
   );
 }

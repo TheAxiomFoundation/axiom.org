@@ -627,6 +627,8 @@ describe("rules panel values and caveats", () => {
         AZ_NOTE,
         `${AZ_NOTE} Shelter costs are not included.`,
         "Arizona SNAP rules do not test eligibility yet. Shelter costs are not included in this amount.",
+        "Axiom's Arizona SNAP encoding omits shelter costs. This encoding doesn't test eligibility yet: every household shows as eligible, so read the amount as \"if eligible\".",
+        "Not an eligibility determination: Axiom's Arizona SNAP rules don't test eligibility yet. Read this as the amount if eligible.",
         FY_NOTE,
         `${FY_NOTE} More.`,
         "Other note.",
@@ -651,10 +653,12 @@ describe("rules panel values and caveats", () => {
               const due = federalFiscalYear(period)!;
               if (c.standardsYears.some((y) => y !== due)) expect(caveats.standards).toHaveLength(1);
               if (due === 2027 && c.standardsYears.some((y) => y !== due)) expect(caveats.standards[0]).toMatch(/hasn't encoded yet/);
-            } else {
-              // Anything else dropped is finbot's whole eligibility sentence, and the panel's note replaces it.
-              expect(d).toBe(AZ_NOTE);
+            } else if (d === AZ_NOTE) {
+              // finbot's whole eligibility sentence: the panel's note replaces it.
               expect(caveats.eligibility).toHaveLength(1);
+            } else {
+              // Anything else dropped is word for word one of the panel's own lines, shown once.
+              expect([...caveats.eligibility, ...caveats.standards]).toContain(d);
             }
           }
         },
