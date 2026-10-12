@@ -570,8 +570,10 @@ function ScaleCaseSlide() {
           </span>
           <span className="ml-[12px] font-body text-[30px] text-[var(--color-ink-secondary)]">a month</span>
           <span className="mt-[16px] block font-body text-[24px] leading-snug text-[var(--color-ink-secondary)]">
-            PolicyBench&apos;s reference, under {az.reference.standards} standards. ${az.fromOctober.monthly} from{" "}
-            {az.fromOctober.effective}.
+            PolicyBench&apos;s reference, under {az.reference.standards} standards.
+          </span>
+          <span className="block font-body text-[24px] leading-snug text-[var(--color-ink-secondary)]">
+            ${az.fromOctober.monthly} from {az.fromOctober.effective}.
           </span>
         </Panel>
       </div>

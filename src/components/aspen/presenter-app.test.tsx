@@ -258,9 +258,8 @@ describe("PresenterApp navigation", () => {
     expect(screen.getByText("46 of 46 AI models said")).toBeInTheDocument();
     expect(screen.getByText("$24")).toBeInTheDocument();
     // The $24 is PolicyBench's FY2026 figure; USDA's FY2027 minimum is $25 from October 1, 2026.
-    expect(screen.getByText(/PolicyBench's reference, under FY2026 standards\./)).toHaveTextContent(
-      "PolicyBench's reference, under FY2026 standards. $25 from October 1, 2026.",
-    );
+    expect(screen.getByText("PolicyBench's reference, under FY2026 standards.")).toBeInTheDocument();
+    expect(screen.getByText("$25 from October 1, 2026.")).toBeInTheDocument();
     // The summary shows on the first slide only.
     expect(screen.queryByText(STAGES.find((st) => st.id === "scale")!.summary)).not.toBeInTheDocument();
 
