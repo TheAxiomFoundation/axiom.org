@@ -538,6 +538,30 @@ describe("ChatWindow asking", () => {
     expect(screen.queryByRole("link", { name: "Source 6" })).not.toBeInTheDocument();
   });
 
+  it("keeps a long source title from widening the page on a phone", async () => {
+    const title = "Nutrition Assistance Frequently Asked Questions | Arizona Department of Economic Security";
+    routeFetch({
+      "/api/aspen/ask": () =>
+        streamResponse(
+          streamOf([
+            { type: "meta", promptId: "p" },
+            { type: "delta", text: "Answer" },
+            { type: "done", model: "gpt-5", webSearch: true, sources: [{ url: "https://des.az.gov/node/4875", title }] },
+          ]),
+        ),
+    });
+    const { container } = render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    pickRetiree();
+    fireEvent.click(screen.getByRole("button", { name: "Ask the AI" }));
+    await screen.findByText("Answer");
+    // jsdom has no layout, so check the CSS that bounds the width: the chip truncates,
+    // and the one phone column is minmax(0, 1fr), never an auto track that grows to fit it.
+    expect(screen.getByRole("link", { name: title })).toHaveClass("max-w-full", "truncate");
+    const grid = container.firstElementChild as HTMLElement;
+    expect(grid).toHaveClass("grid", "grid-cols-[minmax(0,1fr)]");
+    expect(grid.className).not.toMatch(/(^|\s)grid-cols-(?!\[minmax\(0,)/);
+  });
+
   it("sends the details with a household question", async () => {
     const fetchMock = routeFetch({
       "/api/aspen/ask": () => streamResponse(streamOf([{ type: "meta", promptId: "p-t" }, { type: "delta", text: "Ok" }, { type: "done" }])),

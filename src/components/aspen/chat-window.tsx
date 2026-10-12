@@ -313,8 +313,12 @@ export function ChatWindow({
         : "border-[var(--color-rule)] bg-[var(--color-paper)] hover:border-[var(--color-accent)]"
     }`;
 
+  // On a phone the grid has one column. It must be minmax(0, 1fr), not the
+  // implicit auto track: an auto track grows to its widest unbreakable line,
+  // and a long web-search source title (one line, truncated) pushed the
+  // answer, the rating card and the rules check past a 375px screen.
   return (
-    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] lg:gap-8">
+    <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-6 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] lg:gap-8">
       <div className="rounded-xl border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] shadow-[0_1px_3px_rgba(28,25,23,0.05)]">
         <div className="flex items-center justify-between gap-3 border-b border-[var(--color-rule)] px-4 py-3">
           <span className="font-body text-[0.95rem] text-[var(--color-ink-secondary)]">
