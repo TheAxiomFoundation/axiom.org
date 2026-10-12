@@ -613,6 +613,20 @@ describe("rules panel values and caveats", () => {
     expect(caveats.other).toEqual(["Something else."]);
   });
 
+  it("states the standards year for a check saved without standardsYears (GPT-6.1 Sol, round 4)", () => {
+    const old = check("us-ny-snap", "2026-10", { disclosures: [FY_NOTE], standardsYears: undefined });
+    expect(rulesCaveats({ computations: [old] })).toEqual({
+      eligibility: [],
+      standards: [
+        "Uses FY2026 SNAP standards, but October 2026 falls under FY2027 standards (from October 1, 2026), which Axiom hasn't encoded yet. The amount may differ.",
+      ],
+      other: [],
+    });
+    // Cited years that disagree with finbot's sentence: the sentence stays, so nothing is lost.
+    const disagree = check("us-ny-snap", "2026-10", { disclosures: [FY_NOTE], standardsYears: [2025] });
+    expect(rulesCaveats({ computations: [disagree] }).other).toEqual([FY_NOTE]);
+  });
+
   it("keeps the standards note for a yearly or missing period", () => {
     for (const period of ["2026", null]) {
       const caveats = rulesCaveats({ computations: [check("us-ny-snap", period, { disclosures: [FY_NOTE], standardsYears: [2026] })] });
@@ -642,17 +656,24 @@ describe("rules panel values and caveats", () => {
         fc.array(disclosure, { maxLength: 5 }),
         fc.array(fc.integer({ min: 2025, max: 2028 }), { maxLength: 2 }),
         fc.constantFrom(true, false, undefined),
-        (program, period, disclosures, cited, eligibilityTested) => {
-          const c = check(program, period, { disclosures, eligibilityTested, standardsYears: snapYears(cited, disclosures) });
+        fc.boolean(),
+        (program, period, disclosures, cited, eligibilityTested, saved) => {
+          // A check saved without standardsYears (an older shape) must lose nothing either.
+          const standardsYears = saved ? snapYears(cited, disclosures) : undefined;
+          const c = check(program, period, { disclosures, eligibilityTested, standardsYears });
           const caveats = rulesCaveats({ computations: [c] });
           for (const d of disclosures) {
             if (caveats.other.includes(d)) continue;
             if (d === FY_NOTE) {
-              // Only for a month; and if this month isn't FY2026, the panel says which standards it used.
-              expect(federalFiscalYear(period)).not.toBeNull();
-              const due = federalFiscalYear(period)!;
-              if (c.standardsYears.some((y) => y !== due)) expect(caveats.standards).toHaveLength(1);
-              if (due === 2027 && c.standardsYears.some((y) => y !== due)) expect(caveats.standards[0]).toMatch(/hasn't encoded yet/);
+              // Only for a month. FY_NOTE says FY2026 standards were used; unless the month is in
+              // FY2026 itself, the panel's own line must say FY2026 (and "not encoded" for FY2027).
+              const due = federalFiscalYear(period);
+              expect(due).not.toBeNull();
+              if (due !== 2026) {
+                expect(caveats.standards).toHaveLength(1);
+                expect(caveats.standards[0]).toContain("FY2026");
+                if (due === 2027) expect(caveats.standards[0]).toMatch(/hasn't encoded yet/);
+              }
             } else if (d === AZ_NOTE) {
               // finbot's whole eligibility sentence: the panel's note replaces it.
               expect(caveats.eligibility).toHaveLength(1);
@@ -663,6 +684,8 @@ describe("rules panel values and caveats", () => {
           }
         },
       ),
+      // Pure functions: enough runs to hit the rarer combinations (cited years against finbot's sentence).
+      { numRuns: 1000 },
     );
   });
 });

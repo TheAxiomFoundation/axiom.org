@@ -12,7 +12,7 @@
  * gallery chatbot may not set those inputs, so they keep their defaults.
  * A computation whose own disclosures say the same counts too (see
  * testsEligibility), so a program finbot adds later is caught before this
- * list catches up.
+ * list catches up, if finbot gives it a disclosure worded like Arizona's.
  *
  * us-az-snap: rulespec-us-az's composition
  * policies/des/faa5/na-eligibility-and-benefit-determination/fy-2026-benefit-calculation
@@ -106,6 +106,16 @@ export function snapStandardsYears(legalIds: readonly (string | null)[], disclos
   return [...new Set(found)].sort((a, b) => a - b);
 }
 
+/** The standards years a saved computation used: its own, or, for a shape saved without them, its disclosures'. */
+export function standardsUsed(computation: {
+  standardsYears?: readonly number[] | null;
+  disclosures?: readonly string[] | null;
+}): number[] {
+  return computation.standardsYears?.length
+    ? [...computation.standardsYears]
+    : snapStandardsYears([], computation.disclosures ?? []);
+}
+
 /**
  * When the standards used aren't the period's own fiscal year: which were
  * used, which apply, and whether the chatbot says the ones that apply
@@ -128,10 +138,11 @@ export function standardsMismatch(
  * whole, and the panel says the same thing itself:
  * - the eligibility sentence, when the panel shows its eligibility note
  *   (testsEligibility false, saved verdict included);
- * - the standards sentence, when the period is a month: the panel compares
- *   the standards year with the month's fiscal year and, when they differ,
- *   says so, including "not encoded yet" (standardsMismatch). When they
- *   match, the sentence is about a later fiscal year, not this period.
+ * - the standards sentence ("SNAP figures use FY2026 standards; FY2027
+ *   ... not encoded yet."), for a monthly period, when either the panel's
+ *   standards line names that same year (standardsMismatch, "not encoded
+ *   yet" included), or the year it names is the month's own fiscal year,
+ *   so its "not encoded" part is about a later year than this period.
  * Anything else, including either sentence with more added, stays as the
  * chatbot wrote it.
  */
@@ -140,13 +151,20 @@ export function otherDisclosures(computation: {
   displayName: string;
   period: string | null;
   disclosures?: readonly string[] | null;
+  standardsYears?: readonly number[] | null;
   eligibilityTested?: boolean | null;
 }): string[] {
-  const monthly = federalFiscalYear(computation.period) !== null;
+  const due = federalFiscalYear(computation.period);
+  const used = standardsUsed(computation);
+  const lineShown = standardsMismatch(used, computation.period) !== null;
   const noted = !testsEligibility(computation);
+  const stated = (text: string) => {
+    const match = text.match(STANDARDS_DISCLOSURE_WHOLE);
+    if (!match || due === null) return false;
+    const year = Number(match[1]);
+    return year === due || (lineShown && used.includes(year));
+  };
   return (computation.disclosures ?? []).filter(
-    (text) =>
-      !(noted && isWholeEligibilitySentence(text, computation.displayName)) &&
-      !(monthly && STANDARDS_DISCLOSURE_WHOLE.test(text)),
+    (text) => !(noted && isWholeEligibilitySentence(text, computation.displayName)) && !stated(text),
   );
 }

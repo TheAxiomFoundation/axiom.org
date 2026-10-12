@@ -9,7 +9,7 @@ import {
   WOULD_ACT,
   RESIDENT_ACTIONS,
 } from "@/lib/aspen/content";
-import { eligibilityNote, otherDisclosures, standardsMismatch, testsEligibility } from "@/lib/aspen/coverage";
+import { eligibilityNote, otherDisclosures, standardsMismatch, standardsUsed, testsEligibility } from "@/lib/aspen/coverage";
 import type { RulesAnswer, RulesComputation, RulesOutput } from "@/lib/aspen/rules";
 import { AnswerText } from "./answer-text";
 import { formatValue, participantId, postJson } from "./client";
@@ -246,7 +246,8 @@ export function panelRows(check: Check): { name: string; label: string; value: s
   const rows = check.outputs
     .filter((o) => tested || !isJudgment(o))
     .map((o) => ({ name: o.name, label: outputLabel(o.label), value: formatValue(o.value, o.unit), incomplete: o.incomplete }));
-  if (!tested) rows.splice(Math.min(1, rows.length), 0, { name: "eligibility", label: "Eligibility", value: "Not tested", incomplete: false });
+  // Rule names are snake_case words, so this name can't collide with a real output's row key.
+  if (!tested) rows.splice(Math.min(1, rows.length), 0, { name: "(eligibility)", label: "Eligibility", value: "Not tested", incomplete: false });
   return rows;
 }
 
@@ -265,7 +266,7 @@ export function rulesCaveats(result: { computations: Check[] }): {
   const eligibility = unique(result.computations.map((c) => eligibilityNote(c)));
   const standards = unique(
     result.computations.map((c) => {
-      const mismatch = standardsMismatch(c.standardsYears ?? [], c.period, c.disclosures ?? []);
+      const mismatch = standardsMismatch(standardsUsed(c), c.period, c.disclosures ?? []);
       if (!mismatch) return null;
       const due = `FY${mismatch.due} standards (from October 1, ${mismatch.due - 1})`;
       return `Uses ${fiscalYears(mismatch.used)} SNAP standards, but ${formatPeriod(c.period)} falls under ${due}${
