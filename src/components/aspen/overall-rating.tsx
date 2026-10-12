@@ -53,9 +53,10 @@ const SCALED = DISCUSSION_QUESTIONS.flatMap((q) => {
 });
 
 /**
- * The "Rate it" stage: how the AI did overall, and how the agency has found
- * AI so far. It comes before "What we saw" so the room's averages are ready
- * for the reveal. Each phone shares it once.
+ * How AI did overall, and how the agency has found AI so far: asked in Try
+ * it, right after the participant rates their own answer, so both ratings
+ * happen in one place. The room's averages feed "What we saw". Each phone
+ * shares it once.
  */
 export function OverallRating({ stage }: { stage: string }) {
   const [ratings, setRatings] = useState<Record<string, Record<string, number>>>({});
@@ -70,8 +71,9 @@ export function OverallRating({ stage }: { stage: string }) {
 
   if (done) {
     return (
-      <p className="m-0 font-body text-[0.92rem] text-[var(--color-success)]">
-        Your ratings are in. The room sees the averages in What we saw.
+      <p className="m-0 font-body text-[1.02rem] text-[var(--color-ink)]">
+        <span aria-hidden className="mr-1.5 text-[var(--color-success)]">✓</span>
+        Your ratings are in. You&apos;ll see the room&apos;s results in What we saw.
       </p>
     );
   }
@@ -88,7 +90,7 @@ export function OverallRating({ stage }: { stage: string }) {
     }
     if (truth) sendEvent("survey", { question: SOURCE_OF_TRUTH.id, answer: truth }, stage);
     if (topics.length) sendEvent("discussion", { question: "misunderstood", topics, ratings: {}, note: "" }, stage);
-    // A note about the evening as a whole, not about one scale.
+    // A note about the session as a whole, not about one scale.
     if (note.trim()) sendEvent("discussion", { question: null, ratings: {}, topics: [], note }, stage);
     writeStored(OVERALL_KEY, true);
     setDone(true);
@@ -171,7 +173,7 @@ export function OverallRating({ stage }: { stage: string }) {
           value={note}
           onChange={(e) => setNote(e.target.value)}
           className={FIELD}
-          placeholder="A story, a worry or a surprise, from tonight or from your agency"
+          placeholder="A story, a worry or a surprise, from here or from your agency"
         />
       </label>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">

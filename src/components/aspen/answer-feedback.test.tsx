@@ -211,7 +211,7 @@ describe("RulesCheck", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     render(<RulesCheck promptId="p1" messages={MESSAGES} unlocked={false} />);
-    expect(screen.getByText(/later tonight you'll check this answer/i)).toBeInTheDocument();
+    expect(screen.getByText(/later in the session, you'll check this answer/i)).toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
   });

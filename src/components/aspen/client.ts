@@ -7,12 +7,13 @@ import type { RunSummary } from "@/lib/aspen/results";
 /** Browser-side plumbing for /aspen: the anonymous participant id, API calls, polling. */
 
 const PARTICIPANT_KEY = "aspen.participant";
-const PROFILE_KEY = "aspen.profile";
 const RUN_KEY = "aspen.run";
 /** The saved conversation from Try it. It belongs to one run. */
 export const CHAT_KEY = "aspen.chat.v1";
 /** Set once this device has shared its Rate it answers. It belongs to one run. */
 export const OVERALL_KEY = "aspen.overall.v1";
+/** The use case this device voted for. It belongs to one run. */
+export const VOTE_KEY = "aspen.vote.v1";
 
 let fallbackId: string | null = null;
 
@@ -43,31 +44,6 @@ export function participantId(): string {
 
 export { newId };
 
-export interface Profile {
-  perspective: string | null;
-  state: string | null;
-  role: string | null;
-}
-
-export const EMPTY_PROFILE: Profile = { perspective: null, state: null, role: null };
-
-export function loadProfile(): Profile {
-  try {
-    const raw = window.localStorage.getItem(PROFILE_KEY);
-    return raw ? { ...EMPTY_PROFILE, ...(JSON.parse(raw) as Partial<Profile>) } : EMPTY_PROFILE;
-  } catch {
-    return EMPTY_PROFILE;
-  }
-}
-
-export function saveProfile(profile: Profile) {
-  try {
-    window.localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
-  } catch {
-    // Private mode: the profile still reaches the server.
-  }
-}
-
 /** JSON in localStorage (or sessionStorage); null when absent, unreadable or blocked. */
 export function readStored<T>(key: string, session = false): T | null {
   try {
@@ -87,11 +63,11 @@ export function writeStored(key: string, value: unknown, session = false) {
 }
 
 /**
- * Ties this device's saved chat and Rate it answers to the room's run. When
- * the presenter starts a new run (after a rehearsal), a device that saved
- * them under the old run drops them, so a test phone starts clean on the
- * night. A device with no recorded run adopts the current one and keeps
- * what it has. Returns true when it dropped anything.
+ * Ties this device's saved chat, Rate it answers and vote to the room's
+ * run. When the presenter starts a new run (after a rehearsal), a device
+ * that saved them under the old run drops them, so a test phone starts
+ * clean at the event. A device with no recorded run adopts the current one
+ * and keeps what it has. Returns true when it dropped anything.
  */
 export function enterRun(runId: string): boolean {
   const previous = readStored<string>(RUN_KEY);
@@ -99,7 +75,7 @@ export function enterRun(runId: string): boolean {
   writeStored(RUN_KEY, runId);
   if (previous === null) return false;
   let dropped = false;
-  for (const key of [CHAT_KEY, OVERALL_KEY]) {
+  for (const key of [CHAT_KEY, OVERALL_KEY, VOTE_KEY]) {
     try {
       if (window.localStorage.getItem(key) === null) continue;
       window.localStorage.removeItem(key);
