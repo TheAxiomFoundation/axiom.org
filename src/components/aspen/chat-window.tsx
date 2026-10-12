@@ -6,10 +6,13 @@ import {
   HOUSEHOLDS,
   PERSPECTIVES,
   QUESTIONS,
+  QUESTION_IDS,
+  TWIST_GROUPS,
   TWIST_IDS,
   composePrompt,
   findHousehold,
   isPerspectiveId,
+  orderedQuestions,
   twistsFor,
   type PerspectiveId,
   type QuestionId,
@@ -48,12 +51,18 @@ export interface Turn {
 }
 
 const OWN = "own";
+/** A numbered step heading in the composer: household, details, questions. */
+const STEP = "mb-2.5 flex items-baseline gap-2 font-body text-[0.98rem] text-[var(--color-ink)]";
+const STEP_NUMBER = "font-mono text-[0.78rem] text-[var(--color-accent)]";
 export { CHAT_KEY };
 
 export interface SavedChat {
   perspective: PerspectiveId;
   householdId: string | null;
-  questionId: QuestionId;
+  /** The questions picked, in display order. */
+  questionIds: QuestionId[];
+  /** Saves from before several questions could be picked. */
+  questionId?: QuestionId;
   /** Details added to the household (TWISTS ids). */
   twists?: string[];
   draft: string;
@@ -112,7 +121,7 @@ export function ChatWindow({
   const [perspective, setPerspective] = useState<PerspectiveId>("resident");
   // Nothing is picked until the participant picks: a default would skew "Households picked".
   const [householdId, setHouseholdId] = useState<string | null>(null);
-  const [questionId, setQuestionId] = useState<QuestionId>("amount");
+  const [questionIds, setQuestionIds] = useState<QuestionId[]>(["amount"]);
   const [twists, setTwists] = useState<string[]>([]);
   const [draft, setDraft] = useState("");
   const [template, setTemplate] = useState<string | null>(null);
@@ -134,7 +143,9 @@ export function ChatWindow({
     if (saved && Array.isArray(saved.turns)) {
       setPerspective(isPerspectiveId(saved.perspective) ? saved.perspective : "resident");
       setHouseholdId(saved.householdId ?? null);
-      setQuestionId(saved.questionId);
+      const savedQuestions = Array.isArray(saved.questionIds) ? saved.questionIds : saved.questionId ? [saved.questionId] : [];
+      const known = orderedQuestions(savedQuestions.filter((q) => QUESTION_IDS.includes(q)));
+      setQuestionIds(known.length ? known : ["amount"]);
       setTwists(Array.isArray(saved.twists) ? saved.twists.filter((t) => TWIST_IDS.includes(t)) : []);
       setDraft(saved.draft ?? "");
       setTemplate(saved.template ?? null);
@@ -154,7 +165,7 @@ export function ChatWindow({
     writeStored(CHAT_KEY, {
       perspective,
       householdId,
-      questionId,
+      questionIds,
       twists,
       draft,
       template,
@@ -162,7 +173,7 @@ export function ChatWindow({
       turns: turns.filter((t) => t.status !== "streaming"),
       rated: [...rated],
     } satisfies SavedChat);
-  }, [hydrated, perspective, householdId, questionId, twists, draft, template, conversationId, turns, rated]);
+  }, [hydrated, perspective, householdId, questionIds, twists, draft, template, conversationId, turns, rated]);
 
   const asked = turns.some((t) => t.role === "assistant" && t.status === "done");
   useEffect(() => {
@@ -180,13 +191,13 @@ export function ChatWindow({
   const started = turns.length > 0;
   const household = findHousehold(householdId);
 
-  function choose(p: PerspectiveId, h: string | null, q: QuestionId, t: string[]) {
+  function choose(p: PerspectiveId, h: string | null, q: QuestionId[], t: string[]) {
     const found = findHousehold(h);
     // Details that do not fit the new household drop away.
     const fitting = found ? t.filter((id) => twistsFor(found).some((tw) => tw.id === id)) : t;
     setPerspective(p);
     setHouseholdId(h);
-    setQuestionId(q);
+    setQuestionIds(q);
     setTwists(fitting);
     if (found) {
       const composed = composePrompt(p, found, q, fitting);
@@ -202,21 +213,28 @@ export function ChatWindow({
   function pick(next: { p?: PerspectiveId; h?: string; q?: QuestionId; twist?: string }) {
     const p = next.p ?? perspective;
     const h = next.h ?? householdId;
-    const q = next.q ?? questionId;
+    // Questions toggle; the last one picked stays, so there is always something to ask.
+    const q = !next.q
+      ? questionIds
+      : questionIds.includes(next.q)
+        ? questionIds.length > 1
+          ? questionIds.filter((id) => id !== next.q)
+          : questionIds
+        : orderedQuestions([...questionIds, next.q]);
     const t = next.twist
       ? twists.includes(next.twist)
         ? twists.filter((id) => id !== next.twist)
         : [...twists, next.twist]
       : twists;
     choose(p, h, q, t);
-    sendEvent("chip", { perspective: p, householdId: h, questionId: q, twists: t }, stage);
+    sendEvent("chip", { perspective: p, householdId: h, questionIds: q, twists: t }, stage);
   }
 
   function startOver() {
     setFollowUp(false);
     setTurns([]);
     setConversationId(newId());
-    choose(perspective, householdId, questionId, twists);
+    choose(perspective, householdId, questionIds, twists);
   }
 
   async function send() {
@@ -254,7 +272,7 @@ export function ChatWindow({
             stage,
             perspective,
             householdId: householdId === OWN ? null : householdId,
-            questionId: turnIndex === 0 && householdId !== OWN ? questionId : null,
+            questionIds: turnIndex === 0 && householdId !== OWN ? questionIds : [],
             twists: householdId !== OWN && household ? twists : [],
             promptTemplate: turnIndex === 0 ? template : null,
           },
@@ -347,10 +365,10 @@ export function ChatWindow({
         </div>
 
         {!started && (
-          <div className="flex flex-col gap-4 px-4 pt-4">
+          <div className="flex flex-col gap-5 px-4 pt-4">
             <fieldset className="m-0 border-0 p-0">
-              <legend className="mb-2 font-body text-[0.98rem] text-[var(--color-ink-secondary)]">
-                Pick a household
+              <legend className={STEP}>
+                <span className={STEP_NUMBER}>1</span>Pick a household
               </legend>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {HOUSEHOLDS.map((h) => (
@@ -381,33 +399,54 @@ export function ChatWindow({
               </div>
             </fieldset>
             {household && (
-              <fieldset className="m-0 border-0 p-0">
-                <legend className="mb-2 font-body text-[0.98rem] text-[var(--color-ink-secondary)]">
-                  Add details <span className="text-[var(--color-ink-muted)]">(optional)</span>
+              <fieldset className="m-0 border-0 border-t border-[var(--color-rule)] p-0 pt-4">
+                <legend className={`${STEP} float-left w-full`}>
+                  <span className={STEP_NUMBER}>2</span>Add details{" "}
+                  <span className="text-[var(--color-ink-muted)]">(optional)</span>
                 </legend>
-                <div role="group" aria-label="Details" className="flex flex-wrap gap-1.5">
-                  {twistsFor(household).map((t) => (
-                    <Chip
-                      key={t.id}
-                      selected={twists.includes(t.id)}
-                      onClick={() => pick({ twist: t.id })}
-                      className="px-3 py-1.5 text-[0.92rem]"
-                    >
-                      {twists.includes(t.id) ? "✓ " : "+ "}
-                      {t.label}
-                    </Chip>
-                  ))}
+                <div role="group" aria-label="Details" className="clear-left flex flex-col gap-3">
+                  {TWIST_GROUPS.map((g) => {
+                    const items = twistsFor(household).filter((t) => t.group === g.id);
+                    if (!items.length) return null;
+                    return (
+                      <div key={g.id} className="flex flex-col gap-1.5">
+                        <span className="font-mono text-[0.66rem] uppercase tracking-[0.14em] text-[var(--color-ink-muted)]">
+                          {g.label}
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {items.map((t) => (
+                            <Chip
+                              key={t.id}
+                              selected={twists.includes(t.id)}
+                              onClick={() => pick({ twist: t.id })}
+                              className="px-3 py-1.5 text-[0.92rem]"
+                            >
+                              {twists.includes(t.id) ? "✓ " : "+ "}
+                              {t.label}
+                            </Chip>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </fieldset>
             )}
             {household && (
-              <div role="group" aria-label="Question" className="flex flex-wrap gap-2">
-                {QUESTIONS.map((q) => (
-                  <Chip key={q.id} selected={questionId === q.id} onClick={() => pick({ q: q.id })}>
-                    {q.label}
-                  </Chip>
-                ))}
-              </div>
+              <fieldset className="m-0 border-0 border-t border-[var(--color-rule)] p-0 pt-4">
+                <legend className={`${STEP} float-left w-full`}>
+                  <span className={STEP_NUMBER}>3</span>What do you want to know?{" "}
+                  <span className="text-[var(--color-ink-muted)]">(pick one or more)</span>
+                </legend>
+                <div role="group" aria-label="Question" className="clear-left flex flex-wrap gap-2">
+                  {QUESTIONS.map((q) => (
+                    <Chip key={q.id} selected={questionIds.includes(q.id)} onClick={() => pick({ q: q.id })}>
+                      {questionIds.includes(q.id) ? "✓ " : ""}
+                      {q.label}
+                    </Chip>
+                  ))}
+                </div>
+              </fieldset>
             )}
           </div>
         )}
