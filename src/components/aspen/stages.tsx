@@ -247,9 +247,10 @@ export function PolicyBenchContent() {
         </Eyebrow>
         <p className="m-0 font-body text-[1rem] leading-relaxed text-[var(--color-ink)]">{az.description}</p>
         <p className="m-0 font-body text-[1rem] leading-relaxed text-[var(--color-ink)]">
-          <strong className="text-[var(--color-accent)]">The rules: eligible, ${az.reference.monthly} a month.</strong>{" "}
-          PolicyBench&apos;s reference, under {az.reference.standards} standards. The minimum benefit rose to $
-          {az.fromOctober.monthly} on {az.fromOctober.effective}.
+          <strong className="text-[var(--color-accent)]">
+            The rules, under {az.reference.standards} standards: eligible, ${az.reference.monthly} a month.
+          </strong>{" "}
+          PolicyBench&apos;s reference. The minimum benefit rose to ${az.fromOctober.monthly} on {az.fromOctober.effective}.
         </p>
       </Card>
       <p className="m-0 font-body text-[0.8rem] text-[var(--color-ink-muted)]">

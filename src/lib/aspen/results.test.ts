@@ -254,11 +254,10 @@ describe('aspen results', () => {
   })
 
   it('splits every not-apply answer with a rules amount into qualifies or if-eligible, never both', () => {
-    const untested = ELIGIBILITY_NOT_TESTED[0]
     const row = fc.record({
       resident_action: fc.constantFrom('not-apply', 'apply', 'call', null),
       rules_amount: fc.option(fc.integer({ min: -5, max: 500 }), { nil: undefined }),
-      rules_program_id: fc.constantFrom(null, untested, 'us-ny-snap', 'us-co-snap'),
+      rules_program_id: fc.constantFrom(null, ...ELIGIBILITY_NOT_TESTED, 'us-ny-snap', 'us-co-snap'),
       rules_eligibility_tested: fc.constantFrom(null, true, false),
     })
     fc.assert(
@@ -269,7 +268,9 @@ describe('aspen results', () => {
           (p) => p.resident_action === 'not-apply' && typeof p.rules_amount === 'number' && p.rules_amount > 0,
         )
         const ifEligible = (p: PromptRow) =>
-          typeof p.rules_eligibility_tested === 'boolean' ? !p.rules_eligibility_tested : p.rules_program_id === untested
+          typeof p.rules_eligibility_tested === 'boolean'
+            ? !p.rules_eligibility_tested
+            : ELIGIBILITY_NOT_TESTED.includes(p.rules_program_id ?? '')
         expect(v.wouldNotApplyEligible + v.wouldNotApplyIfEligible).toBe(withAmount.length)
         expect(v.wouldNotApplyIfEligible).toBe(withAmount.filter(ifEligible).length)
         expect(v.wouldNotApplyEligible + v.wouldNotApplyIfEligible).toBeLessThanOrEqual(v.wouldNotApply)

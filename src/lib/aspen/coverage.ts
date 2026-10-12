@@ -24,8 +24,11 @@
  */
 export const ELIGIBILITY_NOT_TESTED: readonly string[] = ["us-az-snap"];
 
-/** finbot's disclosure for such a program (catalog-overlay.ts): "... doesn't test eligibility yet ...", any apostrophe. */
+/** Any disclosure saying the rules don't test eligibility, any apostrophe: enough to mark a result untested. */
 const ELIGIBILITY_DISCLOSURE = /\b(?:does|do)(?:n['\u2019]t| not) test eligibility\b/i;
+/** finbot's whole Arizona-style sentence (catalog-overlay.ts) and nothing more: what the panel's note restates. */
+const ELIGIBILITY_DISCLOSURE_WHOLE =
+  /^Axiom['\u2019]s [^:]+ encoding (?:doesn['\u2019]t|does not) test eligibility yet: every household shows as eligible, so read the amount as ["\u201c]if eligible["\u201d]\.$/;
 
 /**
  * True when the rules test the household's eligibility. A verdict saved
@@ -110,21 +113,26 @@ export function standardsMismatch(
 
 /**
  * The chatbot's disclosures the panel doesn't replace with its own words.
- * An eligibility disclosure goes: it makes testsEligibility false, so the
- * panel shows its own note. finbot's standards disclosure goes only when
- * it is that one sentence and the period is a month: the panel then
- * compares the standards year with the month's fiscal year and, when they
- * differ, says so, including "not encoded yet" (standardsMismatch). When
- * they match, the sentence is about a later fiscal year, not this period.
- * For any other period, or with anything added to the sentence, it stays
- * as the chatbot wrote it. Everything else stays.
+ * A disclosure goes only when it is one of finbot's two known sentences,
+ * whole, and the panel says the same thing itself:
+ * - the eligibility sentence, when the panel shows its eligibility note
+ *   (testsEligibility false, saved verdict included);
+ * - the standards sentence, when the period is a month: the panel compares
+ *   the standards year with the month's fiscal year and, when they differ,
+ *   says so, including "not encoded yet" (standardsMismatch). When they
+ *   match, the sentence is about a later fiscal year, not this period.
+ * Anything else, including either sentence with more added, stays as the
+ * chatbot wrote it.
  */
 export function otherDisclosures(computation: {
+  program: string | null;
   period: string | null;
   disclosures?: readonly string[] | null;
+  eligibilityTested?: boolean | null;
 }): string[] {
   const monthly = federalFiscalYear(computation.period) !== null;
+  const noted = !testsEligibility(computation);
   return (computation.disclosures ?? []).filter(
-    (text) => !ELIGIBILITY_DISCLOSURE.test(text) && !(monthly && STANDARDS_DISCLOSURE_WHOLE.test(text)),
+    (text) => !(noted && ELIGIBILITY_DISCLOSURE_WHOLE.test(text)) && !(monthly && STANDARDS_DISCLOSURE_WHOLE.test(text)),
   );
 }

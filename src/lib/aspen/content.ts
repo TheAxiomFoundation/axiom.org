@@ -193,7 +193,7 @@ export interface Household {
   firstPerson: string;
   /** A caseworker describing the household. */
   thirdPerson: string;
-  /** Why this household is on the list (shown to presenters only). */
+  /** Why this household is on the list, for presenters (no component shows it yet). */
   why: string;
   /** The resident speaks as "we", not "I". */
   plural?: boolean;

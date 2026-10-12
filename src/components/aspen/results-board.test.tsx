@@ -184,7 +184,7 @@ describe("ResultsBoard", () => {
     render(<ResultsBoard summary={harmful} />);
     expect(screen.getByText("What would a resident do next?")).toBeInTheDocument();
     const card = screen.getByText("Would not apply").parentElement as HTMLElement;
-    expect(card).toHaveTextContent("1answers would lead a resident not to apply. 1 of those households qualify under the encoded rules.");
+    expect(card).toHaveTextContent("1answer would lead a resident not to apply. 1 of those households qualifies under the encoded rules.");
     expect(screen.getByText("Rules the room says people misread")).toBeInTheDocument();
     expect(screen.getByTitle("Asset tests")).toBeInTheDocument();
   });
@@ -200,7 +200,7 @@ describe("ResultsBoard", () => {
     render(<ResultsBoard summary={arizona} />);
     const card = screen.getByText("Would not apply").parentElement as HTMLElement;
     expect(card).toHaveTextContent(
-      "1answers would lead a resident not to apply. For 1 of those, the rules give an amount but don't test eligibility yet.",
+      "1answer would lead a resident not to apply. For 1 of those, the rules give an amount but don't test eligibility yet.",
     );
     expect(card).not.toHaveTextContent("qualify under the encoded rules");
     const spotlight = within(screen.getByRole("heading", { name: "Answers worth discussing" }).closest("section") as HTMLElement);

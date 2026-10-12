@@ -178,23 +178,37 @@ describe("standards that don't match the period", () => {
 });
 
 describe("disclosures the panel states itself", () => {
+  const az = { program: "us-az-snap", period: "2026-10" };
+
   it("drops finbot's Arizona note and, for a month, its standards note", () => {
-    expect(otherDisclosures({ period: "2026-10", disclosures: [AZ_NOTE, FY_NOTE] })).toEqual([]);
+    expect(otherDisclosures({ ...az, disclosures: [AZ_NOTE, FY_NOTE] })).toEqual([]);
+    // Curly quotes and apostrophes are the same sentence.
+    const curly = "Axiom\u2019s Arizona SNAP encoding doesn\u2019t test eligibility yet: every household shows as eligible, so read the amount as \u201cif eligible\u201d.";
+    expect(otherDisclosures({ ...az, disclosures: [curly] })).toEqual([]);
   });
 
   it("keeps the standards note for a period that is not a month, where the panel can't compare years", () => {
-    expect(otherDisclosures({ period: "2026", disclosures: [AZ_NOTE, FY_NOTE] })).toEqual([FY_NOTE]);
-    expect(otherDisclosures({ period: null, disclosures: [FY_NOTE] })).toEqual([FY_NOTE]);
+    expect(otherDisclosures({ ...az, period: "2026", disclosures: [AZ_NOTE, FY_NOTE] })).toEqual([FY_NOTE]);
+    expect(otherDisclosures({ ...az, period: null, disclosures: [FY_NOTE] })).toEqual([FY_NOTE]);
+  });
+
+  it("keeps an eligibility note with more in it, or one the panel doesn't replace", () => {
+    const longer = "Arizona SNAP rules do not test eligibility yet. Shelter costs are not included in this amount.";
+    // The result still reads as untested (the panel shows its note), and the extra limit stays.
+    expect(testsEligibility({ program: "us-xx-snap", disclosures: [longer] })).toBe(false);
+    expect(otherDisclosures({ program: "us-xx-snap", period: "2026-10", disclosures: [longer] })).toEqual([longer]);
+    // A saved "tested" verdict means no panel note, so finbot's sentence stays.
+    expect(otherDisclosures({ ...az, eligibilityTested: true, disclosures: [AZ_NOTE] })).toEqual([AZ_NOTE]);
   });
 
   it("keeps everything else as the chatbot wrote it", () => {
-    expect(otherDisclosures({ period: "2026-10", disclosures: [FY_NOTE, NY_NOTE, CO_NOTE] })).toEqual([NY_NOTE, CO_NOTE]);
+    expect(otherDisclosures({ ...az, program: "us-ny-snap", disclosures: [FY_NOTE, NY_NOTE, CO_NOTE] })).toEqual([NY_NOTE, CO_NOTE]);
     // A standards note with more added to it stays whole.
     const longer = `${FY_NOTE} Shelter caps also changed.`;
-    expect(otherDisclosures({ period: "2026-10", disclosures: [longer] })).toEqual([longer]);
+    expect(otherDisclosures({ ...az, disclosures: [longer] })).toEqual([longer]);
     // Reworded standards notes stay rather than vanish.
     const reworded = "Standards: FY2026 (not FY2027).";
-    expect(otherDisclosures({ period: "2026-10", disclosures: [reworded] })).toEqual([reworded]);
-    expect(otherDisclosures({ period: "2026-10" })).toEqual([]);
+    expect(otherDisclosures({ ...az, disclosures: [reworded] })).toEqual([reworded]);
+    expect(otherDisclosures(az)).toEqual([]);
   });
 });

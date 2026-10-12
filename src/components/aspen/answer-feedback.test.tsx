@@ -622,15 +622,26 @@ describe("rules panel values and caveats", () => {
   });
 
   it("never drops a disclosure without saying the same thing itself", () => {
-    const disclosure = fc.oneof(fc.constantFrom(AZ_NOTE, FY_NOTE, `${FY_NOTE} More.`, "Other note."), fc.string());
+    const disclosure = fc.oneof(
+      fc.constantFrom(
+        AZ_NOTE,
+        `${AZ_NOTE} Shelter costs are not included.`,
+        "Arizona SNAP rules do not test eligibility yet. Shelter costs are not included in this amount.",
+        FY_NOTE,
+        `${FY_NOTE} More.`,
+        "Other note.",
+      ),
+      fc.string(),
+    );
     fc.assert(
       fc.property(
         fc.constantFrom("us-az-snap", "us-ny-snap"),
         fc.constantFrom("2026-03", "2026-10", "2027-11", "2026", null),
         fc.array(disclosure, { maxLength: 5 }),
         fc.array(fc.integer({ min: 2025, max: 2028 }), { maxLength: 2 }),
-        (program, period, disclosures, cited) => {
-          const c = check(program, period, { disclosures, eligibilityTested: undefined, standardsYears: snapYears(cited, disclosures) });
+        fc.constantFrom(true, false, undefined),
+        (program, period, disclosures, cited, eligibilityTested) => {
+          const c = check(program, period, { disclosures, eligibilityTested, standardsYears: snapYears(cited, disclosures) });
           const caveats = rulesCaveats({ computations: [c] });
           for (const d of disclosures) {
             if (caveats.other.includes(d)) continue;
@@ -641,8 +652,8 @@ describe("rules panel values and caveats", () => {
               if (c.standardsYears.some((y) => y !== due)) expect(caveats.standards).toHaveLength(1);
               if (due === 2027 && c.standardsYears.some((y) => y !== due)) expect(caveats.standards[0]).toMatch(/hasn't encoded yet/);
             } else {
-              // Anything else dropped is an eligibility disclosure, and the note replaces it.
-              expect(d).toMatch(/test eligibility/i);
+              // Anything else dropped is finbot's whole eligibility sentence, and the panel's note replaces it.
+              expect(d).toBe(AZ_NOTE);
               expect(caveats.eligibility).toHaveLength(1);
             }
           }

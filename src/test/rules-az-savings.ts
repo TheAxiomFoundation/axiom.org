@@ -1,9 +1,10 @@
 /**
  * The rules chatbot's answer for the Aspen "az-savings" household, recorded
  * from the live gallery chatbot (POST
- * https://finbot-snap-demo.vercel.app/gallery/chatbot/api/chat, finbot-snap-demo
- * main 87fa9db) on 2026-10-12: the compute tool call, its result (the `_ms`
- * timing dropped) and the prose. Tests replay it as the AI SDK data stream.
+ * https://finbot-snap-demo.vercel.app/gallery/chatbot/api/chat) on
+ * 2026-10-12, when finbot-snap-demo main was at 87fa9db (the stream names no
+ * build): the compute tool call, its result (the `_ms` timing dropped) and
+ * the prose. Tests replay it as the AI SDK data stream.
  */
 
 export const AZ_SAVINGS_QUESTION =

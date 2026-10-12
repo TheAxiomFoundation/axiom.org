@@ -199,9 +199,9 @@ function ViabilityPanel({ summary }: { summary: RunSummary }) {
               {v.wouldNotApply}
             </span>
             <p className="m-0 font-body text-[0.92rem] leading-relaxed text-[var(--color-ink-secondary)]">
-              answers would lead a resident not to apply.
+              {v.wouldNotApply === 1 ? "answer" : "answers"} would lead a resident not to apply.
               {v.wouldNotApplyEligible > 0 &&
-                ` ${v.wouldNotApplyEligible} of those households qualify under the encoded rules.`}
+                ` ${v.wouldNotApplyEligible} of those households ${v.wouldNotApplyEligible === 1 ? "qualifies" : "qualify"} under the encoded rules.`}
               {ifEligible && ` ${ifEligible}`}
             </p>
           </Card>

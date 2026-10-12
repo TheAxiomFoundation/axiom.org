@@ -259,7 +259,8 @@ describe("PresenterApp navigation", () => {
     expect(screen.getByText("46 of 46 AI models said")).toBeInTheDocument();
     expect(screen.getByText("$24")).toBeInTheDocument();
     // The $24 is PolicyBench's FY2026 figure; USDA's FY2027 minimum is $25 from October 1, 2026.
-    expect(screen.getByText("PolicyBench's reference, under FY2026 standards.")).toBeInTheDocument();
+    expect(screen.getByText("The rules say, under FY2026 standards")).toBeInTheDocument();
+    expect(screen.getByText("PolicyBench's reference.")).toBeInTheDocument();
     expect(screen.getByText("The minimum benefit rose to $25 on October 1, 2026.")).toBeInTheDocument();
     // The summary shows on the first slide only.
     expect(screen.queryByText(STAGES.find((st) => st.id === "scale")!.summary)).not.toBeInTheDocument();
@@ -352,7 +353,7 @@ describe("PresenterApp stages", () => {
     await onStage("reveal");
     await waitFor(() => expect(screen.getByText("answers looked right").previousSibling).toHaveTextContent("0 of 1"));
     expect(screen.getByText("looked wrong, yet people would act on them").previousSibling).toHaveTextContent("1");
-    expect(screen.getByText("would stop a resident from applying. 1 of them qualify.").previousSibling).toHaveTextContent("1");
+    expect(screen.getByText("would stop a resident from applying. 1 of them qualifies.").previousSibling).toHaveTextContent("1");
     expect(screen.getByText("What would a resident do next?")).toBeInTheDocument();
     expect(screen.getByText("To discuss")).toBeInTheDocument();
     for (const q of DISCUSSION_QUESTIONS) expect(screen.getByText(q.label)).toBeInTheDocument();
@@ -362,6 +363,9 @@ describe("PresenterApp stages", () => {
     expect(notApplyLabel({ wouldNotApplyEligible: 0, wouldNotApplyIfEligible: 0 })).toBe("would stop a resident from applying");
     expect(notApplyLabel({ wouldNotApplyEligible: 2, wouldNotApplyIfEligible: 0 })).toBe(
       "would stop a resident from applying. 2 of them qualify.",
+    );
+    expect(notApplyLabel({ wouldNotApplyEligible: 1, wouldNotApplyIfEligible: 0 })).toBe(
+      "would stop a resident from applying. 1 of them qualifies.",
     );
     expect(notApplyLabel({ wouldNotApplyEligible: 0, wouldNotApplyIfEligible: 1 })).toBe(
       "would stop a resident from applying. For 1 of them, the rules give an amount but don't test eligibility yet.",

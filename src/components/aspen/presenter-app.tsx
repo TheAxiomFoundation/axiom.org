@@ -458,7 +458,9 @@ function FeltSlide({ summary }: { summary: RunSummary }) {
  */
 export function notApplyLabel(v: Pick<RunSummary["viability"], "wouldNotApplyEligible" | "wouldNotApplyIfEligible">): string {
   const parts: string[] = [];
-  if (v.wouldNotApplyEligible > 0) parts.push(`${v.wouldNotApplyEligible} of them qualify.`);
+  if (v.wouldNotApplyEligible > 0) {
+    parts.push(`${v.wouldNotApplyEligible} of them ${v.wouldNotApplyEligible === 1 ? "qualifies" : "qualify"}.`);
+  }
   const ifEligible = ifEligibleSentence(v, "of them");
   if (ifEligible) parts.push(ifEligible);
   return parts.length ? `would stop a resident from applying. ${parts.join(" ")}` : "would stop a resident from applying";
@@ -563,13 +565,13 @@ function ScaleCaseSlide() {
           </span>
         </Panel>
         <Panel className="border-l-[8px] border-l-[var(--color-accent)]">
-          <Label className="text-[var(--color-accent)]">The rules say</Label>
+          <Label className="text-[var(--color-accent)]">The rules say, under {az.reference.standards} standards</Label>
           <span className="font-display font-light leading-none text-[var(--color-accent)]" style={{ fontSize: 150 }}>
             ${az.reference.monthly}
           </span>
           <span className="ml-[12px] font-body text-[30px] text-[var(--color-ink-secondary)]">a month</span>
           <span className="mt-[16px] block font-body text-[24px] leading-snug text-[var(--color-ink-secondary)]">
-            PolicyBench&apos;s reference, under {az.reference.standards} standards.
+            PolicyBench&apos;s reference.
           </span>
           <span className="block font-body text-[24px] leading-snug text-[var(--color-ink-secondary)]">
             The minimum benefit rose to ${az.fromOctober.monthly} on {az.fromOctober.effective}.
