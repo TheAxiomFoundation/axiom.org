@@ -58,17 +58,14 @@ jobs:
           AXIOM_API_ARTIFACTS_TOKEN: ${{ secrets.AXIOM_API_ARTIFACTS_TOKEN }}
       # Program bundles (axiom-corpus manifests/program-bundles: 13 programs,
       # federal and every state, about 37,000 documents) measured against the
-      # corpus, every module's rules and the attempts just written. Every six
-      # hours (and on a manual run): a pass reads a quarter of a million corpus
-      # nodes and rewrites every row.
-      - id: bundle-due
-        run: |
-          hour=$(date -u +%H); minute=$(date -u +%M)
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || { [ $((10#$hour % 6)) -eq 0 ] && [ $((10#$minute)) -lt 30 ]; }; then
-            echo "due=true" >> "$GITHUB_OUTPUT"
-          fi
-      - if: steps.bundle-due.outputs.due == 'true'
-        run: bun scripts/collect-program-bundles.mjs
+      # corpus, every module's rules and the attempts just written. A pass reads
+      # a quarter of a million corpus nodes and rewrites every row, so a
+      # scheduled run collects only when the last pass is five hours old or more
+      # (GitHub starts this cron late and skips many starts: a clock window such
+      # as "the first half hour of every sixth hour" went three days without a
+      # pass). A manual run always collects.
+      # .env.production holds the public anon key that reads the served corpus.
+      - run: bun --env-file=.env.production scripts/collect-program-bundles.mjs ${{ github.event_name == 'schedule' && '--every 5' || '' }}
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
