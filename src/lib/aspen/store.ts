@@ -149,7 +149,7 @@ export function createSupabaseStore(
           `aspen_prompts?${runFilter(runId)}&select=id,run_id,participant_id,conversation_id,turn,created_at,perspective,household_id,question_id,prompt,twists,answer,error,verdict,would_act,resident_action,went_well,went_wrong,rating_note,rules_program,rules_period,rules_amount,post_check_verdict&${order}`,
         ),
         request<EventRow[]>(
-          `aspen_events?${runFilter(runId)}&kind=in.(discussion,breakout,survey)&select=run_id,kind,stage,payload,created_at&${order}`,
+          `aspen_events?${runFilter(runId)}&kind=in.(discussion,breakout,survey,vote)&select=run_id,kind,stage,payload,created_at&${order}`,
         ),
         request<PublicPledge[]>(
           `aspen_pledges?${runFilter(runId)}&select=state,accurate_ai,state_systems,show_state,created_at&${order}`,
@@ -227,7 +227,7 @@ export function createMemoryStore(state: MemoryState = freshMemory()): AspenStor
       return {
         participants: inRun(state.participants.values()),
         prompts: inRun(state.prompts.values()),
-        events: inRun(state.events).filter((e) => ["discussion", "breakout", "survey"].includes(e.kind)),
+        events: inRun(state.events).filter((e) => ["discussion", "breakout", "survey", "vote"].includes(e.kind)),
         pledges: inRun(state.pledges).map(({ state: st, accurate_ai, state_systems, show_state, created_at }) => ({
           state: st ?? null,
           accurate_ai,

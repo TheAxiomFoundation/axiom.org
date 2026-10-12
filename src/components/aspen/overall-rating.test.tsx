@@ -131,11 +131,13 @@ describe("OverallRating", () => {
     expect(bodies(fetchMock)[0].payload).toMatchObject({ question: "experience", ratings: { residents: 2 } });
   });
 
-  it("shows the thank-you once a phone has shared", async () => {
+  it("says the ratings are in once a phone has shared", async () => {
     localStorage.setItem("aspen.overall.v1", "true");
     stubFetch();
     render(<OverallRating stage="try" />);
-    expect(await screen.findByText(/Your ratings are in/)).toBeInTheDocument();
+    expect(await screen.findByText(/Your ratings are in/)).toHaveTextContent(
+      "Your ratings are in. You'll see the room's results in What we saw.",
+    );
     expect(screen.queryByRole("button", { name: "Share my ratings" })).not.toBeInTheDocument();
   });
 });
