@@ -6,7 +6,9 @@ name: Collect encoding pipeline
 # After writing, it dispatches sync-rulespec-index.yml when a merge is
 # waiting for the index, so merges don't wait out the 6-hour sync cron.
 # A second step measures every program bundle (encodings.program_bundle_*)
-# every six hours.
+# when the last pass is five hours old. collector-heartbeat.yml starts this
+# workflow every 30 minutes; the cron below is the fallback (GitHub starts it
+# only a few times a day).
 on:
   schedule:
     - cron: "7,37 * * * *"
