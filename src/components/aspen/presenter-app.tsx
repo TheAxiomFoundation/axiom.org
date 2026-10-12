@@ -16,7 +16,7 @@ import {
   type StageId,
 } from "@/lib/aspen/content";
 import type { Control } from "@/lib/aspen/types";
-import { EMPTY_SUMMARY, type Count, type RunSummary } from "@/lib/aspen/results";
+import { EMPTY_SUMMARY, ifEligibleSentence, type Count, type RunSummary } from "@/lib/aspen/results";
 import { countWord, snapQcTotals } from "@/lib/verification-evidence";
 import { postJson, useControl, useResults } from "./client";
 import { BAD, GOOD, MAYBE, ScaleCard, SplitBar } from "./results-board";
@@ -454,14 +454,13 @@ function FeltSlide({ summary }: { summary: RunSummary }) {
 
 /**
  * "would stop a resident from applying. 2 of them qualify." An amount from
- * rules that don't test eligibility counts apart, as an amount if eligible.
+ * rules that don't test eligibility counts apart (ifEligibleSentence).
  */
 export function notApplyLabel(v: Pick<RunSummary["viability"], "wouldNotApplyEligible" | "wouldNotApplyIfEligible">): string {
   const parts: string[] = [];
   if (v.wouldNotApplyEligible > 0) parts.push(`${v.wouldNotApplyEligible} of them qualify.`);
-  if (v.wouldNotApplyIfEligible > 0) {
-    parts.push(`${v.wouldNotApplyIfEligible} ${parts.length ? "more" : "of them"} get an amount if eligible.`);
-  }
+  const ifEligible = ifEligibleSentence(v, "of them");
+  if (ifEligible) parts.push(ifEligible);
   return parts.length ? `would stop a resident from applying. ${parts.join(" ")}` : "would stop a resident from applying";
 }
 
@@ -573,7 +572,7 @@ function ScaleCaseSlide() {
             PolicyBench&apos;s reference, under {az.reference.standards} standards.
           </span>
           <span className="block font-body text-[24px] leading-snug text-[var(--color-ink-secondary)]">
-            ${az.fromOctober.monthly} from {az.fromOctober.effective}.
+            The minimum benefit rose to ${az.fromOctober.monthly} on {az.fromOctober.effective}.
           </span>
         </Panel>
       </div>

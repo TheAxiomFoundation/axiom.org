@@ -124,16 +124,16 @@ describe('aspen content', () => {
 
   it('labels the Arizona amount with the standards year it comes from', () => {
     const { reference, fromOctober, answer } = POLICYBENCH.azCase
-    const fy = (label: string) => Number(label.replace(/^FY/, ''))
-    // FY2027 standards follow FY2026's and start on October 1 of the year before.
-    expect(fy(fromOctober.standards)).toBe(fy(reference.standards) + 1)
-    expect(federalFiscalYear('2026-10')).toBe(fy(fromOctober.standards))
-    expect(fromOctober.effective).toBe(`October 1, ${fy(fromOctober.standards) - 1}`)
-    // A minimum benefit doesn't fall with a cost-of-living adjustment.
-    expect(fromOctober.monthly).toBeGreaterThanOrEqual(reference.monthly)
+    // The sourced figures (content.ts comments): PolicyBench's FY2026 reference, and
+    // USDA's FY2027 minimum for households of one or two in the 48 states and DC.
+    expect(reference).toEqual({ monthly: 24, standards: 'FY2026' })
+    expect(fromOctober).toEqual({ monthly: 25, standards: 'FY2027', effective: 'October 1, 2026' })
+    // October 2026 is the first month of FY2027.
+    expect(federalFiscalYear('2026-10')).toBe(2027)
+    expect(federalFiscalYear('2026-09')).toBe(2026)
     for (const text of [answer, findHousehold('az-savings')!.why]) {
-      expect(text).toContain(`$${reference.monthly} a month under ${reference.standards} standards`)
-      expect(text).toContain(`$${fromOctober.monthly} from ${fromOctober.effective}`)
+      expect(text).toContain('$24 a month under FY2026 standards')
+      expect(text).toContain('The minimum benefit rose to $25 on October 1, 2026.')
     }
     expect(findHousehold('az-savings')!.why).toContain("Axiom's Arizona SNAP rules don't test eligibility yet")
   })

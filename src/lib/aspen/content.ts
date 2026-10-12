@@ -224,7 +224,7 @@ export const HOUSEHOLDS: readonly Household[] = [
       "I live in Phoenix, Arizona. I'm 80, I have a disability and I live alone. I get $1,978 a month from Social Security and $560 a month from a private pension. I have $58,700 in the bank.",
     thirdPerson:
       "an 80-year-old in Phoenix, Arizona with a disability who lives alone, gets $1,978 a month from Social Security and $560 a month from a pension, and has $58,700 in the bank",
-    why: "PolicyBench: all 46 models said $0. Arizona's expanded categorical eligibility drops the asset test, so the household qualifies for the minimum benefit: $24 a month under FY2026 standards (PolicyBench's reference), $25 from October 1, 2026. Axiom's Arizona SNAP rules don't test eligibility yet, so the rules check shows the amount if eligible.",
+    why: "PolicyBench: all 46 models said $0. Arizona's expanded categorical eligibility drops the asset test, so the household qualifies for the minimum benefit: $24 a month under FY2026 standards (PolicyBench's reference). The minimum benefit rose to $25 on October 1, 2026. Axiom's Arizona SNAP rules don't test eligibility yet, so the rules check shows the amount if eligible.",
   },
   {
     id: "ny-parent",
@@ -639,14 +639,17 @@ export const POLICYBENCH = {
     modelsAsked: 46,
     modelsSaidZero: 46,
     /**
-     * PolicyBench's reference: the FY2026 minimum benefit. Its PolicyEngine
-     * references applied USDA's FY2026 standards to every month of 2026,
-     * October to December included ($24 minimum, $298 one-person maximum;
-     * PolicyEngine/policybench notes/data/snap_pathways_20260930.csv).
+     * PolicyBench's reference: the FY2026 minimum benefit, $24 a month.
+     * Models were asked for the annual amount (policybench/prompts.py); the
+     * reference for 2026 is $240, $0 in January and February and $24 a month
+     * from March to December (PolicyEngine/policybench
+     * notes/data/snap_pathways_20260930.csv, scenario_013). It applied
+     * USDA's FY2026 standards to every month, October to December included
+     * ($24 minimum, $298 one-person maximum).
      */
     reference: { monthly: 24, standards: "FY2026" },
     /**
-     * USDA FNS, FY 2027 standards (October 1, 2026, to September 30, 2027):
+     * USDA's FY 2027 standards (October 1, 2026, to September 30, 2027):
      * the minimum allotment for households of one or two in the 48 states
      * and DC is $25 (https://www.fna.usda.gov/snap/allotment/cola). Under
      * them the household's $2,538 is still below 200% of poverty ($2,660)
@@ -654,7 +657,7 @@ export const POLICYBENCH = {
      */
     fromOctober: { monthly: 25, standards: "FY2027", effective: "October 1, 2026" },
     answer:
-      "Eligible. Income is under Arizona's expanded categorical eligibility limit (200% of poverty), so there is no asset test, and the household gets the minimum benefit: $24 a month under FY2026 standards, $25 from October 1, 2026.",
+      "Eligible. Income is under Arizona's expanded categorical eligibility limit (200% of poverty), so there is no asset test, and the household gets the minimum benefit: $24 a month under FY2026 standards. The minimum benefit rose to $25 on October 1, 2026.",
   },
 } as const;
 

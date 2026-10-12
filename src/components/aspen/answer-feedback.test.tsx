@@ -2,11 +2,13 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseDataStream, summarizeRules, type RulesAnswer, type RulesComputation } from "@/lib/aspen/rules";
+import { federalFiscalYear, snapStandardsYears } from "@/lib/aspen/coverage";
 import { azSavingsStream } from "@/test/rules-az-savings";
 import {
   citationPath,
   formatPeriod,
   outputLabel,
+  panelRows,
   RatingCard,
   RulesCheck,
   rulesCaveats,
@@ -39,7 +41,6 @@ const SNAP_RESULT: RulesAnswer & { latencyMs: number } = {
         incomplete: false,
         legalId: "us:statutes/7/2017#a",
         semantics: "scalar",
-        published: true,
       },
       outputs: [
         {
@@ -50,7 +51,6 @@ const SNAP_RESULT: RulesAnswer & { latencyMs: number } = {
           incomplete: false,
           legalId: "us:statutes/7/2017#a",
           semantics: "scalar",
-          published: true,
         },
         {
           name: "snap_excess_shelter_deduction",
@@ -60,11 +60,11 @@ const SNAP_RESULT: RulesAnswer & { latencyMs: number } = {
           incomplete: true,
           legalId: "us:statutes/7/2014#e",
           semantics: "scalar",
-          published: false,
         },
       ],
       disclosures: [],
       standardsYears: [],
+      eligibilityTested: true,
     },
   ],
   amount: 24,
@@ -306,10 +306,11 @@ describe("RulesCheck", () => {
           period: "2026",
           primary: null,
           outputs: [
-            { name: "ctc", label: "Ctc", value: 4400, unit: "USD", incomplete: false, legalId: null, semantics: "scalar", published: true },
+            { name: "ctc", label: "Ctc", value: 4400, unit: "USD", incomplete: false, legalId: null, semantics: "scalar" },
           ],
           disclosures: [],
           standardsYears: [],
+          eligibilityTested: true,
         },
         {
           program: "eitc",
@@ -325,11 +326,11 @@ describe("RulesCheck", () => {
               incomplete: false,
               legalId: null,
               semantics: "judgment",
-              published: true,
             },
           ],
           disclosures: [],
           standardsYears: [],
+          eligibilityTested: true,
         },
       ],
       amount: null,
@@ -464,12 +465,14 @@ describe("RulesCheck", () => {
     );
     expect(
       screen.getByText(
-        "Uses FY2026 SNAP standards. October 2026 falls in FY2027, whose standards took effect October 1, 2026.",
+        "Uses FY2026 SNAP standards, but October 2026 falls under FY2027 standards (from October 1, 2026), which Axiom hasn't encoded yet. The amount may differ.",
       ),
     ).toBeInTheDocument();
 
     const rows = screen.getAllByRole("listitem").map((li) => li.textContent);
-    expect(rows).toContain("EligibleNot tested");
+    // No yes/no verdict at all: one row says eligibility wasn't tested, right under the benefit.
+    expect(rows.slice(0, 2)).toEqual(["Benefit$24", "EligibilityNot tested"]);
+    expect(rows.some((row) => /^Eligible/.test(row ?? ""))).toBe(false);
     expect(rows).toContain("Maximum allotment$298");
     expect(rows.some((row) => /Yes$|No$/.test(row ?? ""))).toBe(false);
     // finbot's own wording of both limits is replaced, not repeated.
@@ -488,7 +491,7 @@ describe("RulesCheck", () => {
           period: "2026-03",
           outputs: [
             ...SNAP_RESULT.computations[0].outputs,
-            { name: "snap_eligible", label: "Snap eligible", value: "holds", unit: null, incomplete: false, legalId: null, semantics: "judgment", published: true },
+            { name: "snap_eligible", label: "Snap eligible", value: "holds", unit: null, incomplete: false, legalId: null, semantics: "judgment" },
           ],
           disclosures: [
             "SNAP figures use FY2026 standards; FY2027 standards took effect October 1, 2026 and are not encoded yet.",
@@ -525,57 +528,133 @@ describe("RulesCheck", () => {
 });
 
 describe("rules panel values and caveats", () => {
-  const judgment = (value: string, published: boolean) => ({
-    name: "snap_eligible",
-    label: "Snap eligible",
+  const AZ_NOTE =
+    "Axiom's Arizona SNAP encoding doesn't test eligibility yet: every household shows as eligible, so read the amount as \"if eligible\".";
+  const FY_NOTE =
+    "SNAP figures use FY2026 standards; FY2027 standards took effect October 1, 2026 and are not encoded yet.";
+  const output = (name: string, value: unknown, semantics: string | null, unit: string | null = null) => ({
+    name,
+    label: name.replace(/_/g, " "),
     value,
-    unit: null,
+    unit,
     incomplete: false,
     legalId: null,
-    semantics: "judgment" as string | null,
-    published,
+    semantics,
+  });
+  const check = (program: string, period: string | null, extra: Partial<RulesComputation> = {}): RulesComputation => ({
+    program,
+    displayName: program === "us-az-snap" ? "Arizona SNAP" : "New York SNAP",
+    period,
+    primary: null,
+    outputs: [
+      output("snap_benefit", 24, "scalar", "USD"),
+      output("snap_eligible", "holds", "judgment"),
+      output("snap_resource_eligible", "not_holds", "judgment"),
+      output("snap_standard_gross_income_eligible", "holds", null),
+      output("snap_net_income", 2329, "scalar", "USD"),
+    ],
+    disclosures: [],
+    standardsYears: [],
+    eligibilityTested: program !== "us-az-snap",
+    ...extra,
   });
 
-  it("never shows a yes/no verdict for a program whose eligibility isn't tested", () => {
+  it("never shows a yes/no verdict, sub-tests included, for rules that don't test eligibility", () => {
     fc.assert(
       fc.property(
-        fc.constantFrom("holds", "not_holds"),
-        fc.constantFrom("judgment", null),
-        fc.constantFrom("us-az-snap", "us-ny-snap", "us-co-snap"),
-        (value, semantics, program) => {
-          const shown = shownValue({ ...judgment(value, true), semantics }, { program });
-          if (program === "us-az-snap") expect(shown).toBe("Not tested");
-          else expect(shown).toBe(value === "holds" ? "Yes" : "No");
+        fc.constantFrom("us-az-snap", "us-ny-snap"),
+        fc.array(
+          fc.record({
+            name: fc.constantFrom("snap_eligible", "snap_resource_eligible", "snap_benefit", "x"),
+            value: fc.oneof(fc.constantFrom("holds", "not_holds"), fc.integer({ min: 0, max: 900 })),
+            semantics: fc.constantFrom("judgment", "scalar", null),
+          }),
+          { maxLength: 6 },
+        ),
+        (program, outs) => {
+          const c = check(program, "2026-10", { outputs: outs.map((o) => output(o.name, o.value, o.semantics)) });
+          const rows = panelRows(c);
+          const verdicts = rows.filter((r) => r.value === "Yes" || r.value === "No");
+          if (program === "us-az-snap") {
+            expect(verdicts).toEqual([]);
+            expect(rows.filter((r) => r.value === "Not tested")).toHaveLength(1);
+            for (const o of c.outputs) if (o.value === "holds" || o.value === "not_holds") expect(shownValue(o, c)).toBe("Not tested");
+          } else {
+            expect(verdicts).toHaveLength(c.outputs.filter((o) => o.value === "holds" || o.value === "not_holds").length);
+            expect(rows.some((r) => r.value === "Not tested")).toBe(false);
+          }
         },
       ),
     );
   });
 
-  it("shows amounts and an extra sub-test as computed", () => {
+  it("shows amounts as computed for every program", () => {
     fc.assert(
       fc.property(fc.integer({ min: -10_000, max: 10_000 }), fc.constantFrom("us-az-snap", "us-ny-snap"), (value, program) => {
-        const amount = { ...judgment("", true), value, unit: "USD", semantics: "scalar" };
-        expect(shownValue(amount, { program })).toBe(formatValue(value, "USD"));
+        expect(shownValue(output("snap_benefit", value, "scalar", "USD"), check(program, "2026-10"))).toBe(formatValue(value, "USD"));
       }),
     );
-    expect(shownValue(judgment("holds", false), { program: "us-az-snap" })).toBe("Yes");
+    expect(panelRows(check("us-ny-snap", "2026-10")).map((r) => [r.label, r.value])).toEqual([
+      ["Benefit", "$24"],
+      ["Eligible", "Yes"],
+      ["Resource eligible", "No"],
+      ["Standard gross income eligible", "Yes"],
+      ["Net income", "$2,329"],
+    ]);
   });
 
   it("states each caveat once across computations", () => {
-    const az: RulesComputation = {
-      program: "us-az-snap",
-      displayName: "Arizona SNAP",
-      period: "2026-10",
-      primary: null,
-      outputs: [],
-      disclosures: ["Something else."],
-      standardsYears: [2025, 2026],
-    };
+    const az = check("us-az-snap", "2026-10", { disclosures: ["Something else.", AZ_NOTE, FY_NOTE], standardsYears: [2025, 2026] });
     const caveats = rulesCaveats({ computations: [az, { ...az }] });
     expect(caveats.eligibility).toHaveLength(1);
     expect(caveats.standards).toEqual([
-      "Uses FY2025 and FY2026 SNAP standards. October 2026 falls in FY2027, whose standards took effect October 1, 2026.",
+      "Uses FY2025 and FY2026 SNAP standards, but October 2026 falls under FY2027 standards (from October 1, 2026), which Axiom hasn't encoded yet. The amount may differ.",
     ]);
     expect(caveats.other).toEqual(["Something else."]);
   });
+
+  it("keeps the standards note for a yearly or missing period", () => {
+    for (const period of ["2026", null]) {
+      const caveats = rulesCaveats({ computations: [check("us-ny-snap", period, { disclosures: [FY_NOTE], standardsYears: [2026] })] });
+      expect(caveats.standards).toEqual([]);
+      expect(caveats.other).toEqual([FY_NOTE]);
+    }
+  });
+
+  it("never drops a disclosure without saying the same thing itself", () => {
+    const disclosure = fc.oneof(fc.constantFrom(AZ_NOTE, FY_NOTE, `${FY_NOTE} More.`, "Other note."), fc.string());
+    fc.assert(
+      fc.property(
+        fc.constantFrom("us-az-snap", "us-ny-snap"),
+        fc.constantFrom("2026-03", "2026-10", "2027-11", "2026", null),
+        fc.array(disclosure, { maxLength: 5 }),
+        fc.array(fc.integer({ min: 2025, max: 2028 }), { maxLength: 2 }),
+        (program, period, disclosures, cited) => {
+          const c = check(program, period, { disclosures, eligibilityTested: undefined, standardsYears: snapYears(cited, disclosures) });
+          const caveats = rulesCaveats({ computations: [c] });
+          for (const d of disclosures) {
+            if (caveats.other.includes(d)) continue;
+            if (d === FY_NOTE) {
+              // Only for a month; and if this month isn't FY2026, the panel says which standards it used.
+              expect(federalFiscalYear(period)).not.toBeNull();
+              const due = federalFiscalYear(period)!;
+              if (c.standardsYears.some((y) => y !== due)) expect(caveats.standards).toHaveLength(1);
+              if (due === 2027 && c.standardsYears.some((y) => y !== due)) expect(caveats.standards[0]).toMatch(/hasn't encoded yet/);
+            } else {
+              // Anything else dropped is an eligibility disclosure, and the note replaces it.
+              expect(d).toMatch(/test eligibility/i);
+              expect(caveats.eligibility).toHaveLength(1);
+            }
+          }
+        },
+      ),
+    );
+  });
 });
+
+function snapYears(cited: number[], disclosures: string[]): number[] {
+  return snapStandardsYears(
+    cited.map((y) => `us:policies/usda/snap/fy-${y}-cola/deductions#x`),
+    disclosures,
+  );
+}

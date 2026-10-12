@@ -193,14 +193,14 @@ describe("ResultsBoard", () => {
     const arizona = summarizeRun({
       ...DATA,
       prompts: [
-        { ...DATA.prompts[0], resident_action: "not-apply", rules_outputs: [{ program: "us-az-snap" }] },
+        { ...DATA.prompts[0], resident_action: "not-apply", rules_program_id: "us-az-snap", rules_eligibility_tested: false },
         { ...DATA.prompts[1], resident_action: "apply" },
       ],
     });
     render(<ResultsBoard summary={arizona} />);
     const card = screen.getByText("Would not apply").parentElement as HTMLElement;
     expect(card).toHaveTextContent(
-      "1answers would lead a resident not to apply. For 1 more, the rules give an amount if eligible but don't test eligibility yet.",
+      "1answers would lead a resident not to apply. For 1 of those, the rules give an amount but don't test eligibility yet.",
     );
     expect(card).not.toHaveTextContent("qualify under the encoded rules");
     const spotlight = within(screen.getByRole("heading", { name: "Answers worth discussing" }).closest("section") as HTMLElement);

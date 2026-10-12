@@ -14,7 +14,7 @@ import {
   WENT_WRONG,
   WOULD_ACT,
 } from "./content";
-import { eligibilityTested } from "./coverage";
+import { testsEligibility } from "./coverage";
 import type { PromptRow, RunData } from "./types";
 
 /**
@@ -215,17 +215,46 @@ function payloadList(payload: Record<string, unknown>, key: string): string[] {
 const SPOTLIGHT_SIZE = 4;
 const VOICES_SIZE = 12;
 
-/** The program id of the rules check saved on a prompt (its first computation), or null. */
-export function rulesProgramId(p: Pick<PromptRow, "rules_outputs">): string | null {
+type SavedCheck = Pick<PromptRow, "rules_outputs" | "rules_program_id" | "rules_eligibility_tested">;
+
+/** The saved rules check's first computation, when the row carries the whole of rules_outputs. */
+function firstComputation(p: SavedCheck): Record<string, unknown> {
   const first: unknown = Array.isArray(p.rules_outputs) ? p.rules_outputs[0] : null;
-  if (!first || typeof first !== "object") return null;
-  const program = (first as { program?: unknown }).program;
+  return first && typeof first === "object" ? (first as Record<string, unknown>) : {};
+}
+
+/** The program id of the rules check saved on a prompt (its first computation), or null. */
+export function rulesProgramId(p: SavedCheck): string | null {
+  if (typeof p.rules_program_id === "string") return p.rules_program_id;
+  const program = firstComputation(p).program;
   return typeof program === "string" ? program : null;
 }
 
-/** The saved rules amount holds only if the household is eligible: the rules didn't test eligibility. */
-export function rulesIfEligible(p: Pick<PromptRow, "rules_outputs">): boolean {
-  return !eligibilityTested(rulesProgramId(p));
+/**
+ * The saved rules amount holds only if the household is eligible: the
+ * rules didn't test eligibility. The verdict saved with the check wins;
+ * a check saved before there was one falls back to its program id.
+ */
+export function rulesIfEligible(p: SavedCheck): boolean {
+  const saved = p.rules_eligibility_tested ?? firstComputation(p).eligibilityTested;
+  return !testsEligibility({
+    program: rulesProgramId(p),
+    eligibilityTested: typeof saved === "boolean" ? saved : null,
+  });
+}
+
+/**
+ * "For 3 more, the rules give an amount but don't test eligibility yet.",
+ * or "For 3 of them, ..." when no checked household qualifies; null when
+ * there are none.
+ */
+export function ifEligibleSentence(
+  v: Pick<Viability, "wouldNotApplyEligible" | "wouldNotApplyIfEligible">,
+  of: string,
+): string | null {
+  if (v.wouldNotApplyIfEligible <= 0) return null;
+  const who = v.wouldNotApplyEligible > 0 ? "more" : of;
+  return `For ${v.wouldNotApplyIfEligible} ${who}, the rules give an amount but don't test eligibility yet.`;
 }
 
 export function viabilityOf(rated: PromptRow[]): Viability {

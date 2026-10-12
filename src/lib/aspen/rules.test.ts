@@ -112,15 +112,17 @@ describe('rules chatbot stream', () => {
       errors: [],
     })
     const [ny, p] = rules.computations
-    expect(ny.outputs.map((o) => [o.name, o.semantics, o.published])).toEqual([
-      ['snap_benefit', 'scalar', true],
-      ['snap_net_income_test', 'judgment', false],
-      ['snap_eligible', null, true],
+    expect(ny.outputs.map((o) => [o.name, o.semantics])).toEqual([
+      ['snap_benefit', 'scalar'],
+      ['snap_net_income_test', 'judgment'],
+      ['snap_eligible', null],
     ])
     expect(ny.disclosures).toEqual(['Note A', 'SNAP figures use FY2026 standards; later ones are not encoded yet.'])
     expect(ny.standardsYears).toEqual([2026])
+    expect(ny.eligibilityTested).toBe(true)
     expect(p.disclosures).toEqual([])
     expect(p.standardsYears).toEqual([])
+    expect(p.eligibilityTested).toBe(true)
   })
 
   it('summarizes the recorded Arizona answer: $24, eligibility untested, FY2026 standards', () => {
@@ -129,13 +131,10 @@ describe('rules chatbot stream', () => {
     expect(rules).toMatchObject({ amount: 24, program: 'Arizona SNAP', period: '2026-10', incomplete: [], errors: [] })
     const [az] = rules.computations
     expect(az.program).toBe('us-az-snap')
-    expect(az.outputs.find((o) => o.name === 'snap_eligible')).toMatchObject({
-      value: 'holds',
-      semantics: 'judgment',
-      published: true,
-      incomplete: false,
-    })
-    expect(az.outputs.find((o) => o.name === 'snap_maximum_allotment')).toMatchObject({ value: 298, published: false })
+    expect(az.outputs.find((o) => o.name === 'snap_eligible')).toMatchObject({ value: 'holds', semantics: 'judgment', incomplete: false })
+    expect(az.outputs.find((o) => o.name === 'snap_maximum_allotment')).toMatchObject({ value: 298, semantics: 'scalar' })
+    // Saved with the check, so the results read it the way the panel showed it.
+    expect(az.eligibilityTested).toBe(false)
     expect(az.disclosures).toEqual([
       "Axiom's Arizona SNAP encoding doesn't test eligibility yet: every household shows as eligible, so read the amount as \"if eligible\".",
       'SNAP figures use FY2026 standards; FY2027 standards took effect October 1, 2026 and are not encoded yet.',

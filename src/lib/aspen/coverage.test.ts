@@ -3,52 +3,71 @@ import { describe, expect, it } from "vitest";
 import {
   ELIGIBILITY_NOT_TESTED,
   eligibilityNote,
-  eligibilityTested,
   federalFiscalYear,
   otherDisclosures,
   snapStandardsYears,
   standardsMismatch,
+  testsEligibility,
 } from "./coverage";
 
+// finbot-snap-demo's wording (src/lib/catalog-overlay.ts, origin/main 87fa9db).
 const AZ_NOTE =
   "Axiom's Arizona SNAP encoding doesn't test eligibility yet: every household shows as eligible, so read the amount as \"if eligible\".";
 const FY_NOTE =
   "SNAP figures use FY2026 standards; FY2027 standards took effect October 1, 2026 and are not encoded yet.";
 const NY_NOTE = "New York: the household's earned-income input was set from the earnings given (has earned income).";
+const CO_NOTE =
+  "Axiom can't apply Colorado's broad-based categorical eligibility yet. A $0 for a household with gross income above the 130% limit but within the state's higher BBCE limit is not a determination; it may still qualify.";
 
-const listed = Object.keys(ELIGIBILITY_NOT_TESTED);
-
-describe("programs whose eligibility the rules don't test", () => {
+describe("rules that don't test eligibility", () => {
   it("lists Arizona SNAP, as finbot-snap-demo's request builder does", () => {
-    expect(ELIGIBILITY_NOT_TESTED["us-az-snap"]).toEqual({ state: "Arizona", program: "SNAP" });
-    expect(eligibilityTested("us-az-snap")).toBe(false);
+    expect(ELIGIBILITY_NOT_TESTED).toEqual(["us-az-snap"]);
+    expect(testsEligibility({ program: "us-az-snap" })).toBe(false);
   });
 
   it("treats every other program, and no program, as tested", () => {
-    for (const id of ["us-ny-snap", "us-co-snap", "us-fiit", "snap", "", null, undefined]) {
-      expect(eligibilityTested(id)).toBe(true);
+    for (const program of ["us-ny-snap", "us-co-snap", "us-fiit", "snap", "", null]) {
+      expect(testsEligibility({ program })).toBe(true);
     }
-    // Object prototype keys are not programs.
-    for (const id of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
-      expect(eligibilityTested(id)).toBe(true);
+    for (const program of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+      expect(testsEligibility({ program })).toBe(true);
     }
+    // BBCE and categorical-input limits are other limits, not "doesn't test eligibility".
+    expect(testsEligibility({ program: "us-co-snap", disclosures: [CO_NOTE, FY_NOTE] })).toBe(true);
   });
 
-  it("is untested exactly for the listed programs (any string)", () => {
+  it("also catches a program whose result says it doesn't test eligibility", () => {
+    expect(testsEligibility({ program: "us-xx-snap", disclosures: [AZ_NOTE] })).toBe(false);
+    expect(testsEligibility({ program: "us-xx-snap", disclosures: ["Its rules don’t test eligibility yet."] })).toBe(false);
+    expect(testsEligibility({ program: "us-xx-snap", disclosures: ["It does not test eligibility yet."] })).toBe(false);
+  });
+
+  it("keeps the verdict saved with a check, whatever the list says today", () => {
+    expect(testsEligibility({ program: "us-az-snap", eligibilityTested: true })).toBe(true);
+    expect(testsEligibility({ program: "us-ny-snap", eligibilityTested: false })).toBe(false);
+    expect(testsEligibility({ program: "us-az-snap", eligibilityTested: null })).toBe(false);
+  });
+
+  it("is untested exactly for listed programs, programs that say so, or a saved false", () => {
     fc.assert(
-      fc.property(fc.oneof(fc.string(), fc.constantFrom(...listed)), (id) => {
-        expect(eligibilityTested(id)).toBe(!listed.includes(id));
-        expect(eligibilityNote(id) === null).toBe(eligibilityTested(id));
-      }),
+      fc.property(
+        fc.oneof(fc.string(), fc.constantFrom(...ELIGIBILITY_NOT_TESTED, "us-ny-snap")),
+        fc.array(fc.oneof(fc.constantFrom(AZ_NOTE, FY_NOTE, NY_NOTE, CO_NOTE), fc.string()), { maxLength: 4 }),
+        fc.constantFrom(true, false, null, undefined),
+        (program, disclosures, eligibilityTested) => {
+          const said = disclosures.some((d) => /\b(?:does|do)(?:n['\u2019]t| not) test eligibility\b/i.test(d));
+          const expected = typeof eligibilityTested === "boolean" ? eligibilityTested : !ELIGIBILITY_NOT_TESTED.includes(program) && !said;
+          expect(testsEligibility({ program, disclosures, eligibilityTested })).toBe(expected);
+        },
+      ),
     );
   });
 
   it("says plainly that the answer is not an eligibility determination", () => {
-    expect(eligibilityNote("us-az-snap")).toBe(
+    expect(eligibilityNote({ program: "us-az-snap", displayName: "Arizona SNAP" })).toBe(
       "Not an eligibility determination: Axiom's Arizona SNAP rules don't test eligibility yet. Read this as the amount if eligible.",
     );
-    expect(eligibilityNote("us-ny-snap")).toBeNull();
-    expect(eligibilityNote(null)).toBeNull();
+    expect(eligibilityNote({ program: "us-ny-snap", displayName: "New York SNAP" })).toBeNull();
   });
 });
 
@@ -126,12 +145,15 @@ describe("SNAP standards years", () => {
 });
 
 describe("standards that don't match the period", () => {
-  it("flags FY2026 standards used for October 2026", () => {
-    expect(standardsMismatch([2026], "2026-10")).toEqual({ used: [2026], due: 2027 });
+  it("flags FY2026 standards used for October 2026, and says FY2027's aren't encoded when finbot says so", () => {
+    expect(standardsMismatch([2026], "2026-10", [FY_NOTE])).toEqual({ used: [2026], due: 2027, notEncoded: true });
+    expect(standardsMismatch([2026], "2026-10")).toEqual({ used: [2026], due: 2027, notEncoded: false });
+    // finbot's note names FY2027; November 2027 is in FY2028, which it says nothing about.
+    expect(standardsMismatch([2026], "2027-11", [FY_NOTE])).toEqual({ used: [2026], due: 2028, notEncoded: false });
   });
 
   it("stays quiet when the standards match, are unknown, or the period is not a month", () => {
-    expect(standardsMismatch([2026], "2026-09")).toBeNull();
+    expect(standardsMismatch([2026], "2026-09", [FY_NOTE])).toBeNull();
     expect(standardsMismatch([], "2026-10")).toBeNull();
     expect(standardsMismatch([2026], "2026")).toBeNull();
     expect(standardsMismatch([2026], null)).toBeNull();
@@ -146,9 +168,9 @@ describe("standards that don't match the period", () => {
         (used, year, month) => {
           const period = `${year}-${String(month).padStart(2, "0")}`;
           const due = federalFiscalYear(period)!;
-          const mismatch = standardsMismatch(used, period);
+          const mismatch = standardsMismatch(used, period, [FY_NOTE]);
           expect(mismatch !== null).toBe(used.some((y) => y !== due));
-          if (mismatch) expect(mismatch).toEqual({ used, due });
+          if (mismatch) expect(mismatch).toEqual({ used, due, notEncoded: due === 2027 });
         },
       ),
     );
@@ -156,38 +178,23 @@ describe("standards that don't match the period", () => {
 });
 
 describe("disclosures the panel states itself", () => {
-  it("drops finbot's Arizona note and standards note, which the panel says in its own words", () => {
-    expect(otherDisclosures({ program: "us-az-snap", disclosures: [AZ_NOTE, FY_NOTE] })).toEqual([]);
+  it("drops finbot's Arizona note and, for a month, its standards note", () => {
+    expect(otherDisclosures({ period: "2026-10", disclosures: [AZ_NOTE, FY_NOTE] })).toEqual([]);
+  });
+
+  it("keeps the standards note for a period that is not a month, where the panel can't compare years", () => {
+    expect(otherDisclosures({ period: "2026", disclosures: [AZ_NOTE, FY_NOTE] })).toEqual([FY_NOTE]);
+    expect(otherDisclosures({ period: null, disclosures: [FY_NOTE] })).toEqual([FY_NOTE]);
   });
 
   it("keeps everything else as the chatbot wrote it", () => {
-    expect(otherDisclosures({ program: "us-ny-snap", disclosures: [FY_NOTE, NY_NOTE] })).toEqual([NY_NOTE]);
-    // An eligibility note on a program the panel has no note for stays.
-    expect(otherDisclosures({ program: "us-ny-snap", disclosures: [AZ_NOTE] })).toEqual([AZ_NOTE]);
+    expect(otherDisclosures({ period: "2026-10", disclosures: [FY_NOTE, NY_NOTE, CO_NOTE] })).toEqual([NY_NOTE, CO_NOTE]);
+    // A standards note with more added to it stays whole.
+    const longer = `${FY_NOTE} Shelter caps also changed.`;
+    expect(otherDisclosures({ period: "2026-10", disclosures: [longer] })).toEqual([longer]);
     // Reworded standards notes stay rather than vanish.
     const reworded = "Standards: FY2026 (not FY2027).";
-    expect(otherDisclosures({ program: "us-az-snap", disclosures: [reworded] })).toEqual([reworded]);
-  });
-
-  it("only removes, never adds or reorders, and removes only what the panel replaces", () => {
-    const disclosure = fc.oneof(fc.constantFrom(AZ_NOTE, FY_NOTE, NY_NOTE), fc.string());
-    fc.assert(
-      fc.property(
-        fc.constantFrom("us-az-snap", "us-ny-snap", "us-co-snap"),
-        fc.array(disclosure, { maxLength: 6 }),
-        (program, disclosures) => {
-          const kept = otherDisclosures({ program, disclosures });
-          // A subsequence of the input.
-          let i = 0;
-          for (const d of disclosures) if (i < kept.length && kept[i] === d) i++;
-          expect(i).toBe(kept.length);
-          for (const dropped of disclosures.filter((d) => !kept.includes(d))) {
-            const standards = snapStandardsYears([], [dropped]).length > 0;
-            const eligibility = !eligibilityTested(program) && /test eligibility/i.test(dropped);
-            expect(standards || eligibility).toBe(true);
-          }
-        },
-      ),
-    );
+    expect(otherDisclosures({ period: "2026-10", disclosures: [reworded] })).toEqual([reworded]);
+    expect(otherDisclosures({ period: "2026-10" })).toEqual([]);
   });
 });

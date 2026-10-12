@@ -1,4 +1,4 @@
-import type { Count, RunSummary, ScaleSummary } from "@/lib/aspen/results";
+import { ifEligibleSentence, type Count, type RunSummary, type ScaleSummary } from "@/lib/aspen/results";
 import { SOURCE_OF_TRUTH } from "@/lib/aspen/content";
 import { formatValue } from "./client";
 import { Bars, Card, Eyebrow, Stat } from "./ui";
@@ -141,6 +141,7 @@ export const MAYBE = "var(--color-rule-strong)";
 function ViabilityPanel({ summary }: { summary: RunSummary }) {
   const v = summary.viability;
   const act = v.wouldAct + v.maybe;
+  const ifEligible = ifEligibleSentence(v, "of those");
   return (
     <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
       <Card className="flex flex-col gap-5 p-5">
@@ -201,8 +202,7 @@ function ViabilityPanel({ summary }: { summary: RunSummary }) {
               answers would lead a resident not to apply.
               {v.wouldNotApplyEligible > 0 &&
                 ` ${v.wouldNotApplyEligible} of those households qualify under the encoded rules.`}
-              {v.wouldNotApplyIfEligible > 0 &&
-                ` For ${v.wouldNotApplyIfEligible} more, the rules give an amount if eligible but don't test eligibility yet.`}
+              {ifEligible && ` ${ifEligible}`}
             </p>
           </Card>
         )}

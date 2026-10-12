@@ -259,7 +259,7 @@ describe("PresenterApp navigation", () => {
     expect(screen.getByText("$24")).toBeInTheDocument();
     // The $24 is PolicyBench's FY2026 figure; USDA's FY2027 minimum is $25 from October 1, 2026.
     expect(screen.getByText("PolicyBench's reference, under FY2026 standards.")).toBeInTheDocument();
-    expect(screen.getByText("$25 from October 1, 2026.")).toBeInTheDocument();
+    expect(screen.getByText("The minimum benefit rose to $25 on October 1, 2026.")).toBeInTheDocument();
     // The summary shows on the first slide only.
     expect(screen.queryByText(STAGES.find((st) => st.id === "scale")!.summary)).not.toBeInTheDocument();
 
@@ -362,11 +362,11 @@ describe("PresenterApp stages", () => {
     expect(notApplyLabel({ wouldNotApplyEligible: 2, wouldNotApplyIfEligible: 0 })).toBe(
       "would stop a resident from applying. 2 of them qualify.",
     );
-    expect(notApplyLabel({ wouldNotApplyEligible: 0, wouldNotApplyIfEligible: 3 })).toBe(
-      "would stop a resident from applying. 3 of them get an amount if eligible.",
+    expect(notApplyLabel({ wouldNotApplyEligible: 0, wouldNotApplyIfEligible: 1 })).toBe(
+      "would stop a resident from applying. For 1 of them, the rules give an amount but don't test eligibility yet.",
     );
     expect(notApplyLabel({ wouldNotApplyEligible: 2, wouldNotApplyIfEligible: 3 })).toBe(
-      "would stop a resident from applying. 2 of them qualify. 3 more get an amount if eligible.",
+      "would stop a resident from applying. 2 of them qualify. For 3 more, the rules give an amount but don't test eligibility yet.",
     );
   });
 

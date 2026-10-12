@@ -9,7 +9,7 @@ import {
   WOULD_ACT,
   RESIDENT_ACTIONS,
 } from "@/lib/aspen/content";
-import { eligibilityNote, eligibilityTested, otherDisclosures, standardsMismatch } from "@/lib/aspen/coverage";
+import { eligibilityNote, otherDisclosures, standardsMismatch, testsEligibility } from "@/lib/aspen/coverage";
 import type { RulesAnswer, RulesComputation, RulesOutput } from "@/lib/aspen/rules";
 import { AnswerText } from "./answer-text";
 import { formatValue, participantId, postJson } from "./client";
@@ -221,14 +221,33 @@ export function outputLabel(label: string): string {
   return cased.charAt(0).toUpperCase() + cased.slice(1);
 }
 
-/**
- * An output as the panel shows it. A published yes/no verdict from rules
- * that don't test eligibility (coverage.ts) reads "Not tested", never Yes.
- */
-export function shownValue(output: RulesOutput, computation: Pick<RulesComputation, "program">): string {
-  const judgment = output.semantics === "judgment" || output.value === "holds" || output.value === "not_holds";
-  if (judgment && output.published !== false && !eligibilityTested(computation.program)) return "Not tested";
+/** A computation as saved, from before or after the fields this panel reads were added. */
+type Check = Pick<RulesComputation, "program" | "displayName" | "period" | "outputs"> &
+  Partial<Pick<RulesComputation, "disclosures" | "standardsYears" | "eligibilityTested">>;
+
+function isJudgment(output: RulesOutput): boolean {
+  return output.semantics === "judgment" || output.value === "holds" || output.value === "not_holds";
+}
+
+/** An output as the panel shows it: a yes/no verdict from rules that don't test eligibility reads "Not tested". */
+export function shownValue(output: RulesOutput, check: Pick<Check, "program" | "disclosures" | "eligibilityTested">): string {
+  if (isJudgment(output) && !testsEligibility(check)) return "Not tested";
   return formatValue(output.value, output.unit);
+}
+
+/**
+ * The rows under the headline. For rules that don't test eligibility, no
+ * yes/no verdict shows at all, sub-tests included (a resource test that
+ * BBCE would waive must not read "No"); one row says eligibility wasn't
+ * tested instead, under the first row.
+ */
+export function panelRows(check: Check): { name: string; label: string; value: string; incomplete: boolean }[] {
+  const tested = testsEligibility(check);
+  const rows = check.outputs
+    .filter((o) => tested || !isJudgment(o))
+    .map((o) => ({ name: o.name, label: outputLabel(o.label), value: formatValue(o.value, o.unit), incomplete: o.incomplete }));
+  if (!tested) rows.splice(Math.min(1, rows.length), 0, { name: "eligibility", label: "Eligibility", value: "Not tested", incomplete: false });
+  return rows;
 }
 
 /** "FY2026" or "FY2025 and FY2026". */
@@ -237,22 +256,25 @@ function fiscalYears(years: number[]): string {
 }
 
 /** What the panel must say next to the numbers: eligibility it didn't test, the standards year, other limits. */
-export function rulesCaveats(result: Pick<RulesAnswer, "computations">): {
+export function rulesCaveats(result: { computations: Check[] }): {
   eligibility: string[];
   standards: string[];
   other: string[];
 } {
   const unique = (list: (string | null)[]) => [...new Set(list.filter((s): s is string => s !== null))];
   return {
-    eligibility: unique(result.computations.map((c) => eligibilityNote(c.program))),
+    eligibility: unique(result.computations.map((c) => eligibilityNote(c))),
     standards: unique(
       result.computations.map((c) => {
-        const mismatch = standardsMismatch(c.standardsYears ?? [], c.period);
+        const mismatch = standardsMismatch(c.standardsYears ?? [], c.period, c.disclosures ?? []);
         if (!mismatch) return null;
-        return `Uses ${fiscalYears(mismatch.used)} SNAP standards. ${formatPeriod(c.period)} falls in FY${mismatch.due}, whose standards took effect October 1, ${mismatch.due - 1}.`;
+        const due = `FY${mismatch.due} standards (from October 1, ${mismatch.due - 1})`;
+        return `Uses ${fiscalYears(mismatch.used)} SNAP standards, but ${formatPeriod(c.period)} falls under ${due}${
+          mismatch.notEncoded ? ", which Axiom hasn't encoded yet" : ""
+        }. The amount may differ.`;
       }),
     ),
-    other: unique(result.computations.flatMap((c) => otherDisclosures({ program: c.program, disclosures: c.disclosures ?? [] }))),
+    other: unique(result.computations.flatMap((c) => otherDisclosures(c))),
   };
 }
 
@@ -338,9 +360,13 @@ export function RulesCheck({
   const first = result.computations[0];
   const primary = first?.primary ?? null;
   const monthly = primary?.unit === "USD" && result.period !== null && /^\d{4}-\d{2}$/.test(result.period);
-  const ifEligible = primary?.unit === "USD" && !eligibilityTested(first.program);
+  const ifEligible = primary?.unit === "USD" && !testsEligibility(first);
   const suffix = [monthly && "a month", ifEligible && "if eligible"].filter(Boolean).join(" ");
   const caveats = rulesCaveats(result);
+  // Keyed by position: two computations of one program (a "what if I earned more?") repeat output names.
+  const rows = result.computations.flatMap((c, i) =>
+    panelRows(c).map((row) => ({ key: `${i}-${row.name}`, computation: c.displayName, row })),
+  );
   return (
     <div className="flex flex-col gap-4 rounded-lg border border-[var(--color-accent)] bg-[var(--color-accent-light)] p-4">
       <Eyebrow className="text-[var(--color-accent)]">What the encoded rules say</Eyebrow>
@@ -374,20 +400,18 @@ export function RulesCheck({
           {note}
         </p>
       ))}
-      {result.computations.flatMap((c) => c.outputs).length > 1 && (
+      {rows.length > 1 && (
         <ul className="m-0 flex list-none flex-col gap-1 p-0">
-          {result.computations.flatMap((c) =>
-            c.outputs.map((o) => (
-              <li key={`${c.program}-${o.name}`} className="flex justify-between gap-3 font-body text-[0.86rem]">
-                <span className="text-[var(--color-ink-secondary)]">
-                  {result.computations.length > 1 ? `${c.displayName}: ` : ""}
-                  {outputLabel(o.label)}
-                  {o.incomplete && <span className="ml-1 text-[var(--color-warning)]">(still being encoded)</span>}
-                </span>
-                <span className="font-mono tabular-nums text-[var(--color-ink)]">{shownValue(o, c)}</span>
-              </li>
-            )),
-          )}
+          {rows.map(({ key, computation, row }) => (
+            <li key={key} className="flex justify-between gap-3 font-body text-[0.86rem]">
+              <span className="text-[var(--color-ink-secondary)]">
+                {result.computations.length > 1 ? `${computation}: ` : ""}
+                {row.label}
+                {row.incomplete && <span className="ml-1 text-[var(--color-warning)]">(still being encoded)</span>}
+              </span>
+              <span className="font-mono tabular-nums text-[var(--color-ink)]">{row.value}</span>
+            </li>
+          ))}
         </ul>
       )}
       {result.incomplete.length > 0 && (

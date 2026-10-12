@@ -1,4 +1,4 @@
-import { snapStandardsYears } from "./coverage";
+import { snapStandardsYears, testsEligibility } from "./coverage";
 import { finbotBase } from "./openai";
 import type { ChatMessage } from "./validate";
 
@@ -60,8 +60,6 @@ export interface RulesOutput {
   legalId: string | null;
   /** "judgment" for a yes/no verdict, "scalar" for an amount; null when the result doesn't say. */
   semantics: string | null;
-  /** One of the program's published outputs, not an extra the chatbot asked for. True when the result doesn't say. */
-  published: boolean;
 }
 
 export interface RulesComputation {
@@ -75,6 +73,12 @@ export interface RulesComputation {
   disclosures: string[];
   /** Fiscal years of the SNAP standards it used (see coverage.ts); empty when it names none. */
   standardsYears: number[];
+  /**
+   * Whether these rules test the household's eligibility, decided when the
+   * check ran (coverage.ts testsEligibility) and saved with it, so the
+   * results read a saved check the way the panel showed it.
+   */
+  eligibilityTested: boolean;
 }
 
 export interface RulesAnswer {
@@ -103,7 +107,6 @@ function toOutput(raw: unknown): RulesOutput | null {
     incomplete: o.acknowledged_incomplete === true,
     legalId: typeof o.legal_id === "string" ? o.legal_id : null,
     semantics: typeof o.semantics === "string" ? o.semantics : null,
-    published: o.published_output !== false,
   };
 }
 
@@ -141,6 +144,7 @@ export function summarizeRules(stream: DataStream): RulesAnswer {
         [...outputs.map((o) => o.legalId), ...citationIds(r.citations)],
         disclosures,
       ),
+      eligibilityTested: testsEligibility({ program: r.program, disclosures }),
     });
   }
   const first = computations[0];
