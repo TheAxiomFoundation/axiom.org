@@ -26,6 +26,9 @@
  * Options:
  *   --bundle F   measure a local bundle file instead of the ones on
  *                axiom-corpus main (repeatable), e.g. a draft under review.
+ *   --every H    skip the pass when the last one is under H hours old (the
+ *                scheduled workflow: GitHub starts its cron late and skips
+ *                many starts, so the pass is due by age, not by the clock).
  *   --local-scopes TSV --local-base DIR
  *                dry run only: also count the scopes a release would add
  *                (TSV of jurisdiction, document_class, version) from their
@@ -58,6 +61,7 @@ const localBundles = argValues("--bundle");
 const dryRun = Boolean(outPath);
 const localScopes = argValue("--local-scopes");
 const localBase = argValue("--local-base");
+const everyHours = Number(argValue("--every") ?? 0);
 if (localScopes && !dryRun) throw new Error("--local-scopes previews a release: use it with --out only");
 
 function argValue(name) {
@@ -533,6 +537,18 @@ async function readParity(comparison, st, reports) {
 }
 
 async function main() {
+  if (everyHours > 0 && !dryRun) {
+    const { data, error } = await supabase
+      .from("program_bundles")
+      .select("collected_at")
+      .order("collected_at", { ascending: false })
+      .limit(1);
+    const last = error ? undefined : data?.[0]?.collected_at;
+    if (last && Date.now() - Date.parse(last) < everyHours * 3_600_000) {
+      console.log(`program bundles collected ${last}: the next pass is due ${everyHours} h after it`);
+      return;
+    }
+  }
   const collectedAt = new Date().toISOString();
   const day = collectedAt.slice(0, 10);
   const bundles = (await readBundles()).filter(({ bundle }) => bundle?.schema === "axiom-program-bundle/v2");
