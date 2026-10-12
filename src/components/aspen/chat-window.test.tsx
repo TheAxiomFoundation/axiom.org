@@ -190,7 +190,7 @@ describe("ChatWindow composing", () => {
     expect(calls(fetchMock, "/api/aspen/event")[1]).toEqual({
       participantId: "p-1",
       kind: "chip",
-      payload: { perspective: "caseworker", householdId: "az-retiree", questionId: "amount", twists: [] },
+      payload: { perspective: "caseworker", householdId: "az-retiree", questionIds: ["amount"], twists: [] },
       stage: "try",
     });
 
@@ -202,17 +202,28 @@ describe("ChatWindow composing", () => {
     expect(draftBox().value).toMatch(/^We're a married couple/);
     expect(draftBox().value).toMatch(/How much will we get from the Child Tax Credit for 2026\?$/);
 
+    // Questions add up: tapping "Eligible?" asks both, in display order.
     fireEvent.click(screen.getByRole("button", { name: "Eligible?" }));
-    expect(draftBox().value).toMatch(/Do we qualify for the Child Tax Credit\?$/);
-    expect(screen.getByRole("button", { name: "Eligible?" })).toHaveAttribute("aria-pressed", "true");
+    expect(draftBox().value).toMatch(
+      /How much will we get from the Child Tax Credit for 2026\? Do we qualify for the Child Tax Credit\?$/,
+    );
+    expect(screen.getByRole("button", { name: "✓ Eligible?" })).toHaveAttribute("aria-pressed", "true");
+    // Tapping a picked question drops it; the last one picked stays.
+    fireEvent.click(screen.getByRole("button", { name: "✓ How much?" }));
+    expect(draftBox().value).toMatch(/we file jointly\. Do we qualify for the Child Tax Credit\?$/);
+    fireEvent.click(screen.getByRole("button", { name: "✓ Eligible?" }));
+    expect(screen.getByRole("button", { name: "✓ Eligible?" })).toHaveAttribute("aria-pressed", "true");
 
     fireEvent.click(screen.getByRole("button", { name: "What else?" }));
-    expect(draftBox().value).toMatch(/What benefits can we get, and how much would each one be\?$/);
+    expect(draftBox().value).toMatch(
+      /Do we qualify for the Child Tax Credit\? What benefits can we get, and how much would each one be\?$/,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "A caseworker" }));
     expect(draftBox().value).toMatch(/What benefits should I screen them for, and how much would each one be\?$/);
+    expect(calls(fetchMock, "/api/aspen/event").at(-1)).toMatchObject({ payload: { questionIds: ["eligible", "more"] } });
 
-    expect(calls(fetchMock, "/api/aspen/event")).toHaveLength(7);
+    expect(calls(fetchMock, "/api/aspen/event")).toHaveLength(9);
   });
 
   it("adds details to the household in the right voice, and drops ones a new household contradicts", () => {
@@ -221,6 +232,12 @@ describe("ChatWindow composing", () => {
     expect(screen.queryByRole("group", { name: "Details" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Working parent of two/ }));
     const details = within(screen.getByRole("group", { name: "Details" }));
+    // Details come in two rows, under the numbered steps.
+    expect(details.getByText("Income and costs")).toBeInTheDocument();
+    expect(details.getByText("People in the home")).toBeInTheDocument();
+    expect(screen.getByText("What do you want to know?", { exact: false })).toHaveTextContent(
+      "3What do you want to know? (pick one or more)",
+    );
     // This household already pays for heat, so "Pays utilities" is not offered.
     expect(details.queryByRole("button", { name: /Pays utilities/ })).not.toBeInTheDocument();
 
@@ -229,20 +246,20 @@ describe("ChatWindow composing", () => {
     expect(details.getByRole("button", { name: "✓ Gig income" })).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(screen.getByRole("button", { name: "Earn more?" }));
     const ny = findHousehold("ny-parent")!;
-    expect(draftBox().value).toBe(composePrompt("resident", ny, "cliff", ["gig", "student"]));
+    expect(draftBox().value).toBe(composePrompt("resident", ny, ["amount", "cliff"], ["gig", "student"]));
     expect(calls(fetchMock, "/api/aspen/event").at(-1)).toMatchObject({
       kind: "chip",
-      payload: { householdId: "ny-parent", questionId: "cliff", twists: ["gig", "student"] },
+      payload: { householdId: "ny-parent", questionIds: ["amount", "cliff"], twists: ["gig", "student"] },
     });
 
     // Tapping a detail again removes it.
     fireEvent.click(details.getByRole("button", { name: "✓ College student" }));
-    expect(draftBox().value).toBe(composePrompt("resident", ny, "cliff", ["gig"]));
+    expect(draftBox().value).toBe(composePrompt("resident", ny, ["amount", "cliff"], ["gig"]));
 
     // A retiree cannot be a student; the gig income carries over.
     fireEvent.click(details.getByRole("button", { name: "+ College student" }));
     fireEvent.click(screen.getByRole("button", { name: /Retiree in Phoenix/ }));
-    expect(draftBox().value).toBe(composePrompt("resident", RETIREE, "cliff", ["gig"]));
+    expect(draftBox().value).toBe(composePrompt("resident", RETIREE, ["amount", "cliff"], ["gig"]));
     expect(within(screen.getByRole("group", { name: "Details" })).queryByRole("button", { name: /College student/ })).not.toBeInTheDocument();
   });
 
@@ -295,7 +312,7 @@ describe("ChatWindow asking", () => {
         stage: "try",
         perspective: "resident",
         householdId: "az-retiree",
-        questionId: "amount",
+        questionIds: ["amount"],
         twists: [],
         promptTemplate: question,
       },
@@ -368,7 +385,7 @@ describe("ChatWindow asking", () => {
         { role: "assistant", content: "You can get **$24** a month." },
         { role: "user", content: "And if I move to Ohio?" },
       ],
-      meta: { questionId: null, promptTemplate: null },
+      meta: { questionIds: [], promptTemplate: null },
     });
 
     // Sending closes the box again; while the follow-up streams it cannot reopen.
@@ -564,7 +581,7 @@ describe("ChatWindow asking", () => {
     await screen.findByText("Sure.");
     expect(calls(fetchMock, "/api/aspen/ask")[0]).toMatchObject({
       messages: [{ role: "user", content: "Is there help with heating in Maine?" }],
-      meta: { perspective: "caseworker", householdId: null, questionId: null, promptTemplate: null },
+      meta: { perspective: "caseworker", householdId: null, questionIds: [], promptTemplate: null },
     });
     // No prompt id came back, so there is nothing to rate.
     expect(screen.queryByRole("region", { name: "Your verdict" })).not.toBeInTheDocument();
@@ -628,7 +645,9 @@ describe("ChatWindow saved conversation", () => {
     expect(screen.queryByText("Answer one")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "A caseworker" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: /Working parent of two/ })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: "Eligible?" })).toHaveAttribute("aria-pressed", "true");
+    // An older save held one question; it comes back as the only one picked.
+    expect(screen.getByRole("button", { name: "✓ Eligible?" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "How much?" })).toHaveAttribute("aria-pressed", "false");
     expect(draftBox().value).toBe(composePrompt("caseworker", findHousehold("ny-parent")!, "eligible"));
     await waitFor(() => expect(saved().turns).toEqual([]));
     expect(saved().conversationId).not.toBe("c-1");
@@ -664,6 +683,29 @@ describe("ChatWindow saved conversation", () => {
     expect(screen.getByRole("button", { name: "A resident" })).toHaveAttribute("aria-pressed", "true");
     expect(draftBox().value).toBe("");
     await waitFor(() => expect(saved()).toMatchObject({ draft: "", template: null, rated: [], perspective: "resident" }));
+  });
+
+  it("restores several saved questions in display order, dropping unknown ones", async () => {
+    store({
+      perspective: "resident",
+      householdId: "az-retiree",
+      questionIds: ["eligible", "bogus", "amount"],
+      conversationId: "c-5",
+      turns: [],
+      rated: [],
+    });
+    routeFetch({});
+    render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "✓ How much?" })).toHaveAttribute("aria-pressed", "true"));
+    expect(screen.getByRole("button", { name: "✓ Eligible?" })).toHaveAttribute("aria-pressed", "true");
+    await waitFor(() => expect(saved().questionIds).toEqual(["amount", "eligible"]));
+  });
+
+  it("falls back to the amount question when no saved question is known", async () => {
+    store({ perspective: "resident", householdId: "az-retiree", questionIds: ["bogus"], conversationId: "c-6", turns: [], rated: [] });
+    routeFetch({});
+    render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    await waitFor(() => expect(saved().questionIds).toEqual(["amount"]));
   });
 
   it("ignores a saved value without turns", async () => {

@@ -683,7 +683,12 @@ function GroupsSlide({ summary }: { summary: RunSummary }) {
               <span className="mb-[4px] block font-mono text-[14px] uppercase tracking-[0.14em] text-[var(--color-accent)]">
                 {USE_CASES.find((u) => u.id === n.useCase)?.label ?? "Idea"}
               </span>
-              <span className="line-clamp-3">{n.text}</span>
+              {n.text && <span className="line-clamp-3">{n.text}</span>}
+              {n.raised && (
+                <span className="mt-[6px] line-clamp-2 block text-[18px] text-[var(--color-ink-secondary)]">
+                  <span className="font-medium text-[var(--color-ink)]">Also raised:</span> {n.raised}
+                </span>
+              )}
             </li>
           ))}
         </ul>

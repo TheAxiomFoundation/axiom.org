@@ -124,7 +124,7 @@ describe('aspen results', () => {
     expect(discussion.topics[0]).toMatchObject({ id: 'Asset tests', count: 1 })
     expect(discussion.notes).toEqual([{ question: 'misunderstood', text: 'BBCE' }])
     expect(breakouts.useCases.find((u) => u.id === 'project')?.count).toBe(1)
-    expect(breakouts.notes).toEqual([{ useCase: 'project', text: 'Model the change' }])
+    expect(breakouts.notes).toEqual([{ useCase: 'project', text: 'Model the change', raised: null }])
   })
 
   it('shows pledged states only when allowed, never names', () => {
@@ -191,6 +191,21 @@ describe('aspen results', () => {
       ['not-apply', 3],
       ['call', 1],
       ['unsure', 0],
+    ])
+  })
+
+  it('keeps what else each group raised, also from a group that shared no idea', () => {
+    const { breakouts } = summarizeRun({
+      ...DATA,
+      events: [
+        { run_id: 'r', kind: 'breakout', payload: { useCase: 'flows', note: 'Pilot in one county', raised: 'Training time' } },
+        { run_id: 'r', kind: 'breakout', payload: { useCase: null, note: '', raised: 'Union rules' } },
+        { run_id: 'r', kind: 'breakout', payload: { useCase: 'apply', note: '', raised: '' } },
+      ],
+    })
+    expect(breakouts.notes).toEqual([
+      { useCase: '', text: '', raised: 'Union rules' },
+      { useCase: 'flows', text: 'Pilot in one county', raised: 'Training time' },
     ])
   })
 

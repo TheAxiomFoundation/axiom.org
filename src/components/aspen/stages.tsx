@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import {
   BREAKOUT_PROMPT,
   EVENT,
+  GROUP_RAISED,
   GOLDEN_A,
   NEXT_STEPS,
   ONE_SET_OF_RULES,
@@ -429,10 +430,15 @@ export function SmallGroups({ stage }: { stage: string }) {
   );
 }
 
-/** Small groups: the prompt, and a box to share the group's best idea with the room. */
+/**
+ * Small groups: the prompt, a box for the group's best idea, and an optional
+ * box for what else came up (barriers, workforce, questions), so the room
+ * keeps more than one line per group.
+ */
 export function GroupsCard({ stage }: { stage: string }) {
   const [useCase, setUseCase] = useState<string | null>(null);
   const [note, setNote] = useState("");
+  const [raised, setRaised] = useState("");
   const [shared, setShared] = useState(0);
 
   return (
@@ -463,15 +469,29 @@ export function GroupsCard({ stage }: { stage: string }) {
           placeholder="One or two sentences"
         />
       </label>
+      <label className="flex flex-col gap-2 font-body text-[1rem] text-[var(--color-ink)]">
+        <span>
+          {GROUP_RAISED.label} <span className="text-[var(--color-ink-muted)]">(optional)</span>
+        </span>
+        <textarea
+          rows={3}
+          maxLength={2000}
+          value={raised}
+          onChange={(e) => setRaised(e.target.value)}
+          className={FIELD}
+          placeholder={GROUP_RAISED.placeholder}
+        />
+      </label>
       <div className="flex items-center gap-3">
         <button
           type="button"
           className={`${BUTTON} py-3`}
-          disabled={!note.trim()}
+          disabled={!note.trim() && !raised.trim()}
           onClick={() => {
-            sendEvent("breakout", { useCase, note }, stage);
+            sendEvent("breakout", { useCase, note, raised }, stage);
             setShared((n) => n + 1);
             setNote("");
+            setRaised("");
           }}
         >
           Share with the room

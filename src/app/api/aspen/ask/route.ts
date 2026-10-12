@@ -1,9 +1,9 @@
 import {
-  QUESTION_IDS,
   TWIST_IDS,
   findHousehold,
   isPerspectiveId,
   isStageId,
+  questionsFrom,
 } from "@/lib/aspen/content";
 import { apiAccess, json, readBody } from "@/lib/aspen/http";
 import { clientIp, isRateLimited } from "@/lib/aspen/limit";
@@ -12,7 +12,6 @@ import { getStore, readControl, safely } from "@/lib/aspen/store";
 import {
   MAX_PROMPT_CHARS,
   MAX_TURNS,
-  cleanChoice,
   cleanChoices,
   cleanMessages,
   clipText,
@@ -74,7 +73,8 @@ export async function POST(request: Request) {
         stage: isStageId(meta.stage) ? meta.stage : null,
         perspective: isPerspectiveId(meta.perspective) ? meta.perspective : null,
         household_id: household?.id ?? null,
-        question_id: cleanChoice(meta.questionId, QUESTION_IDS),
+        // One or more questions, comma-joined in display order (e.g. "amount,eligible").
+        question_id: questionsFrom(meta.questionIds, meta.questionId).join(",") || null,
         twists: household ? cleanChoices(meta.twists, TWIST_IDS) : [],
         prompt_template: promptTemplate,
         prompt,

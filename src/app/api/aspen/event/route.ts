@@ -1,13 +1,13 @@
 import {
   DISCUSSION_QUESTIONS,
   DISCUSSION_TOPICS,
-  QUESTION_IDS,
   RATING_SCALES,
   SOURCE_OF_TRUTH,
   TWIST_IDS,
   USE_CASES,
   isPerspectiveId,
   isStageId,
+  questionsFrom,
 } from "@/lib/aspen/content";
 import { apiAccess, json, readBody } from "@/lib/aspen/http";
 import { isRateLimited } from "@/lib/aspen/limit";
@@ -38,7 +38,7 @@ const CLEANERS: Record<string, (raw: Payload) => Payload | null> = {
   chip: (raw) => ({
     perspective: isPerspectiveId(raw.perspective) ? raw.perspective : null,
     householdId: typeof raw.householdId === "string" ? raw.householdId.slice(0, 40) : null,
-    questionId: cleanChoice(raw.questionId, QUESTION_IDS),
+    questionIds: questionsFrom(raw.questionIds, raw.questionId),
     twists: cleanChoices(raw.twists, TWIST_IDS),
   }),
   discussion: (raw) => {
@@ -51,7 +51,9 @@ const CLEANERS: Record<string, (raw: Payload) => Payload | null> = {
   breakout: (raw) => {
     const useCase = cleanChoice(raw.useCase, USE_CASES.map((u) => u.id));
     const note = clipText(raw.note, 2000);
-    return useCase || note ? { useCase, note } : null;
+    // What else the group raised: barriers, workforce, open questions.
+    const raised = clipText(raw.raised, 2000);
+    return useCase || note || raised ? { useCase, note, raised } : null;
   },
   vote: (raw) => {
     const useCase = cleanChoice(raw.useCase, USE_CASES.map((u) => u.id));
