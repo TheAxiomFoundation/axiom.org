@@ -562,7 +562,7 @@ describe("ChatWindow asking", () => {
         streamResponse(
           streamOf([
             { type: "meta", promptId: "p" },
-            { type: "delta", text: "Answer" },
+            { type: "delta", text: "Answer\n\n## Apply\n\n- des.az.gov/node/4875" },
             { type: "done", model: "gpt-5", webSearch: true, sources: [{ url: "https://des.az.gov/node/4875", title }] },
           ]),
         ),
@@ -584,7 +584,9 @@ describe("ChatWindow asking", () => {
     // Long unbroken text wraps instead of running past the bubble or the answer.
     expect(screen.getByText(/^I live in Phoenix|^I'm 67/, { selector: "div" })).toHaveClass("break-words");
     // On the answer's root, so paragraphs, headings and list items all inherit it.
-    expect(screen.getByText("Answer", { selector: "p" }).closest(".break-words")).not.toBeNull();
+    for (const block of [screen.getByText("Answer", { selector: "p" }), screen.getByText("Apply"), screen.getByText("des.az.gov/node/4875")]) {
+      expect(block.closest(".break-words")).not.toBeNull();
+    }
   });
 
   it("sends the details with a household question", async () => {
