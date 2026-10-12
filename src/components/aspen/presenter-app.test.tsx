@@ -30,6 +30,7 @@ const DATA: RunData = {
     { run_id: "r1", kind: "discussion", payload: { question: "unknown", note: "A loose note" } },
     { run_id: "r1", kind: "breakout", payload: { useCase: "see-edit", note: "Show staff the rules" } },
     { run_id: "r1", kind: "breakout", payload: { useCase: "elsewhere", note: "Something else" } },
+    { run_id: "r1", kind: "breakout", payload: { useCase: "flows", note: "", raised: "Training time for staff" } },
     { run_id: "r1", kind: "vote", payload: { useCase: "project" } },
     { run_id: "r1", kind: "vote", payload: { useCase: "project" } },
   ],
@@ -408,7 +409,7 @@ describe("PresenterApp stages", () => {
     await onStage("groups");
     expect(screen.getByText("Votes appear here as people vote.")).toBeInTheDocument();
     cleanup();
-    setup({ stage: "groups", summary: summarizeRun({ ...DATA, events: [DATA.events[4]] }) });
+    setup({ stage: "groups", summary: summarizeRun({ ...DATA, events: [DATA.events.find((e) => e.kind === "vote")!] }) });
     await waitFor(() => expect(screen.getByText(/· vote on your phone/)).toHaveTextContent("1 vote · vote on your phone"));
   });
 
@@ -421,6 +422,8 @@ describe("PresenterApp stages", () => {
     expect(await screen.findByText("Show staff the rules")).toBeInTheDocument();
     expect(screen.getByText("See and edit the rules")).toBeInTheDocument();
     expect(screen.getByText("Idea")).toBeInTheDocument();
+    // What else a group raised shows under its card, even without an idea.
+    expect(screen.getByText("Training time for staff").parentElement).toHaveTextContent("Also raised: Training time for staff");
   });
 
   it("waits for the groups' ideas", async () => {

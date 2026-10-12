@@ -51,7 +51,9 @@ const CLEANERS: Record<string, (raw: Payload) => Payload | null> = {
   breakout: (raw) => {
     const useCase = cleanChoice(raw.useCase, USE_CASES.map((u) => u.id));
     const note = clipText(raw.note, 2000);
-    return useCase || note ? { useCase, note } : null;
+    // What else the group raised: barriers, workforce, open questions.
+    const raised = clipText(raw.raised, 2000);
+    return useCase || note || raised ? { useCase, note, raised } : null;
   },
   vote: (raw) => {
     const useCase = cleanChoice(raw.useCase, USE_CASES.map((u) => u.id));

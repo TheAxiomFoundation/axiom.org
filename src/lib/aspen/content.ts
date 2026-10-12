@@ -609,6 +609,12 @@ export type UseCaseId = (typeof USE_CASES)[number]["id"];
 export const BREAKOUT_PROMPT =
   "How would your team use a tool that does this? Who would use it first, and what would have to be true for you to trust it?";
 
+/** The second, optional group box: what the group raised beyond its best idea (Alex's ask, Oct 12). */
+export const GROUP_RAISED = {
+  label: "Anything else your group raised?",
+  placeholder: "Barriers, what your workforce would need, open questions",
+} as const;
+
 // ---------------------------------------------------------------------------
 // PolicyBench
 // ---------------------------------------------------------------------------
@@ -709,13 +715,19 @@ export const NEXT_STEPS = {
  */
 export const DEMO_NOTE = "A demo. Answers come from OpenAI's GPT model, unedited. OpenAI does not sponsor or endorse this page.";
 
+/**
+ * What we keep, said up front (agreed with Aspen, Oct 12): answers and
+ * ratings are kept for our own analysis, never published, and taking part
+ * is optional.
+ */
 export const DISCLOSURE = {
   short:
-    "We'll look at everyone's answers together. They're saved, with no names on screen.",
+    "We keep everyone's answers to learn from, without names, and won't publish them. Taking part is optional.",
   details: [
     "We don't ask for your name. Please don't type personal details about real people.",
     "Your questions go to OpenAI to get the AI's answer, and to the Axiom rules chatbot when you check against the rules.",
-    "The Axiom Foundation keeps what you type to learn which rules are hardest to get right. The screen never shows who asked what.",
+    "The Axiom Foundation keeps your questions and ratings to learn which rules are hardest to get right. We won't publish them, and the screen never shows who asked what.",
+    "You can skip anything. The page works the same if you only watch.",
     "The next-steps form is the only place we ask for an email, and only to follow up with you.",
   ],
 } as const;
