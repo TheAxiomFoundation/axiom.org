@@ -64,8 +64,10 @@ generate `/axiom/v2/...` hrefs. The app root and marketing pages stay on v1.
   identifiers and labels) is one reference and counts once. A collector dry
   run with `--local-scopes <release TSV> --local-base <data/corpus>` previews
   what activating a release changes.
-  `scripts/collect-program-bundles.mjs` rebuilds them every six hours in the
-  pipeline collector's workflow; the `/ops` "Program bundles" tab (a
+  `scripts/collect-program-bundles.mjs` rebuilds them in the pipeline
+  collector's workflow: a scheduled run collects when the last pass is five
+  hours old or more (`--every 5`; GitHub's cron starts late and skips runs, so
+  a clock window misses), a manual run always; the `/ops` "Program bundles" tab (a
   programs × states grid, `?tab=bundles&program=<program>`, and one bundle's
   page, `?tab=bundles&bundle=<jurisdiction>/<program>`) reads only the tables,
   and the ledger and journey name each encoding's bundle and tier from them
