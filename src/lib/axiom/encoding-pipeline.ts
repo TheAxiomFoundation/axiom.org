@@ -679,7 +679,8 @@ export interface PipelineSummary {
   /** Citations in review by what holds their PR. */
   holds: CitationGroup[];
   /** Every dispatch's failure (not just latest) over the last FAILURE_WINDOW_DAYS. */
-  recentFailureRate: { failed: number; finished: number } | null;
+  /** Finished runs of the window that failed; cancelled runs and budget stops are left out of both. */
+  recentFailureRate: { failed: number; finished: number; leftOut: number } | null;
   weekly: WeeklyThroughput[];
 }
 
@@ -793,14 +794,24 @@ function recentFailureRate(
   const since = referenceMs - FAILURE_WINDOW_DAYS * DAY_MS;
   let failed = 0;
   let finished = 0;
+  let leftOut = 0;
   for (const attempt of attempts) {
     if (attempt.run_status !== "completed" || !attempt.finished_at) continue;
     if (Date.parse(attempt.finished_at) < since) continue;
     if (attempt.run_conclusion === "skipped") continue;
+    // A cancelled run and a run the attempt budget stopped say nothing about
+    // how the encoder does: neither counts as finished or failed.
+    if (
+      attempt.run_conclusion === "cancelled" ||
+      (attempt.run_conclusion !== "success" && encodeGate(attempt) === "budget")
+    ) {
+      leftOut += 1;
+      continue;
+    }
     finished += 1;
     if (attempt.run_conclusion !== "success") failed += 1;
   }
-  return finished > 0 ? { failed, finished } : null;
+  return finished > 0 ? { failed, finished, leftOut } : null;
 }
 
 /** Monday 00:00 UTC of the week containing `ms`. */

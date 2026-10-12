@@ -1897,7 +1897,8 @@ function Throughput({ view }: { view: PipelineView }) {
               {Math.round((rate.failed / rate.finished) * 100)}%
             </span>
             <span className={styles.statLabel}>
-              of runs failed, last 14 days ({number(rate.failed)} of {number(rate.finished)})
+              of runs failed, last 14 days ({number(rate.failed)} of {number(rate.finished)}
+              {rate.leftOut > 0 && `; ${number(rate.leftOut)} cancelled or budget-stopped left out`})
             </span>
           </div>
         </div>

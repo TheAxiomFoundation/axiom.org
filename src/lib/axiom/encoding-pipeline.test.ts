@@ -181,11 +181,26 @@ describe("summarizePipeline", () => {
 
   it("reports the recent failure rate over finished runs", () => {
     expect(summarizePipeline(attempts, Date.parse("2026-10-01T00:00:00Z")).recentFailureRate)
-      .toEqual({ failed: 6, finished: 6 });
+      .toEqual({ failed: 6, finished: 6, leftOut: 0 });
     expect(summarizePipeline([pipelineAttempt({ run_conclusion: "skipped" })], NOW).recentFailureRate)
       .toBeNull();
     expect(summarizePipeline([pipelineAttempt()], Date.parse("2027-01-01T00:00:00Z")).recentFailureRate)
       .toBeNull();
+  });
+
+  it("leaves cancelled runs and budget stops out of the failure rate", () => {
+    const runs = [
+      pipelineAttempt({ id: "ok", run_conclusion: "success" }),
+      pipelineAttempt({ id: "fail", failed_step: "encode_apply" }),
+      pipelineAttempt({ id: "timeout", run_conclusion: "timed_out" }),
+      pipelineAttempt({ id: "cancel", run_conclusion: "cancelled" }),
+      pipelineAttempt({ id: "budget", failed_step: "Check the citation attempt budget" }),
+    ];
+    expect(summarizePipeline(runs, Date.parse("2026-09-21T00:00:00Z")).recentFailureRate).toEqual({
+      failed: 2,
+      finished: 3,
+      leftOut: 2,
+    });
   });
 
   it("summarizes an empty pipeline", () => {
