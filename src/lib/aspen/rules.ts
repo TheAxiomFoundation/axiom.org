@@ -1,3 +1,4 @@
+import { snapStandardsYears } from "./coverage";
 import { finbotBase } from "./openai";
 import type { ChatMessage } from "./validate";
 
@@ -57,14 +58,23 @@ export interface RulesOutput {
   unit: string | null;
   incomplete: boolean;
   legalId: string | null;
+  /** "judgment" for a yes/no verdict, "scalar" for an amount; null when the result doesn't say. */
+  semantics: string | null;
+  /** One of the program's published outputs, not an extra the chatbot asked for. True when the result doesn't say. */
+  published: boolean;
 }
 
 export interface RulesComputation {
+  /** The program id, e.g. "us-az-snap". */
   program: string;
   displayName: string;
   period: string | null;
   primary: RulesOutput | null;
   outputs: RulesOutput[];
+  /** Limitations the chatbot attached to this computation (`applied.disclosures`). */
+  disclosures: string[];
+  /** Fiscal years of the SNAP standards it used (see coverage.ts); empty when it names none. */
+  standardsYears: number[];
 }
 
 export interface RulesAnswer {
@@ -92,7 +102,18 @@ function toOutput(raw: unknown): RulesOutput | null {
     unit: typeof o.unit === "string" ? o.unit : null,
     incomplete: o.acknowledged_incomplete === true,
     legalId: typeof o.legal_id === "string" ? o.legal_id : null,
+    semantics: typeof o.semantics === "string" ? o.semantics : null,
+    published: o.published_output !== false,
   };
+}
+
+function strings(raw: unknown): string[] {
+  return Array.isArray(raw) ? raw.filter((s): s is string => typeof s === "string") : [];
+}
+
+function citationIds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((c) => (c && typeof c === "object" && typeof c.id === "string" ? [c.id as string] : []));
 }
 
 export function summarizeRules(stream: DataStream): RulesAnswer {
@@ -107,12 +128,19 @@ export function summarizeRules(stream: DataStream): RulesAnswer {
     }
     if (typeof r.program !== "string" || !Array.isArray(r.outputs)) continue;
     const outputs = r.outputs.map(toOutput).filter((o): o is RulesOutput => o !== null);
+    const applied = r.applied && typeof r.applied === "object" ? (r.applied as Record<string, unknown>) : {};
+    const disclosures = [...new Set(strings(applied.disclosures))];
     computations.push({
       program: r.program,
       displayName: typeof r.display_name === "string" ? r.display_name : r.program,
       period: typeof r.period === "string" ? r.period : null,
       primary: outputs.find((o) => o.name === r.primary_output) ?? outputs[0] ?? null,
       outputs,
+      disclosures,
+      standardsYears: snapStandardsYears(
+        [...outputs.map((o) => o.legalId), ...citationIds(r.citations)],
+        disclosures,
+      ),
     });
   }
   const first = computations[0];

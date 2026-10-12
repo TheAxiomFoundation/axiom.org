@@ -246,7 +246,9 @@ export function PolicyBenchContent() {
         </Eyebrow>
         <p className="m-0 font-body text-[1rem] leading-relaxed text-[var(--color-ink)]">{az.description}</p>
         <p className="m-0 font-body text-[1rem] leading-relaxed text-[var(--color-ink)]">
-          <strong className="text-[var(--color-accent)]">The rules: eligible, $24 a month.</strong>
+          <strong className="text-[var(--color-accent)]">The rules: eligible, ${az.reference.monthly} a month.</strong>{" "}
+          PolicyBench&apos;s reference, under {az.reference.standards} standards. ${az.fromOctober.monthly} from{" "}
+          {az.fromOctober.effective}.
         </p>
       </Card>
       <p className="m-0 font-body text-[0.8rem] text-[var(--color-ink-muted)]">

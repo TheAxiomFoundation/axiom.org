@@ -9,7 +9,8 @@ import {
   WOULD_ACT,
   RESIDENT_ACTIONS,
 } from "@/lib/aspen/content";
-import type { RulesAnswer } from "@/lib/aspen/rules";
+import { eligibilityNote, eligibilityTested, otherDisclosures, standardsMismatch } from "@/lib/aspen/coverage";
+import type { RulesAnswer, RulesComputation, RulesOutput } from "@/lib/aspen/rules";
 import { AnswerText } from "./answer-text";
 import { formatValue, participantId, postJson } from "./client";
 import { BUTTON, BUTTON_QUIET, Chip, Eyebrow, FIELD } from "./ui";
@@ -221,6 +222,41 @@ export function outputLabel(label: string): string {
 }
 
 /**
+ * An output as the panel shows it. A published yes/no verdict from rules
+ * that don't test eligibility (coverage.ts) reads "Not tested", never Yes.
+ */
+export function shownValue(output: RulesOutput, computation: Pick<RulesComputation, "program">): string {
+  const judgment = output.semantics === "judgment" || output.value === "holds" || output.value === "not_holds";
+  if (judgment && output.published !== false && !eligibilityTested(computation.program)) return "Not tested";
+  return formatValue(output.value, output.unit);
+}
+
+/** "FY2026" or "FY2025 and FY2026". */
+function fiscalYears(years: number[]): string {
+  return years.map((y) => `FY${y}`).join(" and ");
+}
+
+/** What the panel must say next to the numbers: eligibility it didn't test, the standards year, other limits. */
+export function rulesCaveats(result: Pick<RulesAnswer, "computations">): {
+  eligibility: string[];
+  standards: string[];
+  other: string[];
+} {
+  const unique = (list: (string | null)[]) => [...new Set(list.filter((s): s is string => s !== null))];
+  return {
+    eligibility: unique(result.computations.map((c) => eligibilityNote(c.program))),
+    standards: unique(
+      result.computations.map((c) => {
+        const mismatch = standardsMismatch(c.standardsYears ?? [], c.period);
+        if (!mismatch) return null;
+        return `Uses ${fiscalYears(mismatch.used)} SNAP standards. ${formatPeriod(c.period)} falls in FY${mismatch.due}, whose standards took effect October 1, ${mismatch.due - 1}.`;
+      }),
+    ),
+    other: unique(result.computations.flatMap((c) => otherDisclosures({ program: c.program, disclosures: c.disclosures ?? [] }))),
+  };
+}
+
+/**
  * "Check against the rules": asks the rules-backed chatbot the same
  * question and puts its result next to the chatbot's answer.
  */
@@ -299,17 +335,20 @@ export function RulesCheck({
     );
   }
 
-  const primary = result.computations[0]?.primary ?? null;
+  const first = result.computations[0];
+  const primary = first?.primary ?? null;
+  const monthly = primary?.unit === "USD" && result.period !== null && /^\d{4}-\d{2}$/.test(result.period);
+  const ifEligible = primary?.unit === "USD" && !eligibilityTested(first.program);
+  const suffix = [monthly && "a month", ifEligible && "if eligible"].filter(Boolean).join(" ");
+  const caveats = rulesCaveats(result);
   return (
     <div className="flex flex-col gap-4 rounded-lg border border-[var(--color-accent)] bg-[var(--color-accent-light)] p-4">
       <Eyebrow className="text-[var(--color-accent)]">What the encoded rules say</Eyebrow>
       {result.computations.length > 0 ? (
         <div>
           <span className="block font-display text-[2.2rem] font-light leading-none tabular-nums text-[var(--color-accent)]">
-            {primary ? formatValue(primary.value, primary.unit) : "—"}
-            {primary?.unit === "USD" && result.period && /^\d{4}-\d{2}$/.test(result.period) && (
-              <span className="ml-1 font-body text-[0.95rem] text-[var(--color-ink-muted)]">a month</span>
-            )}
+            {primary ? shownValue(primary, first) : "—"}
+            {suffix && <span className="ml-1 font-body text-[0.95rem] text-[var(--color-ink-muted)]">{suffix}</span>}
           </span>
           <span className="mt-1 block font-body text-[0.84rem] text-[var(--color-ink-muted)]">
             {[result.program, result.period && `for ${formatPeriod(result.period)}`].filter(Boolean).join(" · ")}
@@ -321,6 +360,20 @@ export function RulesCheck({
           encoded yet. That is the honest answer for now.
         </p>
       )}
+      {caveats.eligibility.map((note) => (
+        <p
+          key={note}
+          role="note"
+          className="m-0 border-l-4 border-[var(--color-warning)] bg-[var(--color-paper-elevated)] px-3 py-2 font-body text-[0.9rem] leading-snug text-[var(--color-ink)]"
+        >
+          {note}
+        </p>
+      ))}
+      {caveats.standards.map((note) => (
+        <p key={note} className="m-0 font-body text-[0.85rem] leading-snug text-[var(--color-warning)]">
+          {note}
+        </p>
+      ))}
       {result.computations.flatMap((c) => c.outputs).length > 1 && (
         <ul className="m-0 flex list-none flex-col gap-1 p-0">
           {result.computations.flatMap((c) =>
@@ -331,7 +384,7 @@ export function RulesCheck({
                   {outputLabel(o.label)}
                   {o.incomplete && <span className="ml-1 text-[var(--color-warning)]">(still being encoded)</span>}
                 </span>
-                <span className="font-mono tabular-nums text-[var(--color-ink)]">{formatValue(o.value, o.unit)}</span>
+                <span className="font-mono tabular-nums text-[var(--color-ink)]">{shownValue(o, c)}</span>
               </li>
             )),
           )}
@@ -342,6 +395,15 @@ export function RulesCheck({
           Not final: the rules release marks {result.incomplete.map(outputLabel).join(", ")} as still being
           encoded.
         </p>
+      )}
+      {caveats.other.length > 0 && (
+        <ul aria-label="Notes on this check" className="m-0 flex list-none flex-col gap-1 p-0">
+          {caveats.other.map((note) => (
+            <li key={note} className="font-body text-[0.85rem] leading-snug text-[var(--color-ink-secondary)]">
+              {note}
+            </li>
+          ))}
+        </ul>
       )}
       {result.citations.length > 0 && (
         <div>

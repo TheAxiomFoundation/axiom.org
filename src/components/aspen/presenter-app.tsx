@@ -452,6 +452,19 @@ function FeltSlide({ summary }: { summary: RunSummary }) {
   );
 }
 
+/**
+ * "would stop a resident from applying. 2 of them qualify." An amount from
+ * rules that don't test eligibility counts apart, as an amount if eligible.
+ */
+export function notApplyLabel(v: Pick<RunSummary["viability"], "wouldNotApplyEligible" | "wouldNotApplyIfEligible">): string {
+  const parts: string[] = [];
+  if (v.wouldNotApplyEligible > 0) parts.push(`${v.wouldNotApplyEligible} of them qualify.`);
+  if (v.wouldNotApplyIfEligible > 0) {
+    parts.push(`${v.wouldNotApplyIfEligible} ${parts.length ? "more" : "of them"} get an amount if eligible.`);
+  }
+  return parts.length ? `would stop a resident from applying. ${parts.join(" ")}` : "would stop a resident from applying";
+}
+
 function RevealSlide({ summary }: { summary: RunSummary }) {
   const v = summary.viability;
   if (v.rated === 0) {
@@ -475,11 +488,7 @@ function RevealSlide({ summary }: { summary: RunSummary }) {
           <BigStat
             size={76}
             value={v.wouldNotApply}
-            label={
-              v.wouldNotApplyEligible > 0
-                ? `would stop a resident from applying. ${v.wouldNotApplyEligible} of them qualify.`
-                : "would stop a resident from applying"
-            }
+            label={notApplyLabel(v)}
             tone={v.wouldNotApply > 0 ? "bad" : "ink"}
           />
         </Panel>
@@ -557,9 +566,13 @@ function ScaleCaseSlide() {
         <Panel className="border-l-[8px] border-l-[var(--color-accent)]">
           <Label className="text-[var(--color-accent)]">The rules say</Label>
           <span className="font-display font-light leading-none text-[var(--color-accent)]" style={{ fontSize: 150 }}>
-            $24
+            ${az.reference.monthly}
           </span>
           <span className="ml-[12px] font-body text-[30px] text-[var(--color-ink-secondary)]">a month</span>
+          <span className="mt-[16px] block font-body text-[24px] leading-snug text-[var(--color-ink-secondary)]">
+            PolicyBench&apos;s reference, under {az.reference.standards} standards. ${az.fromOctober.monthly} from{" "}
+            {az.fromOctober.effective}.
+          </span>
         </Panel>
       </div>
       <p className="m-0 font-body text-[26px] leading-snug text-[var(--color-ink-secondary)]">

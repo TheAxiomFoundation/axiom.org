@@ -16,6 +16,7 @@ import {
   percent,
   stageIndex,
 } from './content'
+import { federalFiscalYear } from './coverage'
 
 describe('aspen content', () => {
   it('lists every stage once, in run-of-show order, without clock times', () => {
@@ -119,5 +120,21 @@ describe('aspen content', () => {
     expect(percent(POLICYBENCH.saidZero, POLICYBENCH.eligibleAnswers)).toBe(41)
     expect(percent(POLICYBENCH.saidZeroBbce, POLICYBENCH.saidZero)).toBe(78)
     expect(percent(1, 0)).toBe(0)
+  })
+
+  it('labels the Arizona amount with the standards year it comes from', () => {
+    const { reference, fromOctober, answer } = POLICYBENCH.azCase
+    const fy = (label: string) => Number(label.replace(/^FY/, ''))
+    // FY2027 standards follow FY2026's and start on October 1 of the year before.
+    expect(fy(fromOctober.standards)).toBe(fy(reference.standards) + 1)
+    expect(federalFiscalYear('2026-10')).toBe(fy(fromOctober.standards))
+    expect(fromOctober.effective).toBe(`October 1, ${fy(fromOctober.standards) - 1}`)
+    // A minimum benefit doesn't fall with a cost-of-living adjustment.
+    expect(fromOctober.monthly).toBeGreaterThanOrEqual(reference.monthly)
+    for (const text of [answer, findHousehold('az-savings')!.why]) {
+      expect(text).toContain(`$${reference.monthly} a month under ${reference.standards} standards`)
+      expect(text).toContain(`$${fromOctober.monthly} from ${fromOctober.effective}`)
+    }
+    expect(findHousehold('az-savings')!.why).toContain("Axiom's Arizona SNAP rules don't test eligibility yet")
   })
 })

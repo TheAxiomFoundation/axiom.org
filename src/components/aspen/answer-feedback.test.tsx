@@ -1,7 +1,18 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { RulesAnswer } from "@/lib/aspen/rules";
-import { citationPath, formatPeriod, outputLabel, RatingCard, RulesCheck } from "./answer-feedback";
+import { parseDataStream, summarizeRules, type RulesAnswer, type RulesComputation } from "@/lib/aspen/rules";
+import { azSavingsStream } from "@/test/rules-az-savings";
+import {
+  citationPath,
+  formatPeriod,
+  outputLabel,
+  RatingCard,
+  RulesCheck,
+  rulesCaveats,
+  shownValue,
+} from "./answer-feedback";
+import { formatValue } from "./client";
 
 function jsonResponse(data: unknown, ok = true) {
   return { ok, status: ok ? 200 : 500, json: async () => data } as unknown as Response;
@@ -27,9 +38,20 @@ const SNAP_RESULT: RulesAnswer & { latencyMs: number } = {
         unit: "USD",
         incomplete: false,
         legalId: "us:statutes/7/2017#a",
+        semantics: "scalar",
+        published: true,
       },
       outputs: [
-        { name: "snap", label: "Snap", value: 24, unit: "USD", incomplete: false, legalId: "us:statutes/7/2017#a" },
+        {
+          name: "snap",
+          label: "Snap",
+          value: 24,
+          unit: "USD",
+          incomplete: false,
+          legalId: "us:statutes/7/2017#a",
+          semantics: "scalar",
+          published: true,
+        },
         {
           name: "snap_excess_shelter_deduction",
           label: "Snap excess shelter deduction",
@@ -37,8 +59,12 @@ const SNAP_RESULT: RulesAnswer & { latencyMs: number } = {
           unit: "USD",
           incomplete: true,
           legalId: "us:statutes/7/2014#e",
+          semantics: "scalar",
+          published: false,
         },
       ],
+      disclosures: [],
+      standardsYears: [],
     },
   ],
   amount: 24,
@@ -279,14 +305,31 @@ describe("RulesCheck", () => {
           displayName: "Child Tax Credit",
           period: "2026",
           primary: null,
-          outputs: [{ name: "ctc", label: "Ctc", value: 4400, unit: "USD", incomplete: false, legalId: null }],
+          outputs: [
+            { name: "ctc", label: "Ctc", value: 4400, unit: "USD", incomplete: false, legalId: null, semantics: "scalar", published: true },
+          ],
+          disclosures: [],
+          standardsYears: [],
         },
         {
           program: "eitc",
           displayName: "EITC",
           period: "2026",
           primary: null,
-          outputs: [{ name: "eitc_eligible", label: "Eitc eligible", value: "not_holds", unit: null, incomplete: false, legalId: null }],
+          outputs: [
+            {
+              name: "eitc_eligible",
+              label: "Eitc eligible",
+              value: "not_holds",
+              unit: null,
+              incomplete: false,
+              legalId: null,
+              semantics: "judgment",
+              published: true,
+            },
+          ],
+          disclosures: [],
+          standardsYears: [],
         },
       ],
       amount: null,
@@ -404,5 +447,135 @@ describe("RulesCheck", () => {
     });
     expect(screen.getByText("What the encoded rules say")).toBeInTheDocument();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("shows the recorded Arizona answer as an amount if eligible, never as an eligibility verdict", async () => {
+    const recorded = summarizeRules(parseDataStream(azSavingsStream()));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ ...recorded, latencyMs: 9000 })));
+    render(<RulesCheck promptId="p8" messages={MESSAGES} unlocked />);
+    fireEvent.click(screen.getByRole("button", { name: "Check against the rules" }));
+    expect(await screen.findByText("What the encoded rules say")).toBeInTheDocument();
+
+    expect(screen.getByText("a month if eligible").parentElement).toHaveTextContent(/^\$24a month if eligible$/);
+    expect(screen.getByText("Arizona SNAP · for October 2026")).toBeInTheDocument();
+    // The note shows without opening the full answer.
+    expect(screen.getByRole("note")).toHaveTextContent(
+      "Not an eligibility determination: Axiom's Arizona SNAP rules don't test eligibility yet. Read this as the amount if eligible.",
+    );
+    expect(
+      screen.getByText(
+        "Uses FY2026 SNAP standards. October 2026 falls in FY2027, whose standards took effect October 1, 2026.",
+      ),
+    ).toBeInTheDocument();
+
+    const rows = screen.getAllByRole("listitem").map((li) => li.textContent);
+    expect(rows).toContain("EligibleNot tested");
+    expect(rows).toContain("Maximum allotment$298");
+    expect(rows.some((row) => /Yes$|No$/.test(row ?? ""))).toBe(false);
+    // finbot's own wording of both limits is replaced, not repeated.
+    expect(screen.queryByRole("list", { name: "Notes on this check" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/every household shows as eligible/)).not.toBeInTheDocument();
+  });
+
+  it("lists the chatbot's other limits, and says nothing about standards that match the period", async () => {
+    const ny: RulesAnswer = {
+      ...SNAP_RESULT,
+      period: "2026-03",
+      computations: [
+        {
+          ...SNAP_RESULT.computations[0],
+          program: "us-ny-snap",
+          period: "2026-03",
+          outputs: [
+            ...SNAP_RESULT.computations[0].outputs,
+            { name: "snap_eligible", label: "Snap eligible", value: "holds", unit: null, incomplete: false, legalId: null, semantics: "judgment", published: true },
+          ],
+          disclosures: [
+            "SNAP figures use FY2026 standards; FY2027 standards took effect October 1, 2026 and are not encoded yet.",
+            "New York: the household's earned-income input was set from the earnings given (has earned income).",
+          ],
+          standardsYears: [2026],
+        },
+      ],
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(ny)));
+    render(<RulesCheck promptId="p9" messages={MESSAGES} unlocked />);
+    fireEvent.click(screen.getByRole("button", { name: "Check against the rules" }));
+    const notes = await screen.findByRole("list", { name: "Notes on this check" });
+    expect(within(notes).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "New York: the household's earned-income input was set from the earnings given (has earned income).",
+    ]);
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+    expect(screen.queryByText(/SNAP standards/)).not.toBeInTheDocument();
+    expect(screen.getByText("a month").parentElement).toHaveTextContent(/^\$24a month$/);
+    expect(screen.getAllByRole("listitem").map((li) => li.textContent)).toContain("EligibleYes");
+  });
+
+  it("reads rules results saved before the panel knew about limits", async () => {
+    const old = {
+      ...SNAP_RESULT,
+      computations: [{ ...SNAP_RESULT.computations[0], disclosures: undefined, standardsYears: undefined }],
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(old)));
+    render(<RulesCheck promptId="p10" messages={MESSAGES} unlocked />);
+    fireEvent.click(screen.getByRole("button", { name: "Check against the rules" }));
+    expect(await screen.findByText("What the encoded rules say")).toBeInTheDocument();
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+  });
+});
+
+describe("rules panel values and caveats", () => {
+  const judgment = (value: string, published: boolean) => ({
+    name: "snap_eligible",
+    label: "Snap eligible",
+    value,
+    unit: null,
+    incomplete: false,
+    legalId: null,
+    semantics: "judgment" as string | null,
+    published,
+  });
+
+  it("never shows a yes/no verdict for a program whose eligibility isn't tested", () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom("holds", "not_holds"),
+        fc.constantFrom("judgment", null),
+        fc.constantFrom("us-az-snap", "us-ny-snap", "us-co-snap"),
+        (value, semantics, program) => {
+          const shown = shownValue({ ...judgment(value, true), semantics }, { program });
+          if (program === "us-az-snap") expect(shown).toBe("Not tested");
+          else expect(shown).toBe(value === "holds" ? "Yes" : "No");
+        },
+      ),
+    );
+  });
+
+  it("shows amounts and an extra sub-test as computed", () => {
+    fc.assert(
+      fc.property(fc.integer({ min: -10_000, max: 10_000 }), fc.constantFrom("us-az-snap", "us-ny-snap"), (value, program) => {
+        const amount = { ...judgment("", true), value, unit: "USD", semantics: "scalar" };
+        expect(shownValue(amount, { program })).toBe(formatValue(value, "USD"));
+      }),
+    );
+    expect(shownValue(judgment("holds", false), { program: "us-az-snap" })).toBe("Yes");
+  });
+
+  it("states each caveat once across computations", () => {
+    const az: RulesComputation = {
+      program: "us-az-snap",
+      displayName: "Arizona SNAP",
+      period: "2026-10",
+      primary: null,
+      outputs: [],
+      disclosures: ["Something else."],
+      standardsYears: [2025, 2026],
+    };
+    const caveats = rulesCaveats({ computations: [az, { ...az }] });
+    expect(caveats.eligibility).toHaveLength(1);
+    expect(caveats.standards).toEqual([
+      "Uses FY2025 and FY2026 SNAP standards. October 2026 falls in FY2027, whose standards took effect October 1, 2026.",
+    ]);
+    expect(caveats.other).toEqual(["Something else."]);
   });
 });

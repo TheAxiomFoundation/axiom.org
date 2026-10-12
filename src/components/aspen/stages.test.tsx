@@ -398,7 +398,9 @@ describe("PolicyBenchContent", () => {
     expect(screen.getByText("41%")).toBeInTheDocument();
     expect(screen.getByText("242 of 591 answers, from 46 models.")).toBeInTheDocument();
     expect(screen.getByText(/An Arizona household · 46 of 46 models said \$0/)).toBeInTheDocument();
-    expect(screen.getByText("The rules: eligible, $24 a month.")).toBeInTheDocument();
+    expect(screen.getByText("The rules: eligible, $24 a month.").parentElement).toHaveTextContent(
+      "The rules: eligible, $24 a month. PolicyBench's reference, under FY2026 standards. $25 from October 1, 2026.",
+    );
     expect(screen.getByRole("link", { name: "policybench.org" })).toHaveAttribute("href", "https://policybench.org");
   });
 });

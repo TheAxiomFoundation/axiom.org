@@ -14,6 +14,7 @@ import {
   WENT_WRONG,
   WOULD_ACT,
 } from "./content";
+import { eligibilityTested } from "./coverage";
 import type { PromptRow, RunData } from "./types";
 
 /**
@@ -37,6 +38,8 @@ export interface FeedItem {
   verdict: string | null;
   rulesAmount: number | null;
   rulesProgram: string | null;
+  /** The rules ran on a program whose eligibility they don't test, so the amount holds only if eligible. */
+  rulesIfEligible: boolean;
   postCheck: string | null;
   createdAt: string | null;
 }
@@ -56,8 +59,10 @@ export interface Viability {
   residentActions: Count[];
   /** Answers that would lead a resident not to apply. */
   wouldNotApply: number;
-  /** Of those, the ones whose household qualifies under the encoded rules (checked, amount above $0). */
+  /** Of those, the ones whose household qualifies under the encoded rules (checked, amount above $0, eligibility tested). */
   wouldNotApplyEligible: number;
+  /** Of those, the ones with an amount above $0 from rules that don't test eligibility: an amount if eligible, not a verdict. */
+  wouldNotApplyIfEligible: number;
 }
 
 /** How answers held up for one household, added detail, or perspective. */
@@ -210,9 +215,24 @@ function payloadList(payload: Record<string, unknown>, key: string): string[] {
 const SPOTLIGHT_SIZE = 4;
 const VOICES_SIZE = 12;
 
+/** The program id of the rules check saved on a prompt (its first computation), or null. */
+export function rulesProgramId(p: Pick<PromptRow, "rules_outputs">): string | null {
+  const first: unknown = Array.isArray(p.rules_outputs) ? p.rules_outputs[0] : null;
+  if (!first || typeof first !== "object") return null;
+  const program = (first as { program?: unknown }).program;
+  return typeof program === "string" ? program : null;
+}
+
+/** The saved rules amount holds only if the household is eligible: the rules didn't test eligibility. */
+export function rulesIfEligible(p: Pick<PromptRow, "rules_outputs">): boolean {
+  return !eligibilityTested(rulesProgramId(p));
+}
+
 export function viabilityOf(rated: PromptRow[]): Viability {
   const count = (pred: (p: PromptRow) => boolean) => rated.filter(pred).length;
   const acts = (p: PromptRow) => p.would_act === "yes" || p.would_act === "maybe";
+  const notApplyWithAmount = (p: PromptRow) =>
+    p.resident_action === "not-apply" && typeof p.rules_amount === "number" && p.rules_amount > 0;
   return {
     rated: rated.length,
     right: count((p) => p.verdict === "right"),
@@ -227,9 +247,8 @@ export function viabilityOf(rated: PromptRow[]): Viability {
       RESIDENT_ACTIONS,
     ),
     wouldNotApply: count((p) => p.resident_action === "not-apply"),
-    wouldNotApplyEligible: count(
-      (p) => p.resident_action === "not-apply" && typeof p.rules_amount === "number" && p.rules_amount > 0,
-    ),
+    wouldNotApplyEligible: count((p) => notApplyWithAmount(p) && !rulesIfEligible(p)),
+    wouldNotApplyIfEligible: count((p) => notApplyWithAmount(p) && rulesIfEligible(p)),
   };
 }
 
@@ -291,6 +310,7 @@ export function summarizeRun(data: RunData): RunSummary {
     verdict: p.verdict ?? null,
     rulesAmount: p.rules_amount ?? null,
     rulesProgram: p.rules_program ?? null,
+    rulesIfEligible: rulesIfEligible(p),
     postCheck: p.post_check_verdict ?? null,
     createdAt: p.created_at ?? null,
   });

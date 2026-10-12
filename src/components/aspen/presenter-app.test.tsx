@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { BREAKOUT_PROMPT, DISCUSSION_QUESTIONS, EVENT, GOLDEN_A, NEXT_STEPS, STAGES, type StageId } from "@/lib/aspen/content";
 import { EMPTY_SUMMARY, summarizeRun, type RunSummary } from "@/lib/aspen/results";
 import type { Control, RunData } from "@/lib/aspen/types";
-import { PresenterApp } from "./presenter-app";
+import { notApplyLabel, PresenterApp } from "./presenter-app";
 
 const DATA: RunData = {
   participants: [{ id: "a", run_id: "r1", perspective: "resident", state: "Arizona" }],
@@ -257,6 +257,10 @@ describe("PresenterApp navigation", () => {
     expect(screen.getByText("2/2")).toBeInTheDocument();
     expect(screen.getByText("46 of 46 AI models said")).toBeInTheDocument();
     expect(screen.getByText("$24")).toBeInTheDocument();
+    // The $24 is PolicyBench's FY2026 figure; USDA's FY2027 minimum is $25 from October 1, 2026.
+    expect(screen.getByText(/PolicyBench's reference, under FY2026 standards\./)).toHaveTextContent(
+      "PolicyBench's reference, under FY2026 standards. $25 from October 1, 2026.",
+    );
     // The summary shows on the first slide only.
     expect(screen.queryByText(STAGES.find((st) => st.id === "scale")!.summary)).not.toBeInTheDocument();
 
@@ -352,6 +356,19 @@ describe("PresenterApp stages", () => {
     expect(screen.getByText("What would a resident do next?")).toBeInTheDocument();
     expect(screen.getByText("To discuss")).toBeInTheDocument();
     for (const q of DISCUSSION_QUESTIONS) expect(screen.getByText(q.label)).toBeInTheDocument();
+  });
+
+  it("counts an amount from rules that don't test eligibility apart from households that qualify", () => {
+    expect(notApplyLabel({ wouldNotApplyEligible: 0, wouldNotApplyIfEligible: 0 })).toBe("would stop a resident from applying");
+    expect(notApplyLabel({ wouldNotApplyEligible: 2, wouldNotApplyIfEligible: 0 })).toBe(
+      "would stop a resident from applying. 2 of them qualify.",
+    );
+    expect(notApplyLabel({ wouldNotApplyEligible: 0, wouldNotApplyIfEligible: 3 })).toBe(
+      "would stop a resident from applying. 3 of them get an amount if eligible.",
+    );
+    expect(notApplyLabel({ wouldNotApplyEligible: 2, wouldNotApplyIfEligible: 3 })).toBe(
+      "would stop a resident from applying. 2 of them qualify. 3 more get an amount if eligible.",
+    );
   });
 
   it("keeps the plain labels when no answer would send a resident the wrong way", async () => {

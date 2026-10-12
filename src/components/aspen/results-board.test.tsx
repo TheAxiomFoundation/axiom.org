@@ -189,6 +189,24 @@ describe("ResultsBoard", () => {
     expect(screen.getByTitle("Asset tests")).toBeInTheDocument();
   });
 
+  it("keeps an amount from rules that don't test eligibility apart from households that qualify", () => {
+    const arizona = summarizeRun({
+      ...DATA,
+      prompts: [
+        { ...DATA.prompts[0], resident_action: "not-apply", rules_outputs: [{ program: "us-az-snap" }] },
+        { ...DATA.prompts[1], resident_action: "apply" },
+      ],
+    });
+    render(<ResultsBoard summary={arizona} />);
+    const card = screen.getByText("Would not apply").parentElement as HTMLElement;
+    expect(card).toHaveTextContent(
+      "1answers would lead a resident not to apply. For 1 more, the rules give an amount if eligible but don't test eligibility yet.",
+    );
+    expect(card).not.toHaveTextContent("qualify under the encoded rules");
+    const spotlight = within(screen.getByRole("heading", { name: "Answers worth discussing" }).closest("section") as HTMLElement);
+    expect(spotlight.getByText("$24").parentElement).toHaveTextContent("· The rules say $24 if eligible");
+  });
+
   it("shows the source-of-truth answers under how it felt", () => {
     render(
       <ResultsBoard

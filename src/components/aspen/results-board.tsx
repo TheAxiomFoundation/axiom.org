@@ -201,6 +201,8 @@ function ViabilityPanel({ summary }: { summary: RunSummary }) {
               answers would lead a resident not to apply.
               {v.wouldNotApplyEligible > 0 &&
                 ` ${v.wouldNotApplyEligible} of those households qualify under the encoded rules.`}
+              {v.wouldNotApplyIfEligible > 0 &&
+                ` For ${v.wouldNotApplyIfEligible} more, the rules give an amount if eligible but don't test eligibility yet.`}
             </p>
           </Card>
         )}
@@ -302,6 +304,7 @@ function SpotlightList({ summary }: { summary: RunSummary }) {
                   <span className="text-[var(--color-ink-secondary)]">
                     {" "}
                     · The rules say <strong className="text-[var(--color-accent)]">{formatValue(item.rulesAmount, "USD")}</strong>
+                    {item.rulesIfEligible && " if eligible"}
                   </span>
                 )}
               </span>
