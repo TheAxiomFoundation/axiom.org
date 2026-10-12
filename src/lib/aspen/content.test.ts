@@ -1,6 +1,7 @@
 import {
   RATING_SCALES,
   TWISTS,
+  TWIST_GROUPS,
   TWIST_IDS,
   twistsFor,
   HOUSEHOLDS,
@@ -10,6 +11,8 @@ import {
   STAGE_IDS,
   composePrompt,
   findHousehold,
+  orderedQuestions,
+  questionsFrom,
   isPerspectiveId,
   isStageId,
   isUsState,
@@ -69,6 +72,34 @@ describe('aspen content', () => {
     expect(text).toMatch(/How much cash assistance \(TCA\) should they get each month\?$/)
     expect(composePrompt('caseworker', parent, 'eligible')).toMatch(/Does this household qualify/)
     expect(composePrompt('caseworker', parent, 'more')).toMatch(/What benefits should I screen them for/)
+  })
+
+  it('asks several questions one after another, in display order', () => {
+    const retiree = findHousehold('az-retiree')!
+    const both = composePrompt('resident', retiree, ['eligible', 'amount'])
+    expect(both).toMatch(/How much SNAP \(food stamps\) can I get each month\? Do I qualify for SNAP \(food stamps\)\?$/)
+    // A single id still works, and a duplicate asks once.
+    expect(composePrompt('resident', retiree, ['amount', 'amount'])).toBe(composePrompt('resident', retiree, 'amount'))
+    expect(composePrompt('caseworker', retiree, ['apply', 'more'])).toMatch(
+      /What benefits should I screen them for, and how much would each one be\? How should they apply/,
+    )
+  })
+
+  it('orders questions and reads them from a request, old or new', () => {
+    expect(orderedQuestions(['apply', 'amount', 'apply'])).toEqual(['amount', 'apply'])
+    expect(orderedQuestions('cliff')).toEqual(['cliff'])
+    expect(questionsFrom(['eligible', 'bogus', 'amount', 7])).toEqual(['amount', 'eligible'])
+    // Older pages sent one id.
+    expect(questionsFrom(undefined, 'more')).toEqual(['more'])
+    expect(questionsFrom(undefined, 'bogus')).toEqual([])
+    expect(questionsFrom(undefined, null)).toEqual([])
+    expect(questionsFrom('amount')).toEqual([])
+  })
+
+  it('puts every detail in one of the two detail rows', () => {
+    const groups = TWIST_GROUPS.map((g) => g.id) as string[]
+    for (const t of TWISTS) expect(groups).toContain(t.group)
+    for (const g of TWIST_GROUPS) expect(TWISTS.some((t) => t.group === g.id)).toBe(true)
   })
 
   it('every household names a program and why it is on the list', () => {

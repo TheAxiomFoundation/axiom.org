@@ -42,8 +42,11 @@ generate `/axiom/v2/...` hrefs. The app root and marketing pages stay on v1.
   the ledger timeline draws the tries on the run's clock from them. Older
   records lack both and read as "not timed".
   `scripts/collect-encoding-pipeline.mjs` rebuilds it every 30 minutes from
-  GitHub and Supabase (and dispatches the index sync after merges); `/ops`
-  and `/ops/journey` read only the table, never GitHub at request time.
+  GitHub and Supabase (and dispatches the index sync after merges); the pace
+  comes from `collector-heartbeat.yml`, which starts the collector workflow
+  every 30 minutes and then itself (GitHub runs the collector's own cron only
+  a few times a day). `/ops` and `/ops/journey` read only the table, never
+  GitHub at request time.
 - **Program bundles** (`encodings.program_bundle_documents`): the documents of
   each delivery tier of the 13 core programs (axiom-corpus
   `manifests/program-bundles/<program>.yaml`: screener-level parity and the

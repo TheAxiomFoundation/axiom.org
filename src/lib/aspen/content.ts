@@ -303,9 +303,17 @@ export const QUESTIONS: readonly { id: QuestionId; label: string }[] = [
  * resident alone, `we` for a resident speaking for the household, `they`
  * for a caseworker's client. `skip` lists households it would contradict.
  */
+/** The two kinds of detail, shown as separate rows so the list scans quickly. */
+export const TWIST_GROUPS = [
+  { id: "money", label: "Income and costs" },
+  { id: "people", label: "People in the home" },
+] as const;
+export type TwistGroupId = (typeof TWIST_GROUPS)[number]["id"];
+
 export interface Twist {
   id: string;
   label: string;
+  group: TwistGroupId;
   i: string;
   we: string;
   they: string;
@@ -316,6 +324,7 @@ export const TWISTS: readonly Twist[] = [
   {
     id: "gig",
     label: "Gig income",
+    group: "money",
     i: "I also make about $400 a month driving for a delivery app.",
     we: "We also make about $400 a month driving for a delivery app.",
     they: "They also make about $400 a month driving for a delivery app.",
@@ -323,6 +332,7 @@ export const TWISTS: readonly Twist[] = [
   {
     id: "child-support",
     label: "Pays child support",
+    group: "money",
     i: "I pay $300 a month in child support for a child who doesn't live with me.",
     we: "One of us pays $300 a month in child support for a child who doesn't live with us.",
     they: "They pay $300 a month in child support for a child who doesn't live with them.",
@@ -330,6 +340,7 @@ export const TWISTS: readonly Twist[] = [
   {
     id: "student",
     label: "College student",
+    group: "people",
     i: "I'm also a part-time college student.",
     we: "One of us is a part-time college student.",
     they: "They're also a part-time college student.",
@@ -338,6 +349,7 @@ export const TWISTS: readonly Twist[] = [
   {
     id: "green-card",
     label: "Green card holder",
+    group: "people",
     i: "I've had a green card for two years.",
     we: "One of us has had a green card for two years.",
     they: "One adult in the household has had a green card for two years.",
@@ -345,6 +357,7 @@ export const TWISTS: readonly Twist[] = [
   {
     id: "medical",
     label: "Medical bills",
+    group: "money",
     i: "I pay about $250 a month out of pocket for medical care.",
     we: "We pay about $250 a month out of pocket for medical care.",
     they: "They pay about $250 a month out of pocket for medical care.",
@@ -352,6 +365,7 @@ export const TWISTS: readonly Twist[] = [
   {
     id: "utilities",
     label: "Pays utilities",
+    group: "money",
     i: "I also pay $180 a month for electricity and heat.",
     we: "We also pay $180 a month for electricity and heat.",
     they: "They also pay $180 a month for electricity and heat.",
@@ -360,6 +374,7 @@ export const TWISTS: readonly Twist[] = [
   {
     id: "savings",
     label: "Savings",
+    group: "money",
     i: "I have $8,000 in savings.",
     we: "We have $8,000 in savings.",
     they: "They have $8,000 in savings.",
@@ -368,6 +383,7 @@ export const TWISTS: readonly Twist[] = [
   {
     id: "roommate",
     label: "Roommate",
+    group: "people",
     i: "I share an apartment with a roommate who buys and cooks food separately.",
     we: "We share our home with a roommate who buys and cooks food separately.",
     they: "They share an apartment with a roommate who buys and cooks food separately.",
@@ -375,6 +391,7 @@ export const TWISTS: readonly Twist[] = [
   {
     id: "pregnant",
     label: "Pregnant",
+    group: "people",
     i: "I'm also pregnant.",
     we: "One of us is pregnant.",
     they: "They're also pregnant.",
@@ -424,24 +441,38 @@ function clientQuestion(q: QuestionId, h: Household): string {
     : `How much ${h.programShort} should they get each month?`;
 }
 
+/** Questions in their display order, without duplicates. */
+export function orderedQuestions(questions: QuestionId | readonly QuestionId[]): QuestionId[] {
+  const picked = new Set(Array.isArray(questions) ? questions : [questions]);
+  return QUESTION_IDS.filter((id) => picked.has(id));
+}
+
+/** The known questions in a request: a list, or the single id older pages sent. In display order. */
+export function questionsFrom(list: unknown, single?: unknown): QuestionId[] {
+  const raw: unknown[] = Array.isArray(list) ? list : single !== undefined && single !== null ? [single] : [];
+  return orderedQuestions(raw.filter((q): q is QuestionId => QUESTION_IDS.includes(q as QuestionId)));
+}
+
 /**
- * The prompt a perspective, household, details and question compose to.
- * The participant can edit it before sending; both versions are saved.
+ * The prompt a perspective, household, details and one or more questions
+ * compose to; several questions are asked one after another, in display
+ * order. The participant can edit it before sending; both versions are saved.
  */
 export function composePrompt(
   perspective: PerspectiveId,
   household: Household,
-  question: QuestionId,
+  questions: QuestionId | readonly QuestionId[],
   twistIds: readonly string[] = [],
 ): string {
   const details = twistsFor(household)
     .filter((t) => twistIds.includes(t.id))
     .map((t) => (perspective === "caseworker" ? t.they : household.plural ? t.we : t.i));
   const extra = details.length ? ` ${details.join(" ")}` : "";
+  const asked = orderedQuestions(questions);
   if (perspective === "resident") {
-    return `${household.firstPerson}${extra} ${residentQuestion(question, household)}`;
+    return `${household.firstPerson}${extra} ${asked.map((q) => residentQuestion(q, household)).join(" ")}`;
   }
-  return `I'm a caseworker in ${household.state}. My client is ${household.thirdPerson}.${extra} ${clientQuestion(question, household)}`;
+  return `I'm a caseworker in ${household.state}. My client is ${household.thirdPerson}.${extra} ${asked.map((q) => clientQuestion(q, household)).join(" ")}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -609,6 +640,12 @@ export type UseCaseId = (typeof USE_CASES)[number]["id"];
 export const BREAKOUT_PROMPT =
   "How would your team use a tool that does this? Who would use it first, and what would have to be true for you to trust it?";
 
+/** The second, optional group box: what the group raised beyond its best idea (Alex's ask, Oct 12). */
+export const GROUP_RAISED = {
+  label: "Anything else your group raised?",
+  placeholder: "Barriers, what your workforce would need, open questions",
+} as const;
+
 // ---------------------------------------------------------------------------
 // PolicyBench
 // ---------------------------------------------------------------------------
@@ -727,13 +764,19 @@ export const NEXT_STEPS = {
  */
 export const DEMO_NOTE = "A demo. Answers come from OpenAI's GPT model, unedited. OpenAI does not sponsor or endorse this page.";
 
+/**
+ * What we keep, said up front (agreed with Aspen, Oct 12): answers and
+ * ratings are kept for our own analysis, never published, and taking part
+ * is optional.
+ */
 export const DISCLOSURE = {
   short:
-    "We'll look at everyone's answers together. They're saved, with no names on screen.",
+    "We keep everyone's answers to learn from, without names, and won't publish them. Taking part is optional.",
   details: [
     "We don't ask for your name. Please don't type personal details about real people.",
     "Your questions go to OpenAI to get the AI's answer, and to the Axiom rules chatbot when you check against the rules.",
-    "The Axiom Foundation keeps what you type to learn which rules are hardest to get right. The screen never shows who asked what.",
+    "The Axiom Foundation keeps your questions and ratings to learn which rules are hardest to get right. We won't publish them, and the screen never shows who asked what.",
+    "You can skip anything. The page works the same if you only watch.",
     "The next-steps form is the only place we ask for an email, and only to follow up with you.",
   ],
 } as const;

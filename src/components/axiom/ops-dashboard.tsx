@@ -478,9 +478,6 @@ function QueuedWork({ queues }: { queues: EncodingQueueSummary[] }) {
             Queued work
           </h2>
         </CardTitle>
-        <CardDescription>
-          Durable encoding queues awaiting dispatch.
-        </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
         {queues.map((queue) => (

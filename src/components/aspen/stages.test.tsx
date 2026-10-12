@@ -273,8 +273,26 @@ describe("GroupsCard", () => {
     fireEvent.click(share);
     await waitFor(() =>
       expect(bodies(fetchMock, "/api/aspen/event")).toEqual([
-        { participantId: "p-1", kind: "breakout", payload: { useCase: "project", note: "Model the shelter cap" }, stage: "groups" },
-        { participantId: "p-1", kind: "breakout", payload: { useCase: null, note: "Train staff" }, stage: "groups" },
+        { participantId: "p-1", kind: "breakout", payload: { useCase: "project", note: "Model the shelter cap", raised: "" }, stage: "groups" },
+        { participantId: "p-1", kind: "breakout", payload: { useCase: null, note: "Train staff", raised: "" }, stage: "groups" },
+      ]),
+    );
+  });
+
+  it("keeps what else the group raised, with or without an idea", async () => {
+    const fetchMock = stubFetch();
+    render(<GroupsCard stage="groups" />);
+    const share = screen.getByRole("button", { name: "Share with the room" });
+    const raised = screen.getByRole("textbox", { name: /Anything else your group raised\?/ });
+    expect(raised).toHaveAttribute("placeholder", "Barriers, what your workforce would need, open questions");
+    fireEvent.change(raised, { target: { value: "Union rules on new tools" } });
+    // What the group raised is enough to share, even without an idea.
+    expect(share).toBeEnabled();
+    fireEvent.click(share);
+    expect(raised).toHaveValue("");
+    await waitFor(() =>
+      expect(bodies(fetchMock, "/api/aspen/event")).toEqual([
+        { participantId: "p-1", kind: "breakout", payload: { useCase: null, note: "", raised: "Union rules on new tools" }, stage: "groups" },
       ]),
     );
   });

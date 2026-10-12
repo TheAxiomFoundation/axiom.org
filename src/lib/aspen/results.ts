@@ -149,7 +149,8 @@ export interface RunSummary {
   };
   /** Vote: what people would build first, one vote each. */
   votes: Count[];
-  breakouts: { useCases: Count[]; notes: { useCase: string; text: string }[] };
+  /** Each group's best idea, and what else it raised (barriers, workforce, questions). */
+  breakouts: { useCases: Count[]; notes: { useCase: string; text: string; raised: string | null }[] };
   pledges: { people: number; states: string[]; accurateAi: number; stateSystems: number };
 }
 
@@ -458,8 +459,9 @@ export function summarizeRun(data: RunData): RunSummary {
         .map((e) => ({
           useCase: payloadString(e.payload, "useCase") ?? "",
           text: clip(payloadString(e.payload, "note"), 400) ?? "",
+          raised: clip(payloadString(e.payload, "raised"), 400) || null,
         }))
-        .filter((n) => n.text)
+        .filter((n) => n.text || n.raised)
         .slice(-NOTES_SIZE)
         .reverse(),
     },

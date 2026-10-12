@@ -134,7 +134,7 @@ describe('aspen API routes', () => {
         conversationId: C,
         turn: 0,
         messages: [{ role: 'user', content: 'Can I get SNAP?' }],
-        meta: { stage: 'try', perspective: 'resident', householdId: 'az-savings', questionId: 'amount', twists: ['gig', 'bogus'], promptTemplate: 'Can I get SNAP?' },
+        meta: { stage: 'try', perspective: 'resident', householdId: 'az-savings', questionIds: ['eligible', 'bogus', 'amount'], twists: ['gig', 'bogus'], promptTemplate: 'Can I get SNAP?' },
       }),
     )
     expect(asked.headers.get('content-type')).toMatch(/ndjson/)
@@ -161,12 +161,13 @@ describe('aspen API routes', () => {
 
     await event(post({ participantId: P, kind: 'discussion', payload: { question: 'misunderstood', topics: ['Asset tests'], note: 'BBCE' } }))
     await event(post({ participantId: P, kind: "discussion", payload: { question: "performance", ratings: { amount: 2, clarity: 9, bogus: 3 } } }))
-    await event(post({ participantId: P, kind: "chip", payload: { householdId: "az-savings", twists: ["gig", "nope"] } }))
+    await event(post({ participantId: P, kind: "chip", payload: { householdId: "az-savings", questionIds: ["cliff", "x"], twists: ["gig", "nope"] } }))
     await event(post({ participantId: P, kind: "discussion", stage: "rate", payload: { question: null, note: "Staff use it already" } }))
     await event(post({ participantId: P, kind: "survey", stage: "rate", payload: { question: "source-of-truth", answer: "no" } }))
     expect((await event(post({ participantId: P, kind: "survey", payload: { question: "source-of-truth", answer: "maybe" } }))).status).toBe(400)
     expect((await event(post({ participantId: P, kind: "survey", payload: { question: "other", answer: "no" } }))).status).toBe(400)
-    await event(post({ participantId: P, kind: 'breakout', payload: { useCase: 'project', note: 'Model it' } }))
+    await event(post({ participantId: P, kind: 'breakout', payload: { useCase: 'project', note: 'Model it', raised: '  Training time  ' } }))
+    expect((await event(post({ participantId: P, kind: 'breakout', payload: { useCase: 'bogus', note: ' ', raised: '' } }))).status).toBe(400)
     expect((await event(post({ participantId: P, kind: 'discussion', payload: {} }))).status).toBe(400)
     expect((await event(post({ participantId: P, kind: 'hack', payload: {} }))).status).toBe(400)
     expect((await event(post({ participantId: P, kind: 'stage_view', payload: { stage: 'nope' } }))).status).toBe(400)
@@ -195,6 +196,7 @@ describe('aspen API routes', () => {
     // Arizona's rules don't test eligibility, so the $24 is an amount if eligible, not a household that qualifies.
     expect(room.summary.viability).toMatchObject({ wouldNotApply: 1, wouldNotApplyEligible: 0, wouldNotApplyIfEligible: 1 })
     expect(room.summary.votes.find((c: { id: string }) => c.id === 'project').count).toBe(1)
+    expect(room.summary.breakouts.notes).toContainEqual({ useCase: 'project', text: 'Model it', raised: 'Training time' })
     const performance = room.summary.discussion.scales.find((sc: { question: string }) => sc.question === "performance")
     expect(performance.categories.find((c: { id: string }) => c.id === "amount")).toMatchObject({ average: 2, count: 1 })
     expect(performance.categories.find((c: { id: string }) => c.id === "clarity")).toMatchObject({ average: null, count: 0 })
