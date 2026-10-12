@@ -156,7 +156,7 @@ export function AnswerText({ text, className }: { text: string; className?: stri
           );
         }
         return (
-          <p key={key} className="m-0">
+          <p key={key} className="m-0 break-words">
             {renderInline(block.text, key)}
           </p>
         );

@@ -571,12 +571,19 @@ describe("ChatWindow asking", () => {
     pickRetiree();
     fireEvent.click(screen.getByRole("button", { name: "Ask the AI" }));
     await screen.findByText("Answer");
-    // jsdom has no layout, so check the CSS that bounds the width: the chip truncates,
-    // and the one phone column is minmax(0, 1fr), never an auto track that grows to fit it.
+    // jsdom has no layout, so check the CSS that bounds the width: the chip truncates, and
+    // at every breakpoint each column has a 0 minimum (grid-cols-1 or minmax(0, ...) tracks),
+    // never an auto track that grows to fit the chip's one line.
     expect(screen.getByRole("link", { name: title })).toHaveClass("max-w-full", "truncate");
     const grid = container.firstElementChild as HTMLElement;
-    expect(grid).toHaveClass("grid", "grid-cols-[minmax(0,1fr)]");
-    expect(grid.className).not.toMatch(/(^|\s)grid-cols-(?!\[minmax\(0,)/);
+    const columns = grid.className.split(/\s+/).filter((c) => /(^|:)grid-cols-/.test(c));
+    expect(columns.some((c) => c.startsWith("grid-cols-"))).toBe(true);
+    for (const c of columns) {
+      expect(c.replace(/^.*grid-cols-/, "")).toMatch(/^(1|\[minmax\(0,[^\]_]+\)(_minmax\(0,[^\]_]+\))*\])$/);
+    }
+    // Long unbroken text wraps instead of running past the bubble or the answer.
+    expect(screen.getByText(/^I live in Phoenix|^I'm 67/, { selector: "div" })).toHaveClass("break-words");
+    expect(screen.getByText("Answer", { selector: "p" })).toHaveClass("break-words");
   });
 
   it("sends the details with a household question", async () => {

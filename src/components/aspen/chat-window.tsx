@@ -461,7 +461,7 @@ export function ChatWindow({
               turn.role === "user" ? (
                 <div
                   key={turn.key}
-                  className="ml-auto max-w-[90%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-[var(--color-ink)] px-4 py-2.5 font-body text-[1rem] leading-relaxed text-white"
+                  className="ml-auto max-w-[90%] whitespace-pre-wrap break-words rounded-2xl rounded-br-sm bg-[var(--color-ink)] px-4 py-2.5 font-body text-[1rem] leading-relaxed text-white"
                 >
                   {turn.content}
                 </div>
