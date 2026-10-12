@@ -583,7 +583,8 @@ describe("ChatWindow asking", () => {
     }
     // Long unbroken text wraps instead of running past the bubble or the answer.
     expect(screen.getByText(/^I live in Phoenix|^I'm 67/, { selector: "div" })).toHaveClass("break-words");
-    expect(screen.getByText("Answer", { selector: "p" })).toHaveClass("break-words");
+    // On the answer's root, so paragraphs, headings and list items all inherit it.
+    expect(screen.getByText("Answer", { selector: "p" }).closest(".break-words")).not.toBeNull();
   });
 
   it("sends the details with a household question", async () => {
