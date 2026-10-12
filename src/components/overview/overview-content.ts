@@ -28,7 +28,7 @@ export const HERO = {
   /** The tagline sits under the page title rather than serving as it. */
   tagline: "Computable law for all.",
   lede:
-    "The rules that decide who gets food assistance, health coverage, and tax credits live in closed code that no one outside the vendor can check. The Axiom Foundation publishes those rules in the open — cited, computable, and verified.",
+    "The rules that decide who gets food assistance, health coverage, and tax credits live in closed code that no one outside the vendor can check. The Axiom Foundation publishes those rules, cited and computable, for anyone to check.",
 } as const;
 
 export const WHAT_WE_DO_INTRO =
@@ -94,7 +94,7 @@ export const AUDIENCES: readonly Audience[] = [
     tab: "Government",
     headline: "Stop paying to re-implement the same rules",
     body:
-      "Every level of government rebuilds the same rules separately: states re-implement SNAP, Medicaid, and TANF inside vendor systems, agencies write regulations that contractors interpret privately, and oversight reads prose while the operative logic sits in code nobody in government can open. The Axiom Foundation publishes the rules once — cited, dated, and verified — so delivery systems, vendors, auditors, and the people who write the laws all work from the same open source of truth.",
+      "Every level of government rebuilds the same rules separately: states re-implement SNAP, Medicaid, and TANF inside vendor systems, agencies write regulations that contractors interpret privately, and oversight reads prose while the operative logic sits in code nobody in government can open. The Axiom Foundation publishes the rules once — cited, dated, and executable — so delivery systems, vendors, auditors, and the people who write the laws all work from the same open source of truth.",
     useCase:
       "A state modernizing its eligibility system runs its current vendor logic against the Axiom Foundation's encodings as a test oracle, catches discrepancies before they become wrongful denials, and keeps a traceable line from the policy as passed to how each system implements it.",
   },

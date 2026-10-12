@@ -153,7 +153,7 @@ describe('Overview share card', () => {
       siteName: 'Axiom Foundation',
       title: 'The Axiom Foundation — overview',
       description:
-        "Open, cited, verified encodings of the world's rules, starting with tax and benefit policy.",
+        "Open, cited, executable encodings of the world's rules, starting with tax and benefit policy.",
       images: ['/og-image.png'],
     })
     expect(metadata).not.toHaveProperty('twitter')
