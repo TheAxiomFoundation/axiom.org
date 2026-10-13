@@ -169,6 +169,23 @@ describe("parsing", () => {
     expect(rulespecModulePaths(["us/a/.hidden/b.yml", "us/b.yml", "README.md"])).toEqual(["us/b.yml"]);
   });
 
+  it("leaves out the repo-root ledgers a PR also touches", () => {
+    // rulespec-us#1470 and rulespec-ca#21 changed these with their modules;
+    // the index never carries them, so they read as missing from it.
+    expect(
+      rulespecModulePaths([
+        "known-validation-gaps.yaml",
+        "known-missing-money-atoms.yaml",
+        "oracle-coverage-pending.yaml",
+        "us/policies/usda/snap/fy-2024-cola/income-eligibility-standards.yaml",
+        "policies/cra/td1-2026/provincial-territorial-personal-credits.yaml",
+      ])
+    ).toEqual([
+      "policies/cra/td1-2026/provincial-territorial-personal-credits.yaml",
+      "us/policies/usda/snap/fy-2024-cola/income-eligibility-standards.yaml",
+    ]);
+  });
+
   it("reads a diagnostics bundle", () => {
     expect(
       parseDiagnostics(

@@ -238,12 +238,20 @@ export function jurisdictionOf(citation: string): string | null {
   return /^[a-z]{2}(-[a-z0-9-]+)*$/.test(head) ? head : null;
 }
 
-/** RuleSpec module files a PR adds or changes: YAML, not tests, not .axiom/. */
+/**
+ * RuleSpec module files a PR adds or changes: YAML, not tests, not .axiom/,
+ * and not the repo-root ledgers (known-validation-gaps.yaml,
+ * oracle-coverage-pending.yaml, ...). A module always sits in a bucket
+ * directory (statutes/..., or us/statutes/... in a monorepo); the root
+ * files are never in the index, so counting one would mark the PR's
+ * modules missing from it.
+ */
 export function rulespecModulePaths(files: string[]): string[] {
   return files
     .filter(
       (path) =>
         /\.ya?ml$/.test(path) &&
+        path.includes("/") &&
         !/\.test\.ya?ml$/.test(path) &&
         !path.startsWith(".") &&
         !path.includes("/.")

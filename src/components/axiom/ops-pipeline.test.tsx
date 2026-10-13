@@ -158,6 +158,27 @@ describe("OpsPipeline", () => {
     expect(within(failures).queryByRole("button", { name: /rule-a/ })).not.toBeInTheDocument();
   });
 
+  it("folds the groups past the seventh into one row, so the rows add up", () => {
+    renderPipeline(
+      Array.from({ length: 9 }, (_, i) =>
+        pipelineAttempt({
+          id: String(i + 1),
+          citation: `us/c${i + 1}`,
+          encoder_error: `c.yaml: ci: [rule-${i + 1}] x`,
+          encoder_error_rule: `rule-${i + 1}`,
+        })
+      )
+    );
+    const failures = card("Why encodes fail");
+    fireEvent.click(within(failures).getByRole("button", { name: "By cause" }));
+    expect(within(failures).getByRole("button", { name: /rule-7\s*1/ })).toBeInTheDocument();
+    expect(within(failures).queryByRole("button", { name: /rule-8/ })).not.toBeInTheDocument();
+    fireEvent.click(within(failures).getByRole("button", { name: /2 other groups\s*2/ }));
+    const list = openList();
+    expect(within(list).getByRole("link", { name: "us/c8" })).toBeInTheDocument();
+    expect(within(list).getByRole("link", { name: "us/c9" })).toBeInTheDocument();
+  });
+
   it("follows citations through review holds, the index, and main", () => {
     const indexed = { synced_at: "2026-09-21T12:00:00Z", index_status: "indexed" as const, compile_status: "ok" };
     renderPipeline([
@@ -302,6 +323,12 @@ describe("OpsPipeline", () => {
         ],
       })
     );
+    // A paused queue says so where its count shows, ahead of its blocked items.
+    expect(screen.getByRole("button", { name: "935 queued · paused" })).toHaveAttribute(
+      "title",
+      "Paused; nothing new is dispatched."
+    );
+    expect(screen.getByRole("button", { name: /^Queued\s*935$/ })).toHaveAttribute("title", "Paused · 3 blocked");
     fireEvent.click(screen.getByRole("button", { name: /^Queued\s*935$/ }));
     const list = screen.getByRole("region", { name: "Queued items" });
     expect(within(list).getByText(/^Paused; nothing new is dispatched\./)).toBeInTheDocument();
@@ -499,6 +526,8 @@ describe("OpsPipeline", () => {
 
     const versions = screen.getByRole("group", { name: "By encoder version" });
     expect(within(versions).getByText("0.2.9 – 10")).toBeInTheDocument();
+    // The newest group is still collecting runs, and says so.
+    expect(versions).toHaveTextContent(/The newest group is the current encoder so far: 5 runs\./);
 
     const holds = screen.getByRole("group", { name: "What holds PRs in review" });
     fireEvent.click(within(holds).getByRole("button", { name: "By error" }));
