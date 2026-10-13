@@ -1,10 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { EVENT, STAGES, findHousehold, isStageId, stageIndex, type StageId } from "@/lib/aspen/content";
 import { CHAT_KEY, ChatWindow, type ChatStatus, type SavedChat } from "./chat-window";
 import { OverallRating } from "./overall-rating";
-import { enterRun, participantId, readStored, sendEvent, useControl, useResults, writeStored } from "./client";
+import {
+  OVERALL_KEY,
+  enterRun,
+  participantId,
+  readStored,
+  sendEvent,
+  useControl,
+  useResults,
+  writeStored,
+} from "./client";
 import { ResultsBoard } from "./results-board";
 import {
   Agenda,
@@ -60,8 +69,13 @@ export function AspenApp() {
   const [follow, setFollow] = useState(true);
   // False until the stored stage is read, so the first render never overwrites it.
   const [hydrated, setHydrated] = useState(false);
-  const [tryStatus, setTryStatus] = useState<ChatStatus>({ asked: false, rated: false });
+  const [tryStatus, setTryStatus] = useState<ChatStatus>({ asked: false, rated: false, current: false });
   const overall = useRef<HTMLElement>(null);
+  // Once the overall rating is shared, a new question clears its "ratings are in" line for good.
+  const [overallClosed, setOverallClosed] = useState(false);
+  const onNewQuestion = useCallback(() => {
+    if (readStored<boolean>(OVERALL_KEY)) setOverallClosed(true);
+  }, []);
   const live = control?.live && stageIndex(control.stage) >= 0 ? (control.stage as StageId) : null;
   const top = useRef<HTMLDivElement>(null);
 
@@ -123,6 +137,7 @@ export function AspenApp() {
     if (!hydrated || !control?.live) return;
     if (enterRun(control.runId)) {
       setRunEpoch((n) => n + 1);
+      setOverallClosed(false);
       setFollow(true);
     }
   }, [hydrated, control?.live, control?.runId]);
@@ -206,16 +221,18 @@ export function AspenApp() {
               aria-controls="aspen-stages"
               aria-haspopup="true"
               onClick={() => setMenuOpen((v) => !v)}
-              className={`flex items-center gap-2 whitespace-nowrap rounded-full border py-1.5 pl-3 pr-2.5 font-body text-[0.88rem] text-[var(--color-ink)] transition-colors ${
+              className={`flex items-center gap-2 whitespace-nowrap rounded-full border py-1.5 pl-3.5 pr-2.5 font-body text-[0.88rem] text-[var(--color-ink)] transition-colors ${
                 menuOpen
                   ? "border-[var(--color-accent)] bg-[var(--color-accent-light)]"
                   : "border-[var(--color-rule)] bg-[var(--color-paper-elevated)] hover:border-[var(--color-accent)]"
               }`}
             >
-              <span className="font-mono text-[0.72rem] tabular-nums text-[var(--color-ink-muted)]">
-                {index + 1}/{STAGES.length}
+              <span className="font-medium">{current.label}</span>
+              {/* The count steps aside on the narrowest phones; the progress line still shows it. */}
+              <span aria-hidden className="hidden h-3.5 w-px bg-[var(--color-rule)] min-[380px]:block" />
+              <span className="hidden font-mono text-[0.7rem] tabular-nums text-[var(--color-ink-muted)] min-[380px]:inline">
+                {index + 1} of {STAGES.length}
               </span>
-              {current.label}
               <svg aria-hidden viewBox="0 0 12 12" className={`h-3 w-3 transition-transform ${menuOpen ? "rotate-180" : ""}`}>
                 <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
               </svg>
@@ -282,9 +299,10 @@ export function AspenApp() {
             rulesUnlocked={rulesUnlocked}
             onRateOverall={() => overall.current?.scrollIntoView?.({ behavior: "smooth", block: "start" })}
             onStatus={setTryStatus}
+            onNewQuestion={onNewQuestion}
           />
           {/* Both ratings happen here: the answer first, then AI overall, right below. */}
-          {tryStatus.rated && (
+          {tryStatus.current && !overallClosed && (
             <section ref={overall} aria-labelledby="aspen-overall" className="mt-12 scroll-mt-20 border-t-2 border-[var(--color-accent)] pt-6">
               <h2 id="aspen-overall" className="heading-sub m-0">
                 One more: how did AI do overall?

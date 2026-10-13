@@ -1,15 +1,16 @@
 import type { ChatMessage } from "./validate";
 
 /**
- * The "ChatGPT window": OpenAI's Responses API with web search on and no
- * system prompt beyond today's date, which is as close as the API gets
- * to what a resident sees in free ChatGPT. Model and reasoning effort are
- * env-configurable so they can track what ChatGPT serves on the day.
+ * The "ChatGPT window": OpenAI's Responses API with no system prompt
+ * beyond today's date, on the model free ChatGPT serves, which is as close
+ * as the API gets to what a resident sees. Web search stays off (the
+ * session's choice, Oct 13); ASPEN_CHAT_WEB_SEARCH=on turns it on. Model
+ * and reasoning effort are env-configurable so they can track ChatGPT.
  *
  * Without OPENAI_API_KEY on this project the window falls back to the
- * gallery chatbot's plain-model endpoint (same OpenAI model, no web
- * search, its own short system prompt), and every saved answer records
- * which backend produced it.
+ * gallery chatbot's plain-model endpoint (finbot's own model and short
+ * system prompt, no web search), and every saved answer records which
+ * backend produced it.
  */
 
 export interface ChatSource {
@@ -30,7 +31,11 @@ export interface StreamHandlers {
   onStatus?(status: string): void;
 }
 
-export const DEFAULT_CHAT_MODEL = "gpt-5.5";
+/** GPT-6 Luna: the newest generation's smallest tier, which free ChatGPT moved to in October 2026. */
+export const DEFAULT_CHAT_MODEL = "gpt-6-luna";
+
+/** The gallery chatbot's model (finbot's default; its FINBOT_MODEL is unset). Only labels fallback answers. */
+export const FALLBACK_MODEL = "gpt-5.5";
 
 export function chatConfig() {
   const effort = process.env.ASPEN_CHAT_REASONING?.trim() || "low";
@@ -38,7 +43,7 @@ export function chatConfig() {
     apiKey: process.env.OPENAI_API_KEY?.trim() || null,
     model: process.env.ASPEN_CHAT_MODEL?.trim() || DEFAULT_CHAT_MODEL,
     reasoning: effort === "none" ? null : effort,
-    webSearch: process.env.ASPEN_CHAT_WEB_SEARCH !== "off",
+    webSearch: process.env.ASPEN_CHAT_WEB_SEARCH?.trim() === "on",
   };
 }
 
@@ -216,7 +221,7 @@ export async function askFinbotRaw(
     text: payload.text,
     sources: [],
     backend: "finbot-raw",
-    model: `${chatConfig().model} (gallery chatbot, plain)`,
+    model: `${FALLBACK_MODEL} (gallery chatbot, plain)`,
     webSearch: false,
   };
 }
