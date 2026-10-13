@@ -236,7 +236,7 @@ describe("OpsDashboard", () => {
         })}
         encodingError={null}
         queues={[]}
-        recentScopes={[]}
+        recentPlaces={[]}
       />,
     );
     expect(screen.getByText(/Idle — no machines encoding/i)).toBeInTheDocument();
