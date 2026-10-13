@@ -81,7 +81,7 @@ describe("BundleOverview", () => {
     const table = screen.getByRole("table", { name: "SNAP by state" });
     const arizona = within(table).getByRole("link", { name: "Arizona" });
     expect(arizona).toHaveAttribute("href", "/ops?tab=bundles&bundle=us-az/snap&count=provisions");
-    expect(arizona.closest("tr")).toHaveTextContent("13%68 of 527 cited provisions · 68 validated6%71 of 1,212 provisions · 71 validated");
+    expect(arizona.closest("tr")).toHaveTextContent("13%68 of 527 Tier 1 provisions · 68 validated6%71 of 1,212 provisions · 71 validated");
     fireEvent.click(within(screen.getByRole("list", { name: "Programs" })).getByRole("button", { name: /Medicaid/ }));
     expect(screen.getByRole("table", { name: "Medicaid by state" })).toBeInTheDocument();
   });

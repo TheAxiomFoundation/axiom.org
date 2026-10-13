@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OpsDashboard } from "./ops-dashboard";
+import { groupRecentScopes } from "@/lib/corpus-status";
 import type {
   EncodingOpsStatus,
   EncodingStatusRun,
@@ -74,7 +75,6 @@ const SCOPE = {
   jurisdiction: "dk",
   document_class: "statute",
   version: "2026-08-04-dk-full-parity-tier1",
-  synced_at: "2026-08-08T00:00:00Z",
 };
 
 describe("OpsDashboard", () => {
@@ -99,7 +99,7 @@ describe("OpsDashboard", () => {
         })}
         encodingError={null}
         queues={[]}
-        recentScopes={[]}
+        recentPlaces={[]}
       />,
     );
     expect(screen.getByText(/Encoding now — 1 machine/i)).toBeInTheDocument();
@@ -112,7 +112,7 @@ describe("OpsDashboard", () => {
       initialStatus: status({}),
       encodingError: null,
       queues: [],
-      recentScopes: [],
+      recentPlaces: [],
     };
     render(<OpsDashboard {...props} />);
     expect(screen.getByRole("heading", { name: "Latest encodings" })).toBeInTheDocument();
@@ -127,7 +127,7 @@ describe("OpsDashboard", () => {
       initialStatus: status({}),
       encodingError: null,
       queues: [],
-      recentScopes: [],
+      recentPlaces: [],
       ledger: <section aria-label="Every run" />,
       bundles: <section aria-label="Bundles" />,
       pipeline: <section aria-label="Where every citation is" />,
@@ -159,7 +159,7 @@ describe("OpsDashboard", () => {
         })}
         encodingError={null}
         queues={[]}
-        recentScopes={[]}
+        recentPlaces={[]}
       />,
     );
     expect(screen.getByText(/stalled · last heartbeat/)).toBeInTheDocument();
@@ -184,7 +184,7 @@ describe("OpsDashboard", () => {
         })}
         encodingError={null}
         queues={[]}
-        recentScopes={[]}
+        recentPlaces={[]}
       />,
     );
     expect(
@@ -210,7 +210,7 @@ describe("OpsDashboard", () => {
         })}
         encodingError={null}
         queues={[]}
-        recentScopes={[]}
+        recentPlaces={[]}
       />,
     );
     expect(
@@ -250,7 +250,7 @@ describe("OpsDashboard", () => {
         initialStatus={null}
         encodingError="supabase down"
         queues={[]}
-        recentScopes={[]}
+        recentPlaces={[]}
       />,
     );
     expect(
@@ -287,7 +287,7 @@ describe("OpsDashboard", () => {
         })}
         encodingError={null}
         queues={[]}
-        recentScopes={[]}
+        recentPlaces={[]}
       />,
     );
     // Document bands: jurisdiction — name, path right-aligned.
@@ -341,7 +341,7 @@ describe("OpsDashboard", () => {
         })}
         encodingError={null}
         queues={[]}
-        recentScopes={[]}
+        recentPlaces={[]}
       />,
     );
     const table = screen.getByRole("table");
@@ -373,7 +373,7 @@ describe("OpsDashboard", () => {
         })}
         encodingError={null}
         queues={[]}
-        recentScopes={[]}
+        recentPlaces={[]}
       />,
     );
     expect(screen.getByText("Rev. Proc. 2025-32")).toBeInTheDocument();
@@ -406,7 +406,7 @@ describe("OpsDashboard", () => {
         })}
         encodingError={null}
         queues={[]}
-        recentScopes={[]}
+        recentPlaces={[]}
       />,
     );
     expect(screen.getByText("First official title")).toBeInTheDocument();
@@ -425,7 +425,7 @@ describe("OpsDashboard", () => {
         })}
         encodingError={null}
         queues={[]}
-        recentScopes={[]}
+        recentPlaces={[]}
       />,
     );
     expect(screen.getByText("BGB")).toHaveAttribute(
@@ -444,7 +444,7 @@ describe("OpsDashboard", () => {
         initialStatus={status({})}
         encodingError={null}
         queues={[]}
-        recentScopes={[]}
+        recentPlaces={[]}
       />,
     );
     expect(screen.getByText(/No encodings recorded yet/)).toBeInTheDocument();
@@ -456,7 +456,7 @@ describe("OpsDashboard", () => {
         initialStatus={status({})}
         encodingError={null}
         queues={[QUEUE]}
-        recentScopes={[]}
+        recentPlaces={[]}
       />,
     );
     expect(screen.getByText("Queued work")).toBeInTheDocument();
@@ -480,7 +480,7 @@ describe("OpsDashboard", () => {
           { ...QUEUE, queueId: "us-snap-or-ut-pilot", kind: "dispatcher", pauseReason: null },
           QUEUE,
         ]}
-        recentScopes={[]}
+        recentPlaces={[]}
       />,
     );
     expect(screen.getAllByText(/earlier inventory, replaced by the dispatcher/)).toHaveLength(1);
@@ -492,33 +492,74 @@ describe("OpsDashboard", () => {
         initialStatus={status({})}
         encodingError={null}
         queues={[]}
-        recentScopes={[SCOPE]}
+        recentPlaces={groupRecentScopes([SCOPE])}
       />,
     );
     expect(screen.getByText("Recently ingested")).toBeInTheDocument();
     expect(screen.getByText("Denmark")).toBeInTheDocument();
-    expect(screen.getByText("statutes")).toBeInTheDocument();
-    expect(
-      screen.getByText("2026-08-04-dk-full-parity-tier1"),
-    ).toBeInTheDocument();
+    expect(screen.queryByText(/\bscopes?\b/)).not.toBeInTheDocument();
+    expect(screen.getByText("Aug 4")).toBeInTheDocument();
+    expect(screen.getByText("statute")).toBeInTheDocument();
+    expect(screen.getByText("2026-08-04-dk-full-parity-tier1")).toBeInTheDocument();
+  });
+
+  it("groups scopes by place, then by date, and folds places past the first six", () => {
+    const { container } = render(
+      <OpsDashboard
+        initialStatus={status({})}
+        encodingError={null}
+        queues={[]}
+        recentPlaces={groupRecentScopes([
+          { jurisdiction: "us-co", document_class: "regulation", version: "2026-10-12-w7-regulation-co" },
+          { jurisdiction: "us", document_class: "statute", version: "2026-10-12-w7-usc-26" },
+          { jurisdiction: "us", document_class: "statute", version: "2026-10-12-w7-usc-42" },
+          { jurisdiction: "us", document_class: "guidance", version: "2026-10-12-w7-irs-pubs" },
+          { jurisdiction: "us-co", document_class: "statute", version: "2026-10-06-w6-statute-co" },
+          { jurisdiction: "uk-wakefield", document_class: "policy", version: "2026-09-05-uk-councils" },
+          ...["us-ak", "us-al", "us-ar", "us-az"].map((jurisdiction) => ({
+            jurisdiction,
+            document_class: "form",
+            version: `2026-09-01-forms-${jurisdiction}`,
+          })),
+        ])}
+      />,
+    );
+    const places = [...container.querySelectorAll('[role="listitem"] > p:first-child')].map(
+      (p) => p.textContent,
+    );
+    // US Federal first on its tie with Colorado; Arkansas is the seventh place, folded.
+    expect(places).toEqual([
+      "US Federal",
+      "Colorado",
+      "United Kingdom",
+      "Alabama",
+      "Alaska",
+      "Arizona",
+      "Arkansas",
+    ]);
+    expect(screen.getByText("2 statutes, guidance")).toBeInTheDocument();
+    expect(screen.getByText("Wakefield")).toBeInTheDocument();
+    expect(screen.getByText("Show 1 more place")).toBeInTheDocument();
+    const colorado = screen.getByText("Colorado").closest('[role="listitem"]') as HTMLElement;
+    expect(within(colorado).getByText("Oct 12")).toBeInTheDocument();
+    expect(within(colorado).getByText("Oct 6")).toBeInTheDocument();
   });
 
   it("names Israel from the jurisdictions seed, not a dashboard-local entry", () => {
-    // JURISDICTION_NAMES spreads JURISDICTIONS_SEED, so seeding "il"
+    // The feed's names come from the jurisdictions seed, so seeding "il"
     // labels the ops surfaces too — no second copy to drift.
     render(
       <OpsDashboard
         initialStatus={status({})}
         encodingError={null}
         queues={[]}
-        recentScopes={[
+        recentPlaces={groupRecentScopes([
           {
             jurisdiction: "il",
             document_class: "statute",
             version: "2026-09-06-il-pilot",
-            synced_at: "2026-09-06T00:00:00Z",
           },
-        ]}
+        ])}
       />,
     );
     expect(screen.getByText("Israel")).toBeInTheDocument();
@@ -547,7 +588,7 @@ describe("OpsDashboard", () => {
           initialStatus={status({})}
           encodingError={null}
           queues={[]}
-          recentScopes={[]}
+          recentPlaces={[]}
         />,
       );
       vi.advanceTimersByTime(30_000);

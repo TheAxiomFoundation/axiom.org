@@ -138,7 +138,7 @@ const COUNT_WORDS: Record<Count, [string, string, string]> = {
 };
 /** The screener tier counts only the provisions PolicyEngine cites, and says so. */
 const countWord = (count: Count, n: number, tier?: BundleTierId) =>
-  (count === "provisions" && tier === "screener" ? "cited " : "") + COUNT_WORDS[count][n === 1 ? 0 : 1];
+  (count === "provisions" && tier === "screener" ? "Tier 1 " : "") + COUNT_WORDS[count][n === 1 ? 0 : 1];
 
 type Selection =
   | { kind: "cell"; tier: BundleTierId; part: string }
@@ -293,11 +293,11 @@ export function ProgramBundle({
                 </button>
               ))}
               <Explain label="Count">
-                Tier 1 is PolicyEngine parity, so it counts only what PolicyEngine cites: a document is complete when
-                every provision PolicyEngine cites in it is encoded, and Provisions counts those cited provisions; a
-                document PolicyEngine cites whole, or by page, counts all its provisions. Tier 2
+                Tier 1 is screener-level parity, so it counts only the provisions that parity needs: a document is
+                complete when every Tier 1 provision in it is encoded, and Provisions counts those Tier 1 provisions; a
+                document in Tier 1 whole, or by page, counts all its provisions. Tier 2
                 counts every text-bearing provision of its documents. A document the corpus does not hold counts as not
-                in the corpus: each provision PolicyEngine cites in it in Tier 1, once in Tier 2, until the corpus holds
+                in the corpus: each of its Tier 1 provisions in Tier 1, once in Tier 2, until the corpus holds
                 it.
               </Explain>
             </div>
@@ -493,7 +493,7 @@ function TierHeader({
       {screener && (
         <div className={styles.parityHead}>
           <span className={styles.parityLabel}>
-            Comparison run against PolicyEngine
+            Screener-level parity run
             <Explain label="Comparison run">
               A result, not a count. The counts above add up provision by provision. A household&apos;s result needs every
               rule on its path to work together, so one missing link can make every household differ however many
@@ -514,7 +514,7 @@ function TierHeader({
                 )}
                 <span className={styles.parityFacts}>
                   {number(parity.axiom_errors)} {parity.axiom_errors === 1 ? "mismatch" : "mismatches"} to fix in Axiom ·
-                  run {day(parity.generated_at)} · PolicyEngine-US {parity.policyengine_us ?? "?"}
+                  run {day(parity.generated_at)} · reference version {parity.policyengine_us ?? "?"}
                   {stale && <span className={styles.stale}> (newest {newest})</span>}
                 </span>
               </>
@@ -543,8 +543,8 @@ function FactsRow({
         {label}
         <Explain label={label}>
           {label === "Documents"
-            ? "Every document of the tier. Complete: a rule cites every one of its provisions (in Tier 1, every provision PolicyEngine cites in it). Not validated: some of those rules merged under a validation waiver. Not in the corpus: the corpus does not hold it yet, so its provisions cannot be counted."
-            : "Tier 1: the provisions PolicyEngine cites. Tier 2: every text-bearing provision of the tier's documents in the corpus. Encoded: a rule cites the provision or one above it, and nothing in it is deferred. Not validated: every such rule merged under a validation waiver. Partly encoded: rules cite only parts of it, or defer a part. Deferred: a module defers it and no rule cites it. A module's declared source alone is not counted; encode runs only mark in progress or failed."}
+            ? "Every document of the tier. Complete: a rule cites every one of its provisions (in Tier 1, every Tier 1 provision in it). Not validated: some of those rules merged under a validation waiver. Not in the corpus: the corpus does not hold it yet, so its provisions cannot be counted."
+            : "Tier 1: the provisions that screener-level parity needs. Tier 2: every text-bearing provision of the tier's documents in the corpus. Encoded: a rule cites the provision or one above it, and nothing in it is deferred. Not validated: every such rule merged under a validation waiver. Partly encoded: rules cite only parts of it, or defer a part. Deferred: a module defers it and no rule cites it. A module's declared source alone is not counted; encode runs only mark in progress or failed."}
         </Explain>
       </span>
       {tiers.map((tier) => (
@@ -666,7 +666,7 @@ function ProvisionFacts({ tier, rows }: { tier: BundleTierId; rows: BundleDocume
   return (
     <Breakdown
       total={counts.provisions}
-      totalLabel={tier === "screener" ? "cited by PolicyEngine" : "in the corpus"}
+      totalLabel={tier === "screener" ? "in Tier 1" : "in the corpus"}
       items={items}
     />
   );
@@ -809,18 +809,18 @@ function ParityDetail({
       {parity ? (
         <>
           <h3 className={styles.detailName}>
-            {share(parity.eligible_matching)} of eligible households match PolicyEngine
+            {share(parity.eligible_matching)} of eligible households match
           </h3>
           <p className={styles.detailNote}>
-            Of the households either engine finds eligible, the share that gets the same eligibility and benefit from
-            Axiom and PolicyEngine (survey-weighted). Households neither engine finds eligible match trivially, so they
-            are left out.
+            Of the households that Axiom or the reference finds eligible, the share that gets the same eligibility and
+            benefit from both (survey-weighted). Households that neither finds eligible match trivially, so they are
+            left out.
           </p>
           <dl className={styles.detailFacts}>
             <div>
               <dt>Eligible households</dt>
               <dd>
-                PolicyEngine {share(parity.eligible_policyengine)} · Axiom {share(parity.eligible_axiom)}
+                Reference {share(parity.eligible_policyengine)} · Axiom {share(parity.eligible_axiom)}
               </dd>
             </div>
             <div>
@@ -859,7 +859,7 @@ function ParityDetail({
               </div>
             ))}
             <div>
-              <dt>PolicyEngine-US</dt>
+              <dt>Reference version</dt>
               <dd>
                 {parity.policyengine_us ?? "?"}
                 {olderVersion(parity.policyengine_us, newest) && <span className={styles.stale}> · newest is {newest}</span>}
@@ -879,20 +879,20 @@ function ParityDetail({
           </dl>
         </>
       ) : (
-        <h3 className={styles.detailName}>No comparison against PolicyEngine yet</h3>
+        <h3 className={styles.detailName}>No screener-level parity run yet</h3>
       )}
       <p className={styles.detailLabel}>
-        PolicyEngine citations
+        Tier 1 provisions
         <span>
           {number(encoded)} of {number(counts.provisions)} encoded
         </span>
       </p>
       <p className={styles.detailNote}>
-        Each provision PolicyEngine cites for this program at the pinned release (a document cited whole, or by page,
+        Each Tier 1 provision of this program at the pinned release (a document in Tier 1 whole, or by page,
         counts all its provisions): encoded when a rule cites it or a
         provision above it and nothing in it is deferred; partly encoded when rules cite only parts of it; deferred when
-        a module defers it. This is coverage of what PolicyEngine cites, not a comparison of results: the comparison
-        against PolicyEngine is its own check.
+        a module defers it. This is coverage of Tier 1, not a comparison of results: the parity run is its own
+        check.
       </p>
       {[...byPart.entries()]
         .sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
@@ -943,7 +943,7 @@ function UnitDetail({
 }) {
   useEscape(onClose);
   return (
-    <aside className={styles.detail} aria-label="Cited provision">
+    <aside className={styles.detail} aria-label="Tier 1 provision">
       <DrawerTop label={UNIT_LABELS[unit.state]} shade={UNIT_SHADE[unit.state]} onClose={onClose} />
       <h3 className={styles.detailName}>{unit.name}</h3>
       {unit.path ? (
@@ -968,7 +968,7 @@ function UnitDetail({
           <dd>{unit.part}</dd>
         </div>
         <div>
-          <dt>PolicyEngine references</dt>
+          <dt>References</dt>
           <dd>{unit.references ? number(unit.references) : "—"}</dd>
         </div>
         <div>
@@ -1100,7 +1100,7 @@ function DocumentDetail({
       {row.units.length > 0 && (
         <div className={styles.detailBlock}>
           <p className={styles.detailLabel}>
-            PolicyEngine cites<span>{number(row.units.length)}</span>
+            Tier 1 provisions<span>{number(row.units.length)}</span>
           </p>
           <ul className={styles.memberList}>
             {row.units.map((u) => (
@@ -1175,7 +1175,7 @@ function Provenance({
             tier.id === "screener"
               ? [
                   [
-                    "PolicyEngine-US",
+                    "Reference version",
                     text(m.policyengine_us_version) &&
                       `${text(m.policyengine_us_version)} (${String(m.policyengine_us_commit ?? "").slice(0, 10)}), ${text(m.reference_count)} references` +
                         (olderVersion(text(m.policyengine_us_version), bundle?.policyengine_latest ?? null)
@@ -1187,14 +1187,14 @@ function Provenance({
                   [
                     "Comparison",
                     bundle?.parity
-                      ? `${bundle.parity.suite}, PolicyEngine-US ${bundle.parity.policyengine_us ?? "?"}, ${day(bundle.parity.generated_at)}`
+                      ? `${bundle.parity.suite}, reference version ${bundle.parity.policyengine_us ?? "?"}, ${day(bundle.parity.generated_at)}`
                       : null,
                   ],
                   ["Plan", m.plan_documents != null ? `${text(m.plan_documents)} documents for the program` : null],
                   ["Fiscal year", text(m.fiscal_year) && `FY${text(m.fiscal_year)}`],
                 ]
               : [
-                  ["Screener tier", "every in-scope document, included"],
+                  ["Tier 1", "every in-scope document, included"],
                   ["Federal law", text(m.federal_schema) ?? "no needs-closure schema yet"],
                   ["Federal guidance", text(m.federal_manifests) && `manifests matching ${text(m.federal_manifests)}`],
                   ["State sources", text(m.state_manifests) && `the state's manifests matching ${text(m.state_manifests)}`],
@@ -1244,8 +1244,8 @@ function sourceWords(sources: string[], manifest: string | null): string {
   const words = new Set<string>();
   for (const source of sources) {
     if (source === "plan") words.add("the plan");
-    else if (source === "policyengine-references") words.add("PolicyEngine references");
-    else if (source === "screener") words.add("the screener tier");
+    else if (source === "policyengine-references") words.add("the Tier 1 references");
+    else if (source === "screener") words.add("Tier 1");
     else if (source.startsWith("schema:")) words.add("the federal law of the program (needs-closure schema)");
     else if (source === "known-source") words.add("the list of state sources the corpus does not hold yet");
     else words.add(`a source manifest (${source})`);
@@ -1420,9 +1420,9 @@ function DocumentTable({
                   {PROVISION_STATES.map((state) => head(state, SHORT_LABELS[state], styles.num, PROVISION_LABELS[state]))}
                   {head(
                     "provisions",
-                    cited ? "Cited" : "Provisions",
+                    cited ? "Tier 1" : "Provisions",
                     styles.num,
-                    cited ? "Provisions PolicyEngine cites in the document" : undefined
+                    cited ? "Tier 1 provisions in the document" : undefined
                   )}
                   {head("run", "Latest run")}
                 </>
@@ -1551,7 +1551,7 @@ function GroupHead({
         <span className={styles.groupProgress}>
           {total > 0 ? <ShadeBar shades={shades} total={total} /> : <span className={styles.shadeBar} data-empty aria-hidden />}
           <span>
-            {number(done)} of {number(total)} {cited ? "cited " : ""}
+            {number(done)} of {number(total)} {cited ? "Tier 1 " : ""}
             {total === 1 ? "provision" : "provisions"} encoded
           </span>
         </span>
