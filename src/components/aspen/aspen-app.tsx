@@ -1,10 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { EVENT, STAGES, findHousehold, isStageId, stageIndex, type StageId } from "@/lib/aspen/content";
 import { CHAT_KEY, ChatWindow, type ChatStatus, type SavedChat } from "./chat-window";
 import { OverallRating } from "./overall-rating";
-import { enterRun, participantId, readStored, sendEvent, useControl, useResults, writeStored } from "./client";
+import {
+  OVERALL_KEY,
+  enterRun,
+  participantId,
+  readStored,
+  sendEvent,
+  useControl,
+  useResults,
+  writeStored,
+} from "./client";
 import { ResultsBoard } from "./results-board";
 import {
   Agenda,
@@ -60,8 +69,13 @@ export function AspenApp() {
   const [follow, setFollow] = useState(true);
   // False until the stored stage is read, so the first render never overwrites it.
   const [hydrated, setHydrated] = useState(false);
-  const [tryStatus, setTryStatus] = useState<ChatStatus>({ asked: false, rated: false });
+  const [tryStatus, setTryStatus] = useState<ChatStatus>({ asked: false, rated: false, current: false });
   const overall = useRef<HTMLElement>(null);
+  // Once the overall rating is shared, a new question clears its "ratings are in" line for good.
+  const [overallClosed, setOverallClosed] = useState(false);
+  const onNewQuestion = useCallback(() => {
+    if (readStored<boolean>(OVERALL_KEY)) setOverallClosed(true);
+  }, []);
   const live = control?.live && stageIndex(control.stage) >= 0 ? (control.stage as StageId) : null;
   const top = useRef<HTMLDivElement>(null);
 
@@ -123,6 +137,7 @@ export function AspenApp() {
     if (!hydrated || !control?.live) return;
     if (enterRun(control.runId)) {
       setRunEpoch((n) => n + 1);
+      setOverallClosed(false);
       setFollow(true);
     }
   }, [hydrated, control?.live, control?.runId]);
@@ -284,9 +299,10 @@ export function AspenApp() {
             rulesUnlocked={rulesUnlocked}
             onRateOverall={() => overall.current?.scrollIntoView?.({ behavior: "smooth", block: "start" })}
             onStatus={setTryStatus}
+            onNewQuestion={onNewQuestion}
           />
           {/* Both ratings happen here: the answer first, then AI overall, right below. */}
-          {tryStatus.rated && (
+          {tryStatus.current && !overallClosed && (
             <section ref={overall} aria-labelledby="aspen-overall" className="mt-12 scroll-mt-20 border-t-2 border-[var(--color-accent)] pt-6">
               <h2 id="aspen-overall" className="heading-sub m-0">
                 One more: how did AI do overall?

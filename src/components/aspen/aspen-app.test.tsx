@@ -325,6 +325,48 @@ describe("AspenApp without a live presenter", () => {
     await onView("try");
   });
 
+  it("clears the 'ratings are in' line when a new question starts, and keeps Next open", async () => {
+    storeChat({
+      perspective: "resident",
+      householdId: "az-retiree",
+      turns: [
+        { key: "u", role: "user", content: "Q" },
+        { key: "a", role: "assistant", content: "A", status: "done", promptId: "p" },
+      ],
+      rated: ["p"],
+    });
+    localStorage.setItem("aspen.overall.v1", "true");
+    render(<AspenApp />);
+    fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
+    await onView("try");
+    expect(await screen.findByText(/Your ratings are in/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "New question" }));
+    await waitFor(() => expect(screen.queryByText(/Your ratings are in/)).not.toBeInTheDocument());
+    expect(screen.queryByRole("heading", { name: "One more: how did AI do overall?" })).not.toBeInTheDocument();
+    // The earlier rated answer still counts for the Next link.
+    expect(nextTo("reveal")).toBeEnabled();
+  });
+
+  it("hides the overall questions after a new question until the new answer is rated, if not yet shared", async () => {
+    storeChat({
+      perspective: "resident",
+      householdId: "az-retiree",
+      turns: [
+        { key: "u", role: "user", content: "Q" },
+        { key: "a", role: "assistant", content: "A", status: "done", promptId: "p" },
+      ],
+      rated: ["p"],
+    });
+    render(<AspenApp />);
+    fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
+    await onView("try");
+    expect(await screen.findByRole("heading", { name: "One more: how did AI do overall?" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "New question" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { name: "One more: how did AI do overall?" })).not.toBeInTheDocument(),
+    );
+  });
+
   it("asks how AI did overall right under the chat, once the answer is rated", async () => {
     render(<AspenApp />);
     fireEvent.click(nav().getByRole("button", { name: /Try it/ }));

@@ -31,10 +31,14 @@ import { BUTTON, Chip, FIELD } from "./ui";
  * the rules. A new question waits until the last answer is rated.
  */
 
-/** What the shell needs from the chat: whether an answer came back, and whether one is rated. */
+/** What the shell needs from the chat. */
 export interface ChatStatus {
+  /** An answer came back in this chat. */
   asked: boolean;
+  /** Some answer is rated (Try it's Next link opens). */
   rated: boolean;
+  /** The current conversation's newest answer is rated (the overall rating shows under it). */
+  current: boolean;
 }
 
 export interface Turn {
@@ -111,12 +115,15 @@ export function ChatWindow({
   rulesUnlocked,
   onRateOverall,
   onStatus,
+  onNewQuestion,
 }: {
   stage: string;
   rulesUnlocked: boolean;
   /** Leads to the overall rating, below the chat, once the answer is rated. */
   onRateOverall?: () => void;
   onStatus?: (status: ChatStatus) => void;
+  /** Called when the participant starts a new question. */
+  onNewQuestion?: () => void;
 }) {
   const [perspective, setPerspective] = useState<PerspectiveId>("resident");
   // Nothing is picked until the participant picks: a default would skew "Households picked".
@@ -177,9 +184,11 @@ export function ChatWindow({
   }, [hydrated, perspective, householdId, questionIds, twists, draft, template, conversationId, turns, rated]);
 
   const asked = turns.some((t) => t.role === "assistant" && t.status === "done");
+  const newestAnswer = turns.findLast((t) => t.role === "assistant" && t.status === "done" && t.promptId);
+  const current = Boolean(newestAnswer?.promptId && rated.has(newestAnswer.promptId));
   useEffect(() => {
-    if (hydrated) onStatus?.({ asked, rated: rated.size > 0 });
-  }, [hydrated, asked, rated, onStatus]);
+    if (hydrated) onStatus?.({ asked, rated: rated.size > 0, current });
+  }, [hydrated, asked, rated, current, onStatus]);
 
   // The question box grows to show the whole question, so nobody scrolls inside it on a phone.
   useEffect(() => {
@@ -241,6 +250,7 @@ export function ChatWindow({
     setQuestionIds(["amount"]);
     setDraft("");
     setTemplate(null);
+    onNewQuestion?.();
   }
 
   async function send() {

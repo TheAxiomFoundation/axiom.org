@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HOUSEHOLDS, composePrompt, findHousehold } from "@/lib/aspen/content";
 import { CHAT_KEY, ChatWindow, hostname, readNdjson, type SavedChat, type Turn } from "./chat-window";
@@ -774,14 +774,22 @@ describe("ChatWindow saved conversation", () => {
     Element.prototype.scrollIntoView = scrollIntoView;
     render(<ChatWindow stage="try" rulesUnlocked={false} onStatus={onStatus} />);
     await screen.findByText("Answer one");
-    await waitFor(() => expect(onStatus).toHaveBeenLastCalledWith({ asked: true, rated: false }));
+    await waitFor(() => expect(onStatus).toHaveBeenLastCalledWith({ asked: true, rated: false, current: false }));
     expect(screen.queryByRole("button", { name: "New question" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Ask a follow-up" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Rate it ↓" }));
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
     await rateAnswer();
-    await waitFor(() => expect(onStatus).toHaveBeenLastCalledWith({ asked: true, rated: true }));
+    await waitFor(() => expect(onStatus).toHaveBeenLastCalledWith({ asked: true, rated: true, current: true }));
     expect(screen.getByRole("button", { name: "New question" })).toBeInTheDocument();
+    // A new question: some answer is still rated, but not the current conversation's.
+    const onNewQuestion = vi.fn();
+    cleanup();
+    onStatus.mockClear();
+    render(<ChatWindow stage="try" rulesUnlocked={false} onStatus={onStatus} onNewQuestion={onNewQuestion} />);
+    fireEvent.click(await screen.findByRole("button", { name: "New question" }));
+    expect(onNewQuestion).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onStatus).toHaveBeenLastCalledWith({ asked: false, rated: true, current: false }));
     delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
   });
 
