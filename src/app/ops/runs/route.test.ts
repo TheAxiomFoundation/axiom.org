@@ -50,10 +50,8 @@ describe("GET /ops/runs", () => {
     expect((await federal.json()).rows.map((r: { id: string }) => r.id)).toEqual(["1"]);
   });
 
-  it("is hidden in production with the section, and says when the table is unreadable", async () => {
+  it("serves in production too, and says when the table is unreadable", async () => {
     vi.stubEnv("VERCEL_ENV", "production");
-    expect((await GET(new Request("http://x/ops/runs"))).status).toBe(404);
-    vi.unstubAllEnvs();
     getPipelineAttempts.mockResolvedValue({ available: false, error: "down", attempts: [] });
     const response = await GET(new Request("http://x/ops/runs"));
     expect(response.status).toBe(503);
