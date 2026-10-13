@@ -33,7 +33,7 @@ function nav() {
 async function onView(id: StageId) {
   const index = STAGES.findIndex((s) => s.id === id);
   const stage = STAGES[index];
-  await waitFor(() => expect(menu()).toHaveTextContent(`${index + 1}/${STAGES.length}${stage.label}`));
+  await waitFor(() => expect(menu()).toHaveTextContent(`${stage.label}${index + 1} of ${STAGES.length}`));
   const title = id === "welcome" ? EVENT.title : stage.title;
   expect(screen.getByRole("heading", { level: 1, name: title })).toBeInTheDocument();
 }

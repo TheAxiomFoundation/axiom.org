@@ -392,9 +392,11 @@ export function ChatWindow({
                   className={`${tile(householdId === OWN)} col-span-2 border-dashed sm:col-span-3`}
                 >
                   <span className="block font-body text-[0.98rem] font-medium text-[var(--color-ink)]">
-                    Your own question
+                    Start from a blank question
                   </span>
-                  <span className="block font-body text-[0.84rem] text-[var(--color-ink-muted)]">Any benefit, any state</span>
+                  <span className="block font-body text-[0.84rem] text-[var(--color-ink-muted)]">
+                    Your own question: any benefit, any state
+                  </span>
                 </button>
               </div>
             </fieldset>
