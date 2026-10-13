@@ -22,6 +22,13 @@ begin
     raise exception 'valid classification identity was not retained';
   end if;
 
+  update classification_test set execution_kind = 'deferred';
+  select * into r from classification_test;
+  if r.execution_kind is distinct from 'deferred'
+    or r.raw_yaml_sha256 is distinct from r.classification_yaml_sha256 then
+    raise exception 'digest-bound deferred classification was not retained';
+  end if;
+
   update classification_test set raw_yaml_sha256 = 'forged';
   select * into r from classification_test;
   if r.raw_yaml_sha256 is distinct from r.classification_yaml_sha256 then

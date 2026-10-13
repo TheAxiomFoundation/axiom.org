@@ -12,6 +12,14 @@ describe("mirror execution classification", () => {
     expect(classify("format: rulespec/v1\nmodule: {kind: composition}\nrules: []\n").execution_kind).toBe("composition");
     expect(classify("format: rulespec/v1\nmodule: {summary: A composition example}\nrules: []\n").execution_kind).toBe("provision");
   });
+  it("recognizes explicit empty deferral without inferring from summary or missing rules", () => {
+    expect(classify("format: rulespec/v1\nmodule: {status: deferred}\nrules: []\n").execution_kind).toBe("deferred");
+    expect(classify("format: rulespec/v1\nmodule: {summary: deferred}\nrules: []\n").execution_kind).toBe("provision");
+    expect(classify("format: rulespec/v1\nmodule: {status: deferred}\n").execution_kind).toBe("unknown");
+    expect(classify("format: rulespec/v1\nmodule: {status: deferred}\nrules: [{name: benefit}]\n").execution_kind).toBe("unknown");
+    expect(classify("format: rulespec/v1\nmodule: {status: deferred}\nrules: []\nimports: [us:statutes/42/402/a]\n").execution_kind).toBe("unknown");
+    expect(classify("format: rulespec/v1\nmodule: {kind: composition, status: deferred}\nrules: []\n").execution_kind).toBe("composition");
+  });
   it("marks program paths separately", () => {
     expect(classify("program: uk/universal-credit\nperiod: 2026-04\noutputs: []\n", "programs").execution_kind).toBe("program");
     expect(classify("format: rulespec/v1\nmodule: {}\nrules: []\n", "programs").execution_kind).toBe("program");
