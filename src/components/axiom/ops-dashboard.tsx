@@ -430,21 +430,26 @@ function RecentlyIngested({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <ul className="divide-y divide-border">
+        <div role="list" aria-label="Places" className="divide-y divide-border">
           {visible.map((place) => (
             <IngestPlace key={place.place} place={place} referenceMs={referenceMs} />
           ))}
-        </ul>
+        </div>
         {more.length > 0 && (
-          <details className="mt-3 border-t border-border pt-3 text-sm">
-            <summary className="cursor-pointer text-xs text-muted-foreground select-none">
+          <details className="group/more mt-3 border-t border-border pt-3">
+            <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs text-muted-foreground [&::-webkit-details-marker]:hidden">
+              <ChevronRight
+                size={12}
+                aria-hidden
+                className="shrink-0 transition-transform group-open/more:rotate-90"
+              />
               Show {more.length} more {more.length === 1 ? "place" : "places"}
             </summary>
-            <ul className="mt-2 divide-y divide-border">
+            <div role="list" aria-label="More places" className="mt-3 divide-y divide-border">
               {more.map((place) => (
                 <IngestPlace key={place.place} place={place} referenceMs={referenceMs} />
               ))}
-            </ul>
+            </div>
           </details>
         )}
       </CardContent>
@@ -452,7 +457,11 @@ function RecentlyIngested({
   );
 }
 
-/** One place's newest ingest days; each day opens to its scopes. */
+/**
+ * One place's newest ingest days; each day opens to its scopes. No `li`
+ * here: the card's stylesheet pads every `li` it holds by 16px, outside
+ * Tailwind's layer, so utilities could not tighten it.
+ */
 function IngestPlace({
   place,
   referenceMs,
@@ -461,7 +470,7 @@ function IngestPlace({
   referenceMs: number;
 }) {
   return (
-    <li className="py-2.5 first:pt-0 last:pb-0">
+    <div role="listitem" className="py-3 first:pt-0 last:pb-0">
       <div className="flex items-baseline justify-between gap-4">
         <p className="truncate text-sm font-medium text-foreground">
           {ownLevelName(place.place)}
@@ -470,53 +479,47 @@ function IngestPlace({
           {place.scopeCount} {place.scopeCount === 1 ? "scope" : "scopes"}
         </p>
       </div>
-      <ul className="mt-1 space-y-0.5">
+      <div className="mt-1.5 text-xs leading-5 text-muted-foreground">
         {place.days.map((day) => {
           const classes = documentClassSummary(day.scopes);
           return (
-            <li key={day.day}>
-              <details className="group text-xs text-muted-foreground">
-                <summary className="flex min-w-0 cursor-pointer items-center gap-1.5 select-none">
-                  <ChevronRight
-                    size={12}
-                    aria-hidden
-                    className="shrink-0 transition-transform group-open:rotate-90"
-                  />
-                  <span className="w-12 shrink-0 whitespace-nowrap tabular-nums">
-                    {ingestDay(day.day, referenceMs)}
-                  </span>
-                  <span className="truncate" title={classes}>
-                    {classes}
-                  </span>
-                </summary>
-                <ul className="mt-0.5 mb-1 ml-[18px] space-y-0.5">
-                  {day.scopes.map((scope) => (
-                    <li
-                      key={`${scope.jurisdiction}/${scope.document_class}/${scope.version}`}
-                      className="flex min-w-0 gap-2"
-                    >
-                      <span className="shrink-0">
-                        {scope.jurisdiction === place.place
-                          ? scope.document_class
-                          : `${placeName(scope.jurisdiction)} ${scope.document_class}`}
+            <details key={day.day} className="group/day">
+              <summary className="flex min-w-0 cursor-pointer list-none items-start gap-1.5 [&::-webkit-details-marker]:hidden">
+                <ChevronRight
+                  size={12}
+                  aria-hidden
+                  className="mt-1 shrink-0 transition-transform group-open/day:rotate-90"
+                />
+                <span className="w-12 shrink-0 whitespace-nowrap tabular-nums">
+                  {ingestDay(day.day, referenceMs)}
+                </span>
+                <span className="min-w-0 text-foreground">{classes}</span>
+              </summary>
+              <div className="mb-1 ml-[18px] border-l border-border pl-2.5">
+                {day.scopes.map((scope) => (
+                  <p
+                    key={`${scope.jurisdiction}/${scope.document_class}/${scope.version}`}
+                    className="font-mono text-[11px] leading-4 break-words"
+                  >
+                    {scope.jurisdiction !== place.place && (
+                      <span className="mr-1.5 font-sans text-xs text-foreground">
+                        {placeName(scope.jurisdiction)}
                       </span>
-                      <span className="truncate font-mono" title={scope.version}>
-                        {scope.version}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            </li>
+                    )}
+                    {scope.version}
+                  </p>
+                ))}
+              </div>
+            </details>
           );
         })}
-      </ul>
-      {place.earlierDays > 0 && (
-        <p className="mt-0.5 ml-[18px] text-xs text-muted-foreground">
-          and {place.earlierDays} earlier {place.earlierDays === 1 ? "day" : "days"}
-        </p>
-      )}
-    </li>
+        {place.earlierDays > 0 && (
+          <p className="ml-[18px]">
+            and {place.earlierDays} earlier {place.earlierDays === 1 ? "day" : "days"}
+          </p>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -603,7 +606,7 @@ function QueueRow({
         <h3 className="font-mono text-sm text-foreground break-all">
           {queue.queueId}
           {superseded && (
-            <span className="ml-2 font-sans text-xs text-muted-foreground">
+            <span className="ml-2 font-sans text-xs break-normal text-muted-foreground">
               earlier inventory, replaced by the dispatcher
             </span>
           )}

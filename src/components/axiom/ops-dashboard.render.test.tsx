@@ -471,8 +471,7 @@ describe("OpsDashboard", () => {
     expect(screen.getByText("Denmark")).toBeInTheDocument();
     expect(screen.getByText("1 scope")).toBeInTheDocument();
     expect(screen.getByText("Aug 4")).toBeInTheDocument();
-    // The day's summary, then the scope's own row under it.
-    expect(screen.getAllByText("statute")).toHaveLength(2);
+    expect(screen.getByText("statute")).toBeInTheDocument();
     expect(screen.getByText("2026-08-04-dk-full-parity-tier1")).toBeInTheDocument();
   });
 
@@ -497,9 +496,9 @@ describe("OpsDashboard", () => {
         ])}
       />,
     );
-    const places = [
-      ...container.querySelectorAll('aside[aria-label="Corpus pipeline"] li > div > p:first-child'),
-    ].map((p) => p.textContent);
+    const places = [...container.querySelectorAll('[role="listitem"] > div > p:first-child')].map(
+      (p) => p.textContent,
+    );
     // US Federal first on its tie with Colorado; Arkansas is the seventh place, folded.
     expect(places).toEqual([
       "US Federal",
@@ -511,9 +510,9 @@ describe("OpsDashboard", () => {
       "Arkansas",
     ]);
     expect(screen.getByText("2 statutes, guidance")).toBeInTheDocument();
-    expect(screen.getByText("Wakefield policy")).toBeInTheDocument();
+    expect(screen.getByText("Wakefield")).toBeInTheDocument();
     expect(screen.getByText("Show 1 more place")).toBeInTheDocument();
-    const colorado = screen.getByText("Colorado").closest("li")!;
+    const colorado = screen.getByText("Colorado").closest('[role="listitem"]') as HTMLElement;
     expect(within(colorado).getByText("2 scopes")).toBeInTheDocument();
     expect(within(colorado).getByText("Oct 12")).toBeInTheDocument();
     expect(within(colorado).getByText("Oct 6")).toBeInTheDocument();
