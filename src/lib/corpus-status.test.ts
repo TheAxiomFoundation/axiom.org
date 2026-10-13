@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getEncodingStatus,
   getRecentCorpusScopes,
+  groupRecentScopes,
+  versionDate,
   supabaseRestUrl,
   type SupabaseRestConfig,
 } from "./corpus-status";
@@ -381,3 +383,42 @@ function jsonResponse(value: unknown, options: { status?: number } = {}) {
     headers,
   });
 }
+
+describe("groupRecentScopes", () => {
+  const scope = (jurisdiction: string, document_class: string, version: string) => ({
+    jurisdiction,
+    document_class,
+    version,
+    synced_at: "2026-10-13T16:29:00Z",
+  });
+
+  it("makes one entry per ingest day, newest first, named by the shared version prefix", () => {
+    const groups = groupRecentScopes([
+      scope("us", "statute", "2026-10-12-w7-federal-usc-closure-title-26"),
+      scope("us-co", "regulation", "2026-10-12-w7-state-benefits-regulation-co"),
+      scope("us-va", "statute", "2026-10-12-w7-income-tax-statute-va"),
+      scope("us", "form", "2026-10-06-w6-federal-irs-forms"),
+      scope("us-ky", "form", "2026-09-30-ky-forms"),
+    ]);
+    expect(groups.map((g) => [g.day, g.batch, g.scopes.length])).toEqual([
+      ["2026-10-12", "2026-10-12-w7", 3],
+      ["2026-10-06", "2026-10-06-w6-federal-irs-forms", 1],
+      ["2026-09-30", "2026-09-30-ky-forms", 1],
+    ]);
+  });
+
+  it("keeps whole days up to the limit and skips versions without a date", () => {
+    const groups = groupRecentScopes(
+      [
+        scope("us", "form", "2026-10-12-a"),
+        scope("us-ky", "form", "2026-740-es"),
+        scope("us", "form", "2026-10-11-b"),
+        scope("us", "form", "2026-10-10-c"),
+      ],
+      2,
+    );
+    expect(groups.map((g) => g.day)).toEqual(["2026-10-12", "2026-10-11"]);
+    expect(versionDate("2026-740-es")).toBeNull();
+    expect(versionDate("2026-10-12-w7-x")).toBe("2026-10-12");
+  });
+});

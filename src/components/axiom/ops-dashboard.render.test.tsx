@@ -475,6 +475,24 @@ describe("OpsDashboard", () => {
     ).toBeInTheDocument();
   });
 
+  it("groups a day's scopes into one row with its count, places and batch", () => {
+    render(
+      <OpsDashboard
+        initialStatus={status({})}
+        encodingError={null}
+        queues={[]}
+        recentScopes={[
+          { ...SCOPE, jurisdiction: "dk", version: "2026-08-04-dk-tier1-statutes" },
+          { ...SCOPE, jurisdiction: "us", document_class: "guidance", version: "2026-08-04-dk-tier1-guidance" },
+        ]}
+      />,
+    );
+    expect(screen.getByText("2 scopes")).toBeInTheDocument();
+    expect(screen.getByText("· US Federal, Denmark")).toBeInTheDocument();
+    expect(screen.getByText("2026-08-04-dk-tier1")).toBeInTheDocument();
+    expect(screen.getByText("Show all")).toBeInTheDocument();
+  });
+
   it("names Israel from the jurisdictions seed, not a dashboard-local entry", () => {
     // JURISDICTION_NAMES spreads JURISDICTIONS_SEED, so seeding "il"
     // labels the ops surfaces too — no second copy to drift.

@@ -28,7 +28,7 @@ import {
   JURISDICTIONS_SEED,
 } from "@/lib/axiom/jurisdictions-seed";
 import type { EncodingQueueSummary } from "@/lib/axiom/encoding-queues";
-import type { RecentCorpusScope } from "@/lib/corpus-status";
+import { groupRecentScopes, type RecentCorpusScope } from "@/lib/corpus-status";
 import {
   composeGraphViewerUrl,
   graphFocusForCitationPath,
@@ -408,7 +408,8 @@ function RecentlyIngested({
   scopes: RecentCorpusScope[];
   referenceMs: number;
 }) {
-  if (scopes.length === 0) return null;
+  const groups = groupRecentScopes(scopes);
+  if (groups.length === 0) return null;
   return (
     <Card className={styles.supportCard}>
       <CardHeader className="border-b [.border-b]:pb-4">
@@ -424,36 +425,80 @@ function RecentlyIngested({
       </CardHeader>
       <CardContent>
         <ul className="divide-y divide-border">
-          {scopes.map((scope) => (
-            <li
-              key={`${scope.jurisdiction}/${scope.document_class}/${scope.version}`}
-              className="flex items-baseline justify-between gap-4 py-2.5 first:pt-0 last:pb-0"
-            >
-              <div className="min-w-0">
-                <p className="text-sm text-foreground">
-                  <span className="font-medium">
-                    {JURISDICTION_NAMES[scope.jurisdiction] ??
-                      scope.jurisdiction}
-                  </span>{" "}
-                  <span className="text-muted-foreground">
-                    {pluralizeDocumentClass(scope.document_class)}
-                  </span>
+          {groups.map((group) => {
+            const [first] = group.scopes;
+            const name = (jurisdiction: string) =>
+              JURISDICTION_NAMES[jurisdiction] ?? jurisdiction;
+            const places = [...new Set(group.scopes.map((scope) => scope.jurisdiction))]
+              .sort((a, b) => (a === "us" ? -1 : b === "us" ? 1 : name(a).localeCompare(name(b))))
+              .map(name);
+            const single = group.scopes.length === 1;
+            return (
+              <li
+                key={group.day}
+                className="flex items-baseline justify-between gap-4 py-2.5 first:pt-0 last:pb-0"
+              >
+                <div className="min-w-0">
+                  {single ? (
+                    <p className="text-sm text-foreground">
+                      <span className="font-medium">{name(first.jurisdiction)}</span>{" "}
+                      <span className="text-muted-foreground">
+                        {pluralizeDocumentClass(first.document_class)}
+                      </span>
+                    </p>
+                  ) : (
+                    <p className="truncate text-sm text-foreground" title={places.join(", ")}>
+                      <span className="font-medium">{group.scopes.length} scopes</span>{" "}
+                      <span className="text-muted-foreground">· {places.join(", ")}</span>
+                    </p>
+                  )}
+                  <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
+                    {single ? first.version : group.batch || first.version}
+                  </p>
+                  {!single && (
+                    <details className="mt-0.5 text-xs text-muted-foreground">
+                      <summary className="cursor-pointer select-none">Show all</summary>
+                      <ul className="mt-1 space-y-0.5">
+                        {group.scopes.map((scope) => (
+                          <li
+                            key={`${scope.jurisdiction}/${scope.document_class}/${scope.version}`}
+                            className="flex min-w-0 gap-2"
+                          >
+                            <span className="shrink-0">
+                              {name(scope.jurisdiction)} {pluralizeDocumentClass(scope.document_class)}
+                            </span>
+                            <span className="truncate font-mono" title={scope.version}>
+                              {scope.version}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                </div>
+                <p className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
+                  {ingestDay(group.day, referenceMs)}
                 </p>
-                <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
-                  {scope.version}
-                </p>
-              </div>
-              <p className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
-                {scope.synced_at
-                  ? relativeTime(scope.synced_at, referenceMs)
-                  : "—"}
-              </p>
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ul>
       </CardContent>
     </Card>
   );
+}
+
+/** An ingest date as "Oct 12" (with the year when it is not the current one). */
+function ingestDay(day: string, referenceMs: number): string {
+  const date = new Date(`${day}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return day;
+  const sameYear = date.getUTCFullYear() === new Date(referenceMs).getUTCFullYear();
+  return date.toLocaleDateString("en-US", {
+    timeZone: "UTC",
+    month: "short",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+  });
 }
 
 function pluralizeDocumentClass(documentClass: string): string {

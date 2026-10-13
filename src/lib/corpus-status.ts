@@ -178,31 +178,98 @@ export interface RecentCorpusScope {
   synced_at: string | null;
 }
 
-const RECENT_SCOPE_LIMIT = 8;
+/** Rows per read (the REST API returns at most 1,000), and reads at most. */
+const RECENT_SCOPE_PAGE = 1000;
+const RECENT_SCOPE_PAGES = 5;
+/** Ingest days the feed shows. */
+const RECENT_DAY_LIMIT = 5;
 
 /**
- * The most recently synced scopes of the active corpus release — the ops
- * dashboard's "recently ingested" feed. Scope versions are the ingest
- * batches themselves (e.g. `2026-08-04-dk-full-parity-tier1`). Best-effort:
+ * The newest ingest batches of the active corpus release — the ops
+ * dashboard's "recently ingested" feed: every scope of its newest
+ * RECENT_DAY_LIMIT ingest days. Scope versions are the ingest batches
+ * themselves and start with their ingest date (e.g.
+ * `2026-08-04-dk-full-parity-tier1`), so the feed orders by version: an
+ * activation re-syncs every scope whose release it changes, so `synced_at`
+ * says when the release moved, not when a scope was ingested. Versions
+ * without a leading date are left out. Reads pages until a day past the
+ * newest RECENT_DAY_LIMIT appears, so each day is whole. Best-effort:
  * failures return an empty list.
  */
 export async function getRecentCorpusScopes(): Promise<RecentCorpusScope[]> {
   const config = getSupabaseRestConfig();
   if (!config) return [];
   try {
-    return await readSupabaseRows<RecentCorpusScope>(
-      config,
-      "corpus",
-      "current_release_scopes",
-      {
-        select: "jurisdiction,document_class,version,synced_at",
-        order: "synced_at.desc.nullslast",
-        limit: String(RECENT_SCOPE_LIMIT),
-      }
-    );
+    const scopes: RecentCorpusScope[] = [];
+    for (let page = 0; page < RECENT_SCOPE_PAGES; page++) {
+      const rows = await readSupabaseRows<RecentCorpusScope>(
+        config,
+        "corpus",
+        "current_release_scopes",
+        {
+          select: "jurisdiction,document_class,version,synced_at",
+          version: "match.^[0-9]{4}-[0-9]{2}-[0-9]{2}-",
+          order: "version.desc,jurisdiction.asc,document_class.asc",
+          limit: String(RECENT_SCOPE_PAGE),
+          offset: String(page * RECENT_SCOPE_PAGE),
+        }
+      );
+      scopes.push(...rows);
+      const days = new Set(scopes.map((scope) => versionDate(scope.version)));
+      if (rows.length < RECENT_SCOPE_PAGE || days.size > RECENT_DAY_LIMIT) break;
+    }
+    return scopes;
   } catch {
     return [];
   }
+}
+
+export interface RecentIngestDay {
+  /** YYYY-MM-DD. */
+  day: string;
+  /** The version prefix every scope of the day shares, e.g. `2026-10-12-w7`. */
+  batch: string;
+  /** Newest version first. */
+  scopes: RecentCorpusScope[];
+}
+
+/** The ingest date a scope version starts with. */
+export function versionDate(version: string): string | null {
+  return /^(\d{4}-\d{2}-\d{2})-/.exec(version)?.[1] ?? null;
+}
+
+/** The longest run of whole `-`-separated parts that every version starts with. */
+function sharedPrefix(versions: string[]): string {
+  const split = versions.map((version) => version.split("-"));
+  const shared: string[] = [];
+  for (let i = 0; i < split[0].length; i++) {
+    const part = split[0][i];
+    if (split.some((parts) => parts[i] !== part)) break;
+    shared.push(part);
+  }
+  return shared.join("-");
+}
+
+/**
+ * Recent scopes as one entry per ingest day, newest first: a wave ingests
+ * dozens of scopes on one day, which would otherwise fill the feed.
+ */
+export function groupRecentScopes(
+  scopes: RecentCorpusScope[],
+  limit = RECENT_DAY_LIMIT,
+): RecentIngestDay[] {
+  const days = new Map<string, RecentCorpusScope[]>();
+  for (const scope of scopes) {
+    const day = versionDate(scope.version);
+    if (!day) continue;
+    if (!days.has(day) && days.size >= limit) continue;
+    days.set(day, [...(days.get(day) ?? []), scope]);
+  }
+  return [...days.entries()].map(([day, dayScopes]) => ({
+    day,
+    batch: sharedPrefix(dayScopes.map((scope) => scope.version)),
+    scopes: dayScopes,
+  }));
 }
 
 const CITATION_LABEL_LOOKUP_LIMIT = 200;
