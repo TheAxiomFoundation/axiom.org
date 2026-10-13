@@ -471,14 +471,7 @@ function IngestPlace({
 }) {
   return (
     <div role="listitem" className="py-3 first:pt-0 last:pb-0">
-      <div className="flex items-baseline justify-between gap-4">
-        <p className="truncate text-sm font-medium text-foreground">
-          {ownLevelName(place.place)}
-        </p>
-        <p className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
-          {place.scopeCount} {place.scopeCount === 1 ? "scope" : "scopes"}
-        </p>
-      </div>
+      <p className="truncate text-sm font-medium text-foreground">{ownLevelName(place.place)}</p>
       <div className="mt-1.5 text-xs leading-5 text-muted-foreground">
         {place.days.map((day) => {
           const classes = documentClassSummary(day.scopes);
@@ -513,11 +506,6 @@ function IngestPlace({
             </details>
           );
         })}
-        {place.earlierDays > 0 && (
-          <p className="ml-[18px]">
-            and {place.earlierDays} earlier {place.earlierDays === 1 ? "day" : "days"}
-          </p>
-        )}
       </div>
     </div>
   );

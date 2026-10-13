@@ -469,7 +469,7 @@ describe("OpsDashboard", () => {
     );
     expect(screen.getByText("Recently ingested")).toBeInTheDocument();
     expect(screen.getByText("Denmark")).toBeInTheDocument();
-    expect(screen.getByText("1 scope")).toBeInTheDocument();
+    expect(screen.queryByText(/\bscopes?\b/)).not.toBeInTheDocument();
     expect(screen.getByText("Aug 4")).toBeInTheDocument();
     expect(screen.getByText("statute")).toBeInTheDocument();
     expect(screen.getByText("2026-08-04-dk-full-parity-tier1")).toBeInTheDocument();
@@ -496,7 +496,7 @@ describe("OpsDashboard", () => {
         ])}
       />,
     );
-    const places = [...container.querySelectorAll('[role="listitem"] > div > p:first-child')].map(
+    const places = [...container.querySelectorAll('[role="listitem"] > p:first-child')].map(
       (p) => p.textContent,
     );
     // US Federal first on its tie with Colorado; Arkansas is the seventh place, folded.
@@ -513,7 +513,6 @@ describe("OpsDashboard", () => {
     expect(screen.getByText("Wakefield")).toBeInTheDocument();
     expect(screen.getByText("Show 1 more place")).toBeInTheDocument();
     const colorado = screen.getByText("Colorado").closest('[role="listitem"]') as HTMLElement;
-    expect(within(colorado).getByText("2 scopes")).toBeInTheDocument();
     expect(within(colorado).getByText("Oct 12")).toBeInTheDocument();
     expect(within(colorado).getByText("Oct 6")).toBeInTheDocument();
   });

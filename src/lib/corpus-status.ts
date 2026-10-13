@@ -232,12 +232,8 @@ export interface RecentIngestDay {
 export interface RecentIngestPlace {
   /** A US state (`us-co`), the US federal level (`us`), or a country (`uk`). */
   place: string;
-  /** Scopes the place has in the feed, over all its days. */
-  scopeCount: number;
   /** Its newest ingest days, newest first. */
   days: RecentIngestDay[];
-  /** Ingest days older than those. */
-  earlierDays: number;
 }
 
 /** The ingest date a scope version starts with. */
@@ -284,12 +280,7 @@ export function groupRecentScopes(
             a.version.localeCompare(b.version, "en", { numeric: true }),
           ),
         }));
-      return {
-        place,
-        scopeCount: sorted.reduce((total, day) => total + day.scopes.length, 0),
-        days: sorted.slice(0, dayLimit),
-        earlierDays: Math.max(0, sorted.length - dayLimit),
-      };
+      return { place, days: sorted.slice(0, dayLimit) };
     })
     .sort(
       (a, b) =>

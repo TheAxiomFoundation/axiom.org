@@ -403,12 +403,12 @@ describe("groupRecentScopes", () => {
       scope("be-bru", "statute", "2026-07-10-be-regions"),
     ]);
     expect(
-      places.map((p) => [p.place, p.scopeCount, p.days.map((d) => [d.day, d.scopes.length])]),
+      places.map((p) => [p.place, p.days.map((d) => [d.day, d.scopes.length])]),
     ).toEqual([
-      ["us", 2, [["2026-10-12", 1], ["2026-10-06", 1]]],
-      ["us-co", 2, [["2026-10-12", 1], ["2026-09-15", 1]]],
-      ["uk", 2, [["2026-09-05", 2]]],
-      ["be", 1, [["2026-07-10", 1]]],
+      ["us", [["2026-10-12", 1], ["2026-10-06", 1]]],
+      ["us-co", [["2026-10-12", 1], ["2026-09-15", 1]]],
+      ["uk", [["2026-09-05", 2]]],
+      ["be", [["2026-07-10", 1]]],
     ]);
     expect(places[2].days[0].scopes.map((s) => s.jurisdiction)).toEqual(["uk-leeds", "uk-wakefield"]);
     const [federal] = groupRecentScopes([
@@ -421,7 +421,7 @@ describe("groupRecentScopes", () => {
     ]);
   });
 
-  it("keeps each place's newest days, counts the rest, and skips versions without a date", () => {
+  it("keeps each place's newest days and skips versions without a date", () => {
     const [place] = groupRecentScopes(
       [
         scope("us", "form", "2026-10-12-a"),
@@ -432,7 +432,6 @@ describe("groupRecentScopes", () => {
       2,
     );
     expect(place.days.map((d) => d.day)).toEqual(["2026-10-12", "2026-10-11"]);
-    expect([place.scopeCount, place.earlierDays]).toEqual([3, 1]);
     expect(versionDate("2026-740-es")).toBeNull();
     expect(versionDate("2026-10-12-w7-x")).toBe("2026-10-12");
     expect(["us", "us-co", "us-co-denver", "uk-wakefield", "dk"].map(ingestPlace)).toEqual([
