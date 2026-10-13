@@ -1,11 +1,11 @@
 "use client";
 
 import { Fragment, useEffect, useState } from "react";
+import { ChevronRight } from "lucide-react";
 import styles from "./ops-dashboard.module.css";
 import { relativeTime } from "./ops-dashboard";
 import { RunTimeline } from "./run-timeline";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { journeyHref } from "@/lib/axiom/encoding-pipeline";
 import { scopeSearch, type PipelineScope } from "@/lib/axiom/encoding-pipeline-insights";
 import { runTimeline, type RunRow } from "@/lib/axiom/encoding-pipeline-runs";
 import {
@@ -221,24 +221,25 @@ function DocumentSections({
             : "";
         return (
           <Fragment key={section.citation}>
-            <TableRow className="border-b border-[var(--color-rule-subtle)] hover:bg-[var(--color-rule-subtle)]">
-              <TableCell className="py-1.5 pl-5 pr-2 align-baseline font-mono whitespace-normal break-all">
+            <TableRow
+              className="cursor-pointer border-b border-[var(--color-rule-subtle)] hover:bg-[var(--color-rule-subtle)]"
+              // The whole row opens the section's runs, except its own links (the bundle chips).
+              onClick={(event) => {
+                if (!(event.target as Element).closest("a, button")) onSection(section.citation);
+              }}
+            >
+              <TableCell className="py-1.5 pl-5 pr-2 align-baseline font-mono whitespace-normal break-words">
                 <button
                   type="button"
                   className={styles.ledgerToggle}
                   aria-expanded={open}
                   aria-label={`Runs of ${section.citation}`}
+                  title={section.citation}
                   onClick={() => onSection(section.citation)}
                 >
-                  <span aria-hidden>{open ? "▾" : "▸"}</span>
+                  <ChevronRight size={14} aria-hidden className={styles.ledgerChevron} />
+                  <span>{section.designator}</span>
                 </button>
-                <a
-                  href={journeyHref(section.citation)}
-                  title={section.citation}
-                  className="text-[var(--color-ink)] no-underline hover:underline"
-                >
-                  {section.designator}
-                </a>
               </TableCell>
               <TableCell className="px-2 py-1.5 align-baseline whitespace-normal text-[var(--color-ink-secondary)]">
                 {label}
@@ -339,11 +340,12 @@ function RunLines({ runs, referenceMs }: { runs: RunRow[]; referenceMs: number }
               className={styles.ledgerToggle}
               aria-expanded={open === run.id}
               aria-label={`Timeline of ${run.citation}, run ${run.id}`}
+              title={run.dispatchedAt}
               onClick={() => setOpen((current) => (current === run.id ? null : run.id))}
             >
-              <span aria-hidden>{open === run.id ? "▾" : "▸"}</span>
+              <ChevronRight size={14} aria-hidden className={styles.ledgerChevron} />
+              <span>{relativeTime(run.dispatchedAt, referenceMs)}</span>
             </button>
-            <span title={run.dispatchedAt}>{relativeTime(run.dispatchedAt, referenceMs)}</span>
             {run.encoder && <span className="font-mono">{run.encoder}</span>}
             <a href={run.runUrl} target="_blank" rel="noreferrer" data-outcome={run.outcome}>
               {run.outcomeLabel}

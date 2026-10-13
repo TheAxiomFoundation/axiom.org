@@ -214,7 +214,7 @@ export function BundleOverview({
           <p className={styles.note}>
             {count === "documents"
               ? "Documents complete, as each bundle's page leads with them."
-              : "Provisions encoded (Tier 1: the provisions PolicyEngine cites), as each bundle's page counts them."}{" "}
+              : "Provisions encoded (Tier 1: the provisions the screener cites), as each bundle's page counts them."}{" "}
             {view === "program"
               ? "A state's bundle includes the program's federal law."
               : "By state, each jurisdiction counts only its own documents: the federal law has its own row."}{" "}

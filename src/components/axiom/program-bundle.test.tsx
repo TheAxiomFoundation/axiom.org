@@ -147,11 +147,11 @@ describe("ProgramBundle", () => {
     const headers = within(matrix).getAllByRole("columnheader");
     // Both tiers lead with how much is encoded; under the screener tier's, its comparison run.
     expect(headers[1]).toHaveTextContent(
-      /Screener-level parity\?0 of 1 document complete0%0 complete and validated · 0%\?Comparison run against PolicyEngine/
+      /Screener-level parity\?0 of 1 document complete0%0 complete and validated · 0%\?Comparison run against the screener/
     );
     // The comparison run is a result, and says why it is 0%.
     expect(headers[1]).toHaveTextContent(
-      "0% of eligible households matchAxiom finds no household eligible: held by rulespec-us#1116597 mismatches to fix in Axiom · run Jul 28, 2026 · PolicyEngine-US 1.767.3 (newest 2.29.10)"
+      "0% of eligible households matchAxiom finds no household eligible: held by rulespec-us#1116597 mismatches to fix in Axiom · run Jul 28, 2026 · screener 1.767.3 (newest 2.29.10)"
     );
     expect(headers[2]).toHaveTextContent(/Full document bundle.*0 of 1 document complete0%/);
     // Rows in the bundle's order of parts.
@@ -171,7 +171,7 @@ describe("ProgramBundle", () => {
     fireEvent.click(screen.getByRole("radio", { name: "Provisions" }));
     const matrix = screen.getByRole("table", { name: "Parts of the program by tier" });
     const headers = within(matrix).getAllByRole("columnheader");
-    // Tier 1 is PolicyEngine parity: it counts the provisions PolicyEngine cites, each in its own part.
+    // Tier 1 is screener-level parity: it counts the provisions the screener cites, each in its own part.
     expect(headers[1]).toHaveTextContent(/1 of 2 cited provisions encoded50%/);
     expect(
       within(matrix).getByRole("button", { name: "Income, Screener-level parity: 1 of 1 cited provision encoded" })
@@ -203,7 +203,7 @@ describe("ProgramBundle", () => {
     expect(within(cells.at(-4)!).getByRole("button", { name: "1 excluded" })).toBeEnabled();
     expect(within(cells.at(-4)!).getByRole("button", { name: "0 complete" })).toBeDisabled();
     expect(cells.at(-2)).toHaveTextContent(
-      "2 cited by PolicyEngineEncoded1Encoded, not validated0Partly encoded0Deferred1In progress0Failed0Not started0Not in the corpus0"
+      "2 cited by the screenerEncoded1Encoded, not validated0Partly encoded0Deferred1In progress0Failed0Not started0Not in the corpus0"
     );
   });
 
@@ -217,14 +217,14 @@ describe("ProgramBundle", () => {
     expect(within(document).getByText("Encoded").parentElement).toHaveTextContent("Encoded1");
     fireEvent.click(screen.getByRole("button", { name: /0% of eligible households match/ }));
     const parity = screen.getByRole("complementary", { name: "Screener-level parity" });
-    expect(within(parity).getByRole("heading", { name: "0% of eligible households match PolicyEngine" })).toBeInTheDocument();
-    expect(parity).toHaveTextContent("Eligible householdsPolicyEngine 28% · Axiom 0%");
+    expect(within(parity).getByRole("heading", { name: "0% of eligible households match the screener" })).toBeInTheDocument();
+    expect(parity).toHaveTextContent("Eligible householdsScreener 28% · Axiom 0%");
     expect(parity).toHaveTextContent("Axiom errors to fix597 of 597 mismatches");
     expect(within(parity).getByRole("link", { name: "rulespec-us#1116" })).toHaveAttribute(
       "href",
       "https://github.com/TheAxiomFoundation/rulespec-us/issues/1116"
     );
-    expect(parity).toHaveTextContent("PolicyEngine citations1 of 2 encoded");
+    expect(parity).toHaveTextContent("Screener citations1 of 2 encoded");
     fireEvent.click(within(parity).getByRole("button", { name: /7 USC 2014 \/b/ }));
     const unit = screen.getByRole("complementary", { name: "Cited provision" });
     expect(within(unit).getByRole("link", { name: "us/statute/7/2014/b" })).toHaveAttribute("href", "/us/statute/7/2014/b");
@@ -267,7 +267,7 @@ describe("ProgramBundle", () => {
     fireEvent.click(within(panel).getByRole("radio", { name: "Part" }));
     const income = within(panel).getByRole("button", { name: /^Income/ });
     expect(income).toHaveAttribute("aria-expanded", "false");
-    // Tier 1 counts the provisions PolicyEngine cites: two in 7 USC 2014, and all three of 7 USC 2017, cited whole.
+    // Tier 1 counts the provisions the screener cites: two in 7 USC 2014, and all three of 7 USC 2017, cited whole.
     expect(income).toHaveTextContent("Income2 documents · 0 complete1 of 5 cited provisions encoded");
     expect(within(panel).getByRole("button", { name: /^Deductions/ })).toHaveTextContent(
       "Deductions1 document · 0 complete · 1 not in the corpus0 of 1 cited provision encoded"
@@ -304,7 +304,7 @@ describe("ProgramBundle", () => {
     render(<ProgramBundle bundle={withParts} documents={documents} available referenceMs={NOW} />);
     const provenance = screen.getByRole("region", { name: "Where the numbers come from" });
     expect(provenance).toHaveTextContent("2.29.11 (4c900b6d3d), 448 references; the newest release");
-    expect(provenance).toHaveTextContent("az-snap-ecps, PolicyEngine-US 1.767.3, Jul 28, 2026");
+    expect(provenance).toHaveTextContent("az-snap-ecps, screener 1.767.3, Jul 28, 2026");
     expect(provenance).toHaveTextContent("FY2027");
     expect(provenance).toHaveTextContent("12 known sources");
   });
