@@ -1,7 +1,7 @@
 "use client";
 
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { Activity, ArrowDownToLine, ListOrdered } from "lucide-react";
+import { Activity, ArrowDownToLine, ChevronRight, ListOrdered } from "lucide-react";
 import styles from "./ops-dashboard.module.css";
 import type {
   CorpusStatusArtifact,
@@ -28,7 +28,8 @@ import {
   JURISDICTIONS_SEED,
 } from "@/lib/axiom/jurisdictions-seed";
 import type { EncodingQueueSummary } from "@/lib/axiom/encoding-queues";
-import type { RecentCorpusScope } from "@/lib/corpus-status";
+import type { RecentIngestDay, RecentIngestPlace } from "@/lib/corpus-status";
+import { jurisdictionName as placeName, ownLevelName } from "@/lib/axiom/jurisdiction-names";
 import {
   composeGraphViewerUrl,
   graphFocusForCitationPath,
@@ -63,7 +64,8 @@ interface OpsDashboardProps {
   initialStatus: EncodingOpsStatus | null;
   encodingError: string | null;
   queues: EncodingQueueSummary[];
-  recentScopes: RecentCorpusScope[];
+  /** The "recently ingested" feed, grouped by place on the server. */
+  recentPlaces: RecentIngestPlace[];
   /** The end-to-end pipeline section, rendered server-side by the page. */
   pipeline?: ReactNode;
   /** A ledger of every run, in place of the one built from encoder records. */
@@ -233,7 +235,7 @@ export function OpsDashboard({
   initialStatus,
   encodingError,
   queues,
-  recentScopes,
+  recentPlaces,
   pipeline,
   ledger,
   bundles,
@@ -360,7 +362,7 @@ export function OpsDashboard({
           aria-labelledby={tabs.length > 1 ? "ops-tab-ledger" : undefined}
           hidden={tab !== "ledger"}
           className={
-            queues.length || recentScopes.length
+            queues.length || recentPlaces.length
               ? styles.workspace
               : styles.ledgerOnly
           }
@@ -372,11 +374,11 @@ export function OpsDashboard({
               labels={labels}
             />
           )}
-          {(queues.length > 0 || recentScopes.length > 0) && (
+          {(queues.length > 0 || recentPlaces.length > 0) && (
             <aside className={styles.sidebar} aria-label="Corpus pipeline">
               <QueuedWork queues={queues} />
               <RecentlyIngested
-                scopes={recentScopes}
+                places={recentPlaces}
                 referenceMs={referenceMs}
               />
             </aside>
@@ -399,16 +401,21 @@ export function OpsDashboard({
   );
 }
 
-/* ── Recently ingested: what just entered the corpus ── */
+/* ── Recently ingested: what just entered the corpus, by place ── */
+
+/** Places the card lists before "Show more places". */
+const RECENT_VISIBLE_PLACES = 6;
 
 function RecentlyIngested({
-  scopes,
+  places,
   referenceMs,
 }: {
-  scopes: RecentCorpusScope[];
+  places: RecentIngestPlace[];
   referenceMs: number;
 }) {
-  if (scopes.length === 0) return null;
+  if (places.length === 0) return null;
+  const visible = places.slice(0, RECENT_VISIBLE_PLACES);
+  const more = places.slice(RECENT_VISIBLE_PLACES);
   return (
     <Card className={styles.supportCard}>
       <CardHeader className="border-b [.border-b]:pb-4">
@@ -419,41 +426,116 @@ function RecentlyIngested({
           </h2>
         </CardTitle>
         <CardDescription>
-          The newest additions to the signed corpus release.
+          The newest additions to the signed corpus release, by place and date.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <ul className="divide-y divide-border">
-          {scopes.map((scope) => (
-            <li
-              key={`${scope.jurisdiction}/${scope.document_class}/${scope.version}`}
-              className="flex items-baseline justify-between gap-4 py-2.5 first:pt-0 last:pb-0"
-            >
-              <div className="min-w-0">
-                <p className="text-sm text-foreground">
-                  <span className="font-medium">
-                    {JURISDICTION_NAMES[scope.jurisdiction] ??
-                      scope.jurisdiction}
-                  </span>{" "}
-                  <span className="text-muted-foreground">
-                    {pluralizeDocumentClass(scope.document_class)}
-                  </span>
-                </p>
-                <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
-                  {scope.version}
-                </p>
-              </div>
-              <p className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
-                {scope.synced_at
-                  ? relativeTime(scope.synced_at, referenceMs)
-                  : "—"}
-              </p>
-            </li>
+        <div role="list" aria-label="Places" className="divide-y divide-border">
+          {visible.map((place) => (
+            <IngestPlace key={place.place} place={place} referenceMs={referenceMs} />
           ))}
-        </ul>
+        </div>
+        {more.length > 0 && (
+          <details className="group/more mt-3 border-t border-border pt-3">
+            <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs text-muted-foreground [&::-webkit-details-marker]:hidden">
+              <ChevronRight
+                size={12}
+                aria-hidden
+                className="shrink-0 transition-transform group-open/more:rotate-90"
+              />
+              Show {more.length} more {more.length === 1 ? "place" : "places"}
+            </summary>
+            <div role="list" aria-label="More places" className="mt-3 divide-y divide-border">
+              {more.map((place) => (
+                <IngestPlace key={place.place} place={place} referenceMs={referenceMs} />
+              ))}
+            </div>
+          </details>
+        )}
       </CardContent>
     </Card>
   );
+}
+
+/**
+ * One place's newest ingest days; each day opens to its scopes. No `li`
+ * here: the card's stylesheet pads every `li` it holds by 16px, outside
+ * Tailwind's layer, so utilities could not tighten it.
+ */
+function IngestPlace({
+  place,
+  referenceMs,
+}: {
+  place: RecentIngestPlace;
+  referenceMs: number;
+}) {
+  return (
+    <div role="listitem" className="py-3 first:pt-0 last:pb-0">
+      <p className="truncate text-sm font-medium text-foreground">{ownLevelName(place.place)}</p>
+      <div className="mt-1.5 text-xs leading-5 text-muted-foreground">
+        {place.days.map((day) => {
+          const classes = documentClassSummary(day.scopes);
+          return (
+            <details key={day.day} className="group/day">
+              <summary className="flex min-w-0 cursor-pointer list-none items-start gap-1.5 [&::-webkit-details-marker]:hidden">
+                <ChevronRight
+                  size={12}
+                  aria-hidden
+                  className="mt-1 shrink-0 transition-transform group-open/day:rotate-90"
+                />
+                <span className="w-12 shrink-0 whitespace-nowrap tabular-nums">
+                  {ingestDay(day.day, referenceMs)}
+                </span>
+                <span className="min-w-0 text-foreground">{classes}</span>
+              </summary>
+              <div className="mb-1 ml-[18px] border-l border-border pl-2.5">
+                {day.scopes.map((scope) => (
+                  <p
+                    key={`${scope.jurisdiction}/${scope.document_class}/${scope.version}`}
+                    className="font-mono text-[11px] leading-4 break-words"
+                  >
+                    {scope.jurisdiction !== place.place && (
+                      <span className="mr-1.5 font-sans text-xs text-foreground">
+                        {placeName(scope.jurisdiction)}
+                      </span>
+                    )}
+                    {scope.version}
+                  </p>
+                ))}
+              </div>
+            </details>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** A day's document classes, most first: "6 statutes, guidance". */
+function documentClassSummary(scopes: RecentIngestDay["scopes"]): string {
+  const counts = new Map<string, number>();
+  for (const scope of scopes) {
+    counts.set(scope.document_class, (counts.get(scope.document_class) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort(([a, x], [b, y]) => y - x || a.localeCompare(b))
+    .map(([documentClass, count]) =>
+      count === 1 ? documentClass : `${count} ${pluralizeDocumentClass(documentClass)}`,
+    )
+    .join(", ");
+}
+
+/** An ingest date as "Oct 12" (with the year when it is not the current one). */
+function ingestDay(day: string, referenceMs: number): string {
+  const date = new Date(`${day}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return day;
+  const sameYear = date.getUTCFullYear() === new Date(referenceMs).getUTCFullYear();
+  return date.toLocaleDateString("en-US", {
+    timeZone: "UTC",
+    month: "short",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+  });
 }
 
 function pluralizeDocumentClass(documentClass: string): string {
@@ -512,7 +594,7 @@ function QueueRow({
         <h3 className="font-mono text-sm text-foreground break-all">
           {queue.queueId}
           {superseded && (
-            <span className="ml-2 font-sans text-xs text-muted-foreground">
+            <span className="ml-2 font-sans text-xs break-normal text-muted-foreground">
               earlier inventory, replaced by the dispatcher
             </span>
           )}

@@ -128,7 +128,7 @@ export function BundleOverview({
     return any ? any.title.replace(new RegExp(` ${programTitle(any.program)}$`), "") : j;
   };
   const unit = (t: BundleTierId) =>
-    count === "documents" ? "documents" : t === "screener" ? "cited provisions" : "provisions";
+    count === "documents" ? "documents" : t === "screener" ? "Tier 1 provisions" : "provisions";
   const verb = count === "documents" ? "complete" : "encoded";
   const link = (id: string) => bundleHref(id, count);
 
@@ -214,7 +214,7 @@ export function BundleOverview({
           <p className={styles.note}>
             {count === "documents"
               ? "Documents complete, as each bundle's page leads with them."
-              : "Provisions encoded (Tier 1: the provisions PolicyEngine cites), as each bundle's page counts them."}{" "}
+              : "Provisions encoded, as each bundle's page counts them (Tier 1 counts only its own provisions)."}{" "}
             {view === "program"
               ? "A state's bundle includes the program's federal law."
               : "By state, each jurisdiction counts only its own documents: the federal law has its own row."}{" "}
@@ -300,7 +300,7 @@ export function BundleOverview({
             <thead>
               <tr>
                 <th scope="col">{view === "program" ? "State" : "Program"}</th>
-                <th scope="col">Tier 1 · screener parity</th>
+                <th scope="col">Tier 1 · screener-level parity</th>
                 <th scope="col">Tier 2 · full bundle</th>
               </tr>
             </thead>

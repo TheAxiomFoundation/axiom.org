@@ -41,7 +41,15 @@ describe("PipelineLedger", () => {
     expect(within(ledger).getByText("Agriculture")).toBeInTheDocument();
     const row = screen.getByRole("button", { name: "Runs of us/statute/7/2015/f" }).closest("tr")!;
     expect(row).toHaveTextContent(/2015\/f.*Disqualification.*Tests pass.*2/);
-    expect(within(row).getByRole("link", { name: "2015/f" })).toHaveAttribute("href", "/ops/journey?citation=us%2Fstatute%2F7%2F2015%2Ff");
+    // The citation opens its runs in place; the row has no link to a separate page.
+    expect(within(row).queryByRole("link", { name: "2015/f" })).toBeNull();
+    const toggle = within(row).getByRole("button", { name: "Runs of us/statute/7/2015/f" });
+    expect(toggle).toHaveTextContent("2015/f");
+    // A click anywhere on the row opens it too, and again closes it.
+    fireEvent.click(within(row).getByText("Tests pass"));
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
     // The program bundle and tier the section belongs to.
     expect(within(row).getByRole("link", { name: "Arizona SNAP · Tier 1" })).toHaveAttribute("href", "/ops?tab=bundles&bundle=us-az/snap");
     expect(within(screen.getByRole("button", { name: "Runs of us-la/statute/47/32" }).closest("tr")!).queryByRole("link", { name: /SNAP/ })).toBeNull();
@@ -97,7 +105,7 @@ describe("PipelineLedger", () => {
     fireEvent.click(every);
     const lines = within(screen.getByRole("list", { name: "Every run" })).getAllByRole("listitem");
     expect(lines).toHaveLength(12);
-    expect(lines[11]).toHaveTextContent("▸29d ago0.2.2000Failed validationCompleteness rule: tests");
+    expect(lines[11]).toHaveTextContent("29d ago0.2.2000Failed validationCompleteness rule: tests");
     fireEvent.click(within(lines[11]).getByRole("button", { name: "Timeline of us/statute/7/2015/f, run r0" }));
     expect(screen.getAllByRole("region", { name: "Encode run" })).toHaveLength(2);
     fireEvent.click(screen.getByRole("button", { name: "Hide the runs" }));
