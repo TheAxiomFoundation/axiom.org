@@ -653,6 +653,39 @@ describe("ChatWindow saved conversation", () => {
     expect(saved().conversationId).not.toBe("c-1");
   });
 
+  it("offers a new question right under the saved rating, and scrolls back up to ask it", async () => {
+    store({
+      perspective: "caseworker",
+      householdId: "ny-parent",
+      questionIds: ["eligible"],
+      draft: "",
+      template: null,
+      conversationId: "c-7",
+      turns: turns.slice(0, 2),
+      rated: ["p1"],
+    });
+    routeFetch({});
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    const verdict = await screen.findByRole("region", { name: "Your verdict" });
+    fireEvent.click(within(verdict).getByRole("button", { name: /Ask a new question/ }));
+    expect(screen.queryByText("Answer one")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Working parent of two/ })).toHaveAttribute("aria-pressed", "true");
+    expect(draftBox().value).toBe(composePrompt("caseworker", findHousehold("ny-parent")!, "eligible"));
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
+    await waitFor(() => expect(saved().turns).toEqual([]));
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+  });
+
+  it("keeps the new-question button away until the answer is rated", async () => {
+    store({ perspective: "resident", householdId: "az-retiree", questionIds: ["amount"], conversationId: "c-8", turns: turns.slice(0, 2), rated: [] });
+    routeFetch({});
+    render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    await screen.findByText("Answer one");
+    expect(screen.queryByRole("button", { name: /Ask a new question/ })).not.toBeInTheDocument();
+  });
+
   it("starts over with 'New question' from an open follow-up, closing it", async () => {
     store({
       perspective: "resident",

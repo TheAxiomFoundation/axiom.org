@@ -134,6 +134,7 @@ export function ChatWindow({
   const threadEnd = useRef<HTMLDivElement>(null);
   const draftBox = useRef<HTMLTextAreaElement>(null);
   const ratingBox = useRef<HTMLElement>(null);
+  const chatCard = useRef<HTMLDivElement>(null);
   // False until the saved conversation is read, so the first render never overwrites it.
   const [hydrated, setHydrated] = useState(false);
 
@@ -333,7 +334,10 @@ export function ChatWindow({
 
   return (
     <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] lg:gap-8">
-      <div className="rounded-xl border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] shadow-[0_1px_3px_rgba(28,25,23,0.05)]">
+      <div
+        ref={chatCard}
+        className="scroll-mt-20 rounded-xl border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] shadow-[0_1px_3px_rgba(28,25,23,0.05)]"
+      >
         <div className="flex items-center justify-between gap-3 border-b border-[var(--color-rule)] px-4 py-3">
           <span className="font-body text-[0.95rem] text-[var(--color-ink-secondary)]">
             {started ? "Your conversation" : "Ask as"}
@@ -590,6 +594,20 @@ export function ChatWindow({
             >
               Next: how did AI do overall?
               <span aria-hidden className="text-[var(--color-accent)]">↓</span>
+            </button>
+          )}
+          {rated.has(latest.promptId) && (
+            // On a phone the chat's own "New question" link is far above; this one sits where the thumb is.
+            <button
+              type="button"
+              onClick={() => {
+                startOver();
+                chatCard.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+              }}
+              className="flex items-center justify-between gap-3 rounded-xl border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-4 py-3 text-left font-body text-[1rem] text-[var(--color-ink)] hover:border-[var(--color-accent)]"
+            >
+              Ask a new question
+              <span aria-hidden className="text-[var(--color-accent)]">↑</span>
             </button>
           )}
           {(rated.has(latest.promptId) || rulesUnlocked) && (
