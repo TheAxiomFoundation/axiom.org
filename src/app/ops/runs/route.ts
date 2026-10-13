@@ -4,7 +4,6 @@ import { attemptJurisdiction, inScope, parseScope } from "@/lib/axiom/encoding-p
 import { runRows } from "@/lib/axiom/encoding-pipeline-runs";
 import { getCitationMetadata } from "@/lib/corpus-status";
 import { getBundleIndex } from "@/lib/axiom/program-bundles-data";
-import { opsPipelineVisible } from "@/lib/axiom/ops-pipeline-visibility";
 
 export const dynamic = "force-dynamic";
 
@@ -12,10 +11,9 @@ export const dynamic = "force-dynamic";
  * Every dispatch in a scope (`?j=us`, `?j=us&only=1`), newest first, with
  * its citations' names and source documents, and the program bundle
  * documents that hold them, for the /ops ledger and the flow drill-downs. Fetched only when they open, so the page itself carries
- * just the flow's counts. Hidden with the pipeline section.
+ * just the flow's counts.
  */
 export async function GET(request: Request) {
-  if (!opsPipelineVisible()) return new NextResponse("Not found", { status: 404 });
   const params = Object.fromEntries(new URL(request.url).searchParams);
   const scope = parseScope(params);
   const pipeline = await getPipelineAttempts();
