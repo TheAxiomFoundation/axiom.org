@@ -17,7 +17,6 @@ import {
   scopeName,
   scopeOptions,
 } from "@/lib/axiom/encoding-pipeline-insights";
-import { opsPipelineVisible } from "@/lib/axiom/ops-pipeline-visibility";
 import { dispatchFlow, encodeParts, runRows, stepTimes, testsParts } from "@/lib/axiom/encoding-pipeline-runs";
 import { getBundleSummaries, getProgramBundle } from "@/lib/axiom/program-bundles-data";
 import { getEncodingStatus, getRecentCorpusScopes } from "@/lib/corpus-status";
@@ -52,16 +51,14 @@ export default async function OpsPage({
   const bundleId = typeof params.bundle === "string" && BUNDLE_ID_RE.test(params.bundle) ? params.bundle : null;
   const count = params.count === "provisions" ? "provisions" : "documents";
   const program = typeof params.program === "string" ? params.program : undefined;
-  // Hidden on the public site for now (see opsPipelineVisible): skip its reads too.
-  const showPipeline = opsPipelineVisible();
   const [encodingStatus, queues, recentScopes, pipeline, corpus, bundles, bundle] = await Promise.all([
     getEncodingStatus(),
     getEncodingQueues(),
     getRecentCorpusScopes(),
-    showPipeline ? getPipelineAttempts() : null,
-    showPipeline ? getCorpusView() : null,
-    showPipeline ? getBundleSummaries() : [],
-    showPipeline && bundleId ? getProgramBundle(bundleId) : null,
+    getPipelineAttempts(),
+    getCorpusView(),
+    getBundleSummaries(),
+    bundleId ? getProgramBundle(bundleId) : null,
   ]);
   // One clock for the server render and the client's first paint.
   const referenceMs = Date.now();

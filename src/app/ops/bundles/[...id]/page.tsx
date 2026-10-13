@@ -1,5 +1,4 @@
-import { notFound, permanentRedirect } from "next/navigation";
-import { opsPipelineVisible } from "@/lib/axiom/ops-pipeline-visibility";
+import { permanentRedirect } from "next/navigation";
 import { bundleHref } from "@/lib/axiom/program-bundles";
 
 export const dynamic = "force-dynamic";
@@ -12,8 +11,6 @@ export default async function OpsBundleRedirect({
   params: Promise<{ id: string[] }>;
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  // Hidden with the /ops pipeline section until it is made public.
-  if (!opsPipelineVisible()) notFound();
   const id = (await params).id.join("/");
   const count = (await searchParams)?.count === "provisions" ? "provisions" : undefined;
   permanentRedirect(bundleHref(id, count));
