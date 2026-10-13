@@ -3,6 +3,7 @@ import {
   getEncodingStatus,
   getRecentCorpusScopes,
   groupRecentScopes,
+  ingestPlace,
   versionDate,
   supabaseRestUrl,
   type SupabaseRestConfig,
@@ -389,26 +390,39 @@ describe("groupRecentScopes", () => {
     jurisdiction,
     document_class,
     version,
-    synced_at: "2026-10-13T16:29:00Z",
   });
 
-  it("makes one entry per ingest day, newest first, named by the shared version prefix", () => {
-    const groups = groupRecentScopes([
-      scope("us", "statute", "2026-10-12-w7-federal-usc-closure-title-26"),
+  it("makes one entry per place, newest place first, with its days newest first", () => {
+    const places = groupRecentScopes([
       scope("us-co", "regulation", "2026-10-12-w7-state-benefits-regulation-co"),
-      scope("us-va", "statute", "2026-10-12-w7-income-tax-statute-va"),
+      scope("us", "statute", "2026-10-12-w7-federal-usc-closure-title-26"),
       scope("us", "form", "2026-10-06-w6-federal-irs-forms"),
-      scope("us-ky", "form", "2026-09-30-ky-forms"),
+      scope("us-co", "statute", "2026-09-15-co-statutes"),
+      scope("uk-wakefield", "policy", "2026-09-05-uk-councils-wakefield"),
+      scope("uk-leeds", "policy", "2026-09-05-uk-councils-leeds"),
+      scope("be-bru", "statute", "2026-07-10-be-regions"),
     ]);
-    expect(groups.map((g) => [g.day, g.batch, g.scopes.length])).toEqual([
-      ["2026-10-12", "2026-10-12-w7", 3],
-      ["2026-10-06", "2026-10-06-w6-federal-irs-forms", 1],
-      ["2026-09-30", "2026-09-30-ky-forms", 1],
+    expect(
+      places.map((p) => [p.place, p.scopeCount, p.days.map((d) => [d.day, d.scopes.length])]),
+    ).toEqual([
+      ["us", 2, [["2026-10-12", 1], ["2026-10-06", 1]]],
+      ["us-co", 2, [["2026-10-12", 1], ["2026-09-15", 1]]],
+      ["uk", 2, [["2026-09-05", 2]]],
+      ["be", 1, [["2026-07-10", 1]]],
+    ]);
+    expect(places[2].days[0].scopes.map((s) => s.jurisdiction)).toEqual(["uk-leeds", "uk-wakefield"]);
+    const [federal] = groupRecentScopes([
+      scope("us", "statute", "2026-10-12-w7-usc-title-26"),
+      scope("us", "statute", "2026-10-12-w7-usc-title-8"),
+    ]);
+    expect(federal.days[0].scopes.map((s) => s.version)).toEqual([
+      "2026-10-12-w7-usc-title-8",
+      "2026-10-12-w7-usc-title-26",
     ]);
   });
 
-  it("keeps whole days up to the limit and skips versions without a date", () => {
-    const groups = groupRecentScopes(
+  it("keeps each place's newest days, counts the rest, and skips versions without a date", () => {
+    const [place] = groupRecentScopes(
       [
         scope("us", "form", "2026-10-12-a"),
         scope("us-ky", "form", "2026-740-es"),
@@ -417,8 +431,16 @@ describe("groupRecentScopes", () => {
       ],
       2,
     );
-    expect(groups.map((g) => g.day)).toEqual(["2026-10-12", "2026-10-11"]);
+    expect(place.days.map((d) => d.day)).toEqual(["2026-10-12", "2026-10-11"]);
+    expect([place.scopeCount, place.earlierDays]).toEqual([3, 1]);
     expect(versionDate("2026-740-es")).toBeNull();
     expect(versionDate("2026-10-12-w7-x")).toBe("2026-10-12");
+    expect(["us", "us-co", "us-co-denver", "uk-wakefield", "dk"].map(ingestPlace)).toEqual([
+      "us",
+      "us-co",
+      "us-co",
+      "uk",
+      "dk",
+    ]);
   });
 });

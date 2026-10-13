@@ -19,7 +19,7 @@ import {
 } from "@/lib/axiom/encoding-pipeline-insights";
 import { dispatchFlow, encodeParts, runRows, stepTimes, testsParts } from "@/lib/axiom/encoding-pipeline-runs";
 import { getBundleSummaries, getProgramBundle } from "@/lib/axiom/program-bundles-data";
-import { getEncodingStatus, getRecentCorpusScopes } from "@/lib/corpus-status";
+import { getEncodingStatus, getRecentCorpusScopes, groupRecentScopes } from "@/lib/corpus-status";
 import { SITE_URL } from "@/lib/urls";
 
 export const dynamic = "force-dynamic";
@@ -71,7 +71,7 @@ export default async function OpsPage({
       initialStatus={encodingStatus.value}
       encodingError={encodingStatus.error}
       queues={queues}
-      recentScopes={recentScopes}
+      recentPlaces={groupRecentScopes(recentScopes)}
       bundles={
         bundle ? (
           <ProgramBundle
