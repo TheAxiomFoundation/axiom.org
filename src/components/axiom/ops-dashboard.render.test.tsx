@@ -172,6 +172,7 @@ describe("OpsDashboard", () => {
           live_runs: [
             liveRun({
               status: "failed",
+              attempt: 4,
               finished_at: "2026-08-11T11:40:00Z",
             }),
             liveRun({
@@ -189,7 +190,8 @@ describe("OpsDashboard", () => {
     expect(
       screen.getByText(/Recently active — 2 runs finished in the last hour/i),
     ).toBeInTheDocument();
-    expect(screen.getByText(/in progress · last attempt/)).toBeInTheDocument();
+    expect(screen.getByText(/^failed after 4 attempts 20m ago/)).toBeInTheDocument();
+    expect(screen.queryByText(/in progress/)).not.toBeInTheDocument();
     expect(screen.getByText(/completed 15m ago/)).toBeInTheDocument();
   });
 
@@ -215,6 +217,32 @@ describe("OpsDashboard", () => {
       screen.getByText(/Idle — no machines encoding/i),
     ).toBeInTheDocument();
     expect(screen.getByText(/Last encode/i)).toBeInTheDocument();
+    expect(within(screen.getByText(/Last encode/i).parentElement!).getByText("completed")).toBeInTheDocument();
+
+    // A failed last encode is over, not "in progress".
+    cleanup();
+    render(
+      <OpsDashboard
+        initialStatus={status({
+          live_runs: [
+            liveRun({
+              status: "failed",
+              attempt: 4,
+              started_at: "2026-08-11T08:00:00Z",
+              last_heartbeat_at: "2026-08-11T08:05:00Z",
+              finished_at: "2026-08-11T08:05:00Z",
+            }),
+          ],
+        })}
+        encodingError={null}
+        queues={[]}
+        recentPlaces={[]}
+      />,
+    );
+    expect(screen.getByText(/Idle — no machines encoding/i)).toBeInTheDocument();
+    const lastEncode = screen.getByText(/Last encode/i).parentElement!;
+    expect(within(lastEncode).getByText("failed after 4 attempts")).toBeInTheDocument();
+    expect(within(lastEncode).queryByText(/in progress/)).not.toBeInTheDocument();
 
     cleanup();
     render(

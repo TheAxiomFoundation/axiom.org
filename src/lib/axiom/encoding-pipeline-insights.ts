@@ -63,7 +63,7 @@ const ORDINALS = ["1st", "2nd", "3rd", "4th", "5th"];
 const MOST_DISPATCHED = 5;
 const MOST_DISPATCHED_MIN = 3;
 /** A version bin closes once it holds this many finished runs. */
-const VERSION_BIN_RUNS = 10;
+export const VERSION_BIN_RUNS = 10;
 const VERSION_BINS_SHOWN = 8;
 const CHECK_ERROR_ITEMS = 30;
 

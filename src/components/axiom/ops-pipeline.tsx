@@ -27,6 +27,7 @@ import {
   type RunStats,
   type ScopeOption,
   type VersionBin,
+  VERSION_BIN_RUNS,
 } from "@/lib/axiom/encoding-pipeline-insights";
 import {
   CORPUS_STATUS_LABELS,
@@ -333,13 +334,16 @@ export function OpsPipeline({
               type="button"
               className={`${styles.tile} ${queued.blocked > 0 ? styles.tileStuck : ""}`}
               aria-pressed={listing?.kind === "queue"}
-              title={
+              title={[
+                queued.pausedReason ? pausedText(queued.pausedReason) : null,
                 queued.blocked > 0
                   ? [`${number(queued.blocked)} blocked`, queued.blockedNote?.note].filter(Boolean).join(": ")
                   : queued.pausedReason
-                    ? `Paused: ${queued.pausedReason}`
-                    : `${number(queued.inFlight)} in flight`
-              }
+                    ? null
+                    : `${number(queued.inFlight)} in flight`,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
               onClick={() => show({ kind: "queue" })}
             >
               <span className={styles.tileLabel}>Queued</span>
@@ -433,6 +437,32 @@ export function OpsPipeline({
 }
 
 /** Ranked groups of one stage, with a toggle when there is more than one way to cut it. */
+/** "Paused", or "Paused: <reason>" when the queue states one. */
+function pausedText(reason: string): string {
+  return reason === "Paused" ? "Paused" : `Paused: ${reason}`;
+}
+
+/** Groups a breakdown card shows by name; the rest share one row. */
+const BREAKDOWN_ROWS = 7;
+
+/**
+ * A breakdown's rows: the largest BREAKDOWN_ROWS groups, then one row for
+ * the rest, so the rows always add up to the card's total.
+ */
+function breakdownRows(groups: PipelineGroupView[]): PipelineGroupView[] {
+  if (groups.length <= BREAKDOWN_ROWS) return groups;
+  const rest = groups.slice(BREAKDOWN_ROWS);
+  return [
+    ...groups.slice(0, BREAKDOWN_ROWS),
+    {
+      key: "other",
+      label: `${rest.length} other ${rest.length === 1 ? "group" : "groups"}`,
+      count: rest.reduce((total, group) => total + group.count, 0),
+      items: rest.flatMap((group) => group.items),
+    },
+  ];
+}
+
 function Breakdown({
   title,
   description,
@@ -446,8 +476,8 @@ function Breakdown({
 }) {
   const [active, setActive] = useState(views[0].id);
   const current = views.find((v) => v.id === active) ?? views[0];
-  const groups = current.groups.slice(0, 7);
-  const max = groups[0]?.count ?? 0;
+  const groups = breakdownRows(current.groups);
+  const max = Math.max(0, ...groups.map((group) => group.count));
   return (
     <div className={styles.card} role="group" aria-label={title}>
       <div className={styles.cardHead}>
@@ -697,9 +727,7 @@ function QueueList({
       label="Queued items"
       count={queued.pending}
       description={[
-        queued.pausedReason
-          ? `Paused${queued.pausedReason === "Paused" ? "" : `: ${queued.pausedReason}`}; nothing new is dispatched.`
-          : null,
+        queued.pausedReason ? `${pausedText(queued.pausedReason)}; nothing new is dispatched.` : null,
         "Each item is sent to the targeted encode. A failed run is retried once; then the item waits for a person.",
       ]
         .filter(Boolean)
@@ -1060,8 +1088,13 @@ function CitationStates({
           to all citations. Click a group to list its citations.
         </Explain>
         {queued && queued.pending > 0 && (
-          <button type="button" className={styles.gapChip} onClick={onQueue}>
-            <strong>{number(queued.pending)}</strong> queued
+          <button
+            type="button"
+            className={styles.gapChip}
+            title={queued.pausedReason ? `${pausedText(queued.pausedReason)}; nothing new is dispatched.` : undefined}
+            onClick={onQueue}
+          >
+            <strong>{number(queued.pending)}</strong> queued{queued.pausedReason ? " · paused" : ""}
           </button>
         )}
       </div>
@@ -1277,12 +1310,19 @@ function RunsCard({ runs }: { runs: RunStats }) {
 
 /** Success across encoder releases, pooled so each bar has enough runs to compare. */
 function VersionsCard({ bins }: { bins: VersionBin[] }) {
+  // Only the newest bin can close short of VERSION_BIN_RUNS: its versions are still collecting runs.
+  const newest = bins.at(-1);
+  const short = newest && newest.runs < VERSION_BIN_RUNS ? newest : null;
   return (
     <div className={styles.card} role="group" aria-label="By encoder version">
       <div className={styles.cardHead}>
         <div>
           <h3>By encoder version</h3>
-          <p>Success of finished runs. Consecutive versions are pooled to at least 10 runs; newest last.</p>
+          <p>
+            Success of finished runs. Consecutive versions are pooled to at least {VERSION_BIN_RUNS} runs; newest
+            last.
+            {short && ` The newest group is the current encoder so far: ${number(short.runs)} ${short.runs === 1 ? "run" : "runs"}.`}
+          </p>
         </div>
       </div>
       {bins.length === 0 ? (

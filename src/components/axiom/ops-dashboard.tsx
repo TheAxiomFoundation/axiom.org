@@ -753,7 +753,7 @@ function DocketBand({
                 surface="dark"
               />
               <p className="mt-2 font-mono text-xs text-[var(--color-code-comment)]">
-                {newestLive.status === "failed" ? "in progress" : "completed"}
+                {liveOutcome(newestLive)}
               </p>
             </div>
           ) : lastRun?.citation ? (
@@ -856,6 +856,16 @@ function LiveRunEntry({
   );
 }
 
+/**
+ * How a finished live run ended: "completed", or "failed" (with its attempt
+ * count past the first). A failed run is over: the targeted dispatcher stops
+ * at its attempt budget, so nothing is still retrying it.
+ */
+function liveOutcome(run: LiveEncodingRun): string {
+  if (run.status !== "failed") return run.status === "completed" ? "completed" : run.status;
+  return run.attempt && run.attempt > 1 ? `failed after ${run.attempt} attempts` : "failed";
+}
+
 function FinishedRunEntry({
   run,
   referenceMs,
@@ -884,7 +894,7 @@ function FinishedRunEntry({
             : "text-[var(--color-code-comment)]"
         }`}
       >
-        {failed ? "in progress · last attempt" : "completed"}{" "}
+        {liveOutcome(run)}{" "}
         {relativeTime(run.finished_at ?? run.last_heartbeat_at, referenceMs)}
       </p>
     </li>
