@@ -231,11 +231,16 @@ export function ChatWindow({
     sendEvent("chip", { perspective: p, householdId: h, questionIds: q, twists: t }, stage);
   }
 
+  /** A new question starts blank: no household, details or text. Who you ask as stays. */
   function startOver() {
     setFollowUp(false);
     setTurns([]);
     setConversationId(newId());
-    choose(perspective, householdId, questionIds, twists);
+    setHouseholdId(null);
+    setTwists([]);
+    setQuestionIds(["amount"]);
+    setDraft("");
+    setTemplate(null);
   }
 
   async function send() {
