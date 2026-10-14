@@ -30,7 +30,9 @@ import {
   VERSION_BIN_RUNS,
 } from "@/lib/axiom/encoding-pipeline-insights";
 import {
-  CORPUS_STATUS_LABELS,
+  CORPUS_FLAG_LABELS,
+  CORPUS_FLAGS,
+  type CorpusFlag,
   type CorpusJurisdiction,
   type CorpusView,
 } from "@/lib/axiom/corpus-releases";
@@ -258,6 +260,7 @@ export function OpsPipeline({
       <CitationStates
         view={view}
         queued={queued}
+        referenceMs={referenceMs}
         isOpen={shows}
         onGroup={showGroupOfStages}
         onQueue={() => show({ kind: "queue" })}
@@ -335,12 +338,13 @@ export function OpsPipeline({
               className={`${styles.tile} ${queued.blocked > 0 ? styles.tileStuck : ""}`}
               aria-pressed={listing?.kind === "queue"}
               title={[
-                queued.pausedReason ? pausedText(queued.pausedReason) : null,
+                pauseText(queued, referenceMs),
                 queued.blocked > 0
                   ? [`${number(queued.blocked)} blocked`, queued.blockedNote?.note].filter(Boolean).join(": ")
-                  : queued.pausedReason
+                  : queued.paused
                     ? null
                     : `${number(queued.inFlight)} in flight`,
+                queued.skipped > 0 ? `${number(queued.skipped)} skipped` : null,
               ]
                 .filter(Boolean)
                 .join(" · ")}
@@ -436,10 +440,16 @@ export function OpsPipeline({
   );
 }
 
-/** Ranked groups of one stage, with a toggle when there is more than one way to cut it. */
-/** "Paused", or "Paused: <reason>" when the queue states one. */
-function pausedText(reason: string): string {
-  return reason === "Paused" ? "Paused" : `Paused: ${reason}`;
+/**
+ * Why nothing new is dispatched, or null when dispatch runs: "Paused 13d ·
+ * dispatch workflow disabled", "Paused: <reason>" when the queue states one.
+ */
+function pauseText(queued: QueuedSummary, referenceMs: number): string | null {
+  if (!queued.paused) return queued.dispatchDisabled ? "Dispatch workflow disabled" : null;
+  const disabled = queued.dispatchDisabled ? "dispatch workflow disabled" : null;
+  const age = ageLabel(queued.pausedSince, referenceMs);
+  const reason = queued.pausedReason?.replace(/\.$/, "");
+  return [`Paused${age ? ` ${age}` : ""}${reason ? `: ${reason}` : ""}`, disabled].filter(Boolean).join(" · ");
 }
 
 /** Groups a breakdown card shows by name; the rest share one row. */
@@ -463,6 +473,7 @@ function breakdownRows(groups: PipelineGroupView[]): PipelineGroupView[] {
   ];
 }
 
+/** Ranked groups of one stage, with a toggle when there is more than one way to cut it. */
 function Breakdown({
   title,
   description,
@@ -700,13 +711,17 @@ function ItemRow({
   );
 }
 
-const QUEUE_GROUPS: Array<{ state: QueueItemView["state"]; title: string }> = [
-  { state: "blocked", title: "Needs a person" },
-  { state: "dispatched", title: "Run open" },
-  { state: "retrying", title: "Retrying after a failed run" },
-];
+/** The queue's item groups; a retry waits for the queue to resume while it is paused. */
+function queueGroups(paused: boolean): Array<{ state: QueueItemView["state"]; title: string }> {
+  return [
+    { state: "blocked", title: "Needs a person" },
+    { state: "dispatched", title: "Run open" },
+    { state: "retrying", title: paused ? "Will retry when resumed" : "Retrying after a failed run" },
+    { state: "skipped", title: "Skipped" },
+  ];
+}
 
-/** The dispatcher queues' items: what needs a person, what is running, what will retry. */
+/** The dispatcher queues' items: what needs a person, what is running, what will retry, what was set aside. */
 function QueueList({
   queued,
   referenceMs,
@@ -720,21 +735,23 @@ function QueueList({
     blocked: queued.blocked,
     dispatched: queued.inFlight,
     retrying: queued.items.filter((item) => item.state === "retrying").length,
+    skipped: queued.skipped,
   };
+  const paused = pauseText(queued, referenceMs);
   return (
     <ListPanel
       title="Queued"
       label="Queued items"
       count={queued.pending}
       description={[
-        queued.pausedReason ? `${pausedText(queued.pausedReason)}; nothing new is dispatched.` : null,
-        "Each item is sent to the targeted encode. A failed run is retried once; then the item waits for a person.",
+        paused ? `${paused}; nothing new is dispatched.` : null,
+        "Each item is sent to the targeted encode. A failed run is retried once; then the item waits for a person. A skipped item was set aside before any run and waits to be requeued.",
       ]
         .filter(Boolean)
         .join(" ")}
       onClose={onClose}
     >
-      {QUEUE_GROUPS.map(({ state, title }) => {
+      {queueGroups(queued.paused).map(({ state, title }) => {
         const items = queued.items.filter((item) => item.state === state);
         if (items.length === 0) return null;
         // Items that share a reason sit under it once, in first-seen order.
@@ -805,31 +822,107 @@ function shortRelease(name: string, jurisdiction: string): string {
       : name;
 }
 
-function corpusDetail(row: CorpusJurisdiction): string {
+/** "1 scope", "1,567 scopes". */
+function counted(count: number, one: string, many = `${one}s`): string {
+  return `${number(count)} ${count === 1 ? one : many}`;
+}
+
+/** A flag in a few words, for a row listed under another flag. */
+const CORPUS_FLAG_SHORT: Record<CorpusFlag, string> = {
+  newer_not_active: "newer release not activated",
+  encoder_lacks: "encoder lacks served scopes",
+  encoder_off: "encoder reads unserved scopes",
+  encoder_other: "encoder pins another release",
+  not_serving: "not serving",
+  pin_unsigned: "pin names an unsigned manifest",
+  pin_unknown: "pin names no known release",
+  no_release: "no release cut yet",
+};
+
+/** What the jurisdiction's rulespec repo pins, compared with what serves. */
+function encoderText(row: CorpusJurisdiction, short: (name: string) => string): string | null {
+  const { encoder } = row;
+  if (!encoder) return null;
+  if (!encoder.release) return "encoder pins no release yet (placeholder)";
+  const name = short(encoder.release);
+  if (encoder.state === "manifest") return `encoder pins ${name}, an unsigned manifest`;
+  if (encoder.state === "unknown") return `encoder pins ${name}, not a known release`;
+  if (encoder.lacks) {
+    return `encoder reads ${name}, which lacks ${counted(encoder.lacks, "served scope version")}${
+      encoder.extra ? ` and has ${counted(encoder.extra, "scope version")} the site doesn't serve` : ""
+    }`;
+  }
+  if (encoder.extra) return `encoder reads ${name}, with ${counted(encoder.extra, "scope version")} the site doesn't serve`;
+  if (row.flags.includes("encoder_other")) return `encoder pins ${name}, with the same scopes as serving`;
+  if (encoder.release === row.serving?.release) return "encoder reads the same release";
+  return `encoder reads ${name}`;
+}
+
+/** What serves, what to activate next, and what the encoder reads, in one line. */
+function corpusWhy(row: CorpusJurisdiction): string {
   const short = (name: string) => shortRelease(name, row.jurisdiction);
+  const { serving, next, other, newest } = row;
   return [
-    row.serving ? `serving ${short(row.serving.release)}` : "serving nothing",
-    row.newest.release !== row.serving?.release
-      ? `newest ${short(row.newest.release)} (${number(row.newest.scopes)} scopes)`
+    serving
+      ? `serving ${short(serving.release)}${serving.releases > 1 ? ` and ${counted(serving.releases - 1, "other release")}` : ""}`
+      : newest
+        ? "serving nothing"
+        : "no signed release",
+    next ? `next ${short(next.release)} (${counted(next.scopes, "scope")}, adds ${number(next.adds)})` : null,
+    !serving && newest ? `newest ${short(newest.release)} (${counted(newest.scopes, "scope")})` : null,
+    // A side release the encoder pins is said once, with the encoder.
+    other && other.release !== row.encoder?.release
+      ? `also signed ${short(other.release)} (${counted(other.scopes, "scope")}), which lacks ${counted(other.lacks, "served scope version")}`
       : null,
-    row.encoder
-      ? `encoder reads ${short(row.encoder.release)}${row.encoder.registered ? "" : " (not a registered release)"}`
-      : null,
+    encoderText(row, short),
   ]
     .filter(Boolean)
     .join(" · ")
     .replace(/^./, (c) => c.toUpperCase());
 }
 
-/** Out-of-sync statuses, most actionable first. */
-const CORPUS_GROUPS: Array<Exclude<CorpusJurisdiction["status"], "current">> = [
-  "newer_not_active",
-  "encoder_behind",
-  "encoder_off",
-  "not_serving",
-];
+/** When what serves was activated, and how much it is. */
+function corpusServing(row: CorpusJurisdiction, referenceMs: number): string | null {
+  const { serving } = row;
+  if (!serving) return null;
+  return [
+    `Activated ${ageLabel(serving.since, referenceMs)} ago`,
+    serving.provisions !== null ? counted(serving.provisions, "provision") : null,
+    counted(serving.scopes, "scope version"),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
 
-/** Signed corpus releases per jurisdiction: what serves, what is newest, what the encoder reads. */
+function CorpusRow({ row, referenceMs }: { row: CorpusJurisdiction; referenceMs: number }) {
+  const others = row.flags.slice(1).map((flag) => CORPUS_FLAG_SHORT[flag]);
+  return (
+    <Row
+      title={`${row.name} · ${row.jurisdiction}`}
+      href={null}
+      why={corpusWhy(row)}
+      detail={corpusServing(row, referenceMs)}
+      age={ageLabel(row.since, referenceMs)}
+      links={
+        row.encoder
+          ? [
+              {
+                label: "pin",
+                href: `https://github.com/TheAxiomFoundation/${row.encoder.repo}/blob/main/.axiom/toolchain.toml`,
+              },
+            ]
+          : []
+      }
+      flags={others.length > 0 ? `also: ${others.join(" · ")}` : null}
+    />
+  );
+}
+
+/**
+ * Corpus releases per jurisdiction: what serves, the release to activate
+ * next, and what the encoder reads. A row sits under its most actionable
+ * flag and names the rest.
+ */
 function CorpusList({
   corpus,
   referenceMs,
@@ -839,14 +932,16 @@ function CorpusList({
   referenceMs: number;
   onClose: () => void;
 }) {
-  const current = corpus.jurisdictions.filter((row) => row.status === "current");
+  const current = corpus.jurisdictions
+    .filter((row) => row.flags.length === 0)
+    .sort((a, b) => a.name.localeCompare(b.name));
   const { openPrs, lastPublish } = corpus;
   return (
     <ListPanel
       title="Corpus"
       label="Corpus releases"
       count={corpus.jurisdictions.length}
-      description="Per jurisdiction: the signed corpus release the site serves, the newest one signed, and the one its encoder reads. axiom-corpus's publish workflow signs a release; a person activates it."
+      description="Per jurisdiction: the signed corpus release the site serves, the one to activate next, and the one its rulespec repo's encoder reads, compared by the scope versions each holds. axiom-corpus's publish workflow signs a release; a person activates it."
       onClose={onClose}
     >
       {(openPrs || lastPublish) && (
@@ -854,6 +949,9 @@ function CorpusList({
           {openPrs && (
             <a href={openPrs.url} target="_blank" rel="noreferrer">
               {number(openPrs.count)} open PR{openPrs.count === 1 ? "" : "s"} in axiom-corpus
+              {openPrs.draft !== null &&
+                openPrs.count > 0 &&
+                ` (${number(Math.max(0, openPrs.count - openPrs.draft))} ready · ${number(openPrs.draft)} draft)`}
               {openPrs.oldestAt && `, oldest ${ageLabel(openPrs.oldestAt, referenceMs)}`}
             </a>
           )}
@@ -866,49 +964,42 @@ function CorpusList({
           )}
         </p>
       )}
-      {CORPUS_GROUPS.map((status) => {
+      {CORPUS_FLAGS.map((flag) => {
         // Most recently signed first: where work is happening now.
         const rows = corpus.jurisdictions
-          .filter((row) => row.status === status)
-          .sort((a, b) => b.newest.signedAt.localeCompare(a.newest.signedAt));
+          .filter((row) => row.flags[0] === flag)
+          .sort(
+            (a, b) =>
+              (b.newest?.signedAt ?? "").localeCompare(a.newest?.signedAt ?? "") || a.name.localeCompare(b.name)
+          );
         if (rows.length === 0) return null;
-        const title = CORPUS_STATUS_LABELS[status];
+        const title = CORPUS_FLAG_LABELS[flag];
         return (
-          <section key={status} className={styles.listGroup} aria-label={title}>
+          <section key={flag} className={styles.listGroup} aria-label={title}>
             <h4>
               {title}
               <span className={styles.listCount}>{number(rows.length)}</span>
             </h4>
             <ul className={styles.items}>
               {rows.map((row) => (
-                <Row
-                  key={row.jurisdiction}
-                  title={`${row.name} · ${row.jurisdiction}`}
-                  href={null}
-                  why={corpusDetail(row)}
-                  detail={null}
-                  age={ageLabel(row.since, referenceMs)}
-                  links={
-                    row.encoder
-                      ? [
-                          {
-                            label: "pin",
-                            href: `https://github.com/TheAxiomFoundation/${row.encoder.repo}/blob/main/.axiom/toolchain.toml`,
-                          },
-                        ]
-                      : []
-                  }
-                  flags={null}
-                />
+                <CorpusRow key={row.jurisdiction} row={row} referenceMs={referenceMs} />
               ))}
             </ul>
           </section>
         );
       })}
       {current.length > 0 && (
-        <p className={styles.listNote}>
-          Up to date: {current.map((row) => row.name).join(", ")}
-        </p>
+        <section className={styles.listGroup} aria-label="Up to date">
+          <h4>
+            Up to date
+            <span className={styles.listCount}>{number(current.length)}</span>
+          </h4>
+          <ul className={styles.items}>
+            {current.map((row) => (
+              <CorpusRow key={row.jurisdiction} row={row} referenceMs={referenceMs} />
+            ))}
+          </ul>
+        </section>
       )}
     </ListPanel>
   );
@@ -1050,16 +1141,19 @@ interface CitationGroup {
 function CitationStates({
   view,
   queued,
+  referenceMs,
   isOpen,
   onGroup,
   onQueue,
 }: {
   view: PipelineView;
   queued: QueuedSummary | null;
+  referenceMs: number;
   isOpen: (title: string) => boolean;
   onGroup: (group: CitationGroup) => void;
   onQueue: () => void;
 }) {
+  const halted = queued ? pauseText(queued, referenceMs) : null;
   const groups: CitationGroup[] = CITATION_GROUPS.map((group) => {
     const parts = group.stages.filter((stage) => view.stages[stage].count > 0);
     return {
@@ -1091,10 +1185,10 @@ function CitationStates({
           <button
             type="button"
             className={styles.gapChip}
-            title={queued.pausedReason ? `${pausedText(queued.pausedReason)}; nothing new is dispatched.` : undefined}
+            title={halted ? `${halted}; nothing new is dispatched.` : undefined}
             onClick={onQueue}
           >
-            <strong>{number(queued.pending)}</strong> queued{queued.pausedReason ? " · paused" : ""}
+            <strong>{number(queued.pending)}</strong> queued{queued.paused ? " · paused" : ""}
           </button>
         )}
       </div>
