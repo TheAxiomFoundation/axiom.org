@@ -5,17 +5,26 @@
  *   - GitHub Actions runs of axiom-encode's targeted-signed-reencode.yml
  *     (one dispatch each, named "... [queue:item:sha] <citation>");
  *   - encodings.encoding_runs, the encoder's own record, joined by citation
- *     inside the run's time window (the rows carry no Actions run id);
+ *     to the one run whose encode step holds its timestamp (the rows carry
+ *     no Actions run id; see matchEncoderRuns);
  *   - failure details for runs without an encoder record: the run's
  *     targeted-reencode-failure diagnostics bundle, else the jobs API;
  *   - "Add signed encoding manifest for <citation>" PRs across the
- *     rulespec-* repos, linked to their run by the body's run URL;
+ *     rulespec-* repos, linked to their run by the body's run URL, and for
+ *     one merged into a side branch, that branch's own PR into the default
+ *     branch (see viaPrFor);
  *   - encodings.rulespec_files (the index) and the axiom-api compile sweep.
  *
  * Kept free of I/O so every join rule is unit-tested.
  */
 
-import type { EncodeLoopTiming, PipelineAttempt, PipelineTry, PipelineTryPhase } from "./encoding-pipeline";
+import {
+  mainMergedAt,
+  type EncodeLoopTiming,
+  type PipelineAttempt,
+  type PipelineTry,
+  type PipelineTryPhase,
+} from "./encoding-pipeline";
 
 export interface WorkflowRun {
   id: number;
@@ -75,6 +84,20 @@ export interface ManifestPr {
   failedJobs?: FailedJob[];
   requestedReviewers?: string[];
   mergeCommit?: string | null;
+  /** For a PR merged into a side branch, once looked up: that branch's own
+   *  PR into the default branch that carries it there, or null (see viaPrFor). */
+  via?: BranchPr | null;
+}
+
+/** A pull request from a side branch (its head) into the repo's default branch. */
+export interface BranchPr {
+  number: number;
+  url: string;
+  state: "OPEN" | "CLOSED" | "MERGED";
+  isDraft: boolean;
+  createdAt: string;
+  mergedAt: string | null;
+  mergeCommit: string | null;
 }
 
 export interface FailedJob {
@@ -314,6 +337,59 @@ function prReview(decision: string | null): NonNullable<PipelineAttempt["pr_revi
   }
 }
 
+/** A manifest PR merged into a branch other than its repo's default one. */
+function mergedOffDefault(pr: ManifestPr): boolean {
+  return pr.state === "MERGED" && !!pr.defaultBranch && pr.baseRefName !== pr.defaultBranch;
+}
+
+/** The side branches manifest PRs merged into, once per repo and branch, whose own PRs to read. */
+export function sideBranchLookups(
+  prs: ManifestPr[]
+): Array<{ repo: string; branch: string; base: string }> {
+  const lookups = new Map<string, { repo: string; branch: string; base: string }>();
+  for (const pr of prs) {
+    if (!mergedOffDefault(pr)) continue;
+    lookups.set(`${pr.repo}:${pr.baseRefName}`, { repo: pr.repo, branch: pr.baseRefName, base: pr.defaultBranch! });
+  }
+  return [...lookups.values()];
+}
+
+/**
+ * Which of a side branch's PRs into the default branch carries a merge into
+ * that branch: the first to merge after it, else the newest still open,
+ * else the newest closed. One that merged before it carried earlier work.
+ */
+export function viaPrFor(pr: ManifestPr, branchPrs: BranchPr[]): BranchPr | null {
+  if (!mergedOffDefault(pr) || !pr.mergedAt) return null;
+  const newest = (list: BranchPr[]) =>
+    list.reduce<BranchPr | null>((best, item) => (!best || item.createdAt > best.createdAt ? item : best), null);
+  const merged = branchPrs
+    .filter((item) => item.state === "MERGED" && item.mergedAt && item.mergedAt >= pr.mergedAt!)
+    .sort((a, b) => a.mergedAt!.localeCompare(b.mergedAt!));
+  return (
+    merged[0] ??
+    newest(branchPrs.filter((item) => item.state === "OPEN")) ??
+    newest(branchPrs.filter((item) => item.state === "CLOSED"))
+  );
+}
+
+/**
+ * Where and when a PR's change reached the default branch: its own merge
+ * into it, or the merge of the side branch's own PR. Null until it has.
+ */
+export function mainMerge(pr: ManifestPr): { mergedAt: string; mergeCommit: string | null } | null {
+  if (pr.state !== "MERGED" || !pr.mergedAt) return null;
+  if (!mergedOffDefault(pr)) return { mergedAt: pr.mergedAt, mergeCommit: pr.mergeCommit ?? null };
+  const via = pr.via;
+  return via?.state === "MERGED" && via.mergedAt ? { mergedAt: via.mergedAt, mergeCommit: via.mergeCommit } : null;
+}
+
+function branchPrState(pr: BranchPr): NonNullable<PipelineAttempt["pr_via_state"]> {
+  if (pr.state === "MERGED") return "merged";
+  if (pr.state === "CLOSED") return "closed";
+  return pr.isDraft ? "draft" : "open";
+}
+
 export interface MirrorIndex {
   byPath: Map<string, MirrorRow>;
   /** Latest sync time per repo (the sync rewrites every row it keeps). */
@@ -383,37 +459,103 @@ export function indexEncoderRows(rows: EncoderRunRow[]): EncoderIndex {
   return { byCitation, byRunId };
 }
 
-function latest(rows: EncoderRunRow[]): EncoderRunRow | null {
-  let best: EncoderRunRow | null = null;
-  for (const row of rows) {
-    if (!best || Date.parse(row.timestamp) > Date.parse(best.timestamp)) best = row;
+/** What a run's jobs said, as matchEncoderRuns needs it: this pass's read or the stored one. */
+export type RunJobsKnown = Pick<
+  Partial<PipelineAttempt>,
+  "cancel_stage" | "jobs_checked_at" | "encode_started_at" | "setup_seconds" | "encode_seconds" | "steps_read_at"
+>;
+
+/**
+ * When a run could have written an encoder record, in epoch ms, or null when
+ * its encode step never ran: cancelled at the approval or before its job,
+ * an encode job that ran no step, or one that stopped before the encode
+ * step. With its steps read, the encode step's own span; else from the
+ * encode job's start (or the run's) to the run's end (now while it runs).
+ */
+export function encodeWindow(
+  run: WorkflowRun,
+  known: RunJobsKnown | undefined,
+  nowMs: number
+): { start: number; end: number } | null {
+  if (known?.cancel_stage === "approval" || known?.cancel_stage === "before_job") return null;
+  if (known?.jobs_checked_at && !known.encode_started_at) return null;
+  if (known?.encode_started_at && known.steps_read_at) {
+    if (known.encode_seconds == null) return null;
+    const start = Date.parse(known.encode_started_at) + (known.setup_seconds ?? 0) * 1000;
+    return { start, end: start + known.encode_seconds * 1000 };
   }
-  return best;
+  const start = Date.parse(known?.encode_started_at ?? run.run_started_at ?? run.created_at);
+  return { start, end: run.status === "completed" ? Date.parse(run.updated_at) : nowMs };
+}
+
+export interface EncoderCandidate {
+  run: WorkflowRun;
+  citation: string;
+  known?: RunJobsKnown;
 }
 
 /**
- * The encoder's record for this dispatch: the one stamped with its run id
- * when the encoder recorded it, else the latest unstamped record for the
- * citation inside the run's time window.
+ * The encoder's record for each dispatch. A record stamped with a run id
+ * belongs to that run. An unstamped record (the encoder records no run id
+ * yet) goes to exactly one run of its citation: the run whose encode
+ * window holds its timestamp (the latest to start, if two overlap), else
+ * the run whose window ended last before it, up to the clock slack. A run
+ * whose encode step never ran gets none, and a run with several keeps the
+ * latest.
  */
+export function matchEncoderRuns(
+  candidates: EncoderCandidate[],
+  index: EncoderIndex,
+  nowMs: number
+): Map<string, EncoderRunRow> {
+  const matched = new Map<string, EncoderRunRow>();
+  const keep = (runId: string, row: EncoderRunRow) => {
+    const current = matched.get(runId);
+    if (!current || Date.parse(row.timestamp) > Date.parse(current.timestamp)) matched.set(runId, row);
+  };
+  const windows = new Map<string, Array<{ id: string; start: number; end: number }>>();
+  for (const { run, citation, known } of candidates) {
+    const id = String(run.id);
+    const stamped = index.byRunId.get(id);
+    if (stamped) {
+      for (const row of stamped) keep(id, row);
+      continue;
+    }
+    const window = encodeWindow(run, known, nowMs);
+    if (!window) continue;
+    const list = windows.get(citation) ?? [];
+    list.push({ id, ...window });
+    windows.set(citation, list);
+  }
+  for (const [citation, list] of windows) {
+    for (const row of index.byCitation.get(citation) ?? []) {
+      const at = Date.parse(row.timestamp);
+      let best: { id: string; start: number; end: number } | null = null;
+      for (const window of list) {
+        if (window.start <= at && at <= window.end && (!best || window.start > best.start)) best = window;
+      }
+      if (!best) {
+        for (const window of list) {
+          if (window.end < at && at - window.end <= ENCODER_WINDOW_SLACK_MS && (!best || window.end > best.end)) {
+            best = window;
+          }
+        }
+      }
+      if (best) keep(best.id, row);
+    }
+  }
+  return matched;
+}
+
+/** One dispatch's encoder record, by the rules of matchEncoderRuns with no other run competing. */
 export function matchEncoderRun(
   run: WorkflowRun,
   citation: string,
   index: EncoderIndex,
-  nowMs: number
+  nowMs: number,
+  known?: RunJobsKnown
 ): EncoderRunRow | null {
-  const stamped = index.byRunId.get(String(run.id));
-  if (stamped) return latest(stamped);
-  const start = Date.parse(run.run_started_at ?? run.created_at) - ENCODER_WINDOW_SLACK_MS;
-  const end =
-    (run.status === "completed" ? Date.parse(run.updated_at) : nowMs) +
-    ENCODER_WINDOW_SLACK_MS;
-  return latest(
-    (index.byCitation.get(citation) ?? []).filter((row) => {
-      const at = Date.parse(row.timestamp);
-      return at >= start && at <= end;
-    })
-  );
+  return matchEncoderRuns([{ run, citation, known }], index, nowMs).get(String(run.id)) ?? null;
 }
 
 function encoderFailed(row: EncoderRunRow): boolean {
@@ -451,15 +593,15 @@ export function containmentQueries(
   const add = (repo: string, ancestor: string, descendant: string) =>
     queries.set(containsKey(repo, ancestor, descendant), { repo, ancestor, descendant });
   for (const pr of prs) {
-    if (pr.state !== "MERGED" || !pr.mergeCommit) continue;
-    if (pr.defaultBranch && pr.baseRefName !== pr.defaultBranch) continue;
+    const mergeCommit = mainMerge(pr)?.mergeCommit;
+    if (!mergeCommit) continue;
     const indexCommit = index.repoCommit.get(pr.repo);
-    if (indexCommit) add(pr.repo, pr.mergeCommit, indexCommit);
+    if (indexCommit) add(pr.repo, mergeCommit, indexCommit);
     const citation = prCitation(pr.title);
     const shard = shardFor(validation, pr.repo, citation ? jurisdictionOf(citation) : null);
-    if (shard) add(pr.repo, pr.mergeCommit, shard.headSha);
+    if (shard) add(pr.repo, mergeCommit, shard.headSha);
     const verdict = moduleVerdict(oracle, pr.repo, rulespecModulePaths(pr.files));
-    if (verdict?.rulespecSha) add(pr.repo, pr.mergeCommit, verdict.rulespecSha);
+    if (verdict?.rulespecSha) add(pr.repo, mergeCommit, verdict.rulespecSha);
   }
   return [...queries.values()];
 }
@@ -709,6 +851,19 @@ export function parseRunJobs(jobs: RunJob[], conclusion: string | null): RunDeta
   return { encodeStartedAt: starts[0] ?? null, cancelStage, phases: jobPhases(encode?.steps ?? []) };
 }
 
+/** The attempt fields a run's jobs, read at `readAt`, fill in. */
+export function runDetailFields(detail: RunDetail, readAt: string): Partial<PipelineAttempt> {
+  return {
+    encode_started_at: detail.encodeStartedAt,
+    cancel_stage: detail.cancelStage,
+    jobs_checked_at: readAt,
+    setup_seconds: detail.phases.setup,
+    encode_seconds: detail.phases.encode,
+    publish_seconds: detail.phases.publish,
+    steps_read_at: readAt,
+  };
+}
+
 /**
  * Finished runs whose jobs have not been read, cancelled ones first (their
  * story is in the jobs), then newest first. With `steps`, runs read before
@@ -763,12 +918,12 @@ export function syncWindowStart(
   );
   let oldest: string | null = null;
   for (const pr of prs) {
-    if (pr.state !== "MERGED" || !pr.mergedAt) continue;
-    if (pr.defaultBranch && pr.baseRefName !== pr.defaultBranch) continue;
+    const mergedAt = mainMerge(pr)?.mergedAt;
+    if (!mergedAt) continue;
     const known = byPr.get(`${pr.repo}#${pr.number}`);
     if (known?.indexed_at) continue;
-    if (!known?.synced_at && nowMs - Date.parse(pr.mergedAt) > SYNC_WINDOW_RECENT_MS) continue;
-    if (!oldest || pr.mergedAt < oldest) oldest = pr.mergedAt;
+    if (!known?.synced_at && nowMs - Date.parse(mergedAt) > SYNC_WINDOW_RECENT_MS) continue;
+    if (!oldest || mergedAt < oldest) oldest = mergedAt;
   }
   return oldest;
 }
@@ -788,6 +943,8 @@ export interface ShardRun {
   startedAt: string | null;
   completedAt: string;
   conclusion: "success" | "failure";
+  /** The check run's page. */
+  url?: string | null;
 }
 
 /**
@@ -804,13 +961,14 @@ export function mergeValidationKey(repo: string, commit: string): string {
  * Default-branch merges whose first validation on main is not recorded yet,
  * newest first: the merge commit's own check runs say when it started and
  * finished, and how. With `detail`, a merge recorded before its start and
- * result were kept is read once more.
+ * result were kept is read once more; with `url`, one recorded before the
+ * first run's page was kept.
  */
 export function mergeValidationLookups(
   prs: ManifestPr[],
   previous: Map<string, Partial<PipelineAttempt>>,
   limit: number,
-  { detail = false }: { detail?: boolean } = {}
+  { detail = false, url = false }: { detail?: boolean; url?: boolean } = {}
 ): Array<{ repo: string; commit: string }> {
   const recorded = new Set(
     [...previous.values()]
@@ -818,18 +976,21 @@ export function mergeValidationLookups(
         (attempt) =>
           attempt.tests_first_at &&
           (!detail || attempt.tests_first_status) &&
-          attempt.pr_merge_commit &&
+          (!url || attempt.tests_first_run_url) &&
+          (attempt.pr_via_merge_commit ?? attempt.pr_merge_commit) &&
           attempt.pr_repo
       )
-      .map((attempt) => mergeValidationKey(attempt.pr_repo!, attempt.pr_merge_commit!))
+      .map((attempt) =>
+        mergeValidationKey(attempt.pr_repo!, (attempt.pr_via_merge_commit ?? attempt.pr_merge_commit)!)
+      )
   );
   const lookups = new Map<string, { repo: string; commit: string; mergedAt: string }>();
   for (const pr of prs) {
-    if (pr.state !== "MERGED" || !pr.mergeCommit || !pr.mergedAt) continue;
-    if (pr.defaultBranch && pr.baseRefName !== pr.defaultBranch) continue;
-    const key = mergeValidationKey(pr.repo, pr.mergeCommit);
+    const main = mainMerge(pr);
+    if (!main?.mergeCommit) continue;
+    const key = mergeValidationKey(pr.repo, main.mergeCommit);
     if (recorded.has(key)) continue;
-    lookups.set(key, { repo: pr.repo, commit: pr.mergeCommit, mergedAt: pr.mergedAt });
+    lookups.set(key, { repo: pr.repo, commit: main.mergeCommit, mergedAt: main.mergedAt });
   }
   return [...lookups.values()]
     .sort((a, b) => b.mergedAt.localeCompare(a.mergedAt))
@@ -946,6 +1107,18 @@ function prCheckError(
   return { pr_check_job_id: job.id, pr_check_error: checkErrors.get(String(job.id)) ?? kept };
 }
 
+/** The side branch's own PR on an attempt, or nulls when there is none to record. */
+function viaFields(via: BranchPr | null): Partial<PipelineAttempt> {
+  const state = via ? branchPrState(via) : null;
+  return {
+    pr_via_number: via?.number ?? null,
+    pr_via_url: via?.url ?? null,
+    pr_via_state: state,
+    pr_via_merged_at: state === "merged" ? (via?.mergedAt ?? null) : null,
+    pr_via_merge_commit: state === "merged" ? (via?.mergeCommit ?? null) : null,
+  };
+}
+
 function withPr(
   base: PipelineAttempt,
   pr: ManifestPr | undefined,
@@ -979,22 +1152,28 @@ function withPr(
       : {}),
     ...(pr.mergeCommit !== undefined ? { pr_merge_commit: pr.mergeCommit } : {}),
     ...prCheckError(pr, state, context.checkErrors, previous),
+    ...(pr.via !== undefined ? viaFields(state === "merged" && targetsDefault === false ? pr.via : null) : {}),
   };
-  if (state !== "merged" || targetsDefault === false || !pr.mergedAt) return attempt;
-  const mergeCommit = pr.mergeCommit ?? null;
+  // From here on, the merge into the default branch: the PR's own, or its side branch's.
+  const main = mainMerge(pr);
+  if (state !== "merged" || !main) return attempt;
+  const { mergedAt, mergeCommit } = main;
 
   // The merge commit's own validation on main: the first tests the merge
-  // got there, when they started and finished, and how they ended.
+  // got there, when they started and finished, and how they ended. A read
+  // this pass is the same run as the stored one, and may add its page.
   const atMerge = mergeCommit ? context.mergeValidation.get(mergeValidationKey(pr.repo, mergeCommit)) : undefined;
   const first = atMerge ? shardAtMerge(atMerge, attempt.jurisdiction) : null;
-  if (previous?.tests_first_status) {
-    attempt.tests_first_at = previous.tests_first_at ?? null;
-    attempt.tests_first_started_at = previous.tests_first_started_at ?? null;
-    attempt.tests_first_status = previous.tests_first_status;
-  } else if (first) {
+  if (first) {
     attempt.tests_first_at = first.completedAt;
     attempt.tests_first_started_at = first.startedAt;
     attempt.tests_first_status = first.conclusion === "success" ? "pass" : "fail";
+    if (first.url !== undefined) attempt.tests_first_run_url = first.url;
+  } else if (previous?.tests_first_status) {
+    attempt.tests_first_at = previous.tests_first_at ?? null;
+    attempt.tests_first_started_at = previous.tests_first_started_at ?? null;
+    attempt.tests_first_status = previous.tests_first_status;
+    if (previous.tests_first_run_url !== undefined) attempt.tests_first_run_url = previous.tests_first_run_url;
   } else if (previous?.tests_first_at) {
     attempt.tests_first_at = previous.tests_first_at;
   }
@@ -1011,7 +1190,7 @@ function withPr(
       ? contains.get(containsKey(pr.repo, mergeCommit, indexCommit))
       : undefined;
   const syncedAfterMerge =
-    commitContains ?? (repoSynced !== null && repoSynced >= pr.mergedAt);
+    commitContains ?? (repoSynced !== null && repoSynced >= mergedAt);
   if (previous?.synced_at) {
     attempt.synced_at = previous.synced_at;
     attempt.index_status = "indexed";
@@ -1027,7 +1206,7 @@ function withPr(
 
   // synced_at is the sync the collector first saw the modules in, which can
   // be later than the first sync after the merge; the sync runs say that one.
-  const firstSync = previous?.indexed_at ?? (context.syncRuns ? firstSyncAfter(context.syncRuns, pr.mergedAt) : null);
+  const firstSync = previous?.indexed_at ?? (context.syncRuns ? firstSyncAfter(context.syncRuns, mergedAt) : null);
   if (firstSync) attempt.indexed_at = firstSync;
 
   // Tests: the module's jurisdiction validation on the default branch, at a
@@ -1067,7 +1246,7 @@ function withPr(
       (verdict.rulespecSha
         ? !!mergeCommit &&
           contains.get(containsKey(pr.repo, mergeCommit, verdict.rulespecSha)) === true
-        : !!verdict.generatedAt && verdict.generatedAt > pr.mergedAt);
+        : !!verdict.generatedAt && verdict.generatedAt > mergedAt);
     attempt.oracle_status = current ? verdict.status : "stale";
     attempt.oracle_report = verdict.report;
     attempt.oracle_engine = verdict.engine;
@@ -1183,7 +1362,7 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
   const encoderIndex = indexEncoderRows(inputs.encoderRuns);
   const { byRun, orphans } = linkPrsToRuns(inputs.runs, inputs.prs);
 
-  const attempts: PipelineAttempt[] = [];
+  const runAttempts: Array<{ run: WorkflowRun; attempt: PipelineAttempt }> = [];
   for (const run of inputs.runs) {
     const id = String(run.id);
     const previous = inputs.previous.get(id);
@@ -1199,7 +1378,7 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
       null;
     if (!citation) continue;
     const completed = run.status === "completed";
-    let attempt: PipelineAttempt = {
+    const attempt: PipelineAttempt = {
       ...emptyAttempt(nowIso),
       id,
       citation,
@@ -1222,13 +1401,7 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
 
     const detail = inputs.runDetails?.get(id);
     if (detail) {
-      attempt.encode_started_at = detail.encodeStartedAt;
-      attempt.cancel_stage = detail.cancelStage;
-      attempt.jobs_checked_at = nowIso;
-      attempt.setup_seconds = detail.phases.setup;
-      attempt.encode_seconds = detail.phases.encode;
-      attempt.publish_seconds = detail.phases.publish;
-      attempt.steps_read_at = nowIso;
+      Object.assign(attempt, runDetailFields(detail, nowIso));
     } else if (previous?.jobs_checked_at) {
       attempt.encode_started_at = previous.encode_started_at ?? null;
       attempt.cancel_stage = previous.cancel_stage ?? null;
@@ -1240,17 +1413,30 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
         attempt.steps_read_at = previous.steps_read_at;
       }
     }
+    runAttempts.push({ run, attempt });
+  }
 
-    const encoder = matchEncoderRun(run, citation, encoderIndex, inputs.nowMs);
+  // Encoder records join across runs, so one record never lands on two.
+  const encoders = matchEncoderRuns(
+    runAttempts.map(({ run, attempt }) => ({ run, citation: attempt.citation, known: attempt })),
+    encoderIndex,
+    inputs.nowMs
+  );
+  const attempts: PipelineAttempt[] = [];
+  for (const { run, attempt } of runAttempts) {
+    const id = attempt.id;
+    const previous = inputs.previous.get(id);
+    const encoder = encoders.get(id);
+    // Derived from the record each pass, so a run that lost a record loses its tries too.
+    attempt.tries = null;
+    attempt.encode_loop = null;
     if (encoder) {
       attempt.encoder_run_id = encoder.id;
       attempt.encoder_status = encoder.status;
       attempt.generation_attempts = encoder.generation_attempt_count;
       attempt.cost_usd = encoder.estimated_cost_usd;
-      const tries = encoderTries(encoder);
-      if (tries) attempt.tries = tries;
-      const loop = encoderLoop(encoder);
-      if (loop) attempt.encode_loop = loop;
+      attempt.tries = encoderTries(encoder);
+      attempt.encode_loop = encoderLoop(encoder);
       const error = encoderError(encoder);
       if (error) {
         attempt.encoder_error = error;
@@ -1266,7 +1452,8 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
         attempt.failed_step = detail.failed_step;
         attempt.encoder_error = detail.error;
         attempt.encoder_error_rule = detail.rule;
-      } else if (previous?.failure_source) {
+      } else if (previous?.failure_source && previous.failure_source !== "encoder_run") {
+        // An encoder record's cause is joined again each pass, never carried.
         attempt.failure_source = previous.failure_source;
         attempt.failed_step = previous.failed_step ?? null;
         attempt.encoder_error = previous.encoder_error ?? null;
@@ -1274,8 +1461,7 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
       }
     }
 
-    attempt = withPr(attempt, pr, context, previous);
-    attempts.push(attempt);
+    attempts.push(withPr(attempt, byRun.get(id), context, previous));
   }
 
   // PRs whose dispatch is gone from the Actions history still belong on the board.
@@ -1302,8 +1488,11 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
 /**
  * A failure explained only by the step that stopped it: the bundle had no
  * validator issue and nothing else recorded why. Its job log usually does.
+ * So does a log whose cause was read before the signer's and the encoder's
+ * bookkeeping lines were skipped: it is read once more.
  */
 export function needsLogRead(known: Partial<PipelineAttempt>): boolean {
+  if (known.failure_source === "log") return bookkeepingCause(known.encoder_error);
   return (
     (known.failure_source === "diagnostics" || known.failure_source === "jobs") &&
     !known.encoder_error &&
@@ -1331,7 +1520,8 @@ export function failureLookups(
   encoderRuns: EncoderRunRow[],
   previous: Map<string, Partial<PipelineAttempt>>,
   nowMs: number,
-  limit: number
+  limit: number,
+  runDetails?: Map<string, RunDetail>
 ): WorkflowRun[] {
   const encoderIndex = indexEncoderRows(encoderRuns);
   const latestByCitation = new Map<string, WorkflowRun>();
@@ -1343,17 +1533,33 @@ export function failureLookups(
     if (!latest || run.created_at > latest.created_at) latestByCitation.set(citation, run);
   }
   const latestIds = new Set([...latestByCitation.values()].map((run) => run.id));
+  // The same join buildAttempts makes, with the jobs read this pass where there are any.
+  const encoders = matchEncoderRuns(
+    runs.flatMap((run) => {
+      const id = String(run.id);
+      const citation = parseRunTitle(run.display_title)?.citation ?? previous.get(id)?.citation;
+      if (!citation) return [];
+      const detail = runDetails?.get(id);
+      return [{ run, citation, known: detail ? runDetailFields(detail, new Date(nowMs).toISOString()) : previous.get(id) }];
+    }),
+    encoderIndex,
+    nowMs
+  );
   return runs
     .filter((run) => {
       if (!isFailedRun(run)) return false;
       if (run.conclusion === "cancelled" || run.conclusion === "timed_out") return false;
       const known = previous.get(String(run.id));
-      if (known?.failure_source && !needsLogRead(known) && !needsStepRead(known)) return false;
-      // An unnamed early run has no citation to match an encoder record by.
-      const parsed = parseRunTitle(run.display_title);
-      const encoder = parsed
-        ? matchEncoderRun(run, parsed.citation, encoderIndex, nowMs)
-        : null;
+      // A cause from an encoder record is joined each pass: it explains the run only while that record still matches.
+      if (
+        known?.failure_source &&
+        known.failure_source !== "encoder_run" &&
+        !needsLogRead(known) &&
+        !needsStepRead(known)
+      ) {
+        return false;
+      }
+      const encoder = encoders.get(String(run.id));
       return !encoder || !encoderError(encoder);
     })
     .sort(
@@ -1376,12 +1582,10 @@ export function oldestUnsyncedMerge(
 ): string | null {
   let oldest: string | null = null;
   for (const attempt of attempts) {
-    if (attempt.pr_state !== "merged" || attempt.pr_targets_default === false) continue;
-    if (attempt.synced_at || attempt.index_status === "missing" || !attempt.pr_merged_at) {
-      continue;
-    }
-    if (nowMs - Date.parse(attempt.pr_merged_at) < graceMs) continue;
-    if (!oldest || attempt.pr_merged_at < oldest) oldest = attempt.pr_merged_at;
+    const mergedAt = mainMergedAt(attempt);
+    if (!mergedAt || attempt.synced_at || attempt.index_status === "missing") continue;
+    if (nowMs - Date.parse(mergedAt) < graceMs) continue;
+    if (!oldest || mergedAt < oldest) oldest = mergedAt;
   }
   return oldest;
 }
@@ -1445,6 +1649,23 @@ const CHECK_ERROR_MAX_CHARS = 400;
 const EXCEPTION_RE = /^[A-Za-z_][\w.]*(?:Error|Exception|Exit)\b[^:\s]*: \S/;
 /** A failing step's own output, up to this many lines, is quoted whole; longer output by its end. */
 const PRINTED_LINES = 4;
+/** The signer's and the encoder's bookkeeping, printed as a run winds down: never why it failed. */
+const BOOKKEEPING_RE = /(?:^|\s)(?:supabase_sync=|axiom-apply-signer event=|repair_manifest=)/;
+/**
+ * The encoder's result block around its errors: the headers, `key=value`
+ * facts (tokens, files, run id, applied paths, outcome), and sync notes.
+ */
+const RESULT_LINE_RE =
+  /^(?:[a-z_]+=\S|tokens in=|compile=|(?:Output root|Axiom Corpus|Corpus release|Axiom rules engine|Policy repo|Runner|Mode): |\S+ \[[\w.:-]+\]$|Synced session |WARNING: run \S+ \(.*\) was NOT synced|repair_candidate_overlay|auto_reanchored_proof_excerpts:)/;
+/** An explicit error: the encoder's `error=`, a blocked apply's reason, or a tool's `error: ...`. */
+const ERROR_LINE_RE = /^(?:error=(.+)|apply=blocked_[a-z_]+:(.+)|(error: .+))$/;
+/** A result block that applied in the end: the errors before it were repaired. */
+const APPLIED_RE = /^outcome=\S+ final_success=True\b/;
+
+/** A cause read from a log before its signer and encoder bookkeeping lines were skipped. */
+export function bookkeepingCause(error: string | null | undefined): boolean {
+  return !!error && BOOKKEEPING_RE.test(error);
+}
 
 function clipLine(text: string): string {
   const flat = text.replace(/\s+/g, " ").trim();
@@ -1453,8 +1674,11 @@ function clipLine(text: string): string {
 
 /**
  * Why a check job failed, from its log: its first explicit error annotation,
- * else what the failing step printed just before Actions' generic "exit
- * code" line. Null when the log shows no failure.
+ * else what the failing step printed before Actions' generic "exit code"
+ * line: the last error it named (an exception, the encoder's `error=`, a
+ * blocked apply, `error: ...`) that no later applied result repaired, else
+ * its last lines less the signer's and the encoder's bookkeeping. Null when
+ * the log shows no failure.
  */
 export function checkErrorFromLog(log: string): string | null {
   const lines = log.split(/\r?\n/).map((line) => line.replace(LOG_PREFIX_RE, "").replace(ANSI_RE, ""));
@@ -1473,9 +1697,25 @@ export function checkErrorFromLog(log: string): string | null {
   for (let i = generic - 1; i >= 0 && !/^##\[(?:group|endgroup)\]/.test(lines[i]); i--) {
     if (lines[i].trim()) printed.unshift(lines[i].trim());
   }
-  if (printed.length === 0) return clipLine(lines[generic].replace(/^##\[error\]/, ""));
-  // A Python traceback ends in the exception; later lines are shutdown noise.
-  const exception = [...printed].reverse().find((line) => EXCEPTION_RE.test(line));
-  if (exception) return clipLine(exception);
-  return clipLine((printed.length <= PRINTED_LINES ? printed : printed.slice(-2)).join(" "));
+  // The last error named wins: a Python traceback ends in its exception, an
+  // encoder result in its error or blocked apply; later lines are shutdown noise.
+  let cause: string | null = null;
+  const output: string[] = [];
+  for (const line of printed) {
+    const explicit = ERROR_LINE_RE.exec(line);
+    if (explicit) {
+      cause = (explicit[1] ?? explicit[2] ?? explicit[3]).trim();
+      continue;
+    }
+    if (APPLIED_RE.test(line)) {
+      cause = null;
+      continue;
+    }
+    if (BOOKKEEPING_RE.test(line) || RESULT_LINE_RE.test(line)) continue;
+    if (EXCEPTION_RE.test(line)) cause = line;
+    output.push(line);
+  }
+  if (cause) return clipLine(cause);
+  if (output.length === 0) return clipLine(lines[generic].replace(/^##\[error\]/, ""));
+  return clipLine((output.length <= PRINTED_LINES ? output : output.slice(-2)).join(" "));
 }
