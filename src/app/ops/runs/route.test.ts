@@ -43,6 +43,8 @@ describe("GET /ops/runs", () => {
     expect(all.rows.map((r: { id: string }) => r.id)).toEqual(["2", "1"]);
     expect(all.labels).toEqual({ "us-la/b": "Name of us-la/b", "us/a": "Name of us/a" });
     expect(all.documentPaths).toEqual({});
+    // When the collector last read the scope's runs, for the ledger's "Updated" line.
+    expect(all.collectedAt).toBe("2026-09-30T12:00:00Z");
     // Only the bundle documents some run's citation sits in.
     expect(all.bundles.map((b: { citation_path: string }) => b.citation_path)).toEqual(["us-la"]);
     const federal = await GET(new Request("http://x/ops/runs?j=us&only=1"));

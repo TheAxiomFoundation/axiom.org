@@ -70,13 +70,61 @@ describe("PipelineJourney", () => {
       />
     );
     const after = screen.getByRole("region", { name: "After the PR" });
+    // The index and the tests both count from the merge, and say when they ended: side by side, not a sequence.
     expect(within(after).getAllByRole("listitem").map((row) => row.textContent)).toEqual([
-      "Review22h 31mMerged · checks success · Into main",
-      "Index4h2 modules",
-      "Tests on main1hwait 10m · run 50m · first result pass",
+      "Review22h 31mSep 21, 09:00 UTC · Merged · checks success · Into main",
+      "Index4hfrom the merge · Sep 21, 13:00 UTC · 2 modules",
+      "Tests on main1hfrom the merge · Sep 21, 10:00 UTC · wait 10m · run 50m · first result pass",
       "Compiles and runs—",
       expect.stringMatching(/^Matches an oracle—/),
     ]);
+  });
+
+  it("reads the status from the run before a dispatch cancelled at approval", () => {
+    render(
+      <PipelineJourney
+        citation="nz/statute/act/public/2018/0032/section/75"
+        available
+        referenceMs={NOW}
+        attempts={[
+          pipelineAttempt({
+            id: "38497270533",
+            dispatched_at: "2026-09-30T01:43:00Z",
+            finished_at: "2026-09-30T04:40:00Z",
+            run_conclusion: "cancelled",
+            cancel_stage: "approval",
+            jobs_checked_at: "2026-09-30T05:00:00Z",
+            // An encoder record the collector matched to it: another run's.
+            encoder_run_id: "864612a1",
+            failure_source: "encoder_run",
+            cost_usd: 0.22,
+          }),
+          mergedAttempt({ id: "38482393294", pr_merged_at: "2026-09-29T12:00:00Z" }),
+        ]}
+      />
+    );
+    expect(screen.getByText("Merged")).toBeInTheDocument();
+    expect(screen.getByText(/for 24h\. The latest dispatch was cancelled before its encode job started\. 2 dispatches/)).toBeInTheDocument();
+    // The cancelled run is the wait it was, and nothing it did not do.
+    const [cancelled] = screen.getAllByRole("region", { name: "Encode run" });
+    expect(within(cancelled).getAllByRole("listitem").map((row) => row.textContent)).toEqual(["Wait for approval 2h 57m "]);
+    expect(screen.queryByText(/\$0\.22/)).not.toBeInTheDocument();
+  });
+
+  it("says what stopped a run once, without the group its message falls in", () => {
+    render(
+      <PipelineJourney
+        citation="us/x"
+        available
+        referenceMs={NOW}
+        attempts={[
+          pipelineAttempt({ id: "g", encoder_status: "apply_blocked_generation", encoder_error: "HTTP 404", failure_source: "log" }),
+          pipelineAttempt({ id: "s", failed_step: "package_exact_generated_changes", encoder_error: "ValueError: no changed signed apply manifest is available", failure_source: "log" }),
+        ]}
+      />
+    );
+    expect(screen.getByText("Failed to generate: HTTP 404")).toBeInTheDocument();
+    expect(screen.getByText("Failed to sign: ValueError: no changed signed apply manifest is available")).toBeInTheDocument();
   });
 
   it("explains an empty journey", () => {

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  documentRootFor,
   getEncodingStatus,
   getRecentCorpusScopes,
   groupRecentScopes,
@@ -38,6 +39,33 @@ describe("corpus status helpers", () => {
     expect(
       supabaseRestUrl({ ...config, url: "https://example.supabase.co/" }, "encoding_runs", {})
     ).toBe("https://example.supabase.co/rest/v1/encoding_runs");
+  });
+});
+
+describe("documentRootFor", () => {
+  it("takes the shallowest parentless node with a heading of its own above a path", () => {
+    // The corpus leaves IRC sections without a parent beside the code itself.
+    const irc = new Map([
+      ["us/statute/26", true],
+      ["us/statute/26/32", true],
+    ]);
+    expect(documentRootFor("us/statute/26/32", irc)).toBe("us/statute/26");
+    expect(documentRootFor("us/statute/26/63/c/6", irc)).toBe("us/statute/26");
+    // A stray headless part is not its own document.
+    expect(
+      documentRootFor("us/regulation/42/435/603/b", new Map([["us/regulation/42/435", true], ["us/regulation/42/435/603/b", false]]))
+    ).toBe("us/regulation/42/435");
+    // A headless folder of documents gives way to the document under it that has a heading.
+    const faa5 = new Map([
+      ["us-az/manual/des/faa5", false],
+      ["us-az/manual/des/faa5/na-categorical-eligibility", true],
+    ]);
+    expect(documentRootFor("us-az/manual/des/faa5/na-categorical-eligibility/block-3", faa5)).toBe(
+      "us-az/manual/des/faa5/na-categorical-eligibility"
+    );
+    expect(documentRootFor("us-az/manual/des/faa5", faa5)).toBe("us-az/manual/des/faa5");
+    // Only on a "/" boundary, and nothing when no node is above it.
+    expect(documentRootFor("us/statute/261/1", irc)).toBeNull();
   });
 });
 

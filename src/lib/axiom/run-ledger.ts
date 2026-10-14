@@ -38,6 +38,8 @@ export interface LedgerDocument {
   /** The source's title, or a readable identifier while its title is not indexed. */
   title: string;
   titled: boolean;
+  /** The document's own citation path (`us/statute/26`), shown beside its title; null when the key is not a path. */
+  path: string | null;
   lastAt: string;
   sections: LedgerSection[];
 }
@@ -114,6 +116,7 @@ export function runLedger(
       key,
       title: title ?? documentIdentifier(key),
       titled: !!title,
+      path: documentPath,
       lastAt: section.lastAt,
       sections: [],
       jurisdiction: latest.jurisdiction,
@@ -136,18 +139,40 @@ export function runLedger(
     .sort(newest);
 }
 
+/**
+ * The `count` most recently active documents across every jurisdiction,
+ * each under its own jurisdiction's heading, in the ledger's order: a page
+ * of the ledger, so a jurisdiction with a newer document is not held back
+ * until every document of a busier one has shown.
+ */
+export function newestDocuments(ledger: LedgerJurisdiction[], count: number): LedgerJurisdiction[] {
+  const shown = new Set(
+    ledger
+      .flatMap((jurisdiction) => jurisdiction.documents)
+      .sort(newest)
+      .slice(0, Math.max(0, count))
+  );
+  return ledger
+    .map((jurisdiction) => ({ ...jurisdiction, documents: jurisdiction.documents.filter((document) => shown.has(document)) }))
+    .filter((jurisdiction) => jurisdiction.documents.length > 0);
+}
+
 /** A section's runs in a few lines: how many, where and why each stopped, and the latest. */
 export interface SectionOverview {
   runs: number;
-  /** How many of them failed or were cancelled. */
+  /** How many of them failed. */
   failed: number;
+  /** How many were cancelled or timed out: stopped by a person or the clock, not by a failure. */
+  cancelled: number;
   lastAt: string;
   /**
    * Where each run stopped and why, one line per pair, largest first: its
-   * status as a section's status reads ("Failed to compile"), and for a failed
-   * run the cause's headline (`cause`) and one full message (`detail`).
+   * status as a section's status reads ("Failed the compile check"), and for
+   * a failed run the cause's headline (`cause`) and one full message
+   * (`detail`). Runs failing the same way count together by their cause's
+   * group; a line whose runs all give one message heads it with that message.
    */
-  stops: Array<{ label: string; cause: string | null; tone: LedgerTone; count: number; detail: string | null }>;
+  stops: Array<{ key: string; label: string; cause: string | null; tone: LedgerTone; count: number; detail: string | null }>;
   latest: RunRow;
 }
 
@@ -158,20 +183,38 @@ function counted<T extends { count: number; label: string }>(groups: Map<string,
 export function sectionOverview(section: LedgerSection): SectionOverview {
   const runs = section.runs;
   const stops = new Map<string, SectionOverview["stops"][number]>();
+  const messages = new Map<string, Set<string>>();
   let failed = 0;
+  let cancelled = 0;
   for (const run of runs) {
     const { status, tone } = sectionStatus(run);
-    if (tone === "failed" && (run.outcome === "failed" || run.outcome === "cancelled")) failed++;
-    const cause = run.cause ? causeHeadline(run.cause) : null;
-    const key = `${status}|${cause ?? ""}`;
-    const known = stops.get(key);
-    stops.set(key, {
-      label: status,
-      cause,
-      tone,
-      count: (known?.count ?? 0) + 1,
-      detail: known?.detail ?? run.cause ?? null,
-    });
+    if (run.outcome === "failed") failed++;
+    if (run.outcome === "cancelled") cancelled++;
+    const group = run.causeGroup ?? run.cause;
+    const headline = group ? causeHeadline(group) : null;
+    const key = `${status}|${headline ?? ""}`;
+    const stop = stops.get(key) ?? { key, label: status, cause: headline, tone, count: 0, detail: null };
+    stop.count += 1;
+    stop.detail ??= run.cause;
+    stops.set(key, stop);
+    if (run.cause) messages.set(key, (messages.get(key) ?? new Set<string>()).add(run.cause));
   }
-  return { runs: runs.length, failed, lastAt: runs[0].dispatchedAt, stops: counted(stops), latest: runs[0] };
+  // One message behind a line: its own words, values and all, rather than the group's.
+  for (const [key, said] of messages) {
+    if (said.size === 1) stops.get(key)!.cause = causeHeadline([...said][0]);
+  }
+  return { runs: runs.length, failed, cancelled, lastAt: runs[0].dispatchedAt, stops: counted(stops), latest: runs[0] };
+}
+
+/**
+ * How a section's runs ended, beyond their count: failures and cancellations
+ * apart ("1 failed", "1 cancelled"), or "all failed" when every run failed.
+ */
+export function endings(overview: Pick<SectionOverview, "runs" | "failed" | "cancelled">): string[] {
+  if (overview.failed === overview.runs) return ["all failed"];
+  if (overview.cancelled === overview.runs) return ["all cancelled"];
+  return [
+    overview.failed ? `${overview.failed} failed` : null,
+    overview.cancelled ? `${overview.cancelled} cancelled` : null,
+  ].filter((part): part is string => part !== null);
 }

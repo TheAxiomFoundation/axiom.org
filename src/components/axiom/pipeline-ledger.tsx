@@ -4,6 +4,7 @@ import { Fragment, useEffect, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import styles from "./ops-dashboard.module.css";
 import { relativeTime } from "./ops-dashboard";
+import { Explain } from "./ops-pipeline";
 import { RunTimeline } from "./run-timeline";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { scopeSearch, type PipelineScope } from "@/lib/axiom/encoding-pipeline-insights";
@@ -18,10 +19,11 @@ import {
 } from "@/lib/axiom/program-bundles";
 import {
   causeHeadline,
+  endings,
+  newestDocuments,
   runLedger,
   sectionOverview,
   type LedgerDocument,
-  type LedgerJurisdiction,
   type LedgerSection,
   type LedgerTone,
 } from "@/lib/axiom/run-ledger";
@@ -33,6 +35,8 @@ interface RunsPayload {
   documentPaths?: Record<string, string>;
   /** Program bundle documents that hold some run's citation. */
   bundles?: BundleIndexEntry[];
+  /** When the collector last read these runs. */
+  collectedAt?: string | null;
 }
 
 /** Documents shown before "Show more", as the encoding ledger always showed. */
@@ -55,16 +59,30 @@ const TONE_DOT: Record<LedgerTone, string> = {
 /** Letters and digits only, to tell a real name from one that echoes its designator ("Page 2", "page-2"). */
 const plain = (text: string) => text.toLowerCase().replace(/[^a-z0-9]/g, "");
 
-/** The first `count` documents across jurisdictions, each jurisdiction keeping its own. */
-function firstDocuments(ledger: LedgerJurisdiction[], count: number): LedgerJurisdiction[] {
-  let left = count;
-  return ledger
-    .map((jurisdiction) => {
-      const documents = jurisdiction.documents.slice(0, Math.max(0, left));
-      left -= documents.length;
-      return { ...jurisdiction, documents };
-    })
-    .filter((jurisdiction) => jurisdiction.documents.length > 0);
+/** What a section's status says, by its dot's color. */
+function StatusLegend() {
+  return (
+    <Explain label="Status">
+      <span className="font-sans text-xs normal-case tracking-normal text-[var(--color-ink-secondary)]">
+        A section&apos;s status is how far its latest run got, or what stopped it.
+      </span>
+      <span className="grid gap-1 font-sans text-xs normal-case tracking-normal text-[var(--color-ink-secondary)]">
+        <span>
+          <span aria-hidden className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${TONE_DOT.done}`} />
+          Done: tests pass. Merged into main, and its jurisdiction&apos;s validation on main passes.
+        </span>
+        <span>
+          <span aria-hidden className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${TONE_DOT.waiting}`} />
+          Going: waiting for approval, running, in review, or in main and waiting for the index and the tests.
+        </span>
+        <span>
+          <span aria-hidden className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${TONE_DOT.failed}`} />
+          Stopped: the step that failed the run (&quot;Failed validation&quot;), a cancellation, no PR, a closed PR,
+          a merge off main, failing tests, or missing from the index.
+        </span>
+      </span>
+    </Explain>
+  );
 }
 
 /**
@@ -118,6 +136,12 @@ export function PipelineLedger({
           <p>
             {scopeName ? `${scopeName}: every run` : "Every run"}, grouped by jurisdiction and document. Open a
             section for its runs.
+            {payload?.collectedAt && (
+              <>
+                {" "}
+                <span title={payload.collectedAt}>Updated {relativeTime(payload.collectedAt, referenceMs)}.</span>
+              </>
+            )}
           </p>
         </div>
       </div>
@@ -142,7 +166,10 @@ export function PipelineLedger({
                   Bundle
                 </TableHead>
                 <TableHead className="h-8 w-36 px-2 font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]">
-                  Status
+                  <span className="inline-flex items-center gap-1.5">
+                    Status
+                    <StatusLegend />
+                  </span>
                 </TableHead>
                 <TableHead className="h-8 w-16 px-2 text-right font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]">
                   Runs
@@ -152,7 +179,7 @@ export function PipelineLedger({
                 </TableHead>
               </TableRow>
             </TableHeader>
-            {firstDocuments(ledger, shown).map((jurisdiction) => (
+            {newestDocuments(ledger, shown).map((jurisdiction) => (
               <TableBody key={jurisdiction.code}>
                 <TableRow className="hover:bg-transparent">
                   <TableHead colSpan={6} scope="rowgroup" className={styles.jurisdictionBand}>
@@ -211,6 +238,9 @@ function DocumentSections({
           >
             {document.title}
           </span>
+          {document.path && document.path !== document.title && (
+            <span className="ml-2 font-mono text-[11px] text-[var(--color-ink-muted)]">{document.path}</span>
+          )}
         </TableCell>
       </TableRow>
       {document.sections.map((section) => {
@@ -297,7 +327,7 @@ function CountList({
   groups,
 }: {
   title: string;
-  groups: Array<{ label: string; count: number; cause?: string | null; detail?: string | null }>;
+  groups: Array<{ key: string; label: string; count: number; cause?: string | null; detail?: string | null }>;
 }) {
   const [all, setAll] = useState(false);
   const more = groups.length - OVERVIEW_GROUPS;
@@ -306,7 +336,7 @@ function CountList({
       <p className={styles.ledgerLabel}>{title}</p>
       <ul className={styles.ledgerCounts} aria-label={title}>
         {(all ? groups : groups.slice(0, OVERVIEW_GROUPS)).map((group) => (
-          <li key={`${group.label}|${group.cause ?? ""}`} title={group.detail ?? group.label}>
+          <li key={group.key} title={group.detail ?? group.label}>
             <span className={styles.ledgerCount}>{group.count}</span>
             <span>
               <span className={styles.ledgerStop}>{group.label}</span>
@@ -369,8 +399,6 @@ function SectionRuns({ section, referenceMs }: { section: LedgerSection; referen
   const [everyRun, setEveryRun] = useState(false);
   const overview = sectionOverview(section);
   const latest = overview.latest;
-  const failedShare =
-    overview.failed === 0 ? null : overview.failed === overview.runs ? "all failed" : `${overview.failed} failed`;
   return (
     <div className={styles.ledgerOverview}>
       {/* One run: its own line says it all. */}
@@ -378,14 +406,14 @@ function SectionRuns({ section, referenceMs }: { section: LedgerSection; referen
         <>
           <p className={styles.ledgerSummary}>
             <strong>{overview.runs} runs</strong>
-            {failedShare && (
-              <>
+            {endings(overview).map((part) => (
+              <Fragment key={part}>
                 <span className={styles.ledgerVerdictSep} aria-hidden>
                   {" · "}
                 </span>
-                <span>{failedShare}</span>
-              </>
-            )}
+                <span>{part}</span>
+              </Fragment>
+            ))}
             <span className={styles.ledgerVerdictSep} aria-hidden>
               {" · "}
             </span>
