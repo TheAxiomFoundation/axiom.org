@@ -58,14 +58,23 @@ generate `/axiom/v2/...` hrefs. The app root and marketing pages stay on v1.
   `known-validation-gaps.yaml` waivers and `pipeline_attempts`. A provision
   counts as encoded only when a rule cites it; a module's declared source,
   section-wide proof atoms and rule sources naming a whole section are not
-  proof (they make it partly encoded). A document's provisions are the corpus
+  proof (they make it partly encoded). Section-wide: a US Code or CFR section
+  or above (by depth, though the corpus holds a CFR section as one leaf); in
+  state law, a node the corpus holds provisions under, so a citation of a
+  state section the corpus holds whole encodes it. A document's provisions are the corpus
   nodes under its path and linked under it (`parent_path` misses some
   sections, and a chapter or subpart links sections outside its path), less
   any document under it in the same tier, so each provision counts once.
-  In Tier 1 a whole citation of a section counts its provisions; a whole
+  Tier 1 holds the plan's documents (each counts all its provisions) and the
+  provisions the reference model cites (each counts alone; one cited inside
+  another cited one counts with it). In Tier 1 a whole citation of a section counts its provisions; a whole
   citation of a container (a title, chapter, part, public or session law,
   register issue, compilation or whole manual, read from the served
-  identifiers and labels) is one reference and counts once. A collector dry
+  identifiers and labels) is one reference and counts once. In Tier 2 a
+  corpus leaf with cited provisions under it counts as those, plus the rest
+  of the leaf in its own state unless the leaf is encoded whole. The by-state
+  grid counts a jurisdiction's documents once across programs
+  (`counts.jurisdiction`, the program where each is least done). A collector dry
   run with `--local-scopes <release TSV> --local-base <data/corpus>` previews
   what activating a release changes.
   `scripts/collect-program-bundles.mjs` rebuilds them in the pipeline
