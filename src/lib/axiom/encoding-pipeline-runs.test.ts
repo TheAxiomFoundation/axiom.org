@@ -109,9 +109,14 @@ describe("dispatchFlow", () => {
     const rows = runRows([
       pipelineAttempt({ id: "w", run_status: "waiting", run_conclusion: null }),
       pipelineAttempt({ id: "c", run_conclusion: "cancelled", cancel_stage: "approval" }),
-      pipelineAttempt({ id: "v1", encoder_error_rule: "rule-a", failure_source: "diagnostics" }),
-      pipelineAttempt({ id: "v2", encoder_error_rule: "rule-a", failure_source: "diagnostics" }),
-      pipelineAttempt({ id: "s", failed_step: "Verify immutable checkout identities", failure_source: "jobs" }),
+      pipelineAttempt({ id: "v1", encoder_error_rule: "rule-a", failure_source: "diagnostics", encode_started_at: "2026-09-20T10:01:00Z" }),
+      pipelineAttempt({ id: "v2", encoder_error_rule: "rule-a", failure_source: "diagnostics", encode_started_at: "2026-09-20T10:01:00Z" }),
+      pipelineAttempt({ id: "s", failed_step: "Verify immutable checkout identities", failure_source: "jobs", encode_started_at: "2026-09-20T10:01:00Z" }),
+      // Never reached the approval: the attempt budget stopped one, one was
+      // cancelled before its encode job, and one failed with no job start.
+      pipelineAttempt({ id: "b", failed_step: "Enforce failed-attempt budget", failure_source: "jobs" }),
+      pipelineAttempt({ id: "j", run_conclusion: "cancelled", cancel_stage: "before_job" }),
+      pipelineAttempt({ id: "f", encoder_error: "context manifest contains an unexpected review contract", failure_source: "log" }),
       pipelineAttempt({ id: "m", run_conclusion: "cancelled", cancel_stage: "running" }),
       pipelineAttempt({ id: "r", run_status: "in_progress", run_conclusion: null }),
       pipelineAttempt({ id: "n", run_conclusion: "success" }),
@@ -127,7 +132,11 @@ describe("dispatchFlow", () => {
     const flow = dispatchFlow(rows);
     const summary = flow.map((gate) => [gate.key, gate.input, gate.segments.map((s) => `${s.kind}:${s.label}:${s.count}`)]);
     expect(summary).toEqual([
-      ["approval", 16, ["continue:Approved:14", "pending:Waiting:1", "loss:Cancelled at approval:1"]],
+      [
+        "approval",
+        19,
+        ["continue:Approved:14", "pending:Waiting:1", "loss:Cancelled at approval:1", "loss:Stopped before approval:3"],
+      ],
       [
         "run",
         14,
@@ -179,12 +188,12 @@ describe("stepTimes", () => {
       run: ["Encoded:2:15:null", "Failed:3:15:null"],
       pr: [],
       review: ["Merged:1:30:null", "Closed:1:12:null", "Open now:1:2880:null"],
-      main: [],
+      main: ["From dispatch:1:30:null"],
       index: [],
       tests: [],
     });
     expect(times[0]).toMatchObject({ label: "Signing approval", span: "dispatch → job start", untimed: null });
-    expect(times.map((step) => step.untimed)).toEqual([null, null, "No wait", null, "No wait", "Not timed yet", "Not timed yet"]);
+    expect(times.map((step) => step.untimed)).toEqual([null, null, "No wait", null, null, "Not timed yet", "Not timed yet"]);
   });
 
   it("gives the slowest tenth once ten runs are timed", () => {
@@ -201,8 +210,10 @@ describe("stepTimes", () => {
 describe("post-merge times", () => {
   it("times the first index sync and the first tests on main from the merge", () => {
     const rows = runRows([
-      mergedAttempt({ id: "a", pr_merged_at: "2026-09-21T09:00:00Z", indexed_at: "2026-09-21T09:40:00Z", tests_first_at: "2026-09-21T09:12:00Z" }),
-      mergedAttempt({ id: "b", pr_merged_at: "2026-09-21T09:00:00Z", indexed_at: "2026-09-21T15:00:00Z" }),
+      mergedAttempt({ id: "a", pr_merged_at: "2026-09-21T09:00:00Z", synced_at: "S", indexed_at: "2026-09-21T09:40:00Z", tests_first_at: "2026-09-21T09:12:00Z" }),
+      mergedAttempt({ id: "b", pr_merged_at: "2026-09-21T09:00:00Z", synced_at: "S", indexed_at: "2026-09-21T15:00:00Z" }),
+      // Merged into main but not indexed: it never reached the tests step.
+      mergedAttempt({ id: "c", pr_merged_at: "2026-09-21T09:00:00Z", index_status: "missing", tests_first_at: "2026-09-21T09:02:00Z" }),
       mergedAttempt({ id: "off", pr_targets_default: false, indexed_at: "2026-09-29T00:00:00Z" }),
     ]);
     const times = stepTimes(rows, 0);
@@ -273,6 +284,7 @@ describe("testsParts", () => {
       mergedAttempt({
         id,
         pr_merged_at: "2026-09-21T09:00:00Z",
+        synced_at: "S",
         tests_first_started_at: started,
         tests_first_at: finished,
         tests_first_status: status,
@@ -283,6 +295,8 @@ describe("testsParts", () => {
         merge("b", "2026-09-21T10:32:00Z", "2026-09-21T11:37:00Z", "fail"),
         merge("c", null, "2026-09-21T12:00:00Z", null),
         mergedAttempt({ id: "off", pr_targets_default: false, tests_first_started_at: "2026-09-21T09:01:00Z", tests_first_status: "pass" }),
+        // Merged into main but missing from the index: it never reached the tests.
+        mergedAttempt({ id: "miss", index_status: "missing", tests_first_started_at: "2026-09-21T09:01:00Z", tests_first_status: "fail" }),
       ])
     );
     expect(parts.map((part) => [part.key, part.timings.map((t) => `${t.runs}:${t.medianMs / 60_000}`)])).toEqual([

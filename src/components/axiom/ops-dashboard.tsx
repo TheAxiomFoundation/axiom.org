@@ -621,7 +621,7 @@ function QueueRow({
         {queue.pauseReason && (
           <span className="text-[var(--color-warning)]">
             {" "}
-            · paused — {queue.pauseReason.replace(/\.$/, "")}
+            · paused{queue.pauseReason === "Paused" ? "" : ` — ${queue.pauseReason.replace(/\.$/, "")}`}
           </span>
         )}
       </p>

@@ -347,10 +347,10 @@ export function BundleOverview({
                     <a href={row.href}>{row.label}</a>
                     {row.sub && <span>{row.sub}</span>}
                   </th>
-                  <td>
+                  <td data-label="Tier 1">
                     <Meter share={row.share("screener")} count={count} unit={unit("screener")} />
                   </td>
-                  <td>
+                  <td data-label="Tier 2">
                     <Meter share={row.share("full")} count={count} unit={unit("full")} />
                   </td>
                 </tr>

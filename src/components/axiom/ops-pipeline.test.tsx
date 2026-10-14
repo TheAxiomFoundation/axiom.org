@@ -129,7 +129,7 @@ describe("OpsPipeline", () => {
     expect(within(list).getByRole("link", { name: "us/d" })).toHaveAttribute("href", "/ops/journey?citation=us%2Fd");
     expect(within(list).getByRole("link", { name: "rulespec-us#7" })).toHaveAttribute("href", "https://github.com/x/pull/7");
     expect(within(list).getByText("Changes requested")).toBeInTheDocument();
-    expect(within(list).getByText("2 dispatches · 2 open PRs · an earlier version is in the index")).toBeInTheDocument();
+    expect(within(list).getByText("stuck · 2 dispatches · 2 open PRs · an earlier version is in the index")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /merged off main/ }));
     expect(within(openList()).getByText("Merged into codex/x")).toBeInTheDocument();
@@ -144,7 +144,7 @@ describe("OpsPipeline", () => {
   it("breaks failed encodes down by step or cause, and opens a group without repeating it", () => {
     renderPipeline();
     const failures = card("Why encodes fail");
-    expect(within(failures).getByText("3 citations whose latest encode failed")).toBeInTheDocument();
+    expect(within(failures).getByText("3 citations whose latest run failed or was cancelled")).toBeInTheDocument();
     const byCause = within(failures).getByRole("button", { name: "By cause" });
     fireEvent.click(byCause);
     expect(byCause).toHaveAttribute("aria-pressed", "true");
@@ -522,7 +522,7 @@ describe("OpsPipeline", () => {
     expect(within(runs).getByText(/of recorded cost went to failed runs \(\$4 of \$5; 5 of 6 runs record a cost\)/)).toBeInTheDocument();
     expect(within(runs).getByText("1st attempt")).toBeInTheDocument();
     expect(within(runs).getByRole("link", { name: "us/x" })).toHaveAttribute("href", "/ops/journey?citation=us%2Fx");
-    expect(within(runs).getByText("4 dispatches · 0 encoded · 0 merged")).toBeInTheDocument();
+    expect(within(runs).getByText("4 dispatches · 0 encoded · 0 merged into main")).toBeInTheDocument();
 
     const versions = screen.getByRole("group", { name: "By encoder version" });
     expect(within(versions).getByText("0.2.9 – 10")).toBeInTheDocument();
@@ -641,7 +641,7 @@ describe("OpsPipeline", () => {
   describe("flow and run log", () => {
     const attempts = [
       pipelineAttempt({ id: "c", citation: "us/c", run_conclusion: "cancelled", cancel_stage: "approval" }),
-      pipelineAttempt({ id: "v", citation: "us/v", encoder_error_rule: "rule-a", encoder_error: "a.yaml: ci: [rule-a] x", failure_source: "diagnostics", encoder_version: "0.2.9", dispatched_by: "Pavel" }),
+      pipelineAttempt({ id: "v", citation: "us/v", encoder_error_rule: "rule-a", encoder_error: "a.yaml: ci: [rule-a] x", failure_source: "diagnostics", encoder_version: "0.2.9", dispatched_by: "Pavel", encode_started_at: "2026-09-20T10:02:00Z" }),
       mergedAttempt({ id: "m", citation: "us/m", encoder_version: "0.2.10", synced_at: "S", index_status: "indexed", tests_status: "pass" }),
     ];
     const rows = runRows(attempts);
@@ -720,10 +720,10 @@ describe("OpsPipeline", () => {
       // The typical time per step; a step that takes none, or is not timed yet, shows a dash.
       expect(stepRows()).toEqual([
         "Signing approval?6m11 of 11—",
-        "Encode run?10m11 of 11—",
+        "Encode run?10m encoded11 of 11—",
         "Pull request?—1 of 1110 without a PR",
-        "Review?22h 31m1 of 1—",
-        "Main branch?—1 of 1—",
+        "Review?22h 31m merged1 of 1—",
+        "Main branch?23h from dispatch1 of 1—",
         "Index?—0 of 11 pending index",
       ]);
       const table = within(screen.getByRole("region", { name: "Steps" })).getByRole("table");

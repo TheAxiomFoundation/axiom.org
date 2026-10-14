@@ -135,16 +135,16 @@ export function PipelineLedger({
                 <TableHead className="h-8 w-[34%] px-0 font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]">
                   Section
                 </TableHead>
-                <TableHead className="h-8 px-2 font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]">
+                <TableHead className={`${styles.ledgerWide} h-8 px-2 font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]`}>
                   Provision
                 </TableHead>
-                <TableHead className="h-8 w-40 px-2 font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]">
+                <TableHead className={`${styles.ledgerWide} h-8 w-40 px-2 font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]`}>
                   Bundle
                 </TableHead>
                 <TableHead className="h-8 w-36 px-2 font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]">
                   Status
                 </TableHead>
-                <TableHead className="h-8 w-16 px-2 text-right font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]">
+                <TableHead className={`${styles.ledgerWide} h-8 w-16 px-2 text-right font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]`}>
                   Runs
                 </TableHead>
                 <TableHead className="h-8 w-20 px-0 text-right font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]">
@@ -240,11 +240,13 @@ function DocumentSections({
                   <ChevronRight size={14} aria-hidden className={styles.ledgerChevron} />
                   <span>{section.designator}</span>
                 </button>
+                {/* On a phone the Provision column is hidden; its name sits under the citation. */}
+                {label && <span className={styles.ledgerNarrowLabel}>{label}</span>}
               </TableCell>
-              <TableCell className="px-2 py-1.5 align-baseline whitespace-normal text-[var(--color-ink-secondary)]">
+              <TableCell className={`${styles.ledgerWide} px-2 py-1.5 align-baseline whitespace-normal text-[var(--color-ink-secondary)]`}>
                 {label}
               </TableCell>
-              <TableCell className="px-2 py-1.5 align-baseline">
+              <TableCell className={`${styles.ledgerWide} px-2 py-1.5 align-baseline`}>
                 <span className={styles.ledgerBundles}>
                   {bundleMemberships(section.citation, bundles).map((membership) => (
                     <a
@@ -266,7 +268,7 @@ function DocumentSections({
                   <span className="text-[var(--color-ink-secondary)]">{section.status}</span>
                 </span>
               </TableCell>
-              <TableCell className="px-2 py-1.5 text-right align-baseline font-mono tabular-nums text-[var(--color-ink-muted)]">
+              <TableCell className={`${styles.ledgerWide} px-2 py-1.5 text-right align-baseline font-mono tabular-nums text-[var(--color-ink-muted)]`}>
                 {section.runs.length}
               </TableCell>
               <TableCell className="px-0 py-1.5 text-right align-baseline whitespace-nowrap text-[var(--color-ink-muted)]">

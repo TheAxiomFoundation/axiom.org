@@ -229,15 +229,25 @@ export function dispatchFlow(rows: RunRow[]): FlowGate[] {
     gates.push(result);
     input = next;
   };
+  // Some runs never reached the approval: the attempt budget stopped them,
+  // they were cancelled before the encode job, or they failed with no encode
+  // job start (before the job).
+  const waiting = (r: RunRow) => r.outcome === "waiting";
+  const cancelledAtApproval = (r: RunRow) => r.outcomeLabel === "Cancelled at approval";
+  const beforeApproval = (r: RunRow) =>
+    r.outcomeLabel === "Cancelled before the run" ||
+    r.outcomeLabel === ENCODE_GATE_LABELS.budget ||
+    (r.outcome === "failed" && r.approvalMs === null);
   add("approval", input, [
     {
       key: "approved",
       label: "Approved",
       kind: "continue",
-      test: (r) => r.outcome !== "waiting" && r.outcomeLabel !== "Cancelled at approval",
+      test: (r) => !waiting(r) && !cancelledAtApproval(r) && !beforeApproval(r),
     },
-    { key: "waiting", label: "Waiting", kind: "pending", test: (r) => r.outcome === "waiting" },
-    { key: "cancelled", label: "Cancelled at approval", kind: "loss", test: (r) => r.outcomeLabel === "Cancelled at approval" },
+    { key: "waiting", label: "Waiting", kind: "pending", test: waiting },
+    { key: "cancelled", label: "Cancelled at approval", kind: "loss", test: cancelledAtApproval },
+    { key: "before", label: "Stopped before approval", kind: "loss", test: beforeApproval },
   ]);
   // Failures by the step that stopped them, largest first.
   const failedAt = new Map<string, number>();
@@ -352,9 +362,11 @@ export function stepTimes(rows: RunRow[], referenceMs: number): StepTimes[] {
   const withPr = rows.filter((row) => row.pr?.openedAt);
   const prMs = (row: RunRow, end: string | null | undefined) => ms(row.pr?.openedAt, end);
   const now = new Date(referenceMs).toISOString();
-  // Times from the merge, over merges into main whose time is recorded.
+  // Times from the merge, over the merges into main that reached the step:
+  // the index over every merge into main, the tests over the indexed ones.
   const afterMerge = (key: GateKey, span: string, measures: string, none: string, end: (row: RunRow) => string | null) => {
-    const time = timing("", rows.filter((row) => row.merged === "main").map((row) => ms(row.pr?.mergedAt, end(row))));
+    const reached = rows.filter((row) => row.merged === "main" && (key !== "tests" || row.index === "indexed"));
+    const time = timing("", reached.map((row) => ms(row.pr?.mergedAt, end(row))));
     return time ? timed(key, span, measures, time) : untimed(key, span, "Not timed yet", none);
   };
   return [
@@ -383,7 +395,17 @@ export function stepTimes(rows: RunRow[], referenceMs: number): StepTimes[] {
         withPr.filter((row) => row.pr?.state === "draft" || row.pr?.state === "open").map((row) => prMs(row, now))
       )
     ),
-    untimed("main", "set at the merge", "No wait", "The PR's base branch decides it at the merge."),
+    // The step itself takes no time (the PR's base branch decides it at the
+    // merge), so its row gives the whole path instead: dispatch to merge.
+    timed(
+      "main",
+      "dispatch → merge into main",
+      "The PR's base branch decides this step at the merge, so it takes no time of its own. Its time is the whole path: from the dispatch until the PR merges into the default branch.",
+      timing(
+        "From dispatch",
+        rows.filter((row) => row.merged === "main").map((row) => ms(row.dispatchedAt, row.pr?.mergedAt))
+      )
+    ),
     afterMerge(
       "index",
       "merge → index sync",
@@ -510,7 +532,8 @@ export interface TestsParts {
 }
 
 export function testsParts(rows: RunRow[]): TestsParts {
-  const merges = rows.filter((row) => row.merged === "main");
+  // The merges that reached the tests step: into main and indexed.
+  const merges = rows.filter((row) => row.merged === "main" && row.index === "indexed");
   return {
     parts: [
       timedPart(

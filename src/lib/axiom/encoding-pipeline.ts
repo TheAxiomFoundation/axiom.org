@@ -449,6 +449,16 @@ export function errorGroupLabel(error: string): string {
   );
 }
 
+/**
+ * The other module a run's failure came from: the target module applied,
+ * and the error names a different module file (an import the encoder also
+ * wrote), so the failure is that module's, not the target's.
+ */
+export function dependentModule(attempt: PipelineAttempt): string | null {
+  if (attempt.encoder_status !== "apply_applied") return null;
+  return attempt.encoder_error?.match(/^(\S+?\.ya?ml):/)?.[1] ?? null;
+}
+
 export function failureReason(attempt: PipelineAttempt): FailureReason {
   // A cancelled run's story is how far it got, not what it last logged.
   if (attempt.run_conclusion === "timed_out") {
@@ -458,6 +468,10 @@ export function failureReason(attempt: PipelineAttempt): FailureReason {
     return attempt.cancel_stage
       ? { key: `cancel:${attempt.cancel_stage}`, label: CANCEL_LABELS[attempt.cancel_stage], kind: "run" }
       : { key: "run:cancelled", label: "Cancelled (not read yet)", kind: "run" };
+  }
+  const dependent = dependentModule(attempt);
+  if (dependent) {
+    return { key: `dependent:${dependent}`, label: `A dependent module failed: ${dependent}`, kind: "validator" };
   }
   if (attempt.encoder_error_rule) {
     return {
@@ -497,6 +511,7 @@ export function failureReason(attempt: PipelineAttempt): FailureReason {
 
 /** The step of a targeted encode run that stopped it, in run order. */
 export type EncodeGate =
+  | "dependent"
   | "budget"
   | "setup"
   | "generate"
@@ -512,6 +527,7 @@ export type EncodeGate =
 
 /** A failed run's outcome, named by the step that stopped it. */
 export const ENCODE_GATE_LABELS: Record<EncodeGate, string> = {
+  dependent: "A dependent module failed",
   budget: "Attempt budget used up",
   setup: "Failed in setup",
   generate: "Failed to generate",
@@ -550,6 +566,7 @@ export function encodeGate(attempt: PipelineAttempt): EncodeGate {
   if (attempt.run_conclusion === "cancelled" || attempt.run_conclusion === "timed_out") {
     return "cancelled";
   }
+  if (dependentModule(attempt)) return "dependent";
   const check = attempt.encoder_error?.match(ERROR_CHECK_RE)?.[1];
   if (check && ERROR_CHECK_GATES[check]) return ERROR_CHECK_GATES[check];
   if (attempt.encoder_status === "apply_blocked_generation") return "generate";

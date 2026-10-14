@@ -1492,3 +1492,21 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* A step's median times, one line per kind of run: "4m encoded", "10m failed". */
+.stepTimeLine {
+  display: block;
+  white-space: nowrap;
+}
+
+.stepTimeLabel {
+  font-size: 11px;
+  color: var(--color-ink-muted);
+}
+
+/* When the pipeline table was last rebuilt, under the heading. */
+.updated {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--color-ink-muted);
+}

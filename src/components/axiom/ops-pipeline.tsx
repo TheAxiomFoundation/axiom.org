@@ -249,6 +249,13 @@ export function OpsPipeline({
         <div>
           <p className={styles.eyebrow}>Pipeline</p>
           <h2 id="pipeline-title">Where every citation is</h2>
+          {view.collectedAt && (
+            <p className={styles.updated}>
+              Updated{" "}
+              {ageLabel(view.collectedAt, referenceMs) ? `${ageLabel(view.collectedAt, referenceMs)} ago` : "just now"},
+              from GitHub and the index every 30 minutes.
+            </p>
+          )}
         </div>
       </header>
 
@@ -406,7 +413,7 @@ export function OpsPipeline({
       <div className={styles.cards}>
         <Breakdown
           title="Why encodes fail"
-          description={`${number(view.stages.encode_failed.count)} citations whose latest encode failed`}
+          description={`${number(view.stages.encode_failed.count)} citations whose latest run failed or was cancelled`}
           views={[
             { id: "step", label: "By step", groups: view.gates },
             { id: "rule", label: "By cause", groups: view.failures },
@@ -671,6 +678,7 @@ function ItemRow({
     .filter((part): part is string => !!part && part !== groupLabel)
     .join(" · ");
   const flags = [
+    item.stuck ? "stuck" : null,
     item.dispatches > 1 ? `${item.dispatches} dispatches` : null,
     item.openPrs > 1 ? `${item.openPrs} open PRs` : null,
     item.reachedIndex && !["indexed", "runs", "verified"].includes(item.stage)
@@ -1280,7 +1288,7 @@ function RunsCard({ runs }: { runs: RunStats }) {
       </div>
       {runs.byAttempt.length > 0 && (
         <>
-          <p className={styles.miniLabel}>Success by attempt</p>
+          <p className={styles.miniLabel}>Success by attempt, until a citation&apos;s first success</p>
           <RateBars
             rows={runs.byAttempt.map((rate) => ({ key: rate.label, label: `${rate.label} attempt`, rate }))}
           />
@@ -1297,7 +1305,7 @@ function RunsCard({ runs }: { runs: RunStats }) {
                 </a>
                 <span>
                   {number(entry.dispatches)} dispatches · {number(entry.successes)} encoded ·{" "}
-                  {number(entry.merged)} merged
+                  {number(entry.merged)} merged into main
                 </span>
               </li>
             ))}
@@ -1320,7 +1328,8 @@ function VersionsCard({ bins }: { bins: VersionBin[] }) {
           <h3>By encoder version</h3>
           <p>
             Success of finished runs. Consecutive versions are pooled to at least {VERSION_BIN_RUNS} runs; newest
-            last.
+            last. These are the newest {number(bins.length)} groups, {number(bins.reduce((total, bin) => total + bin.runs, 0))}{" "}
+            runs.
             {short && ` The newest group is the current encoder so far: ${number(short.runs)} ${short.runs === 1 ? "run" : "runs"}.`}
           </p>
         </div>
@@ -1355,6 +1364,8 @@ const WENT_ON: Record<GateKey, string> = {
 const STOPPED: Record<string, string> = {
   "approval:waiting": "pending approval",
   "approval:cancelled": "cancelled",
+  "approval:before": "stopped before approval",
+  "run:cancelled": "cancelled",
   "run:running": "running",
   "pr:none": "without a PR",
   "review:open": "in review",
@@ -1415,7 +1426,7 @@ function StepTable({
             Median time
           </th>
           <th scope="col" className={styles.stepNumber}>
-            Advanced
+            Runs advanced
           </th>
           <th scope="col">Stopped or pending</th>
         </tr>
@@ -1423,12 +1434,13 @@ function StepTable({
       <tbody>
         {shown.map((gate) => {
           const time = timeOf.get(gate.key);
-          const typical = time?.timings[0];
           const on = gate.segments.find((segment) => segment.kind === "continue");
           const losses = gate.segments.filter((segment) => segment.kind === "loss");
           const pending = gate.segments.filter((segment) => segment.kind === "pending");
-          const folded = gate.key === "run" && losses.length > 0;
-          const side = folded ? pending : [...losses, ...pending];
+          // The encode run's failures fold into one "failed"; its cancellations stay apart.
+          const failures = gate.key === "run" ? losses.filter((segment) => segment.key.startsWith("run:failed:")) : [];
+          const folded = failures.length > 0;
+          const side = [...losses.filter((segment) => !failures.includes(segment)), ...pending];
           const firstTests = gate.key === "tests" ? testParts : null;
           return (
             <Fragment key={gate.key}>
@@ -1457,7 +1469,16 @@ function StepTable({
                     </Explain>
                   </span>
                 </th>
-                <td className={styles.stepTime}>{typical ? shortDuration(typical.medianMs) : "—"}</td>
+                <td className={styles.stepTime}>
+                  {time?.timings.length
+                    ? time.timings.map((timing) => (
+                        <span key={timing.label} className={styles.stepTimeLine}>
+                          {shortDuration(timing.medianMs)}
+                          {timing.label && <span className={styles.stepTimeLabel}> {timing.label.toLowerCase()}</span>}
+                        </span>
+                      ))
+                    : "—"}
+                </td>
                 <td className={styles.stepWent}>
                   {on ? (
                     <button
@@ -1482,7 +1503,7 @@ function StepTable({
                           aria-expanded={reasonsOpen}
                           onClick={() => setReasonsOpen((open) => !open)}
                         >
-                          {number(losses.reduce((total, segment) => total + segment.count, 0))} failed{" "}
+                          {number(failures.reduce((total, segment) => total + segment.count, 0))} failed{" "}
                           <span aria-hidden>{reasonsOpen ? "▴" : "▾"}</span>
                         </button>
                       )}
@@ -1506,7 +1527,7 @@ function StepTable({
                 <tr className={styles.stepReasons}>
                   <td colSpan={4}>
                     <span className={styles.reasonList} role="group" aria-label="Why encode runs failed">
-                      {losses.map((segment) => (
+                      {failures.map((segment) => (
                         <button
                           key={segment.key}
                           type="button"
@@ -1717,8 +1738,9 @@ function FlowView({
     <>
       <section className={styles.flowPart} aria-labelledby="flow-steps-title">
         <PartHead id="flow-steps-title" title="Steps">
-          One row per step, in order. Median time is how long a run typically spends at the step. Advanced counts
-          the runs that moved on to the next step, out of those that reached it. Stopped or pending lists the runs
+          One row per step, in order; every number counts runs (dispatches), not citations. Median time is how long a
+          run typically spends at the step, for each kind of run that left it (encoded or failed, merged or closed).
+          Runs advanced counts the runs that moved on to the next step, out of those that reached it. Stopped or pending lists the runs
           that stopped at the step or have not finished it yet. Click a number to list its runs, and a step&apos;s ?
           for its details.
         </PartHead>
@@ -1728,7 +1750,7 @@ function FlowView({
         <PartsRow
           id="flow-parts-title"
           title="Inside the encode run"
-          note="The encode run is one GitHub Actions job in three parts: setup, the encode loop, then signing and opening the PR."
+          note="The encode run is one GitHub Actions job in three parts: setup, the encode loop, then signing and opening the PR. Model time and check time are parts of the encode loop."
           parts={parts.parts}
           extra={<TriesTable tries={parts.tries} />}
         />
@@ -1743,7 +1765,7 @@ function runProvenance(row: RunRow): string {
     `dispatched ${formatDay(row.dispatchedAt)}`,
     row.by ? `by ${row.by}` : null,
     row.encoder ? `encoder ${row.encoder}` : null,
-    row.approvalMs !== null ? `approval ${durationLabel(row.approvalMs)}` : null,
+    row.approvalMs !== null ? `approval ${shortDuration(row.approvalMs)}` : null,
     row.runMs !== null ? `run ${durationLabel(row.runMs)}` : null,
   ]
     .filter(Boolean)
