@@ -7,11 +7,13 @@ import {
   groupRunsByDocument,
   mergeLiveRunsIntoHistory,
   relativeTime,
+  startingRunsLine,
 } from "./ops-dashboard";
 import {
   corpusLookupPathsForCitation,
   corpusPathsForCitation,
   documentKeyFromCitation,
+  normalizeCitation,
   parseCitation,
   sectionWithinDocument,
 } from "@/lib/axiom/ops-citations";
@@ -172,6 +174,42 @@ describe("corpusLookupPathsForCitation", () => {
       "us/statute/26",
       "us/statute/26/1",
     ]);
+  });
+
+  it("looks a section number with a colon of its own up as written", () => {
+    expect(corpusLookupPathsForCitation("us-la/statute/47:32")).toEqual(["us-la/statute/47:32"]);
+    expect(parseCitation("us-nj/statute/54a:4-7")).toEqual({ scope: "us-nj", segments: ["statute", "54a:4-7"], documentDepth: 2 });
+    expect(documentKeyFromCitation("us-la/statute/47:297.4")).toBe("us-la:statute/47:297.4");
+    // A colon after a bare jurisdiction still separates it.
+    expect(parseCitation("us-nc:manual/dhhs/fns/fns-170-notices/page-7").scope).toBe("us-nc");
+  });
+});
+
+describe("normalizeCitation", () => {
+  it("spells a dispatch's citation as the corpus does", () => {
+    expect(normalizeCitation("us-nc:manual/dhhs/fns/fns-170-notices/page-7")).toBe("us-nc/manual/dhhs/fns/fns-170-notices/page-7");
+    expect(normalizeCitation("us/regulations/7-cfr/273/4")).toBe("us/regulation/7/273/4");
+    expect(normalizeCitation("us-ma:regulations/106-cmr/704")).toBe("us-ma/regulation/106-cmr/704");
+    expect(normalizeCitation("us/statutes/26/32")).toBe("us/statute/26/32");
+    // Already in the corpus's spelling, or of another shape: as it is.
+    for (const citation of ["us/regulation/7/273/4", "us-la/statute/47:32", "uk/statute/ukpga/2003/1/681C", "us:us-ma/regulations/106-cmr/704", "26 USC 1(j)(2)", "us/bananas/1"]) {
+      expect(normalizeCitation(citation)).toBe(citation);
+    }
+  });
+});
+
+describe("startingRunsLine", () => {
+  it("counts the unfinished runs no encoder is running, as of the index's read", () => {
+    const starting = { runs: [{ citation: "us/a" }, { citation: "us-nc:manual/x" }, { citation: "us/b" }], collectedAt: "2026-07-01T00:00:00Z" };
+    const now = Date.parse("2026-07-01T00:12:00Z");
+    expect(startingRunsLine(starting, [{ citation: "us/b" }], now)).toBe(
+      "2 runs waiting for approval or starting · shown here once the encoder starts · as of 12m ago"
+    );
+    expect(startingRunsLine({ runs: [{ citation: "us-nc:manual/x" }], collectedAt: null }, [{ citation: "us-nc/manual/x" }], now)).toBeNull();
+    expect(startingRunsLine({ runs: [{ citation: "us/a" }], collectedAt: null }, [], now)).toBe(
+      "1 run waiting for approval or starting · shown here once the encoder starts"
+    );
+    expect(startingRunsLine(undefined, [], now)).toBeNull();
   });
 });
 

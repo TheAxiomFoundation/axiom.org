@@ -72,6 +72,14 @@ export default async function OpsPage({
       encodingError={encodingStatus.error}
       queues={queues}
       recentPlaces={groupRecentScopes(recentScopes)}
+      // Runs waiting for approval or in setup have no live row until their encoder starts.
+      starting={{
+        runs: attempts.filter((attempt) => attempt.run_status !== "completed").map((attempt) => ({ citation: attempt.citation })),
+        collectedAt: attempts.reduce<string | null>(
+          (newest, attempt) => (!newest || attempt.collected_at > newest ? attempt.collected_at : newest),
+          null
+        ),
+      }}
       bundles={
         bundle ? (
           <ProgramBundle

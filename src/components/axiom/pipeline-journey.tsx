@@ -8,10 +8,12 @@ import {
   journeySteps,
   STAGE_COPY,
   stageSince,
+  statusAttempt,
   type PipelineAttempt,
 } from "@/lib/axiom/encoding-pipeline";
 import { bundleHref, bundleProgram, membershipDetail, tiersLabel, type BundleMembership } from "@/lib/axiom/program-bundles";
 import {
+  ownRecord,
   runRow,
   runTimeline,
   type TimelineDetails,
@@ -33,8 +35,11 @@ export function PipelineJourney({
   bundles?: BundleMembership[];
   referenceMs: number;
 }) {
-  const latest = attempts[0] ?? null;
+  // The citation's status, as the pipeline counts it: a dispatch cancelled
+  // before its encode job does not hide what the run before it did.
+  const latest = statusAttempt(attempts);
   const stage = latest ? attemptStage(latest) : null;
+  const passedOver = latest !== null && latest.id !== attempts[0]?.id;
 
   return (
     <div className={`${dashboard.dashboard} min-h-screen pt-28 pb-16`}>
@@ -49,6 +54,7 @@ export function PipelineJourney({
             <p className={styles.summary}>
               <span className={styles.stage}>{STAGE_COPY[stage].label}</span>
               {` for ${ageLabel(stageSince(latest, stage), referenceMs) ?? "a moment"}. `}
+              {passedOver && "The latest dispatch was cancelled before its encode job started. "}
               {attempts.length} dispatch{attempts.length === 1 ? "" : "es"}, the first{" "}
               {formatTime(attempts.at(-1)!.dispatched_at)}.{" "}
               <a href={`/${citation}`}>Read the law</a>
@@ -76,25 +82,29 @@ export function PipelineJourney({
         </header>
 
         <ol className={styles.attempts}>
-          {attempts.map((attempt, index) => (
-            <li key={attempt.id} className={styles.attempt}>
-              <div className={styles.attemptHead}>
-                <h2>
-                  {index === 0 ? "Latest dispatch" : `Dispatch ${attempts.length - index}`}
-                </h2>
-                <span>
-                  {formatTime(attempt.dispatched_at)} ·{" "}
-                  <a href={attempt.run_url} target="_blank" rel="noreferrer">
-                    {attempt.id.startsWith("pr:") ? "PR" : `run ${attempt.id}`}
-                  </a>
-                  {attempt.cost_usd != null && ` · $${Number(attempt.cost_usd).toFixed(2)}`}
-                </span>
-              </div>
-              <div className={styles.runTimeline}>
-                <RunTimeline timeline={runTimeline(runRow(attempt), referenceMs, journeyDetails(attempt))} />
-              </div>
-            </li>
-          ))}
+          {attempts.map((dispatch, index) => {
+            // Only what the run did itself: an encoder record matched to a run that never encoded is another run's.
+            const attempt = ownRecord(dispatch);
+            return (
+              <li key={attempt.id} className={styles.attempt}>
+                <div className={styles.attemptHead}>
+                  <h2>
+                    {index === 0 ? "Latest dispatch" : `Dispatch ${attempts.length - index}`}
+                  </h2>
+                  <span>
+                    {formatTime(attempt.dispatched_at)} ·{" "}
+                    <a href={attempt.run_url} target="_blank" rel="noreferrer">
+                      {attempt.id.startsWith("pr:") ? "PR" : `run ${attempt.id}`}
+                    </a>
+                    {attempt.cost_usd != null && ` · $${Number(attempt.cost_usd).toFixed(2)}`}
+                  </span>
+                </div>
+                <div className={styles.runTimeline}>
+                  <RunTimeline timeline={runTimeline(runRow(attempt), referenceMs, journeyDetails(attempt))} />
+                </div>
+              </li>
+            );
+          })}
         </ol>
       </div>
     </div>
@@ -127,6 +137,7 @@ function journeyDetails(attempt: PipelineAttempt): TimelineDetails {
         key: step.key,
         label: step.label,
         ms: null,
+        at: step.at,
         state: STEP_STATE[step.state],
         detail: step.detail,
         href: step.href,

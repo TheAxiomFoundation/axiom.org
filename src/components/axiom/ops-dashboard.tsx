@@ -17,6 +17,7 @@ import {
   documentIdentifier,
   documentKeyFromCitation,
   meaningfulLabelAt,
+  normalizeCitation,
   parseCitation,
   sectionLabelForCitation,
   sectionWithinDocument,
@@ -75,6 +76,19 @@ interface OpsDashboardProps {
   bundles?: ReactNode;
   /** The tab to open on (?tab=bundles or ?tab=pipeline); the ledger otherwise. */
   initialTab?: OpsTab;
+  /**
+   * Dispatched runs that have not finished, from the pipeline index: the
+   * fleet box shows a run only once its encoder starts, so these say what
+   * waits for approval or is still in setup.
+   */
+  starting?: StartingRuns;
+}
+
+/** Unfinished dispatches as the pipeline index last read them. */
+export interface StartingRuns {
+  runs: Array<{ citation: string }>;
+  /** When the collector read them. */
+  collectedAt: string | null;
 }
 
 export type OpsTab = "ledger" | "bundles" | "pipeline";
@@ -241,6 +255,7 @@ export function OpsDashboard({
   ledger,
   bundles,
   initialTab = "ledger",
+  starting,
 }: OpsDashboardProps) {
   const [status, setStatus] = useState(initialStatus);
   // One section at a time: the ledger, the program bundles, the pipeline.
@@ -337,6 +352,7 @@ export function OpsDashboard({
           error={encodingError}
           referenceMs={referenceMs}
           labels={labels}
+          starting={starting}
         />
 
         {tabs.length > 1 && (
@@ -697,21 +713,41 @@ function InventoryRow({ queue }: { queue: EncodingQueueSummary }) {
 
 /* ── The docket: what's encoding right now ── */
 
+/**
+ * Unfinished dispatches whose encoder has not started: every one the index
+ * holds, less those whose citation an encoder is running now.
+ */
+export function startingRunsLine(
+  starting: StartingRuns | undefined,
+  running: Array<Pick<LiveEncodingRun, "citation">>,
+  referenceMs: number,
+): string | null {
+  if (!starting) return null;
+  const encoding = new Set(running.map((run) => normalizeCitation(run.citation)));
+  const runs = starting.runs.filter((run) => !encoding.has(normalizeCitation(run.citation)));
+  if (runs.length === 0) return null;
+  const asOf = starting.collectedAt ? ` · as of ${relativeTime(starting.collectedAt, referenceMs)}` : "";
+  return `${runs.length} run${runs.length === 1 ? "" : "s"} waiting for approval or starting · shown here once the encoder starts${asOf}`;
+}
+
 function DocketBand({
   status,
   error,
   referenceMs,
   labels,
+  starting,
 }: {
   status: EncodingOpsStatus | null;
   error: string | null;
   referenceMs: number;
   labels: Record<string, string>;
+  starting?: StartingRuns;
 }) {
   const liveRuns = status?.live_runs ?? [];
   const running = liveRuns.filter(
     (run) => classifyLiveRun(run, referenceMs) === "running",
   );
+  const startingLine = startingRunsLine(starting, running, referenceMs);
   const stale = liveRuns.filter(
     (run) => classifyLiveRun(run, referenceMs) === "stale",
   );
@@ -762,6 +798,7 @@ function DocketBand({
           <DocketHeader
             dotClass="bg-[var(--color-code-function)] animate-pulse motion-reduce:animate-none"
             label={`Encoding now — ${machineCount(running)}`}
+            note={startingLine}
           />
           <ul className={styles.runGrid}>
             {running.map((run) => (
@@ -781,6 +818,7 @@ function DocketBand({
             label={`Recently active — ${finished.length} run${
               finished.length === 1 ? "" : "s"
             } finished in the last hour`}
+            note={startingLine}
           />
           <ul className={styles.runGrid}>
             {finished.slice(0, 3).map((run) => (
@@ -803,6 +841,7 @@ function DocketBand({
           <DocketHeader
             dotClass="border border-[var(--color-code-comment)]"
             label="Idle — no machines encoding"
+            note={startingLine}
           />
           {idleShowsLive && newestLive ? (
             <div className="mt-5">
@@ -873,18 +912,28 @@ function DocketBand({
 function DocketHeader({
   dotClass,
   label,
+  note,
 }: {
   dotClass: string;
   label: string;
+  /** A line under the label: the runs not on the board yet. */
+  note?: string | null;
 }) {
   return (
-    <p className="flex items-center gap-2.5 font-mono text-xs uppercase tracking-wider">
-      <span
-        aria-hidden
-        className={`inline-block h-2 w-2 rounded-full ${dotClass}`}
-      />
-      {label}
-    </p>
+    <>
+      <p className="flex items-center gap-2.5 font-mono text-xs uppercase tracking-wider">
+        <span
+          aria-hidden
+          className={`inline-block h-2 w-2 rounded-full ${dotClass}`}
+        />
+        {label}
+      </p>
+      {note && (
+        <p className="mt-2 font-mono text-xs text-[var(--color-code-comment)]">
+          {note}
+        </p>
+      )}
+    </>
   );
 }
 

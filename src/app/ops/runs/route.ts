@@ -27,5 +27,10 @@ export async function GET(request: Request) {
   const bundles = index.filter((entry) =>
     rows.some((row) => row.citation === entry.citation_path || row.citation.startsWith(`${entry.citation_path}/`))
   );
-  return NextResponse.json({ rows, ...metadata, bundles }, { headers: { "Cache-Control": "no-store" } });
+  // When the collector last read these runs: the page says how old they are.
+  const collectedAt = attempts.reduce<string | null>(
+    (newest, attempt) => (attempt.collected_at && (!newest || attempt.collected_at > newest) ? attempt.collected_at : newest),
+    null
+  );
+  return NextResponse.json({ rows, ...metadata, bundles, collectedAt }, { headers: { "Cache-Control": "no-store" } });
 }

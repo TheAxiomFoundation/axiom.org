@@ -138,7 +138,7 @@ describe("PipelineLedger", () => {
     expect(rows.map((row) => row.textContent)).toEqual([
       "├Try 1 gpt-6-luna 37s <$0.01 Completeness rule: structure",
       "├Try 2 gpt-6-sol 20s $0.14 Embedded scalar literal · stopped the run",
-      "└Checks and review 9m between and after the tries, not timed per try; with the tries' model time (57s) the loop's 10m",
+      "└Checks and review 9m 3s between and after the tries, not timed per try; with the tries' model time (57s) the loop's 10m",
     ]);
   });
 
@@ -156,6 +156,48 @@ describe("PipelineLedger", () => {
     fireEvent.click(screen.getByRole("button", { name: "Show 2 more documents" }));
     expect(screen.getAllByRole("button", { name: /^Runs of / })).toHaveLength(12);
     expect(screen.queryByRole("button", { name: /more documents$/ })).not.toBeInTheDocument();
+  });
+
+  it("pages by each document's latest run across jurisdictions", async () => {
+    serve({
+      rows: runRows([
+        ...Array.from({ length: 10 }, (_, i) =>
+          pipelineAttempt({ id: `d${i}`, citation: `us/statute/${i + 1}/100/a`, jurisdiction: "us", dispatched_at: `2026-09-${String(i + 15).padStart(2, "0")}T10:00:00Z` })
+        ),
+        pipelineAttempt({ id: "old", citation: "us/statute/99/100/a", jurisdiction: "us", dispatched_at: "2026-09-01T10:00:00Z" }),
+        pipelineAttempt({ id: "nm", citation: "us-nm/statute/7-2-39", jurisdiction: "us-nm", dispatched_at: "2026-09-20T12:00:00Z" }),
+      ]),
+    });
+    render(<PipelineLedger scope={null} scopeName={null} referenceMs={NOW} />);
+    const ledger = await screen.findByRole("table");
+    // New Mexico's run is newer than the oldest US documents: it shows on the first page, under its own heading.
+    expect(within(ledger).getByRole("rowheader", { name: "New Mexico" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^Runs of / })).toHaveLength(10);
+    expect(screen.queryByRole("button", { name: "Runs of us/statute/99/100/a" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show 2 more documents" }));
+    expect(screen.getByRole("button", { name: "Runs of us/statute/99/100/a" })).toBeInTheDocument();
+  });
+
+  it("says how old the runs are, what the statuses mean, and names each document with its citation", async () => {
+    serve({
+      rows: runRows([
+        pipelineAttempt({ id: "f", citation: "us/statute/26/32", jurisdiction: "us", dispatched_at: "2026-09-20T10:00:00Z", encoder_error_rule: "rule-a", failure_source: "diagnostics" }),
+        pipelineAttempt({ id: "c", citation: "us/statute/26/32", jurisdiction: "us", dispatched_at: "2026-09-21T10:00:00Z", run_conclusion: "cancelled", cancel_stage: "approval" }),
+      ]),
+      labels: { "us/statute/26": "INTERNAL REVENUE CODE", "us/statute/26/32": "Earned income" },
+      documentPaths: { "us/statute/26/32": "us/statute/26" },
+      collectedAt: "2026-09-30T11:48:00Z",
+    });
+    render(<PipelineLedger scope={null} scopeName={null} referenceMs={NOW} />);
+    await screen.findByRole("table");
+    expect(screen.getByText("Updated 12m ago.")).toHaveAttribute("title", "2026-09-30T11:48:00Z");
+    expect(screen.getByText("INTERNAL REVENUE CODE").parentElement).toHaveTextContent("INTERNAL REVENUE CODEus/statute/26");
+    const legend = screen.getByRole("button", { name: "What Status means" });
+    fireEvent.click(legend);
+    expect(screen.getByRole("note")).toHaveTextContent(/Done: tests pass\..*Going: .*Stopped: /);
+    // A failure and a cancellation are not two failures.
+    fireEvent.click(screen.getByRole("button", { name: "Runs of us/statute/26/32" }));
+    expect(screen.getByText("2 runs").parentElement).toHaveTextContent("2 runs · 1 failed · 1 cancelled · latest 9d ago");
   });
 
   it("says when it cannot load, and when the scope has no runs", async () => {

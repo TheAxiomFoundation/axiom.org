@@ -104,7 +104,7 @@ describe("OpsPipeline", () => {
     expect(within(stages).getByText("18,615")).toBeInTheDocument();
     // A tile shows its name and count; its status is the tooltip.
     expect(within(stages).getByRole("button", { name: /^Queued/ })).toHaveAttribute("title", "Paused: Awaiting a green tip");
-    expect(within(stages).getByRole("button", { name: /^In review\s*1$/ })).toHaveAttribute("title", "1 stuck · 3w");
+    expect(within(stages).getByRole("button", { name: /^In review\s*1$/ })).toHaveAttribute("title", "1 stuck · 2w");
     expect(within(stages).getByRole("button", { name: /^Runs\s*0$/ })).toHaveAttribute("title", "no engine sweep yet");
     expect(screen.getByRole("button", { name: /^3\s*last encode failed$/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /1\s*encoded, no PR/ })).toBeInTheDocument();
@@ -504,7 +504,7 @@ describe("OpsPipeline", () => {
     expect(corpusTile).toHaveAttribute("aria-pressed", "true");
     const list = screen.getByRole("region", { name: "Corpus releases" });
     expect(
-      within(list).getByRole("link", { name: "68 open PRs in axiom-corpus (37 ready · 31 draft), oldest 11w" })
+      within(list).getByRole("link", { name: "68 open PRs in axiom-corpus (37 ready · 31 draft), oldest 10w" })
     ).toHaveAttribute("href", "https://github.com/c/pulls");
     expect(within(list).getByRole("link", { name: "Last publish failed 5d ago" })).toBeInTheDocument();
     const groups = within(list).getAllByRole("region").map((group) => group.getAttribute("aria-label"));
@@ -564,7 +564,7 @@ describe("OpsPipeline", () => {
     // Up-to-date rows say when they were activated and how much serves.
     const nz = item("New Zealand · nz");
     expect(within(nz).getByText("Serving 2026-07-25 · encoder reads the same release")).toBeInTheDocument();
-    expect(within(nz).getByText("Activated 10w ago · 11,774 provisions · 8 scope versions")).toBeInTheDocument();
+    expect(within(nz).getByText("Activated 9w ago · 11,774 provisions · 8 scope versions")).toBeInTheDocument();
     expect(within(item("Canada · ca")).getByText("Serving 1 · encoder reads 0")).toBeInTheDocument();
     expect(within(item("Canada · ca")).getByText("Activated 6h ago · 1 scope version")).toBeInTheDocument();
     fireEvent.click(within(list).getByRole("button", { name: "Close list" }));
@@ -823,7 +823,7 @@ describe("OpsPipeline", () => {
       const list = await screen.findByRole("region", { name: "Encode run: Failed validation runs" });
       expect(fetch).toHaveBeenCalledWith("/ops/runs?j=us&only=1");
       expect(within(list).getByRole("link", { name: "us/v" })).toHaveAttribute("href", "/ops/journey?citation=us%2Fv");
-      expect(within(list).getByText("Failed validation · rule-a")).toBeInTheDocument();
+      expect(within(list).getByText("Failed validation · [rule-a] x")).toBeInTheDocument();
       expect(within(list).getByText(/by Pavel · encoder 0.2.9/)).toBeInTheDocument();
       // Every number opens its runs, reusing the runs already loaded.
       fireEvent.click(within(flow).getByRole("button", { name: "1 tests pass" }));
@@ -857,7 +857,7 @@ describe("OpsPipeline", () => {
       );
       // The typical time per step; a step that takes none, or is not timed yet, shows a dash.
       expect(stepRows()).toEqual([
-        "Signing approval?6m11 of 11—",
+        "Signing approval?5m11 of 11—",
         "Encode run?10m encoded11 of 11—",
         "Pull request?—1 of 1110 without a PR",
         "Review?22h 31m merged1 of 1—",
@@ -870,7 +870,7 @@ describe("OpsPipeline", () => {
       fireEvent.click(help);
       expect(help).toHaveAttribute("aria-expanded", "true");
       expect(within(table).getByRole("note")).toHaveTextContent(
-        "From the dispatch until a person approves the signing and the encode job starts.6m typical over 10 runs; the slowest 10% 9m or more"
+        "From the dispatch until a person approves the signing and the encode job starts.5m typical over 10 runs; the slowest 10% 9m or more"
       );
       // One merged PR: a typical time with no slowest tenth.
       press(within(table).getByRole("button", { name: "What Review means" }));

@@ -390,7 +390,8 @@ async function readCitationMetadata(
     options,
   ).catch(() => []);
 
-  const roots = new Set<string>();
+  // Parentless provisions, and whether each has a heading of its own.
+  const roots = new Map<string, boolean>();
   const provisionLabels = new Set<string>();
   for (const row of provisions) {
     if (!row.citation_path) continue;
@@ -399,19 +400,33 @@ async function readCitationMetadata(
       labels[row.citation_path] = heading;
       provisionLabels.add(row.citation_path);
     }
-    if (row.parent_id === null) roots.add(row.citation_path);
+    if (row.parent_id === null) roots.set(row.citation_path, (roots.get(row.citation_path) ?? false) || !!heading);
   }
   const documentPaths: Record<string, string> = {};
   for (const citation of citations) {
     if (!citation) continue;
     const leaf = corpusLookupPathsForCitation(citation).at(-1);
     if (!leaf) continue;
-    const root = [...roots]
-      .filter((path) => leaf === path || leaf.startsWith(`${path}/`))
-      .sort((a, b) => b.length - a.length)[0];
+    const root = documentRootFor(leaf, roots);
     if (root) documentPaths[citation] = root;
   }
   return { labels, documentPaths };
+}
+
+/**
+ * The source document a corpus path sits in: the shallowest parentless node
+ * at or above it (on a "/" boundary) that has a heading of its own, else the
+ * shallowest parentless one. The corpus leaves some sections without a parent
+ * (`us/statute/26/32` beside `us/statute/26`), so the deepest would split one
+ * code into a document per section; a parentless node without a heading is a
+ * stray part (`us/regulation/42/435/603/b`), or a folder of documents that
+ * have their own (`us-az/manual/des/faa5`).
+ */
+export function documentRootFor(leaf: string, roots: Map<string, boolean>): string | null {
+  const above = [...roots]
+    .filter(([path]) => leaf === path || leaf.startsWith(`${path}/`))
+    .sort(([a], [b]) => a.length - b.length);
+  return (above.find(([, headed]) => headed) ?? above[0])?.[0] ?? null;
 }
 
 export interface SupabaseFetchOptions {
