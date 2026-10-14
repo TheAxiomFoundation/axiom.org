@@ -31,6 +31,30 @@ const bundles = [
 ];
 
 describe("BundleOverview", () => {
+  it("shows documents partly encoded, and those the corpus lacks, beside the complete ones", () => {
+    // LIHEAP's shape: one document complete, two partly encoded, one the corpus does not hold.
+    const started = counts(1, 32, 47, 217);
+    started.byStatus = { complete: 1, unvalidated: 0, partly: 2, not_started: 28, not_in_corpus: 1 };
+    const { container } = render(
+      <BundleOverview bundles={[bundle("us", "liheap", "LIHEAP: federal law", started, started)]} />
+    );
+    const federal = within(screen.getByRole("table", { name: "LIHEAP by state" })).getByRole("link", { name: "Federal law" });
+    expect(federal.closest("tr")).toHaveTextContent(
+      "3%1 complete · 2 partly · 28 not started · 1 not in the corpus · 1 validated"
+    );
+    // The bar: a done segment, then a lighter partly one.
+    const bar = federal.closest("tr")!.querySelector("td span[aria-hidden]")!;
+    expect([...bar.children].map((segment) => (segment as HTMLElement).style.width)).toEqual(["3.125%", "6.25%"]);
+    expect(screen.getByRole("button", { name: /^LIHEAP/ })).toHaveAttribute(
+      "title",
+      "LIHEAP: 1 of 32 documents complete, 2 partly (1 validated), across the federal law and 0 states"
+    );
+    // Provisions say how many of them are encoded, with no partly segment.
+    fireEvent.click(screen.getByRole("radio", { name: "Provisions" }));
+    expect(federal.closest("tr")).toHaveTextContent("22%47 of 217 Tier 1 provisions · 47 validated");
+    expect(container.querySelectorAll("td span[aria-hidden] > span")).toHaveLength(2);
+  });
+
   it("counts what rests on a validation waiver as done, and apart as not validated", () => {
     const waived = counts(3, 10, 0, 0);
     // Two of the three complete documents rest on waived modules.
@@ -44,7 +68,7 @@ describe("BundleOverview", () => {
       />
     );
     const federal = within(screen.getByRole("table", { name: "SNAP by state" })).getByRole("link", { name: "Federal law" });
-    expect(federal.closest("tr")).toHaveTextContent("30%3 of 10 documents · 1 validated");
+    expect(federal.closest("tr")).toHaveTextContent("30%3 complete · 7 not started · 1 validated");
   });
 
   it("lists the programs by their completeness, and the chosen program's federal law and states", () => {
@@ -66,7 +90,7 @@ describe("BundleOverview", () => {
       "Arizona",
       "California",
     ]);
-    expect(rows[1]).toHaveTextContent("2%1 of 58 documents · 1 validated2%4 of 187 documents · 4 validated");
+    expect(rows[1]).toHaveTextContent("2%1 complete · 57 not started · 1 validated2%4 complete · 183 not started · 4 validated");
     expect(within(rows[1]).getByRole("link", { name: "Arizona" })).toHaveAttribute("href", "/ops?tab=bundles&bundle=us-az/snap");
     // The programs in alphabetical order too.
     expect(within(programs).getAllByRole("button").map((b) => b.textContent?.replace(/\d+%$/, ""))).toEqual([
@@ -116,6 +140,6 @@ describe("BundleOverview", () => {
     const arizona = screen.getByRole("table", { name: "Arizona by program" });
     const snap = within(arizona).getByRole("link", { name: "SNAP" });
     expect(snap).toHaveAttribute("href", "/ops?tab=bundles&bundle=us-az/snap");
-    expect(snap.closest("tr")).toHaveTextContent("SNAP0%0 of 2 documents · 0 validated7%3 of 43 documents · 3 validated");
+    expect(snap.closest("tr")).toHaveTextContent("SNAP0%0 complete · 2 not started7%3 complete · 40 not started · 3 validated");
   });
 });
