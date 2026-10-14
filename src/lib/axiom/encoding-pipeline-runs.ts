@@ -9,6 +9,9 @@ import {
   ENCODE_GATE_LABELS,
   encodeGate,
   failureReason,
+  mainMergedAt,
+  reachedMain,
+  viaPrLabel,
   type EncodeLoopTiming,
   type PipelineAttempt,
   type PipelineTry,
@@ -55,9 +58,16 @@ export interface RunRow {
     closedAt: string | null;
   } | null;
   merged: "main" | "off main" | null;
+  /** When the change reached main: the PR's merge, or its side branch's. */
+  mainMergedAt: string | null;
+  /** For a merge into a side branch: that branch's own PR into main. */
+  via: { label: string; url: string | null; state: NonNullable<PipelineAttempt["pr_via_state"]> } | null;
   index: "indexed" | "missing" | "awaiting" | null;
   tests: "pass" | "fail" | "waived" | null;
+  /** The latest validation run on main that includes the merge. */
   testsUrl: string | null;
+  /** The first validation run at the merge commit (what testsAt times). */
+  testsFirstUrl: string | null;
   /** When the first index sync after the merge finished. */
   indexedAt: string | null;
   /** When the module's validation first finished at the merge commit on main. */
@@ -109,8 +119,8 @@ const ms = (from: string | null | undefined, to: string | null | undefined) =>
 const secondsMs = (value: number | null | undefined) => (value == null ? null : value * 1000);
 
 export function runRow(attempt: PipelineAttempt): RunRow {
-  const merged =
-    attempt.pr_state === "merged" ? (attempt.pr_targets_default === false ? "off main" : "main") : null;
+  const merged = attempt.pr_state === "merged" ? (reachedMain(attempt) ? "main" : "off main") : null;
+  const viaLabel = viaPrLabel(attempt);
   return {
     id: attempt.id,
     citation: attempt.citation,
@@ -143,6 +153,11 @@ export function runRow(attempt: PipelineAttempt): RunRow {
           }
         : null,
     merged,
+    mainMergedAt: mainMergedAt(attempt),
+    via:
+      viaLabel && attempt.pr_via_state
+        ? { label: viaLabel, url: attempt.pr_via_url ?? null, state: attempt.pr_via_state }
+        : null,
     index:
       merged === "main"
         ? attempt.index_status === "missing"
@@ -153,6 +168,7 @@ export function runRow(attempt: PipelineAttempt): RunRow {
         : null,
     tests: attempt.tests_status ?? null,
     testsUrl: attempt.tests_run_url ?? null,
+    testsFirstUrl: merged === "main" ? (attempt.tests_first_run_url ?? null) : null,
     indexedAt: merged === "main" ? (attempt.indexed_at ?? null) : null,
     testsAt: merged === "main" ? (attempt.tests_first_at ?? null) : null,
     testsStartedAt: merged === "main" ? (attempt.tests_first_started_at ?? null) : null,
@@ -354,7 +370,7 @@ export function stepTimes(rows: RunRow[], referenceMs: number): StepTimes[] {
   const now = new Date(referenceMs).toISOString();
   // Times from the merge, over merges into main whose time is recorded.
   const afterMerge = (key: GateKey, span: string, measures: string, none: string, end: (row: RunRow) => string | null) => {
-    const time = timing("", rows.filter((row) => row.merged === "main").map((row) => ms(row.pr?.mergedAt, end(row))));
+    const time = timing("", rows.filter((row) => row.merged === "main").map((row) => ms(row.mainMergedAt, end(row))));
     return time ? timed(key, span, measures, time) : untimed(key, span, "Not timed yet", none);
   };
   return [
@@ -518,7 +534,7 @@ export function testsParts(rows: RunRow[]): TestsParts {
         "Wait to start",
         "merge → shard starts",
         "From the merge until the jurisdiction's validation shard starts at the merge commit: CI starting and waiting for a runner.",
-        timing("", merges.map((row) => ms(row.pr?.mergedAt, row.testsStartedAt)))
+        timing("", merges.map((row) => ms(row.mainMergedAt, row.testsStartedAt)))
       ),
       timedPart(
         "run",
@@ -778,12 +794,18 @@ export function runTimeline(row: RunRow, referenceMs: number, details: TimelineD
       key: "review",
       label: "Review",
       ms: ms(pr.openedAt, end ?? new Date(referenceMs).toISOString()),
-      state: row.merged === "main" ? "done" : row.merged === "off main" || pr.state === "closed" ? "failed" : "waiting",
+      // A side branch's own PR goes on as its own step.
+      state:
+        row.merged === "main" || (row.merged && row.via)
+          ? "done"
+          : row.merged === "off main" || pr.state === "closed"
+            ? "failed"
+            : "waiting",
       detail:
         details.review ??
-        (row.merged === "main"
+        (row.merged === "main" && !row.via
           ? "Merged into main"
-          : row.merged === "off main"
+          : row.merged
             ? "Merged into a side branch"
             : pr.state === "closed"
               ? "Closed without merging"
@@ -791,24 +813,42 @@ export function runTimeline(row: RunRow, referenceMs: number, details: TimelineD
       href: pr.url,
     });
   }
-  if (row.merged === "main" && pr?.mergedAt) {
+  // A side branch's own PR carries the merge on to main, or holds it.
+  if (pr?.mergedAt && row.via) {
+    const { via } = row;
+    after.push({
+      key: "side",
+      label: "Side branch",
+      ms: ms(pr.mergedAt, row.mainMergedAt ?? (via.state === "closed" ? null : new Date(referenceMs).toISOString())),
+      state: via.state === "merged" ? "done" : via.state === "closed" ? "failed" : "waiting",
+      detail:
+        via.state === "merged"
+          ? `Into main by ${via.label}`
+          : via.state === "closed"
+            ? `${via.label} closed without merging`
+            : `Waits for ${via.label} to merge into main`,
+      href: via.url,
+    });
+  }
+  const mainAt = row.mainMergedAt;
+  if (row.merged === "main" && mainAt) {
     after.push({
       key: "index",
       label: "Index",
-      ms: ms(pr.mergedAt, row.indexedAt),
+      ms: ms(mainAt, row.indexedAt),
       state: row.index === "indexed" ? "done" : row.index === "missing" ? "failed" : "waiting",
       detail:
         details.index ??
         (row.index === "indexed" ? "Indexed" : row.index === "missing" ? "Missing from the index" : "Waiting for the index"),
       href: null,
     });
-    const wait = ms(pr.mergedAt, row.testsStartedAt);
+    const wait = ms(mainAt, row.testsStartedAt);
     const run = ms(row.testsStartedAt, row.testsAt);
     const latest = row.tests && row.testsFirst && row.tests !== row.testsFirst ? `latest ${row.tests}` : null;
     after.push({
       key: "tests",
       label: "Tests on main",
-      ms: ms(pr.mergedAt, row.testsAt),
+      ms: ms(mainAt, row.testsAt),
       state: row.tests === "pass" || row.tests === "waived" ? "done" : row.tests === "fail" ? "failed" : "waiting",
       detail:
         [
@@ -820,7 +860,8 @@ export function runTimeline(row: RunRow, referenceMs: number, details: TimelineD
         ]
           .filter(Boolean)
           .join(" · ") || "No result yet",
-      href: row.testsUrl,
+      // The text times the first run at the merge commit, so the link opens that run.
+      href: row.testsFirstUrl ?? row.testsUrl,
     });
     after.push(...(details.extra ?? []));
   }

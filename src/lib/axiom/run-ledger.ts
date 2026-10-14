@@ -63,7 +63,11 @@ export function sectionStatus(latest: RunRow): { status: string; tone: LedgerTon
   if (!pr) return { status: "Without a PR", tone: "failed" };
   if (pr.state === "draft" || pr.state === "open") return { status: "In review", tone: "waiting" };
   if (pr.state === "closed") return { status: "PR closed", tone: "failed" };
-  if (latest.merged === "off main") return { status: "Merged into another branch", tone: "failed" };
+  if (latest.merged === "off main") {
+    return latest.via?.state === "open" || latest.via?.state === "draft"
+      ? { status: `In a side branch, waits for ${latest.via.label}`, tone: "waiting" }
+      : { status: "Merged into another branch", tone: "failed" };
+  }
   if (latest.tests === "pass") return { status: "Tests pass", tone: "done" };
   if (latest.tests === "fail") return { status: "Tests fail", tone: "failed" };
   if (latest.index === "missing") return { status: "Not indexed", tone: "failed" };

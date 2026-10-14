@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   activeWaivers,
+  bookkeepingCause,
   buildAttempts,
+  encodeWindow,
+  mainMerge,
+  matchEncoderRuns,
+  sideBranchLookups,
+  viaPrFor,
+  type BranchPr,
+  type RunDetail,
   conceptModuleKeys,
   containmentQueries,
   containsKey,
@@ -44,6 +52,8 @@ import {
   type WorkflowRun,
 } from "./encoding-pipeline-collect";
 import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
+import { attemptStage, citationStates, pipelineItem } from "./encoding-pipeline";
+import { runRow, runTimeline } from "./encoding-pipeline-runs";
 
 const NOW = Date.parse("2026-09-30T12:00:00Z");
 const CITATION = "us/regulation/42/457/800";
@@ -1137,8 +1147,9 @@ describe("encoder tries", () => {
       inputs({ encoderRuns: [encoderRow({ iterations: [{ attempt: 1, model: "m", duration_ms: 5 }] })] })
     );
     expect(attempt.tries).toEqual([{ attempt: 1, model: "m", ms: 5, cost: null, ok: false, error: null }]);
+    // Written as null, so a run that loses a wrongly joined record loses its tries too.
     const [unmatched] = buildAttempts(inputs());
-    expect(unmatched).not.toHaveProperty("tries");
+    expect(unmatched.tries).toBeNull();
   });
 
   it("keeps a timed try's start, whole time, and phases, with a check phase's time by tool", () => {
@@ -1211,6 +1222,364 @@ describe("encoder tries", () => {
     const [attempt] = buildAttempts(inputs({ encoderRuns: [encoderRow({ loop_timing })] }));
     expect(attempt.encode_loop).toMatchObject({ wallMs: 200_000, setupMs: 20_000 });
     const [older] = buildAttempts(inputs({ encoderRuns: [encoderRow()] }));
-    expect(older).not.toHaveProperty("encode_loop");
+    expect(older.encode_loop).toBeNull();
+  });
+});
+
+describe("encoder records join one run each", () => {
+  // Two dispatches of one citation that overlap, each with its encode step read.
+  const first = run({ id: 601 });
+  const second = run({
+    id: 602,
+    created_at: "2026-09-29T18:20:00Z",
+    run_started_at: "2026-09-29T18:20:05Z",
+    updated_at: "2026-09-29T18:50:00Z",
+  });
+  const steps = (encodeStartedAt: string, setup: number, encode: number | null) => ({
+    jobs_checked_at: "R",
+    steps_read_at: "R",
+    encode_started_at: encodeStartedAt,
+    setup_seconds: setup,
+    encode_seconds: encode,
+    cancel_stage: null,
+  });
+  // Encode steps 18:04-18:24 and 18:25-18:45.
+  const known = new Map([
+    ["601", steps("2026-09-29T18:02:00Z", 120, 1200)],
+    ["602", steps("2026-09-29T18:22:00Z", 180, 1200)],
+  ]);
+
+  it("gives each record to the run whose encode step holds it, never to two", () => {
+    const records = [
+      encoderRow({ id: "a", timestamp: "2026-09-29T18:23:00Z" }),
+      encoderRow({ id: "b", timestamp: "2026-09-29T18:38:00Z" }),
+    ];
+    const matched = matchEncoderRuns(
+      [first, second].map((r) => ({ run: r, citation: CITATION, known: known.get(String(r.id)) })),
+      indexEncoderRows(records),
+      NOW
+    );
+    // By the runs' windows and slack alone, "b" fell inside both.
+    expect([matched.get("601")?.id, matched.get("602")?.id]).toEqual(["a", "b"]);
+    const attempts = buildAttempts(inputs({ runs: [first, second], encoderRuns: records, previous: known }));
+    expect(attempts.map((a) => a.encoder_run_id)).toEqual(["a", "b"]);
+  });
+
+  it("gives none to a run whose encode step never ran", () => {
+    const index = indexEncoderRows([encoderRow({ timestamp: "2026-09-29T18:20:00Z" })]);
+    const one = (k?: Parameters<typeof encodeWindow>[1]) =>
+      matchEncoderRuns([{ run: run(), citation: CITATION, known: k }], index, NOW).get("501")?.id ?? null;
+    // Jobs not read yet: the run's own window.
+    expect(one()).toBe("eab51e8d");
+    expect(one({ cancel_stage: "approval" })).toBeNull();
+    expect(one({ cancel_stage: "before_job" })).toBeNull();
+    // The encode job ran no step, or stopped in setup before the encode step.
+    expect(one({ jobs_checked_at: "R", encode_started_at: null })).toBeNull();
+    expect(one(steps("2026-09-29T18:01:00Z", 150, null))).toBeNull();
+    expect(encodeWindow(run(), steps("2026-09-29T18:01:00Z", 60, 600), NOW)).toEqual({
+      start: Date.parse("2026-09-29T18:02:00Z"),
+      end: Date.parse("2026-09-29T18:12:00Z"),
+    });
+  });
+
+  it("else gives it to the run that ended last before it, within the clock slack", () => {
+    const one = (timestamp: string) =>
+      matchEncoderRuns(
+        [{ run: first, citation: CITATION, known: known.get("601") }],
+        indexEncoderRows([encoderRow({ timestamp })]),
+        NOW
+      ).get("601")?.id ?? null;
+    expect(one("2026-09-29T18:30:00Z")).toBe("eab51e8d");
+    expect(one("2026-09-29T18:40:00Z")).toBeNull();
+    // Before its encode step started: an earlier run's.
+    expect(one("2026-09-29T18:03:00Z")).toBeNull();
+  });
+
+  it("drops a record an earlier pass joined to a run that never encoded, with its tries, cost, and cause", () => {
+    const cancelled = run({ conclusion: "cancelled" });
+    const stale = { failure_source: "encoder_run", encoder_error: "old", encoder_error_rule: "x-y" };
+    const atApproval = new Map([
+      ["501", { jobs_checked_at: "R", cancel_stage: "approval" as const, encode_started_at: null, ...stale }],
+    ]);
+    const records = [encoderRow({ iterations: [{ attempt: 1, model: "m" }] })];
+    expect(buildAttempts(inputs({ runs: [cancelled], encoderRuns: records, previous: atApproval }))[0]).toMatchObject({
+      cancel_stage: "approval",
+      encoder_run_id: null,
+      generation_attempts: null,
+      cost_usd: null,
+      tries: null,
+      failure_source: null,
+      encoder_error: null,
+    });
+    // A run that failed in setup: its stale cause is not carried, and its failure is looked up again.
+    const inSetup = new Map([["501", { ...steps("2026-09-29T18:01:00Z", 150, null), ...stale }]]);
+    expect(buildAttempts(inputs({ encoderRuns: records, previous: inSetup }))[0]).toMatchObject({
+      encoder_run_id: null,
+      failure_source: null,
+      encoder_error: null,
+    });
+    expect(failureLookups([run()], records, inSetup, NOW, 10).map((r) => r.id)).toEqual([501]);
+    // The jobs read this pass decide too.
+    const setupFailure: RunDetail = {
+      encodeStartedAt: "2026-09-29T18:01:00Z",
+      cancelStage: null,
+      phases: { setup: 150, encode: null, publish: null },
+    };
+    expect(failureLookups([run()], records, new Map(), NOW, 10).map((r) => r.id)).toEqual([]);
+    expect(
+      failureLookups([run()], records, new Map(), NOW, 10, new Map([["501", setupFailure]])).map((r) => r.id)
+    ).toEqual([501]);
+  });
+});
+
+describe("causes from the encoder's log", () => {
+  const encoderLog = (...lines: string[]) =>
+    [
+      "##[group]Run set -euo pipefail",
+      "  CARGO_HOME: /home/runner/.cargo",
+      "##[endgroup]",
+      ...lines,
+      "##[error]Process completed with exit code 1.",
+    ]
+      .map((line) => `2026-09-02T10:59:06.7130890Z ${line}`)
+      .join("\n");
+  const result = (...lines: string[]) => [
+    "Output root: /home/runner/work/_temp/generated/target",
+    "Corpus release: us-rulespec-2026-08-08-obbb-alien-snap (0d69a0cd)",
+    "Runner: openai:gpt-5.6-terra",
+    "Mode: repo-augmented",
+    "",
+    "us/regulation/7/273/4 [openai-gpt-5.6-terra]",
+    "  standalone_success=False duration_ms=31071 cost_est=$0.2721",
+    "  tokens in=205203 out=2162 cache_read=91231 cache_write=0 reasoning_out=1388",
+    "  compile=yes ci=no",
+    "  error=Generated RuleSpec failed CI validation",
+    "  file=/home/runner/work/_temp/generated/target/openai-gpt-5.6-terra/regulations/7-cfr/273/4.yaml",
+    "  run_id=57480cb2",
+    ...lines,
+  ];
+  const applied = result(
+    "  apply=/home/runner/work/axiom-encode/axiom-encode/rulespec-us/us/regulations/7-cfr/273/4.yaml",
+    "  outcome=apply_applied final_success=True",
+    "  supabase_sync=skipped",
+    "axiom-apply-signer event=shutdown scope=apply_ed25519 signatures=1 ts=2026-09-02T09:49:43Z"
+  );
+  const SHUTDOWN = "axiom-apply-signer event=shutdown scope=apply_ed25519 signatures=0 ts=2026-09-02T10:59:06Z";
+
+  it("quotes the final result's blocked apply, not the signer's shutdown line (run 33613765722)", () => {
+    const log = encoderLog(
+      "WARNING: run 3dc1da0f (us/regulation/7/273/4) was NOT synced to Supabase; it will not appear on the ops dashboard.",
+      ...applied,
+      "retired manifest inventory unchanged",
+      ...result(
+        "  apply=blocked_manifest:Refusing to shrink existing apply manifest coverage; dropped files: us/policies/usda/snap/state-plan-composition.test.yaml.",
+        "  outcome=apply_blocked_manifest final_success=False",
+        "  repair_manifest=/home/runner/work/_temp/generated/target/openai-gpt-5.6-terra/regulations/7-cfr/273/4.repair.json",
+        "  supabase_sync=skipped",
+        SHUTDOWN
+      )
+    );
+    expect(checkErrorFromLog(log)).toBe(
+      "Refusing to shrink existing apply manifest coverage; dropped files: us/policies/usda/snap/state-plan-composition.test.yaml."
+    );
+  });
+
+  it("quotes a blocked validation with its rule, the encoder's own error, or a later tool error", () => {
+    const blocked = checkErrorFromLog(
+      encoderLog(
+        ...result(
+          "  apply=blocked_validation:regulations/7-cfr/273/4.yaml: ci: [complete-source-unit:structure] Source branch (E) is neither encoded nor precisely deferred.",
+          "  outcome=apply_blocked_validation final_success=False",
+          SHUTDOWN
+        )
+      )
+    );
+    expect(blocked).toBe(
+      "regulations/7-cfr/273/4.yaml: ci: [complete-source-unit:structure] Source branch (E) is neither encoded nor precisely deferred."
+    );
+    expect(errorRule(blocked)).toBe("complete-source-unit:structure");
+    expect(
+      checkErrorFromLog(encoderLog(...result("  outcome=apply_blocked_generation final_success=False", SHUTDOWN)))
+    ).toBe("Generated RuleSpec failed CI validation");
+    // An applied result's repaired errors do not explain what failed after it.
+    expect(
+      checkErrorFromLog(encoderLog(...applied, "error: retired manifest inventory lacks one canonical top-level assignment"))
+    ).toBe("error: retired manifest inventory lacks one canonical top-level assignment");
+    expect(
+      checkErrorFromLog(encoderLog(...applied, "signing supervisor: private keys are forbidden in the signing supervisor"))
+    ).toBe("signing supervisor: private keys are forbidden in the signing supervisor");
+  });
+
+  it("reads a stored signer bookkeeping cause once more", () => {
+    const stored = `supabase_sync=skipped ${SHUTDOWN}`;
+    expect(bookkeepingCause(stored)).toBe(true);
+    expect(bookkeepingCause("repair_manifest=/tmp/4.repair.json axiom-apply-signer event=shutdown signatures=0")).toBe(true);
+    expect(bookkeepingCause("error: rulespec ref is not the exact pull request base branch tip")).toBe(false);
+    expect(bookkeepingCause(null)).toBe(false);
+    expect(needsLogRead({ failure_source: "log", failed_step: "encode_apply", encoder_error: stored })).toBe(true);
+    expect(needsLogRead({ failure_source: "log", failed_step: "encode_apply", encoder_error: "Refusing to shrink" })).toBe(false);
+    const previous = new Map([
+      ["501", { citation: CITATION, failure_source: "log", failed_step: "encode_apply", encoder_error: stored }],
+    ]);
+    expect(failureLookups([run()], [], previous, NOW, 10).map((r) => r.id)).toEqual([501]);
+  });
+});
+
+describe("merges into a side branch", () => {
+  const SIDE = "fix/1248-snap-immigration-status";
+  const sideMerged = (via?: BranchPr | null) =>
+    pr({
+      state: "MERGED",
+      isDraft: false,
+      createdAt: "2026-09-25T17:00:00Z",
+      baseRefName: SIDE,
+      mergedAt: "2026-09-25T17:31:05Z",
+      mergeCommit: "side1",
+      ...(via !== undefined ? { via } : {}),
+    });
+  const branchPr = (override: Partial<BranchPr> = {}): BranchPr => ({
+    number: 1392,
+    url: "https://github.com/TheAxiomFoundation/rulespec-us/pull/1392",
+    state: "MERGED",
+    isDraft: false,
+    createdAt: "2026-09-24T15:17:18Z",
+    mergedAt: "2026-09-25T20:11:12Z",
+    mergeCommit: "main1",
+    ...override,
+  });
+  const unmerged = { mergedAt: null, mergeCommit: null };
+
+  it("finds the side branch's own PR that carries a merge to main", () => {
+    const intoMain = pr({ state: "MERGED", mergedAt: "2026-09-25T00:00:00Z" });
+    expect(sideBranchLookups([sideMerged(), sideMerged(), intoMain, pr({ baseRefName: SIDE })])).toEqual([
+      { repo: "rulespec-us", branch: SIDE, base: "main" },
+    ]);
+    const earlier = branchPr({ number: 1300, mergedAt: "2026-09-20T00:00:00Z", mergeCommit: "old" });
+    const open = branchPr({ number: 1500, state: "OPEN", createdAt: "2026-09-26T00:00:00Z", ...unmerged });
+    const closed = branchPr({ number: 1400, state: "CLOSED", ...unmerged });
+    expect(viaPrFor(sideMerged(), [earlier, branchPr(), open])?.number).toBe(1392);
+    // One that merged before the side-branch merge carried earlier work.
+    expect(viaPrFor(sideMerged(), [earlier, open, closed])?.number).toBe(1500);
+    expect(viaPrFor(sideMerged(), [earlier, closed])?.number).toBe(1400);
+    expect(viaPrFor(sideMerged(), [])).toBeNull();
+    expect(viaPrFor(intoMain, [branchPr()])).toBeNull();
+  });
+
+  it("counts it merged into main once that PR merged, at the commit main got (rulespec-us#1412 by #1392)", () => {
+    const mirror = [mirrorRow({ commit_sha: "idx", synced_at: "2026-09-26T00:17:00Z" })];
+    const contains = new Map([
+      [containsKey("rulespec-us", "main1", "idx"), true],
+      [containsKey("rulespec-us", "main1", "head"), true],
+    ]);
+    const latest: ShardResult = {
+      conclusion: "success",
+      headSha: "head",
+      runUrl: "https://github.com/x/runs/latest",
+      completedAt: "2026-09-27T00:00:00Z",
+    };
+    const validation = new Map([["rulespec-us", new Map([["us", latest]])]]);
+    const firstRun = {
+      startedAt: "2026-09-25T20:12:00Z",
+      completedAt: "2026-09-25T20:40:00Z",
+      conclusion: "success" as const,
+      url: "https://github.com/x/runs/first",
+    };
+    const mergeValidation = new Map([[mergeValidationKey("rulespec-us", "main1"), new Map([["us", firstRun]])]]);
+    const prs = [sideMerged(branchPr())];
+    const [attempt] = buildAttempts(inputs({ prs, mirror, contains, validation, mergeValidation }));
+    expect(attempt).toMatchObject({
+      pr_base_branch: SIDE,
+      pr_targets_default: false,
+      pr_merged_at: "2026-09-25T17:31:05Z",
+      pr_merge_commit: "side1",
+      pr_via_number: 1392,
+      pr_via_state: "merged",
+      pr_via_merged_at: "2026-09-25T20:11:12Z",
+      pr_via_merge_commit: "main1",
+      index_status: "indexed",
+      tests_status: "pass",
+      tests_run_url: "https://github.com/x/runs/latest",
+      tests_first_status: "pass",
+      tests_first_run_url: "https://github.com/x/runs/first",
+    });
+    expect(attemptStage(attempt)).toBe("verified");
+    expect(mainMerge(prs[0])).toEqual({ mergedAt: "2026-09-25T20:11:12Z", mergeCommit: "main1" });
+    expect(containmentQueries(prs, mirror, validation)).toEqual([
+      { repo: "rulespec-us", ancestor: "main1", descendant: "idx" },
+      { repo: "rulespec-us", ancestor: "main1", descendant: "head" },
+    ]);
+    expect(mergeValidationLookups(prs, new Map(), 10)).toEqual([{ repo: "rulespec-us", commit: "main1" }]);
+    expect(oldestUnsyncedMerge([{ ...attempt, synced_at: null, index_status: null }], NOW)).toBe(
+      "2026-09-25T20:11:12Z"
+    );
+    const row = runRow(attempt);
+    expect(row).toMatchObject({
+      merged: "main",
+      mainMergedAt: "2026-09-25T20:11:12Z",
+      via: { label: "rulespec-us#1392", state: "merged" },
+    });
+    const steps = runTimeline(row, NOW).after;
+    expect(steps.map((step) => step.key)).toEqual(["review", "side", "index", "tests"]);
+    expect(steps[1]).toMatchObject({ state: "done", detail: "Into main by rulespec-us#1392" });
+    expect(steps[1].ms).toBe(Date.parse("2026-09-25T20:11:12Z") - Date.parse("2026-09-25T17:31:05Z"));
+    // The tests on main open the first run at the merge commit, which they time from main's merge.
+    expect(steps[3].href).toBe("https://github.com/x/runs/first");
+    expect(steps[3].ms).toBe(Date.parse("2026-09-25T20:40:00Z") - Date.parse("2026-09-25T20:11:12Z"));
+  });
+
+  it("keeps a merge whose side branch's PR is still open off main, waiting for that PR", () => {
+    const open = branchPr({
+      number: 911,
+      state: "OPEN",
+      url: "https://github.com/TheAxiomFoundation/rulespec-us/pull/911",
+      ...unmerged,
+    });
+    const [attempt] = buildAttempts(inputs({ prs: [sideMerged(open)], mirror: [mirrorRow()] }));
+    expect(attempt).toMatchObject({
+      pr_via_number: 911,
+      pr_via_state: "open",
+      pr_via_merged_at: null,
+      pr_via_merge_commit: null,
+      synced_at: null,
+      index_status: null,
+    });
+    expect(attemptStage(attempt)).toBe("merged_off_main");
+    const [state] = citationStates([attempt]);
+    expect(pipelineItem(state, NOW).reason).toBe(`Merged into ${SIDE}; waits for rulespec-us#911`);
+    expect(runTimeline(runRow(attempt), NOW).after.find((step) => step.key === "side")).toMatchObject({
+      state: "waiting",
+      detail: "Waits for rulespec-us#911 to merge into main",
+      href: open.url,
+    });
+    // No PR from the branch: off main as before. Not looked up: no side-branch columns written.
+    expect(buildAttempts(inputs({ prs: [sideMerged(null)] }))[0]).toMatchObject({ pr_via_number: null, pr_via_state: null });
+    expect(buildAttempts(inputs({ prs: [sideMerged()] }))[0]).not.toHaveProperty("pr_via_number");
+    expect(buildAttempts(inputs({ prs: [pr({ via: null })] }))[0]).toMatchObject({ pr_via_number: null });
+  });
+});
+
+describe("first tests run's page", () => {
+  const merged = pr({ state: "MERGED", isDraft: false, mergedAt: "2026-09-30T01:00:00Z", mergeCommit: "m1" });
+  const stored = { tests_first_at: "C", tests_first_started_at: "S", tests_first_status: "pass" as const };
+
+  it("records it from the merge commit's shard run, and keeps it", () => {
+    const shards = new Map([
+      ["us", { startedAt: "S", completedAt: "C", conclusion: "success" as const, url: "https://github.com/x/runs/first" }],
+    ]);
+    const atMerge = new Map([[mergeValidationKey("rulespec-us", "m1"), shards]]);
+    // A merge recorded before pages were kept is read once more, and the read adds it.
+    expect(
+      buildAttempts(inputs({ prs: [merged], previous: new Map([["501", stored]]), mergeValidation: atMerge }))[0]
+    ).toMatchObject({ ...stored, tests_first_run_url: "https://github.com/x/runs/first" });
+    const kept = new Map([["501", { ...stored, tests_first_run_url: "U" }]]);
+    expect(buildAttempts(inputs({ prs: [merged], previous: kept }))[0]).toMatchObject({
+      tests_first_at: "C",
+      tests_first_run_url: "U",
+    });
+    const previous = new Map([["x", { pr_repo: "rulespec-us", pr_merge_commit: "m1", ...stored }]]);
+    expect(mergeValidationLookups([merged], previous, 10, { detail: true })).toEqual([]);
+    expect(mergeValidationLookups([merged], previous, 10, { detail: true, url: true })).toEqual([
+      { repo: "rulespec-us", commit: "m1" },
+    ]);
   });
 });

@@ -10,6 +10,7 @@ import {
   checkErrorLabel,
   citationStates,
   pipelineItem,
+  reachedMain,
   type PipelineAttempt,
   type PipelineGroupView,
 } from "./encoding-pipeline";
@@ -86,7 +87,7 @@ export function pipelineFunnel(attempts: PipelineAttempt[]): PipelineFunnel {
   const groups = byCitation(attempts);
   const ever = (test: (attempt: PipelineAttempt) => boolean) =>
     groups.filter((list) => list.some(test)).length;
-  const mergedMain = (a: PipelineAttempt) => a.pr_state === "merged" && a.pr_targets_default !== false;
+  const mergedMain = reachedMain;
   return {
     citations: groups.length,
     encoded: ever((a) => a.run_conclusion === "success"),

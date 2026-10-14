@@ -53,6 +53,15 @@ export interface PipelineAttempt {
   /** Users or teams a review is requested from. */
   pr_requested_reviewers?: string[] | null;
   pr_merge_commit?: string | null;
+  /** For a PR merged into a side branch: that branch's own PR into the
+   *  default branch (head = the side branch), which carries the change
+   *  there. Once it merged, the attempt counts as merged into the default
+   *  branch at its merge commit and time (see reachedMain). */
+  pr_via_number?: number | null;
+  pr_via_url?: string | null;
+  pr_via_state?: "draft" | "open" | "merged" | "closed" | null;
+  pr_via_merged_at?: string | null;
+  pr_via_merge_commit?: string | null;
   /** The module's jurisdiction validation (compile, companion tests,
    *  source-unit rules) on the default branch at a commit with the merge. */
   tests_status?: "pass" | "fail" | "waived" | null;
@@ -93,6 +102,8 @@ export interface PipelineAttempt {
   /** When that first shard run started, and how it ended. */
   tests_first_started_at?: string | null;
   tests_first_status?: "pass" | "fail" | null;
+  /** That first shard run's page. */
+  tests_first_run_url?: string | null;
   /** Each try of the encode loop, from the encoder's own record. */
   tries?: PipelineTry[] | null;
   /** The encode loop's own clock, from the encoder's record (axiom-encode 0.2.2157 on). */
@@ -205,7 +216,7 @@ export const STAGE_COPY: Record<PipelineStage, StageCopy> = {
   merged_off_main: {
     label: "Merged off main",
     description:
-      "Merged into a branch other than the repo's default, so they never reach the index.",
+      "Merged into a branch other than the repo's default; they reach the index only once that branch merges into it.",
   },
   not_indexed: {
     label: "Missing from the index",
@@ -235,9 +246,44 @@ export const FAILED_COMPILE_STATUSES = new Set([
   "closure_error",
 ]);
 
+/**
+ * Whether a merged attempt reached the repo's default branch: its PR merged
+ * into it, or into a side branch whose own PR then merged into it.
+ */
+export function reachedMain(attempt: PipelineAttempt): boolean {
+  return (
+    attempt.pr_state === "merged" &&
+    (attempt.pr_targets_default !== false || attempt.pr_via_state === "merged")
+  );
+}
+
+/** When the attempt's change reached the default branch: its own merge, or its side branch's. */
+export function mainMergedAt(attempt: PipelineAttempt): string | null {
+  if (!reachedMain(attempt)) return null;
+  return attempt.pr_targets_default === false ? (attempt.pr_via_merged_at ?? null) : attempt.pr_merged_at;
+}
+
+/** The side branch's own PR, as "rulespec-us#911". */
+export function viaPrLabel(attempt: PipelineAttempt): string | null {
+  if (attempt.pr_via_number == null) return null;
+  return `${attempt.pr_repo ?? ""}#${attempt.pr_via_number}`;
+}
+
+/** Where a merge went: the default branch, a side branch its own PR took on, or a side branch only. */
+export function mergeDetail(attempt: PipelineAttempt): string {
+  const into = `Into ${attempt.pr_base_branch}`;
+  if (attempt.pr_targets_default !== false) return into;
+  const via = viaPrLabel(attempt);
+  if (attempt.pr_via_state === "merged") return `${into}, then the default branch by ${via}`;
+  if (attempt.pr_via_state === "open" || attempt.pr_via_state === "draft") {
+    return `${into}; waits for ${via} to merge it into the default branch`;
+  }
+  return `${into}, not the default branch`;
+}
+
 export function attemptStage(attempt: PipelineAttempt): PipelineStage {
   if (attempt.pr_state === "merged") {
-    if (attempt.pr_targets_default === false) return "merged_off_main";
+    if (!reachedMain(attempt)) return "merged_off_main";
     if (attempt.index_status === "missing") return "not_indexed";
     if (!attempt.synced_at) return "awaiting_sync";
     if (attempt.compile_status && FAILED_COMPILE_STATUSES.has(attempt.compile_status)) {
@@ -275,9 +321,10 @@ export function stageSince(
     case "closed":
       return attempt.pr_closed_at;
     case "merged_off_main":
+      return attempt.pr_merged_at;
     case "awaiting_sync":
     case "not_indexed":
-      return attempt.pr_merged_at;
+      return mainMergedAt(attempt) ?? attempt.pr_merged_at;
     case "indexed":
     case "runs":
       return attempt.synced_at;
@@ -848,9 +895,7 @@ export function weeklyThroughput(
   for (const attempt of attempts) {
     bump(attempt.dispatched_at, "dispatched");
     if (attempt.run_conclusion === "success") bump(attempt.finished_at, "encoded");
-    if (attempt.pr_state === "merged" && attempt.pr_targets_default !== false) {
-      bump(attempt.pr_merged_at, "merged");
-    }
+    if (reachedMain(attempt)) bump(mainMergedAt(attempt), "merged");
   }
   return rows;
 }
@@ -948,16 +993,8 @@ export function journeySteps(attempt: PipelineAttempt): JourneyStep[] {
       key: "merged",
       label: "Merged",
       at: attempt.pr_merged_at,
-      state: merged
-        ? attempt.pr_targets_default === false
-          ? "failed"
-          : "done"
-        : "pending",
-      detail: merged && attempt.pr_base_branch
-        ? attempt.pr_targets_default === false
-          ? `Into ${attempt.pr_base_branch}, not the default branch`
-          : `Into ${attempt.pr_base_branch}`
-        : null,
+      state: merged ? (reachedMain(attempt) ? "done" : "failed") : "pending",
+      detail: merged && attempt.pr_base_branch ? mergeDetail(attempt) : null,
       href: attempt.pr_url,
     },
     {
@@ -1188,8 +1225,11 @@ function itemReason(state: CitationState): string | null {
       return oracleLabel(latest) ?? "No oracle report covers it";
     case "compile_failed":
       return latest.compile_status?.replaceAll("_", " ") ?? null;
-    case "merged_off_main":
-      return latest.pr_base_branch ? `Merged into ${latest.pr_base_branch}` : null;
+    case "merged_off_main": {
+      if (!latest.pr_base_branch) return null;
+      const waits = latest.pr_via_state === "open" || latest.pr_via_state === "draft";
+      return `Merged into ${latest.pr_base_branch}${waits ? `; waits for ${viaPrLabel(latest)}` : ""}`;
+    }
     case "not_indexed":
       return "Not in the index after a later sync";
     default:
