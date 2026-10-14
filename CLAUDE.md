@@ -42,6 +42,19 @@ generate `/axiom/v2/...` hrefs. The app root and marketing pages stay on v1.
   phase's time by tool), and `encode_loop` keeps the encoder's loop clock;
   the ledger timeline draws the tries on the run's clock from them. Older
   records lack both and read as "not timed".
+  Two more kinds of rows, told apart by id (`attemptSource`, no extra
+  column): `pr:<repo>#<n>:<module path>`, one module file a PR merged into a
+  rulespec-* default branch with no dispatch behind it (from 2026-07-22; each
+  pass lists PRs merged since a day before the last pass and reads only new
+  PRs' files, older ones are carried in their rows), and
+  `dep:<encoding_runs id>`, a module the encoder wrote inside another
+  citation's run (a source or dependent lane), with `queue_ref`
+  `dependent:<run id>`. Encoder records share no session with their run, so
+  the host is the same repo family's run whose encode window holds the
+  record, then the encoder version. Both go through the same joins after the
+  merge. Citation views (stages, ledger, journey, bundles' latest stage)
+  include them; run statistics (flow, attempts, versions, the weekly runs,
+  approvals) count dispatches only, and cost adds the dependent records.
   `scripts/collect-encoding-pipeline.mjs` rebuilds it every 30 minutes from
   GitHub and Supabase (and dispatches the index sync after merges); the pace
   comes from `collector-heartbeat.yml`, which starts the collector workflow

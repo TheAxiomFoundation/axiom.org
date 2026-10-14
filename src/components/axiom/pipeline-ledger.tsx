@@ -8,7 +8,7 @@ import { Explain } from "./ops-pipeline";
 import { RunTimeline } from "./run-timeline";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { scopeSearch, type PipelineScope } from "@/lib/axiom/encoding-pipeline-insights";
-import { runTimeline, type RunRow } from "@/lib/axiom/encoding-pipeline-runs";
+import { hostLabel, OUTSIDE_LABEL, runTimeline, type RunRow } from "@/lib/axiom/encoding-pipeline-runs";
 import {
   bundleHref,
   bundleMemberships,
@@ -64,7 +64,8 @@ function StatusLegend() {
   return (
     <Explain label="Status">
       <span className="font-sans text-xs normal-case tracking-normal text-[var(--color-ink-secondary)]">
-        A section&apos;s status is how far its latest run got, or what stopped it.
+        A section&apos;s status is how far its latest run got, or what stopped it. A module merged outside the
+        pipeline, or encoded inside another citation&apos;s run, counts as a run of its section.
       </span>
       <span className="grid gap-1 font-sans text-xs normal-case tracking-normal text-[var(--color-ink-secondary)]">
         <span>
@@ -359,6 +360,43 @@ function CountList({
   );
 }
 
+/**
+ * What a run line says after its time: the encoder, the outcome (a link to
+ * the run), why it failed, and its PR. A module merged outside the pipeline
+ * reads "Merged outside the pipeline · <author> · <repo>#<n>"; one encoded
+ * inside another citation's run names that run.
+ */
+function RunWhat({ run }: { run: RunRow }) {
+  if (run.source === "outside") {
+    return (
+      <>
+        <span>{[OUTSIDE_LABEL, run.by].filter(Boolean).join(" · ")}</span>
+        {run.pr && (
+          <a href={run.pr.url} target="_blank" rel="noreferrer">
+            {run.pr.label}
+          </a>
+        )}
+      </>
+    );
+  }
+  const dependent = run.source === "dependent";
+  return (
+    <>
+      {run.encoder && <span className="font-mono">{run.encoder}</span>}
+      <a href={run.runUrl} target="_blank" rel="noreferrer" data-outcome={run.outcome}>
+        {dependent ? hostLabel(run.host) : run.outcomeLabel}
+      </a>
+      {dependent && run.outcome !== "encoded" && <span>{run.outcomeLabel}</span>}
+      {run.cause && <span title={run.cause}>{causeHeadline(run.cause)}</span>}
+      {run.pr && (
+        <a href={run.pr.url} target="_blank" rel="noreferrer">
+          {run.pr.label} · {run.pr.state}
+        </a>
+      )}
+    </>
+  );
+}
+
 /** Every run of a section, one line each, newest first; a line opens its run's timeline. */
 function RunLines({ runs, referenceMs }: { runs: RunRow[]; referenceMs: number }) {
   const [open, setOpen] = useState<string | null>(null);
@@ -372,22 +410,13 @@ function RunLines({ runs, referenceMs }: { runs: RunRow[]; referenceMs: number }
               className={styles.ledgerToggle}
               aria-expanded={open === run.id}
               aria-label={`Timeline of ${run.citation}, run ${run.id}`}
-              title={run.dispatchedAt}
+              title={run.at ?? run.dispatchedAt}
               onClick={() => setOpen((current) => (current === run.id ? null : run.id))}
             >
               <ChevronRight size={14} aria-hidden className={styles.ledgerChevron} />
-              <span>{relativeTime(run.dispatchedAt, referenceMs)}</span>
+              <span>{relativeTime(run.at ?? run.dispatchedAt, referenceMs)}</span>
             </button>
-            {run.encoder && <span className="font-mono">{run.encoder}</span>}
-            <a href={run.runUrl} target="_blank" rel="noreferrer" data-outcome={run.outcome}>
-              {run.outcomeLabel}
-            </a>
-            {run.cause && <span title={run.cause}>{causeHeadline(run.cause)}</span>}
-            {run.pr && (
-              <a href={run.pr.url} target="_blank" rel="noreferrer">
-                {run.pr.label} · {run.pr.state}
-              </a>
-            )}
+            <RunWhat run={run} />
           </div>
           {open === run.id && <RunTimeline timeline={runTimeline(run, referenceMs)} showStopped={false} />}
         </li>
@@ -444,9 +473,11 @@ function SectionRuns({ section, referenceMs }: { section: LedgerSection; referen
           </p>
           <p className={styles.ledgerVerdictMeta}>
             {[
-              <span key="dispatched" title={latest.dispatchedAt}>
-                dispatched {relativeTime(latest.dispatchedAt, referenceMs)}
+              <span key="dispatched" title={latest.at ?? latest.dispatchedAt}>
+                {latest.source === "outside" ? "merged" : latest.source === "dependent" ? "encoded" : "dispatched"}{" "}
+                {relativeTime(latest.at ?? latest.dispatchedAt, referenceMs)}
               </span>,
+              latest.source === "outside" && latest.by && <span key="by">by {latest.by}</span>,
               latest.tries && (
                 <span key="tries">
                   {latest.tries.length} {latest.tries.length === 1 ? "try" : "tries"} in the encode loop
@@ -457,9 +488,11 @@ function SectionRuns({ section, referenceMs }: { section: LedgerSection; referen
                   {latest.pr.label} · {latest.pr.state}
                 </a>
               ),
-              <a key="run" href={latest.runUrl} target="_blank" rel="noreferrer">
-                Run on GitHub ↗
-              </a>,
+              latest.source !== "outside" && (
+                <a key="run" href={latest.runUrl} target="_blank" rel="noreferrer">
+                  {latest.source === "dependent" ? `${hostLabel(latest.host)} ↗` : "Run on GitHub ↗"}
+                </a>
+              ),
             ]
               .filter(Boolean)
               .map((item, index) => (

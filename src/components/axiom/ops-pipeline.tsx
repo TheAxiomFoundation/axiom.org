@@ -689,6 +689,7 @@ function ItemRow({
     .filter((part): part is string => !!part && part !== groupLabel)
     .join(" · ");
   const flags = [
+    item.source === "outside" ? "outside the pipeline" : item.source === "dependent" ? "in another citation's run" : null,
     item.stuck ? "stuck" : null,
     item.dispatches > 1 ? `${item.dispatches} dispatches` : null,
     item.openPrs > 1 ? `${item.openPrs} open PRs` : null,
@@ -1219,7 +1220,25 @@ function CitationStates({
           </li>
         ))}
       </ul>
+      <SourcesLine sources={view.sources} />
     </div>
+  );
+}
+
+/** How many citations the states hold because of encodings that were not dispatches. */
+function SourcesLine({ sources }: { sources: PipelineView["sources"] | undefined }) {
+  if (!sources || (sources.outside === 0 && sources.dependent === 0)) return null;
+  return (
+    <p className={styles.sourcesLine}>
+      {`Includes ${number(sources.outside)} ${sources.outside === 1 ? "citation" : "citations"} encoded outside the pipeline and ${number(sources.dependent)} encoded inside another citation's run.`}
+      <Explain label="Encodings that were not dispatches">
+        Outside the pipeline: a person&apos;s PR merged the module into the default branch with no dispatch. Such a
+        citation shows the steps after the merge: the index and the tests on main. Inside another citation&apos;s run:
+        the encoder wrote the module while it encoded another citation, as a source or a module that depends on it.
+        Such a citation shows how that went. A citation counts here when its latest attempt is one of these. Run
+        statistics (the flow, attempts, versions, the weekly runs) count dispatches only.
+      </Explain>
+    </p>
   );
 }
 
@@ -1287,12 +1306,13 @@ function TrendRows({ weeks }: { weeks: WeeklyThroughput[] }) {
       <div className={styles.cardHead}>
         <h3 className={styles.miniLabel}>Weekly</h3>
         <Explain label="Weekly">
-          Runs dispatched, runs encoded, and PRs merged in each of the last {weeks.length} weeks. The number is the
-          last full week.
+          Runs dispatched, runs encoded, and their PRs merged in each of the last {weeks.length} weeks, and the PRs
+          merged outside the pipeline (with no dispatch). Each row has its own scale. The number is the last full
+          week.
         </Explain>
       </div>
       <ul className={styles.trendRows}>
-        {SERIES.map((series, i) => {
+        {TREND_SERIES.map((series, i) => {
           const values = weeks.map((week) => week[series.key]);
           const max = Math.max(1, ...values);
           return (
@@ -1353,12 +1373,15 @@ function RateBars({ rows }: { rows: Array<{ key: string; label: string; rate: At
 /** What each dispatch yields: first attempts, retries, the citations re-run most, and cost. */
 function RunsCard({ runs }: { runs: RunStats }) {
   const { firstAttempt, cost } = runs;
+  // Modules encoded inside another citation's run have their own records, so their cost adds to the runs'.
+  const dependent = cost.dependent ?? { count: 0, total: 0 };
+  const costed = cost.recorded > 0 || dependent.count > 0;
   return (
     <div className={styles.card} role="group" aria-label="Runs and retries">
       <div className={styles.cardHead}>
         <div>
           <h3>Runs and retries</h3>
-          <p>Finished runs, not counting cancellations.</p>
+          <p>Finished dispatches, not counting cancellations.</p>
         </div>
       </div>
       <div className={styles.stats}>
@@ -1370,12 +1393,14 @@ function RunsCard({ runs }: { runs: RunStats }) {
           </span>
         </div>
         <div className={styles.statBlock}>
-          <span className={styles.statValue}>
-            {cost.recorded > 0 ? `${percent(cost.onFailures, cost.total)}%` : "—"}
-          </span>
+          <span className={styles.statValue}>{costed ? `${percent(cost.onFailures, cost.total)}%` : "—"}</span>
           <span className={styles.statLabel}>
-            {cost.recorded > 0
-              ? `of recorded cost went to failed runs ($${cost.onFailures.toFixed(0)} of $${cost.total.toFixed(0)}; ${number(cost.recorded)} of ${number(cost.finished)} runs record a cost)`
+            {costed
+              ? `of recorded cost went to failed runs ($${cost.onFailures.toFixed(0)} of $${cost.total.toFixed(0)}; ${number(cost.recorded)} of ${number(cost.finished)} runs record a cost${
+                  dependent.count
+                    ? `; the total includes $${dependent.total.toFixed(0)} for ${number(dependent.count)} ${dependent.count === 1 ? "module" : "modules"} encoded inside another citation's run`
+                    : ""
+                })`
               : "No run records its cost yet"}
           </span>
         </div>
@@ -2002,11 +2027,19 @@ function SigningApproval({ view, referenceMs }: { view: PipelineView; referenceM
   );
 }
 
+/** The dispatch series: the weekly chart draws these on one scale. */
 const SERIES: Array<{ key: keyof Omit<WeeklyThroughput, "weekStart">; label: string }> = [
   { key: "dispatched", label: "Dispatched" },
   { key: "encoded", label: "Encoded" },
   { key: "merged", label: "Merged" },
 ];
+
+/**
+ * The weekly trend's rows: the dispatch series, then the PRs merged outside
+ * the pipeline. Each row has its own scale, so a small series stays
+ * readable; the chart keeps to the dispatch series.
+ */
+const TREND_SERIES: typeof SERIES = [...SERIES, { key: "outside", label: "Merged outside" }];
 
 const CHART = { width: 560, height: 200, left: 34, right: 8, top: 18, bottom: 26 };
 
@@ -2043,7 +2076,7 @@ function Throughput({ view }: { view: PipelineView }) {
       <div className={styles.cardHead}>
         <div>
           <h3>Weekly throughput</h3>
-          <p>Dispatched, encoded, and merged, by week.</p>
+          <p>Dispatches: dispatched, encoded, and merged, by week.</p>
         </div>
       </div>
       {rate && (

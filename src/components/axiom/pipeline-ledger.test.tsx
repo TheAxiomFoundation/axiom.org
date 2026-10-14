@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PipelineLedger } from "./pipeline-ledger";
 import { runRows } from "@/lib/axiom/encoding-pipeline-runs";
-import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
+import { dependentAttempt, mergedAttempt, outsideAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 
 const NOW = Date.parse("2026-09-30T12:00:00Z");
 
@@ -140,6 +140,52 @@ describe("PipelineLedger", () => {
       "├Try 2 gpt-6-sol 20s $0.14 Embedded scalar literal · stopped the run",
       "└Checks and review 9m 3s between and after the tries, not timed per try; with the tries' model time (57s) the loop's 10m",
     ]);
+  });
+
+  it("shows a merge outside the pipeline and a module encoded in another citation's run as runs of their sections", async () => {
+    const host = pipelineAttempt({ id: "1001", citation: "us/statute/42/416/l", jurisdiction: "us" });
+    serve({
+      rows: runRows([
+        host,
+        // A failed dispatch, then a person's PR merged after it.
+        pipelineAttempt({ id: "f", citation: "us/statute/7/2017/a", jurisdiction: "us", dispatched_at: "2026-09-21T10:00:00Z", encoder_error_rule: "rule-a", failure_source: "diagnostics" }),
+        outsideAttempt({ citation: "us/statute/7/2017/a", jurisdiction: "us", synced_at: "S", index_status: "indexed", tests_status: "pass" }),
+        dependentAttempt({
+          jurisdiction: "us",
+          tries: [{ attempt: 1, model: "gpt-6-sol", ms: 30_000, cost: 0.2, ok: false, error: "statutes/42/402/q.yaml: compile: failed" }],
+        }),
+      ]),
+    });
+    render(<PipelineLedger scope={null} scopeName={null} referenceMs={NOW} />);
+    const merged = await screen.findByRole("button", { name: "Runs of us/statute/7/2017/a" });
+    // The section's status follows its latest attempt: the merge.
+    expect(merged.closest("tr")).toHaveTextContent(/Tests pass/);
+    fireEvent.click(merged);
+    expect(screen.getByText("Latest run").parentElement).toHaveTextContent(
+      "Latest runMerged outside the pipeline merged 7d ago · by MaxGhenis · rulespec-us#900 · merged"
+    );
+    expect(screen.queryByRole("link", { name: "Run on GitHub ↗" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show all 2 runs" }));
+    const lines = within(screen.getByRole("list", { name: "Every run" })).getAllByRole("listitem");
+    expect(lines[0]).toHaveTextContent("7d agoMerged outside the pipeline · MaxGhenisrulespec-us#900");
+    expect(within(lines[0]).getByRole("link", { name: "rulespec-us#900" })).toHaveAttribute(
+      "href",
+      "https://github.com/TheAxiomFoundation/rulespec-us/pull/900"
+    );
+    expect(lines[1]).toHaveTextContent(/Failed validation/);
+    fireEvent.click(merged);
+
+    const dependent = screen.getByRole("button", { name: "Runs of us/statute/42/402/q" });
+    expect(dependent.closest("tr")).toHaveTextContent(/Failed the compile check/);
+    fireEvent.click(dependent);
+    const latest = screen.getByText("The run").parentElement!;
+    expect(latest).toHaveTextContent(/^The runFailed the compile check/);
+    expect(within(latest).getByRole("link", { name: "Encoded in the run for us/statute/42/416/l ↗" })).toHaveAttribute(
+      "href",
+      "https://github.com/TheAxiomFoundation/axiom-encode/actions/runs/1001"
+    );
+    // Its own encode loop, on its own clock.
+    expect(screen.getByRole("region", { name: "Encode run" })).toHaveTextContent(/Its encode loop/);
   });
 
   it("shows ten documents at a time", async () => {

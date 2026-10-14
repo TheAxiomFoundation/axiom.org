@@ -5,15 +5,20 @@
  */
 
 import {
+  attemptSource,
+  attemptTime,
   cancelledBeforeEncode,
+  dependentHostId,
   durationLabel,
   ENCODE_GATE_LABELS,
   encodeGate,
   errorMessage,
   failureReason,
+  hostCitations,
   mainMergedAt,
   reachedMain,
   viaPrLabel,
+  type AttemptSource,
   type EncodeLoopTiming,
   type PipelineAttempt,
   type PipelineTry,
@@ -23,13 +28,23 @@ import { normalizeCitation } from "./ops-citations";
 
 export type RunOutcome = "encoded" | "failed" | "cancelled" | "running" | "waiting";
 
-/** One dispatch and everything recorded about it. */
+/** One dispatch (or another encoding, see `source`) and everything recorded about it. */
 export interface RunRow {
   id: string;
   /** In the corpus's spelling (`normalizeCitation`), so a provision's spellings count as one. */
   citation: string;
   jurisdiction: string;
+  /**
+   * A dispatch; a module merged outside the pipeline (its PR is `pr`, its
+   * author `by`); or a module encoded inside another citation's run (`host`).
+   * Run statistics count dispatches only.
+   */
+  source: AttemptSource;
+  /** For a module encoded inside another citation's run: that run, and its citation when known. */
+  host: { id: string; citation: string | null } | null;
   dispatchedAt: string;
+  /** When it happened, for ordering: the dispatch, or the merge of a PR outside the pipeline (attemptTime). */
+  at: string;
   /** When the run ended, once it has. */
   finishedAt: string | null;
   by: string | null;
@@ -92,6 +107,14 @@ export interface RunRow {
   testsFirst: "pass" | "fail" | null;
 }
 
+/** A module a person's PR merged into the default branch, with no dispatch. */
+export const OUTSIDE_LABEL = "Merged outside the pipeline";
+
+/** Where a module encoded inside another citation's run came from, by that citation. */
+export function hostLabel(host: RunRow["host"]): string {
+  return host?.citation ? `Encoded in the run for ${host.citation}` : "Encoded in another citation's run";
+}
+
 const CANCEL_OUTCOMES: Record<string, string> = {
   approval: "Cancelled at approval",
   before_job: "Cancelled before the run",
@@ -108,6 +131,7 @@ function outcomeOf(attempt: PipelineAttempt): Outcome {
     cause: null,
     causeGroup: null,
   });
+  if (attemptSource(attempt) === "outside") return plain("encoded", OUTSIDE_LABEL);
   if (attempt.run_status === "waiting") return plain("waiting", "Waiting for approval");
   if (attempt.run_status !== "completed") return plain("running", "Running");
   if (attempt.run_conclusion === "success") return plain("encoded", "Encoded");
@@ -167,15 +191,23 @@ const ms = (from: string | null | undefined, to: string | null | undefined) =>
 
 const secondsMs = (value: number | null | undefined) => (value == null ? null : value * 1000);
 
-export function runRow(dispatch: PipelineAttempt): RunRow {
+/**
+ * One row as the run lists show it. `hosts` names the run a module encoded
+ * inside another citation's run came from (see hostCitations).
+ */
+export function runRow(dispatch: PipelineAttempt, hosts: Map<string, string> = new Map()): RunRow {
   const attempt = ownRecord(dispatch);
   const merged = attempt.pr_state === "merged" ? (reachedMain(attempt) ? "main" : "off main") : null;
   const viaLabel = viaPrLabel(attempt);
+  const hostId = dependentHostId(attempt);
   return {
     id: attempt.id,
     citation: normalizeCitation(attempt.citation),
     jurisdiction: attemptJurisdiction(attempt),
+    source: attemptSource(attempt),
+    host: hostId ? { id: hostId, citation: hosts.get(hostId) ?? null } : null,
     dispatchedAt: attempt.dispatched_at,
+    at: attemptTime(attempt),
     finishedAt: attempt.finished_at,
     by: attempt.dispatched_by ?? null,
     encoder: attempt.encoder_version ?? null,
@@ -228,12 +260,20 @@ export function runRow(dispatch: PipelineAttempt): RunRow {
   };
 }
 
-/** Every dispatch, newest first. */
-export function runRows(attempts: PipelineAttempt[]): RunRow[] {
+/**
+ * Every row, newest first. `hostsFrom` holds the runs that dependent modules
+ * were encoded in (by default the rows themselves; pass every attempt when
+ * the rows are scoped, so a host outside the scope still has its name).
+ */
+export function runRows(attempts: PipelineAttempt[], hostsFrom: PipelineAttempt[] = attempts): RunRow[] {
+  const hosts = hostCitations(hostsFrom);
   return attempts
-    .map(runRow)
-    .sort((a, b) => b.dispatchedAt.localeCompare(a.dispatchedAt) || b.id.localeCompare(a.id));
+    .map((attempt) => runRow(attempt, hosts))
+    .sort((a, b) => b.at.localeCompare(a.at) || b.id.localeCompare(a.id));
 }
+
+/** The dispatches among run rows: only they count in the flow and its times. */
+const dispatchRows = (rows: RunRow[]) => rows.filter((row) => row.source !== "outside" && row.source !== "dependent");
 
 /** Where the runs at one gate went: on to the next gate, out, or not yet. */
 export interface FlowSegment {
@@ -291,7 +331,7 @@ function gate(
  */
 export function dispatchFlow(rows: RunRow[]): FlowGate[] {
   const gates: FlowGate[] = [];
-  let input = rows;
+  let input = dispatchRows(rows);
   const add = (...args: Parameters<typeof gate>) => {
     const { gate: result, next } = gate(...args);
     gates.push(result);
@@ -407,7 +447,8 @@ function timing(label: string, values: Array<number | null>): StepTiming | null 
  * main are timed only for merges whose first sync and first validation the
  * collector recorded (from the 2026-10-05 step-times migration on).
  */
-export function stepTimes(rows: RunRow[], referenceMs: number): StepTimes[] {
+export function stepTimes(all: RunRow[], referenceMs: number): StepTimes[] {
+  const rows = dispatchRows(all);
   const timed = (key: GateKey, span: string, measures: string, ...timings: Array<StepTiming | null>): StepTimes => ({
     key,
     label: GATE_LABELS[key],
@@ -532,7 +573,7 @@ const checkTime = (row: RunRow) => {
 };
 
 export function encodeParts(rows: RunRow[]): EncodeParts {
-  const finished = rows.filter((row) => row.outcome === "encoded" || row.outcome === "failed");
+  const finished = dispatchRows(rows).filter((row) => row.outcome === "encoded" || row.outcome === "failed");
   // Setup is timed over runs that got past it, so a run stopped in setup does not shorten it.
   const pastSetup = finished.filter((row) => row.phases.encodeMs !== null);
   const parts = [
@@ -601,7 +642,7 @@ export interface TestsParts {
 
 export function testsParts(rows: RunRow[]): TestsParts {
   // The merges that reached the tests step: into main and indexed.
-  const merges = rows.filter((row) => row.merged === "main" && row.index === "indexed");
+  const merges = dispatchRows(rows).filter((row) => row.merged === "main" && row.index === "indexed");
   return {
     parts: [
       timedPart(
@@ -624,6 +665,15 @@ export function testsParts(rows: RunRow[]): TestsParts {
       fail: merges.filter((row) => row.testsFirst === "fail").length,
     },
   };
+}
+
+/** A loop's time from its tries: their whole times once timed, else the model's. */
+function triesMs(tries: PipelineTry[] | null): number | null {
+  if (!tries?.length) return null;
+  const walls = tries.filter((attempt) => attempt.wallMs !== undefined);
+  if (walls.length === tries.length) return walls.reduce((sum, attempt) => sum + attempt.wallMs!, 0);
+  const timed = tries.filter((attempt) => attempt.ms !== null);
+  return timed.length ? timed.reduce((sum, attempt) => sum + attempt.ms!, 0) : null;
 }
 
 /** Seconds under a minute; otherwise as the rest of /ops writes durations. */
@@ -856,7 +906,11 @@ export function runTimeline(row: RunRow, referenceMs: number, details: TimelineD
   const cancelledWaiting =
     row.outcome === "cancelled" && (row.cancelStage === "approval" || row.cancelStage === "before_job");
   const { setupMs, encodeMs, publishMs } = row.phases;
-  if (row.outcome === "waiting") {
+  const triesText = row.attempts ? ` · ${row.attempts} ${row.attempts === 1 ? "try" : "tries"}` : "";
+  if (row.source === "dependent") {
+    // A module encoded inside another citation's run has no run of its own: one bar, its encode loop.
+    add("encode", `Encode loop${triesText}`, row.loop?.wallMs ?? triesMs(row.tries));
+  } else if (row.outcome === "waiting") {
     add("approval", "Waiting for approval", Math.max(0, referenceMs - dispatched));
     bars[0].state = "running";
   } else if (cancelledWaiting) {
@@ -868,11 +922,10 @@ export function runTimeline(row: RunRow, referenceMs: number, details: TimelineD
   } else {
     add("approval", "Wait for approval", row.approvalMs);
   }
-  if (!cancelledWaiting) {
+  if (!cancelledWaiting && row.source !== "dependent") {
     if (setupMs !== null || encodeMs !== null) {
       add("setup", "Setup", setupMs);
-      const tries = row.attempts ? ` · ${row.attempts} ${row.attempts === 1 ? "try" : "tries"}` : "";
-      add("encode", `Encode loop${tries}`, encodeMs);
+      add("encode", `Encode loop${triesText}`, encodeMs);
       add("publish", "Sign and open the PR", publishMs);
     } else if (row.outcome === "running" && row.approvalMs !== null) {
       add("run", "Running", Math.max(0, referenceMs - dispatched - row.approvalMs));
@@ -883,7 +936,7 @@ export function runTimeline(row: RunRow, referenceMs: number, details: TimelineD
   const lastBar = bars.at(-1);
   if (lastBar && LAST_BAR_STATE[row.outcome]) lastBar.state = LAST_BAR_STATE[row.outcome]!;
   const total = bars.reduce((end, bar) => Math.max(end, bar.startMs + bar.ms), 0);
-  const title = TIMELINE_TITLES[row.outcome];
+  const title = row.source === "dependent" ? "Its encode loop" : TIMELINE_TITLES[row.outcome];
   const stopped =
     row.outcome === "failed" || row.outcome === "cancelled"
       ? (details.stopped ?? ([row.outcomeLabel, row.cause && causeText(row.cause)].filter(Boolean).join(": ") || null))
@@ -975,9 +1028,14 @@ export function runTimeline(row: RunRow, referenceMs: number, details: TimelineD
     });
     after.push(...(details.extra ?? []));
   }
-  // A timed try sits on the timeline's clock at its own start: the clock counts from the dispatch.
+  // A timed try sits on the timeline's clock at its own start: the clock counts from the dispatch
+  // (for a module encoded inside another run, from its own loop's start).
   // It stays inside the encode step's bar (the runner's clock and GitHub's can differ by a little).
-  const dispatched0 = Date.parse(row.dispatchedAt);
+  const dispatched0 = Date.parse(
+    row.source === "dependent"
+      ? (row.loop?.startedAt ?? row.tries?.find((attempt) => attempt.startedAt)?.startedAt ?? row.dispatchedAt)
+      : row.dispatchedAt
+  );
   const loopBar = bars.find((bar) => bar.key === "encode");
   const lane = loopBar ? { from: loopBar.startMs, to: loopBar.startMs + loopBar.ms } : { from: 0, to: total };
   const clamp = (at: number) => Math.min(Math.max(at, lane.from), lane.to);

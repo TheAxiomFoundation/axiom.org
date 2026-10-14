@@ -21,7 +21,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: pipeline.error ?? "pipeline unavailable" }, { status: 503 });
   }
   const attempts = pipeline.attempts.filter((attempt) => inScope(attemptJurisdiction(attempt), scope));
-  const rows = runRows(attempts);
+  // Every attempt names the runs that modules were encoded in, a run outside the scope too.
+  const rows = runRows(attempts, pipeline.attempts);
   const [metadata, index] = await Promise.all([getCitationMetadata(rows.map((row) => row.citation)), getBundleIndex(rows.map((row) => row.citation))]);
   // Only the bundle documents some run's citation sits in.
   const bundles = index.filter((entry) =>
