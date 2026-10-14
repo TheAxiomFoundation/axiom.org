@@ -76,6 +76,8 @@ interface OpsDashboardProps {
   bundles?: ReactNode;
   /** The tab to open on (?tab=bundles or ?tab=pipeline); the ledger otherwise. */
   initialTab?: OpsTab;
+  /** The workflows the pipeline depends on, shown under the fleet box. */
+  workflows?: ReactNode;
   /**
    * Dispatched runs that have not finished, from the pipeline index: the
    * fleet box shows a run only once its encoder starts, so these say what
@@ -255,6 +257,7 @@ export function OpsDashboard({
   ledger,
   bundles,
   initialTab = "ledger",
+  workflows,
   starting,
 }: OpsDashboardProps) {
   const [status, setStatus] = useState(initialStatus);
@@ -354,6 +357,8 @@ export function OpsDashboard({
           labels={labels}
           starting={starting}
         />
+
+        {workflows}
 
         {tabs.length > 1 && (
           <div className={styles.tabs} role="tablist" aria-label="Operations">
