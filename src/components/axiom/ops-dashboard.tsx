@@ -28,6 +28,7 @@ import {
   JURISDICTIONS_SEED,
 } from "@/lib/axiom/jurisdictions-seed";
 import type { EncodingQueueSummary } from "@/lib/axiom/encoding-queues";
+import { ageLabel } from "@/lib/axiom/encoding-pipeline";
 import type { RecentIngestDay, RecentIngestPlace } from "@/lib/corpus-status";
 import { jurisdictionName as placeName, ownLevelName } from "@/lib/axiom/jurisdiction-names";
 import {
@@ -376,7 +377,7 @@ export function OpsDashboard({
           )}
           {(queues.length > 0 || recentPlaces.length > 0) && (
             <aside className={styles.sidebar} aria-label="Corpus pipeline">
-              <QueuedWork queues={queues} />
+              <QueuedWork queues={queues} referenceMs={referenceMs} />
               <RecentlyIngested
                 places={recentPlaces}
                 referenceMs={referenceMs}
@@ -548,9 +549,14 @@ function pluralizeDocumentClass(documentClass: string): string {
 
 /* ── Queued work: what the fleet will encode next ── */
 
-function QueuedWork({ queues }: { queues: EncodingQueueSummary[] }) {
+function QueuedWork({
+  queues,
+  referenceMs,
+}: {
+  queues: EncodingQueueSummary[];
+  referenceMs: number;
+}) {
   if (queues.length === 0) return null;
-  const hasDispatcher = queues.some((queue) => queue.kind === "dispatcher");
   return (
     <Card className={styles.supportCard}>
       <CardHeader className="border-b [.border-b]:pb-4">
@@ -562,68 +568,128 @@ function QueuedWork({ queues }: { queues: EncodingQueueSummary[] }) {
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
-        {queues.map((queue) => (
-          <QueueRow
-            key={queue.queueId}
-            queue={queue}
-            superseded={hasDispatcher && queue.kind === "legacy"}
-          />
-        ))}
+        {queues.map((queue) =>
+          queue.kind === "legacy" ? (
+            <InventoryRow key={queue.queueId} queue={queue} />
+          ) : (
+            <QueueRow key={queue.queueId} queue={queue} referenceMs={referenceMs} />
+          )
+        )}
       </CardContent>
     </Card>
   );
 }
 
-function QueueRow({
-  queue,
-  superseded = false,
-}: {
-  queue: EncodingQueueSummary;
-  superseded?: boolean;
-}) {
-  const dispositioned = queue.total - queue.pending;
-  const fraction = queue.total > 0 ? dispositioned / queue.total : 0;
-  const dispositionLine = Object.entries(queue.dispositionCounts)
-    .sort((a, b) => b[1] - a[1])
-    .map(([status, count]) => `${count.toLocaleString("en-US")} ${status}`)
-    .join(" · ");
+const count = (value: number) => value.toLocaleString("en-US");
 
+/** The queue's id, and what its counts cover. */
+function QueueHead({ queue, note, counts }: { queue: EncodingQueueSummary; note?: string; counts?: string }) {
+  const side = [counts, queue.jurisdictionCount > 1 ? `${queue.jurisdictionCount} jurisdictions` : null]
+    .filter(Boolean)
+    .join(" · ");
   return (
-    <div>
+    <>
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
         <h3 className="font-mono text-sm text-foreground break-all">
           {queue.queueId}
-          {superseded && (
+          {note && (
             <span className="ml-2 font-sans text-xs break-normal text-muted-foreground">
-              earlier inventory, replaced by the dispatcher
+              {note}
             </span>
           )}
         </h3>
-        <p className="text-xs tabular-nums text-muted-foreground">
-          {dispositioned.toLocaleString("en-US")} of{" "}
-          {queue.total.toLocaleString("en-US")} dispositioned
-          {queue.jurisdictionCount > 1 &&
-            ` · ${queue.jurisdictionCount} jurisdictions`}
-        </p>
+        {side && <p className="text-xs tabular-nums text-muted-foreground">{side}</p>}
       </div>
       {queue.description && (
         <p className="mt-1 text-xs text-muted-foreground max-w-[72ch]">
           {queue.description}
         </p>
       )}
+    </>
+  );
+}
+
+/**
+ * A live dispatcher queue: its pending items always, and what happened to
+ * the rest. Skipped items were set aside before any run, so they are not
+ * progress.
+ */
+function QueueRow({
+  queue,
+  referenceMs,
+}: {
+  queue: EncodingQueueSummary;
+  referenceMs: number;
+}) {
+  const skipped = queue.dispositionCounts.skipped ?? 0;
+  const dispositioned = queue.total - queue.pending - skipped;
+  const fraction = queue.total > 0 ? dispositioned / queue.total : 0;
+  const line = [
+    `${count(queue.pending)} pending`,
+    ...Object.entries(queue.dispositionCounts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([status, n]) => `${count(n)} ${status}`),
+  ].join(" · ");
+  // Before the first clock tick with no payload there is no "now" to age against.
+  const pausedAge = referenceMs > 0 ? ageLabel(queue.pausedSince, referenceMs) : null;
+  const reason = queue.pauseReason?.replace(/\.$/, "");
+  const paused = queue.paused
+    ? `paused${pausedAge ? ` ${pausedAge}` : ""}${reason ? ` — ${reason}` : ""}`
+    : null;
+  const disabled = queue.dispatchWorkflow?.state.startsWith("disabled") ? queue.dispatchWorkflow : null;
+
+  return (
+    <div>
+      <QueueHead
+        queue={queue}
+        counts={`${count(dispositioned)} of ${count(queue.total)} dispositioned`}
+      />
       <Progress
         value={Math.max(fraction > 0 ? 1 : 0, Math.round(fraction * 100))}
         aria-label={`${queue.queueId}: ${dispositioned} of ${queue.total} items dispositioned`}
         className="mt-3"
       />
       <p className="mt-2 text-xs text-muted-foreground">
-        {dispositionLine || `${queue.pending.toLocaleString("en-US")} pending`}
-        {queue.pauseReason && (
+        {line}
+        {(paused || disabled) && (
           <span className="text-[var(--color-warning)]">
-            {" "}
-            · paused{queue.pauseReason === "Paused" ? "" : ` — ${queue.pauseReason.replace(/\.$/, "")}`}
+            {paused && ` · ${paused}`}
+            {disabled && (
+              <>
+                {" · "}
+                <a href={disabled.url} target="_blank" rel="noreferrer" className="underline">
+                  dispatch workflow disabled
+                </a>
+              </>
+            )}
           </span>
         )}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * An earlier signed inventory. Nothing dispatches from it and its file no
+ * longer changes, so its statuses and pause note are stale: it says only
+ * how many of its items a live queue holds.
+ */
+function InventoryRow({ queue }: { queue: EncodingQueueSummary }) {
+  const inDispatcher = queue.inDispatcher ?? 0;
+  const where =
+    inDispatcher === 0
+      ? "none of them in a live queue"
+      : inDispatcher >= queue.total
+        ? "all of them in the dispatcher"
+        : `${count(inDispatcher)} of them in the dispatcher, the rest in no live queue`;
+  return (
+    <div>
+      <QueueHead
+        queue={queue}
+        note={queue.frozenSince ? `inventory, frozen since ${formatUtcDate(queue.frozenSince)}` : "inventory"}
+      />
+      <p className="mt-2 text-xs text-muted-foreground">
+        {count(queue.total)} items, {where}
       </p>
     </div>
   );

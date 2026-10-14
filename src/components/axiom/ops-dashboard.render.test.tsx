@@ -60,8 +60,12 @@ function status(overrides: Partial<EncodingOpsStatus>): EncodingOpsStatus {
 const QUEUE: EncodingQueueSummary = {
   queueId: "us-snap-all-states-2026-07",
   kind: "legacy",
+  path: "data/encoding-queues/us-snap-all-states-2026-07.json",
   description: "All-state SNAP inventory.",
+  paused: true,
   pauseReason: "Awaiting a green tip.",
+  pausedSince: null,
+  dispatchWorkflow: null,
   total: 17784,
   pending: 17780,
   dispositionCounts: { completed: 3, dispatched: 1 },
@@ -69,6 +73,27 @@ const QUEUE: EncodingQueueSummary = {
   blockedNote: null,
   attention: [],
   notStarted: {},
+  supersedes: ["us-snap-or-ut-2026-07"],
+  frozenSince: "2026-08-05T21:39:46Z",
+  inDispatcher: 955,
+};
+
+const DISPATCHER: EncodingQueueSummary = {
+  ...QUEUE,
+  queueId: "us-snap-or-ut-pilot",
+  kind: "dispatcher",
+  path: "queues/us-snap-or-ut-pilot.json",
+  description: null,
+  pauseReason: null,
+  pausedSince: "2026-07-29T12:00:00Z",
+  dispatchWorkflow: { state: "disabled_manually", url: "https://github.com/w/snap-dispatch-queue.yml" },
+  total: 955,
+  pending: 935,
+  dispositionCounts: { skipped: 19, blocked: 1 },
+  jurisdictionCount: 2,
+  supersedes: [],
+  frozenSince: null,
+  inDispatcher: null,
 };
 
 const SCOPE = {
@@ -450,40 +475,79 @@ describe("OpsDashboard", () => {
     expect(screen.getByText(/No encodings recorded yet/)).toBeInTheDocument();
   });
 
-  it("renders queues with progress, dispositions, and pause reasons", () => {
+  it("renders a dispatcher queue's pending count, progress without skips, and how long it is paused", () => {
     render(
       <OpsDashboard
         initialStatus={status({})}
         encodingError={null}
-        queues={[QUEUE]}
+        queues={[DISPATCHER]}
         recentPlaces={[]}
       />,
     );
     expect(screen.getByText("Queued work")).toBeInTheDocument();
-    expect(screen.getByText("us-snap-all-states-2026-07")).toBeInTheDocument();
-    expect(
-      screen.getByText(/4 of 17,784 dispositioned · 51 jurisdictions/),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/3 completed · 1 dispatched/)).toBeInTheDocument();
-    expect(
-      screen.getByText(/paused — Awaiting a green tip/),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/replaced by the dispatcher/)).not.toBeInTheDocument();
+    expect(screen.getByText("us-snap-or-ut-pilot")).toBeInTheDocument();
+    // Skipped items were never dispatched, so they are not progress.
+    expect(screen.getByText("1 of 955 dispositioned · 2 jurisdictions")).toBeInTheDocument();
+    expect(screen.getByRole("progressbar", { name: "us-snap-or-ut-pilot: 1 of 955 items dispositioned" })).toBeInTheDocument();
+    const line = screen.getByText(/^935 pending · 19 skipped · 1 blocked/);
+    expect(line).toHaveTextContent("935 pending · 19 skipped · 1 blocked · paused 13d · dispatch workflow disabled");
+    expect(within(line).getByRole("link", { name: "dispatch workflow disabled" })).toHaveAttribute(
+      "href",
+      "https://github.com/w/snap-dispatch-queue.yml",
+    );
+    expect(screen.queryByText(/Paused$/)).not.toBeInTheDocument();
   });
 
-  it("marks earlier inventories as replaced once a dispatcher queue exists", () => {
+  it("says a paused dispatcher queue's stated reason, and nothing when it runs", () => {
     render(
       <OpsDashboard
         initialStatus={status({})}
         encodingError={null}
         queues={[
-          { ...QUEUE, queueId: "us-snap-or-ut-pilot", kind: "dispatcher", pauseReason: null },
-          QUEUE,
+          { ...DISPATCHER, pauseReason: "Awaiting a green tip.", dispatchWorkflow: null },
+          { ...DISPATCHER, queueId: "running", paused: false, pausedSince: null, dispatchWorkflow: { state: "active", url: "u" } },
         ]}
         recentPlaces={[]}
       />,
     );
-    expect(screen.getAllByText(/earlier inventory, replaced by the dispatcher/)).toHaveLength(1);
+    expect(screen.getAllByText(/^935 pending/).map((line) => line.textContent)).toEqual([
+      "935 pending · 19 skipped · 1 blocked · paused 13d — Awaiting a green tip",
+      "935 pending · 19 skipped · 1 blocked",
+    ]);
+    expect(screen.queryByRole("link", { name: "dispatch workflow disabled" })).not.toBeInTheDocument();
+  });
+
+  it("renders an earlier inventory as frozen, with how many of its items a live queue holds", () => {
+    render(
+      <OpsDashboard
+        initialStatus={status({})}
+        encodingError={null}
+        queues={[DISPATCHER, QUEUE, { ...QUEUE, queueId: "nowhere", frozenSince: null, inDispatcher: 0, jurisdictionCount: 1 }]}
+        recentPlaces={[]}
+      />,
+    );
+    expect(screen.getByText("inventory, frozen since Aug 5, 2026")).toBeInTheDocument();
+    expect(screen.getByText("51 jurisdictions")).toBeInTheDocument();
+    expect(
+      screen.getByText("17,784 items, 955 of them in the dispatcher, the rest in no live queue"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("17,784 items, none of them in a live queue")).toBeInTheDocument();
+    expect(screen.getByText("inventory")).toBeInTheDocument();
+    // Its frozen statuses, progress, and pause note are not shown.
+    expect(screen.getAllByRole("progressbar")).toHaveLength(1);
+    expect(screen.queryByText(/of 17,784 dispositioned/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/3 completed/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Awaiting a green tip/)).not.toBeInTheDocument();
+    cleanup();
+    render(
+      <OpsDashboard
+        initialStatus={status({})}
+        encodingError={null}
+        queues={[{ ...QUEUE, inDispatcher: 17784 }]}
+        recentPlaces={[]}
+      />,
+    );
+    expect(screen.getByText("17,784 items, all of them in the dispatcher")).toBeInTheDocument();
   });
 
   it("renders recently ingested scopes with jurisdiction names", () => {

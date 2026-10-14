@@ -46,8 +46,12 @@ function renderPipeline(
     queues: 2,
     inFlight: 0,
     blocked: 0,
+    skipped: 0,
     blockedNote: null,
+    paused: true,
     pausedReason: "Awaiting a green tip.",
+    pausedSince: null,
+    dispatchDisabled: false,
     items: [],
     notStarted: [],
   },
@@ -63,8 +67,12 @@ const queuedWith = (overrides: Partial<QueuedSummary>): QueuedSummary => ({
   queues: 1,
   inFlight: 0,
   blocked: 0,
+  skipped: 0,
   blockedNote: null,
+  paused: false,
   pausedReason: null,
+  pausedSince: null,
+  dispatchDisabled: false,
   items: [],
   notStarted: [],
   ...overrides,
@@ -95,7 +103,7 @@ describe("OpsPipeline", () => {
     const stages = screen.getByRole("list", { name: "Pipeline stages" });
     expect(within(stages).getByText("18,615")).toBeInTheDocument();
     // A tile shows its name and count; its status is the tooltip.
-    expect(within(stages).getByRole("button", { name: /^Queued/ })).toHaveAttribute("title", "Paused: Awaiting a green tip.");
+    expect(within(stages).getByRole("button", { name: /^Queued/ })).toHaveAttribute("title", "Paused: Awaiting a green tip");
     expect(within(stages).getByRole("button", { name: /^In review\s*1$/ })).toHaveAttribute("title", "1 stuck · 3w");
     expect(within(stages).getByRole("button", { name: /^Runs\s*0$/ })).toHaveAttribute("title", "no engine sweep yet");
     expect(screen.getByRole("button", { name: /^3\s*last encode failed$/ })).toBeInTheDocument();
@@ -259,6 +267,18 @@ describe("OpsPipeline", () => {
     renderPipeline(quiet, queuedWith({ queues: 3, inFlight: 4 }));
     expect(queueTile()).toHaveAttribute("title", "4 in flight");
     cleanup();
+    // Skipped items are not blocked: they are named, but the tile is not stuck.
+    renderPipeline(quiet, queuedWith({ skipped: 19, paused: true, pausedSince: "2026-09-17T12:00:00Z", dispatchDisabled: true }));
+    expect(queueTile()).toHaveAttribute("title", "Paused 13d · dispatch workflow disabled · 19 skipped");
+    expect(queueTile().className).not.toMatch(/tileStuck/);
+    cleanup();
+    renderPipeline(quiet, queuedWith({ blocked: 1, skipped: 19 }));
+    expect(queueTile()).toHaveAttribute("title", "1 blocked · 19 skipped");
+    expect(queueTile().className).toMatch(/tileStuck/);
+    cleanup();
+    renderPipeline(quiet, queuedWith({ dispatchDisabled: true }));
+    expect(queueTile()).toHaveAttribute("title", "Dispatch workflow disabled · 0 in flight");
+    cleanup();
     renderPipeline(quiet, null);
     expect(within(screen.getByRole("list", { name: "Pipeline stages" })).getByText("—")).toBeInTheDocument();
   });
@@ -307,15 +327,18 @@ describe("OpsPipeline", () => {
       [pipelineAttempt({ run_conclusion: "success" })],
       queuedWith({
         pending: 935,
-        blocked: 3,
+        blocked: 1,
+        skipped: 2,
         inFlight: 1,
-        pausedReason: "Paused",
+        paused: true,
+        pausedSince: "2026-09-17T12:00:00Z",
+        dispatchDisabled: true,
         items: [
-          item("us-or/a", "blocked", { why: "skipped for the pilot", label: "Page 26", attempts: 0, lastAt: null, runUrl: null }),
           item("us-or/b", "blocked", { why: "failed 2 times", attempts: 2 }),
-          item("us-or/e", "blocked", { why: "skipped for the pilot", label: "Page 27", attempts: 0, lastAt: null, runUrl: null }),
           item("us-ut/c", "dispatched", { prUrl: "https://github.com/x/pull/1" }),
           item("us-ut/d", "retrying", { why: "failure: Encode, review, validate, and apply" }),
+          item("us-or/a", "skipped", { why: "skipped for the pilot", label: "Page 26", attempts: 0, lastAt: null, runUrl: null }),
+          item("us-or/e", "skipped", { why: "skipped for the pilot", label: "Page 27", attempts: 0, lastAt: null, runUrl: null }),
         ],
         notStarted: [
           { jurisdiction: "us-or", count: 562 },
@@ -323,26 +346,33 @@ describe("OpsPipeline", () => {
         ],
       })
     );
-    // A paused queue says so where its count shows, ahead of its blocked items.
+    // A paused queue says so where its count shows: for how long, and that its workflow is off.
     expect(screen.getByRole("button", { name: "935 queued · paused" })).toHaveAttribute(
       "title",
-      "Paused; nothing new is dispatched."
+      "Paused 13d · dispatch workflow disabled; nothing new is dispatched."
     );
-    expect(screen.getByRole("button", { name: /^Queued\s*935$/ })).toHaveAttribute("title", "Paused · 3 blocked");
+    expect(screen.getByRole("button", { name: /^Queued\s*935$/ })).toHaveAttribute(
+      "title",
+      "Paused 13d · dispatch workflow disabled · 1 blocked · 2 skipped"
+    );
     fireEvent.click(screen.getByRole("button", { name: /^Queued\s*935$/ }));
     const list = screen.getByRole("region", { name: "Queued items" });
-    expect(within(list).getByText(/^Paused; nothing new is dispatched\./)).toBeInTheDocument();
+    expect(within(list).getByText(/^Paused 13d · dispatch workflow disabled; nothing new is dispatched\./)).toBeInTheDocument();
     const blocked = within(list).getByRole("region", { name: "Needs a person" });
-    expect(within(blocked).getByRole("link", { name: "us-or/a" })).toHaveAttribute("href", "/ops/journey?citation=us-or%2Fa");
-    expect(within(blocked).getByText("Page 26")).toBeInTheDocument();
+    expect(within(blocked).getByRole("link", { name: "us-or/b" })).toHaveAttribute("href", "/ops/journey?citation=us-or%2Fb");
     expect(within(blocked).getByText("2 runs")).toBeInTheDocument();
-    // Shared reasons are said once, with how many items share them.
-    expect(within(blocked).getAllByText("skipped for the pilot")).toHaveLength(1);
-    expect(within(blocked).getByText("skipped for the pilot").textContent).toBe("skipped for the pilot2");
+    expect(within(blocked).queryByText(/skipped/)).not.toBeInTheDocument();
+    // Skipped items have their own group; shared reasons are said once, with how many share them.
+    const skipped = within(list).getByRole("region", { name: "Skipped" });
+    expect(within(skipped).getByText("Page 26")).toBeInTheDocument();
+    expect(within(skipped).getAllByText("skipped for the pilot")).toHaveLength(1);
+    expect(within(skipped).getByText("skipped for the pilot").textContent).toBe("skipped for the pilot2");
     expect(within(list).getByRole("region", { name: "Run open" })).toHaveTextContent("PR");
-    expect(within(list).getByRole("region", { name: "Retrying after a failed run" })).toHaveTextContent(
+    // While paused, a failed item retries only once the queue resumes.
+    expect(within(list).getByRole("region", { name: "Will retry when resumed" })).toHaveTextContent(
       "failure: Encode, review, validate, and apply"
     );
+    expect(within(list).queryByRole("region", { name: "Retrying after a failed run" })).not.toBeInTheDocument();
     expect(within(list).getByRole("region", { name: "Run open" }).querySelector("p")).toBeNull();
     expect(within(list).getByText("Not started yet: us-or 562 · us-ut 353")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Queued/ })).toHaveAttribute("aria-pressed", "true");
@@ -350,86 +380,193 @@ describe("OpsPipeline", () => {
     expect(screen.queryByRole("region", { name: "Queued items" })).not.toBeInTheDocument();
 
     cleanup();
-    renderPipeline([pipelineAttempt({ run_conclusion: "success" })], queuedWith({ pausedReason: "Awaiting a green tip." }));
+    renderPipeline(
+      [pipelineAttempt({ run_conclusion: "success" })],
+      queuedWith({ paused: true, pausedReason: "Awaiting a green tip.", items: [item("us-ut/d", "retrying", { why: "Failed" })] })
+    );
     fireEvent.click(screen.getByRole("button", { name: /Queued/ }));
-    expect(screen.getByText(/^Paused: Awaiting a green tip\.; nothing new/)).toBeInTheDocument();
+    expect(screen.getByText(/^Paused: Awaiting a green tip; nothing new/)).toBeInTheDocument();
     expect(screen.queryByText(/Not started yet/)).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Will retry when resumed" })).toBeInTheDocument();
+
+    cleanup();
+    renderPipeline([pipelineAttempt({ run_conclusion: "success" })], queuedWith({ items: [item("us-ut/d", "retrying", { why: "Failed" })] }));
+    fireEvent.click(screen.getByRole("button", { name: /Queued/ }));
+    expect(screen.getByRole("region", { name: "Retrying after a failed run" })).toBeInTheDocument();
+    expect(screen.queryByText(/nothing new is dispatched/)).not.toBeInTheDocument();
   });
 
-  it("opens the corpus releases that are out of sync, and names the ones up to date", () => {
+  it("opens the corpus releases by what is out of sync, with every flag, and lists the ones up to date", () => {
     const row = (overrides: Partial<CorpusJurisdiction>): CorpusJurisdiction => ({
-      jurisdiction: "uk",
-      name: "United Kingdom",
-      status: "current",
-      serving: { release: "uk-rulespec-2026-09-07", since: "2026-09-13T00:00:00Z", scopes: 191 },
-      newest: { release: "uk-rulespec-2026-09-07", signedAt: "2026-09-13T00:00:00Z", scopes: 191 },
-      encoder: { repo: "rulespec-uk", release: "uk-rulespec-2026-09-07", registered: true },
+      jurisdiction: "nz",
+      name: "New Zealand",
+      flags: [],
+      serving: { release: "nz-rulespec-2026-07-25", since: "2026-07-25T20:22:00Z", releases: 1, scopes: 8, provisions: 11774 },
+      newest: { release: "nz-rulespec-2026-07-25", signedAt: "2026-07-25T20:22:00Z", scopes: 8 },
+      next: null,
+      other: null,
+      encoder: { repo: "rulespec-nz", release: "nz-rulespec-2026-07-25", state: "signed", lacks: 0, extra: 0 },
       since: null,
       ...overrides,
     });
     const corpus: CorpusView = {
-      outOfSync: 3,
-      openPrs: { count: 47, oldestAt: "2026-07-16T00:00:00Z", url: "https://github.com/c/pulls" },
+      outOfSync: 8,
+      openPrs: { count: 68, draft: 31, oldestAt: "2026-07-16T00:00:00Z", url: "https://github.com/c/pulls" },
       lastPublish: { conclusion: "failure", at: "2026-09-25T12:00:00Z", url: "https://github.com/c/runs/1" },
       jurisdictions: [
         row({
-          jurisdiction: "de",
-          name: "Germany",
-          status: "not_serving",
-          serving: null,
-          newest: { release: "de-rulespec-2026-09-15-x", signedAt: "2026-09-15T00:00:00Z", scopes: 62 },
-          encoder: { repo: "rulespec-de", release: "de-2026-09-15-y", registered: false },
-          since: "2026-09-08T00:00:00Z",
-        }),
-        row({
           jurisdiction: "us",
           name: "United States",
-          status: "encoder_behind",
-          serving: { release: "us-rulespec-2026-09-14-union", since: "2026-09-14T00:00:00Z", scopes: 1040 },
-          newest: { release: "us-rulespec-2026-09-14-union", signedAt: "2026-09-14T00:00:00Z", scopes: 1040 },
-          encoder: null,
-          since: "2026-09-14T00:00:00Z",
+          flags: ["encoder_lacks"],
+          serving: { release: "us-rulespec-2026-09-14-union", since: "2026-09-29T12:00:00Z", releases: 1, scopes: 1567, provisions: 408541 },
+          newest: { release: "us-rulespec-2026-09-28-snap-memo", signedAt: "2026-09-28T12:00:00Z", scopes: 272 },
+          // The side release is the one the encoder pins: it is said once.
+          other: { release: "us-rulespec-2026-09-28-snap-memo", signedAt: "2026-09-28T12:00:00Z", scopes: 272, lacks: 1339 },
+          encoder: { repo: "rulespec-us", release: "us-rulespec-2026-09-28-snap-memo", state: "signed", lacks: 1339, extra: 44 },
+          since: "2026-09-28T12:00:00Z",
         }),
         row({
-          jurisdiction: "ng",
-          name: "Nigeria",
-          status: "not_serving",
+          jurisdiction: "uk",
+          name: "United Kingdom",
+          flags: ["encoder_lacks"],
+          serving: { release: "uk-rulespec-2026-09-07", since: "2026-09-13T15:28:00Z", releases: 2, scopes: 192, provisions: 21976 },
+          newest: { release: "uk-rulespec-2026-09-20-side", signedAt: "2026-09-20T00:00:00Z", scopes: 5 },
+          other: { release: "uk-rulespec-2026-09-20-side", signedAt: "2026-09-20T00:00:00Z", scopes: 5, lacks: 187 },
+          encoder: { repo: "rulespec-uk", release: "uk-rulespec-2026-09-07", state: "signed", lacks: 1, extra: 0 },
+          since: "2026-09-13T15:28:00Z",
+        }),
+        row({
+          jurisdiction: "be",
+          name: "Belgium",
+          flags: ["newer_not_active", "encoder_other"],
+          serving: { release: "be-rulespec-2026-08-23", since: "2026-08-23T21:44:00Z", releases: 1, scopes: 13, provisions: 626 },
+          newest: { release: "be-rulespec-2026-08-29", signedAt: "2026-08-30T01:15:00Z", scopes: 13 },
+          next: { release: "be-rulespec-2026-08-29", signedAt: "2026-08-30T01:15:00Z", scopes: 13, adds: 1 },
+          encoder: { repo: "rulespec-be", release: "be-rulespec-2026-07-10", state: "signed", lacks: 0, extra: 0 },
+          since: "2026-08-30T01:15:00Z",
+        }),
+        row({
+          jurisdiction: "ee",
+          name: "Estonia",
+          flags: ["newer_not_active", "encoder_off"],
+          serving: { release: "ee-rulespec-1", since: "2026-09-01T12:00:00Z", releases: 1, scopes: 1, provisions: null },
+          newest: { release: "ee-rulespec-2", signedAt: "2026-09-02T00:00:00Z", scopes: 2 },
+          next: { release: "ee-rulespec-2", signedAt: "2026-09-02T00:00:00Z", scopes: 2, adds: 1 },
+          encoder: { repo: "rulespec-ee", release: "ee-rulespec-2", state: "signed", lacks: 0, extra: 1 },
+          since: "2026-09-02T00:00:00Z",
+        }),
+        row({
+          jurisdiction: "tz",
+          name: "Tanzania",
+          flags: ["not_serving", "pin_unsigned"],
           serving: null,
-          newest: { release: "ng-rulespec-2026-07-10", signedAt: "2026-07-12T00:00:00Z", scopes: 1 },
-          encoder: null,
-          since: "2026-07-12T00:00:00Z",
+          newest: { release: "tz-rulespec-2026-07-16", signedAt: "2026-07-16T16:09:00Z", scopes: 3 },
+          encoder: { repo: "rulespec-tz", release: "tz-rulespec-2026-07-21", state: "manifest", lacks: null, extra: null },
+          since: "2026-07-16T16:09:00Z",
+        }),
+        row({
+          jurisdiction: "bo",
+          name: "Bolivia",
+          flags: ["pin_unsigned"],
+          serving: null,
+          newest: null,
+          encoder: { repo: "rulespec-bo", release: "bo-rulespec-2026-07-24-r2", state: "manifest", lacks: null, extra: null },
+        }),
+        row({
+          jurisdiction: "qq",
+          name: "Qq",
+          flags: ["pin_unknown"],
+          serving: null,
+          newest: null,
+          encoder: { repo: "rulespec-qq", release: "qq-ghost", state: "unknown", lacks: null, extra: null },
+        }),
+        row({
+          jurisdiction: "ch",
+          name: "Switzerland",
+          flags: ["no_release"],
+          serving: null,
+          newest: null,
+          encoder: { repo: "rulespec-ch", release: null, state: "placeholder", lacks: null, extra: null },
         }),
         row({}),
-        row({ jurisdiction: "nz", name: "New Zealand" }),
+        row({
+          jurisdiction: "ca",
+          name: "Canada",
+          serving: { release: "ca-rulespec-1", since: "2026-09-30T06:00:00Z", releases: 1, scopes: 1, provisions: null },
+          encoder: { repo: "rulespec-ca", release: "ca-rulespec-0", state: "signed", lacks: 0, extra: 0 },
+        }),
       ],
     };
     renderPipeline(undefined, undefined, corpus);
-    const corpusTile = screen.getByRole("button", { name: /^Corpus\s*5$/ });
-    expect(corpusTile).toHaveAttribute("title", "3 out of sync");
+    const corpusTile = screen.getByRole("button", { name: /^Corpus\s*10$/ });
+    expect(corpusTile).toHaveAttribute("title", "8 out of sync");
     fireEvent.click(corpusTile);
     expect(corpusTile).toHaveAttribute("aria-pressed", "true");
     const list = screen.getByRole("region", { name: "Corpus releases" });
-    expect(within(list).getByRole("link", { name: "47 open PRs in axiom-corpus, oldest 11w" })).toHaveAttribute(
-      "href",
-      "https://github.com/c/pulls"
-    );
+    expect(
+      within(list).getByRole("link", { name: "68 open PRs in axiom-corpus (37 ready · 31 draft), oldest 11w" })
+    ).toHaveAttribute("href", "https://github.com/c/pulls");
     expect(within(list).getByRole("link", { name: "Last publish failed 5d ago" })).toBeInTheDocument();
     const groups = within(list).getAllByRole("region").map((group) => group.getAttribute("aria-label"));
-    expect(groups).toEqual(["Encoder reads an older release", "Not serving: no release activated"]);
-    const notServing = within(list).getByRole("region", { name: "Not serving: no release activated" });
-    expect(within(notServing).getAllByRole("listitem").map((item) => item.textContent?.split(" · ")[0])).toEqual([
-      "Germany",
-      "Nigeria",
+    expect(groups).toEqual([
+      "Newer release not activated",
+      "Encoder reads a release that lacks served scope versions",
+      "Not serving: no release activated",
+      "Pin names an unsigned manifest",
+      "Pin names no known release",
+      "No release cut yet",
+      "Up to date",
     ]);
+    const names = (group: string) =>
+      within(within(list).getByRole("region", { name: group }))
+        .getAllByRole("listitem")
+        .map((item) => item.textContent?.split(" · ")[0]);
+    // Most recently signed first.
+    expect(names("Newer release not activated")).toEqual(["Estonia", "Belgium"]);
+    expect(names("Encoder reads a release that lacks served scope versions")).toEqual(["United States", "United Kingdom"]);
+    expect(names("Up to date")).toEqual(["Canada", "New Zealand"]);
+    const item = (title: string) => within(list).getByText(title).closest("li") as HTMLElement;
+
+    // The US: no successor to activate, and the encoder reads a narrow release.
+    const us = item("United States · us");
     expect(
-      within(list).getByText("Serving nothing · newest 2026-09-15-x (62 scopes) · encoder reads 2026-09-15-y (not a registered release)")
+      within(us).getByText(
+        "Serving 2026-09-14-union · encoder reads 2026-09-28-snap-memo, which lacks 1,339 served scope versions and has 44 scope versions the site doesn't serve"
+      )
     ).toBeInTheDocument();
-    expect(within(list).getByRole("link", { name: "pin" })).toHaveAttribute(
+    expect(within(us).getByText("Activated 24h ago · 408,541 provisions · 1,567 scope versions")).toBeInTheDocument();
+    expect(within(us).getByRole("link", { name: "pin" })).toHaveAttribute(
       "href",
-      "https://github.com/TheAxiomFoundation/rulespec-de/blob/main/.axiom/toolchain.toml"
+      "https://github.com/TheAxiomFoundation/rulespec-us/blob/main/.axiom/toolchain.toml"
     );
-    expect(within(list).getByText("Serving 2026-09-14-union")).toBeInTheDocument();
-    expect(within(list).getByText("Up to date: United Kingdom, New Zealand")).toBeInTheDocument();
+    expect(
+      within(item("United Kingdom · uk")).getByText(
+        "Serving 2026-09-07 and 1 other release · also signed 2026-09-20-side (5 scopes), which lacks 187 served scope versions · encoder reads 2026-09-07, which lacks 1 served scope version"
+      )
+    ).toBeInTheDocument();
+    // Belgium shows every flag: the next release, and the encoder's other pin.
+    const be = item("Belgium · be");
+    expect(
+      within(be).getByText("Serving 2026-08-23 · next 2026-08-29 (13 scopes, adds 1) · encoder pins 2026-07-10, with the same scopes as serving")
+    ).toBeInTheDocument();
+    expect(within(be).getByText("also: encoder pins another release")).toBeInTheDocument();
+    expect(within(be).getByText("4w")).toBeInTheDocument();
+    expect(
+      within(item("Estonia · ee")).getByText("Serving 1 · next 2 (2 scopes, adds 1) · encoder reads 2, with 1 scope version the site doesn't serve")
+    ).toBeInTheDocument();
+    expect(within(item("Estonia · ee")).getByText("Activated 4w ago · 1 scope version")).toBeInTheDocument();
+    const tz = item("Tanzania · tz");
+    expect(within(tz).getByText("Serving nothing · newest 2026-07-16 (3 scopes) · encoder pins 2026-07-21, an unsigned manifest")).toBeInTheDocument();
+    expect(within(tz).getByText("also: pin names an unsigned manifest")).toBeInTheDocument();
+    expect(within(item("Bolivia · bo")).getByText("No signed release · encoder pins 2026-07-24-r2, an unsigned manifest")).toBeInTheDocument();
+    expect(within(item("Qq · qq")).getByText("No signed release · encoder pins ghost, not a known release")).toBeInTheDocument();
+    expect(within(item("Switzerland · ch")).getByText("No signed release · encoder pins no release yet (placeholder)")).toBeInTheDocument();
+    // Up-to-date rows say when they were activated and how much serves.
+    const nz = item("New Zealand · nz");
+    expect(within(nz).getByText("Serving 2026-07-25 · encoder reads the same release")).toBeInTheDocument();
+    expect(within(nz).getByText("Activated 10w ago · 11,774 provisions · 8 scope versions")).toBeInTheDocument();
+    expect(within(item("Canada · ca")).getByText("Serving 1 · encoder reads 0")).toBeInTheDocument();
+    expect(within(item("Canada · ca")).getByText("Activated 6h ago · 1 scope version")).toBeInTheDocument();
     fireEvent.click(within(list).getByRole("button", { name: "Close list" }));
     expect(screen.queryByRole("region", { name: "Corpus releases" })).not.toBeInTheDocument();
 
@@ -437,21 +574,22 @@ describe("OpsPipeline", () => {
     renderPipeline(undefined, undefined, {
       ...corpus,
       outOfSync: 0,
-      openPrs: { count: 1, oldestAt: null, url: "u" },
+      openPrs: { count: 1, draft: null, oldestAt: null, url: "u" },
       lastPublish: { conclusion: "success", at: "2026-09-29T12:00:00Z", url: "r" },
-      jurisdictions: [row({ jurisdiction: "uk-x", name: "Somewhere", serving: { release: "other-name", since: "s", scopes: 1 } })],
+      jurisdictions: [row({ jurisdiction: "uk-x", name: "Somewhere", encoder: null })],
     });
     expect(screen.getByRole("button", { name: /^Corpus\s*1$/ })).toHaveAttribute("title", "all in sync");
     fireEvent.click(screen.getByRole("button", { name: /^Corpus\s*1$/ }));
     expect(screen.getByRole("link", { name: "1 open PR in axiom-corpus" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Last publish succeeded 24h ago" })).toBeInTheDocument();
+    expect(screen.getByText("Serving nz-rulespec-2026-07-25")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "pin" })).not.toBeInTheDocument();
 
     cleanup();
-    renderPipeline(undefined, undefined, { ...corpus, openPrs: null, lastPublish: null, jurisdictions: [row({ status: "encoder_off", since: "2026-09-20T00:00:00Z", newest: { release: "elsewhere", signedAt: "x", scopes: 3 } })] });
+    renderPipeline(undefined, undefined, { ...corpus, openPrs: null, lastPublish: null, jurisdictions: corpus.jurisdictions.slice(0, 1) });
     fireEvent.click(screen.getByRole("button", { name: /Corpus/ }));
-    expect(screen.getByText("Serving 2026-09-07 · newest elsewhere (3 scopes) · encoder reads 2026-09-07")).toBeInTheDocument();
     expect(screen.queryByText(/in axiom-corpus/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Up to date/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Up to date" })).not.toBeInTheDocument();
   });
 
   it("narrows to a jurisdiction, and reads the funnel, runs, encoder versions, and check errors", () => {
