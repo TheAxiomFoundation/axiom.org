@@ -12,6 +12,7 @@ import {
   derivedCitation,
   encoderModulePath,
   indexEncoderRows,
+  isModuleBucketPath,
   matchDependentHosts,
   matchEncoderRuns,
   OUTSIDE_SINCE,
@@ -392,5 +393,34 @@ describe("ancestry checks", () => {
     expect(pairs(containmentQueries([pr], mirror, shard(null), new Map(), synced))).toEqual(["h1"]);
     // A module the index does not hold never reaches its tests.
     expect(pairs(containmentQueries([pr], mirror.slice(0, 1), shard(null)))).toEqual(["i1"]);
+  });
+});
+
+describe("isModuleBucketPath", () => {
+  it("keeps modules in bucket folders and leaves out compose specs, worklists, tests and data", () => {
+    expect(
+      [
+        "us/statutes/7/2015/f.yaml",
+        "us-co/regulations/10-ccr-2506-1/4.130.yaml",
+        "uk-leeds/policies/council-tax-reduction.yaml",
+        "statutes/42/416/l.yaml",
+        "policies/cra/td1-2026/credits.yaml",
+        "us/manual/snap/fns-300.yaml",
+        // Not encodings: rulespec-us compose specs, worklists, a test folder, data.
+        "programs/us-ak/tanf/fy-2026.yaml",
+        "uk/programs/universal-credit.yaml",
+        "bulk/worklist.yaml",
+        "uk/bulk/worklist.yaml",
+        "tests/layout.yaml",
+        "data/sources.yaml",
+      ].filter(isModuleBucketPath)
+    ).toEqual([
+      "us/statutes/7/2015/f.yaml",
+      "us-co/regulations/10-ccr-2506-1/4.130.yaml",
+      "uk-leeds/policies/council-tax-reduction.yaml",
+      "statutes/42/416/l.yaml",
+      "policies/cra/td1-2026/credits.yaml",
+      "us/manual/snap/fns-300.yaml",
+    ]);
   });
 });

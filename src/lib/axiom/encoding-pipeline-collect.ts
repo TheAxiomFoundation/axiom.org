@@ -492,6 +492,18 @@ function storedMergedPr(repo: string, number: number, row: Partial<PipelineAttem
  * their stored rows hold); PRs merged before the listing window come from
  * their stored rows alone.
  */
+/**
+ * Whether a file is a RuleSpec module by where it sits: in a bucket folder at
+ * the repo root (`statutes/...`) or under a jurisdiction folder
+ * (`us/policies/...`, `uk-leeds/policies/...`). Compose specs (`programs/`),
+ * worklists (`bulk/`), tests and data are YAML too, but not encodings.
+ */
+export function isModuleBucketPath(path: string): boolean {
+  const parts = path.split("/");
+  if (MODULE_BUCKETS.has(parts[0])) return true;
+  return parts.length > 2 && JURISDICTION_RE.test(parts[0]) && MODULE_BUCKETS.has(parts[1]);
+}
+
 export function outsideModules(
   merged: MergedPr[],
   previous: Map<string, Partial<PipelineAttempt>>,
@@ -511,6 +523,7 @@ export function outsideModules(
   const stored = storedOutside(previous);
   const modules = new Map<string, OutsideModule>();
   const add = (pr: MergedPr, path: string) => {
+    if (!isModuleBucketPath(path)) return;
     if (carried.get(prKey(pr.repo, pr.number))?.has(path)) return;
     const id = outsideAttemptId(pr.repo, pr.number, path);
     const { citation, citationFrom } = outsideCitation(pr.repo, path, index, previous.get(id)?.citation);
