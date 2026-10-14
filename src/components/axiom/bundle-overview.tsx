@@ -15,9 +15,13 @@ interface Share {
   total: number;
   /** Done without resting on a validation waiver. */
   validated: number;
+  /** Documents partly encoded: started, not done (always 0 when counting provisions). */
+  partly: number;
+  /** Documents the corpus does not hold yet (always 0 when counting provisions). */
+  missing: number;
 }
 
-const ZERO: Share = { done: 0, total: 0, validated: 0 };
+const ZERO: Share = { done: 0, total: 0, validated: 0, partly: 0, missing: 0 };
 
 /** A tier's headline, as its bundle page leads with it: documents complete, or provisions encoded. */
 function shareOf(counts: TierCounts | undefined, count: Count): Share {
@@ -27,12 +31,16 @@ function shareOf(counts: TierCounts | undefined, count: Count): Share {
       done: counts.byStatus.complete + counts.byStatus.unvalidated,
       total: counts.documents,
       validated: counts.byStatus.complete,
+      partly: counts.byStatus.partly,
+      missing: counts.byStatus.not_in_corpus,
     };
   }
   return {
     done: counts.byProvisionState.encoded + counts.byProvisionState.unvalidated,
     total: counts.provisions,
     validated: counts.byProvisionState.encoded,
+    partly: 0,
+    missing: 0,
   };
 }
 
@@ -40,28 +48,58 @@ const add = (a: Share, b: Share): Share => ({
   done: a.done + b.done,
   total: a.total + b.total,
   validated: a.validated + b.validated,
+  partly: a.partly + b.partly,
+  missing: a.missing + b.missing,
 });
 const less = (a: Share, b: Share): Share => ({
   done: a.done - b.done,
   total: a.total - b.total,
   validated: a.validated - b.validated,
+  partly: a.partly - b.partly,
+  missing: a.missing - b.missing,
 });
-const ratio = (s: Share) => (s.total ? s.done / s.total : 0);
 const percent = (s: Share) => formatShare(s.done, s.total);
-/** A bar's width: its share, and at least a sliver when anything is done. */
-const width = (s: Share) => `${s.done > 0 ? Math.max(ratio(s) * 100, 1.5) : 0}%`;
+/** A segment's width: its part of the total, and at least a sliver when it is not empty. */
+const width = (part: number, total: number) => `${part > 0 && total > 0 ? Math.max((part / total) * 100, 1.5) : 0}%`;
 
-/** One share as a bar: encoded in green on a grey track, the exact count beside it. */
-function Meter({ share, unit }: { share: Share; unit: string }) {
+/** The bar: done in green, then partly done in a lighter green, on a grey track for the rest. */
+function Bar({ share }: { share: Share }) {
+  return (
+    <span className={styles.track} aria-hidden>
+      {share.done > 0 && <span className={styles.fill} style={{ width: width(share.done, share.total) }} />}
+      {share.partly > 0 && <span className={styles.partly} style={{ width: width(share.partly, share.total) }} />}
+    </span>
+  );
+}
+
+/**
+ * Documents by how far they got: "1 complete · 2 partly · 29 not started";
+ * provisions as "47 of 217 Tier 1 provisions". Validated follows anything done.
+ */
+function figure(share: Share, count: Count, unit: string): string {
+  // A number and its word stay on one line.
+  const part = (n: number, words: string) => `${number(n)}\u00a0${words.replace(/ /g, "\u00a0")}`;
+  const validated = share.done > 0 ? ` · ${part(share.validated, "validated")}` : "";
+  if (count === "provisions") return `${number(share.done)} of ${part(share.total, unit)}${validated}`;
+  const notStarted = share.total - share.done - share.partly - share.missing;
+  return [
+    part(share.done, "complete"),
+    share.partly > 0 ? part(share.partly, "partly") : null,
+    notStarted > 0 ? part(notStarted, "not started") : null,
+    share.missing > 0 ? part(share.missing, "not in the corpus") : null,
+  ]
+    .filter(Boolean)
+    .join(" · ")
+    .concat(validated);
+}
+
+/** One share as a bar, its percent done beside it, and what it counts under it. */
+function Meter({ share, count, unit }: { share: Share; count: Count; unit: string }) {
   return (
     <span className={styles.meter}>
-      <span className={styles.track} aria-hidden>
-        <span className={styles.fill} style={{ width: width(share) }} />
-      </span>
+      <Bar share={share} />
       <strong className={styles.percent}>{percent(share)}</strong>
-      <span className={styles.figure}>
-        {number(share.done)} of {number(share.total)} {unit} · {number(share.validated)} validated
-      </span>
+      <span className={styles.figure}>{figure(share, count, unit)}</span>
     </span>
   );
 }
@@ -213,7 +251,7 @@ export function BundleOverview({
           </h2>
           <p className={styles.note}>
             {count === "documents"
-              ? "Documents complete, as each bundle's page leads with them."
+              ? "Documents complete (dark green) and partly encoded (light green), as each bundle's page counts them."
               : "Provisions encoded, as each bundle's page counts them (Tier 1 counts only its own provisions)."}{" "}
             {view === "program"
               ? "A state's bundle includes the program's federal law."
@@ -276,14 +314,12 @@ export function BundleOverview({
                     type="button"
                     aria-pressed={g.key === selected}
                     onClick={() => select(g.key)}
-                    title={`${g.label}: ${number(whole.done)} of ${number(whole.total)} ${unit(tier)} ${verb} (${number(
-                      whole.validated
-                    )} validated), ${g.note}`}
+                    title={`${g.label}: ${number(whole.done)} of ${number(whole.total)} ${unit(tier)} ${verb}${
+                      whole.partly > 0 ? `, ${number(whole.partly)} partly` : ""
+                    } (${number(whole.validated)} validated), ${g.note}`}
                   >
                     <span className={styles.programName}>{g.label}</span>
-                    <span className={styles.track} aria-hidden>
-                      <span className={styles.fill} style={{ width: width(whole) }} />
-                    </span>
+                    <Bar share={whole} />
                     <span className={styles.programFigure}>{percent(whole)}</span>
                   </button>
                 </li>
@@ -312,10 +348,10 @@ export function BundleOverview({
                     {row.sub && <span>{row.sub}</span>}
                   </th>
                   <td>
-                    <Meter share={row.share("screener")} unit={unit("screener")} />
+                    <Meter share={row.share("screener")} count={count} unit={unit("screener")} />
                   </td>
                   <td>
-                    <Meter share={row.share("full")} unit={unit("full")} />
+                    <Meter share={row.share("full")} count={count} unit={unit("full")} />
                   </td>
                 </tr>
               ))}

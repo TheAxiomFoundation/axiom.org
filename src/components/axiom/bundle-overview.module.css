@@ -8,6 +8,8 @@
   border-radius: 12px;
   background: var(--color-paper-elevated);
   --encoded: #166534;
+  /* Partly encoded: the same green, lighter, as on each bundle's page. */
+  --partly: color-mix(in srgb, #166534 38%, var(--color-paper));
   --track: color-mix(in srgb, var(--color-ink) 10%, var(--color-paper));
 }
 
@@ -191,19 +193,30 @@
 }
 
 
+/* Segments sit side by side with a 2px paper gap between them. */
 .track {
-  display: block;
+  display: flex;
+  gap: 2px;
   height: 8px;
   overflow: hidden;
   border-radius: 4px;
   background: var(--track);
 }
 
-.fill {
+.fill,
+.partly {
   display: block;
+  flex: none;
   height: 100%;
   border-radius: 4px;
+}
+
+.fill {
   background: var(--encoded);
+}
+
+.partly {
+  background: var(--partly);
 }
 
 .states {
