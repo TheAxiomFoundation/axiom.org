@@ -62,6 +62,18 @@
  * After writing, a merge into a default branch that no sync has picked up
  * dispatches sync-rulespec-index.yml, so the index follows merges instead of
  * waiting for its 6-hour cron.
+ *
+ * Beyond the dispatches, two kinds of rows follow every other encoding (their
+ * ids say which, see attemptSource):
+ *   - pr:<repo>#<n>:<module path>: a module file a PR merged into a rulespec-*
+ *     repo's default branch outside the pipeline (no dispatch stands for the
+ *     PR), from 2026-07-22. Each pass lists the PRs merged since a day before
+ *     the previous pass (one GraphQL request per ten repos and page) and reads
+ *     the files of the new ones only; older PRs are carried in their rows.
+ *   - dep:<encoder record id>: a module the encoder wrote inside another
+ *     citation's run (a source or a dependent module), on that run.
+ * Both go through the same joins after the merge as a dispatch's PR, and a
+ * pass removes the rows of either kind it no longer produces.
  */
 
 import { execFileSync } from "node:child_process";
@@ -85,6 +97,9 @@ import {
   needsStepRead,
   oldestUnsyncedMerge,
   oracleVerdicts,
+  outsideFileLookups,
+  outsideListingSince,
+  outsideModules,
   parseDiagnostics,
   parseRunJobs,
   parseVersion,
@@ -95,6 +110,7 @@ import {
   versionLookups,
   viaPrFor,
 } from "../src/lib/axiom/encoding-pipeline-collect.ts";
+import { attemptSource } from "../src/lib/axiom/encoding-pipeline.ts";
 import { GITHUB_ORG, githubHeaders } from "./lib/rulespec-discovery.mjs";
 
 const ENCODE_REPO = "axiom-encode";
@@ -141,8 +157,12 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+/** GitHub API requests this pass, REST and GraphQL, for the log. */
+const requestCounts = { rest: 0, graphql: 0 };
+
 async function github(url, init = {}) {
   for (let attempt = 1; ; attempt++) {
+    requestCounts[url === "graphql" ? "graphql" : "rest"] += 1;
     const res = await fetch(url.startsWith("http") ? url : `https://api.github.com/${url}`, {
       ...init,
       headers: { ...githubHeaders, ...(init.headers ?? {}) },
@@ -201,7 +221,7 @@ async function readAll(table, select, build = (query) => query) {
 }
 
 const ENCODER_COLUMNS =
-  "id,timestamp,citation,status:outcome->>status,apply_error:outcome->>apply_error,note,generation_attempt_count,estimated_cost_usd,iterations,loop_timing:outcome->encode_loop_timing";
+  "id,timestamp,citation,status:outcome->>status,apply_error:outcome->>apply_error,note,generation_attempt_count,estimated_cost_usd,iterations,loop_timing:outcome->encode_loop_timing,file_path,encoder_version";
 
 /** Encoder records, with their Actions run id once axiom-encode's migration 008 adds it. */
 async function readEncoderRuns(since) {
@@ -256,7 +276,13 @@ async function readPrevious() {
     if (await columnsExist(FIRST_TESTS_CARRIED)) columns += `,${FIRST_TESTS_CARRIED.join(",")}`;
     if (await columnsExist(SIDE_CARRIED)) columns += `,${SIDE_CARRIED.join(",")}`;
     const rows = await read(columns);
-    return new Map(rows.map((row) => [row.id, row]));
+    // Rows of modules merged outside the pipeline carry their PR whole (its
+    // files are never read again), and dependent rows their stages: read every column.
+    const whole = [];
+    for (const prefix of ["pr:%", "dep:%"]) {
+      whole.push(...(await readAll("pipeline_attempts", "*", (query) => query.like("id", prefix).order("id"))));
+    }
+    return new Map([...rows, ...whole].map((row) => [row.id, row]));
   } catch (error) {
     if (!dryRun) throw error;
     console.warn(`no previous rows (${error.message})`);
@@ -399,15 +425,22 @@ const VALIDATION_COMMITS_SCANNED = 8;
  * newest first and reads each commit's check runs: the workflow-run listing
  * is not reliably newest first.
  */
-async function readValidation(repos) {
+async function readValidation(repos, defaultBranches = new Map()) {
   const index = new Map();
   for (const repo of repos) {
     const shards = new Map();
     try {
-      const info = await githubJson(`repos/${GITHUB_ORG}/${repo}`);
+      const branch = defaultBranches.get(repo) ?? (await githubJson(`repos/${GITHUB_ORG}/${repo}`)).default_branch;
       const commits = await githubJson(
-        `repos/${GITHUB_ORG}/${repo}/commits?sha=${encodeURIComponent(info.default_branch)}&per_page=${VALIDATION_COMMITS_SCANNED}`,
+        `repos/${GITHUB_ORG}/${repo}/commits?sha=${encodeURIComponent(branch)}&per_page=${VALIDATION_COMMITS_SCANNED}`,
       );
+      // The branch's own line: first parents from its tip. A merged branch's
+      // commits are listed too, but only this line's are made in merge order.
+      const firstParent = new Set();
+      for (let sha = commits[0]?.sha; sha && !firstParent.has(sha); ) {
+        firstParent.add(sha);
+        sha = commits.find((commit) => commit.sha === sha)?.parents?.[0]?.sha;
+      }
       for (const commit of commits) {
         for (let page = 1; page <= 3; page++) {
           const body = await githubJson(
@@ -425,6 +458,8 @@ async function readValidation(repos) {
               headSha: commit.sha,
               runUrl: run.html_url,
               completedAt: run.completed_at,
+              headAt: commit.commit?.committer?.date ?? null,
+              headFirstParent: firstParent.has(commit.sha),
             });
           }
           if (runs.length < 100) break;
@@ -559,6 +594,132 @@ async function readBranchPrs(lookups) {
     }
   }
   return byBranch;
+}
+
+async function graphql(query, variables = {}) {
+  const body = await githubJson("graphql", { method: "POST", body: JSON.stringify({ query, variables }) });
+  if (body?.errors?.length) throw new Error(`GraphQL: ${body.errors[0].message}`);
+  return body.data;
+}
+
+/** The org's rulespec-* repos that are not archived, with their default branch. */
+async function listRulespecRepos() {
+  const repos = [];
+  let cursor = null;
+  for (;;) {
+    const data = await graphql(
+      `query($q: String!, $cursor: String) {
+        search(query: $q, type: REPOSITORY, first: 100, after: $cursor) {
+          pageInfo { hasNextPage endCursor }
+          nodes { ... on Repository { name isArchived defaultBranchRef { name } } }
+        }
+      }`,
+      { q: `org:${GITHUB_ORG} rulespec- in:name archived:false`, cursor },
+    );
+    for (const node of data.search.nodes) {
+      if (!node?.name?.startsWith("rulespec-") || node.isArchived || !node.defaultBranchRef) continue;
+      repos.push({ name: node.name, defaultBranch: node.defaultBranchRef.name });
+    }
+    if (!data.search.pageInfo.hasNextPage) return repos;
+    cursor = data.search.pageInfo.endCursor;
+  }
+}
+
+const REPOS_PER_QUERY = 10;
+const MERGED_PER_PAGE = 50;
+
+/**
+ * Every PR merged into a rulespec-* repo since `sinceIso`, newest update
+ * first, ten repos to a GraphQL request. A merge updates its PR, so a repo's
+ * listing stops at the first PR last updated before `sinceIso`.
+ */
+async function listMergedPrs(sinceIso) {
+  const since = Date.parse(sinceIso);
+  const merged = [];
+  const pending = (await listRulespecRepos()).map((repo) => ({ repo, cursor: null }));
+  while (pending.length) {
+    const batch = pending.splice(0, REPOS_PER_QUERY);
+    const fields = batch.map(
+      ({ repo, cursor }, i) => `r${i}: repository(owner: "${GITHUB_ORG}", name: ${JSON.stringify(repo.name)}) {
+        pullRequests(states: MERGED, first: ${MERGED_PER_PAGE}, orderBy: {field: UPDATED_AT, direction: DESC}${cursor ? `, after: ${JSON.stringify(cursor)}` : ""}) {
+          pageInfo { hasNextPage endCursor }
+          nodes { number title url createdAt mergedAt updatedAt baseRefName author { login } mergeCommit { oid } }
+        }
+      }`,
+    );
+    const data = await graphql(`query { ${fields.join("\n")} }`);
+    batch.forEach(({ repo }, i) => {
+      const connection = data[`r${i}`]?.pullRequests;
+      if (!connection) return;
+      let done = false;
+      for (const node of connection.nodes) {
+        if (Date.parse(node.updatedAt) < since) {
+          done = true;
+          break;
+        }
+        if (!node.mergedAt || Date.parse(node.mergedAt) < since) continue;
+        merged.push({
+          repo: repo.name,
+          number: node.number,
+          url: node.url,
+          title: node.title,
+          author: node.author?.login ?? null,
+          createdAt: node.createdAt,
+          mergedAt: node.mergedAt,
+          baseRefName: node.baseRefName,
+          defaultBranch: repo.defaultBranch,
+          mergeCommit: node.mergeCommit?.oid ?? null,
+        });
+      }
+      if (!done && connection.pageInfo.hasNextPage) pending.push({ repo, cursor: connection.pageInfo.endCursor });
+    });
+  }
+  return merged;
+}
+
+const PRS_PER_FILES_QUERY = 10;
+
+/**
+ * The files each PR added or changed (deletions left out), set on the PR,
+ * ten PRs to a GraphQL request and 100 files to a page. A PR that cannot be
+ * read keeps no files, so the next pass reads it again.
+ */
+async function readPrFiles(prs) {
+  const files = new Map(prs.map((pr) => [pr, []]));
+  const pending = prs.map((pr) => ({ pr, cursor: null }));
+  const failed = new Set();
+  while (pending.length) {
+    const batch = pending.splice(0, PRS_PER_FILES_QUERY);
+    const fields = batch.map(
+      ({ pr, cursor }, i) => `p${i}: repository(owner: "${GITHUB_ORG}", name: ${JSON.stringify(pr.repo)}) {
+        pullRequest(number: ${pr.number}) {
+          files(first: 100${cursor ? `, after: ${JSON.stringify(cursor)}` : ""}) {
+            pageInfo { hasNextPage endCursor }
+            nodes { path changeType }
+          }
+        }
+      }`,
+    );
+    let data;
+    try {
+      data = await graphql(`query { ${fields.join("\n")} }`);
+    } catch (error) {
+      console.warn(`files of ${batch.length} merged PRs: ${error.message}`);
+      for (const { pr } of batch) failed.add(pr);
+      continue;
+    }
+    batch.forEach(({ pr }, i) => {
+      const connection = data[`p${i}`]?.pullRequest?.files;
+      if (!connection) {
+        failed.add(pr);
+        return;
+      }
+      for (const node of connection.nodes) if (node.changeType !== "DELETED") files.get(pr).push(node.path);
+      if (connection.pageInfo.hasNextPage) pending.push({ pr, cursor: connection.pageInfo.endCursor });
+    });
+  }
+  for (const [pr, list] of files) if (!failed.has(pr)) pr.files = list;
+  return prs.filter((pr) => pr.files !== undefined).length;
 }
 
 /** Download an Actions artifact zip to a temp dir; returns [dir, zipPath]. */
@@ -1026,11 +1187,38 @@ async function main() {
     console.log(`read PRs of ${branchPrs.size} of ${branchLookups.length} side branches, ${carried} merges carried to main`);
   }
 
+  // Every other merge into a rulespec-* default branch: a row per module it
+  // added or changed. Only new PRs' files are read; stored ones are carried.
+  const outsideSince = outsideListingSince(previous);
+  let mergedPrs = [];
+  try {
+    mergedPrs = await listMergedPrs(outsideSince);
+  } catch (error) {
+    console.warn(`merged PRs since ${outsideSince}: ${error.message} (stored outside rows carried as they are)`);
+  }
+  const fileLookups = outsideFileLookups(mergedPrs, previous, prs);
+  const filesRead = await readPrFiles(fileLookups);
+  const outside = outsideModules(mergedPrs, previous, prs, mirror);
+  const outsidePrs = outside.map((module) => module.pr);
+  const from = (kind) => outside.filter((module) => module.citationFrom === kind).length;
+  console.log(
+    `${mergedPrs.length} PRs merged since ${outsideSince}, files read for ${filesRead} of ${fileLookups.length}; ` +
+      `${outside.length} modules merged outside the pipeline in ${new Set(outsidePrs.map((pr) => `${pr.repo}#${pr.number}`)).size} PRs ` +
+      `(citation from the index ${from("index")}, an earlier pass ${from("stored")}, the path ${from("path")})`,
+  );
+
+  // Validation on main matters only for merges the index can hold: an
+  // outside merge in a repo kept off the index never reaches its tests.
+  const indexedRepos = new Set(mirror.map((row) => row.repo));
   const mergedRepos = [
-    ...new Set(prs.filter((pr) => pr.state === "MERGED").map((pr) => pr.repo)),
+    ...new Set([
+      ...prs.filter((pr) => pr.state === "MERGED").map((pr) => pr.repo),
+      ...outsidePrs.map((pr) => pr.repo).filter((repo) => indexedRepos.has(repo)),
+    ]),
   ].sort();
+  const defaultBranches = new Map([...prs, ...outsidePrs].filter((pr) => pr.defaultBranch).map((pr) => [pr.repo, pr.defaultBranch]));
   const [validation, waivers] = await Promise.all([
-    readValidation(mergedRepos),
+    readValidation(mergedRepos, defaultBranches),
     readWaivers(mergedRepos),
   ]);
   const oracle = oracleRefreshDue(nowMs)
@@ -1039,8 +1227,9 @@ async function main() {
         return undefined;
       })
     : undefined;
+  const merges = [...prs, ...outsidePrs];
   const contains = await resolveContainment(
-    containmentQueries(prs, mirror, validation, oracle),
+    containmentQueries(merges, mirror, validation, oracle, previous),
   );
   console.log(
     `validation read for ${mergedRepos.length} repos, ${contains.size} merge ancestry checks`,
@@ -1061,12 +1250,30 @@ async function main() {
   const errorJobs = checkErrorLookups(prs, previous, checkErrorLimit);
   const checkErrors = await readCheckErrors(errorJobs);
   console.log(`read ${checkErrors.size} of ${errorJobs.length} failing PR check logs`);
-  const syncSince = timesTracked ? syncWindowStart(prs, previous, nowMs) : null;
+  const syncSince = timesTracked ? syncWindowStart(merges, previous, nowMs) : null;
   const syncRuns = timesTracked ? await readSyncRuns(syncSince) : null;
+  // A listing cut at its page limit reaches back only to its oldest run: a merge before that is not covered.
+  const syncCovered =
+    syncRuns && syncRuns.length >= SYNC_PAGES_MAX * 100
+      ? syncRuns.reduce((oldest, run) => (run.created_at < oldest ? run.created_at : oldest), syncRuns[0].created_at)
+      : syncSince;
   const firstTestsTracked = dryRun || (await columnsExist(FIRST_TESTS_COLUMNS));
-  const mergeLookups = timesTracked
-    ? mergeValidationLookups(prs, previous, mergeTestLimit, { detail: firstTestsTracked, url: sideTracked })
-    : [];
+  // Dispatches' merges first; merges outside the pipeline (in repos the index
+  // holds, the only ones that reach their tests) take what is left of the limit.
+  const lookupOptions = { detail: firstTestsTracked, url: sideTracked };
+  const dispatchMergeLookups = timesTracked ? mergeValidationLookups(prs, previous, mergeTestLimit, lookupOptions) : [];
+  const dispatchMergeKeys = new Set(dispatchMergeLookups.map((lookup) => mergeValidationKey(lookup.repo, lookup.commit)));
+  const mergeLookups = [
+    ...dispatchMergeLookups,
+    ...(timesTracked
+      ? mergeValidationLookups(
+          outsidePrs.filter((pr) => indexedRepos.has(pr.repo)),
+          previous,
+          mergeTestLimit - dispatchMergeLookups.length,
+          lookupOptions,
+        ).filter((lookup) => !dispatchMergeKeys.has(mergeValidationKey(lookup.repo, lookup.commit)))
+      : []),
+  ];
   const mergeValidation = await readMergeValidation(mergeLookups);
   console.log(
     `read ${syncRuns?.length ?? 0} index syncs since ${syncSince ?? "-"}, ` +
@@ -1090,17 +1297,55 @@ async function main() {
     encoderVersions,
     checkErrors,
     syncRuns: syncRuns ?? undefined,
+    syncSince: syncCovered,
     mergeValidation,
+    outside,
+    onDependents: (matches) => {
+      const count = (test) => matches.filter(test).length;
+      console.log(
+        `${matches.length} modules encoded inside another citation's run: host by encode window ${count((m) => m.by === "window")}, ` +
+          `by clock slack ${count((m) => m.by === "slack")}, by run stamp ${count((m) => m.by === "stamp")}; ` +
+          `${count((m) => m.ambiguous)} chosen among several runs`,
+      );
+    },
   });
 
   if (dryRun) {
     writeFileSync(outPath, JSON.stringify(attempts, null, 1));
     console.log(`wrote ${attempts.length} attempts to ${outPath}`);
+    const stale = staleIds(previous, attempts);
+    if (stale.length) console.log(`a pass would remove ${stale.length} stale outside or dependent rows`);
+    logRequests();
     return;
   }
   await upsert(attempts);
   console.log(`upserted ${attempts.length} attempts`);
+  await removeStale(previous, attempts);
   await dispatchSyncIfNeeded(oldestUnsyncedMerge(attempts, nowMs));
+  logRequests();
+}
+
+function logRequests() {
+  console.log(`GitHub API requests this pass: ${requestCounts.rest} REST, ${requestCounts.graphql} GraphQL`);
+}
+
+/**
+ * Remove the outside and dependent rows this pass no longer produces: a PR a
+ * dispatch now stands for, a record that turned out to be a run's own. Both
+ * kinds are rebuilt (or carried) whole each pass; dispatch rows are never removed.
+ */
+function staleIds(previous, attempts) {
+  const kept = new Set(attempts.map((attempt) => attempt.id));
+  return [...previous.keys()].filter((id) => attemptSource({ id }) !== "dispatch" && !kept.has(id));
+}
+
+async function removeStale(previous, attempts) {
+  const stale = staleIds(previous, attempts);
+  for (let i = 0; i < stale.length; i += 100) {
+    const { error } = await supabase.from("pipeline_attempts").delete().in("id", stale.slice(i, i + 100));
+    if (error) throw new Error(`delete stale pipeline_attempts: ${error.message}`);
+  }
+  if (stale.length) console.log(`removed ${stale.length} stale outside or dependent rows`);
 }
 
 main().catch((error) => {

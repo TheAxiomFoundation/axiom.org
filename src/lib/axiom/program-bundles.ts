@@ -26,7 +26,7 @@
  * when it cites the document whole). A document there is complete when every
  * unit in it is encoded. The full bundle counts every provision.
  */
-import { attemptStage, type PipelineAttempt, type PipelineStage } from "./encoding-pipeline";
+import { attemptStage, attemptTime, isDispatch, type PipelineAttempt, type PipelineStage } from "./encoding-pipeline";
 import type { ScreenerParity } from "./screener-parity";
 
 export type BundleTierId = "screener" | "full";
@@ -302,7 +302,7 @@ function newestRun(path: string, attempts: PipelineAttempt[]): PipelineAttempt |
   let newest: PipelineAttempt | null = null;
   for (const attempt of attempts) {
     if (!attempt.citation || !(under(path, attempt.citation) || strictlyUnder(attempt.citation, path))) continue;
-    if (!newest || attempt.dispatched_at > newest.dispatched_at) newest = attempt;
+    if (!newest || Date.parse(attemptTime(attempt)) > Date.parse(attemptTime(newest))) newest = attempt;
   }
   return newest;
 }
@@ -383,7 +383,8 @@ export function measureDocument(
   const modules = telemetry?.modules ?? [];
   const attempts = [...(telemetry?.attempts ?? [])]
     .filter((a) => root && a.citation && under(a.citation, root))
-    .sort((a, b) => b.dispatched_at.localeCompare(a.dispatched_at));
+    // Every encoding of the document, newest first; a merge outside the pipeline counts from its merge.
+    .sort((a, b) => Date.parse(attemptTime(b)) - Date.parse(attemptTime(a)));
 
   const states = new Map<string, ProvisionState>();
   const open: OpenProvision[] = [];
@@ -460,9 +461,10 @@ export function measureDocument(
         .map((m) => m.module)
     ).size,
     units,
-    runs: attempts.length,
+    // Encode runs are dispatches; a merge outside the pipeline or another citation's run is not one.
+    runs: attempts.filter(isDispatch).length,
     latest_citation: latest?.citation ?? null,
-    latest_run_at: latest?.dispatched_at ?? null,
+    latest_run_at: latest ? attemptTime(latest) : null,
     latest_stage: latest ? attemptStage(latest) : null,
     latest_run_url: latest?.run_url ?? null,
     status: null,

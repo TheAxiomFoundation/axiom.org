@@ -4,7 +4,14 @@ import {
   errorGroupLabel,
   ageLabel,
   approvalSummary,
+  attemptSource,
   attemptStage,
+  attemptTime,
+  dependentHostId,
+  hostCitations,
+  isDispatch,
+  outsideAttemptId,
+  outsideIdParts,
   cancellationDetail,
   durationLabel,
   checkJurisdiction,
@@ -32,7 +39,7 @@ import {
   weekStartUtc,
   type PipelineStage,
 } from "./encoding-pipeline";
-import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
+import { dependentAttempt, mergedAttempt, outsideAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 
 const NOW = Date.parse("2026-09-30T12:00:00Z");
 
@@ -243,8 +250,8 @@ describe("weeklyThroughput", () => {
       2
     );
     expect(weeks).toEqual([
-      { weekStart: "2026-09-21T00:00:00.000Z", dispatched: 1, encoded: 0, merged: 0 },
-      { weekStart: "2026-09-28T00:00:00.000Z", dispatched: 1, encoded: 1, merged: 1 },
+      { weekStart: "2026-09-21T00:00:00.000Z", dispatched: 1, encoded: 0, merged: 0, outside: 0 },
+      { weekStart: "2026-09-28T00:00:00.000Z", dispatched: 1, encoded: 1, merged: 1, outside: 0 },
     ]);
   });
 });
@@ -722,5 +729,89 @@ describe("errors without a rule id", () => {
     expect(encodeGate(a)).toBe(encodeGate(pipelineAttempt({ failure_source: "diagnostics", failed_step: "encode_apply" })));
     // A log that showed no error falls back to the step.
     expect(failureReason(pipelineAttempt({ failure_source: "log", failed_step: "encode_apply" })).kind).toBe("workflow");
+  });
+});
+
+describe("attemptSource", () => {
+  it("tells a dispatch, a merge outside the pipeline, and another citation's run apart by id", () => {
+    expect(attemptSource({ id: "35909645917" })).toBe("dispatch");
+    // A manifest PR whose run is gone stays a dispatch.
+    expect(attemptSource({ id: "pr:rulespec-us#1500" })).toBe("dispatch");
+    expect(attemptSource({ id: outsideAttemptId("rulespec-us", 900, "us/statutes/7/2017/a.yaml") })).toBe("outside");
+    expect(attemptSource({ id: "dep:5e2a7c10" })).toBe("dependent");
+    expect(isDispatch(pipelineAttempt())).toBe(true);
+    expect(isDispatch(outsideAttempt())).toBe(false);
+    expect(outsideIdParts(outsideAttempt().id)).toEqual({ repo: "rulespec-us", number: 900, path: "us/statutes/7/2017/a.yaml" });
+    expect(outsideIdParts("pr:rulespec-us#1500")).toBeNull();
+    expect(dependentHostId(dependentAttempt())).toBe("1001");
+    expect(dependentHostId(pipelineAttempt({ queue_ref: "dependent:1001" }))).toBeNull();
+  });
+
+  it("orders a merge outside the pipeline by its merge", () => {
+    expect(attemptTime(outsideAttempt())).toBe("2026-09-23T09:00:00Z");
+    expect(attemptTime(dependentAttempt())).toBe("2026-09-20T10:20:00Z");
+    expect(attemptTime(pipelineAttempt())).toBe("2026-09-20T10:00:00Z");
+  });
+});
+
+describe("citation views with every source", () => {
+  const citation = "us/statute/7/2017/a";
+  // A failed dispatch, then a person's PR created before it but merged after it.
+  const failed = pipelineAttempt({ id: "1001", citation, dispatched_at: "2026-09-22T12:00:00Z", finished_at: "2026-09-22T12:30:00Z" });
+  const merged = outsideAttempt({ citation, synced_at: "2026-09-23T12:00:00Z", index_status: "indexed", tests_status: "pass" });
+
+  it("takes a citation's stage from its latest attempt, a merge outside the pipeline included", () => {
+    expect(statusAttempt([failed, merged])!.id).toBe(merged.id);
+    const [state] = citationStates([failed, merged]);
+    expect(state.stage).toBe("verified");
+    // Only dispatches count as dispatches.
+    expect(state.dispatches).toBe(1);
+    expect(citationJourney([failed, merged], citation).map((a) => a.id)).toEqual([merged.id, failed.id]);
+  });
+
+  it("counts the citations it holds because of other sources, and runs dispatches only", () => {
+    const view = pipelineView(
+      [
+        failed,
+        merged,
+        dependentAttempt({ citation: "us/statute/42/402/q" }),
+        outsideAttempt({ id: outsideAttemptId("rulespec-us", 900, "us/statutes/7/2017/b.yaml"), citation: "us/statute/7/2017/b" }),
+      ],
+      NOW
+    );
+    expect(view.citationCount).toBe(3);
+    expect(view.dispatchCount).toBe(1);
+    expect(view.firstDispatchAt).toBe("2026-09-22T12:00:00Z");
+    expect(view.sources).toEqual({ outside: 2, dependent: 1 });
+    expect(view.stages.verified.count).toBe(1);
+    expect(view.stages.encode_failed.count).toBe(1);
+    expect(view.stages.encode_failed.items[0]).toMatchObject({ citation: "us/statute/42/402/q", source: "dependent", dispatches: 0 });
+    expect(view.stages.verified.items[0]).toMatchObject({ source: "outside", prUrl: "https://github.com/TheAxiomFoundation/rulespec-us/pull/900" });
+    // The failure rate and the approval gate count dispatches only.
+    expect(view.recentFailureRate).toEqual({ failed: 1, finished: 1, leftOut: 0 });
+    expect(view.approval.cancellations).toEqual([]);
+  });
+
+  it("counts a PR merged outside the pipeline once a week, beside the dispatch series", () => {
+    const weeks = weeklyThroughput(
+      [
+        merged,
+        outsideAttempt({ id: outsideAttemptId("rulespec-us", 900, "us/statutes/7/2017/b.yaml") }),
+        outsideAttempt({ id: outsideAttemptId("rulespec-uk", 12, "uk/statutes/x.yaml"), pr_repo: "rulespec-uk", pr_number: 12 }),
+        dependentAttempt({ run_conclusion: "success", dispatched_at: "2026-09-29T00:00:00Z", finished_at: "2026-09-29T00:00:00Z" }),
+      ],
+      NOW,
+      2
+    );
+    expect(weeks).toEqual([
+      { weekStart: "2026-09-21T00:00:00.000Z", dispatched: 0, encoded: 0, merged: 0, outside: 2 },
+      { weekStart: "2026-09-28T00:00:00.000Z", dispatched: 0, encoded: 0, merged: 0, outside: 0 },
+    ]);
+  });
+
+  it("starts each journey from where the attempt came from, and names the runs modules were encoded in", () => {
+    expect(journeySteps(outsideAttempt())[0].detail).toBe("Merged outside the pipeline · MaxGhenis");
+    expect(journeySteps(dependentAttempt())[0].detail).toBe("Encoded in another citation's run");
+    expect(hostCitations([pipelineAttempt(), dependentAttempt()])).toEqual(new Map([["1001", "us/statute/7/2017/a"]]));
   });
 });

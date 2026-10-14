@@ -2,7 +2,8 @@
  * The /ops ledger: every dispatch grouped the way the encoding ledger reads,
  * by jurisdiction, source document, and section, each section with its
  * latest status and every run behind it. Built from the pipeline's run rows,
- * so failures with no encoder record count too.
+ * so failures with no encoder record count too, and so do modules merged
+ * outside the pipeline and modules encoded inside another citation's run.
  */
 
 import { causeHeadline, type RunRow } from "./encoding-pipeline-runs";
@@ -93,7 +94,8 @@ export function runLedger(
 
   const documents = new Map<string, LedgerDocument & { jurisdiction: string }>();
   for (const [citation, runs] of bySection) {
-    const sorted = [...runs].sort((a, b) => b.dispatchedAt.localeCompare(a.dispatchedAt));
+    // Newest first by when each happened: a PR merged outside the pipeline counts from its merge.
+    const sorted = [...runs].sort((a, b) => (b.at ?? b.dispatchedAt).localeCompare(a.at ?? a.dispatchedAt));
     const latest = sorted[0];
     const known = documentPaths[citation];
     const key = known ? known.replace("/", ":") : documentKeyFromCitation(citation);
@@ -112,7 +114,7 @@ export function runLedger(
       designator: isDocument ? (key.split("/").pop() ?? key) : within,
       label: isDocument ? deepestLabelForCitation(citation, labels) : sectionLabelForCitation(citation, labels),
       ...sectionStatus(latest),
-      lastAt: latest.dispatchedAt,
+      lastAt: latest.at ?? latest.dispatchedAt,
       runs: sorted,
     };
     const title = documentPath ? labels[documentPath]?.trim() || null : null;
@@ -207,7 +209,14 @@ export function sectionOverview(section: LedgerSection): SectionOverview {
   for (const [key, said] of messages) {
     if (said.size === 1) stops.get(key)!.cause = causeHeadline([...said][0]);
   }
-  return { runs: runs.length, failed, cancelled, lastAt: runs[0].dispatchedAt, stops: counted(stops), latest: runs[0] };
+  return {
+    runs: runs.length,
+    failed,
+    cancelled,
+    lastAt: runs[0].at ?? runs[0].dispatchedAt,
+    stops: counted(stops),
+    latest: runs[0],
+  };
 }
 
 /**

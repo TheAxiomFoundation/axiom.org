@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OpsPipeline } from "./ops-pipeline";
 import { pipelineView } from "@/lib/axiom/encoding-pipeline";
-import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
+import { dependentAttempt, mergedAttempt, outsideAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 import type { QueuedSummary, QueueItemView } from "@/lib/axiom/encoding-queues";
 import type { CorpusJurisdiction, CorpusView } from "@/lib/axiom/corpus-releases";
 import { pipelineInsights, scopeOptions } from "@/lib/axiom/encoding-pipeline-insights";
@@ -736,10 +736,13 @@ describe("OpsPipeline", () => {
     expect(within(openList()).getByRole("heading", { name: /In review: Fails its own checks\s*1/ })).toBeInTheDocument();
 
     // The last full week, since the current one has only begun; its "?" says so.
+    // Four rows: the three dispatch series, then the PRs merged outside the pipeline.
     const trend = screen.getByRole("group", { name: "Weekly trend" });
-    expect(trend.querySelectorAll("[title^='Week of']")).toHaveLength(3 * 8);
+    expect(trend.querySelectorAll("[title^='Week of']")).toHaveLength(4 * 8);
+    expect(within(trend).getByText("Merged outside")).toBeInTheDocument();
     fireEvent.click(within(trend).getByRole("button", { name: "What Weekly means" }));
-    expect(within(trend).getByRole("note")).toHaveTextContent(/last 8 weeks\. The number is the last full week\./);
+    expect(within(trend).getByRole("note")).toHaveTextContent(/last 8 weeks, and the PRs merged outside the pipeline/);
+    expect(within(trend).getByRole("note")).toHaveTextContent(/Each row has its own scale\. The number is the last full week\./);
     // Names and numbers only; meanings sit behind each "?".
     expect(screen.queryByText(/stages · corpus/)).not.toBeInTheDocument();
     press(screen.getByRole("button", { name: "What Where each citation is now means" }));
@@ -768,6 +771,39 @@ describe("OpsPipeline", () => {
     const list = screen.getByRole("region", { name: /^No open PR/ });
     expect(within(list).getByRole("link", { name: "us/b" })).toBeInTheDocument();
     expect(within(list).getByRole("link", { name: "us/c" })).toBeInTheDocument();
+  });
+
+  it("says how many citations came from outside the pipeline or another citation's run, and flags them", () => {
+    const attempts = [
+      pipelineAttempt({ id: "a", citation: "us/a", cost_usd: 1 }),
+      outsideAttempt({ citation: "us/statute/7/2017/a", synced_at: "S", index_status: "indexed", tests_status: "pass" }),
+      dependentAttempt({ cost_usd: 2 }),
+    ];
+    render(<OpsPipeline view={pipelineView(attempts, NOW)} insights={pipelineInsights(attempts, NOW)} queued={null} referenceMs={NOW} />);
+    expect(screen.getByText("3 citations · where each one is now")).toBeInTheDocument();
+    expect(
+      screen.getByText(/^Includes 1 citation encoded outside the pipeline and 1 encoded inside another citation's run\./)
+    ).toBeInTheDocument();
+    press(screen.getByRole("button", { name: "What Encodings that were not dispatches means" }));
+    expect(screen.getByRole("note")).toHaveTextContent(/a person's PR merged the module into the default branch/);
+    const states = screen.getByRole("list", { name: "Where each citation is now" });
+    fireEvent.click(within(states).getByRole("button", { name: /^Done\s*1$/ }));
+    const done = screen.getByRole("region", { name: /^Done/ });
+    expect(within(done).getByText(/outside the pipeline/)).toBeInTheDocument();
+    expect(within(done).getByRole("link", { name: "rulespec-us#900" })).toHaveAttribute(
+      "href",
+      "https://github.com/TheAxiomFoundation/rulespec-us/pull/900"
+    );
+    fireEvent.click(within(states).getByRole("button", { name: /^Encoding fails\s*2$/ }));
+    const failing = screen.getByRole("region", { name: /^Encoding fails/ });
+    const dependent = within(failing).getByRole("link", { name: "us/statute/42/402/q" }).closest("li")!;
+    expect(dependent).toHaveTextContent(/in another citation's run/);
+    // Run statistics count the dispatch only, and the cost names the modules encoded in other runs.
+    const runs = card("Runs and retries");
+    expect(runs).toHaveTextContent(
+      "of recorded cost went to failed runs ($3 of $3; 1 of 1 runs record a cost; the total includes $2 for 1 module encoded inside another citation's run)"
+    );
+    expect(runs).toHaveTextContent("of citations encode on the first attempt (0 of 1)");
   });
 
   it("says when nothing is stuck", () => {

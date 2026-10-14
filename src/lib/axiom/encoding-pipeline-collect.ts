@@ -13,13 +13,23 @@
  *     rulespec-* repos, linked to their run by the body's run URL, and for
  *     one merged into a side branch, that branch's own PR into the default
  *     branch (see viaPrFor);
- *   - encodings.rulespec_files (the index) and the axiom-api compile sweep.
+ *   - encodings.rulespec_files (the index) and the axiom-api compile sweep;
+ *   - every other PR merged into a rulespec-* repo's default branch, for
+ *     the modules people encode outside the pipeline (see outsideModules);
+ *   - encoder records of modules the encoder wrote inside another
+ *     citation's run, a source or a dependent module, joined to that run
+ *     (see matchDependentHosts).
  *
  * Kept free of I/O so every join rule is unit-tested.
  */
 
 import {
+  attemptSource,
+  dependentAttemptId,
+  dependentQueueRef,
   mainMergedAt,
+  outsideAttemptId,
+  outsideIdParts,
   type EncodeLoopTiming,
   type PipelineAttempt,
   type PipelineTry,
@@ -57,6 +67,13 @@ export interface EncoderRunRow {
   iterations?: unknown;
   /** The record's `outcome.encode_loop_timing`: its loop's clock (axiom-encode 0.2.2157 on). */
   loop_timing?: unknown;
+  /**
+   * Where the encoder wrote the module: `<runner temp>/generated/<lane>/<model>/<repo path>`,
+   * the lane being target, a source (source-01, ...), or a dependent module.
+   */
+  file_path?: string | null;
+  /** The axiom-encode package version that wrote the record. */
+  encoder_version?: string | null;
 }
 
 export interface ManifestPr {
@@ -87,6 +104,10 @@ export interface ManifestPr {
   /** For a PR merged into a side branch, once looked up: that branch's own
    *  PR into the default branch that carries it there, or null (see viaPrFor). */
   via?: BranchPr | null;
+  /** For one module of a PR merged outside the pipeline: the module's
+   *  jurisdiction (a manifest PR's comes from its title) and the PR's author. */
+  jurisdiction?: string | null;
+  author?: string | null;
 }
 
 /** A pull request from a side branch (its head) into the repo's default branch. */
@@ -280,6 +301,255 @@ export function rulespecModulePaths(files: string[]): string[] {
         !path.includes("/.")
     )
     .sort();
+}
+
+/** The first day a PR merged outside the pipeline is collected from. */
+export const OUTSIDE_SINCE = "2026-07-22T00:00:00Z";
+/** How far before the previous pass a pass lists merged PRs again: a pass that failed to write loses nothing. */
+const OUTSIDE_RELIST_MS = 24 * 60 * 60 * 1000;
+
+/** A PR merged into a rulespec-* repo, as the collector lists it; `files` only once read. */
+export interface MergedPr {
+  repo: string;
+  number: number;
+  url: string;
+  title?: string;
+  author: string | null;
+  createdAt: string;
+  mergedAt: string;
+  baseRefName: string;
+  defaultBranch: string;
+  mergeCommit: string | null;
+  /** Repo-relative paths it added or changed (deletions left out); undefined until read. */
+  files?: string[];
+}
+
+/** One module file a PR merged outside the pipeline, ready for the post-merge joins. */
+export interface OutsideModule {
+  /** The PR with this one module as its files, its jurisdiction and author set. */
+  pr: ManifestPr;
+  path: string;
+  citation: string;
+  /** Where the citation came from: the index, an earlier pass, or the module's path. */
+  citationFrom: "index" | "stored" | "path";
+}
+
+const prKey = (repo: string, number: number) => `${repo}#${number}`;
+
+/** Bucket directories whose citation segment is the singular (statutes → statute). */
+const CITATION_BUCKETS: Record<string, string> = { statutes: "statute", regulations: "regulation", policies: "policy" };
+const MODULE_BUCKETS = new Set(["statutes", "regulations", "policies", "manuals", "manual", "rulemaking", "forms", "guidance"]);
+const JURISDICTION_RE = /^[a-z]{2}(-[a-z0-9-]+)*$/;
+
+/**
+ * A module's citation from its path alone, for a module the index does not
+ * hold: the jurisdiction directory (or, in a single-jurisdiction repo, the
+ * repo's), the bucket in the singular, and the rest without `.yaml`
+ * (rulespec-us `us-az/statutes/46/292.yaml` is `us-az/statute/46/292`). A
+ * root directory that is not a bucket but holds jurisdiction directories
+ * (rulespec-us `programs/us-fl/snap/fy-2026.yaml`) reads as that
+ * jurisdiction's (`us-fl/programs/snap/fy-2026`). As the index does, a US
+ * federal regulation drops its title's `-cfr`.
+ */
+export function derivedCitation(repo: string, path: string): string {
+  const segments = path.replace(/\.ya?ml$/, "").split("/");
+  let jurisdiction: string;
+  let rest: string[];
+  if (JURISDICTION_RE.test(segments[0]) && !MODULE_BUCKETS.has(segments[0])) {
+    [jurisdiction, ...rest] = segments;
+  } else if (!MODULE_BUCKETS.has(segments[0]) && segments[1] && JURISDICTION_RE.test(segments[1])) {
+    jurisdiction = segments[1];
+    rest = [segments[0], ...segments.slice(2)];
+  } else {
+    jurisdiction = repo.replace(/^rulespec-/, "");
+    rest = segments;
+  }
+  const [bucket, ...tail] = rest;
+  if (jurisdiction === "us" && bucket === "regulations" && tail.length) tail[0] = tail[0].replace(/-cfr$/, "");
+  return [jurisdiction, CITATION_BUCKETS[bucket] ?? bucket, ...tail].join("/");
+}
+
+/** A module's citation: from the index, else what an earlier pass stored, else its path. */
+function outsideCitation(
+  repo: string,
+  path: string,
+  index: MirrorIndex,
+  stored: string | null | undefined
+): Pick<OutsideModule, "citation" | "citationFrom"> {
+  const row = index.byPath.get(`${repo}:${path}`);
+  if (row) return { citation: row.citation_path, citationFrom: "index" };
+  if (stored) return { citation: stored, citationFrom: "stored" };
+  return { citation: derivedCitation(repo, path), citationFrom: "path" };
+}
+
+/** The PRs a dispatch row stands for: every manifest PR (its run's row, or its own when the run is gone). */
+function dispatchPrKeys(manifestPrs: ManifestPr[], previous: Map<string, Partial<PipelineAttempt>>): Set<string> {
+  const keys = new Set(manifestPrs.map((pr) => prKey(pr.repo, pr.number)));
+  for (const row of previous.values()) {
+    if (row.id && attemptSource({ id: row.id }) === "dispatch" && row.pr_repo && row.pr_number != null) {
+      keys.add(prKey(row.pr_repo, Number(row.pr_number)));
+    }
+  }
+  return keys;
+}
+
+/** Stored outside rows by their PR. */
+function storedOutside(previous: Map<string, Partial<PipelineAttempt>>): Map<string, Partial<PipelineAttempt>[]> {
+  const byPr = new Map<string, Partial<PipelineAttempt>[]>();
+  for (const row of previous.values()) {
+    const parts = row.id ? outsideIdParts(row.id) : null;
+    if (!parts) continue;
+    const key = prKey(parts.repo, parts.number);
+    byPr.set(key, [...(byPr.get(key) ?? []), row]);
+  }
+  return byPr;
+}
+
+/**
+ * Where this pass lists merged PRs from: a day before the previous pass
+ * that stored outside rows (every pass rewrites their collection time), or
+ * OUTSIDE_SINCE on the first. Older PRs are carried in their stored rows.
+ */
+export function outsideListingSince(previous: Map<string, Partial<PipelineAttempt>>): string {
+  let last: string | null = null;
+  for (const row of previous.values()) {
+    if (!row.id || attemptSource({ id: row.id }) !== "outside" || !row.collected_at) continue;
+    if (!last || Date.parse(row.collected_at) > Date.parse(last)) last = row.collected_at;
+  }
+  if (!last) return OUTSIDE_SINCE;
+  const since = Date.parse(last) - OUTSIDE_RELIST_MS;
+  return since > Date.parse(OUTSIDE_SINCE) ? new Date(since).toISOString() : OUTSIDE_SINCE;
+}
+
+/**
+ * Listed PRs whose files to read: merged into the default branch, not a
+ * dispatch's, and with no stored row. A stored PR's modules are its rows,
+ * so its files are never read again.
+ */
+export function outsideFileLookups(
+  merged: MergedPr[],
+  previous: Map<string, Partial<PipelineAttempt>>,
+  manifestPrs: ManifestPr[]
+): MergedPr[] {
+  const linked = dispatchPrKeys(manifestPrs, previous);
+  const stored = storedOutside(previous);
+  return merged.filter((pr) => {
+    const key = prKey(pr.repo, pr.number);
+    return pr.files === undefined && pr.baseRefName === pr.defaultBranch && !linked.has(key) && !stored.has(key);
+  });
+}
+
+function outsidePr(pr: MergedPr, path: string, jurisdiction: string | null): ManifestPr {
+  return {
+    repo: pr.repo,
+    number: pr.number,
+    url: pr.url,
+    title: pr.title ?? "",
+    body: "",
+    isDraft: false,
+    state: "MERGED",
+    createdAt: pr.createdAt,
+    mergedAt: pr.mergedAt,
+    closedAt: null,
+    baseRefName: pr.baseRefName,
+    defaultBranch: pr.defaultBranch,
+    checks: null,
+    reviewDecision: null,
+    files: [path],
+    mergeCommit: pr.mergeCommit,
+    jurisdiction,
+    author: pr.author,
+  };
+}
+
+/** A stored outside row's PR, for a PR merged before this pass's listing window. */
+function storedMergedPr(repo: string, number: number, row: Partial<PipelineAttempt>): MergedPr | null {
+  const mergedAt = row.pr_merged_at ?? row.finished_at;
+  const createdAt = row.pr_created_at ?? row.dispatched_at;
+  const url = row.pr_url ?? row.run_url;
+  if (!mergedAt || !createdAt || !url) return null;
+  const branch = row.pr_base_branch ?? "main";
+  return {
+    repo,
+    number,
+    url,
+    author: row.dispatched_by ?? null,
+    createdAt,
+    mergedAt,
+    baseRefName: branch,
+    defaultBranch: branch,
+    mergeCommit: row.pr_merge_commit ?? null,
+  };
+}
+
+/**
+ * Every module file merged into a rulespec-* repo's default branch since
+ * OUTSIDE_SINCE outside the pipeline: one per module (rulespecModulePaths)
+ * a PR added or changed, when no dispatch row stands for the PR. A side
+ * branch's own PR into the default branch is a dispatch's for the modules
+ * its manifest PRs carry (known once `via` is read), and outside for the
+ * rest. PRs listed this pass bring their files (read now, or the modules
+ * their stored rows hold); PRs merged before the listing window come from
+ * their stored rows alone.
+ */
+/**
+ * Whether a file is a RuleSpec module by where it sits: in a bucket folder at
+ * the repo root (`statutes/...`) or under a jurisdiction folder
+ * (`us/policies/...`, `uk-leeds/policies/...`). Compose specs (`programs/`),
+ * worklists (`bulk/`), tests and data are YAML too, but not encodings.
+ */
+export function isModuleBucketPath(path: string): boolean {
+  const parts = path.split("/");
+  if (MODULE_BUCKETS.has(parts[0])) return true;
+  return parts.length > 2 && JURISDICTION_RE.test(parts[0]) && MODULE_BUCKETS.has(parts[1]);
+}
+
+export function outsideModules(
+  merged: MergedPr[],
+  previous: Map<string, Partial<PipelineAttempt>>,
+  manifestPrs: ManifestPr[],
+  mirror: MirrorRow[] | MirrorIndex
+): OutsideModule[] {
+  const index = Array.isArray(mirror) ? buildMirrorIndex(mirror) : mirror;
+  const linked = dispatchPrKeys(manifestPrs, previous);
+  const carried = new Map<string, Set<string>>();
+  for (const pr of manifestPrs) {
+    if (!pr.via) continue;
+    const key = prKey(pr.repo, pr.via.number);
+    const paths = carried.get(key) ?? new Set<string>();
+    for (const path of rulespecModulePaths(pr.files)) paths.add(path);
+    carried.set(key, paths);
+  }
+  const stored = storedOutside(previous);
+  const modules = new Map<string, OutsideModule>();
+  const add = (pr: MergedPr, path: string) => {
+    if (!isModuleBucketPath(path)) return;
+    if (carried.get(prKey(pr.repo, pr.number))?.has(path)) return;
+    const id = outsideAttemptId(pr.repo, pr.number, path);
+    const { citation, citationFrom } = outsideCitation(pr.repo, path, index, previous.get(id)?.citation);
+    const jurisdiction = jurisdictionOf(citation);
+    modules.set(id, { pr: outsidePr(pr, path, jurisdiction), path, citation, citationFrom });
+  };
+  const listed = new Set<string>();
+  for (const pr of merged) {
+    if (pr.baseRefName !== pr.defaultBranch || Date.parse(pr.mergedAt) < Date.parse(OUTSIDE_SINCE)) continue;
+    const key = prKey(pr.repo, pr.number);
+    if (linked.has(key)) continue;
+    const rows = stored.get(key);
+    if (pr.files === undefined && !rows) continue;
+    listed.add(key);
+    const paths = pr.files !== undefined ? rulespecModulePaths(pr.files) : rows!.map((row) => outsideIdParts(row.id!)!.path);
+    for (const path of paths) add(pr, path);
+  }
+  for (const [key, rows] of stored) {
+    if (listed.has(key) || linked.has(key)) continue;
+    for (const row of rows) {
+      const parts = outsideIdParts(row.id!)!;
+      const pr = storedMergedPr(parts.repo, parts.number, row);
+      if (pr) add(pr, parts.path);
+    }
+  }
+  return [...modules.values()].sort((a, b) => a.pr.mergedAt!.localeCompare(b.pr.mergedAt!) || a.path.localeCompare(b.path));
 }
 
 /** The first validator issue (or apply error) and its rule from a diagnostics bundle. */
@@ -518,7 +788,9 @@ export function matchEncoderRuns(
     const id = String(run.id);
     const stamped = index.byRunId.get(id);
     if (stamped) {
-      for (const row of stamped) keep(id, row);
+      // A run stamps its sources' and dependents' records too: its own is the one of its
+      // citation (or of none); another citation's is a module it wrote (see matchDependentHosts).
+      for (const row of stamped) if (!row.citation || row.citation === citation) keep(id, row);
       continue;
     }
     const window = encodeWindow(run, known, nowMs);
@@ -558,6 +830,100 @@ export function matchEncoderRun(
   return matchEncoderRuns([{ run, citation, known }], index, nowMs).get(String(run.id)) ?? null;
 }
 
+/** A module the encoder wrote inside another citation's run, and that run. */
+export interface DependentMatch {
+  record: EncoderRunRow;
+  hostId: string;
+  /** How the run was found: its stamp on the record, an encode window holding the
+   *  record's time, or one that ended up to the clock slack before it. */
+  by: "stamp" | "window" | "slack";
+  /** Whether several runs qualified (decided by the encoder version, then by history). */
+  ambiguous: boolean;
+}
+
+/** The root jurisdiction of a citation, as its rulespec repo is named: "us" for us-az/... */
+const rootOf = (citation: string) => citation.split("/")[0].split(":")[0].split("-")[0];
+
+/**
+ * The run each leftover encoder record was written in: the records of
+ * modules the encoder wrote inside another citation's run (a source lane
+ * before the target, a dependent lane after it). The records share no
+ * session with their run (each record's session is its own), so a record
+ * stamped with a run id goes to that run, and any other to the run whose
+ * encode window holds its timestamp (else the one that ended last before
+ * it, up to the clock slack) among the runs of the same rulespec repo
+ * (root jurisdiction). Where several qualify, the one on the record's
+ * encoder version; then the citation that hosted the record's citation
+ * most often among the clear matches; then the latest to start. A record of
+ * a run's own citation is that run's (a record matchEncoderRuns passed
+ * over), never a dependent; a record no run qualifies for is left out.
+ */
+export function matchDependentHosts(
+  candidates: Array<EncoderCandidate & { version?: string | null }>,
+  rows: EncoderRunRow[],
+  own: Map<string, EncoderRunRow>,
+  nowMs: number
+): DependentMatch[] {
+  const used = new Set([...own.values()].map((row) => row.id));
+  const byId = new Map(candidates.map((candidate) => [String(candidate.run.id), candidate]));
+  const windows = candidates.flatMap((candidate) => {
+    const window = encodeWindow(candidate.run, candidate.known, nowMs);
+    return window
+      ? [{ id: String(candidate.run.id), citation: candidate.citation, version: candidate.version ?? null, ...window }]
+      : [];
+  });
+  type Window = (typeof windows)[number];
+  const matches: DependentMatch[] = [];
+  const pending: Array<{ record: EncoderRunRow; options: Window[]; by: "window" | "slack" }> = [];
+  for (const record of rows) {
+    if (!record.citation || used.has(record.id)) continue;
+    const stamped = record.github_run_id ? byId.get(record.github_run_id) : undefined;
+    if (stamped) {
+      if (stamped.citation !== record.citation) {
+        matches.push({ record, hostId: String(stamped.run.id), by: "stamp", ambiguous: false });
+      }
+      continue;
+    }
+    const at = Date.parse(record.timestamp);
+    const root = rootOf(record.citation);
+    const sameRepo = windows.filter((window) => rootOf(window.citation) === root);
+    let by: "window" | "slack" = "window";
+    let options = sameRepo.filter((window) => window.start <= at && at <= window.end);
+    if (!options.length) {
+      by = "slack";
+      const before = sameRepo.filter((window) => window.end < at && at - window.end <= ENCODER_WINDOW_SLACK_MS);
+      const last = Math.max(...before.map((window) => window.end));
+      options = before.filter((window) => window.end === last);
+    }
+    if (!options.length || options.some((window) => window.citation === record.citation)) continue;
+    const sameVersion = record.encoder_version ? options.filter((window) => window.version === record.encoder_version) : [];
+    if (sameVersion.length) options = sameVersion;
+    if (options.length === 1) matches.push({ record, hostId: options[0].id, by, ambiguous: false });
+    else pending.push({ record, options, by });
+  }
+  // What the clear matches say: which citations' runs write which modules.
+  const hosted = new Map<string, number>();
+  const citationOf = new Map(windows.map((window) => [window.id, window.citation]));
+  for (const match of matches) {
+    const key = `${match.record.citation}>${citationOf.get(match.hostId) ?? byId.get(match.hostId)?.citation}`;
+    hosted.set(key, (hosted.get(key) ?? 0) + 1);
+  }
+  for (const { record, options, by } of pending) {
+    const best = [...options].sort(
+      (a, b) =>
+        (hosted.get(`${record.citation}>${b.citation}`) ?? 0) - (hosted.get(`${record.citation}>${a.citation}`) ?? 0) ||
+        b.start - a.start
+    )[0];
+    matches.push({ record, hostId: best.id, by, ambiguous: true });
+  }
+  return matches;
+}
+
+/** The module's repo path from where the encoder wrote it: `.../generated/<lane>/<model>/statutes/7/2017/a.yaml` → `statutes/7/2017/a.yaml`. */
+export function encoderModulePath(filePath: string | null | undefined): string | null {
+  return filePath?.match(/\/generated\/[^/]+\/[^/]+\/(.+\.ya?ml)$/)?.[1] ?? null;
+}
+
 function encoderFailed(row: EncoderRunRow): boolean {
   return row.status !== null && !["applied", "apply_applied"].includes(row.status);
 }
@@ -572,6 +938,10 @@ export interface ShardResult {
   headSha: string;
   runUrl: string;
   completedAt: string;
+  /** When the head commit was made (its committer date), and whether it sits on the
+   *  branch's own line (first parents from its tip) rather than on a merged branch. */
+  headAt?: string | null;
+  headFirstParent?: boolean;
 }
 
 /** Per repo: shard results keyed by jurisdiction ("" for an unsharded validate job). */
@@ -581,26 +951,66 @@ export function containsKey(repo: string, ancestor: string, descendant: string):
   return `${repo}:${ancestor}..${descendant}`;
 }
 
-/** The (repo, merge commit, later commit) pairs whose ancestry decides sync and tests. */
+/** Clock slack around a merge for the time rule of containedByTime. */
+const CONTAIN_MARGIN_MS = 10 * 60 * 1000;
+
+/**
+ * Whether a shard's head holds a merge into the default branch, by time
+ * alone: a head made before the merge cannot, and a head on the branch's own
+ * line made well after it does (that line only moves forward, and a merge
+ * lands on it). Undefined near the merge, for a head on a merged branch, or
+ * without the head's time: the compare API decides.
+ */
+export function containedByTime(mergedAt: string, shard: Pick<ShardResult, "headAt" | "headFirstParent">): boolean | undefined {
+  if (!shard.headAt) return undefined;
+  const gap = Date.parse(shard.headAt) - Date.parse(mergedAt);
+  if (gap < 0) return false;
+  if (gap > CONTAIN_MARGIN_MS && shard.headFirstParent) return true;
+  return undefined;
+}
+
+/**
+ * The (repo, merge commit, later commit) pairs whose ancestry decides sync
+ * and tests, when nothing cheaper does: the index commit only for a merge
+ * with a row not synced yet (a stored first sync is kept), and a shard's
+ * head only for a merge whose modules the index holds (only those reach
+ * their tests) and that the time rule leaves open.
+ */
 export function containmentQueries(
   prs: ManifestPr[],
   mirror: MirrorRow[],
   validation: ValidationIndex,
-  oracle: Map<string, OracleVerdict> = new Map()
+  oracle: Map<string, OracleVerdict> = new Map(),
+  previous: Map<string, Partial<PipelineAttempt>> = new Map()
 ): Array<{ repo: string; ancestor: string; descendant: string }> {
   const index = buildMirrorIndex(mirror);
+  // PRs every stored row of which has its first sync: the index commit no longer matters for them.
+  const unsynced = new Set<string>();
+  const stored = new Set<string>();
+  for (const row of previous.values()) {
+    if (!row.pr_repo || row.pr_number == null) continue;
+    const key = prKey(row.pr_repo, Number(row.pr_number));
+    stored.add(key);
+    if (!row.synced_at) unsynced.add(key);
+  }
   const queries = new Map<string, { repo: string; ancestor: string; descendant: string }>();
   const add = (repo: string, ancestor: string, descendant: string) =>
     queries.set(containsKey(repo, ancestor, descendant), { repo, ancestor, descendant });
   for (const pr of prs) {
-    const mergeCommit = mainMerge(pr)?.mergeCommit;
-    if (!mergeCommit) continue;
+    const main = mainMerge(pr);
+    const mergeCommit = main?.mergeCommit;
+    if (!main || !mergeCommit) continue;
+    const modules = rulespecModulePaths(pr.files);
+    const indexed = modules.every((path) => index.byPath.has(`${pr.repo}:${path}`));
+    const key = prKey(pr.repo, pr.number);
+    const synced = stored.has(key) && !unsynced.has(key);
     const indexCommit = index.repoCommit.get(pr.repo);
-    if (indexCommit) add(pr.repo, mergeCommit, indexCommit);
+    if (indexCommit && !synced) add(pr.repo, mergeCommit, indexCommit);
     const citation = prCitation(pr.title);
-    const shard = shardFor(validation, pr.repo, citation ? jurisdictionOf(citation) : null);
-    if (shard) add(pr.repo, mergeCommit, shard.headSha);
-    const verdict = moduleVerdict(oracle, pr.repo, rulespecModulePaths(pr.files));
+    const jurisdiction = pr.jurisdiction !== undefined ? pr.jurisdiction : citation ? jurisdictionOf(citation) : null;
+    const shard = shardFor(validation, pr.repo, jurisdiction);
+    if (shard && indexed && containedByTime(main.mergedAt, shard) === undefined) add(pr.repo, mergeCommit, shard.headSha);
+    const verdict = moduleVerdict(oracle, pr.repo, modules);
     if (verdict?.rulespecSha) add(pr.repo, mergeCommit, verdict.rulespecSha);
   }
   return [...queries.values()];
@@ -1023,8 +1433,14 @@ export interface CollectInputs {
   checkErrors?: Map<string, string>;
   /** Successful index syncs since the oldest merge whose first sync is not recorded. */
   syncRuns?: SyncRun[];
+  /** Where those syncs were listed from (see syncWindowStart): a merge before it is not covered. */
+  syncSince?: string | null;
   /** Validate shards at merge commits, read this pass (see mergeValidationLookups). */
   mergeValidation?: MergeValidation;
+  /** Module files merged outside the pipeline (see outsideModules): a row each. */
+  outside?: OutsideModule[];
+  /** Told how each module encoded inside another citation's run found its run, for the log. */
+  onDependents?: (matches: DependentMatch[]) => void;
 }
 
 interface JoinContext {
@@ -1037,6 +1453,7 @@ interface JoinContext {
   oracle: Map<string, OracleVerdict> | null;
   checkErrors: Map<string, string>;
   syncRuns: SyncRun[] | null;
+  syncSince: string | null;
   mergeValidation: MergeValidation;
 }
 
@@ -1206,7 +1623,9 @@ function withPr(
 
   // synced_at is the sync the collector first saw the modules in, which can
   // be later than the first sync after the merge; the sync runs say that one.
-  const firstSync = previous?.indexed_at ?? (context.syncRuns ? firstSyncAfter(context.syncRuns, mergedAt) : null);
+  // Only from a listing that reaches back to the merge: an older merge's first sync is not in it.
+  const listed = context.syncRuns && (!context.syncSince || Date.parse(mergedAt) >= Date.parse(context.syncSince));
+  const firstSync = previous?.indexed_at ?? (listed ? firstSyncAfter(context.syncRuns!, mergedAt) : null);
   if (firstSync) attempt.indexed_at = firstSync;
 
   // Tests: the module's jurisdiction validation on the default branch, at a
@@ -1219,7 +1638,7 @@ function withPr(
   } else if (
     shard &&
     mergeCommit &&
-    contains.get(containsKey(pr.repo, mergeCommit, shard.headSha))
+    (contains.get(containsKey(pr.repo, mergeCommit, shard.headSha)) ?? containedByTime(mergedAt, shard))
   ) {
     attempt.tests_status = shard.conclusion === "success" ? "pass" : "fail";
     attempt.tests_checked_at = shard.completedAt;
@@ -1355,6 +1774,7 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
     oracle: inputs.oracle ?? null,
     checkErrors: inputs.checkErrors ?? new Map(),
     syncRuns: inputs.syncRuns ?? null,
+    syncSince: inputs.syncSince ?? null,
     mergeValidation: inputs.mergeValidation ?? new Map(),
   };
   const versions = knownVersions(inputs.previous);
@@ -1430,20 +1850,7 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
     // Derived from the record each pass, so a run that lost a record loses its tries too.
     attempt.tries = null;
     attempt.encode_loop = null;
-    if (encoder) {
-      attempt.encoder_run_id = encoder.id;
-      attempt.encoder_status = encoder.status;
-      attempt.generation_attempts = encoder.generation_attempt_count;
-      attempt.cost_usd = encoder.estimated_cost_usd;
-      attempt.tries = encoderTries(encoder);
-      attempt.encode_loop = encoderLoop(encoder);
-      const error = encoderError(encoder);
-      if (error) {
-        attempt.encoder_error = error;
-        attempt.encoder_error_rule = errorRule(error);
-        attempt.failure_source = "encoder_run";
-      }
-    }
+    if (encoder) applyEncoderRecord(attempt, encoder);
 
     if (isFailedRun(run) && !attempt.failure_source) {
       const detail = inputs.failureDetails.get(id);
@@ -1482,7 +1889,105 @@ export function buildAttempts(inputs: CollectInputs): PipelineAttempt[] {
     };
     attempts.push(withPr(base, pr, context, inputs.previous.get(id)));
   }
+
+  // Modules the encoder wrote inside another citation's run: a row each, on that run.
+  const byId = new Map(attempts.map((attempt) => [attempt.id, attempt]));
+  const dependents = matchDependentHosts(
+    runAttempts.map(({ run, attempt }) => ({
+      run,
+      citation: attempt.citation,
+      known: attempt,
+      version: attempt.encoder_version ?? null,
+    })),
+    inputs.encoderRuns,
+    encoders,
+    inputs.nowMs
+  );
+  inputs.onDependents?.(dependents);
+  for (const { record, hostId } of dependents) {
+    const host = byId.get(hostId);
+    if (!host || !record.citation) continue;
+    attempts.push(dependentAttempt(record, host, byRun.get(hostId), context, inputs.previous, nowIso));
+  }
+
+  // Modules merged outside the pipeline: a row each, through the same joins after the merge.
+  for (const module of inputs.outside ?? []) {
+    const { pr, path, citation } = module;
+    const id = outsideAttemptId(pr.repo, pr.number, path);
+    const base: PipelineAttempt = {
+      ...emptyAttempt(nowIso),
+      id,
+      citation,
+      jurisdiction: jurisdictionOf(citation),
+      queue_ref: "outside",
+      run_url: pr.url,
+      dispatched_at: pr.createdAt,
+      finished_at: pr.mergedAt,
+      run_status: "completed",
+      run_conclusion: "success",
+      dispatched_by: pr.author ?? null,
+    };
+    attempts.push(withPr(base, pr, context, inputs.previous.get(id)));
+  }
   return attempts;
+}
+
+/** The fields an encoder record fills on a row: its status, attempts, cost, tries, loop clock, and error. */
+function applyEncoderRecord(attempt: PipelineAttempt, encoder: EncoderRunRow): void {
+  attempt.encoder_run_id = encoder.id;
+  attempt.encoder_status = encoder.status;
+  attempt.generation_attempts = encoder.generation_attempt_count;
+  attempt.cost_usd = encoder.estimated_cost_usd;
+  attempt.tries = encoderTries(encoder);
+  attempt.encode_loop = encoderLoop(encoder);
+  const error = encoderError(encoder);
+  if (error) {
+    attempt.encoder_error = error;
+    attempt.encoder_error_rule = errorRule(error);
+    attempt.failure_source = "encoder_run";
+  }
+}
+
+/**
+ * A module the encoder wrote inside another citation's run, as its own row:
+ * its record's outcome (applied is success, anything else a failure), tries,
+ * cost and error, on the run's page and clock. When the run's PR carries the
+ * module, the row follows that PR through the merge, the index, and the
+ * tests for this module alone; otherwise the module never left the run.
+ */
+function dependentAttempt(
+  record: EncoderRunRow,
+  host: PipelineAttempt,
+  hostPr: ManifestPr | undefined,
+  context: JoinContext,
+  previous: Map<string, Partial<PipelineAttempt>>,
+  nowIso: string
+): PipelineAttempt {
+  const citation = record.citation!;
+  const id = dependentAttemptId(record.id);
+  const at = new Date(record.timestamp).toISOString();
+  const attempt: PipelineAttempt = {
+    ...emptyAttempt(nowIso),
+    id,
+    citation,
+    jurisdiction: jurisdictionOf(citation),
+    queue_ref: dependentQueueRef(host.id),
+    run_url: host.run_url,
+    dispatched_at: at,
+    finished_at: at,
+    run_status: "completed",
+    run_conclusion: record.status === "apply_applied" || record.status === "applied" ? "success" : "failure",
+    dispatched_by: host.dispatched_by ?? null,
+    encoder_sha: host.encoder_sha ?? null,
+    encoder_version: record.encoder_version ?? host.encoder_version ?? null,
+  };
+  attempt.tries = null;
+  attempt.encode_loop = null;
+  applyEncoderRecord(attempt, record);
+  const path = encoderModulePath(record.file_path);
+  const modules = hostPr ? rulespecModulePaths(hostPr.files) : [];
+  const inPr = path ? (modules.find((m) => m === `${attempt.jurisdiction}/${path}`) ?? modules.find((m) => m === path)) : undefined;
+  return inPr && hostPr ? withPr(attempt, { ...hostPr, files: [inPr] }, context, previous.get(id)) : attempt;
 }
 
 /**

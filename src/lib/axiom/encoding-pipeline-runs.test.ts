@@ -3,6 +3,7 @@ import {
   clockDuration,
   dispatchFlow,
   encodeParts,
+  hostLabel,
   runRow,
   runRows,
   runTimeline,
@@ -10,7 +11,7 @@ import {
   stepTimes,
   testsParts,
 } from "./encoding-pipeline-runs";
-import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
+import { dependentAttempt, mergedAttempt, outsideAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 
 describe("runRow", () => {
   it("records a run's provenance and outcome", () => {
@@ -646,5 +647,67 @@ describe("timed tries", () => {
     const { parts } = encodeParts(runRows([attempt(), pipelineAttempt({ id: "old", run_conclusion: "success" })]));
     const checks = parts.find((part) => part.key === "checks")!;
     expect(checks.timings.map((t) => `${t.label}:${t.runs}:${t.medianMs / 1000}`)).toEqual(["Encoded:1:350"]);
+  });
+});
+
+describe("rows beyond dispatches", () => {
+  const host = pipelineAttempt({ id: "1001", citation: "us/statute/42/416/l", run_conclusion: "success", encode_started_at: "2026-09-20T10:01:00Z" });
+  const outside = outsideAttempt({ synced_at: "2026-09-24T06:00:00Z", index_status: "indexed", tests_status: "pass" });
+  const dependent = dependentAttempt({
+    tries: [
+      { attempt: 1, model: "gpt-6-sol", ms: 60_000, cost: 0.2, ok: false, error: "compile: failed", startedAt: "2026-09-20T10:14:00Z", wallMs: 120_000, phases: [{ name: "model_call", ms: 60_000 }, { name: "candidate_validation", ms: 60_000 }] },
+      { attempt: 2, model: "gpt-6-sol", ms: 60_000, cost: 0.2, ok: false, error: "compile: failed again", startedAt: "2026-09-20T10:16:00Z", wallMs: 120_000, phases: [{ name: "model_call", ms: 60_000 }, { name: "candidate_validation", ms: 60_000 }] },
+    ],
+  });
+
+  it("says where each row came from, the run a module was encoded in, and orders a merge by its time", () => {
+    const rows = runRows([host, outside, dependent]);
+    expect(rows.map((row) => [row.id, row.source])).toEqual([
+      [outside.id, "outside"],
+      ["dep:5e2a7c10", "dependent"],
+      ["1001", "dispatch"],
+    ]);
+    const [merged, inRun] = rows;
+    expect(merged).toMatchObject({
+      outcome: "encoded",
+      outcomeLabel: "Merged outside the pipeline",
+      by: "MaxGhenis",
+      at: "2026-09-23T09:00:00Z",
+      dispatchedAt: "2026-09-22T08:00:00Z",
+      merged: "main",
+      tests: "pass",
+      pr: { label: "rulespec-us#900", state: "merged" },
+      host: null,
+    });
+    expect(inRun).toMatchObject({ outcome: "failed", host: { id: "1001", citation: "us/statute/42/416/l" }, cost: 0.4 });
+    expect(hostLabel(inRun.host)).toBe("Encoded in the run for us/statute/42/416/l");
+    expect(hostLabel({ id: "9", citation: null })).toBe("Encoded in another citation's run");
+    // Scoped rows still name a host run outside the scope.
+    expect(runRows([dependent], [host])[0].host?.citation).toBe("us/statute/42/416/l");
+  });
+
+  it("leaves them out of every run statistic", () => {
+    const rows = runRows([host, outside, dependent]);
+    expect(dispatchFlow(rows)[0].input).toBe(1);
+    expect(stepTimes(rows, Date.parse("2026-09-30T12:00:00Z")).find((step) => step.key === "approval")!.timings[0].runs).toBe(1);
+    expect(encodeParts(rows).tries.finished).toBe(1);
+    expect(testsParts(rows).first).toEqual({ pass: 0, fail: 0 });
+  });
+
+  it("draws a dependent module's own encode loop, and only the steps after the PR for a merge outside the pipeline", () => {
+    const now = Date.parse("2026-09-30T12:00:00Z");
+    const loop = runTimeline(runRow(dependent), now);
+    expect(loop.title).toBe("Its encode loop");
+    expect(loop.bars).toEqual([{ key: "encode", label: "Encode loop · 4 tries", startMs: 0, ms: 240_000, state: "failed" }]);
+    // The tries sit on the module's own clock, from its first try.
+    expect(loop.tries[1].phases[0]).toMatchObject({ startMs: 120_000, ms: 60_000 });
+    expect(loop.stopped).toMatch(/^Failed the compile check/);
+    const after = runTimeline(runRow(outside), now);
+    expect(after.bars).toEqual([]);
+    expect(after.after.map((step) => [step.key, step.state])).toEqual([
+      ["review", "done"],
+      ["index", "done"],
+      ["tests", "done"],
+    ]);
   });
 });

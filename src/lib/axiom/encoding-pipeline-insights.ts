@@ -7,8 +7,10 @@
  */
 
 import {
+  attemptSource,
   checkErrorLabel,
   citationStates,
+  isDispatch,
   pipelineItem,
   reachedMain,
   type PipelineAttempt,
@@ -39,8 +41,19 @@ export interface RunStats {
   byAttempt: AttemptRate[];
   /** The citations dispatched most, when any was dispatched three times or more. */
   mostDispatched: Array<{ citation: string; dispatches: number; successes: number; merged: number }>;
-  /** Encoder-reported cost, over the runs that report one. */
-  cost: { recorded: number; finished: number; total: number; onFailures: number };
+  /**
+   * Encoder-reported cost, over the dispatches that report one plus the
+   * modules encoded inside another citation's run: each of those has its
+   * own record, so its cost is spend the run's own record leaves out.
+   * `recorded` and `finished` count dispatches; `dependent` the rest.
+   */
+  cost: {
+    recorded: number;
+    finished: number;
+    total: number;
+    onFailures: number;
+    dependent: { count: number; total: number };
+  };
 }
 
 /** Consecutive encoder versions pooled until they hold enough finished runs to compare. */
@@ -97,7 +110,10 @@ export function pipelineFunnel(attempts: PipelineAttempt[]): PipelineFunnel {
   };
 }
 
-export function runStats(attempts: PipelineAttempt[]): RunStats {
+/** Run statistics: dispatches only, but for cost, which adds the modules encoded inside other citations' runs. */
+export function runStats(rows: PipelineAttempt[]): RunStats {
+  const attempts = rows.filter(isDispatch);
+  const dependents = rows.filter((row) => attemptSource(row) === "dependent" && row.cost_usd !== null);
   const groups = byCitation(attempts);
   const buckets = [...ORDINALS, `${ORDINALS.length + 1}th+`].map((label) => ({
     label,
@@ -133,7 +149,9 @@ export function runStats(attempts: PipelineAttempt[]): RunStats {
       merged: list.filter((a) => a.pr_state === "merged" && a.pr_targets_default !== false).length,
     }));
   const costed = attempts.filter((a) => a.cost_usd !== null);
-  const sum = (list: PipelineAttempt[]) => list.reduce((total, a) => total + (a.cost_usd ?? 0), 0);
+  // Stored as numeric, a cost can arrive as a string.
+  const sum = (list: PipelineAttempt[]) => list.reduce((total, a) => total + Number(a.cost_usd ?? 0), 0);
+  const spent = [...costed, ...dependents];
   return {
     firstAttempt: { success: firstSuccess, total: firstTotal },
     byAttempt: buckets.filter((bucket) => bucket.total > 0),
@@ -141,8 +159,9 @@ export function runStats(attempts: PipelineAttempt[]): RunStats {
     cost: {
       recorded: costed.length,
       finished: attempts.filter(finished).length,
-      total: sum(costed),
-      onFailures: sum(costed.filter((a) => a.run_conclusion === "failure")),
+      total: sum(spent),
+      onFailures: sum(spent.filter((a) => a.run_conclusion === "failure")),
+      dependent: { count: dependents.length, total: sum(dependents) },
     },
   };
 }
@@ -169,7 +188,7 @@ export function compareVersions(a: string, b: string): number {
 export function versionBins(attempts: PipelineAttempt[]): VersionBin[] {
   const byVersion = new Map<string, PipelineAttempt[]>();
   for (const attempt of attempts) {
-    if (!attempt.encoder_version || !finished(attempt)) continue;
+    if (!isDispatch(attempt) || !attempt.encoder_version || !finished(attempt)) continue;
     byVersion.set(attempt.encoder_version, [...(byVersion.get(attempt.encoder_version) ?? []), attempt]);
   }
   const bins: VersionBin[] = [];

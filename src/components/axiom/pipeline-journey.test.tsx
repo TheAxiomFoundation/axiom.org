@@ -1,7 +1,7 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { PipelineJourney } from "./pipeline-journey";
-import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
+import { dependentAttempt, mergedAttempt, outsideAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 
 const NOW = Date.parse("2026-09-30T12:00:00Z");
 
@@ -132,10 +132,57 @@ describe("PipelineJourney", () => {
     expect(screen.getByText(/Pick a citation/)).toBeInTheDocument();
     cleanup();
     render(<PipelineJourney citation="us/x" attempts={[]} available referenceMs={NOW} />);
-    expect(screen.getByText(/No targeted re-encode dispatch/)).toBeInTheDocument();
+    expect(screen.getByText(/No encoding has been recorded/)).toBeInTheDocument();
     cleanup();
     render(<PipelineJourney citation="us/x" attempts={[]} available={false} referenceMs={NOW} />);
     expect(screen.getByText(/not available yet/)).toBeInTheDocument();
+  });
+
+  it("shows a merge outside the pipeline and a module encoded in another citation's run as their own cards", () => {
+    const citation = "us/statute/42/402/q";
+    render(
+      <PipelineJourney
+        citation={citation}
+        available
+        referenceMs={NOW}
+        hosts={{ "1001": "us/statute/42/416/l" }}
+        attempts={[
+          outsideAttempt({ citation, synced_at: "2026-09-24T06:00:00Z", index_status: "indexed", tests_status: "pass" }),
+          pipelineAttempt({ id: "2001", citation, dispatched_at: "2026-09-22T12:00:00Z", encoder_error_rule: "rule-a", encoder_error: "detail" }),
+          dependentAttempt({
+            citation,
+            tries: [{ attempt: 1, model: "gpt-6-sol", ms: 30_000, cost: 0.2, ok: false, error: "statutes/42/402/q.yaml: compile: failed" }],
+          }),
+        ]}
+      />
+    );
+    // The latest attempt decides the stage: the merge, now passing its tests on main.
+    expect(screen.getByText("Tests pass")).toBeInTheDocument();
+    expect(
+      screen.getByText(/1 dispatch, 1 merge outside the pipeline, 1 encoding in another citation's run, the first Sep 20, 10:20 UTC\./)
+    ).toBeInTheDocument();
+    const cards = screen.getAllByRole("listitem").filter((item) => item.querySelector("h2"));
+    expect(cards.map((card) => card.querySelector("h2")!.textContent)).toEqual([
+      "Merged outside the pipeline",
+      "Latest dispatch",
+      "Encoded in the run for us/statute/42/416/l",
+    ]);
+    const [outside, , dependent] = cards;
+    expect(within(outside).getByRole("link", { name: "rulespec-us#900" })).toHaveAttribute(
+      "href",
+      "https://github.com/TheAxiomFoundation/rulespec-us/pull/900"
+    );
+    expect(outside).toHaveTextContent("by MaxGhenis");
+    // Only the steps after the PR: the merge, the index, and the tests on main.
+    expect(within(outside).queryByRole("region", { name: "Encode run" })).toBeNull();
+    expect(within(outside).getByRole("region", { name: "After the PR" })).toHaveTextContent(/Review.*Index.*Tests on main/);
+    expect(within(dependent).getByRole("link", { name: "run 1001" })).toHaveAttribute(
+      "href",
+      "https://github.com/TheAxiomFoundation/axiom-encode/actions/runs/1001"
+    );
+    expect(dependent).toHaveTextContent("run 1001 · Failed the compile check · $0.40");
+    expect(within(dependent).getByRole("region", { name: "Encode run" })).toHaveTextContent(/Its encode loop.*Try 1/);
+    expect(dependent).toHaveTextContent(/Failed the compile check/);
   });
 
   it("falls back when the stage has no start time", () => {

@@ -170,6 +170,19 @@
   background: var(--color-accent);
 }
 
+/* What the states hold besides dispatches, under them. */
+.sourcesLine {
+  max-width: 640px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--color-ink-muted);
+}
+
+.sourcesLine .explain {
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
 .summaryFunnelHead {
   display: flex;
   align-items: center;
@@ -1256,6 +1269,11 @@
 .sparkBar[data-series="3"] {
   background: var(--series-3);
   fill: var(--series-3);
+}
+
+/* Merges outside the pipeline: not part of the dispatch ramp, so a neutral. */
+.sparkBar[data-series="4"] {
+  background: var(--color-ink-muted);
 }
 
 .chartWrap {
