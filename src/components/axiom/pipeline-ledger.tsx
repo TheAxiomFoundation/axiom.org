@@ -292,7 +292,7 @@ function DocumentSections({
                   ))}
                 </span>
               </TableCell>
-              <TableCell className="px-2 py-1.5 align-baseline whitespace-nowrap">
+              <TableCell className={`${styles.ledgerStatus} px-2 py-1.5 align-baseline whitespace-nowrap`}>
                 <span className={`${styles.status} ${TONE_CLASS[section.tone]}`} data-tone={section.tone}>
                   <span aria-hidden className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${TONE_DOT[section.tone]}`} />
                   <span className="text-[var(--color-ink-secondary)]">{section.status}</span>
