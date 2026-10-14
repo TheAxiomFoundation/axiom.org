@@ -367,3 +367,141 @@ describe("explicit relation roles (roles_required scopes)", () => {
     expect(runCalculateRootMock).toHaveBeenCalledWith({ root: "us:statutes/26/21", facts: {}, people: undefined, variables: ["n"] });
   });
 });
+
+describe("per-request instances (26 USC 22 payments of the tax unit)", () => {
+  const relation = (file: string, name: string, args: string[]) =>
+    describeRelation({ name, kind: "data_relation", data_relation: { arity: 2, arguments: args } }, file);
+  const S22 = [
+    relation("us:statutes/26/22", "taxpayer_or_spouse_of_tax_unit", ["TaxUnit", "Person"]),
+    relation("us:statutes/26/22", "section_22_payment_of_tax_unit", ["TaxUnit", "Payment"]),
+  ];
+  const roles = {
+    "us:statutes/26/22#taxpayer_or_spouse_of_tax_unit": ["person_1"],
+    "us:statutes/26/22#section_22_payment_of_tax_unit": ["payment_2"],
+  };
+  const instances = {
+    Payment: {
+      payment_1: { payment_amount: 400 },
+      payment_2: { payment_amount: 1000, payment_received_as_pension_annuity_or_similar_allowance: true, note: "x" },
+    },
+  };
+  /** The runtime's root-inputs payload for §22 (axiom-api#268). */
+  const catalog = (patch: (data: Record<string, unknown>) => Record<string, unknown> = (data) => data) => ({
+    status: 200,
+    body: {
+      status: "ok",
+      data: patch({
+        inputs: [],
+        relation_membership: ["convention", "explicit"],
+        instance_kinds: [{ entity: "Payment", id_template: "payment:1:{index}" }],
+        relations: [
+          { name: "us:statutes/26/22#relation.section_22_payment_of_tax_unit", slot_entities: ["TaxUnit", "Payment"], tuple: ["household:1", "payment:1:{index}"], explicit: true },
+          { name: "us:statutes/26/22#relation.taxpayer_or_spouse_of_tax_unit", slot_entities: ["TaxUnit", "Person"], tuple: ["household:1", "person:1:{index}"], explicit: true },
+        ],
+      }),
+    },
+  });
+  const ok = (allocated: unknown) => ({
+    kind: "ok",
+    result: { outputs: { section_22_service_injury_payment_exclusion: 1000 }, trace: [] },
+    relationMembership: "explicit",
+    allocatedInstances: allocated,
+  });
+  const echo = { Payment: { payment_1: "payment:1:1", payment_2: "payment:1:2" } };
+  beforeEach(() => {
+    _resetRunRouteState();
+    runCalculateRootMock.mockReset();
+    isConfiguredMock.mockReturnValue(true);
+    vi.mocked(compositionScope).mockResolvedValue({ readiness: "roles_required", relations: S22 });
+    runtimeProxyGetMock.mockReset();
+    runtimeProxyGetMock.mockResolvedValue(catalog());
+  });
+
+  it("sends every payment and links the chosen ones by key, in declared slot order", async () => {
+    runCalculateRootMock.mockResolvedValue(ok(echo));
+    const response = await POST(post({ root: "us:statutes/26/22", facts: { adjusted_gross_income: 8500 }, relations: roles, instances, variables: ["section_22_service_injury_payment_exclusion"] }));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.outputs).toEqual({ section_22_service_injury_payment_exclusion: 1000 });
+    // A non-scalar answer is reported, never silently kept.
+    expect(body.dropped).toContain("payment_2:note");
+    // The runtime's key → instance map rides back for labelling.
+    expect(body.allocated_instances).toEqual(echo);
+    expect(runCalculateRootMock).toHaveBeenCalledWith({
+      root: "us:statutes/26/22",
+      facts: { adjusted_gross_income: 8500 },
+      people: undefined,
+      variables: ["section_22_service_injury_payment_exclusion"],
+      relations: [
+        { name: "us:statutes/26/22#relation.taxpayer_or_spouse_of_tax_unit", tuples: [["household:1", "person:1:1"]] },
+        { name: "us:statutes/26/22#relation.section_22_payment_of_tax_unit", tuples: [["household:1", "payment_2"]] },
+      ],
+      instances: {
+        Payment: {
+          payment_1: { payment_amount: 400 },
+          payment_2: { payment_amount: 1000, payment_received_as_pension_annuity_or_similar_allowance: true },
+        },
+      },
+    });
+  });
+
+  it("sends the kind empty when the scenario has no payments", async () => {
+    runCalculateRootMock.mockResolvedValue(ok({ Payment: {} }));
+    const response = await POST(post({
+      root: "us:statutes/26/22",
+      facts: {},
+      relations: { ...roles, "us:statutes/26/22#section_22_payment_of_tax_unit": [] },
+      variables: [],
+    }));
+    expect(response.status).toBe(200);
+    expect(runCalculateRootMock.mock.calls[0]![0]).toMatchObject({
+      instances: { Payment: {} },
+      relations: [expect.anything(), { name: "us:statutes/26/22#relation.section_22_payment_of_tax_unit", tuples: [] }],
+    });
+  });
+
+  it("refuses links and instances the scenario cannot hold, before any upstream call", async () => {
+    const cases: Array<[Record<string, unknown>, string]> = [
+      [{ relations: { ...roles, "us:statutes/26/22#section_22_payment_of_tax_unit": ["payment_3"] }, instances }, "unknown_instance"],
+      [{ relations: { ...roles, "us:statutes/26/22#section_22_payment_of_tax_unit": ["person_1"] }, instances }, "unknown_instance"],
+      [{ relations: roles, instances: { ...instances, Asset: {} } }, "unknown_instance_kind"],
+      [{ relations: roles, instances: { Payment: { pay_1: {} } } }, "unknown_instance"],
+      [{ relations: roles, instances: { Payment: Object.fromEntries(Array.from({ length: 13 }, (_, i) => [`payment_${i + 1}`, {}])) } }, "unknown_instance"],
+    ];
+    for (const [body, error] of cases) {
+      const response = await POST(post({ root: "us:statutes/26/22", facts: {}, variables: [], ...body }));
+      expect(response.status).toBe(422);
+      const payload = await response.json();
+      expect(payload.error).toBe(error);
+      expect(payload.message).not.toContain("<");
+    }
+    expect(runCalculateRootMock).not.toHaveBeenCalled();
+    expect(runtimeProxyGetMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses before running when the runtime cannot allocate payments or lists them differently", async () => {
+    for (const patched of [
+      catalog(({ instance_kinds: _gone, ...data }) => data),
+      catalog((data) => ({ ...data, instance_kinds: [] })),
+      catalog((data) => ({ ...data, relations: (data.relations as Array<Record<string, unknown>>).map((r, i) => (i === 0 ? { ...r, explicit: false } : r)) })),
+      catalog((data) => ({ ...data, relations: (data.relations as Array<Record<string, unknown>>).map((r, i) => (i === 0 ? { ...r, tuple: ["person:1:{index}", "household:1"] } : r)) })),
+    ]) {
+      runtimeProxyGetMock.mockResolvedValueOnce(patched);
+      const response = await POST(post({ root: "us:statutes/26/22", facts: {}, relations: roles, instances, variables: [] }));
+      expect(response.status).toBe(422);
+      expect((await response.json()).error).toBe("relationships_unsupported");
+    }
+    expect(runCalculateRootMock).not.toHaveBeenCalled();
+  });
+
+  it("withholds a result whose runtime did not confirm every payment", async () => {
+    for (const allocated of [null, {}, { Payment: { payment_1: "payment:1:1" } }]) {
+      runCalculateRootMock.mockResolvedValueOnce(ok(allocated));
+      const response = await POST(post({ root: "us:statutes/26/22", facts: {}, relations: roles, instances, variables: [] }));
+      expect(response.status).toBe(422);
+      const body = await response.json();
+      expect(body.error).toBe("relationships_unsupported");
+      expect(body.outputs).toBeUndefined();
+    }
+  });
+});

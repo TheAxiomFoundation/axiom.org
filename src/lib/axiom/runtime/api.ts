@@ -353,7 +353,15 @@ export type RootCalculateOutcome =
   /** `relationMembership` is what the runtime confirmed: "explicit" only
    *  when its `explicit_relations` echo names every relation the request
    *  sent, i.e. those tuples replaced the membership convention. */
-  | { kind: "ok"; result: CalculateResult; relationMembership: "explicit" | "convention" }
+  | {
+      kind: "ok";
+      result: CalculateResult;
+      relationMembership: "explicit" | "convention";
+      /** The runtime's `allocated_instances` echo (kind → key → instance
+       *  id), present only when it honored `household.instances`
+       *  (axiom-api#268); null otherwise. */
+      allocatedInstances: unknown;
+    }
   /** 422: the engine declined this subtree (compile_failed /
    *  closure_incomplete / uncertified_node) — code and the API's own
    *  message carried through for honest display. */
@@ -381,6 +389,10 @@ export async function runCalculateRoot(request: {
    *  (`tuples: []` = empty). The runtime replaces the membership convention
    *  for every relation named here. */
   relations?: Array<{ name: string; tuples: string[][] }>;
+  /** Per-request instances (`household.instances`, axiom-api#268): kind →
+   *  scenario key → answers. Every kind the scope allocates is sent, `{}`
+   *  for none, so flat facts never stand in for an instance. */
+  instances?: Record<string, Record<string, Record<string, number | boolean>>>;
 }): Promise<RootCalculateOutcome> {
   if (!isRuntimeApiConfigured()) return { kind: "failed" };
   const key = process.env.AXIOM_RUNTIME_API_KEY;
@@ -391,13 +403,14 @@ export async function runCalculateRoot(request: {
         "content-type": "application/json",
         ...(key ? { "x-api-key": key } : {}),
       },
-      body: JSON.stringify(request.people || request.relations ? {
+      body: JSON.stringify(request.people || request.relations || request.instances ? {
         root: request.root,
         facts: request.facts,
         variables: request.variables,
         household: {
           people: { person_1: {}, ...request.people },
           ...(request.relations ? { relations: request.relations } : {}),
+          ...(request.instances ? { instances: request.instances } : {}),
         },
       } : request),
       redirect: "error",
@@ -466,7 +479,7 @@ export async function runCalculateRoot(request: {
     }
     const envelope = (await response.json()) as {
       status?: string;
-      data?: CalculateResult & { explicit_relations?: unknown };
+      data?: CalculateResult & { explicit_relations?: unknown; allocated_instances?: unknown };
     };
     if (envelope.status !== "ok" || !envelope.data?.outputs) {
       return { kind: "failed" };
@@ -483,6 +496,7 @@ export async function runCalculateRoot(request: {
       kind: "ok",
       result: envelope.data,
       relationMembership: confirmed ? "explicit" : "convention",
+      allocatedInstances: envelope.data.allocated_instances ?? null,
     };
   } catch {
     return { kind: "failed" };
