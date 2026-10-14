@@ -19,9 +19,12 @@
  *   credit);
  * - not started: the rest.
  * A screener unit (a provision PolicyEngine cites) is graded the same way.
- * The screener tier is PolicyEngine parity, so it counts only its units: a
- * document there is complete when every provision PolicyEngine cites in it is
- * encoded. The full bundle counts every provision.
+ * The screener tier holds the plan's documents for screener-level parity and
+ * the provisions PolicyEngine cites, and counts its units: a document only the
+ * plan names is one unit, its whole self (all its provisions count); in a
+ * document PolicyEngine cites, each cited provision counts alone (all of them
+ * when it cites the document whole). A document there is complete when every
+ * unit in it is encoded. The full bundle counts every provision.
  */
 import { attemptStage, type PipelineAttempt, type PipelineStage } from "./encoding-pipeline";
 import type { ScreenerParity } from "./screener-parity";
@@ -129,7 +132,8 @@ export const UNIT_LABELS: Record<UnitState, string> = {
   deferred: "Deferred",
   in_progress: "In progress",
   failed: "Failed",
-  not_encoded: "Not encoded",
+  // One name for "nothing yet" everywhere on the pages.
+  not_encoded: "Not started",
   not_in_corpus: "Not in the corpus",
 };
 
@@ -241,8 +245,18 @@ export interface BundleRow {
   /** The newest policyengine-us version published on PyPI when the collector ran. */
   policyengine_latest: string | null;
   /** Each tier's counts; a state's include the program's federal layer. */
-  counts?: Partial<Record<BundleTierId, TierCounts>> | null;
+  counts?: BundleCounts | null;
   collected_at: string;
+}
+
+/** A bundle's stored counts: each tier's, and its jurisdiction's own documents across every program. */
+export interface BundleCounts extends Partial<Record<BundleTierId, TierCounts>> {
+  /**
+   * The jurisdiction's own layer (the federal law, or a state's own documents)
+   * across every program, each document once (distinctByDocument); the same
+   * on every bundle of the jurisdiction.
+   */
+  jurisdiction?: Partial<Record<BundleTierId, TierCounts>>;
 }
 
 /** One row of encodings.program_bundle_snapshots: a tier's counts on one day. */
@@ -457,12 +471,16 @@ export function measureDocument(
   // The full bundle never counts a document more coarsely than the screener
   // tier: a corpus provision with cited provisions under it (the corpus holds
   // a CFR section as one provision while PolicyEngine cites its paragraphs)
-  // counts as those cited provisions.
+  // counts as those cited provisions, and, unless the provision is encoded
+  // whole, as the rest of it too, in the provision's own state: the cited
+  // paragraphs are only part of it, so they alone never make it complete.
   if (tier === "full" && inCorpus && units.length) {
+    const counted = countedUnits(units);
     const finest: ProvisionState[] = [];
     for (const leaf of leaves) {
-      const below = units.filter((u) => u.path && strictlyUnder(u.path, leaf));
-      if (!below.length) finest.push(states.get(leaf) ?? "not_started");
+      const own = states.get(leaf) ?? "not_started";
+      const below = counted.filter((u) => u.path && strictlyUnder(u.path, leaf));
+      if (!below.length || own !== "encoded") finest.push(own);
       for (const u of below) {
         const state = UNIT_AS_PROVISION[u.state];
         if (state) finest.push(state);
@@ -579,6 +597,24 @@ export function provisionCounts(
   };
 }
 
+/**
+ * The units a document counts: each cited path once, and none under another
+ * of its cited paths ((c)(3)(i) when (c)(3) is cited too), since that one's
+ * grade already takes in what is under it.
+ */
+export function countedUnits<T extends Pick<ParityUnit, "path">>(units: T[]): T[] {
+  const paths = new Set(units.map((u) => u.path).filter((p): p is string => Boolean(p)));
+  const seen = new Set<string>();
+  return units.filter((u) => {
+    if (!u.path) return true;
+    if (seen.has(u.path)) return false;
+    seen.add(u.path);
+    const parts = u.path.split("/");
+    for (let n = parts.length - 1; n > 0; n--) if (paths.has(parts.slice(0, n).join("/"))) return false;
+    return true;
+  });
+}
+
 /** A cited provision's state on the provision scale; null for one the corpus does not hold. */
 const UNIT_AS_PROVISION: Record<UnitState, ProvisionState | null> = {
   encoded: "encoded",
@@ -638,13 +674,14 @@ export function measured(
   if (whole && row.tier === "screener") return { total: row.provisions, byState: provisionCounts(row), missing: 0 };
   const byState = Object.fromEntries(PROVISION_STATES.map((s) => [s, 0])) as Record<ProvisionState, number>;
   let missing = 0;
-  for (const unit of row.units) {
+  const units = countedUnits(row.units);
+  for (const unit of units) {
     const state = UNIT_AS_PROVISION[unit.state];
     if (state) byState[state]++;
     else missing++;
   }
   // PolicyEngine cites them, so they count, as not in the corpus.
-  return { total: row.units.length, byState, missing };
+  return { total: units.length, byState, missing };
 }
 
 type Measure = ReturnType<typeof measured>;
@@ -663,7 +700,7 @@ export function measuredByPart(row: BundleDocumentRow): Map<string, Measure> {
     out.set((row.tier === "screener" && whole ? whole.part : null) ?? row.part, measured(row));
     return out;
   }
-  for (const unit of row.units) {
+  for (const unit of countedUnits(row.units)) {
     const held =
       out.get(unit.part) ??
       ({ total: 0, byState: Object.fromEntries(PROVISION_STATES.map((s) => [s, 0])), missing: 0 } as Measure);
@@ -714,6 +751,31 @@ export function tierCounts(rows: BundleDocumentRow[]): TierCounts {
     units: units.length,
     byUnitState,
   };
+}
+
+/**
+ * One jurisdiction's own rows across its programs, each document once: a
+ * document several programs hold (in the same tier) counts as the program
+ * where it is least done counts it, so it is complete only when complete in
+ * every program that holds it. An in-scope row wins over an excluded one.
+ */
+export function distinctByDocument(rows: BundleDocumentRow[]): BundleDocumentRow[] {
+  const share = (row: BundleDocumentRow) => {
+    const { total, byState } = measured(row);
+    return total ? (byState.encoded + byState.unvalidated) / total : 0;
+  };
+  const kept = new Map<string, BundleDocumentRow>();
+  for (const row of rows) {
+    const key = `${row.tier}|${row.key}`;
+    const held = kept.get(key);
+    const better =
+      !held ||
+      (held.scope !== row.scope
+        ? row.scope === "in"
+        : share(row) < share(held) || (share(row) === share(held) && measured(row).total > measured(held).total));
+    if (better) kept.set(key, row);
+  }
+  return [...kept.values()];
 }
 
 type DocumentKind = "statute" | "regulation" | "guidance" | "manual" | "form" | "policy" | "other";

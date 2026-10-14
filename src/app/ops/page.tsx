@@ -78,12 +78,13 @@ export default async function OpsPage({
             key={bundleId}
             bundle={bundle.bundle}
             documents={bundle.documents}
+            snapshots={bundle.snapshots}
             available={bundle.available}
             referenceMs={referenceMs}
             initialCount={count}
           />
         ) : bundles.length ? (
-          <BundleOverview bundles={bundles} initialProgram={program} initialCount={count} />
+          <BundleOverview bundles={bundles} initialProgram={program} initialCount={count} referenceMs={referenceMs} />
         ) : undefined
       }
       initialTab={tab}
