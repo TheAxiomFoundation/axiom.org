@@ -176,6 +176,27 @@ describe("OpsDashboard", () => {
     window.history.replaceState(null, "", "/");
   });
 
+  it("shows the workflows strip under the fleet box, above the tabs, on every tab", () => {
+    render(
+      <OpsDashboard
+        initialStatus={status({})}
+        encodingError={null}
+        queues={[]}
+        recentPlaces={[]}
+        bundles={<section aria-label="Bundles" />}
+        initialTab="bundles"
+        workflows={<section aria-label="Workflows" />}
+      />,
+    );
+    const fleet = screen.getByRole("region", { name: "Live encoding activity" });
+    const strip = screen.getByRole("region", { name: "Workflows" });
+    const tabs = screen.getByRole("tablist", { name: "Operations" });
+    expect(strip).toBeVisible();
+    expect(fleet.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(strip.compareDocumentPosition(tabs) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(strip.nextElementSibling).toBe(tabs);
+  });
+
   it("shows stalled runs when the heartbeat dies", () => {
     render(
       <OpsDashboard
