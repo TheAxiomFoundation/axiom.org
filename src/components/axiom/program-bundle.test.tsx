@@ -168,7 +168,7 @@ describe("ProgramBundle", () => {
     );
     // The comparison run is a result, and says why it is 0%.
     expect(headers[1]).toHaveTextContent(
-      "0% of eligible households matchAxiom finds no household eligible: held by rulespec-us#1116597 mismatched outputs in 306 households, 597 to fix in Axiom · run Jul 28, 2026, 10w ago (over 30 days old) · run against reference version 1.767.3 (newest 2.29.10)"
+      "0% of eligible households matchAxiom finds no household eligible: held by rulespec-us#1116597 mismatched outputs in 306 households, 597 to fix in Axiom · run Jul 28, 2026, 9w ago (over 30 days old) · run against reference version 1.767.3 (newest 2.29.10)"
     );
     expect(headers[2]).toHaveTextContent(/Full document bundle.*0 of 1 document complete0%/);
     // Rows in the bundle's order of parts.
@@ -344,7 +344,7 @@ describe("ProgramBundle", () => {
       "href",
       "https://github.com/TheAxiomFoundation/rulespec-us/commit/c13cdf7dda5948e7a86ff0c317872f93743a2084"
     );
-    expect(parity).toHaveTextContent("Jul 28, 2026, 10w ago · over 30 days old · manual run");
+    expect(parity).toHaveTextContent("Jul 28, 2026, 9w ago · over 30 days old · manual run");
     expect(parity).toHaveTextContent("Mismatched outputs597 mismatched outputs in 306 households");
   });
 
