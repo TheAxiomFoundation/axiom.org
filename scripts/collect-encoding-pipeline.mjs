@@ -49,6 +49,12 @@
  * package version (pyproject.toml, read from raw.githubusercontent.com once
  * per commit), so success can be compared across encoder releases.
  *
+ * A manifest PR merged into a side branch reaches main through that branch's
+ * own PR (head = the side branch, base = the default branch), read once per
+ * branch each pass. Once it merged, the attempt counts as merged into main at
+ * its merge commit, which the index, tests and oracle stages then match; while
+ * it is open, the attempt waits for it.
+ *
  * The compile sweep is an artifact of the private axiom-api repo, so reading
  * it takes AXIOM_API_ARTIFACTS_TOKEN (a token with actions:read there). Without
  * it the compile stage stays unchecked and everything else still collects.
@@ -71,6 +77,7 @@ import {
   checkErrorLookups,
   containmentQueries,
   containsKey,
+  errorRule,
   failureLookups,
   mergeValidationKey,
   mergeValidationLookups,
@@ -83,8 +90,10 @@ import {
   parseVersion,
   prCitation,
   runDetailLookups,
+  sideBranchLookups,
   syncWindowStart,
   versionLookups,
+  viaPrFor,
 } from "../src/lib/axiom/encoding-pipeline-collect.ts";
 import { GITHUB_ORG, githubHeaders } from "./lib/rulespec-discovery.mjs";
 
@@ -218,6 +227,9 @@ const TIME_CARRIED = [
   "tests_first_at",
 ];
 const FIRST_TESTS_CARRIED = ["tests_first_started_at", "tests_first_status"];
+// Added by the 2026-10-14 side-branch migration: the merge commit a side
+// branch's own PR reached main at, and the first tests run's page there.
+const SIDE_CARRIED = ["pr_via_merge_commit", "tests_first_run_url"];
 
 async function columnsExist(columns) {
   const { error } = await supabase.from("pipeline_attempts").select(columns.join(",")).limit(1);
@@ -242,6 +254,7 @@ async function readPrevious() {
     // With the merge commit, these say which merges are timed already.
     if (await columnsExist(TIME_CARRIED)) columns += `,${TIME_CARRIED.join(",")},pr_merge_commit`;
     if (await columnsExist(FIRST_TESTS_CARRIED)) columns += `,${FIRST_TESTS_CARRIED.join(",")}`;
+    if (await columnsExist(SIDE_CARRIED)) columns += `,${SIDE_CARRIED.join(",")}`;
     const rows = await read(columns);
     return new Map(rows.map((row) => [row.id, row]));
   } catch (error) {
@@ -517,6 +530,37 @@ async function listManifestPrs(sinceIso) {
   return [...unique.values()];
 }
 
+/**
+ * Each side branch's own PRs into its repo's default branch (head = the
+ * branch), by `${repo}:${branch}`. One request per branch; a branch that
+ * cannot be read is left out, so its merges stay off main this pass.
+ */
+async function readBranchPrs(lookups) {
+  const byBranch = new Map();
+  for (const { repo, branch, base } of lookups) {
+    try {
+      const list = await githubJson(
+        `repos/${GITHUB_ORG}/${repo}/pulls?state=all&head=${encodeURIComponent(`${GITHUB_ORG}:${branch}`)}&base=${encodeURIComponent(base)}&per_page=50`,
+      );
+      byBranch.set(
+        `${repo}:${branch}`,
+        list.map((pr) => ({
+          number: pr.number,
+          url: pr.html_url,
+          state: pr.merged_at ? "MERGED" : pr.state === "open" ? "OPEN" : "CLOSED",
+          isDraft: !!pr.draft,
+          createdAt: pr.created_at,
+          mergedAt: pr.merged_at ?? null,
+          mergeCommit: pr.merged_at ? (pr.merge_commit_sha ?? null) : null,
+        })),
+      );
+    } catch (error) {
+      console.warn(`PRs from ${repo}:${branch}: ${error.message}`);
+    }
+  }
+  return byBranch;
+}
+
 /** Download an Actions artifact zip to a temp dir; returns [dir, zipPath]. */
 async function downloadArtifact(artifact, init) {
   const dir = mkdtempSync(join(tmpdir(), "pipeline-artifact-"));
@@ -613,7 +657,7 @@ async function logError(runId) {
 
 async function lookUpFailure(run, known) {
   // A run its log explains, without its step: only the step needs reading.
-  if (known && needsStepRead(known)) {
+  if (known && needsStepRead(known) && !needsLogRead(known)) {
     try {
       const { failed_step } = await jobsDetail(run.id);
       if (!failed_step) return null;
@@ -653,7 +697,9 @@ async function lookUpFailure(run, known) {
   }
   if (detail && !detail.error && !detail.rule) {
     const printed = await logError(run.id);
-    if (printed !== undefined) detail = { ...detail, source: "log", error: printed };
+    if (printed !== undefined) detail = { ...detail, source: "log", error: printed, rule: errorRule(printed) };
+    // A cause read before keeps until its log can be read again.
+    else if (known?.failure_source === "log") return null;
   }
   // The step that failed, from the jobs API, when the diagnostics bundle did not name it.
   if (detail && !detail.failed_step) {
@@ -814,6 +860,16 @@ const TRIES_COLUMNS = ["tries"];
 // Added by the 2026-10-07 loop-timing migration: derived from encoder records each pass.
 const LOOP_COLUMNS = ["encode_loop"];
 
+// Added by the 2026-10-14 side-branch migration.
+const SIDE_COLUMNS = [
+  "pr_via_number",
+  "pr_via_url",
+  "pr_via_state",
+  "pr_via_merged_at",
+  "pr_via_merge_commit",
+  "tests_first_run_url",
+];
+
 async function upsert(rows) {
   // Each migration's columns are written only once that migration is applied.
   for (const [name, group] of [
@@ -824,6 +880,7 @@ async function upsert(rows) {
     ["first tests", FIRST_TESTS_COLUMNS],
     ["tries", TRIES_COLUMNS],
     ["loop timing", LOOP_COLUMNS],
+    ["side branch", SIDE_COLUMNS],
   ]) {
     if (await columnsExist(group)) continue;
     console.log(`${name} columns not written yet (migration not applied)`);
@@ -894,6 +951,7 @@ async function readMergeValidation(lookups) {
                   startedAt: check.started_at ?? null,
                   completedAt: check.completed_at,
                   conclusion: check.conclusion,
+                  url: check.html_url ?? null,
                 });
               }
             }
@@ -952,6 +1010,22 @@ async function main() {
       `compile sweep ${compile ? compile.generated_at : "unavailable"}, ${previous.size} previous rows`,
   );
 
+  // A merge into a side branch reaches main once that branch's own PR merges.
+  // Only once the columns that record it exist: without them /ops could not
+  // tell such a row from one merged off main.
+  const sideTracked = dryRun || (await columnsExist(SIDE_COLUMNS));
+  if (sideTracked) {
+    const branchLookups = sideBranchLookups(prs);
+    const branchPrs = await readBranchPrs(branchLookups);
+    let carried = 0;
+    for (const pr of prs) {
+      const listed = branchPrs.get(`${pr.repo}:${pr.baseRefName}`);
+      pr.via = listed ? viaPrFor(pr, listed) : null;
+      if (pr.via?.state === "MERGED") carried += 1;
+    }
+    console.log(`read PRs of ${branchPrs.size} of ${branchLookups.length} side branches, ${carried} merges carried to main`);
+  }
+
   const mergedRepos = [
     ...new Set(prs.filter((pr) => pr.state === "MERGED").map((pr) => pr.repo)),
   ].sort();
@@ -972,14 +1046,15 @@ async function main() {
     `validation read for ${mergedRepos.length} repos, ${contains.size} merge ancestry checks`,
   );
 
-  const lookups = failureLookups(runs, encoderRuns, previous, nowMs, lookupLimit);
-  const failureDetails = await lookUpFailures(lookups, previous);
-  console.log(`looked up ${failureDetails.size} of ${lookups.length} unexplained failures`);
   // A dry run times every step it reads; a pass writes them once the migration is in.
   const timesTracked = dryRun || (await columnsExist(TIME_COLUMNS));
   const detailRuns = runDetailLookups(runs, previous, runDetailLimit, { steps: timesTracked });
   const runDetails = await lookUpRunDetails(detailRuns);
   console.log(`read jobs for ${runDetails.size} of ${detailRuns.length} runs`);
+  // After the jobs: whether a run reached its encode step decides which encoder record is its.
+  const lookups = failureLookups(runs, encoderRuns, previous, nowMs, lookupLimit, runDetails);
+  const failureDetails = await lookUpFailures(lookups, previous);
+  console.log(`looked up ${failureDetails.size} of ${lookups.length} unexplained failures`);
   const shas = versionLookups(runs, previous);
   const encoderVersions = await readEncoderVersions(shas);
   console.log(`read encoder versions for ${encoderVersions.size} of ${shas.length} new commits`);
@@ -990,7 +1065,7 @@ async function main() {
   const syncRuns = timesTracked ? await readSyncRuns(syncSince) : null;
   const firstTestsTracked = dryRun || (await columnsExist(FIRST_TESTS_COLUMNS));
   const mergeLookups = timesTracked
-    ? mergeValidationLookups(prs, previous, mergeTestLimit, { detail: firstTestsTracked })
+    ? mergeValidationLookups(prs, previous, mergeTestLimit, { detail: firstTestsTracked, url: sideTracked })
     : [];
   const mergeValidation = await readMergeValidation(mergeLookups);
   console.log(

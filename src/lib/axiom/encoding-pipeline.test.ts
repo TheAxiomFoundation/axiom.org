@@ -23,7 +23,10 @@ import {
   journeySteps,
   pipelineView,
   stageSince,
+  STAGE_COPY,
+  statusAttempt,
   summarizePipeline,
+  ENCODE_GATE_LABELS,
   VIEW_ITEMS_PER_STAGE,
   weeklyThroughput,
   weekStartUtc,
@@ -111,6 +114,21 @@ describe("citationStates", () => {
     expect(snap.openPrs).toBe(2);
     expect(snap.reachedIndex).toBe(true);
     expect(states.find((s) => s.citation === "us/statute/26/32")!.reachedIndex).toBe(false);
+  });
+
+  it("reads the status past dispatches cancelled before their encode job, while an earlier one exists", () => {
+    const merged = mergedAttempt({ id: "merged", dispatched_at: "2026-09-01T00:00:00Z" });
+    const atApproval = pipelineAttempt({ id: "approval", dispatched_at: "2026-09-02T00:00:00Z", run_conclusion: "cancelled", cancel_stage: "approval" });
+    const beforeJob = pipelineAttempt({ id: "job", dispatched_at: "2026-09-03T00:00:00Z", run_conclusion: "cancelled", cancel_stage: "before_job" });
+    const [state] = citationStates([merged, atApproval, beforeJob]);
+    expect([state.latest.id, state.stage, state.dispatches]).toEqual(["merged", "awaiting_sync", 3]);
+    expect(statusAttempt([merged, atApproval, beforeJob])?.id).toBe("merged");
+    // A run cancelled mid-run tried the citation: it stands.
+    const midRun = pipelineAttempt({ id: "mid", dispatched_at: "2026-09-04T00:00:00Z", run_conclusion: "cancelled", cancel_stage: "running" });
+    expect(statusAttempt([merged, midRun])?.id).toBe("mid");
+    // With nothing before it, the cancelled dispatch is the status.
+    expect(citationStates([atApproval])[0].latest.id).toBe("approval");
+    expect(statusAttempt([])).toBeNull();
   });
 });
 
@@ -242,6 +260,29 @@ describe("journeySteps", () => {
     expect(steps[0].detail).toBe("Ad hoc dispatch");
   });
 
+  it("says a failure once: the message, without the group made from it", () => {
+    const detail = (overrides: Parameters<typeof pipelineAttempt>[0]) => journeySteps(pipelineAttempt(overrides))[1].detail;
+    expect(detail({ encoder_status: "apply_blocked_generation", encoder_error: "HTTP 404", failure_source: "log" })).toBe("Failed to generate: HTTP 404");
+    expect(
+      detail({
+        failed_step: "Enforce failed-attempt budget / Enforce failed-attempt budget",
+        encoder_error: "attempt-budget: citation=us/x streak=3 budget=3",
+        failure_source: "log",
+      })
+    ).toBe("Attempt budget used up: attempt-budget: citation=us/x streak=3 budget=3");
+    expect(detail({ failed_step: "package_exact_generated_changes", encoder_error: "ValueError: no manifest", failure_source: "log" })).toBe(
+      "Failed to sign: ValueError: no manifest"
+    );
+    // A rule the message names already is not repeated in front of it.
+    expect(
+      detail({ encoder_error_rule: "complete-source-unit:tests", encoder_error: "a.yaml: ci: [complete-source-unit:tests] untested", failure_source: "diagnostics" })
+    ).toBe("Failed validation: [complete-source-unit:tests] untested");
+    // Without a message: the group, and how far a cancelled run got.
+    expect(detail({ run_conclusion: "cancelled", cancel_stage: "approval", finished_at: "2026-09-20T13:00:00Z" })).toBe(
+      "Cancelled or timed out: Cancelled while waiting for signing approval — Waited 3h for signing approval"
+    );
+  });
+
   it("shows a run in progress and a queued dispatch", () => {
     const running = pipelineAttempt({ run_status: "in_progress", run_conclusion: null, queue_ref: "snap:or-0001:abc" });
     expect(states(running).slice(0, 2)).toEqual(["done", "active"]);
@@ -355,6 +396,19 @@ describe("citationJourney", () => {
     );
     expect(journey.map((a) => a.id)).toEqual(["new", "old"]);
   });
+
+  it("holds every spelling of the citation, as the ledger counts them", () => {
+    const journey = citationJourney(
+      [
+        pipelineAttempt({ id: "colon", citation: "us-nc:manual/dhhs/fns/fns-170-notices/page-7", dispatched_at: "2026-09-01T00:00:00Z" }),
+        pipelineAttempt({ id: "slash", citation: "us-nc/manual/dhhs/fns/fns-170-notices/page-7", dispatched_at: "2026-09-02T00:00:00Z" }),
+        pipelineAttempt({ id: "cfr", citation: "us/regulations/7-cfr/273/4" }),
+      ],
+      "us-nc/manual/dhhs/fns/fns-170-notices/page-7"
+    );
+    expect(journey.map((a) => a.id)).toEqual(["slash", "colon"]);
+    expect(citationJourney([pipelineAttempt({ id: "cfr", citation: "us/regulations/7-cfr/273/4" })], "us/regulation/7/273/4")).toHaveLength(1);
+  });
 });
 
 describe("ageLabel and journeyHref", () => {
@@ -365,6 +419,10 @@ describe("ageLabel and journeyHref", () => {
     expect(ageLabel("2026-09-29T12:00:00Z", NOW)).toBe("24h");
     expect(ageLabel("2026-09-25T12:00:00Z", NOW)).toBe("5d");
     expect(ageLabel("2026-08-10T12:00:00Z", NOW)).toBe("7w");
+    // Whole units, rounded down, as "ago" times are.
+    expect(ageLabel("2026-09-30T11:00:30Z", NOW)).toBe("59m");
+    expect(ageLabel("2026-09-29T11:30:00Z", NOW)).toBe("24h");
+    expect(ageLabel("2026-09-24T00:00:00Z", NOW)).toBe("6d");
   });
 
   it("links a citation to its journey", () => {
@@ -462,6 +520,16 @@ describe("tests and oracle stages", () => {
     expect(stageSince({ ...d, oracle_checked_at: null })).toBe(indexed.synced_at);
   });
 
+  it("dates passing or failing tests from the first result that still holds, not the latest check", () => {
+    const pass = mergedAttempt({ ...indexed, tests_status: "pass", tests_checked_at: "latest", tests_first_at: "first", tests_first_status: "pass" });
+    expect(stageSince(pass)).toBe("first");
+    // The first run failed: the pass is known only from the latest check.
+    expect(stageSince({ ...pass, tests_first_status: "fail" })).toBe("latest");
+    const fail = mergedAttempt({ ...indexed, tests_status: "fail", tests_checked_at: "latest", tests_first_at: "first", tests_first_status: "fail" });
+    expect(stageSince(fail)).toBe("first");
+    expect(stageSince({ ...fail, tests_first_status: "pass" })).toBe("latest");
+  });
+
   it("never counts a waived module as stuck waiting for its tests", () => {
     const old = { ...indexed, synced_at: "2026-09-01T00:00:00Z", compile_status: "ok" };
     const [waived, waiting] = citationStates([
@@ -543,6 +611,14 @@ describe("signing approval and cancellations", () => {
     expect(durationLabel(3 * 3_600_000)).toBe("3h");
     expect(durationLabel(3 * 3_600_000 + 12 * 60_000)).toBe("3h 12m");
     expect(durationLabel(96 * 3_600_000)).toBe("4d");
+    // Rounded down, like the "ago" beside it: 26.9 days is 26d, as "26d ago" is.
+    expect(durationLabel(26.9 * 24 * 3_600_000)).toBe("26d");
+    expect(durationLabel(44.9 * 60_000)).toBe("44m");
+  });
+
+  it("names a compile failure apart from the nightly sweep's stage", () => {
+    expect(ENCODE_GATE_LABELS.compile).toBe("Failed the compile check");
+    expect(ENCODE_GATE_LABELS.compile).not.toBe(STAGE_COPY.compile_failed.label);
   });
 
   it("describes how long a cancelled run waited and who dispatched it", () => {

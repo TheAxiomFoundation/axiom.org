@@ -48,7 +48,10 @@ export function parseCitation(citation: string): ParsedCitation {
     };
   }
 
-  const colon = citation.indexOf(":");
+  // A colon after the jurisdiction separates it from the path; a colon inside
+  // the path is part of a section's own number (Louisiana's `47:32`).
+  const first = citation.indexOf(":");
+  const colon = first > 0 && !citation.slice(0, first).includes("/") ? first : -1;
   let scope = colon >= 0 ? citation.slice(0, colon) : "";
   const segments = (colon >= 0 ? citation.slice(colon + 1) : citation)
     .split("/")
@@ -71,6 +74,26 @@ export function parseCitation(citation: string): ParsedCitation {
     segments,
     documentDepth: Math.min(documentDepth, segments.length),
   };
+}
+
+const JURISDICTION_RE = /^[a-z]{2}(?:-[a-z0-9]+)*$/;
+
+/**
+ * A dispatch's citation in the corpus's own spelling, so the spellings of
+ * one provision count as one: a colon after the jurisdiction becomes a slash
+ * (`us-nc:manual/...` is `us-nc/manual/...`), the document class after it is
+ * singular, and a federal regulation's title is its number
+ * (`us/regulations/7-cfr/273/4` is `us/regulation/7/273/4`). A citation of
+ * any other shape is left as it is.
+ */
+export function normalizeCitation(citation: string): string {
+  const match = citation.match(/^([a-z]{2}(?:-[a-z0-9]+)*)[:/]([a-z]+)\/(.+)$/);
+  if (!match || !JURISDICTION_RE.test(match[1])) return citation;
+  const [, scope, kind, rest] = match;
+  const singular = CLASS_SINGULAR[kind];
+  if (!singular) return citation;
+  const path = scope === "us" && singular === "regulation" ? rest.replace(/^(\d+)-cfr(?=\/|$)/i, "$1") : rest;
+  return `${scope}/${singular}/${path}`;
 }
 
 export function documentKeyFromCitation(citation: string): string {

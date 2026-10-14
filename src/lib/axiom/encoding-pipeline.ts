@@ -7,6 +7,8 @@
  * derivation over those rows, so a new stage rule never needs a backfill.
  */
 
+import { normalizeCitation } from "./ops-citations";
+
 /** One targeted re-encode dispatch and every stage it has reached. */
 export interface PipelineAttempt {
   id: string;
@@ -53,6 +55,15 @@ export interface PipelineAttempt {
   /** Users or teams a review is requested from. */
   pr_requested_reviewers?: string[] | null;
   pr_merge_commit?: string | null;
+  /** For a PR merged into a side branch: that branch's own PR into the
+   *  default branch (head = the side branch), which carries the change
+   *  there. Once it merged, the attempt counts as merged into the default
+   *  branch at its merge commit and time (see reachedMain). */
+  pr_via_number?: number | null;
+  pr_via_url?: string | null;
+  pr_via_state?: "draft" | "open" | "merged" | "closed" | null;
+  pr_via_merged_at?: string | null;
+  pr_via_merge_commit?: string | null;
   /** The module's jurisdiction validation (compile, companion tests,
    *  source-unit rules) on the default branch at a commit with the merge. */
   tests_status?: "pass" | "fail" | "waived" | null;
@@ -93,6 +104,8 @@ export interface PipelineAttempt {
   /** When that first shard run started, and how it ended. */
   tests_first_started_at?: string | null;
   tests_first_status?: "pass" | "fail" | null;
+  /** That first shard run's page. */
+  tests_first_run_url?: string | null;
   /** Each try of the encode loop, from the encoder's own record. */
   tries?: PipelineTry[] | null;
   /** The encode loop's own clock, from the encoder's record (axiom-encode 0.2.2157 on). */
@@ -205,7 +218,7 @@ export const STAGE_COPY: Record<PipelineStage, StageCopy> = {
   merged_off_main: {
     label: "Merged off main",
     description:
-      "Merged into a branch other than the repo's default, so they never reach the index.",
+      "Merged into a branch other than the repo's default; they reach the index only once that branch merges into it.",
   },
   not_indexed: {
     label: "Missing from the index",
@@ -235,9 +248,44 @@ export const FAILED_COMPILE_STATUSES = new Set([
   "closure_error",
 ]);
 
+/**
+ * Whether a merged attempt reached the repo's default branch: its PR merged
+ * into it, or into a side branch whose own PR then merged into it.
+ */
+export function reachedMain(attempt: PipelineAttempt): boolean {
+  return (
+    attempt.pr_state === "merged" &&
+    (attempt.pr_targets_default !== false || attempt.pr_via_state === "merged")
+  );
+}
+
+/** When the attempt's change reached the default branch: its own merge, or its side branch's. */
+export function mainMergedAt(attempt: PipelineAttempt): string | null {
+  if (!reachedMain(attempt)) return null;
+  return attempt.pr_targets_default === false ? (attempt.pr_via_merged_at ?? null) : attempt.pr_merged_at;
+}
+
+/** The side branch's own PR, as "rulespec-us#911". */
+export function viaPrLabel(attempt: PipelineAttempt): string | null {
+  if (attempt.pr_via_number == null) return null;
+  return `${attempt.pr_repo ?? ""}#${attempt.pr_via_number}`;
+}
+
+/** Where a merge went: the default branch, a side branch its own PR took on, or a side branch only. */
+export function mergeDetail(attempt: PipelineAttempt): string {
+  const into = `Into ${attempt.pr_base_branch}`;
+  if (attempt.pr_targets_default !== false) return into;
+  const via = viaPrLabel(attempt);
+  if (attempt.pr_via_state === "merged") return `${into}, then the default branch by ${via}`;
+  if (attempt.pr_via_state === "open" || attempt.pr_via_state === "draft") {
+    return `${into}; waits for ${via} to merge it into the default branch`;
+  }
+  return `${into}, not the default branch`;
+}
+
 export function attemptStage(attempt: PipelineAttempt): PipelineStage {
   if (attempt.pr_state === "merged") {
-    if (attempt.pr_targets_default === false) return "merged_off_main";
+    if (!reachedMain(attempt)) return "merged_off_main";
     if (attempt.index_status === "missing") return "not_indexed";
     if (!attempt.synced_at) return "awaiting_sync";
     if (attempt.compile_status && FAILED_COMPILE_STATUSES.has(attempt.compile_status)) {
@@ -275,17 +323,21 @@ export function stageSince(
     case "closed":
       return attempt.pr_closed_at;
     case "merged_off_main":
+      return attempt.pr_merged_at;
     case "awaiting_sync":
     case "not_indexed":
-      return attempt.pr_merged_at;
+      return mainMergedAt(attempt) ?? attempt.pr_merged_at;
     case "indexed":
     case "runs":
       return attempt.synced_at;
     case "compile_failed":
       return attempt.compile_checked_at ?? attempt.synced_at;
+    // Since validation on main first gave the result it still gives; the
+    // latest check says only when it was last confirmed.
     case "verified":
+      return (attempt.tests_first_status === "pass" ? attempt.tests_first_at : null) ?? attempt.tests_checked_at ?? attempt.synced_at;
     case "tests_failing":
-      return attempt.tests_checked_at ?? attempt.synced_at;
+      return (attempt.tests_first_status === "fail" ? attempt.tests_first_at : null) ?? attempt.tests_checked_at ?? attempt.synced_at;
     case "oracle_disagrees":
       return attempt.oracle_checked_at ?? attempt.synced_at;
   }
@@ -362,6 +414,24 @@ export interface CitationState {
   reachedIndex: boolean;
 }
 
+/** A dispatch cancelled before its encode job started: it never tried the citation. */
+export function cancelledBeforeEncode(attempt: PipelineAttempt): boolean {
+  return (
+    attempt.run_conclusion === "cancelled" &&
+    (attempt.cancel_stage === "approval" || attempt.cancel_stage === "before_job")
+  );
+}
+
+/**
+ * The dispatch a citation's status comes from: its newest, passing over
+ * dispatches cancelled before their encode job started while an earlier one
+ * exists, so a cancelled re-dispatch does not hide what the run before it did.
+ */
+export function statusAttempt(attempts: PipelineAttempt[]): PipelineAttempt | null {
+  const sorted = [...attempts].sort(byDispatchedDesc);
+  return sorted.find((attempt) => !cancelledBeforeEncode(attempt)) ?? sorted[0] ?? null;
+}
+
 export function citationStates(attempts: PipelineAttempt[]): CitationState[] {
   const byCitation = new Map<string, PipelineAttempt[]>();
   for (const attempt of attempts) {
@@ -370,8 +440,7 @@ export function citationStates(attempts: PipelineAttempt[]): CitationState[] {
     byCitation.set(attempt.citation, list);
   }
   return [...byCitation.entries()].map(([citation, list]) => {
-    const sorted = [...list].sort(byDispatchedDesc);
-    const latest = sorted[0];
+    const latest = statusAttempt(list)!;
     const stage = attemptStage(latest);
     return {
       citation,
@@ -449,6 +518,16 @@ export function errorGroupLabel(error: string): string {
   );
 }
 
+/**
+ * The other module a run's failure came from: the target module applied,
+ * and the error names a different module file (an import the encoder also
+ * wrote), so the failure is that module's, not the target's.
+ */
+export function dependentModule(attempt: PipelineAttempt): string | null {
+  if (attempt.encoder_status !== "apply_applied") return null;
+  return attempt.encoder_error?.match(/^(\S+?\.ya?ml):/)?.[1] ?? null;
+}
+
 export function failureReason(attempt: PipelineAttempt): FailureReason {
   // A cancelled run's story is how far it got, not what it last logged.
   if (attempt.run_conclusion === "timed_out") {
@@ -458,6 +537,10 @@ export function failureReason(attempt: PipelineAttempt): FailureReason {
     return attempt.cancel_stage
       ? { key: `cancel:${attempt.cancel_stage}`, label: CANCEL_LABELS[attempt.cancel_stage], kind: "run" }
       : { key: "run:cancelled", label: "Cancelled (not read yet)", kind: "run" };
+  }
+  const dependent = dependentModule(attempt);
+  if (dependent) {
+    return { key: `dependent:${dependent}`, label: `A dependent module failed: ${dependent}`, kind: "validator" };
   }
   if (attempt.encoder_error_rule) {
     return {
@@ -497,6 +580,7 @@ export function failureReason(attempt: PipelineAttempt): FailureReason {
 
 /** The step of a targeted encode run that stopped it, in run order. */
 export type EncodeGate =
+  | "dependent"
   | "budget"
   | "setup"
   | "generate"
@@ -512,10 +596,11 @@ export type EncodeGate =
 
 /** A failed run's outcome, named by the step that stopped it. */
 export const ENCODE_GATE_LABELS: Record<EncodeGate, string> = {
+  dependent: "A dependent module failed",
   budget: "Attempt budget used up",
   setup: "Failed in setup",
   generate: "Failed to generate",
-  compile: "Failed to compile",
+  compile: "Failed the compile check",
   validate: "Failed validation",
   review: "Failed review",
   sign: "Failed to sign",
@@ -550,6 +635,7 @@ export function encodeGate(attempt: PipelineAttempt): EncodeGate {
   if (attempt.run_conclusion === "cancelled" || attempt.run_conclusion === "timed_out") {
     return "cancelled";
   }
+  if (dependentModule(attempt)) return "dependent";
   const check = attempt.encoder_error?.match(ERROR_CHECK_RE)?.[1];
   if (check && ERROR_CHECK_GATES[check]) return ERROR_CHECK_GATES[check];
   if (attempt.encoder_status === "apply_blocked_generation") return "generate";
@@ -848,19 +934,22 @@ export function weeklyThroughput(
   for (const attempt of attempts) {
     bump(attempt.dispatched_at, "dispatched");
     if (attempt.run_conclusion === "success") bump(attempt.finished_at, "encoded");
-    if (attempt.pr_state === "merged" && attempt.pr_targets_default !== false) {
-      bump(attempt.pr_merged_at, "merged");
-    }
+    if (reachedMain(attempt)) bump(mainMergedAt(attempt), "merged");
   }
   return rows;
 }
 
-/** A citation's every dispatch, newest first, for the journey view. */
+/**
+ * A citation's every dispatch, newest first, for the journey view: under
+ * every spelling of it (`us-nc:manual/...` and `us-nc/manual/...`), as the
+ * ledger counts them.
+ */
 export function citationJourney(
   attempts: PipelineAttempt[],
   citation: string
 ): PipelineAttempt[] {
-  return attempts.filter((a) => a.citation === citation).sort(byDispatchedDesc);
+  const wanted = normalizeCitation(citation);
+  return attempts.filter((a) => a.citation === citation || normalizeCitation(a.citation) === wanted).sort(byDispatchedDesc);
 }
 
 export interface JourneyStep {
@@ -903,12 +992,7 @@ export function journeySteps(attempt: PipelineAttempt): JourneyStep[] {
             ? "failed"
             : "pending",
       detail: failedEncode
-        ? [
-            `${ENCODE_GATE_LABELS[encodeGate(attempt)]}: ${reason?.label}`,
-            attempt.encoder_error ? errorMessage(attempt.encoder_error) : cancellationDetail(attempt),
-          ]
-            .filter(Boolean)
-            .join(" — ")
+        ? failedEncodeDetail(attempt, reason!)
         : attempt.generation_attempts
           ? `${attempt.generation_attempts} generation attempt${attempt.generation_attempts === 1 ? "" : "s"}`
           : stage === "no_pr"
@@ -948,16 +1032,8 @@ export function journeySteps(attempt: PipelineAttempt): JourneyStep[] {
       key: "merged",
       label: "Merged",
       at: attempt.pr_merged_at,
-      state: merged
-        ? attempt.pr_targets_default === false
-          ? "failed"
-          : "done"
-        : "pending",
-      detail: merged && attempt.pr_base_branch
-        ? attempt.pr_targets_default === false
-          ? `Into ${attempt.pr_base_branch}, not the default branch`
-          : `Into ${attempt.pr_base_branch}`
-        : null,
+      state: merged ? (reachedMain(attempt) ? "done" : "failed") : "pending",
+      detail: merged && attempt.pr_base_branch ? mergeDetail(attempt) : null,
       href: attempt.pr_url,
     },
     {
@@ -1039,6 +1115,23 @@ export function journeySteps(attempt: PipelineAttempt): JourneyStep[] {
         : null,
     },
   ];
+}
+
+/**
+ * What stopped a failed encode, in full: the step, then the error as the
+ * encoder wrote it. The group the error falls in is made from that message,
+ * so it is left out where the message follows; a validator rule the message
+ * does not name stays in front of it. Without a message, the group and how
+ * far a cancelled run got.
+ */
+function failedEncodeDetail(attempt: PipelineAttempt, reason: FailureReason): string {
+  const gate = ENCODE_GATE_LABELS[encodeGate(attempt)];
+  const message = attempt.encoder_error ? errorMessage(attempt.encoder_error) : null;
+  if (message) {
+    const rule = attempt.encoder_error_rule && !message.includes(attempt.encoder_error_rule) ? attempt.encoder_error_rule : null;
+    return `${gate}: ${[rule, message].filter(Boolean).join(" — ")}`;
+  }
+  return [`${gate}: ${reason.label}`, cancellationDetail(attempt)].filter(Boolean).join(" — ");
 }
 
 const ORACLE_ENGINE_LABELS: Record<string, string> = {
@@ -1188,8 +1281,11 @@ function itemReason(state: CitationState): string | null {
       return oracleLabel(latest) ?? "No oracle report covers it";
     case "compile_failed":
       return latest.compile_status?.replaceAll("_", " ") ?? null;
-    case "merged_off_main":
-      return latest.pr_base_branch ? `Merged into ${latest.pr_base_branch}` : null;
+    case "merged_off_main": {
+      if (!latest.pr_base_branch) return null;
+      const waits = latest.pr_via_state === "open" || latest.pr_via_state === "draft";
+      return `Merged into ${latest.pr_base_branch}${waits ? `; waits for ${viaPrLabel(latest)}` : ""}`;
+    }
     case "not_indexed":
       return "Not in the index after a later sync";
     default:
@@ -1319,25 +1415,29 @@ export function bottleneckStage(view: PipelineView): PipelineStage | null {
   return best;
 }
 
-/** A compact age: 12m, 5h, 3d, 7w. */
+/**
+ * A compact age: 12m, 5h, 3d, 7w. Whole units only, rounded down, as the
+ * page's "ago" times and durations are, so an age and a duration side by
+ * side never disagree by a rounding.
+ */
 export function ageLabel(since: string | null, referenceMs: number): string | null {
   if (!since) return null;
   const minutes = Math.max(0, referenceMs - Date.parse(since)) / 60_000;
-  if (minutes < 60) return `${Math.max(1, Math.round(minutes))}m`;
+  if (minutes < 60) return `${Math.max(1, Math.floor(minutes))}m`;
   const hours = minutes / 60;
-  if (hours < 48) return `${Math.round(hours)}h`;
+  if (hours < 48) return `${Math.floor(hours)}h`;
   const days = hours / 24;
-  if (days < 14) return `${Math.round(days)}d`;
-  return `${Math.round(days / 7)}w`;
+  if (days < 14) return `${Math.floor(days)}d`;
+  return `${Math.floor(days / 7)}w`;
 }
 
-/** A compact duration: 45m, 3h 12m, 4d. */
+/** A compact duration: 45m, 3h 12m, 4d, in whole units rounded down. */
 export function durationLabel(ms: number): string {
-  const minutes = Math.max(0, Math.round(ms / 60_000));
+  const minutes = Math.max(0, Math.floor(ms / 60_000));
   if (minutes < 60) return `${minutes}m`;
   const hours = Math.floor(minutes / 60);
   if (hours < 48) return minutes % 60 ? `${hours}h ${minutes % 60}m` : `${hours}h`;
-  return `${Math.round(hours / 24)}d`;
+  return `${Math.floor(hours / 24)}d`;
 }
 
 /** How long a run waited and who dispatched it, for a cancelled run. */

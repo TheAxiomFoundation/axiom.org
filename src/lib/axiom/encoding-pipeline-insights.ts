@@ -10,6 +10,7 @@ import {
   checkErrorLabel,
   citationStates,
   pipelineItem,
+  reachedMain,
   type PipelineAttempt,
   type PipelineGroupView,
 } from "./encoding-pipeline";
@@ -86,7 +87,7 @@ export function pipelineFunnel(attempts: PipelineAttempt[]): PipelineFunnel {
   const groups = byCitation(attempts);
   const ever = (test: (attempt: PipelineAttempt) => boolean) =>
     groups.filter((list) => list.some(test)).length;
-  const mergedMain = (a: PipelineAttempt) => a.pr_state === "merged" && a.pr_targets_default !== false;
+  const mergedMain = reachedMain;
   return {
     citations: groups.length,
     encoded: ever((a) => a.run_conclusion === "success"),
@@ -106,7 +107,11 @@ export function runStats(attempts: PipelineAttempt[]): RunStats {
   let firstSuccess = 0;
   let firstTotal = 0;
   for (const list of groups) {
-    list.filter(finished).forEach((attempt, index) => {
+    // Up to the citation's first success: later runs re-encode a citation
+    // already encoded, so they are not retries of a failure.
+    const done = list.filter(finished);
+    const first = done.findIndex((attempt) => attempt.run_conclusion === "success");
+    done.slice(0, first === -1 ? done.length : first + 1).forEach((attempt, index) => {
       const bucket = buckets[Math.min(index, buckets.length - 1)];
       const success = attempt.run_conclusion === "success";
       bucket.total += 1;
@@ -125,7 +130,7 @@ export function runStats(attempts: PipelineAttempt[]): RunStats {
       citation: list[0].citation,
       dispatches: list.length,
       successes: list.filter((a) => a.run_conclusion === "success").length,
-      merged: list.filter((a) => a.pr_state === "merged").length,
+      merged: list.filter((a) => a.pr_state === "merged" && a.pr_targets_default !== false).length,
     }));
   const costed = attempts.filter((a) => a.cost_usd !== null);
   const sum = (list: PipelineAttempt[]) => list.reduce((total, a) => total + (a.cost_usd ?? 0), 0);

@@ -48,13 +48,12 @@ describe("runStats", () => {
     ];
     const stats = runStats(attempts);
     expect(stats.firstAttempt).toEqual({ success: 2, total: 3 });
+    // Retries count until a citation's first success: us/x's runs after its
+    // third are re-encodes of a citation already encoded.
     expect(stats.byAttempt).toEqual([
       { label: "1st", success: 2, total: 3 },
-      { label: "2nd", success: 0, total: 2 },
+      { label: "2nd", success: 0, total: 1 },
       { label: "3rd", success: 1, total: 1 },
-      { label: "4th", success: 0, total: 1 },
-      { label: "5th", success: 0, total: 1 },
-      { label: "6th+", success: 1, total: 2 },
     ]);
     expect(stats.mostDispatched).toEqual([
       { citation: "us/x", dispatches: 9, successes: 2, merged: 0 },

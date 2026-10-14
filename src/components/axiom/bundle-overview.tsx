@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import styles from "./bundle-overview.module.css";
+import { ageLabel } from "@/lib/axiom/encoding-pipeline";
 import { bundleHref, formatShare, type BundleTierId, type TierCounts } from "@/lib/axiom/program-bundles";
 import type { BundleSummary } from "@/lib/axiom/program-bundles-data";
 
@@ -19,6 +20,14 @@ interface Share {
   partly: number;
   /** Documents the corpus does not hold yet (always 0 when counting provisions). */
   missing: number;
+  /** A state layer with no documents of its own in the tier: its count is the federal law's, or nothing. */
+  stateless?: boolean;
+}
+
+/** "50 states and DC": DC is not a state. */
+function statesWords(jurisdictions: string[]): string {
+  const states = jurisdictions.filter((j) => j !== "us-dc").length;
+  return `${number(states)} ${states === 1 ? "state" : "states"}${jurisdictions.includes("us-dc") ? " and DC" : ""}`;
 }
 
 const ZERO: Share = { done: 0, total: 0, validated: 0, partly: 0, missing: 0 };
@@ -73,24 +82,24 @@ function Bar({ share }: { share: Share }) {
 }
 
 /**
- * Documents by how far they got: "1 complete · 2 partly · 29 not started";
- * provisions as "47 of 217 Tier 1 provisions". Validated follows anything done.
+ * Documents by how far they got: "2 complete (1 validated) · 34 partly · 112
+ * not started"; provisions as "47 of 217 Tier 1 provisions (31 validated)".
+ * Validated is part of what is done, so it sits with it.
  */
 function figure(share: Share, count: Count, unit: string): string {
   // A number and its word stay on one line.
   const part = (n: number, words: string) => `${number(n)}\u00a0${words.replace(/ /g, "\u00a0")}`;
-  const validated = share.done > 0 ? ` · ${part(share.validated, "validated")}` : "";
+  const validated = share.done > 0 ? ` (${part(share.validated, "validated")})` : "";
   if (count === "provisions") return `${number(share.done)} of ${part(share.total, unit)}${validated}`;
   const notStarted = share.total - share.done - share.partly - share.missing;
   return [
-    part(share.done, "complete"),
+    part(share.done, "complete") + validated,
     share.partly > 0 ? part(share.partly, "partly") : null,
     notStarted > 0 ? part(notStarted, "not started") : null,
     share.missing > 0 ? part(share.missing, "not in the corpus") : null,
   ]
     .filter(Boolean)
-    .join(" · ")
-    .concat(validated);
+    .join(" · ");
 }
 
 /** One share as a bar, its percent done beside it, and what it counts under it. */
@@ -99,7 +108,11 @@ function Meter({ share, count, unit }: { share: Share; count: Count; unit: strin
     <span className={styles.meter}>
       <Bar share={share} />
       <strong className={styles.percent}>{percent(share)}</strong>
-      <span className={styles.figure}>{figure(share, count, unit)}</span>
+      <span className={styles.figure}>
+        {share.stateless && !share.total
+          ? "No state documents"
+          : `${figure(share, count, unit)}${share.stateless ? " · no state documents" : ""}`}
+      </span>
     </span>
   );
 }
@@ -137,11 +150,14 @@ export function BundleOverview({
   bundles,
   initialProgram,
   initialCount = "documents",
+  referenceMs,
 }: {
   bundles: BundleSummary[];
   /** The program to open on, as a bundle's "All program bundles" link names it. */
   initialProgram?: string;
   initialCount?: Count;
+  /** The page's clock, for how old the numbers are. */
+  referenceMs?: number;
 }) {
   const byId = new Map(bundles.map((b) => [b.id, b]));
   const programTitle = (p: string) =>
@@ -172,13 +188,29 @@ export function BundleOverview({
 
   // A bundle's share as its page shows it; a state's own layer is that less the federal law.
   const pageShare = (id: string, t: BundleTierId) => shareOf(byId.get(id)?.counts[t], count);
-  const ownShare = (j: string, p: string, t: BundleTierId) =>
+  // A state layer holds no document of its own in a tier: its bundle's documents are all the federal law's.
+  const stateless = (j: string, p: string, t: BundleTierId) => {
+    const state = byId.get(`${j}/${p}`)?.counts[t];
+    return j !== "us" && state != null && state.documents - (byId.get(`us/${p}`)?.counts[t]?.documents ?? 0) <= 0;
+  };
+  const ownShare = (j: string, p: string, t: BundleTierId): Share =>
     j === "us"
       ? pageShare(`us/${p}`, t)
       : byId.has(`${j}/${p}`)
-        ? less(pageShare(`${j}/${p}`, t), pageShare(`us/${p}`, t))
+        ? { ...less(pageShare(`${j}/${p}`, t), pageShare(`us/${p}`, t)), stateless: stateless(j, p, t) }
         : ZERO;
+  // A jurisdiction's own documents across every program, each once, as the collector counted them;
+  // before it did, the sum of the programs (a document two programs hold counts twice).
+  const acrossPrograms = (j: string, t: BundleTierId): Share => {
+    const counted = bundles.find((b) => b.jurisdiction === j && b.counts.jurisdiction?.[t])?.counts.jurisdiction?.[t];
+    return counted ? shareOf(counted, count) : programs.reduce((sum, p) => add(sum, ownShare(j, p, t)), ZERO);
+  };
+  const distinct = bundles.some((b) => b.counts.jurisdiction);
   const statesOf = (p: string) => bundles.filter((b) => b.program === p && b.jurisdiction !== "us");
+  const newest = bundles.reduce<string | null>(
+    (latest, b) => (b.collected_at && (!latest || b.collected_at > latest) ? b.collected_at : latest),
+    null
+  );
 
   const groups: Group[] =
     view === "program"
@@ -187,21 +219,21 @@ export function BundleOverview({
           label: programTitle(p),
           share: (t) =>
             statesOf(p).reduce((sum, b) => add(sum, ownShare(b.jurisdiction, p, t)), pageShare(`us/${p}`, t)),
-          note: `across the federal law and ${statesOf(p).length} states`,
+          note: `across the federal law and ${statesWords(statesOf(p).map((b) => b.jurisdiction))}`,
         }))
       : [
           {
             key: "us",
             label: "Federal law",
-            share: (t) => programs.reduce((sum, p) => add(sum, ownShare("us", p, t)), ZERO),
-            note: `the federal law of ${programs.length} programs`,
+            share: (t) => acrossPrograms("us", t),
+            note: `the federal law of ${programs.length} programs${distinct ? ", each document once" : ""}`,
           },
           ...jurisdictions
             .map((j) => ({
               key: j,
               label: stateName(j),
-              share: (t: BundleTierId) => programs.reduce((sum, p) => add(sum, ownShare(j, p, t)), ZERO),
-              note: `the state's own documents in ${programs.length} programs`,
+              share: (t: BundleTierId) => acrossPrograms(j, t),
+              note: `the state's own documents in ${programs.length} programs${distinct ? ", each document once" : ""}`,
             }))
             .sort((a, b) => a.label.localeCompare(b.label)),
         ];
@@ -227,7 +259,7 @@ export function BundleOverview({
             key: b.id,
             label: stateName(b.jurisdiction),
             href: link(b.id),
-            share: (t: BundleTierId) => pageShare(b.id, t),
+            share: (t: BundleTierId): Share => ({ ...pageShare(b.id, t), stateless: stateless(b.jurisdiction, program, t) }),
           })),
         ]
       : programs
@@ -252,11 +284,12 @@ export function BundleOverview({
           <p className={styles.note}>
             {count === "documents"
               ? "Documents complete (dark green) and partly encoded (light green), as each bundle's page counts them."
-              : "Provisions encoded, as each bundle's page counts them (Tier 1 counts only its own provisions)."}{" "}
+              : "Provisions encoded, as each bundle's page counts them (Tier 1: the provisions of the plan's documents and those the reference model cites)."}{" "}
             {view === "program"
               ? "A state's bundle includes the program's federal law."
               : "By state, each jurisdiction counts only its own documents: the federal law has its own row."}{" "}
             Validated: done without resting on a validation waiver.
+            {newest && referenceMs != null && ` Updated ${ageLabel(newest, referenceMs) ?? "just now"} ago.`}
           </p>
         </div>
         <div className={styles.switches}>
@@ -347,10 +380,10 @@ export function BundleOverview({
                     <a href={row.href}>{row.label}</a>
                     {row.sub && <span>{row.sub}</span>}
                   </th>
-                  <td>
+                  <td data-label="Tier 1">
                     <Meter share={row.share("screener")} count={count} unit={unit("screener")} />
                   </td>
-                  <td>
+                  <td data-label="Tier 2">
                     <Meter share={row.share("full")} count={count} unit={unit("full")} />
                   </td>
                 </tr>
