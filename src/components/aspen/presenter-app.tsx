@@ -797,7 +797,7 @@ function BreakSlide() {
   );
 }
 
-/** At scale, slide 4 (Max's Nava deck): the Arizona household, as all 48 models answer it. */
+/** At scale, slide 2 (Max's Nava deck): the Arizona household, as every model answers it. */
 function HouseholdSlide() {
   const h = AZ_HOUSEHOLD;
   return (

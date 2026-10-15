@@ -710,9 +710,11 @@ export const POLICYBENCH = {
 
 // ---------------------------------------------------------------------------
 // From Max's Nava Open Source Summit deck (axiom-audiences PR #141,
-// decks/nava-2026-10, Oct 13, 2026). PolicyBench figures are the Oct 13
-// snapshot (release dashboard-data-20261013); At scale's first slides use
-// Sep 30. Re-check before the session.
+// decks/nava-2026-10, Oct 13, 2026), moved to the Oct 14 release
+// (dashboard-data-20261014) on Oct 15 so all of At scale uses one snapshot.
+// Recomputed the deck's way: parsed no-tools answers; within 10% of the
+// reference for households owed money, within $1 for households owed $0.
+// That method reproduces every Oct 13 row on the deck exactly.
 // ---------------------------------------------------------------------------
 
 /** Where models still break: accuracy by program, for households owed money and households owed $0. */
@@ -720,15 +722,15 @@ export const WHERE_MODELS_BREAK = {
   title: "Where models still break",
   note: "Share of model answers within 10% of PolicyEngine's reference amount (within $1 for households owed $0)",
   source:
-    "policybench.org, October 13, 2026 · 48 models, no tools · income taxes before refundable credits · TANF (1 household) and SSI (2) omitted",
+    "policybench.org, October 14, 2026 · 50 models, no tools · income taxes before refundable credits · TANF (1 household) and SSI (2) omitted",
   rows: [
     { program: "State refundable credits", households: 18, owed: 17.6, zero: 98.6 },
-    { program: "SNAP", households: 13, owed: 36.1, zero: 96.9 },
-    { program: "Federal income tax", households: 36, owed: 44.6, zero: 93.6 },
-    { program: "State income tax", households: 36, owed: 47.3, zero: 91.1 },
-    { program: "Federal refundable credits", households: 13, owed: 51.9, zero: 96.0 },
-    { program: "Payroll tax", households: 60, owed: 88.0, zero: 98.5 },
-    { program: "Self-employment tax", households: 8, owed: 94.4, zero: 99.2 },
+    { program: "SNAP", households: 13, owed: 36.7, zero: 96.9 },
+    { program: "Federal income tax", households: 36, owed: 45.6, zero: 93.8 },
+    { program: "State income tax", households: 36, owed: 47.8, zero: 91.1 },
+    { program: "Federal refundable credits", households: 13, owed: 52.4, zero: 96.1 },
+    { program: "Payroll tax", households: 60, owed: 88.5, zero: 98.6 },
+    { program: "Self-employment tax", households: 8, owed: 94.4, zero: 99.3 },
   ],
 } as const;
 
@@ -746,8 +748,8 @@ export const AZ_HOUSEHOLD = {
   ],
   program: "SNAP for 2026",
   reference: 240,
-  models: 48,
-  source: "Scenario explorer, policybench.org, October 13, 2026 snapshot",
+  models: 50,
+  source: "Scenario explorer, policybench.org, October 14, 2026 snapshot",
 } as const;
 
 /** What the models miss: the top two models' explanations, beside the rule they skip. */
@@ -768,7 +770,7 @@ export const WHAT_MODELS_MISS = {
   amount: 240,
   amountLabel: "PolicyEngine's reference SNAP for this household in 2026",
   sources:
-    "7 CFR 273.2(j)(2) · USDA FNS broad-based categorical eligibility chart, June 29, 2026 · PolicyBench, October 13, 2026",
+    "7 CFR 273.2(j)(2) · USDA FNS broad-based categorical eligibility chart, June 29, 2026 · PolicyBench, October 14, 2026",
 } as const;
 
 /**
