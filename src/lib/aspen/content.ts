@@ -848,6 +848,13 @@ export function percent(part: number, whole: number): number {
 // The fix
 // ---------------------------------------------------------------------------
 
+/** What makes the one set of rules checkable: the dark box on Shared foundation 1/3 and on phones. */
+export const FOUNDATION_TRAITS = [
+  "Every value cites the provision it comes from",
+  "Every change carries its effective date",
+  "Every release is versioned, so you can see what changed",
+] as const;
+
 /** Under the boxes on Shared foundation 1/3, emphasized as in the main deck's value proposition. */
 export const ONE_SET_STATEMENT = {
   text: "Every system that helps people discover and enroll in economic security programs runs on the same rules,",

@@ -23,6 +23,7 @@ import {
   NEXT_STEPS,
   ONE_SET_OF_RULES,
   ONE_SET_STATEMENT,
+  FOUNDATION_TRAITS,
   AZ_HOUSEHOLD,
   AZ_SCENARIO_REVIEW,
   BUILD_HEADING,
@@ -1199,13 +1200,6 @@ const USE_ICONS: Record<(typeof ONE_SET_OF_RULES)[number]["label"], LucideIcon> 
   "Policy changes": SlidersHorizontal,
   Research: ChartColumn,
 };
-
-/** What makes the one set of rules checkable, on the dark box of Shared foundation 1/3. */
-const FOUNDATION_TRAITS = [
-  "Every value cites the provision it comes from",
-  "Every change carries its effective date",
-  "Every release is versioned, so you can see what changed",
-] as const;
 
 /** Shared foundation, slide 1: one set of rules under every tool. */
 function FoundationSlide({ summary }: { summary: RunSummary }) {
