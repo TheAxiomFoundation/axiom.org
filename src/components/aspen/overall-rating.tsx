@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
+  AGENCY_COMMENT,
   DISCUSSION_QUESTIONS,
   DISCUSSION_TOPICS,
   RATING_POINTS,
@@ -61,6 +62,8 @@ const SCALED = DISCUSSION_QUESTIONS.flatMap((q) => {
 export function OverallRating({ stage }: { stage: string }) {
   const [ratings, setRatings] = useState<Record<string, Record<string, number>>>({});
   const [note, setNote] = useState("");
+  // The comment under the agency question: sent with that question, shown only when the presenter chooses.
+  const [agencyNote, setAgencyNote] = useState("");
   const [truth, setTruth] = useState<string | null>(null);
   const [topics, setTopics] = useState<string[]>([]);
   const [done, setDone] = useState(false);
@@ -79,13 +82,15 @@ export function OverallRating({ stage }: { stage: string }) {
   }
 
   const rated = Object.values(ratings).some((r) => Object.keys(r).length > 0);
-  const canShare = rated || note.trim().length > 0 || truth !== null || topics.length > 0;
+  const canShare =
+    rated || note.trim().length > 0 || agencyNote.trim().length > 0 || truth !== null || topics.length > 0;
 
   function share() {
     for (const q of SCALED) {
-      const scores = ratings[q.id];
-      if (scores && Object.keys(scores).length) {
-        sendEvent("discussion", { question: q.id, ratings: scores, topics: [], note: "" }, stage);
+      const scores = ratings[q.id] ?? {};
+      const comment = q.id === "experience" ? agencyNote.trim() : "";
+      if (Object.keys(scores).length || comment) {
+        sendEvent("discussion", { question: q.id, ratings: scores, topics: [], note: comment }, stage);
       }
     }
     if (truth) sendEvent("survey", { question: SOURCE_OF_TRUTH.id, answer: truth }, stage);
@@ -115,6 +120,23 @@ export function OverallRating({ stage }: { stage: string }) {
               onChange={(value) => setRatings((r) => ({ ...r, [q.id]: { ...r[q.id], [c.id]: value } }))}
             />
           ))}
+          {q.id === "experience" && (
+            <div className="mt-1 flex flex-col gap-1.5 font-body text-[0.88rem] text-[var(--color-ink)]">
+              <label htmlFor="agency-comment">{AGENCY_COMMENT.prompt}</label>
+              <textarea
+                id="agency-comment"
+                rows={2}
+                maxLength={500}
+                value={agencyNote}
+                onChange={(e) => setAgencyNote(e.target.value)}
+                className={FIELD}
+                aria-describedby="agency-comment-hint"
+              />
+              <span id="agency-comment-hint" className="text-[0.78rem] text-[var(--color-ink-muted)]">
+                {AGENCY_COMMENT.hint}
+              </span>
+            </div>
+          )}
         </section>
       ))}
       </div>
@@ -173,7 +195,7 @@ export function OverallRating({ stage }: { stage: string }) {
           value={note}
           onChange={(e) => setNote(e.target.value)}
           className={FIELD}
-          placeholder="A story, a worry or a surprise, from here or from your agency"
+          placeholder="A story, a worry or a surprise from today"
         />
       </label>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
