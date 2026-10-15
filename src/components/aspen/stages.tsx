@@ -1,15 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Check } from "lucide-react";
 import {
   BREAKOUT_PROMPT,
   EVENT,
   GROUP_QUESTIONS,
   GROUP_RAISED,
   BUILD_HEADING,
+  FOUNDATION_TRAITS,
   GOLDEN_A,
   NEXT_STEPS,
   ONE_SET_OF_RULES,
+  ONE_SET_STATEMENT,
   POLICYBENCH,
   STAGES,
   USE_CASES,
@@ -19,7 +22,6 @@ import {
 } from "@/lib/aspen/content";
 import type { Count } from "@/lib/aspen/results";
 import { SourceOfTruthCard } from "./results-board";
-import { countWord, snapQcTotals } from "@/lib/verification-evidence";
 import { VOTE_KEY, participantId, postJson, readStored, sendEvent, writeStored } from "./client";
 import { Disclosure } from "./disclosure";
 import { TierMedal } from "./tier-medal";
@@ -268,7 +270,6 @@ export function PolicyBenchContent() {
 // ---------------------------------------------------------------------------
 
 export function FoundationContent({ sourceOfTruth }: { sourceOfTruth?: Count[] }) {
-  const qc = snapQcTotals();
   const asked = sourceOfTruth?.some((c) => c.count > 0) ?? false;
   return (
     <div className="flex flex-col gap-8">
@@ -279,11 +280,17 @@ export function FoundationContent({ sourceOfTruth }: { sourceOfTruth?: Count[] }
       )}
       <div className="grid items-stretch gap-3 md:grid-cols-[1fr_auto_1.4fr]">
         <div className="flex flex-col justify-center gap-2 rounded-lg bg-[var(--color-ink)] p-5 text-white">
-          <span className="font-mono text-[0.64rem] uppercase tracking-[0.18em] text-white/60">One source of truth</span>
           <span className="font-display text-[1.45rem] font-light leading-tight">
             One open, validated set of rules
           </span>
-          <span className="font-body text-[0.86rem] text-white/75">Cited to the law. Checked against your manuals.</span>
+          <ul className="m-0 flex list-none flex-col gap-1.5 p-0 font-body text-[0.86rem] leading-snug text-white/80">
+            {FOUNDATION_TRAITS.map((trait) => (
+              <li key={trait} className="flex gap-2">
+                <Check aria-hidden size={15} strokeWidth={2.25} className="mt-[3px] shrink-0 text-[#e8a25c]" />
+                {trait}
+              </li>
+            ))}
+          </ul>
         </div>
         <span aria-hidden className="hidden self-center font-display text-[2rem] text-[var(--color-accent)] md:block">
           →
@@ -301,10 +308,8 @@ export function FoundationContent({ sourceOfTruth }: { sourceOfTruth?: Count[] }
         </ul>
       </div>
 
-      <p className="m-0 max-w-[600px] border-l-2 border-[var(--color-accent)] pl-4 font-body text-[0.98rem] leading-relaxed text-[var(--color-ink-secondary)]">
-        <span className="text-[var(--color-ink)]">SNAP benefit math already checks out.</span>{" "}
-        We replay USDA&apos;s quality-control cases from {countWord(qc.states)} states (
-        {qc.households.toLocaleString("en-US")} households), and the benefit amount matches in every case.
+      <p className="m-0 max-w-[680px] border-t border-[var(--color-rule)] pt-4 font-body text-[1.05rem] font-medium leading-snug text-[var(--color-ink)]">
+        {ONE_SET_STATEMENT.text} <span className="text-[var(--color-accent)]">{ONE_SET_STATEMENT.accent}</span>
       </p>
 
       <section>

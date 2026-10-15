@@ -1,7 +1,17 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BREAKOUT_PROMPT, BUILD_HEADING, DISCLOSURE, EVENT, GOLDEN_A, GROUP_QUESTIONS, ONE_SET_OF_RULES, STAGES } from "@/lib/aspen/content";
-import { countWord, snapQcTotals } from "@/lib/verification-evidence";
+import {
+  BREAKOUT_PROMPT,
+  BUILD_HEADING,
+  DISCLOSURE,
+  EVENT,
+  FOUNDATION_TRAITS,
+  GOLDEN_A,
+  GROUP_QUESTIONS,
+  ONE_SET_OF_RULES,
+  ONE_SET_STATEMENT,
+  STAGES,
+} from "@/lib/aspen/content";
 import {
   Agenda,
   Disclosure,
@@ -441,17 +451,16 @@ describe("PolicyBenchContent", () => {
 });
 
 describe("FoundationContent and GoldenContent", () => {
-  it("shows one set of rules powering every use, with the SNAP QC replay", () => {
+  it("shows one set of rules powering every use, worded as on the slide", () => {
     render(<FoundationContent />);
-    const qc = snapQcTotals();
     expect(screen.getByText("One open, validated set of rules")).toBeInTheDocument();
+    for (const trait of FOUNDATION_TRAITS) expect(screen.getByText(trait)).toBeInTheDocument();
     for (const use of ONE_SET_OF_RULES) expect(screen.getByText(use.label)).toBeInTheDocument();
-    expect(screen.getByText("SNAP benefit math already checks out.")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        new RegExp(`from ${countWord(qc.states)} states \\(${qc.households.toLocaleString("en-US")} households\\)`),
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByText(ONE_SET_STATEMENT.accent)).toBeInTheDocument();
+    // The slide dropped these, so the phones do too.
+    expect(screen.queryByText("One source of truth")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Cited to the law/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/SNAP benefit math already checks out/)).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: BUILD_HEADING })).toBeInTheDocument();
     expect(screen.getByText("Gold A")).toBeInTheDocument();
   });
