@@ -124,7 +124,7 @@ describe('aspen results', () => {
     expect(discussion.topics[0]).toMatchObject({ id: 'Asset tests', count: 1 })
     expect(discussion.notes).toEqual([{ question: 'misunderstood', text: 'BBCE' }])
     expect(breakouts.useCases.find((u) => u.id === 'project')?.count).toBe(1)
-    expect(breakouts.notes).toEqual([{ useCase: 'project', text: 'Model the change', raised: null }])
+    expect(breakouts.notes).toEqual([{ useCase: 'project', text: 'Model the change', who: null, trust: null, raised: null }])
   })
 
   it('shows pledged states only when allowed, never names', () => {
@@ -204,9 +204,17 @@ describe('aspen results', () => {
       ],
     })
     expect(breakouts.notes).toEqual([
-      { useCase: '', text: '', raised: 'Union rules' },
-      { useCase: 'flows', text: 'Pilot in one county', raised: 'Training time' },
+      { useCase: '', text: '', who: null, trust: null, raised: 'Union rules' },
+      { useCase: 'flows', text: 'Pilot in one county', who: null, trust: null, raised: 'Training time' },
     ])
+  })
+
+  it('keeps who would use each idea and what would earn trust', () => {
+    const { breakouts } = summarizeRun({
+      ...DATA,
+      events: [{ run_id: 'r', kind: 'breakout', payload: { useCase: 'flows', note: '', who: 'Intake workers', trust: 'Matches our manual' } }],
+    })
+    expect(breakouts.notes).toEqual([{ useCase: 'flows', text: '', who: 'Intake workers', trust: 'Matches our manual', raised: null }])
   })
 
   it('counts the votes on what to build first, in the order of the choices', () => {
@@ -311,5 +319,19 @@ describe('aspen results', () => {
 
   it('has an empty summary', () => {
     expect(EMPTY_SUMMARY).toMatchObject({ participants: 0, prompts: 0, feed: [] })
+  })
+
+  it('keeps agency comments out of the voices the phones show, but in the notes', () => {
+    const s = summarizeRun({
+      participants: [],
+      prompts: [],
+      events: [
+        { run_id: 'r', kind: 'discussion', payload: { question: 'experience', ratings: {}, note: 'Our chatbot struggles with SNAP' } },
+        { run_id: 'r', kind: 'discussion', payload: { question: null, ratings: {}, note: 'Great session' } },
+      ],
+      pledges: [],
+    })
+    expect(s.voices.map((v) => v.text)).toEqual(['Great session'])
+    expect(s.discussion.notes.find((n) => n.question === 'experience')?.text).toBe('Our chatbot struggles with SNAP')
   })
 })

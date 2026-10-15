@@ -1,7 +1,7 @@
 import type { Count, RunSummary, ScaleSummary } from "@/lib/aspen/results";
 import { SOURCE_OF_TRUTH } from "@/lib/aspen/content";
 import { formatValue } from "./client";
-import { Bars, Card, Eyebrow, Stat } from "./ui";
+import { Bars, Card, Eyebrow, Prompt, Stat } from "./ui";
 
 /** The room's results: counts, the framed reveal and the scale averages. */
 
@@ -33,15 +33,16 @@ const any = (items: Count[]) => items.some((i) => i.count > 0);
 export function ScaleCard({ scale }: { scale: ScaleSummary }) {
   return (
     <Card className="flex flex-col gap-3">
-      <Eyebrow>{scale.label}</Eyebrow>
+      <Prompt>{scale.label}</Prompt>
       <div className="flex justify-between font-mono text-[0.6rem] uppercase tracking-[0.12em] text-[var(--color-ink-muted)]">
         <span>1 · {scale.low}</span>
         <span>{scale.high} · 5</span>
       </div>
       <ul className="m-0 flex list-none flex-col gap-2.5 p-0">
         {scale.categories.map((c) => (
-          <li key={c.id} className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)_3.5rem] items-center gap-3 sm:grid-cols-[minmax(0,13rem)_minmax(0,1fr)_3.5rem]">
-            <span className="truncate font-body text-[0.88rem] text-[var(--color-ink)]" title={c.label}>
+          <li key={c.id} className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)_3.5rem] items-center gap-3 sm:grid-cols-[minmax(0,16rem)_minmax(0,1fr)_3.5rem]">
+            {/* Labels wrap rather than truncate, so long ones ("Showed where the answer came from") read in full. */}
+            <span className="font-body text-[0.88rem] leading-snug text-[var(--color-ink)]" title={c.label}>
               {c.label}
             </span>
             <span className="relative h-2.5 overflow-hidden rounded-full bg-[var(--color-rule-subtle)]">
@@ -96,8 +97,7 @@ function Section({ title, prompt, children }: { title: string; prompt?: string; 
         <h2 className="heading-sub m-0">{title}</h2>
         {prompt && (
           <p className="m-0 mt-1.5 font-body text-[0.95rem] text-[var(--color-ink-secondary)]">
-            <span className="mr-2 font-mono text-[0.6rem] uppercase tracking-[0.16em] text-[var(--color-accent)]">Ask the room</span>
-            {prompt}
+            <strong className="font-medium text-[var(--color-ink)]">Ask the room</strong>: <span>{prompt}</span>
           </p>
         )}
       </div>
@@ -150,7 +150,7 @@ function ViabilityPanel({ summary }: { summary: RunSummary }) {
           <strong className="font-normal tabular-nums">{act}</strong>.
         </p>
         <div>
-          <Eyebrow className="mb-2">Did the answer look right?</Eyebrow>
+          <Prompt className="mb-2">Did the answer look right?</Prompt>
           <SplitBar
             parts={[
               { label: "Looks right", count: v.right, color: GOOD },
@@ -160,7 +160,7 @@ function ViabilityPanel({ summary }: { summary: RunSummary }) {
           />
         </div>
         <div>
-          <Eyebrow className="mb-2">Would you act on it?</Eyebrow>
+          <Prompt className="mb-2">Would you act on it?</Prompt>
           <SplitBar
             parts={[
               { label: "Yes", count: v.wouldAct, color: "var(--color-ink)" },
@@ -171,7 +171,7 @@ function ViabilityPanel({ summary }: { summary: RunSummary }) {
         </div>
         {any(v.residentActions) && (
           <div>
-            <Eyebrow className="mb-2">What would a resident do next?</Eyebrow>
+            <Prompt className="mb-2">What would a resident do next?</Prompt>
             <SplitBar
               parts={v.residentActions.map((a) => ({
                 label: a.label,

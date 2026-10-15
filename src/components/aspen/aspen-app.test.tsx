@@ -164,7 +164,7 @@ describe("AspenApp following the presenter", () => {
 
     fireEvent.click(nav().getByRole("button", { name: /At scale/ }));
     await onView("scale");
-    expect(screen.getByText("41%")).toBeInTheDocument();
+    expect(screen.getByText("42%")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /The room has moved on/ })).not.toBeInTheDocument();
     expect(JSON.parse(sessionStorage.getItem("aspen.view") ?? "null")).toEqual({ view: "scale", follow: false });
 
@@ -422,7 +422,7 @@ describe("AspenApp thread", () => {
     render(<AspenApp />);
     fireEvent.click(nav().getByRole("button", { name: /At scale/ }));
     await onView("scale");
-    expect(screen.getByText(/every one of the 46 models said it gets \$0/)).toBeInTheDocument();
+    expect(screen.getByText(/every one of the 50 models said it gets \$0/)).toBeInTheDocument();
 
     fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
     await onView("reveal");

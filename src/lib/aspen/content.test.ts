@@ -26,7 +26,8 @@ describe('aspen content', () => {
     expect(STAGES.at(-1)?.label).toBe('Thank you')
     for (const stage of STAGES) {
       expect(stage).not.toHaveProperty('time')
-      expect(stage.summary.length).toBeGreaterThan(20)
+      // The shared foundation's heading stands on its own.
+      if (stage.id !== 'foundation') expect(stage.summary.length).toBeGreaterThan(20)
     }
   })
 
@@ -147,8 +148,8 @@ describe('aspen content', () => {
   })
 
   it('keeps the PolicyBench figures consistent', () => {
-    expect(percent(POLICYBENCH.saidZero, POLICYBENCH.eligibleAnswers)).toBe(41)
-    expect(percent(POLICYBENCH.saidZeroBbce, POLICYBENCH.saidZero)).toBe(78)
+    expect(percent(POLICYBENCH.saidZero, POLICYBENCH.eligibleAnswers)).toBe(42)
+    expect(percent(POLICYBENCH.saidZeroBbce, POLICYBENCH.saidZero)).toBe(74)
     expect(percent(1, 0)).toBe(0)
   })
 })
