@@ -51,9 +51,12 @@ const CLEANERS: Record<string, (raw: Payload) => Payload | null> = {
   breakout: (raw) => {
     const useCase = cleanChoice(raw.useCase, USE_CASES.map((u) => u.id));
     const note = clipText(raw.note, 2000);
+    // Who would use it, and what would have to be true to trust it.
+    const who = clipText(raw.who, 2000);
+    const trust = clipText(raw.trust, 2000);
     // What else the group raised: barriers, workforce, open questions.
     const raised = clipText(raw.raised, 2000);
-    return useCase || note || raised ? { useCase, note, raised } : null;
+    return useCase || note || who || trust || raised ? { useCase, note, who, trust, raised } : null;
   },
   vote: (raw) => {
     const useCase = cleanChoice(raw.useCase, USE_CASES.map((u) => u.id));

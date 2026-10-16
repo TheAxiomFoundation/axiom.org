@@ -31,6 +31,30 @@ const bundles = [
 ];
 
 describe("BundleOverview", () => {
+  it("shows documents partly encoded, and those the corpus lacks, beside the complete ones", () => {
+    // LIHEAP's shape: one document complete, two partly encoded, one the corpus does not hold.
+    const started = counts(1, 32, 47, 217);
+    started.byStatus = { complete: 1, unvalidated: 0, partly: 2, not_started: 28, not_in_corpus: 1 };
+    const { container } = render(
+      <BundleOverview bundles={[bundle("us", "liheap", "LIHEAP: federal law", started, started)]} />
+    );
+    const federal = within(screen.getByRole("table", { name: "LIHEAP by state" })).getByRole("link", { name: "Federal law" });
+    expect(federal.closest("tr")).toHaveTextContent(
+      "3%1 complete (1 validated) · 2 partly · 28 not started · 1 not in the corpus"
+    );
+    // The bar: a done segment, then a lighter partly one.
+    const bar = federal.closest("tr")!.querySelector("td span[aria-hidden]")!;
+    expect([...bar.children].map((segment) => (segment as HTMLElement).style.width)).toEqual(["3.125%", "6.25%"]);
+    expect(screen.getByRole("button", { name: /^LIHEAP/ })).toHaveAttribute(
+      "title",
+      "LIHEAP: 1 of 32 documents complete, 2 partly (1 validated), across the federal law and 0 states"
+    );
+    // Provisions say how many of them are encoded, with no partly segment.
+    fireEvent.click(screen.getByRole("radio", { name: "Provisions" }));
+    expect(federal.closest("tr")).toHaveTextContent("22%47 of 217 Tier 1 provisions (47 validated)");
+    expect(container.querySelectorAll("td span[aria-hidden] > span")).toHaveLength(2);
+  });
+
   it("counts what rests on a validation waiver as done, and apart as not validated", () => {
     const waived = counts(3, 10, 0, 0);
     // Two of the three complete documents rest on waived modules.
@@ -44,7 +68,7 @@ describe("BundleOverview", () => {
       />
     );
     const federal = within(screen.getByRole("table", { name: "SNAP by state" })).getByRole("link", { name: "Federal law" });
-    expect(federal.closest("tr")).toHaveTextContent("30%3 of 10 documents · 1 validated");
+    expect(federal.closest("tr")).toHaveTextContent("30%3 complete (1 validated) · 7 not started");
   });
 
   it("lists the programs by their completeness, and the chosen program's federal law and states", () => {
@@ -66,7 +90,7 @@ describe("BundleOverview", () => {
       "Arizona",
       "California",
     ]);
-    expect(rows[1]).toHaveTextContent("2%1 of 58 documents · 1 validated2%4 of 187 documents · 4 validated");
+    expect(rows[1]).toHaveTextContent("2%1 complete (1 validated) · 57 not started2%4 complete (4 validated) · 183 not started");
     expect(within(rows[1]).getByRole("link", { name: "Arizona" })).toHaveAttribute("href", "/ops?tab=bundles&bundle=us-az/snap");
     // The programs in alphabetical order too.
     expect(within(programs).getAllByRole("button").map((b) => b.textContent?.replace(/\d+%$/, ""))).toEqual([
@@ -81,7 +105,7 @@ describe("BundleOverview", () => {
     const table = screen.getByRole("table", { name: "SNAP by state" });
     const arizona = within(table).getByRole("link", { name: "Arizona" });
     expect(arizona).toHaveAttribute("href", "/ops?tab=bundles&bundle=us-az/snap&count=provisions");
-    expect(arizona.closest("tr")).toHaveTextContent("13%68 of 527 cited provisions · 68 validated6%71 of 1,212 provisions · 71 validated");
+    expect(arizona.closest("tr")).toHaveTextContent("13%68 of 527 Tier 1 provisions (68 validated)6%71 of 1,212 provisions (71 validated)");
     fireEvent.click(within(screen.getByRole("list", { name: "Programs" })).getByRole("button", { name: /Medicaid/ }));
     expect(screen.getByRole("table", { name: "Medicaid by state" })).toBeInTheDocument();
   });
@@ -116,6 +140,40 @@ describe("BundleOverview", () => {
     const arizona = screen.getByRole("table", { name: "Arizona by program" });
     const snap = within(arizona).getByRole("link", { name: "SNAP" });
     expect(snap).toHaveAttribute("href", "/ops?tab=bundles&bundle=us-az/snap");
-    expect(snap.closest("tr")).toHaveTextContent("SNAP0%0 of 2 documents · 0 validated7%3 of 43 documents · 3 validated");
+    expect(snap.closest("tr")).toHaveTextContent("SNAP0%0 complete · 2 not started7%3 complete (3 validated) · 40 not started");
+  });
+
+  it("counts a document several programs hold once by state, as the collector counted it", () => {
+    // SNAP's and Medicaid's federal law share documents: 171 rows, 150 distinct documents.
+    const distinct = { screener: counts(1, 150, 40, 260), full: counts(2, 500, 120, 8500) };
+    const withDistinct = bundles.map((b) => (b.jurisdiction === "us" ? { ...b, counts: { ...b.counts, jurisdiction: distinct } } : b));
+    render(<BundleOverview bundles={withDistinct} />);
+    fireEvent.click(screen.getByRole("radio", { name: "By state" }));
+    expect(within(screen.getByRole("list", { name: "Jurisdictions" })).getByRole("button", { name: /Federal law/ })).toHaveAttribute(
+      "title",
+      "Federal law: 1 of 150 documents complete (1 validated), the federal law of 2 programs, each document once"
+    );
+  });
+
+  it("marks a state layer with no documents of its own in a tier, and says how old the numbers are", () => {
+    // Arizona's Tier 1 is the federal law's 56 documents and nothing of its own.
+    const stateless = [
+      bundle("us", "snap", "SNAP: federal law", counts(1, 56, 40, 155), counts(1, 144, 55, 1059)),
+      { ...bundle("us-az", "snap", "Arizona SNAP", counts(1, 56, 40, 155), counts(4, 187, 71, 1212)), collected_at: "2026-10-06T12:00:00Z" },
+      bundle("us-dc", "snap", "District of Columbia SNAP", counts(1, 58, 40, 160), counts(1, 150, 55, 1100)),
+    ];
+    render(<BundleOverview bundles={stateless} referenceMs={Date.parse("2026-10-06T12:20:00Z")} />);
+    const table = screen.getByRole("table", { name: "SNAP by state" });
+    expect(within(table).getByRole("link", { name: "Arizona" }).closest("tr")).toHaveTextContent(
+      "1 complete (1 validated) · 55 not started · no state documents"
+    );
+    expect(screen.getByText(/Updated 20m ago\./)).toBeInTheDocument();
+    // DC is not a state.
+    expect(screen.getByRole("button", { name: /^SNAP/ }).getAttribute("title")).toMatch(/across the federal law and 1 state and DC$/);
+    fireEvent.click(screen.getByRole("radio", { name: "By state" }));
+    fireEvent.click(within(screen.getByRole("list", { name: "Jurisdictions" })).getByRole("button", { name: /Arizona/ }));
+    expect(within(screen.getByRole("table", { name: "Arizona by program" })).getByRole("link", { name: "SNAP" }).closest("tr")).toHaveTextContent(
+      "SNAP—No state documents"
+    );
   });
 });

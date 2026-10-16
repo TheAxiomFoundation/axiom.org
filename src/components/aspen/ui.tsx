@@ -35,6 +35,15 @@ export function Chip({
   );
 }
 
+/** A question or a call to act, set as a sentence. Eyebrows are for labels only. */
+export function Prompt({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <span className={cn("block font-body text-[0.95rem] font-medium leading-snug text-[var(--color-ink)]", className)}>
+      {children}
+    </span>
+  );
+}
+
 export function Eyebrow({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <span

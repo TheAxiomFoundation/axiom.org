@@ -40,7 +40,7 @@ describe("OverallRating", () => {
     const fetchMock = stubFetch();
     render(<OverallRating stage="try" />);
     expect(screen.getByText("1 = Not at all · 5 = Fully")).toBeInTheDocument();
-    expect(screen.getByText("1 = Mostly a problem · 5 = Mostly a help")).toBeInTheDocument();
+    expect(screen.getByText("1 = Not well · 5 = Very well")).toBeInTheDocument();
     const share = screen.getByRole("button", { name: "Share my ratings" });
     expect(share).toBeDisabled();
 
@@ -68,6 +68,24 @@ describe("OverallRating", () => {
     ]);
     expect(screen.getByText(/Your ratings are in/)).toBeInTheDocument();
     expect(localStorage.getItem("aspen.overall.v1")).toBe("true");
+  });
+
+  it("sends the agency comment with the agency question, even without ratings", async () => {
+    const fetchMock = stubFetch();
+    render(<OverallRating stage="try" />);
+    const share = screen.getByRole("button", { name: "Share my ratings" });
+    const box = screen.getByLabelText("Where has AI helped your agency, and where has it fallen short?");
+    expect(screen.getByText(/Optional and anonymous/)).toBeInTheDocument();
+    fireEvent.change(box, { target: { value: "  Helps staff find policy; residents get wrong amounts  " } });
+    expect(share).toBeEnabled();
+    fireEvent.click(share);
+    await waitFor(() => expect(bodies(fetchMock)).toHaveLength(1));
+    expect(bodies(fetchMock)[0]).toEqual({
+      participantId: "p-1",
+      kind: "discussion",
+      payload: { question: "experience", ratings: {}, topics: [], note: "Helps staff find policy; residents get wrong amounts" },
+      stage: "try",
+    });
   });
 
   it("shares a note on its own, as a note about the evening", async () => {
@@ -129,6 +147,15 @@ describe("OverallRating", () => {
     fireEvent.click(screen.getByRole("button", { name: "Share my ratings" }));
     await waitFor(() => expect(bodies(fetchMock)).toHaveLength(1));
     expect(bodies(fetchMock)[0].payload).toMatchObject({ question: "experience", ratings: { residents: 2 } });
+  });
+
+  it("rates how AI is performing for the person themselves", async () => {
+    const fetchMock = stubFetch();
+    render(<OverallRating stage="try" />);
+    fireEvent.click(screen.getByRole("button", { name: "For you: 4 of 5" }));
+    fireEvent.click(screen.getByRole("button", { name: "Share my ratings" }));
+    await waitFor(() => expect(bodies(fetchMock)).toHaveLength(1));
+    expect(bodies(fetchMock)[0].payload).toMatchObject({ question: "experience", ratings: { you: 4 } });
   });
 
   it("says the ratings are in once a phone has shared", async () => {

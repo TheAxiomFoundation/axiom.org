@@ -12,7 +12,7 @@ import {
 import type { RulesAnswer } from "@/lib/aspen/rules";
 import { AnswerText } from "./answer-text";
 import { formatValue, participantId, postJson } from "./client";
-import { BUTTON, BUTTON_QUIET, Chip, Eyebrow, FIELD } from "./ui";
+import { BUTTON, BUTTON_QUIET, Chip, Eyebrow, FIELD, Prompt } from "./ui";
 
 function toggle(list: string[], value: string): string[] {
   return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
@@ -65,7 +65,7 @@ export function RatingCard({ promptId, onRated }: { promptId: string; onRated?: 
   return (
     <div className="flex flex-col gap-5 rounded-xl border-2 border-[var(--color-accent)] bg-[var(--color-paper-elevated)] p-4">
       <div>
-        <Eyebrow className="text-[var(--color-accent)]">Rate this answer</Eyebrow>
+        <Prompt className="text-[1.02rem] text-[var(--color-accent)]">Rate this answer</Prompt>
         <p className="m-0 mt-1 font-body text-[0.92rem] text-[var(--color-ink-muted)]">
           Three quick questions. Your rating counts in the room&apos;s results.
         </p>

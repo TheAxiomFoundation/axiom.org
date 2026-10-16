@@ -4,7 +4,14 @@ import {
   errorGroupLabel,
   ageLabel,
   approvalSummary,
+  attemptSource,
   attemptStage,
+  attemptTime,
+  dependentHostId,
+  hostCitations,
+  isDispatch,
+  outsideAttemptId,
+  outsideIdParts,
   cancellationDetail,
   durationLabel,
   checkJurisdiction,
@@ -23,13 +30,16 @@ import {
   journeySteps,
   pipelineView,
   stageSince,
+  STAGE_COPY,
+  statusAttempt,
   summarizePipeline,
+  ENCODE_GATE_LABELS,
   VIEW_ITEMS_PER_STAGE,
   weeklyThroughput,
   weekStartUtc,
   type PipelineStage,
 } from "./encoding-pipeline";
-import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
+import { dependentAttempt, mergedAttempt, outsideAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 
 const NOW = Date.parse("2026-09-30T12:00:00Z");
 
@@ -111,6 +121,21 @@ describe("citationStates", () => {
     expect(snap.openPrs).toBe(2);
     expect(snap.reachedIndex).toBe(true);
     expect(states.find((s) => s.citation === "us/statute/26/32")!.reachedIndex).toBe(false);
+  });
+
+  it("reads the status past dispatches cancelled before their encode job, while an earlier one exists", () => {
+    const merged = mergedAttempt({ id: "merged", dispatched_at: "2026-09-01T00:00:00Z" });
+    const atApproval = pipelineAttempt({ id: "approval", dispatched_at: "2026-09-02T00:00:00Z", run_conclusion: "cancelled", cancel_stage: "approval" });
+    const beforeJob = pipelineAttempt({ id: "job", dispatched_at: "2026-09-03T00:00:00Z", run_conclusion: "cancelled", cancel_stage: "before_job" });
+    const [state] = citationStates([merged, atApproval, beforeJob]);
+    expect([state.latest.id, state.stage, state.dispatches]).toEqual(["merged", "awaiting_sync", 3]);
+    expect(statusAttempt([merged, atApproval, beforeJob])?.id).toBe("merged");
+    // A run cancelled mid-run tried the citation: it stands.
+    const midRun = pipelineAttempt({ id: "mid", dispatched_at: "2026-09-04T00:00:00Z", run_conclusion: "cancelled", cancel_stage: "running" });
+    expect(statusAttempt([merged, midRun])?.id).toBe("mid");
+    // With nothing before it, the cancelled dispatch is the status.
+    expect(citationStates([atApproval])[0].latest.id).toBe("approval");
+    expect(statusAttempt([])).toBeNull();
   });
 });
 
@@ -225,8 +250,8 @@ describe("weeklyThroughput", () => {
       2
     );
     expect(weeks).toEqual([
-      { weekStart: "2026-09-21T00:00:00.000Z", dispatched: 1, encoded: 0, merged: 0 },
-      { weekStart: "2026-09-28T00:00:00.000Z", dispatched: 1, encoded: 1, merged: 1 },
+      { weekStart: "2026-09-21T00:00:00.000Z", dispatched: 1, encoded: 0, merged: 0, outside: 0 },
+      { weekStart: "2026-09-28T00:00:00.000Z", dispatched: 1, encoded: 1, merged: 1, outside: 0 },
     ]);
   });
 });
@@ -240,6 +265,29 @@ describe("journeySteps", () => {
     expect(steps.map((s) => s.state)).toEqual(["done", "failed", "pending", "pending", "pending", "pending", "pending", "pending"]);
     expect(steps[1].detail).toBe("Failed validation: rule-a — detail");
     expect(steps[0].detail).toBe("Ad hoc dispatch");
+  });
+
+  it("says a failure once: the message, without the group made from it", () => {
+    const detail = (overrides: Parameters<typeof pipelineAttempt>[0]) => journeySteps(pipelineAttempt(overrides))[1].detail;
+    expect(detail({ encoder_status: "apply_blocked_generation", encoder_error: "HTTP 404", failure_source: "log" })).toBe("Failed to generate: HTTP 404");
+    expect(
+      detail({
+        failed_step: "Enforce failed-attempt budget / Enforce failed-attempt budget",
+        encoder_error: "attempt-budget: citation=us/x streak=3 budget=3",
+        failure_source: "log",
+      })
+    ).toBe("Attempt budget used up: attempt-budget: citation=us/x streak=3 budget=3");
+    expect(detail({ failed_step: "package_exact_generated_changes", encoder_error: "ValueError: no manifest", failure_source: "log" })).toBe(
+      "Failed to sign: ValueError: no manifest"
+    );
+    // A rule the message names already is not repeated in front of it.
+    expect(
+      detail({ encoder_error_rule: "complete-source-unit:tests", encoder_error: "a.yaml: ci: [complete-source-unit:tests] untested", failure_source: "diagnostics" })
+    ).toBe("Failed validation: [complete-source-unit:tests] untested");
+    // Without a message: the group, and how far a cancelled run got.
+    expect(detail({ run_conclusion: "cancelled", cancel_stage: "approval", finished_at: "2026-09-20T13:00:00Z" })).toBe(
+      "Cancelled or timed out: Cancelled while waiting for signing approval — Waited 3h for signing approval"
+    );
   });
 
   it("shows a run in progress and a queued dispatch", () => {
@@ -355,6 +403,19 @@ describe("citationJourney", () => {
     );
     expect(journey.map((a) => a.id)).toEqual(["new", "old"]);
   });
+
+  it("holds every spelling of the citation, as the ledger counts them", () => {
+    const journey = citationJourney(
+      [
+        pipelineAttempt({ id: "colon", citation: "us-nc:manual/dhhs/fns/fns-170-notices/page-7", dispatched_at: "2026-09-01T00:00:00Z" }),
+        pipelineAttempt({ id: "slash", citation: "us-nc/manual/dhhs/fns/fns-170-notices/page-7", dispatched_at: "2026-09-02T00:00:00Z" }),
+        pipelineAttempt({ id: "cfr", citation: "us/regulations/7-cfr/273/4" }),
+      ],
+      "us-nc/manual/dhhs/fns/fns-170-notices/page-7"
+    );
+    expect(journey.map((a) => a.id)).toEqual(["slash", "colon"]);
+    expect(citationJourney([pipelineAttempt({ id: "cfr", citation: "us/regulations/7-cfr/273/4" })], "us/regulation/7/273/4")).toHaveLength(1);
+  });
 });
 
 describe("ageLabel and journeyHref", () => {
@@ -365,6 +426,10 @@ describe("ageLabel and journeyHref", () => {
     expect(ageLabel("2026-09-29T12:00:00Z", NOW)).toBe("24h");
     expect(ageLabel("2026-09-25T12:00:00Z", NOW)).toBe("5d");
     expect(ageLabel("2026-08-10T12:00:00Z", NOW)).toBe("7w");
+    // Whole units, rounded down, as "ago" times are.
+    expect(ageLabel("2026-09-30T11:00:30Z", NOW)).toBe("59m");
+    expect(ageLabel("2026-09-29T11:30:00Z", NOW)).toBe("24h");
+    expect(ageLabel("2026-09-24T00:00:00Z", NOW)).toBe("6d");
   });
 
   it("links a citation to its journey", () => {
@@ -462,6 +527,16 @@ describe("tests and oracle stages", () => {
     expect(stageSince({ ...d, oracle_checked_at: null })).toBe(indexed.synced_at);
   });
 
+  it("dates passing or failing tests from the first result that still holds, not the latest check", () => {
+    const pass = mergedAttempt({ ...indexed, tests_status: "pass", tests_checked_at: "latest", tests_first_at: "first", tests_first_status: "pass" });
+    expect(stageSince(pass)).toBe("first");
+    // The first run failed: the pass is known only from the latest check.
+    expect(stageSince({ ...pass, tests_first_status: "fail" })).toBe("latest");
+    const fail = mergedAttempt({ ...indexed, tests_status: "fail", tests_checked_at: "latest", tests_first_at: "first", tests_first_status: "fail" });
+    expect(stageSince(fail)).toBe("first");
+    expect(stageSince({ ...fail, tests_first_status: "pass" })).toBe("latest");
+  });
+
   it("never counts a waived module as stuck waiting for its tests", () => {
     const old = { ...indexed, synced_at: "2026-09-01T00:00:00Z", compile_status: "ok" };
     const [waived, waiting] = citationStates([
@@ -543,6 +618,14 @@ describe("signing approval and cancellations", () => {
     expect(durationLabel(3 * 3_600_000)).toBe("3h");
     expect(durationLabel(3 * 3_600_000 + 12 * 60_000)).toBe("3h 12m");
     expect(durationLabel(96 * 3_600_000)).toBe("4d");
+    // Rounded down, like the "ago" beside it: 26.9 days is 26d, as "26d ago" is.
+    expect(durationLabel(26.9 * 24 * 3_600_000)).toBe("26d");
+    expect(durationLabel(44.9 * 60_000)).toBe("44m");
+  });
+
+  it("names a compile failure apart from the nightly sweep's stage", () => {
+    expect(ENCODE_GATE_LABELS.compile).toBe("Failed the compile check");
+    expect(ENCODE_GATE_LABELS.compile).not.toBe(STAGE_COPY.compile_failed.label);
   });
 
   it("describes how long a cancelled run waited and who dispatched it", () => {
@@ -646,5 +729,89 @@ describe("errors without a rule id", () => {
     expect(encodeGate(a)).toBe(encodeGate(pipelineAttempt({ failure_source: "diagnostics", failed_step: "encode_apply" })));
     // A log that showed no error falls back to the step.
     expect(failureReason(pipelineAttempt({ failure_source: "log", failed_step: "encode_apply" })).kind).toBe("workflow");
+  });
+});
+
+describe("attemptSource", () => {
+  it("tells a dispatch, a merge outside the pipeline, and another citation's run apart by id", () => {
+    expect(attemptSource({ id: "35909645917" })).toBe("dispatch");
+    // A manifest PR whose run is gone stays a dispatch.
+    expect(attemptSource({ id: "pr:rulespec-us#1500" })).toBe("dispatch");
+    expect(attemptSource({ id: outsideAttemptId("rulespec-us", 900, "us/statutes/7/2017/a.yaml") })).toBe("outside");
+    expect(attemptSource({ id: "dep:5e2a7c10" })).toBe("dependent");
+    expect(isDispatch(pipelineAttempt())).toBe(true);
+    expect(isDispatch(outsideAttempt())).toBe(false);
+    expect(outsideIdParts(outsideAttempt().id)).toEqual({ repo: "rulespec-us", number: 900, path: "us/statutes/7/2017/a.yaml" });
+    expect(outsideIdParts("pr:rulespec-us#1500")).toBeNull();
+    expect(dependentHostId(dependentAttempt())).toBe("1001");
+    expect(dependentHostId(pipelineAttempt({ queue_ref: "dependent:1001" }))).toBeNull();
+  });
+
+  it("orders a merge outside the pipeline by its merge", () => {
+    expect(attemptTime(outsideAttempt())).toBe("2026-09-23T09:00:00Z");
+    expect(attemptTime(dependentAttempt())).toBe("2026-09-20T10:20:00Z");
+    expect(attemptTime(pipelineAttempt())).toBe("2026-09-20T10:00:00Z");
+  });
+});
+
+describe("citation views with every source", () => {
+  const citation = "us/statute/7/2017/a";
+  // A failed dispatch, then a person's PR created before it but merged after it.
+  const failed = pipelineAttempt({ id: "1001", citation, dispatched_at: "2026-09-22T12:00:00Z", finished_at: "2026-09-22T12:30:00Z" });
+  const merged = outsideAttempt({ citation, synced_at: "2026-09-23T12:00:00Z", index_status: "indexed", tests_status: "pass" });
+
+  it("takes a citation's stage from its latest attempt, a merge outside the pipeline included", () => {
+    expect(statusAttempt([failed, merged])!.id).toBe(merged.id);
+    const [state] = citationStates([failed, merged]);
+    expect(state.stage).toBe("verified");
+    // Only dispatches count as dispatches.
+    expect(state.dispatches).toBe(1);
+    expect(citationJourney([failed, merged], citation).map((a) => a.id)).toEqual([merged.id, failed.id]);
+  });
+
+  it("counts the citations it holds because of other sources, and runs dispatches only", () => {
+    const view = pipelineView(
+      [
+        failed,
+        merged,
+        dependentAttempt({ citation: "us/statute/42/402/q" }),
+        outsideAttempt({ id: outsideAttemptId("rulespec-us", 900, "us/statutes/7/2017/b.yaml"), citation: "us/statute/7/2017/b" }),
+      ],
+      NOW
+    );
+    expect(view.citationCount).toBe(3);
+    expect(view.dispatchCount).toBe(1);
+    expect(view.firstDispatchAt).toBe("2026-09-22T12:00:00Z");
+    expect(view.sources).toEqual({ outside: 2, dependent: 1 });
+    expect(view.stages.verified.count).toBe(1);
+    expect(view.stages.encode_failed.count).toBe(1);
+    expect(view.stages.encode_failed.items[0]).toMatchObject({ citation: "us/statute/42/402/q", source: "dependent", dispatches: 0 });
+    expect(view.stages.verified.items[0]).toMatchObject({ source: "outside", prUrl: "https://github.com/TheAxiomFoundation/rulespec-us/pull/900" });
+    // The failure rate and the approval gate count dispatches only.
+    expect(view.recentFailureRate).toEqual({ failed: 1, finished: 1, leftOut: 0 });
+    expect(view.approval.cancellations).toEqual([]);
+  });
+
+  it("counts a PR merged outside the pipeline once a week, beside the dispatch series", () => {
+    const weeks = weeklyThroughput(
+      [
+        merged,
+        outsideAttempt({ id: outsideAttemptId("rulespec-us", 900, "us/statutes/7/2017/b.yaml") }),
+        outsideAttempt({ id: outsideAttemptId("rulespec-uk", 12, "uk/statutes/x.yaml"), pr_repo: "rulespec-uk", pr_number: 12 }),
+        dependentAttempt({ run_conclusion: "success", dispatched_at: "2026-09-29T00:00:00Z", finished_at: "2026-09-29T00:00:00Z" }),
+      ],
+      NOW,
+      2
+    );
+    expect(weeks).toEqual([
+      { weekStart: "2026-09-21T00:00:00.000Z", dispatched: 0, encoded: 0, merged: 0, outside: 2 },
+      { weekStart: "2026-09-28T00:00:00.000Z", dispatched: 0, encoded: 0, merged: 0, outside: 0 },
+    ]);
+  });
+
+  it("starts each journey from where the attempt came from, and names the runs modules were encoded in", () => {
+    expect(journeySteps(outsideAttempt())[0].detail).toBe("Merged outside the pipeline · MaxGhenis");
+    expect(journeySteps(dependentAttempt())[0].detail).toBe("Encoded in another citation's run");
+    expect(hostCitations([pipelineAttempt(), dependentAttempt()])).toEqual(new Map([["1001", "us/statute/7/2017/a"]]));
   });
 });

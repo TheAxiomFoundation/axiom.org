@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HOUSEHOLDS, composePrompt, findHousehold } from "@/lib/aspen/content";
 import { CHAT_KEY, ChatWindow, hostname, readNdjson, type SavedChat, type Turn } from "./chat-window";
@@ -661,11 +661,12 @@ describe("ChatWindow saved conversation", () => {
     expect(saved()).toMatchObject({ conversationId: "c-1", template: "the template", rated: ["p1"] });
   });
 
-  it("starts over with 'New question', keeping the chosen chips", async () => {
+  it("starts blank with 'New question', keeping who you ask as", async () => {
     store({
       perspective: "caseworker",
       householdId: "ny-parent",
       questionId: "eligible",
+      twists: ["gig"],
       draft: "",
       template: null,
       conversationId: "c-1",
@@ -674,17 +675,56 @@ describe("ChatWindow saved conversation", () => {
     });
     routeFetch({});
     render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    // An older save held one question; it comes back as a one-item list.
+    await waitFor(() => expect(saved().questionIds).toEqual(["eligible"]));
     fireEvent.click(await screen.findByRole("button", { name: "New question" }));
 
     expect(screen.queryByText("Answer one")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "A caseworker" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: /Working parent of two/ })).toHaveAttribute("aria-pressed", "true");
-    // An older save held one question; it comes back as the only one picked.
-    expect(screen.getByRole("button", { name: "✓ Eligible?" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: "How much?" })).toHaveAttribute("aria-pressed", "false");
-    expect(draftBox().value).toBe(composePrompt("caseworker", findHousehold("ny-parent")!, "eligible"));
-    await waitFor(() => expect(saved().turns).toEqual([]));
+    // No household, so no details or question chips yet, and an empty box.
+    expect(screen.getByRole("button", { name: /Working parent of two/ })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByRole("group", { name: "Details" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Question" })).not.toBeInTheDocument();
+    expect(draftBox().value).toBe("");
+    expect(draftBox()).toHaveAttribute("placeholder", "Pick a household above, or type your own question");
+    await waitFor(() =>
+      expect(saved()).toMatchObject({ turns: [], householdId: null, twists: [], questionIds: ["amount"], template: null }),
+    );
     expect(saved().conversationId).not.toBe("c-1");
+  });
+
+  it("offers a new question right under the saved rating, and scrolls back up to ask it", async () => {
+    store({
+      perspective: "caseworker",
+      householdId: "ny-parent",
+      questionIds: ["eligible"],
+      draft: "",
+      template: null,
+      conversationId: "c-7",
+      turns: turns.slice(0, 2),
+      rated: ["p1"],
+    });
+    routeFetch({});
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    const verdict = await screen.findByRole("region", { name: "Your verdict" });
+    fireEvent.click(within(verdict).getByRole("button", { name: /Ask a new question/ }));
+    expect(screen.queryByText("Answer one")).not.toBeInTheDocument();
+    // Blank again: no household picked and an empty box.
+    expect(screen.getByRole("button", { name: /Working parent of two/ })).toHaveAttribute("aria-pressed", "false");
+    expect(draftBox().value).toBe("");
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
+    await waitFor(() => expect(saved().turns).toEqual([]));
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+  });
+
+  it("keeps the new-question button away until the answer is rated", async () => {
+    store({ perspective: "resident", householdId: "az-retiree", questionIds: ["amount"], conversationId: "c-8", turns: turns.slice(0, 2), rated: [] });
+    routeFetch({});
+    render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    await screen.findByText("Answer one");
+    expect(screen.queryByRole("button", { name: /Ask a new question/ })).not.toBeInTheDocument();
   });
 
   it("starts over with 'New question' from an open follow-up, closing it", async () => {
@@ -703,7 +743,7 @@ describe("ChatWindow saved conversation", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Ask a follow-up" }));
     expect(draftBox()).toHaveAttribute("placeholder", "Ask a follow-up");
     fireEvent.click(screen.getByRole("button", { name: "New question" }));
-    expect(screen.getByRole("button", { name: /Your own question/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /Start from a blank question/ })).toHaveAttribute("aria-pressed", "false");
     expect(draftBox().value).toBe("");
     expect(draftBox()).toHaveAttribute("placeholder", "Pick a household above, or type your own question");
     expect(screen.queryByRole("button", { name: "Ask a follow-up" })).not.toBeInTheDocument();
@@ -768,14 +808,22 @@ describe("ChatWindow saved conversation", () => {
     Element.prototype.scrollIntoView = scrollIntoView;
     render(<ChatWindow stage="try" rulesUnlocked={false} onStatus={onStatus} />);
     await screen.findByText("Answer one");
-    await waitFor(() => expect(onStatus).toHaveBeenLastCalledWith({ asked: true, rated: false }));
+    await waitFor(() => expect(onStatus).toHaveBeenLastCalledWith({ asked: true, rated: false, current: false }));
     expect(screen.queryByRole("button", { name: "New question" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Ask a follow-up" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Rate it ↓" }));
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
     await rateAnswer();
-    await waitFor(() => expect(onStatus).toHaveBeenLastCalledWith({ asked: true, rated: true }));
+    await waitFor(() => expect(onStatus).toHaveBeenLastCalledWith({ asked: true, rated: true, current: true }));
     expect(screen.getByRole("button", { name: "New question" })).toBeInTheDocument();
+    // A new question: some answer is still rated, but not the current conversation's.
+    const onNewQuestion = vi.fn();
+    cleanup();
+    onStatus.mockClear();
+    render(<ChatWindow stage="try" rulesUnlocked={false} onStatus={onStatus} onNewQuestion={onNewQuestion} />);
+    fireEvent.click(await screen.findByRole("button", { name: "New question" }));
+    expect(onNewQuestion).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onStatus).toHaveBeenLastCalledWith({ asked: false, rated: true, current: false }));
     delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
   });
 

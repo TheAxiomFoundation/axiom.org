@@ -2,12 +2,11 @@ import { readFile, stat } from "node:fs/promises";
 import { getSupabaseRestConfig, readSupabaseRows } from "@/lib/corpus-status";
 import {
   bundleIndex,
+  type BundleCounts,
   type BundleDocumentRow,
   type BundleIndexEntry,
   type BundleRow,
   type BundleSnapshotRow,
-  type BundleTierId,
-  type TierCounts,
 } from "./program-bundles";
 
 const PAGE_SIZE = 1000;
@@ -180,7 +179,9 @@ export interface BundleSummary {
   title: string;
   program: string;
   jurisdiction: string;
-  counts: Partial<Record<BundleTierId, TierCounts>>;
+  counts: BundleCounts;
+  /** When the collector measured it. */
+  collected_at?: string | null;
 }
 
 /**
@@ -194,6 +195,7 @@ export async function getBundleSummaries(): Promise<BundleSummary[]> {
     program: b.program,
     jurisdiction: b.jurisdiction,
     counts: b.counts ?? {},
+    collected_at: b.collected_at ?? null,
   });
   const file = process.env.AXIOM_OPS_BUNDLES_FILE;
   if (file && process.env.NODE_ENV === "development") {
@@ -210,7 +212,7 @@ export async function getBundleSummaries(): Promise<BundleSummary[]> {
       config,
       "encodings",
       "program_bundles",
-      { select: "id,title,program,jurisdiction,counts", order: "id.asc", limit: "2000" },
+      { select: "id,title,program,jurisdiction,counts,collected_at", order: "id.asc", limit: "2000" },
       { fresh: true }
     );
     return rows.map(pick);
