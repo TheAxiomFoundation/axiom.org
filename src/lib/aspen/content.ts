@@ -899,7 +899,7 @@ export const GOLDEN_A = [
      * end-of-2027 requirement, since the credits are computed on it.
      */
     programs: ["SNAP", "Medicaid", "CHIP", "TANF", "WIC", "LIHEAP", "CCDF", "SSI", "Medicare", "UI", "EITC", "CTC"],
-    takes: "Nothing from your team.",
+    takes: "Publicly available documents.",
     medal: null,
   },
   {
