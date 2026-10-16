@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { dispatchFlow, encodeParts, runRow, runRows, runTimeline, shortDuration, stepTimes, testsParts } from "./encoding-pipeline-runs";
-import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
+import {
+  clockDuration,
+  dispatchFlow,
+  encodeParts,
+  hostLabel,
+  runRow,
+  runRows,
+  runTimeline,
+  shortDuration,
+  stepTimes,
+  testsParts,
+} from "./encoding-pipeline-runs";
+import { dependentAttempt, mergedAttempt, outsideAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 
 describe("runRow", () => {
   it("records a run's provenance and outcome", () => {
@@ -21,18 +32,74 @@ describe("runRow", () => {
     );
     expect(row).toMatchObject({
       id: "7",
+      // The corpus's spelling: the colon after the jurisdiction is a slash.
+      citation: "us-nc/manual/x",
       jurisdiction: "us-nc",
       by: "Pavel",
       encoder: "0.2.2087",
       approvalMs: 120_000,
       runMs: 1_800_000,
+      finishedAt: "2026-10-01T10:32:00Z",
       outcome: "failed",
       outcomeLabel: "Failed validation",
-      cause: "complete-source-unit:tests",
+      // The cause as the encoder wrote it; the rule groups.
+      cause: "[complete-source-unit:tests] Companion tests do not demonstrate it",
+      causeGroup: "complete-source-unit:tests",
       pr: null,
       merged: null,
       index: null,
     });
+  });
+
+  it("shows a failure's own message, values and all, and groups it without them", () => {
+    const row = runRow(
+      pipelineAttempt({
+        encoder_error: "statutes/7/2017/a.yaml: ci: Test case `base` output `allotment` expected integer 400, got integer 1200.",
+        failure_source: "diagnostics",
+      })
+    );
+    expect(row.cause).toBe("Test case `base` output `allotment` expected integer 400, got integer 1200.");
+    expect(row.causeGroup).toBe("Test case … output … expected integer N, got integer N.");
+    expect(runRow(pipelineAttempt({ encoder_error: "HTTP 404", failure_source: "log", encoder_status: "apply_blocked_generation" }))).toMatchObject({
+      outcomeLabel: "Failed to generate",
+      cause: "HTTP 404",
+      causeGroup: "HTTP N",
+    });
+  });
+
+  it("drops an encoder record from a run that never reached its encode step", () => {
+    const record = {
+      encoder_run_id: "864612a1",
+      encoder_error: "statutes/42/1382c/f/2.yaml: ci: [complete-source-unit:deferral] deferred",
+      encoder_error_rule: "complete-source-unit:deferral",
+      failure_source: "encoder_run",
+      generation_attempts: 4,
+      cost_usd: 0.22,
+      tries: [{ attempt: 1, model: "m", ms: 1000, cost: 0.05, ok: false, error: "x" }],
+      encode_loop: { startedAt: null, wallMs: 1, setupMs: null, triesMs: null, betweenMs: null, finalizeMs: null },
+      jobs_checked_at: "2026-10-12T09:00:00Z",
+      steps_read_at: "2026-10-12T09:00:00Z",
+    };
+    // Cancelled at the approval: no tries, loop, cost, or cause of its own.
+    const cancelled = runRow(pipelineAttempt({ ...record, run_conclusion: "cancelled", cancel_stage: "approval" }));
+    expect(cancelled).toMatchObject({ outcomeLabel: "Cancelled at approval", cancelStage: "approval", tries: null, loop: null, attempts: null, cost: null, cause: null });
+    // Failed in setup (its steps read, no encode step): the borrowed error goes too.
+    const setup = runRow(pipelineAttempt({ ...record, encode_started_at: "2026-10-12T08:00:00Z", setup_seconds: 60, encode_seconds: null }));
+    expect(setup).toMatchObject({ tries: null, cost: null, cause: null, outcomeLabel: "Failed at an unknown step" });
+    // The run's own log error stays; only the record's tries and cost go.
+    const logged = runRow(
+      pipelineAttempt({ ...record, failure_source: "log", encoder_error: "error: canonical refresh primary RuleSpec is not safe", encode_started_at: null })
+    );
+    expect(logged).toMatchObject({ tries: null, cost: null, cause: "error: canonical refresh primary RuleSpec is not safe" });
+    // A run that encoded keeps its record.
+    const encoded = runRow(pipelineAttempt({ ...record, encode_started_at: "2026-10-12T08:00:00Z", encode_seconds: 300 }));
+    expect(encoded).toMatchObject({ attempts: 4, cost: 0.22, causeGroup: "complete-source-unit:deferral" });
+    expect(encoded.tries).toHaveLength(1);
+  });
+
+  it("spells a provision one way however a dispatch wrote it", () => {
+    expect(runRow(pipelineAttempt({ citation: "us/regulations/7-cfr/273/4" })).citation).toBe("us/regulation/7/273/4");
+    expect(runRow(pipelineAttempt({ citation: "us-la/statute/47:32" })).citation).toBe("us-la/statute/47:32");
   });
 
   it("names waiting, running, cancelled, and timed-out runs", () => {
@@ -109,9 +176,14 @@ describe("dispatchFlow", () => {
     const rows = runRows([
       pipelineAttempt({ id: "w", run_status: "waiting", run_conclusion: null }),
       pipelineAttempt({ id: "c", run_conclusion: "cancelled", cancel_stage: "approval" }),
-      pipelineAttempt({ id: "v1", encoder_error_rule: "rule-a", failure_source: "diagnostics" }),
-      pipelineAttempt({ id: "v2", encoder_error_rule: "rule-a", failure_source: "diagnostics" }),
-      pipelineAttempt({ id: "s", failed_step: "Verify immutable checkout identities", failure_source: "jobs" }),
+      pipelineAttempt({ id: "v1", encoder_error_rule: "rule-a", failure_source: "diagnostics", encode_started_at: "2026-09-20T10:01:00Z" }),
+      pipelineAttempt({ id: "v2", encoder_error_rule: "rule-a", failure_source: "diagnostics", encode_started_at: "2026-09-20T10:01:00Z" }),
+      pipelineAttempt({ id: "s", failed_step: "Verify immutable checkout identities", failure_source: "jobs", encode_started_at: "2026-09-20T10:01:00Z" }),
+      // Never reached the approval: the attempt budget stopped one, one was
+      // cancelled before its encode job, and one failed with no job start.
+      pipelineAttempt({ id: "b", failed_step: "Enforce failed-attempt budget", failure_source: "jobs" }),
+      pipelineAttempt({ id: "j", run_conclusion: "cancelled", cancel_stage: "before_job" }),
+      pipelineAttempt({ id: "f", encoder_error: "context manifest contains an unexpected review contract", failure_source: "log" }),
       pipelineAttempt({ id: "m", run_conclusion: "cancelled", cancel_stage: "running" }),
       pipelineAttempt({ id: "r", run_status: "in_progress", run_conclusion: null }),
       pipelineAttempt({ id: "n", run_conclusion: "success" }),
@@ -127,7 +199,11 @@ describe("dispatchFlow", () => {
     const flow = dispatchFlow(rows);
     const summary = flow.map((gate) => [gate.key, gate.input, gate.segments.map((s) => `${s.kind}:${s.label}:${s.count}`)]);
     expect(summary).toEqual([
-      ["approval", 16, ["continue:Approved:14", "pending:Waiting:1", "loss:Cancelled at approval:1"]],
+      [
+        "approval",
+        19,
+        ["continue:Approved:14", "pending:Waiting:1", "loss:Cancelled at approval:1", "loss:Stopped before approval:3"],
+      ],
       [
         "run",
         14,
@@ -179,12 +255,12 @@ describe("stepTimes", () => {
       run: ["Encoded:2:15:null", "Failed:3:15:null"],
       pr: [],
       review: ["Merged:1:30:null", "Closed:1:12:null", "Open now:1:2880:null"],
-      main: [],
+      main: ["From dispatch:1:30:null"],
       index: [],
       tests: [],
     });
     expect(times[0]).toMatchObject({ label: "Signing approval", span: "dispatch → job start", untimed: null });
-    expect(times.map((step) => step.untimed)).toEqual([null, null, "No wait", null, "No wait", "Not timed yet", "Not timed yet"]);
+    expect(times.map((step) => step.untimed)).toEqual([null, null, "No wait", null, null, "Not timed yet", "Not timed yet"]);
   });
 
   it("gives the slowest tenth once ten runs are timed", () => {
@@ -201,8 +277,10 @@ describe("stepTimes", () => {
 describe("post-merge times", () => {
   it("times the first index sync and the first tests on main from the merge", () => {
     const rows = runRows([
-      mergedAttempt({ id: "a", pr_merged_at: "2026-09-21T09:00:00Z", indexed_at: "2026-09-21T09:40:00Z", tests_first_at: "2026-09-21T09:12:00Z" }),
-      mergedAttempt({ id: "b", pr_merged_at: "2026-09-21T09:00:00Z", indexed_at: "2026-09-21T15:00:00Z" }),
+      mergedAttempt({ id: "a", pr_merged_at: "2026-09-21T09:00:00Z", synced_at: "S", indexed_at: "2026-09-21T09:40:00Z", tests_first_at: "2026-09-21T09:12:00Z" }),
+      mergedAttempt({ id: "b", pr_merged_at: "2026-09-21T09:00:00Z", synced_at: "S", indexed_at: "2026-09-21T15:00:00Z" }),
+      // Merged into main but not indexed: it never reached the tests step.
+      mergedAttempt({ id: "c", pr_merged_at: "2026-09-21T09:00:00Z", index_status: "missing", tests_first_at: "2026-09-21T09:02:00Z" }),
       mergedAttempt({ id: "off", pr_targets_default: false, indexed_at: "2026-09-29T00:00:00Z" }),
     ]);
     const times = stepTimes(rows, 0);
@@ -273,6 +351,7 @@ describe("testsParts", () => {
       mergedAttempt({
         id,
         pr_merged_at: "2026-09-21T09:00:00Z",
+        synced_at: "S",
         tests_first_started_at: started,
         tests_first_at: finished,
         tests_first_status: status,
@@ -283,6 +362,8 @@ describe("testsParts", () => {
         merge("b", "2026-09-21T10:32:00Z", "2026-09-21T11:37:00Z", "fail"),
         merge("c", null, "2026-09-21T12:00:00Z", null),
         mergedAttempt({ id: "off", pr_targets_default: false, tests_first_started_at: "2026-09-21T09:01:00Z", tests_first_status: "pass" }),
+        // Merged into main but missing from the index: it never reached the tests.
+        mergedAttempt({ id: "miss", index_status: "missing", tests_first_started_at: "2026-09-21T09:01:00Z", tests_first_status: "fail" }),
       ])
     );
     expect(parts.map((part) => [part.key, part.timings.map((t) => `${t.runs}:${t.medianMs / 60_000}`)])).toEqual([
@@ -334,6 +415,35 @@ describe("runTimeline", () => {
       ["Index", "4h", "done", "Indexed"],
       ["Tests on main", "2h 7m", "done", "wait 16m · run 1h 51m · first result fail · latest pass"],
     ]);
+    // The index and the tests both count from the merge, and say when each ended: they are not a sequence.
+    expect(timeline.after.map((step) => [step.key, step.from ?? null, step.at ?? null])).toEqual([
+      ["review", null, at(42)],
+      ["index", "from the merge", at(42 + 240)],
+      ["tests", "from the merge", at(169)],
+    ]);
+  });
+
+  it("draws a run cancelled before its encode job as the wait it was, with no encode run", () => {
+    const approval = runTimeline(
+      runRow(
+        pipelineAttempt({
+          dispatched_at: at(0),
+          started_at: at(0),
+          finished_at: at(177),
+          run_conclusion: "cancelled",
+          cancel_stage: "approval",
+          jobs_checked_at: at(180),
+        })
+      ),
+      0
+    );
+    expect(approval.bars.map((bar) => `${bar.label}:${bar.ms / MIN}:${bar.state}`)).toEqual(["Wait for approval:177:cancelled"]);
+    expect(approval.stopped).toBe("Cancelled at approval");
+    const beforeJob = runTimeline(
+      runRow(pipelineAttempt({ dispatched_at: at(0), finished_at: at(3), run_conclusion: "cancelled", cancel_stage: "before_job" })),
+      0
+    );
+    expect(beforeJob.bars.map((bar) => `${bar.label}:${bar.ms / MIN}:${bar.state}`)).toEqual(["Before the encode job:3:cancelled"]);
   });
 
   it("marks where a run stopped, and falls back to one bar before its parts are recorded", () => {
@@ -346,7 +456,7 @@ describe("runTimeline", () => {
           encode_seconds: 1200,
           generation_attempts: 4,
           encoder_error_rule: "complete-source-unit:tests",
-          encoder_error: "x [complete-source-unit:tests] y",
+          encoder_error: "a.yaml: ci: [complete-source-unit:tests] Companion tests do not demonstrate it",
           failure_source: "diagnostics",
         })
       ),
@@ -358,7 +468,7 @@ describe("runTimeline", () => {
       "Setup:done",
       "Encode loop · 4 tries:failed",
     ]);
-    expect(failed.stopped).toBe("Failed validation: Completeness rule: tests");
+    expect(failed.stopped).toBe("Failed validation: Completeness rule: tests — Companion tests do not demonstrate it");
     expect(failed.after).toEqual([]);
     // Before step times were recorded: the run as one bar.
     const early = runTimeline(runRow(pipelineAttempt({ dispatched_at: at(0), encode_started_at: at(1), finished_at: at(31), run_conclusion: "cancelled", cancel_stage: "running" })), 0);
@@ -377,8 +487,21 @@ describe("runTimeline", () => {
       Date.parse(at(60 * 24 * 3))
     );
     expect(review.after).toEqual([
-      { key: "review", label: "Review", ms: 3 * 24 * 60 * MIN, state: "waiting", detail: "In review so far · shard us fails", href: "u" },
+      { key: "review", label: "Review", ms: 3 * 24 * 60 * MIN, at: null, state: "waiting", detail: "In review so far · shard us fails", href: "u" },
     ]);
+  });
+});
+
+describe("clockDuration", () => {
+  it("writes a run's times in minutes and seconds under ten minutes, rounded down", () => {
+    expect(clockDuration(37_400)).toBe("37s");
+    expect(clockDuration(100_000)).toBe("1m 40s");
+    expect(clockDuration(120_900)).toBe("2m");
+    expect(clockDuration(269_000)).toBe("4m 29s");
+    expect(clockDuration(599_999)).toBe("9m 59s");
+    expect(clockDuration(600_000)).toBe("10m");
+    expect(clockDuration(3 * 3_600_000 + 7 * 60_000 + 50_000)).toBe("3h 7m");
+    expect(clockDuration(-5)).toBe("0s");
   });
 });
 
@@ -524,5 +647,67 @@ describe("timed tries", () => {
     const { parts } = encodeParts(runRows([attempt(), pipelineAttempt({ id: "old", run_conclusion: "success" })]));
     const checks = parts.find((part) => part.key === "checks")!;
     expect(checks.timings.map((t) => `${t.label}:${t.runs}:${t.medianMs / 1000}`)).toEqual(["Encoded:1:350"]);
+  });
+});
+
+describe("rows beyond dispatches", () => {
+  const host = pipelineAttempt({ id: "1001", citation: "us/statute/42/416/l", run_conclusion: "success", encode_started_at: "2026-09-20T10:01:00Z" });
+  const outside = outsideAttempt({ synced_at: "2026-09-24T06:00:00Z", index_status: "indexed", tests_status: "pass" });
+  const dependent = dependentAttempt({
+    tries: [
+      { attempt: 1, model: "gpt-6-sol", ms: 60_000, cost: 0.2, ok: false, error: "compile: failed", startedAt: "2026-09-20T10:14:00Z", wallMs: 120_000, phases: [{ name: "model_call", ms: 60_000 }, { name: "candidate_validation", ms: 60_000 }] },
+      { attempt: 2, model: "gpt-6-sol", ms: 60_000, cost: 0.2, ok: false, error: "compile: failed again", startedAt: "2026-09-20T10:16:00Z", wallMs: 120_000, phases: [{ name: "model_call", ms: 60_000 }, { name: "candidate_validation", ms: 60_000 }] },
+    ],
+  });
+
+  it("says where each row came from, the run a module was encoded in, and orders a merge by its time", () => {
+    const rows = runRows([host, outside, dependent]);
+    expect(rows.map((row) => [row.id, row.source])).toEqual([
+      [outside.id, "outside"],
+      ["dep:5e2a7c10", "dependent"],
+      ["1001", "dispatch"],
+    ]);
+    const [merged, inRun] = rows;
+    expect(merged).toMatchObject({
+      outcome: "encoded",
+      outcomeLabel: "Merged outside the pipeline",
+      by: "MaxGhenis",
+      at: "2026-09-23T09:00:00Z",
+      dispatchedAt: "2026-09-22T08:00:00Z",
+      merged: "main",
+      tests: "pass",
+      pr: { label: "rulespec-us#900", state: "merged" },
+      host: null,
+    });
+    expect(inRun).toMatchObject({ outcome: "failed", host: { id: "1001", citation: "us/statute/42/416/l" }, cost: 0.4 });
+    expect(hostLabel(inRun.host)).toBe("Encoded in the run for us/statute/42/416/l");
+    expect(hostLabel({ id: "9", citation: null })).toBe("Encoded in another citation's run");
+    // Scoped rows still name a host run outside the scope.
+    expect(runRows([dependent], [host])[0].host?.citation).toBe("us/statute/42/416/l");
+  });
+
+  it("leaves them out of every run statistic", () => {
+    const rows = runRows([host, outside, dependent]);
+    expect(dispatchFlow(rows)[0].input).toBe(1);
+    expect(stepTimes(rows, Date.parse("2026-09-30T12:00:00Z")).find((step) => step.key === "approval")!.timings[0].runs).toBe(1);
+    expect(encodeParts(rows).tries.finished).toBe(1);
+    expect(testsParts(rows).first).toEqual({ pass: 0, fail: 0 });
+  });
+
+  it("draws a dependent module's own encode loop, and only the steps after the PR for a merge outside the pipeline", () => {
+    const now = Date.parse("2026-09-30T12:00:00Z");
+    const loop = runTimeline(runRow(dependent), now);
+    expect(loop.title).toBe("Its encode loop");
+    expect(loop.bars).toEqual([{ key: "encode", label: "Encode loop · 4 tries", startMs: 0, ms: 240_000, state: "failed" }]);
+    // The tries sit on the module's own clock, from its first try.
+    expect(loop.tries[1].phases[0]).toMatchObject({ startMs: 120_000, ms: 60_000 });
+    expect(loop.stopped).toMatch(/^Failed the compile check/);
+    const after = runTimeline(runRow(outside), now);
+    expect(after.bars).toEqual([]);
+    expect(after.after.map((step) => [step.key, step.state])).toEqual([
+      ["review", "done"],
+      ["index", "done"],
+      ["tests", "done"],
+    ]);
   });
 });

@@ -21,11 +21,17 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: pipeline.error ?? "pipeline unavailable" }, { status: 503 });
   }
   const attempts = pipeline.attempts.filter((attempt) => inScope(attemptJurisdiction(attempt), scope));
-  const rows = runRows(attempts);
+  // Every attempt names the runs that modules were encoded in, a run outside the scope too.
+  const rows = runRows(attempts, pipeline.attempts);
   const [metadata, index] = await Promise.all([getCitationMetadata(rows.map((row) => row.citation)), getBundleIndex(rows.map((row) => row.citation))]);
   // Only the bundle documents some run's citation sits in.
   const bundles = index.filter((entry) =>
     rows.some((row) => row.citation === entry.citation_path || row.citation.startsWith(`${entry.citation_path}/`))
   );
-  return NextResponse.json({ rows, ...metadata, bundles }, { headers: { "Cache-Control": "no-store" } });
+  // When the collector last read these runs: the page says how old they are.
+  const collectedAt = attempts.reduce<string | null>(
+    (newest, attempt) => (attempt.collected_at && (!newest || attempt.collected_at > newest) ? attempt.collected_at : newest),
+    null
+  );
+  return NextResponse.json({ rows, ...metadata, bundles, collectedAt }, { headers: { "Cache-Control": "no-store" } });
 }

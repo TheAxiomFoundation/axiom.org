@@ -9,6 +9,8 @@ import {
   measuredByPart,
   bundleIndex,
   bundleMemberships,
+  countedUnits,
+  distinctByDocument,
   measureDocument,
   provisionCounts,
   tierCounts,
@@ -320,9 +322,74 @@ describe("the full bundle never counts more coarsely than the screener tier", ()
     const screener = measureDocument("b", "screener", doc11, t, AT);
     const full = measureDocument("b", "full", doc11, t, AT);
     expect(measured(screener)).toMatchObject({ total: 3, byState: { encoded: 2 } });
-    // Without the paragraphs the section would be one partly encoded provision: none encoded.
-    expect(measured(full)).toMatchObject({ total: 3, byState: { encoded: 2, not_started: 1 } });
+    // Without the paragraphs the section would be one partly encoded provision: none encoded. The rest of
+    // the section counts too, as the section stands: partly encoded.
+    expect(measured(full)).toMatchObject({ total: 4, byState: { encoded: 2, not_started: 1, partly: 1 } });
     expect(full.status).toBe("partly");
+  });
+
+  it("never makes a provision complete through its cited paragraphs alone", () => {
+    // 7 CFR 273.5's shape: one corpus provision; its module encodes (b) and defers (d), and every
+    // paragraph the reference model cites is in (b).
+    const section = [{ path: "us/regulation/7/273/5", child_count: 0 }];
+    const cited = ["b/4", "b/11", "c"].map((p) => ({ path: `us/regulation/7/273/5/${p}`, references: 1 }));
+    const doc5 = doc({ key: "us/regulation/7/273/5", citation_path: "us/regulation/7/273/5", cited });
+    const t = {
+      nodes: section,
+      modules: [
+        module("us/regulation/7/273/5", {
+          cited: ["us/regulation/7/273/5/b", "us/regulation/7/273/5/c"],
+          deferred: ["us/regulation/7/273/5/d"],
+        }),
+      ],
+      attempts: [],
+    };
+    const full = measureDocument("b", "full", doc5, t, AT);
+    // The three paragraphs are encoded; the rest of the section, with (d) deferred, is partly encoded.
+    expect(measured(full)).toMatchObject({ total: 4, byState: { encoded: 3, partly: 1 } });
+    expect(full.status).toBe("partly");
+    // A provision a rule encodes whole counts only as its cited paragraphs: nothing of it is left over.
+    const whole = measureDocument("b", "full", doc5, { ...t, modules: [module("us/regulation/7/273/5")] }, AT);
+    expect(measured(whole)).toMatchObject({ total: 3, byState: { encoded: 3 } });
+    expect(whole.status).toBe("complete");
+  });
+});
+
+describe("cited provisions inside other cited provisions", () => {
+  it("count once, as the outer one: its grade takes in what is under it", () => {
+    // The reference model cites 7 CFR 273.11(c), (c)(1) and (c)(3), and (c)(3)(i) under it.
+    const section = [{ path: "us/regulation/7/273/11", child_count: 0 }];
+    const cited = ["c", "c/1", "c/3", "c/3/i", "d"].map((p) => ({ path: `us/regulation/7/273/11/${p}`, references: 1 }));
+    const row = measureDocument(
+      "b",
+      "screener",
+      doc({ key: "us/regulation/7/273/11", citation_path: "us/regulation/7/273/11", cited }),
+      { nodes: section, modules: [module("us/regulation/7/273/11/c/1")], attempts: [] },
+      AT
+    );
+    // Every cited provision stays listed, each with its own state.
+    expect(row.units.map((u) => u.state)).toEqual(["partly", "encoded", "not_encoded", "not_encoded", "not_encoded"]);
+    expect(countedUnits(row.units).map((u) => u.path)).toEqual(["us/regulation/7/273/11/c", "us/regulation/7/273/11/d"]);
+    // (c) and (d) count; (c)(1), (c)(3) and (c)(3)(i) count with (c).
+    expect(measured(row)).toMatchObject({ total: 2, byState: { partly: 1, not_started: 1 } });
+    expect([...measuredByPart(row).values()].reduce((t, m) => t + m.total, 0)).toBe(2);
+  });
+});
+
+describe("distinctByDocument", () => {
+  it("keeps one row per document and tier, as the program where it is least done counts it", () => {
+    const t = { nodes, modules: [module("us/statute/7/2014/a")], attempts: [] };
+    const snap = measureDocument("us/snap", "full", doc(), t, AT);
+    const tanf = measureDocument("us/tanf", "full", doc(), { ...t, modules: [] }, AT);
+    const other = measureDocument("us/tanf", "full", doc({ key: "us/statute/7/2015", citation_path: "us/statute/7/2015" }), t, AT);
+    const kept = distinctByDocument([snap, tanf, other]);
+    expect(kept.map((r) => [r.bundle_id, r.key])).toEqual([
+      ["us/tanf", "us/statute/7/2014"],
+      ["us/tanf", "us/statute/7/2015"],
+    ]);
+    // An in-scope row wins over an excluded one.
+    const excluded = { ...snap, scope: "excluded" as const };
+    expect(distinctByDocument([excluded, snap])).toEqual([snap]);
   });
 });
 

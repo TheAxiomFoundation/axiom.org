@@ -45,8 +45,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import yaml from "js-yaml";
-import { measureDocument, tierCounts } from "../src/lib/axiom/program-bundles.ts";
-import { moduleFacts, waivedModules } from "../src/lib/axiom/program-bundles-modules.ts";
+import { distinctByDocument, measureDocument, tierCounts } from "../src/lib/axiom/program-bundles.ts";
+import { moduleFacts, sectionWideFromCorpus, waivedModules } from "../src/lib/axiom/program-bundles-modules.ts";
 import { screenerParity } from "../src/lib/axiom/screener-parity.ts";
 import { JURISDICTIONS_SEED } from "../src/lib/axiom/jurisdictions-seed.ts";
 
@@ -299,7 +299,9 @@ async function corpusTrees(roots, previewPaths = []) {
     );
   }
   console.log(`corpus: ${found.size} nodes for ${roots.length} documents`);
-  return trees;
+  // The corpus holds provisions under a path: linked children, or nodes under it.
+  const hasChildren = (path) => (found.get(path)?.child_count ?? 0) > 0 || lowerBound(`${path}0`) > lowerBound(`${path}/`);
+  return { trees, hasChildren };
 }
 
 /**
@@ -319,12 +321,8 @@ async function readWaivers(repos) {
   return waivers;
 }
 
-/**
- * Every RuleSpec module, as the provisions its rules cite and defer
- * (program-bundles-modules.ts), indexed by every path it touches and their
- * ancestors, so a document finds its modules without a scan.
- */
-async function readModules() {
+/** Every RuleSpec module file, with the files that merged under a validation waiver. */
+async function readModuleRows() {
   // A policy module's declared sources come from its row's source_citation_paths
   // (the rule index's module-source rows need a scan that runs into the
   // statement timeout at this size).
@@ -338,7 +336,17 @@ async function readModules() {
     200
   );
   const waivers = await readWaivers([...new Set(rows.map((r) => r.repo).filter(Boolean))]);
-  const modules = rows.map((row) => moduleFacts(row, [], waivers));
+  return { rows, waivers };
+}
+
+/**
+ * Every RuleSpec module, as the provisions its rules cite and defer
+ * (program-bundles-modules.ts), indexed by every path it touches and their
+ * ancestors, so a document finds its modules without a scan. Whether a cited
+ * law path is section-wide comes from the corpus (sectionWideFromCorpus).
+ */
+function indexModules({ rows, waivers }, sectionWide) {
+  const modules = rows.map((row) => moduleFacts(row, [], waivers, sectionWide));
   // A module touches a root when one of its paths is at or under the root
   // (indexed by every ancestor of the path), or at or above it (by the path itself).
   const byAncestor = new Map();
@@ -533,7 +541,25 @@ async function readParity(comparison, st, reports) {
     console.warn(`comparison report ${report}: HTTP ${res.status}`);
     return null;
   }
-  return screenerParity(await res.json(), { repo: comparison.repo, suite, report });
+  const body = await res.json();
+  // A report that records no date of its own is dated by its file's newest commit.
+  const committedAt = body?.provenance?.generated_at ? null : await lastCommitDate(comparison.repo, report);
+  return screenerParity(body, { repo: comparison.repo, suite, report, committed_at: committedAt });
+}
+
+/** When a file on a repo's main branch last changed; null when GitHub does not say. */
+async function lastCommitDate(repo, path) {
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${repo}/commits?sha=main&per_page=1&path=${encodeURIComponent(path)}`,
+      { headers: githubHeaders }
+    );
+    if (!res.ok) return null;
+    const [commit] = await res.json();
+    return commit?.commit?.committer?.date ?? commit?.commit?.author?.date ?? null;
+  } catch {
+    return null;
+  }
 }
 
 async function main() {
@@ -556,9 +582,9 @@ async function main() {
     console.log(`no program bundle files in ${CORPUS_REPO}/${BUNDLE_DIR}`);
     return;
   }
-  const [attempts, touching, policyengineLatest, reports] = await Promise.all([
+  const [attempts, moduleRows, policyengineLatest, reports] = await Promise.all([
     pages(() => supabase.from("pipeline_attempts").select("*").order("id")),
-    readModules(),
+    readModuleRows(),
     newestPolicyEngine(),
     oracleReports(),
   ]);
@@ -590,7 +616,9 @@ async function main() {
     for (const layer of bundle.layers)
       for (const tier of ["screener", "full"])
         for (const doc of layer[tier]) if (doc.scope === "in" && doc.citation_path) roots.add(doc.citation_path);
-  const trees = await corpusTrees([...roots], localScopePaths());
+  const { trees, hasChildren } = await corpusTrees([...roots], localScopePaths());
+  // A state's citation of a provision the corpus holds whole (a section held as one leaf) encodes it.
+  const touching = indexModules(moduleRows, sectionWideFromCorpus(hasChildren));
   // The screener documents' roots that are containers, so a citation of all of one counts once.
   const screenerRoots = new Set();
   for (const { bundle } of bundles)
@@ -703,6 +731,34 @@ async function main() {
       .filter((p) => p !== program)
       .map((p) => titles.get(p) ?? p)
       .sort();
+  }
+  // Each jurisdiction's own documents across every program, each document
+  // once (the /ops grid's by-state view counts them so, where a sum of the
+  // programs would count a shared document once per program), on every bundle
+  // of the jurisdiction.
+  const ownRows = new Map();
+  for (const row of documentRows) {
+    const jurisdiction = row.bundle_id.split("/")[0];
+    if (!ownRows.has(jurisdiction)) ownRows.set(jurisdiction, []);
+    ownRows.get(jurisdiction).push(row);
+  }
+  const acrossPrograms = new Map();
+  for (const [jurisdiction, rows] of ownRows) {
+    const distinct = distinctByDocument(rows);
+    acrossPrograms.set(jurisdiction, {
+      screener: tierCounts(distinct.filter((r) => r.tier === "screener")),
+      full: tierCounts(distinct.filter((r) => r.tier === "full")),
+    });
+  }
+  for (const row of bundleRows) {
+    const own = acrossPrograms.get(row.jurisdiction);
+    if (own) row.counts = { ...row.counts, jurisdiction: own };
+  }
+  const federal = acrossPrograms.get("us");
+  if (federal) {
+    console.log(
+      `federal law across programs: ${federal.screener.documents} Tier 1 documents, ${federal.full.documents} Tier 2 documents, each once`
+    );
   }
   console.log(`${bundleRows.length} bundles, ${documentRows.length} document rows, ${snapshotRows.length} snapshots`);
 

@@ -2,11 +2,23 @@ import { Fragment } from "react";
 import styles from "./run-timeline.module.css";
 import { durationLabel } from "@/lib/axiom/encoding-pipeline";
 import {
-  shortDuration,
+  clockDuration,
   type RunTimeline as Timeline,
   type TimelinePhase,
   type TimelineTool,
 } from "@/lib/axiom/encoding-pipeline-runs";
+
+/** When a step ended, in UTC: "Sep 21, 13:00 UTC". */
+export function utcTime(iso: string): string {
+  return `${new Date(iso).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "UTC",
+  })} UTC`;
+}
 
 /** A try's estimated cost: cents, or "<$0.01" below a cent. */
 const cost = (usd: number | null) => (usd === null ? "" : usd < 0.01 ? "<$0.01" : `$${usd.toFixed(2)}`);
@@ -16,12 +28,12 @@ const toolsText = (tools: TimelineTool[], most = 3) =>
   tools
     .filter((tool) => tool.name !== "other")
     .slice(0, most)
-    .map((tool) => `${tool.label} ${shortDuration(tool.ms)}`)
+    .map((tool) => `${tool.label} ${clockDuration(tool.ms)}`)
     .join(" · ");
 
 /** A phase's hover text: what it did, for how long, and a check phase's time by tool. */
 const phaseTitle = (phase: TimelinePhase) =>
-  [`${phase.label} · ${shortDuration(phase.ms)}`, ...phase.tools.map((tool) => `${tool.label} ${shortDuration(tool.ms)}`)].join("\n");
+  [`${phase.label} · ${clockDuration(phase.ms)}`, ...phase.tools.map((tool) => `${tool.label} ${clockDuration(tool.ms)}`)].join("\n");
 
 /** Axis steps, in minutes: the first that gives at most four ticks across the run. */
 const TICK_MINUTES = [1, 2, 5, 10, 15, 30, 60, 120, 240, 480, 720, 1440];
@@ -69,7 +81,7 @@ export function RunTimeline({
         <section aria-label="Encode run">
           <p className={styles.head}>
             {timeline.title}
-            <strong>{shortDuration(timeline.totalMs)}</strong>
+            <strong>{clockDuration(timeline.totalMs)}</strong>
           </p>
           <div className={styles.row} aria-hidden>
             <span />
@@ -87,7 +99,7 @@ export function RunTimeline({
               <Fragment key={bar.key}>
                 <li className={styles.row}>
                   <span className={styles.label}>{bar.label}</span>{" "}
-                  <span className={styles.time}>{shortDuration(bar.ms)}</span>{" "}
+                  <span className={styles.time}>{clockDuration(bar.ms)}</span>{" "}
                   <span className={styles.track}>
                     <span
                       className={styles.bar}
@@ -118,7 +130,7 @@ export function RunTimeline({
                                 data-kind={share.kind}
                                 data-part={share.part ?? undefined}
                                 style={{ left: pct(left), width: pct(ms) }}
-                                title={`${share.label} · ${shortDuration(share.ms)}`}
+                                title={`${share.label} · ${clockDuration(share.ms)}`}
                               />
                             );
                           });
@@ -135,7 +147,7 @@ export function RunTimeline({
                                 data-part={share.part ?? undefined}
                                 aria-hidden
                               />
-                              {share.label} <strong>{shortDuration(share.ms)}</strong>
+                              {share.label} <strong>{clockDuration(share.ms)}</strong>
                             </span>
                           </Fragment>
                         ))}
@@ -185,10 +197,10 @@ export function RunTimeline({
                                 <span
                                   className={styles.time}
                                   title={`The whole try, with its checks; the model wrote for ${
-                                    attempt.ms === null ? "an untimed span" : shortDuration(attempt.ms)
+                                    attempt.ms === null ? "an untimed span" : clockDuration(attempt.ms)
                                   }`}
                                 >
-                                  {shortDuration(attempt.wallMs!)}
+                                  {clockDuration(attempt.wallMs!)}
                                 </span>{" "}
                                 <span className={styles.tryTrack}>
                                   <span className={styles.lane}>
@@ -212,7 +224,7 @@ export function RunTimeline({
                                   className={styles.time}
                                   title="The model's time for this try; its checks are in the row below"
                                 >
-                                  {attempt.ms === null ? "—" : shortDuration(attempt.ms)}
+                                  {attempt.ms === null ? "—" : clockDuration(attempt.ms)}
                                 </span>{" "}
                                 {result}
                               </>
@@ -228,10 +240,10 @@ export function RunTimeline({
                             </span>
                             <span>Outside the tries</span>
                           </span>{" "}
-                          <span className={styles.time}>{shortDuration(split.outsideMs)}</span>{" "}
+                          <span className={styles.time}>{clockDuration(split.outsideMs)}</span>{" "}
                           <span className={styles.triesNote}>
                             {split.outside.length
-                              ? split.outside.map((part) => `${part.label} ${shortDuration(part.ms)}`).join(" · ")
+                              ? split.outside.map((part) => `${part.label} ${clockDuration(part.ms)}`).join(" · ")
                               : "the encode step's time before, between, and after the tries"}
                           </span>
                         </li>
@@ -244,10 +256,10 @@ export function RunTimeline({
                             </span>
                             <span>Checks and review</span>
                           </span>{" "}
-                          <span className={styles.time}>{shortDuration(checksMs)}</span>{" "}
+                          <span className={styles.time}>{clockDuration(checksMs)}</span>{" "}
                           <span className={styles.triesNote}>
                             between and after the tries, not timed per try; with the tries&apos; model time (
-                            {shortDuration(timeline.modelMs!)}) the loop&apos;s {shortDuration(timeline.loopMs!)}
+                            {clockDuration(timeline.modelMs!)}) the loop&apos;s {clockDuration(timeline.loopMs!)}
                           </span>
                         </li>
                       )}
@@ -267,8 +279,15 @@ export function RunTimeline({
             {timeline.after.map((step) => (
               <li key={step.key} className={styles.row} data-state={step.state}>
                 <span className={styles.label}>{step.label}</span>
-                <span className={styles.time}>{step.ms === null ? "—" : shortDuration(step.ms)}</span>
+                <span className={styles.time}>{step.ms === null ? "—" : clockDuration(step.ms)}</span>
                 <span className={styles.detail}>
+                  {/* Steps timed from the merge run side by side; when each ended keeps them apart from a sequence. */}
+                  {(step.from || step.at) && (
+                    <span className={styles.when}>
+                      {[step.ms !== null ? step.from : null, step.at ? utcTime(step.at) : null].filter(Boolean).join(" · ")}
+                      {" · "}
+                    </span>
+                  )}
                   {step.href ? (
                     <a href={step.href} target="_blank" rel="noreferrer">
                       {step.detail}

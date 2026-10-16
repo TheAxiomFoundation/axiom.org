@@ -145,6 +145,21 @@ describe("ChatWindow composing", () => {
     expect(onRateOverall).toHaveBeenCalledTimes(1);
   });
 
+  it("shows each step as a bold, numbered heading, starting with who you ask as", () => {
+    routeFetch({});
+    render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    const steps = () => [...document.querySelectorAll("legend, div.font-semibold")].map((el) => el.textContent?.replace(/\s+/g, " ").trim());
+    expect(steps()).toEqual(["1Ask as", "2Pick a household", "3Your question (edit it if you like)"]);
+    pickRetiree();
+    expect(steps()).toEqual([
+      "1Ask as",
+      "2Pick a household",
+      "3Add details (optional)",
+      "4What do you want to know? (pick one or more)",
+      "5Your question (edit it if you like)",
+    ]);
+  });
+
   it("starts empty with no household picked, asking as a resident", () => {
     routeFetch({});
     render(<ChatWindow stage="try" rulesUnlocked={false} />);
@@ -236,7 +251,7 @@ describe("ChatWindow composing", () => {
     expect(details.getByText("Income and costs")).toBeInTheDocument();
     expect(details.getByText("People in the home")).toBeInTheDocument();
     expect(screen.getByText("What do you want to know?", { exact: false })).toHaveTextContent(
-      "3What do you want to know? (pick one or more)",
+      "4What do you want to know? (pick one or more)",
     );
     // This household already pays for heat, so "Pays utilities" is not offered.
     expect(details.queryByRole("button", { name: /Pays utilities/ })).not.toBeInTheDocument();
@@ -358,13 +373,14 @@ describe("ChatWindow asking", () => {
       ["assistant", "done", "prompt-1"],
     ]);
 
-    // Rate it: the card gives way to a thank-you and the (locked) rules check.
+    // Rate it: the card gives way to a thank-you and one clear next step; no note about the locked rules check.
     fireEvent.click(within(verdict).getByRole("button", { name: "Looks right" }));
     fireEvent.click(within(verdict).getByRole("button", { name: "Yes" }));
     fireEvent.click(within(verdict).getByRole("button", { name: "Apply" }));
     fireEvent.click(within(verdict).getByRole("button", { name: "Save rating" }));
     expect(await screen.findByText("Your rating is saved. Thank you.")).toBeInTheDocument();
-    expect(screen.getByText(/Later in the session, you'll check this answer/)).toBeInTheDocument();
+    expect(screen.queryByText(/Later in the session, you'll check this answer/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Ask a new question/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "New question" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ask a follow-up" })).toBeEnabled();
     expect(calls(fetchMock, "/api/aspen/rate")[0]).toMatchObject({ promptId: "prompt-1", verdict: "right" });
@@ -622,7 +638,7 @@ describe("ChatWindow saved conversation", () => {
     openFollowUp();
     expect(draftBox().value).toBe("half typed");
     expect(screen.getByText("Your rating is saved. Thank you.")).toBeInTheDocument();
-    expect(screen.getByText(/Later in the session, you'll check this answer/)).toBeInTheDocument();
+    expect(screen.queryByText(/Later in the session, you'll check this answer/)).not.toBeInTheDocument();
     await waitFor(() => expect(saved().turns[3]).toMatchObject({ status: "error", content: "Interrupted. Ask again." }));
     expect(saved()).toMatchObject({ conversationId: "c-1", template: "the template", rated: ["p1"] });
   });

@@ -44,6 +44,54 @@ export function pipelineAttempt(overrides: Partial<PipelineAttempt> = {}): Pipel
   };
 }
 
+/** One module a person's PR merged into the default branch outside the pipeline. */
+export function outsideAttempt(overrides: Partial<PipelineAttempt> = {}): PipelineAttempt {
+  return pipelineAttempt({
+    id: "pr:rulespec-us#900:us/statutes/7/2017/a.yaml",
+    queue_ref: "outside",
+    run_url: "https://github.com/TheAxiomFoundation/rulespec-us/pull/900",
+    run_attempt: null,
+    dispatched_at: "2026-09-22T08:00:00Z",
+    started_at: null,
+    finished_at: "2026-09-23T09:00:00Z",
+    run_conclusion: "success",
+    dispatched_by: "MaxGhenis",
+    pr_repo: "rulespec-us",
+    pr_number: 900,
+    pr_url: "https://github.com/TheAxiomFoundation/rulespec-us/pull/900",
+    pr_state: "merged",
+    pr_base_branch: "main",
+    pr_targets_default: true,
+    pr_created_at: "2026-09-22T08:00:00Z",
+    pr_merged_at: "2026-09-23T09:00:00Z",
+    pr_checks: "none",
+    pr_review: "none",
+    module_paths: ["us/statutes/7/2017/a.yaml"],
+    ...overrides,
+  });
+}
+
+/** A module the encoder wrote inside run 1001 (another citation's run), from its own record. */
+export function dependentAttempt(overrides: Partial<PipelineAttempt> = {}): PipelineAttempt {
+  return pipelineAttempt({
+    id: "dep:5e2a7c10",
+    citation: "us/statute/42/402/q",
+    queue_ref: "dependent:1001",
+    run_attempt: null,
+    dispatched_at: "2026-09-20T10:20:00Z",
+    started_at: null,
+    finished_at: "2026-09-20T10:20:00Z",
+    run_conclusion: "failure",
+    encoder_run_id: "5e2a7c10",
+    encoder_status: "apply_blocked_validation",
+    encoder_error: "statutes/42/402/q.yaml: compile: Axiom rules engine compile failed: unknown field `values`",
+    failure_source: "encoder_run",
+    generation_attempts: 4,
+    cost_usd: 0.4,
+    ...overrides,
+  });
+}
+
 /** A dispatch whose PR merged into the default branch at `merged`. */
 export function mergedAttempt(overrides: Partial<PipelineAttempt> = {}): PipelineAttempt {
   return pipelineAttempt({

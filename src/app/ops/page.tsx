@@ -4,6 +4,7 @@ import { BundleOverview } from "@/components/axiom/bundle-overview";
 import { ProgramBundle } from "@/components/axiom/program-bundle";
 import { OpsPipeline } from "@/components/axiom/ops-pipeline";
 import { PipelineLedger } from "@/components/axiom/pipeline-ledger";
+import { WorkflowHealthStrip } from "@/components/axiom/workflow-health";
 import { pipelineView } from "@/lib/axiom/encoding-pipeline";
 import { getPipelineAttempts } from "@/lib/axiom/encoding-pipeline-data";
 import { getCorpusView, scopeCorpus } from "@/lib/axiom/corpus-releases";
@@ -19,8 +20,9 @@ import {
 } from "@/lib/axiom/encoding-pipeline-insights";
 import { dispatchFlow, encodeParts, runRows, stepTimes, testsParts } from "@/lib/axiom/encoding-pipeline-runs";
 import { getBundleSummaries, getProgramBundle } from "@/lib/axiom/program-bundles-data";
-import { getEncodingStatus, getRecentCorpusScopes } from "@/lib/corpus-status";
+import { getEncodingStatus, getRecentCorpusScopes, groupRecentScopes } from "@/lib/corpus-status";
 import { SITE_URL } from "@/lib/urls";
+import { getWorkflowHealth } from "@/lib/axiom/workflow-health";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +53,7 @@ export default async function OpsPage({
   const bundleId = typeof params.bundle === "string" && BUNDLE_ID_RE.test(params.bundle) ? params.bundle : null;
   const count = params.count === "provisions" ? "provisions" : "documents";
   const program = typeof params.program === "string" ? params.program : undefined;
-  const [encodingStatus, queues, recentScopes, pipeline, corpus, bundles, bundle] = await Promise.all([
+  const [encodingStatus, queues, recentScopes, pipeline, corpus, bundles, bundle, workflows] = await Promise.all([
     getEncodingStatus(),
     getEncodingQueues(),
     getRecentCorpusScopes(),
@@ -59,6 +61,7 @@ export default async function OpsPage({
     getCorpusView(),
     getBundleSummaries(),
     bundleId ? getProgramBundle(bundleId) : null,
+    getWorkflowHealth(),
   ]);
   // One clock for the server render and the client's first paint.
   const referenceMs = Date.now();
@@ -71,22 +74,34 @@ export default async function OpsPage({
       initialStatus={encodingStatus.value}
       encodingError={encodingStatus.error}
       queues={queues}
-      recentScopes={recentScopes}
+      recentPlaces={groupRecentScopes(recentScopes)}
+      // Runs waiting for approval or in setup have no live row until their encoder starts.
+      starting={{
+        runs: attempts.filter((attempt) => attempt.run_status !== "completed").map((attempt) => ({ citation: attempt.citation })),
+        collectedAt: attempts.reduce<string | null>(
+          (newest, attempt) => (!newest || attempt.collected_at > newest ? attempt.collected_at : newest),
+          null
+        ),
+      }}
       bundles={
         bundle ? (
           <ProgramBundle
             key={bundleId}
             bundle={bundle.bundle}
             documents={bundle.documents}
+            snapshots={bundle.snapshots}
             available={bundle.available}
             referenceMs={referenceMs}
             initialCount={count}
           />
         ) : bundles.length ? (
-          <BundleOverview bundles={bundles} initialProgram={program} initialCount={count} />
+          <BundleOverview bundles={bundles} initialProgram={program} initialCount={count} referenceMs={referenceMs} />
         ) : undefined
       }
       initialTab={tab}
+      // The workflows the pipeline depends on, under the fleet box. Without a
+      // key, React warns about this element in development.
+      workflows={<WorkflowHealthStrip key="workflows" workflows={workflows} referenceMs={referenceMs} />}
       // With the pipeline shown, the ledger is built from every run rather
       // than the encoder's own records, and follows the page's scope.
       ledger={

@@ -1,7 +1,17 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BREAKOUT_PROMPT, DISCLOSURE, EVENT, GOLDEN_A, ONE_SET_OF_RULES, STAGES } from "@/lib/aspen/content";
-import { countWord, snapQcTotals } from "@/lib/verification-evidence";
+import {
+  GROUP_PHONE_INTRO,
+  BUILD_HEADING,
+  DISCLOSURE,
+  EVENT,
+  FOUNDATION_TRAITS,
+  GOLDEN_A,
+  GROUP_QUESTIONS,
+  ONE_SET_OF_RULES,
+  ONE_SET_STATEMENT,
+  STAGES,
+} from "@/lib/aspen/content";
 import {
   Agenda,
   Disclosure,
@@ -14,6 +24,7 @@ import {
   ThankYouContent,
   VoteCard,
   WelcomeLanding,
+  YourContribution,
   YourThread,
   type ThreadQuestion,
 } from "./stages";
@@ -97,7 +108,8 @@ describe("Disclosure", () => {
   it("works without an onOpen handler", () => {
     render(<Disclosure />);
     fireEvent.click(screen.getByRole("button", { name: "What we keep" }));
-    expect(screen.getByText(DISCLOSURE.details[0])).toBeInTheDocument();
+    expect(screen.getByText(DISCLOSURE.details[0].title)).toBeInTheDocument();
+    expect(screen.getByText(DISCLOSURE.details[0].text)).toBeInTheDocument();
   });
 });
 
@@ -107,8 +119,10 @@ describe("WelcomeLanding", () => {
     const onStart = vi.fn();
     render(<WelcomeLanding onStart={onStart} />);
     expect(screen.getByRole("heading", { level: 1, name: EVENT.title })).toBeInTheDocument();
-    expect(screen.getByText(STAGES[0].summary)).toBeInTheDocument();
-    expect(screen.getByText(`With ${EVENT.hosts}`)).toBeInTheDocument();
+    // Just the question and the button: no summary line and no hosts line.
+    expect(screen.queryByText(STAGES[0].summary)).not.toBeInTheDocument();
+    expect(screen.queryByText(/With Ariel Kennan and Max Ghenis/)).not.toBeInTheDocument();
+    expect(EVENT.title).not.toMatch(/your residents/i);
     // No agenda and no profile form on the landing: the stage menu holds the agenda.
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
@@ -143,36 +157,9 @@ describe("YourThread", () => {
     }
   });
 
-  it("asks people who haven't asked yet to try", () => {
-    const onOpen = vi.fn();
-    render(<YourThread stage="reveal" thread={null} onOpen={onOpen} />);
-    expect(screen.getByText(/You haven't asked the AI yet/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Ask the AI →" }));
-    expect(onOpen).toHaveBeenCalledTimes(1);
-  });
-
-  it("points a rated answer at the results", () => {
+  it("leaves What we saw to its own summary of what you contributed", () => {
     render(<YourThread stage="reveal" thread={asked} onOpen={vi.fn()} />);
-    expect(
-      screen.getByText("You asked about “Retiree in Phoenix”. Your rating is in the results below."),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("button")).not.toBeInTheDocument();
-  });
-
-  it("asks for a rating on an unrated answer to the participant's own question", () => {
-    const onOpen = vi.fn();
-    render(
-      <YourThread
-        stage="reveal"
-        thread={{ ...asked, householdId: null, householdLabel: null, rated: false }}
-        onOpen={onOpen}
-      />,
-    );
-    expect(
-      screen.getByText("You asked about your own question. Rate the answer so it counts in the results below."),
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Rate my answer →" }));
-    expect(onOpen).toHaveBeenCalled();
+    expect(screen.queryByText(/You asked about/)).not.toBeInTheDocument();
   });
 
   it("ties the Arizona household to PolicyBench at scale", () => {
@@ -183,20 +170,20 @@ describe("YourThread", () => {
         onOpen={vi.fn()}
       />,
     );
-    expect(screen.getByText(/every one of the 46 models said it gets \$0/)).toBeInTheDocument();
+    expect(screen.getByText(/every one of the 50 models said it gets \$0/)).toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
   it("ties other households to the results at scale", () => {
     render(<YourThread stage="scale" thread={asked} onOpen={vi.fn()} />);
-    expect(screen.getByText(/Here is how AI does on households like it, at scale\./)).toBeInTheDocument();
+    expect(screen.getByText(/Here's how AI does at scale\./)).toBeInTheDocument();
   });
 
   it("sends people to check their answer on the shared foundation", () => {
     const onOpen = vi.fn();
     render(<YourThread stage="foundation" thread={asked} onOpen={onOpen} />);
     expect(
-      screen.getByText("Now check the AI's answer about “Retiree in Phoenix” against the encoded rules."),
+      screen.getByText("Check the AI's answer about “Retiree in Phoenix” against the rules."),
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Check my answer →" }));
     expect(onOpen).toHaveBeenCalled();
@@ -238,8 +225,8 @@ describe("SmallGroups", () => {
   it("puts the vote and the group's idea on one screen, in that order", () => {
     stubFetch();
     render(<SmallGroups stage="groups" />);
-    const vote = screen.getByRole("heading", { name: "1Vote" });
-    const talk = screen.getByRole("heading", { name: "2Talk it through" });
+    const vote = screen.getByRole("heading", { level: 2, name: "Vote" });
+    const talk = screen.getByRole("heading", { level: 2, name: "Talk it through" });
     expect(vote.compareDocumentPosition(talk) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByRole("button", { name: "Vote" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Share with the room" })).toBeInTheDocument();
@@ -250,31 +237,57 @@ describe("GroupsCard", () => {
   it("shares the group's best idea with the room, more than once", async () => {
     const fetchMock = stubFetch();
     render(<GroupsCard stage="groups" />);
-    expect(screen.getByText(BREAKOUT_PROMPT)).toBeInTheDocument();
+    expect(screen.getByText(GROUP_PHONE_INTRO)).toBeInTheDocument();
     const share = screen.getByRole("button", { name: "Share with the room" });
     expect(share).toBeDisabled();
 
-    const project = screen.getByRole("button", { name: "Project policy changes" });
-    fireEvent.click(project);
-    expect(project).toHaveAttribute("aria-pressed", "true");
+    // One menu for the group's pick, not a second row of chips.
+    const pick = screen.getByRole("combobox", { name: "Your group's pick" });
+    expect(pick).toHaveValue("");
+    fireEvent.change(pick, { target: { value: "project" } });
     // A use case alone is not an idea.
     expect(share).toBeDisabled();
-    fireEvent.change(screen.getByRole("textbox", { name: /Your group's best idea/ }), {
+    fireEvent.change(screen.getByRole("textbox", { name: /What would you build first\?/ }), {
       target: { value: "Model the shelter cap" },
     });
     fireEvent.click(share);
     expect(screen.getByText("Shared. It's on the big screen.")).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: /Your group's best idea/ })).toHaveValue("");
+    expect(screen.getByRole("textbox", { name: /What would you build first\?/ })).toHaveValue("");
 
-    // Tapping the use case again clears it.
-    fireEvent.click(project);
-    expect(project).toHaveAttribute("aria-pressed", "false");
-    fireEvent.change(screen.getByRole("textbox", { name: /Your group's best idea/ }), { target: { value: "Train staff" } });
+    // "Not decided" clears it.
+    fireEvent.change(pick, { target: { value: "" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /What would you build first\?/ }), { target: { value: "Train staff" } });
     fireEvent.click(share);
     await waitFor(() =>
       expect(bodies(fetchMock, "/api/aspen/event")).toEqual([
-        { participantId: "p-1", kind: "breakout", payload: { useCase: "project", note: "Model the shelter cap", raised: "" }, stage: "groups" },
-        { participantId: "p-1", kind: "breakout", payload: { useCase: null, note: "Train staff", raised: "" }, stage: "groups" },
+        { participantId: "p-1", kind: "breakout", payload: { useCase: "project", note: "Model the shelter cap", who: "", trust: "", raised: "" }, stage: "groups" },
+        { participantId: "p-1", kind: "breakout", payload: { useCase: null, note: "Train staff", who: "", trust: "", raised: "" }, stage: "groups" },
+      ]),
+    );
+  });
+
+  it("starts the group's pick from this phone's own vote", () => {
+    stubFetch();
+    localStorage.setItem("aspen.vote.v1", JSON.stringify("flows"));
+    render(<GroupsCard stage="groups" />);
+    expect(screen.getByRole("combobox", { name: "Your group's pick" })).toHaveValue("flows");
+  });
+
+  it("asks the three questions, one box each, and shares all three", async () => {
+    const fetchMock = stubFetch();
+    render(<GroupsCard stage="groups" />);
+    for (const q of GROUP_QUESTIONS) expect(screen.getByRole("textbox", { name: new RegExp(q.label.replace(/[?,]/g, ".")) })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: /Who would use it/ }), { target: { value: "Caseworkers on intake" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /trust it/ }), { target: { value: "Our policy unit signs off" } });
+    fireEvent.click(screen.getByRole("button", { name: "Share with the room" }));
+    await waitFor(() =>
+      expect(bodies(fetchMock, "/api/aspen/event")).toEqual([
+        {
+          participantId: "p-1",
+          kind: "breakout",
+          payload: { useCase: null, note: "", who: "Caseworkers on intake", trust: "Our policy unit signs off", raised: "" },
+          stage: "groups",
+        },
       ]),
     );
   });
@@ -292,7 +305,7 @@ describe("GroupsCard", () => {
     expect(raised).toHaveValue("");
     await waitFor(() =>
       expect(bodies(fetchMock, "/api/aspen/event")).toEqual([
-        { participantId: "p-1", kind: "breakout", payload: { useCase: null, note: "", raised: "Union rules on new tools" }, stage: "groups" },
+        { participantId: "p-1", kind: "breakout", payload: { useCase: null, note: "", who: "", trust: "", raised: "Union rules on new tools" }, stage: "groups" },
       ]),
     );
   });
@@ -303,7 +316,7 @@ describe("NextStepsForm", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Name" }), { target: { value: "Ada" } });
     fireEvent.change(screen.getByRole("textbox", { name: "Title" }), { target: { value: "Director" } });
     fireEvent.change(screen.getByRole("textbox", { name: "Email" }), { target: { value: "ada@az.gov" } });
-    fireEvent.change(screen.getByRole("textbox", { name: "Note" }), { target: { value: "Call me" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /^Note/ }), { target: { value: "Call me" } });
   }
 
   it("stays disabled until an email and a topic are given", () => {
@@ -410,30 +423,93 @@ describe("ThankYouContent", () => {
   });
 });
 
+describe("YourContribution", () => {
+  const asked: ThreadQuestion = {
+    householdId: "az-retiree",
+    householdLabel: "Retiree in Phoenix",
+    perspective: "resident",
+    asked: true,
+    rated: true,
+  };
+
+  it("asks people who haven't asked yet to try", () => {
+    const onOpen = vi.fn();
+    render(<YourContribution thread={null} onOpen={onOpen} />);
+    expect(screen.getByRole("heading", { name: "What you contributed" })).toBeInTheDocument();
+    expect(screen.getByText(/You haven't asked the AI yet/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Ask the AI →" }));
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("checks off a question that was asked and rated, and offers the overall ratings", () => {
+    render(<YourContribution thread={asked} onOpen={vi.fn()} />);
+    expect(screen.getByText("You asked about “Retiree in Phoenix”.")).toBeInTheDocument();
+    expect(screen.getByText("You rated the answer.")).toBeInTheDocument();
+    expect(screen.getByText(/You haven't shared how AI did overall/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Share it →" })).toBeInTheDocument();
+  });
+
+  it("asks for a rating on an unrated answer, and says when the overall ratings are in", () => {
+    localStorage.setItem("aspen.overall.v1", "true");
+    const onOpen = vi.fn();
+    render(<YourContribution thread={{ ...asked, householdId: null, householdLabel: null, rated: false }} onOpen={onOpen} />);
+    expect(screen.getByText("You asked about your own question.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Rate my answer →" }));
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("You shared how AI did overall.")).toBeInTheDocument();
+  });
+});
+
 describe("PolicyBenchContent", () => {
   it("shows the one number and the Arizona household every model got wrong", () => {
     render(<PolicyBenchContent />);
-    expect(screen.getByText("41%")).toBeInTheDocument();
-    expect(screen.getByText("242 of 591 answers, from 46 models.")).toBeInTheDocument();
-    expect(screen.getByText(/An Arizona household · 46 of 46 models said \$0/)).toBeInTheDocument();
+    expect(screen.getByText("42%")).toBeInTheDocument();
+    expect(screen.getByText("268 of 643 answers, from 50 models.")).toBeInTheDocument();
+    // The same shape as What we saw: a block heading, then numbered parts.
+    expect(screen.getByRole("heading", { level: 2, name: "Across 50 AI models" })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([
+      "1Families who qualify, told $0",
+      "2One Arizona household",
+    ]);
+    expect(screen.getByText("All 50 AI models said $0.")).toBeInTheDocument();
     expect(screen.getByText("The rules: eligible, $24 a month.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "policybench.org" })).toHaveAttribute("href", "https://policybench.org");
   });
 });
 
 describe("FoundationContent and GoldenContent", () => {
-  it("shows one set of rules powering every use, with the SNAP QC replay", () => {
+  it("lays the idea out as numbered parts, with the room's answer first once there is one", () => {
+    const { unmount } = render(<FoundationContent />);
+    expect(screen.getByRole("heading", { level: 2, name: "One open, validated set of rules" })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([
+      "1What you can check",
+      "2What it powers",
+      `3${BUILD_HEADING}`,
+    ]);
+    unmount();
+    render(
+      <FoundationContent
+        sourceOfTruth={[
+          { id: "yes", label: "Yes", count: 1 },
+          { id: "partly", label: "Partly", count: 2 },
+          { id: "no", label: "No", count: 0 },
+        ]}
+      />,
+    );
+    expect(screen.getAllByRole("heading", { level: 3 })[0].textContent).toBe("1Checking answers in this room");
+  });
+
+  it("shows one set of rules powering every use, worded as on the slide", () => {
     render(<FoundationContent />);
-    const qc = snapQcTotals();
     expect(screen.getByText("One open, validated set of rules")).toBeInTheDocument();
+    for (const trait of FOUNDATION_TRAITS) expect(screen.getByText(trait)).toBeInTheDocument();
     for (const use of ONE_SET_OF_RULES) expect(screen.getByText(use.label)).toBeInTheDocument();
-    expect(screen.getByText("SNAP benefit math already checks out.")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        new RegExp(`from ${countWord(qc.states)} states \\(${qc.households.toLocaleString("en-US")} households\\)`),
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "What it takes for a state" })).toBeInTheDocument();
+    expect(screen.getByText(ONE_SET_STATEMENT.accent)).toBeInTheDocument();
+    // The slide dropped these, so the phones do too.
+    expect(screen.queryByText("One source of truth")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Cited to the law/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/SNAP benefit math already checks out/)).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: BUILD_HEADING })).toBeInTheDocument();
     expect(screen.getByText("Gold A")).toBeInTheDocument();
   });
 
@@ -445,6 +521,12 @@ describe("FoundationContent and GoldenContent", () => {
       expect(screen.getByText(tier.gets)).toBeInTheDocument();
       expect(screen.getByText(tier.takes)).toBeInTheDocument();
     }
-    expect(screen.getAllByText("Your state gets")).toHaveLength(3);
+    // Plain labels: no small "Your state gets" eyebrow, and one "Takes:" per step.
+    expect(screen.queryByText("Your state gets")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Takes:")).toHaveLength(3);
+    // Each step is a row that opens on a tap: the name shows, the details wait.
+    const rows = document.querySelectorAll("details");
+    expect(rows).toHaveLength(GOLDEN_A.length);
+    for (const row of rows) expect(row).not.toHaveAttribute("open");
   });
 });
