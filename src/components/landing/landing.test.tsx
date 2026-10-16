@@ -66,11 +66,16 @@ describe('Landing sections', () => {
     // The terminal animation gave way to the journey film (scroll-
     // scrubbed on wide viewports, self-running elsewhere).
     expect(screen.queryByText(/axiom encode/i)).not.toBeInTheDocument()
-    // The journey opens on the reading-room act (the film crossfades
-    // in after it).
+    // The journey opens on the law library (jsdom has no WebGL, so it
+    // renders the poster sequence) and ends on links to each step.
     expect(
-      screen.getByRole('img', { name: /a law library: five bays/i }),
+      screen.getByRole('img', { name: /a dark law library under one lamp/i }),
     ).toBeInTheDocument()
+    // each step links to the real page behind it, under its caption and
+    // again on the end cards
+    for (const link of screen.getAllByRole('link', { name: /read § 2017/i })) {
+      expect(link).toHaveAttribute('href', '/us/statute/7/2017')
+    }
     // The Read / Encode / Verify step cards stay removed.
     for (const step of ['Read', 'Encode', 'Verify']) {
       expect(
@@ -83,6 +88,18 @@ describe('Landing sections', () => {
   // deterministic checks, independent oracle cross-checks, and AI judges.
   // Claiming a human approver is comfort language for a step that does not
   // exist, and it has reached copy twice now — so it fails the build.
+  // The journey's words: the encode beat is labelled an illustration,
+  // registry numbers carry their snapshot, and nothing is called
+  // certified, signed or sealed (the statute's own "certified as
+  // eligible" is drawn on the canvas, never in the page text).
+  it('keeps the journey captions inside the copy rules', () => {
+    const { container } = render(<EncoderSection />)
+    const text = container.textContent ?? ''
+    expect(text).toMatch(/encode · an illustration/i)
+    expect(text).toMatch(/all the law · \w+ \d{4} snapshot/i)
+    expect(text).not.toMatch(/\b(certified|signed|sealed)\b/i)
+  })
+
   it('claims no human review gate in the encoder section', () => {
     const { container } = render(<EncoderSection />)
     const text = container.textContent ?? ''
