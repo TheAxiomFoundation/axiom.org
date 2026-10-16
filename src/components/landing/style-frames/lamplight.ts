@@ -28,7 +28,7 @@ import {
   sortedRandoms,
   type BeatCtx,
   type BeatSpec,
-  type Look, themed, themedLook, THEME, QuadMorph, carryOnScreen } from "./kit";
+  type Look, themed, themedLook, THEME, QuadMorph, carryOnScreen, SceneFade } from "./kit";
 
 const AMBER = new THREE.Color("#ffab4a");
 const CREAM = new THREE.Color("#fff0d4");
@@ -765,7 +765,7 @@ export function lamplightBeat5(ctx: BeatCtx): BeatSpec {
         [1, -1],
       ].map(([x, y]) => carryOnScreen(node.clone().addScaledVector(right, x * hs).addScaledVector(upV, y * hs), nc, camera, d));
       const e = ease(seg(k, 0.015 * i, 0.5 + 0.015 * i));
-      fly.set(e, to, 1 - 0.4 * seg(k, 0.35, 0.55));
+      fly.set(e, to, 1 - seg(k, 0.5, 0.8));
       c.mesh.visible = false;
     });
     // the wires draw back out as the cards leave
@@ -773,8 +773,11 @@ export function lamplightBeat5(ctx: BeatCtx): BeatSpec {
       drawShare(ed.tube, 1 - ease(seg(k, 0, 0.3)));
       ed.ports.forEach((p) => (p.visible = k < 0.15));
     });
+    fadeOut?.apply(1 - ease(seg(k, 0, 0.3)));
   };
+  let fadeOut: SceneFade | null = null;
   const update = (t: number) => {
+    fadeOut?.reset();
     flies.forEach(({ fly }) => fly.reset());
     camera.position.lerpVectors(camFrom, camTo, ease(t));
     camera.lookAt(0.7, -0.1, 0);
@@ -803,6 +806,7 @@ export function lamplightBeat5(ctx: BeatCtx): BeatSpec {
       }
     });
   };
+  fadeOut = new SceneFade([scene, fx], (m) => flies.some((f) => f.fly.fly.material === m));
   return { camera, look, update, cutIn: () => {}, cutOut, parts: { cards } };
 
 }

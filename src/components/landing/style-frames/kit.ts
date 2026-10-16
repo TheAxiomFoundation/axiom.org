@@ -913,10 +913,13 @@ export class QuadMorph {
     const mat = (src.material as THREE.MeshBasicMaterial).clone();
     mat.transparent = true;
     mat.side = THREE.DoubleSide;
+    // in flight it passes in front of everything else in the scene
+    mat.depthTest = false;
+    mat.depthWrite = false;
     this.fly = new THREE.Mesh(geo, mat);
     this.fly.frustumCulled = false;
     this.fly.visible = false;
-    this.fly.renderOrder = 5;
+    this.fly.renderOrder = 100;
     scene.add(this.fly);
   }
   // back to the scene's own state (each frame, before any cut)
@@ -943,5 +946,42 @@ export class QuadMorph {
     this.from ??= planeCorners(this.src, this.rect);
     const d = this.from[0].distanceTo(here.position);
     return planeCorners(target, targetRect).map((p) => carryOnScreen(p, next, here, d));
+  }
+}
+
+// fading a whole scene out (all but what flies on): every material is
+// made transparent when the scene is built, so the fade only changes a
+// number and never builds a new shader mid-scroll
+export class SceneFade {
+  private mats: Array<{ m: THREE.Material & { uniforms?: Record<string, THREE.IUniform> }; base: number; baseU: number }> = [];
+  constructor(roots: THREE.Object3D[], keep: (m: THREE.Material) => boolean = () => false) {
+    const seen = new Set<THREE.Material>();
+    roots.forEach((r) =>
+      r.traverse((o) => {
+        const mm = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
+        (Array.isArray(mm) ? mm : mm ? [mm] : []).forEach((m) => {
+          if (seen.has(m) || keep(m)) return;
+          seen.add(m);
+          m.transparent = true;
+          const u = m as THREE.Material & { uniforms?: Record<string, THREE.IUniform> };
+          this.mats.push({ m: u, base: m.opacity, baseU: u.uniforms?.uOpacity?.value ?? 1 });
+        });
+      }),
+    );
+  }
+  // at the start of the scene's update: back to its own opacities (the
+  // update then sets whatever it animates)
+  reset() {
+    this.mats.forEach((e) => {
+      e.m.opacity = e.base;
+      if (e.m.uniforms?.uOpacity) e.m.uniforms.uOpacity.value = e.baseU;
+    });
+  }
+  // after the update, in the way out: v 1 = as set, 0 = gone
+  apply(v: number) {
+    this.mats.forEach((e) => {
+      if (e.m.uniforms?.uOpacity) e.m.uniforms.uOpacity.value *= v;
+      else e.m.opacity *= v;
+    });
   }
 }

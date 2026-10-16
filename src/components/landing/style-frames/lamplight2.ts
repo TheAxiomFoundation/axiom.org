@@ -38,6 +38,7 @@ import {
   QuadMorph,
   carryOnScreen,
   planeCorners,
+  SceneFade,
 } from "./kit";
 import { STATUTE_TEXT } from "./pages";
 
@@ -630,8 +631,10 @@ export function lamplightBeat3(ctx: BeatCtx): BeatSpec {
   // the way out: the encoded rule flies to the code page of the next
   // scene and becomes it
   const passFly = new QuadMorph(scene, passCard);
+  let fadeOut: SceneFade | null = null;
   const update = (t: number) => {
     passFly.reset();
+    fadeOut?.reset();
     // the gates come up out of the dark after the sentence has arrived
     const appear = ease(seg(t, 0.0, 0.14));
     // draft 1: the text into encode, out into the card, on to checks
@@ -691,9 +694,16 @@ export function lamplightBeat3(ctx: BeatCtx): BeatSpec {
     const target = next?.parts?.right as THREE.Mesh | undefined;
     if (!next || !target) return;
     const e = ease(seg(k, 0, 0.55));
-    passFly.set(e, passFly.toward(target, next.camera, camera));
+    // it hands over to the code page as it arrives
+    passFly.set(e, passFly.toward(target, next.camera, camera), 1 - seg(k, 0.45, 0.75));
     passCard.visible = false;
+    // the rest of the scene clears away as it leaves
+    const rest = 1 - ease(seg(k, 0, 0.35));
+    fadeOut?.apply(rest);
+    gateLabels.forEach((l) => (l.el.style.opacity = String(Number(l.el.style.opacity || 1) * rest)));
+    redraft.el.style.opacity = String(Number(redraft.el.style.opacity || 1) * rest);
   };
+  fadeOut = new SceneFade([scene, fx], (m) => m === passFly.fly.material);
   return { camera, look, update, cutIn: () => {}, cutOut };
 
 }
@@ -952,6 +962,7 @@ export function lamplightBeat4(ctx: BeatCtx): BeatSpec {
     const inn = ease(seg(t, 0, 0.26));
     left.position.lerpVectors(leftFrom, leftTo, inn);
     right.position.lerpVectors(rightFrom, rightTo, inn);
+    fadeOut?.reset();
     fade(left, inn);
     fade(right, 1);
     strips.forEach((st) => st.fly.reset());
@@ -983,8 +994,12 @@ export function lamplightBeat4(ctx: BeatCtx): BeatSpec {
       const e = ease(seg(k, 0.02 * i, 0.45 + 0.02 * i));
       st.fly.set(e, st.fly.toward(card.mesh, next.camera, camera));
     });
-    (right.material as THREE.MeshBasicMaterial).opacity = 1 - ease(seg(k, 0, 0.15));
+    // the page itself goes as its blocks leave it; the rest clears away
+    fadeOut?.apply(1 - ease(seg(k, 0, 0.3)));
+    strips.forEach((st) => ((st.fly.fly.material as THREE.MeshBasicMaterial).opacity *= 1 - seg(k, 0.5, 0.8)));
   };
+  let fadeOut: SceneFade | null = null;
+  fadeOut = new SceneFade([scene, fx], (m) => strips.some((st) => st.fly.fly.material === m));
   return { camera, look, update, cutIn: () => {}, cutOut, parts: { right } };
 
 }
@@ -1040,7 +1055,8 @@ export function lamplightBeat6(ctx: BeatCtx): BeatSpec {
     o.size = 0.05 + r() * 0.03;
     o.alpha = 0.9;
   });
-  fx.add(new THREE.Points(g, particleMaterial({ focus, aperture: 2.4 })));
+  const clusterMat = particleMaterial({ focus, aperture: 2.4 });
+  fx.add(new THREE.Points(g, clusterMat));
   const gPos = g.attributes.position as THREE.BufferAttribute;
   const gHome = Float32Array.from(gPos.array as Float32Array);
   const gTo = new Float32Array(gHome.length);
@@ -1081,7 +1097,9 @@ export function lamplightBeat6(ctx: BeatCtx): BeatSpec {
   const camFrom = heroP.clone().add(new THREE.Vector3(-0.3, 0.35, 2.6));
   const aimFrom = heroP.clone();
   const focusTo = look.dof!.focus;
+  let fadeOut: SceneFade | null = null;
   const update = (t: number) => {
+    fadeOut?.reset();
     if (gMoved) {
       (gPos.array as Float32Array).set(gHome);
       gPos.needsUpdate = true;
@@ -1119,7 +1137,10 @@ export function lamplightBeat6(ctx: BeatCtx): BeatSpec {
     gPos.needsUpdate = true;
     gMoved = true;
     (wiresMesh.material as THREE.LineBasicMaterial).opacity = (THEME.paper ? 0.2 : 0.12) * (1 - seg(k, 0, 0.25));
+    // the small cluster's wires and dots, and the rest, clear away
+    fadeOut?.apply(1 - ease(seg(k, 0, 0.3)));
   };
+  fadeOut = new SceneFade([scene, fx], (m) => m === clusterMat);
   return { camera, look, update, cutIn: () => {}, cutOut, parts: { heroNodes } };
 
 }
