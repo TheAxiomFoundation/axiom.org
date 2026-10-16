@@ -36,7 +36,6 @@ import {
   themed,
   themedLook,
   QuadMorph,
-  keepAspect,
   carryOnScreen,
   planeCorners,
   SceneFade,
@@ -298,8 +297,85 @@ export function lamplightBeat2(ctx: BeatCtx): BeatSpec {
 // a.test.yaml case 1. Draft 1 is the illustration's mistake: it writes the
 // rate as 30, not 0.30, so the test's contribution comes out a hundred times
 // too large (386.50 × 30 = 11,595 against the expected 115.95).
-const CARD_W = 1180;
-const CARD_H = 600;
+// rows of a.yaml as the code page draws them: line numbers, monospace,
+// the same colours and spacing. The encode cards draw their rows with it
+// too, so a card's rows land on the page's rows one for one.
+const CODE_LH = 47;
+function drawCodeRows(
+  g: CanvasRenderingContext2D,
+  rows: typeof CODE,
+  y0: number,
+  w: number,
+  opts: { links?: boolean; lines?: Map<number, number>; swap?: Record<number, string> } = {},
+) {
+  const mono = fontVar("--font-mono");
+  const serif = fontVar("--font-serif");
+  let y = y0;
+  rows.forEach((row) => {
+    if ("gap" in row) {
+      g.fillStyle = "rgba(255, 225, 190, 0.25)";
+      g.font = `400 28px ${mono}`;
+      g.fillText("⋮", 100, y);
+      y += CODE_LH;
+      return;
+    }
+    opts.lines?.set(row.n, y);
+    const link = opts.links ? LINKS.find((l) => l.line === row.n) : undefined;
+    if (link) {
+      const hot = link.id === HERO_LINK;
+      g.strokeStyle = hot ? "rgba(255, 180, 92, 0.85)" : "rgba(255, 190, 120, 0.35)";
+      g.lineWidth = hot ? 3 : 2;
+      g.setLineDash([3, 7]);
+      g.beginPath();
+      g.moveTo(40, y - 10);
+      g.lineTo(78, y - 10);
+      g.stroke();
+      g.setLineDash([]);
+      badge(g, 100, y - 10, link.n, hot, mono);
+      if (hot) {
+        g.fillStyle = "rgba(255, 171, 74, 0.1)";
+        g.fillRect(170, y - 36, w - 230, 44);
+      }
+    }
+    g.fillStyle = "rgba(255, 225, 190, 0.32)";
+    g.font = `400 27px ${mono}`;
+    g.textAlign = "right";
+    g.fillText(String(row.n), 160, y);
+    g.textAlign = "left";
+    const text = opts.swap?.[row.n] ?? row.text;
+    const q = text.indexOf('"');
+    g.font = `400 29px ${mono}`;
+    if (q > 0) {
+      g.fillStyle = "rgba(246, 234, 216, 0.6)";
+      g.fillText(text.slice(0, q), 190, y);
+      const x = 190 + g.measureText(text.slice(0, q)).width;
+      g.fillStyle = "#9fe0b4";
+      g.font = `italic 400 34px ${serif}`;
+      g.fillText(text.slice(q), x, y);
+    } else {
+      const isName = /- name:/.test(text);
+      const isNum = /^\s+[\d.]+$/.test(text);
+      g.fillStyle = isNum ? "#ffb45c" : isName ? "#f6ead8" : "rgba(246, 234, 216, 0.66)";
+      g.font = `${isName || isNum ? 500 : 400} 29px ${mono}`;
+      const max = w - 230;
+      let t = text;
+      while (g.measureText(t).width > max) t = t.slice(0, -1);
+      g.fillText(t === text ? t : `${t.slice(0, -1)}…`, 190, y);
+    }
+    y += CODE_LH;
+  });
+  return y;
+}
+// the rows of the encoded rule (a.yaml lines 13–27)
+const RULE_ROWS = (() => {
+  const i0 = CODE.findIndex((r) => "n" in r && r.n === 13);
+  const i1 = CODE.findIndex((r) => "n" in r && r.n === 27);
+  return CODE.slice(i0, i1 + 1);
+})();
+
+const CARD_W = 1500;
+const CARD_TOP = 150; // the first row's baseline on a card
+const CARD_H = CARD_TOP + RULE_ROWS.length * CODE_LH + 110;
 function draftFace(state: "pass" | "fail" | "drafting") {
   const mono = fontVar("--font-mono");
   const w = CARD_W;
@@ -310,40 +386,27 @@ function draftFace(state: "pass" | "fail" | "drafting") {
     g.fillStyle = "rgba(255, 225, 190, 0.55)";
     g.font = `500 28px ${mono}`;
     // the one that passes is no longer a draft: it is the encoded rule
-    g.fillText(state === "pass" ? "ENCODED RULE · US/STATUTES/7/2017/A.YAML" : state === "fail" ? "DRAFT 1" : "DRAFT", 50, 70);
-    const key = "rgba(246, 234, 216, 0.62)";
-    const val = "#f6ead8";
-    const rows: Array<[string, string, string?]> = [
-      ["- name: ", "snap_household_food_contribution_rate"],
-      ["  kind: ", "parameter"],
-      ["  dtype: ", "Rate"],
-      ["  source: ", '7 USC 2017(a), "30 per centum"', "#9fe0b4"],
-      ["  versions:", ""],
-      ["    - effective_from: ", "'2008-10-01'"],
-      ["      formula: ", state === "fail" ? "30" : "0.30", "#ffb45c"],
-    ];
-    rows.forEach(([k, v, colour], i) => {
-      const y = 132 + i * 50;
-      g.font = `500 34px ${mono}`;
-      g.fillStyle = key;
-      g.fillText(k, 50, y);
-      const x = 50 + g.measureText(k).width;
-      g.fillStyle = colour ?? val;
-      g.font = colour === "#ffb45c" ? `600 36px ${mono}` : `500 34px ${mono}`;
-      g.fillText(v, x, y);
-    });
-    g.font = `500 26px ${mono}`;
+    g.fillText(state === "pass" ? "ENCODED RULE · RULESPEC-US · US/STATUTES/7/2017/A.YAML" : state === "fail" ? "DRAFT 1" : "DRAFT", 70, 80);
+    // the rule as it stands in the file (the draft that fails has 30)
+    drawCodeRows(g, RULE_ROWS, CARD_TOP, w, state === "fail" ? { swap: { 27: "          30" } } : {});
+    const fy = CARD_TOP + RULE_ROWS.length * CODE_LH + 20;
+    g.font = `500 28px ${mono}`;
     if (state === "fail") {
       g.fillStyle = "rgba(255, 210, 190, 0.9)";
-      g.fillText("✕ a.test.yaml, case 1: snap_household_food_contribution", 50, 528);
-      g.fillText("  expected 115.95, got 11,595", 50, 562);
+      g.fillText("✕ a.test.yaml, case 1: snap_household_food_contribution expected 115.95, got 11,595", 70, fy);
     }
     if (state === "pass") {
       g.fillStyle = "#ffcf94";
       // the encoder's own checks (no count: CI waives the published module)
-      g.fillText("✓ compiles   ✓ source grounded   ✓ companion tests pass", 50, 548);
+      g.fillText("✓ compiles   ✓ source grounded   ✓ companion tests pass", 70, fy);
     }
   }, edge);
+}
+// the rows' band on a card, in its local units (for a card w wide, h tall)
+function cardRowsRect(wl: number, hl: number) {
+  const py0 = CARD_TOP - 36;
+  const py1 = CARD_TOP + (RULE_ROWS.length - 1) * CODE_LH + 12;
+  return { x0: -wl / 2, x1: wl / 2, y0: (0.5 - py1 / CARD_H) * hl, y1: (0.5 - py0 / CARD_H) * hl };
 }
 
 // the encode view and its sentence: the opening shot ends on the same
@@ -631,7 +694,9 @@ export function lamplightBeat3(ctx: BeatCtx): BeatSpec {
   const white = new THREE.Color(1, 1, 1);
   // the way out: the encoded rule flies to the code page of the next
   // scene and becomes it
-  const passFly = new QuadMorph(scene, passCard);
+  // in the hand-over only the card's rows fly, onto the same rows of the
+  // code page; its frame, header and checks fade with the scene
+  const passFly = new QuadMorph(scene, passCard, cardRowsRect(FW, FW * (CARD_H / CARD_W)));
   let fadeOut: SceneFade | null = null;
   const update = (t: number) => {
     passFly.reset();
@@ -698,9 +763,7 @@ export function lamplightBeat3(ctx: BeatCtx): BeatSpec {
     const e = ease(seg(k, 0, 0.55));
     // the rule settles into its own lines of the file (13–27), unstretched,
     // and hands over to the code page as it arrives
-    const to = keepAspect(passFly.toward(target, next.camera, camera, ruleRect), CARD_W / CARD_H);
-    passFly.set(e, to, 1 - seg(k, 0.42, 0.72));
-    passCard.visible = false;
+    passFly.set(e, passFly.toward(target, next.camera, camera, ruleRect), 1 - seg(k, 0.5, 0.8));
     // the rest of the scene clears away as it leaves
     const rest = 1 - ease(seg(k, 0, 0.35));
     fadeOut?.apply(rest);
@@ -814,9 +877,8 @@ function statuteFace(): { tex: THREE.Texture; marks: MarkGeo[]; w: number; h: nu
 
 function codeFace(): { tex: THREE.Texture; lines: Map<number, number>; w: number; h: number } {
   const mono = fontVar("--font-mono");
-  const serif = fontVar("--font-serif");
   const w = 1500;
-  const h = 1420;
+  const h = 200 + CODE.length * CODE_LH + 40;
   const lines = new Map<number, number>();
   const tex = glass(w, h, (g) => {
     g.fillStyle = "rgba(255, 225, 190, 0.5)";
@@ -824,61 +886,7 @@ function codeFace(): { tex: THREE.Texture; lines: Map<number, number>; w: number
     g.fillText("RULESPEC-US · US/STATUTES/7/2017/A.YAML", 70, 100);
     g.fillStyle = "rgba(255, 190, 120, 0.25)";
     g.fillRect(70, 130, w - 140, 2);
-    const lh = 47;
-    let y = 200;
-    CODE.forEach((row) => {
-      if ("gap" in row) {
-        g.fillStyle = "rgba(255, 225, 190, 0.25)";
-        g.font = `400 28px ${mono}`;
-        g.fillText("⋮", 100, y);
-        y += lh;
-        return;
-      }
-      lines.set(row.n, y);
-      const link = LINKS.find((l) => l.line === row.n);
-      if (link) {
-        const hot = link.id === HERO_LINK;
-        g.strokeStyle = hot ? "rgba(255, 180, 92, 0.85)" : "rgba(255, 190, 120, 0.35)";
-        g.lineWidth = hot ? 3 : 2;
-        g.setLineDash([3, 7]);
-        g.beginPath();
-        g.moveTo(40, y - 10);
-        g.lineTo(78, y - 10);
-        g.stroke();
-        g.setLineDash([]);
-        badge(g, 100, y - 10, link.n, hot, mono);
-        if (hot) {
-          g.fillStyle = "rgba(255, 171, 74, 0.1)";
-          g.fillRect(170, y - 36, w - 230, 44);
-        }
-      }
-      g.fillStyle = "rgba(255, 225, 190, 0.32)";
-      g.font = `400 27px ${mono}`;
-      g.textAlign = "right";
-      g.fillText(String(row.n), 160, y);
-      g.textAlign = "left";
-      const text = row.text;
-      const q = text.indexOf('"');
-      g.font = `400 29px ${mono}`;
-      if (q > 0) {
-        g.fillStyle = "rgba(246, 234, 216, 0.6)";
-        g.fillText(text.slice(0, q), 190, y);
-        const x = 190 + g.measureText(text.slice(0, q)).width;
-        g.fillStyle = "#9fe0b4";
-        g.font = `italic 400 34px ${serif}`;
-        g.fillText(text.slice(q), x, y);
-      } else {
-        const isName = /- name:/.test(text);
-        const isNum = /^\s+[\d.]+$/.test(text);
-        g.fillStyle = isNum ? "#ffb45c" : isName ? "#f6ead8" : "rgba(246, 234, 216, 0.66)";
-        g.font = `${isName || isNum ? 500 : 400} 29px ${mono}`;
-        const max = w - 230;
-        let t = text;
-        while (g.measureText(t).width > max) t = t.slice(0, -1);
-        g.fillText(t === text ? t : `${t.slice(0, -1)}…`, 190, y);
-      }
-      y += lh;
-    });
+    drawCodeRows(g, CODE, 200, w, { links: true, lines });
   });
   return { tex, lines, w, h };
 }
@@ -1004,8 +1012,9 @@ export function lamplightBeat4(ctx: BeatCtx): BeatSpec {
   };
   let fadeOut: SceneFade | null = null;
   fadeOut = new SceneFade([scene, fx], (m) => strips.some((st) => st.fly.fly.material === m));
-  // where the encoded rule's lines (13–27) sit on the code page
-  const ruleRect = strips.find((st) => st.id === "rate30")!.rect;
+  // where the encoded rule's lines (13–27) sit on the code page: the same
+  // band, row for row, as on the encode cards
+  const ruleRect = { x0: pxX(0), x1: pxX(cf.w), y0: pxY((cf.lines.get(27) ?? 0) + 12), y1: pxY((cf.lines.get(13) ?? 0) - 36) };
   return { camera, look, update, cutIn: () => {}, cutOut, parts: { right, ruleRect } };
 
 }

@@ -82,7 +82,13 @@ export const CODE: CodeRow[] = [
   { n: 11, text: "  - us:policies/usda/snap/fy-2026-cola/maximum-allotments" },
   { n: 12, text: "rules:" },
   { n: 13, text: "  - name: snap_household_food_contribution_rate" },
+  { n: 14, text: "    kind: parameter" },
+  { n: 15, text: "    dtype: Rate" },
   { n: 16, text: '    source: 7 USC 2017(a), "30 per centum"' },
+  { gap: true }, // 17–23: the rule's proof metadata
+  { n: 24, text: "    versions:" },
+  { n: 25, text: "      - effective_from: '2008-10-01'" },
+  { n: 26, text: "        formula: |-" },
   { n: 27, text: "          0.30" },
   { n: 29, text: "  - name: snap_minimum_allotment_rate" },
   { n: 43, text: "          0.08" },

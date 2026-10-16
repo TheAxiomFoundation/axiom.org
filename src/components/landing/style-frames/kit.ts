@@ -955,7 +955,13 @@ export class QuadMorph {
   toward(target: THREE.Mesh, next: THREE.PerspectiveCamera, here: THREE.PerspectiveCamera, targetRect?: { x0: number; x1: number; y0: number; y1: number }) {
     this.from ??= planeCorners(this.src, this.rect);
     const d = this.from[0].distanceTo(here.position);
-    return planeCorners(target, targetRect).map((p) => carryOnScreen(p, next, here, d));
+    // each corner keeps its depth relative to the others, so the copy has
+    // the target's own tilt and its perspective matches it exactly
+    const tc = planeCorners(target, targetRect);
+    next.updateMatrixWorld();
+    const dist = tc.map((p) => p.distanceTo(next.position));
+    const k = d / (dist.reduce((a, b) => a + b, 0) / 4);
+    return tc.map((p, i) => carryOnScreen(p, next, here, dist[i] * k));
   }
 }
 
