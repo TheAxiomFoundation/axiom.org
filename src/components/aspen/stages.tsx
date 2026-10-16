@@ -22,7 +22,7 @@ import {
 } from "@/lib/aspen/content";
 import type { Count } from "@/lib/aspen/results";
 import { SourceOfTruthCard } from "./results-board";
-import { VOTE_KEY, participantId, postJson, readStored, sendEvent, writeStored } from "./client";
+import { OVERALL_KEY, VOTE_KEY, participantId, postJson, readStored, sendEvent, writeStored } from "./client";
 import { Disclosure } from "./disclosure";
 import { TierMedal } from "./tier-medal";
 import { BUTTON, Card, FIELD } from "./ui";
@@ -177,7 +177,8 @@ export function YourThread({
   thread: ThreadQuestion | null;
   onOpen: () => void;
 }) {
-  if (!["reveal", "scale", "foundation"].includes(stage)) return null;
+  // What we saw has its own "What you contributed" summary instead.
+  if (!["scale", "foundation"].includes(stage)) return null;
   const asked = thread?.asked ?? false;
   const about = thread?.householdLabel ? `“${thread.householdLabel}”` : "your own question";
   let line: string;
@@ -185,11 +186,6 @@ export function YourThread({
   if (!asked) {
     line = "You haven't asked the AI yet.";
     action = "Ask the AI";
-  } else if (stage === "reveal") {
-    line = thread?.rated
-      ? `You asked about ${about}. Your rating is in the results below.`
-      : `You asked about ${about}. Rate the answer so it counts in the results below.`;
-    action = thread?.rated ? null : "Rate my answer";
   } else if (stage === "scale") {
     line =
       thread?.householdId === "az-savings"
@@ -216,6 +212,60 @@ export function YourThread({
         )}
       </p>
     </div>
+  );
+}
+
+/**
+ * The top of What we saw on a phone: what this person put in, each with a
+ * check when done or a way to do it now. The room's results follow.
+ */
+export function YourContribution({ thread, onOpen }: { thread: ThreadQuestion | null; onOpen: () => void }) {
+  const [shared, setShared] = useState(false);
+  useEffect(() => {
+    setShared(Boolean(readStored<boolean>(OVERALL_KEY)));
+  }, []);
+  const asked = thread?.asked ?? false;
+  const rated = thread?.rated ?? false;
+  const about = thread?.householdLabel ? `“${thread.householdLabel}”` : "your own question";
+  const rows: { done: boolean; text: string; action: string | null }[] = [
+    { done: asked, text: asked ? `You asked about ${about}.` : "You haven't asked the AI yet.", action: asked ? null : "Ask the AI" },
+    {
+      done: rated,
+      text: rated ? "You rated the answer." : "You haven't rated an answer yet.",
+      action: asked && !rated ? "Rate my answer" : null,
+    },
+    {
+      done: shared,
+      text: shared ? "You shared how AI did overall." : "You haven't shared how AI did overall.",
+      action: shared ? null : "Share it",
+    },
+  ];
+  return (
+    <section aria-labelledby="aspen-you" className="mb-10 rounded-xl border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] p-4 sm:p-5">
+      <h2 id="aspen-you" className="m-0 mb-3 font-body text-[1.4rem] font-semibold text-[var(--color-ink)]">
+        What you contributed
+      </h2>
+      <ul className="m-0 flex list-none flex-col gap-3 p-0">
+        {rows.map((r) => (
+          <li key={r.text} className="flex items-start gap-3 font-body text-[1.08rem] leading-snug text-[var(--color-ink)]">
+            <span aria-hidden className={`w-5 shrink-0 text-center ${r.done ? "text-[var(--color-success)]" : "text-[var(--color-rule-strong)]"}`}>
+              {r.done ? "✓" : "○"}
+            </span>
+            <span>
+              {r.text}
+              {r.action && (
+                <>
+                  {" "}
+                  <button type="button" className="aspen-link whitespace-nowrap font-medium" onClick={onOpen}>
+                    {r.action} →
+                  </button>
+                </>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

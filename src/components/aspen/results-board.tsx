@@ -34,7 +34,7 @@ export function ScaleCard({ scale }: { scale: ScaleSummary }) {
   return (
     <Card className="flex flex-col gap-3">
       <Prompt>{scale.label}</Prompt>
-      <div className="flex justify-between font-body font-medium text-[0.82rem] text-[var(--color-ink-muted)]">
+      <div className="flex justify-between font-body font-medium text-[0.95rem] text-[var(--color-ink-muted)]">
         <span>1 · {scale.low}</span>
         <span>{scale.high} · 5</span>
       </div>
@@ -42,7 +42,7 @@ export function ScaleCard({ scale }: { scale: ScaleSummary }) {
         {scale.categories.map((c) => (
           <li key={c.id} className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)_3.5rem] items-center gap-3 sm:grid-cols-[minmax(0,16rem)_minmax(0,1fr)_3.5rem]">
             {/* Labels wrap rather than truncate, so long ones ("Showed where the answer came from") read in full. */}
-            <span className="font-body text-[0.88rem] leading-snug text-[var(--color-ink)]" title={c.label}>
+            <span className="font-body text-[1rem] leading-snug text-[var(--color-ink)]" title={c.label}>
               {c.label}
             </span>
             <span className="relative h-2.5 overflow-hidden rounded-full bg-[var(--color-rule-subtle)]">
@@ -53,9 +53,9 @@ export function ScaleCard({ scale }: { scale: ScaleSummary }) {
                 />
               )}
             </span>
-            <span className="text-right font-mono text-[0.8rem] tabular-nums text-[var(--color-ink-secondary)]">
+            <span className="text-right font-mono text-[0.95rem] tabular-nums text-[var(--color-ink-secondary)]">
               {c.average !== null ? c.average.toFixed(1) : "—"}
-              <span className="ml-1 text-[0.8rem] text-[var(--color-ink-muted)]">({c.count})</span>
+              <span className="ml-1 text-[0.95rem] text-[var(--color-ink-muted)]">({c.count})</span>
             </span>
           </li>
         ))}
@@ -98,21 +98,26 @@ function Section({ n, title, children }: { n: number; title: string; children: R
   return (
     <section className="flex flex-col gap-4 border-t border-[var(--color-rule)] pt-8">
       <div className="flex flex-col gap-3">
-        <h2 className="m-0 flex items-start gap-2.5 font-body text-[1.2rem] font-semibold leading-snug text-[var(--color-ink)]">
+        <h3 className="m-0 flex items-start gap-2.5 font-body text-[1.25rem] font-semibold leading-snug text-[var(--color-ink)]">
           <span aria-hidden className={STEP_NUMBER}>
             {n}
           </span>
           <span className="pt-0.5">{title}</span>
-        </h2>
+        </h3>
       </div>
       {children}
     </section>
   );
 }
 
+/** Heads the room's results, after what this person contributed. */
+function RoomHeading() {
+  return <h2 className="m-0 font-body text-[1.4rem] font-semibold text-[var(--color-ink)]">Across the room</h2>;
+}
+
 /** A label inside a results panel: bold, so each panel says what it shows. */
 function PanelLabel({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <span className={`block font-body text-[1rem] font-semibold text-[var(--color-ink)] ${className ?? ""}`}>{children}</span>;
+  return <span className={`block font-body text-[1.08rem] font-semibold text-[var(--color-ink)] ${className ?? ""}`}>{children}</span>;
 }
 
 /** A single bar split into parts, with a legend underneath. */
@@ -131,7 +136,7 @@ export function SplitBar({ parts }: { parts: { label: string; count: number; col
           ) : null,
         )}
       </div>
-      <div className="flex flex-wrap gap-x-4 gap-y-1 font-body text-[0.82rem] text-[var(--color-ink-secondary)]">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 font-body text-[0.95rem] text-[var(--color-ink-secondary)]">
         {parts.map((p) => (
           <span key={p.label} className="flex items-center gap-1.5">
             <span aria-hidden className="h-2 w-2 rounded-full" style={{ background: p.color }} />
@@ -153,7 +158,7 @@ function ViabilityPanel({ summary }: { summary: RunSummary }) {
   return (
     <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
       <Card className="flex flex-col gap-5 p-5">
-        <p className="m-0 font-display text-[1.5rem] font-light leading-snug text-[var(--color-ink)]">
+        <p className="m-0 font-display text-[1.6rem] font-light leading-snug text-[var(--color-ink)]">
           <strong className="font-normal tabular-nums">{v.right}</strong> of{" "}
           <strong className="font-normal tabular-nums">{v.rated}</strong> answers looked right. People would act on{" "}
           <strong className="font-normal tabular-nums">{act}</strong>.
@@ -195,9 +200,8 @@ function ViabilityPanel({ summary }: { summary: RunSummary }) {
         <Card className={`flex flex-col gap-2 p-5 ${v.convincing > 0 ? "border-l-4 border-l-[var(--color-error)]" : ""}`}>
           <PanelLabel className={v.convincing > 0 ? "text-[var(--color-error)]" : undefined}>Wrong but convincing</PanelLabel>
           <span className="font-display text-[3rem] font-light leading-none tabular-nums text-[var(--color-ink)]">{v.convincing}</span>
-          <p className="m-0 font-body text-[0.92rem] leading-relaxed text-[var(--color-ink-secondary)]">
-            answers looked wrong or unsure, yet people would still act on them. These are the answers that send a
-            resident the wrong way.
+          <p className="m-0 font-body text-[1.02rem] leading-relaxed text-[var(--color-ink-secondary)]">
+            answers looked wrong or unsure, yet people would still act on them.
           </p>
         </Card>
         {any(v.residentActions) && (
@@ -206,7 +210,7 @@ function ViabilityPanel({ summary }: { summary: RunSummary }) {
             <span className="font-display text-[3rem] font-light leading-none tabular-nums text-[var(--color-ink)]">
               {v.wouldNotApply}
             </span>
-            <p className="m-0 font-body text-[0.92rem] leading-relaxed text-[var(--color-ink-secondary)]">
+            <p className="m-0 font-body text-[1.02rem] leading-relaxed text-[var(--color-ink-secondary)]">
               answers would lead a resident not to apply.
               {v.wouldNotApplyEligible > 0 &&
                 ` ${v.wouldNotApplyEligible} of those households qualify under the encoded rules.`}
@@ -227,19 +231,19 @@ function BreakdownPanel({ summary }: { summary: RunSummary }) {
       <Card className="p-5">
         <PanelLabel className="mb-3">Share of answers that looked wrong</PanelLabel>
         {rows.length === 0 ? (
-          <p className="m-0 font-body text-[0.88rem] text-[var(--color-ink-muted)]">Appears once answers are rated.</p>
+          <p className="m-0 font-body text-[1rem] text-[var(--color-ink-muted)]">Appears once answers are rated.</p>
         ) : (
           <ul className="m-0 flex list-none flex-col gap-2.5 p-0">
             {rows.map((r) => (
               <li key={`${r.kind}-${r.id}`} className="grid grid-cols-[minmax(0,11rem)_minmax(0,1fr)_4.5rem] items-center gap-3 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_4.5rem]">
-                <span className="truncate font-body text-[0.88rem] text-[var(--color-ink)]" title={r.label}>
+                <span className="truncate font-body text-[1rem] text-[var(--color-ink)]" title={r.label}>
                   {r.label}
                 </span>
                 <span className="flex h-2.5 overflow-hidden rounded-full bg-[var(--color-rule-subtle)]">
                   <span className="h-full" style={{ width: `${(100 * r.wrong) / r.rated}%`, background: BAD }} />
                   <span className="h-full" style={{ width: `${(100 * r.unsure) / r.rated}%`, background: MAYBE }} />
                 </span>
-                <span className="text-right font-mono text-[0.8rem] tabular-nums text-[var(--color-ink-secondary)]">
+                <span className="text-right font-mono text-[0.95rem] tabular-nums text-[var(--color-ink-secondary)]">
                   {r.wrong} of {r.rated}
                 </span>
               </li>
@@ -284,27 +288,27 @@ function SpotlightList({ summary }: { summary: RunSummary }) {
           <Card className="flex h-full flex-col gap-3 p-5">
             <div className="flex flex-wrap items-center gap-2">
               <span
-                className={`rounded-full px-2.5 py-0.5 font-body font-medium text-[0.82rem] ${
+                className={`rounded-full px-2.5 py-0.5 font-body font-medium text-[0.95rem] ${
                   item.reason === "unsure" ? "bg-[var(--color-rule-subtle)] text-[var(--color-ink-secondary)]" : "bg-[var(--color-error)] text-white"
                 }`}
               >
                 {REASON_LABEL[item.reason]}
               </span>
-              <span className="font-body font-medium text-[0.82rem] text-[var(--color-ink-muted)]">
+              <span className="font-body font-medium text-[0.95rem] text-[var(--color-ink-muted)]">
                 {[item.household ?? "Own question", item.perspective].filter(Boolean).join(" · ")}
               </span>
             </div>
             {item.details.length > 0 && (
-              <p className="m-0 font-body text-[0.8rem] text-[var(--color-ink-muted)]">With: {item.details.join(", ")}</p>
+              <p className="m-0 font-body text-[0.95rem] text-[var(--color-ink-muted)]">With: {item.details.join(", ")}</p>
             )}
-            <p className="m-0 font-body text-[0.92rem] font-medium leading-snug text-[var(--color-ink)]">{item.prompt}</p>
+            <p className="m-0 font-body text-[1.02rem] font-medium leading-snug text-[var(--color-ink)]">{item.prompt}</p>
             {item.answer && (
-              <p className="m-0 border-l-2 border-[var(--color-rule)] pl-3 font-body text-[0.86rem] leading-relaxed text-[var(--color-ink-secondary)]">
+              <p className="m-0 border-l-2 border-[var(--color-rule)] pl-3 font-body text-[1rem] leading-relaxed text-[var(--color-ink-secondary)]">
                 {item.answer}
               </p>
             )}
             <div className="mt-auto flex flex-col gap-1.5 pt-1">
-              <span className="font-body text-[0.84rem]">
+              <span className="font-body text-[0.98rem]">
                 <span className={VERDICT_TONE[item.verdict ?? ""] ?? ""}>{VERDICT_LABEL[item.verdict ?? ""] ?? "Not rated"}</span>
                 {item.wouldAct && <span className="text-[var(--color-ink-secondary)]"> · {WOULD_ACT_LABEL[item.wouldAct] ?? item.wouldAct}</span>}
                 {item.rulesAmount !== null && (
@@ -315,9 +319,9 @@ function SpotlightList({ summary }: { summary: RunSummary }) {
                 )}
               </span>
               {item.wentWrong.length > 0 && (
-                <span className="font-body text-[0.8rem] text-[var(--color-error)]">{item.wentWrong.join(" · ")}</span>
+                <span className="font-body text-[0.95rem] text-[var(--color-error)]">{item.wentWrong.join(" · ")}</span>
               )}
-              {item.note && <q className="font-serif text-[0.95rem] italic text-[var(--color-ink)]">{item.note}</q>}
+              {item.note && <q className="font-serif text-[1.05rem] italic text-[var(--color-ink)]">{item.note}</q>}
             </div>
           </Card>
         </li>
@@ -336,8 +340,9 @@ export function ResultsBoard({ summary }: { summary: RunSummary }) {
   if (summary.rated === 0 && scales.length === 0 && !any(summary.sourceOfTruth)) {
     return (
       <div className="flex flex-col gap-5">
+        <RoomHeading />
         <ResultsCounts summary={summary} />
-        <p className="m-0 font-body text-[0.92rem] text-[var(--color-ink-muted)]">Answers appear here as people ask.</p>
+        <p className="m-0 font-body text-[1.02rem] text-[var(--color-ink-muted)]">Answers appear here as people ask.</p>
       </div>
     );
   }
@@ -352,7 +357,10 @@ export function ResultsBoard({ summary }: { summary: RunSummary }) {
   const n = (i: number) => shown.slice(0, i + 1).filter(Boolean).length;
   return (
     <div className="flex flex-col gap-8">
-      <ResultsCounts summary={summary} />
+      <div className="flex flex-col gap-5">
+        <RoomHeading />
+        <ResultsCounts summary={summary} />
+      </div>
       {summary.rated > 0 && (
         <Section n={n(0)} title="Could a resident act on these answers?">
           <ViabilityPanel summary={summary} />
@@ -394,7 +402,7 @@ export function ResultsBoard({ summary }: { summary: RunSummary }) {
                   v.verdict === "wrong" ? "border-[var(--color-error)]" : v.verdict === "right" ? "border-[var(--color-success)]" : "border-[var(--color-rule-strong)]"
                 }`}
               >
-                <q className="font-serif text-[1rem] italic leading-relaxed text-[var(--color-ink)]">{v.text}</q>
+                <q className="font-serif text-[1.08rem] italic leading-relaxed text-[var(--color-ink)]">{v.text}</q>
               </li>
             ))}
           </ul>

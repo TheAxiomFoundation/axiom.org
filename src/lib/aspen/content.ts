@@ -82,6 +82,8 @@ export const STAGES: readonly Stage[] = [
     title: "What we saw",
     agenda: "The room's results, then discussion.",
     summary: "Could a resident act on these answers?",
+    // The phone opens with what you contributed; the question is part 1's heading there.
+    phoneSummary: "",
   },
   {
     id: "scale",

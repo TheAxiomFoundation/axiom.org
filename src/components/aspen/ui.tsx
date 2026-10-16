@@ -168,8 +168,8 @@ export function BarRow({
     bad: "var(--color-error)",
   }[tone];
   return (
-    <div className="grid grid-cols-[minmax(0,9.5rem)_minmax(0,1fr)_2.25rem] items-center gap-3 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)_2.5rem]">
-      <span className="truncate font-body text-[0.88rem] text-[var(--color-ink)]" title={label}>
+    <div className="grid grid-cols-[minmax(0,10.5rem)_minmax(0,1fr)_2.5rem] items-center gap-3 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)_2.5rem]">
+      <span className="font-body text-[1rem] leading-snug text-[var(--color-ink)]" title={label}>
         {label}
       </span>
       <span className="h-2.5 overflow-hidden rounded-full bg-[var(--color-rule-subtle)]">
@@ -178,7 +178,7 @@ export function BarRow({
           style={{ width: `${width}%`, background: color }}
         />
       </span>
-      <span className="text-right font-mono text-[0.8rem] tabular-nums text-[var(--color-ink-secondary)]">
+      <span className="text-right font-mono text-[0.95rem] tabular-nums text-[var(--color-ink-secondary)]">
         {count}
       </span>
     </div>
@@ -199,7 +199,7 @@ export function Bars({
   const shown = (limit ? items.slice(0, limit) : items).filter((i) => limit === undefined || i.count > 0);
   const max = Math.max(0, ...items.map((i) => i.count));
   if (max === 0) {
-    return <p className="m-0 font-body text-[0.88rem] text-[var(--color-ink-muted)]">{empty}</p>;
+    return <p className="m-0 font-body text-[1rem] text-[var(--color-ink-muted)]">{empty}</p>;
   }
   return (
     <div className="flex flex-col gap-2">
@@ -213,10 +213,10 @@ export function Bars({
 export function Stat({ value, label }: { value: ReactNode; label: string }) {
   return (
     <div>
-      <span className="block font-display text-[2rem] font-light leading-none tabular-nums text-[var(--color-ink)]">
+      <span className="block font-display text-[2.4rem] font-light leading-none tabular-nums text-[var(--color-ink)]">
         {value}
       </span>
-      <span className="mt-1 block font-body text-[0.82rem] text-[var(--color-ink-muted)]">{label}</span>
+      <span className="mt-1 block font-body text-[0.95rem] text-[var(--color-ink-muted)]">{label}</span>
     </div>
   );
 }

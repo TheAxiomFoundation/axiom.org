@@ -24,6 +24,7 @@ import {
   ThankYouContent,
   VoteCard,
   WelcomeLanding,
+  YourContribution,
   YourThread,
   type ThreadQuestion,
 } from "./stages";
@@ -156,36 +157,9 @@ describe("YourThread", () => {
     }
   });
 
-  it("asks people who haven't asked yet to try", () => {
-    const onOpen = vi.fn();
-    render(<YourThread stage="reveal" thread={null} onOpen={onOpen} />);
-    expect(screen.getByText(/You haven't asked the AI yet/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Ask the AI →" }));
-    expect(onOpen).toHaveBeenCalledTimes(1);
-  });
-
-  it("points a rated answer at the results", () => {
+  it("leaves What we saw to its own summary of what you contributed", () => {
     render(<YourThread stage="reveal" thread={asked} onOpen={vi.fn()} />);
-    expect(
-      screen.getByText("You asked about “Retiree in Phoenix”. Your rating is in the results below."),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("button")).not.toBeInTheDocument();
-  });
-
-  it("asks for a rating on an unrated answer to the participant's own question", () => {
-    const onOpen = vi.fn();
-    render(
-      <YourThread
-        stage="reveal"
-        thread={{ ...asked, householdId: null, householdLabel: null, rated: false }}
-        onOpen={onOpen}
-      />,
-    );
-    expect(
-      screen.getByText("You asked about your own question. Rate the answer so it counts in the results below."),
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Rate my answer →" }));
-    expect(onOpen).toHaveBeenCalled();
+    expect(screen.queryByText(/You asked about/)).not.toBeInTheDocument();
   });
 
   it("ties the Arizona household to PolicyBench at scale", () => {
@@ -446,6 +420,43 @@ describe("ThankYouContent", () => {
   it("leaves out the way back when there is none", () => {
     render(<ThankYouContent />);
     expect(screen.queryByRole("button", { name: "Back to your question" })).not.toBeInTheDocument();
+  });
+});
+
+describe("YourContribution", () => {
+  const asked: ThreadQuestion = {
+    householdId: "az-retiree",
+    householdLabel: "Retiree in Phoenix",
+    perspective: "resident",
+    asked: true,
+    rated: true,
+  };
+
+  it("asks people who haven't asked yet to try", () => {
+    const onOpen = vi.fn();
+    render(<YourContribution thread={null} onOpen={onOpen} />);
+    expect(screen.getByRole("heading", { name: "What you contributed" })).toBeInTheDocument();
+    expect(screen.getByText(/You haven't asked the AI yet/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Ask the AI →" }));
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("checks off a question that was asked and rated, and offers the overall ratings", () => {
+    render(<YourContribution thread={asked} onOpen={vi.fn()} />);
+    expect(screen.getByText("You asked about “Retiree in Phoenix”.")).toBeInTheDocument();
+    expect(screen.getByText("You rated the answer.")).toBeInTheDocument();
+    expect(screen.getByText(/You haven't shared how AI did overall/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Share it →" })).toBeInTheDocument();
+  });
+
+  it("asks for a rating on an unrated answer, and says when the overall ratings are in", () => {
+    localStorage.setItem("aspen.overall.v1", "true");
+    const onOpen = vi.fn();
+    render(<YourContribution thread={{ ...asked, householdId: null, householdLabel: null, rated: false }} onOpen={onOpen} />);
+    expect(screen.getByText("You asked about your own question.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Rate my answer →" }));
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("You shared how AI did overall.")).toBeInTheDocument();
   });
 });
 

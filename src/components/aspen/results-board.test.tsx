@@ -104,7 +104,9 @@ describe("ResultsBoard", () => {
     render(<ResultsBoard summary={SUMMARY} />);
     expect(screen.getByRole("heading", { name: "Could a resident act on these answers?" })).toBeInTheDocument();
     // Numbered parts, in the order they show, and no discussion prompts on the phone.
-    const parts = screen.getAllByRole("heading", { level: 2 });
+    // "Across the room" heads the room's results; its parts sit under it.
+    expect(screen.getByRole("heading", { level: 2, name: "Across the room" })).toBeInTheDocument();
+    const parts = screen.getAllByRole("heading", { level: 3 });
     expect(parts[0].textContent).toBe("1Could a resident act on these answers?");
     expect(parts[1].textContent).toBe("2Where the answers broke down");
     expect(screen.queryByText("Ask the room")).not.toBeInTheDocument();

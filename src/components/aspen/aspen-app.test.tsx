@@ -428,7 +428,9 @@ describe("AspenApp thread", () => {
 
     fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
     await onView("reveal");
-    expect(screen.getByText(/You asked about “Disabled, with savings”\. Rate the answer/)).toBeInTheDocument();
+    // What we saw opens with what you contributed: your question, and the rating still to do.
+    expect(screen.getByText("You asked about “Disabled, with savings”.")).toBeInTheDocument();
+    expect(screen.getByText("You haven't rated an answer yet.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Rate my answer →" }));
     await onView("try");
   });
@@ -501,7 +503,9 @@ describe("AspenApp after a new run", () => {
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === "/api/aspen/state")).toBe(true));
     fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
     await onView("reveal");
-    expect(screen.getByText(/You asked about “Disabled, with savings”\. Rate the answer/)).toBeInTheDocument();
+    // What we saw opens with what you contributed: your question, and the rating still to do.
+    expect(screen.getByText("You asked about “Disabled, with savings”.")).toBeInTheDocument();
+    expect(screen.getByText("You haven't rated an answer yet.")).toBeInTheDocument();
   });
 
   it("keeps the chat when the control row is not live (a database error)", async () => {
@@ -512,7 +516,9 @@ describe("AspenApp after a new run", () => {
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === "/api/aspen/state")).toBe(true));
     fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
     await onView("reveal");
-    expect(screen.getByText(/You asked about “Disabled, with savings”\. Rate the answer/)).toBeInTheDocument();
+    // What we saw opens with what you contributed: your question, and the rating still to do.
+    expect(screen.getByText("You asked about “Disabled, with savings”.")).toBeInTheDocument();
+    expect(screen.getByText("You haven't rated an answer yet.")).toBeInTheDocument();
     expect(localStorage.getItem("aspen.run")).toBe(JSON.stringify("phoenix"));
   });
 });

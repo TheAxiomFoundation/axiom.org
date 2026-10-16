@@ -23,6 +23,7 @@ import {
   SmallGroups,
   ThankYouContent,
   WelcomeLanding,
+  YourContribution,
   YourThread,
   type ThreadQuestion,
 } from "./stages";
@@ -294,6 +295,7 @@ export function AspenApp() {
             {/* The thank-you is its own centered page, like the landing. */}
             {view !== "dinner" && <StageHeading title={current.title} summary={current.phoneSummary ?? current.summary} />}
             <YourThread stage={view} thread={thread} onOpen={() => go("try")} />
+            {view === "reveal" && <YourContribution thread={thread} onOpen={() => go("try")} />}
           </>
         )}
 
