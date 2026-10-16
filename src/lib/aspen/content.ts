@@ -11,7 +11,7 @@
  */
 
 export const EVENT = {
-  title: "What does AI tell your residents about benefits?",
+  title: "What does AI tell residents about benefits?",
   cohort: "Aspen Institute State Benefits Leadership Cohort",
   place: "Phoenix",
   date: "Monday, October 26, 2026",
@@ -54,6 +54,8 @@ export interface Stage {
   /** The thread: how this stage follows from the one before. */
   /** Under the heading on the stage's first slide; empty for none. */
   summary: string;
+  /** The phone's line under the heading, when it differs from the slide's. */
+  phoneSummary?: string;
   /** Segments that depend on the room, e.g. on headcount. */
   optional?: boolean;
 }
@@ -72,6 +74,7 @@ export const STAGES: readonly Stage[] = [
     title: "Ask the AI",
     agenda: "Ask the AI a benefits question, then rate it.",
     summary: "Ask as a resident or caseworker. Rate the answer. Then tell us more about AI use in your agency.",
+    phoneSummary: "Build a prompt. Use the preselected options and see how they change the prompt below. Or write your own.",
   },
   {
     id: "reveal",
@@ -79,6 +82,8 @@ export const STAGES: readonly Stage[] = [
     title: "What we saw",
     agenda: "The room's results, then discussion.",
     summary: "Could a resident act on these answers?",
+    // The phone opens with what you contributed; the question is part 1's heading there.
+    phoneSummary: "",
   },
   {
     id: "scale",
@@ -535,7 +540,7 @@ export type ResidentActionId = (typeof RESIDENT_ACTIONS)[number]["id"];
 export const SOURCE_OF_TRUTH = {
   id: "source-of-truth",
   title: "Checking answers today",
-  question: "Can a resident, a screener or an AI check an answer against your state's official rules today?",
+  question: "Can a resident, a screener or an AI check an answer against the state's official rules today?",
   options: [
     { id: "yes", label: "Yes" },
     { id: "partly", label: "Partly" },
@@ -577,12 +582,12 @@ export interface RatingScale {
  */
 export const RATING_SCALES: Partial<Record<DiscussionQuestionId, RatingScale>> = {
   performance: {
-    title: "How did the AI do?",
+    title: "How did the AI do at answering the question(s)?",
     low: "Not at all",
     high: "Fully",
     categories: [
       { id: "amount", label: "Got the amount right" },
-      { id: "state-rules", label: "Knew your state's rules" },
+      { id: "state-rules", label: "Knew the state's rules" },
       { id: "clarity", label: "Was clear to a resident" },
       { id: "sources", label: "Showed where the answer came from" },
       { id: "uncertainty", label: "Admitted what it didn't know" },
@@ -633,25 +638,28 @@ export const USE_CASES = [
   {
     id: "see-edit",
     label: "See and edit the rules",
-    detail: "Staff read the rules their programs run on, in plain language, and change them.",
+    detail: "Staff read the rules in plain language and change them.",
   },
   {
     id: "project",
     label: "Project policy changes",
-    detail: "See who a change would affect, and by how much, before it lands.",
+    detail: "See who a change affects before it lands.",
   },
   {
     id: "flows",
     label: "Build caseworker flows",
-    detail: "Ask only the questions a case needs, in the order the rules need them.",
+    detail: "Ask only the questions each case needs.",
   },
   {
     id: "apply",
     label: "Create application interfaces",
-    detail: "New ways to apply, built on the same rules as the eligibility system.",
+    detail: "New ways to apply, on the same rules as the eligibility system.",
   },
 ] as const;
 export type UseCaseId = (typeof USE_CASES)[number]["id"];
+
+/** Small groups on a phone: who fills in the form. The slide carries the longer BREAKOUT_PROMPT. */
+export const GROUP_PHONE_INTRO = "One person per group fills this in and shares it with the room.";
 
 /** Small groups 2/2: how the groups work, said before they start. */
 export const BREAKOUT_PROMPT = "Pick one use from the vote and answer three questions together. One person reports back for the group.";
@@ -699,8 +707,7 @@ export const POLICYBENCH = {
   bestModelZeros: 2,
   /** The household every model got wrong (scenario_013). */
   azCase: {
-    description:
-      "An 80-year-old Arizonan with a disability, living alone on $2,538 a month from Social Security and a pension, with $58,700 in the bank.",
+    description: "Age 80, with a disability, living alone on $2,538 a month. $58,700 in savings.",
     modelsAsked: 50,
     modelsSaidZero: 50,
     answer:
@@ -953,21 +960,21 @@ export const NEXT_STEPS = {
  * Shown with every AI answer: the answers are a demo of an unmodified
  * general-purpose model, and the model's maker has no part in the page.
  */
-export const DEMO_NOTE = "A demo. Answers come from OpenAI's GPT model, unedited. OpenAI does not sponsor or endorse this page.";
+export const DEMO_NOTE = "Answers come from OpenAI's GPT model, unedited. OpenAI does not sponsor or endorse this page.";
 
 /**
  * What we keep, said up front (agreed with Aspen, Oct 12): answers and
  * ratings are kept for our own analysis, never published, and taking part
- * is optional.
+ * is optional. Reworded on Oct 16 as a bold header and one plain line per
+ * point, for phones; same substance.
  */
 export const DISCLOSURE = {
-  short:
-    "We keep everyone's answers to learn from, without names, and won't publish them. Taking part is optional.",
+  short: "We keep everyone's answers to learn from and don't publish them. Taking part is optional.",
   details: [
-    "We don't ask for your name. Please don't type personal details about real people.",
-    "Your questions go to OpenAI to get the AI's answer, and to the Axiom rules chatbot when you check against the rules.",
-    "The Axiom Foundation keeps your questions and ratings to learn which rules are hardest to get right. We won't publish them, and the screen never shows who asked what.",
-    "You can skip anything. The page works the same if you only watch.",
-    "The next-steps form is the only place we ask for an email, and only to follow up with you.",
+    { title: "No names", text: "We don't ask who you are. Please don't type details about real people." },
+    { title: "Where questions go", text: "To OpenAI for the AI's answer, and to the Axiom rules chatbot if you check the rules." },
+    { title: "What we save", text: "Questions and ratings, to learn which rules are hardest. We don't publish them or show who asked what." },
+    { title: "Your choice", text: "Skip anything, or just watch." },
+    { title: "Email", text: "Only on the next-steps form, to follow up." },
   ],
 } as const;

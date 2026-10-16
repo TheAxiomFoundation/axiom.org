@@ -1023,9 +1023,46 @@ body:has(.graph-viewer-root) > footer {
 }
 
 /* /aspen on a phone: read at arm's length in a dim room. Every rem on the
-   page grows, and inputs pass 16px, so iOS stops zooming in on focus. */
+   page grows, and inputs pass 16px, so iOS stops zooming in on focus. The
+   size is relative, so a reader's own larger browser text setting still
+   counts, and the page's text-size button (data-aspen-text) steps it up. */
 @media (max-width: 639px) {
   html:has([data-aspen-page]) {
-    font-size: 17.5px;
+    font-size: 112.5%;
   }
+}
+html[data-aspen-text="large"] {
+  font-size: 118.75%;
+}
+html[data-aspen-text="larger"] {
+  font-size: 137.5%;
+}
+@media (max-width: 639px) {
+  html[data-aspen-text="large"] {
+    font-size: 131.25%;
+  }
+  html[data-aspen-text="larger"] {
+    font-size: 150%;
+  }
+}
+
+/* Participant pages read in full ink for contrast: the secondary and muted
+   grays resolve to the body ink. Placeholders keep a lighter (still 7.5:1)
+   tone, so an empty box never looks filled in. The presenter is untouched. */
+[data-aspen-page] {
+  --color-ink-secondary: var(--color-ink);
+  --color-ink-muted: var(--color-ink);
+}
+[data-aspen-page] ::placeholder {
+  color: #57534e;
+  opacity: 1;
+}
+
+/* The site's kicker is small spaced capitals; on /aspen it reads as a
+   sentence, at a size a phone can read. */
+[data-aspen-page] .kicker {
+  font-family: var(--f-body);
+  font-size: 0.95rem;
+  letter-spacing: normal;
+  text-transform: none;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   POST_CHECK,
   VERDICTS,
@@ -12,14 +12,19 @@ import {
 import type { RulesAnswer } from "@/lib/aspen/rules";
 import { AnswerText } from "./answer-text";
 import { formatValue, participantId, postJson } from "./client";
-import { BUTTON, BUTTON_QUIET, Chip, Eyebrow, FIELD, Prompt } from "./ui";
+import { BUTTON, BUTTON_QUIET, Chip, Eyebrow, FIELD, QUESTION, StepFrame } from "./ui";
 
 function toggle(list: string[], value: string): string[] {
   return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
 }
 
-/** How the participant rates one chatbot answer. */
+/**
+ * How the participant rates one chatbot answer: four short steps, one at a
+ * time. Tapping an answer moves on; Back goes to the one before. Focus
+ * follows the question, so a screen reader reads each one as it appears.
+ */
 export function RatingCard({ promptId, onRated }: { promptId: string; onRated?: () => void }) {
+  const [step, setStep] = useState(0);
   const [verdict, setVerdict] = useState<string | null>(null);
   const [wouldAct, setWouldAct] = useState<string | null>(null);
   const [residentAction, setResidentAction] = useState<string | null>(null);
@@ -28,6 +33,18 @@ export function RatingCard({ promptId, onRated }: { promptId: string; onRated?: 
   const [note, setNote] = useState("");
   const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [showOther, setShowOther] = useState(false);
+  const question = useRef<HTMLLegendElement>(null);
+  const moved = useRef(false);
+
+  useEffect(() => {
+    // Not on first render: only once the participant has moved between steps.
+    if (moved.current) question.current?.focus({ preventScroll: true });
+  }, [step]);
+
+  function go(next: number) {
+    moved.current = true;
+    setStep(next);
+  }
 
   async function submit() {
     setState("saving");
@@ -47,13 +64,13 @@ export function RatingCard({ promptId, onRated }: { promptId: string; onRated?: 
 
   if (state === "saved") {
     return (
-      <p className="m-0 font-body text-[0.9rem] text-[var(--color-success)]">
+      <p className="m-0 font-body text-[1rem] font-medium text-[var(--color-ink)]">
+        <span aria-hidden className="mr-1.5 text-[var(--color-success)]">✓</span>
         Rating saved. Thank you.
       </p>
     );
   }
 
-  // One question at a time: the verdict, whether you'd act on it, what a resident would do, then what stood out.
   const praise = verdict === "right";
   const firstTags = praise ? WENT_WELL : WENT_WRONG;
   const otherTags = praise ? WENT_WRONG : WENT_WELL;
@@ -61,81 +78,80 @@ export function RatingCard({ promptId, onRated }: { promptId: string; onRated?: 
   const otherPicked = praise ? wentWrong : wentWell;
   const setFirst = praise ? setWentWell : setWentWrong;
   const setOther = praise ? setWentWrong : setWentWell;
+  const legend = (text: ReactNode) => (
+    <legend ref={question} tabIndex={-1} className={`${QUESTION} outline-none`}>
+      {text}
+    </legend>
+  );
 
   return (
-    <div className="flex flex-col gap-5 rounded-xl border-2 border-[var(--color-accent)] bg-[var(--color-paper-elevated)] p-4">
-      <div>
-        <Prompt className="text-[1.02rem] text-[var(--color-accent)]">Rate this answer</Prompt>
-        <p className="m-0 mt-1 font-body text-[0.92rem] text-[var(--color-ink-muted)]">
-          Three quick questions. Your rating counts in the room&apos;s results.
-        </p>
-      </div>
-      <fieldset className="m-0 border-0 p-0">
-        <legend className="mb-2.5 font-body text-[1.02rem] text-[var(--color-ink)]">Does it look right?</legend>
-        <div className="grid grid-cols-3 gap-2">
-          {VERDICTS.map((v) => (
-            <Segment key={v.id} selected={verdict === v.id} onClick={() => setVerdict(v.id)}>
-              {v.label}
-            </Segment>
-          ))}
-        </div>
-      </fieldset>
-      {verdict && (
+    <StepFrame title="Rate this answer" at={step + 1} of={4} onBack={step > 0 ? () => go(step - 1) : undefined}>
+      {step === 0 && (
         <fieldset className="m-0 border-0 p-0">
-          <legend className="mb-2.5 font-body text-[1.02rem] text-[var(--color-ink)]">Would you act on it?</legend>
+          {legend("Does it look right?")}
           <div className="grid grid-cols-3 gap-2">
-            {WOULD_ACT.map((v) => (
-              <Segment key={v.id} selected={wouldAct === v.id} onClick={() => setWouldAct(v.id)}>
+            {VERDICTS.map((v) => (
+              <Segment key={v.id} selected={verdict === v.id} onClick={() => (setVerdict(v.id), go(1))}>
                 {v.label}
               </Segment>
             ))}
           </div>
         </fieldset>
       )}
-      {verdict && wouldAct && (
+      {step === 1 && (
         <fieldset className="m-0 border-0 p-0">
-          <legend className="mb-2.5 font-body text-[1.02rem] text-[var(--color-ink)]">
-            What would a resident do next?
-          </legend>
+          {legend("Would you act on it?")}
+          <div className="grid grid-cols-3 gap-2">
+            {WOULD_ACT.map((v) => (
+              <Segment key={v.id} selected={wouldAct === v.id} onClick={() => (setWouldAct(v.id), go(2))}>
+                {v.label}
+              </Segment>
+            ))}
+          </div>
+        </fieldset>
+      )}
+      {step === 2 && (
+        <fieldset className="m-0 border-0 p-0">
+          {legend("What would a resident do next?")}
           <div className="grid grid-cols-2 gap-2">
             {RESIDENT_ACTIONS.map((a) => (
-              <Segment key={a.id} selected={residentAction === a.id} onClick={() => setResidentAction(a.id)}>
+              <Segment key={a.id} selected={residentAction === a.id} onClick={() => (setResidentAction(a.id), go(3))}>
                 {a.label}
               </Segment>
             ))}
           </div>
         </fieldset>
       )}
-      {verdict && wouldAct && residentAction && (
-        <fieldset className="m-0 border-0 p-0">
-          <legend className="mb-2.5 font-body text-[1.02rem] text-[var(--color-ink)]">
-            {praise ? "What went well?" : "What went wrong?"}{" "}
-            <span className="text-[0.82rem] text-[var(--color-ink-muted)]">Optional</span>
-          </legend>
-          <div className="flex flex-wrap gap-2">
-            {firstTags.map((tag) => (
-              <Chip key={tag} selected={firstPicked.includes(tag)} onClick={() => setFirst((l) => toggle(l, tag))}>
-                {tag}
-              </Chip>
-            ))}
-          </div>
-          {showOther ? (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {otherTags.map((tag) => (
-                <Chip key={tag} selected={otherPicked.includes(tag)} onClick={() => setOther((l) => toggle(l, tag))}>
+      {step === 3 && (
+        <>
+          <fieldset className="m-0 border-0 p-0">
+            {legend(
+              <>
+                {praise ? "What went well?" : "What went wrong?"}{" "}
+                <span className="font-normal text-[var(--color-ink-muted)]">(optional)</span>
+              </>,
+            )}
+            <div className="flex flex-wrap gap-2">
+              {firstTags.map((tag) => (
+                <Chip key={tag} selected={firstPicked.includes(tag)} onClick={() => setFirst((l) => toggle(l, tag))}>
                   {tag}
                 </Chip>
               ))}
             </div>
-          ) : (
-            <button type="button" className="aspen-link mt-3 font-body text-[0.84rem]" onClick={() => setShowOther(true)}>
-              {praise ? "Something went wrong too?" : "Something went well too?"}
-            </button>
-          )}
-        </fieldset>
-      )}
-      {verdict && wouldAct && residentAction && (
-        <>
+            {showOther ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {otherTags.map((tag) => (
+                  <Chip key={tag} selected={otherPicked.includes(tag)} onClick={() => setOther((l) => toggle(l, tag))}>
+                    {tag}
+                  </Chip>
+                ))}
+              </div>
+            ) : (
+              <button type="button" className="aspen-link mt-3 font-body text-[0.95rem]" onClick={() => setShowOther(true)}>
+                {praise ? "Something went wrong too?" : "Something went well too?"}
+              </button>
+            )}
+          </fieldset>
           <label className="flex flex-col gap-2 font-body text-[1rem] text-[var(--color-ink)]">
             <span>
               Anything the room should know about this answer? <span className="text-[var(--color-ink-muted)]">(optional)</span>
@@ -153,11 +169,11 @@ export function RatingCard({ promptId, onRated }: { promptId: string; onRated?: 
             {state === "saving" ? "Saving…" : "Save rating"}
           </button>
           {state === "error" && (
-            <span className="font-body text-[0.85rem] text-[var(--color-error)]">That didn&apos;t save. Try again.</span>
+            <span className="font-body text-[0.9rem] text-[var(--color-error)]">That didn&apos;t save. Try again.</span>
           )}
         </>
       )}
-    </div>
+    </StepFrame>
   );
 }
 
@@ -348,7 +364,7 @@ export function RulesCheck({
           <span className="mb-1 block font-body text-[0.8rem] text-[var(--color-ink-muted)]">Rules used</span>
           <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
             {[...new Set(result.citations.map(citationPath))].slice(0, 6).map((path) => (
-              <li key={path} className="break-all font-mono text-[0.72rem] text-[var(--color-ink-secondary)]">
+              <li key={path} className="break-all font-mono text-[0.8rem] text-[var(--color-ink-secondary)]">
                 {path}
               </li>
             ))}

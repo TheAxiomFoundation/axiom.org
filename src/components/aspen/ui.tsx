@@ -44,11 +44,96 @@ export function Prompt({ children, className }: { children: ReactNode; className
   );
 }
 
+/** The filled number before a step's heading, the same everywhere on the phone. */
+export const STEP_NUMBER =
+  "flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--color-accent)] font-body text-[0.9rem] font-semibold text-white";
+
+/**
+ * One numbered part of a results screen (What we saw, At scale): a bold
+ * heading with its number, and a line above it so parts stay apart.
+ */
+export function Part({
+  n,
+  title,
+  children,
+  as: Heading = "h3",
+}: {
+  n: number;
+  title: string;
+  children: ReactNode;
+  /** h3 under a block heading; h2 on a screen whose parts sit right under the page title. */
+  as?: "h2" | "h3";
+}) {
+  return (
+    <section className="flex flex-col gap-4 border-t border-[var(--color-rule)] pt-8">
+      <Heading className="m-0 flex items-start gap-2.5 font-body text-[1.25rem] font-semibold leading-snug text-[var(--color-ink)]">
+        <span aria-hidden className={STEP_NUMBER}>
+          {n}
+        </span>
+        <span className="pt-0.5">{title}</span>
+      </Heading>
+      {children}
+    </section>
+  );
+}
+
+/** Heads a results screen's main block ("Across the room", "Across 50 AI models"). */
+export function BlockHeading({ children }: { children: ReactNode }) {
+  return <h2 className="m-0 font-body text-[1.4rem] font-semibold text-[var(--color-ink)]">{children}</h2>;
+}
+
+/** A question inside a guided step: bold and plain, the same in every step. */
+export const QUESTION = "m-0 mb-3 p-0 font-body text-[1.08rem] font-semibold leading-snug text-[var(--color-ink)]";
+
+/**
+ * One guided question at a time: an optional title, where you are ("2 of 4")
+ * with a progress bar, the question, and a way back. Used by the answer
+ * rating and the overall ratings so both look and move the same way.
+ */
+export function StepFrame({
+  title,
+  at,
+  of,
+  onBack,
+  children,
+}: {
+  title?: string;
+  /** 1-based. */
+  at: number;
+  of: number;
+  onBack?: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-4 rounded-xl border-2 border-[var(--color-accent)] bg-[var(--color-paper-elevated)] p-4 sm:p-5">
+      <div className="flex flex-col gap-2">
+        <div className="flex items-baseline justify-between gap-3">
+          {title ? <Prompt className="text-[1.08rem] text-[var(--color-accent)]">{title}</Prompt> : <span />}
+          <span className="shrink-0 font-body text-[0.9rem] text-[var(--color-ink-muted)]">
+            {at} of {of}
+          </span>
+        </div>
+        <div aria-hidden className="flex gap-1">
+          {Array.from({ length: of }, (_, i) => (
+            <span key={i} className={`h-1.5 flex-1 rounded-full ${i < at ? "bg-[var(--color-accent)]" : "bg-[var(--color-rule)]"}`} />
+          ))}
+        </div>
+      </div>
+      {children}
+      {onBack && (
+        <button type="button" className="aspen-link self-start font-body text-[0.95rem]" onClick={onBack}>
+          ← Back
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function Eyebrow({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <span
       className={cn(
-        "block font-mono text-[0.66rem] uppercase tracking-[0.18em] text-[var(--color-ink-muted)]",
+        "block font-body font-medium text-[0.82rem] text-[var(--color-ink-muted)]",
         className,
       )}
     >
@@ -117,8 +202,8 @@ export function BarRow({
     bad: "var(--color-error)",
   }[tone];
   return (
-    <div className="grid grid-cols-[minmax(0,9.5rem)_minmax(0,1fr)_2.25rem] items-center gap-3 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)_2.5rem]">
-      <span className="truncate font-body text-[0.88rem] text-[var(--color-ink)]" title={label}>
+    <div className="grid grid-cols-[minmax(0,10.5rem)_minmax(0,1fr)_2.5rem] items-center gap-3 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)_2.5rem]">
+      <span className="font-body text-[1rem] leading-snug text-[var(--color-ink)]" title={label}>
         {label}
       </span>
       <span className="h-2.5 overflow-hidden rounded-full bg-[var(--color-rule-subtle)]">
@@ -127,7 +212,7 @@ export function BarRow({
           style={{ width: `${width}%`, background: color }}
         />
       </span>
-      <span className="text-right font-mono text-[0.8rem] tabular-nums text-[var(--color-ink-secondary)]">
+      <span className="text-right font-mono text-[0.95rem] tabular-nums text-[var(--color-ink-secondary)]">
         {count}
       </span>
     </div>
@@ -148,7 +233,7 @@ export function Bars({
   const shown = (limit ? items.slice(0, limit) : items).filter((i) => limit === undefined || i.count > 0);
   const max = Math.max(0, ...items.map((i) => i.count));
   if (max === 0) {
-    return <p className="m-0 font-body text-[0.88rem] text-[var(--color-ink-muted)]">{empty}</p>;
+    return <p className="m-0 font-body text-[1rem] text-[var(--color-ink-muted)]">{empty}</p>;
   }
   return (
     <div className="flex flex-col gap-2">
@@ -162,10 +247,10 @@ export function Bars({
 export function Stat({ value, label }: { value: ReactNode; label: string }) {
   return (
     <div>
-      <span className="block font-display text-[2rem] font-light leading-none tabular-nums text-[var(--color-ink)]">
+      <span className="block font-display text-[2.4rem] font-light leading-none tabular-nums text-[var(--color-ink)]">
         {value}
       </span>
-      <span className="mt-1 block font-body text-[0.82rem] text-[var(--color-ink-muted)]">{label}</span>
+      <span className="mt-1 block font-body text-[0.95rem] text-[var(--color-ink-muted)]">{label}</span>
     </div>
   );
 }

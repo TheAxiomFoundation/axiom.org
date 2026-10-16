@@ -393,6 +393,8 @@ describe("AspenApp without a live presenter", () => {
     fireEvent.click(screen.getByRole("button", { name: /Next: how did AI do overall\?/ }));
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
     fireEvent.click(screen.getByRole("button", { name: "Got the amount right: 2 of 5" }));
+    // One step at a time, Continue to the end, then share.
+    for (let i = 0; i < 4; i++) fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     fireEvent.click(screen.getByRole("button", { name: "Share my ratings" }));
     expect(await screen.findByText(/Your ratings are in/)).toBeInTheDocument();
     await waitFor(() =>
@@ -426,7 +428,9 @@ describe("AspenApp thread", () => {
 
     fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
     await onView("reveal");
-    expect(screen.getByText(/You asked about “Disabled, with savings”\. Rate the answer/)).toBeInTheDocument();
+    // What we saw opens with what you contributed: your question, and the rating still to do.
+    expect(screen.getByText("You asked about “Disabled, with savings”.")).toBeInTheDocument();
+    expect(screen.getByText("You haven't rated an answer yet.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Rate my answer →" }));
     await onView("try");
   });
@@ -442,7 +446,7 @@ describe("AspenApp thread", () => {
     render(<AspenApp />);
     fireEvent.click(nav().getByRole("button", { name: /Shared foundation/ }));
     await onView("foundation");
-    expect(screen.getByText(/Now check the AI's answer about your own question against the encoded rules\./)).toBeInTheDocument();
+    expect(screen.getByText(/Check the AI's answer about your own question against the rules\./)).toBeInTheDocument();
   });
 
   it("treats a chat without a user turn or a finished answer as not asked", async () => {
@@ -499,7 +503,9 @@ describe("AspenApp after a new run", () => {
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === "/api/aspen/state")).toBe(true));
     fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
     await onView("reveal");
-    expect(screen.getByText(/You asked about “Disabled, with savings”\. Rate the answer/)).toBeInTheDocument();
+    // What we saw opens with what you contributed: your question, and the rating still to do.
+    expect(screen.getByText("You asked about “Disabled, with savings”.")).toBeInTheDocument();
+    expect(screen.getByText("You haven't rated an answer yet.")).toBeInTheDocument();
   });
 
   it("keeps the chat when the control row is not live (a database error)", async () => {
@@ -510,7 +516,9 @@ describe("AspenApp after a new run", () => {
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === "/api/aspen/state")).toBe(true));
     fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
     await onView("reveal");
-    expect(screen.getByText(/You asked about “Disabled, with savings”\. Rate the answer/)).toBeInTheDocument();
+    // What we saw opens with what you contributed: your question, and the rating still to do.
+    expect(screen.getByText("You asked about “Disabled, with savings”.")).toBeInTheDocument();
+    expect(screen.getByText("You haven't rated an answer yet.")).toBeInTheDocument();
     expect(localStorage.getItem("aspen.run")).toBe(JSON.stringify("phoenix"));
   });
 });
