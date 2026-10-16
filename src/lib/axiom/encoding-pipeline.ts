@@ -1217,8 +1217,9 @@ export function journeySteps(attempt: PipelineAttempt): JourneyStep[] {
         : attempt.pr_state === "merged"
           ? "No oracle report covers it"
           : null,
+      // Attempts retain a filename, so this detail link follows the live report branch.
       href: attempt.oracle_report
-        ? `https://github.com/TheAxiomFoundation/axiom-oracles/blob/main/dashboard/public/data/${attempt.oracle_report}`
+        ? `https://github.com/TheAxiomFoundation/axiom-oracles/blob/oracle-data/dashboard/public/data/${attempt.oracle_report}`
         : null,
     },
   ];

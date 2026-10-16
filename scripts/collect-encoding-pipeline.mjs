@@ -112,6 +112,7 @@ import {
 } from "../src/lib/axiom/encoding-pipeline-collect.ts";
 import { attemptSource } from "../src/lib/axiom/encoding-pipeline.ts";
 import { GITHUB_ORG, githubHeaders } from "./lib/rulespec-discovery.mjs";
+import { resolveOracleDataRef } from "./lib/oracle-data-ref.mjs";
 
 const ENCODE_REPO = "axiom-encode";
 const ENCODE_WORKFLOW = "targeted-signed-reencode.yml";
@@ -521,9 +522,9 @@ const ORACLE_REPORT_RE = /^axiom-[a-z0-9]+-.+\.json$/;
 const ORACLE_CONCURRENCY = 6;
 
 /** The axiom-oracles comparison reports, parsed into per-module verdicts. */
-async function readOracleVerdicts() {
+async function readOracleVerdicts(oracleRef) {
   const listing = await githubJson(
-    "repos/TheAxiomFoundation/axiom-oracles/contents/dashboard/public/data",
+    `repos/TheAxiomFoundation/axiom-oracles/contents/dashboard/public/data?ref=${oracleRef.sha}`,
   );
   const files = listing.filter((entry) => ORACLE_REPORT_RE.test(entry.name));
   const reports = [];
@@ -532,7 +533,10 @@ async function readOracleVerdicts() {
     Array.from({ length: ORACLE_CONCURRENCY }, async () => {
       for (let file = queue.shift(); file; file = queue.shift()) {
         try {
-          const res = await fetch(file.download_url);
+          // Ignore download_url: pin the raw host to the same commit as the listing.
+          const res = await fetch(
+            `https://raw.githubusercontent.com/TheAxiomFoundation/axiom-oracles/${oracleRef.sha}/dashboard/public/data/${file.name}`,
+          );
           if (res.ok) reports.push({ name: file.name, report: await res.json() });
         } catch (error) {
           console.warn(`oracle report ${file.name}: ${error.message}`);
@@ -1153,6 +1157,17 @@ async function dispatchSyncIfNeeded(oldestMerge) {
 
 async function main() {
   const nowMs = Date.now();
+  // Resolve outside the report-availability catch below: auth, rate-limit and
+  // transport failures must stop the run before it can publish any rows.
+  const oracleRef = oracleRefreshDue(nowMs)
+    ? await resolveOracleDataRef({
+        headers: githubHeaders,
+        fetch: (url, init) => {
+          requestCounts.rest += 1;
+          return fetch(url, init);
+        },
+      })
+    : undefined;
   const runs = await listDispatchRuns();
   if (runs.length === 0) throw new Error("no dispatch runs listed");
   const earliest = runs.map((run) => run.created_at).sort()[0];
@@ -1221,8 +1236,8 @@ async function main() {
     readValidation(mergedRepos, defaultBranches),
     readWaivers(mergedRepos),
   ]);
-  const oracle = oracleRefreshDue(nowMs)
-    ? await readOracleVerdicts().catch((error) => {
+  const oracle = oracleRef
+    ? await readOracleVerdicts(oracleRef).catch((error) => {
         console.warn(`oracle reports unavailable: ${error.message}`);
         return undefined;
       })
@@ -1348,7 +1363,7 @@ async function removeStale(previous, attempts) {
   if (stale.length) console.log(`removed ${stale.length} stale outside or dependent rows`);
 }
 
-main().catch((error) => {
+await main().catch((error) => {
   console.error(error);
   process.exit(1);
 });
