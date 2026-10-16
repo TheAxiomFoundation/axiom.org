@@ -31,10 +31,14 @@ import { BUTTON, Chip, FIELD } from "./ui";
  * the rules. A new question waits until the last answer is rated.
  */
 
-/** What the shell needs from the chat: whether an answer came back, and whether one is rated. */
+/** What the shell needs from the chat. */
 export interface ChatStatus {
+  /** An answer came back in this chat. */
   asked: boolean;
+  /** Some answer is rated (Try it's Next link opens). */
   rated: boolean;
+  /** The current conversation's newest answer is rated (the overall rating shows under it). */
+  current: boolean;
 }
 
 export interface Turn {
@@ -111,12 +115,15 @@ export function ChatWindow({
   rulesUnlocked,
   onRateOverall,
   onStatus,
+  onNewQuestion,
 }: {
   stage: string;
   rulesUnlocked: boolean;
   /** Leads to the overall rating, below the chat, once the answer is rated. */
   onRateOverall?: () => void;
   onStatus?: (status: ChatStatus) => void;
+  /** Called when the participant starts a new question. */
+  onNewQuestion?: () => void;
 }) {
   const [perspective, setPerspective] = useState<PerspectiveId>("resident");
   // Nothing is picked until the participant picks: a default would skew "Households picked".
@@ -134,6 +141,7 @@ export function ChatWindow({
   const threadEnd = useRef<HTMLDivElement>(null);
   const draftBox = useRef<HTMLTextAreaElement>(null);
   const ratingBox = useRef<HTMLElement>(null);
+  const chatCard = useRef<HTMLDivElement>(null);
   // False until the saved conversation is read, so the first render never overwrites it.
   const [hydrated, setHydrated] = useState(false);
 
@@ -176,9 +184,11 @@ export function ChatWindow({
   }, [hydrated, perspective, householdId, questionIds, twists, draft, template, conversationId, turns, rated]);
 
   const asked = turns.some((t) => t.role === "assistant" && t.status === "done");
+  const newestAnswer = turns.findLast((t) => t.role === "assistant" && t.status === "done" && t.promptId);
+  const current = Boolean(newestAnswer?.promptId && rated.has(newestAnswer.promptId));
   useEffect(() => {
-    if (hydrated) onStatus?.({ asked, rated: rated.size > 0 });
-  }, [hydrated, asked, rated, onStatus]);
+    if (hydrated) onStatus?.({ asked, rated: rated.size > 0, current });
+  }, [hydrated, asked, rated, current, onStatus]);
 
   // The question box grows to show the whole question, so nobody scrolls inside it on a phone.
   useEffect(() => {
@@ -230,11 +240,17 @@ export function ChatWindow({
     sendEvent("chip", { perspective: p, householdId: h, questionIds: q, twists: t }, stage);
   }
 
+  /** A new question starts blank: no household, details or text. Who you ask as stays. */
   function startOver() {
     setFollowUp(false);
     setTurns([]);
     setConversationId(newId());
-    choose(perspective, householdId, questionIds, twists);
+    setHouseholdId(null);
+    setTwists([]);
+    setQuestionIds(["amount"]);
+    setDraft("");
+    setTemplate(null);
+    onNewQuestion?.();
   }
 
   async function send() {
@@ -333,7 +349,10 @@ export function ChatWindow({
 
   return (
     <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] lg:gap-8">
-      <div className="rounded-xl border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] shadow-[0_1px_3px_rgba(28,25,23,0.05)]">
+      <div
+        ref={chatCard}
+        className="scroll-mt-20 rounded-xl border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] shadow-[0_1px_3px_rgba(28,25,23,0.05)]"
+      >
         <div className="flex items-center justify-between gap-3 border-b border-[var(--color-rule)] px-4 py-3">
           <span className="font-body text-[0.95rem] text-[var(--color-ink-secondary)]">
             {started ? "Your conversation" : "Ask as"}
@@ -392,9 +411,11 @@ export function ChatWindow({
                   className={`${tile(householdId === OWN)} col-span-2 border-dashed sm:col-span-3`}
                 >
                   <span className="block font-body text-[0.98rem] font-medium text-[var(--color-ink)]">
-                    Your own question
+                    Start from a blank question
                   </span>
-                  <span className="block font-body text-[0.84rem] text-[var(--color-ink-muted)]">Any benefit, any state</span>
+                  <span className="block font-body text-[0.84rem] text-[var(--color-ink-muted)]">
+                    Your own question: any benefit, any state
+                  </span>
                 </button>
               </div>
             </fieldset>
@@ -588,6 +609,20 @@ export function ChatWindow({
             >
               Next: how did AI do overall?
               <span aria-hidden className="text-[var(--color-accent)]">↓</span>
+            </button>
+          )}
+          {rated.has(latest.promptId) && (
+            // On a phone the chat's own "New question" link is far above; this one sits where the thumb is.
+            <button
+              type="button"
+              onClick={() => {
+                startOver();
+                chatCard.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+              }}
+              className="flex items-center justify-between gap-3 rounded-xl border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-4 py-3 text-left font-body text-[1rem] text-[var(--color-ink)] hover:border-[var(--color-accent)]"
+            >
+              Ask a new question
+              <span aria-hidden className="text-[var(--color-accent)]">↑</span>
             </button>
           )}
           {(rated.has(latest.promptId) || rulesUnlocked) && (

@@ -1,7 +1,7 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { PipelineJourney } from "./pipeline-journey";
-import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
+import { dependentAttempt, mergedAttempt, outsideAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 
 const NOW = Date.parse("2026-09-30T12:00:00Z");
 
@@ -70,13 +70,61 @@ describe("PipelineJourney", () => {
       />
     );
     const after = screen.getByRole("region", { name: "After the PR" });
+    // The index and the tests both count from the merge, and say when they ended: side by side, not a sequence.
     expect(within(after).getAllByRole("listitem").map((row) => row.textContent)).toEqual([
-      "Review22h 31mMerged · checks success · Into main",
-      "Index4h2 modules",
-      "Tests on main1hwait 10m · run 50m · first result pass",
+      "Review22h 31mSep 21, 09:00 UTC · Merged · checks success · Into main",
+      "Index4hfrom the merge · Sep 21, 13:00 UTC · 2 modules",
+      "Tests on main1hfrom the merge · Sep 21, 10:00 UTC · wait 10m · run 50m · first result pass",
       "Compiles and runs—",
       expect.stringMatching(/^Matches an oracle—/),
     ]);
+  });
+
+  it("reads the status from the run before a dispatch cancelled at approval", () => {
+    render(
+      <PipelineJourney
+        citation="nz/statute/act/public/2018/0032/section/75"
+        available
+        referenceMs={NOW}
+        attempts={[
+          pipelineAttempt({
+            id: "38497270533",
+            dispatched_at: "2026-09-30T01:43:00Z",
+            finished_at: "2026-09-30T04:40:00Z",
+            run_conclusion: "cancelled",
+            cancel_stage: "approval",
+            jobs_checked_at: "2026-09-30T05:00:00Z",
+            // An encoder record the collector matched to it: another run's.
+            encoder_run_id: "864612a1",
+            failure_source: "encoder_run",
+            cost_usd: 0.22,
+          }),
+          mergedAttempt({ id: "38482393294", pr_merged_at: "2026-09-29T12:00:00Z" }),
+        ]}
+      />
+    );
+    expect(screen.getByText("Merged")).toBeInTheDocument();
+    expect(screen.getByText(/for 24h\. The latest dispatch was cancelled before its encode job started\. 2 dispatches/)).toBeInTheDocument();
+    // The cancelled run is the wait it was, and nothing it did not do.
+    const [cancelled] = screen.getAllByRole("region", { name: "Encode run" });
+    expect(within(cancelled).getAllByRole("listitem").map((row) => row.textContent)).toEqual(["Wait for approval 2h 57m "]);
+    expect(screen.queryByText(/\$0\.22/)).not.toBeInTheDocument();
+  });
+
+  it("says what stopped a run once, without the group its message falls in", () => {
+    render(
+      <PipelineJourney
+        citation="us/x"
+        available
+        referenceMs={NOW}
+        attempts={[
+          pipelineAttempt({ id: "g", encoder_status: "apply_blocked_generation", encoder_error: "HTTP 404", failure_source: "log" }),
+          pipelineAttempt({ id: "s", failed_step: "package_exact_generated_changes", encoder_error: "ValueError: no changed signed apply manifest is available", failure_source: "log" }),
+        ]}
+      />
+    );
+    expect(screen.getByText("Failed to generate: HTTP 404")).toBeInTheDocument();
+    expect(screen.getByText("Failed to sign: ValueError: no changed signed apply manifest is available")).toBeInTheDocument();
   });
 
   it("explains an empty journey", () => {
@@ -84,10 +132,57 @@ describe("PipelineJourney", () => {
     expect(screen.getByText(/Pick a citation/)).toBeInTheDocument();
     cleanup();
     render(<PipelineJourney citation="us/x" attempts={[]} available referenceMs={NOW} />);
-    expect(screen.getByText(/No targeted re-encode dispatch/)).toBeInTheDocument();
+    expect(screen.getByText(/No encoding has been recorded/)).toBeInTheDocument();
     cleanup();
     render(<PipelineJourney citation="us/x" attempts={[]} available={false} referenceMs={NOW} />);
     expect(screen.getByText(/not available yet/)).toBeInTheDocument();
+  });
+
+  it("shows a merge outside the pipeline and a module encoded in another citation's run as their own cards", () => {
+    const citation = "us/statute/42/402/q";
+    render(
+      <PipelineJourney
+        citation={citation}
+        available
+        referenceMs={NOW}
+        hosts={{ "1001": "us/statute/42/416/l" }}
+        attempts={[
+          outsideAttempt({ citation, synced_at: "2026-09-24T06:00:00Z", index_status: "indexed", tests_status: "pass" }),
+          pipelineAttempt({ id: "2001", citation, dispatched_at: "2026-09-22T12:00:00Z", encoder_error_rule: "rule-a", encoder_error: "detail" }),
+          dependentAttempt({
+            citation,
+            tries: [{ attempt: 1, model: "gpt-6-sol", ms: 30_000, cost: 0.2, ok: false, error: "statutes/42/402/q.yaml: compile: failed" }],
+          }),
+        ]}
+      />
+    );
+    // The latest attempt decides the stage: the merge, now passing its tests on main.
+    expect(screen.getByText("Tests pass")).toBeInTheDocument();
+    expect(
+      screen.getByText(/1 dispatch, 1 merge outside the pipeline, 1 encoding in another citation's run, the first Sep 20, 10:20 UTC\./)
+    ).toBeInTheDocument();
+    const cards = screen.getAllByRole("listitem").filter((item) => item.querySelector("h2"));
+    expect(cards.map((card) => card.querySelector("h2")!.textContent)).toEqual([
+      "Merged outside the pipeline",
+      "Latest dispatch",
+      "Encoded in the run for us/statute/42/416/l",
+    ]);
+    const [outside, , dependent] = cards;
+    expect(within(outside).getByRole("link", { name: "rulespec-us#900" })).toHaveAttribute(
+      "href",
+      "https://github.com/TheAxiomFoundation/rulespec-us/pull/900"
+    );
+    expect(outside).toHaveTextContent("by MaxGhenis");
+    // Only the steps after the PR: the merge, the index, and the tests on main.
+    expect(within(outside).queryByRole("region", { name: "Encode run" })).toBeNull();
+    expect(within(outside).getByRole("region", { name: "After the PR" })).toHaveTextContent(/Review.*Index.*Tests on main/);
+    expect(within(dependent).getByRole("link", { name: "run 1001" })).toHaveAttribute(
+      "href",
+      "https://github.com/TheAxiomFoundation/axiom-encode/actions/runs/1001"
+    );
+    expect(dependent).toHaveTextContent("run 1001 · Failed the compile check · $0.40");
+    expect(within(dependent).getByRole("region", { name: "Encode run" })).toHaveTextContent(/Its encode loop.*Try 1/);
+    expect(dependent).toHaveTextContent(/Failed the compile check/);
   });
 
   it("falls back when the stage has no start time", () => {

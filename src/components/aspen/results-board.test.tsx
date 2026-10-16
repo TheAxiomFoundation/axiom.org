@@ -205,6 +205,18 @@ describe("ResultsBoard", () => {
     expect(card).not.toHaveTextContent("qualify under the encoded rules");
     const spotlight = within(screen.getByRole("heading", { name: "Answers worth discussing" }).closest("section") as HTMLElement);
     expect(spotlight.getByText("$24").parentElement).toHaveTextContent("· The rules say $24 if eligible");
+    expect(spotlight.getByText(/PolicyBench's Arizona reference/)).toHaveTextContent(
+      "PolicyBench's Arizona reference: $24 a month under FY2026 standards. The minimum benefit rose to $25 on October 1, 2026.",
+    );
+  });
+
+  it("keeps the Arizona reference out of other programs' $24 checks", () => {
+    render(<ResultsBoard summary={summarizeRun({
+      ...DATA,
+      prompts: [{ ...DATA.prompts[0], household_id: "ny-parent", rules_program: "New York SNAP" }],
+    })} />);
+    expect(screen.getByText("$24")).toBeInTheDocument();
+    expect(screen.queryByText(/PolicyBench's Arizona reference/)).not.toBeInTheDocument();
   });
 
   it("shows the source-of-truth answers under how it felt", () => {

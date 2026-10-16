@@ -1,13 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Check } from "lucide-react";
 import {
   BREAKOUT_PROMPT,
   EVENT,
+  GROUP_QUESTIONS,
   GROUP_RAISED,
+  BUILD_HEADING,
+  FOUNDATION_TRAITS,
   GOLDEN_A,
   NEXT_STEPS,
   ONE_SET_OF_RULES,
+  ONE_SET_STATEMENT,
   POLICYBENCH,
   STAGES,
   USE_CASES,
@@ -17,9 +22,9 @@ import {
 } from "@/lib/aspen/content";
 import type { Count } from "@/lib/aspen/results";
 import { SourceOfTruthCard } from "./results-board";
-import { countWord, snapQcTotals } from "@/lib/verification-evidence";
 import { VOTE_KEY, participantId, postJson, readStored, sendEvent, writeStored } from "./client";
 import { Disclosure } from "./disclosure";
+import { TierMedal } from "./tier-medal";
 import { BUTTON, Card, Chip, Eyebrow, FIELD } from "./ui";
 
 const OPTION_BOX =
@@ -136,7 +141,7 @@ export function WelcomeLanding({ onStart }: { onStart: () => void }) {
           <span className="kicker-mark">&sect;</span>
           Aspen Institute · {EVENT.place}
         </span>
-        <h1 className="heading-page m-0 mb-4 text-balance" style={{ fontSize: "clamp(1.7rem, 1.1rem + 2.4vw, 2.8rem)" }}>
+        <h1 className="heading-page m-0 mb-4 text-balance" style={{ fontSize: "clamp(1.5rem, 1rem + 2vw, 2.25rem)" }}>
           {EVENT.title}
         </h1>
         <p className="m-0 max-w-[560px] font-body text-[1.1rem] leading-relaxed text-[var(--color-ink-secondary)] text-balance">
@@ -194,7 +199,7 @@ export function YourThread({
   } else if (stage === "scale") {
     line =
       thread?.householdId === "az-savings"
-        ? "You asked about the Arizona household below: every one of the 46 models said it gets $0."
+        ? `You asked about the Arizona household below: every one of the ${POLICYBENCH.azCase.modelsAsked} models said it gets $0.`
         : `You asked about ${about}. Here is how AI does on households like it, at scale.`;
   } else {
     line = `Now check the AI's answer about ${about} against the encoded rules.`;
@@ -248,7 +253,7 @@ export function PolicyBenchContent() {
         <p className="m-0 font-body text-[1rem] leading-relaxed text-[var(--color-ink)]">{az.description}</p>
         <p className="m-0 font-body text-[1rem] leading-relaxed text-[var(--color-ink)]">
           <strong className="text-[var(--color-accent)]">
-            The rules, under {az.reference.standards} standards: eligible, ${az.reference.monthly} a month.
+            The rules, under {az.reference.standards} standards: ${az.reference.monthly} a month if eligible.
           </strong>{" "}
           PolicyBench&apos;s reference. The minimum benefit rose to ${az.fromOctober.monthly} on {az.fromOctober.effective}.
         </p>
@@ -268,7 +273,6 @@ export function PolicyBenchContent() {
 // ---------------------------------------------------------------------------
 
 export function FoundationContent({ sourceOfTruth }: { sourceOfTruth?: Count[] }) {
-  const qc = snapQcTotals();
   const asked = sourceOfTruth?.some((c) => c.count > 0) ?? false;
   return (
     <div className="flex flex-col gap-8">
@@ -279,11 +283,17 @@ export function FoundationContent({ sourceOfTruth }: { sourceOfTruth?: Count[] }
       )}
       <div className="grid items-stretch gap-3 md:grid-cols-[1fr_auto_1.4fr]">
         <div className="flex flex-col justify-center gap-2 rounded-lg bg-[var(--color-ink)] p-5 text-white">
-          <span className="font-mono text-[0.64rem] uppercase tracking-[0.18em] text-white/60">One source of truth</span>
           <span className="font-display text-[1.45rem] font-light leading-tight">
             One open, validated set of rules
           </span>
-          <span className="font-body text-[0.86rem] text-white/75">Cited to the law. Checked against your manuals.</span>
+          <ul className="m-0 flex list-none flex-col gap-1.5 p-0 font-body text-[0.86rem] leading-snug text-white/80">
+            {FOUNDATION_TRAITS.map((trait) => (
+              <li key={trait} className="flex gap-2">
+                <Check aria-hidden size={15} strokeWidth={2.25} className="mt-[3px] shrink-0 text-[#e8a25c]" />
+                {trait}
+              </li>
+            ))}
+          </ul>
         </div>
         <span aria-hidden className="hidden self-center font-display text-[2rem] text-[var(--color-accent)] md:block">
           →
@@ -301,16 +311,14 @@ export function FoundationContent({ sourceOfTruth }: { sourceOfTruth?: Count[] }
         </ul>
       </div>
 
-      <p className="m-0 max-w-[600px] border-l-2 border-[var(--color-accent)] pl-4 font-body text-[0.98rem] leading-relaxed text-[var(--color-ink-secondary)]">
-        <span className="text-[var(--color-ink)]">SNAP benefit math already checks out.</span>{" "}
-        We replay USDA&apos;s quality-control cases from {countWord(qc.states)} states (
-        {qc.households.toLocaleString("en-US")} households), and the benefit amount matches in every case.
+      <p className="m-0 max-w-[680px] border-t border-[var(--color-rule)] pt-4 font-body text-[1.05rem] font-medium leading-snug text-[var(--color-ink)]">
+        {ONE_SET_STATEMENT.text} <span className="text-[var(--color-accent)]">{ONE_SET_STATEMENT.accent}</span>
       </p>
 
       <section>
-        <h2 className="heading-sub m-0 mb-2">What it takes for a state</h2>
+        <h2 className="heading-sub m-0 mb-2">{BUILD_HEADING}</h2>
         <p className="m-0 mb-4 max-w-[640px] font-body text-[0.95rem] leading-relaxed text-[var(--color-ink-secondary)]">
-          Three levels of validation. Each one is a step a state can take on its own schedule.
+          Three steps, from public documents to your own system. A state takes each one on its own schedule.
         </p>
         <GoldenContent />
       </section>
@@ -319,23 +327,13 @@ export function FoundationContent({ sourceOfTruth }: { sourceOfTruth?: Count[] }
 }
 
 export function GoldenContent() {
-  const tones = [
-    { seal: "#9a6b3f", card: "" },
-    { seal: "#8a9199", card: "bg-[#eef0f2]" },
-    { seal: "#b7862b", card: "border-[#b7862b] bg-[#f6eed8]" },
-  ];
+  const cards: Record<string, string> = { "Silver A": "bg-[#eef0f2]", "Gold A": "border-[#b7862b] bg-[#f6eed8]" };
   return (
     <div className="grid gap-3 lg:grid-cols-3">
-      {GOLDEN_A.map((tier, i) => (
-        <Card key={tier.tier} className={`flex flex-col gap-3 ${tones[i].card}`}>
+      {GOLDEN_A.map((tier) => (
+        <Card key={tier.tier} className={`flex flex-col gap-3 ${cards[tier.tier] ?? ""}`}>
           <div className="flex items-center gap-3">
-            <span
-              aria-hidden
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-display text-[1.25rem] font-semibold text-white"
-              style={{ background: tones[i].seal }}
-            >
-              A
-            </span>
+            <TierMedal medal={tier.medal} size={40} />
             <div>
               <span className="block font-mono text-[0.64rem] uppercase tracking-[0.16em] text-[var(--color-ink-muted)]">
                 {tier.tier}
@@ -346,6 +344,14 @@ export function GoldenContent() {
           <div>
             <Eyebrow className="mb-1">Your state gets</Eyebrow>
             <p className="m-0 font-body text-[0.92rem] leading-relaxed text-[var(--color-ink)]">{tier.gets}</p>
+            {"goal" in tier && (
+              <p className="m-0 mt-1.5 font-body text-[0.92rem] leading-relaxed text-[var(--color-ink)]">{tier.goal}</p>
+            )}
+            {"programs" in tier && (
+              <p className="m-0 mt-1.5 font-body text-[0.84rem] leading-relaxed text-[var(--color-ink-secondary)]">
+                {(tier.programs as readonly string[]).join(" · ")}
+              </p>
+            )}
           </div>
           <div className="mt-auto">
             <Eyebrow className="mb-1">It takes</Eyebrow>
@@ -434,15 +440,17 @@ export function SmallGroups({ stage }: { stage: string }) {
 }
 
 /**
- * Small groups: the prompt, a box for the group's best idea, and an optional
- * box for what else came up (barriers, workforce, questions), so the room
- * keeps more than one line per group.
+ * Small groups: one use to build first, then the three questions, one box
+ * each, and an optional box for what else came up (barriers, workforce,
+ * questions). The report-back card on the big screen shows the same three.
  */
 export function GroupsCard({ stage }: { stage: string }) {
   const [useCase, setUseCase] = useState<string | null>(null);
-  const [note, setNote] = useState("");
+  const [answers, setAnswers] = useState<Record<(typeof GROUP_QUESTIONS)[number]["id"], string>>({ note: "", who: "", trust: "" });
   const [raised, setRaised] = useState("");
   const [shared, setShared] = useState(0);
+  const anything = [...Object.values(answers), raised].some((v) => v.trim());
+  const number = "mr-2 font-mono text-[0.8rem] text-[var(--color-accent)]";
 
   return (
     <div className="flex max-w-[760px] flex-col gap-5">
@@ -451,7 +459,7 @@ export function GroupsCard({ stage }: { stage: string }) {
       </p>
       <fieldset className="m-0 border-0 p-0">
         <legend className="mb-2.5 font-body text-[1rem] text-[var(--color-ink)]">
-          Your group talked about <span className="text-[var(--color-ink-muted)]">(optional)</span>
+          The use you picked <span className="text-[var(--color-ink-muted)]">(optional)</span>
         </legend>
         <div className="flex flex-wrap gap-2">
           {USE_CASES.map((u) => (
@@ -461,23 +469,28 @@ export function GroupsCard({ stage }: { stage: string }) {
           ))}
         </div>
       </fieldset>
-      <label className="flex flex-col gap-2 font-body text-[1rem] text-[var(--color-ink)]">
-        Your group&apos;s best idea
-        <textarea
-          rows={4}
-          maxLength={2000}
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          className={FIELD}
-          placeholder="One or two sentences"
-        />
-      </label>
+      {GROUP_QUESTIONS.map((q, i) => (
+        <label key={q.id} className="flex flex-col gap-2 font-body text-[1rem] text-[var(--color-ink)]">
+          <span>
+            <span className={number}>{i + 1}</span>
+            {q.label}
+          </span>
+          <textarea
+            rows={q.id === "note" ? 3 : 2}
+            maxLength={2000}
+            value={answers[q.id]}
+            onChange={(e) => setAnswers((a) => ({ ...a, [q.id]: e.target.value }))}
+            className={FIELD}
+            placeholder={q.placeholder}
+          />
+        </label>
+      ))}
       <label className="flex flex-col gap-2 font-body text-[1rem] text-[var(--color-ink)]">
         <span>
           {GROUP_RAISED.label} <span className="text-[var(--color-ink-muted)]">(optional)</span>
         </span>
         <textarea
-          rows={3}
+          rows={2}
           maxLength={2000}
           value={raised}
           onChange={(e) => setRaised(e.target.value)}
@@ -485,15 +498,15 @@ export function GroupsCard({ stage }: { stage: string }) {
           placeholder={GROUP_RAISED.placeholder}
         />
       </label>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
           className={`${BUTTON} py-3`}
-          disabled={!note.trim() && !raised.trim()}
+          disabled={!anything}
           onClick={() => {
-            sendEvent("breakout", { useCase, note, raised }, stage);
+            sendEvent("breakout", { useCase, ...answers, raised }, stage);
             setShared((n) => n + 1);
-            setNote("");
+            setAnswers({ note: "", who: "", trust: "" });
             setRaised("");
           }}
         >
@@ -647,7 +660,7 @@ export function ThankYouContent({ onReturn }: { onReturn?: () => void }) {
       detail: "Ask the same question, answered by the encoded rules.",
       href: "https://axiom.org/gallery/chatbot",
     },
-    { label: "PolicyBench", detail: "How 46 AI models do on benefits, case by case.", href: POLICYBENCH.url },
+    { label: "PolicyBench", detail: `How ${POLICYBENCH.models} AI models do on benefits, case by case.`, href: POLICYBENCH.url },
     { label: "The Axiom Foundation", detail: "Open, validated rules for every state.", href: "https://axiom.org" },
   ];
   return (
@@ -657,7 +670,7 @@ export function ThankYouContent({ onReturn }: { onReturn?: () => void }) {
           <span className="kicker-mark">&sect;</span>
           Aspen Institute · {EVENT.place}
         </span>
-        <h1 className="heading-page m-0 mb-4" style={{ fontSize: "clamp(2rem, 1.3rem + 3vw, 3.4rem)" }}>
+        <h1 className="heading-page m-0 mb-4" style={{ fontSize: "clamp(1.75rem, 1.2rem + 2.4vw, 2.75rem)" }}>
           Thank you
         </h1>
         <p className="m-0 max-w-[560px] font-display text-[1.35rem] font-light leading-snug text-[var(--color-ink)] text-balance">

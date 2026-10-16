@@ -1,8 +1,10 @@
 import {
+  AZ_HOUSEHOLD,
   RATING_SCALES,
   TWISTS,
   TWIST_GROUPS,
   TWIST_IDS,
+  WHAT_MODELS_MISS,
   twistsFor,
   HOUSEHOLDS,
   PERSPECTIVE_IDS,
@@ -27,7 +29,8 @@ describe('aspen content', () => {
     expect(STAGES.at(-1)?.label).toBe('Thank you')
     for (const stage of STAGES) {
       expect(stage).not.toHaveProperty('time')
-      expect(stage.summary.length).toBeGreaterThan(20)
+      // The shared foundation's heading stands on its own.
+      if (stage.id !== 'foundation') expect(stage.summary.length).toBeGreaterThan(20)
     }
   })
 
@@ -148,8 +151,8 @@ describe('aspen content', () => {
   })
 
   it('keeps the PolicyBench figures consistent', () => {
-    expect(percent(POLICYBENCH.saidZero, POLICYBENCH.eligibleAnswers)).toBe(41)
-    expect(percent(POLICYBENCH.saidZeroBbce, POLICYBENCH.saidZero)).toBe(78)
+    expect(percent(POLICYBENCH.saidZero, POLICYBENCH.eligibleAnswers)).toBe(42)
+    expect(percent(POLICYBENCH.saidZeroBbce, POLICYBENCH.saidZero)).toBe(74)
     expect(percent(1, 0)).toBe(0)
   })
 
@@ -164,8 +167,16 @@ describe('aspen content', () => {
     expect(federalFiscalYear('2026-09')).toBe(2026)
     for (const text of [answer, findHousehold('az-savings')!.why]) {
       expect(text).toContain('$24 a month under FY2026 standards')
+      expect(text).toContain("PolicyBench's reference")
       expect(text).toContain('The minimum benefit rose to $25 on October 1, 2026.')
+      expect(text).toContain("Axiom's Arizona SNAP rules don't test eligibility yet")
+      expect(text).toContain('the rules check shows the amount if eligible')
     }
-    expect(findHousehold('az-savings')!.why).toContain("Axiom's Arizona SNAP rules don't test eligibility yet")
+    // Master's slides keep the annual reference: ten months at the benchmark's
+    // FY2026 minimum, alongside the monthly standards caveat.
+    expect(AZ_HOUSEHOLD.reference).toBe(10 * reference.monthly)
+    expect(WHAT_MODELS_MISS.amount).toBe(AZ_HOUSEHOLD.reference)
+    expect(POLICYBENCH.azCase.modelsAsked).toBe(POLICYBENCH.models)
+    expect(POLICYBENCH.azCase.modelsSaidZero).toBe(POLICYBENCH.models)
   })
 })

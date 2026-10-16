@@ -33,14 +33,28 @@ generate `/axiom/v2/...` hrefs. The app root and marketing pages stay on v1.
   additive rule index is unavailable.
 - **Encoding pipeline** (`encodings.pipeline_attempts`): one row per
   targeted re-encode dispatch, followed through its signed manifest PR (and
-  what holds it: failing or cancelled checks, reviewers), the merge, the
-  `rulespec_files` index (matched by commit), axiom-api's nightly compile
+  what holds it: failing or cancelled checks, reviewers), the merge (a merge
+  into a side branch reaches main only through that branch's own PR,
+  `pr_via_*`), the `rulespec_files` index (matched by commit), axiom-api's nightly compile
   sweep, its jurisdiction's validation on main (waiver-aware), and any
   axiom-oracles comparison report. From axiom-encode 0.2.2157 each try in
   `tries` also carries its start, whole time and phases (with a check
   phase's time by tool), and `encode_loop` keeps the encoder's loop clock;
   the ledger timeline draws the tries on the run's clock from them. Older
   records lack both and read as "not timed".
+  Two more kinds of rows, told apart by id (`attemptSource`, no extra
+  column): `pr:<repo>#<n>:<module path>`, one module file a PR merged into a
+  rulespec-* default branch with no dispatch behind it (from 2026-07-22; each
+  pass lists PRs merged since a day before the last pass and reads only new
+  PRs' files, older ones are carried in their rows), and
+  `dep:<encoding_runs id>`, a module the encoder wrote inside another
+  citation's run (a source or dependent lane), with `queue_ref`
+  `dependent:<run id>`. Encoder records share no session with their run, so
+  the host is the same repo family's run whose encode window holds the
+  record, then the encoder version. Both go through the same joins after the
+  merge. Citation views (stages, ledger, journey, bundles' latest stage)
+  include them; run statistics (flow, attempts, versions, the weekly runs,
+  approvals) count dispatches only, and cost adds the dependent records.
   `scripts/collect-encoding-pipeline.mjs` rebuilds it every 30 minutes from
   GitHub and Supabase (and dispatches the index sync after merges); the pace
   comes from `collector-heartbeat.yml`, which starts the collector workflow
@@ -57,14 +71,23 @@ generate `/axiom/v2/...` hrefs. The app root and marketing pages stay on v1.
   `known-validation-gaps.yaml` waivers and `pipeline_attempts`. A provision
   counts as encoded only when a rule cites it; a module's declared source,
   section-wide proof atoms and rule sources naming a whole section are not
-  proof (they make it partly encoded). A document's provisions are the corpus
+  proof (they make it partly encoded). Section-wide: a US Code or CFR section
+  or above (by depth, though the corpus holds a CFR section as one leaf); in
+  state law, a node the corpus holds provisions under, so a citation of a
+  state section the corpus holds whole encodes it. A document's provisions are the corpus
   nodes under its path and linked under it (`parent_path` misses some
   sections, and a chapter or subpart links sections outside its path), less
   any document under it in the same tier, so each provision counts once.
-  In Tier 1 a whole citation of a section counts its provisions; a whole
+  Tier 1 holds the plan's documents (each counts all its provisions) and the
+  provisions the reference model cites (each counts alone; one cited inside
+  another cited one counts with it). In Tier 1 a whole citation of a section counts its provisions; a whole
   citation of a container (a title, chapter, part, public or session law,
   register issue, compilation or whole manual, read from the served
-  identifiers and labels) is one reference and counts once. A collector dry
+  identifiers and labels) is one reference and counts once. In Tier 2 a
+  corpus leaf with cited provisions under it counts as those, plus the rest
+  of the leaf in its own state unless the leaf is encoded whole. The by-state
+  grid counts a jurisdiction's documents once across programs
+  (`counts.jurisdiction`, the program where each is least done). A collector dry
   run with `--local-scopes <release TSV> --local-base <data/corpus>` previews
   what activating a release changes.
   `scripts/collect-program-bundles.mjs` rebuilds them in the pipeline

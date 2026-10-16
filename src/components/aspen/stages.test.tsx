@@ -1,7 +1,17 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BREAKOUT_PROMPT, DISCLOSURE, EVENT, GOLDEN_A, ONE_SET_OF_RULES, STAGES } from "@/lib/aspen/content";
-import { countWord, snapQcTotals } from "@/lib/verification-evidence";
+import {
+  BREAKOUT_PROMPT,
+  BUILD_HEADING,
+  DISCLOSURE,
+  EVENT,
+  FOUNDATION_TRAITS,
+  GOLDEN_A,
+  GROUP_QUESTIONS,
+  ONE_SET_OF_RULES,
+  ONE_SET_STATEMENT,
+  STAGES,
+} from "@/lib/aspen/content";
 import {
   Agenda,
   Disclosure,
@@ -183,7 +193,7 @@ describe("YourThread", () => {
         onOpen={vi.fn()}
       />,
     );
-    expect(screen.getByText(/every one of the 46 models said it gets \$0/)).toBeInTheDocument();
+    expect(screen.getByText(/every one of the 50 models said it gets \$0/)).toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
@@ -259,22 +269,41 @@ describe("GroupsCard", () => {
     expect(project).toHaveAttribute("aria-pressed", "true");
     // A use case alone is not an idea.
     expect(share).toBeDisabled();
-    fireEvent.change(screen.getByRole("textbox", { name: /Your group's best idea/ }), {
+    fireEvent.change(screen.getByRole("textbox", { name: /What would you build first\?/ }), {
       target: { value: "Model the shelter cap" },
     });
     fireEvent.click(share);
     expect(screen.getByText("Shared. It's on the big screen.")).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: /Your group's best idea/ })).toHaveValue("");
+    expect(screen.getByRole("textbox", { name: /What would you build first\?/ })).toHaveValue("");
 
     // Tapping the use case again clears it.
     fireEvent.click(project);
     expect(project).toHaveAttribute("aria-pressed", "false");
-    fireEvent.change(screen.getByRole("textbox", { name: /Your group's best idea/ }), { target: { value: "Train staff" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /What would you build first\?/ }), { target: { value: "Train staff" } });
     fireEvent.click(share);
     await waitFor(() =>
       expect(bodies(fetchMock, "/api/aspen/event")).toEqual([
-        { participantId: "p-1", kind: "breakout", payload: { useCase: "project", note: "Model the shelter cap", raised: "" }, stage: "groups" },
-        { participantId: "p-1", kind: "breakout", payload: { useCase: null, note: "Train staff", raised: "" }, stage: "groups" },
+        { participantId: "p-1", kind: "breakout", payload: { useCase: "project", note: "Model the shelter cap", who: "", trust: "", raised: "" }, stage: "groups" },
+        { participantId: "p-1", kind: "breakout", payload: { useCase: null, note: "Train staff", who: "", trust: "", raised: "" }, stage: "groups" },
+      ]),
+    );
+  });
+
+  it("asks the three questions, one box each, and shares all three", async () => {
+    const fetchMock = stubFetch();
+    render(<GroupsCard stage="groups" />);
+    for (const q of GROUP_QUESTIONS) expect(screen.getByRole("textbox", { name: new RegExp(q.label.replace(/[?,]/g, ".")) })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: /Who would use it/ }), { target: { value: "Caseworkers on intake" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /trust it/ }), { target: { value: "Our policy unit signs off" } });
+    fireEvent.click(screen.getByRole("button", { name: "Share with the room" }));
+    await waitFor(() =>
+      expect(bodies(fetchMock, "/api/aspen/event")).toEqual([
+        {
+          participantId: "p-1",
+          kind: "breakout",
+          payload: { useCase: null, note: "", who: "Caseworkers on intake", trust: "Our policy unit signs off", raised: "" },
+          stage: "groups",
+        },
       ]),
     );
   });
@@ -292,7 +321,7 @@ describe("GroupsCard", () => {
     expect(raised).toHaveValue("");
     await waitFor(() =>
       expect(bodies(fetchMock, "/api/aspen/event")).toEqual([
-        { participantId: "p-1", kind: "breakout", payload: { useCase: null, note: "", raised: "Union rules on new tools" }, stage: "groups" },
+        { participantId: "p-1", kind: "breakout", payload: { useCase: null, note: "", who: "", trust: "", raised: "Union rules on new tools" }, stage: "groups" },
       ]),
     );
   });
@@ -413,29 +442,28 @@ describe("ThankYouContent", () => {
 describe("PolicyBenchContent", () => {
   it("shows the one number and the Arizona household every model got wrong", () => {
     render(<PolicyBenchContent />);
-    expect(screen.getByText("41%")).toBeInTheDocument();
-    expect(screen.getByText("242 of 591 answers, from 46 models.")).toBeInTheDocument();
-    expect(screen.getByText(/An Arizona household · 46 of 46 models said \$0/)).toBeInTheDocument();
-    expect(screen.getByText("The rules, under FY2026 standards: eligible, $24 a month.").parentElement).toHaveTextContent(
-      "The rules, under FY2026 standards: eligible, $24 a month. PolicyBench's reference. The minimum benefit rose to $25 on October 1, 2026.",
+    expect(screen.getByText("42%")).toBeInTheDocument();
+    expect(screen.getByText("268 of 643 answers, from 50 models.")).toBeInTheDocument();
+    expect(screen.getByText(/An Arizona household · 50 of 50 models said \$0/)).toBeInTheDocument();
+    expect(screen.getByText("The rules, under FY2026 standards: $24 a month if eligible.").parentElement).toHaveTextContent(
+      "The rules, under FY2026 standards: $24 a month if eligible. PolicyBench's reference. The minimum benefit rose to $25 on October 1, 2026.",
     );
     expect(screen.getByRole("link", { name: "policybench.org" })).toHaveAttribute("href", "https://policybench.org");
   });
 });
 
 describe("FoundationContent and GoldenContent", () => {
-  it("shows one set of rules powering every use, with the SNAP QC replay", () => {
+  it("shows one set of rules powering every use, worded as on the slide", () => {
     render(<FoundationContent />);
-    const qc = snapQcTotals();
     expect(screen.getByText("One open, validated set of rules")).toBeInTheDocument();
+    for (const trait of FOUNDATION_TRAITS) expect(screen.getByText(trait)).toBeInTheDocument();
     for (const use of ONE_SET_OF_RULES) expect(screen.getByText(use.label)).toBeInTheDocument();
-    expect(screen.getByText("SNAP benefit math already checks out.")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        new RegExp(`from ${countWord(qc.states)} states \\(${qc.households.toLocaleString("en-US")} households\\)`),
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "What it takes for a state" })).toBeInTheDocument();
+    expect(screen.getByText(ONE_SET_STATEMENT.accent)).toBeInTheDocument();
+    // The slide dropped these, so the phones do too.
+    expect(screen.queryByText("One source of truth")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Cited to the law/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/SNAP benefit math already checks out/)).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: BUILD_HEADING })).toBeInTheDocument();
     expect(screen.getByText("Gold A")).toBeInTheDocument();
   });
 
