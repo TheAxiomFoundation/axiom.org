@@ -44,6 +44,53 @@ export function Prompt({ children, className }: { children: ReactNode; className
   );
 }
 
+/** A question inside a guided step: bold and plain, the same in every step. */
+export const QUESTION = "m-0 mb-3 p-0 font-body text-[1.08rem] font-semibold leading-snug text-[var(--color-ink)]";
+
+/**
+ * One guided question at a time: an optional title, where you are ("2 of 4")
+ * with a progress bar, the question, and a way back. Used by the answer
+ * rating and the overall ratings so both look and move the same way.
+ */
+export function StepFrame({
+  title,
+  at,
+  of,
+  onBack,
+  children,
+}: {
+  title?: string;
+  /** 1-based. */
+  at: number;
+  of: number;
+  onBack?: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-4 rounded-xl border-2 border-[var(--color-accent)] bg-[var(--color-paper-elevated)] p-4 sm:p-5">
+      <div className="flex flex-col gap-2">
+        <div className="flex items-baseline justify-between gap-3">
+          {title ? <Prompt className="text-[1.08rem] text-[var(--color-accent)]">{title}</Prompt> : <span />}
+          <span className="shrink-0 font-body text-[0.9rem] text-[var(--color-ink-muted)]">
+            {at} of {of}
+          </span>
+        </div>
+        <div aria-hidden className="flex gap-1">
+          {Array.from({ length: of }, (_, i) => (
+            <span key={i} className={`h-1.5 flex-1 rounded-full ${i < at ? "bg-[var(--color-accent)]" : "bg-[var(--color-rule)]"}`} />
+          ))}
+        </div>
+      </div>
+      {children}
+      {onBack && (
+        <button type="button" className="aspen-link self-start font-body text-[0.95rem]" onClick={onBack}>
+          ← Back
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function Eyebrow({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <span

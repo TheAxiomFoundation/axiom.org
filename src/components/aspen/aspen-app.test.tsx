@@ -393,6 +393,8 @@ describe("AspenApp without a live presenter", () => {
     fireEvent.click(screen.getByRole("button", { name: /Next: how did AI do overall\?/ }));
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
     fireEvent.click(screen.getByRole("button", { name: "Got the amount right: 2 of 5" }));
+    // One step at a time, Continue to the end, then share.
+    for (let i = 0; i < 4; i++) fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     fireEvent.click(screen.getByRole("button", { name: "Share my ratings" }));
     expect(await screen.findByText(/Your ratings are in/)).toBeInTheDocument();
     await waitFor(() =>

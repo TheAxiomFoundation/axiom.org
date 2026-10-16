@@ -22,7 +22,7 @@ import { AnswerText } from "./answer-text";
 import { RatingCard, RulesCheck } from "./answer-feedback";
 import { CHAT_KEY, newId, participantId, readStored, sendEvent, writeStored } from "./client";
 import { Disclosure } from "./disclosure";
-import { BUTTON, Chip, FIELD } from "./ui";
+import { BUTTON, BUTTON_QUIET, Chip, FIELD } from "./ui";
 
 /**
  * The hands-on segment: pick a perspective and a household, send the
@@ -609,7 +609,31 @@ export function ChatWindow({
       {latest?.promptId ? (
         <section ref={ratingBox} aria-label="Your verdict" className="flex scroll-mt-20 flex-col gap-4 lg:sticky lg:top-24">
           {rated.has(latest.promptId) ? (
-            <p className="m-0 font-body text-[1rem] text-[var(--color-success)]">Your rating is saved. Thank you.</p>
+            // Once rated: one clear next step, and a quieter way to ask again.
+            <div className="flex flex-col gap-3">
+              <p className="m-0 font-body text-[1.02rem] font-medium text-[var(--color-ink)]">
+                <span aria-hidden className="mr-1.5 text-[var(--color-success)]">✓</span>
+                Your rating is saved. Thank you.
+              </p>
+              {onRateOverall && (
+                <button type="button" onClick={onRateOverall} className={`${BUTTON} w-full justify-between py-3.5 text-left text-[1.02rem]`}>
+                  Next: how did AI do overall?
+                  <span aria-hidden>↓</span>
+                </button>
+              )}
+              {/* On a phone the chat's own "New question" link is far above; this one sits where the thumb is. */}
+              <button
+                type="button"
+                onClick={() => {
+                  startOver();
+                  chatCard.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+                }}
+                className={`${BUTTON_QUIET} w-full justify-between py-3 text-left text-[1rem]`}
+              >
+                Ask a new question
+                <span aria-hidden className="text-[var(--color-accent)]">↑</span>
+              </button>
+            </div>
           ) : (
             <RatingCard
               key={latest.promptId}
@@ -617,31 +641,8 @@ export function ChatWindow({
               onRated={() => setRated((s) => new Set(s).add(latest.promptId as string))}
             />
           )}
-          {rated.has(latest.promptId) && onRateOverall && (
-            <button
-              type="button"
-              onClick={onRateOverall}
-              className="flex items-center justify-between gap-3 rounded-xl border border-[var(--color-accent)] bg-[var(--color-accent-light)] px-4 py-3 text-left font-body text-[1rem] text-[var(--color-ink)]"
-            >
-              Next: how did AI do overall?
-              <span aria-hidden className="text-[var(--color-accent)]">↓</span>
-            </button>
-          )}
-          {rated.has(latest.promptId) && (
-            // On a phone the chat's own "New question" link is far above; this one sits where the thumb is.
-            <button
-              type="button"
-              onClick={() => {
-                startOver();
-                chatCard.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
-              }}
-              className="flex items-center justify-between gap-3 rounded-xl border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-4 py-3 text-left font-body text-[1rem] text-[var(--color-ink)] hover:border-[var(--color-accent)]"
-            >
-              Ask a new question
-              <span aria-hidden className="text-[var(--color-accent)]">↑</span>
-            </button>
-          )}
-          {(rated.has(latest.promptId) || rulesUnlocked) && (
+          {/* The rules check waits for its stage; no note about it before then, so the next step stays clear. */}
+          {rulesUnlocked && (
             <RulesCheck
               key={`rules-${latest.promptId}`}
               promptId={latest.promptId}

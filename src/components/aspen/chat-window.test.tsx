@@ -373,13 +373,14 @@ describe("ChatWindow asking", () => {
       ["assistant", "done", "prompt-1"],
     ]);
 
-    // Rate it: the card gives way to a thank-you and the (locked) rules check.
+    // Rate it: the card gives way to a thank-you and one clear next step; no note about the locked rules check.
     fireEvent.click(within(verdict).getByRole("button", { name: "Looks right" }));
     fireEvent.click(within(verdict).getByRole("button", { name: "Yes" }));
     fireEvent.click(within(verdict).getByRole("button", { name: "Apply" }));
     fireEvent.click(within(verdict).getByRole("button", { name: "Save rating" }));
     expect(await screen.findByText("Your rating is saved. Thank you.")).toBeInTheDocument();
-    expect(screen.getByText(/Later in the session, you'll check this answer/)).toBeInTheDocument();
+    expect(screen.queryByText(/Later in the session, you'll check this answer/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Ask a new question/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "New question" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ask a follow-up" })).toBeEnabled();
     expect(calls(fetchMock, "/api/aspen/rate")[0]).toMatchObject({ promptId: "prompt-1", verdict: "right" });
@@ -637,7 +638,7 @@ describe("ChatWindow saved conversation", () => {
     openFollowUp();
     expect(draftBox().value).toBe("half typed");
     expect(screen.getByText("Your rating is saved. Thank you.")).toBeInTheDocument();
-    expect(screen.getByText(/Later in the session, you'll check this answer/)).toBeInTheDocument();
+    expect(screen.queryByText(/Later in the session, you'll check this answer/)).not.toBeInTheDocument();
     await waitFor(() => expect(saved().turns[3]).toMatchObject({ status: "error", content: "Interrupted. Ask again." }));
     expect(saved()).toMatchObject({ conversationId: "c-1", template: "the template", rated: ["p1"] });
   });
