@@ -55,9 +55,12 @@ export interface Turn {
 }
 
 const OWN = "own";
-/** A numbered step heading in the composer: household, details, questions. */
-const STEP = "mb-2.5 flex items-baseline gap-2 font-body text-[0.98rem] text-[var(--color-ink)]";
-const STEP_NUMBER = "font-mono text-[0.85rem] text-[var(--color-accent)]";
+/** A numbered step heading in the composer, bold so each step stands out: ask as, household, details, questions, your question. */
+const STEP = "mb-3 flex items-center gap-2.5 font-body text-[1.08rem] font-semibold text-[var(--color-ink)]";
+const STEP_NUMBER =
+  "flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--color-accent)] font-body text-[0.9rem] font-semibold text-white";
+/** The quieter part of a step heading, such as "(optional)". */
+const STEP_NOTE = "font-normal text-[var(--color-ink-muted)]";
 export { CHAT_KEY };
 
 export interface SavedChat {
@@ -200,6 +203,10 @@ export function ChatWindow({
 
   const started = turns.length > 0;
   const household = findHousehold(householdId);
+  // Steps number in the order they show: details and questions appear once a household is picked.
+  const step = household
+    ? { askAs: 1, household: 2, details: 3, question: 4, draft: 5 }
+    : { askAs: 1, household: 2, details: null, question: null, draft: 3 };
 
   function choose(p: PerspectiveId, h: string | null, q: QuestionId[], t: string[]) {
     const found = findHousehold(h);
@@ -353,43 +360,45 @@ export function ChatWindow({
         ref={chatCard}
         className="scroll-mt-20 rounded-xl border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] shadow-[0_1px_3px_rgba(28,25,23,0.05)]"
       >
-        <div className="flex items-center justify-between gap-3 border-b border-[var(--color-rule)] px-4 py-3">
-          <span className="font-body text-[0.95rem] text-[var(--color-ink-secondary)]">
-            {started ? "Your conversation" : "Ask as"}
-          </span>
-          {started ? (
-            !mustRate && (
+        {started && (
+          <div className="flex items-center justify-between gap-3 border-b border-[var(--color-rule)] px-4 py-3">
+            <span className="font-body text-[0.95rem] text-[var(--color-ink-secondary)]">Your conversation</span>
+            {!mustRate && (
               <button type="button" className="aspen-link font-body text-[0.95rem]" onClick={startOver}>
                 New question
               </button>
-            )
-          ) : (
-            <div role="group" aria-label="Ask as" className="inline-flex rounded-full border border-[var(--color-rule)] bg-[var(--color-paper)] p-0.5">
-              {PERSPECTIVES.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  aria-label={p.label}
-                  aria-pressed={perspective === p.id}
-                  onClick={() => pick({ p: p.id })}
-                  className={`rounded-full px-3.5 py-1.5 font-body text-[0.9rem] transition-colors ${
-                    perspective === p.id ? "bg-[var(--color-ink)] text-white" : "text-[var(--color-ink-secondary)]"
-                  }`}
-                >
-                  {p.short}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
 
         {!started && (
           <div className="flex flex-col gap-5 px-4 pt-4">
             <fieldset className="m-0 border-0 p-0">
               <legend className={STEP}>
-                <span className={STEP_NUMBER}>1</span>Pick a household
+                <span className={STEP_NUMBER}>{step.askAs}</span>Ask as
               </legend>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <div role="group" aria-label="Ask as" className="grid grid-cols-2 gap-1 rounded-full border border-[var(--color-rule)] bg-[var(--color-paper)] p-1">
+                {PERSPECTIVES.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    aria-label={p.label}
+                    aria-pressed={perspective === p.id}
+                    onClick={() => pick({ p: p.id })}
+                    className={`rounded-full px-3.5 py-2.5 font-body text-[1rem] font-medium transition-colors ${
+                      perspective === p.id ? "bg-[var(--color-ink)] text-white" : "text-[var(--color-ink)]"
+                    }`}
+                  >
+                    {p.short}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+            <fieldset className="m-0 border-0 border-t border-[var(--color-rule)] p-0 pt-4">
+              <legend className={`${STEP} float-left w-full`}>
+                <span className={STEP_NUMBER}>{step.household}</span>Pick a household
+              </legend>
+              <div className="clear-left grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {HOUSEHOLDS.map((h) => (
                   <button
                     key={h.id}
@@ -422,8 +431,7 @@ export function ChatWindow({
             {household && (
               <fieldset className="m-0 border-0 border-t border-[var(--color-rule)] p-0 pt-4">
                 <legend className={`${STEP} float-left w-full`}>
-                  <span className={STEP_NUMBER}>2</span>Add details{" "}
-                  <span className="text-[var(--color-ink-muted)]">(optional)</span>
+                  <span className={STEP_NUMBER}>{step.details}</span>Add details <span className={STEP_NOTE}>(optional)</span>
                 </legend>
                 <div role="group" aria-label="Details" className="clear-left flex flex-col gap-3">
                   {TWIST_GROUPS.map((g) => {
@@ -456,8 +464,8 @@ export function ChatWindow({
             {household && (
               <fieldset className="m-0 border-0 border-t border-[var(--color-rule)] p-0 pt-4">
                 <legend className={`${STEP} float-left w-full`}>
-                  <span className={STEP_NUMBER}>3</span>What do you want to know?{" "}
-                  <span className="text-[var(--color-ink-muted)]">(pick one or more)</span>
+                  <span className={STEP_NUMBER}>{step.question}</span>What do you want to know?{" "}
+                  <span className={STEP_NOTE}>(pick one or more)</span>
                 </legend>
                 <div role="group" aria-label="Question" className="clear-left flex flex-wrap gap-2">
                   {QUESTIONS.map((q) => (
@@ -557,10 +565,18 @@ export function ChatWindow({
             <p className="m-0 font-body text-[0.8rem] leading-snug text-[var(--color-ink-muted)]">{DEMO_NOTE}</p>
           </div>
         ) : (
-          <div className={`flex flex-col gap-3 px-4 pb-4 ${started ? "border-t border-[var(--color-rule)] pt-3" : "pt-4"}`}>
-            <label htmlFor="aspen-draft" className="sr-only">
-              Your question
-            </label>
+          <div className={`flex flex-col gap-3 px-4 pb-4 ${started ? "border-t border-[var(--color-rule)] pt-3" : "mt-5 border-t border-[var(--color-rule)] pt-4"}`}>
+            {started ? (
+              <label htmlFor="aspen-draft" className="sr-only">
+                Your question
+              </label>
+            ) : (
+              <div className={`${STEP} mb-0`}>
+                <span className={STEP_NUMBER}>{step.draft}</span>
+                <label htmlFor="aspen-draft">Your question</label>{" "}
+                <span className={STEP_NOTE}>(edit it if you like)</span>
+              </div>
+            )}
             <textarea
               ref={draftBox}
               id="aspen-draft"

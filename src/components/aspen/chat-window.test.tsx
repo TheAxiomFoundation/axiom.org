@@ -145,6 +145,21 @@ describe("ChatWindow composing", () => {
     expect(onRateOverall).toHaveBeenCalledTimes(1);
   });
 
+  it("shows each step as a bold, numbered heading, starting with who you ask as", () => {
+    routeFetch({});
+    render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    const steps = () => [...document.querySelectorAll("legend, div.font-semibold")].map((el) => el.textContent?.replace(/\s+/g, " ").trim());
+    expect(steps()).toEqual(["1Ask as", "2Pick a household", "3Your question (edit it if you like)"]);
+    pickRetiree();
+    expect(steps()).toEqual([
+      "1Ask as",
+      "2Pick a household",
+      "3Add details (optional)",
+      "4What do you want to know? (pick one or more)",
+      "5Your question (edit it if you like)",
+    ]);
+  });
+
   it("starts empty with no household picked, asking as a resident", () => {
     routeFetch({});
     render(<ChatWindow stage="try" rulesUnlocked={false} />);
@@ -236,7 +251,7 @@ describe("ChatWindow composing", () => {
     expect(details.getByText("Income and costs")).toBeInTheDocument();
     expect(details.getByText("People in the home")).toBeInTheDocument();
     expect(screen.getByText("What do you want to know?", { exact: false })).toHaveTextContent(
-      "3What do you want to know? (pick one or more)",
+      "4What do you want to know? (pick one or more)",
     );
     // This household already pays for heat, so "Pays utilities" is not offered.
     expect(details.queryByRole("button", { name: /Pays utilities/ })).not.toBeInTheDocument();
