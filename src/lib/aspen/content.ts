@@ -633,25 +633,28 @@ export const USE_CASES = [
   {
     id: "see-edit",
     label: "See and edit the rules",
-    detail: "Staff read the rules their programs run on, in plain language, and change them.",
+    detail: "Staff read the rules in plain language and change them.",
   },
   {
     id: "project",
     label: "Project policy changes",
-    detail: "See who a change would affect, and by how much, before it lands.",
+    detail: "See who a change affects before it lands.",
   },
   {
     id: "flows",
     label: "Build caseworker flows",
-    detail: "Ask only the questions a case needs, in the order the rules need them.",
+    detail: "Ask only the questions each case needs.",
   },
   {
     id: "apply",
     label: "Create application interfaces",
-    detail: "New ways to apply, built on the same rules as the eligibility system.",
+    detail: "New ways to apply, on the same rules as the eligibility system.",
   },
 ] as const;
 export type UseCaseId = (typeof USE_CASES)[number]["id"];
+
+/** Small groups on a phone: who fills in the form. The slide carries the longer BREAKOUT_PROMPT. */
+export const GROUP_PHONE_INTRO = "One person per group fills this in and shares it with the room.";
 
 /** Small groups 2/2: how the groups work, said before they start. */
 export const BREAKOUT_PROMPT = "Pick one use from the vote and answer three questions together. One person reports back for the group.";
@@ -699,8 +702,7 @@ export const POLICYBENCH = {
   bestModelZeros: 2,
   /** The household every model got wrong (scenario_013). */
   azCase: {
-    description:
-      "An 80-year-old Arizonan with a disability, living alone on $2,538 a month from Social Security and a pension, with $58,700 in the bank.",
+    description: "Age 80, with a disability, living alone on $2,538 a month. $58,700 in savings.",
     modelsAsked: 50,
     modelsSaidZero: 50,
     answer:

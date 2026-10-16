@@ -57,7 +57,7 @@ export interface Turn {
 const OWN = "own";
 /** A numbered step heading in the composer: household, details, questions. */
 const STEP = "mb-2.5 flex items-baseline gap-2 font-body text-[0.98rem] text-[var(--color-ink)]";
-const STEP_NUMBER = "font-mono text-[0.78rem] text-[var(--color-accent)]";
+const STEP_NUMBER = "font-mono text-[0.85rem] text-[var(--color-accent)]";
 export { CHAT_KEY };
 
 export interface SavedChat {
@@ -431,7 +431,7 @@ export function ChatWindow({
                     if (!items.length) return null;
                     return (
                       <div key={g.id} className="flex flex-col gap-1.5">
-                        <span className="font-mono text-[0.66rem] uppercase tracking-[0.14em] text-[var(--color-ink-muted)]">
+                        <span className="font-body font-medium text-[0.82rem] text-[var(--color-ink-muted)]">
                           {g.label}
                         </span>
                         <div className="flex flex-wrap gap-1.5">
@@ -509,14 +509,14 @@ export function ChatWindow({
                                   href={s.url}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="max-w-full truncate rounded-full border border-[var(--color-rule)] px-2.5 py-0.5 font-body text-[0.75rem] text-[var(--color-ink-secondary)] no-underline hover:border-[var(--color-accent)]"
+                                  className="max-w-full truncate rounded-full border border-[var(--color-rule)] px-2.5 py-0.5 font-body text-[0.8rem] text-[var(--color-ink-secondary)] no-underline hover:border-[var(--color-accent)]"
                                 >
                                   {s.title || hostname(s.url)}
                                 </a>
                               ))}
                             </div>
                           )}
-                          <span className="font-mono text-[0.7rem] text-[var(--color-ink-muted)]">
+                          <span className="font-mono text-[0.8rem] text-[var(--color-ink-muted)]">
                             {turn.model}
                             {turn.webSearch ? " · web search on" : " · no web search"}
                           </span>
@@ -636,7 +636,7 @@ export function ChatWindow({
         </section>
       ) : (
         <aside aria-label="How it works" className="hidden rounded-xl border border-dashed border-[var(--color-rule)] p-5 lg:sticky lg:top-24 lg:block">
-          <span className="mb-3 block font-mono text-[0.62rem] uppercase tracking-[0.18em] text-[var(--color-accent)]">
+          <span className="mb-3 block font-body font-medium text-[0.82rem] text-[var(--color-accent)]">
             How it works
           </span>
           <ol className="m-0 flex list-decimal flex-col gap-2 pl-5 font-body text-[0.9rem] leading-snug text-[var(--color-ink-secondary)]">

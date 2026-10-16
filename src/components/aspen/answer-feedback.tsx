@@ -348,7 +348,7 @@ export function RulesCheck({
           <span className="mb-1 block font-body text-[0.8rem] text-[var(--color-ink-muted)]">Rules used</span>
           <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
             {[...new Set(result.citations.map(citationPath))].slice(0, 6).map((path) => (
-              <li key={path} className="break-all font-mono text-[0.72rem] text-[var(--color-ink-secondary)]">
+              <li key={path} className="break-all font-mono text-[0.8rem] text-[var(--color-ink-secondary)]">
                 {path}
               </li>
             ))}

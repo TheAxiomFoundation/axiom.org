@@ -34,7 +34,7 @@ export function ScaleCard({ scale }: { scale: ScaleSummary }) {
   return (
     <Card className="flex flex-col gap-3">
       <Prompt>{scale.label}</Prompt>
-      <div className="flex justify-between font-mono text-[0.6rem] uppercase tracking-[0.12em] text-[var(--color-ink-muted)]">
+      <div className="flex justify-between font-body font-medium text-[0.82rem] text-[var(--color-ink-muted)]">
         <span>1 · {scale.low}</span>
         <span>{scale.high} · 5</span>
       </div>
@@ -55,7 +55,7 @@ export function ScaleCard({ scale }: { scale: ScaleSummary }) {
             </span>
             <span className="text-right font-mono text-[0.8rem] tabular-nums text-[var(--color-ink-secondary)]">
               {c.average !== null ? c.average.toFixed(1) : "—"}
-              <span className="ml-1 text-[0.66rem] text-[var(--color-ink-muted)]">({c.count})</span>
+              <span className="ml-1 text-[0.8rem] text-[var(--color-ink-muted)]">({c.count})</span>
             </span>
           </li>
         ))}
@@ -230,7 +230,7 @@ function BreakdownPanel({ summary }: { summary: RunSummary }) {
                   <span className="h-full" style={{ width: `${(100 * r.wrong) / r.rated}%`, background: BAD }} />
                   <span className="h-full" style={{ width: `${(100 * r.unsure) / r.rated}%`, background: MAYBE }} />
                 </span>
-                <span className="text-right font-mono text-[0.78rem] tabular-nums text-[var(--color-ink-secondary)]">
+                <span className="text-right font-mono text-[0.8rem] tabular-nums text-[var(--color-ink-secondary)]">
                   {r.wrong} of {r.rated}
                 </span>
               </li>
@@ -275,13 +275,13 @@ function SpotlightList({ summary }: { summary: RunSummary }) {
           <Card className="flex h-full flex-col gap-3 p-5">
             <div className="flex flex-wrap items-center gap-2">
               <span
-                className={`rounded-full px-2.5 py-0.5 font-mono text-[0.6rem] uppercase tracking-[0.12em] ${
+                className={`rounded-full px-2.5 py-0.5 font-body font-medium text-[0.82rem] ${
                   item.reason === "unsure" ? "bg-[var(--color-rule-subtle)] text-[var(--color-ink-secondary)]" : "bg-[var(--color-error)] text-white"
                 }`}
               >
                 {REASON_LABEL[item.reason]}
               </span>
-              <span className="font-mono text-[0.62rem] uppercase tracking-[0.12em] text-[var(--color-ink-muted)]">
+              <span className="font-body font-medium text-[0.82rem] text-[var(--color-ink-muted)]">
                 {[item.household ?? "Own question", item.perspective].filter(Boolean).join(" · ")}
               </span>
             </div>

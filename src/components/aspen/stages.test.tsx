@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  BREAKOUT_PROMPT,
+  GROUP_PHONE_INTRO,
   BUILD_HEADING,
   DISCLOSURE,
   EVENT,
@@ -199,14 +199,14 @@ describe("YourThread", () => {
 
   it("ties other households to the results at scale", () => {
     render(<YourThread stage="scale" thread={asked} onOpen={vi.fn()} />);
-    expect(screen.getByText(/Here is how AI does on households like it, at scale\./)).toBeInTheDocument();
+    expect(screen.getByText(/Here's how AI does at scale\./)).toBeInTheDocument();
   });
 
   it("sends people to check their answer on the shared foundation", () => {
     const onOpen = vi.fn();
     render(<YourThread stage="foundation" thread={asked} onOpen={onOpen} />);
     expect(
-      screen.getByText("Now check the AI's answer about “Retiree in Phoenix” against the encoded rules."),
+      screen.getByText("Check the AI's answer about “Retiree in Phoenix” against the rules."),
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Check my answer →" }));
     expect(onOpen).toHaveBeenCalled();
@@ -260,13 +260,14 @@ describe("GroupsCard", () => {
   it("shares the group's best idea with the room, more than once", async () => {
     const fetchMock = stubFetch();
     render(<GroupsCard stage="groups" />);
-    expect(screen.getByText(BREAKOUT_PROMPT)).toBeInTheDocument();
+    expect(screen.getByText(GROUP_PHONE_INTRO)).toBeInTheDocument();
     const share = screen.getByRole("button", { name: "Share with the room" });
     expect(share).toBeDisabled();
 
-    const project = screen.getByRole("button", { name: "Project policy changes" });
-    fireEvent.click(project);
-    expect(project).toHaveAttribute("aria-pressed", "true");
+    // One menu for the group's pick, not a second row of chips.
+    const pick = screen.getByRole("combobox", { name: "Your group's pick" });
+    expect(pick).toHaveValue("");
+    fireEvent.change(pick, { target: { value: "project" } });
     // A use case alone is not an idea.
     expect(share).toBeDisabled();
     fireEvent.change(screen.getByRole("textbox", { name: /What would you build first\?/ }), {
@@ -276,9 +277,8 @@ describe("GroupsCard", () => {
     expect(screen.getByText("Shared. It's on the big screen.")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: /What would you build first\?/ })).toHaveValue("");
 
-    // Tapping the use case again clears it.
-    fireEvent.click(project);
-    expect(project).toHaveAttribute("aria-pressed", "false");
+    // "Not decided" clears it.
+    fireEvent.change(pick, { target: { value: "" } });
     fireEvent.change(screen.getByRole("textbox", { name: /What would you build first\?/ }), { target: { value: "Train staff" } });
     fireEvent.click(share);
     await waitFor(() =>
@@ -287,6 +287,13 @@ describe("GroupsCard", () => {
         { participantId: "p-1", kind: "breakout", payload: { useCase: null, note: "Train staff", who: "", trust: "", raised: "" }, stage: "groups" },
       ]),
     );
+  });
+
+  it("starts the group's pick from this phone's own vote", () => {
+    stubFetch();
+    localStorage.setItem("aspen.vote.v1", JSON.stringify("flows"));
+    render(<GroupsCard stage="groups" />);
+    expect(screen.getByRole("combobox", { name: "Your group's pick" })).toHaveValue("flows");
   });
 
   it("asks the three questions, one box each, and shares all three", async () => {
@@ -444,7 +451,8 @@ describe("PolicyBenchContent", () => {
     render(<PolicyBenchContent />);
     expect(screen.getByText("42%")).toBeInTheDocument();
     expect(screen.getByText("268 of 643 answers, from 50 models.")).toBeInTheDocument();
-    expect(screen.getByText(/An Arizona household · 50 of 50 models said \$0/)).toBeInTheDocument();
+    expect(screen.getByText("One Arizona household")).toBeInTheDocument();
+    expect(screen.getByText("All 50 AI models said $0.")).toBeInTheDocument();
     expect(screen.getByText("The rules: eligible, $24 a month.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "policybench.org" })).toHaveAttribute("href", "https://policybench.org");
   });
@@ -473,6 +481,12 @@ describe("FoundationContent and GoldenContent", () => {
       expect(screen.getByText(tier.gets)).toBeInTheDocument();
       expect(screen.getByText(tier.takes)).toBeInTheDocument();
     }
-    expect(screen.getAllByText("Your state gets")).toHaveLength(3);
+    // Plain labels: no small "Your state gets" eyebrow, and one "Takes:" per step.
+    expect(screen.queryByText("Your state gets")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Takes:")).toHaveLength(3);
+    // Each step is a row that opens on a tap: the name shows, the details wait.
+    const rows = document.querySelectorAll("details");
+    expect(rows).toHaveLength(GOLDEN_A.length);
+    for (const row of rows) expect(row).not.toHaveAttribute("open");
   });
 });

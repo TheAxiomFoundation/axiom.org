@@ -28,6 +28,7 @@ import {
 } from "./stages";
 import { StageHeading } from "./ui";
 import { BrandLogo } from "./brand-logo";
+import { TextSizeButton } from "./text-size";
 
 const VIEW_KEY = "aspen.view";
 
@@ -199,7 +200,7 @@ export function AspenApp() {
           <button
             type="button"
             onClick={() => go("welcome")}
-            className="flex items-center gap-3 rounded-md text-left focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
+            className="flex shrink-0 items-center gap-3 rounded-md text-left focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
             aria-label="Back to the start"
           >
             <BrandLogo className="h-8" />
@@ -208,12 +209,14 @@ export function AspenApp() {
               <span className="font-body text-[0.82rem] font-medium leading-none text-[var(--color-ink)]">
                 Aspen Institute
               </span>
-              <span className="font-mono text-[0.58rem] uppercase leading-none tracking-[0.14em] text-[var(--color-ink-muted)]">
+              <span className="font-body font-medium text-[0.82rem] leading-none text-[var(--color-ink-muted)]">
                 {EVENT.place} · {EVENT.shortDate}
               </span>
             </span>
           </button>
-          <div ref={menuRoot} className="relative">
+          <div className="flex min-w-0 items-center gap-2">
+          <TextSizeButton />
+          <div ref={menuRoot} className="relative min-w-0">
             <button
               ref={menuButton}
               type="button"
@@ -221,16 +224,17 @@ export function AspenApp() {
               aria-controls="aspen-stages"
               aria-haspopup="true"
               onClick={() => setMenuOpen((v) => !v)}
-              className={`flex items-center gap-2 whitespace-nowrap rounded-full border py-1.5 pl-3.5 pr-2.5 font-body text-[0.88rem] text-[var(--color-ink)] transition-colors ${
+              className={`flex max-w-full items-center gap-2 whitespace-nowrap rounded-full border py-1.5 pl-3.5 pr-2.5 font-body text-[0.88rem] text-[var(--color-ink)] transition-colors ${
                 menuOpen
                   ? "border-[var(--color-accent)] bg-[var(--color-accent-light)]"
                   : "border-[var(--color-rule)] bg-[var(--color-paper-elevated)] hover:border-[var(--color-accent)]"
               }`}
             >
-              <span className="font-medium">{current.label}</span>
+              {/* A long stage name gives way at large text sizes; the logo keeps its place. */}
+              <span className="min-w-0 truncate font-medium">{current.label}</span>
               {/* The count steps aside on the narrowest phones; the progress line still shows it. */}
               <span aria-hidden className="hidden h-3.5 w-px bg-[var(--color-rule)] min-[380px]:block" />
-              <span className="hidden font-mono text-[0.7rem] tabular-nums text-[var(--color-ink-muted)] min-[380px]:inline">
+              <span className="hidden font-mono text-[0.8rem] tabular-nums text-[var(--color-ink-muted)] min-[380px]:inline">
                 {index + 1} of {STAGES.length}
               </span>
               <svg aria-hidden viewBox="0 0 12 12" className={`h-3 w-3 transition-transform ${menuOpen ? "rotate-180" : ""}`}>
@@ -243,12 +247,13 @@ export function AspenApp() {
                 aria-label="Session"
                 className="absolute right-0 top-[calc(100%+0.5rem)] z-40 max-h-[calc(100dvh-5rem)] w-[min(17rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] p-2 shadow-[0_12px_32px_rgba(28,25,23,0.14)]"
               >
-                <span className="block px-2 pb-1 pt-1 font-mono text-[0.6rem] uppercase tracking-[0.18em] text-[var(--color-ink-muted)]">
+                <span className="block px-2 pb-1 pt-1 font-body font-medium text-[0.82rem] text-[var(--color-ink-muted)]">
                   Agenda
                 </span>
                 <Agenda live={live} current={view} onPick={go} compact />
               </nav>
             )}
+          </div>
           </div>
         </div>
         <div aria-hidden className="h-[2px] bg-[var(--color-rule)]">
@@ -336,7 +341,7 @@ export function AspenApp() {
             className="group mt-16 flex w-full items-center justify-between gap-4 border-t-2 border-[var(--color-accent)] pt-4 text-left disabled:cursor-not-allowed disabled:border-[var(--color-rule)]"
           >
             <span>
-              <span className="block font-mono text-[0.62rem] uppercase tracking-[0.18em] text-[var(--color-accent)] group-disabled:text-[var(--color-ink-muted)]">
+              <span className="block font-body font-medium text-[0.82rem] text-[var(--color-accent)] group-disabled:text-[var(--color-ink-muted)]">
                 Next
               </span>
               <span className="block font-body text-[1.08rem] text-[var(--color-ink)] group-hover:text-[var(--color-accent)] group-disabled:text-[var(--color-ink-muted)]">

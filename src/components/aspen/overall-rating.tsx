@@ -108,7 +108,7 @@ export function OverallRating({ stage }: { stage: string }) {
         <section key={q.id} className="flex flex-col gap-3 rounded-xl border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] p-4 sm:p-5">
           <div>
             <h3 className="m-0 font-body text-[0.92rem] font-medium text-[var(--color-ink)]">{q.label}</h3>
-            <p className="m-0 mt-1 font-mono text-[0.62rem] uppercase tracking-[0.1em] text-[var(--color-ink-muted)]">
+            <p className="m-0 mt-1 font-body font-medium text-[0.82rem] text-[var(--color-ink-muted)]">
               1 = {q.scale.low} · 5 = {q.scale.high}
             </p>
           </div>
@@ -132,7 +132,7 @@ export function OverallRating({ stage }: { stage: string }) {
                 className={FIELD}
                 aria-describedby="agency-comment-hint"
               />
-              <span id="agency-comment-hint" className="text-[0.78rem] text-[var(--color-ink-muted)]">
+              <span id="agency-comment-hint" className="text-[0.8rem] text-[var(--color-ink-muted)]">
                 {AGENCY_COMMENT.hint}
               </span>
             </div>

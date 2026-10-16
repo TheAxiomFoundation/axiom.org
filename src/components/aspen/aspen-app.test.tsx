@@ -442,7 +442,7 @@ describe("AspenApp thread", () => {
     render(<AspenApp />);
     fireEvent.click(nav().getByRole("button", { name: /Shared foundation/ }));
     await onView("foundation");
-    expect(screen.getByText(/Now check the AI's answer about your own question against the encoded rules\./)).toBeInTheDocument();
+    expect(screen.getByText(/Check the AI's answer about your own question against the rules\./)).toBeInTheDocument();
   });
 
   it("treats a chat without a user turn or a finished answer as not asked", async () => {

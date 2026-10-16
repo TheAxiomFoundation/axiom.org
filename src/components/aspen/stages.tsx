@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Check } from "lucide-react";
 import {
-  BREAKOUT_PROMPT,
+  GROUP_PHONE_INTRO,
   EVENT,
   GROUP_QUESTIONS,
   GROUP_RAISED,
@@ -25,7 +25,7 @@ import { SourceOfTruthCard } from "./results-board";
 import { VOTE_KEY, participantId, postJson, readStored, sendEvent, writeStored } from "./client";
 import { Disclosure } from "./disclosure";
 import { TierMedal } from "./tier-medal";
-import { BUTTON, Card, Chip, Eyebrow, FIELD } from "./ui";
+import { BUTTON, Card, FIELD } from "./ui";
 
 const OPTION_BOX =
   "rounded-lg border px-4 py-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]";
@@ -69,7 +69,7 @@ export function Agenda({
         const row = (
           <>
             <span
-              className={`relative z-1 flex h-7 w-7 items-center justify-center rounded-full border-2 font-mono text-[0.68rem] tabular-nums ${
+              className={`relative z-1 flex h-7 w-7 items-center justify-center rounded-full border-2 font-mono text-[0.8rem] tabular-nums ${
                 isLive
                   ? "border-[var(--color-accent)] bg-[var(--color-accent)] text-white"
                   : done
@@ -85,12 +85,12 @@ export function Agenda({
               >
                 {stage.label}
                 {stage.optional && !compact && (
-                  <span className="font-mono text-[0.58rem] uppercase tracking-[0.14em] text-[var(--color-ink-muted)]">
+                  <span className="font-body font-medium text-[0.82rem] text-[var(--color-ink-muted)]">
                     if the room allows
                   </span>
                 )}
                 {isLive && (
-                  <span className="flex items-center gap-1 rounded-full bg-[var(--color-accent)] px-2 py-0.5 font-mono text-[0.56rem] uppercase tracking-[0.14em] text-white">
+                  <span className="flex items-center gap-1 rounded-full bg-[var(--color-accent)] px-2 py-0.5 font-body font-medium text-[0.82rem] text-white">
                     <span className="h-1 w-1 animate-pulse rounded-full bg-white" />
                     Now
                   </span>
@@ -147,7 +147,7 @@ export function WelcomeLanding({ onStart }: { onStart: () => void }) {
         <p className="m-0 max-w-[560px] font-body text-[1.1rem] leading-relaxed text-[var(--color-ink-secondary)] text-balance">
           {STAGES[0].summary}
         </p>
-        <p className="m-0 mt-3 font-mono text-[0.7rem] leading-relaxed tracking-[0.04em] text-[var(--color-ink-muted)]">
+        <p className="m-0 mt-3 font-mono text-[0.8rem] leading-relaxed tracking-[0.04em] text-[var(--color-ink-muted)]">
           With {EVENT.hosts}
         </p>
       </section>
@@ -189,7 +189,7 @@ export function YourThread({
   let line: string;
   let action: string | null = null;
   if (!asked) {
-    line = "You haven't asked the AI yet. It takes a minute, and your answer joins the room's.";
+    line = "You haven't asked the AI yet.";
     action = "Ask the AI";
   } else if (stage === "reveal") {
     line = thread?.rated
@@ -200,14 +200,14 @@ export function YourThread({
     line =
       thread?.householdId === "az-savings"
         ? `You asked about the Arizona household below: every one of the ${POLICYBENCH.azCase.modelsAsked} models said it gets $0.`
-        : `You asked about ${about}. Here is how AI does on households like it, at scale.`;
+        : `You asked about ${about}. Here's how AI does at scale.`;
   } else {
-    line = `Now check the AI's answer about ${about} against the encoded rules.`;
+    line = `Check the AI's answer about ${about} against the rules.`;
     action = "Check my answer";
   }
   return (
     <div className="mb-8 border-l-2 border-[var(--color-accent)] py-1 pl-4">
-      <span className="mb-1 block font-mono text-[0.6rem] uppercase tracking-[0.18em] text-[var(--color-accent)]">
+      <span className="mb-1 block font-body font-medium text-[0.82rem] text-[var(--color-accent)]">
         Your question
       </span>
       <p className="m-0 font-body text-[0.95rem] leading-snug text-[var(--color-ink)]">
@@ -247,11 +247,13 @@ export function PolicyBenchContent() {
         </p>
       </Card>
       <Card className="flex flex-col gap-3 p-5">
-        <Eyebrow className="text-[var(--color-error)]">
-          An Arizona household · {az.modelsSaidZero} of {az.modelsAsked} models said $0
-        </Eyebrow>
-        <p className="m-0 font-body text-[1rem] leading-relaxed text-[var(--color-ink)]">{az.description}</p>
-        <p className="m-0 font-body text-[1rem] leading-relaxed text-[var(--color-ink)]">
+        <p className="m-0 font-body text-[1.05rem] font-medium text-[var(--color-ink)]">One Arizona household</p>
+        <p className="m-0 font-body text-[1rem] leading-relaxed text-[var(--color-ink-secondary)]">{az.description}</p>
+        <p className="m-0 font-body text-[1rem] leading-relaxed text-[var(--color-error)]">
+          {az.modelsSaidZero === az.modelsAsked ? `All ${az.modelsAsked}` : `${az.modelsSaidZero} of ${az.modelsAsked}`} AI models
+          said $0.
+        </p>
+        <p className="m-0 font-body text-[1rem] leading-relaxed">
           <strong className="text-[var(--color-accent)]">The rules: eligible, $24 a month.</strong>
         </p>
       </Card>
@@ -299,10 +301,9 @@ export function FoundationContent({ sourceOfTruth }: { sourceOfTruth?: Count[] }
           {ONE_SET_OF_RULES.map((use) => (
             <li
               key={use.label}
-              className="rounded-md border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-3.5 py-2.5"
+              className="rounded-md border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-3.5 py-2.5 font-body text-[1rem] font-medium text-[var(--color-ink)]"
             >
-              <span className="block font-body text-[0.95rem] font-medium text-[var(--color-ink)]">{use.label}</span>
-              <span className="block font-body text-[0.8rem] leading-snug text-[var(--color-ink-muted)]">{use.detail}</span>
+              {use.label}
             </li>
           ))}
         </ul>
@@ -313,48 +314,47 @@ export function FoundationContent({ sourceOfTruth }: { sourceOfTruth?: Count[] }
       </p>
 
       <section>
-        <h2 className="heading-sub m-0 mb-2">{BUILD_HEADING}</h2>
-        <p className="m-0 mb-4 max-w-[640px] font-body text-[0.95rem] leading-relaxed text-[var(--color-ink-secondary)]">
-          Three steps, from public documents to your own system. A state takes each one on its own schedule.
-        </p>
+        <h2 className="heading-sub m-0 mb-4">{BUILD_HEADING}</h2>
         <GoldenContent />
       </section>
     </div>
   );
 }
 
+/**
+ * The three steps, as rows a phone can scan: the medallion, the tier and its
+ * name show; a tap opens what the state gets and what it takes. Native
+ * <details>, so keyboards and screen readers get it for free.
+ */
 export function GoldenContent() {
   const cards: Record<string, string> = { "Silver A": "bg-[#eef0f2]", "Gold A": "border-[#b7862b] bg-[#f6eed8]" };
   return (
-    <div className="grid gap-3 lg:grid-cols-3">
+    <div className="flex flex-col gap-3">
       {GOLDEN_A.map((tier) => (
-        <Card key={tier.tier} className={`flex flex-col gap-3 ${cards[tier.tier] ?? ""}`}>
-          <div className="flex items-center gap-3">
+        <details key={tier.tier} className={`group rounded-lg border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] ${cards[tier.tier] ?? ""}`}>
+          <summary className="flex cursor-pointer list-none items-center gap-3 p-4 [&::-webkit-details-marker]:hidden">
             <TierMedal medal={tier.medal} size={40} />
-            <div>
-              <span className="block font-mono text-[0.64rem] uppercase tracking-[0.16em] text-[var(--color-ink-muted)]">
-                {tier.tier}
-              </span>
-              <span className="block font-body text-[1.02rem] font-medium text-[var(--color-ink)]">{tier.name}</span>
-            </div>
-          </div>
-          <div>
-            <Eyebrow className="mb-1">Your state gets</Eyebrow>
-            <p className="m-0 font-body text-[0.92rem] leading-relaxed text-[var(--color-ink)]">{tier.gets}</p>
-            {"goal" in tier && (
-              <p className="m-0 mt-1.5 font-body text-[0.92rem] leading-relaxed text-[var(--color-ink)]">{tier.goal}</p>
-            )}
+            <span className="min-w-0 flex-1">
+              <span className="block font-body text-[0.82rem] font-medium text-[var(--color-ink-muted)]">{tier.tier}</span>
+              <span className="block font-body text-[1.05rem] font-medium leading-snug text-[var(--color-ink)]">{tier.name}</span>
+            </span>
+            <svg aria-hidden viewBox="0 0 12 12" className="h-4 w-4 shrink-0 text-[var(--color-ink-muted)] transition-transform group-open:rotate-180">
+              <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </summary>
+          <div className="flex flex-col gap-2 px-4 pb-4">
+            <p className="m-0 font-body text-[0.98rem] leading-relaxed text-[var(--color-ink)]">{tier.gets}</p>
+            {"goal" in tier && <p className="m-0 font-body text-[0.98rem] leading-relaxed text-[var(--color-ink)]">{tier.goal}</p>}
             {"programs" in tier && (
-              <p className="m-0 mt-1.5 font-body text-[0.84rem] leading-relaxed text-[var(--color-ink-secondary)]">
+              <p className="m-0 font-body text-[0.92rem] leading-relaxed text-[var(--color-ink-secondary)]">
                 {(tier.programs as readonly string[]).join(" · ")}
               </p>
             )}
+            <p className="m-0 font-body text-[0.92rem] leading-relaxed text-[var(--color-ink-secondary)]">
+              <span className="font-medium text-[var(--color-ink)]">Takes:</span> {tier.takes}
+            </p>
           </div>
-          <div className="mt-auto">
-            <Eyebrow className="mb-1">It takes</Eyebrow>
-            <p className="m-0 font-body text-[0.88rem] leading-relaxed text-[var(--color-ink-secondary)]">{tier.takes}</p>
-          </div>
-        </Card>
+        </details>
       ))}
     </div>
   );
@@ -437,12 +437,17 @@ export function SmallGroups({ stage }: { stage: string }) {
 }
 
 /**
- * Small groups: one use to build first, then the three questions, one box
- * each, and an optional box for what else came up (barriers, workforce,
- * questions). The report-back card on the big screen shows the same three.
+ * Small groups: the group's pick (this phone's own vote to start with), then
+ * the three questions, one box each, and an optional box for what else came
+ * up (barriers, workforce, questions). The report-back card on the big screen
+ * shows the same three.
  */
 export function GroupsCard({ stage }: { stage: string }) {
   const [useCase, setUseCase] = useState<string | null>(null);
+  useEffect(() => {
+    const voted = readStored<string>(VOTE_KEY);
+    if (voted && USE_CASES.some((u) => u.id === voted)) setUseCase(voted);
+  }, []);
   const [answers, setAnswers] = useState<Record<(typeof GROUP_QUESTIONS)[number]["id"], string>>({ note: "", who: "", trust: "" });
   const [raised, setRaised] = useState("");
   const [shared, setShared] = useState(0);
@@ -452,20 +457,19 @@ export function GroupsCard({ stage }: { stage: string }) {
   return (
     <div className="flex max-w-[760px] flex-col gap-5">
       <p className="m-0 border-l-2 border-[var(--color-accent)] pl-4 font-body text-[1.08rem] leading-relaxed text-[var(--color-ink)]">
-        {BREAKOUT_PROMPT}
+        {GROUP_PHONE_INTRO}
       </p>
-      <fieldset className="m-0 border-0 p-0">
-        <legend className="mb-2.5 font-body text-[1rem] text-[var(--color-ink)]">
-          The use you picked <span className="text-[var(--color-ink-muted)]">(optional)</span>
-        </legend>
-        <div className="flex flex-wrap gap-2">
+      <label className="flex flex-col gap-2 font-body text-[1rem] text-[var(--color-ink)]">
+        Your group&apos;s pick
+        <select value={useCase ?? ""} onChange={(e) => setUseCase(e.target.value || null)} className={FIELD}>
+          <option value="">Not decided</option>
           {USE_CASES.map((u) => (
-            <Chip key={u.id} selected={useCase === u.id} onClick={() => setUseCase(useCase === u.id ? null : u.id)}>
+            <option key={u.id} value={u.id}>
               {u.label}
-            </Chip>
+            </option>
           ))}
-        </div>
-      </fieldset>
+        </select>
+      </label>
       {GROUP_QUESTIONS.map((q, i) => (
         <label key={q.id} className="flex flex-col gap-2 font-body text-[1rem] text-[var(--color-ink)]">
           <span>
@@ -635,7 +639,7 @@ export function NextStepsForm() {
         {status === "saving" ? "Sending…" : "Send"}
       </button>
       {status === "error" && <p className="m-0 font-body text-[0.85rem] text-[var(--color-error)]">{error}</p>}
-      <p className="m-0 font-body text-[0.78rem] text-[var(--color-ink-muted)]">
+      <p className="m-0 font-body text-[0.8rem] text-[var(--color-ink-muted)]">
         This goes to the Axiom Foundation as a request to follow up. It isn&apos;t a commitment.
       </p>
     </form>
