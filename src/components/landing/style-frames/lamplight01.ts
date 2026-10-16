@@ -234,6 +234,8 @@ export function lamplightShelfToBook(ctx: BeatCtx): BeatSpec {
   const halfTan = (deg: number) => Math.tan((deg * Math.PI) / 360);
   const ruleMat = CP.rule.material as THREE.MeshBasicMaterial;
   const ruleColor = ruleMat.color.clone();
+  // transparent from the start on paper (it fades there by opacity)
+  if (THEME.paper) ruleMat.transparent = true;
 
   // on paper the library fades away as the volume leaves it: the book
   // goes on alone, on the page
@@ -242,17 +244,19 @@ export function lamplightShelfToBook(ctx: BeatCtx): BeatSpec {
     const m = (o as THREE.Mesh).material;
     if (m) (Array.isArray(m) ? m : [m]).forEach((x) => libMats.add(x));
   });
+  // transparent from the start (at full opacity): switching a material
+  // between solid and transparent builds new shaders mid-scroll
+  if (THEME.paper)
+    libMats.forEach((m) => {
+      m.transparent = true;
+      // (front faces only: the books never show through one another)
+      m.depthWrite = true;
+    });
   let libShown = 1;
   const showLibrary = (v: number) => {
     if (v === libShown) return;
     libShown = v;
-    libMats.forEach((m) => {
-      m.transparent = v < 1;
-      m.opacity = v;
-      // (front faces only: the books never show through one another)
-      m.depthWrite = true;
-      m.needsUpdate = true;
-    });
+    libMats.forEach((m) => (m.opacity = v));
     lib.traverse((o) => {
       if ((o as THREE.Mesh).isMesh) o.visible = v > 0.01;
     });
@@ -570,7 +574,6 @@ export function lamplightShelfToBook(ctx: BeatCtx): BeatSpec {
     const gone = 1 - ease(seg(k, 0.05, 0.38));
     if (THEME.paper) {
       CP.plainMat.opacity *= gone;
-      ruleMat.transparent = true;
       ruleMat.opacity = gone;
     } else {
       CP.plainMat.color.multiplyScalar(gone);

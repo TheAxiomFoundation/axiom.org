@@ -533,7 +533,7 @@ export function lamplightBeat1(ctx: BeatCtx): BeatSpec {
     const rightMat = tops[1].material as THREE.MeshStandardMaterial;
     if (rightMat.map !== flow[2 * lifted]) {
       rightMat.map = flow[2 * lifted];
-      rightMat.needsUpdate = true;
+      // (a new map on a material that already has one: no new shader needed)
     }
     // the light leaves only once the pages start to come apart
     moveCells(t);
