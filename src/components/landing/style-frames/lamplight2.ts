@@ -35,6 +35,9 @@ import {
   THEME,
   themed,
   themedLook,
+  QuadMorph,
+  carryOnScreen,
+  planeCorners,
 } from "./kit";
 import { STATUTE_TEXT } from "./pages";
 
@@ -408,6 +411,36 @@ export function lamplightBeat3(ctx: BeatCtx): BeatSpec {
   const GATES = ["encode", "checks", "compare", "AI review"];
   const gatePos = GATES.map((_, i) => a.clone().lerp(b, 0.24 + i * 0.165));
   const gateMats: THREE.MeshBasicMaterial[] = [];
+  // glare: a soft sheen inside each gate, and a band of light that sweeps
+  // across it once as the stream passes through
+  const glares: Array<{ mat: THREE.MeshBasicMaterial; tex: THREE.Texture }> = [];
+  const glareTex = () => {
+    const t = canvasTexture(256, 512, (g) => {
+      g.clearRect(0, 0, 256, 512);
+      // the sheen: brighter toward the frame's edges
+      const sheen = g.createRadialGradient(128, 256, 40, 128, 256, 300);
+      sheen.addColorStop(0, "rgba(255, 196, 120, 0.1)");
+      sheen.addColorStop(1, "rgba(255, 196, 120, 0.5)");
+      g.fillStyle = sheen;
+      g.fillRect(0, 0, 256, 512);
+    });
+    return t;
+  };
+  const bandTex = canvasTexture(512, 512, (g) => {
+    g.clearRect(0, 0, 512, 512);
+    // a diagonal band of light, soft at both edges
+    const band = g.createLinearGradient(0, 512, 512, 0);
+    band.addColorStop(0.0, "rgba(255, 214, 160, 0)");
+    band.addColorStop(0.42, "rgba(255, 214, 160, 0)");
+    band.addColorStop(0.5, "rgba(255, 226, 180, 0.85)");
+    band.addColorStop(0.58, "rgba(255, 214, 160, 0)");
+    band.addColorStop(1.0, "rgba(255, 214, 160, 0)");
+    g.fillStyle = band;
+    g.fillRect(0, 0, 512, 512);
+  });
+  const glareBlend = THEME.paper ? THREE.NormalBlending : THREE.AdditiveBlending;
+  // on paper the light is a warm amber tint laid on the page
+  const glareColor = THEME.paper ? new THREE.Color("#e6a23c") : new THREE.Color(1, 1, 1);
   const gateLabels: ReturnType<typeof ctx.label>[] = [];
   const GW = 0.9;
   const GH = 1.2;
@@ -426,6 +459,19 @@ export function lamplightBeat3(ctx: BeatCtx): BeatSpec {
       bar.position.set(x, y, 0);
       frame.add(bar);
     });
+    // the glare, inside the frame
+    const sheenMat = new THREE.MeshBasicMaterial({ map: glareTex(), color: glareColor, transparent: true, opacity: 0, depthWrite: false, blending: glareBlend, side: THREE.DoubleSide, toneMapped: false });
+    const sheen = new THREE.Mesh(new THREE.PlaneGeometry(GW, GH), sheenMat);
+    frame.add(sheen);
+    const tex = bandTex.clone();
+    tex.needsUpdate = true;
+    tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+    const bandMat = new THREE.MeshBasicMaterial({ map: tex, color: glareColor, transparent: true, opacity: 0, depthWrite: false, blending: glareBlend, side: THREE.DoubleSide, toneMapped: false });
+    const bandMesh = new THREE.Mesh(new THREE.PlaneGeometry(GW, GH), bandMat);
+    bandMesh.position.z = 0.002;
+    frame.add(bandMesh);
+    glares.push({ mat: sheenMat, tex });
+    glares.push({ mat: bandMat, tex });
     frame.position.copy(p);
     // each gate stands across the path
     frame.lookAt(p.clone().add(dir));
@@ -512,8 +558,9 @@ export function lamplightBeat3(ctx: BeatCtx): BeatSpec {
       particleMaterial({ atlas, focus, aperture: 1.6 }),
     );
   };
-  const intoEncode = gatePos[0].clone().add(dir.clone().multiplyScalar(-0.05));
-  const outOfEncode = gatePos[0].clone().add(dir.clone().multiplyScalar(0.08));
+  // the text goes in and the drafts come out at the gate itself: no gap
+  const intoEncode = gatePos[0].clone().add(dir.clone().multiplyScalar(-0.005));
+  const outOfEncode = gatePos[0].clone().add(dir.clone().multiplyScalar(0.005));
   const text1 = stream(new THREE.CatmullRomCurve3([phraseAt, loopEnd.clone().add(new THREE.Vector3(0, 0.25, 0)), intoEncode]), 1800);
   // the failure goes back into the encoder with the text
   const text2 = stream(new THREE.CatmullRomCurve3([loopEnd, loopEnd.clone().lerp(intoEncode, 0.5).add(new THREE.Vector3(0, 0.05, 0)), intoEncode]), 900);
@@ -580,7 +627,11 @@ export function lamplightBeat3(ctx: BeatCtx): BeatSpec {
   const gateLit = new THREE.Color(AMBER_INK);
   const gateRed = new THREE.Color("#c2410c");
   const white = new THREE.Color(1, 1, 1);
+  // the way out: the encoded rule flies to the code page of the next
+  // scene and becomes it
+  const passFly = new QuadMorph(scene, passCard);
   const update = (t: number) => {
+    passFly.reset();
     // the gates come up out of the dark after the sentence has arrived
     const appear = ease(seg(t, 0.0, 0.14));
     // draft 1: the text into encode, out into the card, on to checks
@@ -624,11 +675,26 @@ export function lamplightBeat3(ctx: BeatCtx): BeatSpec {
         if (i === 1) m.color.lerp(gateFail.clone().multiplyScalar(1.8), fail * (1 - pass2[1]));
       }
       gateLabels[i].el.style.opacity = String((0.35 + 0.65 * Math.max(on, i === 1 ? fail : 0)) * appear);
+      // the sheen holds while the gate is lit; the band sweeps once, as the
+      // light passes through it
+      const sheen = glares[i * 2];
+      const band = glares[i * 2 + 1];
+      sheen.mat.opacity = (THEME.paper ? 0.6 : 0.8) * on * appear;
+      const sweep = i === 0 ? Math.max(pass1[0] * (1 - seg(t, 0.46, 0.56)), pass2[0]) : pass2[i];
+      band.tex.offset.set(lerp(0.75, -0.75, sweep), 0);
+      band.mat.opacity = (THEME.paper ? 0.75 : 0.9) * Math.sin(Math.PI * Math.min(1, sweep)) * appear;
     });
   };
   // no pan of its own into this scene: the opening shot ends on this
   // sentence, in this place, and the scene comes up around it
-  return { camera, look, update, cutIn: () => {} };
+  const cutOut = (k: number, next?: { camera: THREE.PerspectiveCamera; parts?: Record<string, unknown> }) => {
+    const target = next?.parts?.right as THREE.Mesh | undefined;
+    if (!next || !target) return;
+    const e = ease(seg(k, 0, 0.55));
+    passFly.set(e, passFly.toward(target, next.camera, camera));
+    passCard.visible = false;
+  };
+  return { camera, look, update, cutIn: () => {}, cutOut };
 
 }
 
@@ -879,13 +945,16 @@ export function lamplightBeat4(ctx: BeatCtx): BeatSpec {
   const leftTo = left.position.clone();
   const rightTo = right.position.clone();
   const leftFrom = leftTo.clone().add(new THREE.Vector3(-1.4, 0, -0.6));
-  const rightFrom = rightTo.clone().add(new THREE.Vector3(1.4, 0, -0.6));
+  // the code page is already in place (the encoded rule became it); the
+  // statute slides in beside it
+  const rightFrom = rightTo.clone();
   const update = (t: number) => {
     const inn = ease(seg(t, 0, 0.26));
     left.position.lerpVectors(leftFrom, leftTo, inn);
     right.position.lerpVectors(rightFrom, rightTo, inn);
     fade(left, inn);
-    fade(right, inn);
+    fade(right, 1);
+    strips.forEach((st) => st.fly.reset());
     threads.forEach((th, k) => {
       const d = seg(t, 0.3 + k * 0.09, 0.42 + k * 0.09);
       drawShare(th.w, d);
@@ -893,7 +962,30 @@ export function lamplightBeat4(ctx: BeatCtx): BeatSpec {
       th.db.visible = d >= 1;
     });
   };
-  return { camera, look, update };
+  // the way out: each rule block of the code floats to its card in the graph
+  const RULE_LINES: Record<string, [number, number]> = {
+    imp2014: [10, 10], impUsda: [11, 11], rate30: [13, 27], rate8: [29, 43], size2: [45, 59],
+    net: [61, 84], contrib: [86, 103], before: [105, 128], minimum: [130, 154], regular: [158, 176],
+  };
+  const pxY = (py: number) => (0.5 - py / cf.h) * PH;
+  const pxX = (px: number) => (px / cf.w - 0.5) * cW;
+  const strips = Object.entries(RULE_LINES).map(([id, [l0, l1]]) => ({
+    id,
+    fly: new QuadMorph(scene, right, { x0: pxX(70), x1: pxX(cf.w - 40), y0: pxY((cf.lines.get(l1) ?? 0) + 14), y1: pxY((cf.lines.get(l0) ?? 0) - 34) }),
+  }));
+  const cutOut = (k: number, next?: { camera: THREE.PerspectiveCamera; parts?: Record<string, unknown> }) => {
+    const cards = next?.parts?.cards as Map<string, { mesh: THREE.Mesh }> | undefined;
+    if (!next || !cards) return;
+    // each block leaves a little after the one above it
+    strips.forEach((st, i) => {
+      const card = cards.get(st.id);
+      if (!card) return;
+      const e = ease(seg(k, 0.02 * i, 0.45 + 0.02 * i));
+      st.fly.set(e, st.fly.toward(card.mesh, next.camera, camera));
+    });
+    (right.material as THREE.MeshBasicMaterial).opacity = 1 - ease(seg(k, 0, 0.15));
+  };
+  return { camera, look, update, cutIn: () => {}, cutOut, parts: { right } };
 
 }
 
@@ -949,9 +1041,15 @@ export function lamplightBeat6(ctx: BeatCtx): BeatSpec {
     o.alpha = 0.9;
   });
   fx.add(new THREE.Points(g, particleMaterial({ focus, aperture: 2.4 })));
+  const gPos = g.attributes.position as THREE.BufferAttribute;
+  const gHome = Float32Array.from(gPos.array as Float32Array);
+  const gTo = new Float32Array(gHome.length);
+  const gLag = new Float32Array(pts.length).map(() => r() * 0.25);
+  let gMoved = false;
   const lg = new THREE.BufferGeometry();
   lg.setAttribute("position", new THREE.Float32BufferAttribute(wires, 3));
-  scene.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: themed(new THREE.Color("#e0b07a")), transparent: true, opacity: THEME.paper ? 0.2 : 0.12, blending: THEME.paper ? THREE.NormalBlending : THREE.AdditiveBlending, depthWrite: false })));
+  const wiresMesh = new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: themed(new THREE.Color("#e0b07a")), transparent: true, opacity: THEME.paper ? 0.2 : 0.12, blending: THEME.paper ? THREE.NormalBlending : THREE.AdditiveBlending, depthWrite: false }));
+  scene.add(wiresMesh);
 
   // what is not encoded yet: the rest of the law, dim
   const ghost = particleGeometry(16000, (i, o) => {
@@ -984,6 +1082,12 @@ export function lamplightBeat6(ctx: BeatCtx): BeatSpec {
   const aimFrom = heroP.clone();
   const focusTo = look.dof!.focus;
   const update = (t: number) => {
+    if (gMoved) {
+      (gPos.array as Float32Array).set(gHome);
+      gPos.needsUpdate = true;
+      gMoved = false;
+    }
+    (wiresMesh.material as THREE.LineBasicMaterial).opacity = THEME.paper ? 0.2 : 0.12;
     const c = ease(seg(t, 0.05, 0.9));
     camera.position.lerpVectors(camFrom, camTo, c);
     camera.lookAt(new THREE.Vector3().lerpVectors(aimFrom, aimTo, c));
@@ -991,7 +1095,32 @@ export function lamplightBeat6(ctx: BeatCtx): BeatSpec {
     heroLabel.el.style.opacity = String(seg(t, 0.0, 0.15));
     pkgLabels.forEach((l) => (l.el.style.opacity = String(seg(t, 0.72, 0.92))));
   };
-  return { camera, look, update };
+  // the way out: every cluster streams into the one source document of the
+  // next scene, each point to its own place on the card
+  const cutOut = (k: number, next?: { camera: THREE.PerspectiveCamera; parts?: Record<string, unknown> }) => {
+    const source = next?.parts?.source as THREE.Mesh | undefined;
+    if (!next || !source) return;
+    if (!gMoved) {
+      const d = camera.position.distanceTo(new THREE.Vector3(0, 0, 0));
+      const [tl, tr, bl] = planeCorners(source).map((p) => carryOnScreen(p, next.camera, camera, d));
+      const rr = rng(77);
+      for (let i = 0; i < pts.length; i++) {
+        const a = rr();
+        const b = rr();
+        const q = tl.clone().lerp(tr, 0.08 + 0.84 * a).add(bl.clone().sub(tl).multiplyScalar(0.1 + 0.8 * b));
+        gTo.set([q.x, q.y, q.z], i * 3);
+      }
+    }
+    const arr = gPos.array as Float32Array;
+    for (let i = 0; i < pts.length; i++) {
+      const e = ease(seg(k, gLag[i], 0.5 + gLag[i]));
+      for (let c = 0; c < 3; c++) arr[i * 3 + c] = gHome[i * 3 + c] + (gTo[i * 3 + c] - gHome[i * 3 + c]) * e;
+    }
+    gPos.needsUpdate = true;
+    gMoved = true;
+    (wiresMesh.material as THREE.LineBasicMaterial).opacity = (THEME.paper ? 0.2 : 0.12) * (1 - seg(k, 0, 0.25));
+  };
+  return { camera, look, update, cutIn: () => {}, cutOut, parts: { heroNodes } };
 
 }
 
@@ -1234,8 +1363,9 @@ export function lamplightBeat7(ctx: BeatCtx): BeatSpec {
   const srcFrom = srcTo.clone().add(new THREE.Vector3(-0.6, 0, -0.4));
   const cardTo = groupCards.map((m) => m.position.clone());
   const update = (t: number) => {
-    const s0 = ease(seg(t, 0, 0.16));
-    source.position.lerpVectors(srcFrom, srcTo, s0);
+    // the source is already in place: the registry's clusters became it
+    const s0 = 1;
+    source.position.copy(srcTo);
     fade(source, s0);
     (glow.material as THREE.MeshBasicMaterial).opacity = s0;
     beams.forEach((b, i) => {
@@ -1252,6 +1382,6 @@ export function lamplightBeat7(ctx: BeatCtx): BeatSpec {
       b.packet.position.copy(b.c.getPoint(ease(run)));
     });
   };
-  return { camera, look, update };
+  return { camera, look, update, cutIn: () => {}, parts: { source } };
 
 }

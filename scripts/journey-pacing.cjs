@@ -24,6 +24,10 @@ const puppeteer = require("puppeteer-core");
 const TARGET = Number(process.env.PACE_TARGET ?? 190);
 const TARGET2 = Number(process.env.PACE_TARGET2 ?? 260); // the refining pass (measured at REFINE_STEP)
 const REFINE_STEP = 0.02;
+// a big camera move changes most of the screen: it gets more scroll, but
+// only so much more, so it stays smooth without dragging
+const MAX_STRETCH = 3;
+const MAX_STRETCH2 = 1.6; // (on top of the first pass)
 const STEP = 0.01; // measuring step, in beats
 const OUT_STEP = 0.02; // table step, in beats
 const SMOOTH = 17; // smoothing window, in measuring steps (±0.08 beats)
@@ -121,7 +125,7 @@ async function refine() {
   const vs = smooth(data.v.map((x) => x[1]), 9);
   // new scroll at each old scroll point
   const at = [0];
-  for (let i = 0; i < vs.length; i++) at.push(at[i] + Math.max(1, vs[i] / TARGET2) * data.step);
+  for (let i = 0; i < vs.length; i++) at.push(at[i] + Math.min(MAX_STRETCH2, Math.max(1, vs[i] / TARGET2)) * data.step);
   const s2 = (s) => {
     const x = s / data.step;
     const i = Math.min(at.length - 2, Math.max(0, Math.floor(x)));
@@ -140,7 +144,7 @@ async function refine() {
   const v = data.v.map((x) => x[1]);
   // smooth the speed (a Hann window), then stretch only what is too fast
   const vs = smooth(v, SMOOTH);
-  const stretch = vs.map((x) => Math.max(1, x / TARGET));
+  const stretch = vs.map((x) => Math.min(MAX_STRETCH, Math.max(1, x / TARGET)));
   // cumulative scroll (in scroll beats) at each table point of story time
   const P = [];
   const S = [];

@@ -49,12 +49,15 @@ const scrollAt = (P: number) => (P > TOTAL ? S_STORY + (P - TOTAL) : paced ? loo
 // screen and a half of scroll, before the page moves on
 const END = TOTAL + 1.0;
 const END_S = scrollAt(END);
-// scroll length, in screen heights: ~2.1 per scroll beat
-const TRACK = Math.round(END_S * 2.1);
+// scroll length, in screen heights: ~1.8 per scroll beat
+const TRACK = Math.round(END_S * 1.8);
 
 // the stills (paper); the night version keeps its own under /journey/night
 const night = () => typeof window !== "undefined" && new URLSearchParams(window.location.search).has("night");
 const POSTER = (i: number) => `/journey${night() ? "/night" : ""}/posters/beat-${i + 1}.jpg`;
+// the stand-in before the canvas draws: on paper, the story's exact first
+// frame, so the hand-over to the live canvas shows no jump
+const STANDIN = (i: number) => (i === 0 && !night() ? "/journey/start.webp" : POSTER(i));
 // small copies for the cards: decoding eight full posters at once stalls
 // the frame they appear on
 const THUMB = (i: number) => `/journey${night() ? "/night" : ""}/thumbs/beat-${i + 1}.jpg`;
@@ -192,7 +195,7 @@ function ScrollJourney() {
       // the poster only stands in until the canvas draws; after that it
       // never changes (each swap would decode a large image mid-scroll)
       if (!readyRef.current && i !== lastPoster && posterRef.current) {
-        posterRef.current.src = POSTER(i);
+        posterRef.current.src = STANDIN(i);
         lastPoster = i;
       }
       const e = seg(P, STORY + 0.05, STORY + 0.45);
@@ -215,10 +218,28 @@ function ScrollJourney() {
     apply(storyAt(st.progress * END_S));
 
     // three.js and the scenes load only as the section comes near
+    // three.js and the scenes load in idle time soon after the page opens
+    // (or at once if the reader is already near), so the first approach to
+    // the story does not pay for building it
+    let started = false;
+    const start = () => {
+      if (started || director || dead) return;
+      started = true;
+      io.disconnect();
+      load();
+    };
     const io = new IntersectionObserver(
       (entries) => {
-        if (!entries.some((en) => en.isIntersecting) || director || dead) return;
-        io.disconnect();
+        if (entries.some((en) => en.isIntersecting)) start();
+      },
+      { rootMargin: "150% 0px" },
+    );
+    const idle = (cb: () => void) => {
+      if (typeof window.requestIdleCallback === "function") window.requestIdleCallback(cb, { timeout: 4000 });
+      else setTimeout(cb, 1500);
+    };
+    const early = window.setTimeout(() => idle(start), 1200);
+    const load = () => {
         import("./director").then(async ({ createDirector }) => {
           if (dead) return;
           const d = await createDirector({
@@ -239,9 +260,7 @@ function ScrollJourney() {
           // the posters stay up if the scenes cannot be built
           console.error("journey: the scenes could not be built", e);
         });
-      },
-      { rootMargin: "150% 0px" },
-    );
+    };
     io.observe(track);
 
     const onResize = () => {
@@ -275,6 +294,7 @@ function ScrollJourney() {
     }
     return () => {
       dead = true;
+      window.clearTimeout(early);
       io.disconnect();
       window.removeEventListener("resize", onResize);
       st.kill();
@@ -290,7 +310,7 @@ function ScrollJourney() {
     <div ref={trackRef} className={paper ? "jl-track jl--paper" : "jl-track"}>
       <div ref={stageRef} className={`jl-stage sf--lamplight${paper ? " jl-stage--paper" : ""}${ready ? " is-drawn" : ""}`}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img ref={posterRef} className="jl-poster-bg" src={POSTER(0)} alt="" aria-hidden />
+        <img ref={posterRef} className="jl-poster-bg" src={STANDIN(0)} alt="" aria-hidden />
         <canvas
           ref={canvasRef}
           className={ready ? "jl-canvas is-ready" : "jl-canvas"}

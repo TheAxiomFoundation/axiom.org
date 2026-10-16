@@ -28,7 +28,7 @@ import {
   sortedRandoms,
   type BeatCtx,
   type BeatSpec,
-  type Look, themed, themedLook, THEME } from "./kit";
+  type Look, themed, themedLook, THEME, QuadMorph, carryOnScreen } from "./kit";
 
 const AMBER = new THREE.Color("#ffab4a");
 const CREAM = new THREE.Color("#fff0d4");
@@ -644,11 +644,26 @@ export function lamplightBeat5(ctx: BeatCtx): BeatSpec {
     return c.mesh.localToWorld(new THREE.Vector3((side * c.w) / 2, 0, 0));
   };
   const edges: Array<{ tube: THREE.Mesh; packet: THREE.Mesh | null; ports: THREE.Mesh[]; c: THREE.Curve<THREE.Vector3>; from: number; to: number }> = [];
+  // a card's top or bottom edge, at its middle
+  const edgeMid = (id: string, side: 1 | -1) => cards.get(id)!.mesh.localToWorld(new THREE.Vector3(0, side * 0.36, 0));
   GRAPH_EDGES.forEach(([a, b]) => {
-    const A = edgePoint(a, 1);
-    const B = edgePoint(b, -1);
-    const dx = Math.max(0.5, (B.x - A.x) * 0.5);
-    const c = new THREE.CubicBezierCurve3(A, A.clone().add(new THREE.Vector3(dx, 0, 0)), B.clone().add(new THREE.Vector3(-dx, 0, 0)), B);
+    let A = edgePoint(a, 1);
+    let B = edgePoint(b, -1);
+    let c: THREE.CubicBezierCurve3;
+    if (B.x - A.x > 0.15) {
+      // the next card is to the right: side to side (the handles never
+      // reach past the other end, so the wire cannot overshoot)
+      const dx = (B.x - A.x) * 0.5;
+      c = new THREE.CubicBezierCurve3(A, A.clone().add(new THREE.Vector3(dx, 0, 0)), B.clone().add(new THREE.Vector3(-dx, 0, 0)), B);
+    } else {
+      // it sits back to the left, below or above: out of one card's
+      // bottom, into the other's top, so the wire never doubles back
+      const down = B.y < A.y ? -1 : 1;
+      A = edgeMid(a, down as 1 | -1);
+      B = edgeMid(b, (-down) as 1 | -1);
+      const dy = Math.abs(B.y - A.y) * 0.5;
+      c = new THREE.CubicBezierCurve3(A, A.clone().add(new THREE.Vector3(0, down * dy, 0)), B.clone().add(new THREE.Vector3(0, -down * dy, 0)), B);
+    }
     const isHot = hot.has(`${a}-${b}`);
     const tube = new THREE.Mesh(
       new THREE.TubeGeometry(c, 90, isHot ? 0.011 : 0.006, 8, false),
@@ -724,12 +739,50 @@ export function lamplightBeat5(ctx: BeatCtx): BeatSpec {
   const at = (lv: number) => 0.04 + lv * 0.14;
   const camTo = camera.position.clone();
   const camFrom = camTo.clone().add(new THREE.Vector3(-1.2, 0.5, 2.4));
+  // the way out: the graph shrinks into its own small cluster in the
+  // registry, each card into its node
+  const HERO_INDEX: Record<string, number> = { imp2014: 0, impUsda: 1, net: 2, rate30: 3, size2: 4, rate8: 5, contrib: 6, minimum: 7, before: 8, regular: 9 };
+  const flies = GRAPH_NODES.map((n) => ({ id: n.id, fly: new QuadMorph(scene, cards.get(n.id)!.mesh) }));
+  const right = new THREE.Vector3();
+  const upV = new THREE.Vector3();
+  const cutOut = (k: number, next?: { camera: THREE.PerspectiveCamera; parts?: Record<string, unknown> }) => {
+    const nodes = next?.parts?.heroNodes as THREE.Vector3[] | undefined;
+    if (!next || !nodes) return;
+    const nc = next.camera;
+    nc.updateMatrixWorld();
+    right.setFromMatrixColumn(nc.matrixWorld, 0);
+    upV.setFromMatrixColumn(nc.matrixWorld, 1);
+    flies.forEach(({ id, fly }, i) => {
+      const node = nodes[HERO_INDEX[id]];
+      if (!node) return;
+      const c = cards.get(id)!;
+      const d = c.mesh.getWorldPosition(new THREE.Vector3()).distanceTo(camera.position);
+      const hs = 0.03;
+      const to = [
+        [-1, 1],
+        [1, 1],
+        [-1, -1],
+        [1, -1],
+      ].map(([x, y]) => carryOnScreen(node.clone().addScaledVector(right, x * hs).addScaledVector(upV, y * hs), nc, camera, d));
+      const e = ease(seg(k, 0.015 * i, 0.5 + 0.015 * i));
+      fly.set(e, to, 1 - 0.4 * seg(k, 0.35, 0.55));
+      c.mesh.visible = false;
+    });
+    // the wires draw back out as the cards leave
+    edges.forEach((ed) => {
+      drawShare(ed.tube, 1 - ease(seg(k, 0, 0.3)));
+      ed.ports.forEach((p) => (p.visible = k < 0.15));
+    });
+  };
   const update = (t: number) => {
+    flies.forEach(({ fly }) => fly.reset());
     camera.position.lerpVectors(camFrom, camTo, ease(t));
     camera.lookAt(0.7, -0.1, 0);
     GRAPH_NODES.forEach((n) => {
       const c = cards.get(n.id)!;
-      const on = ease(seg(t, at(level[n.id]), at(level[n.id]) + 0.1));
+      // the cards are there from the start: the code's rule blocks became
+      // them; the wires then draw in, level by level
+      const on = 1;
       const mat = c.mesh.material as THREE.MeshBasicMaterial;
       mat.opacity = on;
       c.mesh.visible = on > 0.002;
@@ -750,6 +803,6 @@ export function lamplightBeat5(ctx: BeatCtx): BeatSpec {
       }
     });
   };
-  return { camera, look, update };
+  return { camera, look, update, cutIn: () => {}, cutOut, parts: { cards } };
 
 }

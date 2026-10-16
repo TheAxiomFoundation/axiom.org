@@ -321,7 +321,7 @@ export async function createDirector(opts: {
     if (a) {
       const ownOut = !!a.cutOut;
       const da = pose(a, sceneTime(j - 1, P), motionTime(j - 1, P), ownOut ? 0 : PUSH * k * k, ownOut ? 0 : TILT_OUT * sstep(0, 0.6, k));
-      if (ownOut) a.cutOut!(k, b.camera);
+      if (ownOut) a.cutOut!(k, b);
       shoot(pa, a, da);
     }
     blend.uniforms.tA.value = a ? pa.texture : pb.texture;

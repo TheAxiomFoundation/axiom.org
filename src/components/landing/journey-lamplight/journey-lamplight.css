@@ -352,7 +352,8 @@
 /* the still stands in until the canvas draws, then goes: the canvas is
    see-through on paper, so the still must not show behind it */
 .jl-stage--paper .jl-poster-bg {
-  object-fit: contain;
+  /* framed like the canvas, which fills the stage */
+  object-fit: cover;
   opacity: 1;
   -webkit-mask-image: none;
   mask-image: none;

@@ -502,11 +502,11 @@ export function lamplightShelfToBook(ctx: BeatCtx): BeatSpec {
       else if (u < 4.5) l.el.style.opacity = "0";
     });
     const b1 = ease(seg(u, 3.5, 4.1)); // from the reading view onto the stream
-    const b2 = ease(seg(u, 4.55, 5.3)); // from the stream to the corpus view
+    const b2 = ease(seg(u, 4.55, 5.05)); // from the stream to the corpus view
     if (b1 > 0) {
       // behind and above the letters, looking on down the stream; higher
       // as it nears the plain, so the plain opens out below
-      const rs = ease(seg(u, 3.5, 5.0)) * 0.72;
+      const rs = ease(seg(u, 3.5, 4.85)) * 0.72;
       const at = ride.getPoint(rs);
       const ahead = ride.getPoint(Math.min(1, rs + 0.16));
       const tg = ride.getTangent(rs);
@@ -551,7 +551,8 @@ export function lamplightShelfToBook(ctx: BeatCtx): BeatSpec {
     CP.fallMat.uniforms.uOpacity.value = 1;
   };
   const sentLocal = new THREE.Matrix4();
-  const cutOut = (k: number, next?: THREE.PerspectiveCamera) => {
+  const cutOut = (k: number, nextBeat?: { camera: THREE.PerspectiveCamera }) => {
+    const next = nextBeat?.camera;
     // the camera turns up first, so the light climbs into view
     const e = ease(seg(k, 0, 0.55));
     camera.position.lerp(camOut, e);

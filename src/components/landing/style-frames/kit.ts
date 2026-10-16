@@ -573,8 +573,8 @@ export type BeatSpec = {
   parts?: Record<string, unknown>; // for scenes that compose this beat
   // a cut of its own in place of the pan through the dark: k runs 0..1
   // over the cut, applied after the camera is posed
-  // next: the incoming scene's camera, already posed for this frame
-  cutOut?: (k: number, next?: THREE.PerspectiveCamera) => void;
+  // next: the incoming scene (its camera already posed for this frame)
+  cutOut?: (k: number, next?: { camera: THREE.PerspectiveCamera; parts?: Record<string, unknown> }) => void;
   cutIn?: (k: number) => void;
 };
 
@@ -858,4 +858,90 @@ export function fbm(n: (x: number, y: number) => number, x: number, y: number, o
     amp *= 0.5;
   }
   return v;
+}
+
+
+// ── match moves between scenes ───────────────────────────────────────
+// A card (or a strip of one) flies from where it is in this scene to where
+// its counterpart sits on screen in the next scene, so the two line up
+// exactly while one scene dissolves into the other.
+
+const ndcTmp = new THREE.Vector3();
+// the four corners of a plane (or a sub-rectangle of it, in its local
+// units), in world space; order: top-left, top-right, bottom-left, bottom-right
+export function planeCorners(mesh: THREE.Mesh, rect?: { x0: number; x1: number; y0: number; y1: number }): THREE.Vector3[] {
+  const g = mesh.geometry as THREE.PlaneGeometry;
+  const w = g.parameters.width;
+  const h = g.parameters.height;
+  const r = rect ?? { x0: -w / 2, x1: w / 2, y0: -h / 2, y1: h / 2 };
+  mesh.updateMatrixWorld();
+  return [
+    [r.x0, r.y1],
+    [r.x1, r.y1],
+    [r.x0, r.y0],
+    [r.x1, r.y0],
+  ].map(([x, y]) => new THREE.Vector3(x, y, 0).applyMatrix4(mesh.matrixWorld));
+}
+// a world point seen by `from`, put at the same place on screen for `to`,
+// at a chosen distance from it
+export function carryOnScreen(p: THREE.Vector3, from: THREE.Camera, to: THREE.PerspectiveCamera, dist: number, out = new THREE.Vector3()) {
+  from.updateMatrixWorld();
+  to.updateMatrixWorld();
+  ndcTmp.copy(p).project(from);
+  out.set(ndcTmp.x, ndcTmp.y, 0.5).unproject(to).sub(to.position).normalize();
+  return out.multiplyScalar(dist).add(to.position);
+}
+
+export class QuadMorph {
+  readonly fly: THREE.Mesh;
+  private from: THREE.Vector3[] | null = null;
+  constructor(
+    scene: THREE.Scene,
+    private src: THREE.Mesh,
+    private rect?: { x0: number; x1: number; y0: number; y1: number },
+  ) {
+    const g = src.geometry as THREE.PlaneGeometry;
+    const w = g.parameters.width;
+    const h = g.parameters.height;
+    const r = rect ?? { x0: -w / 2, x1: w / 2, y0: -h / 2, y1: h / 2 };
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(12), 3));
+    const u = (x: number) => x / w + 0.5;
+    const v = (y: number) => y / h + 0.5;
+    geo.setAttribute("uv", new THREE.Float32BufferAttribute([u(r.x0), v(r.y1), u(r.x1), v(r.y1), u(r.x0), v(r.y0), u(r.x1), v(r.y0)], 2));
+    geo.setIndex([0, 2, 1, 2, 3, 1]);
+    const mat = (src.material as THREE.MeshBasicMaterial).clone();
+    mat.transparent = true;
+    mat.side = THREE.DoubleSide;
+    this.fly = new THREE.Mesh(geo, mat);
+    this.fly.frustumCulled = false;
+    this.fly.visible = false;
+    this.fly.renderOrder = 5;
+    scene.add(this.fly);
+  }
+  // back to the scene's own state (each frame, before any cut)
+  reset() {
+    this.fly.visible = false;
+    this.from = null;
+  }
+  // e 0..1 toward the target corners (world, already in this scene)
+  set(e: number, to: THREE.Vector3[], opacity = 1) {
+    this.from ??= planeCorners(this.src, this.rect);
+    const pos = this.fly.geometry.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < 4; i++) {
+      const p = this.from[i].clone().lerp(to[i], e);
+      pos.setXYZ(i, p.x, p.y, p.z);
+    }
+    pos.needsUpdate = true;
+    this.fly.geometry.computeBoundingSphere();
+    (this.fly.material as THREE.MeshBasicMaterial).opacity = opacity;
+    this.fly.visible = opacity > 0.002;
+  }
+  // the target: a plane in the next scene, carried onto this camera's screen
+  // at the depth the source sits at
+  toward(target: THREE.Mesh, next: THREE.PerspectiveCamera, here: THREE.PerspectiveCamera, targetRect?: { x0: number; x1: number; y0: number; y1: number }) {
+    this.from ??= planeCorners(this.src, this.rect);
+    const d = this.from[0].distanceTo(here.position);
+    return planeCorners(target, targetRect).map((p) => carryOnScreen(p, next, here, d));
+  }
 }
