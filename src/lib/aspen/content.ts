@@ -964,7 +964,7 @@ export const DEMO_NOTE = "A demo. Answers come from OpenAI's GPT model, unedited
  * point, for phones; same substance.
  */
 export const DISCLOSURE = {
-  short: "We keep everyone's answers to learn from, without names, and don't publish them. Taking part is optional.",
+  short: "We keep everyone's answers to learn from and don't publish them. Taking part is optional.",
   details: [
     { title: "No names", text: "We don't ask who you are. Please don't type details about real people." },
     { title: "Where questions go", text: "To OpenAI for the AI's answer, and to the Axiom rules chatbot if you check the rules." },
