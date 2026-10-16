@@ -1058,6 +1058,14 @@ html[data-aspen-text="larger"] {
   opacity: 1;
 }
 
+/* /aspen scrolls without animation: a new screen opens at its top at once,
+   and the browser keeps a field in view while typing without gliding the
+   page. The padding keeps the sticky header from covering a focused field. */
+html:has([data-aspen-page]) {
+  scroll-behavior: auto;
+  scroll-padding-top: 5.5rem;
+}
+
 /* The site's kicker is small spaced capitals; on /aspen it reads as a
    sentence, at a size a phone can read. */
 [data-aspen-page] .kicker {

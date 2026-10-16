@@ -721,6 +721,14 @@ describe("ChatWindow saved conversation", () => {
     expect(within(screen.getByRole("region", { name: "Your verdict" })).getByText("Rate this answer")).toBeInTheDocument();
   });
 
+  it("lets a typed question go back and forth before the rating, with nothing picked", async () => {
+    store({ perspective: "resident", householdId: null, questionIds: [], conversationId: "c-11", turns: turns.slice(0, 2), rated: [] });
+    routeFetch({});
+    render(<ChatWindow stage="try" />);
+    await screen.findByText("Answer one");
+    expect(screen.getByRole("button", { name: "Ask a follow-up" })).toBeEnabled();
+  });
+
   it("offers Start over before anything is asked, once something is picked", async () => {
     routeFetch({});
     render(<ChatWindow stage="try" />);

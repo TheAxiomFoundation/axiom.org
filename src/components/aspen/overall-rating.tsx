@@ -60,7 +60,7 @@ const SCALED = DISCUSSION_QUESTIONS.flatMap((q) => {
  * so going back never counts a rating twice. The room's averages feed "What
  * we saw". Each phone shares it once.
  */
-export function OverallRating({ stage }: { stage: string }) {
+export function OverallRating({ stage, onShared }: { stage: string; onShared?: () => void }) {
   const [step, setStep] = useState(0);
   const [ratings, setRatings] = useState<Record<string, Record<string, number>>>({});
   const [note, setNote] = useState("");
@@ -111,6 +111,7 @@ export function OverallRating({ stage }: { stage: string }) {
     if (note.trim()) sendEvent("discussion", { question: null, ratings: {}, topics: [], note }, stage);
     writeStored(OVERALL_KEY, true);
     setDone(true);
+    onShared?.();
   }
 
   const heading = (text: string, hint?: string) => (

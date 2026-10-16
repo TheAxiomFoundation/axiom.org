@@ -395,7 +395,7 @@ export function GoldenContent() {
               </p>
             )}
             <p className="m-0 font-body text-[1.02rem] leading-relaxed text-[var(--color-ink-secondary)]">
-              <span className="font-semibold text-[var(--color-ink)]">Takes:</span> {tier.takes}
+              <span className="font-semibold text-[var(--color-ink)]">It takes:</span> {tier.takes}
             </p>
           </div>
         </details>

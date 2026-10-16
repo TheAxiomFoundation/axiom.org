@@ -114,12 +114,15 @@ export async function readNdjson(
 export function ChatWindow({
   stage,
   onRateOverall,
+  overallShared = false,
   onStatus,
   onNewQuestion,
 }: {
   stage: string;
   /** Leads to the overall rating, below the chat, once the answer is rated. */
   onRateOverall?: () => void;
+  /** The overall ratings are in, so nothing points to them any more. */
+  overallShared?: boolean;
   onStatus?: (status: ChatStatus) => void;
   /** Called when the participant starts a new question. */
   onNewQuestion?: () => void;
@@ -190,11 +193,15 @@ export function ChatWindow({
   }, [hydrated, asked, rated, current, onStatus]);
 
   // The question box grows to show the whole question, so nobody scrolls inside it on a phone.
+  // Measuring collapses it for a moment, which would shorten the page and jump it while typing:
+  // the scroll position goes back where it was.
   useEffect(() => {
     const el = draftBox.current;
     if (!el) return;
+    const y = window.scrollY;
     el.style.height = "auto";
     if (el.scrollHeight > 0) el.style.height = `${el.scrollHeight + 2}px`;
+    if (window.scrollY !== y) window.scrollTo({ top: y, behavior: "instant" });
   }, [draft]);
 
   const started = turns.length > 0;
@@ -343,7 +350,8 @@ export function ChatWindow({
   // Rating is not optional for Try it, but a blank question can go back and forth first:
   // its follow-ups don't wait for the rating. Start over never waits.
   const mustRate = Boolean(latest?.promptId && !rated.has(latest.promptId));
-  const followUpWaits = mustRate && householdId !== OWN;
+  const blank = householdId === OWN || householdId === null;
+  const followUpWaits = mustRate && !blank;
 
   const tile = (selected: boolean) =>
     `flex flex-col items-start justify-start rounded-lg border px-3 py-2.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-[var(--color-accent)] ${
@@ -616,10 +624,10 @@ export function ChatWindow({
                 <span aria-hidden className="mr-1.5 text-[var(--color-success)]">✓</span>
                 Your rating is saved. Thank you.
               </p>
-              {onRateOverall && (
-                <button type="button" onClick={onRateOverall} className={`${BUTTON} w-full justify-between py-3.5 text-left text-[1.02rem]`}>
+              {onRateOverall && !overallShared && (
+                <button type="button" onClick={onRateOverall} className={`${BUTTON_QUIET} w-full justify-between py-3 text-left text-[1rem]`}>
                   Next: how did AI do overall?
-                  <span aria-hidden>↓</span>
+                  <span aria-hidden className="text-[var(--color-accent)]">↓</span>
                 </button>
               )}
               {/* On a phone the chat's own "New question" link is far above; this one sits where the thumb is. */}

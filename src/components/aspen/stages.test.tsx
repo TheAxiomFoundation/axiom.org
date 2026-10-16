@@ -519,7 +519,7 @@ describe("FoundationContent and GoldenContent", () => {
     }
     // Plain labels: no small "Your state gets" eyebrow, and one "Takes:" per step.
     expect(screen.queryByText("Your state gets")).not.toBeInTheDocument();
-    expect(screen.getAllByText("Takes:")).toHaveLength(3);
+    expect(screen.getAllByText("It takes:")).toHaveLength(3);
     // Each step is a row that opens on a tap: the name shows, the details wait.
     const rows = document.querySelectorAll("details");
     expect(rows).toHaveLength(GOLDEN_A.length);

@@ -75,6 +75,8 @@ export function AspenApp() {
   const overall = useRef<HTMLElement>(null);
   // Once the overall rating is shared, a new question clears its "ratings are in" line for good.
   const [overallClosed, setOverallClosed] = useState(false);
+  // Once the overall ratings are shared, Try it folds them to one line.
+  const [overallShared, setOverallShared] = useState(false);
   const onNewQuestion = useCallback(() => {
     if (readStored<boolean>(OVERALL_KEY)) setOverallClosed(true);
   }, []);
@@ -115,7 +117,8 @@ export function AspenApp() {
     if (hydrated && follow && live && live !== view) {
       setView(live);
       window.history.replaceState({ aspenStage: live }, "");
-      window.scrollTo?.({ top: 0, behavior: "smooth" });
+      // A new screen opens at its top, straight away; a smooth scroll can stop short on a phone.
+      window.scrollTo?.({ top: 0, behavior: "instant" });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, live, follow]);
@@ -143,6 +146,10 @@ export function AspenApp() {
       setFollow(true);
     }
   }, [hydrated, control?.live, control?.runId]);
+
+  useEffect(() => {
+    setOverallShared(Boolean(readStored<boolean>(OVERALL_KEY)));
+  }, [runEpoch]);
 
   const { data: results } = useResults(RESULT_STAGES.includes(view), 5000);
   const [thread, setThread] = useState<ThreadQuestion | null>(null);
@@ -178,7 +185,8 @@ export function AspenApp() {
     setView(stage);
     setFollow(live === null || stage === live);
     setMenuOpen(false);
-    window.scrollTo?.({ top: 0, behavior: "smooth" });
+    // A new screen opens at its top, straight away; a smooth scroll can stop short on a phone.
+    window.scrollTo?.({ top: 0, behavior: "instant" });
   }
 
   const current = STAGES.find((s) => s.id === view) ?? STAGES[0];
@@ -302,18 +310,26 @@ export function AspenApp() {
             key={runEpoch}
             stage={view}
             onRateOverall={() => overall.current?.scrollIntoView?.({ behavior: "smooth", block: "start" })}
+            overallShared={overallShared}
             onStatus={setTryStatus}
             onNewQuestion={onNewQuestion}
           />
           {/* Both ratings happen here: the answer first, then AI overall, right below. */}
-          {tryStatus.current && !overallClosed && (
-            <section ref={overall} aria-labelledby="aspen-overall" className="mt-12 scroll-mt-20 border-t-2 border-[var(--color-accent)] pt-6">
-              <h2 id="aspen-overall" className="m-0 mb-5 font-body text-[1.4rem] font-semibold text-[var(--color-ink)]">
-                One more: how did AI do overall?
-              </h2>
-              <OverallRating key={runEpoch} stage="try" />
-            </section>
-          )}
+          {tryStatus.current && !overallClosed &&
+            (overallShared ? (
+              // Done: one line, not a section.
+              <p className="mt-10 font-body text-[1.05rem] font-medium text-[var(--color-ink)]">
+                <span aria-hidden className="mr-1.5 text-[var(--color-success)]">✓</span>
+                Your ratings are in. You&apos;ll see the room&apos;s results in What we saw.
+              </p>
+            ) : (
+              <section ref={overall} aria-labelledby="aspen-overall" className="mt-12 scroll-mt-20 border-t-2 border-[var(--color-accent)] pt-6">
+                <h2 id="aspen-overall" className="m-0 mb-5 font-body text-[1.4rem] font-semibold text-[var(--color-ink)]">
+                  One more: how did AI do overall?
+                </h2>
+                <OverallRating key={runEpoch} stage="try" onShared={() => setOverallShared(true)} />
+              </section>
+            ))}
         </div>
 
         {view === "reveal" &&

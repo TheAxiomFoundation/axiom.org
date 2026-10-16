@@ -397,6 +397,9 @@ describe("AspenApp without a live presenter", () => {
     for (let i = 0; i < 4; i++) fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     fireEvent.click(screen.getByRole("button", { name: "Share my ratings" }));
     expect(await screen.findByText(/Your ratings are in/)).toBeInTheDocument();
+    // Done folds to one line: no heading, and nothing left pointing down to it.
+    expect(screen.queryByRole("heading", { name: "One more: how did AI do overall?" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Next: how did AI do overall\?/ })).not.toBeInTheDocument();
     await waitFor(() =>
       expect(events()).toContainEqual(
         expect.objectContaining({ kind: "discussion", stage: "try", payload: expect.objectContaining({ question: "performance" }) }),
