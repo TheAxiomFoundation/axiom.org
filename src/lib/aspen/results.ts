@@ -18,8 +18,8 @@ import type { PromptRow, RunData } from "./types";
 
 /**
  * The room's results, as the reveal and the presenter screen show them.
- * Aggregates only: no participant ids, and pledges contribute states
- * (when the person allowed it) and counts, never names or emails.
+ * Aggregates only: no participant ids, and pledges contribute counts,
+ * never states, names or emails. Nothing from a pledge goes on the screen.
  */
 
 export interface Count {
@@ -145,8 +145,11 @@ export interface RunSummary {
   /** Vote: what people would build first, one vote each. */
   votes: Count[];
   /** Each group's best idea, and what else it raised (barriers, workforce, questions). */
-  breakouts: { useCases: Count[]; notes: { useCase: string; text: string; raised: string | null }[] };
-  pledges: { people: number; states: string[]; accurateAi: number; stateSystems: number };
+  breakouts: {
+    useCases: Count[];
+    notes: { useCase: string; text: string; who: string | null; trust: string | null; raised: string | null }[];
+  };
+  pledges: { people: number; accurateAi: number; stateSystems: number };
 }
 
 const FEED_SIZE = 24;
@@ -328,17 +331,14 @@ export function summarizeRun(data: RunData): RunSummary {
     ...rated
       .filter((p) => p.rating_note)
       .map((p) => ({ text: clip(p.rating_note, 240) as string, verdict: p.verdict ?? null, at: p.created_at ?? "" })),
+    // Agency comments stay off the phones; the presenter chooses when to show them.
     ...discussion
-      .filter((e) => payloadString(e.payload, "note"))
+      .filter((e) => payloadString(e.payload, "note") && payloadString(e.payload, "question") !== "experience")
       .map((e) => ({ text: clip(payloadString(e.payload, "note"), 240) as string, verdict: null, at: e.created_at ?? "" })),
   ]
     .sort((a, b) => b.at.localeCompare(a.at))
     .slice(0, VOICES_SIZE)
     .map(({ text, verdict }) => ({ text, verdict }));
-
-  const shownStates = pledges
-    .filter((p) => p.show_state && p.state)
-    .map((p) => p.state as string);
 
   return {
     participants: participants.length,
@@ -410,15 +410,16 @@ export function summarizeRun(data: RunData): RunSummary {
         .map((e) => ({
           useCase: payloadString(e.payload, "useCase") ?? "",
           text: clip(payloadString(e.payload, "note"), 400) ?? "",
+          who: clip(payloadString(e.payload, "who"), 400) || null,
+          trust: clip(payloadString(e.payload, "trust"), 400) || null,
           raised: clip(payloadString(e.payload, "raised"), 400) || null,
         }))
-        .filter((n) => n.text || n.raised)
+        .filter((n) => n.text || n.who || n.trust || n.raised)
         .slice(-NOTES_SIZE)
         .reverse(),
     },
     pledges: {
       people: pledges.length,
-      states: [...new Set(shownStates)].sort(),
       accurateAi: pledges.filter((p) => p.accurate_ai).length,
       stateSystems: pledges.filter((p) => p.state_systems).length,
     },

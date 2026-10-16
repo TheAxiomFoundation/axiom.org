@@ -1,6 +1,25 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { BREAKOUT_PROMPT, DISCUSSION_QUESTIONS, EVENT, GOLDEN_A, NEXT_STEPS, STAGES, type StageId } from "@/lib/aspen/content";
+import {
+  BREAKOUT_PROMPT,
+  GROUP_QUESTIONS,
+  DISCUSSION_QUESTIONS,
+  EVENT,
+  GOLDEN_A,
+  AZ_HOUSEHOLD,
+  AZ_SCENARIO_REVIEW,
+  BUILD_HEADING,
+  FRONT_DOOR,
+  liveDemoUrl,
+  NEXT_STEPS,
+  RATING_SCALES,
+  SAME_RULES,
+  WHAT_MODELS_MISS,
+  WHERE_MODELS_BREAK,
+  SILVER_ASK,
+  STAGES,
+  type StageId,
+} from "@/lib/aspen/content";
 import { EMPTY_SUMMARY, summarizeRun, type RunSummary } from "@/lib/aspen/results";
 import type { Control, RunData } from "@/lib/aspen/types";
 import { PresenterApp } from "./presenter-app";
@@ -113,8 +132,12 @@ describe("PresenterApp welcome", () => {
     expect(screen.getByRole("heading", { level: 1, name: EVENT.title })).toBeInTheDocument();
     expect(screen.getByText(EVENT.joinUrl)).toBeInTheDocument();
     expect(screen.getByText("phoenix-2026")).toHaveClass("font-mono");
-    expect(screen.getByText(`With ${EVENT.hosts}`)).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText(/joined/)).toHaveTextContent("1 joined"));
+    expect(screen.getByText(`With your hosts: ${EVENT.presenters}`)).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(EVENT.coverDate))).toBeInTheDocument();
+    // The logo stands in for the organization name, on the slide and in the controls.
+    expect(screen.getAllByRole("img", { name: "Axiom Foundation" }).length).toBeGreaterThanOrEqual(2);
+    // How many joined sits in its own box beside the join panel.
+    await waitFor(() => expect(screen.getByText("Joined").nextElementSibling).toHaveTextContent("1"));
   });
 
   it("leaves out the password when there is none and flags a run without a store", async () => {
@@ -186,6 +209,7 @@ describe("PresenterApp navigation", () => {
     await screen.findByText("Run r1");
 
     expect(fireEvent.keyDown(document.body, { key: "a" })).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "New run" }));
     fireEvent.keyDown(screen.getByRole("textbox", { name: "New run name" }), { key: "ArrowRight" });
     fireEvent.keyDown(screen.getByRole("button", { name: "Next slide" }), { key: "ArrowRight" });
     fireEvent.keyDown(document.body, { key: "ArrowLeft" });
@@ -241,41 +265,91 @@ describe("PresenterApp navigation", () => {
   it("steps through the slides of a stage before it moves the room", async () => {
     const { posts } = setup({ stage: "reveal" });
     await onStage("reveal");
-    expect(screen.getByText("1/2")).toBeInTheDocument();
+    expect(screen.getByText("1/3")).toBeInTheDocument();
 
+    // What we saw: the room's results, how the AI did, then AI in their agencies.
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("2/2")).toBeInTheDocument();
-    expect(screen.getByText("How it felt")).toBeInTheDocument();
+    expect(screen.getByText("2/3")).toBeInTheDocument();
+    expect(screen.getByText(RATING_SCALES.performance!.title)).toBeInTheDocument();
+    expect(screen.queryByText(RATING_SCALES.experience!.title)).not.toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("3/3")).toBeInTheDocument();
+    expect(screen.getByText("How is AI performing overall in your agency?")).toBeInTheDocument();
+    expect(screen.queryByText(RATING_SCALES.performance!.title)).not.toBeInTheDocument();
     expect(posts()).toEqual([]);
 
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     await onStage("scale");
-    expect(screen.getByText("1/2")).toBeInTheDocument();
-    expect(screen.getByText("41%")).toBeInTheDocument();
+    expect(screen.getByText("1/6")).toBeInTheDocument();
+    expect(screen.getByText("42%")).toBeInTheDocument();
     expect(screen.getByText(STAGES.find((st) => st.id === "scale")!.summary)).toBeInTheDocument();
 
+    // At scale: the share, then Max's household, chart, what the models miss and the front door.
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("2/2")).toBeInTheDocument();
-    expect(screen.getByText("46 of 46 AI models said")).toBeInTheDocument();
-    expect(screen.getByText("$24")).toBeInTheDocument();
+    expect(screen.getByText("2/6")).toBeInTheDocument();
+    expect(screen.getByText(AZ_HOUSEHOLD.title)).toBeInTheDocument();
     // The summary shows on the first slide only.
     expect(screen.queryByText(STAGES.find((st) => st.id === "scale")!.summary)).not.toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("3/6")).toBeInTheDocument();
+    expect(screen.getByText(WHERE_MODELS_BREAK.title)).toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("4/6")).toBeInTheDocument();
+    for (const q of WHAT_MODELS_MISS.quotes) expect(screen.getByText(q.model)).toBeInTheDocument();
+    // The review flag stays off the room's screen.
+    expect(screen.queryByText(AZ_SCENARIO_REVIEW.question)).not.toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("5/6")).toBeInTheDocument();
+    // The last slide turns the stage from the problem to the fix.
+    expect(screen.getByRole("heading", { level: 1, name: FRONT_DOOR.heading })).toBeInTheDocument();
+    expect(screen.getByText(FRONT_DOOR.title)).toBeInTheDocument();
+    // Max's original diagram, with no closing line under it.
+    expect(screen.getByRole("img", { name: /ask an AI model what the law says/i })).toBeInTheDocument();
+    expect(screen.queryByText(/it has to get the rules right/)).not.toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("6/6")).toBeInTheDocument();
+    // The live chatbot, in compare mode with the demo's Fresno question filled in.
+    const demo = screen.getByTitle(/Live chatbot demo/);
+    expect(demo.getAttribute("src")).toMatch(/^https:\/\/axiom\.org\/gallery\/chatbot\?compare=1&q=I/);
+    expect(demo.getAttribute("src")).not.toMatch(/go=1/);
+    expect(screen.getByRole("link", { name: /Open demo in a new tab/ })).toHaveAttribute("href", liveDemoUrl());
+    expect(posts()).toEqual([{ stage: "scale" }]);
 
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     await onStage("foundation");
-    expect(screen.getByText("1/2")).toBeInTheDocument();
+    expect(screen.getByText("1/3")).toBeInTheDocument();
 
     // Back from a stage's first slide lands on the last slide of the stage before.
     fireEvent.keyDown(document.body, { key: "ArrowLeft" });
-    await onStage("scale");
-    expect(screen.getByText("2/2")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("6/6")).toBeInTheDocument());
+    expect(screen.getByRole("heading", { level: 1, name: FRONT_DOOR.heading })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Previous slide" }));
-    expect(screen.getByText("1/2")).toBeInTheDocument();
+    expect(screen.getByText("5/6")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Previous slide" }));
+    expect(screen.getByText("4/6")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: STAGES.find((st) => st.id === "scale")!.title })).toBeInTheDocument();
+    for (let i = 0; i < 3; i++) fireEvent.keyDown(document.body, { key: "ArrowLeft" });
+    expect(screen.getByText("1/6")).toBeInTheDocument();
     fireEvent.keyDown(document.body, { key: "ArrowLeft" });
     await onStage("reveal");
     // Back onto the reveal lands on its last slide.
-    expect(screen.getByText("2/2")).toBeInTheDocument();
+    expect(screen.getByText("3/3")).toBeInTheDocument();
     expect(posts()).toEqual([{ stage: "scale" }, { stage: "foundation" }, { stage: "scale" }, { stage: "reveal" }]);
+  });
+
+  it("flags the Arizona scenario for review on At scale 4/6 only with ?review", async () => {
+    window.history.pushState({}, "", "/aspen/present?review");
+    try {
+      setup({ stage: "scale" });
+      await onStage("scale");
+      for (let i = 0; i < 3; i++) fireEvent.keyDown(document.body, { key: "ArrowRight" });
+      expect(screen.getByText("4/6")).toBeInTheDocument();
+      expect(screen.getByRole("note")).toHaveTextContent(AZ_SCENARIO_REVIEW.question);
+      fireEvent.keyDown(document.body, { key: "ArrowRight" });
+      expect(screen.queryByText(AZ_SCENARIO_REVIEW.question)).not.toBeInTheDocument();
+    } finally {
+      window.history.pushState({}, "", "/");
+    }
   });
 });
 
@@ -286,8 +360,15 @@ describe("PresenterApp stages", () => {
     if (id !== "welcome" && id !== "dinner") {
       const index = STAGES.findIndex((s) => s.id === id);
       expect(screen.getByText(`${String(index + 1).padStart(2, "0")} · ${STAGES[index].label}`)).toBeInTheDocument();
-      expect(screen.getByText(STAGES[index].summary)).toBeInTheDocument();
+      if (STAGES[index].summary) expect(screen.getByText(STAGES[index].summary)).toBeInTheDocument();
     }
+  });
+
+  it("drops the summary line under the shared foundation heading", async () => {
+    setup({ stage: "foundation" });
+    await onStage("foundation");
+    expect(screen.queryByText(/Every tool rebuilds your rules on its own/)).not.toBeInTheDocument();
+    expect(screen.getByText(/reducing cost, duplication and error at once/)).toBeInTheDocument();
   });
 
   it("shows the join details, the counts and the households people picked during Try it", async () => {
@@ -352,7 +433,11 @@ describe("PresenterApp stages", () => {
     expect(screen.getByText("would stop a resident from applying. 1 of them qualify.").previousSibling).toHaveTextContent("1");
     expect(screen.getByText("What would a resident do next?")).toBeInTheDocument();
     expect(screen.getByText("To discuss")).toBeInTheDocument();
-    for (const q of DISCUSSION_QUESTIONS) expect(screen.getByText(q.label)).toBeInTheDocument();
+    // The agency question has its own slide, so the list leaves it out.
+    for (const q of DISCUSSION_QUESTIONS) {
+      if (q.id === "experience") expect(screen.queryByText(q.label)).not.toBeInTheDocument();
+      else expect(screen.getByText(q.label)).toBeInTheDocument();
+    }
   });
 
   it("keeps the plain labels when no answer would send a resident the wrong way", async () => {
@@ -383,11 +468,30 @@ describe("PresenterApp stages", () => {
     await onStage("foundation");
     expect(screen.getByText("One open, validated set of rules")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText(/In this room/)).toHaveTextContent("In this room, 5 of 6 can't fully check"));
-    expect(screen.getByText(/SNAP benefit math already checks out/)).toBeInTheDocument();
+    for (const trait of [
+      "Every value cites the provision it comes from",
+      "Every change carries its effective date",
+      "Every release is versioned, so you can see what changed",
+    ]) {
+      expect(screen.getByText(trait)).toBeInTheDocument();
+    }
+    expect(screen.queryByText("One source of truth")).not.toBeInTheDocument();
+    expect(screen.queryByText(/SNAP benefit math already checks out/)).not.toBeInTheDocument();
 
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("What it takes for a state")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: SAME_RULES.heading })).toBeInTheDocument();
+    expect(screen.getByText(SAME_RULES.governments.label)).toBeInTheDocument();
+    for (const use of SAME_RULES.governments.uses) expect(screen.getByText(use)).toBeInTheDocument();
+    for (const a of SAME_RULES.audiences) expect(screen.getByText(a.label)).toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByRole("heading", { level: 1, name: BUILD_HEADING })).toBeInTheDocument();
     for (const tier of GOLDEN_A) expect(screen.getByText(tier.name)).toBeInTheDocument();
+    expect(screen.queryByText("Bronze A")).not.toBeInTheDocument();
+    expect(screen.getByText("Rules from public documents")).toBeInTheDocument();
+    // Silver and Gold A read as in the core deck.
+    expect(screen.getByText("Government validation")).toBeInTheDocument();
+    expect(screen.getByText("Government system runs on Axiom")).toBeInTheDocument();
+    expect(screen.getByText(/This is the ultimate goal: all systems can run off the same rules/)).toBeInTheDocument();
   });
 
   it("leaves out the room's answer on the shared foundation when nobody gave one", async () => {
@@ -421,9 +525,16 @@ describe("PresenterApp stages", () => {
     expect(screen.getByText(BREAKOUT_PROMPT)).toBeInTheDocument();
     expect(await screen.findByText("Show staff the rules")).toBeInTheDocument();
     expect(screen.getByText("See and edit the rules")).toBeInTheDocument();
-    expect(screen.getByText("Idea")).toBeInTheDocument();
-    // What else a group raised shows under its card, even without an idea.
-    expect(screen.getByText("Training time for staff").parentElement).toHaveTextContent("Also raised: Training time for staff");
+    expect(screen.getAllByText("Group idea").length).toBeGreaterThan(0);
+    for (const q of GROUP_QUESTIONS) expect(screen.getByText(q.label)).toBeInTheDocument();
+    // A group that only raised something still gets a card.
+    expect(screen.getByText("Training time for staff")).toBeInTheDocument();
+    // Clicking a card fills the slide with that group's answers; Escape goes back.
+    fireEvent.click(screen.getByRole("button", { name: "Report back: Build caseworker flows" }));
+    const dialog = screen.getByRole("dialog", { name: "Report back: Build caseworker flows" });
+    expect(dialog).toHaveTextContent("Also raised: Training time for staff");
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("waits for the groups' ideas", async () => {
@@ -433,28 +544,72 @@ describe("PresenterApp stages", () => {
     expect(screen.getByText("Ideas appear here as groups share them.")).toBeInTheDocument();
   });
 
+  it("opens next steps on the ask: what Silver A takes, and what it never asks for", async () => {
+    const { posts } = setup({ stage: "next" });
+    await onStage("next");
+    expect(screen.getByText("1/2")).toBeInTheDocument();
+    expect(screen.getByText(SILVER_ASK.title)).toBeInTheDocument();
+    for (const t of SILVER_ASK.takes) expect(screen.getByText(t)).toBeInTheDocument();
+    for (const g of SILVER_ASK.guardrails) expect(screen.getByText(g)).toBeInTheDocument();
+    expect(screen.queryByText(NEXT_STEPS.ask)).not.toBeInTheDocument();
+
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("2/2")).toBeInTheDocument();
+    expect(screen.getByText(NEXT_STEPS.ask)).toBeInTheDocument();
+    expect(posts()).toEqual([]);
+  });
+
+  it("shows the join QR code on the welcome slide", async () => {
+    setup({ stage: "welcome" });
+    await onStage("welcome");
+    expect(screen.getByRole("img", { name: "QR code for axiom.org/aspen" })).toBeInTheDocument();
+  });
+
   it("asks for next steps without putting counts on the screen", async () => {
     setup({ stage: "next" });
     await onStage("next");
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
     expect(screen.getByText(NEXT_STEPS.ask)).toBeInTheDocument();
     for (const o of NEXT_STEPS.options) expect(screen.getByText(o.label)).toBeInTheDocument();
     expect(screen.getByText(/Fill in the short form on your phone/)).toBeInTheDocument();
     expect(screen.queryByText("people")).not.toBeInTheDocument();
+    // Nothing from the pledges goes on the screen, and there's no control to show it.
     expect(screen.queryByText("Ohio")).not.toBeInTheDocument();
-
-    // The presenter decides whether to show the states, from the controls.
-    fireEvent.click(screen.getByRole("button", { name: "Show the states going further" }));
-    expect(await screen.findByText("Arizona")).toBeInTheDocument();
-    expect(screen.getByText("Ohio")).toBeInTheDocument();
-    expect(screen.queryByText(/Fill in the short form/)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Hide the states" }));
-    expect(screen.queryByText("Ohio")).not.toBeInTheDocument();
+    expect(screen.queryByText("Arizona")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /states/i })).not.toBeInTheDocument();
   });
 
-  it("offers the states only on next steps", async () => {
-    setup({ stage: "groups" });
-    await onStage("groups");
-    expect(screen.queryByRole("button", { name: "Show the states going further" })).not.toBeInTheDocument();
+  it("shows each PolicyBench slide's source, without the PolicyEngine disclosure", async () => {
+    setup({ stage: "scale" });
+    await onStage("scale");
+    // Slides 2 to 4 are Max's PolicyBench slides.
+    for (const source of [AZ_HOUSEHOLD.source, WHERE_MODELS_BREAK.source, WHAT_MODELS_MISS.sources]) {
+      fireEvent.keyDown(document.body, { key: "ArrowRight" });
+      expect(screen.getByText(source)).toBeInTheDocument();
+      expect(screen.queryByText(/CEO of both/)).not.toBeInTheDocument();
+    }
+  });
+
+  it("keeps agency comments hidden until the presenter shows them", async () => {
+    const withComments = summarizeRun({
+      ...DATA,
+      events: [
+        ...DATA.events,
+        { run_id: "r1", kind: "discussion", payload: { question: "experience", ratings: { staff: 4 }, note: "Helps staff, confuses residents" } },
+      ],
+    });
+    setup({ stage: "reveal", summary: withComments });
+    await onStage("reveal");
+    expect(screen.queryByRole("button", { name: "Show agency comments" })).not.toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("3/3")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("How is AI performing overall in your agency?")).toBeInTheDocument());
+    expect(screen.queryByText("Helps staff, confuses residents")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show agency comments" }));
+    expect(screen.getByText("Helps staff, confuses residents")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Hide agency comments" }));
+    expect(screen.queryByText("Helps staff, confuses residents")).not.toBeInTheDocument();
   });
 
   it("thanks the room at dinner, without numbers", async () => {
@@ -531,8 +686,10 @@ describe("PresenterApp new run", () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     const { posts } = setup({ stage: "next" });
     await onStage("next");
-    fireEvent.click(screen.getByRole("button", { name: "Show the states going further" }));
 
+    // The form stays folded away until opened.
+    expect(screen.queryByRole("textbox", { name: "New run name" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "New run" }));
     const start = screen.getByRole("button", { name: "Start run" });
     expect(start).toBeDisabled();
     const input = screen.getByRole("textbox", { name: "New run name" });
@@ -549,12 +706,12 @@ describe("PresenterApp new run", () => {
     await screen.findByText("Run phoenix2");
     await onStage("welcome");
     expect(posts()).toEqual([{ runId: "phoenix2", stage: "welcome" }]);
-    expect(input).toHaveValue("");
-    expect(start).toBeDisabled();
-
-    // The states hide again for the new run.
-    fireEvent.click(within(screen.getByRole("navigation", { name: "Stages" })).getByRole("button", { name: "Next steps" }));
-    await onStage("next");
-    expect(screen.getByRole("button", { name: "Show the states going further" })).toBeInTheDocument();
+    // Starting folds the form away again; reopened, it starts empty.
+    expect(screen.queryByRole("textbox", { name: "New run name" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "New run" }));
+    expect(screen.getByRole("textbox", { name: "New run name" })).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Start run" })).toBeDisabled();
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(screen.queryByRole("textbox", { name: "New run name" })).not.toBeInTheDocument();
   });
 });

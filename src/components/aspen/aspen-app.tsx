@@ -23,11 +23,13 @@ import {
   SmallGroups,
   ThankYouContent,
   WelcomeLanding,
+  YourContribution,
   YourThread,
   type ThreadQuestion,
 } from "./stages";
 import { StageHeading } from "./ui";
 import { BrandLogo } from "./brand-logo";
+import { TextSizeButton } from "./text-size";
 
 const VIEW_KEY = "aspen.view";
 
@@ -73,6 +75,8 @@ export function AspenApp() {
   const overall = useRef<HTMLElement>(null);
   // Once the overall rating is shared, a new question clears its "ratings are in" line for good.
   const [overallClosed, setOverallClosed] = useState(false);
+  // Once the overall ratings are shared, Try it folds them to one line.
+  const [overallShared, setOverallShared] = useState(false);
   const onNewQuestion = useCallback(() => {
     if (readStored<boolean>(OVERALL_KEY)) setOverallClosed(true);
   }, []);
@@ -113,7 +117,8 @@ export function AspenApp() {
     if (hydrated && follow && live && live !== view) {
       setView(live);
       window.history.replaceState({ aspenStage: live }, "");
-      window.scrollTo?.({ top: 0, behavior: "smooth" });
+      // A new screen opens at its top, straight away; a smooth scroll can stop short on a phone.
+      window.scrollTo?.({ top: 0, behavior: "instant" });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, live, follow]);
@@ -141,6 +146,10 @@ export function AspenApp() {
       setFollow(true);
     }
   }, [hydrated, control?.live, control?.runId]);
+
+  useEffect(() => {
+    setOverallShared(Boolean(readStored<boolean>(OVERALL_KEY)));
+  }, [runEpoch]);
 
   const { data: results } = useResults(RESULT_STAGES.includes(view), 5000);
   const [thread, setThread] = useState<ThreadQuestion | null>(null);
@@ -176,11 +185,10 @@ export function AspenApp() {
     setView(stage);
     setFollow(live === null || stage === live);
     setMenuOpen(false);
-    window.scrollTo?.({ top: 0, behavior: "smooth" });
+    // A new screen opens at its top, straight away; a smooth scroll can stop short on a phone.
+    window.scrollTo?.({ top: 0, behavior: "instant" });
   }
 
-  // "A shared foundation" unlocks the rules check. Without a live presenter it is always open.
-  const rulesUnlocked = live === null || stageIndex(live) >= stageIndex("foundation");
   const current = STAGES.find((s) => s.id === view) ?? STAGES[0];
   const index = stageIndex(view);
   const nextStage = STAGES[index + 1];
@@ -199,7 +207,7 @@ export function AspenApp() {
           <button
             type="button"
             onClick={() => go("welcome")}
-            className="flex items-center gap-3 rounded-md text-left focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
+            className="flex shrink-0 items-center gap-3 rounded-md text-left focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
             aria-label="Back to the start"
           >
             <BrandLogo className="h-8" />
@@ -208,12 +216,14 @@ export function AspenApp() {
               <span className="font-body text-[0.82rem] font-medium leading-none text-[var(--color-ink)]">
                 Aspen Institute
               </span>
-              <span className="font-mono text-[0.58rem] uppercase leading-none tracking-[0.14em] text-[var(--color-ink-muted)]">
+              <span className="font-body font-medium text-[0.82rem] leading-none text-[var(--color-ink-muted)]">
                 {EVENT.place} · {EVENT.shortDate}
               </span>
             </span>
           </button>
-          <div ref={menuRoot} className="relative">
+          <div className="flex min-w-0 items-center gap-2">
+          <TextSizeButton />
+          <div ref={menuRoot} className="relative min-w-0">
             <button
               ref={menuButton}
               type="button"
@@ -221,16 +231,17 @@ export function AspenApp() {
               aria-controls="aspen-stages"
               aria-haspopup="true"
               onClick={() => setMenuOpen((v) => !v)}
-              className={`flex items-center gap-2 whitespace-nowrap rounded-full border py-1.5 pl-3.5 pr-2.5 font-body text-[0.88rem] text-[var(--color-ink)] transition-colors ${
+              className={`flex max-w-full items-center gap-2 whitespace-nowrap rounded-full border py-1.5 pl-3.5 pr-2.5 font-body text-[0.88rem] text-[var(--color-ink)] transition-colors ${
                 menuOpen
                   ? "border-[var(--color-accent)] bg-[var(--color-accent-light)]"
                   : "border-[var(--color-rule)] bg-[var(--color-paper-elevated)] hover:border-[var(--color-accent)]"
               }`}
             >
-              <span className="font-medium">{current.label}</span>
+              {/* A long stage name gives way at large text sizes; the logo keeps its place. */}
+              <span className="min-w-0 truncate font-medium">{current.label}</span>
               {/* The count steps aside on the narrowest phones; the progress line still shows it. */}
               <span aria-hidden className="hidden h-3.5 w-px bg-[var(--color-rule)] min-[380px]:block" />
-              <span className="hidden font-mono text-[0.7rem] tabular-nums text-[var(--color-ink-muted)] min-[380px]:inline">
+              <span className="hidden font-mono text-[0.8rem] tabular-nums text-[var(--color-ink-muted)] min-[380px]:inline">
                 {index + 1} of {STAGES.length}
               </span>
               <svg aria-hidden viewBox="0 0 12 12" className={`h-3 w-3 transition-transform ${menuOpen ? "rotate-180" : ""}`}>
@@ -243,12 +254,13 @@ export function AspenApp() {
                 aria-label="Session"
                 className="absolute right-0 top-[calc(100%+0.5rem)] z-40 max-h-[calc(100dvh-5rem)] w-[min(17rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] p-2 shadow-[0_12px_32px_rgba(28,25,23,0.14)]"
               >
-                <span className="block px-2 pb-1 pt-1 font-mono text-[0.6rem] uppercase tracking-[0.18em] text-[var(--color-ink-muted)]">
+                <span className="block px-2 pb-1 pt-1 font-body font-medium text-[0.82rem] text-[var(--color-ink-muted)]">
                   Agenda
                 </span>
                 <Agenda live={live} current={view} onPick={go} compact />
               </nav>
             )}
+          </div>
           </div>
         </div>
         <div aria-hidden className="h-[2px] bg-[var(--color-rule)]">
@@ -261,7 +273,7 @@ export function AspenApp() {
           <button
             type="button"
             onClick={() => go(live)}
-            className="flex w-full items-center justify-center gap-2 bg-[var(--color-accent)] px-4 py-2 font-body text-[0.9rem] text-white"
+            className="flex w-full items-center justify-center gap-2 bg-[var(--color-go)] px-4 py-2 font-body text-[0.9rem] font-medium text-white hover:bg-[var(--color-go-hover)]"
           >
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
             The room has moved on to {STAGES[stageIndex(live)].label}
@@ -280,15 +292,16 @@ export function AspenApp() {
                 type="button"
                 onClick={() => go(prevStage.id)}
                 aria-label={`Back to ${prevStage.label}`}
-                className="mb-3 inline-flex items-center gap-1.5 rounded-md font-body text-[0.88rem] text-[var(--color-ink-muted)] transition-colors hover:text-[var(--color-accent)] focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
+                className="mb-3 inline-flex items-center gap-1.5 rounded-md font-body text-[1rem] text-[var(--color-ink-muted)] transition-colors hover:text-[var(--color-accent)] focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
               >
                 <span aria-hidden>←</span>
                 {prevStage.label}
               </button>
             )}
             {/* The thank-you is its own centered page, like the landing. */}
-            {view !== "dinner" && <StageHeading title={current.title} summary={current.summary} />}
+            {view !== "dinner" && <StageHeading title={current.title} summary={current.phoneSummary ?? current.summary} />}
             <YourThread stage={view} thread={thread} onOpen={() => go("try")} />
+            {view === "reveal" && <YourContribution thread={thread} onOpen={() => go("try")} />}
           </>
         )}
 
@@ -296,23 +309,27 @@ export function AspenApp() {
           <ChatWindow
             key={runEpoch}
             stage={view}
-            rulesUnlocked={rulesUnlocked}
             onRateOverall={() => overall.current?.scrollIntoView?.({ behavior: "smooth", block: "start" })}
+            overallShared={overallShared}
             onStatus={setTryStatus}
             onNewQuestion={onNewQuestion}
           />
           {/* Both ratings happen here: the answer first, then AI overall, right below. */}
-          {tryStatus.current && !overallClosed && (
-            <section ref={overall} aria-labelledby="aspen-overall" className="mt-12 scroll-mt-20 border-t-2 border-[var(--color-accent)] pt-6">
-              <h2 id="aspen-overall" className="heading-sub m-0">
-                One more: how did AI do overall?
-              </h2>
-              <p className="m-0 mb-6 mt-1.5 font-body text-[1rem] text-[var(--color-ink-secondary)]">
-                Think of the answers you&apos;ve seen here, and of AI at your agency.
+          {tryStatus.current && !overallClosed &&
+            (overallShared ? (
+              // Done: one line, not a section.
+              <p className="mt-10 font-body text-[1.05rem] font-medium text-[var(--color-ink)]">
+                <span aria-hidden className="mr-1.5 text-[var(--color-success)]">✓</span>
+                Your ratings are in. You&apos;ll see the room&apos;s results in What we saw.
               </p>
-              <OverallRating key={runEpoch} stage="try" />
-            </section>
-          )}
+            ) : (
+              <section ref={overall} aria-labelledby="aspen-overall" className="mt-12 scroll-mt-20 border-t-2 border-[var(--color-accent)] pt-6">
+                <h2 id="aspen-overall" className="m-0 mb-5 font-body text-[1.4rem] font-semibold text-[var(--color-ink)]">
+                  One more: how did AI do overall?
+                </h2>
+                <OverallRating key={runEpoch} stage="try" onShared={() => setOverallShared(true)} />
+              </section>
+            ))}
         </div>
 
         {view === "reveal" &&
@@ -333,20 +350,18 @@ export function AspenApp() {
             type="button"
             onClick={() => go(nextStage.id)}
             disabled={mustRate}
-            className="group mt-16 flex w-full items-center justify-between gap-4 border-t-2 border-[var(--color-accent)] pt-4 text-left disabled:cursor-not-allowed disabled:border-[var(--color-rule)]"
+            className="group mt-12 flex w-full items-center justify-between gap-4 rounded-xl bg-[var(--color-go)] px-5 py-4 text-left text-white shadow-[0_2px_8px_rgba(28,25,23,0.18)] transition-colors hover:bg-[var(--color-go-hover)] disabled:cursor-not-allowed disabled:border-2 disabled:border-dashed disabled:border-[var(--color-rule-strong)] disabled:bg-[var(--color-paper)] disabled:text-[var(--color-ink)] disabled:shadow-none"
           >
-            <span>
-              <span className="block font-mono text-[0.62rem] uppercase tracking-[0.18em] text-[var(--color-accent)] group-disabled:text-[var(--color-ink-muted)]">
+            {/* A filled button, not a link: on a phone it is the one thing to do once the stage is done. */}
+            <span className="min-w-0">
+              <span className="block font-body text-[0.9rem] font-medium text-white/85 group-disabled:text-[var(--color-ink)]">
                 Next
               </span>
-              <span className="block font-body text-[1.08rem] text-[var(--color-ink)] group-hover:text-[var(--color-accent)] group-disabled:text-[var(--color-ink-muted)]">
+              <span className="block font-body text-[1.15rem] font-semibold leading-snug">
                 {mustRate ? "Rate your answer to continue" : nextStage.title}
               </span>
             </span>
-            <span
-              aria-hidden
-              className="font-display text-[1.4rem] text-[var(--color-accent)] transition-transform group-hover:translate-x-1 group-disabled:text-[var(--color-ink-muted)]"
-            >
+            <span aria-hidden className="font-display text-[1.8rem] leading-none transition-transform group-hover:translate-x-1 group-disabled:hidden">
               →
             </span>
           </button>

@@ -19,10 +19,10 @@ import {
 } from "@/lib/aspen/content";
 import type { ChatSource } from "@/lib/aspen/openai";
 import { AnswerText } from "./answer-text";
-import { RatingCard, RulesCheck } from "./answer-feedback";
+import { RatingCard } from "./answer-feedback";
 import { CHAT_KEY, newId, participantId, readStored, sendEvent, writeStored } from "./client";
 import { Disclosure } from "./disclosure";
-import { BUTTON, Chip, FIELD } from "./ui";
+import { BUTTON, BUTTON_QUIET, Chip, FIELD, STEP_NUMBER } from "./ui";
 
 /**
  * The hands-on segment: pick a perspective and a household, send the
@@ -55,9 +55,10 @@ export interface Turn {
 }
 
 const OWN = "own";
-/** A numbered step heading in the composer: household, details, questions. */
-const STEP = "mb-2.5 flex items-baseline gap-2 font-body text-[0.98rem] text-[var(--color-ink)]";
-const STEP_NUMBER = "font-mono text-[0.78rem] text-[var(--color-accent)]";
+/** A numbered step heading in the composer, bold so each step stands out: ask as, household, details, questions, your question. */
+const STEP = "mb-3 flex items-center gap-2.5 font-body text-[1.08rem] font-semibold text-[var(--color-ink)]";
+/** The quieter part of a step heading, such as "(optional)". */
+const STEP_NOTE = "font-normal text-[var(--color-ink-muted)]";
 export { CHAT_KEY };
 
 export interface SavedChat {
@@ -112,15 +113,16 @@ export async function readNdjson(
 
 export function ChatWindow({
   stage,
-  rulesUnlocked,
   onRateOverall,
+  overallShared = false,
   onStatus,
   onNewQuestion,
 }: {
   stage: string;
-  rulesUnlocked: boolean;
   /** Leads to the overall rating, below the chat, once the answer is rated. */
   onRateOverall?: () => void;
+  /** The overall ratings are in, so nothing points to them any more. */
+  overallShared?: boolean;
   onStatus?: (status: ChatStatus) => void;
   /** Called when the participant starts a new question. */
   onNewQuestion?: () => void;
@@ -191,15 +193,23 @@ export function ChatWindow({
   }, [hydrated, asked, rated, current, onStatus]);
 
   // The question box grows to show the whole question, so nobody scrolls inside it on a phone.
+  // Measuring collapses it for a moment, which would shorten the page and jump it while typing:
+  // the scroll position goes back where it was.
   useEffect(() => {
     const el = draftBox.current;
     if (!el) return;
+    const y = window.scrollY;
     el.style.height = "auto";
     if (el.scrollHeight > 0) el.style.height = `${el.scrollHeight + 2}px`;
+    if (window.scrollY !== y) window.scrollTo({ top: y, behavior: "instant" });
   }, [draft]);
 
   const started = turns.length > 0;
   const household = findHousehold(householdId);
+  // Steps number in the order they show: details and questions appear once a household is picked.
+  const step = household
+    ? { askAs: 1, household: 2, details: 3, question: 4, draft: 5 }
+    : { askAs: 1, household: 2, details: null, question: null, draft: 3 };
 
   function choose(p: PerspectiveId, h: string | null, q: QuestionId[], t: string[]) {
     const found = findHousehold(h);
@@ -337,8 +347,11 @@ export function ChatWindow({
           messages: turns.slice(0, latestIndex).map((t) => ({ role: t.role, content: t.content })),
         }
       : null;
-  // Rating is not optional: a follow-up or a new question waits for it.
+  // Rating is not optional for Try it, but a blank question can go back and forth first:
+  // its follow-ups don't wait for the rating. Start over never waits.
   const mustRate = Boolean(latest?.promptId && !rated.has(latest.promptId));
+  const blank = householdId === OWN || householdId === null;
+  const followUpWaits = mustRate && !blank;
 
   const tile = (selected: boolean) =>
     `flex flex-col items-start justify-start rounded-lg border px-3 py-2.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-[var(--color-accent)] ${
@@ -353,43 +366,48 @@ export function ChatWindow({
         ref={chatCard}
         className="scroll-mt-20 rounded-xl border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] shadow-[0_1px_3px_rgba(28,25,23,0.05)]"
       >
-        <div className="flex items-center justify-between gap-3 border-b border-[var(--color-rule)] px-4 py-3">
-          <span className="font-body text-[0.95rem] text-[var(--color-ink-secondary)]">
-            {started ? "Your conversation" : "Ask as"}
-          </span>
-          {started ? (
-            !mustRate && (
-              <button type="button" className="aspen-link font-body text-[0.95rem]" onClick={startOver}>
-                New question
-              </button>
-            )
-          ) : (
-            <div role="group" aria-label="Ask as" className="inline-flex rounded-full border border-[var(--color-rule)] bg-[var(--color-paper)] p-0.5">
-              {PERSPECTIVES.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  aria-label={p.label}
-                  aria-pressed={perspective === p.id}
-                  onClick={() => pick({ p: p.id })}
-                  className={`rounded-full px-3.5 py-1.5 font-body text-[0.9rem] transition-colors ${
-                    perspective === p.id ? "bg-[var(--color-ink)] text-white" : "text-[var(--color-ink-secondary)]"
-                  }`}
-                >
-                  {p.short}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        {started && (
+          <div className="flex items-center justify-between gap-3 border-b border-[var(--color-rule)] px-4 py-3">
+            <span className="font-body text-[0.95rem] text-[var(--color-ink-secondary)]">Your conversation</span>
+            <button type="button" className="aspen-link font-body text-[1rem] font-medium" onClick={startOver}>
+              Start over
+            </button>
+          </div>
+        )}
 
         {!started && (
           <div className="flex flex-col gap-5 px-4 pt-4">
+            {(householdId !== null || draft.trim() !== "") && (
+              <button type="button" className="aspen-link -mb-2 self-end font-body text-[1rem] font-medium" onClick={startOver}>
+                Start over
+              </button>
+            )}
             <fieldset className="m-0 border-0 p-0">
               <legend className={STEP}>
-                <span className={STEP_NUMBER}>1</span>Pick a household
+                <span className={STEP_NUMBER}>{step.askAs}</span>Ask as
               </legend>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <div role="group" aria-label="Ask as" className="grid grid-cols-2 gap-1 rounded-full border border-[var(--color-rule)] bg-[var(--color-paper)] p-1">
+                {PERSPECTIVES.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    aria-label={p.label}
+                    aria-pressed={perspective === p.id}
+                    onClick={() => pick({ p: p.id })}
+                    className={`rounded-full px-3.5 py-2.5 font-body text-[1rem] font-medium transition-colors ${
+                      perspective === p.id ? "bg-[var(--color-ink)] text-white" : "text-[var(--color-ink)]"
+                    }`}
+                  >
+                    {p.short}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+            <fieldset className="m-0 border-0 border-t border-[var(--color-rule)] p-0 pt-4">
+              <legend className={`${STEP} float-left w-full`}>
+                <span className={STEP_NUMBER}>{step.household}</span>Pick a household
+              </legend>
+              <div className="clear-left grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {HOUSEHOLDS.map((h) => (
                   <button
                     key={h.id}
@@ -422,8 +440,7 @@ export function ChatWindow({
             {household && (
               <fieldset className="m-0 border-0 border-t border-[var(--color-rule)] p-0 pt-4">
                 <legend className={`${STEP} float-left w-full`}>
-                  <span className={STEP_NUMBER}>2</span>Add details{" "}
-                  <span className="text-[var(--color-ink-muted)]">(optional)</span>
+                  <span className={STEP_NUMBER}>{step.details}</span>Add details <span className={STEP_NOTE}>(optional)</span>
                 </legend>
                 <div role="group" aria-label="Details" className="clear-left flex flex-col gap-3">
                   {TWIST_GROUPS.map((g) => {
@@ -431,7 +448,7 @@ export function ChatWindow({
                     if (!items.length) return null;
                     return (
                       <div key={g.id} className="flex flex-col gap-1.5">
-                        <span className="font-mono text-[0.66rem] uppercase tracking-[0.14em] text-[var(--color-ink-muted)]">
+                        <span className="font-body font-medium text-[0.82rem] text-[var(--color-ink-muted)]">
                           {g.label}
                         </span>
                         <div className="flex flex-wrap gap-1.5">
@@ -456,8 +473,8 @@ export function ChatWindow({
             {household && (
               <fieldset className="m-0 border-0 border-t border-[var(--color-rule)] p-0 pt-4">
                 <legend className={`${STEP} float-left w-full`}>
-                  <span className={STEP_NUMBER}>3</span>What do you want to know?{" "}
-                  <span className="text-[var(--color-ink-muted)]">(pick one or more)</span>
+                  <span className={STEP_NUMBER}>{step.question}</span>What do you want to know?{" "}
+                  <span className={STEP_NOTE}>(pick one or more)</span>
                 </legend>
                 <div role="group" aria-label="Question" className="clear-left flex flex-wrap gap-2">
                   {QUESTIONS.map((q) => (
@@ -509,14 +526,14 @@ export function ChatWindow({
                                   href={s.url}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="max-w-full truncate rounded-full border border-[var(--color-rule)] px-2.5 py-0.5 font-body text-[0.75rem] text-[var(--color-ink-secondary)] no-underline hover:border-[var(--color-accent)]"
+                                  className="max-w-full truncate rounded-full border border-[var(--color-rule)] px-2.5 py-0.5 font-body text-[0.8rem] text-[var(--color-ink-secondary)] no-underline hover:border-[var(--color-accent)]"
                                 >
                                   {s.title || hostname(s.url)}
                                 </a>
                               ))}
                             </div>
                           )}
-                          <span className="font-mono text-[0.7rem] text-[var(--color-ink-muted)]">
+                          <span className="font-mono text-[0.95rem] text-[var(--color-ink-muted)]">
                             {turn.model}
                             {turn.webSearch ? " · web search on" : " · no web search"}
                           </span>
@@ -533,17 +550,18 @@ export function ChatWindow({
 
         {started && !followUp ? (
           <div className="flex flex-col gap-2 border-t border-[var(--color-rule)] px-4 py-3">
-            {mustRate ? (
-              <p className="m-0 font-body text-[0.98rem] text-[var(--color-ink)]">
-                Rate this answer to ask another question.{" "}
+            {followUpWaits ? (
+              <>
+                <p className="m-0 font-body text-[0.98rem] text-[var(--color-ink)]">Rate this answer to ask another question.</p>
+                {/* The rating comes next, so on a phone it is a button, not a link in the sentence. */}
                 <button
                   type="button"
-                  className="aspen-link whitespace-nowrap font-medium lg:hidden"
+                  className={`${BUTTON} w-full py-3 text-[1rem] lg:hidden`}
                   onClick={() => ratingBox.current?.scrollIntoView?.({ behavior: "smooth", block: "start" })}
                 >
                   Rate it ↓
                 </button>
-              </p>
+              </>
             ) : (
               <button
                 type="button"
@@ -554,13 +572,21 @@ export function ChatWindow({
                 Ask a follow-up
               </button>
             )}
-            <p className="m-0 font-body text-[0.8rem] leading-snug text-[var(--color-ink-muted)]">{DEMO_NOTE}</p>
+            <p className="m-0 font-body text-[0.95rem] leading-snug text-[var(--color-ink-muted)]">{DEMO_NOTE}</p>
           </div>
         ) : (
-          <div className={`flex flex-col gap-3 px-4 pb-4 ${started ? "border-t border-[var(--color-rule)] pt-3" : "pt-4"}`}>
-            <label htmlFor="aspen-draft" className="sr-only">
-              Your question
-            </label>
+          <div className={`flex flex-col gap-3 px-4 pb-4 ${started ? "border-t border-[var(--color-rule)] pt-3" : "mt-5 border-t border-[var(--color-rule)] pt-4"}`}>
+            {started ? (
+              <label htmlFor="aspen-draft" className="sr-only">
+                Your question
+              </label>
+            ) : (
+              <div className={`${STEP} mb-0`}>
+                <span className={STEP_NUMBER}>{step.draft}</span>
+                <label htmlFor="aspen-draft">Your question</label>{" "}
+                <span className={STEP_NOTE}>(edit it if you like)</span>
+              </div>
+            )}
             <textarea
               ref={draftBox}
               id="aspen-draft"
@@ -593,7 +619,31 @@ export function ChatWindow({
       {latest?.promptId ? (
         <section ref={ratingBox} aria-label="Your verdict" className="flex scroll-mt-20 flex-col gap-4 lg:sticky lg:top-24">
           {rated.has(latest.promptId) ? (
-            <p className="m-0 font-body text-[1rem] text-[var(--color-success)]">Your rating is saved. Thank you.</p>
+            // Once rated: one clear next step, and a quieter way to ask again.
+            <div className="flex flex-col gap-3">
+              <p className="m-0 font-body text-[1.02rem] font-medium text-[var(--color-ink)]">
+                <span aria-hidden className="mr-1.5 text-[var(--color-success)]">✓</span>
+                Your rating is saved. Thank you.
+              </p>
+              {onRateOverall && !overallShared && (
+                <button type="button" onClick={onRateOverall} className={`${BUTTON_QUIET} w-full justify-between py-3 text-left text-[1rem]`}>
+                  Next: how did AI do overall?
+                  <span aria-hidden className="text-[var(--color-accent)]">↓</span>
+                </button>
+              )}
+              {/* On a phone the chat's own "New question" link is far above; this one sits where the thumb is. */}
+              <button
+                type="button"
+                onClick={() => {
+                  startOver();
+                  chatCard.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+                }}
+                className={`${BUTTON_QUIET} w-full justify-between py-3 text-left text-[1rem]`}
+              >
+                Start over
+                <span aria-hidden className="text-[var(--color-accent)]">↑</span>
+              </button>
+            </div>
           ) : (
             <RatingCard
               key={latest.promptId}
@@ -601,49 +651,16 @@ export function ChatWindow({
               onRated={() => setRated((s) => new Set(s).add(latest.promptId as string))}
             />
           )}
-          {rated.has(latest.promptId) && onRateOverall && (
-            <button
-              type="button"
-              onClick={onRateOverall}
-              className="flex items-center justify-between gap-3 rounded-xl border border-[var(--color-accent)] bg-[var(--color-accent-light)] px-4 py-3 text-left font-body text-[1rem] text-[var(--color-ink)]"
-            >
-              Next: how did AI do overall?
-              <span aria-hidden className="text-[var(--color-accent)]">↓</span>
-            </button>
-          )}
-          {rated.has(latest.promptId) && (
-            // On a phone the chat's own "New question" link is far above; this one sits where the thumb is.
-            <button
-              type="button"
-              onClick={() => {
-                startOver();
-                chatCard.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
-              }}
-              className="flex items-center justify-between gap-3 rounded-xl border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-4 py-3 text-left font-body text-[1rem] text-[var(--color-ink)] hover:border-[var(--color-accent)]"
-            >
-              Ask a new question
-              <span aria-hidden className="text-[var(--color-accent)]">↑</span>
-            </button>
-          )}
-          {(rated.has(latest.promptId) || rulesUnlocked) && (
-            <RulesCheck
-              key={`rules-${latest.promptId}`}
-              promptId={latest.promptId}
-              messages={latest.messages}
-              unlocked={rulesUnlocked}
-            />
-          )}
         </section>
       ) : (
         <aside aria-label="How it works" className="hidden rounded-xl border border-dashed border-[var(--color-rule)] p-5 lg:sticky lg:top-24 lg:block">
-          <span className="mb-3 block font-mono text-[0.62rem] uppercase tracking-[0.18em] text-[var(--color-accent)]">
+          <span className="mb-3 block font-body font-medium text-[0.82rem] text-[var(--color-accent)]">
             How it works
           </span>
           <ol className="m-0 flex list-decimal flex-col gap-2 pl-5 font-body text-[0.9rem] leading-snug text-[var(--color-ink-secondary)]">
             <li>Pick a household, add details if you like, and ask.</li>
             <li>Rate the answer you get.</li>
             <li>Then rate how AI did overall, right below.</li>
-            <li>Later, check the answer against the encoded rules.</li>
           </ol>
         </aside>
       )}

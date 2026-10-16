@@ -164,7 +164,7 @@ describe("AspenApp following the presenter", () => {
 
     fireEvent.click(nav().getByRole("button", { name: /At scale/ }));
     await onView("scale");
-    expect(screen.getByText("41%")).toBeInTheDocument();
+    expect(screen.getByText("42%")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /The room has moved on/ })).not.toBeInTheDocument();
     expect(JSON.parse(sessionStorage.getItem("aspen.view") ?? "null")).toEqual({ view: "scale", follow: false });
 
@@ -340,7 +340,7 @@ describe("AspenApp without a live presenter", () => {
     fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
     await onView("try");
     expect(await screen.findByText(/Your ratings are in/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "New question" }));
+    fireEvent.click(screen.getAllByRole("button", { name: /^Start over/ })[0]);
     await waitFor(() => expect(screen.queryByText(/Your ratings are in/)).not.toBeInTheDocument());
     expect(screen.queryByRole("heading", { name: "One more: how did AI do overall?" })).not.toBeInTheDocument();
     // The earlier rated answer still counts for the Next link.
@@ -361,7 +361,7 @@ describe("AspenApp without a live presenter", () => {
     fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
     await onView("try");
     expect(await screen.findByRole("heading", { name: "One more: how did AI do overall?" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "New question" }));
+    fireEvent.click(screen.getAllByRole("button", { name: /^Start over/ })[0]);
     await waitFor(() =>
       expect(screen.queryByRole("heading", { name: "One more: how did AI do overall?" })).not.toBeInTheDocument(),
     );
@@ -393,8 +393,13 @@ describe("AspenApp without a live presenter", () => {
     fireEvent.click(screen.getByRole("button", { name: /Next: how did AI do overall\?/ }));
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
     fireEvent.click(screen.getByRole("button", { name: "Got the amount right: 2 of 5" }));
+    // One step at a time, Continue to the end, then share.
+    for (let i = 0; i < 4; i++) fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     fireEvent.click(screen.getByRole("button", { name: "Share my ratings" }));
     expect(await screen.findByText(/Your ratings are in/)).toBeInTheDocument();
+    // Done folds to one line: no heading, and nothing left pointing down to it.
+    expect(screen.queryByRole("heading", { name: "One more: how did AI do overall?" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Next: how did AI do overall\?/ })).not.toBeInTheDocument();
     await waitFor(() =>
       expect(events()).toContainEqual(
         expect.objectContaining({ kind: "discussion", stage: "try", payload: expect.objectContaining({ question: "performance" }) }),
@@ -422,11 +427,13 @@ describe("AspenApp thread", () => {
     render(<AspenApp />);
     fireEvent.click(nav().getByRole("button", { name: /At scale/ }));
     await onView("scale");
-    expect(screen.getByText(/every one of the 46 models said it gets \$0/)).toBeInTheDocument();
+    expect(screen.getByText(/every one of the 50 models said it gets \$0/)).toBeInTheDocument();
 
     fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
     await onView("reveal");
-    expect(screen.getByText(/You asked about “Disabled, with savings”\. Rate the answer/)).toBeInTheDocument();
+    // What we saw opens with what you contributed: your question, and the rating still to do.
+    expect(screen.getByText("You asked about “Disabled, with savings”.")).toBeInTheDocument();
+    expect(screen.getByText("You haven't rated an answer yet.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Rate my answer →" }));
     await onView("try");
   });
@@ -442,7 +449,9 @@ describe("AspenApp thread", () => {
     render(<AspenApp />);
     fireEvent.click(nav().getByRole("button", { name: /Shared foundation/ }));
     await onView("foundation");
-    expect(screen.getByText(/Now check the AI's answer about your own question against the encoded rules\./)).toBeInTheDocument();
+    // The rules check is in the chatbot demo now; the foundation just recalls the question.
+    expect(screen.getByText("You asked about your own question.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Check my answer/ })).not.toBeInTheDocument();
   });
 
   it("treats a chat without a user turn or a finished answer as not asked", async () => {
@@ -499,7 +508,9 @@ describe("AspenApp after a new run", () => {
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === "/api/aspen/state")).toBe(true));
     fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
     await onView("reveal");
-    expect(screen.getByText(/You asked about “Disabled, with savings”\. Rate the answer/)).toBeInTheDocument();
+    // What we saw opens with what you contributed: your question, and the rating still to do.
+    expect(screen.getByText("You asked about “Disabled, with savings”.")).toBeInTheDocument();
+    expect(screen.getByText("You haven't rated an answer yet.")).toBeInTheDocument();
   });
 
   it("keeps the chat when the control row is not live (a database error)", async () => {
@@ -510,7 +521,9 @@ describe("AspenApp after a new run", () => {
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === "/api/aspen/state")).toBe(true));
     fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
     await onView("reveal");
-    expect(screen.getByText(/You asked about “Disabled, with savings”\. Rate the answer/)).toBeInTheDocument();
+    // What we saw opens with what you contributed: your question, and the rating still to do.
+    expect(screen.getByText("You asked about “Disabled, with savings”.")).toBeInTheDocument();
+    expect(screen.getByText("You haven't rated an answer yet.")).toBeInTheDocument();
     expect(localStorage.getItem("aspen.run")).toBe(JSON.stringify("phoenix"));
   });
 });
