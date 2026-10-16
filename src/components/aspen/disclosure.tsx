@@ -16,7 +16,7 @@ export function Disclosure({
 }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="font-body text-[0.8rem] leading-relaxed text-[var(--color-ink-muted)]">
+    <div className="font-body text-[0.9rem] leading-relaxed text-[var(--color-ink-muted)]">
       <p className="m-0">
         {lead ? `${lead} ` : ""}
         {text}{" "}

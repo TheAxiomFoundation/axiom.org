@@ -11,7 +11,7 @@
  */
 
 export const EVENT = {
-  title: "What does AI tell your residents about benefits?",
+  title: "What does AI tell residents about benefits?",
   cohort: "Aspen Institute State Benefits Leadership Cohort",
   place: "Phoenix",
   date: "Monday, October 26, 2026",
@@ -960,16 +960,15 @@ export const DEMO_NOTE = "A demo. Answers come from OpenAI's GPT model, unedited
 /**
  * What we keep, said up front (agreed with Aspen, Oct 12): answers and
  * ratings are kept for our own analysis, never published, and taking part
- * is optional.
+ * is optional. Reworded in plainer, shorter lines on Oct 16; same substance.
  */
 export const DISCLOSURE = {
-  short:
-    "We keep everyone's answers to learn from, without names, and won't publish them. Taking part is optional.",
+  short: "We keep everyone's answers to learn from, without names, and don't publish them. Taking part is optional.",
   details: [
-    "We don't ask for your name. Please don't type personal details about real people.",
-    "Your questions go to OpenAI to get the AI's answer, and to the Axiom rules chatbot when you check against the rules.",
-    "The Axiom Foundation keeps your questions and ratings to learn which rules are hardest to get right. We won't publish them, and the screen never shows who asked what.",
-    "You can skip anything. The page works the same if you only watch.",
-    "The next-steps form is the only place we ask for an email, and only to follow up with you.",
+    "We don't ask your name. Don't type personal details about real people.",
+    "Your questions go to OpenAI for the AI's answer, and to the Axiom rules chatbot if you check the rules.",
+    "We keep questions and ratings to learn which rules are hardest. We don't publish them, and the screen never shows who asked what.",
+    "You can skip anything, or just watch.",
+    "We only ask for your email on the next-steps form, to follow up.",
   ],
 } as const;

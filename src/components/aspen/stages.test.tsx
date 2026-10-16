@@ -117,8 +117,10 @@ describe("WelcomeLanding", () => {
     const onStart = vi.fn();
     render(<WelcomeLanding onStart={onStart} />);
     expect(screen.getByRole("heading", { level: 1, name: EVENT.title })).toBeInTheDocument();
-    expect(screen.getByText(STAGES[0].summary)).toBeInTheDocument();
-    expect(screen.getByText(`With ${EVENT.hosts}`)).toBeInTheDocument();
+    // Just the question and the button: no summary line and no hosts line.
+    expect(screen.queryByText(STAGES[0].summary)).not.toBeInTheDocument();
+    expect(screen.queryByText(/With Ariel Kennan and Max Ghenis/)).not.toBeInTheDocument();
+    expect(EVENT.title).not.toMatch(/your residents/i);
     // No agenda and no profile form on the landing: the stage menu holds the agenda.
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();

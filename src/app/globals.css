@@ -1046,6 +1046,18 @@ html[data-aspen-text="larger"] {
   }
 }
 
+/* Participant pages read in full ink for contrast: the secondary and muted
+   grays resolve to the body ink. Placeholders keep a lighter (still 7.5:1)
+   tone, so an empty box never looks filled in. The presenter is untouched. */
+[data-aspen-page] {
+  --color-ink-secondary: var(--color-ink);
+  --color-ink-muted: var(--color-ink);
+}
+[data-aspen-page] ::placeholder {
+  color: #57534e;
+  opacity: 1;
+}
+
 /* The site's kicker is small spaced capitals; on /aspen it reads as a
    sentence, at a size a phone can read. */
 [data-aspen-page] .kicker {

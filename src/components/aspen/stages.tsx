@@ -141,15 +141,9 @@ export function WelcomeLanding({ onStart }: { onStart: () => void }) {
           <span className="kicker-mark">&sect;</span>
           Aspen Institute · {EVENT.place}
         </span>
-        <h1 className="heading-page m-0 mb-4 text-balance" style={{ fontSize: "clamp(1.5rem, 1rem + 2vw, 2.25rem)" }}>
+        <h1 className="heading-page m-0 text-balance" style={{ fontSize: "clamp(1.5rem, 1rem + 2vw, 2.25rem)" }}>
           {EVENT.title}
         </h1>
-        <p className="m-0 max-w-[560px] font-body text-[1.1rem] leading-relaxed text-[var(--color-ink-secondary)] text-balance">
-          {STAGES[0].summary}
-        </p>
-        <p className="m-0 mt-3 font-mono text-[0.8rem] leading-relaxed tracking-[0.04em] text-[var(--color-ink-muted)]">
-          With {EVENT.hosts}
-        </p>
       </section>
       <div className="flex w-full max-w-[440px] flex-col gap-3">
         <button type="button" className={`${BUTTON} w-full py-3.5 text-[1.05rem]`} onClick={onStart}>
