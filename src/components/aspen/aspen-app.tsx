@@ -273,7 +273,7 @@ export function AspenApp() {
           <button
             type="button"
             onClick={() => go(live)}
-            className="flex w-full items-center justify-center gap-2 bg-[var(--color-accent)] px-4 py-2 font-body text-[0.9rem] text-white"
+            className="flex w-full items-center justify-center gap-2 bg-[var(--color-go)] px-4 py-2 font-body text-[0.9rem] font-medium text-white hover:bg-[var(--color-go-hover)]"
           >
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
             The room has moved on to {STAGES[stageIndex(live)].label}
@@ -350,7 +350,7 @@ export function AspenApp() {
             type="button"
             onClick={() => go(nextStage.id)}
             disabled={mustRate}
-            className="group mt-12 flex w-full items-center justify-between gap-4 rounded-xl bg-[var(--color-accent)] px-5 py-4 text-left text-white shadow-[0_2px_8px_rgba(28,25,23,0.18)] transition-colors hover:bg-[var(--color-accent-hover)] disabled:cursor-not-allowed disabled:border-2 disabled:border-dashed disabled:border-[var(--color-rule-strong)] disabled:bg-[var(--color-paper)] disabled:text-[var(--color-ink)] disabled:shadow-none"
+            className="group mt-12 flex w-full items-center justify-between gap-4 rounded-xl bg-[var(--color-go)] px-5 py-4 text-left text-white shadow-[0_2px_8px_rgba(28,25,23,0.18)] transition-colors hover:bg-[var(--color-go-hover)] disabled:cursor-not-allowed disabled:border-2 disabled:border-dashed disabled:border-[var(--color-rule-strong)] disabled:bg-[var(--color-paper)] disabled:text-[var(--color-ink)] disabled:shadow-none"
           >
             {/* A filled button, not a link: on a phone it is the one thing to do once the stage is done. */}
             <span className="min-w-0">

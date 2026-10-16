@@ -1053,6 +1053,14 @@ html[data-aspen-text="larger"] {
   --color-ink-secondary: var(--color-ink);
   --color-ink-muted: var(--color-ink);
 }
+
+/* Go: dark green for the buttons that move someone to the next step of the
+   session (Next, and "The room has moved on"), so it never looks like the
+   buttons inside a step. White on it reads at 7.1:1, and 9.6:1 on hover. */
+:is([data-aspen-page], [data-aspen-presenter]) {
+  --color-go: #166534;
+  --color-go-hover: #14532d;
+}
 [data-aspen-page] ::placeholder {
   color: #57534e;
   opacity: 1;

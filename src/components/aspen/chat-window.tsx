@@ -551,16 +551,17 @@ export function ChatWindow({
         {started && !followUp ? (
           <div className="flex flex-col gap-2 border-t border-[var(--color-rule)] px-4 py-3">
             {followUpWaits ? (
-              <p className="m-0 font-body text-[0.98rem] text-[var(--color-ink)]">
-                Rate this answer to ask another question.{" "}
+              <>
+                <p className="m-0 font-body text-[0.98rem] text-[var(--color-ink)]">Rate this answer to ask another question.</p>
+                {/* The rating comes next, so on a phone it is a button, not a link in the sentence. */}
                 <button
                   type="button"
-                  className="aspen-link whitespace-nowrap font-medium lg:hidden"
+                  className={`${BUTTON} w-full py-3 text-[1rem] lg:hidden`}
                   onClick={() => ratingBox.current?.scrollIntoView?.({ behavior: "smooth", block: "start" })}
                 >
                   Rate it ↓
                 </button>
-              </p>
+              </>
             ) : (
               <button
                 type="button"
