@@ -538,7 +538,7 @@ export type ResidentActionId = (typeof RESIDENT_ACTIONS)[number]["id"];
 export const SOURCE_OF_TRUTH = {
   id: "source-of-truth",
   title: "Checking answers today",
-  question: "Can a resident, a screener or an AI check an answer against your state's official rules today?",
+  question: "Can a resident, a screener or an AI check an answer against the state's official rules today?",
   options: [
     { id: "yes", label: "Yes" },
     { id: "partly", label: "Partly" },
@@ -580,12 +580,12 @@ export interface RatingScale {
  */
 export const RATING_SCALES: Partial<Record<DiscussionQuestionId, RatingScale>> = {
   performance: {
-    title: "How did the AI do?",
+    title: "How did the AI do at answering the question(s)?",
     low: "Not at all",
     high: "Fully",
     categories: [
       { id: "amount", label: "Got the amount right" },
-      { id: "state-rules", label: "Knew your state's rules" },
+      { id: "state-rules", label: "Knew the state's rules" },
       { id: "clarity", label: "Was clear to a resident" },
       { id: "sources", label: "Showed where the answer came from" },
       { id: "uncertainty", label: "Admitted what it didn't know" },

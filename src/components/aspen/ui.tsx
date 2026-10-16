@@ -44,6 +44,10 @@ export function Prompt({ children, className }: { children: ReactNode; className
   );
 }
 
+/** The filled number before a step's heading, the same everywhere on the phone. */
+export const STEP_NUMBER =
+  "flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--color-accent)] font-body text-[0.9rem] font-semibold text-white";
+
 /** A question inside a guided step: bold and plain, the same in every step. */
 export const QUESTION = "m-0 mb-3 p-0 font-body text-[1.08rem] font-semibold leading-snug text-[var(--color-ink)]";
 

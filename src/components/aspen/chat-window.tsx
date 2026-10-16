@@ -22,7 +22,7 @@ import { AnswerText } from "./answer-text";
 import { RatingCard, RulesCheck } from "./answer-feedback";
 import { CHAT_KEY, newId, participantId, readStored, sendEvent, writeStored } from "./client";
 import { Disclosure } from "./disclosure";
-import { BUTTON, BUTTON_QUIET, Chip, FIELD } from "./ui";
+import { BUTTON, BUTTON_QUIET, Chip, FIELD, STEP_NUMBER } from "./ui";
 
 /**
  * The hands-on segment: pick a perspective and a household, send the
@@ -57,8 +57,6 @@ export interface Turn {
 const OWN = "own";
 /** A numbered step heading in the composer, bold so each step stands out: ask as, household, details, questions, your question. */
 const STEP = "mb-3 flex items-center gap-2.5 font-body text-[1.08rem] font-semibold text-[var(--color-ink)]";
-const STEP_NUMBER =
-  "flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--color-accent)] font-body text-[0.9rem] font-semibold text-white";
 /** The quieter part of a step heading, such as "(optional)". */
 const STEP_NOTE = "font-normal text-[var(--color-ink-muted)]";
 export { CHAT_KEY };

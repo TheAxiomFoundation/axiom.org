@@ -103,8 +103,12 @@ describe("ResultsBoard", () => {
   it("frames the reveal around whether residents could act on the answers", () => {
     render(<ResultsBoard summary={SUMMARY} />);
     expect(screen.getByRole("heading", { name: "Could a resident act on these answers?" })).toBeInTheDocument();
-    expect(screen.getByText("Would you let a resident act on what they got?")).toBeInTheDocument();
-    expect(screen.getAllByText("Ask the room").length).toBeGreaterThan(1);
+    // Numbered parts, in the order they show, and no discussion prompts on the phone.
+    const parts = screen.getAllByRole("heading", { level: 2 });
+    expect(parts[0].textContent).toBe("1Could a resident act on these answers?");
+    expect(parts[1].textContent).toBe("2Where the answers broke down");
+    expect(screen.queryByText("Ask the room")).not.toBeInTheDocument();
+    expect(screen.queryByText("Would you let a resident act on what they got?")).not.toBeInTheDocument();
     const statement = screen.getByText(/answers looked right\. People would act on/);
     expect(statement).toHaveTextContent("1 of 4 answers looked right. People would act on 2.");
     // p5 looked unsure, yet its person might act on it. (The first match is the count's label; the spotlight badge repeats it.)

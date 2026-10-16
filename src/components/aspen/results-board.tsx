@@ -1,7 +1,7 @@
 import type { Count, RunSummary, ScaleSummary } from "@/lib/aspen/results";
 import { SOURCE_OF_TRUTH } from "@/lib/aspen/content";
 import { formatValue } from "./client";
-import { Bars, Card, Eyebrow, Prompt, Stat } from "./ui";
+import { Bars, Card, Prompt, STEP_NUMBER, Stat } from "./ui";
 
 /** The room's results: counts, the framed reveal and the scale averages. */
 
@@ -71,7 +71,7 @@ export function SourceOfTruthCard({ counts }: { counts: Count[] }) {
   const partly = counts.find((c) => c.id === "partly")?.count ?? 0;
   return (
     <Card className="flex flex-col gap-3 p-5">
-      <Eyebrow>{SOURCE_OF_TRUTH.title}</Eyebrow>
+      <PanelLabel>{SOURCE_OF_TRUTH.title}</PanelLabel>
       <p className="m-0 font-display text-[1.3rem] font-light leading-snug text-[var(--color-ink)]">
         <strong className="font-normal tabular-nums">{no + partly}</strong> of{" "}
         <strong className="font-normal tabular-nums">{total}</strong>{" "}
@@ -89,21 +89,30 @@ export function SourceOfTruthCard({ counts }: { counts: Count[] }) {
   );
 }
 
-/** One framed part of the reveal: a heading and the question it puts to the room. */
-function Section({ title, prompt, children }: { title: string; prompt?: string; children: React.ReactNode }) {
+/**
+ * One numbered part of the reveal: a bold heading with its number, and a
+ * line above it so parts stay apart. The presenter asks the room out loud,
+ * so the phone carries no discussion prompts.
+ */
+function Section({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
   return (
-    <section className="flex flex-col gap-4">
-      <div>
-        <h2 className="heading-sub m-0">{title}</h2>
-        {prompt && (
-          <p className="m-0 mt-1.5 font-body text-[0.95rem] text-[var(--color-ink-secondary)]">
-            <strong className="font-medium text-[var(--color-ink)]">Ask the room</strong>: <span>{prompt}</span>
-          </p>
-        )}
+    <section className="flex flex-col gap-4 border-t border-[var(--color-rule)] pt-8">
+      <div className="flex flex-col gap-3">
+        <h2 className="m-0 flex items-start gap-2.5 font-body text-[1.2rem] font-semibold leading-snug text-[var(--color-ink)]">
+          <span aria-hidden className={STEP_NUMBER}>
+            {n}
+          </span>
+          <span className="pt-0.5">{title}</span>
+        </h2>
       </div>
       {children}
     </section>
   );
+}
+
+/** A label inside a results panel: bold, so each panel says what it shows. */
+function PanelLabel({ children, className }: { children: React.ReactNode; className?: string }) {
+  return <span className={`block font-body text-[1rem] font-semibold text-[var(--color-ink)] ${className ?? ""}`}>{children}</span>;
 }
 
 /** A single bar split into parts, with a legend underneath. */
@@ -184,7 +193,7 @@ function ViabilityPanel({ summary }: { summary: RunSummary }) {
       </Card>
       <div className="flex flex-col gap-4">
         <Card className={`flex flex-col gap-2 p-5 ${v.convincing > 0 ? "border-l-4 border-l-[var(--color-error)]" : ""}`}>
-          <Eyebrow className={v.convincing > 0 ? "text-[var(--color-error)]" : undefined}>Wrong but convincing</Eyebrow>
+          <PanelLabel className={v.convincing > 0 ? "text-[var(--color-error)]" : undefined}>Wrong but convincing</PanelLabel>
           <span className="font-display text-[3rem] font-light leading-none tabular-nums text-[var(--color-ink)]">{v.convincing}</span>
           <p className="m-0 font-body text-[0.92rem] leading-relaxed text-[var(--color-ink-secondary)]">
             answers looked wrong or unsure, yet people would still act on them. These are the answers that send a
@@ -193,7 +202,7 @@ function ViabilityPanel({ summary }: { summary: RunSummary }) {
         </Card>
         {any(v.residentActions) && (
           <Card className={`flex flex-col gap-2 p-5 ${v.wouldNotApply > 0 ? "border-l-4 border-l-[var(--color-error)]" : ""}`}>
-            <Eyebrow className={v.wouldNotApply > 0 ? "text-[var(--color-error)]" : undefined}>Would not apply</Eyebrow>
+            <PanelLabel className={v.wouldNotApply > 0 ? "text-[var(--color-error)]" : undefined}>Would not apply</PanelLabel>
             <span className="font-display text-[3rem] font-light leading-none tabular-nums text-[var(--color-ink)]">
               {v.wouldNotApply}
             </span>
@@ -216,7 +225,7 @@ function BreakdownPanel({ summary }: { summary: RunSummary }) {
   return (
     <div className={`grid gap-4 ${tagged || misread ? "lg:grid-cols-[1.4fr_1fr]" : ""}`}>
       <Card className="p-5">
-        <Eyebrow className="mb-3">Share of answers that looked wrong</Eyebrow>
+        <PanelLabel className="mb-3">Share of answers that looked wrong</PanelLabel>
         {rows.length === 0 ? (
           <p className="m-0 font-body text-[0.88rem] text-[var(--color-ink-muted)]">Appears once answers are rated.</p>
         ) : (
@@ -242,13 +251,13 @@ function BreakdownPanel({ summary }: { summary: RunSummary }) {
         <div className="flex flex-col gap-4">
           {tagged && (
             <Card className="p-5">
-              <Eyebrow className="mb-3">What went wrong</Eyebrow>
+              <PanelLabel className="mb-3">What went wrong</PanelLabel>
               <Bars items={summary.wentWrong} tone="bad" limit={6} />
             </Card>
           )}
           {misread && (
             <Card className="p-5">
-              <Eyebrow className="mb-3">Rules the room says people misread</Eyebrow>
+              <PanelLabel className="mb-3">Rules the room says people misread</PanelLabel>
               <Bars items={summary.discussion.topics} limit={6} />
             </Card>
           )}
@@ -332,26 +341,35 @@ export function ResultsBoard({ summary }: { summary: RunSummary }) {
       </div>
     );
   }
+  // Parts number in the order they show; a part with nothing to show yet is skipped.
+  const shown = [
+    summary.rated > 0,
+    summary.rated > 0,
+    summary.spotlight.length > 0,
+    scales.length > 0 || any(summary.wentWell) || any(summary.sourceOfTruth),
+    summary.voices.length > 0,
+  ];
+  const n = (i: number) => shown.slice(0, i + 1).filter(Boolean).length;
   return (
-    <div className="flex flex-col gap-12">
+    <div className="flex flex-col gap-8">
       <ResultsCounts summary={summary} />
       {summary.rated > 0 && (
-        <Section title="Could a resident act on these answers?" prompt="Would you let a resident act on what they got?">
+        <Section n={n(0)} title="Could a resident act on these answers?">
           <ViabilityPanel summary={summary} />
         </Section>
       )}
       {summary.rated > 0 && (
-        <Section title="Where the answers broke down" prompt="Which situations broke it, and why those?">
+        <Section n={n(1)} title="Where the answers broke down">
           <BreakdownPanel summary={summary} />
         </Section>
       )}
       {summary.spotlight.length > 0 && (
-        <Section title="Answers worth discussing" prompt="What would a resident do next with this answer?">
+        <Section n={n(2)} title="Answers worth discussing">
           <SpotlightList summary={summary} />
         </Section>
       )}
       {(scales.length > 0 || any(summary.wentWell) || any(summary.sourceOfTruth)) && (
-        <Section title="How it felt" prompt="Does this match what your agency sees, with residents and with staff?">
+        <Section n={n(3)} title="How it felt">
           <div className="grid gap-4 lg:grid-cols-2">
             {scales.map((sc) => (
               <ScaleCard key={sc.question} scale={sc} />
@@ -359,7 +377,7 @@ export function ResultsBoard({ summary }: { summary: RunSummary }) {
             {any(summary.sourceOfTruth) && <SourceOfTruthCard counts={summary.sourceOfTruth} />}
             {any(summary.wentWell) && (
               <Card className="p-5">
-                <Eyebrow className="mb-3">What went well</Eyebrow>
+                <PanelLabel className="mb-3">What went well</PanelLabel>
                 <Bars items={summary.wentWell} tone="good" limit={5} />
               </Card>
             )}
@@ -367,7 +385,7 @@ export function ResultsBoard({ summary }: { summary: RunSummary }) {
         </Section>
       )}
       {summary.voices.length > 0 && (
-        <Section title="In their words">
+        <Section n={n(4)} title="In their words">
           <ul className="m-0 grid list-none gap-3 p-0 sm:grid-cols-2 lg:grid-cols-3">
             {summary.voices.map((v, i) => (
               <li
