@@ -179,14 +179,10 @@ describe("YourThread", () => {
     expect(screen.getByText(/Here's how AI does at scale\./)).toBeInTheDocument();
   });
 
-  it("sends people to check their answer on the shared foundation", () => {
-    const onOpen = vi.fn();
-    render(<YourThread stage="foundation" thread={asked} onOpen={onOpen} />);
-    expect(
-      screen.getByText("Check the AI's answer about “Retiree in Phoenix” against the rules."),
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Check my answer →" }));
-    expect(onOpen).toHaveBeenCalled();
+  it("recalls the question on the shared foundation, with no rules check to send people to", () => {
+    render(<YourThread stage="foundation" thread={asked} onOpen={vi.fn()} />);
+    expect(screen.getByText("You asked about “Retiree in Phoenix”.")).toBeInTheDocument();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 });
 

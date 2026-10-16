@@ -340,7 +340,7 @@ describe("AspenApp without a live presenter", () => {
     fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
     await onView("try");
     expect(await screen.findByText(/Your ratings are in/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "New question" }));
+    fireEvent.click(screen.getAllByRole("button", { name: /^Start over/ })[0]);
     await waitFor(() => expect(screen.queryByText(/Your ratings are in/)).not.toBeInTheDocument());
     expect(screen.queryByRole("heading", { name: "One more: how did AI do overall?" })).not.toBeInTheDocument();
     // The earlier rated answer still counts for the Next link.
@@ -361,7 +361,7 @@ describe("AspenApp without a live presenter", () => {
     fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
     await onView("try");
     expect(await screen.findByRole("heading", { name: "One more: how did AI do overall?" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "New question" }));
+    fireEvent.click(screen.getAllByRole("button", { name: /^Start over/ })[0]);
     await waitFor(() =>
       expect(screen.queryByRole("heading", { name: "One more: how did AI do overall?" })).not.toBeInTheDocument(),
     );
@@ -446,7 +446,9 @@ describe("AspenApp thread", () => {
     render(<AspenApp />);
     fireEvent.click(nav().getByRole("button", { name: /Shared foundation/ }));
     await onView("foundation");
-    expect(screen.getByText(/Check the AI's answer about your own question against the rules\./)).toBeInTheDocument();
+    // The rules check is in the chatbot demo now; the foundation just recalls the question.
+    expect(screen.getByText("You asked about your own question.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Check my answer/ })).not.toBeInTheDocument();
   });
 
   it("treats a chat without a user turn or a finished answer as not asked", async () => {

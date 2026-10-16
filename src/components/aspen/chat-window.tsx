@@ -19,7 +19,7 @@ import {
 } from "@/lib/aspen/content";
 import type { ChatSource } from "@/lib/aspen/openai";
 import { AnswerText } from "./answer-text";
-import { RatingCard, RulesCheck } from "./answer-feedback";
+import { RatingCard } from "./answer-feedback";
 import { CHAT_KEY, newId, participantId, readStored, sendEvent, writeStored } from "./client";
 import { Disclosure } from "./disclosure";
 import { BUTTON, BUTTON_QUIET, Chip, FIELD, STEP_NUMBER } from "./ui";
@@ -113,13 +113,11 @@ export async function readNdjson(
 
 export function ChatWindow({
   stage,
-  rulesUnlocked,
   onRateOverall,
   onStatus,
   onNewQuestion,
 }: {
   stage: string;
-  rulesUnlocked: boolean;
   /** Leads to the overall rating, below the chat, once the answer is rated. */
   onRateOverall?: () => void;
   onStatus?: (status: ChatStatus) => void;
@@ -342,8 +340,10 @@ export function ChatWindow({
           messages: turns.slice(0, latestIndex).map((t) => ({ role: t.role, content: t.content })),
         }
       : null;
-  // Rating is not optional: a follow-up or a new question waits for it.
+  // Rating is not optional for Try it, but a blank question can go back and forth first:
+  // its follow-ups don't wait for the rating. Start over never waits.
   const mustRate = Boolean(latest?.promptId && !rated.has(latest.promptId));
+  const followUpWaits = mustRate && householdId !== OWN;
 
   const tile = (selected: boolean) =>
     `flex flex-col items-start justify-start rounded-lg border px-3 py-2.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-[var(--color-accent)] ${
@@ -361,16 +361,19 @@ export function ChatWindow({
         {started && (
           <div className="flex items-center justify-between gap-3 border-b border-[var(--color-rule)] px-4 py-3">
             <span className="font-body text-[0.95rem] text-[var(--color-ink-secondary)]">Your conversation</span>
-            {!mustRate && (
-              <button type="button" className="aspen-link font-body text-[0.95rem]" onClick={startOver}>
-                New question
-              </button>
-            )}
+            <button type="button" className="aspen-link font-body text-[1rem] font-medium" onClick={startOver}>
+              Start over
+            </button>
           </div>
         )}
 
         {!started && (
           <div className="flex flex-col gap-5 px-4 pt-4">
+            {(householdId !== null || draft.trim() !== "") && (
+              <button type="button" className="aspen-link -mb-2 self-end font-body text-[1rem] font-medium" onClick={startOver}>
+                Start over
+              </button>
+            )}
             <fieldset className="m-0 border-0 p-0">
               <legend className={STEP}>
                 <span className={STEP_NUMBER}>{step.askAs}</span>Ask as
@@ -539,7 +542,7 @@ export function ChatWindow({
 
         {started && !followUp ? (
           <div className="flex flex-col gap-2 border-t border-[var(--color-rule)] px-4 py-3">
-            {mustRate ? (
+            {followUpWaits ? (
               <p className="m-0 font-body text-[0.98rem] text-[var(--color-ink)]">
                 Rate this answer to ask another question.{" "}
                 <button
@@ -628,7 +631,7 @@ export function ChatWindow({
                 }}
                 className={`${BUTTON_QUIET} w-full justify-between py-3 text-left text-[1rem]`}
               >
-                Ask a new question
+                Start over
                 <span aria-hidden className="text-[var(--color-accent)]">↑</span>
               </button>
             </div>
@@ -637,15 +640,6 @@ export function ChatWindow({
               key={latest.promptId}
               promptId={latest.promptId}
               onRated={() => setRated((s) => new Set(s).add(latest.promptId as string))}
-            />
-          )}
-          {/* The rules check waits for its stage; no note about it before then, so the next step stays clear. */}
-          {rulesUnlocked && (
-            <RulesCheck
-              key={`rules-${latest.promptId}`}
-              promptId={latest.promptId}
-              messages={latest.messages}
-              unlocked={rulesUnlocked}
             />
           )}
         </section>
@@ -658,7 +652,6 @@ export function ChatWindow({
             <li>Pick a household, add details if you like, and ask.</li>
             <li>Rate the answer you get.</li>
             <li>Then rate how AI did overall, right below.</li>
-            <li>Later, check the answer against the encoded rules.</li>
           </ol>
         </aside>
       )}

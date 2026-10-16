@@ -192,8 +192,8 @@ export function YourThread({
         ? `You asked about the Arizona household below: every one of the ${POLICYBENCH.azCase.modelsAsked} models said it gets $0.`
         : `You asked about ${about}. Here's how AI does at scale.`;
   } else {
-    line = `Check the AI's answer about ${about} against the rules.`;
-    action = "Check my answer";
+    // The rules check lives in the chatbot demo now, so the foundation just recalls the question.
+    line = `You asked about ${about}.`;
   }
   return (
     <div className="mb-10 rounded-xl border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] p-4 sm:p-5">

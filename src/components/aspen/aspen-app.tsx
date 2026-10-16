@@ -181,8 +181,6 @@ export function AspenApp() {
     window.scrollTo?.({ top: 0, behavior: "smooth" });
   }
 
-  // "A shared foundation" unlocks the rules check. Without a live presenter it is always open.
-  const rulesUnlocked = live === null || stageIndex(live) >= stageIndex("foundation");
   const current = STAGES.find((s) => s.id === view) ?? STAGES[0];
   const index = stageIndex(view);
   const nextStage = STAGES[index + 1];
@@ -303,7 +301,6 @@ export function AspenApp() {
           <ChatWindow
             key={runEpoch}
             stage={view}
-            rulesUnlocked={rulesUnlocked}
             onRateOverall={() => overall.current?.scrollIntoView?.({ behavior: "smooth", block: "start" })}
             onStatus={setTryStatus}
             onNewQuestion={onNewQuestion}
