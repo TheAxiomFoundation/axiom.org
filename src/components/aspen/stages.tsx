@@ -146,7 +146,11 @@ export function WelcomeLanding({ onStart }: { onStart: () => void }) {
         </h1>
       </section>
       <div className="flex w-full max-w-[440px] flex-col gap-3">
-        <button type="button" className={`${BUTTON} w-full py-3.5 text-[1.05rem]`} onClick={onStart}>
+        <button
+          type="button"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-[var(--color-accent)] px-4 py-3.5 font-body text-[1.05rem] font-medium text-white transition-colors hover:bg-[var(--color-accent-hover)]"
+          onClick={onStart}
+        >
           Start: ask the AI <span aria-hidden>→</span>
         </button>
         <Disclosure onOpen={() => sendEvent("disclosure", { opened: true }, "welcome")} />
@@ -192,8 +196,8 @@ export function YourThread({
         ? `You asked about the Arizona household below: every one of the ${POLICYBENCH.azCase.modelsAsked} models said it gets $0.`
         : `You asked about ${about}. Here's how AI does at scale.`;
   } else {
-    line = `Check the AI's answer about ${about} against the rules.`;
-    action = "Check my answer";
+    // The rules check lives in the chatbot demo now, so the foundation just recalls the question.
+    line = `You asked about ${about}.`;
   }
   return (
     <div className="mb-10 rounded-xl border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] p-4 sm:p-5">
@@ -395,7 +399,7 @@ export function GoldenContent() {
               </p>
             )}
             <p className="m-0 font-body text-[1.02rem] leading-relaxed text-[var(--color-ink-secondary)]">
-              <span className="font-semibold text-[var(--color-ink)]">Takes:</span> {tier.takes}
+              <span className="font-semibold text-[var(--color-ink)]">It takes:</span> {tier.takes}
             </p>
           </div>
         </details>
@@ -568,7 +572,6 @@ export function NextStepsForm() {
   const [email, setEmail] = useState("");
   const [accurateAi, setAccurateAi] = useState(false);
   const [stateSystems, setStateSystems] = useState(false);
-  const [showState, setShowState] = useState(true);
   const [note, setNote] = useState("");
   const [status, setStatus] = useState<"idle" | "saving" | "done" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -584,7 +587,6 @@ export function NextStepsForm() {
       email,
       accurateAi,
       stateSystems,
-      showState,
       note,
     }).catch(() => null);
     if (response?.ok) {
@@ -678,10 +680,6 @@ export function NextStepsForm() {
         </label>
       </Part>
       <Part n={3} title="Send" as="h2">
-        <label className="flex items-center gap-2.5 font-body text-[1.02rem] text-[var(--color-ink)]">
-          <input type="checkbox" checked={showState} onChange={(e) => setShowState(e.target.checked)} className="h-5 w-5 shrink-0 accent-[var(--color-accent)]" />
-          Show my state on the screen (never my name)
-        </label>
         <button
           type="submit"
           className={`${BUTTON} w-full py-3 text-[1.05rem] sm:w-auto sm:self-start`}

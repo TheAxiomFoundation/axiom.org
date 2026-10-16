@@ -38,7 +38,8 @@ export async function POST(request: Request) {
     email,
     accurate_ai: accurateAi,
     state_systems: stateSystems,
-    show_state: body?.showState !== false,
+    // Nothing from a pledge goes on the screen. The column stays for the table's shape.
+    show_state: false,
     note: clipText(body?.note, 1000),
   };
 

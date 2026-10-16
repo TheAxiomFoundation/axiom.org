@@ -18,8 +18,8 @@ import type { PromptRow, RunData } from "./types";
 
 /**
  * The room's results, as the reveal and the presenter screen show them.
- * Aggregates only: no participant ids, and pledges contribute states
- * (when the person allowed it) and counts, never names or emails.
+ * Aggregates only: no participant ids, and pledges contribute counts,
+ * never states, names or emails. Nothing from a pledge goes on the screen.
  */
 
 export interface Count {
@@ -149,7 +149,7 @@ export interface RunSummary {
     useCases: Count[];
     notes: { useCase: string; text: string; who: string | null; trust: string | null; raised: string | null }[];
   };
-  pledges: { people: number; states: string[]; accurateAi: number; stateSystems: number };
+  pledges: { people: number; accurateAi: number; stateSystems: number };
 }
 
 const FEED_SIZE = 24;
@@ -340,10 +340,6 @@ export function summarizeRun(data: RunData): RunSummary {
     .slice(0, VOICES_SIZE)
     .map(({ text, verdict }) => ({ text, verdict }));
 
-  const shownStates = pledges
-    .filter((p) => p.show_state && p.state)
-    .map((p) => p.state as string);
-
   return {
     participants: participants.length,
     prompts: answered.length,
@@ -424,7 +420,6 @@ export function summarizeRun(data: RunData): RunSummary {
     },
     pledges: {
       people: pledges.length,
-      states: [...new Set(shownStates)].sort(),
       accurateAi: pledges.filter((p) => p.accurate_ai).length,
       stateSystems: pledges.filter((p) => p.state_systems).length,
     },

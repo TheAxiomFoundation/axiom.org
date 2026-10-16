@@ -179,14 +179,10 @@ describe("YourThread", () => {
     expect(screen.getByText(/Here's how AI does at scale\./)).toBeInTheDocument();
   });
 
-  it("sends people to check their answer on the shared foundation", () => {
-    const onOpen = vi.fn();
-    render(<YourThread stage="foundation" thread={asked} onOpen={onOpen} />);
-    expect(
-      screen.getByText("Check the AI's answer about “Retiree in Phoenix” against the rules."),
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Check my answer →" }));
-    expect(onOpen).toHaveBeenCalled();
+  it("recalls the question on the shared foundation, with no rules check to send people to", () => {
+    render(<YourThread stage="foundation" thread={asked} onOpen={vi.fn()} />);
+    expect(screen.getByText("You asked about “Retiree in Phoenix”.")).toBeInTheDocument();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 });
 
@@ -345,7 +341,6 @@ describe("NextStepsForm", () => {
     fill();
     fireEvent.change(screen.getByRole("combobox", { name: "State" }), { target: { value: "Nevada" } });
     fireEvent.click(screen.getByRole("checkbox", { name: /Accurate AI answers/ }));
-    fireEvent.click(screen.getByRole("checkbox", { name: /Show my state on the screen/ }));
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
     expect(await screen.findByRole("button", { name: "Sending…" })).toBeDisabled();
@@ -360,7 +355,6 @@ describe("NextStepsForm", () => {
       email: "ada@az.gov",
       accurateAi: true,
       stateSystems: false,
-      showState: false,
       note: "Call me",
     });
   });
@@ -523,7 +517,7 @@ describe("FoundationContent and GoldenContent", () => {
     }
     // Plain labels: no small "Your state gets" eyebrow, and one "Takes:" per step.
     expect(screen.queryByText("Your state gets")).not.toBeInTheDocument();
-    expect(screen.getAllByText("Takes:")).toHaveLength(3);
+    expect(screen.getAllByText("It takes:")).toHaveLength(3);
     // Each step is a row that opens on a tap: the name shows, the details wait.
     const rows = document.querySelectorAll("details");
     expect(rows).toHaveLength(GOLDEN_A.length);

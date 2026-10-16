@@ -128,7 +128,7 @@ describe('aspen results', () => {
   })
 
   it('shows pledged states only when allowed, never names', () => {
-    expect(summarizeRun(DATA).pledges).toEqual({ people: 4, states: ['Arizona'], accurateAi: 3, stateSystems: 2 })
+    expect(summarizeRun(DATA).pledges).toEqual({ people: 4, accurateAi: 3, stateSystems: 2 })
   })
 
   it('turns Markdown answers into plain excerpts', () => {
