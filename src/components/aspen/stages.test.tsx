@@ -341,7 +341,6 @@ describe("NextStepsForm", () => {
     fill();
     fireEvent.change(screen.getByRole("combobox", { name: "State" }), { target: { value: "Nevada" } });
     fireEvent.click(screen.getByRole("checkbox", { name: /Accurate AI answers/ }));
-    fireEvent.click(screen.getByRole("checkbox", { name: /Show my state on the screen/ }));
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
     expect(await screen.findByRole("button", { name: "Sending…" })).toBeDisabled();
@@ -356,7 +355,6 @@ describe("NextStepsForm", () => {
       email: "ada@az.gov",
       accurateAi: true,
       stateSystems: false,
-      showState: false,
       note: "Call me",
     });
   });
