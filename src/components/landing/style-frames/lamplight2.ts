@@ -36,6 +36,7 @@ import {
   themed,
   themedLook,
   QuadMorph,
+  keepAspect,
   carryOnScreen,
   planeCorners,
   SceneFade,
@@ -692,10 +693,13 @@ export function lamplightBeat3(ctx: BeatCtx): BeatSpec {
   // sentence, in this place, and the scene comes up around it
   const cutOut = (k: number, next?: { camera: THREE.PerspectiveCamera; parts?: Record<string, unknown> }) => {
     const target = next?.parts?.right as THREE.Mesh | undefined;
-    if (!next || !target) return;
+    const ruleRect = next?.parts?.ruleRect as { x0: number; x1: number; y0: number; y1: number } | undefined;
+    if (!next || !target || !ruleRect) return;
     const e = ease(seg(k, 0, 0.55));
-    // it hands over to the code page as it arrives
-    passFly.set(e, passFly.toward(target, next.camera, camera), 1 - seg(k, 0.45, 0.75));
+    // the rule settles into its own lines of the file (13–27), unstretched,
+    // and hands over to the code page as it arrives
+    const to = keepAspect(passFly.toward(target, next.camera, camera, ruleRect), CARD_W / CARD_H);
+    passFly.set(e, to, 1 - seg(k, 0.42, 0.72));
     passCard.visible = false;
     // the rest of the scene clears away as it leaves
     const rest = 1 - ease(seg(k, 0, 0.35));
@@ -980,10 +984,10 @@ export function lamplightBeat4(ctx: BeatCtx): BeatSpec {
   };
   const pxY = (py: number) => (0.5 - py / cf.h) * PH;
   const pxX = (px: number) => (px / cf.w - 0.5) * cW;
-  const strips = Object.entries(RULE_LINES).map(([id, [l0, l1]]) => ({
-    id,
-    fly: new QuadMorph(scene, right, { x0: pxX(70), x1: pxX(cf.w - 40), y0: pxY((cf.lines.get(l1) ?? 0) + 14), y1: pxY((cf.lines.get(l0) ?? 0) - 34) }),
-  }));
+  const strips = Object.entries(RULE_LINES).map(([id, [l0, l1]]) => {
+    const rect = { x0: pxX(70), x1: pxX(cf.w - 40), y0: pxY((cf.lines.get(l1) ?? 0) + 14), y1: pxY((cf.lines.get(l0) ?? 0) - 34) };
+    return { id, rect, fly: new QuadMorph(scene, right, rect) };
+  });
   const cutOut = (k: number, next?: { camera: THREE.PerspectiveCamera; parts?: Record<string, unknown> }) => {
     const cards = next?.parts?.cards as Map<string, { mesh: THREE.Mesh }> | undefined;
     if (!next || !cards) return;
@@ -1000,7 +1004,9 @@ export function lamplightBeat4(ctx: BeatCtx): BeatSpec {
   };
   let fadeOut: SceneFade | null = null;
   fadeOut = new SceneFade([scene, fx], (m) => strips.some((st) => st.fly.fly.material === m));
-  return { camera, look, update, cutIn: () => {}, cutOut, parts: { right } };
+  // where the encoded rule's lines (13–27) sit on the code page
+  const ruleRect = strips.find((st) => st.id === "rate30")!.rect;
+  return { camera, look, update, cutIn: () => {}, cutOut, parts: { right, ruleRect } };
 
 }
 

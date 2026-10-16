@@ -892,6 +892,16 @@ export function carryOnScreen(p: THREE.Vector3, from: THREE.Camera, to: THREE.Pe
   return out.multiplyScalar(dist).add(to.position);
 }
 
+// target corners reshaped to a given width:height, kept to the left edge
+// and the height of the target (so a card shrinks into place unstretched)
+export function keepAspect(c: THREE.Vector3[], aspect: number): THREE.Vector3[] {
+  const [tl, tr, bl] = c;
+  const h = tl.distanceTo(bl);
+  const dir = tr.clone().sub(tl).normalize();
+  const w = Math.min(tl.distanceTo(tr), h * aspect);
+  return [tl.clone(), tl.clone().addScaledVector(dir, w), bl.clone(), bl.clone().addScaledVector(dir, w)];
+}
+
 export class QuadMorph {
   readonly fly: THREE.Mesh;
   private from: THREE.Vector3[] | null = null;
