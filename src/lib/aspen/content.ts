@@ -960,15 +960,16 @@ export const DEMO_NOTE = "A demo. Answers come from OpenAI's GPT model, unedited
 /**
  * What we keep, said up front (agreed with Aspen, Oct 12): answers and
  * ratings are kept for our own analysis, never published, and taking part
- * is optional. Reworded in plainer, shorter lines on Oct 16; same substance.
+ * is optional. Reworded on Oct 16 as a bold header and one plain line per
+ * point, for phones; same substance.
  */
 export const DISCLOSURE = {
   short: "We keep everyone's answers to learn from, without names, and don't publish them. Taking part is optional.",
   details: [
-    "We don't ask your name. Don't type personal details about real people.",
-    "Your questions go to OpenAI for the AI's answer, and to the Axiom rules chatbot if you check the rules.",
-    "We keep questions and ratings to learn which rules are hardest. We don't publish them, and the screen never shows who asked what.",
-    "You can skip anything, or just watch.",
-    "We only ask for your email on the next-steps form, to follow up.",
+    { title: "No names", text: "We don't ask who you are. Please don't type details about real people." },
+    { title: "Where questions go", text: "To OpenAI for the AI's answer, and to the Axiom rules chatbot if you check the rules." },
+    { title: "What we save", text: "Questions and ratings, to learn which rules are hardest. We don't publish them or show who asked what." },
+    { title: "Your choice", text: "Skip anything, or just watch." },
+    { title: "Email", text: "Only on the next-steps form, to follow up." },
   ],
 } as const;

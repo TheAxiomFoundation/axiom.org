@@ -107,7 +107,8 @@ describe("Disclosure", () => {
   it("works without an onOpen handler", () => {
     render(<Disclosure />);
     fireEvent.click(screen.getByRole("button", { name: "What we keep" }));
-    expect(screen.getByText(DISCLOSURE.details[0])).toBeInTheDocument();
+    expect(screen.getByText(DISCLOSURE.details[0].title)).toBeInTheDocument();
+    expect(screen.getByText(DISCLOSURE.details[0].text)).toBeInTheDocument();
   });
 });
 

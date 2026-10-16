@@ -33,9 +33,12 @@ export function Disclosure({
         </button>
       </p>
       {open && (
-        <ul className="m-0 mt-2 flex list-disc flex-col gap-1 pl-4 text-left">
+        <ul className="m-0 mt-4 flex list-none flex-col gap-3.5 p-0 text-left text-[1rem] leading-snug">
           {DISCLOSURE.details.map((d) => (
-            <li key={d}>{d}</li>
+            <li key={d.title}>
+              <strong className="block font-semibold text-[var(--color-ink)]">{d.title}</strong>
+              {d.text}
+            </li>
           ))}
         </ul>
       )}
