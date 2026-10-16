@@ -1062,7 +1062,7 @@ html[data-aspen-text="larger"] {
    sentence, at a size a phone can read. */
 [data-aspen-page] .kicker {
   font-family: var(--f-body);
-  font-size: 0.85rem;
+  font-size: 0.95rem;
   letter-spacing: normal;
   text-transform: none;
 }

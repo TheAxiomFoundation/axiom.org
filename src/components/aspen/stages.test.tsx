@@ -225,8 +225,8 @@ describe("SmallGroups", () => {
   it("puts the vote and the group's idea on one screen, in that order", () => {
     stubFetch();
     render(<SmallGroups stage="groups" />);
-    const vote = screen.getByRole("heading", { name: "1Vote" });
-    const talk = screen.getByRole("heading", { name: "2Talk it through" });
+    const vote = screen.getByRole("heading", { level: 2, name: "Vote" });
+    const talk = screen.getByRole("heading", { level: 2, name: "Talk it through" });
     expect(vote.compareDocumentPosition(talk) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByRole("button", { name: "Vote" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Share with the room" })).toBeInTheDocument();
@@ -316,7 +316,7 @@ describe("NextStepsForm", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Name" }), { target: { value: "Ada" } });
     fireEvent.change(screen.getByRole("textbox", { name: "Title" }), { target: { value: "Director" } });
     fireEvent.change(screen.getByRole("textbox", { name: "Email" }), { target: { value: "ada@az.gov" } });
-    fireEvent.change(screen.getByRole("textbox", { name: "Note" }), { target: { value: "Call me" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /^Note/ }), { target: { value: "Call me" } });
   }
 
   it("stays disabled until an email and a topic are given", () => {

@@ -311,7 +311,7 @@ export function AspenApp() {
           {/* Both ratings happen here: the answer first, then AI overall, right below. */}
           {tryStatus.current && !overallClosed && (
             <section ref={overall} aria-labelledby="aspen-overall" className="mt-12 scroll-mt-20 border-t-2 border-[var(--color-accent)] pt-6">
-              <h2 id="aspen-overall" className="heading-sub m-0 mb-5">
+              <h2 id="aspen-overall" className="m-0 mb-5 font-body text-[1.4rem] font-semibold text-[var(--color-ink)]">
                 One more: how did AI do overall?
               </h2>
               <OverallRating key={runEpoch} stage="try" />

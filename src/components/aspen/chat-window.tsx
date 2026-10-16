@@ -522,7 +522,7 @@ export function ChatWindow({
                               ))}
                             </div>
                           )}
-                          <span className="font-mono text-[0.8rem] text-[var(--color-ink-muted)]">
+                          <span className="font-mono text-[0.95rem] text-[var(--color-ink-muted)]">
                             {turn.model}
                             {turn.webSearch ? " · web search on" : " · no web search"}
                           </span>
@@ -560,7 +560,7 @@ export function ChatWindow({
                 Ask a follow-up
               </button>
             )}
-            <p className="m-0 font-body text-[0.8rem] leading-snug text-[var(--color-ink-muted)]">{DEMO_NOTE}</p>
+            <p className="m-0 font-body text-[0.95rem] leading-snug text-[var(--color-ink-muted)]">{DEMO_NOTE}</p>
           </div>
         ) : (
           <div className={`flex flex-col gap-3 px-4 pb-4 ${started ? "border-t border-[var(--color-rule)] pt-3" : "mt-5 border-t border-[var(--color-rule)] pt-4"}`}>

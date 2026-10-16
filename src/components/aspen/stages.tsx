@@ -420,9 +420,9 @@ export function VoteCard({ stage }: { stage: string }) {
   const votedFor = USE_CASES.find((u) => u.id === voted);
   if (votedFor) {
     return (
-      <p className="m-0 font-body text-[1rem] text-[var(--color-ink)]">
+      <p className="m-0 font-body text-[1.08rem] text-[var(--color-ink)]">
         <span aria-hidden className="mr-1.5 text-[var(--color-success)]">✓</span>
-        You voted: <strong className="font-medium">{votedFor.label}</strong>
+        You voted: <strong className="font-semibold">{votedFor.label}</strong>
       </p>
     );
   }
@@ -437,8 +437,8 @@ export function VoteCard({ stage }: { stage: string }) {
             onClick={() => setChoice(u.id)}
             className={`${OPTION} ${choice === u.id ? OPTION_ON : OPTION_OFF}`}
           >
-            <span className="block font-body text-[1.05rem] font-medium text-[var(--color-ink)]">{u.label}</span>
-            <span className="block font-body text-[0.9rem] leading-snug text-[var(--color-ink-muted)]">{u.detail}</span>
+            <span className="block font-body text-[1.12rem] font-semibold text-[var(--color-ink)]">{u.label}</span>
+            <span className="block font-body text-[1.02rem] leading-snug text-[var(--color-ink-muted)]">{u.detail}</span>
           </button>
         ))}
       </div>
@@ -460,22 +460,14 @@ export function VoteCard({ stage }: { stage: string }) {
 
 /** Small groups on one screen: vote on what to build first, then share the group's best idea. */
 export function SmallGroups({ stage }: { stage: string }) {
-  const step = "heading-sub m-0 mb-4 flex items-baseline gap-3";
-  const number = "font-mono text-[0.8rem] text-[var(--color-accent)]";
   return (
-    <div className="flex flex-col gap-10">
-      <section>
-        <h2 className={step}>
-          <span className={number}>1</span>Vote
-        </h2>
+    <div className="flex flex-col gap-8">
+      <Part n={1} title="Vote" as="h2">
         <VoteCard stage={stage} />
-      </section>
-      <section>
-        <h2 className={step}>
-          <span className={number}>2</span>Talk it through
-        </h2>
+      </Part>
+      <Part n={2} title="Talk it through" as="h2">
         <GroupsCard stage={stage} />
-      </section>
+      </Part>
     </div>
   );
 }
@@ -496,14 +488,13 @@ export function GroupsCard({ stage }: { stage: string }) {
   const [raised, setRaised] = useState("");
   const [shared, setShared] = useState(0);
   const anything = [...Object.values(answers), raised].some((v) => v.trim());
-  const number = "mr-2 font-mono text-[0.8rem] text-[var(--color-accent)]";
 
   return (
     <div className="flex max-w-[760px] flex-col gap-5">
       <p className="m-0 border-l-2 border-[var(--color-accent)] pl-4 font-body text-[1.08rem] leading-relaxed text-[var(--color-ink)]">
         {GROUP_PHONE_INTRO}
       </p>
-      <label className="flex flex-col gap-2 font-body text-[1rem] text-[var(--color-ink)]">
+      <label className="flex flex-col gap-2 font-body text-[1.08rem] font-semibold text-[var(--color-ink)]">
         Your group&apos;s pick
         <select value={useCase ?? ""} onChange={(e) => setUseCase(e.target.value || null)} className={FIELD}>
           <option value="">Not decided</option>
@@ -515,10 +506,9 @@ export function GroupsCard({ stage }: { stage: string }) {
         </select>
       </label>
       {GROUP_QUESTIONS.map((q, i) => (
-        <label key={q.id} className="flex flex-col gap-2 font-body text-[1rem] text-[var(--color-ink)]">
-          <span>
-            <span className={number}>{i + 1}</span>
-            {q.label}
+        <label key={q.id} className="flex flex-col gap-2 font-body text-[1.08rem] text-[var(--color-ink)]">
+          <span className="font-semibold">
+            {i + 1}. {q.label}
           </span>
           <textarea
             rows={q.id === "note" ? 3 : 2}
@@ -530,9 +520,9 @@ export function GroupsCard({ stage }: { stage: string }) {
           />
         </label>
       ))}
-      <label className="flex flex-col gap-2 font-body text-[1rem] text-[var(--color-ink)]">
-        <span>
-          {GROUP_RAISED.label} <span className="text-[var(--color-ink-muted)]">(optional)</span>
+      <label className="flex flex-col gap-2 font-body text-[1.08rem] text-[var(--color-ink)]">
+        <span className="font-semibold">
+          {GROUP_RAISED.label} <span className="font-normal text-[var(--color-ink-muted)]">(optional)</span>
         </span>
         <textarea
           rows={2}
@@ -558,7 +548,7 @@ export function GroupsCard({ stage }: { stage: string }) {
           Share with the room
         </button>
         {shared > 0 && (
-          <span className="font-body text-[0.95rem] text-[var(--color-success)]">
+          <span className="font-body text-[1.05rem] font-medium text-[var(--color-success)]">
             Shared. It&apos;s on the big screen.
           </span>
         )}
@@ -609,7 +599,7 @@ export function NextStepsForm() {
     return (
       <Card className="border-[var(--color-success)] p-5">
         <p className="m-0 font-display text-[1.4rem] font-light text-[var(--color-ink)]">Thank you.</p>
-        <p className="m-0 mt-2 font-body text-[0.95rem] text-[var(--color-ink-secondary)]">
+        <p className="m-0 mt-2 font-body text-[1.05rem] text-[var(--color-ink-secondary)]">
           We&apos;ll follow up after the convening. Questions before then: {EVENT.contactEmail}.
         </p>
       </Card>
@@ -617,75 +607,93 @@ export function NextStepsForm() {
   }
 
   const checked = { accurate_ai: [accurateAi, setAccurateAi], state_systems: [stateSystems, setStateSystems] } as const;
+  const label = "flex flex-col gap-1.5 font-body text-[1.05rem] font-semibold text-[var(--color-ink)]";
   return (
-    <form onSubmit={submit} className="flex max-w-[760px] flex-col gap-4">
-      <fieldset className="m-0 flex flex-col gap-2.5 border-0 p-0">
-        <legend className="mb-2.5 font-body text-[0.95rem] font-medium text-[var(--color-ink)]">
-          I&apos;d like to talk about
-        </legend>
-        {NEXT_STEPS.options.map((option) => {
-          const [on, set] = checked[option.id];
-          return (
-            <label key={option.id} className={`${OPTION_BOX} flex cursor-pointer items-start gap-3 ${on ? OPTION_ON : OPTION_OFF}`}>
-              <input
-                type="checkbox"
-                checked={on}
-                onChange={(e) => set(e.target.checked)}
-                className="mt-1 h-5 w-5 shrink-0 accent-[var(--color-accent)]"
-              />
-              <span>
-                <span className="block font-body text-[1rem] font-medium text-[var(--color-ink)]">{option.label}</span>
-                <span className="block font-body text-[0.84rem] text-[var(--color-ink-muted)]">{option.detail}</span>
-              </span>
-            </label>
-          );
-        })}
-      </fieldset>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <input className={FIELD} placeholder="Name" value={name} maxLength={120} onChange={(e) => setName(e.target.value)} aria-label="Name" autoComplete="name" />
-        <input className={FIELD} placeholder="Title" value={title} maxLength={160} onChange={(e) => setTitle(e.target.value)} aria-label="Title" autoComplete="organization-title" />
-        <select className={FIELD} value={state} onChange={(e) => setState(e.target.value)} aria-label="State">
-          <option value="">State</option>
-          {US_STATES.map((s) => (
-            <option key={s}>{s}</option>
-          ))}
-        </select>
-        <input
-          className={FIELD}
-          type="email"
-          required
-          placeholder="Email"
-          value={email}
-          maxLength={254}
-          onChange={(e) => setEmail(e.target.value)}
-          aria-label="Email"
-          autoComplete="email"
-        />
-      </div>
-      <textarea
-        rows={2}
-        className={FIELD}
-        placeholder="Anything we should know? (optional)"
-        value={note}
-        maxLength={1000}
-        onChange={(e) => setNote(e.target.value)}
-        aria-label="Note"
-      />
-      <label className="flex items-center gap-2 font-body text-[0.86rem] text-[var(--color-ink-secondary)]">
-        <input type="checkbox" checked={showState} onChange={(e) => setShowState(e.target.checked)} className="accent-[var(--color-accent)]" />
-        Show my state on the screen (never my name)
-      </label>
-      <button
-        type="submit"
-        className={`${BUTTON} w-full py-3 text-[1rem] sm:w-auto sm:self-start`}
-        disabled={status === "saving" || !email.trim() || (!accurateAi && !stateSystems)}
-      >
-        {status === "saving" ? "Sending…" : "Send"}
-      </button>
-      {status === "error" && <p className="m-0 font-body text-[0.85rem] text-[var(--color-error)]">{error}</p>}
-      <p className="m-0 font-body text-[0.8rem] text-[var(--color-ink-muted)]">
-        This goes to the Axiom Foundation as a request to follow up. It isn&apos;t a commitment.
-      </p>
+    <form onSubmit={submit} className="flex max-w-[760px] flex-col gap-8">
+      <Part n={1} title="I'd like to talk about" as="h2">
+        <div role="group" aria-label="I'd like to talk about" className="flex flex-col gap-2.5">
+          {NEXT_STEPS.options.map((option) => {
+            const [on, set] = checked[option.id];
+            return (
+              <label key={option.id} className={`${OPTION_BOX} flex cursor-pointer items-start gap-3 ${on ? OPTION_ON : OPTION_OFF}`}>
+                <input
+                  type="checkbox"
+                  checked={on}
+                  onChange={(e) => set(e.target.checked)}
+                  className="mt-1 h-5 w-5 shrink-0 accent-[var(--color-accent)]"
+                />
+                <span>
+                  <span className="block font-body text-[1.12rem] font-semibold text-[var(--color-ink)]">{option.label}</span>
+                  <span className="block font-body text-[1.02rem] leading-snug text-[var(--color-ink-muted)]">{option.detail}</span>
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      </Part>
+      <Part n={2} title="How we reach you" as="h2">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className={label}>
+            Name
+            <input className={FIELD} value={name} maxLength={120} onChange={(e) => setName(e.target.value)} autoComplete="name" />
+          </label>
+          <label className={label}>
+            Title
+            <input className={FIELD} value={title} maxLength={160} onChange={(e) => setTitle(e.target.value)} autoComplete="organization-title" />
+          </label>
+          <label className={label}>
+            State
+            <select className={FIELD} value={state} onChange={(e) => setState(e.target.value)}>
+              <option value="">Pick a state</option>
+              {US_STATES.map((s) => (
+                <option key={s}>{s}</option>
+              ))}
+            </select>
+          </label>
+          <label className={label}>
+            Email
+            <input
+              className={FIELD}
+              type="email"
+              required
+              value={email}
+              maxLength={254}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+            />
+          </label>
+        </div>
+        <label className={label}>
+          <span>
+            Note <span className="font-normal text-[var(--color-ink-muted)]">(optional)</span>
+          </span>
+          <textarea
+            rows={2}
+            className={FIELD}
+            placeholder="Anything we should know?"
+            value={note}
+            maxLength={1000}
+            onChange={(e) => setNote(e.target.value)}
+          />
+        </label>
+      </Part>
+      <Part n={3} title="Send" as="h2">
+        <label className="flex items-center gap-2.5 font-body text-[1.02rem] text-[var(--color-ink)]">
+          <input type="checkbox" checked={showState} onChange={(e) => setShowState(e.target.checked)} className="h-5 w-5 shrink-0 accent-[var(--color-accent)]" />
+          Show my state on the screen (never my name)
+        </label>
+        <button
+          type="submit"
+          className={`${BUTTON} w-full py-3 text-[1.05rem] sm:w-auto sm:self-start`}
+          disabled={status === "saving" || !email.trim() || (!accurateAi && !stateSystems)}
+        >
+          {status === "saving" ? "Sending…" : "Send"}
+        </button>
+        {status === "error" && <p className="m-0 font-body text-[1rem] text-[var(--color-error)]">{error}</p>}
+        <p className="m-0 font-body text-[0.95rem] text-[var(--color-ink-muted)]">
+          This goes to the Axiom Foundation as a request to follow up. It isn&apos;t a commitment.
+        </p>
+      </Part>
     </form>
   );
 }
@@ -739,7 +747,7 @@ export function ThankYouContent({ onReturn }: { onReturn?: () => void }) {
                   ↗
                 </span>
               </span>
-              <span className="font-body text-[0.9rem] leading-snug text-[var(--color-ink-muted)]">{l.detail}</span>
+              <span className="font-body text-[1rem] leading-snug text-[var(--color-ink-muted)]">{l.detail}</span>
             </a>
           </li>
         ))}

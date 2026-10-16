@@ -52,15 +52,26 @@ export const STEP_NUMBER =
  * One numbered part of a results screen (What we saw, At scale): a bold
  * heading with its number, and a line above it so parts stay apart.
  */
-export function Part({ n, title, children }: { n: number; title: string; children: ReactNode }) {
+export function Part({
+  n,
+  title,
+  children,
+  as: Heading = "h3",
+}: {
+  n: number;
+  title: string;
+  children: ReactNode;
+  /** h3 under a block heading; h2 on a screen whose parts sit right under the page title. */
+  as?: "h2" | "h3";
+}) {
   return (
     <section className="flex flex-col gap-4 border-t border-[var(--color-rule)] pt-8">
-      <h3 className="m-0 flex items-start gap-2.5 font-body text-[1.25rem] font-semibold leading-snug text-[var(--color-ink)]">
+      <Heading className="m-0 flex items-start gap-2.5 font-body text-[1.25rem] font-semibold leading-snug text-[var(--color-ink)]">
         <span aria-hidden className={STEP_NUMBER}>
           {n}
         </span>
         <span className="pt-0.5">{title}</span>
-      </h3>
+      </Heading>
       {children}
     </section>
   );
