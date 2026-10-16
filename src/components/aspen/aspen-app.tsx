@@ -292,7 +292,7 @@ export function AspenApp() {
               </button>
             )}
             {/* The thank-you is its own centered page, like the landing. */}
-            {view !== "dinner" && <StageHeading title={current.title} summary={current.summary} />}
+            {view !== "dinner" && <StageHeading title={current.title} summary={current.phoneSummary ?? current.summary} />}
             <YourThread stage={view} thread={thread} onOpen={() => go("try")} />
           </>
         )}
@@ -338,20 +338,18 @@ export function AspenApp() {
             type="button"
             onClick={() => go(nextStage.id)}
             disabled={mustRate}
-            className="group mt-16 flex w-full items-center justify-between gap-4 border-t-2 border-[var(--color-accent)] pt-4 text-left disabled:cursor-not-allowed disabled:border-[var(--color-rule)]"
+            className="group mt-12 flex w-full items-center justify-between gap-4 rounded-xl bg-[var(--color-accent)] px-5 py-4 text-left text-white shadow-[0_2px_8px_rgba(28,25,23,0.18)] transition-colors hover:bg-[var(--color-accent-hover)] disabled:cursor-not-allowed disabled:border-2 disabled:border-dashed disabled:border-[var(--color-rule-strong)] disabled:bg-[var(--color-paper)] disabled:text-[var(--color-ink)] disabled:shadow-none"
           >
-            <span>
-              <span className="block font-body font-medium text-[0.82rem] text-[var(--color-accent)] group-disabled:text-[var(--color-ink-muted)]">
+            {/* A filled button, not a link: on a phone it is the one thing to do once the stage is done. */}
+            <span className="min-w-0">
+              <span className="block font-body text-[0.9rem] font-medium text-white/85 group-disabled:text-[var(--color-ink)]">
                 Next
               </span>
-              <span className="block font-body text-[1.08rem] text-[var(--color-ink)] group-hover:text-[var(--color-accent)] group-disabled:text-[var(--color-ink-muted)]">
+              <span className="block font-body text-[1.15rem] font-semibold leading-snug">
                 {mustRate ? "Rate your answer to continue" : nextStage.title}
               </span>
             </span>
-            <span
-              aria-hidden
-              className="font-display text-[1.4rem] text-[var(--color-accent)] transition-transform group-hover:translate-x-1 group-disabled:text-[var(--color-ink-muted)]"
-            >
+            <span aria-hidden className="font-display text-[1.8rem] leading-none transition-transform group-hover:translate-x-1 group-disabled:hidden">
               →
             </span>
           </button>

@@ -54,6 +54,8 @@ export interface Stage {
   /** The thread: how this stage follows from the one before. */
   /** Under the heading on the stage's first slide; empty for none. */
   summary: string;
+  /** The phone's line under the heading, when it differs from the slide's. */
+  phoneSummary?: string;
   /** Segments that depend on the room, e.g. on headcount. */
   optional?: boolean;
 }
@@ -72,6 +74,7 @@ export const STAGES: readonly Stage[] = [
     title: "Ask the AI",
     agenda: "Ask the AI a benefits question, then rate it.",
     summary: "Ask as a resident or caseworker. Rate the answer. Then tell us more about AI use in your agency.",
+    phoneSummary: "Build a prompt. Use the preselected options and see how they change the prompt below. Or write your own.",
   },
   {
     id: "reveal",
@@ -955,7 +958,7 @@ export const NEXT_STEPS = {
  * Shown with every AI answer: the answers are a demo of an unmodified
  * general-purpose model, and the model's maker has no part in the page.
  */
-export const DEMO_NOTE = "A demo. Answers come from OpenAI's GPT model, unedited. OpenAI does not sponsor or endorse this page.";
+export const DEMO_NOTE = "Answers come from OpenAI's GPT model, unedited. OpenAI does not sponsor or endorse this page.";
 
 /**
  * What we keep, said up front (agreed with Aspen, Oct 12): answers and
