@@ -286,7 +286,7 @@ export function AspenApp() {
                 type="button"
                 onClick={() => go(prevStage.id)}
                 aria-label={`Back to ${prevStage.label}`}
-                className="mb-3 inline-flex items-center gap-1.5 rounded-md font-body text-[0.88rem] text-[var(--color-ink-muted)] transition-colors hover:text-[var(--color-accent)] focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
+                className="mb-3 inline-flex items-center gap-1.5 rounded-md font-body text-[1rem] text-[var(--color-ink-muted)] transition-colors hover:text-[var(--color-accent)] focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
               >
                 <span aria-hidden>←</span>
                 {prevStage.label}

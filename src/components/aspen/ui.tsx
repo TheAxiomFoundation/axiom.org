@@ -48,6 +48,29 @@ export function Prompt({ children, className }: { children: ReactNode; className
 export const STEP_NUMBER =
   "flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--color-accent)] font-body text-[0.9rem] font-semibold text-white";
 
+/**
+ * One numbered part of a results screen (What we saw, At scale): a bold
+ * heading with its number, and a line above it so parts stay apart.
+ */
+export function Part({ n, title, children }: { n: number; title: string; children: ReactNode }) {
+  return (
+    <section className="flex flex-col gap-4 border-t border-[var(--color-rule)] pt-8">
+      <h3 className="m-0 flex items-start gap-2.5 font-body text-[1.25rem] font-semibold leading-snug text-[var(--color-ink)]">
+        <span aria-hidden className={STEP_NUMBER}>
+          {n}
+        </span>
+        <span className="pt-0.5">{title}</span>
+      </h3>
+      {children}
+    </section>
+  );
+}
+
+/** Heads a results screen's main block ("Across the room", "Across 50 AI models"). */
+export function BlockHeading({ children }: { children: ReactNode }) {
+  return <h2 className="m-0 font-body text-[1.4rem] font-semibold text-[var(--color-ink)]">{children}</h2>;
+}
+
 /** A question inside a guided step: bold and plain, the same in every step. */
 export const QUESTION = "m-0 mb-3 p-0 font-body text-[1.08rem] font-semibold leading-snug text-[var(--color-ink)]";
 

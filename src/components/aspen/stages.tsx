@@ -25,7 +25,7 @@ import { SourceOfTruthCard } from "./results-board";
 import { OVERALL_KEY, VOTE_KEY, participantId, postJson, readStored, sendEvent, writeStored } from "./client";
 import { Disclosure } from "./disclosure";
 import { TierMedal } from "./tier-medal";
-import { BUTTON, Card, FIELD } from "./ui";
+import { BUTTON, BlockHeading, Card, FIELD, Part } from "./ui";
 
 const OPTION_BOX =
   "rounded-lg border px-4 py-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]";
@@ -196,11 +196,9 @@ export function YourThread({
     action = "Check my answer";
   }
   return (
-    <div className="mb-8 border-l-2 border-[var(--color-accent)] py-1 pl-4">
-      <span className="mb-1 block font-body font-medium text-[0.82rem] text-[var(--color-accent)]">
-        Your question
-      </span>
-      <p className="m-0 font-body text-[0.95rem] leading-snug text-[var(--color-ink)]">
+    <div className="mb-10 rounded-xl border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] p-4 sm:p-5">
+      <span className="mb-1.5 block font-body text-[1.08rem] font-semibold text-[var(--color-ink)]">Your question</span>
+      <p className="m-0 font-body text-[1.08rem] leading-snug text-[var(--color-ink)]">
         {line}
         {action && (
           <>
@@ -278,30 +276,34 @@ export function PolicyBenchContent() {
   const zeroShare = percent(POLICYBENCH.saidZero, POLICYBENCH.eligibleAnswers);
   const az = POLICYBENCH.azCase;
   return (
-    <div className="flex flex-col gap-5">
-      <Card className="flex flex-col gap-2 border-l-4 border-l-[var(--color-error)] p-5">
-        <span className="font-display text-[3.6rem] font-light leading-none tabular-nums text-[var(--color-error)]">
-          {zeroShare}%
-        </span>
-        <p className="m-0 font-body text-[1.08rem] leading-snug text-[var(--color-ink)]">
-          of AI answers told a family that qualifies for SNAP they&apos;d get <strong>$0</strong>.
-        </p>
-        <p className="m-0 font-body text-[0.88rem] text-[var(--color-ink-muted)]">
-          {POLICYBENCH.saidZero} of {POLICYBENCH.eligibleAnswers} answers, from {POLICYBENCH.models} models.
-        </p>
-      </Card>
-      <Card className="flex flex-col gap-3 p-5">
-        <p className="m-0 font-body text-[1.05rem] font-medium text-[var(--color-ink)]">One Arizona household</p>
-        <p className="m-0 font-body text-[1rem] leading-relaxed text-[var(--color-ink-secondary)]">{az.description}</p>
-        <p className="m-0 font-body text-[1rem] leading-relaxed text-[var(--color-error)]">
-          {az.modelsSaidZero === az.modelsAsked ? `All ${az.modelsAsked}` : `${az.modelsSaidZero} of ${az.modelsAsked}`} AI models
-          said $0.
-        </p>
-        <p className="m-0 font-body text-[1rem] leading-relaxed">
-          <strong className="text-[var(--color-accent)]">The rules: eligible, $24 a month.</strong>
-        </p>
-      </Card>
-      <p className="m-0 font-body text-[0.8rem] text-[var(--color-ink-muted)]">
+    <div className="flex flex-col gap-8">
+      <BlockHeading>Across {POLICYBENCH.models} AI models</BlockHeading>
+      <Part n={1} title="Families who qualify, told $0">
+        <Card className="flex flex-col gap-2 border-l-4 border-l-[var(--color-error)] p-5">
+          <span className="font-display text-[3.6rem] font-light leading-none tabular-nums text-[var(--color-error)]">
+            {zeroShare}%
+          </span>
+          <p className="m-0 font-body text-[1.15rem] leading-snug text-[var(--color-ink)]">
+            of AI answers told a family that qualifies for SNAP they&apos;d get <strong>$0</strong>.
+          </p>
+          <p className="m-0 font-body text-[1.02rem] text-[var(--color-ink)]">
+            {POLICYBENCH.saidZero} of {POLICYBENCH.eligibleAnswers} answers, from {POLICYBENCH.models} models.
+          </p>
+        </Card>
+      </Part>
+      <Part n={2} title="One Arizona household">
+        <Card className="flex flex-col gap-3 p-5">
+          <p className="m-0 font-body text-[1.08rem] leading-relaxed text-[var(--color-ink)]">{az.description}</p>
+          <p className="m-0 font-body text-[1.08rem] font-semibold leading-relaxed text-[var(--color-error)]">
+            {az.modelsSaidZero === az.modelsAsked ? `All ${az.modelsAsked}` : `${az.modelsSaidZero} of ${az.modelsAsked}`} AI
+            models said $0.
+          </p>
+          <p className="m-0 font-body text-[1.08rem] leading-relaxed">
+            <strong className="text-[var(--color-accent)]">The rules: eligible, $24 a month.</strong>
+          </p>
+        </Card>
+      </Part>
+      <p className="m-0 font-body text-[0.95rem] text-[var(--color-ink)]">
         PolicyBench, {POLICYBENCH.snapshot}. Models answered without tools.{" "}
         <a className="aspen-link" href={POLICYBENCH.url} target="_blank" rel="noopener noreferrer">
           policybench.org

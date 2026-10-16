@@ -465,7 +465,12 @@ describe("PolicyBenchContent", () => {
     render(<PolicyBenchContent />);
     expect(screen.getByText("42%")).toBeInTheDocument();
     expect(screen.getByText("268 of 643 answers, from 50 models.")).toBeInTheDocument();
-    expect(screen.getByText("One Arizona household")).toBeInTheDocument();
+    // The same shape as What we saw: a block heading, then numbered parts.
+    expect(screen.getByRole("heading", { level: 2, name: "Across 50 AI models" })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([
+      "1Families who qualify, told $0",
+      "2One Arizona household",
+    ]);
     expect(screen.getByText("All 50 AI models said $0.")).toBeInTheDocument();
     expect(screen.getByText("The rules: eligible, $24 a month.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "policybench.org" })).toHaveAttribute("href", "https://policybench.org");

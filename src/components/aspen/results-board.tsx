@@ -1,7 +1,7 @@
 import type { Count, RunSummary, ScaleSummary } from "@/lib/aspen/results";
 import { SOURCE_OF_TRUTH } from "@/lib/aspen/content";
 import { formatValue } from "./client";
-import { Bars, Card, Prompt, STEP_NUMBER, Stat } from "./ui";
+import { Bars, BlockHeading, Card, Part, Prompt, Stat } from "./ui";
 
 /** The room's results: counts, the framed reveal and the scale averages. */
 
@@ -89,30 +89,9 @@ export function SourceOfTruthCard({ counts }: { counts: Count[] }) {
   );
 }
 
-/**
- * One numbered part of the reveal: a bold heading with its number, and a
- * line above it so parts stay apart. The presenter asks the room out loud,
- * so the phone carries no discussion prompts.
- */
-function Section({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
-  return (
-    <section className="flex flex-col gap-4 border-t border-[var(--color-rule)] pt-8">
-      <div className="flex flex-col gap-3">
-        <h3 className="m-0 flex items-start gap-2.5 font-body text-[1.25rem] font-semibold leading-snug text-[var(--color-ink)]">
-          <span aria-hidden className={STEP_NUMBER}>
-            {n}
-          </span>
-          <span className="pt-0.5">{title}</span>
-        </h3>
-      </div>
-      {children}
-    </section>
-  );
-}
-
 /** Heads the room's results, after what this person contributed. */
 function RoomHeading() {
-  return <h2 className="m-0 font-body text-[1.4rem] font-semibold text-[var(--color-ink)]">Across the room</h2>;
+  return <BlockHeading>Across the room</BlockHeading>;
 }
 
 /** A label inside a results panel: bold, so each panel says what it shows. */
@@ -362,22 +341,22 @@ export function ResultsBoard({ summary }: { summary: RunSummary }) {
         <ResultsCounts summary={summary} />
       </div>
       {summary.rated > 0 && (
-        <Section n={n(0)} title="Could a resident act on these answers?">
+        <Part n={n(0)} title="Could a resident act on these answers?">
           <ViabilityPanel summary={summary} />
-        </Section>
+        </Part>
       )}
       {summary.rated > 0 && (
-        <Section n={n(1)} title="Where the answers broke down">
+        <Part n={n(1)} title="Where the answers broke down">
           <BreakdownPanel summary={summary} />
-        </Section>
+        </Part>
       )}
       {summary.spotlight.length > 0 && (
-        <Section n={n(2)} title="Answers worth discussing">
+        <Part n={n(2)} title="Answers worth discussing">
           <SpotlightList summary={summary} />
-        </Section>
+        </Part>
       )}
       {(scales.length > 0 || any(summary.wentWell) || any(summary.sourceOfTruth)) && (
-        <Section n={n(3)} title="How it felt">
+        <Part n={n(3)} title="How it felt">
           <div className="grid gap-4 lg:grid-cols-2">
             {scales.map((sc) => (
               <ScaleCard key={sc.question} scale={sc} />
@@ -390,10 +369,10 @@ export function ResultsBoard({ summary }: { summary: RunSummary }) {
               </Card>
             )}
           </div>
-        </Section>
+        </Part>
       )}
       {summary.voices.length > 0 && (
-        <Section n={n(4)} title="In their words">
+        <Part n={n(4)} title="In their words">
           <ul className="m-0 grid list-none gap-3 p-0 sm:grid-cols-2 lg:grid-cols-3">
             {summary.voices.map((v, i) => (
               <li
@@ -406,7 +385,7 @@ export function ResultsBoard({ summary }: { summary: RunSummary }) {
               </li>
             ))}
           </ul>
-        </Section>
+        </Part>
       )}
     </div>
   );
