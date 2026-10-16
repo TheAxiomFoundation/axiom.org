@@ -478,6 +478,27 @@ describe("PolicyBenchContent", () => {
 });
 
 describe("FoundationContent and GoldenContent", () => {
+  it("lays the idea out as numbered parts, with the room's answer first once there is one", () => {
+    const { unmount } = render(<FoundationContent />);
+    expect(screen.getByRole("heading", { level: 2, name: "One open, validated set of rules" })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([
+      "1What you can check",
+      "2What it powers",
+      `3${BUILD_HEADING}`,
+    ]);
+    unmount();
+    render(
+      <FoundationContent
+        sourceOfTruth={[
+          { id: "yes", label: "Yes", count: 1 },
+          { id: "partly", label: "Partly", count: 2 },
+          { id: "no", label: "No", count: 0 },
+        ]}
+      />,
+    );
+    expect(screen.getAllByRole("heading", { level: 3 })[0].textContent).toBe("1Checking answers in this room");
+  });
+
   it("shows one set of rules powering every use, worded as on the slide", () => {
     render(<FoundationContent />);
     expect(screen.getByText("One open, validated set of rules")).toBeInTheDocument();

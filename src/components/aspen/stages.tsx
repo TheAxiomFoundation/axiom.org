@@ -317,52 +317,50 @@ export function PolicyBenchContent() {
 // A shared foundation
 // ---------------------------------------------------------------------------
 
+/**
+ * Shared foundation on a phone, in What we saw's shape: a block heading for
+ * the idea, then numbered parts (what you can check, what it powers, how it
+ * gets built), with the room's own answer first once people have given one.
+ */
 export function FoundationContent({ sourceOfTruth }: { sourceOfTruth?: Count[] }) {
   const asked = sourceOfTruth?.some((c) => c.count > 0) ?? false;
+  let n = 0;
   return (
     <div className="flex flex-col gap-8">
+      <BlockHeading>One open, validated set of rules</BlockHeading>
       {asked && sourceOfTruth && (
-        <div className="max-w-[760px]">
+        <Part n={++n} title="Checking answers in this room">
           <SourceOfTruthCard counts={sourceOfTruth} />
-        </div>
+        </Part>
       )}
-      <div className="grid items-stretch gap-3 md:grid-cols-[1fr_auto_1.4fr]">
-        <div className="flex flex-col justify-center gap-2 rounded-lg bg-[var(--color-ink)] p-5 text-white">
-          <span className="font-display text-[1.45rem] font-light leading-tight">
-            One open, validated set of rules
-          </span>
-          <ul className="m-0 flex list-none flex-col gap-1.5 p-0 font-body text-[0.86rem] leading-snug text-white/80">
-            {FOUNDATION_TRAITS.map((trait) => (
-              <li key={trait} className="flex gap-2">
-                <Check aria-hidden size={15} strokeWidth={2.25} className="mt-[3px] shrink-0 text-[#e8a25c]" />
-                {trait}
-              </li>
-            ))}
-          </ul>
-        </div>
-        <span aria-hidden className="hidden self-center font-display text-[2rem] text-[var(--color-accent)] md:block">
-          →
-        </span>
-        <ul className="m-0 grid list-none grid-cols-2 gap-1.5 p-0 lg:grid-cols-3">
+      <Part n={++n} title="What you can check">
+        <ul className="m-0 flex list-none flex-col gap-3 rounded-xl bg-[var(--color-ink)] p-5 font-body text-[1.08rem] leading-snug text-white">
+          {FOUNDATION_TRAITS.map((trait) => (
+            <li key={trait} className="flex gap-2.5">
+              <Check aria-hidden size={20} strokeWidth={2.25} className="mt-[2px] shrink-0 text-[#e8a25c]" />
+              {trait}
+            </li>
+          ))}
+        </ul>
+      </Part>
+      <Part n={++n} title="What it powers">
+        <ul className="m-0 grid list-none grid-cols-2 gap-2 p-0 lg:grid-cols-3">
           {ONE_SET_OF_RULES.map((use) => (
             <li
               key={use.label}
-              className="rounded-md border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-3.5 py-2.5 font-body text-[1rem] font-medium text-[var(--color-ink)]"
+              className="rounded-lg border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-3.5 py-3 font-body text-[1.08rem] font-medium leading-snug text-[var(--color-ink)]"
             >
               {use.label}
             </li>
           ))}
         </ul>
-      </div>
-
-      <p className="m-0 max-w-[680px] border-t border-[var(--color-rule)] pt-4 font-body text-[1.05rem] font-medium leading-snug text-[var(--color-ink)]">
-        {ONE_SET_STATEMENT.text} <span className="text-[var(--color-accent)]">{ONE_SET_STATEMENT.accent}</span>
-      </p>
-
-      <section>
-        <h2 className="heading-sub m-0 mb-4">{BUILD_HEADING}</h2>
+        <p className="m-0 max-w-[680px] font-body text-[1.15rem] font-medium leading-snug text-[var(--color-ink)]">
+          {ONE_SET_STATEMENT.text} <span className="text-[var(--color-accent)]">{ONE_SET_STATEMENT.accent}</span>
+        </p>
+      </Part>
+      <Part n={++n} title={BUILD_HEADING}>
         <GoldenContent />
-      </section>
+      </Part>
     </div>
   );
 }
@@ -381,23 +379,23 @@ export function GoldenContent() {
           <summary className="flex cursor-pointer list-none items-center gap-3 p-4 [&::-webkit-details-marker]:hidden">
             <TierMedal medal={tier.medal} size={40} />
             <span className="min-w-0 flex-1">
-              <span className="block font-body text-[0.82rem] font-medium text-[var(--color-ink-muted)]">{tier.tier}</span>
-              <span className="block font-body text-[1.05rem] font-medium leading-snug text-[var(--color-ink)]">{tier.name}</span>
+              <span className="block font-body text-[0.95rem] font-medium text-[var(--color-ink-muted)]">{tier.tier}</span>
+              <span className="block font-body text-[1.12rem] font-semibold leading-snug text-[var(--color-ink)]">{tier.name}</span>
             </span>
             <svg aria-hidden viewBox="0 0 12 12" className="h-4 w-4 shrink-0 text-[var(--color-ink-muted)] transition-transform group-open:rotate-180">
               <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
           </summary>
           <div className="flex flex-col gap-2 px-4 pb-4">
-            <p className="m-0 font-body text-[0.98rem] leading-relaxed text-[var(--color-ink)]">{tier.gets}</p>
-            {"goal" in tier && <p className="m-0 font-body text-[0.98rem] leading-relaxed text-[var(--color-ink)]">{tier.goal}</p>}
+            <p className="m-0 font-body text-[1.05rem] leading-relaxed text-[var(--color-ink)]">{tier.gets}</p>
+            {"goal" in tier && <p className="m-0 font-body text-[1.05rem] leading-relaxed text-[var(--color-ink)]">{tier.goal}</p>}
             {"programs" in tier && (
-              <p className="m-0 font-body text-[0.92rem] leading-relaxed text-[var(--color-ink-secondary)]">
+              <p className="m-0 font-body text-[1.02rem] leading-relaxed text-[var(--color-ink-secondary)]">
                 {(tier.programs as readonly string[]).join(" · ")}
               </p>
             )}
-            <p className="m-0 font-body text-[0.92rem] leading-relaxed text-[var(--color-ink-secondary)]">
-              <span className="font-medium text-[var(--color-ink)]">Takes:</span> {tier.takes}
+            <p className="m-0 font-body text-[1.02rem] leading-relaxed text-[var(--color-ink-secondary)]">
+              <span className="font-semibold text-[var(--color-ink)]">Takes:</span> {tier.takes}
             </p>
           </div>
         </details>
