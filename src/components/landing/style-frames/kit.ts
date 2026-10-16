@@ -902,6 +902,22 @@ export function keepAspect(c: THREE.Vector3[], aspect: number): THREE.Vector3[] 
   return [tl.clone(), tl.clone().addScaledVector(dir, w), bl.clone(), bl.clone().addScaledVector(dir, w)];
 }
 
+let feather: THREE.Texture | null = null;
+function featherTex() {
+  feather ??= canvasTexture(256, 256, (g) => {
+    const img = g.createImageData(256, 256);
+    const edge = (v: number) => Math.min(1, Math.min(v, 1 - v) / 0.08);
+    for (let y = 0; y < 256; y++)
+      for (let x = 0; x < 256; x++) {
+        const a = Math.round(255 * edge((x + 0.5) / 256) * edge((y + 0.5) / 256));
+        img.data.set([a, a, a, 255], (y * 256 + x) * 4);
+      }
+    g.putImageData(img, 0, 0);
+  });
+  feather.colorSpace = THREE.NoColorSpace;
+  return feather;
+}
+
 export class QuadMorph {
   readonly fly: THREE.Mesh;
   private from: THREE.Vector3[] | null = null;
@@ -920,9 +936,14 @@ export class QuadMorph {
     const v = (y: number) => y / h + 0.5;
     geo.setAttribute("uv", new THREE.Float32BufferAttribute([u(r.x0), v(r.y1), u(r.x1), v(r.y1), u(r.x0), v(r.y0), u(r.x1), v(r.y0)], 2));
     geo.setIndex([0, 2, 1, 2, 3, 1]);
+    // a second set of coordinates, 0..1 over the strip, for its soft edges
+    geo.setAttribute("uv1", new THREE.Float32BufferAttribute([0, 1, 1, 1, 0, 0, 1, 0], 2));
     const mat = (src.material as THREE.MeshBasicMaterial).clone();
     mat.transparent = true;
     mat.side = THREE.DoubleSide;
+    // feathered on all four sides: no hard box edge while it flies
+    mat.alphaMap = featherTex();
+    mat.alphaMap.channel = 1;
     // in flight it passes in front of everything else in the scene
     mat.depthTest = false;
     mat.depthWrite = false;

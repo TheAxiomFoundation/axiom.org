@@ -374,6 +374,9 @@ const RULE_ROWS = (() => {
 })();
 
 const CARD_W = 1500;
+// the rows' band, across a card or the code page, inside the border (px)
+const ROWS_X0 = 40;
+const ROWS_X1 = 1460;
 const CARD_TOP = 150; // the first row's baseline on a card
 const CARD_H = CARD_TOP + RULE_ROWS.length * CODE_LH + 110;
 function draftFace(state: "pass" | "fail" | "drafting") {
@@ -406,7 +409,8 @@ function draftFace(state: "pass" | "fail" | "drafting") {
 function cardRowsRect(wl: number, hl: number) {
   const py0 = CARD_TOP - 36;
   const py1 = CARD_TOP + (RULE_ROWS.length - 1) * CODE_LH + 12;
-  return { x0: -wl / 2, x1: wl / 2, y0: (0.5 - py1 / CARD_H) * hl, y1: (0.5 - py0 / CARD_H) * hl };
+  // inside the card's border, on both sides
+  return { x0: (ROWS_X0 / CARD_W - 0.5) * wl, x1: (ROWS_X1 / CARD_W - 0.5) * wl, y0: (0.5 - py1 / CARD_H) * hl, y1: (0.5 - py0 / CARD_H) * hl };
 }
 
 // the encode view and its sentence: the opening shot ends on the same
@@ -1014,7 +1018,7 @@ export function lamplightBeat4(ctx: BeatCtx): BeatSpec {
   fadeOut = new SceneFade([scene, fx], (m) => strips.some((st) => st.fly.fly.material === m));
   // where the encoded rule's lines (13–27) sit on the code page: the same
   // band, row for row, as on the encode cards
-  const ruleRect = { x0: pxX(0), x1: pxX(cf.w), y0: pxY((cf.lines.get(27) ?? 0) + 12), y1: pxY((cf.lines.get(13) ?? 0) - 36) };
+  const ruleRect = { x0: pxX(ROWS_X0), x1: pxX(ROWS_X1), y0: pxY((cf.lines.get(27) ?? 0) + 12), y1: pxY((cf.lines.get(13) ?? 0) - 36) };
   return { camera, look, update, cutIn: () => {}, cutOut, parts: { right, ruleRect } };
 
 }
