@@ -466,7 +466,9 @@ describe("PolicyBenchContent", () => {
       "2One Arizona household",
     ]);
     expect(screen.getByText("All 50 AI models said $0.")).toBeInTheDocument();
-    expect(screen.getByText("The rules: eligible, $24 a month.")).toBeInTheDocument();
+    expect(screen.getByText("PolicyEngine's reference in PolicyBench, under FY2026 standards: $24 a month.").parentElement).toHaveTextContent(
+      "PolicyEngine's reference in PolicyBench, under FY2026 standards: $24 a month. The minimum benefit rose to $25 on October 1, 2026.",
+    );
     expect(screen.getByRole("link", { name: "policybench.org" })).toHaveAttribute("href", "https://policybench.org");
   });
 });

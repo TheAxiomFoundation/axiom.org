@@ -1,5 +1,19 @@
-import { EMPTY_SUMMARY, breakdownOf, countBy, plainText, rank, summarizeRun, summarizeScales, viabilityOf } from './results'
-import type { RunData } from './types'
+import fc from 'fast-check'
+import {
+  EMPTY_SUMMARY,
+  breakdownOf,
+  countBy,
+  plainText,
+  ifEligibleSentence,
+  rank,
+  rulesIfEligible,
+  rulesProgramId,
+  summarizeRun,
+  summarizeScales,
+  viabilityOf,
+} from './results'
+import { ELIGIBILITY_NOT_TESTED } from './coverage'
+import type { PromptRow, RunData } from './types'
 
 const base = { run_id: 'r', conversation_id: 'c', participant_id: 'p' }
 
@@ -192,6 +206,86 @@ describe('aspen results', () => {
       ['call', 1],
       ['unsure', 0],
     ])
+  })
+
+  it('reads the program a saved rules check ran on', () => {
+    // The run select's alias first (store.ts RUN_PROMPT_SELECT), whole saved computations second.
+    expect(rulesProgramId({ rules_program_id: 'us-az-snap', rules_outputs: [{ program: 'us-ny-snap' }] })).toBe('us-az-snap')
+    expect(rulesProgramId({ rules_outputs: [{ program: 'us-az-snap' }, { program: 'us-ny-snap' }] })).toBe('us-az-snap')
+    for (const rules_outputs of [undefined, null, [], ['junk'], [null], [{ program: 7 }], [{}], { program: 'us-az-snap' }]) {
+      expect(rulesProgramId({ rules_outputs })).toBeNull()
+    }
+  })
+
+  it('reads a saved check the way the panel showed it', () => {
+    // The verdict saved with the check wins over today's list.
+    expect(rulesIfEligible({ rules_eligibility_tested: false, rules_program_id: 'us-ny-snap' })).toBe(true)
+    expect(rulesIfEligible({ rules_eligibility_tested: true, rules_program_id: 'us-az-snap' })).toBe(false)
+    expect(rulesIfEligible({ rules_outputs: [{ program: 'us-az-snap', eligibilityTested: true }] })).toBe(false)
+    // A check saved before the verdict was: its program decides.
+    expect(rulesIfEligible({ rules_eligibility_tested: null, rules_program_id: 'us-az-snap' })).toBe(true)
+    expect(rulesIfEligible({ rules_outputs: [{ program: 'us-az-snap' }] })).toBe(true)
+    expect(rulesIfEligible({ rules_program_id: 'us-ny-snap' })).toBe(false)
+    // Nothing known about the check: no known limit.
+    expect(rulesIfEligible({ rules_outputs: null })).toBe(false)
+  })
+
+  it('does not count an amount from rules that skip eligibility as a household that qualifies', () => {
+    const p = (id: string, program: string | null, rules_amount: number) => ({
+      ...base,
+      id,
+      turn: 0,
+      prompt: 'q',
+      verdict: 'wrong',
+      resident_action: 'not-apply',
+      rules_amount,
+      rules_program_id: program,
+      rules_eligibility_tested: program === null ? null : !ELIGIBILITY_NOT_TESTED.includes(program),
+    })
+    const v = viabilityOf([p('az', 'us-az-snap', 24), p('ny', 'us-ny-snap', 300), p('old', null, 50), p('az0', 'us-az-snap', 0)])
+    expect(v).toMatchObject({ wouldNotApply: 4, wouldNotApplyEligible: 2, wouldNotApplyIfEligible: 1 })
+    const feed = summarizeRun({ ...DATA, prompts: [{ ...p('az', 'us-az-snap', 24), answer: 'No.' }, { ...p('ny', 'us-ny-snap', 300), answer: 'No.' }] }).feed
+    expect(feed.map((f) => [f.id, f.rulesAmount, f.rulesIfEligible])).toEqual(
+      expect.arrayContaining([
+        ['az', 24, true],
+        ['ny', 300, false],
+      ]),
+    )
+  })
+
+  it('splits every not-apply answer with a rules amount into qualifies or if-eligible, never both', () => {
+    const row = fc.record({
+      resident_action: fc.constantFrom('not-apply', 'apply', 'call', null),
+      rules_amount: fc.option(fc.integer({ min: -5, max: 500 }), { nil: undefined }),
+      rules_program_id: fc.constantFrom(null, ...ELIGIBILITY_NOT_TESTED, 'us-ny-snap', 'us-co-snap'),
+      rules_eligibility_tested: fc.constantFrom(null, true, false),
+    })
+    fc.assert(
+      fc.property(fc.array(row, { maxLength: 12 }), (rows) => {
+        const prompts = rows.map((r, i) => ({ ...base, id: String(i), turn: 0, prompt: 'q', verdict: 'wrong', ...r }) as PromptRow)
+        const v = viabilityOf(prompts)
+        const withAmount = prompts.filter(
+          (p) => p.resident_action === 'not-apply' && typeof p.rules_amount === 'number' && p.rules_amount > 0,
+        )
+        const ifEligible = (p: PromptRow) =>
+          typeof p.rules_eligibility_tested === 'boolean'
+            ? !p.rules_eligibility_tested
+            : ELIGIBILITY_NOT_TESTED.includes(p.rules_program_id ?? '')
+        expect(v.wouldNotApplyEligible + v.wouldNotApplyIfEligible).toBe(withAmount.length)
+        expect(v.wouldNotApplyIfEligible).toBe(withAmount.filter(ifEligible).length)
+        expect(v.wouldNotApplyEligible + v.wouldNotApplyIfEligible).toBeLessThanOrEqual(v.wouldNotApply)
+      }),
+    )
+  })
+
+  it('says how many more got an amount from rules that skip eligibility', () => {
+    expect(ifEligibleSentence({ wouldNotApplyEligible: 0, wouldNotApplyIfEligible: 0 }, 'of those')).toBeNull()
+    expect(ifEligibleSentence({ wouldNotApplyEligible: 0, wouldNotApplyIfEligible: 1 }, 'of those')).toBe(
+      "For 1 of those, the rules give an amount but don't test eligibility yet.",
+    )
+    expect(ifEligibleSentence({ wouldNotApplyEligible: 2, wouldNotApplyIfEligible: 3 }, 'of them')).toBe(
+      "For 3 more, the rules give an amount but don't test eligibility yet.",
+    )
   })
 
   it('keeps what else each group raised, also from a group that shared no idea', () => {

@@ -42,7 +42,7 @@ import {
   type StageId,
 } from "@/lib/aspen/content";
 import type { Control } from "@/lib/aspen/types";
-import { EMPTY_SUMMARY, type Count, type RunSummary, type ScaleSummary } from "@/lib/aspen/results";
+import { EMPTY_SUMMARY, ifEligibleSentence, type Count, type RunSummary, type ScaleSummary } from "@/lib/aspen/results";
 import { postJson, useControl, useResults } from "./client";
 import { BAD, GOOD, MAYBE } from "./results-board";
 import { BUTTON_QUIET, FIELD } from "./ui";
@@ -651,6 +651,20 @@ function RatingSlide({
   );
 }
 
+/**
+ * "would stop a resident from applying. 2 of them qualify." An amount from
+ * rules that don't test eligibility counts apart (ifEligibleSentence).
+ */
+export function notApplyLabel(v: Pick<RunSummary["viability"], "wouldNotApplyEligible" | "wouldNotApplyIfEligible">): string {
+  const parts: string[] = [];
+  if (v.wouldNotApplyEligible > 0) {
+    parts.push(`${v.wouldNotApplyEligible} of them ${v.wouldNotApplyEligible === 1 ? "qualifies" : "qualify"}.`);
+  }
+  const ifEligible = ifEligibleSentence(v, "of them");
+  if (ifEligible) parts.push(ifEligible);
+  return parts.length ? `would stop a resident from applying. ${parts.join(" ")}` : "would stop a resident from applying";
+}
+
 function RevealSlide({ summary }: { summary: RunSummary }) {
   const v = summary.viability;
   if (v.rated === 0) {
@@ -674,11 +688,7 @@ function RevealSlide({ summary }: { summary: RunSummary }) {
           <BigStat
             size={76}
             value={v.wouldNotApply}
-            label={
-              v.wouldNotApplyEligible > 0
-                ? `would stop a resident from applying. ${v.wouldNotApplyEligible} of them qualify.`
-                : "would stop a resident from applying"
-            }
+            label={notApplyLabel(v)}
             tone={v.wouldNotApply > 0 ? "bad" : "ink"}
           />
         </Panel>
@@ -748,6 +758,17 @@ function BenchFooter({ source }: { source: string }) {
   );
 }
 
+/** The annual Arizona reference uses FY2026's monthly minimum, including October to December. */
+function ArizonaStandardsNote() {
+  const az = POLICYBENCH.azCase;
+  return (
+    <p className="m-0 font-body text-[18px] leading-snug text-[var(--color-ink-secondary)]">
+      ${az.reference.monthly} a month under {az.reference.standards} standards (PolicyEngine&apos;s reference in PolicyBench).{" "}
+      The minimum benefit rose to ${az.fromOctober.monthly} on {az.fromOctober.effective}.
+    </p>
+  );
+}
+
 /** At scale, slide 2 (Max's Nava deck): accuracy by program, owed money against owed $0. */
 function BreakSlide() {
   const b = WHERE_MODELS_BREAK;
@@ -810,9 +831,10 @@ function HouseholdSlide() {
         <Panel className="flex flex-col gap-[18px]">
           <Label className="mb-0">{h.program}</Label>
           <div className="grid grid-cols-2 gap-[24px]">
-            <BigStat value={`$${h.reference}`} label="PolicyEngine's reference" tone="accent" />
+            <BigStat value={`$${h.reference}`} label="PolicyEngine's reference in PolicyBench" tone="accent" />
             <BigStat value="$0" label={`from all ${h.models} AI models`} tone="bad" />
           </div>
+          <ArizonaStandardsNote />
           <div aria-label={`${h.models} model answers, all $0`} className="grid grid-cols-12 gap-[6px]">
             {Array.from({ length: h.models }, (_, i) => (
               <span
@@ -880,6 +902,7 @@ function MissSlide() {
           <div className="mt-auto pt-[8px]">
             <BigStat value={`$${m.amount}`} label={m.amountLabel} tone="accent" size={80} />
           </div>
+          <ArizonaStandardsNote />
         </Panel>
       </div>
       <BenchFooter source={m.sources} />

@@ -190,9 +190,39 @@ describe("ResultsBoard", () => {
     render(<ResultsBoard summary={harmful} />);
     expect(screen.getByText("What would a resident do next?")).toBeInTheDocument();
     const card = screen.getByText("Would not apply").parentElement as HTMLElement;
-    expect(card).toHaveTextContent("1answers would lead a resident not to apply. 1 of those households qualify under the encoded rules.");
+    expect(card).toHaveTextContent("1answer would lead a resident not to apply. 1 of those households qualifies under the encoded rules.");
     expect(screen.getByText("Rules the room says people misread")).toBeInTheDocument();
     expect(screen.getByTitle("Asset tests")).toBeInTheDocument();
+  });
+
+  it("keeps an amount from rules that don't test eligibility apart from households that qualify", () => {
+    const arizona = summarizeRun({
+      ...DATA,
+      prompts: [
+        { ...DATA.prompts[0], resident_action: "not-apply", rules_program_id: "us-az-snap", rules_eligibility_tested: false },
+        { ...DATA.prompts[1], resident_action: "apply" },
+      ],
+    });
+    render(<ResultsBoard summary={arizona} />);
+    const card = screen.getByText("Would not apply").parentElement as HTMLElement;
+    expect(card).toHaveTextContent(
+      "1answer would lead a resident not to apply. For 1 of those, the rules give an amount but don't test eligibility yet.",
+    );
+    expect(card).not.toHaveTextContent("qualify under the encoded rules");
+    const spotlight = within(screen.getByRole("heading", { name: "Answers worth discussing" }).closest("section") as HTMLElement);
+    expect(spotlight.getByText("$24").parentElement).toHaveTextContent("· The rules say $24 if eligible");
+    expect(spotlight.getByText(/PolicyBench's Arizona reference/)).toHaveTextContent(
+      "PolicyBench's Arizona reference: $24 a month under FY2026 standards. The minimum benefit rose to $25 on October 1, 2026.",
+    );
+  });
+
+  it("keeps the Arizona reference out of other programs' $24 checks", () => {
+    render(<ResultsBoard summary={summarizeRun({
+      ...DATA,
+      prompts: [{ ...DATA.prompts[0], household_id: "ny-parent", rules_program: "New York SNAP" }],
+    })} />);
+    expect(screen.getByText("$24")).toBeInTheDocument();
+    expect(screen.queryByText(/PolicyBench's Arizona reference/)).not.toBeInTheDocument();
   });
 
   it("shows the source-of-truth answers under how it felt", () => {

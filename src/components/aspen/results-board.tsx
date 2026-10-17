@@ -1,5 +1,5 @@
-import type { Count, RunSummary, ScaleSummary } from "@/lib/aspen/results";
-import { SOURCE_OF_TRUTH } from "@/lib/aspen/content";
+import { ifEligibleSentence, type Count, type RunSummary, type ScaleSummary } from "@/lib/aspen/results";
+import { findHousehold, POLICYBENCH, SOURCE_OF_TRUTH } from "@/lib/aspen/content";
 import { formatValue } from "./client";
 import { Bars, BlockHeading, Card, Part, Prompt, Stat } from "./ui";
 
@@ -134,6 +134,7 @@ export const MAYBE = "var(--color-rule-strong)";
 function ViabilityPanel({ summary }: { summary: RunSummary }) {
   const v = summary.viability;
   const act = v.wouldAct + v.maybe;
+  const ifEligible = ifEligibleSentence(v, "of those");
   return (
     <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
       <Card className="flex flex-col gap-5 p-5">
@@ -190,9 +191,10 @@ function ViabilityPanel({ summary }: { summary: RunSummary }) {
               {v.wouldNotApply}
             </span>
             <p className="m-0 font-body text-[1.02rem] leading-relaxed text-[var(--color-ink-secondary)]">
-              answers would lead a resident not to apply.
+              {v.wouldNotApply === 1 ? "answer" : "answers"} would lead a resident not to apply.
               {v.wouldNotApplyEligible > 0 &&
-                ` ${v.wouldNotApplyEligible} of those households qualify under the encoded rules.`}
+                ` ${v.wouldNotApplyEligible} of those households ${v.wouldNotApplyEligible === 1 ? "qualifies" : "qualify"} under the encoded rules.`}
+              {ifEligible && ` ${ifEligible}`}
             </p>
           </Card>
         )}
@@ -294,9 +296,18 @@ function SpotlightList({ summary }: { summary: RunSummary }) {
                   <span className="text-[var(--color-ink-secondary)]">
                     {" "}
                     · The rules say <strong className="text-[var(--color-accent)]">{formatValue(item.rulesAmount, "USD")}</strong>
+                    {item.rulesIfEligible && " if eligible"}
                   </span>
                 )}
               </span>
+              {item.rulesAmount === POLICYBENCH.azCase.reference.monthly &&
+                (item.rulesProgram === "Arizona SNAP" || item.household === findHousehold("az-savings")?.label) && (
+                  <p className="m-0 font-body text-[0.8rem] leading-relaxed text-[var(--color-ink-secondary)]">
+                    PolicyBench&apos;s Arizona reference: ${POLICYBENCH.azCase.reference.monthly} a month under{" "}
+                    {POLICYBENCH.azCase.reference.standards} standards. The minimum benefit rose to ${POLICYBENCH.azCase.fromOctober.monthly}{" "}
+                    on {POLICYBENCH.azCase.fromOctober.effective}.
+                  </p>
+                )}
               {item.wentWrong.length > 0 && (
                 <span className="font-body text-[0.95rem] text-[var(--color-error)]">{item.wentWrong.join(" · ")}</span>
               )}

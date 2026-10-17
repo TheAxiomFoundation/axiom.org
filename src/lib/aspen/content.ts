@@ -203,7 +203,7 @@ export interface Household {
   firstPerson: string;
   /** A caseworker describing the household. */
   thirdPerson: string;
-  /** Why this household is on the list (shown to presenters only). */
+  /** Why this household is on the list, for presenters (no component shows it yet). */
   why: string;
   /** The resident speaks as "we", not "I". */
   plural?: boolean;
@@ -234,7 +234,7 @@ export const HOUSEHOLDS: readonly Household[] = [
       "I live in Phoenix, Arizona. I'm 80, I have a disability and I live alone. I get $1,978 a month from Social Security and $560 a month from a private pension. I have $58,700 in the bank.",
     thirdPerson:
       "an 80-year-old in Phoenix, Arizona with a disability who lives alone, gets $1,978 a month from Social Security and $560 a month from a pension, and has $58,700 in the bank",
-    why: "PolicyBench: all 46 models said $0. Arizona's expanded categorical eligibility drops the asset test, so the household qualifies.",
+    why: "PolicyBench: all 50 models said $0. Arizona's expanded categorical eligibility drops the asset test, so the household qualifies for the minimum benefit: $24 a month under FY2026 standards (PolicyBench's reference). The minimum benefit rose to $25 on October 1, 2026. Axiom's Arizona SNAP rules don't test eligibility yet, so the rules check shows the amount if eligible.",
   },
   {
     id: "ny-parent",
@@ -710,8 +710,26 @@ export const POLICYBENCH = {
     description: "Age 80, with a disability, living alone on $2,538 a month. $58,700 in savings.",
     modelsAsked: 50,
     modelsSaidZero: 50,
+    /**
+     * PolicyBench's reference: the FY2026 minimum benefit, $24 a month.
+     * Models were asked for the annual amount (policybench/prompts.py); the
+     * reference for 2026 is $240, $0 in January and February and $24 a month
+     * from March to December (PolicyEngine/policybench
+     * notes/data/snap_pathways_20260930.csv, scenario_013). It applied
+     * USDA's FY2026 standards to every month, October to December included
+     * ($24 minimum, $298 one-person maximum).
+     */
+    reference: { monthly: 24, standards: "FY2026" },
+    /**
+     * USDA's FY 2027 standards (October 1, 2026, to September 30, 2027):
+     * the minimum allotment for households of one or two in the 48 states
+     * and DC is $25 (https://www.fna.usda.gov/snap/allotment/cola). Under
+     * them the household's $2,538 is still below 200% of poverty ($2,660)
+     * and its computed benefit below the minimum.
+     */
+    fromOctober: { monthly: 25, standards: "FY2027", effective: "October 1, 2026" },
     answer:
-      "Eligible. Income is under Arizona's expanded categorical eligibility limit (200% of poverty), so there is no asset test, and the household gets the minimum benefit of $24 a month.",
+      "Eligible, per PolicyBench's reference. Income is under Arizona's expanded categorical eligibility limit (200% of poverty), so there is no asset test, and the household gets the minimum benefit: $24 a month under FY2026 standards. The minimum benefit rose to $25 on October 1, 2026. Axiom's Arizona SNAP rules don't test eligibility yet, so the rules check shows the amount if eligible.",
   },
 } as const;
 
@@ -775,7 +793,7 @@ export const WHAT_MODELS_MISS = {
   ruleLabel: "Broad-based categorical eligibility",
   rule: "Since March 2026, Arizona has extended SNAP's categorical eligibility to every household with gross income under 200% of the poverty line. A categorically eligible household skips SNAP's income and asset tests, and a household of one or two gets SNAP's minimum benefit.",
   amount: 240,
-  amountLabel: "PolicyEngine's reference SNAP for this household in 2026",
+  amountLabel: "PolicyEngine's reference in PolicyBench for this household in 2026",
   sources:
     "7 CFR 273.2(j)(2) · USDA FNS broad-based categorical eligibility chart, June 29, 2026 · PolicyBench, October 14, 2026",
 } as const;

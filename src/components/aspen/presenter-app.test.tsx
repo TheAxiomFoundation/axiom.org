@@ -22,7 +22,7 @@ import {
 } from "@/lib/aspen/content";
 import { EMPTY_SUMMARY, summarizeRun, type RunSummary } from "@/lib/aspen/results";
 import type { Control, RunData } from "@/lib/aspen/types";
-import { PresenterApp } from "./presenter-app";
+import { notApplyLabel, PresenterApp } from "./presenter-app";
 
 const DATA: RunData = {
   participants: [{ id: "a", run_id: "r1", perspective: "resident", state: "Arizona" }],
@@ -430,7 +430,7 @@ describe("PresenterApp stages", () => {
     await onStage("reveal");
     await waitFor(() => expect(screen.getByText("answers looked right").previousSibling).toHaveTextContent("0 of 1"));
     expect(screen.getByText("looked wrong, yet people would act on them").previousSibling).toHaveTextContent("1");
-    expect(screen.getByText("would stop a resident from applying. 1 of them qualify.").previousSibling).toHaveTextContent("1");
+    expect(screen.getByText("would stop a resident from applying. 1 of them qualifies.").previousSibling).toHaveTextContent("1");
     expect(screen.getByText("What would a resident do next?")).toBeInTheDocument();
     expect(screen.getByText("To discuss")).toBeInTheDocument();
     // The agency question has its own slide, so the list leaves it out.
@@ -438,6 +438,58 @@ describe("PresenterApp stages", () => {
       if (q.id === "experience") expect(screen.queryByText(q.label)).not.toBeInTheDocument();
       else expect(screen.getByText(q.label)).toBeInTheDocument();
     }
+  });
+
+  it("counts an amount from rules that don't test eligibility apart from households that qualify", () => {
+    expect(notApplyLabel({ wouldNotApplyEligible: 0, wouldNotApplyIfEligible: 0 })).toBe("would stop a resident from applying");
+    expect(notApplyLabel({ wouldNotApplyEligible: 2, wouldNotApplyIfEligible: 0 })).toBe(
+      "would stop a resident from applying. 2 of them qualify.",
+    );
+    expect(notApplyLabel({ wouldNotApplyEligible: 1, wouldNotApplyIfEligible: 0 })).toBe(
+      "would stop a resident from applying. 1 of them qualifies.",
+    );
+    expect(notApplyLabel({ wouldNotApplyEligible: 0, wouldNotApplyIfEligible: 1 })).toBe(
+      "would stop a resident from applying. For 1 of them, the rules give an amount but don't test eligibility yet.",
+    );
+    expect(notApplyLabel({ wouldNotApplyEligible: 2, wouldNotApplyIfEligible: 3 })).toBe(
+      "would stop a resident from applying. 2 of them qualify. For 3 more, the rules give an amount but don't test eligibility yet.",
+    );
+  });
+
+  it("keeps an Arizona rules amount conditional on eligibility in the reveal", async () => {
+    const harmful = summarizeRun({
+      ...DATA,
+      prompts: [{
+        ...DATA.prompts[0],
+        household_id: "az-savings",
+        rules_program: "Arizona SNAP",
+        rules_outputs: [{ program: "us-az-snap", eligibilityTested: false }],
+        resident_action: "not-apply",
+      }],
+    });
+    setup({ stage: "reveal", summary: harmful });
+    await onStage("reveal");
+    await waitFor(() => expect(screen.getByText(
+      "would stop a resident from applying. For 1 of them, the rules give an amount but don't test eligibility yet.",
+    ).previousSibling).toHaveTextContent("1"));
+    expect(screen.queryByText(/of them qualif/)).not.toBeInTheDocument();
+  });
+
+  it("labels the monthly standards beside both annual Arizona references", async () => {
+    setup({ stage: "scale" });
+    await onStage("scale");
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("2/6")).toBeInTheDocument();
+    expect(screen.getByText("$240")).toBeInTheDocument();
+    expect(screen.getByText(/\$24 a month under FY2026 standards/)).toHaveTextContent("PolicyEngine's reference in PolicyBench");
+    expect(screen.getByText(/The minimum benefit rose to \$25 on October 1, 2026\./)).toBeInTheDocument();
+
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("4/6")).toBeInTheDocument();
+    expect(screen.getByText("$240")).toBeInTheDocument();
+    expect(screen.getByText(/\$24 a month under FY2026 standards/)).toHaveTextContent("PolicyEngine's reference in PolicyBench");
+    expect(screen.getByText(/The minimum benefit rose to \$25 on October 1, 2026\./)).toBeInTheDocument();
   });
 
   it("keeps the plain labels when no answer would send a resident the wrong way", async () => {

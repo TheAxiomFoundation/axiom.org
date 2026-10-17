@@ -303,7 +303,10 @@ export function PolicyBenchContent() {
             models said $0.
           </p>
           <p className="m-0 font-body text-[1.08rem] leading-relaxed">
-            <strong className="text-[var(--color-accent)]">The rules: eligible, $24 a month.</strong>
+            <strong className="text-[var(--color-accent)]">
+              PolicyEngine&apos;s reference in PolicyBench, under {az.reference.standards} standards: ${az.reference.monthly} a month.
+            </strong>{" "}
+            The minimum benefit rose to ${az.fromOctober.monthly} on {az.fromOctober.effective}.
           </p>
         </Card>
       </Part>
