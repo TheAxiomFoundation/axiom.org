@@ -1,0 +1,472 @@
+/* The Lamplight journey on the page: a pinned night stage, captions in
+   the lower left, and the end-state cards. The page darkens into the
+   stage's night before it and lightens out of it after, so the story has
+   no edge of its own. */
+
+/* eased gradients (many stops), so the change of tone has no visible band */
+.jl-dusk,
+.jl-dawn {
+  height: 60vh;
+  pointer-events: none;
+}
+.jl-dusk {
+  margin-top: -20vh;
+  background: linear-gradient(
+    to bottom,
+    rgba(7, 5, 4, 0) 0%,
+    rgba(7, 5, 4, 0.03) 12%,
+    rgba(7, 5, 4, 0.1) 24%,
+    rgba(7, 5, 4, 0.22) 36%,
+    rgba(7, 5, 4, 0.38) 48%,
+    rgba(7, 5, 4, 0.56) 60%,
+    rgba(7, 5, 4, 0.74) 72%,
+    rgba(7, 5, 4, 0.88) 84%,
+    rgba(7, 5, 4, 0.97) 94%,
+    #070504 100%
+  );
+}
+.jl-dawn {
+  margin-bottom: -20vh;
+  background: linear-gradient(
+    to top,
+    rgba(7, 5, 4, 0) 0%,
+    rgba(7, 5, 4, 0.03) 12%,
+    rgba(7, 5, 4, 0.1) 24%,
+    rgba(7, 5, 4, 0.22) 36%,
+    rgba(7, 5, 4, 0.38) 48%,
+    rgba(7, 5, 4, 0.56) 60%,
+    rgba(7, 5, 4, 0.74) 72%,
+    rgba(7, 5, 4, 0.88) 84%,
+    rgba(7, 5, 4, 0.97) 94%,
+    #070504 100%
+  );
+}
+
+.jl-track {
+  position: relative;
+  background: #070504;
+  /* the stage, then the scroll the story runs over */
+  height: calc(100vh - var(--nav-h, 0px) + var(--jl-run, 0px));
+  height: calc(100svh - var(--nav-h, 0px) + var(--jl-run, 0px));
+}
+.jl-stage {
+  /* held under the nav by the browser itself while the track scrolls */
+  position: sticky;
+  top: var(--nav-h, 0px);
+  width: 100%;
+  height: calc(100vh - var(--nav-h, 0px));
+  height: calc(100svh - var(--nav-h, 0px));
+  overflow: hidden;
+  background: #070504;
+  color: #ece6dc;
+}
+.jl-poster-bg,
+.jl-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  /* the picture fades into the night at its top and bottom: no line
+     where the stage meets the page above and below it */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 11%, #000 89%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 11%, #000 89%, transparent 100%);
+}
+.jl-poster-bg {
+  object-fit: cover;
+  opacity: calc(1 - var(--dim, 0) * 0.9);
+}
+.jl-canvas {
+  opacity: 0;
+  transition: opacity 500ms ease;
+}
+.jl-canvas.is-ready {
+  opacity: calc(1 - var(--dim, 0) * 0.9);
+  transition: none;
+}
+.jl-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+/* captions: a small kicker and one title */
+.jl-kicker {
+  display: block;
+  font: 500 13px/1 var(--font-mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(255, 196, 130, 0.78);
+}
+.jl-title {
+  display: block;
+  margin-top: 14px;
+  font: 400 clamp(28px, 2.9vw, 54px) / 1.08 var(--font-serif);
+  letter-spacing: -0.01em;
+  color: #f6ecdc;
+  text-wrap: balance;
+}
+.jl-cap {
+  position: absolute;
+  will-change: opacity;
+  left: clamp(20px, 5vw, 96px);
+  bottom: clamp(28px, 8vh, 84px);
+  max-width: min(640px, 46vw);
+  opacity: 0;
+  pointer-events: none;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.6);
+}
+
+/* the end state: eight cards, each a link */
+.jl-explore {
+  position: absolute;
+  inset: 0;
+  /* its own layer, painted while still invisible: the cards' first paint
+     must not land on the frame they appear */
+  will-change: opacity;
+  transform: translateZ(0);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 72px clamp(20px, 5vw, 96px) 48px;
+  opacity: 0;
+  pointer-events: none;
+}
+.jl-explore > .jl-title {
+  margin-bottom: 28px;
+}
+.jl-cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 26px 22px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.jl-card {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 10px;
+  transition: transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.jl-card img {
+  display: block;
+  will-change: filter;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border: 1px solid rgba(255, 190, 120, 0.32);
+  border-radius: 8px;
+  filter: brightness(0.72);
+  transition:
+    filter 240ms ease,
+    border-color 240ms ease,
+    box-shadow 240ms ease;
+}
+.jl-card:hover,
+.jl-card:focus-visible {
+  transform: translateY(-6px) scale(1.03);
+}
+.jl-card:hover img,
+.jl-card:focus-visible img {
+  filter: brightness(1);
+  border-color: #ffb45c;
+  box-shadow: 0 0 44px -8px rgba(255, 160, 70, 0.6);
+}
+.jl-card:focus-visible {
+  outline: 2px solid #ffb45c;
+  outline-offset: 6px;
+}
+.jl-card__meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 12px;
+}
+.jl-card__n {
+  font: 500 13px/1 var(--font-mono);
+  color: rgba(255, 196, 130, 0.6);
+}
+.jl-card__name {
+  font: 400 19px/1.2 var(--font-serif);
+  color: #f6ead8;
+}
+.jl-card__go {
+  display: block;
+  margin-top: 6px;
+  font: 500 13px/1.3 var(--font-mono);
+  color: #ffb45c;
+}
+.jl-card__about {
+  display: block;
+  max-height: 0;
+  margin-top: 0;
+  overflow: hidden;
+  opacity: 0;
+  font: 400 15px/1.4 var(--font-serif);
+  color: rgba(246, 234, 216, 0.78);
+  transition:
+    max-height 260ms ease,
+    opacity 260ms ease,
+    margin-top 260ms ease;
+}
+.jl-card:hover .jl-card__about,
+.jl-card:focus-visible .jl-card__about {
+  max-height: 90px;
+  margin-top: 8px;
+  opacity: 1;
+}
+
+/* phones, reduced motion, no WebGL: the posters in sequence */
+.jl-posters {
+  display: grid;
+  gap: 44px;
+  padding: 56px 16px 64px;
+  /* on the page's own background, like the scroll version */
+  background: transparent;
+  color: #1c1917;
+}
+.jl-poster {
+  margin: 0;
+}
+.jl-poster img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 8px;
+}
+.jl-poster figcaption {
+  margin-top: 14px;
+}
+.jl-poster .jl-title,
+.jl-explore--static > .jl-title {
+  font-size: clamp(22px, 5.5vw, 34px);
+}
+.jl-explore--static {
+  position: static;
+  padding: 8px 0 0;
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (max-width: 899px) {
+  .jl-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 520px) {
+  .jl-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (min-width: 900px) {
+  .jl-posters {
+    padding: 80px clamp(20px, 5vw, 96px);
+  }
+}
+
+/* the end state as a list of links (poster sequence) */
+.jl-cards--list {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  margin-top: 18px;
+  border-top: 1px solid rgba(255, 190, 120, 0.2);
+}
+.jl-cards--list .jl-card {
+  padding: 14px 0 14px;
+  border-bottom: 1px solid rgba(255, 190, 120, 0.2);
+  border-radius: 0;
+}
+.jl-cards--list .jl-card:hover,
+.jl-cards--list .jl-card:focus-visible {
+  transform: none;
+}
+.jl-cards--list .jl-card__meta {
+  margin-top: 0;
+}
+.jl-cards--list .jl-card__about {
+  max-height: none;
+  margin-top: 6px;
+  opacity: 1;
+  font-size: 14px;
+}
+
+/* the link under each step's caption */
+.jl-steplink {
+  display: inline-block;
+  margin-top: 16px;
+  padding: 7px 12px;
+  border: 1px solid rgba(255, 180, 92, 0.45);
+  border-radius: 999px;
+  background: rgba(20, 14, 9, 0.55);
+  font: 500 13px/1 var(--font-mono);
+  letter-spacing: 0.04em;
+  color: #ffb45c;
+  text-decoration: none;
+  text-shadow: none;
+  transition: background 200ms ease, border-color 200ms ease;
+}
+.jl-steplink:hover,
+.jl-steplink:focus-visible {
+  background: rgba(255, 171, 74, 0.16);
+  border-color: #ffb45c;
+}
+.jl-steplink:focus-visible {
+  outline: 2px solid #ffb45c;
+  outline-offset: 3px;
+}
+
+/* the label that follows the pointer over a link in the scene */
+.jl-tip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 4;
+  padding: 7px 11px;
+  border: 1px solid rgba(255, 180, 92, 0.6);
+  border-radius: 6px;
+  background: rgba(18, 13, 9, 0.92);
+  font: 500 13px/1 var(--font-mono);
+  letter-spacing: 0.03em;
+  color: #ffcf94;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+.jl-tip.is-on {
+  opacity: 1;
+}
+
+/* ── paper (the default; ?night=1 shows the night version): the story on
+   the page's own background.
+   The canvas draws ink on white and turns white see-through in its last
+   pass, so the page (and its network) shows through untouched. */
+.jl--paper,
+.jl--paper .jl-stage {
+  background: transparent;
+  color: var(--color-ink, #1c1917);
+}
+
+/* the still stands in until the canvas draws, then goes: the canvas is
+   see-through on paper, so the still must not show behind it */
+.jl-stage--paper .jl-poster-bg {
+  /* framed like the canvas, which fills the stage */
+  object-fit: cover;
+  opacity: 1;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+.jl-stage--paper .jl-canvas.is-ready ~ .jl-poster-bg,
+.jl-stage--paper.is-drawn .jl-poster-bg {
+  display: none;
+}
+.jl-stage--paper .jl-canvas {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+.jl-stage--paper .jl-kicker {
+  color: #b45309;
+}
+.jl-stage--paper .jl-title {
+  color: #1c1917;
+}
+.jl-stage--paper .jl-cap {
+  text-shadow: none;
+}
+/* a soft wash of the page colour behind each caption keeps the words
+   clear of what passes behind them, without a box */
+.jl-stage--paper .jl-cap::before {
+  content: "";
+  position: absolute;
+  inset: -48px -80px -40px -64px;
+  z-index: -1;
+  background: radial-gradient(ellipse at 40% 55%, rgba(250, 249, 246, 0.94) 0%, rgba(250, 249, 246, 0.8) 38%, rgba(250, 249, 246, 0) 72%);
+  pointer-events: none;
+}
+/* the end cards, on paper */
+.jl-stage--paper .jl-card img {
+  filter: none;
+  border-color: rgba(146, 64, 14, 0.25);
+  box-shadow: 0 10px 30px -18px rgba(60, 40, 20, 0.35);
+}
+.jl-stage--paper .jl-card:hover img,
+.jl-stage--paper .jl-card:focus-visible img {
+  border-color: #b45309;
+  box-shadow: 0 14px 36px -16px rgba(146, 64, 14, 0.45);
+}
+.jl-stage--paper .jl-card__n {
+  color: rgba(146, 64, 14, 0.7);
+}
+.jl-stage--paper .jl-card__name {
+  color: #1c1917;
+}
+.jl-stage--paper .jl-card__go {
+  color: #b45309;
+}
+.jl-stage--paper .jl-card__about {
+  color: rgba(28, 25, 23, 0.7);
+}
+.jl-stage--paper .jl-card:focus-visible {
+  outline-color: #b45309;
+}
+.jl-stage--paper .jl-tip {
+  border-color: rgba(146, 64, 14, 0.4);
+  background: rgba(250, 249, 246, 0.96);
+  color: #92400e;
+}
+.jl-stage--paper.sf--lamplight .sf-label,
+.jl-stage--paper.sf--lamplight .sf-label--quiet {
+  color: rgba(42, 32, 24, 0.6);
+  text-shadow: none;
+}
+.jl-stage--paper.sf--lamplight .sf-label--gate {
+  color: #92400e;
+}
+.jl-stage--paper.sf--lamplight .sf-gate-n {
+  color: rgba(42, 32, 24, 0.45);
+}
+.jl-stage--paper.sf--lamplight .sf-label--addr {
+  color: #92400e;
+  text-shadow: none;
+}
+.jl-stage--paper.sf--lamplight .sf-label--addr b {
+  color: #1c1917;
+}
+
+/* the poster sequence on paper (the default) */
+.jl-posters:not(.jl-posters--night) .jl-kicker {
+  color: #b45309;
+}
+.jl-posters:not(.jl-posters--night) .jl-title {
+  color: #1c1917;
+}
+.jl-posters:not(.jl-posters--night) .jl-poster img {
+  border: 1px solid rgba(146, 64, 14, 0.15);
+}
+.jl-posters:not(.jl-posters--night) .jl-cards--list,
+.jl-posters:not(.jl-posters--night) .jl-cards--list .jl-card {
+  border-color: rgba(146, 64, 14, 0.2);
+}
+.jl-posters:not(.jl-posters--night) .jl-card__name {
+  color: #1c1917;
+}
+.jl-posters:not(.jl-posters--night) .jl-card__n {
+  color: rgba(146, 64, 14, 0.7);
+}
+.jl-posters:not(.jl-posters--night) .jl-card__go,
+.jl-posters:not(.jl-posters--night) .jl-steplink {
+  color: #b45309;
+}
+.jl-posters:not(.jl-posters--night) .jl-card__about {
+  color: rgba(28, 25, 23, 0.7);
+}
+.jl-posters:not(.jl-posters--night) .jl-steplink {
+  background: transparent;
+  border-color: rgba(180, 83, 9, 0.4);
+}
+.jl-posters--night {
+  background: #070504;
+  color: #ece6dc;
+}
