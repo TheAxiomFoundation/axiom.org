@@ -8,10 +8,11 @@ import { snapshotMonth } from "../registry-snapshot";
 // each scene's own motion runs over its span, and the last OVERLAP of it
 // is shared with the next scene, both moving, while one dissolves into
 // the other. The opening shot (shelf to page to corpus) is one scene.
-export const OVERLAP = 0.32;
+// long enough that every hand-over between scenes reads as one motion
+export const OVERLAP = 0.55;
 // the encode loop gets the most room after the opening: its light moves
 // through four gates and round the loop, slowly
-export const SPANS = [5.82, 2.0, 1.3, 1.3, 1.3, 1.3];
+export const SPANS = [6.05, 2.0, 1.4, 1.4, 1.4, 1.3];
 // the end of each scene where its motion is done and the reader can look
 // (the camera keeps drifting); the opening holds on the corpus address
 // the encode loop rests a moment once every gate is lit

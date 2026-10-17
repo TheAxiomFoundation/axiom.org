@@ -9,7 +9,7 @@ import { lamplightBeat5 } from "../style-frames/lamplight";
 import { lamplightBeat3, lamplightBeat4, lamplightBeat6, lamplightBeat7 } from "../style-frames/lamplight2";
 
 export const SCENES: Array<{ build: BeatBuilder; beats: number }> = [
-  { build: lamplightShelfToBook, beats: 5.82 }, // off the shelf → the law, as published → the corpus
+  { build: lamplightShelfToBook, beats: 6.05 }, // off the shelf → the law, as published → the corpus
   { build: lamplightBeat3, beats: 1 }, // encode
   { build: lamplightBeat4, beats: 1 }, // cited code
   { build: lamplightBeat5, beats: 1 }, // the graph

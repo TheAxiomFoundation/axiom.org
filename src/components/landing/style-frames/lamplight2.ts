@@ -1050,9 +1050,13 @@ export function lamplightBeat6(ctx: BeatCtx): BeatSpec {
     const cx = (c.x - 740) / 105;
     const cy = (330 - c.y) / 105;
     const cz = -2 + ((ci * 37) % 7) * 0.6;
-    const rad = (c.r / 105) * 1.15;
+    // (small packages a little larger, so they read as clusters too)
+    const rad = (Math.max(c.r, 20) / 105) * 1.15;
     const base = pts.length;
-    for (let i = 0; i < c.count; i++) {
+    // each rule a point; small packages get a few more points of haze
+    // around them so they hold together (their count label stays exact)
+    const n = Math.max(c.count, 60);
+    for (let i = 0; i < n; i++) {
       const u = r() * 2 - 1;
       const th = r() * Math.PI * 2;
       const rr = rad * Math.cbrt(r());
@@ -1061,11 +1065,12 @@ export function lamplightBeat6(ctx: BeatCtx): BeatSpec {
     }
     // a little wiring inside each package
     for (let i = 0; i < Math.min(c.count, 260); i++) {
-      const p = pts[base + Math.floor(r() * c.count)];
-      const q = pts[base + Math.floor(r() * c.count)];
+      const p = pts[base + Math.floor(r() * n)];
+      const q = pts[base + Math.floor(r() * n)];
       if ((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2 + (p[2] - q[2]) ** 2 < rad * rad * 0.25) wires.push(p[0], p[1], p[2], q[0], q[1], q[2]);
     }
-    if (c.count >= 100) pkgLabels.push(ctx.label(new THREE.Vector3(cx, cy - rad - 0.28, cz), `${c.id} · ${c.count.toLocaleString("en-US")}`, "sf-label--pkg"));
+    // (the small ones' labels sit above them, clear of their neighbours)
+    if (c.count >= 20) pkgLabels.push(ctx.label(new THREE.Vector3(cx, c.count < 100 ? cy + rad + 0.22 : cy - rad - 0.28, cz), `${c.id} · ${c.count.toLocaleString("en-US")}`, "sf-label--pkg"));
   });
   const g = particleGeometry(pts.length, (i, o) => {
     const [x, y, z, bright] = pts[i];
@@ -1158,6 +1163,9 @@ export function lamplightBeat6(ctx: BeatCtx): BeatSpec {
     (wiresMesh.material as THREE.LineBasicMaterial).opacity = (THEME.paper ? 0.2 : 0.12) * (1 - seg(k, 0, 0.25));
     // the small cluster's wires and dots, and the rest, clear away
     fadeOut?.apply(1 - ease(seg(k, 0, 0.3)));
+    const lab = String(1 - seg(k, 0, 0.2));
+    pkgLabels.forEach((l) => (l.el.style.opacity = lab));
+    heroLabel.el.style.opacity = String(1 - seg(k, 0, 0.2));
   };
   fadeOut = new SceneFade([scene, fx], (m) => m === clusterMat);
   return { camera, look, update, cutIn: () => {}, cutOut, parts: { heroNodes } };
