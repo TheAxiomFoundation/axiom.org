@@ -64,6 +64,8 @@ export interface ComparisonSource {
   repo: string;
   suite: string;
   report: string;
+  /** The pinned commit this collection read, so the stored link preserves its evidence. */
+  report_ref: string;
   /** When the report file was last committed: the run's date when the report records none. */
   committed_at?: string | null;
 }
@@ -169,7 +171,7 @@ export function screenerParity(report: ComparisonReport, source: ComparisonSourc
   const dated = report.provenance?.generated_at ?? null;
   return {
     suite: source.suite,
-    report_url: `https://github.com/${source.repo}/blob/main/${source.report}`,
+    report_url: `https://github.com/${source.repo}/blob/${source.report_ref}/${source.report}`,
     generated_at: dated ?? source.committed_at ?? null,
     dated_by: dated ? "report" : source.committed_at ? "commit" : null,
     run_kind: report.provenance?.run_kind ?? null,

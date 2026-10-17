@@ -7,6 +7,7 @@ import {
   otherDisclosures,
   snapStandardsYears,
   standardsMismatch,
+  standardsUsed,
   testsEligibility,
 } from "./coverage";
 
@@ -15,6 +16,9 @@ const AZ_NOTE =
   "Axiom's Arizona SNAP encoding doesn't test eligibility yet: every household shows as eligible, so read the amount as \"if eligible\".";
 const FY_NOTE =
   "SNAP figures use FY2026 standards; FY2027 standards took effect October 1, 2026 and are not encoded yet.";
+// finbot-snap-demo f8fb3eb, src/lib/annual-updates.ts (annualUpdateDisclosure).
+const ANNUAL_FY_NOTE =
+  "Arizona SNAP figures use FY2026 standards; the FY2027 update due October 1, 2026 is not encoded yet, so amounts from that date may differ from current law.";
 const NY_NOTE = "New York: the household's earned-income input was set from the earnings given (has earned income).";
 const CO_NOTE =
   "Axiom can't apply Colorado's broad-based categorical eligibility yet. A $0 for a household with gross income above the 130% limit but within the state's higher BBCE limit is not a determination; it may still qualify.";
@@ -119,6 +123,15 @@ describe("SNAP standards years", () => {
     expect(snapStandardsYears([], [NY_NOTE])).toEqual([]);
   });
 
+  it("reads both finbot templates for checks with and without saved standards years", () => {
+    for (const note of [FY_NOTE, ANNUAL_FY_NOTE]) {
+      expect(snapStandardsYears([], [note])).toEqual([2026]);
+      expect(standardsUsed({ disclosures: [note], standardsYears: [2025] })).toEqual([2025]);
+      expect(standardsUsed({ disclosures: [note], standardsYears: [] })).toEqual([2026]);
+      expect(standardsUsed({ disclosures: [note] })).toEqual([2026]);
+    }
+  });
+
   it("ignores state documents and look-alike ids", () => {
     expect(
       snapStandardsYears(
@@ -130,6 +143,15 @@ describe("SNAP standards years", () => {
         [],
       ),
     ).toEqual([]);
+  });
+
+  it("preserves non-SNAP fiscal-year disclosures without treating them as SNAP standards", () => {
+    const note = ANNUAL_FY_NOTE.replace("Arizona SNAP", "Arizona TANF");
+    expect(snapStandardsYears([], [note])).toEqual([]);
+    expect(standardsMismatch([2026], "2026-10", [note])?.notEncoded).toBe(false);
+    expect(otherDisclosures({
+      program: "us-az-tanf", displayName: "Arizona TANF", period: "2026-10", disclosures: [note],
+    })).toEqual([note]);
   });
 
   it("returns each cited year once, oldest first", () => {
@@ -146,10 +168,12 @@ describe("SNAP standards years", () => {
 
 describe("standards that don't match the period", () => {
   it("flags FY2026 standards used for October 2026, and says FY2027's aren't encoded when finbot says so", () => {
-    expect(standardsMismatch([2026], "2026-10", [FY_NOTE])).toEqual({ used: [2026], due: 2027, notEncoded: true });
+    for (const note of [FY_NOTE, ANNUAL_FY_NOTE]) {
+      expect(standardsMismatch([2026], "2026-10", [note])).toEqual({ used: [2026], due: 2027, notEncoded: true });
+      // The note names FY2027; November 2027 is in FY2028, which it says nothing about.
+      expect(standardsMismatch([2026], "2027-11", [note])).toEqual({ used: [2026], due: 2028, notEncoded: false });
+    }
     expect(standardsMismatch([2026], "2026-10")).toEqual({ used: [2026], due: 2027, notEncoded: false });
-    // finbot's note names FY2027; November 2027 is in FY2028, which it says nothing about.
-    expect(standardsMismatch([2026], "2027-11", [FY_NOTE])).toEqual({ used: [2026], due: 2028, notEncoded: false });
   });
 
   it("stays quiet when the standards match, are unknown, or the period is not a month", () => {
@@ -181,15 +205,32 @@ describe("disclosures the panel states itself", () => {
   const az = { program: "us-az-snap", displayName: "Arizona SNAP", period: "2026-10" };
 
   it("drops finbot's Arizona note and, for a month, its standards note", () => {
-    expect(otherDisclosures({ ...az, disclosures: [AZ_NOTE, FY_NOTE] })).toEqual([]);
+    for (const note of [FY_NOTE, ANNUAL_FY_NOTE]) {
+      for (const standardsYears of [[2026], undefined]) {
+        expect(otherDisclosures({ ...az, standardsYears, disclosures: [AZ_NOTE, note] })).toEqual([]);
+      }
+    }
     // Curly quotes and apostrophes are the same sentence.
     const curly = "Axiom\u2019s Arizona SNAP encoding doesn\u2019t test eligibility yet: every household shows as eligible, so read the amount as \u201cif eligible\u201d.";
     expect(otherDisclosures({ ...az, disclosures: [curly] })).toEqual([]);
   });
 
   it("keeps the standards note for a period that is not a month, where the panel can't compare years", () => {
-    expect(otherDisclosures({ ...az, period: "2026", disclosures: [AZ_NOTE, FY_NOTE] })).toEqual([FY_NOTE]);
-    expect(otherDisclosures({ ...az, period: null, disclosures: [FY_NOTE] })).toEqual([FY_NOTE]);
+    for (const note of [FY_NOTE, ANNUAL_FY_NOTE]) {
+      expect(otherDisclosures({ ...az, period: "2026", disclosures: [AZ_NOTE, note] })).toEqual([note]);
+      expect(otherDisclosures({ ...az, period: null, disclosures: [note] })).toEqual([note]);
+    }
+  });
+
+  it("retains named disclosures about another program, or standards the panel doesn't name", () => {
+    const otherProgram = ANNUAL_FY_NOTE.replace("Arizona SNAP", "New York SNAP");
+    expect(otherDisclosures({ ...az, disclosures: [otherProgram] })).toEqual([otherProgram]);
+    for (const note of [FY_NOTE, ANNUAL_FY_NOTE]) {
+      expect(otherDisclosures({ ...az, standardsYears: [2025], disclosures: [note] })).toEqual([note]);
+      const otherDate = note.replace("October 1, 2026", "October 1, 2025");
+      expect(otherDisclosures({ ...az, disclosures: [otherDate] })).toEqual([otherDate]);
+      expect(standardsMismatch([2026], "2026-10", [otherDate])?.notEncoded).toBe(false);
+    }
   });
 
   it("keeps an eligibility note with more in it, or one the panel doesn't replace", () => {
@@ -213,8 +254,11 @@ describe("disclosures the panel states itself", () => {
       otherDisclosures({ ...az, program: "us-ny-snap", displayName: "New York SNAP", disclosures: [FY_NOTE, NY_NOTE, CO_NOTE] }),
     ).toEqual([NY_NOTE, CO_NOTE]);
     // A standards note with more added to it stays whole.
-    const longer = `${FY_NOTE} Shelter caps also changed.`;
-    expect(otherDisclosures({ ...az, disclosures: [longer] })).toEqual([longer]);
+    for (const note of [FY_NOTE, ANNUAL_FY_NOTE]) {
+      const longer = `${note} Shelter caps also changed.`;
+      const prefixed = `Shelter caps also changed. ${note}`;
+      expect(otherDisclosures({ ...az, disclosures: [longer, prefixed] })).toEqual([longer, prefixed]);
+    }
     // Reworded standards notes stay rather than vanish.
     const reworded = "Standards: FY2026 (not FY2027).";
     expect(otherDisclosures({ ...az, disclosures: [reworded] })).toEqual([reworded]);

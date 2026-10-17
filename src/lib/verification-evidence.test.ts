@@ -33,6 +33,9 @@ describe("verification evidence: pinned totals", () => {
       "In September 2026, our coverage map tied 14,030 of our 34,810 US rules to a program that a live comparison exercises, though a comparison of a program does not check each of its rules",
     );
     expect(RULE_COVERAGE.source.commit).toMatch(/^[0-9a-f]{40}$/);
+    expect(RULE_COVERAGE.perRuleFileUrl).toBe(
+      "https://github.com/TheAxiomFoundation/axiom-oracles/blob/oracle-data/dashboard/public/data/rule_verification.json",
+    );
   });
 
   it("SNAP QC: 5,175 households in six states, Colorado 856", () => {
@@ -128,6 +131,18 @@ describe("verification evidence: literal copy in verify-data.ts", () => {
     expect(oracles?.expect).toContain(
       `live suites cover ${US_CONFORMANCE.covered} of ${US_CONFORMANCE.inScope} in-scope PolicyEngine policies, so the US row is not yet conformant`,
     );
+  });
+
+  it("the manual oracle check loads published data when the materializer is available", () => {
+    const recipe = surfaces.find((s) => s.id === "oracles")!.check!;
+    expect(recipe).toContain("git clone https://github.com/TheAxiomFoundation/axiom-oracles\ncd axiom-oracles\n");
+    expect(recipe).toContain(
+      "if [ -f scripts/oracle_data.py ]; then\n  python3 scripts/oracle_data.py materialize\nfi",
+    );
+    expect(recipe).toContain("fi &&\ncat conformance/scoreboard.json &&\nuv run scripts/apply_dispositions.py --check");
+    const materialize = recipe.indexOf("python3 scripts/oracle_data.py materialize");
+    expect(recipe.indexOf("cat conformance/scoreboard.json")).toBeGreaterThan(materialize);
+    expect(recipe.indexOf("uv run scripts/apply_dispositions.py --check")).toBeGreaterThan(materialize);
   });
 
   it("the Colorado SNAP QC row", () => {

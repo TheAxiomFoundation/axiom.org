@@ -14,6 +14,8 @@ export const CHAT_KEY = "aspen.chat.v1";
 export const OVERALL_KEY = "aspen.overall.v1";
 /** The use case this device voted for. It belongs to one run. */
 export const VOTE_KEY = "aspen.vote.v1";
+/** The participant's text size: kept on the phone, never sent anywhere. */
+export const TEXT_SIZE_KEY = "aspen.textSize.v1";
 
 let fallbackId: string | null = null;
 

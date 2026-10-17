@@ -123,25 +123,31 @@ describe("outputLabel", () => {
 });
 
 describe("RatingCard", () => {
-  it("asks one question at a time", () => {
+  it("asks one question at a time, moves on with each answer, and goes back", () => {
     render(<RatingCard promptId="p1" />);
+    expect(screen.getByText("1 of 4")).toBeInTheDocument();
     expect(screen.getByText("Does it look right?")).toBeInTheDocument();
     expect(screen.queryByText("Would you act on it?")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Back/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save rating" })).not.toBeInTheDocument();
 
-    expect(screen.queryByLabelText(/Anything the room should know about this answer\?/)).not.toBeInTheDocument();
+    // Tapping an answer moves on to the next question; the last one leaves the screen.
     fireEvent.click(screen.getByRole("button", { name: "Not sure" }));
+    expect(screen.getByText("2 of 4")).toBeInTheDocument();
+    expect(screen.queryByText("Does it look right?")).not.toBeInTheDocument();
+    expect(screen.getByText("Would you act on it?")).toHaveFocus();
+
+    // Back shows the answer already picked.
+    fireEvent.click(screen.getByRole("button", { name: /Back/ }));
     expect(screen.getByRole("button", { name: "Not sure" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText("Would you act on it?")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Save rating" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Not sure" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Maybe" }));
-    expect(screen.getByRole("button", { name: "Maybe" })).toHaveAttribute("aria-pressed", "true");
-    // Third: what a resident would do; the tags, note and save come after it.
+    expect(screen.getByText("3 of 4")).toBeInTheDocument();
     expect(screen.getByText("What would a resident do next?")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save rating" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Call to check" }));
-    expect(screen.getByRole("button", { name: "Call to check" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("4 of 4")).toBeInTheDocument();
     expect(screen.getByText(/What went wrong\?/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Wrong amount" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Plain and clear" })).not.toBeInTheDocument();
@@ -214,7 +220,8 @@ describe("RatingCard", () => {
     render(<RatingCard promptId="p1" onRated={onRated} />);
     fireEvent.click(screen.getByRole("button", { name: "Not sure" }));
     fireEvent.click(screen.getByRole("button", { name: "Maybe" }));
-    fireEvent.click(screen.getAllByRole("button", { name: "Not sure" })[1]);
+    // One question at a time, so the resident's "Not sure" is the only one on screen.
+    fireEvent.click(screen.getByRole("button", { name: "Not sure" }));
     fireEvent.click(screen.getByRole("button", { name: "Save rating" }));
     expect(await screen.findByText("That didn't save. Try again.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save rating" })).toBeEnabled();
@@ -532,6 +539,9 @@ describe("rules panel values and caveats", () => {
     "Axiom's Arizona SNAP encoding doesn't test eligibility yet: every household shows as eligible, so read the amount as \"if eligible\".";
   const FY_NOTE =
     "SNAP figures use FY2026 standards; FY2027 standards took effect October 1, 2026 and are not encoded yet.";
+  const ANNUAL_FY_NOTES = ["Arizona SNAP", "New York SNAP"].map(
+    (name) => `${name} figures use FY2026 standards; the FY2027 update due October 1, 2026 is not encoded yet, so amounts from that date may differ from current law.`,
+  );
   const output = (name: string, value: unknown, semantics: string | null, unit: string | null = null) => ({
     name,
     label: name.replace(/_/g, " "),
@@ -627,12 +637,37 @@ describe("rules panel values and caveats", () => {
     expect(rulesCaveats({ computations: [disagree] }).other).toEqual([FY_NOTE]);
   });
 
+  it("states the annual-update caveat once for saved and older computation shapes", () => {
+    for (const program of ["us-az-snap", "us-ny-snap"]) {
+      const template = check(program, "2026-10");
+      const note = ANNUAL_FY_NOTES.find((text) => text.startsWith(`${template.displayName} figures use`))!;
+      for (const standardsYears of [[2026], undefined]) {
+        const caveats = rulesCaveats({ computations: [{ ...template, disclosures: [note], standardsYears }] });
+        expect(caveats.standards).toEqual([
+          "Uses FY2026 SNAP standards, but October 2026 falls under FY2027 standards (from October 1, 2026), which Axiom hasn't encoded yet. The amount may differ.",
+        ]);
+        expect(caveats.other).toEqual([]);
+      }
+    }
+  });
+
   it("keeps the standards note for a yearly or missing period", () => {
     for (const period of ["2026", null]) {
       const caveats = rulesCaveats({ computations: [check("us-ny-snap", period, { disclosures: [FY_NOTE], standardsYears: [2026] })] });
       expect(caveats.standards).toEqual([]);
       expect(caveats.other).toEqual([FY_NOTE]);
     }
+  });
+
+  it("does not label another program's fiscal-year disclosure as SNAP standards", () => {
+    const note = ANNUAL_FY_NOTES[0].replace("Arizona SNAP", "Arizona TANF");
+    const computation = {
+      ...check("us-az-tanf", "2026-10"), displayName: "Arizona TANF",
+      disclosures: [note], standardsYears: undefined,
+    };
+    expect(rulesCaveats({ computations: [computation] })).toEqual({
+      eligibility: [], standards: [], other: [note],
+    });
   });
 
   it("never drops a disclosure without saying the same thing itself", () => {
@@ -645,6 +680,9 @@ describe("rules panel values and caveats", () => {
         "Not an eligibility determination: Axiom's Arizona SNAP rules don't test eligibility yet. Read this as the amount if eligible.",
         FY_NOTE,
         `${FY_NOTE} More.`,
+        ...ANNUAL_FY_NOTES,
+        ...ANNUAL_FY_NOTES.map((note) => `${note} Shelter caps also changed.`),
+        ...ANNUAL_FY_NOTES.map((note) => `Shelter caps also changed. ${note}`),
         "Other note.",
       ),
       fc.string(),
@@ -664,8 +702,9 @@ describe("rules panel values and caveats", () => {
           const caveats = rulesCaveats({ computations: [c] });
           for (const d of disclosures) {
             if (caveats.other.includes(d)) continue;
-            if (d === FY_NOTE) {
-              // Only for a month. FY_NOTE says FY2026 standards were used; unless the month is in
+            if (d === FY_NOTE || ANNUAL_FY_NOTES.includes(d)) {
+              if (d !== FY_NOTE) expect(d.startsWith(`${c.displayName} figures use`)).toBe(true);
+              // Only for a month. These notes say FY2026 standards were used; unless the month is in
               // FY2026 itself, the panel's own line must say FY2026 (and "not encoded" for FY2027).
               const due = federalFiscalYear(period);
               expect(due).not.toBeNull();

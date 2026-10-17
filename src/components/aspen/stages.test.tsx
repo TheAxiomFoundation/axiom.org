@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  BREAKOUT_PROMPT,
+  GROUP_PHONE_INTRO,
   BUILD_HEADING,
   DISCLOSURE,
   EVENT,
@@ -24,6 +24,7 @@ import {
   ThankYouContent,
   VoteCard,
   WelcomeLanding,
+  YourContribution,
   YourThread,
   type ThreadQuestion,
 } from "./stages";
@@ -107,7 +108,8 @@ describe("Disclosure", () => {
   it("works without an onOpen handler", () => {
     render(<Disclosure />);
     fireEvent.click(screen.getByRole("button", { name: "What we keep" }));
-    expect(screen.getByText(DISCLOSURE.details[0])).toBeInTheDocument();
+    expect(screen.getByText(DISCLOSURE.details[0].title)).toBeInTheDocument();
+    expect(screen.getByText(DISCLOSURE.details[0].text)).toBeInTheDocument();
   });
 });
 
@@ -117,8 +119,10 @@ describe("WelcomeLanding", () => {
     const onStart = vi.fn();
     render(<WelcomeLanding onStart={onStart} />);
     expect(screen.getByRole("heading", { level: 1, name: EVENT.title })).toBeInTheDocument();
-    expect(screen.getByText(STAGES[0].summary)).toBeInTheDocument();
-    expect(screen.getByText(`With ${EVENT.hosts}`)).toBeInTheDocument();
+    // Just the question and the button: no summary line and no hosts line.
+    expect(screen.queryByText(STAGES[0].summary)).not.toBeInTheDocument();
+    expect(screen.queryByText(/With Ariel Kennan and Max Ghenis/)).not.toBeInTheDocument();
+    expect(EVENT.title).not.toMatch(/your residents/i);
     // No agenda and no profile form on the landing: the stage menu holds the agenda.
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
@@ -153,36 +157,9 @@ describe("YourThread", () => {
     }
   });
 
-  it("asks people who haven't asked yet to try", () => {
-    const onOpen = vi.fn();
-    render(<YourThread stage="reveal" thread={null} onOpen={onOpen} />);
-    expect(screen.getByText(/You haven't asked the AI yet/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Ask the AI →" }));
-    expect(onOpen).toHaveBeenCalledTimes(1);
-  });
-
-  it("points a rated answer at the results", () => {
+  it("leaves What we saw to its own summary of what you contributed", () => {
     render(<YourThread stage="reveal" thread={asked} onOpen={vi.fn()} />);
-    expect(
-      screen.getByText("You asked about “Retiree in Phoenix”. Your rating is in the results below."),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("button")).not.toBeInTheDocument();
-  });
-
-  it("asks for a rating on an unrated answer to the participant's own question", () => {
-    const onOpen = vi.fn();
-    render(
-      <YourThread
-        stage="reveal"
-        thread={{ ...asked, householdId: null, householdLabel: null, rated: false }}
-        onOpen={onOpen}
-      />,
-    );
-    expect(
-      screen.getByText("You asked about your own question. Rate the answer so it counts in the results below."),
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Rate my answer →" }));
-    expect(onOpen).toHaveBeenCalled();
+    expect(screen.queryByText(/You asked about/)).not.toBeInTheDocument();
   });
 
   it("ties the Arizona household to PolicyBench at scale", () => {
@@ -199,17 +176,13 @@ describe("YourThread", () => {
 
   it("ties other households to the results at scale", () => {
     render(<YourThread stage="scale" thread={asked} onOpen={vi.fn()} />);
-    expect(screen.getByText(/Here is how AI does on households like it, at scale\./)).toBeInTheDocument();
+    expect(screen.getByText(/Here's how AI does at scale\./)).toBeInTheDocument();
   });
 
-  it("sends people to check their answer on the shared foundation", () => {
-    const onOpen = vi.fn();
-    render(<YourThread stage="foundation" thread={asked} onOpen={onOpen} />);
-    expect(
-      screen.getByText("Now check the AI's answer about “Retiree in Phoenix” against the encoded rules."),
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Check my answer →" }));
-    expect(onOpen).toHaveBeenCalled();
+  it("recalls the question on the shared foundation, with no rules check to send people to", () => {
+    render(<YourThread stage="foundation" thread={asked} onOpen={vi.fn()} />);
+    expect(screen.getByText("You asked about “Retiree in Phoenix”.")).toBeInTheDocument();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 });
 
@@ -248,8 +221,8 @@ describe("SmallGroups", () => {
   it("puts the vote and the group's idea on one screen, in that order", () => {
     stubFetch();
     render(<SmallGroups stage="groups" />);
-    const vote = screen.getByRole("heading", { name: "1Vote" });
-    const talk = screen.getByRole("heading", { name: "2Talk it through" });
+    const vote = screen.getByRole("heading", { level: 2, name: "Vote" });
+    const talk = screen.getByRole("heading", { level: 2, name: "Talk it through" });
     expect(vote.compareDocumentPosition(talk) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByRole("button", { name: "Vote" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Share with the room" })).toBeInTheDocument();
@@ -260,13 +233,14 @@ describe("GroupsCard", () => {
   it("shares the group's best idea with the room, more than once", async () => {
     const fetchMock = stubFetch();
     render(<GroupsCard stage="groups" />);
-    expect(screen.getByText(BREAKOUT_PROMPT)).toBeInTheDocument();
+    expect(screen.getByText(GROUP_PHONE_INTRO)).toBeInTheDocument();
     const share = screen.getByRole("button", { name: "Share with the room" });
     expect(share).toBeDisabled();
 
-    const project = screen.getByRole("button", { name: "Project policy changes" });
-    fireEvent.click(project);
-    expect(project).toHaveAttribute("aria-pressed", "true");
+    // One menu for the group's pick, not a second row of chips.
+    const pick = screen.getByRole("combobox", { name: "Your group's pick" });
+    expect(pick).toHaveValue("");
+    fireEvent.change(pick, { target: { value: "project" } });
     // A use case alone is not an idea.
     expect(share).toBeDisabled();
     fireEvent.change(screen.getByRole("textbox", { name: /What would you build first\?/ }), {
@@ -276,9 +250,8 @@ describe("GroupsCard", () => {
     expect(screen.getByText("Shared. It's on the big screen.")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: /What would you build first\?/ })).toHaveValue("");
 
-    // Tapping the use case again clears it.
-    fireEvent.click(project);
-    expect(project).toHaveAttribute("aria-pressed", "false");
+    // "Not decided" clears it.
+    fireEvent.change(pick, { target: { value: "" } });
     fireEvent.change(screen.getByRole("textbox", { name: /What would you build first\?/ }), { target: { value: "Train staff" } });
     fireEvent.click(share);
     await waitFor(() =>
@@ -287,6 +260,13 @@ describe("GroupsCard", () => {
         { participantId: "p-1", kind: "breakout", payload: { useCase: null, note: "Train staff", who: "", trust: "", raised: "" }, stage: "groups" },
       ]),
     );
+  });
+
+  it("starts the group's pick from this phone's own vote", () => {
+    stubFetch();
+    localStorage.setItem("aspen.vote.v1", JSON.stringify("flows"));
+    render(<GroupsCard stage="groups" />);
+    expect(screen.getByRole("combobox", { name: "Your group's pick" })).toHaveValue("flows");
   });
 
   it("asks the three questions, one box each, and shares all three", async () => {
@@ -332,7 +312,7 @@ describe("NextStepsForm", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Name" }), { target: { value: "Ada" } });
     fireEvent.change(screen.getByRole("textbox", { name: "Title" }), { target: { value: "Director" } });
     fireEvent.change(screen.getByRole("textbox", { name: "Email" }), { target: { value: "ada@az.gov" } });
-    fireEvent.change(screen.getByRole("textbox", { name: "Note" }), { target: { value: "Call me" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /^Note/ }), { target: { value: "Call me" } });
   }
 
   it("stays disabled until an email and a topic are given", () => {
@@ -361,7 +341,6 @@ describe("NextStepsForm", () => {
     fill();
     fireEvent.change(screen.getByRole("combobox", { name: "State" }), { target: { value: "Nevada" } });
     fireEvent.click(screen.getByRole("checkbox", { name: /Accurate AI answers/ }));
-    fireEvent.click(screen.getByRole("checkbox", { name: /Show my state on the screen/ }));
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
     expect(await screen.findByRole("button", { name: "Sending…" })).toBeDisabled();
@@ -376,7 +355,6 @@ describe("NextStepsForm", () => {
       email: "ada@az.gov",
       accurateAi: true,
       stateSystems: false,
-      showState: false,
       note: "Call me",
     });
   });
@@ -439,20 +417,84 @@ describe("ThankYouContent", () => {
   });
 });
 
+describe("YourContribution", () => {
+  const asked: ThreadQuestion = {
+    householdId: "az-retiree",
+    householdLabel: "Retiree in Phoenix",
+    perspective: "resident",
+    asked: true,
+    rated: true,
+  };
+
+  it("asks people who haven't asked yet to try", () => {
+    const onOpen = vi.fn();
+    render(<YourContribution thread={null} onOpen={onOpen} />);
+    expect(screen.getByRole("heading", { name: "What you contributed" })).toBeInTheDocument();
+    expect(screen.getByText(/You haven't asked the AI yet/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Ask the AI →" }));
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("checks off a question that was asked and rated, and offers the overall ratings", () => {
+    render(<YourContribution thread={asked} onOpen={vi.fn()} />);
+    expect(screen.getByText("You asked about “Retiree in Phoenix”.")).toBeInTheDocument();
+    expect(screen.getByText("You rated the answer.")).toBeInTheDocument();
+    expect(screen.getByText(/You haven't shared how AI did overall/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Share it →" })).toBeInTheDocument();
+  });
+
+  it("asks for a rating on an unrated answer, and says when the overall ratings are in", () => {
+    localStorage.setItem("aspen.overall.v1", "true");
+    const onOpen = vi.fn();
+    render(<YourContribution thread={{ ...asked, householdId: null, householdLabel: null, rated: false }} onOpen={onOpen} />);
+    expect(screen.getByText("You asked about your own question.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Rate my answer →" }));
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("You shared how AI did overall.")).toBeInTheDocument();
+  });
+});
+
 describe("PolicyBenchContent", () => {
   it("shows the one number and the Arizona household every model got wrong", () => {
     render(<PolicyBenchContent />);
     expect(screen.getByText("42%")).toBeInTheDocument();
     expect(screen.getByText("268 of 643 answers, from 50 models.")).toBeInTheDocument();
-    expect(screen.getByText(/An Arizona household · 50 of 50 models said \$0/)).toBeInTheDocument();
-    expect(screen.getByText("The rules, under FY2026 standards: $24 a month if eligible.").parentElement).toHaveTextContent(
-      "The rules, under FY2026 standards: $24 a month if eligible. PolicyBench's reference. The minimum benefit rose to $25 on October 1, 2026.",
+    // The same shape as What we saw: a block heading, then numbered parts.
+    expect(screen.getByRole("heading", { level: 2, name: "Across 50 AI models" })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([
+      "1Families who qualify, told $0",
+      "2One Arizona household",
+    ]);
+    expect(screen.getByText("All 50 AI models said $0.")).toBeInTheDocument();
+    expect(screen.getByText("PolicyEngine's reference in PolicyBench, under FY2026 standards: $24 a month.").parentElement).toHaveTextContent(
+      "PolicyEngine's reference in PolicyBench, under FY2026 standards: $24 a month. The minimum benefit rose to $25 on October 1, 2026.",
     );
     expect(screen.getByRole("link", { name: "policybench.org" })).toHaveAttribute("href", "https://policybench.org");
   });
 });
 
 describe("FoundationContent and GoldenContent", () => {
+  it("lays the idea out as numbered parts, with the room's answer first once there is one", () => {
+    const { unmount } = render(<FoundationContent />);
+    expect(screen.getByRole("heading", { level: 2, name: "One open, validated set of rules" })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([
+      "1What you can check",
+      "2What it powers",
+      `3${BUILD_HEADING}`,
+    ]);
+    unmount();
+    render(
+      <FoundationContent
+        sourceOfTruth={[
+          { id: "yes", label: "Yes", count: 1 },
+          { id: "partly", label: "Partly", count: 2 },
+          { id: "no", label: "No", count: 0 },
+        ]}
+      />,
+    );
+    expect(screen.getAllByRole("heading", { level: 3 })[0].textContent).toBe("1Checking answers in this room");
+  });
+
   it("shows one set of rules powering every use, worded as on the slide", () => {
     render(<FoundationContent />);
     expect(screen.getByText("One open, validated set of rules")).toBeInTheDocument();
@@ -475,6 +517,12 @@ describe("FoundationContent and GoldenContent", () => {
       expect(screen.getByText(tier.gets)).toBeInTheDocument();
       expect(screen.getByText(tier.takes)).toBeInTheDocument();
     }
-    expect(screen.getAllByText("Your state gets")).toHaveLength(3);
+    // Plain labels: no small "Your state gets" eyebrow, and one "Takes:" per step.
+    expect(screen.queryByText("Your state gets")).not.toBeInTheDocument();
+    expect(screen.getAllByText("It takes:")).toHaveLength(3);
+    // Each step is a row that opens on a tap: the name shows, the details wait.
+    const rows = document.querySelectorAll("details");
+    expect(rows).toHaveLength(GOLDEN_A.length);
+    for (const row of rows) expect(row).not.toHaveAttribute("open");
   });
 });

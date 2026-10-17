@@ -91,7 +91,6 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
   const [runDraft, setRunDraft] = useState("");
   // The new-run form stays folded away until the presenter opens it.
   const [runOpen, setRunOpen] = useState(false);
-  const [showStates, setShowStates] = useState(false);
   // Agency comments stay hidden until the presenter chooses to show them.
   const [showComments, setShowComments] = useState(false);
   // Which slide of a multi-slide stage is up; any other stage starts at its first slide.
@@ -240,7 +239,7 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
                 {stage === "groups" &&
                   (sub === 0 ? <VoteSlide votes={summary.votes} /> : <GroupsSlide summary={summary} />)}
                 {stage === "next" &&
-                  (sub === 0 ? <AskSlide /> : <NextSlide states={showStates ? summary.pledges.states : null} />)}
+                  (sub === 0 ? <AskSlide /> : <NextSlide />)}
                 {stage === "dinner" && <ThankYouSlide />}
               </div>
             </div>
@@ -282,7 +281,6 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
                     void move({ runId: runDraft, stage: "welcome" });
                     setRunDraft("");
                     setRunOpen(false);
-                    setShowStates(false);
                     setShowComments(false);
                   }
                 }}
@@ -338,7 +336,7 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
       </div>
 
       {/* The only control at the bottom: a small toggle on the slides that hide something until asked. */}
-      {((stage === "reveal" && sub === 2) || (stage === "scale" && sub === 5) || stage === "next") && (
+      {((stage === "reveal" && sub === 2) || (stage === "scale" && sub === 5)) && (
         <div
           className={`absolute bottom-3 right-3 rounded-full border border-[var(--color-rule)] bg-[var(--color-paper)]/95 px-1.5 py-1 ${fade}`}
         >
@@ -347,13 +345,9 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
             <a href={liveDemoUrl()} target="_blank" rel="noreferrer" className={`${BUTTON_QUIET} px-3 py-1 text-[0.78rem]`}>
               Open demo in a new tab ↗
             </a>
-          ) : stage === "reveal" ? (
+          ) : (
             <button type="button" className={`${BUTTON_QUIET} px-3 py-1 text-[0.78rem]`} onClick={() => setShowComments((v) => !v)}>
               {showComments ? "Hide agency comments" : "Show agency comments"}
-            </button>
-          ) : (
-            <button type="button" className={`${BUTTON_QUIET} px-3 py-1 text-[0.78rem]`} onClick={() => setShowStates((v) => !v)}>
-              {showStates ? "Hide the states" : "Show the states going further"}
             </button>
           )}
         </div>
@@ -769,7 +763,7 @@ function ArizonaStandardsNote() {
   const az = POLICYBENCH.azCase;
   return (
     <p className="m-0 font-body text-[18px] leading-snug text-[var(--color-ink-secondary)]">
-      ${az.reference.monthly} a month under {az.reference.standards} standards (PolicyBench&apos;s reference).{" "}
+      ${az.reference.monthly} a month under {az.reference.standards} standards (PolicyEngine&apos;s reference in PolicyBench).{" "}
       The minimum benefit rose to ${az.fromOctober.monthly} on {az.fromOctober.effective}.
     </p>
   );
@@ -837,7 +831,7 @@ function HouseholdSlide() {
         <Panel className="flex flex-col gap-[18px]">
           <Label className="mb-0">{h.program}</Label>
           <div className="grid grid-cols-2 gap-[24px]">
-            <BigStat value={`$${h.reference}`} label="PolicyEngine's reference" tone="accent" />
+            <BigStat value={`$${h.reference}`} label="PolicyEngine's reference in PolicyBench" tone="accent" />
             <BigStat value="$0" label={`from all ${h.models} AI models`} tone="bad" />
           </div>
           <ArizonaStandardsNote />
@@ -1476,7 +1470,8 @@ function AskSlide() {
   );
 }
 
-function NextSlide({ states }: { states: string[] | null }) {
+// Nothing from the pledges goes on this slide: it asks, and points to the form.
+function NextSlide() {
   return (
     <div className="flex h-full flex-col gap-[32px]">
       <p className="m-0 max-w-[1200px] font-display text-[44px] font-light leading-snug text-[var(--color-ink)]">
@@ -1490,22 +1485,12 @@ function NextSlide({ states }: { states: string[] | null }) {
           </Panel>
         ))}
       </div>
-      {states ? (
-        <ul className="m-0 mt-auto flex list-none flex-wrap gap-[12px] p-0">
-          {states.map((s) => (
-            <li key={s} className="rounded-full bg-[var(--color-ink)] px-[24px] py-[10px] font-display text-[30px] font-light text-white">
-              {s}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <div className="mt-auto flex items-center gap-[24px]">
-          <JoinQr size={120} className="border border-[var(--color-rule)]" />
-          <p className="m-0 font-body text-[28px] text-[var(--color-ink-secondary)]">
-            Fill in the short form on your phone at <strong className="font-medium text-[var(--color-accent)]">{EVENT.joinUrl}</strong>.
-          </p>
-        </div>
-      )}
+      <div className="mt-auto flex items-center gap-[24px]">
+        <JoinQr size={120} className="border border-[var(--color-rule)]" />
+        <p className="m-0 font-body text-[28px] text-[var(--color-ink-secondary)]">
+          Fill in the short form on your phone at <strong className="font-medium text-[var(--color-accent)]">{EVENT.joinUrl}</strong>.
+        </p>
+      </div>
     </div>
   );
 }

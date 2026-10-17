@@ -481,14 +481,14 @@ describe("PresenterApp stages", () => {
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     expect(screen.getByText("2/6")).toBeInTheDocument();
     expect(screen.getByText("$240")).toBeInTheDocument();
-    expect(screen.getByText(/\$24 a month under FY2026 standards/)).toHaveTextContent("PolicyBench's reference");
+    expect(screen.getByText(/\$24 a month under FY2026 standards/)).toHaveTextContent("PolicyEngine's reference in PolicyBench");
     expect(screen.getByText(/The minimum benefit rose to \$25 on October 1, 2026\./)).toBeInTheDocument();
 
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     expect(screen.getByText("4/6")).toBeInTheDocument();
     expect(screen.getByText("$240")).toBeInTheDocument();
-    expect(screen.getByText(/\$24 a month under FY2026 standards/)).toHaveTextContent("PolicyBench's reference");
+    expect(screen.getByText(/\$24 a month under FY2026 standards/)).toHaveTextContent("PolicyEngine's reference in PolicyBench");
     expect(screen.getByText(/The minimum benefit rose to \$25 on October 1, 2026\./)).toBeInTheDocument();
   });
 
@@ -625,15 +625,10 @@ describe("PresenterApp stages", () => {
     for (const o of NEXT_STEPS.options) expect(screen.getByText(o.label)).toBeInTheDocument();
     expect(screen.getByText(/Fill in the short form on your phone/)).toBeInTheDocument();
     expect(screen.queryByText("people")).not.toBeInTheDocument();
+    // Nothing from the pledges goes on the screen, and there's no control to show it.
     expect(screen.queryByText("Ohio")).not.toBeInTheDocument();
-
-    // The presenter decides whether to show the states, from the controls.
-    fireEvent.click(screen.getByRole("button", { name: "Show the states going further" }));
-    expect(await screen.findByText("Arizona")).toBeInTheDocument();
-    expect(screen.getByText("Ohio")).toBeInTheDocument();
-    expect(screen.queryByText(/Fill in the short form/)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Hide the states" }));
-    expect(screen.queryByText("Ohio")).not.toBeInTheDocument();
+    expect(screen.queryByText("Arizona")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /states/i })).not.toBeInTheDocument();
   });
 
   it("shows each PolicyBench slide's source, without the PolicyEngine disclosure", async () => {
@@ -667,12 +662,6 @@ describe("PresenterApp stages", () => {
     expect(screen.getByText("Helps staff, confuses residents")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Hide agency comments" }));
     expect(screen.queryByText("Helps staff, confuses residents")).not.toBeInTheDocument();
-  });
-
-  it("offers the states only on next steps", async () => {
-    setup({ stage: "groups" });
-    await onStage("groups");
-    expect(screen.queryByRole("button", { name: "Show the states going further" })).not.toBeInTheDocument();
   });
 
   it("thanks the room at dinner, without numbers", async () => {
@@ -749,7 +738,6 @@ describe("PresenterApp new run", () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     const { posts } = setup({ stage: "next" });
     await onStage("next");
-    fireEvent.click(screen.getByRole("button", { name: "Show the states going further" }));
 
     // The form stays folded away until opened.
     expect(screen.queryByRole("textbox", { name: "New run name" })).not.toBeInTheDocument();
@@ -777,10 +765,5 @@ describe("PresenterApp new run", () => {
     expect(screen.getByRole("button", { name: "Start run" })).toBeDisabled();
     fireEvent.keyDown(document.body, { key: "Escape" });
     expect(screen.queryByRole("textbox", { name: "New run name" })).not.toBeInTheDocument();
-
-    // The states hide again for the new run.
-    fireEvent.click(within(screen.getByRole("navigation", { name: "Stages" })).getByRole("button", { name: "Next steps" }));
-    await onStage("next");
-    expect(screen.getByRole("button", { name: "Show the states going further" })).toBeInTheDocument();
   });
 });

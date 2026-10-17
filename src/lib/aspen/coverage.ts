@@ -74,14 +74,27 @@ export function eligibilityNote(check: {
  * (https://www.fna.usda.gov/snap/allotment/cola). A computation's
  * standards year comes from the USDA documents its outputs cite
  * (us:policies/usda/snap/fy-2026-cola/...), else from the chatbot's own
- * disclosure, "SNAP figures use FY2026 standards; ..." (finbot-snap-demo
- * src/lib/catalog-overlay.ts, programDisclosures).
+ * disclosure, "SNAP figures use FY2026 standards; ..." or the program-named
+ * form (finbot-snap-demo src/lib/annual-updates.ts, annualUpdateDisclosure).
  */
 const COLA_LEGAL_ID = /^us:policies\/usda\/snap\/fy-(\d{4})-cola\//;
-const STANDARDS_DISCLOSURE = /^SNAP figures use FY ?(\d{4}) standards\b/;
+const STANDARDS_DISCLOSURE = /^(?:[^;\r\n]+ )?SNAP figures use FY ?(\d{4}) standards\b/;
 /** finbot's whole standards disclosure and nothing more: the year used, and a later year not yet encoded. */
 const STANDARDS_DISCLOSURE_WHOLE =
-  /^SNAP figures use FY ?(\d{4}) standards; FY ?(\d{4}) standards took effect October 1, \d{4} and are not encoded yet\.$/;
+  /^SNAP figures use FY ?(\d{4}) standards; FY ?(\d{4}) standards took effect October 1, (\d{4}) and are not encoded yet\.$/;
+const ANNUAL_UPDATE_DISCLOSURE_WHOLE =
+  /^((?:[^;\r\n]+ )?SNAP) figures use FY ?(\d{4}) standards; the FY ?(\d{4}) update due October 1, (\d{4}) is not encoded yet, so amounts from that date may differ from current law\.$/;
+
+/** Only the two known FY templates; the named form must describe this computation. */
+function standardsDisclosure(text: string, displayName?: string): { used: number; due: number } | null {
+  const legacy = text.match(STANDARDS_DISCLOSURE_WHOLE);
+  const annual = text.match(ANNUAL_UPDATE_DISCLOSURE_WHOLE);
+  const values = legacy?.slice(1) ?? (annual && (displayName === undefined || annual[1] === displayName) ? annual.slice(2) : null);
+  // The panel restates October 1 of the preceding calendar year, so retain
+  // a sentence giving any other date rather than silently replacing it.
+  if (!values || Number(values[2]) !== Number(values[1]) - 1) return null;
+  return { used: Number(values[0]), due: Number(values[1]) };
+}
 
 /** "2026-10" → 2027: the federal fiscal year runs October to September. Null for any other period. */
 export function federalFiscalYear(period: string | null | undefined): number | null {
@@ -128,18 +141,18 @@ export function standardsMismatch(
 ): { used: number[]; due: number; notEncoded: boolean } | null {
   const due = federalFiscalYear(period);
   if (due === null || used.length === 0 || used.every((year) => year === due)) return null;
-  const notEncoded = disclosures.some((text) => Number(text.match(STANDARDS_DISCLOSURE_WHOLE)?.[2]) === due);
+  const notEncoded = disclosures.some((text) => standardsDisclosure(text)?.due === due);
   return { used: [...used], due, notEncoded };
 }
 
 /**
  * The chatbot's disclosures the panel doesn't replace with its own words.
- * A disclosure goes only when it is one of finbot's two known sentences,
+ * A disclosure goes only when it is one of finbot's known sentences,
  * whole, and the panel says the same thing itself:
  * - the eligibility sentence, when the panel shows its eligibility note
  *   (testsEligibility false, saved verdict included);
- * - the standards sentence ("SNAP figures use FY2026 standards; FY2027
- *   ... not encoded yet."), for a monthly period, when either the panel's
+ * - either whole standards template (legacy "SNAP figures use ..." or
+ *   the program-named annual-update sentence), for a monthly period, when the panel's
  *   standards line names that same year (standardsMismatch, "not encoded
  *   yet" included), or the year it names is the month's own fiscal year,
  *   so its "not encoded" part is about a later year than this period.
@@ -159,9 +172,9 @@ export function otherDisclosures(computation: {
   const lineShown = standardsMismatch(used, computation.period) !== null;
   const noted = !testsEligibility(computation);
   const stated = (text: string) => {
-    const match = text.match(STANDARDS_DISCLOSURE_WHOLE);
-    if (!match || due === null) return false;
-    const year = Number(match[1]);
+    const disclosure = standardsDisclosure(text, computation.displayName);
+    if (!disclosure || due === null) return false;
+    const year = disclosure.used;
     return year === due || (lineShown && used.includes(year));
   };
   return (computation.disclosures ?? []).filter(

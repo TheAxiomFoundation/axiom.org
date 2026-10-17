@@ -189,7 +189,8 @@ describe('aspen API routes', () => {
       postCheck: 'wrong',
     })
     expect(room.summary.discussion.notes).toContainEqual({ question: 'misunderstood', text: 'BBCE' })
-    expect(room.summary.pledges).toEqual({ people: 1, states: ['Arizona'], accurateAi: 1, stateSystems: 0 })
+    // Pledges give counts only: no states, names or emails reach the results.
+    expect(room.summary.pledges).toEqual({ people: 1, accurateAi: 1, stateSystems: 0 })
     expect(room.summary.twists[0]).toMatchObject({ id: "gig", count: 1 })
     expect(room.summary.voices).toContainEqual({ text: "Staff use it already", verdict: null })
     expect(room.summary.sourceOfTruth.find((c: { id: string }) => c.id === "no").count).toBe(1)
