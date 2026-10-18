@@ -5,18 +5,22 @@
  * 2026, a 90-minute reception that flows into the cohort dinner.
  *
  * Follows the session plan sent to Aspen on Oct 7: participants try the
- * problem before we name it, and the evening builds to one idea: a single
+ * problem before we name it, and the session builds to one idea: a single
  * set of open, validated rules changes what's possible for benefits
- * delivery.
+ * delivery. The copy avoids "tonight" and "this evening" (Ariel's notes).
  */
 
 export const EVENT = {
-  title: "What does AI tell your residents about benefits?",
+  title: "What does AI tell residents about benefits?",
   cohort: "Aspen Institute State Benefits Leadership Cohort",
   place: "Phoenix",
   date: "Monday, October 26, 2026",
   shortDate: "Oct 26",
+  /** On the cover slide, after the place. */
+  coverDate: "October 26, 2026",
   hosts: "Ariel Kennan and Max Ghenis, the Axiom Foundation",
+  /** The cover slide names the presenters, with the logo on its own line below. */
+  presenters: "Ariel Kennan and Max Ghenis",
   /** The participant URL shown on the big screen. */
   joinUrl: "axiom.org/aspen",
   contactEmail: "hello@axiom.org",
@@ -25,7 +29,6 @@ export const EVENT = {
 export const STAGE_IDS = [
   "welcome",
   "try",
-  "rate",
   "reveal",
   "scale",
   "foundation",
@@ -37,19 +40,22 @@ export const STAGE_IDS = [
 export type StageId = (typeof STAGE_IDS)[number];
 
 /**
- * The evening's red thread: each stage's summary picks up where the last
- * one left off, so the page reads as one story from the question residents
- * already ask to the states that go first. No clock times: the room sets
- * the pace.
+ * The red thread: each stage's summary picks up where the last one left
+ * off, so the page reads as one story from the question residents already
+ * ask to the states that go first. No clock times: the room sets the pace.
+ * Copy stays short, so it reads at phone size.
  */
 export interface Stage {
   id: StageId;
   label: string;
   title: string;
-  /** One line for the evening's agenda. */
+  /** One line for the agenda. */
   agenda: string;
   /** The thread: how this stage follows from the one before. */
+  /** Under the heading on the stage's first slide; empty for none. */
   summary: string;
+  /** The phone's line under the heading, when it differs from the slide's. */
+  phoneSummary?: string;
   /** Segments that depend on the room, e.g. on headcount. */
   optional?: boolean;
 }
@@ -59,55 +65,46 @@ export const STAGES: readonly Stage[] = [
     id: "welcome",
     label: "Welcome",
     title: "Welcome",
-    agenda: "Aspen opens the evening and introduces Ariel and Max.",
-    summary:
-      "Residents already ask AI about benefits. Tonight we follow one question all the way through: what does it tell them, and how would anyone know if it's right?",
+    agenda: "Aspen opens and introduces Ariel and Max.",
+    summary: "Residents already ask AI about benefits. What does it tell them, and is it right?",
   },
   {
     id: "try",
     label: "Try it",
     title: "Ask the AI",
-    agenda: "Ask the AI a benefits question, then rate the answer.",
-    summary:
-      "Start where residents start: ask the AI a benefits question, then judge the answer yourself.",
-  },
-  {
-    id: "rate",
-    label: "Rate it",
-    title: "How did AI do?",
-    agenda: "Rate how AI did, before we see the room's results.",
-    summary:
-      "You've seen an answer up close. Before we look at the room's results, rate how AI did overall, and how your agency has found it so far.",
+    agenda: "Ask the AI a benefits question, then rate it.",
+    summary: "Ask as a resident or caseworker. Rate the answer. Then tell us more about AI use in your agency.",
+    phoneSummary: "Build a prompt. Use the preselected options and see how they change the prompt below. Or write your own.",
   },
   {
     id: "reveal",
     label: "What we saw",
     title: "What we saw",
-    agenda: "Could residents act on the answers? Then discussion.",
-    summary: "Could a resident act on these answers? Here's what this room found, and where the answers broke down.",
+    agenda: "The room's results, then discussion.",
+    summary: "Could a resident act on these answers?",
+    // The phone opens with what you contributed; the question is part 1's heading there.
+    phoneSummary: "",
   },
   {
     id: "scale",
     label: "At scale",
-    title: "How AI performs at scale",
-    agenda: "PolicyBench: how 46 AI models do on benefits.",
-    summary:
-      "Was this room unlucky? PolicyBench asked 46 AI models to calculate benefits for real households, and scored every answer.",
+    title: "AI gets it wrong at scale",
+    agenda: "PolicyBench: 50 AI models on SNAP.",
+    summary: "We asked 50 AI models to calculate SNAP for real households.",
   },
   {
     id: "foundation",
     label: "Shared foundation",
-    title: "A shared foundation",
-    agenda: "One open set of rules for every tool, and what it takes.",
-    summary:
-      "The answers go wrong because every tool rebuilds your rules on its own. One open, validated set of rules gives every tool the same correct answer.",
+    title: "What if we had a shared foundation to power all digital tools?",
+    summary: "",
+    agenda: "One open set of rules for every tool.",
   },
   {
     id: "groups",
     label: "Small groups",
-    title: "What would your team do with it?",
-    agenda: "What your team would build on open rules.",
-    summary: "With rules your team can see, test and change, what would you build first? Pick one and talk it through.",
+    title: "What would you build first with an open, validated set of rules?",
+    agenda: "Vote on what to build first, then talk it through in groups.",
+    summary: "Vote on your phone, then talk through your choice with your group.",
     optional: true,
   },
   {
@@ -115,16 +112,14 @@ export const STAGES: readonly Stage[] = [
     label: "Next steps",
     title: "Next steps",
     agenda: "A short form for states that want to go further.",
-    summary:
-      "We have the opportunity to solve this nationally. A few states going first will show it works. Tell us how you'd like to go further.",
+    summary: "Tell us if your state wants to go further.",
   },
   {
     id: "dinner",
     label: "Thank you",
     title: "Thank you",
     agenda: "Thank you, then dinner.",
-    summary:
-      "We started with a question residents already ask. Thank you for asking it with us, and enjoy dinner on the other side of the room.",
+    summary: "Thank you for joining us. Enjoy dinner.",
   },
 ];
 
@@ -137,7 +132,7 @@ export function isStageId(value: unknown): value is StageId {
 }
 
 // ---------------------------------------------------------------------------
-// Who you are tonight
+// Who the participant asks as
 // ---------------------------------------------------------------------------
 
 export const PERSPECTIVE_IDS = ["resident", "caseworker"] as const;
@@ -167,15 +162,6 @@ export const PERSPECTIVES: readonly {
 export function isPerspectiveId(value: unknown): value is PerspectiveId {
   return PERSPECTIVE_IDS.includes(value as PerspectiveId);
 }
-
-export const ROLES = [
-  "Secretary or commissioner",
-  "Deputy secretary or director",
-  "Program or policy lead",
-  "Workforce or labor leader",
-  "Aspen staff or adviser",
-  "Other",
-] as const;
 
 export const US_STATES = [
   "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado",
@@ -327,9 +313,17 @@ export const QUESTIONS: readonly { id: QuestionId; label: string }[] = [
  * resident alone, `we` for a resident speaking for the household, `they`
  * for a caseworker's client. `skip` lists households it would contradict.
  */
+/** The two kinds of detail, shown as separate rows so the list scans quickly. */
+export const TWIST_GROUPS = [
+  { id: "money", label: "Income and costs" },
+  { id: "people", label: "People in the home" },
+] as const;
+export type TwistGroupId = (typeof TWIST_GROUPS)[number]["id"];
+
 export interface Twist {
   id: string;
   label: string;
+  group: TwistGroupId;
   i: string;
   we: string;
   they: string;
@@ -340,6 +334,7 @@ export const TWISTS: readonly Twist[] = [
   {
     id: "gig",
     label: "Gig income",
+    group: "money",
     i: "I also make about $400 a month driving for a delivery app.",
     we: "We also make about $400 a month driving for a delivery app.",
     they: "They also make about $400 a month driving for a delivery app.",
@@ -347,6 +342,7 @@ export const TWISTS: readonly Twist[] = [
   {
     id: "child-support",
     label: "Pays child support",
+    group: "money",
     i: "I pay $300 a month in child support for a child who doesn't live with me.",
     we: "One of us pays $300 a month in child support for a child who doesn't live with us.",
     they: "They pay $300 a month in child support for a child who doesn't live with them.",
@@ -354,6 +350,7 @@ export const TWISTS: readonly Twist[] = [
   {
     id: "student",
     label: "College student",
+    group: "people",
     i: "I'm also a part-time college student.",
     we: "One of us is a part-time college student.",
     they: "They're also a part-time college student.",
@@ -362,6 +359,7 @@ export const TWISTS: readonly Twist[] = [
   {
     id: "green-card",
     label: "Green card holder",
+    group: "people",
     i: "I've had a green card for two years.",
     we: "One of us has had a green card for two years.",
     they: "One adult in the household has had a green card for two years.",
@@ -369,6 +367,7 @@ export const TWISTS: readonly Twist[] = [
   {
     id: "medical",
     label: "Medical bills",
+    group: "money",
     i: "I pay about $250 a month out of pocket for medical care.",
     we: "We pay about $250 a month out of pocket for medical care.",
     they: "They pay about $250 a month out of pocket for medical care.",
@@ -376,6 +375,7 @@ export const TWISTS: readonly Twist[] = [
   {
     id: "utilities",
     label: "Pays utilities",
+    group: "money",
     i: "I also pay $180 a month for electricity and heat.",
     we: "We also pay $180 a month for electricity and heat.",
     they: "They also pay $180 a month for electricity and heat.",
@@ -384,6 +384,7 @@ export const TWISTS: readonly Twist[] = [
   {
     id: "savings",
     label: "Savings",
+    group: "money",
     i: "I have $8,000 in savings.",
     we: "We have $8,000 in savings.",
     they: "They have $8,000 in savings.",
@@ -392,6 +393,7 @@ export const TWISTS: readonly Twist[] = [
   {
     id: "roommate",
     label: "Roommate",
+    group: "people",
     i: "I share an apartment with a roommate who buys and cooks food separately.",
     we: "We share our home with a roommate who buys and cooks food separately.",
     they: "They share an apartment with a roommate who buys and cooks food separately.",
@@ -399,6 +401,7 @@ export const TWISTS: readonly Twist[] = [
   {
     id: "pregnant",
     label: "Pregnant",
+    group: "people",
     i: "I'm also pregnant.",
     we: "One of us is pregnant.",
     they: "They're also pregnant.",
@@ -448,24 +451,38 @@ function clientQuestion(q: QuestionId, h: Household): string {
     : `How much ${h.programShort} should they get each month?`;
 }
 
+/** Questions in their display order, without duplicates. */
+export function orderedQuestions(questions: QuestionId | readonly QuestionId[]): QuestionId[] {
+  const picked = new Set(Array.isArray(questions) ? questions : [questions]);
+  return QUESTION_IDS.filter((id) => picked.has(id));
+}
+
+/** The known questions in a request: a list, or the single id older pages sent. In display order. */
+export function questionsFrom(list: unknown, single?: unknown): QuestionId[] {
+  const raw: unknown[] = Array.isArray(list) ? list : single !== undefined && single !== null ? [single] : [];
+  return orderedQuestions(raw.filter((q): q is QuestionId => QUESTION_IDS.includes(q as QuestionId)));
+}
+
 /**
- * The prompt a perspective, household, details and question compose to.
- * The participant can edit it before sending; both versions are saved.
+ * The prompt a perspective, household, details and one or more questions
+ * compose to; several questions are asked one after another, in display
+ * order. The participant can edit it before sending; both versions are saved.
  */
 export function composePrompt(
   perspective: PerspectiveId,
   household: Household,
-  question: QuestionId,
+  questions: QuestionId | readonly QuestionId[],
   twistIds: readonly string[] = [],
 ): string {
   const details = twistsFor(household)
     .filter((t) => twistIds.includes(t.id))
     .map((t) => (perspective === "caseworker" ? t.they : household.plural ? t.we : t.i));
   const extra = details.length ? ` ${details.join(" ")}` : "";
+  const asked = orderedQuestions(questions);
   if (perspective === "resident") {
-    return `${household.firstPerson}${extra} ${residentQuestion(question, household)}`;
+    return `${household.firstPerson}${extra} ${asked.map((q) => residentQuestion(q, household)).join(" ")}`;
   }
-  return `I'm a caseworker in ${household.state}. My client is ${household.thirdPerson}.${extra} ${clientQuestion(question, household)}`;
+  return `I'm a caseworker in ${household.state}. My client is ${household.thirdPerson}.${extra} ${asked.map((q) => clientQuestion(q, household)).join(" ")}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -517,13 +534,13 @@ export const RESIDENT_ACTIONS = [
 export type ResidentActionId = (typeof RESIDENT_ACTIONS)[number]["id"];
 
 /**
- * A baseline asked in Rate it, shown on Shared foundation: is there a
- * source of truth anyone can check answers against today?
+ * A baseline asked with the overall rating in Try it, shown on Shared
+ * foundation: is there a source of truth anyone can check answers against today?
  */
 export const SOURCE_OF_TRUTH = {
   id: "source-of-truth",
-  title: "Before tonight",
-  question: "Can a resident, a screener or an AI check an answer against your state's official rules today?",
+  title: "Checking answers today",
+  question: "Can a resident, a screener or an AI check an answer against the state's official rules today?",
   options: [
     { id: "yes", label: "Yes" },
     { id: "partly", label: "Partly" },
@@ -545,12 +562,12 @@ export type PostCheckId = (typeof POST_CHECK)[number]["id"];
 
 export const DISCUSSION_QUESTIONS = [
   { id: "performance", label: "How well did the AI answers perform?" },
-  { id: "experience", label: "How has your agency experienced AI so far, with clients and with staff?" },
+  { id: "experience", label: "How is AI performing overall in your agency?" },
   { id: "misunderstood", label: "Which policies do the public and caseworkers most often misunderstand?" },
 ] as const;
 export type DiscussionQuestionId = (typeof DISCUSSION_QUESTIONS)[number]["id"];
 
-/** A 1–5 scale for a discussion question: its heading in Rate it, what each category rates, and what the ends mean. */
+/** A 1–5 scale for a discussion question: its heading, what each category rates, and what the ends mean. */
 export interface RatingScale {
   title: string;
   low: string;
@@ -559,33 +576,44 @@ export interface RatingScale {
 }
 
 /**
- * The discussion questions people rate on a scale in Rate it; the third
+ * The discussion questions people rate on a scale in Try it; the third
  * (misunderstood policies) uses topic picks instead. Category labels are
  * short statements, so one scale (Not at all → Fully) reads for all of them.
  */
 export const RATING_SCALES: Partial<Record<DiscussionQuestionId, RatingScale>> = {
   performance: {
-    title: "How did the AI do tonight?",
+    title: "How did the AI do at answering the question(s)?",
     low: "Not at all",
     high: "Fully",
     categories: [
       { id: "amount", label: "Got the amount right" },
-      { id: "state-rules", label: "Knew your state's rules" },
+      { id: "state-rules", label: "Knew the state's rules" },
       { id: "clarity", label: "Was clear to a resident" },
       { id: "sources", label: "Showed where the answer came from" },
       { id: "uncertainty", label: "Admitted what it didn't know" },
     ],
   },
   experience: {
-    title: "How has AI worked out at your agency so far?",
-    low: "Mostly a problem",
-    high: "Mostly a help",
+    title: "How is AI performing overall in your agency?",
+    low: "Not well",
+    high: "Very well",
     categories: [
       { id: "residents", label: "For residents" },
       { id: "staff", label: "For your staff" },
+      { id: "you", label: "For you" },
     ],
   },
 };
+
+/**
+ * The optional comment under the agency question. It asks for both sides, so
+ * no one has to call their own agency's AI a failure. Comments are anonymous
+ * and stay off the phones; the presenter chooses when to show them.
+ */
+export const AGENCY_COMMENT = {
+  prompt: "Where has AI helped your agency, and where has it fallen short?",
+  hint: "Optional and anonymous. Please don't name people or share client details.",
+} as const;
 
 export const RATING_POINTS = [1, 2, 3, 4, 5] as const;
 
@@ -605,33 +633,53 @@ export const DISCUSSION_TOPICS = [
   "Reporting and renewals",
 ] as const;
 
-/** The small-group uses, from the session plan. */
+/** The uses people vote on before the small groups, from the session plan. */
 export const USE_CASES = [
   {
     id: "see-edit",
     label: "See and edit the rules",
-    detail: "Staff read the rules their programs run on, in plain language, and change them.",
+    detail: "Staff read the rules in plain language and change them.",
   },
   {
     id: "project",
     label: "Project policy changes",
-    detail: "See who a change would affect, and by how much, before it lands.",
+    detail: "See who a change affects before it lands.",
   },
   {
     id: "flows",
     label: "Build caseworker flows",
-    detail: "Ask only the questions a case needs, in the order the rules need them.",
+    detail: "Ask only the questions each case needs.",
   },
   {
     id: "apply",
     label: "Create application interfaces",
-    detail: "New ways to apply, built on the same rules as the eligibility system.",
+    detail: "New ways to apply, on the same rules as the eligibility system.",
   },
 ] as const;
 export type UseCaseId = (typeof USE_CASES)[number]["id"];
 
-export const BREAKOUT_PROMPT =
-  "How would your team use a tool that does this? Who would use it first, and what would have to be true for you to trust it?";
+/** Small groups on a phone: who fills in the form. The slide carries the longer BREAKOUT_PROMPT. */
+export const GROUP_PHONE_INTRO = "One person per group fills this in and shares it with the room.";
+
+/** Small groups 2/2: how the groups work, said before they start. */
+export const BREAKOUT_PROMPT = "Pick one use from the vote and answer three questions together. One person reports back for the group.";
+
+/**
+ * The three questions every group answers: one box each on the group's phone,
+ * one line each on its report-back card. `id` is the breakout payload field;
+ * the idea keeps its original name, `note`.
+ */
+export const GROUP_QUESTIONS = [
+  { id: "note", short: "Idea", label: "What would you build first?", placeholder: "One or two sentences" },
+  { id: "who", short: "Who", label: "Who would use it, and what would change for them?", placeholder: "Caseworkers, residents, policy staff…" },
+  { id: "trust", short: "Trust", label: "What would have to be true for your agency to trust it?", placeholder: "Who reviews it, what it has to match…" },
+] as const;
+
+/** The second, optional group box: what the group raised beyond its best idea (Alex's ask, Oct 12). */
+export const GROUP_RAISED = {
+  label: "Anything else your group raised?",
+  placeholder: "Barriers, what your workforce would need, open questions",
+} as const;
 
 // ---------------------------------------------------------------------------
 // PolicyBench
@@ -639,32 +687,164 @@ export const BREAKOUT_PROMPT =
 
 /**
  * SNAP figures from the PolicyBench dashboard export
- * (PolicyEngine/policybench, release dashboard-data-20260930, snapshot
- * 2026-09-30, version 1.1). "Eligible" = the 13 scored households whose
- * PolicyEngine reference SNAP is above $0; each of 46 models answered each
- * one with no tools, 591 parsed answers in all. "Said $0" = a prediction
- * of $0 or less. Failure causes are PolicyBench's own `failureSubtype`
+ * (PolicyEngine/policybench, release dashboard-data-20261014, the latest on
+ * 2026-10-15; dashboard-data.json sha256 22db9a9c…). "Eligible" = the 13
+ * scored households whose PolicyEngine reference SNAP is above $0; each of
+ * 50 models answered each one with no tools, 643 parsed answers in all.
+ * The same counting reproduces the Sep 30 release's 46 / 591 / 242 / 188.
+ * "Said $0" = a prediction of $0 or less. Failure causes are PolicyBench's own `failureSubtype`
  * annotations; "categorical_eligibility" covers broad-based categorical
  * eligibility (BBCE).
  */
 export const POLICYBENCH = {
-  snapshot: "September 30, 2026",
+  snapshot: "October 14, 2026",
   url: "https://policybench.org",
-  models: 46,
+  models: 50,
   eligibleHouseholds: 13,
-  eligibleAnswers: 591,
-  saidZero: 242,
-  saidZeroBbce: 188,
+  eligibleAnswers: 643,
+  saidZero: 268,
+  saidZeroBbce: 197,
   bestModelZeros: 2,
   /** The household every model got wrong (scenario_013). */
   azCase: {
-    description:
-      "An 80-year-old Arizonan with a disability, living alone on $2,538 a month from Social Security and a pension, with $58,700 in the bank.",
-    modelsAsked: 46,
-    modelsSaidZero: 46,
+    description: "Age 80, with a disability, living alone on $2,538 a month. $58,700 in savings.",
+    modelsAsked: 50,
+    modelsSaidZero: 50,
     answer:
       "Eligible. Income is under Arizona's expanded categorical eligibility limit (200% of poverty), so there is no asset test, and the household gets the minimum benefit of $24 a month.",
   },
+} as const;
+
+// ---------------------------------------------------------------------------
+// From Max's Nava Open Source Summit deck (axiom-audiences PR #141,
+// decks/nava-2026-10, Oct 13, 2026), moved to the Oct 14 release
+// (dashboard-data-20261014) on Oct 15 so all of At scale uses one snapshot.
+// Recomputed the deck's way: parsed no-tools answers; within 10% of the
+// reference for households owed money, within $1 for households owed $0.
+// That method reproduces every Oct 13 row on the deck exactly.
+// ---------------------------------------------------------------------------
+
+/** Where models still break: accuracy by program, for households owed money and households owed $0. */
+export const WHERE_MODELS_BREAK = {
+  title: "Where models still break",
+  note: "Share of model answers within 10% of PolicyEngine's reference amount (within $1 for households owed $0)",
+  source:
+    "policybench.org, October 14, 2026 · 50 models, no tools · income taxes before refundable credits · TANF (1 household) and SSI (2) omitted",
+  rows: [
+    { program: "State refundable credits", households: 18, owed: 17.6, zero: 98.6 },
+    { program: "SNAP", households: 13, owed: 36.7, zero: 96.9 },
+    { program: "Federal income tax", households: 36, owed: 45.6, zero: 93.8 },
+    { program: "State income tax", households: 36, owed: 47.8, zero: 91.1 },
+    { program: "Federal refundable credits", households: 13, owed: 52.4, zero: 96.1 },
+    { program: "Payroll tax", households: 60, owed: 88.5, zero: 98.6 },
+    { program: "Self-employment tax", households: 8, owed: 94.4, zero: 99.3 },
+  ],
+} as const;
+
+/** One household, as every model sees it (PolicyBench household 13; Pavel's At scale case). */
+export const AZ_HOUSEHOLD = {
+  title: "One household, as every model sees it",
+  facts: [
+    "Arizona, 2026",
+    "Lives alone",
+    "Age 80, disabled",
+    "Social Security $23,736 a year",
+    "Private pension $6,720 a year",
+    "$58,700 in the bank",
+    "Plus health premiums, a mortgage balance and small investment income",
+  ],
+  program: "SNAP for 2026",
+  reference: 240,
+  models: 50,
+  source: "Scenario explorer, policybench.org, October 14, 2026 snapshot",
+} as const;
+
+/** What the models miss: the top two models' explanations, beside the rule they skip. */
+export const WHAT_MODELS_MISS = {
+  title: "What the models miss",
+  quotes: [
+    {
+      model: "GPT-6 Sol · rank 1",
+      text: "Monthly Social Security and pension income exceeds the amount that would produce a SNAP allotment for one person after the listed deductions.",
+    },
+    {
+      model: "Claude Opus 5.5 · rank 2",
+      text: "Countable income is about $2,545 per month. After the standard and small medical deductions, net income is about $2,330, which exceeds 100% of the poverty line (about $1,304).",
+    },
+  ],
+  ruleLabel: "Broad-based categorical eligibility",
+  rule: "Since March 2026, Arizona has extended SNAP's categorical eligibility to every household with gross income under 200% of the poverty line. A categorically eligible household skips SNAP's income and asset tests, and a household of one or two gets SNAP's minimum benefit.",
+  amount: 240,
+  amountLabel: "PolicyEngine's reference SNAP for this household in 2026",
+  sources:
+    "7 CFR 273.2(j)(2) · USDA FNS broad-based categorical eligibility chart, June 29, 2026 · PolicyBench, October 14, 2026",
+} as const;
+
+/**
+ * REVIEW (AK, Oct 15, 2026): decide with Max before Monday whether to keep the Arizona household.
+ * DES announced a cut in the ECE gross limit from 185% to 130% of FPL on 02/23/2026, recalled it
+ * on 03/23/2026 and raised the limit to 200% for benefit months 03/2026 on ("What's Changed on
+ * 03/23/2026"; rulespec-us#1460). This household sits near 195% of FPL, so it qualifies only under
+ * the new 200% limit, and the federal push to end BBCE adds risk.
+ * Shown on At scale 4/5 only with ?review in the presenter URL; delete once decided.
+ */
+export const AZ_SCENARIO_REVIEW = {
+  label: "Review",
+  question: "Change this scenario?",
+  text: "This household sits near 195% of FPL. It qualifies only because DES raised the limit from 185% to 200% in March, after recalling a February cut to 130%. Under 185% or 130%, $0 is right.",
+} as const;
+
+/** Why this matters for AI: the front door to the law. */
+export const FRONT_DOOR = {
+  /** Replaces the At scale heading on this slide, where the stage turns from the problem to the fix. */
+  heading: "We can help AI get it right at scale",
+  title: "AI is becoming a front door to benefits. Now is the moment to get it right nationally.",
+  asker: { name: "People and agents", detail: "ask what the law says" },
+  model: "AI model",
+  today: { label: "Today", result: "A guess", detail: "from training data and web search" },
+  axiom: { label: "With Axiom", source: "Encoded law", sourceDetail: "open, cited, executable", result: "The rule", detail: "with its citation" },
+} as const;
+
+/**
+ * At scale 6/6: the live chatbot demo (TheAxiomFoundation/finbot-snap-demo,
+ * served at axiom.org/gallery/chatbot). `compare=1` puts plain AI beside AI
+ * with the Axiom rules engine, and `q` prefills the demo's own Fresno example.
+ * Inside a frame the demo never sends on its own, so the presenter presses
+ * Send. The model is OpenAI's (GPT-5.5 on Oct 15, 2026); the demo's copy
+ * says what it does and doesn't promise, so the slide stays plain too.
+ */
+export const LIVE_DEMO = {
+  title: "The same AI model, on its own and with the Axiom rules engine",
+  base: "https://axiom.org/gallery/chatbot",
+  question:
+    "I'm a single mom in Fresno, California with two kids (8 and 5). I make $3,400 a month before taxes, pay $1,500 rent, and pay about $120 a month for utilities, including heat. Can we get CalFresh, and how much would we get each month?",
+} as const;
+
+export function liveDemoUrl(): string {
+  return `${LIVE_DEMO.base}?compare=1&q=${encodeURIComponent(LIVE_DEMO.question)}`;
+}
+
+/** The same rules for every system: what one shared set of rules gives each group. */
+export const SAME_RULES = {
+  /** Shared foundation 2/3's heading. */
+  heading: "What does an open, validated set of rules enable?",
+  /** The room is state benefits leaders, so governments get the big box and the most uses. */
+  governments: {
+    label: "For governments",
+    uses: [
+      "Determinations that cite the law they apply, so caseworkers and residents can see the reasons",
+      "Caseworker guidance and training built on the same rules",
+      "Payment accuracy checks before benefits go out",
+      "A policy change tested before it takes effect",
+      "Screeners and AI tools that give your agency's answer",
+    ],
+  },
+  audiences: [
+    { label: "For individuals", text: "Accurate information to plan for their futures and receive assistance on any channel they use." },
+    { label: "For AI systems", text: "One source of record, so models stop estimating benefits amounts and start citing them." },
+    { label: "For builders", text: "Tools that guide people through benefits and taxes, built on rules they don't have to re-encode." },
+    { label: "For researchers", text: "A computational model of the rules, for estimating what a policy does and reproducing the analysis." },
+  ],
 } as const;
 
 export function percent(part: number, whole: number): number {
@@ -675,6 +855,19 @@ export function percent(part: number, whole: number): number {
 // The fix
 // ---------------------------------------------------------------------------
 
+/** What makes the one set of rules checkable: the dark box on Shared foundation 1/3 and on phones. */
+export const FOUNDATION_TRAITS = [
+  "Every value cites the provision it comes from",
+  "Every change carries its effective date",
+  "Every release is versioned, so you can see what changed",
+] as const;
+
+/** Under the boxes on Shared foundation 1/3, emphasized as in the main deck's value proposition. */
+export const ONE_SET_STATEMENT = {
+  text: "Every system that helps people discover and enroll in economic security programs runs on the same rules,",
+  accent: "reducing cost, duplication and error at once.",
+} as const;
+
 export const ONE_SET_OF_RULES = [
   { label: "AI tools", detail: "The chatbots residents and staff already ask." },
   { label: "Community screeners", detail: "Partner tools that say what to apply for." },
@@ -684,35 +877,71 @@ export const ONE_SET_OF_RULES = [
   { label: "Research", detail: "Evaluators and analysts run the same rules." },
 ] as const;
 
+/** Shared foundation 3/3's heading. */
+export const BUILD_HEADING = "How do we build an open, validated set of rules?";
+
 /**
- * What it takes for a state to get there: the validation ladder (Bronze,
- * Silver and Gold A) from the September plan decks, in plain language.
- * Draft for Ariel: the convening doc asks for one slide on what the
- * Golden A enables for a state and what it takes.
+ * How a shared foundation gets built for a state: rules from public documents
+ * first, then the Silver and Gold A validation tiers, worded as in the core
+ * deck (decks/ballmer-2026-10-07, Release standard); Silver A's "takes" stays
+ * concrete for this room. Bronze A (an independent audit) came off the slide on
+ * Oct 15, 2026. `medal` picks the core deck's tier palette; the first step has none.
  */
 export const GOLDEN_A = [
   {
-    tier: "Bronze A",
-    name: "Independent audit",
-    gets: "An outside research firm checks a sample of your rules against the source documents and publishes what it finds.",
-    takes: "Nothing from your team.",
+    tier: "Starting point",
+    name: "Rules from public documents",
+    gets: "Programs encoded from publicly available documents, first for screening parity, then as full document bundles.",
+    /**
+     * The roadmap's twelve core programs (PlanGraph joint-operating-2026-09-13,
+     * `team:work:finbot-policy-inventory` scope.programs; graph 1be9a657), in
+     * reading order. Federal and state income tax is the thirteenth in the
+     * end-of-2027 requirement, since the credits are computed on it.
+     */
+    programs: ["SNAP", "Medicaid", "CHIP", "TANF", "WIC", "LIHEAP", "CCDF", "SSI", "Medicare", "UI", "EITC", "CTC"],
+    takes: "Publicly available documents.",
+    medal: null,
   },
   {
     tier: "Silver A",
-    name: "Validated with your state",
-    gets: "Your rules, checked against your own manuals and your system's code. Every gap is found and explained. Any tool built on them gives the answer your agency would.",
+    name: "Government validation",
+    gets: "Axiom validates the encoded rules together with a government partner, against the partner's own internal documents and its existing system code.",
     takes: "Your policy manuals, read access to how your system computes, and a few hours of your policy staff.",
+    medal: "silver",
   },
   {
     tier: "Gold A",
-    name: "Your system runs on them",
-    gets: "Your own eligibility system runs on the validated rules. A policy change updates every tool at once: the chatbot, the screener and your system.",
-    takes: "Silver A, plus integration, operations and support to run in production.",
+    name: "Government system runs on Axiom",
+    gets: "A government runs its own production system on the rules it validated.",
+    goal: "This is the ultimate goal: all systems can run off the same rules, inside and alongside government.",
+    takes: "Silver A, plus the integration, operations and support to run in production.",
+    medal: "gold",
   },
 ] as const;
 
+/**
+ * The ask, shown just before the next-steps form: what Silver A takes from
+ * a state, and what it never asks for. From Max's Aspen prototype spec
+ * (axiom-audiences docs/aspen-page-spec.md).
+ */
+export const SILVER_ASK = {
+  title: "Validate and open rules with us",
+  lead: "Silver A is the first step. Gold A is the destination.",
+  takes: [
+    "3–5 people across policy, operations and technology, a few hours a month.",
+    "Manuals, guidance, test cases and access to legacy rules code.",
+    "One multi-day on-site session.",
+  ],
+  guardrails: [
+    "No production integration.",
+    "No client personal information.",
+    "No commitment to buy.",
+    "Your reviewers are the final authority.",
+  ],
+} as const;
+
 export const NEXT_STEPS = {
-  ask: "We have the opportunity to solve this nationally. A few states validating their rules with us first will prove it.",
+  ask: "Work with us. Your partnership is the path to solving this nationally.",
   options: [
     {
       id: "accurate_ai",
@@ -722,18 +951,30 @@ export const NEXT_STEPS = {
     {
       id: "state_systems",
       label: "State systems",
-      detail: "Your eligibility systems, screeners and caseworker tools on validated rules.",
+      detail: "Your eligibility systems, screeners and caseworker tools on open, validated rules.",
     },
   ],
 } as const;
 
+/**
+ * Shown with every AI answer: the answers are a demo of an unmodified
+ * general-purpose model, and the model's maker has no part in the page.
+ */
+export const DEMO_NOTE = "Answers come from OpenAI's GPT model, unedited. OpenAI does not sponsor or endorse this page.";
+
+/**
+ * What we keep, said up front (agreed with Aspen, Oct 12): answers and
+ * ratings are kept for our own analysis, never published, and taking part
+ * is optional. Reworded on Oct 16 as a bold header and one plain line per
+ * point, for phones; same substance.
+ */
 export const DISCLOSURE = {
-  short:
-    "We'll look at everyone's answers together. They're saved, with no names on screen.",
+  short: "We keep everyone's answers to learn from and don't publish them. Taking part is optional.",
   details: [
-    "We don't ask for your name. Please don't type personal details about real people.",
-    "Your questions go to OpenAI to get the AI's answer, and to the Axiom rules chatbot when you check against the rules.",
-    "The Axiom Foundation keeps what you type to learn which rules are hardest to get right. The screen never shows who asked what.",
-    "The next-steps form is the only place we ask for an email, and only to follow up with you.",
+    { title: "No names", text: "We don't ask who you are. Please don't type details about real people." },
+    { title: "Where questions go", text: "To OpenAI, for the AI's answer." },
+    { title: "What we save", text: "Questions and ratings, to learn which rules are hardest. We don't publish them or show who asked what." },
+    { title: "Your choice", text: "Skip anything, or just watch." },
+    { title: "Email", text: "Only on the next-steps form, to follow up." },
   ],
 } as const;

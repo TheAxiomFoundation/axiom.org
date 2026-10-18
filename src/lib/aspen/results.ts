@@ -18,8 +18,8 @@ import type { PromptRow, RunData } from "./types";
 
 /**
  * The room's results, as the reveal and the presenter screen show them.
- * Aggregates only: no participant ids, and pledges contribute states
- * (when the person allowed it) and counts, never names or emails.
+ * Aggregates only: no participant ids, and pledges contribute counts,
+ * never states, names or emails. Nothing from a pledge goes on the screen.
  */
 
 export interface Count {
@@ -131,9 +131,9 @@ export interface RunSummary {
   viability: Viability;
   breakdown: BreakdownRow[];
   spotlight: Spotlight[];
-  /** Before tonight: can anyone check an answer against the state's official rules? (Rate it) */
+  /** Can anyone check an answer against the state's official rules today? (asked with the overall rating) */
   sourceOfTruth: Count[];
-  /** Notes people wrote when they rated an answer or in Rate it, newest first. */
+  /** Notes people wrote when they rated an answer or AI overall, newest first. */
   voices: { text: string; verdict: string | null }[];
   discussion: {
     questions: Count[];
@@ -142,8 +142,14 @@ export interface RunSummary {
     /** The room's average 1–5 score per rated category, by question. */
     scales: ScaleSummary[];
   };
-  breakouts: { useCases: Count[]; notes: { useCase: string; text: string }[] };
-  pledges: { people: number; states: string[]; accurateAi: number; stateSystems: number };
+  /** Vote: what people would build first, one vote each. */
+  votes: Count[];
+  /** Each group's best idea, and what else it raised (barriers, workforce, questions). */
+  breakouts: {
+    useCases: Count[];
+    notes: { useCase: string; text: string; who: string | null; trust: string | null; raised: string | null }[];
+  };
+  pledges: { people: number; accurateAi: number; stateSystems: number };
 }
 
 const FEED_SIZE = 24;
@@ -275,6 +281,7 @@ export function summarizeRun(data: RunData): RunSummary {
 
   const discussion = events.filter((e) => e.kind === "discussion");
   const breakouts = events.filter((e) => e.kind === "breakout");
+  const votes = events.filter((e) => e.kind === "vote");
 
   const householdLabel = new Map(HOUSEHOLDS.map((h) => [h.id, h.label]));
   const perspectiveLabel = new Map<string, string>(PERSPECTIVES.map((p) => [p.id, p.label]));
@@ -319,22 +326,19 @@ export function summarizeRun(data: RunData): RunSummary {
       details: (p.twists ?? []).map((id) => twistLabel.get(id) ?? id),
     }));
 
-  // Notes on single answers, and the notes people added in Rate it.
+  // Notes on single answers, and the notes people added to their overall rating.
   const voices = [
     ...rated
       .filter((p) => p.rating_note)
       .map((p) => ({ text: clip(p.rating_note, 240) as string, verdict: p.verdict ?? null, at: p.created_at ?? "" })),
+    // Agency comments stay off the phones; the presenter chooses when to show them.
     ...discussion
-      .filter((e) => e.stage === "rate" && payloadString(e.payload, "note"))
+      .filter((e) => payloadString(e.payload, "note") && payloadString(e.payload, "question") !== "experience")
       .map((e) => ({ text: clip(payloadString(e.payload, "note"), 240) as string, verdict: null, at: e.created_at ?? "" })),
   ]
     .sort((a, b) => b.at.localeCompare(a.at))
     .slice(0, VOICES_SIZE)
     .map(({ text, verdict }) => ({ text, verdict }));
-
-  const shownStates = pledges
-    .filter((p) => p.show_state && p.state)
-    .map((p) => p.state as string);
 
   return {
     participants: participants.length,
@@ -382,9 +386,8 @@ export function summarizeRun(data: RunData): RunSummary {
         discussion.flatMap((e) => payloadList(e.payload, "topics")),
         asOptions(DISCUSSION_TOPICS),
       ).sort((a, b) => b.count - a.count),
-      // Notes from Rate it go to "In their words" (voices), not here.
+      // The same notes, by question, for the data export; the page shows them as voices.
       notes: discussion
-        .filter((e) => e.stage !== "rate")
         .map((e) => ({
           question: payloadString(e.payload, "question") ?? "",
           text: clip(payloadString(e.payload, "note"), 280) ?? "",
@@ -394,6 +397,10 @@ export function summarizeRun(data: RunData): RunSummary {
         .reverse(),
       scales: summarizeScales(discussion),
     },
+    votes: countBy(
+      votes.map((e) => payloadString(e.payload, "useCase")),
+      USE_CASES.map((u) => ({ id: u.id, label: u.label })),
+    ),
     breakouts: {
       useCases: countBy(
         breakouts.map((e) => payloadString(e.payload, "useCase")),
@@ -403,14 +410,16 @@ export function summarizeRun(data: RunData): RunSummary {
         .map((e) => ({
           useCase: payloadString(e.payload, "useCase") ?? "",
           text: clip(payloadString(e.payload, "note"), 400) ?? "",
+          who: clip(payloadString(e.payload, "who"), 400) || null,
+          trust: clip(payloadString(e.payload, "trust"), 400) || null,
+          raised: clip(payloadString(e.payload, "raised"), 400) || null,
         }))
-        .filter((n) => n.text)
+        .filter((n) => n.text || n.who || n.trust || n.raised)
         .slice(-NOTES_SIZE)
         .reverse(),
     },
     pledges: {
       people: pledges.length,
-      states: [...new Set(shownStates)].sort(),
       accurateAi: pledges.filter((p) => p.accurate_ai).length,
       stateSystems: pledges.filter((p) => p.state_systems).length,
     },

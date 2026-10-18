@@ -73,12 +73,17 @@ export async function accessFromCookies(get: (name: string) => string | undefine
   return { open: participantPw !== null, participant: participantPw !== null && participant, presenter };
 }
 
-/** Which kind of access a typed password grants, if any. */
+/** Phones capitalize the first letter, so case never decides a match. */
+function sameWord(typed: string, password: string): boolean {
+  return safeEqual(typed.toLowerCase(), password.toLowerCase());
+}
+
+/** Which kind of access a typed password grants, if any. Case does not matter. */
 export function kindForPassword(typed: string): AccessKind | null {
   const presenterPw = presenterPassword();
   const participantPw = participantPassword();
-  if (presenterPw && participantPw && safeEqual(typed, presenterPw)) return "presenter";
-  if (participantPw && safeEqual(typed, participantPw)) return "participant";
+  if (presenterPw && participantPw && sameWord(typed, presenterPw)) return "presenter";
+  if (participantPw && sameWord(typed, participantPw)) return "participant";
   return null;
 }
 

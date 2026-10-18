@@ -1,7 +1,7 @@
 "use client";
 
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { Activity, ArrowDownToLine, ListOrdered } from "lucide-react";
+import { Activity, ArrowDownToLine, ChevronRight, ListOrdered } from "lucide-react";
 import styles from "./ops-dashboard.module.css";
 import type {
   CorpusStatusArtifact,
@@ -17,6 +17,7 @@ import {
   documentIdentifier,
   documentKeyFromCitation,
   meaningfulLabelAt,
+  normalizeCitation,
   parseCitation,
   sectionLabelForCitation,
   sectionWithinDocument,
@@ -28,7 +29,9 @@ import {
   JURISDICTIONS_SEED,
 } from "@/lib/axiom/jurisdictions-seed";
 import type { EncodingQueueSummary } from "@/lib/axiom/encoding-queues";
-import type { RecentCorpusScope } from "@/lib/corpus-status";
+import { ageLabel } from "@/lib/axiom/encoding-pipeline";
+import type { RecentIngestDay, RecentIngestPlace } from "@/lib/corpus-status";
+import { jurisdictionName as placeName, ownLevelName } from "@/lib/axiom/jurisdiction-names";
 import {
   composeGraphViewerUrl,
   graphFocusForCitationPath,
@@ -63,7 +66,8 @@ interface OpsDashboardProps {
   initialStatus: EncodingOpsStatus | null;
   encodingError: string | null;
   queues: EncodingQueueSummary[];
-  recentScopes: RecentCorpusScope[];
+  /** The "recently ingested" feed, grouped by place on the server. */
+  recentPlaces: RecentIngestPlace[];
   /** The end-to-end pipeline section, rendered server-side by the page. */
   pipeline?: ReactNode;
   /** A ledger of every run, in place of the one built from encoder records. */
@@ -72,6 +76,21 @@ interface OpsDashboardProps {
   bundles?: ReactNode;
   /** The tab to open on (?tab=bundles or ?tab=pipeline); the ledger otherwise. */
   initialTab?: OpsTab;
+  /** The workflows the pipeline depends on, shown under the fleet box. */
+  workflows?: ReactNode;
+  /**
+   * Dispatched runs that have not finished, from the pipeline index: the
+   * fleet box shows a run only once its encoder starts, so these say what
+   * waits for approval or is still in setup.
+   */
+  starting?: StartingRuns;
+}
+
+/** Unfinished dispatches as the pipeline index last read them. */
+export interface StartingRuns {
+  runs: Array<{ citation: string }>;
+  /** When the collector read them. */
+  collectedAt: string | null;
 }
 
 export type OpsTab = "ledger" | "bundles" | "pipeline";
@@ -233,11 +252,13 @@ export function OpsDashboard({
   initialStatus,
   encodingError,
   queues,
-  recentScopes,
+  recentPlaces,
   pipeline,
   ledger,
   bundles,
   initialTab = "ledger",
+  workflows,
+  starting,
 }: OpsDashboardProps) {
   const [status, setStatus] = useState(initialStatus);
   // One section at a time: the ledger, the program bundles, the pipeline.
@@ -334,7 +355,10 @@ export function OpsDashboard({
           error={encodingError}
           referenceMs={referenceMs}
           labels={labels}
+          starting={starting}
         />
+
+        {workflows}
 
         {tabs.length > 1 && (
           <div className={styles.tabs} role="tablist" aria-label="Operations">
@@ -360,7 +384,7 @@ export function OpsDashboard({
           aria-labelledby={tabs.length > 1 ? "ops-tab-ledger" : undefined}
           hidden={tab !== "ledger"}
           className={
-            queues.length || recentScopes.length
+            queues.length || recentPlaces.length
               ? styles.workspace
               : styles.ledgerOnly
           }
@@ -372,11 +396,11 @@ export function OpsDashboard({
               labels={labels}
             />
           )}
-          {(queues.length > 0 || recentScopes.length > 0) && (
+          {(queues.length > 0 || recentPlaces.length > 0) && (
             <aside className={styles.sidebar} aria-label="Corpus pipeline">
-              <QueuedWork queues={queues} />
+              <QueuedWork queues={queues} referenceMs={referenceMs} />
               <RecentlyIngested
-                scopes={recentScopes}
+                places={recentPlaces}
                 referenceMs={referenceMs}
               />
             </aside>
@@ -399,16 +423,21 @@ export function OpsDashboard({
   );
 }
 
-/* ── Recently ingested: what just entered the corpus ── */
+/* ── Recently ingested: what just entered the corpus, by place ── */
+
+/** Places the card lists before "Show more places". */
+const RECENT_VISIBLE_PLACES = 6;
 
 function RecentlyIngested({
-  scopes,
+  places,
   referenceMs,
 }: {
-  scopes: RecentCorpusScope[];
+  places: RecentIngestPlace[];
   referenceMs: number;
 }) {
-  if (scopes.length === 0) return null;
+  if (places.length === 0) return null;
+  const visible = places.slice(0, RECENT_VISIBLE_PLACES);
+  const more = places.slice(RECENT_VISIBLE_PLACES);
   return (
     <Card className={styles.supportCard}>
       <CardHeader className="border-b [.border-b]:pb-4">
@@ -419,41 +448,116 @@ function RecentlyIngested({
           </h2>
         </CardTitle>
         <CardDescription>
-          The newest additions to the signed corpus release.
+          The newest additions to the signed corpus release, by place and date.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <ul className="divide-y divide-border">
-          {scopes.map((scope) => (
-            <li
-              key={`${scope.jurisdiction}/${scope.document_class}/${scope.version}`}
-              className="flex items-baseline justify-between gap-4 py-2.5 first:pt-0 last:pb-0"
-            >
-              <div className="min-w-0">
-                <p className="text-sm text-foreground">
-                  <span className="font-medium">
-                    {JURISDICTION_NAMES[scope.jurisdiction] ??
-                      scope.jurisdiction}
-                  </span>{" "}
-                  <span className="text-muted-foreground">
-                    {pluralizeDocumentClass(scope.document_class)}
-                  </span>
-                </p>
-                <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
-                  {scope.version}
-                </p>
-              </div>
-              <p className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
-                {scope.synced_at
-                  ? relativeTime(scope.synced_at, referenceMs)
-                  : "—"}
-              </p>
-            </li>
+        <div role="list" aria-label="Places" className="divide-y divide-border">
+          {visible.map((place) => (
+            <IngestPlace key={place.place} place={place} referenceMs={referenceMs} />
           ))}
-        </ul>
+        </div>
+        {more.length > 0 && (
+          <details className="group/more mt-3 border-t border-border pt-3">
+            <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs text-muted-foreground [&::-webkit-details-marker]:hidden">
+              <ChevronRight
+                size={12}
+                aria-hidden
+                className="shrink-0 transition-transform group-open/more:rotate-90"
+              />
+              Show {more.length} more {more.length === 1 ? "place" : "places"}
+            </summary>
+            <div role="list" aria-label="More places" className="mt-3 divide-y divide-border">
+              {more.map((place) => (
+                <IngestPlace key={place.place} place={place} referenceMs={referenceMs} />
+              ))}
+            </div>
+          </details>
+        )}
       </CardContent>
     </Card>
   );
+}
+
+/**
+ * One place's newest ingest days; each day opens to its scopes. No `li`
+ * here: the card's stylesheet pads every `li` it holds by 16px, outside
+ * Tailwind's layer, so utilities could not tighten it.
+ */
+function IngestPlace({
+  place,
+  referenceMs,
+}: {
+  place: RecentIngestPlace;
+  referenceMs: number;
+}) {
+  return (
+    <div role="listitem" className="py-3 first:pt-0 last:pb-0">
+      <p className="truncate text-sm font-medium text-foreground">{ownLevelName(place.place)}</p>
+      <div className="mt-1.5 text-xs leading-5 text-muted-foreground">
+        {place.days.map((day) => {
+          const classes = documentClassSummary(day.scopes);
+          return (
+            <details key={day.day} className="group/day">
+              <summary className="flex min-w-0 cursor-pointer list-none items-start gap-1.5 [&::-webkit-details-marker]:hidden">
+                <ChevronRight
+                  size={12}
+                  aria-hidden
+                  className="mt-1 shrink-0 transition-transform group-open/day:rotate-90"
+                />
+                <span className="w-12 shrink-0 whitespace-nowrap tabular-nums">
+                  {ingestDay(day.day, referenceMs)}
+                </span>
+                <span className="min-w-0 text-foreground">{classes}</span>
+              </summary>
+              <div className="mb-1 ml-[18px] border-l border-border pl-2.5">
+                {day.scopes.map((scope) => (
+                  <p
+                    key={`${scope.jurisdiction}/${scope.document_class}/${scope.version}`}
+                    className="font-mono text-[11px] leading-4 break-words"
+                  >
+                    {scope.jurisdiction !== place.place && (
+                      <span className="mr-1.5 font-sans text-xs text-foreground">
+                        {placeName(scope.jurisdiction)}
+                      </span>
+                    )}
+                    {scope.version}
+                  </p>
+                ))}
+              </div>
+            </details>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** A day's document classes, most first: "6 statutes, guidance". */
+function documentClassSummary(scopes: RecentIngestDay["scopes"]): string {
+  const counts = new Map<string, number>();
+  for (const scope of scopes) {
+    counts.set(scope.document_class, (counts.get(scope.document_class) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort(([a, x], [b, y]) => y - x || a.localeCompare(b))
+    .map(([documentClass, count]) =>
+      count === 1 ? documentClass : `${count} ${pluralizeDocumentClass(documentClass)}`,
+    )
+    .join(", ");
+}
+
+/** An ingest date as "Oct 12" (with the year when it is not the current one). */
+function ingestDay(day: string, referenceMs: number): string {
+  const date = new Date(`${day}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return day;
+  const sameYear = date.getUTCFullYear() === new Date(referenceMs).getUTCFullYear();
+  return date.toLocaleDateString("en-US", {
+    timeZone: "UTC",
+    month: "short",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+  });
 }
 
 function pluralizeDocumentClass(documentClass: string): string {
@@ -466,9 +570,14 @@ function pluralizeDocumentClass(documentClass: string): string {
 
 /* ── Queued work: what the fleet will encode next ── */
 
-function QueuedWork({ queues }: { queues: EncodingQueueSummary[] }) {
+function QueuedWork({
+  queues,
+  referenceMs,
+}: {
+  queues: EncodingQueueSummary[];
+  referenceMs: number;
+}) {
   if (queues.length === 0) return null;
-  const hasDispatcher = queues.some((queue) => queue.kind === "dispatcher");
   return (
     <Card className={styles.supportCard}>
       <CardHeader className="border-b [.border-b]:pb-4">
@@ -478,71 +587,102 @@ function QueuedWork({ queues }: { queues: EncodingQueueSummary[] }) {
             Queued work
           </h2>
         </CardTitle>
-        <CardDescription>
-          Durable encoding queues awaiting dispatch.
-        </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
-        {queues.map((queue) => (
-          <QueueRow
-            key={queue.queueId}
-            queue={queue}
-            superseded={hasDispatcher && queue.kind === "legacy"}
-          />
-        ))}
+        {queues.map((queue) =>
+          queue.kind === "legacy" ? (
+            <InventoryRow key={queue.queueId} queue={queue} />
+          ) : (
+            <QueueRow key={queue.queueId} queue={queue} referenceMs={referenceMs} />
+          )
+        )}
       </CardContent>
     </Card>
   );
 }
 
-function QueueRow({
-  queue,
-  superseded = false,
-}: {
-  queue: EncodingQueueSummary;
-  superseded?: boolean;
-}) {
-  const dispositioned = queue.total - queue.pending;
-  const fraction = queue.total > 0 ? dispositioned / queue.total : 0;
-  const dispositionLine = Object.entries(queue.dispositionCounts)
-    .sort((a, b) => b[1] - a[1])
-    .map(([status, count]) => `${count.toLocaleString("en-US")} ${status}`)
-    .join(" · ");
+const count = (value: number) => value.toLocaleString("en-US");
 
+/** The queue's id, and what its counts cover. */
+function QueueHead({ queue, note, counts }: { queue: EncodingQueueSummary; note?: string; counts?: string }) {
+  const side = [counts, queue.jurisdictionCount > 1 ? `${queue.jurisdictionCount} jurisdictions` : null]
+    .filter(Boolean)
+    .join(" · ");
   return (
-    <div>
+    <>
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
         <h3 className="font-mono text-sm text-foreground break-all">
           {queue.queueId}
-          {superseded && (
-            <span className="ml-2 font-sans text-xs text-muted-foreground">
-              earlier inventory, replaced by the dispatcher
+          {note && (
+            <span className="ml-2 font-sans text-xs break-normal text-muted-foreground">
+              {note}
             </span>
           )}
         </h3>
-        <p className="text-xs tabular-nums text-muted-foreground">
-          {dispositioned.toLocaleString("en-US")} of{" "}
-          {queue.total.toLocaleString("en-US")} dispositioned
-          {queue.jurisdictionCount > 1 &&
-            ` · ${queue.jurisdictionCount} jurisdictions`}
-        </p>
+        {side && <p className="text-xs tabular-nums text-muted-foreground">{side}</p>}
       </div>
       {queue.description && (
         <p className="mt-1 text-xs text-muted-foreground max-w-[72ch]">
           {queue.description}
         </p>
       )}
+    </>
+  );
+}
+
+/**
+ * A live dispatcher queue: its pending items always, and what happened to
+ * the rest. Skipped items were set aside before any run, so they are not
+ * progress.
+ */
+function QueueRow({
+  queue,
+  referenceMs,
+}: {
+  queue: EncodingQueueSummary;
+  referenceMs: number;
+}) {
+  const skipped = queue.dispositionCounts.skipped ?? 0;
+  const dispositioned = queue.total - queue.pending - skipped;
+  const fraction = queue.total > 0 ? dispositioned / queue.total : 0;
+  const line = [
+    `${count(queue.pending)} pending`,
+    ...Object.entries(queue.dispositionCounts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([status, n]) => `${count(n)} ${status}`),
+  ].join(" · ");
+  // Before the first clock tick with no payload there is no "now" to age against.
+  const pausedAge = referenceMs > 0 ? ageLabel(queue.pausedSince, referenceMs) : null;
+  const reason = queue.pauseReason?.replace(/\.$/, "");
+  const paused = queue.paused
+    ? `paused${pausedAge ? ` ${pausedAge}` : ""}${reason ? ` — ${reason}` : ""}`
+    : null;
+  const disabled = queue.dispatchWorkflow?.state.startsWith("disabled") ? queue.dispatchWorkflow : null;
+
+  return (
+    <div>
+      <QueueHead
+        queue={queue}
+        counts={`${count(dispositioned)} of ${count(queue.total)} dispositioned`}
+      />
       <Progress
         value={Math.max(fraction > 0 ? 1 : 0, Math.round(fraction * 100))}
         aria-label={`${queue.queueId}: ${dispositioned} of ${queue.total} items dispositioned`}
         className="mt-3"
       />
       <p className="mt-2 text-xs text-muted-foreground">
-        {dispositionLine || `${queue.pending.toLocaleString("en-US")} pending`}
-        {queue.pauseReason && (
+        {line}
+        {(paused || disabled) && (
           <span className="text-[var(--color-warning)]">
-            {" "}
-            · paused — {queue.pauseReason.replace(/\.$/, "")}
+            {paused && ` · ${paused}`}
+            {disabled && (
+              <>
+                {" · "}
+                <a href={disabled.url} target="_blank" rel="noreferrer" className="underline">
+                  dispatch workflow disabled
+                </a>
+              </>
+            )}
           </span>
         )}
       </p>
@@ -550,23 +690,69 @@ function QueueRow({
   );
 }
 
+/**
+ * An earlier signed inventory. Nothing dispatches from it and its file no
+ * longer changes, so its statuses and pause note are stale: it says only
+ * how many of its items a live queue holds.
+ */
+function InventoryRow({ queue }: { queue: EncodingQueueSummary }) {
+  const inDispatcher = queue.inDispatcher ?? 0;
+  const where =
+    inDispatcher === 0
+      ? "none of them in a live queue"
+      : inDispatcher >= queue.total
+        ? "all of them in the dispatcher"
+        : `${count(inDispatcher)} of them in the dispatcher, the rest in no live queue`;
+  return (
+    <div>
+      <QueueHead
+        queue={queue}
+        note={queue.frozenSince ? `inventory, frozen since ${formatUtcDate(queue.frozenSince)}` : "inventory"}
+      />
+      <p className="mt-2 text-xs text-muted-foreground">
+        {count(queue.total)} items, {where}
+      </p>
+    </div>
+  );
+}
+
 /* ── The docket: what's encoding right now ── */
+
+/**
+ * Unfinished dispatches whose encoder has not started: every one the index
+ * holds, less those whose citation an encoder is running now.
+ */
+export function startingRunsLine(
+  starting: StartingRuns | undefined,
+  running: Array<Pick<LiveEncodingRun, "citation">>,
+  referenceMs: number,
+): string | null {
+  if (!starting) return null;
+  const encoding = new Set(running.map((run) => normalizeCitation(run.citation)));
+  const runs = starting.runs.filter((run) => !encoding.has(normalizeCitation(run.citation)));
+  if (runs.length === 0) return null;
+  const asOf = starting.collectedAt ? ` · as of ${relativeTime(starting.collectedAt, referenceMs)}` : "";
+  return `${runs.length} run${runs.length === 1 ? "" : "s"} waiting for approval or starting · shown here once the encoder starts${asOf}`;
+}
 
 function DocketBand({
   status,
   error,
   referenceMs,
   labels,
+  starting,
 }: {
   status: EncodingOpsStatus | null;
   error: string | null;
   referenceMs: number;
   labels: Record<string, string>;
+  starting?: StartingRuns;
 }) {
   const liveRuns = status?.live_runs ?? [];
   const running = liveRuns.filter(
     (run) => classifyLiveRun(run, referenceMs) === "running",
   );
+  const startingLine = startingRunsLine(starting, running, referenceMs);
   const stale = liveRuns.filter(
     (run) => classifyLiveRun(run, referenceMs) === "stale",
   );
@@ -617,6 +803,7 @@ function DocketBand({
           <DocketHeader
             dotClass="bg-[var(--color-code-function)] animate-pulse motion-reduce:animate-none"
             label={`Encoding now — ${machineCount(running)}`}
+            note={startingLine}
           />
           <ul className={styles.runGrid}>
             {running.map((run) => (
@@ -636,6 +823,7 @@ function DocketBand({
             label={`Recently active — ${finished.length} run${
               finished.length === 1 ? "" : "s"
             } finished in the last hour`}
+            note={startingLine}
           />
           <ul className={styles.runGrid}>
             {finished.slice(0, 3).map((run) => (
@@ -658,6 +846,7 @@ function DocketBand({
           <DocketHeader
             dotClass="border border-[var(--color-code-comment)]"
             label="Idle — no machines encoding"
+            note={startingLine}
           />
           {idleShowsLive && newestLive ? (
             <div className="mt-5">
@@ -674,7 +863,7 @@ function DocketBand({
                 surface="dark"
               />
               <p className="mt-2 font-mono text-xs text-[var(--color-code-comment)]">
-                {newestLive.status === "failed" ? "in progress" : "completed"}
+                {liveOutcome(newestLive)}
               </p>
             </div>
           ) : lastRun?.citation ? (
@@ -728,18 +917,28 @@ function DocketBand({
 function DocketHeader({
   dotClass,
   label,
+  note,
 }: {
   dotClass: string;
   label: string;
+  /** A line under the label: the runs not on the board yet. */
+  note?: string | null;
 }) {
   return (
-    <p className="flex items-center gap-2.5 font-mono text-xs uppercase tracking-wider">
-      <span
-        aria-hidden
-        className={`inline-block h-2 w-2 rounded-full ${dotClass}`}
-      />
-      {label}
-    </p>
+    <>
+      <p className="flex items-center gap-2.5 font-mono text-xs uppercase tracking-wider">
+        <span
+          aria-hidden
+          className={`inline-block h-2 w-2 rounded-full ${dotClass}`}
+        />
+        {label}
+      </p>
+      {note && (
+        <p className="mt-2 font-mono text-xs text-[var(--color-code-comment)]">
+          {note}
+        </p>
+      )}
+    </>
   );
 }
 
@@ -777,6 +976,16 @@ function LiveRunEntry({
   );
 }
 
+/**
+ * How a finished live run ended: "completed", or "failed" (with its attempt
+ * count past the first). A failed run is over: the targeted dispatcher stops
+ * at its attempt budget, so nothing is still retrying it.
+ */
+function liveOutcome(run: LiveEncodingRun): string {
+  if (run.status !== "failed") return run.status === "completed" ? "completed" : run.status;
+  return run.attempt && run.attempt > 1 ? `failed after ${run.attempt} attempts` : "failed";
+}
+
 function FinishedRunEntry({
   run,
   referenceMs,
@@ -805,7 +1014,7 @@ function FinishedRunEntry({
             : "text-[var(--color-code-comment)]"
         }`}
       >
-        {failed ? "in progress · last attempt" : "completed"}{" "}
+        {liveOutcome(run)}{" "}
         {relativeTime(run.finished_at ?? run.last_heartbeat_at, referenceMs)}
       </p>
     </li>

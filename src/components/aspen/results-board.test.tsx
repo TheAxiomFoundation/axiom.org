@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { EMPTY_SUMMARY, summarizeRun, type RunSummary } from "@/lib/aspen/results";
 import type { RunData } from "@/lib/aspen/types";
-import { AnswerFeed, ResultsBoard, ResultsCounts } from "./results-board";
+import { ResultsBoard, ResultsCounts } from "./results-board";
 
 const RUN = "phoenix";
 
@@ -103,8 +103,14 @@ describe("ResultsBoard", () => {
   it("frames the reveal around whether residents could act on the answers", () => {
     render(<ResultsBoard summary={SUMMARY} />);
     expect(screen.getByRole("heading", { name: "Could a resident act on these answers?" })).toBeInTheDocument();
-    expect(screen.getByText("Would you let a resident act on what they got?")).toBeInTheDocument();
-    expect(screen.getAllByText("Ask the room").length).toBeGreaterThan(1);
+    // Numbered parts, in the order they show, and no discussion prompts on the phone.
+    // "Across the room" heads the room's results; its parts sit under it.
+    expect(screen.getByRole("heading", { level: 2, name: "Across the room" })).toBeInTheDocument();
+    const parts = screen.getAllByRole("heading", { level: 3 });
+    expect(parts[0].textContent).toBe("1Could a resident act on these answers?");
+    expect(parts[1].textContent).toBe("2Where the answers broke down");
+    expect(screen.queryByText("Ask the room")).not.toBeInTheDocument();
+    expect(screen.queryByText("Would you let a resident act on what they got?")).not.toBeInTheDocument();
     const statement = screen.getByText(/answers looked right\. People would act on/);
     expect(statement).toHaveTextContent("1 of 4 answers looked right. People would act on 2.");
     // p5 looked unsure, yet its person might act on it. (The first match is the count's label; the spotlight badge repeats it.)
@@ -203,7 +209,7 @@ describe("ResultsBoard", () => {
       />,
     );
     expect(screen.getByRole("heading", { name: "How it felt" })).toBeInTheDocument();
-    expect(screen.getByText("Before tonight")).toBeInTheDocument();
+    expect(screen.getByText("Checking answers today")).toBeInTheDocument();
     expect(screen.getByText(/can't\s+fully check an answer/)).toHaveTextContent("2 of 2");
   });
 
@@ -241,50 +247,5 @@ describe("ResultsBoard", () => {
     render(<ResultsBoard summary={EMPTY_SUMMARY} wide />);
     expect(screen.queryByRole("heading", { name: "Could a resident act on these answers?" })).not.toBeInTheDocument();
     expect(screen.getByText("Answers appear here as people ask.")).toBeInTheDocument();
-  });
-});
-
-describe("AnswerFeed newest first", () => {
-  it("lists the latest answers, newest first", () => {
-    render(<AnswerFeed summary={SUMMARY} />);
-    const items = within(screen.getByText("Latest answers").parentElement as HTMLElement).getAllByRole("listitem");
-    expect(items).toHaveLength(4);
-    expect(within(items[0]).getByText("A resident · Retiree in Phoenix")).toBeInTheDocument();
-    expect(within(items[1]).getByText("Question")).toBeInTheDocument();
-    expect(within(items[1]).getByText("meh").className).toBe("");
-    expect(within(items[2]).getByText("Looks right")).toHaveClass("text-[var(--color-success)]");
-    expect(within(items[3]).getByText("$24")).toBeInTheDocument();
-  });
-
-  it("shows fewer cards when asked", () => {
-    render(<AnswerFeed summary={SUMMARY} limit={2} />);
-    expect(within(screen.getByText("Latest answers").parentElement as HTMLElement).getAllByRole("listitem")).toHaveLength(2);
-  });
-});
-
-describe("AnswerFeed", () => {
-  it("shows a feed item without an answer or verdict", () => {
-    const summary: RunSummary = {
-      ...EMPTY_SUMMARY,
-      feed: [
-        {
-          id: "x",
-          perspective: "A resident",
-          household: null,
-          prompt: "Only a prompt",
-          answer: null,
-          verdict: null,
-          rulesAmount: 0,
-          rulesProgram: "SNAP",
-          postCheck: null,
-          createdAt: null,
-        },
-      ],
-    };
-    render(<AnswerFeed summary={summary} limit={1} />);
-    expect(screen.getByText("A resident")).toBeInTheDocument();
-    expect(screen.getByText("Only a prompt")).toBeInTheDocument();
-    expect(screen.getByText("$0")).toBeInTheDocument();
-    expect(screen.getAllByRole("listitem")).toHaveLength(1);
   });
 });

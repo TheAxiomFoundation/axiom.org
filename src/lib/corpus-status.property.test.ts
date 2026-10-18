@@ -164,11 +164,12 @@ describe("getEncodingStatus properties", () => {
         }
         expect(value.citation_labels).toEqual(expectedLabels);
 
-        // Document root: the longest parentless provision that is the
-        // citation's leaf or an ancestor of it on a "/" boundary.
-        const roots = provisions
-          .filter((row) => row.parent_id === null)
-          .map((row) => row.citation_path!);
+        // Document root: the shortest parentless provision with a heading of
+        // its own that is the citation's leaf or an ancestor of it on a "/"
+        // boundary, else the shortest parentless one.
+        const parentless = provisions.filter((row) => row.parent_id === null);
+        const roots = parentless.map((row) => row.citation_path!);
+        const headedRoots = new Set(parentless.filter((row) => row.heading?.trim()).map((row) => row.citation_path!));
         const expectedRoots: Record<string, string> = {};
         for (const value of citations) {
           if (!value) continue;
@@ -176,7 +177,8 @@ describe("getEncodingStatus properties", () => {
           if (!leaf) continue;
           const matches = roots.filter((root) => leaf === root || leaf.startsWith(`${root}/`));
           if (matches.length === 0) continue;
-          expectedRoots[value] = matches.reduce((a, b) => (b.length > a.length ? b : a));
+          const headed = matches.filter((root) => headedRoots.has(root));
+          expectedRoots[value] = (headed.length ? headed : matches).reduce((a, b) => (b.length < a.length ? b : a));
         }
         expect(value.citation_document_paths).toEqual(expectedRoots);
       })

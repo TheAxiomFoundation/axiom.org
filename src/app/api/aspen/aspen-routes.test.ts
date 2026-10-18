@@ -107,7 +107,10 @@ describe('aspen API routes', () => {
     })
     expect((await setState(post({ stage: 'nowhere' }))).status).toBe(400)
 
-    await event(post({ participantId: P, kind: 'profile', payload: { perspective: 'resident', state: 'Arizona', role: 'Other' } }))
+    // Nobody is asked who they are any more: the profile event is gone.
+    expect((await event(post({ participantId: P, kind: 'profile', payload: { state: 'Arizona' } }))).status).toBe(400)
+    await event(post({ participantId: P, kind: 'vote', stage: 'vote', payload: { useCase: 'project' } }))
+    expect((await event(post({ participantId: P, kind: 'vote', payload: { useCase: 'bogus' } }))).status).toBe(400)
 
     const asked = await ask(
       post({
@@ -115,7 +118,7 @@ describe('aspen API routes', () => {
         conversationId: C,
         turn: 0,
         messages: [{ role: 'user', content: 'Can I get SNAP?' }],
-        meta: { stage: 'try', perspective: 'resident', householdId: 'az-savings', questionId: 'amount', twists: ['gig', 'bogus'], promptTemplate: 'Can I get SNAP?' },
+        meta: { stage: 'try', perspective: 'resident', householdId: 'az-savings', questionIds: ['eligible', 'bogus', 'amount'], twists: ['gig', 'bogus'], promptTemplate: 'Can I get SNAP?' },
       }),
     )
     expect(asked.headers.get('content-type')).toMatch(/ndjson/)
@@ -140,12 +143,13 @@ describe('aspen API routes', () => {
 
     await event(post({ participantId: P, kind: 'discussion', payload: { question: 'misunderstood', topics: ['Asset tests'], note: 'BBCE' } }))
     await event(post({ participantId: P, kind: "discussion", payload: { question: "performance", ratings: { amount: 2, clarity: 9, bogus: 3 } } }))
-    await event(post({ participantId: P, kind: "chip", payload: { householdId: "az-savings", twists: ["gig", "nope"] } }))
+    await event(post({ participantId: P, kind: "chip", payload: { householdId: "az-savings", questionIds: ["cliff", "x"], twists: ["gig", "nope"] } }))
     await event(post({ participantId: P, kind: "discussion", stage: "rate", payload: { question: null, note: "Staff use it already" } }))
     await event(post({ participantId: P, kind: "survey", stage: "rate", payload: { question: "source-of-truth", answer: "no" } }))
     expect((await event(post({ participantId: P, kind: "survey", payload: { question: "source-of-truth", answer: "maybe" } }))).status).toBe(400)
     expect((await event(post({ participantId: P, kind: "survey", payload: { question: "other", answer: "no" } }))).status).toBe(400)
-    await event(post({ participantId: P, kind: 'breakout', payload: { useCase: 'project', note: 'Model it' } }))
+    await event(post({ participantId: P, kind: 'breakout', payload: { useCase: 'project', note: 'Model it', who: ' Policy staff ', trust: 'Matches the manual', raised: '  Training time  ' } }))
+    expect((await event(post({ participantId: P, kind: 'breakout', payload: { useCase: 'bogus', note: ' ', raised: '' } }))).status).toBe(400)
     expect((await event(post({ participantId: P, kind: 'discussion', payload: {} }))).status).toBe(400)
     expect((await event(post({ participantId: P, kind: 'hack', payload: {} }))).status).toBe(400)
     expect((await event(post({ participantId: P, kind: 'stage_view', payload: { stage: 'nope' } }))).status).toBe(400)
@@ -160,12 +164,21 @@ describe('aspen API routes', () => {
     expect(room.runId).toBe('phoenix')
     expect(room.summary).toMatchObject({ participants: 1, prompts: 1, rated: 1, checked: 1 })
     expect(room.summary.feed[0]).toMatchObject({ household: 'Disabled, with savings', verdict: 'wrong', rulesAmount: 24, postCheck: 'wrong' })
-    expect(room.summary.discussion.notes).toEqual([{ question: 'misunderstood', text: 'BBCE' }])
-    expect(room.summary.pledges).toEqual({ people: 1, states: ['Arizona'], accurateAi: 1, stateSystems: 0 })
+    expect(room.summary.discussion.notes).toContainEqual({ question: 'misunderstood', text: 'BBCE' })
+    // Pledges give counts only: no states, names or emails reach the results.
+    expect(room.summary.pledges).toEqual({ people: 1, accurateAi: 1, stateSystems: 0 })
     expect(room.summary.twists[0]).toMatchObject({ id: "gig", count: 1 })
     expect(room.summary.voices).toContainEqual({ text: "Staff use it already", verdict: null })
     expect(room.summary.sourceOfTruth.find((c: { id: string }) => c.id === "no").count).toBe(1)
     expect(room.summary.viability).toMatchObject({ wouldNotApply: 1, wouldNotApplyEligible: 1 })
+    expect(room.summary.votes.find((c: { id: string }) => c.id === 'project').count).toBe(1)
+    expect(room.summary.breakouts.notes).toContainEqual({
+      useCase: 'project',
+      text: 'Model it',
+      who: 'Policy staff',
+      trust: 'Matches the manual',
+      raised: 'Training time',
+    })
     const performance = room.summary.discussion.scales.find((sc: { question: string }) => sc.question === "performance")
     expect(performance.categories.find((c: { id: string }) => c.id === "amount")).toMatchObject({ average: 2, count: 1 })
     expect(performance.categories.find((c: { id: string }) => c.id === "clarity")).toMatchObject({ average: null, count: 0 })
