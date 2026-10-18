@@ -1,10 +1,12 @@
 import { createHash } from 'node:crypto'
-import { readdirSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { render } from '@testing-library/react'
 import fc from 'fast-check'
-import ts from 'typescript'
 import { describe, it, expect, vi } from 'vitest'
+import { encoderRecordClaims, markdownClaims } from '@/test/encoder-record-guard'
+import { copyFiles, fileCopy, htmlCopy, pageText, publicHtmlFiles, sourceCopy, stringsIn } from '@/test/claim-copy'
+import { sweepPublicHtmlClaims } from '@/test/public-html-claims'
 
 vi.mock('next/link', () => ({
   default: ({ children, href, ...props }: any) => <a href={href} {...props}>{children}</a>,
@@ -169,232 +171,33 @@ describe('verification claims', () => {
 //   telemetry.sdk_session_events) records a run's request, result, outcome
 //   and validation issues: about four events a run, none a decision.
 //
-// This matcher mirrors encoder_record_claims in TheAxiomFoundation/ops
-// comms/check_claims.py, which guards the Message House and FAQ. Both must
-// reproduce the labels in src/test/encoder-record-fixtures.json, a
-// byte-identical copy of ops comms/encoder-record-fixtures.json; both tests
-// pin its SHA-256. ASCII word classes keep \b the same as Python's re.ASCII.
-const WORD = String.raw`[A-Za-z0-9_'’-]+`
-const NEGATION = /\b(no|not|never|without|none|nothing|neither|nor|cannot)\b|n['’]t\b/i
-const CLAUSE_BREAK = /[.!?;:—\n]|--|, (?:and|but|so|yet|while) /gi
-const DECISION_CLAIMS = [
-  // "Every encoding decision is logged", "every decision public", "each
-  // decision the encoder makes is recorded".
-  String.raw`\b(every|each|all)( ${WORD})? decisions?(\b[^.;:!?\n]{0,30}\b(is|are|was|were|gets?|get))? (logged|recorded|traced|kept|saved|published|public)\b`,
-  // "logs every decision", "records each encoding decision", "logs its decisions".
-  String.raw`\b(logs?|logged|logging|records?|recorded|recording|traces?|traced|tracing|captures?|captured|keeps?|kept|saves?|saved|publish(es|ed|ing)?|documents?|documented)\b[^.;:!?\n]{0,20}\b(every|each|all|its|their|our|the (encoder|model|agent)['’]s)( ${WORD})? decisions?\b`,
-  // "Every encoding decision has a public record".
-  String.raw`\b(every|each|all|its|their|our)( ${WORD})? decisions? (has|have|gets?|comes? with|carry|carries) (an? |its |their )?(${WORD} )?(record|log|trail|trace|history|explanation)s?\b`,
-  String.raw`\bdecision[- ](trail|log)s?\b`,
-  // "our encoding decisions are public".
-  String.raw`\b(encoding|encoder['’]?s?|model['’]?s?|agent['’]?s?|interpretive|our|its|their) decisions? (is|are|was|were|gets?) (all |fully |publicly |openly )?(public|published|open|logged|recorded|traceable|auditable|visible|available|accessible)\b`,
-  // "We publish encoding decisions", "publishes its decisions".
-  String.raw`\bpublish(es|ed|ing)? ((its|our|every|each|all|the (encoder|model|agent)['’]s) )?(encoding|encoder|model|agent|interpretive) decisions?\b|\bpublish(es|ed|ing)? (its|our|every|each|all|the (encoder|model|agent)['’]s) decisions?\b`,
-].map((source) => new RegExp(source, 'gi'))
-const DECISION_LOG_NOUN = DECISION_CLAIMS[3]
-const TRACE_NOUN = String.raw`(?<noun>traces?|transcripts?|reasoning|chains? of thought|thought process(es)?)`
-// "publishes every encoder trace", "keeps its full reasoning". A possessive
-// noun ("the trace's path") describes something else.
-const TRACE_ACTIVE = new RegExp(
-  String.raw`\b(publish(es|ed|ing)?|keeps?|kept|keeping|retains?|retained|archives?|archived|stores?|stored|saves?|saved|logs?|logged|records?|recorded|shares?|shared|exposes?|exposed|releases?|released)(?<middle>( ${WORD}){0,4}?) ${TRACE_NOUN}\b(?!['’]s\b)`,
-  'gi',
-)
-// "Every run's trace is published", "the model's reasoning is publicly accessible".
-const TRACE_PASSIVE = new RegExp(
-  String.raw`\b(?<middle>(${WORD} ){0,3}?)${TRACE_NOUN} (is|are|was|were|gets?) (publicly |openly |fully |permanently )?(published|public|kept|retained|archived|stored|logged|recorded|saved|available|accessible|visible|open|shared)\b`,
-  'gi',
-)
-// A trace sentence counts only when it is about the encoder's runs: the
-// clause names the encoder, the pipeline, a model, an agent or a run, or the
-// noun is reasoning. It passes when the noun is another kind of trace, when
-// the words before it name a reference to the trace rather than the trace,
-// and when the clause is about a failed run, whose diagnostics can keep the
-// trace.
-const ENCODER_SCOPE = /\b(encoder|encoders|encoding|encodings|pipeline|pipelines|model|models|agent|agents|llm|llms|ai|run|runs|session|sessions)\b/i
-const OTHER_TRACE = /\b(calculation|citation|evaluation|computation|engine|replay|execution|stack|error|audit|request|network|span|rule|graph)$/i
-const REFERENCE = /\b(path|paths|hash|hashes|reference|references|pointer|pointers|location|locations|name|names|sha|checksum|checksums|id|ids)\b/i
-const FAILED_RUN = /\bfail(s|ed|ing|ure|ures)?\b/i
-const DETERMINER = /\b(every|each|all|its|their)\b/i
-
-function traceClaim(clause: string, m: RegExpMatchArray, passive: boolean) {
-  const middle = (m.groups?.middle ?? '').trim()
-  if (REFERENCE.test(middle) || OTHER_TRACE.test(middle) || FAILED_RUN.test(clause)) return false
-  if (m.groups?.noun.toLowerCase() === 'reasoning' || ENCODER_SCOPE.test(clause)) return true
-  // A passive sentence may scope the trace with a determiner alone: "Its
-  // traces are public".
-  return passive && DETERMINER.test(middle)
-}
-
-function* clauses(text: string): Generator<[number, string]> {
-  let start = 0
-  for (const brk of text.matchAll(CLAUSE_BREAK)) {
-    yield [start, text.slice(start, brk.index)]
-    start = brk.index + brk[0].length
-  }
-  yield [start, text.slice(start)]
-}
-
-/** Each claim about the encoder's record in `text`, read one clause at a
- *  time. A match passes when a negation sits between the start of its clause
- *  and the end of the match ("We do not keep a decision log"); a bare
- *  "decision log" or "decision trail" passes with a negation anywhere in its
- *  clause ("Decision logs are not kept"). */
-function encoderRecordClaims(raw: string): string[] {
-  // Runs of spaces (a removed comment, a double space) read as one.
-  const text = raw.replace(/[^\S\n]+/g, ' ')
-  const hits: [number, string][] = []
-  for (const [start, clause] of clauses(text)) {
-    const found: [RegExpMatchArray, RegExp][] = DECISION_CLAIMS.flatMap((re) =>
-      [...clause.matchAll(re)].map((m): [RegExpMatchArray, RegExp] => [m, re]),
-    )
-    for (const [re, passive] of [[TRACE_ACTIVE, false], [TRACE_PASSIVE, true]] as const) {
-      for (const m of clause.matchAll(re)) if (traceClaim(clause, m, passive)) found.push([m, re])
-    }
-    for (const [m, re] of found) {
-      const end = re === DECISION_LOG_NOUN ? clause.length : m.index! + m[0].length
-      if (!NEGATION.test(clause.slice(0, end))) hits.push([start + m.index!, m[0]])
-    }
-  }
-  return hits.sort((a, b) => a[0] - b[0] || (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0)).map(([, claim]) => claim)
-}
-
+// The executable guard lives in src/test/encoder-record-guard.ts. Ops owns
+// the canonical labels and publishes their byte-level digest. These are local
+// artifact pins: neither repository's offline CI observes a later one-sided
+// update in the other. encoder-record-reference.test.ts also checks exact
+// Python outputs recorded at the immutable ops snapshot named in that artifact.
+// scripts/check-encoder-record-reference.py --ops <checkout> rechecks that
+// snapshot against local git objects and runs Python without network access.
 const FIXTURES_PATH = join(process.cwd(), 'src/test/encoder-record-fixtures.json')
-const FIXTURES_SHA256 = '2e6ea4f345cd40ba48ba588da9a1d31f02aa65f7b5081803d721b50a80a8128a'
-const FIXTURES: { text: string; banned: boolean }[] = JSON.parse(readFileSync(FIXTURES_PATH, 'utf8')).cases
-
-// Rendered text with a line break at each block element, so a heading never
-// runs into the paragraph under it, followed by the accessible names and
-// titles the page carries in attributes.
-const BLOCK_TAGS = new Set(['P', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'DIV', 'TD', 'TH', 'DD', 'DT', 'BUTTON', 'CAPTION', 'FIGCAPTION', 'PRE', 'SECTION', 'ARTICLE', 'BLOCKQUOTE', 'HEADER', 'FOOTER', 'FIGURE', 'SUMMARY', 'LABEL', 'NAV', 'MAIN', 'ASIDE', 'UL', 'OL', 'TABLE', 'TR'])
-const TEXT_ATTRIBUTES = ['aria-label', 'aria-description', 'alt', 'title', 'placeholder']
-function pageText(renderSurface: () => ReturnType<typeof render>) {
-  const { container, unmount } = renderSurface()
-  const parts: string[] = []
-  const walk = (node: Node) => {
-    if (node.nodeType === Node.TEXT_NODE) parts.push(node.textContent ?? '')
-    else if (node instanceof Element) {
-      const block = BLOCK_TAGS.has(node.tagName)
-      if (block) parts.push('\n')
-      node.childNodes.forEach(walk)
-      if (block) parts.push('\n')
-    }
-  }
-  walk(container)
-  const attributes = [...container.querySelectorAll('*')].flatMap((el) =>
-    TEXT_ATTRIBUTES.map((name) => el.getAttribute(name)).filter((v): v is string => !!v),
-  )
-  unmount()
-  return [parts.join(''), ...attributes].join('\n').replace(/[^\S\n]+/g, ' ')
-}
-
-// Every string an exported overview constant holds, nested ones included, so
-// the audience panels the page renders one at a time are read too.
-function stringsIn(value: unknown): string[] {
-  if (typeof value === 'string') return [value]
-  if (Array.isArray(value)) return value.flatMap(stringsIn)
-  if (value && typeof value === 'object') return Object.values(value).flatMap(stringsIn)
-  return []
-}
-
-const ENTITIES: Record<string, string> = {
-  '&apos;': "'", '&rsquo;': '’', '&lsquo;': '‘', '&ldquo;': '“', '&rdquo;': '”', '&quot;': '"',
-  '&mdash;': '—', '&ndash;': '–', '&hellip;': '…', '&nbsp;': ' ', '&amp;': '&', '&middot;': '·', '&sect;': '§',
-}
-const decodeEntities = (text: string) => text.replace(/&[a-z]+;/g, (e) => ENTITIES[e] ?? e)
-
-// The copy a TypeScript or TSX file can put on a page, read with the
-// TypeScript parser so comments never count: every string literal and
-// template text, each top-level JSX element's text with its children in
-// order (a line break at each block tag), and the accessible names and
-// titles in JSX attributes.
-const BLOCK_JSX = /^(p|li|h[1-6]|div|td|th|dd|dt|button|caption|figcaption|pre|section|article|blockquote|header|footer|figure|summary|label|nav|main|aside|ul|ol|table|tr)$/
-function sourceCopy(path: string, source: string): string[] {
-  const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, path.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS)
-  const copy: string[] = []
-  const literal = (node: ts.Node): string | null => {
-    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text
-    if (ts.isTemplateExpression(node)) return [node.head.text, ...node.templateSpans.map((span) => ' ' + span.literal.text)].join('')
-    if (ts.isParenthesizedExpression(node)) return literal(node.expression)
-    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
-      const left = literal(node.left)
-      const right = literal(node.right)
-      return left === null && right === null ? null : (left ?? ' ') + (right ?? ' ')
-    }
-    return null
-  }
-  const tagName = (node: ts.JsxElement | ts.JsxSelfClosingElement) =>
-    (ts.isJsxElement(node) ? node.openingElement.tagName : node.tagName).getText(file)
-  const jsxText = (node: ts.JsxChild | ts.JsxElement | ts.JsxFragment): string => {
-    if (ts.isJsxText(node)) return decodeEntities(node.text.replace(/\s+/g, ' '))
-    if (ts.isJsxExpression(node)) return node.expression ? (literal(node.expression) ?? ' ') : ''
-    if (ts.isJsxSelfClosingElement(node)) return ' '
-    const inner = node.children.map(jsxText).join('')
-    if (ts.isJsxFragment(node)) return inner
-    return BLOCK_JSX.test(tagName(node)) ? `\n${inner}\n` : inner
-  }
-  const visit = (node: ts.Node, inJsx: boolean) => {
-    if (!inJsx && (ts.isJsxElement(node) || ts.isJsxFragment(node))) copy.push(jsxText(node))
-    if (ts.isJsxAttribute(node) && TEXT_ATTRIBUTES.includes(node.name.getText(file)) && node.initializer) {
-      const value = ts.isStringLiteral(node.initializer) ? node.initializer.text : node.initializer.expression && literal(node.initializer.expression)
-      if (value) copy.push(decodeEntities(value))
-    }
-    const text = literal(node)
-    if (text !== null) {
-      copy.push(text)
-      return
-    }
-    node.forEachChild((child) => visit(child, inJsx || ts.isJsxElement(node) || ts.isJsxFragment(node)))
-  }
-  visit(file, false)
-  return copy
-}
-
-// Every file under src/ that can carry page copy: TypeScript and TSX through
-// the parser, Markdown as text, and JSON through its string values (the
-// planning page draws visible notes from src/data/planning). Tests, type
-// declarations and src/test/ (which holds these fixtures) are skipped.
-function copyFiles(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const path = join(dir, entry.name)
-    if (entry.isDirectory()) return entry.name === 'test' ? [] : copyFiles(path)
-    return /\.(tsx?|mdx?|json)$/.test(entry.name) && !/\.(test|spec)\.tsx?$|\.d\.ts$/.test(entry.name) ? [path] : []
-  })
-}
-function fileCopy(path: string): string[] {
-  const source = readFileSync(path, 'utf8')
-  if (path.endsWith('.json')) return stringsIn(JSON.parse(source))
-  if (/\.mdx?$/.test(path)) return [source]
-  return sourceCopy(path, source)
-}
-
-// The PDF print source: text with styles, scripts and comments dropped, a
-// line break at each block tag, and alt and title attributes kept.
-function htmlCopy(html: string) {
-  const attributes = [...html.matchAll(/\b(?:alt|title|aria-label)="([^"]*)"/g)].map((m) => m[1])
-  const text = html
-    .replace(/<(style|script)\b[\s\S]*?<\/\1>/g, ' ')
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/<\/?(p|li|h[1-6]|div|td|th|tr|table|ul|ol|section|header|footer)\b[^>]*>/g, '\n')
-    .replace(/<[^>]+>/g, ' ')
-  return decodeEntities([text, ...attributes].join('\n')).replace(/[^\S\n]+/g, ' ')
-}
+const FIXTURES_SHA256 = 'f6417b8beb27876a6e997d4939c81f15b4304f07f57adabfd37666c159413e8b'
+const FIXTURES: { text: string; banned: boolean; markdown?: boolean }[] = JSON.parse(readFileSync(FIXTURES_PATH, 'utf8')).cases
 
 describe('encoder record claims', () => {
   it('reads the fixtures it shares with ops comms/check_claims.py', () => {
     const digest = createHash('sha256').update(readFileSync(FIXTURES_PATH)).digest('hex')
     expect(
       digest,
-      'the fixtures changed: copy ops comms/encoder-record-fixtures.json here and update FIXTURES_SHA256 in both repos',
+      'the canonical fixture bytes changed: verify the ops sidecar and refresh the recorded reference outputs',
     ).toBe(FIXTURES_SHA256)
   })
 
   it('reproduces every fixture label', () => {
-    const wrong = FIXTURES.filter((c) => encoderRecordClaims(c.text).length > 0 !== c.banned)
+    const wrong = FIXTURES.filter((c) => (c.markdown ? markdownClaims(c.text) : encoderRecordClaims(c.text)).length > 0 !== c.banned)
     expect(wrong).toEqual([])
   })
 
-  const plainClaims = FIXTURES.filter((c) => c.banned && c.text.split('.').length === 2).map((c) => c.text)
-  const plainAllowed = FIXTURES.filter((c) => !c.banned && c.text.split('.').length === 2).map((c) => c.text)
+  const plainClaims = FIXTURES.filter((c) => !c.markdown && c.banned && c.text.split('.').length === 2 && !c.text.includes('\n')).map((c) => c.text)
+  const plainAllowed = FIXTURES.filter((c) => !c.markdown && !c.banned && c.text.split('.').length === 2 && !c.text.includes('\n')).map((c) => c.text)
   it('finds a claim whatever sentence comes before it', () => {
     fc.assert(
       fc.property(fc.stringMatching(/^[A-Za-z0-9 ,'()-]{0,80}$/), fc.constantFrom(...plainClaims), (prefix, claim) => {
@@ -441,6 +244,17 @@ describe('encoder record claims', () => {
     expect(read('const a = <div><h2>Decision</h2> <p>logs are kept.</p></div>')).toEqual([])
   })
 
+  it('sweeps website-owned public HTML, including the embedded tariff paper', () => {
+    const root = join(process.cwd(), 'public')
+    const files = publicHtmlFiles(root)
+    expect(files).toContain(join(root, 'tariff/paper/web/index.html'))
+    const result = sweepPublicHtmlClaims(files.map((path) => ({
+      path: relative(process.cwd(), path).split('\\').join('/'),
+      html: readFileSync(path, 'utf8'),
+    })))
+    expect(result).toEqual({ hits: [], unusedExceptions: [] })
+  }, 60_000)
+
   // A backstop for pages no test renders: every file under src/ that can
   // carry copy.
   it('no source file makes such a claim', () => {
@@ -449,5 +263,5 @@ describe('encoder record claims', () => {
       fileCopy(path).flatMap(encoderRecordClaims).map((claim) => `${relative(root, path)}: ${claim}`),
     )
     expect(hits).toEqual([])
-  })
+  }, 60_000)
 })
