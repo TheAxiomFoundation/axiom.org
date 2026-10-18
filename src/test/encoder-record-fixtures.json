@@ -6182,6 +6182,399 @@
    "text": "Intro &nbsp;&nbsp;\nThe encoder logs every&#32;decision.",
    "banned": true,
    "markdown": true
+  },
+  {
+   "text": "The failed encoder run publishes the successful-run trace.",
+   "banned": true
+  },
+  {
+   "text": "The failed encoder run publishes the successful-run trace.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The failed encoder run publishes successful diagnostic traces.",
+   "banned": true
+  },
+  {
+   "text": "The failed encoder run publishes successful diagnostic traces.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The failed encoder run publishes a successful encoding trace.",
+   "banned": true
+  },
+  {
+   "text": "The failed encoder run publishes a successful encoding trace.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The failed encoder run stores the full successful-run trace in an artifact.",
+   "banned": true
+  },
+  {
+   "text": "The failed encoder run stores the full successful-run trace in an artifact.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The failed encoder run keeps every successful diagnostic trace.",
+   "banned": true
+  },
+  {
+   "text": "The failed encoder run keeps every successful diagnostic trace.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder stores its trace locally, but also on a public server.",
+   "banned": true
+  },
+  {
+   "text": "The encoder stores its trace locally, but also on a public server.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder stores its trace locally, but also uploads it to a public server.",
+   "banned": true
+  },
+  {
+   "text": "The encoder stores its trace locally, but also uploads it to a public server.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder publishes traces of failed runs, but also successful runs.",
+   "banned": true
+  },
+  {
+   "text": "The encoder publishes traces of failed runs, but also successful runs.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder publishes traces of failed runs, and successful diagnostic traces.",
+   "banned": true
+  },
+  {
+   "text": "The encoder publishes traces of failed runs, and successful diagnostic traces.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder stores its trace locally, but also on a public server without a login.",
+   "banned": true
+  },
+  {
+   "text": "The encoder stores its trace locally, but also on a public server without a login.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder publishes traces of failed runs, and successful runs without requiring a subscription.",
+   "banned": true
+  },
+  {
+   "text": "The encoder publishes traces of failed runs, and successful runs without requiring a subscription.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder's author runs a podcast, and the encoder publishes its transcripts.",
+   "banned": true
+  },
+  {
+   "text": "The encoder's author runs a podcast, and the encoder publishes its transcripts.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder runs a podcast, and publishes its transcripts.",
+   "banned": true
+  },
+  {
+   "text": "The encoder runs a podcast, and publishes its transcripts.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder stores its trace locally, but never on a public server.",
+   "banned": false
+  },
+  {
+   "text": "The encoder stores its trace locally, but never on a public server.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder stores its trace locally, but not on a public server.",
+   "banned": false
+  },
+  {
+   "text": "The encoder stores its trace locally, but not on a public server.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder stores its trace locally and never on a public server.",
+   "banned": false
+  },
+  {
+   "text": "The encoder stores its trace locally and never on a public server.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder stores its trace on the local machine, and never uploads it to a public server.",
+   "banned": false
+  },
+  {
+   "text": "The encoder stores its trace on the local machine, and never uploads it to a public server.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder publishes traces of failed runs, but not successful runs.",
+   "banned": false
+  },
+  {
+   "text": "The encoder publishes traces of failed runs, but not successful runs.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder publishes traces of failed runs but never successful runs.",
+   "banned": false
+  },
+  {
+   "text": "The encoder publishes traces of failed runs but never successful runs.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder publishes traces of failed runs, and not successful diagnostic traces.",
+   "banned": false
+  },
+  {
+   "text": "The encoder publishes traces of failed runs, and not successful diagnostic traces.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder publishes traces of failed runs; successful runs keep only their manifests.",
+   "banned": false
+  },
+  {
+   "text": "The encoder publishes traces of failed runs; successful runs keep only their manifests.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder stores its trace locally; the documentation is hosted on a public server.",
+   "banned": false
+  },
+  {
+   "text": "The encoder stores its trace locally; the documentation is hosted on a public server.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder stores its trace locally; the reviewer publishes its transcripts on a public server.",
+   "banned": false
+  },
+  {
+   "text": "The encoder stores its trace locally; the reviewer publishes its transcripts on a public server.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder publishes traces of failed runs, but not successful runs or successful sessions.",
+   "banned": false
+  },
+  {
+   "text": "The encoder publishes traces of failed runs, but not successful runs or successful sessions.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder stores its trace locally, but never on a public server or publicly.",
+   "banned": false
+  },
+  {
+   "text": "The encoder stores its trace locally, but never on a public server or publicly.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder's author runs a podcast, and publishes its transcripts.",
+   "banned": false
+  },
+  {
+   "text": "The encoder's author runs a podcast, and publishes its transcripts.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder’s author runs a podcast, and publishes its transcripts.",
+   "banned": false
+  },
+  {
+   "text": "The encoder’s author runs a podcast, and publishes its transcripts.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "Our pipeline's maintainer runs a podcast, and publishes its transcripts.",
+   "banned": false
+  },
+  {
+   "text": "Our pipeline's maintainer runs a podcast, and publishes its transcripts.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoding agent's maintainer runs a podcast, and publishes its transcripts.",
+   "banned": false
+  },
+  {
+   "text": "The encoding agent's maintainer runs a podcast, and publishes its transcripts.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The model's designer hosts a meeting, and publicly publishes its transcripts.",
+   "banned": false
+  },
+  {
+   "text": "The model's designer hosts a meeting, and publicly publishes its transcripts.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder's author runs a podcast, and publishes its transcripts, and saves its traces.",
+   "banned": false
+  },
+  {
+   "text": "The encoder's author runs a podcast, and publishes its transcripts, and saves its traces.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder project's author runs a podcast, and publishes its transcripts.",
+   "banned": false
+  },
+  {
+   "text": "The encoder project's author runs a podcast, and publishes its transcripts.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "\\<!-- The encoder publishes its traces. -->",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "\\<!-- The encoder logs **every** decision. -->",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "\\<!-- The encoder logs every&nbsp;decision. -->",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "\\\\\\<!-- The encoder publishes its traces. -->",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "\\\\<!-- The encoder publishes its traces. -->",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "<!-- The encoder publishes its traces. -->",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "`<!-- The encoder logs every decision. -->",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "`<!-- The encoder logs every decision. -->`",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "``<!-- The encoder publishes its traces. -->``",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "``prefix ` <!-- The encoder logs every decision. -->``",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "`The encoder logs every&nbsp;decision.`",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "``The encoder logs every&#32;decision.``",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "`<!-- The encoder logs **every** decision. -->`",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "``The encoder logs _every decision_.``",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder logs `every&nbsp;decision`.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder logs every\\&nbsp;decision.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder logs every\\&#32;decision.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "\\`The encoder logs every&nbsp;decision.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "`&nbsp; <!-- hidden? -->` The encoder logs **every** decision.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "<!-- hidden --> `<!-- The encoder publishes its traces. -->`",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "`<!-- literal -->` <!-- The encoder publishes its traces. -->",
+   "banned": false,
+   "markdown": true
   }
  ]
 }

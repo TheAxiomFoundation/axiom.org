@@ -179,7 +179,7 @@ describe('verification claims', () => {
 // scripts/check-encoder-record-reference.py --ops <checkout> rechecks that
 // snapshot against local git objects and runs Python without network access.
 const FIXTURES_PATH = join(process.cwd(), 'src/test/encoder-record-fixtures.json')
-const FIXTURES_SHA256 = 'daf8b79ef44e720eb19a0d0daab7879a4a8bb8d66c540545889694011b01eb90'
+const FIXTURES_SHA256 = 'f266b1add1d0239662823f10aa8ba4f5a94345f9d3dd82ec4e88efda762b8cf3'
 const FIXTURES: { text: string; banned: boolean; markdown?: boolean }[] = JSON.parse(readFileSync(FIXTURES_PATH, 'utf8')).cases
 
 describe('encoder record claims', () => {
