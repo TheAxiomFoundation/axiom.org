@@ -19,7 +19,7 @@ import {
 export const metadata: Metadata = {
   title: "Overview — the Axiom Foundation",
   description:
-    "What the Axiom Foundation does and what the encoded layer enables: open, cited, verified encodings of statutes, regulations, and policy rules, starting with tax and benefit policy.",
+    "What the Axiom Foundation does and what the encoded layer enables: open, cited, executable encodings of statutes, regulations, and policy rules, starting with tax and benefit policy.",
   alternates: { canonical: "/overview" },
   openGraph: {
     type: "website",
@@ -27,7 +27,7 @@ export const metadata: Metadata = {
     siteName: SITE_NAME,
     title: "The Axiom Foundation — overview",
     description:
-      "Open, cited, verified encodings of the world's rules, starting with tax and benefit policy.",
+      "Open, cited, executable encodings of the world's rules, starting with tax and benefit policy.",
     images: [DEFAULT_SHARE_IMAGE],
   },
 };
