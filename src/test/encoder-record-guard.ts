@@ -28,6 +28,8 @@ const TRACE_CLAIMS = [
 const COORDINATED_MODIFIERS = pattern(String.raw`(?:(?:the|a|an|its|our|their|full|detailed|model['’]s|encoder['’]s|agent['’]s) )*`)
 const COORDINATED_TRACE = pattern(String.raw`(?: and | or |, (?:and )?)(?<middle>(${WORD} ){0,4}?)${TRACE_NOUN}\b(?!['’]s\b)(?! (?:is|are|was|were|gets?|stays?|remains?)\b)`)
 const ENCODER_SCOPE = pattern(String.raw`\b(encoder|encoders|encoding|encodings|pipeline|pipelines|model|models|agent|agents|llm|llms|ai|run|runs|session|sessions)\b`)
+const ENCODER_SUBJECT = pattern(String.raw`^ *(?:(?:the|our|its|an?|this|that|each|every|all|failed|failing|successful|targeted|axiom['’]s) )*` + ENCODER_SCOPE.source)
+const INHERITED_PREDICATE = pattern(String.raw`^ *(?:(?:does|do|did|can|could|will|would|should|must|not|never|also|then|publicly|openly|fully|permanently|actually|currently|normally|usually|generally|automatically|routinely|necessarily|explicitly|directly) )*$`)
 const OTHER_TRACE = pattern(String.raw`\b(calculation|citation|evaluation|computation|engine|replay|execution|stack|error|audit|request|network|span|rule|graph)$`)
 const REFERENCE = pattern(String.raw`\b(path|paths|hash|hashes|reference|references|pointer|pointers|location|locations|name|names|sha|checksum|checksums|id|ids) (?:of|to|for)(?: [A-Za-z0-9_'’-]+){0,2}$`)
 const DETERMINER = pattern(String.raw`\b(every|each|all|its|their)\b`)
@@ -36,10 +38,12 @@ const LOCAL_TRACE = pattern(String.raw`^ (locally\b|on (?:the |a |its )?local ma
 const FAILED_SUBJECT = pattern(String.raw`\b(?:failed|failing) (?:(?:encoder|encoding|targeted|model|agent) ){0,2}(?:runs?|re-encodes?|encodings?|attempts?|sessions?) ?$`)
 const FAILED_OBJECT = pattern(String.raw`^(?:(?:the|a|an|its|full|diagnostic) )*failed(?: (?:encoder|encoding))? (?:run['’]s |run |encoding['’]s )$`)
 const FAILED_TRACE = pattern(String.raw`^ (?:of|from|for) (?:a |the )?failed (?:encoder |encoding )?(?:run|encoding|attempt|session)s?\b`)
-const NEGATED_PREDICATE = pattern(String.raw`(?:\b(?:not(?! only\b)|never|without|cannot|neither|nor)|n['’]t)(?: (?:ever|[a-z]+ly))? $`)
+const SUCCESSFUL_TRACE = pattern(String.raw`\b(?:successful|success)(?: (?:encoder|encoding|targeted|model|agent))? (?:runs?|re-encodes?|encodings?|attempts?|sessions?|ones|traces?)\b`)
+const PUBLIC_DESTINATION = pattern(String.raw`\b(?:on|to|in|at|via) (?:(?:a|an|the|our|its) )?(?:[A-Za-z]+ )?public\b|\bpublicly\b`)
+const NEGATED_PREDICATE = pattern(String.raw`(?:\b(?:not(?! only\b)|never|without|cannot|neither|nor)|n['‘’]t)(?: (?:ever|publicly|openly|fully|permanently|actually|currently|normally|usually|generally|automatically|routinely|necessarily|explicitly|directly))? $`)
 const NEGATED_NOUN = pattern(String.raw`\b(?:no|neither|without|not every|not each|not all)(?: (?:encoder|encoding|public|complete|detailed|permanent))? $`)
 const NOUN_PREDICATE = pattern(String.raw`\b(?:keep|keeps|kept|have|has|maintain|maintains|publish|publishes|provide|provides|retain|retains|store|stores|save|saves) (?:(?:a|an|the|its|our|their|public|complete|detailed) ){0,3}$`)
-const DENIED_LOG = pattern(String.raw`^ (?:is|are|was|were) (?:not|never) (?:kept|retained|maintained|stored|saved|published|available|public)\b`)
+const DENIED_LOG = pattern(String.raw`^ (?:(?:is|are|was|were) (?:not|never)|(?:is|are|was|were)n['‘’]t) (?:kept|retained|maintained|stored|saved|published|available|public)\b`)
 
 type Match = { pattern: RegExp; index: number; end: number; groups: Record<string, string | undefined> }
 function matches(regex: RegExp, text: string): Match[] {
@@ -59,17 +63,18 @@ function fullMatch(regex: RegExp, text: string): boolean {
 }
 const lastNounPhrase = (middle: string) => middle.split(/\b(?:and|or|but)\b/u).at(-1)!.replace(/^ +| +$/g, '')
 
-function traceClaim(clause: string, match: Match, governor?: Match): boolean {
+function traceClaim(clause: string, match: Match, governor?: Match, inheritedScope = false, sentence = ''): boolean {
   const middle = lastNounPhrase(match.groups.middle!)
   if (REFERENCE.test(middle) || OTHER_TRACE.test(middle)) return false
   const predicate = governor ?? match
   if (match.groups.noun === 'trace' || match.groups.noun === 'traces') {
-    const successful = /\b(successful|success)\b/u.test(middle)
+    const successful = SUCCESSFUL_TRACE.test(sentence)
     if (!successful && (FAILED_SUBJECT.test(clause.slice(0, predicate.index)) || FAILED_OBJECT.test(middle + ' ') || FAILED_TRACE.test(clause.slice(match.end)))) return false
     const retaining = fullMatch(RETAIN, predicate.groups.verb ?? predicate.groups.state ?? '')
-    if (retaining && LOCAL_TRACE.test(clause.slice(match.end)) && !/\b(public|publicly)\b/u.test(clause.slice(match.index, match.end))) return false
+    const publicDestination = /\b(public|publicly)\b/u.test(clause.slice(match.index, match.end)) || PUBLIC_DESTINATION.test(sentence)
+    if (retaining && LOCAL_TRACE.test(clause.slice(match.end)) && !publicDestination) return false
   }
-  if (match.groups.noun === 'reasoning' || ENCODER_SCOPE.test(clause)) return true
+  if (match.groups.noun === 'reasoning' || ENCODER_SCOPE.test(clause) || (inheritedScope && fullMatch(INHERITED_PREDICATE, clause.slice(0, predicate.index)))) return true
   return match.pattern === TRACE_CLAIMS[1] && DETERMINER.test(middle)
 }
 
@@ -107,16 +112,20 @@ export function normalizeClaimSpaces(text: string): { text: string; offsets: num
   return { text: normalized, offsets }
 }
 
-function clauses(text: string): [number, string][] {
-  let start = 0
-  const result: [number, string][] = []
+function clauses(text: string): [number, string, boolean][] {
+  let start = 0, inheritedScope = false
+  const result: [number, string, boolean][] = []
   for (const separator of matches(CLAUSE_BREAK, text)) {
     const following = matchAt(COORDINATED_TRACE, text, separator.index)
     if (following && fullMatch(COORDINATED_MODIFIERS, following.groups.middle!) && TRACE_CLAIMS[0].test(text.slice(start, separator.index))) continue
-    result.push([start, text.slice(start, separator.index)])
+    const clause = text.slice(start, separator.index)
+    result.push([start, clause, inheritedScope])
+    const active = TRACE_CLAIMS[0].exec(clause)
+    inheritedScope = text.slice(separator.index, separator.end) === ', and ' &&
+      (!!matchAt(ENCODER_SUBJECT, clause, 0) || (inheritedScope && !!active && fullMatch(INHERITED_PREDICATE, clause.slice(0, active.index))))
     start = separator.end
   }
-  result.push([start, text.slice(start)])
+  result.push([start, text.slice(start), inheritedScope])
   return result
 }
 
@@ -132,15 +141,21 @@ export function encoderRecordHits(raw: string): [number, string][] {
   const { text, offsets } = normalizeClaimSpaces(raw)
   const folded = asciiFold(text)
   const hits: [number, string][] = []
-  for (const [start, clause] of clauses(folded)) {
+  for (const [start, clause, inheritedScope] of clauses(folded)) {
+    // A clause split cannot hide a public destination or successful-run conjunct.
+    const boundaries = ['.', '!', '?', '\n']
+    const left = Math.max(...boundaries.map(char => start ? folded.lastIndexOf(char, start - 1) : -1)) + 1
+    const ends = boundaries.map(char => folded.indexOf(char, start)).filter(end => end >= 0)
+    const right = ends.length ? Math.min(...ends) : folded.length
+    const sentence = folded.slice(left, right)
     const found: [Match, Match | undefined][] = DECISION_CLAIMS.flatMap(regex => matches(regex, clause).map(match => [match, undefined] as [Match, undefined]))
     for (const regex of TRACE_CLAIMS) {
       for (const match of matches(regex, clause)) {
-        if (traceClaim(clause, match)) found.push([match, undefined])
+        if (traceClaim(clause, match, undefined, inheritedScope, sentence)) found.push([match, undefined])
         if (regex === TRACE_CLAIMS[0]) {
           let end = match.end, following: Match | undefined
           while ((following = matchAt(COORDINATED_TRACE, clause, end))) {
-            if (traceClaim(clause, following, match)) found.push([following, match])
+            if (traceClaim(clause, following, match, inheritedScope, sentence)) found.push([following, match])
             end = following.end
           }
         }
@@ -165,6 +180,7 @@ const BLOCK_START = / *([-*+] |[0-9]+[.)] |#|```|<!--)/u
 const STANDALONE = / *(#|```|<!--)/u
 const QUOTE = /^ *(?:> *)+/u
 const SENTENCE_END = /([.!?:]["'’”)\]*_`]*|-->) *$/u
+const CONTINUATION_COMMENT = /<!--[\s\S]*?(?:-->|$)/gu
 const TABLE_TOKEN = /\\.|\|/gu
 const codePointLength = (text: string) => Array.from(text).length
 const stripSpaces = (text: string) => text.replace(/^ +| +$/g, '')
@@ -234,8 +250,10 @@ export function markdownParagraphs(text: string): MarkdownBlock[] {
       for (const cell of cells) if (stripSpaces(cell)) blocks.push({ text: cell, lines: [[0, index + 1, raw]] })
       continue
     }
+    // Inline comments are invisible; an explicit allowance still closes its clause.
+    const visible = joined.replace(CONTINUATION_COMMENT, comment => /^<!-- *claims-check: allow *-->$/u.test(comment) ? comment : '')
     // Python's re.match anchors BLOCK_START/STANDALONE even without ^.
-    if (lines.length && level === depth && !matchAt(BLOCK_START, content, 0) && !standalone && !SENTENCE_END.test(joined)) {
+    if (lines.length && level <= depth && !matchAt(BLOCK_START, content, 0) && !standalone && !SENTENCE_END.test(visible)) {
       lines.push([codePointLength(joined) + 1, index + 1, raw])
       joined += ' ' + stripSpaces(content)
       continue
@@ -250,16 +268,113 @@ export function markdownParagraphs(text: string): MarkdownBlock[] {
   return blocks
 }
 
+const INLINE_TOKEN = /<!--[\s\S]*?-->|&(?:#[xX][0-9a-fA-F]{1,8}|#[0-9]{1,8}|[A-Za-z][A-Za-z0-9]{1,31});/gu
+const INLINE_PUNCTUATION = /^[\p{P}\p{S}]$/u
+const entityCache = new Map<string, string>()
+function decodeMarkdownEntity(token: string): string {
+  const cached = entityCache.get(token)
+  if (cached !== undefined) return cached
+  // Attribute context preserves unknown named references rather than partially
+  // decoding a legacy prefix. Numeric references use HTML's replacement table.
+  const span = document.createElement('span')
+  span.innerHTML = '<i data-entity="' + token + '"></i>'
+  const decoded = span.firstElementChild!.getAttribute('data-entity')!.replace(/\n/g, ' ')
+  entityCache.set(token, decoded)
+  return decoded
+}
+
+/** Visible Markdown inline text, with original source code-point offsets. */
+export function markdownInline(text: string): { text: string; offsets: number[] } {
+  const points = Array.from(text)
+  type Delimiter = { start: number; length: number; left: number; right: number; char: string; opens: boolean; closes: boolean }
+  const delimiters: Delimiter[] = []
+  const removed = new Set<number>()
+  const remove = (start: number, end: number) => { for (let j = start; j < end; j++) removed.add(j) }
+  let i = 0
+  while (i < points.length) {
+    const char = points[i]
+    if (points.slice(i, i + 4).join('') === '<!--') {
+      const tail = points.slice(i + 4).join('')
+      const close = tail.indexOf('-->')
+      if (close >= 0) {
+        const end = i + 4 + codePointLength(tail.slice(0, close))
+        remove(i, end + 3)
+        i = end + 3
+        continue
+      }
+    }
+    if (char === '\\') { i += 2; continue }
+    if (char === '`') {
+      let end = i + 1
+      while (end < points.length && points[end] === '`') end++
+      const tail = points.slice(end).join('')
+      const close = new RegExp('(?<!`)' + '`'.repeat(end - i) + '(?!`)', 'u').exec(tail)
+      i = close ? end + codePointLength(tail.slice(0, close.index + close[0].length)) : end
+      continue
+    }
+    if (char !== '*' && char !== '_') { i++; continue }
+    let end = i + 1
+    while (end < points.length && points[end] === char) end++
+    const before = points[i - 1] ?? '', after = points[end] ?? ''
+    const beforeSpace = !before || before === '\n' || SPACE_CHAR.test(before)
+    const afterSpace = !after || after === '\n' || SPACE_CHAR.test(after)
+    const beforePunct = !!before && INLINE_PUNCTUATION.test(before)
+    const afterPunct = !!after && INLINE_PUNCTUATION.test(after)
+    const left = !afterSpace && (!afterPunct || beforeSpace || beforePunct)
+    const right = !beforeSpace && (!beforePunct || afterSpace || afterPunct)
+    delimiters.push({ start: i, length: end - i, left: 0, right: 0, char,
+      opens: left && (char === '*' || !right || beforePunct),
+      closes: right && (char === '*' || !left || afterPunct) })
+    i = end
+  }
+  for (let c = 0; c < delimiters.length; c++) {
+    const closer = delimiters[c]
+    if (!closer.closes) continue
+    for (let o = c - 1; o >= 0; o--) {
+      const opener = delimiters[o]
+      if (!opener.opens || opener.char !== closer.char) continue
+      while (true) {
+        const a = opener.length - opener.left - opener.right
+        const b = closer.length - closer.left - closer.right
+        if (!a || !b) break
+        if ((opener.closes || closer.opens) && (a + b) % 3 === 0 && (a % 3 || b % 3)) break
+        const count = a >= 2 && b >= 2 ? 2 : 1
+        remove(opener.start + opener.length - opener.right - count, opener.start + opener.length - opener.right)
+        remove(closer.start + closer.left, closer.start + closer.left + count)
+        opener.right += count
+        closer.left += count
+      }
+    }
+  }
+  const parts: string[] = [], offsets: number[] = []
+  let start = 0
+  const appendLiteral = (end: number) => {
+    for (let j = start; j < end; j++) {
+      if (!removed.has(j)) { parts.push(points[j]); offsets.push(j) }
+    }
+  }
+  for (const token of text.matchAll(INLINE_TOKEN)) {
+    const tokenStart = codePointLength(text.slice(0, token.index))
+    appendLiteral(tokenStart)
+    const decoded = token[0].startsWith('<!--') ? '' : decodeMarkdownEntity(token[0])
+    parts.push(decoded)
+    for (const _ of decoded) offsets.push(tokenStart)
+    start = tokenStart + codePointLength(token[0])
+  }
+  appendLiteral(points.length)
+  return { text: parts.join(''), offsets }
+}
+
 /** Reference Markdown claim diagnostics (disclosures are separate checks). */
 export function markdownClaims(raw: string): [number, string][] {
   return markdownParagraphs(raw).flatMap(block => {
-    const checked = blankAllowedClaims(block.text)
+    const { text: checked, offsets } = markdownInline(blankAllowedClaims(block.text))
     const legacy: [number, string][] = LEGACY_BANNED.flatMap(regex => {
       const match = regex.exec(legacyFold(checked))
       return match ? [[codePointLength(checked.slice(0, match.index)), checked.slice(match.index, match.index + match[0].length)] as [number, string]] : []
     })
     return [...legacy, ...encoderRecordHits(checked)].map(([offset, claim]) => {
-      const line = block.lines.slice().reverse().find(([start]) => start <= offset)!
+      const line = block.lines.slice().reverse().find(([start]) => start <= offsets[offset])!
       return [line[1], claim] as [number, string]
     })
   })

@@ -14,9 +14,9 @@ import { encoderRecordClaims, encoderRecordHits, markdownClaims } from './encode
 // bytes, digest and labels; this CI checks this snapshot's bytes and exact
 // TypeScript outputs. Ops CI does not call our script. Neither test requires
 // the peer to adopt a later one-sided update or enforces synchronized merges.
-const OPS_COMMIT = 'a3940e771291307d4b135a460fddc08107f4be19'
-const FIXTURE_SHA256 = 'f6417b8beb27876a6e997d4939c81f15b4304f07f57adabfd37666c159413e8b'
-const REFERENCE_SHA256 = '9d5253543919cef266bb692468377a0da0cfe41c9c4cc2c7524671647bb1d275'
+const OPS_COMMIT = '3df915e18cd6d596da04126e17691e56a22970e7'
+const FIXTURE_SHA256 = 'daf8b79ef44e720eb19a0d0daab7879a4a8bb8d66c540545889694011b01eb90'
+const REFERENCE_SHA256 = '4c69c530664e6478e0eb4450be32034fb76d9fea07b6edd1d32e7a33b76e5a91'
 const fixturePath = join(process.cwd(), 'src/test/encoder-record-fixtures.json')
 const referencePath = join(process.cwd(), 'src/test/encoder-record-reference.json')
 const fixtures: { text: string; banned: boolean; markdown?: boolean }[] = JSON.parse(readFileSync(fixturePath, 'utf8')).cases
@@ -45,11 +45,11 @@ describe('pinned Python encoder-record differential', () => {
     expect(reference.opsCommit).toBe(OPS_COMMIT)
     expect(reference.fixtureSha256).toBe(FIXTURE_SHA256)
     expect(reference.guardSha256).toMatch(/^[0-9a-f]{64}$/)
-    expect(fixtures).toHaveLength(1417)
+    expect(fixtures).toHaveLength(1524)
     expect(reference.cases).toHaveLength(fixtures.length)
   })
 
-  it('reproduces all 1,417 canonical labels, including complete Markdown blocks', () => {
+  it('reproduces all 1,524 canonical labels, including complete Markdown blocks', () => {
     const disagreements = fixtures.flatMap((fixture, index) => {
       const claims = fixture.markdown ? markdownClaims(fixture.text) : encoderRecordClaims(fixture.text)
       return (claims.length > 0) === fixture.banned ? [] : [{ index, ...fixture, claims }]

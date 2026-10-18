@@ -49,6 +49,11 @@ describe('reviewed exceptions for embedded public HTML', () => {
     expect(sweepPublicHtmlClaims([{ path, html }])).toEqual(clean)
   })
 
+  it('hashes the exception sentence at code-point offsets after 400 astral characters', () => {
+    const html = `<p>${'😀'.repeat(400)} A preceding sentence.</p><p>${TARIFF_SENTENCE}</p>`
+    expect(sweepPublicHtmlClaims([{ path, html }])).toEqual(clean)
+  })
+
   it('does not allow any additional claims in the reviewed asset', () => {
     const result = sweepPublicHtmlClaims([asset(`${TARIFF_SENTENCE} The encoder logs every decision.`)])
     expect(result.hits).toEqual([expect.objectContaining({ path, phrase: 'logs every decision' })])

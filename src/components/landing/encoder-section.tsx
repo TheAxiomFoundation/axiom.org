@@ -41,9 +41,9 @@ export function EncoderSection() {
           The encoder's record is its signed apply manifest (axiom-encode
           cli.py _MODEL_APPLY_MANIFEST_FIELDS): the citation, the model, and
           a hash of each file written. It holds a trace's path and hash, not
-          the trace, which stays on the machine that ran the encoder; no
-          trace is published. So this line claims the manifest and no
-          per-decision record.
+          the trace, which stays on the machine that ran the encoder. A
+          failed re-encode's 90-day diagnostics artifact can contain a trace.
+          This line claims the manifest and no per-decision record.
         */}
         <Reveal
           as="p"

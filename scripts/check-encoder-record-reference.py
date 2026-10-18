@@ -25,9 +25,9 @@ ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "src/test/encoder-record-fixtures.json"
 DIGEST = FIXTURES.with_suffix(".sha256")
 REFERENCE = ROOT / "src/test/encoder-record-reference.json"
-OPS_COMMIT = "a3940e771291307d4b135a460fddc08107f4be19"
-FIXTURE_SHA256 = "f6417b8beb27876a6e997d4939c81f15b4304f07f57adabfd37666c159413e8b"
-REFERENCE_SHA256 = "9d5253543919cef266bb692468377a0da0cfe41c9c4cc2c7524671647bb1d275"
+OPS_COMMIT = "3df915e18cd6d596da04126e17691e56a22970e7"
+FIXTURE_SHA256 = "daf8b79ef44e720eb19a0d0daab7879a4a8bb8d66c540545889694011b01eb90"
+REFERENCE_SHA256 = "4c69c530664e6478e0eb4450be32034fb76d9fea07b6edd1d32e7a33b76e5a91"
 
 
 def sha256(raw):
@@ -80,7 +80,7 @@ def fixture_bytes():
     expected = f"{FIXTURE_SHA256}  {FIXTURES.name}\n".encode("ascii")
     assert DIGEST.read_bytes() == expected, "canonical fixture digest/format differs"
     fixtures = json.loads(raw)["cases"]
-    assert len(fixtures) == 1417, "unexpected canonical fixture count"
+    assert len(fixtures) == 1524, "unexpected canonical fixture count"
     return raw, fixtures
 
 

@@ -5677,6 +5677,511 @@
    "text": "| Every rule is | validated. |",
    "banned": false,
    "markdown": true
+  },
+  {
+   "text": "The encoder does not merely log every decision; it publishes them.",
+   "banned": true
+  },
+  {
+   "text": "The encoder does not merely log every decision; it publishes them.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder doesn't simply log every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder doesn't simply log every decision.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder does not simply log every decision; it publishes them.",
+   "banned": true
+  },
+  {
+   "text": "The encoder does not simply log every decision; it publishes them.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder publishes traces of failed runs and successful runs.",
+   "banned": true
+  },
+  {
+   "text": "The encoder publishes traces of failed runs and successful runs.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder publishes traces of failed runs and of every successful run.",
+   "banned": true
+  },
+  {
+   "text": "The encoder publishes traces of failed runs and of every successful run.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder stores its trace locally and on a public server.",
+   "banned": true
+  },
+  {
+   "text": "The encoder stores its trace locally and on a public server.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder stores its trace on the local machine and on a public server.",
+   "banned": true
+  },
+  {
+   "text": "The encoder stores its trace on the local machine and on a public server.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder keeps its traces locally, and publishes its transcripts.",
+   "banned": true
+  },
+  {
+   "text": "The encoder keeps its traces locally, and publishes its transcripts.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder keeps its traces locally, and publishes its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "The encoder keeps its traces locally, and publishes its reasoning.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder stores its trace locally, and on a public server.",
+   "banned": true
+  },
+  {
+   "text": "The encoder stores its trace locally, and on a public server.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder stores its trace locally, and uploads it to a public server.",
+   "banned": true
+  },
+  {
+   "text": "The encoder stores its trace locally, and uploads it to a public server.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder stores its trace locally; it is also stored on a public server.",
+   "banned": true
+  },
+  {
+   "text": "The encoder stores its trace locally; it is also stored on a public server.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder publishes traces of failed runs, and successful runs.",
+   "banned": true
+  },
+  {
+   "text": "The encoder publishes traces of failed runs, and successful runs.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder publishes traces of failed runs; successful runs too.",
+   "banned": true
+  },
+  {
+   "text": "The encoder publishes traces of failed runs; successful runs too.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder runs nightly, and publishes its transcripts.",
+   "banned": true
+  },
+  {
+   "text": "The encoder runs nightly, and publishes its transcripts.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder keeps its traces locally, and publicly publishes its transcripts.",
+   "banned": true
+  },
+  {
+   "text": "The encoder keeps its traces locally, and publicly publishes its transcripts.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀 The encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀 The encoder logs every decision.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The decision log isn't kept.",
+   "banned": false
+  },
+  {
+   "text": "The decision log isn't kept.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The decision log isn’t kept.",
+   "banned": false
+  },
+  {
+   "text": "The decision log isn’t kept.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder doesn‘t log every decision.",
+   "banned": false
+  },
+  {
+   "text": "The encoder doesn‘t log every decision.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder can't publicly publish its traces.",
+   "banned": false
+  },
+  {
+   "text": "The encoder can't publicly publish its traces.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder does not openly publish its reasoning.",
+   "banned": false
+  },
+  {
+   "text": "The encoder does not openly publish its reasoning.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder does not automatically keep a decision log.",
+   "banned": false
+  },
+  {
+   "text": "The encoder does not automatically keep a decision log.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder does not ever log every decision.",
+   "banned": false
+  },
+  {
+   "text": "The encoder does not ever log every decision.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder publishes traces of failed runs.",
+   "banned": false
+  },
+  {
+   "text": "The encoder publishes traces of failed runs.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder stores its trace locally.",
+   "banned": false
+  },
+  {
+   "text": "The encoder stores its trace locally.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder stores its trace locally. A public server stores documentation.",
+   "banned": false
+  },
+  {
+   "text": "The encoder stores its trace locally. A public server stores documentation.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder publishes traces of failed runs. Successful runs keep their manifests.",
+   "banned": false
+  },
+  {
+   "text": "The encoder publishes traces of failed runs. Successful runs keep their manifests.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder runs nightly, and the engine publishes its traces.",
+   "banned": false
+  },
+  {
+   "text": "The encoder runs nightly, and the engine publishes its traces.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder runs nightly, and the reviewer publishes its transcripts.",
+   "banned": false
+  },
+  {
+   "text": "The encoder runs nightly, and the reviewer publishes its transcripts.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "> The encoder logs every\ndecision.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": ">> The encoder logs every\n> decision.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "> > The encoder logs every\ndecision.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "> The encoder logs every\n\ndecision.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "> The encoder logs every\n>\n> decision.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "> The encoder logs every\n# decision.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "> The encoder logs every\n- decision.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "> The encoder logs every\n>> decision.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder logs **every** decision.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "Every encoding decision is **logged**.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder logs _every decision_.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder logs __every__ decision.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder logs *every* decision.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder logs every&nbsp;decision.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder logs every&#32;decision.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder logs every&#x20;decision.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder logs every&Tab;decision.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder logs every&NewLine;decision.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder logs every&#10;decision.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder logs every&#xA;decision.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder logs every <!-- x --> decision.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder logs every<!-- x --> decision.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder logs e<!-- x -->very decision.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder logs every <!-- x -->\ndecision.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder logs every <!-- x\ncontinues --> decision.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder logs every <!-- x\ncontinues -->\ndecision.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder logs every <!-- x. -->\ndecision.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "The encoder logs every. <!-- x -->\ndecision.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder logs every <!-- x -->\n- decision.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder logs every\n<!-- x -->\ndecision.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "**The encoder logs every decision.** <!-- claims-check: allow -->",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder logs every&#32;decision. <!-- claims-check: allow -->",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder logs every<!-- x --> decision. <!-- claims-check: allow -->",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "Every rule is valİdated.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "Every rule is valıdated.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "Every rule is checKed.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "Every rule iſ validated.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "Every deciſion is logged.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder Keeps its reasoning.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder ſaves its reasoning.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder logs `**every**` decision.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder logs every_decision.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder logs **every_decision**.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder logs every\\*decision\\*.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "The encoder logs every\\_decision\\_.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "Intro\n<!-- a long invisible inline comment -->\nThe encoder logs **every** decision.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "Intro &nbsp;&nbsp;\nThe encoder logs every&#32;decision.",
+   "banned": true,
+   "markdown": true
   }
  ]
 }
