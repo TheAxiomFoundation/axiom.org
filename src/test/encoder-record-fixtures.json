@@ -1,0 +1,5682 @@
+{
+ "about": "Labelled sentences about the encoder's record. Built by TheAxiomFoundation/ops comms/gen_encoder_record_fixtures.py; do not edit by hand.",
+ "cases": [
+  {
+   "text": "The encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs every decision. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoder  logs  every  decision.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; our pipeline logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: our pipeline logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Our pipeline logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline logs every decision. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Our  pipeline  logs  every  decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoding agent logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoding agent logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoding agent logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent logs every decision. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoding  agent  logs  every  decision.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: Axiom's encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder logs every decision. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's  encoder  logs  every  decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs each encoding decision.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoder logs each encoding decision.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoder logs each encoding decision.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoder logs each encoding decision.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoder logs each encoding decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs each encoding decision. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoder  logs  each  encoding  decision.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline logs each encoding decision.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; our pipeline logs each encoding decision.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: our pipeline logs each encoding decision.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline logs each encoding decision.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Our pipeline logs each encoding decision.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline logs each encoding decision. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Our  pipeline  logs  each  encoding  decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent logs each encoding decision.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoding agent logs each encoding decision.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoding agent logs each encoding decision.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent logs each encoding decision.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoding agent logs each encoding decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent logs each encoding decision. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoding  agent  logs  each  encoding  decision.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder logs each encoding decision.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder logs each encoding decision.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: Axiom's encoder logs each encoding decision.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder logs each encoding decision.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder logs each encoding decision.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder logs each encoding decision. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's  encoder  logs  each  encoding  decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder records every decision it makes.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoder records every decision it makes.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoder records every decision it makes.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoder records every decision it makes.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoder records every decision it makes.",
+   "banned": true
+  },
+  {
+   "text": "The encoder records every decision it makes. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoder  records  every  decision  it  makes.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline records every decision it makes.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; our pipeline records every decision it makes.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: our pipeline records every decision it makes.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline records every decision it makes.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Our pipeline records every decision it makes.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline records every decision it makes. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Our  pipeline  records  every  decision  it  makes.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent records every decision it makes.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoding agent records every decision it makes.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoding agent records every decision it makes.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent records every decision it makes.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoding agent records every decision it makes.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent records every decision it makes. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoding  agent  records  every  decision  it  makes.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder records every decision it makes.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder records every decision it makes.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: Axiom's encoder records every decision it makes.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder records every decision it makes.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder records every decision it makes.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder records every decision it makes. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's  encoder  records  every  decision  it  makes.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs its decisions.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoder logs its decisions.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoder logs its decisions.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoder logs its decisions.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoder logs its decisions.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs its decisions. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoder  logs  its  decisions.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline logs its decisions.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; our pipeline logs its decisions.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: our pipeline logs its decisions.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline logs its decisions.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Our pipeline logs its decisions.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline logs its decisions. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Our  pipeline  logs  its  decisions.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent logs its decisions.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoding agent logs its decisions.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoding agent logs its decisions.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent logs its decisions.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoding agent logs its decisions.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent logs its decisions. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoding  agent  logs  its  decisions.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder logs its decisions.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder logs its decisions.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: Axiom's encoder logs its decisions.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder logs its decisions.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder logs its decisions.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder logs its decisions. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's  encoder  logs  its  decisions.",
+   "banned": true
+  },
+  {
+   "text": "The encoder records all of its decisions.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoder records all of its decisions.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoder records all of its decisions.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoder records all of its decisions.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoder records all of its decisions.",
+   "banned": true
+  },
+  {
+   "text": "The encoder records all of its decisions. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoder  records  all  of  its  decisions.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline records all of its decisions.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; our pipeline records all of its decisions.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: our pipeline records all of its decisions.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline records all of its decisions.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Our pipeline records all of its decisions.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline records all of its decisions. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Our  pipeline  records  all  of  its  decisions.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent records all of its decisions.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoding agent records all of its decisions.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoding agent records all of its decisions.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent records all of its decisions.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoding agent records all of its decisions.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent records all of its decisions. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoding  agent  records  all  of  its  decisions.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder records all of its decisions.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder records all of its decisions.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: Axiom's encoder records all of its decisions.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder records all of its decisions.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder records all of its decisions.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder records all of its decisions. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's  encoder  records  all  of  its  decisions.",
+   "banned": true
+  },
+  {
+   "text": "The encoder keeps a decision log.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoder keeps a decision log.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoder keeps a decision log.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoder keeps a decision log.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoder keeps a decision log.",
+   "banned": true
+  },
+  {
+   "text": "The encoder keeps a decision log. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoder  keeps  a  decision  log.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline keeps a decision log.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; our pipeline keeps a decision log.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: our pipeline keeps a decision log.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline keeps a decision log.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Our pipeline keeps a decision log.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline keeps a decision log. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Our  pipeline  keeps  a  decision  log.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent keeps a decision log.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoding agent keeps a decision log.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoding agent keeps a decision log.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent keeps a decision log.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoding agent keeps a decision log.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent keeps a decision log. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoding  agent  keeps  a  decision  log.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder keeps a decision log.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder keeps a decision log.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: Axiom's encoder keeps a decision log.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder keeps a decision log.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder keeps a decision log.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder keeps a decision log. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's  encoder  keeps  a  decision  log.",
+   "banned": true
+  },
+  {
+   "text": "The encoder keeps a decision trail for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoder keeps a decision trail for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoder keeps a decision trail for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoder keeps a decision trail for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoder keeps a decision trail for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "The encoder keeps a decision trail for every encoding. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoder  keeps  a  decision  trail  for  every  encoding.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline keeps a decision trail for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; our pipeline keeps a decision trail for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: our pipeline keeps a decision trail for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline keeps a decision trail for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Our pipeline keeps a decision trail for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline keeps a decision trail for every encoding. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Our  pipeline  keeps  a  decision  trail  for  every  encoding.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent keeps a decision trail for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoding agent keeps a decision trail for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoding agent keeps a decision trail for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent keeps a decision trail for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoding agent keeps a decision trail for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent keeps a decision trail for every encoding. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoding  agent  keeps  a  decision  trail  for  every  encoding.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder keeps a decision trail for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder keeps a decision trail for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: Axiom's encoder keeps a decision trail for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder keeps a decision trail for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder keeps a decision trail for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder keeps a decision trail for every encoding. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's  encoder  keeps  a  decision  trail  for  every  encoding.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs every decision, conflict and retry.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoder logs every decision, conflict and retry.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoder logs every decision, conflict and retry.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoder logs every decision, conflict and retry.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoder logs every decision, conflict and retry.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs every decision, conflict and retry. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoder  logs  every  decision,  conflict  and  retry.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline logs every decision, conflict and retry.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; our pipeline logs every decision, conflict and retry.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: our pipeline logs every decision, conflict and retry.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline logs every decision, conflict and retry.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Our pipeline logs every decision, conflict and retry.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline logs every decision, conflict and retry. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Our  pipeline  logs  every  decision,  conflict  and  retry.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent logs every decision, conflict and retry.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoding agent logs every decision, conflict and retry.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoding agent logs every decision, conflict and retry.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent logs every decision, conflict and retry.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoding agent logs every decision, conflict and retry.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent logs every decision, conflict and retry. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoding  agent  logs  every  decision,  conflict  and  retry.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder logs every decision, conflict and retry.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder logs every decision, conflict and retry.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: Axiom's encoder logs every decision, conflict and retry.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder logs every decision, conflict and retry.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder logs every decision, conflict and retry.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder logs every decision, conflict and retry. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's  encoder  logs  every  decision,  conflict  and  retry.",
+   "banned": true
+  },
+  {
+   "text": "The encoder publishes its traces.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoder publishes its traces.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoder publishes its traces.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoder publishes its traces.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoder publishes its traces.",
+   "banned": true
+  },
+  {
+   "text": "The encoder publishes its traces. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoder  publishes  its  traces.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline publishes its traces.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; our pipeline publishes its traces.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: our pipeline publishes its traces.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline publishes its traces.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Our pipeline publishes its traces.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline publishes its traces. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Our  pipeline  publishes  its  traces.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent publishes its traces.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoding agent publishes its traces.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoding agent publishes its traces.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent publishes its traces.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoding agent publishes its traces.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent publishes its traces. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoding  agent  publishes  its  traces.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder publishes its traces.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder publishes its traces.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: Axiom's encoder publishes its traces.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder publishes its traces.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder publishes its traces.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder publishes its traces. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's  encoder  publishes  its  traces.",
+   "banned": true
+  },
+  {
+   "text": "The encoder keeps the full agent transcript of every run.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoder keeps the full agent transcript of every run.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoder keeps the full agent transcript of every run.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoder keeps the full agent transcript of every run.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoder keeps the full agent transcript of every run.",
+   "banned": true
+  },
+  {
+   "text": "The encoder keeps the full agent transcript of every run. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoder  keeps  the  full  agent  transcript  of  every  run.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline keeps the full agent transcript of every run.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; our pipeline keeps the full agent transcript of every run.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: our pipeline keeps the full agent transcript of every run.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline keeps the full agent transcript of every run.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Our pipeline keeps the full agent transcript of every run.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline keeps the full agent transcript of every run. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Our  pipeline  keeps  the  full  agent  transcript  of  every  run.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent keeps the full agent transcript of every run.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoding agent keeps the full agent transcript of every run.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoding agent keeps the full agent transcript of every run.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent keeps the full agent transcript of every run.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoding agent keeps the full agent transcript of every run.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent keeps the full agent transcript of every run. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoding  agent  keeps  the  full  agent  transcript  of  every  run.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder keeps the full agent transcript of every run.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder keeps the full agent transcript of every run.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: Axiom's encoder keeps the full agent transcript of every run.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder keeps the full agent transcript of every run.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder keeps the full agent transcript of every run.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder keeps the full agent transcript of every run. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's  encoder  keeps  the  full  agent  transcript  of  every  run.",
+   "banned": true
+  },
+  {
+   "text": "The encoder saves an agent transcript with each run.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoder saves an agent transcript with each run.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoder saves an agent transcript with each run.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoder saves an agent transcript with each run.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoder saves an agent transcript with each run.",
+   "banned": true
+  },
+  {
+   "text": "The encoder saves an agent transcript with each run. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoder  saves  an  agent  transcript  with  each  run.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline saves an agent transcript with each run.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; our pipeline saves an agent transcript with each run.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: our pipeline saves an agent transcript with each run.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline saves an agent transcript with each run.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Our pipeline saves an agent transcript with each run.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline saves an agent transcript with each run. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Our  pipeline  saves  an  agent  transcript  with  each  run.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent saves an agent transcript with each run.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoding agent saves an agent transcript with each run.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoding agent saves an agent transcript with each run.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent saves an agent transcript with each run.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoding agent saves an agent transcript with each run.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent saves an agent transcript with each run. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoding  agent  saves  an  agent  transcript  with  each  run.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder saves an agent transcript with each run.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder saves an agent transcript with each run.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: Axiom's encoder saves an agent transcript with each run.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder saves an agent transcript with each run.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder saves an agent transcript with each run.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder saves an agent transcript with each run. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's  encoder  saves  an  agent  transcript  with  each  run.",
+   "banned": true
+  },
+  {
+   "text": "The encoder publishes detailed traces for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoder publishes detailed traces for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoder publishes detailed traces for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoder publishes detailed traces for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoder publishes detailed traces for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "The encoder publishes detailed traces for every encoding. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoder  publishes  detailed  traces  for  every  encoding.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline publishes detailed traces for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; our pipeline publishes detailed traces for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: our pipeline publishes detailed traces for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline publishes detailed traces for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Our pipeline publishes detailed traces for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline publishes detailed traces for every encoding. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Our  pipeline  publishes  detailed  traces  for  every  encoding.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent publishes detailed traces for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoding agent publishes detailed traces for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoding agent publishes detailed traces for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent publishes detailed traces for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoding agent publishes detailed traces for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent publishes detailed traces for every encoding. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoding  agent  publishes  detailed  traces  for  every  encoding.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder publishes detailed traces for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder publishes detailed traces for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: Axiom's encoder publishes detailed traces for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder publishes detailed traces for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder publishes detailed traces for every encoding.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder publishes detailed traces for every encoding. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's  encoder  publishes  detailed  traces  for  every  encoding.",
+   "banned": true
+  },
+  {
+   "text": "Every encoding decision is logged.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; every encoding decision is logged.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: every encoding decision is logged.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and every encoding decision is logged.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Every encoding decision is logged.",
+   "banned": true
+  },
+  {
+   "text": "Every encoding decision is logged. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Every  encoding  decision  is  logged.",
+   "banned": true
+  },
+  {
+   "text": "Each decision the encoder makes is recorded.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; each decision the encoder makes is recorded.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: each decision the encoder makes is recorded.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and each decision the encoder makes is recorded.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Each decision the encoder makes is recorded.",
+   "banned": true
+  },
+  {
+   "text": "Each decision the encoder makes is recorded. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Each  decision  the  encoder  makes  is  recorded.",
+   "banned": true
+  },
+  {
+   "text": "All encoding decisions are recorded.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; all encoding decisions are recorded.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: all encoding decisions are recorded.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and all encoding decisions are recorded.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. All encoding decisions are recorded.",
+   "banned": true
+  },
+  {
+   "text": "All encoding decisions are recorded. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "All  encoding  decisions  are  recorded.",
+   "banned": true
+  },
+  {
+   "text": "Every encoding decision has a public record.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; every encoding decision has a public record.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: every encoding decision has a public record.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and every encoding decision has a public record.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Every encoding decision has a public record.",
+   "banned": true
+  },
+  {
+   "text": "Every encoding decision has a public record. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Every  encoding  decision  has  a  public  record.",
+   "banned": true
+  },
+  {
+   "text": "Our encoding decisions are public.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; our encoding decisions are public.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: our encoding decisions are public.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and our encoding decisions are public.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Our encoding decisions are public.",
+   "banned": true
+  },
+  {
+   "text": "Our encoding decisions are public. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Our  encoding  decisions  are  public.",
+   "banned": true
+  },
+  {
+   "text": "Our code, our data, and our encoding decisions are public.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; our code, our data, and our encoding decisions are public.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: our code, our data, and our encoding decisions are public.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and our code, our data, and our encoding decisions are public.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Our code, our data, and our encoding decisions are public.",
+   "banned": true
+  },
+  {
+   "text": "Our code, our data, and our encoding decisions are public. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Our  code,  our  data,  and  our  encoding  decisions  are  public.",
+   "banned": true
+  },
+  {
+   "text": "The encoder's decisions are published.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoder's decisions are published.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoder's decisions are published.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoder's decisions are published.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoder's decisions are published.",
+   "banned": true
+  },
+  {
+   "text": "The encoder's decisions are published. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoder's  decisions  are  published.",
+   "banned": true
+  },
+  {
+   "text": "We publish the encoder's decisions.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; we publish the encoder's decisions.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: we publish the encoder's decisions.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and we publish the encoder's decisions.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. We publish the encoder's decisions.",
+   "banned": true
+  },
+  {
+   "text": "We publish the encoder's decisions. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "We  publish  the  encoder's  decisions.",
+   "banned": true
+  },
+  {
+   "text": "We publish encoding decisions.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; we publish encoding decisions.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: we publish encoding decisions.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and we publish encoding decisions.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. We publish encoding decisions.",
+   "banned": true
+  },
+  {
+   "text": "We publish encoding decisions. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "We  publish  encoding  decisions.",
+   "banned": true
+  },
+  {
+   "text": "A draft is logged with an explainable decision trail.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; a draft is logged with an explainable decision trail.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: a draft is logged with an explainable decision trail.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and a draft is logged with an explainable decision trail.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. A draft is logged with an explainable decision trail.",
+   "banned": true
+  },
+  {
+   "text": "A draft is logged with an explainable decision trail. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "A  draft  is  logged  with  an  explainable  decision  trail.",
+   "banned": true
+  },
+  {
+   "text": "Every encoding ships with a decision-trail.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; every encoding ships with a decision-trail.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: every encoding ships with a decision-trail.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and every encoding ships with a decision-trail.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Every encoding ships with a decision-trail.",
+   "banned": true
+  },
+  {
+   "text": "Every encoding ships with a decision-trail. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Every  encoding  ships  with  a  decision-trail.",
+   "banned": true
+  },
+  {
+   "text": "We publish every encoder trace.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; we publish every encoder trace.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: we publish every encoder trace.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and we publish every encoder trace.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. We publish every encoder trace.",
+   "banned": true
+  },
+  {
+   "text": "We publish every encoder trace. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "We  publish  every  encoder  trace.",
+   "banned": true
+  },
+  {
+   "text": "We retain the full transcript of every run.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; we retain the full transcript of every run.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: we retain the full transcript of every run.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and we retain the full transcript of every run.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. We retain the full transcript of every run.",
+   "banned": true
+  },
+  {
+   "text": "We retain the full transcript of every run. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "We  retain  the  full  transcript  of  every  run.",
+   "banned": true
+  },
+  {
+   "text": "We retain the model's chain of thought.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; we retain the model's chain of thought.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: we retain the model's chain of thought.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and we retain the model's chain of thought.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. We retain the model's chain of thought.",
+   "banned": true
+  },
+  {
+   "text": "We retain the model's chain of thought. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "We  retain  the  model's  chain  of  thought.",
+   "banned": true
+  },
+  {
+   "text": "The model's reasoning is published.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the model's reasoning is published.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the model's reasoning is published.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the model's reasoning is published.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The model's reasoning is published.",
+   "banned": true
+  },
+  {
+   "text": "The model's reasoning is published. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  model's  reasoning  is  published.",
+   "banned": true
+  },
+  {
+   "text": "The model's reasoning is publicly accessible.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the model's reasoning is publicly accessible.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the model's reasoning is publicly accessible.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the model's reasoning is publicly accessible.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The model's reasoning is publicly accessible.",
+   "banned": true
+  },
+  {
+   "text": "The model's reasoning is publicly accessible. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  model's  reasoning  is  publicly  accessible.",
+   "banned": true
+  },
+  {
+   "text": "Every run's trace is kept.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; every run's trace is kept.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: every run's trace is kept.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and every run's trace is kept.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Every run's trace is kept.",
+   "banned": true
+  },
+  {
+   "text": "Every run's trace is kept. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Every  run's  trace  is  kept.",
+   "banned": true
+  },
+  {
+   "text": "Its reasoning is public.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; its reasoning is public.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: its reasoning is public.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and its reasoning is public.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Its reasoning is public.",
+   "banned": true
+  },
+  {
+   "text": "Its reasoning is public. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Its  reasoning  is  public.",
+   "banned": true
+  },
+  {
+   "text": "Its traces are public.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; its traces are public.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: its traces are public.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and its traces are public.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Its traces are public.",
+   "banned": true
+  },
+  {
+   "text": "Its traces are public. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Its  traces  are  public.",
+   "banned": true
+  },
+  {
+   "text": "No setup is required and the encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; no setup is required and the encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: no setup is required and the encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and no setup is required and the encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. No setup is required and the encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "No setup is required and the encoder logs every decision. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "No  setup  is  required  and  the  encoder  logs  every  decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder not only applies an encoding but logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoder not only applies an encoding but logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoder not only applies an encoding but logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoder not only applies an encoding but logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoder not only applies an encoding but logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder not only applies an encoding but logs every decision. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoder  not  only  applies  an  encoding  but  logs  every  decision.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline not only applies an encoding but logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; our pipeline not only applies an encoding but logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: our pipeline not only applies an encoding but logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline not only applies an encoding but logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Our pipeline not only applies an encoding but logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline not only applies an encoding but logs every decision. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Our  pipeline  not  only  applies  an  encoding  but  logs  every  decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent not only applies an encoding but logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoding agent not only applies an encoding but logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoding agent not only applies an encoding but logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent not only applies an encoding but logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoding agent not only applies an encoding but logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent not only applies an encoding but logs every decision. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoding  agent  not  only  applies  an  encoding  but  logs  every  decision.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder not only applies an encoding but logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder not only applies an encoding but logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: Axiom's encoder not only applies an encoding but logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder not only applies an encoding but logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder not only applies an encoding but logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder not only applies an encoding but logs every decision. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's  encoder  not  only  applies  an  encoding  but  logs  every  decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder not only logs every decision but also produces a manifest.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoder not only logs every decision but also produces a manifest.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoder not only logs every decision but also produces a manifest.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoder not only logs every decision but also produces a manifest.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoder not only logs every decision but also produces a manifest.",
+   "banned": true
+  },
+  {
+   "text": "The encoder not only logs every decision but also produces a manifest. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoder  not  only  logs  every  decision  but  also  produces  a  manifest.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline not only logs every decision but also produces a manifest.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; our pipeline not only logs every decision but also produces a manifest.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: our pipeline not only logs every decision but also produces a manifest.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline not only logs every decision but also produces a manifest.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Our pipeline not only logs every decision but also produces a manifest.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline not only logs every decision but also produces a manifest. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Our  pipeline  not  only  logs  every  decision  but  also  produces  a  manifest.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent not only logs every decision but also produces a manifest.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoding agent not only logs every decision but also produces a manifest.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoding agent not only logs every decision but also produces a manifest.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent not only logs every decision but also produces a manifest.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoding agent not only logs every decision but also produces a manifest.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent not only logs every decision but also produces a manifest. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoding  agent  not  only  logs  every  decision  but  also  produces  a  manifest.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder not only logs every decision but also produces a manifest.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder not only logs every decision but also produces a manifest.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: Axiom's encoder not only logs every decision but also produces a manifest.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder not only logs every decision but also produces a manifest.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder not only logs every decision but also produces a manifest.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder not only logs every decision but also produces a manifest. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's  encoder  not  only  logs  every  decision  but  also  produces  a  manifest.",
+   "banned": true
+  },
+  {
+   "text": "We not only keep a decision log but also publish it.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; we not only keep a decision log but also publish it.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: we not only keep a decision log but also publish it.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and we not only keep a decision log but also publish it.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. We not only keep a decision log but also publish it.",
+   "banned": true
+  },
+  {
+   "text": "We not only keep a decision log but also publish it. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "We  not  only  keep  a  decision  log  but  also  publish  it.",
+   "banned": true
+  },
+  {
+   "text": "We keep a decision log without requiring a subscription.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; we keep a decision log without requiring a subscription.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: we keep a decision log without requiring a subscription.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and we keep a decision log without requiring a subscription.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. We keep a decision log without requiring a subscription.",
+   "banned": true
+  },
+  {
+   "text": "We keep a decision log without requiring a subscription. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "We  keep  a  decision  log  without  requiring  a  subscription.",
+   "banned": true
+  },
+  {
+   "text": "The encoder publishes traces whether a run succeeds or fails.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoder publishes traces whether a run succeeds or fails.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoder publishes traces whether a run succeeds or fails.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoder publishes traces whether a run succeeds or fails.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoder publishes traces whether a run succeeds or fails.",
+   "banned": true
+  },
+  {
+   "text": "The encoder publishes traces whether a run succeeds or fails. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoder  publishes  traces  whether  a  run  succeeds  or  fails.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline publishes traces whether a run succeeds or fails.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; our pipeline publishes traces whether a run succeeds or fails.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: our pipeline publishes traces whether a run succeeds or fails.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline publishes traces whether a run succeeds or fails.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Our pipeline publishes traces whether a run succeeds or fails.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline publishes traces whether a run succeeds or fails. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Our  pipeline  publishes  traces  whether  a  run  succeeds  or  fails.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent publishes traces whether a run succeeds or fails.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoding agent publishes traces whether a run succeeds or fails.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoding agent publishes traces whether a run succeeds or fails.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent publishes traces whether a run succeeds or fails.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoding agent publishes traces whether a run succeeds or fails.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent publishes traces whether a run succeeds or fails. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoding  agent  publishes  traces  whether  a  run  succeeds  or  fails.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder publishes traces whether a run succeeds or fails.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder publishes traces whether a run succeeds or fails.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: Axiom's encoder publishes traces whether a run succeeds or fails.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder publishes traces whether a run succeeds or fails.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder publishes traces whether a run succeeds or fails.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder publishes traces whether a run succeeds or fails. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's  encoder  publishes  traces  whether  a  run  succeeds  or  fails.",
+   "banned": true
+  },
+  {
+   "text": "The encoder publishes every successful trace and retains failed diagnostics.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoder publishes every successful trace and retains failed diagnostics.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoder publishes every successful trace and retains failed diagnostics.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoder publishes every successful trace and retains failed diagnostics.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoder publishes every successful trace and retains failed diagnostics.",
+   "banned": true
+  },
+  {
+   "text": "The encoder publishes every successful trace and retains failed diagnostics. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoder  publishes  every  successful  trace  and  retains  failed  diagnostics.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline publishes every successful trace and retains failed diagnostics.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; our pipeline publishes every successful trace and retains failed diagnostics.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: our pipeline publishes every successful trace and retains failed diagnostics.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline publishes every successful trace and retains failed diagnostics.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Our pipeline publishes every successful trace and retains failed diagnostics.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline publishes every successful trace and retains failed diagnostics. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Our  pipeline  publishes  every  successful  trace  and  retains  failed  diagnostics.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent publishes every successful trace and retains failed diagnostics.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoding agent publishes every successful trace and retains failed diagnostics.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoding agent publishes every successful trace and retains failed diagnostics.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent publishes every successful trace and retains failed diagnostics.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoding agent publishes every successful trace and retains failed diagnostics.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent publishes every successful trace and retains failed diagnostics. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoding  agent  publishes  every  successful  trace  and  retains  failed  diagnostics.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder publishes every successful trace and retains failed diagnostics.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder publishes every successful trace and retains failed diagnostics.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: Axiom's encoder publishes every successful trace and retains failed diagnostics.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder publishes every successful trace and retains failed diagnostics.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder publishes every successful trace and retains failed diagnostics.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder publishes every successful trace and retains failed diagnostics. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's  encoder  publishes  every  successful  trace  and  retains  failed  diagnostics.",
+   "banned": true
+  },
+  {
+   "text": "The encoder publishes a hash and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoder publishes a hash and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoder publishes a hash and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoder publishes a hash and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoder publishes a hash and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "The encoder publishes a hash and its reasoning. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoder  publishes  a  hash  and  its  reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline publishes a hash and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; our pipeline publishes a hash and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: our pipeline publishes a hash and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline publishes a hash and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Our pipeline publishes a hash and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline publishes a hash and its reasoning. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Our  pipeline  publishes  a  hash  and  its  reasoning.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent publishes a hash and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoding agent publishes a hash and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoding agent publishes a hash and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent publishes a hash and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoding agent publishes a hash and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent publishes a hash and its reasoning. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoding  agent  publishes  a  hash  and  its  reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder publishes a hash and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder publishes a hash and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: Axiom's encoder publishes a hash and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder publishes a hash and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder publishes a hash and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder publishes a hash and its reasoning. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's  encoder  publishes  a  hash  and  its  reasoning.",
+   "banned": true
+  },
+  {
+   "text": "The encoder publishes a hash of its trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoder publishes a hash of its trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoder publishes a hash of its trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoder publishes a hash of its trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoder publishes a hash of its trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "The encoder publishes a hash of its trace and its reasoning. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoder  publishes  a  hash  of  its  trace  and  its  reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline publishes a hash of its trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; our pipeline publishes a hash of its trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: our pipeline publishes a hash of its trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline publishes a hash of its trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Our pipeline publishes a hash of its trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline publishes a hash of its trace and its reasoning. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Our  pipeline  publishes  a  hash  of  its  trace  and  its  reasoning.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent publishes a hash of its trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoding agent publishes a hash of its trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoding agent publishes a hash of its trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent publishes a hash of its trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoding agent publishes a hash of its trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent publishes a hash of its trace and its reasoning. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoding  agent  publishes  a  hash  of  its  trace  and  its  reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder publishes a hash of its trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder publishes a hash of its trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: Axiom's encoder publishes a hash of its trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder publishes a hash of its trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder publishes a hash of its trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder publishes a hash of its trace and its reasoning. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's  encoder  publishes  a  hash  of  its  trace  and  its  reasoning.",
+   "banned": true
+  },
+  {
+   "text": "The encoder publishes a hash of its trace, and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoder publishes a hash of its trace, and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoder publishes a hash of its trace, and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoder publishes a hash of its trace, and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoder publishes a hash of its trace, and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "The encoder publishes a hash of its trace, and its reasoning. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoder  publishes  a  hash  of  its  trace,  and  its  reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline publishes a hash of its trace, and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; our pipeline publishes a hash of its trace, and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: our pipeline publishes a hash of its trace, and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline publishes a hash of its trace, and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Our pipeline publishes a hash of its trace, and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline publishes a hash of its trace, and its reasoning. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Our  pipeline  publishes  a  hash  of  its  trace,  and  its  reasoning.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent publishes a hash of its trace, and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoding agent publishes a hash of its trace, and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoding agent publishes a hash of its trace, and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent publishes a hash of its trace, and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoding agent publishes a hash of its trace, and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent publishes a hash of its trace, and its reasoning. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoding  agent  publishes  a  hash  of  its  trace,  and  its  reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder publishes a hash of its trace, and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder publishes a hash of its trace, and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: Axiom's encoder publishes a hash of its trace, and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder publishes a hash of its trace, and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder publishes a hash of its trace, and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder publishes a hash of its trace, and its reasoning. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's  encoder  publishes  a  hash  of  its  trace,  and  its  reasoning.",
+   "banned": true
+  },
+  {
+   "text": "The encoder publishes a calculation trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoder publishes a calculation trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoder publishes a calculation trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoder publishes a calculation trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoder publishes a calculation trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "The encoder publishes a calculation trace and its reasoning. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoder  publishes  a  calculation  trace  and  its  reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline publishes a calculation trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; our pipeline publishes a calculation trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: our pipeline publishes a calculation trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline publishes a calculation trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Our pipeline publishes a calculation trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline publishes a calculation trace and its reasoning. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Our  pipeline  publishes  a  calculation  trace  and  its  reasoning.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent publishes a calculation trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoding agent publishes a calculation trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoding agent publishes a calculation trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent publishes a calculation trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoding agent publishes a calculation trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent publishes a calculation trace and its reasoning. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoding  agent  publishes  a  calculation  trace  and  its  reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder publishes a calculation trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder publishes a calculation trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: Axiom's encoder publishes a calculation trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder publishes a calculation trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder publishes a calculation trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder publishes a calculation trace and its reasoning. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's  encoder  publishes  a  calculation  trace  and  its  reasoning.",
+   "banned": true
+  },
+  {
+   "text": "The encoder publishes no trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoder publishes no trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoder publishes no trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoder publishes no trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoder publishes no trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "The encoder publishes no trace and its reasoning. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoder  publishes  no  trace  and  its  reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline publishes no trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; our pipeline publishes no trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: our pipeline publishes no trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline publishes no trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Our pipeline publishes no trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline publishes no trace and its reasoning. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Our  pipeline  publishes  no  trace  and  its  reasoning.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent publishes no trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoding agent publishes no trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoding agent publishes no trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent publishes no trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoding agent publishes no trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent publishes no trace and its reasoning. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoding  agent  publishes  no  trace  and  its  reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder publishes no trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder publishes no trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: Axiom's encoder publishes no trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder publishes no trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder publishes no trace and its reasoning.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder publishes no trace and its reasoning. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's  encoder  publishes  no  trace  and  its  reasoning.",
+   "banned": true
+  },
+  {
+   "text": "The encoder publishes every successful trace for a failed run.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoder publishes every successful trace for a failed run.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoder publishes every successful trace for a failed run.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoder publishes every successful trace for a failed run.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoder publishes every successful trace for a failed run.",
+   "banned": true
+  },
+  {
+   "text": "The encoder publishes every successful trace for a failed run. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoder  publishes  every  successful  trace  for  a  failed  run.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline publishes every successful trace for a failed run.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; our pipeline publishes every successful trace for a failed run.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: our pipeline publishes every successful trace for a failed run.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline publishes every successful trace for a failed run.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Our pipeline publishes every successful trace for a failed run.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline publishes every successful trace for a failed run. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Our  pipeline  publishes  every  successful  trace  for  a  failed  run.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent publishes every successful trace for a failed run.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoding agent publishes every successful trace for a failed run.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoding agent publishes every successful trace for a failed run.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent publishes every successful trace for a failed run.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoding agent publishes every successful trace for a failed run.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent publishes every successful trace for a failed run. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoding  agent  publishes  every  successful  trace  for  a  failed  run.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder publishes every successful trace for a failed run.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder publishes every successful trace for a failed run.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: Axiom's encoder publishes every successful trace for a failed run.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder publishes every successful trace for a failed run.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder publishes every successful trace for a failed run.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder publishes every successful trace for a failed run. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's  encoder  publishes  every  successful  trace  for  a  failed  run.",
+   "banned": true
+  },
+  {
+   "text": "No matter how long setup takes, The encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; no matter how long setup takes, The encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: no matter how long setup takes, The encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and no matter how long setup takes, The encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. No matter how long setup takes, The encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "No matter how long setup takes, The encoder logs every decision. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "No  matter  how  long  setup  takes,  The  encoder  logs  every  decision.",
+   "banned": true
+  },
+  {
+   "text": "No matter how long setup takes, Our pipeline logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; no matter how long setup takes, Our pipeline logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: no matter how long setup takes, Our pipeline logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and no matter how long setup takes, Our pipeline logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. No matter how long setup takes, Our pipeline logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "No matter how long setup takes, Our pipeline logs every decision. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "No  matter  how  long  setup  takes,  Our  pipeline  logs  every  decision.",
+   "banned": true
+  },
+  {
+   "text": "No matter how long setup takes, The encoding agent logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; no matter how long setup takes, The encoding agent logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: no matter how long setup takes, The encoding agent logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and no matter how long setup takes, The encoding agent logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. No matter how long setup takes, The encoding agent logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "No matter how long setup takes, The encoding agent logs every decision. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "No  matter  how  long  setup  takes,  The  encoding  agent  logs  every  decision.",
+   "banned": true
+  },
+  {
+   "text": "No matter how long setup takes, Axiom's encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; no matter how long setup takes, Axiom's encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: no matter how long setup takes, Axiom's encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and no matter how long setup takes, Axiom's encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. No matter how long setup takes, Axiom's encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "No matter how long setup takes, Axiom's encoder logs every decision. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "No  matter  how  long  setup  takes,  Axiom's  encoder  logs  every  decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder publishes its locally stored trace.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoder publishes its locally stored trace.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoder publishes its locally stored trace.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoder publishes its locally stored trace.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoder publishes its locally stored trace.",
+   "banned": true
+  },
+  {
+   "text": "The encoder publishes its locally stored trace. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoder  publishes  its  locally  stored  trace.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline publishes its locally stored trace.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; our pipeline publishes its locally stored trace.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: our pipeline publishes its locally stored trace.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline publishes its locally stored trace.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Our pipeline publishes its locally stored trace.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline publishes its locally stored trace. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Our  pipeline  publishes  its  locally  stored  trace.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent publishes its locally stored trace.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoding agent publishes its locally stored trace.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoding agent publishes its locally stored trace.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent publishes its locally stored trace.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoding agent publishes its locally stored trace.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent publishes its locally stored trace. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoding  agent  publishes  its  locally  stored  trace.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder publishes its locally stored trace.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder publishes its locally stored trace.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: Axiom's encoder publishes its locally stored trace.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder publishes its locally stored trace.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder publishes its locally stored trace.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder publishes its locally stored trace. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's  encoder  publishes  its  locally  stored  trace.",
+   "banned": true
+  },
+  {
+   "text": "The encoder shares the trace from its local machine.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoder shares the trace from its local machine.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoder shares the trace from its local machine.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoder shares the trace from its local machine.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoder shares the trace from its local machine.",
+   "banned": true
+  },
+  {
+   "text": "The encoder shares the trace from its local machine. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoder  shares  the  trace  from  its  local  machine.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline shares the trace from its local machine.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; our pipeline shares the trace from its local machine.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: our pipeline shares the trace from its local machine.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline shares the trace from its local machine.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Our pipeline shares the trace from its local machine.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline shares the trace from its local machine. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Our  pipeline  shares  the  trace  from  its  local  machine.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent shares the trace from its local machine.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoding agent shares the trace from its local machine.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoding agent shares the trace from its local machine.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent shares the trace from its local machine.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoding agent shares the trace from its local machine.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent shares the trace from its local machine. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoding  agent  shares  the  trace  from  its  local  machine.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder shares the trace from its local machine.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder shares the trace from its local machine.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: Axiom's encoder shares the trace from its local machine.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder shares the trace from its local machine.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder shares the trace from its local machine.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder shares the trace from its local machine. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's  encoder  shares  the  trace  from  its  local  machine.",
+   "banned": true
+  },
+  {
+   "text": "The encoder stores a public transcript locally.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoder stores a public transcript locally.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoder stores a public transcript locally.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoder stores a public transcript locally.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoder stores a public transcript locally.",
+   "banned": true
+  },
+  {
+   "text": "The encoder stores a public transcript locally. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoder  stores  a  public  transcript  locally.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline stores a public transcript locally.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; our pipeline stores a public transcript locally.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: our pipeline stores a public transcript locally.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline stores a public transcript locally.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Our pipeline stores a public transcript locally.",
+   "banned": true
+  },
+  {
+   "text": "Our pipeline stores a public transcript locally. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Our  pipeline  stores  a  public  transcript  locally.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent stores a public transcript locally.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; the encoding agent stores a public transcript locally.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: the encoding agent stores a public transcript locally.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent stores a public transcript locally.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. The encoding agent stores a public transcript locally.",
+   "banned": true
+  },
+  {
+   "text": "The encoding agent stores a public transcript locally. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "The  encoding  agent  stores  a  public  transcript  locally.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder stores a public transcript locally.",
+   "banned": true
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder stores a public transcript locally.",
+   "banned": true
+  },
+  {
+   "text": "It is simple: Axiom's encoder stores a public transcript locally.",
+   "banned": true
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder stores a public transcript locally.",
+   "banned": true
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder stores a public transcript locally.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's encoder stores a public transcript locally. It has no exceptions.",
+   "banned": true
+  },
+  {
+   "text": "Axiom's  encoder  stores  a  public  transcript  locally.",
+   "banned": true
+  },
+  {
+   "text": "The encoder does not log every decision.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; the encoder does not log every decision.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: the encoder does not log every decision.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and the encoder does not log every decision.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. The encoder does not log every decision.",
+   "banned": false
+  },
+  {
+   "text": "The encoder does not log every decision. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "The  encoder  does  not  log  every  decision.",
+   "banned": false
+  },
+  {
+   "text": "Our pipeline does not log every decision.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; our pipeline does not log every decision.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: our pipeline does not log every decision.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline does not log every decision.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Our pipeline does not log every decision.",
+   "banned": false
+  },
+  {
+   "text": "Our pipeline does not log every decision. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Our  pipeline  does  not  log  every  decision.",
+   "banned": false
+  },
+  {
+   "text": "The encoding agent does not log every decision.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; the encoding agent does not log every decision.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: the encoding agent does not log every decision.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent does not log every decision.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. The encoding agent does not log every decision.",
+   "banned": false
+  },
+  {
+   "text": "The encoding agent does not log every decision. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "The  encoding  agent  does  not  log  every  decision.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's encoder does not log every decision.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder does not log every decision.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: Axiom's encoder does not log every decision.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder does not log every decision.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder does not log every decision.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's encoder does not log every decision. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's  encoder  does  not  log  every  decision.",
+   "banned": false
+  },
+  {
+   "text": "The encoder doesn't keep a decision log.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; the encoder doesn't keep a decision log.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: the encoder doesn't keep a decision log.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and the encoder doesn't keep a decision log.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. The encoder doesn't keep a decision log.",
+   "banned": false
+  },
+  {
+   "text": "The encoder doesn't keep a decision log. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "The  encoder  doesn't  keep  a  decision  log.",
+   "banned": false
+  },
+  {
+   "text": "Our pipeline doesn't keep a decision log.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; our pipeline doesn't keep a decision log.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: our pipeline doesn't keep a decision log.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline doesn't keep a decision log.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Our pipeline doesn't keep a decision log.",
+   "banned": false
+  },
+  {
+   "text": "Our pipeline doesn't keep a decision log. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Our  pipeline  doesn't  keep  a  decision  log.",
+   "banned": false
+  },
+  {
+   "text": "The encoding agent doesn't keep a decision log.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; the encoding agent doesn't keep a decision log.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: the encoding agent doesn't keep a decision log.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent doesn't keep a decision log.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. The encoding agent doesn't keep a decision log.",
+   "banned": false
+  },
+  {
+   "text": "The encoding agent doesn't keep a decision log. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "The  encoding  agent  doesn't  keep  a  decision  log.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's encoder doesn't keep a decision log.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder doesn't keep a decision log.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: Axiom's encoder doesn't keep a decision log.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder doesn't keep a decision log.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder doesn't keep a decision log.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's encoder doesn't keep a decision log. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's  encoder  doesn't  keep  a  decision  log.",
+   "banned": false
+  },
+  {
+   "text": "The encoder has no decision log.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; the encoder has no decision log.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: the encoder has no decision log.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and the encoder has no decision log.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. The encoder has no decision log.",
+   "banned": false
+  },
+  {
+   "text": "The encoder has no decision log. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "The  encoder  has  no  decision  log.",
+   "banned": false
+  },
+  {
+   "text": "Our pipeline has no decision log.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; our pipeline has no decision log.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: our pipeline has no decision log.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline has no decision log.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Our pipeline has no decision log.",
+   "banned": false
+  },
+  {
+   "text": "Our pipeline has no decision log. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Our  pipeline  has  no  decision  log.",
+   "banned": false
+  },
+  {
+   "text": "The encoding agent has no decision log.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; the encoding agent has no decision log.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: the encoding agent has no decision log.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent has no decision log.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. The encoding agent has no decision log.",
+   "banned": false
+  },
+  {
+   "text": "The encoding agent has no decision log. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "The  encoding  agent  has  no  decision  log.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's encoder has no decision log.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder has no decision log.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: Axiom's encoder has no decision log.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder has no decision log.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder has no decision log.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's encoder has no decision log. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's  encoder  has  no  decision  log.",
+   "banned": false
+  },
+  {
+   "text": "The encoder does not publish its traces.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; the encoder does not publish its traces.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: the encoder does not publish its traces.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and the encoder does not publish its traces.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. The encoder does not publish its traces.",
+   "banned": false
+  },
+  {
+   "text": "The encoder does not publish its traces. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "The  encoder  does  not  publish  its  traces.",
+   "banned": false
+  },
+  {
+   "text": "Our pipeline does not publish its traces.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; our pipeline does not publish its traces.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: our pipeline does not publish its traces.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline does not publish its traces.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Our pipeline does not publish its traces.",
+   "banned": false
+  },
+  {
+   "text": "Our pipeline does not publish its traces. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Our  pipeline  does  not  publish  its  traces.",
+   "banned": false
+  },
+  {
+   "text": "The encoding agent does not publish its traces.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; the encoding agent does not publish its traces.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: the encoding agent does not publish its traces.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent does not publish its traces.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. The encoding agent does not publish its traces.",
+   "banned": false
+  },
+  {
+   "text": "The encoding agent does not publish its traces. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "The  encoding  agent  does  not  publish  its  traces.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's encoder does not publish its traces.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder does not publish its traces.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: Axiom's encoder does not publish its traces.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder does not publish its traces.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder does not publish its traces.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's encoder does not publish its traces. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's  encoder  does  not  publish  its  traces.",
+   "banned": false
+  },
+  {
+   "text": "The encoder does not publish a hash of its trace and its reasoning.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; the encoder does not publish a hash of its trace and its reasoning.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: the encoder does not publish a hash of its trace and its reasoning.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and the encoder does not publish a hash of its trace and its reasoning.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. The encoder does not publish a hash of its trace and its reasoning.",
+   "banned": false
+  },
+  {
+   "text": "The encoder does not publish a hash of its trace and its reasoning. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "The  encoder  does  not  publish  a  hash  of  its  trace  and  its  reasoning.",
+   "banned": false
+  },
+  {
+   "text": "Our pipeline does not publish a hash of its trace and its reasoning.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; our pipeline does not publish a hash of its trace and its reasoning.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: our pipeline does not publish a hash of its trace and its reasoning.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline does not publish a hash of its trace and its reasoning.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Our pipeline does not publish a hash of its trace and its reasoning.",
+   "banned": false
+  },
+  {
+   "text": "Our pipeline does not publish a hash of its trace and its reasoning. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Our  pipeline  does  not  publish  a  hash  of  its  trace  and  its  reasoning.",
+   "banned": false
+  },
+  {
+   "text": "The encoding agent does not publish a hash of its trace and its reasoning.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; the encoding agent does not publish a hash of its trace and its reasoning.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: the encoding agent does not publish a hash of its trace and its reasoning.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent does not publish a hash of its trace and its reasoning.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. The encoding agent does not publish a hash of its trace and its reasoning.",
+   "banned": false
+  },
+  {
+   "text": "The encoding agent does not publish a hash of its trace and its reasoning. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "The  encoding  agent  does  not  publish  a  hash  of  its  trace  and  its  reasoning.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's encoder does not publish a hash of its trace and its reasoning.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder does not publish a hash of its trace and its reasoning.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: Axiom's encoder does not publish a hash of its trace and its reasoning.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder does not publish a hash of its trace and its reasoning.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder does not publish a hash of its trace and its reasoning.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's encoder does not publish a hash of its trace and its reasoning. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's  encoder  does  not  publish  a  hash  of  its  trace  and  its  reasoning.",
+   "banned": false
+  },
+  {
+   "text": "The encoder publishes a hash of its trace and its reasoning is private.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; the encoder publishes a hash of its trace and its reasoning is private.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: the encoder publishes a hash of its trace and its reasoning is private.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and the encoder publishes a hash of its trace and its reasoning is private.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. The encoder publishes a hash of its trace and its reasoning is private.",
+   "banned": false
+  },
+  {
+   "text": "The encoder publishes a hash of its trace and its reasoning is private. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "The  encoder  publishes  a  hash  of  its  trace  and  its  reasoning  is  private.",
+   "banned": false
+  },
+  {
+   "text": "Our pipeline publishes a hash of its trace and its reasoning is private.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; our pipeline publishes a hash of its trace and its reasoning is private.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: our pipeline publishes a hash of its trace and its reasoning is private.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline publishes a hash of its trace and its reasoning is private.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Our pipeline publishes a hash of its trace and its reasoning is private.",
+   "banned": false
+  },
+  {
+   "text": "Our pipeline publishes a hash of its trace and its reasoning is private. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Our  pipeline  publishes  a  hash  of  its  trace  and  its  reasoning  is  private.",
+   "banned": false
+  },
+  {
+   "text": "The encoding agent publishes a hash of its trace and its reasoning is private.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; the encoding agent publishes a hash of its trace and its reasoning is private.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: the encoding agent publishes a hash of its trace and its reasoning is private.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent publishes a hash of its trace and its reasoning is private.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. The encoding agent publishes a hash of its trace and its reasoning is private.",
+   "banned": false
+  },
+  {
+   "text": "The encoding agent publishes a hash of its trace and its reasoning is private. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "The  encoding  agent  publishes  a  hash  of  its  trace  and  its  reasoning  is  private.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's encoder publishes a hash of its trace and its reasoning is private.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder publishes a hash of its trace and its reasoning is private.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: Axiom's encoder publishes a hash of its trace and its reasoning is private.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder publishes a hash of its trace and its reasoning is private.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder publishes a hash of its trace and its reasoning is private.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's encoder publishes a hash of its trace and its reasoning is private. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's  encoder  publishes  a  hash  of  its  trace  and  its  reasoning  is  private.",
+   "banned": false
+  },
+  {
+   "text": "The encoder publishes a hash of its trace, and its reasoning is never published.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; the encoder publishes a hash of its trace, and its reasoning is never published.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: the encoder publishes a hash of its trace, and its reasoning is never published.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and the encoder publishes a hash of its trace, and its reasoning is never published.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. The encoder publishes a hash of its trace, and its reasoning is never published.",
+   "banned": false
+  },
+  {
+   "text": "The encoder publishes a hash of its trace, and its reasoning is never published. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "The  encoder  publishes  a  hash  of  its  trace,  and  its  reasoning  is  never  published.",
+   "banned": false
+  },
+  {
+   "text": "Our pipeline publishes a hash of its trace, and its reasoning is never published.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; our pipeline publishes a hash of its trace, and its reasoning is never published.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: our pipeline publishes a hash of its trace, and its reasoning is never published.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline publishes a hash of its trace, and its reasoning is never published.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Our pipeline publishes a hash of its trace, and its reasoning is never published.",
+   "banned": false
+  },
+  {
+   "text": "Our pipeline publishes a hash of its trace, and its reasoning is never published. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Our  pipeline  publishes  a  hash  of  its  trace,  and  its  reasoning  is  never  published.",
+   "banned": false
+  },
+  {
+   "text": "The encoding agent publishes a hash of its trace, and its reasoning is never published.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; the encoding agent publishes a hash of its trace, and its reasoning is never published.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: the encoding agent publishes a hash of its trace, and its reasoning is never published.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent publishes a hash of its trace, and its reasoning is never published.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. The encoding agent publishes a hash of its trace, and its reasoning is never published.",
+   "banned": false
+  },
+  {
+   "text": "The encoding agent publishes a hash of its trace, and its reasoning is never published. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "The  encoding  agent  publishes  a  hash  of  its  trace,  and  its  reasoning  is  never  published.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's encoder publishes a hash of its trace, and its reasoning is never published.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder publishes a hash of its trace, and its reasoning is never published.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: Axiom's encoder publishes a hash of its trace, and its reasoning is never published.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder publishes a hash of its trace, and its reasoning is never published.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder publishes a hash of its trace, and its reasoning is never published.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's encoder publishes a hash of its trace, and its reasoning is never published. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's  encoder  publishes  a  hash  of  its  trace,  and  its  reasoning  is  never  published.",
+   "banned": false
+  },
+  {
+   "text": "The encoder publishes a hash of its trace and no reasoning is published.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; the encoder publishes a hash of its trace and no reasoning is published.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: the encoder publishes a hash of its trace and no reasoning is published.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and the encoder publishes a hash of its trace and no reasoning is published.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. The encoder publishes a hash of its trace and no reasoning is published.",
+   "banned": false
+  },
+  {
+   "text": "The encoder publishes a hash of its trace and no reasoning is published. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "The  encoder  publishes  a  hash  of  its  trace  and  no  reasoning  is  published.",
+   "banned": false
+  },
+  {
+   "text": "Our pipeline publishes a hash of its trace and no reasoning is published.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; our pipeline publishes a hash of its trace and no reasoning is published.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: our pipeline publishes a hash of its trace and no reasoning is published.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline publishes a hash of its trace and no reasoning is published.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Our pipeline publishes a hash of its trace and no reasoning is published.",
+   "banned": false
+  },
+  {
+   "text": "Our pipeline publishes a hash of its trace and no reasoning is published. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Our  pipeline  publishes  a  hash  of  its  trace  and  no  reasoning  is  published.",
+   "banned": false
+  },
+  {
+   "text": "The encoding agent publishes a hash of its trace and no reasoning is published.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; the encoding agent publishes a hash of its trace and no reasoning is published.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: the encoding agent publishes a hash of its trace and no reasoning is published.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent publishes a hash of its trace and no reasoning is published.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. The encoding agent publishes a hash of its trace and no reasoning is published.",
+   "banned": false
+  },
+  {
+   "text": "The encoding agent publishes a hash of its trace and no reasoning is published. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "The  encoding  agent  publishes  a  hash  of  its  trace  and  no  reasoning  is  published.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's encoder publishes a hash of its trace and no reasoning is published.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder publishes a hash of its trace and no reasoning is published.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: Axiom's encoder publishes a hash of its trace and no reasoning is published.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder publishes a hash of its trace and no reasoning is published.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder publishes a hash of its trace and no reasoning is published.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's encoder publishes a hash of its trace and no reasoning is published. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's  encoder  publishes  a  hash  of  its  trace  and  no  reasoning  is  published.",
+   "banned": false
+  },
+  {
+   "text": "The encoder leaves a signed manifest naming the source citation and the model.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; the encoder leaves a signed manifest naming the source citation and the model.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: the encoder leaves a signed manifest naming the source citation and the model.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and the encoder leaves a signed manifest naming the source citation and the model.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. The encoder leaves a signed manifest naming the source citation and the model.",
+   "banned": false
+  },
+  {
+   "text": "The encoder leaves a signed manifest naming the source citation and the model. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "The  encoder  leaves  a  signed  manifest  naming  the  source  citation  and  the  model.",
+   "banned": false
+  },
+  {
+   "text": "Our pipeline leaves a signed manifest naming the source citation and the model.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; our pipeline leaves a signed manifest naming the source citation and the model.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: our pipeline leaves a signed manifest naming the source citation and the model.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline leaves a signed manifest naming the source citation and the model.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Our pipeline leaves a signed manifest naming the source citation and the model.",
+   "banned": false
+  },
+  {
+   "text": "Our pipeline leaves a signed manifest naming the source citation and the model. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Our  pipeline  leaves  a  signed  manifest  naming  the  source  citation  and  the  model.",
+   "banned": false
+  },
+  {
+   "text": "The encoding agent leaves a signed manifest naming the source citation and the model.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; the encoding agent leaves a signed manifest naming the source citation and the model.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: the encoding agent leaves a signed manifest naming the source citation and the model.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent leaves a signed manifest naming the source citation and the model.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. The encoding agent leaves a signed manifest naming the source citation and the model.",
+   "banned": false
+  },
+  {
+   "text": "The encoding agent leaves a signed manifest naming the source citation and the model. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "The  encoding  agent  leaves  a  signed  manifest  naming  the  source  citation  and  the  model.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's encoder leaves a signed manifest naming the source citation and the model.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder leaves a signed manifest naming the source citation and the model.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: Axiom's encoder leaves a signed manifest naming the source citation and the model.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder leaves a signed manifest naming the source citation and the model.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder leaves a signed manifest naming the source citation and the model.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's encoder leaves a signed manifest naming the source citation and the model. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's  encoder  leaves  a  signed  manifest  naming  the  source  citation  and  the  model.",
+   "banned": false
+  },
+  {
+   "text": "Not every encoding decision is logged.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; not every encoding decision is logged.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: not every encoding decision is logged.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and not every encoding decision is logged.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Not every encoding decision is logged.",
+   "banned": false
+  },
+  {
+   "text": "Not every encoding decision is logged. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Not  every  encoding  decision  is  logged.",
+   "banned": false
+  },
+  {
+   "text": "No encoder trace is published.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; no encoder trace is published.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: no encoder trace is published.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and no encoder trace is published.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. No encoder trace is published.",
+   "banned": false
+  },
+  {
+   "text": "No encoder trace is published. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "No  encoder  trace  is  published.",
+   "banned": false
+  },
+  {
+   "text": "No encoder trace is kept in any repo.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; no encoder trace is kept in any repo.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: no encoder trace is kept in any repo.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and no encoder trace is kept in any repo.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. No encoder trace is kept in any repo.",
+   "banned": false
+  },
+  {
+   "text": "No encoder trace is kept in any repo. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "No  encoder  trace  is  kept  in  any  repo.",
+   "banned": false
+  },
+  {
+   "text": "We never publish the model's reasoning.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; we never publish the model's reasoning.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: we never publish the model's reasoning.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and we never publish the model's reasoning.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. We never publish the model's reasoning.",
+   "banned": false
+  },
+  {
+   "text": "We never publish the model's reasoning. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "We  never  publish  the  model's  reasoning.",
+   "banned": false
+  },
+  {
+   "text": "We do not keep a decision log.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; we do not keep a decision log.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: we do not keep a decision log.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and we do not keep a decision log.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. We do not keep a decision log.",
+   "banned": false
+  },
+  {
+   "text": "We do not keep a decision log. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "We  do  not  keep  a  decision  log.",
+   "banned": false
+  },
+  {
+   "text": "Decision logs are not kept.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; decision logs are not kept.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: decision logs are not kept.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and decision logs are not kept.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Decision logs are not kept.",
+   "banned": false
+  },
+  {
+   "text": "Decision logs are not kept. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Decision  logs  are  not  kept.",
+   "banned": false
+  },
+  {
+   "text": "Our encoding decisions are not public.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; our encoding decisions are not public.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: our encoding decisions are not public.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and our encoding decisions are not public.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Our encoding decisions are not public.",
+   "banned": false
+  },
+  {
+   "text": "Our encoding decisions are not public. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Our  encoding  decisions  are  not  public.",
+   "banned": false
+  },
+  {
+   "text": "Its traces are never published.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; its traces are never published.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: its traces are never published.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and its traces are never published.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Its traces are never published.",
+   "banned": false
+  },
+  {
+   "text": "Its traces are never published. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Its  traces  are  never  published.",
+   "banned": false
+  },
+  {
+   "text": "Each time the encoder applies an encoding, it leaves a signed manifest naming the source citation and the model.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; each time the encoder applies an encoding, it leaves a signed manifest naming the source citation and the model.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: each time the encoder applies an encoding, it leaves a signed manifest naming the source citation and the model.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and each time the encoder applies an encoding, it leaves a signed manifest naming the source citation and the model.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Each time the encoder applies an encoding, it leaves a signed manifest naming the source citation and the model.",
+   "banned": false
+  },
+  {
+   "text": "Each time the encoder applies an encoding, it leaves a signed manifest naming the source citation and the model. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Each  time  the  encoder  applies  an  encoding,  it  leaves  a  signed  manifest  naming  the  source  citation  and  the  model.",
+   "banned": false
+  },
+  {
+   "text": "An apply manifest records the trace's path and hash, never its contents.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; an apply manifest records the trace's path and hash, never its contents.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: an apply manifest records the trace's path and hash, never its contents.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and an apply manifest records the trace's path and hash, never its contents.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. An apply manifest records the trace's path and hash, never its contents.",
+   "banned": false
+  },
+  {
+   "text": "An apply manifest records the trace's path and hash, never its contents. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "An  apply  manifest  records  the  trace's  path  and  hash,  never  its  contents.",
+   "banned": false
+  },
+  {
+   "text": "The manifest records a hash of the trace and its path.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; the manifest records a hash of the trace and its path.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: the manifest records a hash of the trace and its path.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and the manifest records a hash of the trace and its path.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. The manifest records a hash of the trace and its path.",
+   "banned": false
+  },
+  {
+   "text": "The manifest records a hash of the trace and its path. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "The  manifest  records  a  hash  of  the  trace  and  its  path.",
+   "banned": false
+  },
+  {
+   "text": "A failed targeted re-encode keeps its work files, the trace among them, in a 90-day artifact.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; a failed targeted re-encode keeps its work files, the trace among them, in a 90-day artifact.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: a failed targeted re-encode keeps its work files, the trace among them, in a 90-day artifact.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and a failed targeted re-encode keeps its work files, the trace among them, in a 90-day artifact.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. A failed targeted re-encode keeps its work files, the trace among them, in a 90-day artifact.",
+   "banned": false
+  },
+  {
+   "text": "A failed targeted re-encode keeps its work files, the trace among them, in a 90-day artifact. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "A  failed  targeted  re-encode  keeps  its  work  files,  the  trace  among  them,  in  a  90-day  artifact.",
+   "banned": false
+  },
+  {
+   "text": "A failed encoder run stores the full trace in a 90-day artifact.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; a failed encoder run stores the full trace in a 90-day artifact.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: a failed encoder run stores the full trace in a 90-day artifact.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and a failed encoder run stores the full trace in a 90-day artifact.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. A failed encoder run stores the full trace in a 90-day artifact.",
+   "banned": false
+  },
+  {
+   "text": "A failed encoder run stores the full trace in a 90-day artifact. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "A  failed  encoder  run  stores  the  full  trace  in  a  90-day  artifact.",
+   "banned": false
+  },
+  {
+   "text": "We publish every calculation trace.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; we publish every calculation trace.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: we publish every calculation trace.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and we publish every calculation trace.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. We publish every calculation trace.",
+   "banned": false
+  },
+  {
+   "text": "We publish every calculation trace. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "We  publish  every  calculation  trace.",
+   "banned": false
+  },
+  {
+   "text": "The engine returns a determination with its citation trace.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; the engine returns a determination with its citation trace.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: the engine returns a determination with its citation trace.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and the engine returns a determination with its citation trace.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. The engine returns a determination with its citation trace.",
+   "banned": false
+  },
+  {
+   "text": "The engine returns a determination with its citation trace. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "The  engine  returns  a  determination  with  its  citation  trace.",
+   "banned": false
+  },
+  {
+   "text": "The oracle harness keeps an evaluation trace for each case.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; the oracle harness keeps an evaluation trace for each case.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: the oracle harness keeps an evaluation trace for each case.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and the oracle harness keeps an evaluation trace for each case.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. The oracle harness keeps an evaluation trace for each case.",
+   "banned": false
+  },
+  {
+   "text": "The oracle harness keeps an evaluation trace for each case. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "The  oracle  harness  keeps  an  evaluation  trace  for  each  case.",
+   "banned": false
+  },
+  {
+   "text": "The run telemetry records each run's request, result, outcome and validation issues, not its decisions or reasoning.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; the run telemetry records each run's request, result, outcome and validation issues, not its decisions or reasoning.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: the run telemetry records each run's request, result, outcome and validation issues, not its decisions or reasoning.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and the run telemetry records each run's request, result, outcome and validation issues, not its decisions or reasoning.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. The run telemetry records each run's request, result, outcome and validation issues, not its decisions or reasoning.",
+   "banned": false
+  },
+  {
+   "text": "The run telemetry records each run's request, result, outcome and validation issues, not its decisions or reasoning. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "The  run  telemetry  records  each  run's  request,  result,  outcome  and  validation  issues,  not  its  decisions  or  reasoning.",
+   "banned": false
+  },
+  {
+   "text": "Our encodings and source corpus are public.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; our encodings and source corpus are public.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: our encodings and source corpus are public.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and our encodings and source corpus are public.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Our encodings and source corpus are public.",
+   "banned": false
+  },
+  {
+   "text": "Our encodings and source corpus are public. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Our  encodings  and  source  corpus  are  public.",
+   "banned": false
+  },
+  {
+   "text": "Provenance means you can see which reading we encoded and why.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; provenance means you can see which reading we encoded and why.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: provenance means you can see which reading we encoded and why.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and provenance means you can see which reading we encoded and why.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Provenance means you can see which reading we encoded and why.",
+   "banned": false
+  },
+  {
+   "text": "Provenance means you can see which reading we encoded and why. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Provenance  means  you  can  see  which  reading  we  encoded  and  why.",
+   "banned": false
+  },
+  {
+   "text": "Human judgment appears in interpretive rulings recorded with the encoding.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; human judgment appears in interpretive rulings recorded with the encoding.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: human judgment appears in interpretive rulings recorded with the encoding.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and human judgment appears in interpretive rulings recorded with the encoding.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Human judgment appears in interpretive rulings recorded with the encoding.",
+   "banned": false
+  },
+  {
+   "text": "Human judgment appears in interpretive rulings recorded with the encoding. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Human  judgment  appears  in  interpretive  rulings  recorded  with  the  encoding.",
+   "banned": false
+  },
+  {
+   "text": "Every decision about scope goes to Max.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; every decision about scope goes to Max.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: every decision about scope goes to Max.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and every decision about scope goes to Max.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Every decision about scope goes to Max.",
+   "banned": false
+  },
+  {
+   "text": "Every decision about scope goes to Max. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Every  decision  about  scope  goes  to  Max.",
+   "banned": false
+  },
+  {
+   "text": "The encoder saves a trace on the local machine.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; the encoder saves a trace on the local machine.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: the encoder saves a trace on the local machine.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and the encoder saves a trace on the local machine.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. The encoder saves a trace on the local machine.",
+   "banned": false
+  },
+  {
+   "text": "The encoder saves a trace on the local machine. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "The  encoder  saves  a  trace  on  the  local  machine.",
+   "banned": false
+  },
+  {
+   "text": "Our pipeline saves a trace on the local machine.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; our pipeline saves a trace on the local machine.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: our pipeline saves a trace on the local machine.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline saves a trace on the local machine.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Our pipeline saves a trace on the local machine.",
+   "banned": false
+  },
+  {
+   "text": "Our pipeline saves a trace on the local machine. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Our  pipeline  saves  a  trace  on  the  local  machine.",
+   "banned": false
+  },
+  {
+   "text": "The encoding agent saves a trace on the local machine.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; the encoding agent saves a trace on the local machine.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: the encoding agent saves a trace on the local machine.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent saves a trace on the local machine.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. The encoding agent saves a trace on the local machine.",
+   "banned": false
+  },
+  {
+   "text": "The encoding agent saves a trace on the local machine. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "The  encoding  agent  saves  a  trace  on  the  local  machine.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's encoder saves a trace on the local machine.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder saves a trace on the local machine.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: Axiom's encoder saves a trace on the local machine.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder saves a trace on the local machine.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder saves a trace on the local machine.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's encoder saves a trace on the local machine. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's  encoder  saves  a  trace  on  the  local  machine.",
+   "banned": false
+  },
+  {
+   "text": "The encoder stores its trace locally.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; the encoder stores its trace locally.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: the encoder stores its trace locally.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and the encoder stores its trace locally.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. The encoder stores its trace locally.",
+   "banned": false
+  },
+  {
+   "text": "The encoder stores its trace locally. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "The  encoder  stores  its  trace  locally.",
+   "banned": false
+  },
+  {
+   "text": "Our pipeline stores its trace locally.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; our pipeline stores its trace locally.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: our pipeline stores its trace locally.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline stores its trace locally.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Our pipeline stores its trace locally.",
+   "banned": false
+  },
+  {
+   "text": "Our pipeline stores its trace locally. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Our  pipeline  stores  its  trace  locally.",
+   "banned": false
+  },
+  {
+   "text": "The encoding agent stores its trace locally.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; the encoding agent stores its trace locally.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: the encoding agent stores its trace locally.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent stores its trace locally.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. The encoding agent stores its trace locally.",
+   "banned": false
+  },
+  {
+   "text": "The encoding agent stores its trace locally. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "The  encoding  agent  stores  its  trace  locally.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's encoder stores its trace locally.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder stores its trace locally.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: Axiom's encoder stores its trace locally.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder stores its trace locally.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder stores its trace locally.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's encoder stores its trace locally. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's  encoder  stores  its  trace  locally.",
+   "banned": false
+  },
+  {
+   "text": "The encoder keeps its traces on the machine that ran it.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; the encoder keeps its traces on the machine that ran it.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: the encoder keeps its traces on the machine that ran it.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and the encoder keeps its traces on the machine that ran it.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. The encoder keeps its traces on the machine that ran it.",
+   "banned": false
+  },
+  {
+   "text": "The encoder keeps its traces on the machine that ran it. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "The  encoder  keeps  its  traces  on  the  machine  that  ran  it.",
+   "banned": false
+  },
+  {
+   "text": "Our pipeline keeps its traces on the machine that ran it.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; our pipeline keeps its traces on the machine that ran it.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: our pipeline keeps its traces on the machine that ran it.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and our pipeline keeps its traces on the machine that ran it.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Our pipeline keeps its traces on the machine that ran it.",
+   "banned": false
+  },
+  {
+   "text": "Our pipeline keeps its traces on the machine that ran it. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Our  pipeline  keeps  its  traces  on  the  machine  that  ran  it.",
+   "banned": false
+  },
+  {
+   "text": "The encoding agent keeps its traces on the machine that ran it.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; the encoding agent keeps its traces on the machine that ran it.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: the encoding agent keeps its traces on the machine that ran it.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and the encoding agent keeps its traces on the machine that ran it.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. The encoding agent keeps its traces on the machine that ran it.",
+   "banned": false
+  },
+  {
+   "text": "The encoding agent keeps its traces on the machine that ran it. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "The  encoding  agent  keeps  its  traces  on  the  machine  that  ran  it.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's encoder keeps its traces on the machine that ran it.",
+   "banned": false
+  },
+  {
+   "text": "Nothing else changes; Axiom's encoder keeps its traces on the machine that ran it.",
+   "banned": false
+  },
+  {
+   "text": "It is simple: Axiom's encoder keeps its traces on the machine that ran it.",
+   "banned": false
+  },
+  {
+   "text": "There are no shortcuts, and Axiom's encoder keeps its traces on the machine that ran it.",
+   "banned": false
+  },
+  {
+   "text": "We have no secrets. Axiom's encoder keeps its traces on the machine that ran it.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's encoder keeps its traces on the machine that ran it. It has no exceptions.",
+   "banned": false
+  },
+  {
+   "text": "Axiom's  encoder  keeps  its  traces  on  the  machine  that  ran  it.",
+   "banned": false
+  },
+  {
+   "text": "The encoder logs every\tdecision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs every\u000bdecision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs every\fdecision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs every\rdecision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs everydecision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs every　decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs every﻿decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs 😀 every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs 😀😀 every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs 😀😀😀 every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs 😀😀😀😀 every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs 😀😀😀😀😀 every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs 😀😀😀😀😀😀 every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs 😀😀😀😀😀😀😀 every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs 😀😀😀😀😀😀😀😀 every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs 😀😀😀😀😀😀😀😀😀 every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs 😀😀😀😀😀😀😀😀😀😀 every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs 😀😀😀😀😀😀😀😀😀😀😀 every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs 😀😀😀😀😀😀😀😀😀😀😀😀 every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs 😀😀😀😀😀😀😀😀😀😀😀😀😀 every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs 😀😀😀😀😀😀😀😀😀😀😀😀😀😀 every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs 😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀 every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs 😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀 every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs 😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀 every decision.",
+   "banned": true
+  },
+  {
+   "text": "The encoder logs 😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀 every decision.",
+   "banned": true
+  },
+  {
+   "text": "> The encoder logs every\n> decision.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "> Every rule is\n> validated.",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "| No overhead | The encoder logs every decision. |",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "| The encoder logs every decision. | No overhead |",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "| No decision log | The encoder logs every decision. |",
+   "banned": true,
+   "markdown": true
+  },
+  {
+   "text": "> The encoder does not log every\n> decision.",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "| The encoder does not log every decision. | No overhead |",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "| The encoder logs every | decision. |",
+   "banned": false,
+   "markdown": true
+  },
+  {
+   "text": "| Every rule is | validated. |",
+   "banned": false,
+   "markdown": true
+  }
+ ]
+}

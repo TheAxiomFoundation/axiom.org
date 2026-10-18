@@ -1,0 +1,9337 @@
+{
+ "about": "Exact Python guard outputs, including code-point input offsets and Markdown physical lines. Regenerate with scripts/check-encoder-record-reference.py --update --ops ../ops.",
+ "opsCommit": "a3940e771291307d4b135a460fddc08107f4be19",
+ "fixtureSha256": "f6417b8beb27876a6e997d4939c81f15b4304f07f57adabfd37666c159413e8b",
+ "guardSha256": "1144c5656d5f540a78206c11031a10922439190ef4c65fb462143180849431c7",
+ "cases": [
+  {
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     34,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     26,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     40,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     32,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     35,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     27,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     15,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     47,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     39,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     38,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     30,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     44,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     36,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     18,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs each encoding decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     34,
+     "logs each encoding decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     26,
+     "logs each encoding decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     40,
+     "logs each encoding decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     32,
+     "logs each encoding decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs each encoding decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "logs each encoding decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "logs each encoding decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     35,
+     "logs each encoding decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     27,
+     "logs each encoding decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "logs each encoding decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "logs each encoding decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "logs each encoding decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     15,
+     "logs each encoding decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "logs each encoding decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "logs each encoding decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "logs each encoding decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     47,
+     "logs each encoding decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     39,
+     "logs each encoding decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "logs each encoding decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "logs each encoding decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "logs each encoding decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     38,
+     "logs each encoding decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     30,
+     "logs each encoding decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     44,
+     "logs each encoding decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     36,
+     "logs each encoding decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "logs each encoding decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     18,
+     "logs each encoding decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "records every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     34,
+     "records every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     26,
+     "records every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     40,
+     "records every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     32,
+     "records every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "records every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "records every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "records every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     35,
+     "records every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     27,
+     "records every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "records every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "records every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "records every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     15,
+     "records every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "records every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "records every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "records every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     47,
+     "records every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     39,
+     "records every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "records every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "records every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "records every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     38,
+     "records every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     30,
+     "records every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     44,
+     "records every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     36,
+     "records every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "records every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     18,
+     "records every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     34,
+     "logs its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     26,
+     "logs its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     40,
+     "logs its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     32,
+     "logs its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "logs its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "logs its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     35,
+     "logs its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     27,
+     "logs its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "logs its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "logs its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "logs its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     15,
+     "logs its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "logs its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "logs its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "logs its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     47,
+     "logs its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     39,
+     "logs its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "logs its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "logs its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "logs its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     38,
+     "logs its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     30,
+     "logs its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     44,
+     "logs its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     36,
+     "logs its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "logs its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     18,
+     "logs its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "records all of its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     34,
+     "records all of its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     26,
+     "records all of its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     40,
+     "records all of its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     32,
+     "records all of its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "records all of its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "records all of its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "records all of its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     35,
+     "records all of its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     27,
+     "records all of its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "records all of its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "records all of its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "records all of its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     15,
+     "records all of its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "records all of its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "records all of its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "records all of its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     47,
+     "records all of its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     39,
+     "records all of its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "records all of its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "records all of its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "records all of its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     38,
+     "records all of its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     30,
+     "records all of its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     44,
+     "records all of its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     36,
+     "records all of its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "records all of its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     18,
+     "records all of its decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     20,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     42,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     34,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     48,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     40,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     20,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     24,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     21,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     43,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     35,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     49,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     21,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     25,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     27,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     49,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     55,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     47,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     27,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     32,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     24,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     46,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     38,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     52,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     44,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     24,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     28,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     20,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     42,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     34,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     48,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     40,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     20,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     24,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     21,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     43,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     35,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     49,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     21,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     25,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     27,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     49,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     55,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     47,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     27,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     32,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     24,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     46,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     38,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     52,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     44,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     24,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     28,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     34,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     26,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     40,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     32,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     35,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     27,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     15,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     47,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     39,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     38,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     30,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     44,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     36,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     18,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     34,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     26,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     40,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     32,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     35,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     27,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     15,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     47,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     39,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     38,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     30,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     44,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     36,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     18,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "keeps the full agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     34,
+     "keeps the full agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     26,
+     "keeps the full agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     40,
+     "keeps the full agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     32,
+     "keeps the full agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "keeps the full agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "keeps the full agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "keeps the full agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     35,
+     "keeps the full agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     27,
+     "keeps the full agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "keeps the full agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "keeps the full agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "keeps the full agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     15,
+     "keeps the full agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "keeps the full agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "keeps the full agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "keeps the full agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     47,
+     "keeps the full agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     39,
+     "keeps the full agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "keeps the full agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "keeps the full agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "keeps the full agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     38,
+     "keeps the full agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     30,
+     "keeps the full agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     44,
+     "keeps the full agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     36,
+     "keeps the full agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "keeps the full agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     18,
+     "keeps the full agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "saves an agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     34,
+     "saves an agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     26,
+     "saves an agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     40,
+     "saves an agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     32,
+     "saves an agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "saves an agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "saves an agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "saves an agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     35,
+     "saves an agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     27,
+     "saves an agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "saves an agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "saves an agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "saves an agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     15,
+     "saves an agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "saves an agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "saves an agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "saves an agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     47,
+     "saves an agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     39,
+     "saves an agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "saves an agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "saves an agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "saves an agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     38,
+     "saves an agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     30,
+     "saves an agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     44,
+     "saves an agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     36,
+     "saves an agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "saves an agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     18,
+     "saves an agent transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes detailed traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     34,
+     "publishes detailed traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     26,
+     "publishes detailed traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     40,
+     "publishes detailed traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     32,
+     "publishes detailed traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes detailed traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "publishes detailed traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "publishes detailed traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     35,
+     "publishes detailed traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     27,
+     "publishes detailed traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "publishes detailed traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "publishes detailed traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "publishes detailed traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     15,
+     "publishes detailed traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "publishes detailed traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "publishes detailed traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "publishes detailed traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     47,
+     "publishes detailed traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     39,
+     "publishes detailed traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "publishes detailed traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "publishes detailed traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "publishes detailed traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     38,
+     "publishes detailed traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     30,
+     "publishes detailed traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     44,
+     "publishes detailed traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     36,
+     "publishes detailed traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "publishes detailed traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     18,
+     "publishes detailed traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     0,
+     "Every encoding decision is logged"
+    ],
+    [
+     6,
+     "encoding decision is logged"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "every encoding decision is logged"
+    ],
+    [
+     28,
+     "encoding decision is logged"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "every encoding decision is logged"
+    ],
+    [
+     20,
+     "encoding decision is logged"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     28,
+     "every encoding decision is logged"
+    ],
+    [
+     34,
+     "encoding decision is logged"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     20,
+     "Every encoding decision is logged"
+    ],
+    [
+     26,
+     "encoding decision is logged"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     0,
+     "Every encoding decision is logged"
+    ],
+    [
+     6,
+     "encoding decision is logged"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     0,
+     "Every encoding decision is logged"
+    ],
+    [
+     7,
+     "encoding decision is logged"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     0,
+     "Each decision the encoder makes is recorded"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "each decision the encoder makes is recorded"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "each decision the encoder makes is recorded"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     28,
+     "each decision the encoder makes is recorded"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     20,
+     "Each decision the encoder makes is recorded"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     0,
+     "Each decision the encoder makes is recorded"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     0,
+     "Each decision the encoder makes is recorded"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     0,
+     "All encoding decisions are recorded"
+    ],
+    [
+     4,
+     "encoding decisions are recorded"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "all encoding decisions are recorded"
+    ],
+    [
+     26,
+     "encoding decisions are recorded"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "all encoding decisions are recorded"
+    ],
+    [
+     18,
+     "encoding decisions are recorded"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     28,
+     "all encoding decisions are recorded"
+    ],
+    [
+     32,
+     "encoding decisions are recorded"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     20,
+     "All encoding decisions are recorded"
+    ],
+    [
+     24,
+     "encoding decisions are recorded"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     0,
+     "All encoding decisions are recorded"
+    ],
+    [
+     4,
+     "encoding decisions are recorded"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     0,
+     "All encoding decisions are recorded"
+    ],
+    [
+     5,
+     "encoding decisions are recorded"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     0,
+     "Every encoding decision has a public record"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "every encoding decision has a public record"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "every encoding decision has a public record"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     28,
+     "every encoding decision has a public record"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     20,
+     "Every encoding decision has a public record"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     0,
+     "Every encoding decision has a public record"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     0,
+     "Every encoding decision has a public record"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     4,
+     "encoding decisions are public"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     26,
+     "encoding decisions are public"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     18,
+     "encoding decisions are public"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     32,
+     "encoding decisions are public"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     24,
+     "encoding decisions are public"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     4,
+     "encoding decisions are public"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     5,
+     "encoding decisions are public"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     28,
+     "encoding decisions are public"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     50,
+     "encoding decisions are public"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     42,
+     "encoding decisions are public"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     56,
+     "encoding decisions are public"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     48,
+     "encoding decisions are public"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     28,
+     "encoding decisions are public"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     34,
+     "encoding decisions are public"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     4,
+     "encoder's decisions are published"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     26,
+     "encoder's decisions are published"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     18,
+     "encoder's decisions are published"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     32,
+     "encoder's decisions are published"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     24,
+     "encoder's decisions are published"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     4,
+     "encoder's decisions are published"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     5,
+     "encoder's decisions are published"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     3,
+     "publish the encoder's decisions"
+    ],
+    [
+     3,
+     "publish the encoder's decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     25,
+     "publish the encoder's decisions"
+    ],
+    [
+     25,
+     "publish the encoder's decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     17,
+     "publish the encoder's decisions"
+    ],
+    [
+     17,
+     "publish the encoder's decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     31,
+     "publish the encoder's decisions"
+    ],
+    [
+     31,
+     "publish the encoder's decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     23,
+     "publish the encoder's decisions"
+    ],
+    [
+     23,
+     "publish the encoder's decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     3,
+     "publish the encoder's decisions"
+    ],
+    [
+     3,
+     "publish the encoder's decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     4,
+     "publish the encoder's decisions"
+    ],
+    [
+     4,
+     "publish the encoder's decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     3,
+     "publish encoding decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     25,
+     "publish encoding decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     17,
+     "publish encoding decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     31,
+     "publish encoding decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     23,
+     "publish encoding decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     3,
+     "publish encoding decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     4,
+     "publish encoding decisions"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     38,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     60,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     52,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     66,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     58,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     38,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     45,
+     "decision trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     28,
+     "decision-trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     50,
+     "decision-trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     42,
+     "decision-trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     56,
+     "decision-trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     48,
+     "decision-trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     28,
+     "decision-trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "decision-trail"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     3,
+     "publish every encoder trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     25,
+     "publish every encoder trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     17,
+     "publish every encoder trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     31,
+     "publish every encoder trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     23,
+     "publish every encoder trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     3,
+     "publish every encoder trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     4,
+     "publish every encoder trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     3,
+     "retain the full transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     25,
+     "retain the full transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     17,
+     "retain the full transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     31,
+     "retain the full transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     23,
+     "retain the full transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     3,
+     "retain the full transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     4,
+     "retain the full transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     3,
+     "retain the model's chain of thought"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     25,
+     "retain the model's chain of thought"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     17,
+     "retain the model's chain of thought"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     31,
+     "retain the model's chain of thought"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     23,
+     "retain the model's chain of thought"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     3,
+     "retain the model's chain of thought"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     4,
+     "retain the model's chain of thought"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     0,
+     "The model's reasoning is published"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "the model's reasoning is published"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "the model's reasoning is published"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     28,
+     "the model's reasoning is published"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     20,
+     "The model's reasoning is published"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     0,
+     "The model's reasoning is published"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     0,
+     "The model's reasoning is published"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     0,
+     "The model's reasoning is publicly accessible"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "the model's reasoning is publicly accessible"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "the model's reasoning is publicly accessible"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     28,
+     "the model's reasoning is publicly accessible"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     20,
+     "The model's reasoning is publicly accessible"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     0,
+     "The model's reasoning is publicly accessible"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     0,
+     "The model's reasoning is publicly accessible"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     0,
+     "Every run's trace is kept"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "every run's trace is kept"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "every run's trace is kept"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     28,
+     "every run's trace is kept"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     20,
+     "Every run's trace is kept"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     0,
+     "Every run's trace is kept"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     0,
+     "Every run's trace is kept"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     0,
+     "Its reasoning is public"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "its reasoning is public"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "its reasoning is public"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     28,
+     "its reasoning is public"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     20,
+     "Its reasoning is public"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     0,
+     "Its reasoning is public"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     0,
+     "Its reasoning is public"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     0,
+     "Its traces are public"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "its traces are public"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "its traces are public"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     28,
+     "its traces are public"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     20,
+     "Its traces are public"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     0,
+     "Its traces are public"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     0,
+     "Its traces are public"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     37,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     59,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     51,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     65,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     57,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     37,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     44,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     45,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     67,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     59,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     73,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     65,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     45,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     53,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     46,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     68,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     60,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     74,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     66,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     46,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     54,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     52,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     74,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     66,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     80,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     72,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     52,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     61,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     49,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     71,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     63,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     77,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     69,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     49,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     57,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     21,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     43,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     35,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     49,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     21,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     25,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     44,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     36,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     50,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     42,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     26,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     28,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     50,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     42,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     56,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     48,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     28,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     25,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     47,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     39,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     53,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     45,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     25,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     29,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     47,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     39,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     24,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     10,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     32,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     24,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     38,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     30,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     10,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "decision log"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     34,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     26,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     40,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     32,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     35,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     27,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     15,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     47,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     39,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     38,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     30,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     44,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     36,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     18,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     34,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     26,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     40,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     32,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     35,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     27,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     15,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     47,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     39,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     38,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     30,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     44,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     36,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     18,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes a hash and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     34,
+     "publishes a hash and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     26,
+     "publishes a hash and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     40,
+     "publishes a hash and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     32,
+     "publishes a hash and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes a hash and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "publishes a hash and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "publishes a hash and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     35,
+     "publishes a hash and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     27,
+     "publishes a hash and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "publishes a hash and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "publishes a hash and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "publishes a hash and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     15,
+     "publishes a hash and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "publishes a hash and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "publishes a hash and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "publishes a hash and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     47,
+     "publishes a hash and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     39,
+     "publishes a hash and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "publishes a hash and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "publishes a hash and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "publishes a hash and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     38,
+     "publishes a hash and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     30,
+     "publishes a hash and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     44,
+     "publishes a hash and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     36,
+     "publishes a hash and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "publishes a hash and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     18,
+     "publishes a hash and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes a hash of its trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     34,
+     "publishes a hash of its trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     26,
+     "publishes a hash of its trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     40,
+     "publishes a hash of its trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     32,
+     "publishes a hash of its trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes a hash of its trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "publishes a hash of its trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "publishes a hash of its trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     35,
+     "publishes a hash of its trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     27,
+     "publishes a hash of its trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "publishes a hash of its trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "publishes a hash of its trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "publishes a hash of its trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     15,
+     "publishes a hash of its trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "publishes a hash of its trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "publishes a hash of its trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "publishes a hash of its trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     47,
+     "publishes a hash of its trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     39,
+     "publishes a hash of its trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "publishes a hash of its trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "publishes a hash of its trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "publishes a hash of its trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     38,
+     "publishes a hash of its trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     30,
+     "publishes a hash of its trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     44,
+     "publishes a hash of its trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     36,
+     "publishes a hash of its trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "publishes a hash of its trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     18,
+     "publishes a hash of its trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes a hash of its trace, and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     34,
+     "publishes a hash of its trace, and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     26,
+     "publishes a hash of its trace, and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     40,
+     "publishes a hash of its trace, and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     32,
+     "publishes a hash of its trace, and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes a hash of its trace, and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "publishes a hash of its trace, and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "publishes a hash of its trace, and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     35,
+     "publishes a hash of its trace, and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     27,
+     "publishes a hash of its trace, and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "publishes a hash of its trace, and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "publishes a hash of its trace, and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "publishes a hash of its trace, and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     15,
+     "publishes a hash of its trace, and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "publishes a hash of its trace, and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "publishes a hash of its trace, and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "publishes a hash of its trace, and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     47,
+     "publishes a hash of its trace, and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     39,
+     "publishes a hash of its trace, and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "publishes a hash of its trace, and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "publishes a hash of its trace, and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "publishes a hash of its trace, and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     38,
+     "publishes a hash of its trace, and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     30,
+     "publishes a hash of its trace, and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     44,
+     "publishes a hash of its trace, and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     36,
+     "publishes a hash of its trace, and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "publishes a hash of its trace, and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     18,
+     "publishes a hash of its trace, and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes a calculation trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     34,
+     "publishes a calculation trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     26,
+     "publishes a calculation trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     40,
+     "publishes a calculation trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     32,
+     "publishes a calculation trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes a calculation trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "publishes a calculation trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "publishes a calculation trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     35,
+     "publishes a calculation trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     27,
+     "publishes a calculation trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "publishes a calculation trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "publishes a calculation trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "publishes a calculation trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     15,
+     "publishes a calculation trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "publishes a calculation trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "publishes a calculation trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "publishes a calculation trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     47,
+     "publishes a calculation trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     39,
+     "publishes a calculation trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "publishes a calculation trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "publishes a calculation trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "publishes a calculation trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     38,
+     "publishes a calculation trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     30,
+     "publishes a calculation trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     44,
+     "publishes a calculation trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     36,
+     "publishes a calculation trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "publishes a calculation trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     18,
+     "publishes a calculation trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes no trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     34,
+     "publishes no trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     26,
+     "publishes no trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     40,
+     "publishes no trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     32,
+     "publishes no trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes no trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "publishes no trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "publishes no trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     35,
+     "publishes no trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     27,
+     "publishes no trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "publishes no trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "publishes no trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "publishes no trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     15,
+     "publishes no trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "publishes no trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "publishes no trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "publishes no trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     47,
+     "publishes no trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     39,
+     "publishes no trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "publishes no trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "publishes no trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "publishes no trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     38,
+     "publishes no trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     30,
+     "publishes no trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     44,
+     "publishes no trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     36,
+     "publishes no trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "publishes no trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     18,
+     "publishes no trace and its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     34,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     26,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     40,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     32,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     35,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     27,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     15,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     47,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     39,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     38,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     30,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     44,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     36,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     18,
+     "publishes every successful trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     44,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     66,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     58,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     72,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     64,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     44,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     52,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     45,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     67,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     59,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     73,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     65,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     45,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     53,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     51,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     73,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     65,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     79,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     71,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     51,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     60,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     48,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     70,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     62,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     76,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     68,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     48,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     56,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes its locally stored trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     34,
+     "publishes its locally stored trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     26,
+     "publishes its locally stored trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     40,
+     "publishes its locally stored trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     32,
+     "publishes its locally stored trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes its locally stored trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "publishes its locally stored trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "publishes its locally stored trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     35,
+     "publishes its locally stored trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     27,
+     "publishes its locally stored trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "publishes its locally stored trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "publishes its locally stored trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "publishes its locally stored trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     15,
+     "publishes its locally stored trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "publishes its locally stored trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "publishes its locally stored trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "publishes its locally stored trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     47,
+     "publishes its locally stored trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     39,
+     "publishes its locally stored trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "publishes its locally stored trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "publishes its locally stored trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "publishes its locally stored trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     38,
+     "publishes its locally stored trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     30,
+     "publishes its locally stored trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     44,
+     "publishes its locally stored trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     36,
+     "publishes its locally stored trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "publishes its locally stored trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     18,
+     "publishes its locally stored trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "shares the trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     34,
+     "shares the trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     26,
+     "shares the trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     40,
+     "shares the trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     32,
+     "shares the trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "shares the trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "shares the trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "shares the trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     35,
+     "shares the trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     27,
+     "shares the trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "shares the trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "shares the trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "shares the trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     15,
+     "shares the trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "shares the trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "shares the trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "shares the trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     47,
+     "shares the trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     39,
+     "shares the trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "shares the trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "shares the trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "shares the trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     38,
+     "shares the trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     30,
+     "shares the trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     44,
+     "shares the trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     36,
+     "shares the trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "shares the trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     18,
+     "shares the trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "stores a public transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     34,
+     "stores a public transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     26,
+     "stores a public transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     40,
+     "stores a public transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     32,
+     "stores a public transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "stores a public transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "stores a public transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "stores a public transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     35,
+     "stores a public transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     27,
+     "stores a public transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "stores a public transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "stores a public transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     13,
+     "stores a public transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     15,
+     "stores a public transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "stores a public transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     41,
+     "stores a public transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     33,
+     "stores a public transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     47,
+     "stores a public transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     39,
+     "stores a public transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "stores a public transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     22,
+     "stores a public transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "stores a public transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     38,
+     "stores a public transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     30,
+     "stores a public transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     44,
+     "stores a public transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     36,
+     "stores a public transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     16,
+     "stores a public transcript"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     18,
+     "stores a public transcript"
+    ]
+   ]
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs 😀 every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs 😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀😀😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀😀😀😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀😀😀😀😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀😀😀😀😀😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀😀😀😀😀😀😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀😀😀😀😀😀😀😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀😀😀😀😀😀😀😀😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀😀😀😀😀😀😀😀😀😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "Every rule is validat"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     28,
+     "logs every decision"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "logs every decision"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     14,
+     "log | The encoder logs every decision"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  }
+ ],
+ "reviewProbes": [
+  {
+   "family": "review-nel",
+   "text": "The encoder logs everydecision.",
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "family": "review-nel",
+   "text": "The encoder logsevery decision.",
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "family": "review-nel",
+   "text": "The encoderlogs every decision.",
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "family": "review-nel",
+   "text": "Everyencoding decision is recorded.",
+   "hits": [
+    [
+     0,
+     "Every encoding decision is recorded"
+    ],
+    [
+     6,
+     "encoding decision is recorded"
+    ]
+   ]
+  },
+  {
+   "family": "review-nel",
+   "text": "We do notpublish the encoder trace.",
+   "hits": []
+  },
+  {
+   "family": "review-feff",
+   "text": "The encoder logs every﻿decision.",
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "family": "review-feff",
+   "text": "The encoder logs﻿every decision.",
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "family": "review-feff",
+   "text": "The encoder﻿logs every decision.",
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "family": "review-feff",
+   "text": "Every﻿encoding decision is recorded.",
+   "hits": [
+    [
+     0,
+     "Every encoding decision is recorded"
+    ],
+    [
+     6,
+     "encoding decision is recorded"
+    ]
+   ]
+  },
+  {
+   "family": "review-feff",
+   "text": "We do not﻿publish the encoder trace.",
+   "hits": []
+  },
+  {
+   "family": "review-astral-gap",
+   "text": "The encoder logs  every decision.",
+   "hits": [
+    [
+     12,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "family": "review-astral-gap",
+   "text": "The encoder logs 😀 every decision.",
+   "hits": [
+    [
+     12,
+     "logs 😀 every decision"
+    ]
+   ]
+  },
+  {
+   "family": "review-astral-gap",
+   "text": "The encoder logs 😀😀 every decision.",
+   "hits": [
+    [
+     12,
+     "logs 😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "family": "review-astral-gap",
+   "text": "The encoder logs 😀😀😀 every decision.",
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "family": "review-astral-gap",
+   "text": "The encoder logs 😀😀😀😀 every decision.",
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "family": "review-astral-gap",
+   "text": "The encoder logs 😀😀😀😀😀 every decision.",
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "family": "review-astral-gap",
+   "text": "The encoder logs 😀😀😀😀😀😀 every decision.",
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "family": "review-astral-gap",
+   "text": "The encoder logs 😀😀😀😀😀😀😀 every decision.",
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀😀😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "family": "review-astral-gap",
+   "text": "The encoder logs 😀😀😀😀😀😀😀😀 every decision.",
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀😀😀😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "family": "review-astral-gap",
+   "text": "The encoder logs 😀😀😀😀😀😀😀😀😀 every decision.",
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀😀😀😀😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "family": "review-astral-gap",
+   "text": "The encoder logs 😀😀😀😀😀😀😀😀😀😀 every decision.",
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀😀😀😀😀😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "family": "review-astral-gap",
+   "text": "The encoder logs 😀😀😀😀😀😀😀😀😀😀😀 every decision.",
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀😀😀😀😀😀😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "family": "review-astral-gap",
+   "text": "The encoder logs 😀😀😀😀😀😀😀😀😀😀😀😀 every decision.",
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀😀😀😀😀😀😀😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "family": "review-astral-gap",
+   "text": "The encoder logs 😀😀😀😀😀😀😀😀😀😀😀😀😀 every decision.",
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀😀😀😀😀😀😀😀😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "family": "review-astral-gap",
+   "text": "The encoder logs 😀😀😀😀😀😀😀😀😀😀😀😀😀😀 every decision.",
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀😀😀😀😀😀😀😀😀😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "family": "review-astral-gap",
+   "text": "The encoder logs 😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀 every decision.",
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "family": "review-astral-gap",
+   "text": "The encoder logs 😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀 every decision.",
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "family": "review-astral-gap",
+   "text": "The encoder logs 😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀 every decision.",
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "family": "review-astral-gap",
+   "text": "The encoder logs 😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀 every decision.",
+   "hits": [
+    [
+     12,
+     "logs 😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀 every decision"
+    ]
+   ]
+  },
+  {
+   "family": "review-astral-gap",
+   "text": "The encoder logs 😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀 every decision.",
+   "hits": []
+  },
+  {
+   "family": "review-astral-gap",
+   "text": "The encoder logs 😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀 every decision.",
+   "hits": []
+  },
+  {
+   "family": "review-astral-gap",
+   "text": "The encoder logs 😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀 every decision.",
+   "hits": []
+  },
+  {
+   "family": "review-astral-gap",
+   "text": "The encoder logs 😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀 every decision.",
+   "hits": []
+  },
+  {
+   "family": "review-astral-gap",
+   "text": "The encoder logs 😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀 every decision.",
+   "hits": []
+  },
+  {
+   "family": "review-astral-gap",
+   "text": "The encoder logs 😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀 every decision.",
+   "hits": []
+  }
+ ]
+}

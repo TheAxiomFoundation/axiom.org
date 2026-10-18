@@ -48,7 +48,7 @@ export const WHAT_WE_DO: readonly DoCard[] = [
     label: "Encode",
     title: "We turn the law into software",
     body:
-      "An encoder pipeline reads a statute and drafts its encoding in RuleSpec, the Axiom Foundation's format for computable law. Every value cites its authority, every clause carries its effective dates, and the pipeline records each encoding decision alongside the source text it came from.",
+      "An encoder pipeline reads a statute and drafts its encoding in RuleSpec, the Axiom Foundation's format for computable law. Every value cites its authority, every clause carries its effective dates, and each time the encoder applies an encoding it leaves a signed manifest naming the source citation and the model.",
   },
   {
     n: "2",
