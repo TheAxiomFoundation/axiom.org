@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const DESKTOP_QUERY =
   "(hover: hover) and (pointer: fine) and (min-width: 1024px)";
@@ -51,6 +51,27 @@ export function DemoThumb({
   title: string;
 }) {
   const [live, setLive] = useState(false);
+  // Boot the embed only when the thumb is about to be seen. The browser's
+  // own loading="lazy" starts iframes 1,250–2,500px early, which is still
+  // inside the pinned journey above: each embed boots a whole app, and its
+  // script work landed on the journey's last frames as stutter.
+  const [near, setNear] = useState(false);
+  const ref = useRef<HTMLSpanElement | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || near || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setNear(true);
+          io.disconnect();
+        }
+      },
+      { rootMargin: "150px 0px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [near]);
 
   useEffect(() => {
     const queries = [
@@ -66,9 +87,9 @@ export function DemoThumb({
   }, []);
 
   return (
-    <span className="landing-demo-thumb" aria-hidden>
+    <span ref={ref} className="landing-demo-thumb" aria-hidden>
       <img src={poster} alt="" loading="lazy" decoding="async" />
-      {live ? (
+      {live && near ? (
         <iframe src={src} title={title} loading="lazy" tabIndex={-1} />
       ) : null}
     </span>

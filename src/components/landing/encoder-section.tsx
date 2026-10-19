@@ -1,13 +1,14 @@
 import { ArrowRightIcon } from "@/components/icons";
 import { axiomAppHref } from "@/lib/urls";
-import { JourneyScrolly } from "./journey-scrolly";
+import { JourneyLamplight } from "./journey-lamplight/journey-lamplight";
 import { Reveal } from "./reveal";
 
 export function EncoderSection() {
   return (
+    <>
     <section
       id="encoder"
-      className="section-tint-cream relative z-1 py-32 px-8"
+      className="section-tint-cream relative z-1 pt-32 pb-20 px-8"
     >
       <div className="max-w-[1280px] mx-auto">
         <Reveal className="text-center mb-16">
@@ -33,10 +34,15 @@ export function EncoderSection() {
           </p>
         </Reveal>
 
-        {/* The journey film, scrubbed by scroll — replaces the old
-            terminal animation. */}
-        <JourneyScrolly />
+      </div>
+    </section>
 
+    {/* The journey, full-bleed: a law book off the shelf to the systems
+        that run on the rules, scrubbed by scroll (journey-lamplight). */}
+    <JourneyLamplight />
+
+    <section className="section-tint-cream relative z-1 pt-20 pb-32 px-8">
+      <div className="max-w-[1280px] mx-auto">
         {/*
           The encoder's record is its signed apply manifest (axiom-encode
           cli.py _MODEL_APPLY_MANIFEST_FIELDS): the citation, the model, and
@@ -68,5 +74,6 @@ export function EncoderSection() {
         </Reveal>
       </div>
     </section>
+    </>
   );
 }
