@@ -594,7 +594,6 @@ export function lamplightBeat3(ctx: BeatCtx): BeatSpec {
     scene.add(m);
     return m;
   };
-  const draft1 = card("drafting", 1.05);
   const failCard = card("fail", 0.85);
   // the encoded rule: larger than the drafts, set past the last gate
   const FW = CW * 1.2;
@@ -648,8 +647,16 @@ export function lamplightBeat3(ctx: BeatCtx): BeatSpec {
   // the failure goes back into the encoder with the text
   const text2 = stream(new THREE.CatmullRomCurve3([loopEnd, loopEnd.clone().lerp(intoEncode, 0.5).add(new THREE.Vector3(0, 0.05, 0)), intoEncode]), 900);
   // out of encode, the letters float down into the card that forms there
-  const gather = new THREE.CatmullRomCurve3([outOfEncode, outOfEncode.clone().lerp(formAt, 0.5).add(new THREE.Vector3(0.15, 0.1, 0.2)), formAt]);
-  const out1 = stream(gather, 1200, 0.12);
+  // draft 1, the first attempt: out of encode as loose dust, to checks,
+  // where it gathers into the draft card in front of the gate
+  const toChecks = new THREE.CatmullRomCurve3([
+    outOfEncode,
+    outOfEncode.clone().lerp(gatePos[1], 0.5).add(new THREE.Vector3(0, 0.03, 0)),
+    gatePos[1].clone().add(dir.clone().multiplyScalar(-0.03)),
+    gatePos[1].clone().lerp(stopAt, 0.55),
+    stopAt,
+  ]);
+  const out1 = stream(toChecks, 2600, 0.15);
   // the failure, back round the loop, as dust
   const loopDust = stream(back, 1500, 0.05);
   // draft 2: from encode through every gate into the final version; the
@@ -724,17 +731,13 @@ export function lamplightBeat3(ctx: BeatCtx): BeatSpec {
     // draft 1: the text into encode, out into the card, on to checks
     drawShare(text1, ease(seg(t, 0.03, 0.14)));
     matOf(text1).uniforms.uOpacity.value = 1 - 0.75 * seg(t, 0.4, 0.52);
-    drawShare(out1, ease(seg(t, 0.13, 0.22)));
-    matOf(out1).uniforms.uOpacity.value = 1 - seg(t, 0.22, 0.28);
-    // draft 1 forms out of encode, then moves up to checks and stops there
-    const k1 = ease(seg(t, 0.22, 0.33));
-    draft1.position.lerpVectors(formAt, stopAt, k1);
-    fade(draft1, seg(t, 0.17, 0.23) * (1 - seg(t, 0.35, 0.38)));
-    // caught at checks: it turns into the failed draft where it stands,
-    // with a shudder, holds a moment, then drops away
-    const shake = Math.sin(seg(t, 0.35, 0.4) * Math.PI * 6) * (1 - seg(t, 0.35, 0.4)) * 0.05;
-    fade(failCard, seg(t, 0.35, 0.38) * (1 - 0.4 * seg(t, 0.62, 0.72)));
-    failCard.position.lerpVectors(stopAt, failTo, ease(seg(t, 0.43, 0.52))).add(new THREE.Vector3(shake, 0, 0));
+    // the dust runs from encode to checks, then gathers into the draft
+    // card at the gate (one card, steady: it is the draft that fails)
+    drawShare(out1, ease(seg(t, 0.13, 0.29)));
+    matOf(out1).uniforms.uOpacity.value = 1 - ease(seg(t, 0.29, 0.37));
+    fade(failCard, ease(seg(t, 0.27, 0.36)) * (1 - 0.4 * seg(t, 0.62, 0.72)));
+    // it holds at the red gate a moment, then drops into the loop
+    failCard.position.lerpVectors(stopAt, failTo, ease(seg(t, 0.44, 0.53)));
     drawShare(loopDust, ease(seg(t, 0.48, 0.58)));
     matOf(loopDust).uniforms.uOpacity.value = 1 - 0.6 * seg(t, 0.66, 0.76);
     const pk = seg(t, 0.5, 0.6);
@@ -753,7 +756,7 @@ export function lamplightBeat3(ctx: BeatCtx): BeatSpec {
     const at2 = (g: number) => seg(k2, gateT[g - 1] - 0.03, gateT[g - 1] + 0.02);
     const pass1 = [seg(t, 0.11, 0.15), 0, 0, 0];
     const pass2 = [seg(t, 0.62, 0.66), at2(1), at2(2), at2(3)];
-    const fail = seg(t, 0.33, 0.36) * (1 - seg(t, 0.55, 0.64));
+    const fail = ease(seg(t, 0.3, 0.36)) * (1 - seg(t, 0.55, 0.64));
     gateMats.forEach((m, i) => {
       const on = Math.max(pass1[i] * (1 - seg(t, 0.55, 0.64)), pass2[i]);
       if (paper) {
