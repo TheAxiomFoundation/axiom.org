@@ -78,6 +78,13 @@ describe('reference encoder-record predicate and noun scope', () => {
       [12, 'PUBLISHES its decisions'], [12, 'PUBLISHES its decisions'],
     ])
   })
+
+  it('sorts overlapping claims at the same offset by their exact Python string order', () => {
+    expect(encoderRecordHits('Every encoding decision has a record and is logged.')).toEqual([
+      [0, 'Every encoding decision has a record'],
+      [0, 'Every encoding decision has a record and is logged'],
+    ])
+  })
 })
 
 describe('joint review round-1 encoder-record regressions', () => {

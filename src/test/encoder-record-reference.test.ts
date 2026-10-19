@@ -38,6 +38,13 @@ function actualOutputs(text: string, markdown = false): Output {
 }
 
 describe('pinned Python encoder-record differential', () => {
+  it('retains Python string ordering for overlapping claims with the same offset', () => {
+    expect(encoderRecordHits('Every encoding decision has a record and is logged.')).toEqual([
+      [0, 'Every encoding decision has a record'],
+      [0, 'Every encoding decision has a record and is logged'],
+    ])
+  })
+
   it('pins canonical fixture/digest bytes and exact Python outputs to an immutable ops snapshot', () => {
     expect(createHash('sha256').update(readFileSync(fixturePath)).digest('hex')).toBe(FIXTURE_SHA256)
     expect(readFileSync(fixturePath.replace(/\.json$/, '.sha256'), 'utf8')).toBe(`${FIXTURE_SHA256}  encoder-record-fixtures.json\n`)

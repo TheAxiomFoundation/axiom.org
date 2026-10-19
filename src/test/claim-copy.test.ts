@@ -11,6 +11,10 @@ describe('claim copy extraction', () => {
     expect(source('const a = `The encoder logs every ${"de" + "cision"}.`')).toEqual(['The encoder logs every decision.'])
   })
 
+  it('evaluates nested static template interpolation without losing the outer subject', () => {
+    expect(source('const a = `The encoder ${`publishes ${"its traces"}`}.`')).toEqual(['The encoder publishes its traces.'])
+  })
+
   it('decodes the complete HTML entity set in JSX and HTML', () => {
     expect(source('const a = <p>Every encoding &#100;ecision is recorded.</p>')).toEqual(['Every encoding decision is recorded.'])
     expect(source('const a = <p>Every encoding &#x64;ecision is recorded&period;</p>')).toEqual(['Every encoding decision is recorded.'])
