@@ -77,7 +77,7 @@ function* contextFragments(sentence: string, target: RegExp): Generator<[fragmen
     const fragment = sentence.slice(start, separator.index)
     yield [fragment, inheritedDenial]
     const first = target.exec(fragment)
-    const denied = inheritedDenial || CONTEXT_DENIAL.test(first ? fragment.slice(0, first.index + first[0].length) : fragment)
+    const denied: boolean = inheritedDenial || CONTEXT_DENIAL.test(first ? fragment.slice(0, first.index + first[0].length) : fragment)
     // "Never A or B" denies both alternatives; other conjuncts start anew.
     inheritedDenial = sentence.slice(separator.index, separator.end).replace(/^[,; ]+|[,; ]+$/gu, '') === 'or' && denied
     start = separator.end
