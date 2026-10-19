@@ -1,7 +1,7 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
-import { enforcement, openIssues, surfaces, usEvidenceRows } from "./verify-data";
+import { conformancePredicate, enforcement, openIssues, surfaces, usEvidenceRows } from "./verify-data";
 import {
   countWord,
   formatCount,
@@ -143,6 +143,19 @@ describe("verification evidence: SOUTHMOD caveats and acknowledgement", () => {
 // /verify's copy lives in verify-data.ts, which axiom.org#304 also edits, so
 // it keeps literal strings. These pins hold them to the evidence rows.
 describe("verification evidence: literal copy in verify-data.ts", () => {
+  it("the corpus claim uses measured rule citations rather than universal value provenance", () => {
+    const corpus = surfaces.find((surface) => surface.id === "corpus");
+    expect(corpus?.claim).toContain(sourceCitationClause());
+    expect(corpus?.claim).not.toMatch(/every encoded.*value/i);
+  });
+
+  it("the displayed predicate includes exclusions and report defects", () => {
+    // scoreboard.py:516-527 at US_CONFORMANCE.source.commit rejects these
+    // even when coverage is complete and the two mismatch counts are zero.
+    expect(conformancePredicate).toContain("&& invalid_exclusions == 0");
+    expect(conformancePredicate).toContain("&& report_defects == 0");
+  });
+
   it("the waiver disclosure is derived from the current ledger", () => {
     const issue = openIssues.find((entry) => entry.id === "validation-waivers");
     expect(issue?.title).toContain("1,935 active module waivers");

@@ -228,7 +228,7 @@ rules:
     summary:
       "The RuleSpec engine is what turns encodings into something executable: validators, test runners, interpreters, and code generation targets.",
     details: [
-      "The `axiom-rules-engine` compiler, runtime, and test harness are where an encoding first runs. In rulespec-us CI, modules on a public waiver list skip validation, companion tests, and proof checks.",
+      "The `axiom-rules-engine` compiler, runtime, and test harness are where an encoding first runs. In rulespec-us CI, modules with active entries on a public waiver list skip validation, companion tests, and proof checks.",
       "The runtime and codegen layers are what make a `.yaml` file more than documentation: they let the same encoding drive evaluation and external integrations.",
       "This is where imports, periods, dtypes, formulas, and built-ins become machine behavior.",
     ],
@@ -294,7 +294,7 @@ const runtimeStages: RuntimeStage[] = [
     id: "check",
     label: "Verify",
     detail:
-      "Deterministic CI, tests, and semantic review decide whether the candidate is promotion-safe. Modules on the public waiver list skip three CI steps.",
+      "Deterministic CI and companion tests check selected modules; this workflow skips semantic reviewers. Modules with active entries on the public waiver list skip validation, companion tests, and proof checks.",
   },
   {
     id: "run",
@@ -1038,7 +1038,7 @@ export function StackSystemPage() {
               <p className="font-body text-[1rem] text-[var(--color-ink-secondary)] max-w-[760px] leading-relaxed">
                 After a rule is encoded, it moves to CI checks, runtime
                 execution, and public inspection. CI skips validation,
-                companion tests, and proof checks for modules on a public
+                companion tests, and proof checks for modules with active entries on a public
                 waiver list. {waiverCoverageClause()}. This section covers the steps after encoding;
                 the layer detail above maps the architecture.
               </p>

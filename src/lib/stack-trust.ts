@@ -72,7 +72,7 @@ export const layerTrust: Record<string, LayerTrust> = {
       "Generation runs on operator-controlled compute and is recorded as an event; the record of what was generated is separate from the decision to accept it.",
     ],
     open: [
-      "Acceptance is decided downstream by checks that do not involve a model. Modules on the public waiver list skip the validation, companion-test, and proof steps.",
+      "The rulespec-us CI workflow runs deterministic checks and skips semantic reviewers. Modules with active entries on the public waiver list skip the validation, companion-test, and proof steps. The drafting model supplies companion tests and expected results.",
       "Signed manifests record how files were applied: some record encoder apply runs and others manual attestations. A signature alone does not establish that the encoder authored a file.",
     ],
   },

@@ -38,7 +38,7 @@ const receipts = [
   {
     name: "Encodings",
     what:
-      `${sourceCitationClause()}. Modules carry companion tests, and CI runs selected modules' tests, except for active entries on the public waiver list. ${waiverCoverageClause()}. The repositories publish the citations, tests, waiver list, and their history.`,
+      `${sourceCitationClause()}. The repositories publish companion test files, and CI runs selected modules' tests, except for active entries on the public waiver list. ${waiverCoverageClause()}. The repositories publish the citations, tests, waiver list, and their history.`,
     href: "https://github.com/TheAxiomFoundation/rulespec-us",
     label: "rulespec-us",
   },
@@ -51,8 +51,14 @@ const receipts = [
   },
   {
     name: "Certification",
+    // axiom-oracles 002aa771247b8749c6b7b49ce7b7cc89f2016c8e:
+    // scripts/certify.py:3209-3235 computes the program predicate.
+    // axiom-api 9ff27ea04e6a3efd5a5ab8a0a1c8dcb40b42027d:
+    // certification-status.ts:138-150 and certified-ledger.ts:162-177,270-275
+    // require valid ledger membership for the label. The parser records a
+    // claim and hash; it does not authenticate a human signature or verifier.
     what:
-      "A program certifies only when axiom-oracles computes all four premises — conformant, exercised, closed, executable — true with zero open defects, and no flag is set by hand. The API serves a rule as certified only when it is in the certified ledger, where every entry names its claim — computed by a verifier, or attested by a human signature — and pins its evidence.",
+      "A program certifies only when axiom-oracles computes all four premises — conformant, exercised, closed, executable — true with zero open defects. The API labels a rule certified only when it appears in the certified ledger; each entry records a computed or attested claim, a certificate identifier, and an evidence hash.",
     href: "/api/axiom/certified",
     label: "the certified ledger",
   },

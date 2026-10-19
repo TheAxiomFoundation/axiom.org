@@ -12,6 +12,7 @@
 
 import {
   formatCount,
+  sourceCitationClause,
   VALIDATION_WAIVERS,
   waiverCoverageClause,
 } from "./verification-evidence";
@@ -82,12 +83,12 @@ export const surfaces: Surface[] = [
     name: "US corpus and RuleSpec encodings",
     tier: "verified",
     claim:
-      "Every encoded US value cites the provision it came from, and releases are pinned and publicly mirrored.",
+      `${sourceCitationClause()}. Releases are pinned and publicly mirrored.`,
     check:
       "Fetch a US corpus release from the public mirror and recompute its canonical sha256.",
     expect: "Recomputed hash matches the published manifest.",
     limit:
-      "Coverage is per-program and partial. The programs list is the coverage claim; there is no blanket one. CI skips validation, companion tests, and proof checks for modules on a public waiver list, counted under What is broken right now.",
+      "Coverage is per-program and partial. The programs list is the coverage claim; there is no blanket one. CI skips validation, companion tests, and proof checks for modules with active entries on a public waiver list, counted under What is broken right now.",
   },
   {
     id: "oracles",
@@ -142,6 +143,11 @@ export const surfaces: Surface[] = [
  *   conformant = covered == in_scope
  *             && unexplained_total == 0
  *             && axiom_attributed_open == 0
+ *             && invalid_exclusions == 0
+ *             && report_defects == 0
+ *
+ * axiom-oracles 002aa771247b8749c6b7b49ce7b7cc89f2016c8e,
+ * axiom_oracles/conformance/scoreboard.py:516-527.
  *
  * A raw match rate is the wrong number to publish, because it counts a residual
  * we have chased to a documented bug in the other engine the same as one we
@@ -151,7 +157,9 @@ export const surfaces: Surface[] = [
  */
 export const conformancePredicate = `conformant = covered == in_scope
           && unexplained == 0
-          && axiom_attributed_open == 0`;
+          && axiom_attributed_open == 0
+          && invalid_exclusions == 0
+          && report_defects == 0`;
 
 export interface UsEvidenceRow {
   id: string;
@@ -278,7 +286,7 @@ export const enforcement = [
   "Citations cannot dangle. Non-URL sources are repo paths and must exist.",
   "Dispositions expire with their sources. When a mismatch moves or disappears, its disposition stops applying rather than silently relabelling a new residual.",
   "The ratchet only turns one way. Covered may rise; unexplained and Axiom-attributed may only fall. CI refuses regressions.",
-  "Coverage is tracked separately. CI fails an executable output unless it is mapped to an oracle concept, ruled not comparable, or listed in a public pending file (14,952 US outputs in October 2026), and fails a mapped output its companion tests leave out. That check reads the test files without running them; the step that runs companion tests skips modules on the public waiver list below.",
+  "Coverage is tracked separately. CI fails an executable output unless it is mapped to an oracle concept, ruled not comparable, or listed in a public pending file (14,952 US outputs in October 2026), and fails a mapped output its companion tests leave out. That check reads the test files without running them; the step that runs companion tests skips modules with active entries on the public waiver list below.",
 ];
 
 export interface OpenIssue {
@@ -304,7 +312,7 @@ export const openIssues: OpenIssue[] = [
     // source modules at the same rulespec-us commit.
     id: "validation-waivers",
     title:
-      `CI skips validation, companion tests, and proof checks for modules on a public waiver list with ${formatCount(VALIDATION_WAIVERS.activeWaivers)} active module waivers`,
+      `CI skips validation, companion tests, and proof checks for modules with active entries on a public waiver list with ${formatCount(VALIDATION_WAIVERS.activeWaivers)} active module waivers`,
     status: `Open — counted ${VALIDATION_WAIVERS.source.date}`,
     detail:
       `rulespec-us keeps a waiver list, known-validation-gaps.yaml. Modules with an active waiver skip three steps of the shared validation workflow: RuleSpec validation, companion tests, and proof and claim checks. ${waiverCoverageClause()}. Each waiver names an owner, an issue, and an expiry date: all ${formatCount(VALIDATION_WAIVERS.activeWaivers)} expire on ${VALIDATION_WAIVERS.expiryLabel}, and ${formatCount(VALIDATION_WAIVERS.issue782)} link to rulespec-us#782, which tracks the waiver list as a merge bypass. One listed path is absent from the current tree; the ledger count includes it.`,

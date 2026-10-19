@@ -44,7 +44,9 @@ describe("receipts evidence page", () => {
     expect(screen.queryByText(/That ledger is empty|None passes yet/)).not.toBeInTheDocument();
     expect(screen.getByText(/computes all four premises/)).toBeInTheDocument();
     expect(screen.queryByText(/certifies itself|grants it by hand|not granted/)).not.toBeInTheDocument();
-    // The ledger admits human-attested entries; the row must say so.
-    expect(screen.getByText(/attested by a human signature/)).toBeInTheDocument();
+    // axiom-api certified-ledger.ts validates a claim label and evidence
+    // fields; it does not authenticate a human signature or computation.
+    expect(screen.getByText(/computed or attested claim, a certificate identifier, and an evidence hash/)).toBeInTheDocument();
+    expect(screen.queryByText(/attested by a human signature/)).not.toBeInTheDocument();
   });
 });
