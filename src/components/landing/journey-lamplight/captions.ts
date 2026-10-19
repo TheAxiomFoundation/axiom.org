@@ -12,7 +12,7 @@ import { snapshotMonth } from "../registry-snapshot";
 export const OVERLAP = 0.55;
 // the encode loop gets the most room after the opening: its light moves
 // through four gates and round the loop, slowly
-export const SPANS = [6.05, 2.6, 1.4, 1.4, 1.4, 1.3];
+export const SPANS = [6.05, 3.0, 1.4, 1.4, 1.4, 1.3];
 // the end of each scene where its motion is done and the reader can look
 // (the camera keeps drifting); the opening holds on the corpus address
 // the encode loop rests a moment once every gate is lit

@@ -730,36 +730,37 @@ export function lamplightBeat3(ctx: BeatCtx): BeatSpec {
     // the gates come up out of the dark after the sentence has arrived
     const appear = ease(seg(t, 0.0, 0.14));
     // draft 1: the text into encode, out into the card, on to checks
-    drawShare(text1, ease(seg(t, 0.03, 0.14)));
+    // the first run, unhurried: the words into encode, then on to checks
+    drawShare(text1, ease(seg(t, 0.03, 0.19)));
     matOf(text1).uniforms.uOpacity.value = 1 - 0.75 * seg(t, 0.4, 0.52);
     // the dust runs from encode to checks, then gathers into the draft
     // card at the gate (one card, steady: it is the draft that fails)
-    drawShare(out1, ease(seg(t, 0.13, 0.29)));
-    matOf(out1).uniforms.uOpacity.value = 1 - ease(seg(t, 0.29, 0.37));
-    fade(failCard, ease(seg(t, 0.27, 0.36)) * (1 - 0.4 * seg(t, 0.62, 0.72)));
+    drawShare(out1, ease(seg(t, 0.18, 0.36)));
+    matOf(out1).uniforms.uOpacity.value = 1 - ease(seg(t, 0.36, 0.43));
+    fade(failCard, ease(seg(t, 0.34, 0.42)) * (1 - 0.4 * seg(t, 0.64, 0.74)));
     // it holds at the red gate a moment, then drops into the loop
-    failCard.position.lerpVectors(stopAt, failTo, ease(seg(t, 0.44, 0.53)));
-    drawShare(loopDust, ease(seg(t, 0.48, 0.58)));
+    failCard.position.lerpVectors(stopAt, failTo, ease(seg(t, 0.48, 0.56)));
+    drawShare(loopDust, ease(seg(t, 0.52, 0.61)));
     matOf(loopDust).uniforms.uOpacity.value = 1 - 0.6 * seg(t, 0.66, 0.76);
-    const pk = seg(t, 0.5, 0.6);
+    const pk = seg(t, 0.53, 0.62);
     pulse.position.copy(back.getPoint(ease(pk)));
     pulse.visible = pk > 0 && pk < 1;
-    redraft.el.style.opacity = String(seg(t, 0.52, 0.59));
+    redraft.el.style.opacity = String(seg(t, 0.55, 0.61));
     // draft 2: back into encode, then out through every gate, tightening,
     // and as one line into the final version
-    drawShare(text2, ease(seg(t, 0.58, 0.64)));
-    const k2 = ease(seg(t, 0.64, 0.88));
+    drawShare(text2, ease(seg(t, 0.6, 0.66)));
+    const k2 = ease(seg(t, 0.66, 0.89));
     drawShare(draft2Dust, k2);
     drawShare(finalLine, seg(k2, gateT[2], 1));
     fade(passCard, seg(t, 0.86, 0.92));
     // each gate lights as the text or a draft passes it; checks flashes
     // when draft 1 fails it, then passes draft 2
     const at2 = (g: number) => seg(k2, gateT[g - 1] - 0.03, gateT[g - 1] + 0.02);
-    const pass1 = [seg(t, 0.11, 0.15), 0, 0, 0];
-    const pass2 = [seg(t, 0.62, 0.66), at2(1), at2(2), at2(3)];
-    const fail = ease(seg(t, 0.3, 0.36)) * (1 - seg(t, 0.55, 0.64));
+    const pass1 = [seg(t, 0.15, 0.2), 0, 0, 0];
+    const pass2 = [seg(t, 0.64, 0.68), at2(1), at2(2), at2(3)];
+    const fail = ease(seg(t, 0.36, 0.42)) * (1 - seg(t, 0.58, 0.66));
     gateMats.forEach((m, i) => {
-      const on = Math.max(pass1[i] * (1 - seg(t, 0.55, 0.64)), pass2[i]);
+      const on = Math.max(pass1[i] * (1 - seg(t, 0.58, 0.66)), pass2[i]);
       if (paper) {
         m.color.copy(gateIdle).lerp(gateLit, on);
         if (i === 1) m.color.lerp(gateRed, fail * (1 - pass2[1]));
@@ -774,7 +775,7 @@ export function lamplightBeat3(ctx: BeatCtx): BeatSpec {
       const sheen = glares[i * 2];
       const band = glares[i * 2 + 1];
       sheen.mat.opacity = (THEME.paper ? 0.6 : 0.8) * on * appear;
-      const sweep = i === 0 ? Math.max(pass1[0] * (1 - seg(t, 0.55, 0.62)), pass2[0]) : pass2[i];
+      const sweep = i === 0 ? Math.max(pass1[0] * (1 - seg(t, 0.58, 0.64)), pass2[0]) : pass2[i];
       band.tex.offset.set(lerp(0.75, -0.75, sweep), 0);
       band.mat.opacity = (THEME.paper ? 0.75 : 0.9) * Math.sin(Math.PI * Math.min(1, sweep)) * appear;
     });
