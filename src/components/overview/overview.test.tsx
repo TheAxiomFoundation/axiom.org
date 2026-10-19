@@ -7,6 +7,14 @@ import { describe, it, expect } from 'vitest'
 import OverviewPage, { metadata } from '@/app/overview/page'
 import { WhatWeEnable } from '@/components/overview/what-we-enable'
 import { SubscribeLink } from '@/components/overview/subscribe-link'
+import * as overviewContent from '@/components/overview/overview-content'
+import {
+  formatCount,
+  RULE_COVERAGE,
+  US_CITATIONS,
+  VALIDATION_WAIVERS,
+} from '@/lib/verification-evidence'
+import { htmlCopy, pageText, renderedText, stringsIn } from '@/test/claim-copy'
 import {
   AUDIENCES,
   LICENSE_LINKS,
@@ -14,6 +22,55 @@ import {
   SUBSCRIBE_URL,
   WHAT_WE_DO,
 } from '@/components/overview/overview-content'
+
+const printSource = () =>
+  readFileSync(join(process.cwd(), 'pdf/overview/axiom-overview.html'), 'utf8')
+
+// PR #301's mechanism audit marks these claims Removed. Keep this scoped to
+// the refreshed overview surfaces: other pages need their own evidence audit.
+const REMOVED_CLAIMS = [
+  ['public decision logs', /\b(?:every|each|all) (?:encoding )?decisions?\b[^.!?\n]{0,80}\b(?:logged|public|recorded)\b|\b(?:logs?|records?|publish(?:es)?)\b[^.!?\n]{0,80}\b(?:every|each|all) (?:encoding )?decisions?\b/i],
+  ['source text beside every decision', /\bsource (?:text )?[^.!?\n]{0,40}\b(?:beside|alongside|next to)\b[^.!?\n]{0,40}\b(?:every|each) decision\b/i],
+  ['every value cites its authority', /\b(?:every|each|all) (?:numeric )?values?\b[^.!?\n]{0,30}\bcit(?:e[sd]?|ing)\b/i],
+  ['only required status check', /\bonly required (?:status )?check\b/i],
+  ['administrator exemption', /\badmin(?:istrator)?s?\b[^.!?\n]{0,60}\b(?:exempt\w*|bypass\w*)\b|\b(?:exempt\w*|bypass\w*)\b[^.!?\n]{0,60}\badmin(?:istrator)?s?\b/i],
+  ['model never grades its own work', /\bnever grades? (?:its|their) own work\b/i],
+  ['20,780 rules without comparisons', /\b20,?780\b/],
+  ['encoder or manual authorship totals', /\b(?:16,?(?:280|300)|15,?(?:300|400))\b/],
+  ['independent or external TAXSIM', /\b(?:independent|external)\b[^.!?\n]{0,60}\bTAXSIM\b|\bTAXSIM\b[^.!?\n]{0,60}\b(?:independent|external)\b/i],
+  ['deterministic gauntlet', /\bdeterministic gauntlet\b/i],
+  ['four universal shipping gates', /\bfour (?:universal )?gates\b/i],
+] as const
+
+const OVERVIEW_CLAIM_SURFACES = [
+  ['overview content', () => stringsIn(overviewContent).join('\n'), () => stringsIn(overviewContent.HERO).join('\n')],
+  ['PDF source', () => htmlCopy(printSource()), () => {
+    const source = new DOMParser().parseFromString(printSource(), 'text/html')
+    return [...source.querySelectorAll('h1, .lead')].map(renderedText).join('\n')
+  }],
+  ['rendered overview', () => pageText(() => render(<OverviewPage />)), () => {
+    const { container, unmount } = render(<OverviewPage />)
+    try {
+      return renderedText(container.querySelector('header')!)
+    } finally {
+      unmount()
+    }
+  }],
+] as const
+
+describe('Overview removed claims', () => {
+  for (const [surface, copy, hero] of OVERVIEW_CLAIM_SURFACES) {
+    it(`${surface} keeps blanket verified positioning out of the hero`, () => {
+      expect(hero()).not.toMatch(/\bverified\b/i)
+    })
+
+    for (const [claim, pattern] of REMOVED_CLAIMS) {
+      it(`${surface} does not restore ${claim}`, () => {
+        expect(copy()).not.toMatch(pattern)
+      })
+    }
+  }
+})
 
 describe('Overview page', () => {
   it('titles the page for the organization and keeps the tagline underneath', () => {
@@ -185,5 +242,52 @@ describe('Overview PDF', () => {
   // counted directly.
   it('is one page', () => {
     expect(pdf().match(/\/Type\s*\/Page\b/g) ?? []).toHaveLength(1)
+  })
+})
+
+describe('Overview PDF evidence figures', () => {
+  const sourceDocument = () => new DOMParser().parseFromString(printSource(), 'text/html')
+  const step = (index: number) => renderedText(sourceDocument().querySelectorAll('ol.steps > li')[index])
+  // The print source gives the citation measurement's month, rather than its
+  // exact day. Derive that shorter label from the same measured date.
+  const citationMonth = new Date(US_CITATIONS.dateLabel).toLocaleDateString('en-US', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
+  const citationFigures = `${formatCount(US_CITATIONS.citedRules)} of ${formatCount(US_CITATIONS.totalRules)} US rules cite a source`
+  const waiverFigures = `${formatCount(VALIDATION_WAIVERS.activeWaivers)} entries, ${formatCount(VALIDATION_WAIVERS.waivedRules)} of ${formatCount(VALIDATION_WAIVERS.totalRules)} US rules; ${VALIDATION_WAIVERS.dateLabel}`
+  const coverageFigures = `${formatCount(RULE_COVERAGE.rulesOnComparedSurface)} rules to compared programs`
+
+  it('dates the print source to the shared coverage evidence month', () => {
+    expect(renderedText(sourceDocument().querySelector('.kicker')!)).toContain(RULE_COVERAGE.month)
+  })
+
+  it('pins the citation numerator, denominator and month to the shared evidence', () => {
+    expect(step(0)).toContain(`${citationFigures} (${citationMonth})`)
+  })
+
+  it('pins every waiver figure and its measured date to the shared evidence', () => {
+    expect(step(1)).toContain(`(${waiverFigures})`)
+  })
+
+  it('pins the compared-surface figure and month to the shared evidence', () => {
+    expect(step(1)).toContain(`${RULE_COVERAGE.month.split(' ')[0]}’s coverage map ties ${coverageFigures}`)
+  })
+
+  it('accounts for every printed number using evidence or the licence version', () => {
+    const numbersIn = (copy: string) => (copy.match(/\b\d[\d,]*(?:\.\d+)?\b/g) ?? []).sort()
+    const evidencedCopy = [
+      RULE_COVERAGE.month,
+      `${citationFigures} (${citationMonth})`,
+      waiverFigures,
+      coverageFigures,
+      'CC BY 4.0',
+    ].join('\n')
+
+    // This inventory makes any new hand-typed figure require an evidence
+    // entry, while the sentence-level checks above keep equal counts from
+    // concealing a swap between different claims.
+    expect(numbersIn(htmlCopy(printSource()))).toEqual(numbersIn(evidencedCopy))
   })
 })

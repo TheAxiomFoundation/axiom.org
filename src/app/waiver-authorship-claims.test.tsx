@@ -16,23 +16,14 @@ import { EncodedLawSection } from '@/components/landing/encoded-law-section'
 import { EncoderSection } from '@/components/landing/encoder-section'
 import { PlanningModelPage } from '@/components/ops/planning-model-page'
 
-// Two facts the copy must not contradict, both read from code on 2026-10-03.
-// - CI skips the tests of waived modules. rulespec-us known-validation-gaps.yaml
-//   (2066cef61, 2026-10-02) lists 1,940 modules with an active waiver, and
-//   the shared workflow rulespec-us pins (TheAxiomFoundation/.github
-//   validate-rulespec.yml@df2dfb53) skips them in "Validate RuleSpec YAML",
-//   "Execute RuleSpec companion tests" and "Validate RuleSpec proofs and
-//   claims". Joined to axiom-oracles dashboard/public/data/
-//   rule_verification.json (rulespec 54d90a72, 2026-09-28), they hold 23,735
-//   of 34,810 US rules.
-// - The encoder did not write every rule. Of those 34,810 rules, 16,280 match
-//   only a manifest whose tool begins `axiom-encode encode`: 15,412 with the
-//   exact `--apply` string, 822 from sandbox-recovered manifests, 27 from
-//   three other `--apply (…)` variants, and 19 from one manifest whose tool is
-//   bare `axiom-encode encode`. 15,279 match only one written by
-//   `axiom-encode sign-applied-files` (backend manual, runner
-//   manual-attestation, no model); 11,201 of those are the generated US
-//   tariff schedule.
+// Two facts the copy must not contradict:
+// - CI skips the tests of waived modules. The current ledger, source commit,
+//   and joined rule totals live in VALIDATION_WAIVERS. The pinned shared
+//   workflow (TheAxiomFoundation/.github validate-rulespec.yml@30e942938)
+//   skips "Validate RuleSpec YAML", "Execute RuleSpec companion tests" and
+//   "Validate RuleSpec proofs and claims" for active waiver entries.
+// - Signed manifests distinguish encoder apply runs from manual attestations.
+//   A signature alone does not establish encoder authorship.
 const RENDERED = [
   ['/about', () => render(<AboutPage />)],
   ['/validation', () => render(<ValidationPage />)],
@@ -99,7 +90,7 @@ function sentences(text: string) {
   return text.split(/\n+|(?<=[.!?])\s+(?=[A-Z"“(\[])/).map((sentence) => sentence.trim()).filter(Boolean)
 }
 
-// "every rule", "every US rule", "all 34,810 rules", "each RuleSpec module",
+// "every rule", "every US rule", "all <count> rules", "each RuleSpec module",
 // "every single rule".
 const QUALIFIER = String.raw`(?:(?:of )?(?:our|the|its|US|U\.S\.|RuleSpec|encoded|published|federal|state|single|one|last|\d[\d,]*) )*`
 const NOUN = String.raw`(?:draft encoding|draft|encoding|published rule|rule module|rule|module|provision|statute)s?`

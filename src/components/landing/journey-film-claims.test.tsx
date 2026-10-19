@@ -13,16 +13,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 //   skip_reviewers=True).
 // - compare never runs inside the encoder: run_model_eval's oracle mode
 //   defaults to "none" and `encode` has no flag to change it. Comparisons
-//   run later in axiom-oracles on program outputs: 14,030 of 34,810
-//   rulespec-us rules sit on a compared program surface
-//   (dashboard/public/data/rule_verification_summary.json, 2026-09-28).
+//   run later in axiom-oracles on program outputs. The current compared
+//   program-surface count and source live in RULE_COVERAGE in
+//   verification-evidence.ts.
 //   For SNAP the one calculator compared is PolicyEngine; the SNAP QC
 //   replay uses USDA case records.
 // - review is one call to an AI model (REVIEWER_CLI_MODEL = "opus"),
 //   skipped by --skip-reviewers, and its verdict never blocks apply.
-// - Nothing holds for every published module: rulespec CI skips the 1,940
-//   modules on known-validation-gaps.yaml (2066cef6, 2026-10-02),
-//   § 2017(a) among them, and the TheAxiomFoundation/.github workflow
+// - Nothing holds for every published module: rulespec CI skips modules with
+//   active entries on known-validation-gaps.yaml, § 2017(a) among them.
+//   The ledger count and source live in VALIDATION_WAIVERS, and the
+//   TheAxiomFoundation/.github workflow
 //   validate-rulespec.yml prints "SKIPPED (known-validation-gaps
 //   validate_failures)" for each.
 // So the only universal gate the film names is the encoder's, and the

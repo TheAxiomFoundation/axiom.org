@@ -24,12 +24,13 @@ import { SOUTHMOD_CAVEATS } from '@/lib/verification-evidence'
 
 // The verification copy must describe what the oracle harness does.
 // - Coverage is partial. axiom-oracles dashboard/public/data/
-//   rule_verification_summary.json (2026-09-28) ties 14,030 of 34,810
-//   rulespec-us rules to a program surface a live comparison exercises, and
+//   rule_verification_summary.json (2026-10-12) ties 14,030 rules to a
+//   program surface a live comparison exercises; the source census on
+//   2026-10-18 counts 34,832 named rulespec-us rules. Meanwhile,
 //   rulespec-us oracle-coverage-pending.yaml declares 14,952 outputs the
 //   shared CI gate admits without a comparison. "Every encoding" claims are
-//   false. The summary does not count rules without a comparison: it maps
-//   16,716 rules to no surface at all, and some of those are compared
+//   false. The summary does not count rules without a comparison: some
+//   rules it maps to no surface at all are compared
 //   directly (the US tariff duty, the NJ pilot income tax), so no page
 //   turns the difference into "N rules had no comparison".
 // - PolicyEngine is not independent of Axiom: Max Ghenis is CEO of both and
@@ -82,7 +83,20 @@ const COPY_SURFACES: ReadonlyArray<readonly [string, () => string]> = [
 const CHECK_VERB = String.raw`(cross-check|check|verif|validat|compar|run[s]? against|mapped to an oracle)`
 const UNIVERSAL_SUBJECT = String.raw`(every|each|all) (encoding|published rule|rule|executable output|output)s?`
 
+function unwaivedTestGateSentences(text: string): string[] {
+  const passesTests = /\bpass(es|ing)? (its |their |the |all )?(companion )?(test suite|tests)\b/i
+  return text
+    .split(/\n+|(?<=[.!?])\s+/)
+    .filter((sentence) => passesTests.test(sentence) && !/\bwaive/i.test(sentence))
+}
+
 describe('verification claims', () => {
+  it('rejects an unwaived first card sentence even when its heading names waivers', () => {
+    const text = htmlCopy('<article><h3>Tests and waivers</h3><p>Drafts pass their tests before merging.</p></article>')
+
+    expect(unwaivedTestGateSentences(text)).toEqual(['Drafts pass their tests before merging.'])
+  })
+
   for (const [route, surfaceText] of COPY_SURFACES) {
     it(`${route} claims no universal or independent cross-check`, () => {
       const text = surfaceText()
@@ -121,12 +135,7 @@ describe('verification claims', () => {
     // known-validation-gaps.yaml. Every sentence that states the gate names
     // the waivers; numerical coverage is measured separately from that ledger.
     it(`${route} names the waivers in every sentence that says drafts pass their tests`, () => {
-      const passesTests = /\bpass(es|ing)? (its |their |the |all )?(companion )?(test suite|tests)\b/i
-      const gateSentences = surfaceText()
-        .split(/(?<=[.!?])\s+/)
-        .filter((sentence) => passesTests.test(sentence))
-
-      for (const sentence of gateSentences) expect(sentence).toMatch(/\bwaive/i)
+      expect(unwaivedTestGateSentences(surfaceText())).toEqual([])
     })
 
     it(`${route} discloses the PolicyEngine tie wherever it names PolicyEngine`, () => {

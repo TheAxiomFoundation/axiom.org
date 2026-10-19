@@ -1,6 +1,7 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
+import { layerTrust } from "./stack-trust";
 import { conformancePredicate, enforcement, openIssues, surfaces, usEvidenceRows } from "./verify-data";
 import {
   countWord,
@@ -165,6 +166,12 @@ describe("verification evidence: literal copy in verify-data.ts", () => {
     expect(issue?.detail).not.toContain("absent from the current tree");
     expect(VALIDATION_WAIVERS.existingModules).toBe(VALIDATION_WAIVERS.activeWaivers);
     expect(issue?.evidence).toContain(`git show ${VALIDATION_WAIVERS.source.commit}:known-validation-gaps.yaml`);
+  });
+
+  it("the stack waiver disclosure uses the shared current-ledger clause", () => {
+    expect(layerTrust.rulespec.open).toContain(
+      `CI skips validation, companion tests, and proof checks for active entries on a public waiver list. ${waiverCoverageClause()}. Each waiver names an owner, an issue, and an expiry date.`,
+    );
   });
 
   it("the pending-file count", () => {
