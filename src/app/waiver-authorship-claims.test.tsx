@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { render } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
+import { formatCount, VALIDATION_WAIVERS, waiverCoverageClause } from '@/lib/verification-evidence'
 
 vi.mock('next/link', () => ({
   default: ({ children, href, ...props }: any) => <a href={href} {...props}>{children}</a>,
@@ -15,23 +16,14 @@ import { EncodedLawSection } from '@/components/landing/encoded-law-section'
 import { EncoderSection } from '@/components/landing/encoder-section'
 import { PlanningModelPage } from '@/components/ops/planning-model-page'
 
-// Two facts the copy must not contradict, both read from code on 2026-10-03.
-// - CI skips the tests of waived modules. rulespec-us known-validation-gaps.yaml
-//   (2066cef61, 2026-10-02) lists 1,940 modules with an active waiver, and
-//   the shared workflow rulespec-us pins (TheAxiomFoundation/.github
-//   validate-rulespec.yml@df2dfb53) skips them in "Validate RuleSpec YAML",
-//   "Execute RuleSpec companion tests" and "Validate RuleSpec proofs and
-//   claims". Joined to axiom-oracles dashboard/public/data/
-//   rule_verification.json (rulespec 54d90a72, 2026-09-28), they hold 23,735
-//   of 34,810 US rules.
-// - The encoder did not write every rule. Of those 34,810 rules, 16,280 match
-//   only a manifest whose tool begins `axiom-encode encode`: 15,412 with the
-//   exact `--apply` string, 822 from sandbox-recovered manifests, 27 from
-//   three other `--apply (…)` variants, and 19 from one manifest whose tool is
-//   bare `axiom-encode encode`. 15,279 match only one written by
-//   `axiom-encode sign-applied-files` (backend manual, runner
-//   manual-attestation, no model); 11,201 of those are the generated US
-//   tariff schedule.
+// Two facts the copy must not contradict:
+// - CI skips the tests of waived modules. The current ledger, source commit,
+//   and joined rule totals live in VALIDATION_WAIVERS. The pinned shared
+//   workflow (TheAxiomFoundation/.github validate-rulespec.yml@30e942938)
+//   skips "Validate RuleSpec YAML", "Execute RuleSpec companion tests" and
+//   "Validate RuleSpec proofs and claims" for active waiver entries.
+// - Signed manifests distinguish encoder apply runs from manual attestations.
+//   A signature alone does not establish encoder authorship.
 const RENDERED = [
   ['/about', () => render(<AboutPage />)],
   ['/validation', () => render(<ValidationPage />)],
@@ -98,7 +90,7 @@ function sentences(text: string) {
   return text.split(/\n+|(?<=[.!?])\s+(?=[A-Z"“(\[])/).map((sentence) => sentence.trim()).filter(Boolean)
 }
 
-// "every rule", "every US rule", "all 34,810 rules", "each RuleSpec module",
+// "every rule", "every US rule", "all <count> rules", "each RuleSpec module",
 // "every single rule".
 const QUALIFIER = String.raw`(?:(?:of )?(?:our|the|its|US|U\.S\.|RuleSpec|encoded|published|federal|state|single|one|last|\d[\d,]*) )*`
 const NOUN = String.raw`(?:draft encoding|draft|encoding|published rule|rule module|rule|module|provision|statute)s?`
@@ -270,16 +262,17 @@ describe('waiver and encoder-authorship claims', () => {
   it('/verify lists the validation waivers as an open issue with their count', () => {
     const text = renderedText(() => render(<VerifyPage />))
 
-    expect(text).toMatch(/1,940 US modules on a public waiver list/)
-    expect(text).toMatch(/they hold 23,735 of our 34,810 US rules/)
+    expect(text).toContain(`${formatCount(VALIDATION_WAIVERS.activeWaivers)} active module waivers`)
+    expect(text).toContain(waiverCoverageClause())
     expect(text).toMatch(/Each waiver names an owner, an issue, and an expiry date/)
-    expect(text).toMatch(/all 1,940 expire on December 21, 2026/)
+    expect(text).toContain(`all ${formatCount(VALIDATION_WAIVERS.activeWaivers)} expire on ${VALIDATION_WAIVERS.expiryLabel}`)
   })
 
-  it('/receipts says how many US rules the encoder wrote', () => {
+  it('/receipts distinguishes encoder apply records from manual attestations', () => {
     const text = renderedText(() => render(<ReceiptsPage />))
 
-    expect(text).toMatch(/about 16,300 of our 34,810 US rules matched a signed manifest that names the encoder's apply step/)
-    expect(text).toMatch(/signed in by manual attestation/)
+    expect(text).toMatch(/some record encoder apply runs and others manual attestations/)
+    expect(text).toMatch(/A signature alone does not establish that the encoder authored a file/)
+    expect(text).not.toMatch(/about (16,300|15,300)/)
   })
 })

@@ -216,8 +216,8 @@ describe("PlanningModelPage", () => {
     expect(PLANNING_MODEL.tiers[0].scope).toBe(
       "Policies checkable against an oracle: the 137 PolicyEngine-US policies in axiom-oracles' conformance scope as of 2026-07-11 (127 as of 2026-10-03), state income taxes among them, plus state benefit manuals",
     );
-    // Scoped to modules the encoder writes: about 15,300 US rules were signed in
-    // by manual attestation (#304). axiom-encode 6f08e25c: encode runs compile, companion tests, literal
+    // Scoped to modules the encoder writes; signed manifests also record
+    // manual attestations (#304). axiom-encode 6f08e25c: encode runs compile, companion tests, literal
     // grounding and import checks with oracle="none"; corpus releases are
     // Ed25519-signed; validator-rejected candidates retry (b5b2c670).
     expect(text).toMatch(

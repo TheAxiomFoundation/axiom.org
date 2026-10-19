@@ -2,8 +2,7 @@
 // as the rows of the files that generate them, each with the commit it was
 // read at. Pages derive their counts from these rows rather than typing
 // totals into prose, and verification-evidence.test.ts pins the derived
-// totals, their identities, and the literal copy in files that cannot
-// import them (src/lib/verify-data.ts).
+// totals, their identities, and the copy that consumes them.
 //
 // To refresh a figure, re-read the cited file at a newer commit and change
 // the rows, the commit and the date together. A total never changes alone.
@@ -12,13 +11,16 @@ export interface EvidenceSource {
   repo: string;
   path: string;
   commit: string;
-  /** The date the cited file was generated or last changed. */
+  /** The generation date, or measurement date for an untimestamped ledger. */
   date: string;
 }
 
 const ORACLES_REPO = "TheAxiomFoundation/axiom-oracles";
 // axiom-oracles main, read 2026-10-05.
 const ORACLES_MAIN = "8826215dc9055f141737e2cdb0231df825952b62";
+const CURRENT_ORACLES_MAIN = "002aa771247b8749c6b7b49ce7b7cc89f2016c8e";
+const RULESPEC_REPO = "TheAxiomFoundation/rulespec-us";
+const RULESPEC_MAIN = "d8511cca76b060e40fba90ae8af7f7643e6edf11";
 
 export function formatCount(n: number): string {
   return n.toLocaleString("en-US");
@@ -30,23 +32,21 @@ export function formatCount(n: number): string {
 
 /**
  * rule_verification_summary.json, `rules.total` and
- * `rules.on_oracle_surface`, as generated on 2026-09-28 against rulespec-us
- * 54d90a72. scripts/rule_verification.py maps each rule's path to a program
+ * `rules.on_oracle_surface`, as generated on 2026-10-12 against rulespec-us
+ * 4b35d0872d92308ef7c41cc00cb17c7610be882b. The named-rule totals were
+ * also re-derived from rulespec-us origin/main RULESPEC_MAIN on 2026-10-18.
+ * scripts/rule_verification.py maps each rule's path to a program
  * surface in coverage_overview.json (`classify()`), and a rule counts as on
  * an oracle surface when that surface's status says a live comparison
  * exercises it. The file measures the surface, not the rule: its comment
  * says a compared surface does not mean each of its rules was compared.
- * The difference from the total is not a count of uncompared rules either:
- * 16,716 rules map to no surface at all (`family: None`), so they are
- * never on an oracle surface, and some are compared directly (us_tariff_duty
- * in axiom-usitc-us-tariff.json, nj_pit_pilot_income_tax_liability in
- * axiom-policyengine-taxsim-nj-income-tax-liability.json). Copy states only
- * the on-surface count. The 2026-09-28 snapshot is the one axiom.org#304's
- * waiver and manifest counts use, so every page quotes the same total.
+ * Unclassified rules can also be compared directly; the file does not
+ * measure how many rules have never had a comparison. Copy states only
+ * the on-surface count.
  */
 export const RULE_COVERAGE = {
-  month: "September 2026",
-  totalRules: 34_810,
+  month: "October 2026",
+  totalRules: 34_832,
   rulesOnComparedSurface: 14_030,
   // The detail link stays live; the dated evidence below remains at its cited commit.
   perRuleFileUrl:
@@ -54,13 +54,13 @@ export const RULE_COVERAGE = {
   source: {
     repo: ORACLES_REPO,
     path: "dashboard/public/data/rule_verification_summary.json",
-    commit: "d1e9d5ad859d16179eef732acc3b8efc1747214b",
-    date: "2026-09-28",
+    commit: CURRENT_ORACLES_MAIN,
+    date: "2026-10-12",
   } satisfies EvidenceSource,
 } as const;
 
 /**
- * "In September 2026, our coverage map tied 14,030 of our 34,810 US rules to
+ * "In October 2026, our coverage map tied 14,030 of our 34,832 US rules to
  * a program that a live comparison exercises, though a comparison of a
  * program does not check each of its rules"
  */
@@ -73,9 +73,65 @@ export function ruleCoverageClause(coverage: {
 }
 
 /**
+ * Count `has_source_citation` in the generated per-rule file. Its 34,803
+ * cited rules and 34,832 total named rules exactly match a fresh parse of
+ * the source modules at RULESPEC_MAIN, using the generator's file filter.
+ * A citation's presence alone makes no claim about its accuracy.
+ */
+export const US_CITATIONS = {
+  dateLabel: "October 18, 2026",
+  citedRules: 34_803,
+  totalRules: 34_832,
+  rulespecCommit: RULESPEC_MAIN,
+  sourceUrl:
+    `https://github.com/${ORACLES_REPO}/blob/${CURRENT_ORACLES_MAIN}/dashboard/public/data/rule_verification.json`,
+  source: {
+    repo: ORACLES_REPO,
+    path: "dashboard/public/data/rule_verification.json",
+    commit: CURRENT_ORACLES_MAIN,
+    date: "2026-10-12",
+  } satisfies EvidenceSource,
+} as const;
+
+export function sourceCitationClause(): string {
+  return `On ${US_CITATIONS.dateLabel}, ${formatCount(US_CITATIONS.citedRules)} of our ${formatCount(US_CITATIONS.totalRules)} US rules carried a source citation`;
+}
+
+/**
+ * Active entries in known-validation-gaps.yaml, joined by module path to
+ * the named rules at RULESPEC_MAIN. The ledger has 1,935 active entries,
+ * and every listed path is a tracked module at that commit (counted with
+ * `git ls-tree -rz --name-only`, which keeps non-ASCII names such as the
+ * en dash in 42 USC 1437c-1 literal). All entries have an owner, issue and
+ * expiry; 1,646 point to rulespec-us#782.
+ */
+export const VALIDATION_WAIVERS = {
+  dateLabel: "October 18, 2026",
+  activeWaivers: 1_935,
+  existingModules: 1_935,
+  waivedRules: 23_666,
+  totalRules: 34_832,
+  issue782: 1_646,
+  expires: "2026-12-21",
+  expiryLabel: "December 21, 2026",
+  sourceUrl:
+    `https://github.com/${RULESPEC_REPO}/blob/${RULESPEC_MAIN}/known-validation-gaps.yaml`,
+  source: {
+    repo: RULESPEC_REPO,
+    path: "known-validation-gaps.yaml",
+    commit: RULESPEC_MAIN,
+    date: "2026-10-18",
+  } satisfies EvidenceSource,
+} as const;
+
+export function waiverCoverageClause(): string {
+  return `On ${VALIDATION_WAIVERS.dateLabel}, the public waiver list had ${formatCount(VALIDATION_WAIVERS.activeWaivers)} active module waivers covering ${formatCount(VALIDATION_WAIVERS.waivedRules)} of ${formatCount(VALIDATION_WAIVERS.totalRules)} US rules`;
+}
+
+/**
  * rulespec-us oracle-coverage-pending.yaml: `entries` (14,952, equal to its
- * `ceiling`) at rulespec-us main f468c8da (2026-10-04; the file last changed
- * 2026-09-18). The shared CI gate runs `axiom-encode oracle-coverage
+ * `ceiling`) at rulespec-us main RULESPEC_MAIN, read 2026-10-18.
+ * The shared CI gate runs `axiom-encode oracle-coverage
  * --fail-on-unmapped --fail-on-untested-comparable` without
  * `--fail-on-pending` (TheAxiomFoundation/.github validate-rulespec.yml), so
  * these outputs pass with no comparison.
@@ -84,28 +140,29 @@ export const PENDING_OUTPUTS = {
   month: "October 2026",
   count: 14_952,
   source: {
-    repo: "TheAxiomFoundation/rulespec-us",
+    repo: RULESPEC_REPO,
     path: "oracle-coverage-pending.yaml",
-    commit: "f468c8daeb3c0e7184b85be7fb97585475d74a1b",
-    date: "2026-10-04",
+    commit: RULESPEC_MAIN,
+    date: "2026-10-18",
   } satisfies EvidenceSource,
 } as const;
 
 /**
- * conformance/scoreboard.json, the `us-pe` row (policyengine-us 1.767.3):
- * covered 36 of 127 policies in scope, unexplained_total 0,
+ * conformance/scoreboard.json, the `us-pe` row:
+ * covered 16 of 127 policies in scope, unexplained_total 0,
  * axiom_attributed_open 0, conformant false.
  */
 export const US_CONFORMANCE = {
-  covered: 36,
+  covered: 16,
   inScope: 127,
   unexplained: 0,
   axiomAttributed: 0,
   source: {
     repo: ORACLES_REPO,
     path: "conformance/scoreboard.json",
-    commit: "f78333fe7c4806f71a173690274f4ba96e9d6529",
-    date: "2026-08-14",
+    commit: CURRENT_ORACLES_MAIN,
+    // No generated_at field; the file last changed on this date.
+    date: "2026-10-11",
   } satisfies EvidenceSource,
 } as const;
 

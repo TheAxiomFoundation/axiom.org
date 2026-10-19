@@ -19,10 +19,10 @@ const LAYERS = [
     kicker: "Encodings",
     title: "Encoded so anyone can compute them",
     body:
-      "We turn the same rules into machine-readable form — every value cites a section, every clause is dated, formulas are executable. Compiles to native code; runs anywhere.",
+      "We turn the same rules into machine-readable form — rules show source citations, rule versions carry effective dates, and formulas are executable.",
     bullets: [
-      "Cited — every value traces to a statute",
-      "Time-aware — effective dates on every clause",
+      "Cited — inspect the sources a rule names",
+      "Time-aware — effective dates on rule versions",
       "Composable — reform a parameter without rewriting",
       "Cross-checked — for some rules, with gaps listed in public",
     ],

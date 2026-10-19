@@ -17,6 +17,16 @@ describe("Verify page", () => {
     expect(metadata.description).toMatch(/^US launch verification evidence/);
   });
 
+  it("names the active module waiver count and the CI checks it bypasses", () => {
+    render(<Page />);
+
+    expect(
+      screen.getByRole("heading", {
+        name: "The public list's 1,935 active module waivers let modules skip CI validation, companion tests, and proof checks",
+      }),
+    ).toBeInTheDocument();
+  });
+
   it("keeps the launch evidence US-only and uses the committed figures", () => {
     render(<Page />);
 
@@ -64,10 +74,11 @@ describe("Verify page", () => {
     expect(screen.getByText("226")).toBeInTheDocument();
     expect(
       screen.getByText(
-        /Certificate — certified: 0 — the API's certified ledger is empty\. A program certifies only when axiom-oracles computes all four premises \(conformant, exercised, closed, executable\) true with zero open defects; this program's certificate reads unavailable because no producer computes closed or executable yet\./,
+        "Certificate — A program certifies only when axiom-oracles computes all four premises (conformant, exercised, closed, executable) true with zero open defects. The published Colorado SNAP certificate is unavailable.",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText("Certified")).not.toBeInTheDocument();
+    expect(screen.queryByText(/certified: 0|API.s certified ledger is empty/)).not.toBeInTheDocument();
 
     const apiArticle = screen
       .getByRole("heading", { name: "Hosted API" })

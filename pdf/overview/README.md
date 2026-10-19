@@ -8,9 +8,18 @@ glyphs and never falls back to a system font.
 ## Rebuild
 
 ```bash
+rm -f axiom-overview.pdf ../../public/Axiom-Foundation-Overview.pdf
 ./render.sh axiom-overview.html
 cp axiom-overview.pdf ../../public/Axiom-Foundation-Overview.pdf
+pdftoppm -r 80 -png ../../public/Axiom-Foundation-Overview.pdf /tmp/overview-check
 ```
+
+Delete the old PDFs first so a failed render can't leave the previous one in
+place, then look at the page image before committing. `render.sh` stamps the
+SHA-256 of `axiom-overview.html` into the PDF's metadata
+(`/AxiomSourceSHA256`), and `src/components/overview/overview.test.tsx`
+checks it against the HTML in the repo, so an edit here that isn't
+re-rendered fails CI.
 
 `render.sh` prints the page count. **This is a one-pager and must stay one
 page** — the site's download button literally says "Download 1-Page PDF". If a
@@ -26,6 +35,10 @@ the compressed leave-behind — one sentence per audience, no previews, three
 one-line CTAs. They share their *claims*, and the web copy lives in one place —
 [`overview-content.ts`](../../src/components/overview/overview-content.ts).
 **When a claim changes there, change it here too**, and re-render.
+`src/app/verification-claims.test.tsx` reads this file's text along with the
+web page and fails on the verification claims the code doesn't support
+("external engines", "never grades its own work", "every encoding" checked,
+PolicyEngine or TAXSIM named without the disclosure).
 
 ## Files
 
