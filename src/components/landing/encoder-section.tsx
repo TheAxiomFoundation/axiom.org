@@ -18,15 +18,10 @@ export function EncoderSection() {
           <h2 className="heading-section mb-6 mt-2">
             How a statute gets encoded
           </h2>
-          {/*
-            No human sign-off clause here. The pipeline has no human review
-            gate — the gates are deterministic checks, oracle cross-checks
-            where a comparison exists, and AI judges; naming a human approver
-            would describe a step that does not exist. The heading claims no
-            blanket "verified": CI skips validation, companion tests and
-            proof checks for modules on rulespec-us's waiver list (1,940 on
-            2026-10-02, holding 23,735 of 34,810 US rules).
-          */}
+          {/* No blanket verification claim: the pinned shared workflow selects
+              modules and skips validation, companion tests and proof checks
+              for active entries in known-validation-gaps.yaml. Current dated
+              counts live in verification-evidence.ts. */}
           <p className="font-body text-lg text-[var(--color-ink-secondary)] max-w-[640px] mx-auto leading-relaxed">
             An AI-driven pipeline reads a statute and encodes it section by
             section.

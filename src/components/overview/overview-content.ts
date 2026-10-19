@@ -1,3 +1,5 @@
+import { ruleCoverageClause, sourceCitationClause, waiverCoverageClause } from "@/lib/verification-evidence";
+
 /**
  * Copy for the one-page overview (/overview).
  *
@@ -34,7 +36,7 @@ export const HERO = {
   /** The tagline sits under the page title rather than serving as it. */
   tagline: "Computable law for all.",
   lede:
-    "The rules that decide who gets food assistance, health coverage, and tax credits live in closed code that no one outside the vendor can check. The Axiom Foundation publishes those rules in the open — cited, computable, and verified.",
+    "The rules that decide who gets food assistance, health coverage, and tax credits live in closed code that no one outside the vendor can check. The Axiom Foundation publishes those rules in the open — cited and computable.",
 } as const;
 
 export const WHAT_WE_DO_INTRO =
@@ -49,79 +51,66 @@ export interface DoCard {
 }
 
 /*
- * Sources for the three cards, read 2026-10-03. The PDF makes the same claims.
+ * Evidence measured 2026-10-18. Numeric claims use verification-evidence.ts,
+ * which pins the rulespec-us ledger/corpus and the oracle-generated coverage
+ * map separately. A compared program surface does not establish a per-rule
+ * comparison, so no subtraction is presented as "uncompared rules".
  *
- * Encode
- * - Citations: axiom-oracles dashboard/public/data/rule_verification.json
- *   (rulespec-us 54d90a72, generated 2026-09-28): 34,781 of 34,810 rules
- *   carry a `source` citation (`has_source_citation`).
- * - Effective dates: axiom-rules-engine src/rulespec.rs fails a rule version
- *   with no start date (RuleSpecError::MissingEffectiveFrom). Waived modules
- *   skip the compile step in CI, so the card makes no "every" claim.
- * - Not claimed: that the pipeline records each encoding decision with its
- *   source text. The apply manifest records hashes, and the traces it points
- *   to stay on the machine that ran the encoder.
+ * Mechanisms, all code rather than messaging documents:
+ * - axiom-encode 058d539ffb665973fa04c8a669fab942a83e49f6:
+ *   src/axiom_encode/harness/evals.py (_build_rulespec_eval_prompt) requests RuleSpec and
+ *   companion tests with expected outputs in the same model response;
+ *   src/axiom_encode/cli.py (_stage_signed_apply_manifest and
+ *   _MODEL_APPLY_MANIFEST_FIELDS) signs citation/model/file hashes at apply.
+ * - rulespec-us d8511cca76b060e40fba90ae8af7f7643e6edf11:
+ *   .github/workflows/repository-checks.yml pins shared validate-rulespec.yml at
+ *   30e942938e675ae2b4a23b6154652592dcdc8065. It selects changed modules,
+ *   excludes active waivers (and retired schemas), and runs validation and
+ *   companion tests without oracle comparisons. This is not an exhaustive
+ *   certification claim or a guarantee that every draft passes its tests.
+ * - axiom-rules-engine 50215d97: src/rulespec.rs rejects rule versions without
+ *   effective_from (MissingEffectiveFrom); waived modules skip CI compilation.
+ * - App: src/components/axiom/section/section-reader.tsx renders provision
+ *   text, encoding, and a program graph link. Its current comparison chip
+ *   uses fresh matching results; the overview promises no validation record.
+ * - PolicyEngine disclosure: policyengine.org/ca/team and /ca/donate;
+ *   Axiom CEO: src/app/team/page.tsx. Reviewed 2026-10-18.
  *
- * Verify
- * - Gate: rulespec-us requires one status check, `validate / validate`
- *   (branch protection, read 2026-10-03). It runs the shared workflow
- *   TheAxiomFoundation/.github validate-rulespec.yml@df2dfb53, which compiles
- *   and validates each changed module and runs its companion tests and proof
- *   checks. That check runs no AI reviewer and compares nothing with an
- *   oracle.
- * - Waivers: the same workflow skips validation, companion tests and proof
- *   checks for any module with an `active` entry in rulespec-us
- *   known-validation-gaps.yaml. At 2066cef61 (2026-10-02) 1,940 modules had
- *   one (3 more entries were pending only, which don't skip); joined to the
- *   2026-09-28 rule_verification.json they hold 23,735 of 34,810 rules,
- *   11,201 of them the generated tariff schedule. Each names an owner, an
- *   issue and an expiry date. Branch protection exempts admins
- *   (enforcement_level non_admins).
- * - Tests: axiom-encode 6f08e25c src/axiom_encode/harness/evals.py
- *   10642-10656 asks one model response for the RuleSpec file and its test
- *   cases, expected outputs included. That is why "never grades its own
- *   work" is gone.
- * - Comparisons: axiom-oracles dashboard/public/data/
- *   rule_verification_summary.json (2026-09-28): 14,030 of 34,810 rules sit
- *   on a program surface a live comparison exercises, so 20,780 have none.
- *   The flag is per program surface: the public file says which rules fall
- *   in covered programs and is silent on which rules were compared. Comparisons
- *   don't gate merges: the required check runs without --oracle, and the
- *   14,952 outputs in rulespec-us oracle-coverage-pending.yaml pass it.
- *   SNAP's is the only quality-control file any comparison reads.
- * - Disclosure: Max Ghenis is CEO of both Axiom and PolicyEngine
- *   (policyengine.org/us/team). Name PolicyEngine only with that sentence;
- *   name TAXSIM only with "the TAXSIM executable that PolicyEngine packages"
- *   (axiom-oracles axiom_oracles/adapters/taxsim/pins.py).
- *
- * Publish
- * - The section reader (src/components/axiom/section/section-reader.tsx)
- *   shows provision text beside its encoding and links to the program's
- *   graph. Its "Verified" chip comes from the engines a parity case declares
- *   (listParityCases in src/lib/axiom/runtime/api.ts), not from a result, so
- *   the card does not promise a validation record.
+ * Public links below expose the primary numeric and encoder evidence. The
+ * print source links the same evidence from the relevant sentences.
  */
+export const OVERVIEW_SOURCES = [
+  { label: "CI workflow", href: "https://github.com/TheAxiomFoundation/.github/blob/30e942938e675ae2b4a23b6154652592dcdc8065/.github/workflows/validate-rulespec.yml" },
+  { label: "Effective dates", href: "https://github.com/TheAxiomFoundation/axiom-rules-engine/blob/50215d97ce9b59467d4738b2e872d5253b6e2847/src/rulespec.rs" },
+  { label: "App reader", href: "https://github.com/TheAxiomFoundation/axiom.org/blob/1f453a38b82f04e2e5bad071ebbb912941f53342/src/components/axiom/section/section-reader.tsx" },
+  { label: "Waiver ledger", href: "https://github.com/TheAxiomFoundation/rulespec-us/blob/d8511cca76b060e40fba90ae8af7f7643e6edf11/known-validation-gaps.yaml" },
+  { label: "Rule coverage", href: "https://github.com/TheAxiomFoundation/axiom-oracles/blob/002aa771247b8749c6b7b49ce7b7cc89f2016c8e/dashboard/public/data/rule_verification_summary.json" },
+  { label: "Rule citations", href: "https://github.com/TheAxiomFoundation/axiom-oracles/blob/002aa771247b8749c6b7b49ce7b7cc89f2016c8e/dashboard/public/data/rule_verification.json" },
+  { label: "Encoder tests", href: "https://github.com/TheAxiomFoundation/axiom-encode/blob/058d539ffb665973fa04c8a669fab942a83e49f6/src/axiom_encode/harness/evals.py" },
+  { label: "Signed manifests", href: "https://github.com/TheAxiomFoundation/axiom-encode/blob/058d539ffb665973fa04c8a669fab942a83e49f6/src/axiom_encode/cli.py" },
+] as const;
+
 export const WHAT_WE_DO: readonly DoCard[] = [
   {
     n: "1",
     label: "Encode",
     title: "We turn the law into software",
     body:
-      "An encoder pipeline reads a statute and drafts its encoding in RuleSpec, the Axiom Foundation's format for computable law. Rules cite their source (34,781 of our 34,810 US rules in September 2026), and rule versions carry the dates they take effect. Each time the encoder applies an encoding it leaves a signed manifest naming the source citation and the model.",
+      `The encoder drafts cited provisions in RuleSpec, the Axiom Foundation's format for computable law. ${sourceCitationClause()}. Rule versions carry the dates they take effect. Each time the encoder applies an encoding it leaves a signed manifest naming the source citation and the model.`,
   },
   {
     n: "2",
     label: "Verify",
-    title: "Automated checks gate what merges",
+    title: "Checks and waivers shape what merges",
     body:
-      "A draft encoding must compile and pass its test suite before it merges, unless its module has an active waiver on a public list (1,940 modules holding 23,735 of our 34,810 US rules on October 2, 2026). When the encoder drafts a module, it writes those tests too. Separately, we compare results with other calculators, including PolicyEngine, and publish the comparisons. They don't gate merges, and 20,780 of the 34,810 rules had none in September 2026. Max Ghenis is CEO of both Axiom and PolicyEngine.",
+      `CI runs compilation and companion tests for selected modules; active entries on the public waiver list skip those checks. ${waiverCoverageClause()}. When the encoder drafts a module, the model also writes its tests and expected results. Comparisons with other calculators, including PolicyEngine, are published separately and are not required by this CI workflow. ${ruleCoverageClause()}. Max Ghenis is CEO of both Axiom and PolicyEngine.`,
   },
   {
     n: "3",
     label: "Publish",
-    title: "We put the whole chain in public",
+    title: "We publish inspectable encodings",
     body:
-      "In the Axiom App, you read the statute next to the RuleSpec encoding that runs it and can follow a program into its computation graph. Everything is openly licensed, which means a claim about what a rule computes is something you can check.",
+      "In the Axiom App, you read the statute next to the RuleSpec encoding that runs it and can follow a program into its computation graph. The encodings are openly licensed, so you can inspect what a rule computes.",
   },
 ] as const;
 
@@ -153,7 +142,7 @@ export const AUDIENCES: readonly Audience[] = [
     tab: "Government",
     headline: "Stop paying to re-implement the same rules",
     body:
-      "Every level of government rebuilds the same rules separately: states re-implement SNAP, Medicaid, and TANF inside vendor systems, agencies write regulations that contractors interpret privately, and oversight reads prose while the operative logic sits in code nobody in government can open. The Axiom Foundation publishes the rules once — cited, dated, and verified — so delivery systems, vendors, auditors, and the people who write the laws all work from the same open source of truth.",
+      "Every level of government rebuilds the same rules separately: states re-implement SNAP, Medicaid, and TANF inside vendor systems, agencies write regulations that contractors interpret privately, and oversight reads prose while the operative logic sits in code nobody in government can open. The Axiom Foundation publishes the rules once — cited, dated, and executable — so delivery systems, vendors, auditors, and the people who write the laws all work from the same open source of truth.",
     useCase:
       "A state modernizing its eligibility system runs its current vendor logic against the Axiom Foundation's encodings as a test oracle, catches discrepancies before they become wrongful denials, and keeps a traceable line from the policy as passed to how each system implements it.",
   },

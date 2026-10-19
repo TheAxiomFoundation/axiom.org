@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { render } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
+import { formatCount, VALIDATION_WAIVERS, waiverCoverageClause } from '@/lib/verification-evidence'
 
 vi.mock('next/link', () => ({
   default: ({ children, href, ...props }: any) => <a href={href} {...props}>{children}</a>,
@@ -270,16 +271,17 @@ describe('waiver and encoder-authorship claims', () => {
   it('/verify lists the validation waivers as an open issue with their count', () => {
     const text = renderedText(() => render(<VerifyPage />))
 
-    expect(text).toMatch(/1,940 US modules on a public waiver list/)
-    expect(text).toMatch(/they hold 23,735 of our 34,810 US rules/)
+    expect(text).toContain(`${formatCount(VALIDATION_WAIVERS.activeWaivers)} active module waivers`)
+    expect(text).toContain(waiverCoverageClause())
     expect(text).toMatch(/Each waiver names an owner, an issue, and an expiry date/)
-    expect(text).toMatch(/all 1,940 expire on December 21, 2026/)
+    expect(text).toContain(`all ${formatCount(VALIDATION_WAIVERS.activeWaivers)} expire on ${VALIDATION_WAIVERS.expiryLabel}`)
   })
 
-  it('/receipts says how many US rules the encoder wrote', () => {
+  it('/receipts distinguishes encoder apply records from manual attestations', () => {
     const text = renderedText(() => render(<ReceiptsPage />))
 
-    expect(text).toMatch(/about 16,300 of our 34,810 US rules matched a signed manifest that names the encoder's apply step/)
-    expect(text).toMatch(/signed in by manual attestation/)
+    expect(text).toMatch(/some record encoder apply runs and others manual attestations/)
+    expect(text).toMatch(/A signature alone does not establish that the encoder authored a file/)
+    expect(text).not.toMatch(/about (16,300|15,300)/)
   })
 })

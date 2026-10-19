@@ -1,3 +1,5 @@
+import { waiverCoverageClause } from "./verification-evidence";
+
 /**
  * Trust overlay for /stack.
  *
@@ -61,7 +63,7 @@ export const layerTrust: Record<string, LayerTrust> = {
     ],
     open: [
       "Coverage is per-program. There is no blanket coverage claim, and there should not be one.",
-      "CI skips validation, companion tests, and proof checks for modules on a public waiver list: 1,940 rulespec-us modules carried an active validation waiver on October 2, 2026, and they hold 23,735 of our 34,810 US rules. Each waiver names an owner, an issue, and an expiry date.",
+      `CI skips validation, companion tests, and proof checks for active entries on a public waiver list. ${waiverCoverageClause()}. Each waiver names an owner, an issue, and an expiry date.`,
     ],
   },
 
@@ -71,7 +73,7 @@ export const layerTrust: Record<string, LayerTrust> = {
     ],
     open: [
       "Acceptance is decided downstream by checks that do not involve a model. Modules on the public waiver list skip the validation, companion-test, and proof steps.",
-      "Not every rule went through the encoder. In September 2026, about 16,300 of our 34,810 US rules matched a signed manifest that names the encoder's apply step, and about 15,300 more (mostly the generated US tariff schedule) were signed in by manual attestation.",
+      "Signed manifests record how files were applied: some record encoder apply runs and others manual attestations. A signature alone does not establish that the encoder authored a file.",
     ],
   },
 

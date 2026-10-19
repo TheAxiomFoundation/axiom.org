@@ -10,6 +10,12 @@
  * the archived launch repo (Launch-Scope.md), which is a record, not a source.
  */
 
+import {
+  formatCount,
+  VALIDATION_WAIVERS,
+  waiverCoverageClause,
+} from "./verification-evidence";
+
 export type Tier = "verified" | "preview" | "demo" | "blocked";
 
 export const tierLabel: Record<Tier, string> = {
@@ -92,7 +98,7 @@ export const surfaces: Surface[] = [
     check:
       "git clone https://github.com/TheAxiomFoundation/axiom-oracles\ncd axiom-oracles\nif [ -f scripts/oracle_data.py ]; then\n  python3 scripts/oracle_data.py materialize\nfi &&\ncat conformance/scoreboard.json &&\nuv run scripts/apply_dispositions.py --check",
     expect:
-      "The scoreboard's own predicate: covered == in_scope, unexplained == 0, Axiom-attributed == 0. For the US, unexplained and Axiom-attributed are 0, but live suites cover 36 of 127 in-scope PolicyEngine policies, so the US row is not yet conformant. The dispositions check recomputes every classification's arithmetic from the committed evidence.",
+      "The scoreboard requires covered == in_scope, unexplained == 0, Axiom-attributed == 0, no invalid exclusions, and no report defects. For the US, unexplained and Axiom-attributed are 0, but live suites cover 16 of 127 in-scope PolicyEngine policies, so the US row is not yet conformant. The dispositions check recomputes every classification's arithmetic from the committed evidence.",
     limit:
       "Coverage is evidence-set specific. Agreement only shows two implementations agree; where both misread a provision the same way, it shows nothing.",
   },
@@ -197,7 +203,7 @@ export const goldenHousehold = {
     ["snap_net_income", "226"],
   ] as const,
   certificate:
-    "certified: 0 — the API's certified ledger is empty. A program certifies only when axiom-oracles computes all four premises (conformant, exercised, closed, executable) true with zero open defects; this program's certificate reads unavailable because no producer computes closed or executable yet.",
+    "A program certifies only when axiom-oracles computes all four premises (conformant, exercised, closed, executable) true with zero open defects. The published Colorado SNAP certificate is unavailable.",
 };
 
 export const closurePredicate =
@@ -291,19 +297,19 @@ export interface OpenIssue {
  */
 export const openIssues: OpenIssue[] = [
   {
-    // rulespec-us known-validation-gaps.yaml at 2066cef61; the skips are in
-    // TheAxiomFoundation/.github validate-rulespec.yml@df2dfb53 (the ref
-    // rulespec-us pins). Rule counts join the waived module paths to
-    // axiom-oracles dashboard/public/data/rule_verification.json (rulespec
-    // 54d90a72, generated 2026-09-28).
+    // The waiver ledger and its source commit live in VALIDATION_WAIVERS.
+    // The skips are in
+    // TheAxiomFoundation/.github validate-rulespec.yml@30e942938e675ae2b4a23b6154652592dcdc8065 (the ref
+    // rulespec-us pins). Rule counts join the active waiver paths to the
+    // source modules at the same rulespec-us commit.
     id: "validation-waivers",
     title:
-      "CI skips validation, companion tests, and proof checks for 1,940 US modules on a public waiver list",
-    status: "Open — counted 2026-10-02",
+      `CI skips validation, companion tests, and proof checks for modules on a public waiver list with ${formatCount(VALIDATION_WAIVERS.activeWaivers)} active module waivers`,
+    status: `Open — counted ${VALIDATION_WAIVERS.source.date}`,
     detail:
-      "rulespec-us keeps a waiver list, known-validation-gaps.yaml. Modules with an active waiver skip three steps of the shared validation workflow: RuleSpec validation, companion tests, and proof and claim checks. On October 2, 2026, 1,940 modules carried an active waiver, and they hold 23,735 of our 34,810 US rules (counted against axiom-oracles' per-rule file of September 28). Each waiver names an owner, an issue, and an expiry date: all 1,940 expire on December 21, 2026, and 1,650 link to rulespec-us#782, which tracks the waiver list as a merge bypass.",
+      `rulespec-us keeps a waiver list, known-validation-gaps.yaml. Modules with an active waiver skip three steps of the shared validation workflow: RuleSpec validation, companion tests, and proof and claim checks. ${waiverCoverageClause()}. Each waiver names an owner, an issue, and an expiry date: all ${formatCount(VALIDATION_WAIVERS.activeWaivers)} expire on ${VALIDATION_WAIVERS.expiryLabel}, and ${formatCount(VALIDATION_WAIVERS.issue782)} link to rulespec-us#782, which tracks the waiver list as a merge bypass. One listed path is absent from the current tree; the ledger count includes it.`,
     evidence:
-      "git clone https://github.com/TheAxiomFoundation/rulespec-us && cd rulespec-us\ngit show 2066cef61:known-validation-gaps.yaml | grep -c '^    active:'\n1940",
+      `git clone https://github.com/TheAxiomFoundation/rulespec-us && cd rulespec-us\ngit show ${VALIDATION_WAIVERS.source.commit}:known-validation-gaps.yaml | grep -c '^    active:'\n${VALIDATION_WAIVERS.activeWaivers}`,
     fix: "Repair a waived module until it validates, then delete its waiver.",
   },
   {

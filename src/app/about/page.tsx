@@ -29,7 +29,7 @@ const BUILD = [
   {
     n: "01",
     title: "The Axiom App",
-    desc: "Explore the law: fetch and cite source documents, inspect the RuleSpec encodings that make them executable, and trace the logic through the computation graph. Every value cites its statute; every clause carries an effective date.",
+    desc: "Explore the law: fetch and cite source documents, inspect the RuleSpec encodings that make them executable, and trace the logic through the computation graph. Rules show their source citations, and RuleSpec versions carry effective dates.",
     href: "/axiom",
   },
   {

@@ -46,7 +46,7 @@ export const metadata: Metadata = {
     // Post-launch share copy — the Message House top line (ops repo,
     // comms/Message-House.md). Keep in sync if the house changes.
     description:
-      "The rules that decide who gets food assistance, health coverage, and tax credits live in closed code that no one can check — the Axiom Foundation publishes them in the open: cited, computable, and verified.",
+      "The rules that decide who gets food assistance, health coverage, and tax credits live in closed code that no one can check — the Axiom Foundation publishes them in the open: cited and computable.",
     images: [DEFAULT_SHARE_IMAGE],
   },
   // Pages don't set twitter: a page-level block would replace this one

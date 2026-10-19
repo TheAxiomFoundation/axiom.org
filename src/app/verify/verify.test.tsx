@@ -64,10 +64,11 @@ describe("Verify page", () => {
     expect(screen.getByText("226")).toBeInTheDocument();
     expect(
       screen.getByText(
-        /Certificate — certified: 0 — the API's certified ledger is empty\. A program certifies only when axiom-oracles computes all four premises \(conformant, exercised, closed, executable\) true with zero open defects; this program's certificate reads unavailable because no producer computes closed or executable yet\./,
+        "Certificate — A program certifies only when axiom-oracles computes all four premises (conformant, exercised, closed, executable) true with zero open defects. The published Colorado SNAP certificate is unavailable.",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText("Certified")).not.toBeInTheDocument();
+    expect(screen.queryByText(/certified: 0|API.s certified ledger is empty/)).not.toBeInTheDocument();
 
     const apiArticle = screen
       .getByRole("heading", { name: "Hosted API" })

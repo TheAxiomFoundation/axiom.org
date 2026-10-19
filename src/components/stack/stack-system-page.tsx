@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { waiverCoverageClause } from "@/lib/verification-evidence";
 import { useState } from "react";
 import CodeBlock from "@/components/code-block";
 import { axiomAppHref } from "@/lib/urls";
@@ -506,12 +507,10 @@ export function StackSystemPage() {
                   file with companion tests, to harness evaluation, to runtime
                   execution, and finally to Axiom. The system is split this way
                   so authority, transformation, correctness, and presentation
-                  can each be inspected on their own terms. Not every rule takes
-                  the encoder path: in September 2026, about 16,300 of our
-                  34,810 US rules matched a signed manifest that names the
-                  encoder&apos;s apply step, and about 15,300 more (mostly the
-                  generated US tariff schedule) were signed in by manual
-                  attestation.
+                  can each be inspected on their own terms. Signed manifests
+                  record how files were applied: some record encoder apply runs
+                  and others manual attestations. A signature alone does not
+                  establish that the encoder authored a file.
                 </p>
                 <div className="flex flex-wrap gap-3">
                   <Link href="/encoder" className="btn-outline">
@@ -1040,9 +1039,7 @@ export function StackSystemPage() {
                 After a rule is encoded, it moves to CI checks, runtime
                 execution, and public inspection. CI skips validation,
                 companion tests, and proof checks for modules on a public
-                waiver list: on October 2, 2026, 1,940 rulespec-us modules
-                carried an active validation waiver, and they hold 23,735 of
-                our 34,810 US rules. This section covers the steps after encoding;
+                waiver list. {waiverCoverageClause()}. This section covers the steps after encoding;
                 the layer detail above maps the architecture.
               </p>
             </div>

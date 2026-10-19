@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { render } from "@testing-library/react";
+import { waiverCoverageClause } from "@/lib/verification-evidence";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // What the film may say about the gates, per axiom-encode main (6f08e25c,
@@ -147,7 +148,7 @@ describe.each([
       expect(draftFormula?.getAttribute("opacity")).toBe("0");
     }
     expect(label).toContain(
-      "On October 2, 2026 the published § 2017(a) module was one of 1,940 rulespec-us modules on the validation waiver list, whose checks CI skipped.",
+      `${waiverCoverageClause()}; the published § 2017(a) module was on that list and its checks were skipped.`,
     );
     expect(label).toContain(
       motion

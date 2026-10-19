@@ -1,7 +1,7 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
-import { enforcement, surfaces, usEvidenceRows } from "./verify-data";
+import { enforcement, openIssues, surfaces, usEvidenceRows } from "./verify-data";
 import {
   countWord,
   formatCount,
@@ -9,6 +9,7 @@ import {
   PENDING_OUTPUTS,
   RULE_COVERAGE,
   ruleCoverageClause,
+  sourceCitationClause,
   SNAP_QC_REPLAYS,
   snapQcTotals,
   SOUTHMOD_CAVEATS,
@@ -18,6 +19,9 @@ import {
   southmodAcknowledgement,
   southmodTotals,
   US_CONFORMANCE,
+  US_CITATIONS,
+  VALIDATION_WAIVERS,
+  waiverCoverageClause,
   type SouthmodSuite,
   type SnapQcReplay,
 } from "./verification-evidence";
@@ -26,16 +30,38 @@ import {
 // each source names. These pins fail when a row changes without its total
 // (or the reverse), so a refresh has to touch both.
 describe("verification evidence: pinned totals", () => {
-  it("US rule coverage: 14,030 of 34,810 rules on a compared program surface", () => {
-    expect(RULE_COVERAGE.totalRules).toBe(34_810);
+  it("US rule coverage: 14,030 of 34,832 rules on a compared program surface", () => {
+    expect(RULE_COVERAGE.totalRules).toBe(34_832);
     expect(RULE_COVERAGE.rulesOnComparedSurface).toBe(14_030);
     expect(ruleCoverageClause()).toBe(
-      "In September 2026, our coverage map tied 14,030 of our 34,810 US rules to a program that a live comparison exercises, though a comparison of a program does not check each of its rules",
+      "In October 2026, our coverage map tied 14,030 of our 34,832 US rules to a program that a live comparison exercises, though a comparison of a program does not check each of its rules",
     );
     expect(RULE_COVERAGE.source.commit).toMatch(/^[0-9a-f]{40}$/);
     expect(RULE_COVERAGE.perRuleFileUrl).toBe(
       "https://github.com/TheAxiomFoundation/axiom-oracles/blob/oracle-data/dashboard/public/data/rule_verification.json",
     );
+  });
+
+  it("US citations and waivers use current named rules and a pinned ledger", () => {
+    expect(US_CITATIONS.citedRules).toBe(34_803);
+    expect(US_CITATIONS.totalRules).toBe(RULE_COVERAGE.totalRules);
+    expect(US_CITATIONS.rulespecCommit).toBe(VALIDATION_WAIVERS.source.commit);
+    expect(sourceCitationClause()).toBe(
+      "On October 18, 2026, 34,803 of our 34,832 US rules carried a source citation",
+    );
+    expect(VALIDATION_WAIVERS.activeWaivers).toBe(1_935);
+    expect(VALIDATION_WAIVERS.existingModules).toBe(1_934);
+    expect(VALIDATION_WAIVERS.waivedRules).toBe(23_666);
+    expect(VALIDATION_WAIVERS.totalRules).toBe(RULE_COVERAGE.totalRules);
+    expect(VALIDATION_WAIVERS.issue782).toBe(1_646);
+    expect(VALIDATION_WAIVERS.expires).toBe("2026-12-21");
+    expect(waiverCoverageClause()).toBe(
+      "On October 18, 2026, the public waiver list had 1,935 active module waivers covering 23,666 of 34,832 US rules",
+    );
+    for (const record of [US_CITATIONS, VALIDATION_WAIVERS]) {
+      expect(record.source.commit).toMatch(/^[0-9a-f]{40}$/);
+      expect(record.sourceUrl).toContain(`/blob/${record.source.commit}/${record.source.path}`);
+    }
   });
 
   it("SNAP QC: 5,175 households in six states, Colorado 856", () => {
@@ -117,6 +143,16 @@ describe("verification evidence: SOUTHMOD caveats and acknowledgement", () => {
 // /verify's copy lives in verify-data.ts, which axiom.org#304 also edits, so
 // it keeps literal strings. These pins hold them to the evidence rows.
 describe("verification evidence: literal copy in verify-data.ts", () => {
+  it("the waiver disclosure is derived from the current ledger", () => {
+    const issue = openIssues.find((entry) => entry.id === "validation-waivers");
+    expect(issue?.title).toContain("1,935 active module waivers");
+    expect(issue?.detail).toContain(waiverCoverageClause());
+    expect(issue?.detail).toContain("all 1,935 expire on December 21, 2026");
+    expect(issue?.detail).toContain("1,646 link to rulespec-us#782");
+    expect(issue?.detail).toContain("One listed path is absent from the current tree");
+    expect(issue?.evidence).toContain(`git show ${VALIDATION_WAIVERS.source.commit}:known-validation-gaps.yaml`);
+  });
+
   it("the pending-file count", () => {
     const line = enforcement.find((e) => e.startsWith("Coverage is tracked separately."));
     expect(line).toContain(
