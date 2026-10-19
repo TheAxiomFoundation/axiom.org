@@ -354,9 +354,9 @@ export function lamplightShelfToBook(ctx: BeatCtx): BeatSpec {
 
   // links on the things themselves (t is the shot's clock; u = 5.5t)
   const closedNow = () => book.localToWorld(C.clone());
-  ctx.link(book, "/app", "Explore Title 7 in the app", { when: [0.022, 0.13], anchorAt: closedNow });
+  ctx.link(book, "/app?q=us:statutes/7/", "Title 7 in the app", { when: [0.022, 0.13], anchorAt: closedNow });
   ctx.hotspot(lib.localToWorld(new THREE.Vector3(S.slot.x + 0.56 - 0.36, S.slot.y - 0.026, 0.33)), "/coverage", "What the corpus covers", { when: [0, 0.124] });
-  ctx.link(R.tops[1], "/app", "Explore § 2017 in the app", { when: [0.35, 0.72] });
+  ctx.link(R.tops[1], "/app?compose=us:statutes/7/2017/a", "§ 2017(a) in the app", { when: [0.35, 0.72] });
 
   // the shot
   const shelfCam = shelf.camera;

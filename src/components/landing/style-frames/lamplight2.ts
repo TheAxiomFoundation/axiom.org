@@ -237,7 +237,7 @@ export function lamplightBeat2(ctx: BeatCtx): BeatSpec {
   scene.add(rule);
   const addr = ctx.label(hero.clone().add(new THREE.Vector3(0, 0.7, 0)), "us / statute / 7 / 2017 / <b>a</b>", "sf-label--addr");
   const rest = ctx.label(hero.clone().add(new THREE.Vector3(1.05, 0.24, 0)), "(b) (c) (d) … the rest of § 2017", "sf-label--quiet");
-  ctx.hotspot(hero.clone().add(new THREE.Vector3(0, 0.03, 0)), "/app", "Explore this provision in the app", { when: [0.86, 1.4] });
+  ctx.hotspot(hero.clone().add(new THREE.Vector3(0, 0.03, 0)), "/app?compose=us:statutes/7/2017/a", "§ 2017(a) in the app", { when: [0.86, 1.4] });
 
   // districts in the distance: other titles of the code
   ctx.label(new THREE.Vector3(-5.2, 0.05, -12), "26 U.S.C. · Internal Revenue Code", "sf-label--far");
@@ -947,7 +947,7 @@ export function lamplightBeat4(ctx: BeatCtx): BeatSpec {
   scene.add(right);
 
   const threads: Array<{ w: THREE.Mesh; da: THREE.Mesh; db: THREE.Mesh }> = [];
-  ctx.link(left, "/app", "Explore § 2017(a) in the app", { when: [0.2, 1.4] });
+  ctx.link(left, "/app?compose=us:statutes/7/2017/a", "§ 2017(a) in the app", { when: [0.2, 1.4] });
   ctx.link(right, "https://github.com/TheAxiomFoundation/rulespec-us/blob/main/us/statutes/7/2017/a.yaml#L27", "Open a.yaml on GitHub", { when: [0.2, 1.4] });
   // threads run only through the gap between the pages: from the port
   // on the statute's right edge to the port on the code's left edge
@@ -1130,7 +1130,7 @@ export function lamplightBeat6(ctx: BeatCtx): BeatSpec {
   E.forEach(([a, b]) => scene.add(wire(new THREE.LineCurve3(heroNodes[a], heroNodes[b]), 0.004, "#ffb45c", 1.8)));
   heroNodes.forEach((p, i) => scene.add(dot(p, i === 9 ? 0.035 : 0.022, i === 9 ? 3.5 : 2.4)));
   const heroLabel = ctx.label(heroP.clone().add(new THREE.Vector3(0, -0.55, 0)), "us/statute/7/2017/a · 8 rules", "sf-label--addr");
-  ctx.hotspot(heroP.clone(), "/app", "Explore these 8 rules in the app", { when: [0.1, 1.4] });
+  ctx.hotspot(heroP.clone(), "/app?compose=us:statutes/7/2017/a", "These 8 rules in the app", { when: [0.1, 1.4] });
   {
     const big = CLUSTERS.reduce((m, c) => (c.count > m.count ? c : m));
     ctx.hotspot(new THREE.Vector3((big.x - 740) / 105, (330 - big.y) / 105, -2 + ((CLUSTERS.indexOf(big) * 37) % 7) * 0.6), "/ops", "Watch encodings land in the registry", { when: [0.72, 1.4] });

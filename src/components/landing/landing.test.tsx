@@ -74,7 +74,7 @@ describe('Landing sections', () => {
     // each step links to the real page behind it, under its caption and
     // again on the end cards
     for (const link of screen.getAllByRole('link', { name: /explore § 2017/i })) {
-      expect(link).toHaveAttribute('href', '/app')
+      expect(link).toHaveAttribute('href', '/app?compose=us:statutes/7/2017/a')
     }
     // the corpus reader is never linked from the journey: its steps open
     // the app (or the coverage page) instead
