@@ -4,6 +4,7 @@ import {
   encoderRecordClaims,
   encoderRecordHits,
   markdownClaims,
+  markdownInline,
   markdownParagraphs,
   normalizeClaimSpaces,
 } from './encoder-record-guard'
@@ -77,6 +78,130 @@ describe('reference encoder-record predicate and noun scope', () => {
       [12, 'PUBLISHES its decisions'], [12, 'PUBLISHES its decisions'],
     ])
   })
+
+  it('sorts overlapping claims at the same offset by their exact Python string order', () => {
+    expect(encoderRecordHits('Every encoding decision has a record and is logged.')).toEqual([
+      [0, 'Every encoding decision has a record'],
+      [0, 'Every encoding decision has a record and is logged'],
+    ])
+  })
+})
+
+describe('joint review round-1 encoder-record regressions', () => {
+  it.each([
+    [String.raw`\<!-- The encoder publishes its traces. -->`, 'publishes its traces'],
+    [String.raw`\<!-- The encoder logs **every** decision. -->`, 'logs every decision'],
+    [String.raw`\<!-- The encoder logs every&nbsp;decision. -->`, 'logs every decision'],
+    [String.raw`\\\<!-- The encoder publishes its traces. -->`, 'publishes its traces'],
+    ['`<!-- The encoder logs every decision. -->`', 'logs every decision'],
+    ['``<!-- The encoder publishes its traces. -->``', 'publishes its traces'],
+    ['``prefix ` <!-- The encoder logs every decision. -->``', 'logs every decision'],
+  ])('keeps escaped and code-span comments visible at their source offset: %s', (text, claim) => {
+    const visible = markdownInline(text)
+    const hits = encoderRecordHits(visible.text)
+    expect(hits).toHaveLength(1)
+    expect(hits[0][1]).toBe(claim)
+    expect(visible.offsets[hits[0][0]]).toBe(Array.from(text.slice(0, text.indexOf(claim.split(' ')[0]))).length)
+    expect(markdownClaims(text)).toEqual([[1, claim]])
+  })
+
+  it.each([
+    String.raw`\\<!-- The encoder publishes its traces. -->`,
+    '<!-- The encoder publishes its traces. -->',
+    '`<!-- The encoder logs every decision. -->',
+    '`The encoder logs every&nbsp;decision.`',
+    '``The encoder logs every&#32;decision.``',
+    '`<!-- The encoder logs **every** decision. -->`',
+    '``The encoder logs _every decision_.``',
+    'The encoder logs `every&nbsp;decision`.',
+    String.raw`The encoder logs every\&nbsp;decision.`,
+    String.raw`The encoder logs every\&#32;decision.`,
+    '`<!-- literal -->` <!-- The encoder publishes its traces. -->',
+  ])('protects literal escapes and code spans through every inline pass: %s', text => {
+    expect(markdownClaims(text)).toEqual([])
+  })
+
+  it.each([
+    ['\\`The encoder logs every&nbsp;decision.', 'logs every decision'],
+    ['`&nbsp; <!-- hidden? -->` The encoder logs **every** decision.', 'logs every decision'],
+    ['<!-- hidden --> `<!-- The encoder publishes its traces. -->`', 'publishes its traces'],
+  ])('preserves surrounding markup outside protected ranges: %s', (text, claim) => {
+    expect(markdownClaims(text)).toEqual([[1, claim]])
+  })
+
+  it('keeps the physical source line after a visible code-span comment', () => {
+    expect(markdownClaims('Intro `<!-- literal comment -->`\nThe encoder logs **every** decision.')).toEqual([[2, 'logs every decision']])
+  })
+
+  it('uses code-point ranges across astral protected and removed text', () => {
+    const text = '😀 `😀 <!-- literal -->` <!-- 😀 hidden --> The encoder logs **every** decision.'
+    const visible = markdownInline(text)
+    expect(visible.text).toBe('😀 `😀 <!-- literal -->`  The encoder logs every decision.')
+    const [[offset, claim]] = encoderRecordHits(visible.text)
+    expect(claim).toBe('logs every decision')
+    expect(visible.offsets[offset]).toBe(Array.from(text.slice(0, text.indexOf('logs'))).length)
+    expect(markdownClaims(text)).toEqual([[1, claim]])
+  })
+
+  it.each([
+    ['The failed encoder run publishes the successful-run trace.', 'publishes the successful-run trace'],
+    ['The failed encoder run publishes successful diagnostic traces.', 'publishes successful diagnostic traces'],
+    ['The failed encoder run publishes a successful encoding trace.', 'publishes a successful encoding trace'],
+    ['The failed encoder run stores the full successful-run trace in an artifact.', 'stores the full successful-run trace'],
+    ['The failed encoder run keeps every successful diagnostic trace.', 'keeps every successful diagnostic trace'],
+  ])('never exempts a trace modified as successful: %s', (text, claim) => {
+    expect(encoderRecordHits(text)).toEqual([[text.indexOf(claim), claim]])
+    expect(markdownClaims(text)).toEqual([[1, claim]])
+  })
+
+  it.each([
+    'The encoder stores its trace locally, but never on a public server.',
+    'The encoder stores its trace locally, but not on a public server.',
+    'The encoder stores its trace locally and never on a public server.',
+    'The encoder stores its trace on the local machine, and never uploads it to a public server.',
+    'The encoder publishes traces of failed runs, but not successful runs.',
+    'The encoder publishes traces of failed runs but never successful runs.',
+    'The encoder publishes traces of failed runs, and not successful diagnostic traces.',
+    'The encoder publishes traces of failed runs; successful runs keep only their manifests.',
+    'The encoder stores its trace locally; the documentation is hosted on a public server.',
+    'The encoder stores its trace locally; the reviewer publishes its transcripts on a public server.',
+    'The encoder publishes traces of failed runs, but not successful runs or successful sessions.',
+    'The encoder stores its trace locally, but never on a public server or publicly.',
+  ])('keeps an exemption for a denied or unrelated conjunct: %s', text => {
+    expect(encoderRecordClaims(text)).toEqual([])
+    expect(markdownClaims(text)).toEqual([])
+  })
+
+  it.each([
+    'The encoder stores its trace locally, but also on a public server.',
+    'The encoder stores its trace locally, but also uploads it to a public server.',
+    'The encoder publishes traces of failed runs, but also successful runs.',
+    'The encoder publishes traces of failed runs, and successful diagnostic traces.',
+    'The encoder stores its trace locally, but also on a public server without a login.',
+    'The encoder publishes traces of failed runs, and successful runs without requiring a subscription.',
+  ])('revokes an exemption for an affirmative relevant conjunct: %s', text => {
+    expect(encoderRecordClaims(text).length).toBeGreaterThan(0)
+    expect(markdownClaims(text).length).toBeGreaterThan(0)
+  })
+
+  it.each([
+    "The encoder's author runs a podcast, and publishes its transcripts.",
+    'The encoder’s author runs a podcast, and publishes its transcripts.',
+    "Our pipeline's maintainer runs a podcast, and publishes its transcripts.",
+    "The encoding agent's maintainer runs a podcast, and publishes its transcripts.",
+    "The encoder project's author runs a podcast, and publishes its transcripts.",
+    "The model's designer hosts a meeting, and publicly publishes its transcripts.",
+    "The encoder's author runs a podcast, and publishes its transcripts, and saves its traces.",
+  ])('does not inherit an encoder from a possessive subject prefix: %s', text => {
+    expect(encoderRecordClaims(text)).toEqual([])
+    expect(markdownClaims(text)).toEqual([])
+  })
+
+  it('keeps a later explicit encoder subject after a possessive subject', () => {
+    const text = "The encoder's author runs a podcast, and the encoder publishes its transcripts."
+    expect(encoderRecordHits(text)).toEqual([[text.indexOf('publishes'), 'publishes its transcripts']])
+    expect(markdownClaims(text)).toEqual([[1, 'publishes its transcripts']])
+  })
 })
 
 describe('reference normalization and code-point offsets', () => {
@@ -140,5 +265,138 @@ describe('reference Markdown boundaries and line diagnostics', () => {
     const text = '😀 denied. <!-- claims-check: allow --> The encoder logs every decision.'
     expect(Array.from(blankAllowedClaims(text))).toHaveLength(Array.from(text).length)
     expect(markdownClaims(text)).toEqual([[1, 'logs every decision']])
+  })
+})
+
+describe('round-3 encoder-record regression gaps', () => {
+  it.each([
+    '> The encoder logs every\ndecision.',
+    '>> The encoder logs every\n> decision.',
+    '> > The encoder logs every\ndecision.',
+  ])('joins lazy quote continuations: %s', text => {
+    expect(markdownClaims(text)).toEqual([[1, 'logs every decision']])
+  })
+
+  it.each(['\n', '>\n> ', '# ', '- ', '>> '])('bounds lazy quote continuation at %j', boundary => {
+    expect(markdownClaims(`> The encoder logs every\n${boundary}decision.`)).toEqual([])
+  })
+
+  const inlineClaims: [string, string][] = [
+    ['The encoder logs **every** decision.', 'logs every decision'],
+    ['Every encoding decision is **logged**.', 'Every encoding decision is logged'],
+    ['The encoder logs _every decision_.', 'logs every decision'],
+    ['The encoder logs __every__ decision.', 'logs every decision'],
+    ['The encoder logs *every* decision.', 'logs every decision'],
+    ['The encoder logs every&nbsp;decision.', 'logs every decision'],
+    ['The encoder logs every&#32;decision.', 'logs every decision'],
+    ['The encoder logs every&#x20;decision.', 'logs every decision'],
+    ['The encoder logs every&Tab;decision.', 'logs every decision'],
+    ['The encoder logs every&NewLine;decision.', 'logs every decision'],
+    ['The encoder logs every&#10;decision.', 'logs every decision'],
+    ['The encoder logs every&#xA;decision.', 'logs every decision'],
+    ['The encoder logs every <!-- x --> decision.', 'logs every decision'],
+    ['The encoder logs every<!-- x --> decision.', 'logs every decision'],
+    ['The encoder logs e<!-- x -->very decision.', 'logs every decision'],
+  ]
+  it.each(inlineClaims)('renders inline Markdown only in its adapter: %s', (text, claim) => {
+    expect(markdownClaims(text)).toContainEqual([1, claim])
+    expect(encoderRecordClaims(text)).toEqual([])
+  })
+
+  it.each([
+    'Intro <!-- ' + 'a long invisible comment '.repeat(40) + '--> without a stop',
+    'Intro ' + '&nbsp;'.repeat(100) + ' without a stop',
+    'Intro ' + '*emphasis* '.repeat(30) + 'without a stop',
+  ])('maps the following claim through inline edits: %s', prefix => {
+    expect(markdownClaims(`${prefix}\nThe encoder logs **every** decision.`)).toEqual([[2, 'logs every decision']])
+  })
+
+  it.each([
+    'The encoder logs every <!-- x -->\ndecision.',
+    'The encoder logs every <!-- x\ncontinues --> decision.',
+    'The encoder logs every <!-- x\ncontinues -->\ndecision.',
+    'The encoder logs every <!-- x. -->\ndecision.',
+  ])('keeps a visibly unfinished paragraph open across comments: %s', text => {
+    expect(markdownClaims(text)).toEqual([[1, 'logs every decision']])
+  })
+
+  it.each([
+    'The encoder logs every. <!-- x -->\ndecision.',
+    'The encoder logs every <!-- x -->\n- decision.',
+    'The encoder logs every\n<!-- x -->\ndecision.',
+    'The encoder logs every_decision.',
+    'The encoder logs __every_decision__.',
+    'The encoder logs `**every**` decision.',
+    String.raw`The encoder logs every\*decision\*.`,
+    String.raw`The encoder logs every\_decision\_.`,
+    'The encoder logs every<!-- unclosed comment decision.',
+  ])('preserves visible block boundaries and literal delimiters: %s', text => {
+    expect(markdownClaims(text)).toEqual([])
+  })
+
+  it.each([
+    '**The encoder logs every decision.**',
+    'The encoder logs every&#32;decision.',
+    'The encoder logs every<!-- x --> decision.',
+  ])('keeps allowances through inline rendering: %s', text => {
+    expect(markdownClaims(`${text} <!-- claims-check: allow -->`)).toEqual([])
+  })
+
+  it.each([
+    'The encoder does not merely log every decision; it publishes them.',
+    "The encoder doesn't simply log every decision.",
+    'The encoder does not simply log every decision; it publishes them.',
+    'The encoder publishes traces of failed runs and successful runs.',
+    'The encoder publishes traces of failed runs and of every successful run.',
+    'The encoder publishes traces of failed runs, and successful runs.',
+    'The encoder publishes traces of failed runs; successful runs too.',
+    'The encoder stores its trace locally and on a public server.',
+    'The encoder stores its trace on the local machine and on a public server.',
+    'The encoder stores its trace locally, and on a public server.',
+    'The encoder stores its trace locally, and uploads it to a public server.',
+    'The encoder stores its trace locally; it is also stored on a public server.',
+    'The encoder keeps its traces locally, and publishes its transcripts.',
+    'The encoder runs nightly, and publishes its transcripts.',
+    'The encoder keeps its traces locally, and publicly publishes its transcripts.',
+  ])('keeps affirmative predicates outside scoped exemptions: %s', text => {
+    expect(encoderRecordClaims(text).length).toBeGreaterThan(0)
+    expect(markdownClaims(text).length).toBeGreaterThan(0)
+  })
+
+  it.each([
+    "The decision log isn't kept.",
+    'The decision log isn’t kept.',
+    'The encoder doesn‘t log every decision.',
+    "The encoder can't publicly publish its traces.",
+    'The encoder does not openly publish its reasoning.',
+    'The encoder does not automatically keep a decision log.',
+    'The encoder does not ever log every decision.',
+    'The encoder stores its trace locally. A public server stores documentation.',
+    'The encoder publishes traces of failed runs. Successful runs keep their manifests.',
+    'The encoder runs nightly, and the engine publishes its traces.',
+    'The encoder runs nightly, and the reviewer publishes its transcripts.',
+  ])('honors denials and scope boundaries: %s', text => {
+    expect(encoderRecordClaims(text)).toEqual([])
+    expect(markdownClaims(text)).toEqual([])
+  })
+
+  it('maps an inherited subject to the second predicate source offset', () => {
+    const direct = 'The encoder keeps its traces locally, and publishes its transcripts.'
+    expect(encoderRecordHits(direct)).toEqual([[direct.indexOf('publishes'), 'publishes its transcripts']])
+    expect(markdownClaims('The encoder keeps its traces locally, and\npublishes its transcripts.')).toEqual([[2, 'publishes its transcripts']])
+  })
+
+  it.each([
+    'Every rule is valİdated.',
+    'Every rule is valıdated.',
+    'Every rule is checKed.',
+    'Every rule iſ validated.',
+  ])('keeps the legacy Unicode fold separately from encoder ASCII semantics: %s', text => {
+    expect(markdownClaims(text).length).toBeGreaterThan(0)
+    expect(encoderRecordClaims(text)).toEqual([])
+  })
+
+  it('keeps code-point offsets after 400 astral characters', () => {
+    expect(encoderRecordHits(`${'😀'.repeat(400)} The encoder logs every decision.`)).toEqual([[413, 'logs every decision']])
   })
 })

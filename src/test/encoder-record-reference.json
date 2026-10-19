@@ -1,8 +1,8 @@
 {
  "about": "Exact Python guard outputs, including code-point input offsets and Markdown physical lines. Regenerate with scripts/check-encoder-record-reference.py --update --ops ../ops.",
- "opsCommit": "a3940e771291307d4b135a460fddc08107f4be19",
- "fixtureSha256": "f6417b8beb27876a6e997d4939c81f15b4304f07f57adabfd37666c159413e8b",
- "guardSha256": "1144c5656d5f540a78206c11031a10922439190ef4c65fb462143180849431c7",
+ "opsCommit": "e213e806bc3bc2a084f1da89bf0f02a1f78d160d",
+ "fixtureSha256": "f266b1add1d0239662823f10aa8ba4f5a94345f9d3dd82ec4e88efda762b8cf3",
+ "guardSha256": "0e4aef26d9ea951176635e96d3f7ee525b59ff2a18121975144f3f984d1d729b",
  "cases": [
   {
    "hits": [
@@ -9011,6 +9011,1423 @@
   },
   {
    "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": [
+    [
+     28,
+     "log every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     28,
+     "log every decision"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "log every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     27,
+     "log every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     27,
+     "log every decision"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "log every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     28,
+     "log every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     28,
+     "log every decision"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "log every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes traces"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes traces"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "stores its trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "stores its trace"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "stores its trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "stores its trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "stores its trace"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "stores its trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     42,
+     "publishes its transcripts"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     42,
+     "publishes its transcripts"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "publishes its transcripts"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     42,
+     "publishes its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     42,
+     "publishes its reasoning"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "publishes its reasoning"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "stores its trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "stores its trace"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "stores its trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "stores its trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "stores its trace"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "stores its trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "stores its trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "stores its trace"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "stores its trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes traces"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes traces"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     30,
+     "publishes its transcripts"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     30,
+     "publishes its transcripts"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "publishes its transcripts"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "keeps its traces"
+    ],
+    [
+     51,
+     "publishes its transcripts"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "keeps its traces"
+    ],
+    [
+     51,
+     "publishes its transcripts"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "keeps its traces"
+    ],
+    [
+     1,
+     "publishes its transcripts"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     413,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     413,
+     "logs every decision"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "Every encoding decision is logged"
+    ],
+    [
+     1,
+     "encoding decision is logged"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": [
+    [
+     14,
+     "logs every decision"
+    ]
+   ],
+   "markdown": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "Every rule is valİdat"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "Every rule is valıdat"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "Every rule is checK"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "Every rule iſ validat"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     3,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     2,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     23,
+     "publishes the successful-run trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     23,
+     "publishes the successful-run trace"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "publishes the successful-run trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     23,
+     "publishes successful diagnostic traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     23,
+     "publishes successful diagnostic traces"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "publishes successful diagnostic traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     23,
+     "publishes a successful encoding trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     23,
+     "publishes a successful encoding trace"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "publishes a successful encoding trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     23,
+     "stores the full successful-run trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     23,
+     "stores the full successful-run trace"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "stores the full successful-run trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     23,
+     "keeps every successful diagnostic trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     23,
+     "keeps every successful diagnostic trace"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "keeps every successful diagnostic trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "stores its trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "stores its trace"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "stores its trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "stores its trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "stores its trace"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "stores its trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes traces"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes traces"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "stores its trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "stores its trace"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "stores its trace"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     12,
+     "publishes traces"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "publishes traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     53,
+     "publishes its transcripts"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     53,
+     "publishes its transcripts"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "publishes its transcripts"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     32,
+     "publishes its transcripts"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     32,
+     "publishes its transcripts"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "publishes its transcripts"
+    ]
+   ]
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": [
+    [
+     18,
+     "publishes its traces"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     20,
+     "publishes its traces"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "publishes its traces"
+    ]
+   ],
+   "markdown": []
+  },
+  {
+   "hits": [
+    [
+     17,
+     "publishes its traces"
+    ]
+   ],
+   "markdown": []
+  },
+  {
+   "hits": [
+    [
+     18,
+     "logs every decision"
+    ]
+   ],
+   "markdown": []
+  },
+  {
+   "hits": [
+    [
+     18,
+     "logs every decision"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     19,
+     "publishes its traces"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     28,
+     "logs every decision"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": [],
+   "markdown": []
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [],
+   "markdown": [
+    [
+     1,
+     "logs every decision"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     34,
+     "publishes its traces"
+    ]
+   ],
+   "markdown": [
+    [
+     1,
+     "publishes its traces"
+    ]
+   ]
+  },
+  {
+   "hits": [
+    [
+     36,
+     "publishes its traces"
+    ]
+   ],
    "markdown": []
   }
  ],

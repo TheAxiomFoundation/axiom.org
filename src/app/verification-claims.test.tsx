@@ -157,14 +157,14 @@ describe('verification claims', () => {
   })
 })
 
-// The encoder's record is its signed apply manifest, and no encoder trace is
-// published. Read from code on 2026-10-11:
+// The encoder's record is its signed apply manifest. A failed re-encode's
+// 90-day diagnostics artifact can contain a trace. Read from code on 2026-10-11:
 // - An apply manifest (axiom-encode cli.py _MODEL_APPLY_MANIFEST_FIELDS) names
 //   the citation, the runner, backend and model, and the path and SHA-256 of
 //   each file written, and is signed before it is written. It holds a trace's
 //   path and hash, never the trace, which stays on the machine that ran the
 //   encoder.
-// - No repo holds a trace, and the signed CI workflows put none in the
+// - No rules repo holds a trace, and the signed CI workflows put none in the
 //   artifacts that land. A failed targeted re-encode's diagnostics artifact
 //   can keep its trace for 90 days.
 // - The run telemetry in Supabase (encodings.encoding_runs,
@@ -179,7 +179,7 @@ describe('verification claims', () => {
 // scripts/check-encoder-record-reference.py --ops <checkout> rechecks that
 // snapshot against local git objects and runs Python without network access.
 const FIXTURES_PATH = join(process.cwd(), 'src/test/encoder-record-fixtures.json')
-const FIXTURES_SHA256 = 'f6417b8beb27876a6e997d4939c81f15b4304f07f57adabfd37666c159413e8b'
+const FIXTURES_SHA256 = 'f266b1add1d0239662823f10aa8ba4f5a94345f9d3dd82ec4e88efda762b8cf3'
 const FIXTURES: { text: string; banned: boolean; markdown?: boolean }[] = JSON.parse(readFileSync(FIXTURES_PATH, 'utf8')).cases
 
 describe('encoder record claims', () => {
