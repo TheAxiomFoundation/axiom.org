@@ -5,6 +5,10 @@ name: Collect encoding pipeline
 # axiom-api compile sweep. The /ops pipeline view reads only that table.
 # After writing, it dispatches sync-rulespec-index.yml when a merge is
 # waiting for the index, so merges don't wait out the 6-hour sync cron.
+# A second step measures every program bundle (encodings.program_bundle_*)
+# when the last pass is five hours old. collector-heartbeat.yml starts this
+# workflow every 30 minutes; the cron below is the fallback (GitHub starts it
+# only a few times a day).
 on:
   schedule:
     - cron: "7,37 * * * *"
@@ -19,6 +23,9 @@ on:
       check_error_lookups:
         description: Failing PR checks whose log to read this pass (one GitHub request each)
         default: "60"
+      merge_test_lookups:
+        description: Merges whose merge commit's checks to read this pass (one GitHub request each)
+        default: "40"
 
 permissions:
   contents: read
@@ -42,6 +49,7 @@ jobs:
           --failure-lookups "${{ inputs.failure_lookups || '60' }}"
           --run-detail-lookups "${{ inputs.run_detail_lookups || '80' }}"
           --check-error-lookups "${{ inputs.check_error_lookups || '60' }}"
+          --merge-test-lookups "${{ inputs.merge_test_lookups || '40' }}"
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -50,3 +58,17 @@ jobs:
           # compile sweep's artifact. Optional: unset leaves the compile
           # stage unchecked.
           AXIOM_API_ARTIFACTS_TOKEN: ${{ secrets.AXIOM_API_ARTIFACTS_TOKEN }}
+      # Program bundles (axiom-corpus manifests/program-bundles: 13 programs,
+      # federal and every state, about 37,000 documents) measured against the
+      # corpus, every module's rules and the attempts just written. A pass reads
+      # a quarter of a million corpus nodes and rewrites every row, so a
+      # scheduled run collects only when the last pass is five hours old or more
+      # (GitHub starts this cron late and skips many starts: a clock window such
+      # as "the first half hour of every sixth hour" went three days without a
+      # pass). A manual run always collects.
+      # .env.production holds the public anon key that reads the served corpus.
+      - run: bun --env-file=.env.production scripts/collect-program-bundles.mjs ${{ github.event_name == 'schedule' && '--every 5' || '' }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

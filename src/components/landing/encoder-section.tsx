@@ -16,14 +16,16 @@ export function EncoderSection() {
             III &middot; The encoder
           </span>
           <h2 className="heading-section mb-6 mt-2">
-            Statutes encoded and verified
+            How a statute gets encoded
           </h2>
           {/*
             No human sign-off clause here. The pipeline has no human review
             gate — the gates are deterministic checks, oracle cross-checks
-            where a comparison exists, and AI judges. The heading above already carries
-            "before they ship"; naming a human approver would describe a
-            step that does not exist.
+            where a comparison exists, and AI judges; naming a human approver
+            would describe a step that does not exist. The heading claims no
+            blanket "verified": CI skips validation, companion tests and
+            proof checks for modules on rulespec-us's waiver list (1,940 on
+            2026-10-02, holding 23,735 of 34,810 US rules).
           */}
           <p className="font-body text-lg text-[var(--color-ink-secondary)] max-w-[640px] mx-auto leading-relaxed">
             An AI-driven pipeline reads a statute and encodes it section by
@@ -35,13 +37,23 @@ export function EncoderSection() {
             terminal animation. */}
         <JourneyScrolly />
 
+        {/*
+          The encoder's record is its signed apply manifest (axiom-encode
+          cli.py _MODEL_APPLY_MANIFEST_FIELDS): the citation, the model, and
+          a hash of each file written. It holds a trace's path and hash, not
+          the trace, which stays on the machine that ran the encoder. A
+          failed re-encode's 90-day diagnostics artifact can contain a trace.
+          This line claims the manifest and no per-decision record.
+        */}
         <Reveal
           as="p"
           className="mt-14 text-center font-body text-[0.95rem] text-[var(--color-ink-muted)] max-w-[640px] mx-auto leading-relaxed"
         >
-          The encoder logs every decision.{" "}
+          Each time the encoder applies an encoding, it leaves a signed
+          manifest naming the source citation and the model.{" "}
           <span className="serif-italic text-[var(--color-ink-secondary)]">
-            Disagreements get explained, not erased.
+            Disagreements are classified and published, including the ones
+            not yet explained.
           </span>
         </Reveal>
 

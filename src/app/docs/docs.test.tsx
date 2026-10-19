@@ -56,6 +56,19 @@ describe("DocsPage", () => {
     ).toBeInTheDocument();
   });
 
+  // The figure's compile seal feeds the chatbot, dashboards, and APIs, but it
+  // is illustrative: the certified ledger is empty (api.axiom.org/v1/ready)
+  // and the chatbot runs per-state program artifacts, not one sealed program.
+  // Neither the drawn text nor the accessible name may call it certified,
+  // signed, or sealed.
+  it("labels the pipeline figure's compile seal as illustrative", () => {
+    render(<DocsPage />);
+    const figure = screen.getByRole("img", { name: /five equal stations/i, hidden: true });
+    const text = `${figure.textContent ?? ""} ${figure.getAttribute("aria-label") ?? ""}`;
+    expect(text).not.toMatch(/\b(certified|signed|sealed)\b/i);
+    expect(figure.textContent).toMatch(/compiled · illustrative/);
+  });
+
   it("distinguishes implemented execution from planned admission", () => {
     render(<DocsPage />);
 

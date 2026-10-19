@@ -2,12 +2,28 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { DemoThumb } from "@/components/landing/demo-thumb";
 import { Reveal, RevealGroup, RevealItem } from "@/components/landing/reveal";
+import {
+  countWord,
+  ruleCoverageClause,
+  snapQcTotals,
+  SOUTHMOD_FACTS,
+} from "@/lib/verification-evidence";
 
 export const metadata: Metadata = {
   title: "About — Axiom Foundation",
   description:
     "The Axiom Foundation publishes open, machine-readable encodings of the world's rules, starting with tax and benefit policy — cited, time-aware, and executable.",
 };
+
+// Each clause is backed by a generated file; see src/lib/verification-evidence.ts.
+const HOW_WE_VERIFY = [
+  "We compare encodings with other calculators and datasets and publish the results.",
+  `${ruleCoverageClause()}.`,
+  "The calculators include PolicyEngine, TAXSIM, UKMOD, EUROMOD, UNU-WIDER's SOUTHMOD, and Statistics Canada's SPSD/M.",
+  "Max Ghenis is CEO of both Axiom and PolicyEngine, which he co-founded, and our TAXSIM runs use the TAXSIM executable that PolicyEngine packages.",
+  `SOUTHMOD's licence bars giving its models to anyone else, so we run them ${SOUTHMOD_FACTS.caveats.manualRuns.marker}, on synthetic households (the bundle has ${SOUTHMOD_FACTS.caveats.syntheticHouseholds.marker} at all), and none of the rules they check went through our ${SOUTHMOD_FACTS.caveats.notEncoderOutput.marker}.`,
+  `We also replay USDA's SNAP quality-control cases from ${countWord(snapQcTotals().states)} states to check our benefit arithmetic; the file keeps only eligible households, so the replay leaves eligibility untested.`,
+].join(" ");
 
 const BUILD = [
   {
@@ -25,7 +41,11 @@ const BUILD = [
   {
     n: "03",
     title: "The Encoder",
-    desc: "An AI-assisted pipeline that reads source law, drafts encodings subsection by subsection, and logs every decision with its provenance.",
+    // `axiom-encode encode` takes one citation and drafts that provision's
+    // encoding from its full text (cli.py run_model_eval(citations=[...]);
+    // harness/evals.py resolve_corpus_source_unit). A signed apply manifest is
+    // what it records; see src/components/landing/encoder-section.tsx.
+    desc: "An AI-assisted pipeline that reads a cited provision of source law, drafts its encoding, and leaves a signed manifest naming the source citation and the model for each encoding it applies.",
     // Held back for now — the /encoder page link returns later.
     href: null,
   },
@@ -170,16 +190,8 @@ export default function AboutPage() {
 
         <ProseBand label="How we verify">
           <p className="m-0 font-body text-[1.05rem] text-[var(--color-ink-secondary)] leading-relaxed text-pretty">
-            We compare encodings with other calculators and datasets and
-            publish the results. In September 2026, 20,780 of our 34,810 US
-            rules had no comparison. The calculators include PolicyEngine,
-            TAXSIM, UKMOD, EUROMOD, and Statistics Canada&apos;s SPSD/M. Max
-            Ghenis is CEO of both Axiom and PolicyEngine, which he co-founded,
-            and our TAXSIM runs use the TAXSIM executable that PolicyEngine
-            packages. We also replay USDA&apos;s SNAP quality-control cases
-            from six states to check our benefit arithmetic; the file keeps
-            only eligible households, so the replay leaves eligibility
-            untested. Open isn&apos;t enough &mdash; the point is that{" "}
+            {HOW_WE_VERIFY}{" "}
+            Open isn&apos;t enough &mdash; the point is that{" "}
             <span className="serif-italic text-[var(--color-ink)]">
               you can check our work
             </span>
@@ -194,6 +206,11 @@ export default function AboutPage() {
           </Link>
         </ProseBand>
 
+        {/*
+          Public: every rulespec-* repo, axiom-corpus, axiom-encode,
+          axiom-rules-engine and axiom-oracles. Not all of the code is public
+          (axiom-api, the hosted runtime, is private), so this names what is.
+        */}
         <ProseBand label="How we're organized">
           <p className="m-0 font-body text-[1.05rem] text-[var(--color-ink-secondary)] leading-relaxed text-pretty">
             The Axiom Foundation is a fiscally sponsored project of the{" "}
@@ -205,8 +222,10 @@ export default function AboutPage() {
             >
               PSL Foundation
             </a>
-            , which also sponsors PolicyEngine. Our code, our data, and our
-            encoding decisions are public.
+            , which also sponsors PolicyEngine. Our encodings and source corpus
+            are public, and so is the code for the encoder, the rules engine
+            and the comparison harness. Each encoding the encoder applies carries a signed
+            manifest naming its source citation and model.
           </p>
           <a
             href="https://github.com/TheAxiomFoundation"

@@ -987,3 +987,98 @@ body:has(.embed-page) {
 body:has(.graph-viewer-root) > footer {
   display: none;
 }
+
+/* ── /aspen convening page: inline links and link-styled buttons ── */
+.aspen-link {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.aspen-link:hover {
+  color: var(--color-accent-hover);
+}
+
+/* /aspen headings read in sentence case, not the site's uppercase display
+   styles. The presenter sets the same on its own headings. */
+[data-aspen-page] :is(.heading-page, .heading-section, .heading-sub) {
+  text-transform: none;
+  letter-spacing: -0.01em;
+}
+
+/* The site's selection puts near-black ink on a faint amber wash, which
+   blacks out white text on the /aspen dark boxes (and the presenter's
+   Encoded law box). Text set in white there reads as white on the same solid
+   amber band the code surfaces use (6.4:1). */
+:is([data-aspen-page], [data-aspen-presenter])
+  :is(.text-white, [class*="text-white/"], .aspen-on-dark)::selection,
+:is([data-aspen-page], [data-aspen-presenter])
+  :is(.text-white, [class*="text-white/"], .aspen-on-dark) ::selection {
+  background: var(--color-code-selection);
+  color: #fff;
+  fill: #fff;
+}
+
+/* /aspen on a phone: read at arm's length in a dim room. Every rem on the
+   page grows, and inputs pass 16px, so iOS stops zooming in on focus. The
+   size is relative, so a reader's own larger browser text setting still
+   counts, and the page's text-size button (data-aspen-text) steps it up. */
+@media (max-width: 639px) {
+  html:has([data-aspen-page]) {
+    font-size: 112.5%;
+  }
+}
+html[data-aspen-text="large"] {
+  font-size: 118.75%;
+}
+html[data-aspen-text="larger"] {
+  font-size: 137.5%;
+}
+@media (max-width: 639px) {
+  html[data-aspen-text="large"] {
+    font-size: 131.25%;
+  }
+  html[data-aspen-text="larger"] {
+    font-size: 150%;
+  }
+}
+
+/* Participant pages read in full ink for contrast: the secondary and muted
+   grays resolve to the body ink. Placeholders keep a lighter (still 7.5:1)
+   tone, so an empty box never looks filled in. The presenter is untouched. */
+[data-aspen-page] {
+  --color-ink-secondary: var(--color-ink);
+  --color-ink-muted: var(--color-ink);
+}
+
+/* Go: dark green for the buttons that move someone to the next step of the
+   session (Next, and "The room has moved on"), so it never looks like the
+   buttons inside a step. White on it reads at 7.1:1, and 9.6:1 on hover. */
+:is([data-aspen-page], [data-aspen-presenter]) {
+  --color-go: #166534;
+  --color-go-hover: #14532d;
+}
+[data-aspen-page] ::placeholder {
+  color: #57534e;
+  opacity: 1;
+}
+
+/* /aspen scrolls without animation: a new screen opens at its top at once,
+   and the browser keeps a field in view while typing without gliding the
+   page. The padding keeps the sticky header from covering a focused field. */
+html:has([data-aspen-page]) {
+  scroll-behavior: auto;
+  scroll-padding-top: 5.5rem;
+}
+
+/* The site's kicker is small spaced capitals; on /aspen it reads as a
+   sentence, at a size a phone can read. */
+[data-aspen-page] .kicker {
+  font-family: var(--f-body);
+  font-size: 0.95rem;
+  letter-spacing: normal;
+  text-transform: none;
+}

@@ -3,6 +3,7 @@ import {
   railChunksFromProvisions,
   refsForChunk,
   type BodyChunk,
+  type DeclaredExternalComparisons,
   type SectionPageData,
   type SectionProvision,
 } from "@/lib/axiom/section-page";
@@ -58,6 +59,85 @@ const ORACLE_LABELS: Readonly<Record<string, string>> = {
   euromod: "EUROMOD",
 };
 
+function oracleLabel(engine: string): string {
+  return Object.hasOwn(ORACLE_LABELS, engine) ? ORACLE_LABELS[engine] : engine;
+}
+
+/** Ties between Axiom and an engine, stated wherever the engine is named. */
+const ENGINE_DISCLOSURES: Readonly<Record<string, string>> = {
+  policyengine: "Max Ghenis is CEO of both Axiom and PolicyEngine.",
+};
+
+function plural(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
+/** The latest published results that are not a match, in words. */
+function nonMatchingResults(
+  counts: DeclaredExternalComparisons["engines"][number]["resultCounts"],
+): string[] {
+  return [
+    counts.known_difference > 0 &&
+      plural(counts.known_difference, "documented known difference", "documented known differences"),
+    counts.diff > 0 && plural(counts.diff, "unexplained difference", "unexplained differences"),
+    counts.errored > 0 && plural(counts.errored, "run without a conclusion", "runs without a conclusion"),
+    counts.none > 0 && plural(counts.none, "comparison without a current result", "comparisons without a current result"),
+  ].filter((part): part is string => Boolean(part));
+}
+
+/**
+ * Description of an engine's declared comparisons: the program, its
+ * cases, the engine, what the latest published results show, and any
+ * tie between Axiom and the engine. Rendered as the chip's title and
+ * as screen-reader text, so the disclosure does not depend on a hover
+ * tooltip.
+ */
+export function externalComparisonTitle(
+  declared: Pick<DeclaredExternalComparisons, "programId" | "jurisdiction">,
+  comparison: DeclaredExternalComparisons["engines"][number],
+): string {
+  const engine = oracleLabel(comparison.engine);
+  const one = comparison.caseCount === 1;
+  const described =
+    comparison.caseDescriptions.length > 0
+      ? ` (${comparison.caseDescriptions
+          .map((description) => description.replace(/\.$/, ""))
+          .join("; ")})`
+      : "";
+  const disclosure = Object.hasOwn(ENGINE_DISCLOSURES, comparison.engine)
+    ? ENGINE_DISCLOSURES[comparison.engine]
+    : null;
+  const counts = comparison.resultCounts;
+  const measured =
+    counts.match + counts.known_difference + counts.diff + counts.errored;
+  const others = nonMatchingResults(counts);
+  let outcome: string;
+  if (comparison.matchingCaseCount > 0) {
+    const asOf = formatDate(comparison.matchingAsOf);
+    const versions = comparison.matchingEngineVersions.join(", ");
+    outcome =
+      `In the latest published results${asOf ? `, as of ${asOf}` : ""}, ` +
+      `${comparison.matchingCaseCount} of ${comparison.caseCount} ` +
+      `${one ? "case matches" : "match"} ${engine} on every compared output, ` +
+      `within each comparison's tolerance` +
+      `${versions ? ` (${engine} model version ${versions})` : ""}.` +
+      (others.length > 0 ? ` The rest: ${others.join(", ")}.` : "");
+  } else if (measured > 0) {
+    outcome = `The latest published results show no match: ${others.join(", ")}.`;
+  } else {
+    outcome =
+      `No current result is published for ${one ? "it" : "them"}, so this ` +
+      `chip does not say whether Axiom and ${engine} agree.`;
+  }
+  return [
+    `${comparison.caseCount} test ${one ? "case" : "cases"} for ` +
+      `${declared.programId} (${declared.jurisdiction}) ` +
+      `${one ? "declares" : "declare"} a comparison with ${engine}${described}.`,
+    outcome,
+    ...(disclosure ? [disclosure] : []),
+  ].join(" ");
+}
+
 /** Past this many subsections the segment map gives way to numerals. */
 const COVERAGE_MAP_MAX_UNITS = 16;
 
@@ -65,16 +145,11 @@ const CHIP_CLASS =
   "inline-flex items-center gap-2 rounded-full border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-3 py-1.5 text-[12px] font-medium leading-none text-[var(--color-ink-secondary)]";
 
 /**
- * The section's trust row — three quiet status chips in the app's
- * sans, product-style rather than typewriter-style:
- *
- *   (∀ 8 rules) (▰▱▱▱▱▱ 1 of 6 subsections) (✓ Verified · PolicyEngine)
- *
- * Coverage is a map, not a meter: one segment per top-level
- * subsection in document order, filled where rules exist; each
- * segment links to its subsection. The verified chip appears only
- * for external-oracle parity comparisons — golden expectations are
- * self-graded and earn nothing. Denominators always shown.
+ * The section's trust row: encoded rules, subsection coverage, and
+ * a comparison chip only when every declared case for an engine has
+ * fresh latest matches. The data assembly enforces the seven-day
+ * window; the chip includes N of M and the oldest matching date.
+ * Missing, stale, and nonmatching results leave the chip hidden.
  */
 function EncodingStatusLine({ data }: { data: SectionPageData }) {
   if (data.encodedRules.length === 0) return null;
@@ -90,6 +165,7 @@ function EncodingStatusLine({ data }: { data: SectionPageData }) {
   const encodedCount = unitAnchors.filter((anchor) =>
     encodedAnchors.has(anchor),
   ).length;
+  const declared = data.externalComparisons;
 
   return (
     <div className="mt-3.5 flex flex-wrap items-center gap-2">
@@ -142,32 +218,32 @@ function EncodingStatusLine({ data }: { data: SectionPageData }) {
         </span>
       )}
 
-      {data.parity && (
-        <span
-          className="inline-flex cursor-help items-center gap-2 rounded-full border border-[rgba(22,101,52,0.25)] bg-[rgba(22,101,52,0.06)] px-3 py-1.5 text-[12px] font-medium leading-none text-[var(--color-success)]"
-          title={`⊨ Externally verified: ${data.parity.programId} (${data.parity.jurisdiction}) agrees with ${
-            ORACLE_LABELS[data.parity.oracle] ?? data.parity.oracle
-          } — ${data.parity.caseDescriptions.join(" — ")}`}
-        >
-          <svg
-            aria-hidden
-            viewBox="0 0 12 12"
-            className="h-3 w-3"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+      {declared?.engines.map((comparison) => {
+        if (
+          comparison.caseCount === 0 ||
+          comparison.matchingCaseCount !== comparison.caseCount ||
+          !comparison.matchingAsOf
+        ) {
+          return null;
+        }
+        const description = externalComparisonTitle(declared, comparison);
+        const cases = comparison.caseCount === 1 ? "case" : "cases";
+        const asOf = formatDate(comparison.matchingAsOf);
+        return (
+          <span
+            key={comparison.engine}
+            className={`${CHIP_CLASS} cursor-help`}
+            title={description}
           >
-            <path d="M2 6.2 4.8 9 10 3.4" />
-          </svg>
-          Verified · {ORACLE_LABELS[data.parity.oracle] ?? data.parity.oracle}
-          <span className="opacity-60">
-            {data.parity.caseCount}{" "}
-            {data.parity.caseCount === 1 ? "case" : "cases"}
+            Matches {oracleLabel(comparison.engine)}
+            <span className="opacity-60">
+              {comparison.matchingCaseCount} of {comparison.caseCount} {cases}
+              {asOf ? ` · ${asOf}` : ""}
+            </span>
+            <span className="sr-only">{description}</span>
           </span>
-        </span>
-      )}
+        );
+      })}
     </div>
   );
 }

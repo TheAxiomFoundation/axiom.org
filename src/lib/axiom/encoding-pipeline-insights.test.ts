@@ -12,7 +12,7 @@ import {
   scopeOptions,
   versionBins,
 } from "./encoding-pipeline-insights";
-import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
+import { dependentAttempt, mergedAttempt, outsideAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 
 const NOW = Date.parse("2026-09-30T12:00:00Z");
 const day = (n: number) => `2026-09-${String(n).padStart(2, "0")}T10:00:00Z`;
@@ -48,19 +48,24 @@ describe("runStats", () => {
     ];
     const stats = runStats(attempts);
     expect(stats.firstAttempt).toEqual({ success: 2, total: 3 });
+    // Retries count until a citation's first success: us/x's runs after its
+    // third are re-encodes of a citation already encoded.
     expect(stats.byAttempt).toEqual([
       { label: "1st", success: 2, total: 3 },
-      { label: "2nd", success: 0, total: 2 },
+      { label: "2nd", success: 0, total: 1 },
       { label: "3rd", success: 1, total: 1 },
-      { label: "4th", success: 0, total: 1 },
-      { label: "5th", success: 0, total: 1 },
-      { label: "6th+", success: 1, total: 2 },
     ]);
     expect(stats.mostDispatched).toEqual([
       { citation: "us/x", dispatches: 9, successes: 2, merged: 0 },
       { citation: "us/y", dispatches: 3, successes: 1, merged: 1 },
     ]);
-    expect(stats.cost).toEqual({ recorded: 3, finished: 10, total: 2.25, onFailures: 1.5 });
+    expect(stats.cost).toEqual({
+      recorded: 3,
+      finished: 10,
+      total: 2.25,
+      onFailures: 1.5,
+      dependent: { count: 0, total: 0 },
+    });
   });
 
   it("leaves out attempt places nobody reached, and ranks nothing below three dispatches", () => {
@@ -172,6 +177,7 @@ describe("scopes", () => {
     expect(inScope("us", { jurisdiction: "us", only: true })).toBe(true);
     expect(rootJurisdiction("uk-wakefield")).toBe("uk");
     expect(attemptJurisdiction({ jurisdiction: null, citation: "dk/statute/x" })).toBe("dk");
+    expect(attemptJurisdiction({ jurisdiction: "us-nc:manual", citation: "us-nc:manual/x" })).toBe("us-nc");
   });
 
   it("offers each top-level jurisdiction, and the ones within the selected", () => {
@@ -191,9 +197,48 @@ describe("scopes", () => {
     ]);
     expect(all.within).toEqual([]);
     expect(scopeOptions(attempts, { jurisdiction: "us-la", only: false }).within).toEqual([
-      { jurisdiction: "us", only: true, label: "us only", citations: 1 },
-      { jurisdiction: "us-la", only: false, label: "us-la", citations: 2 },
+      { jurisdiction: "us", only: true, label: "US Federal only", citations: 1 },
+      { jurisdiction: "us-la", only: false, label: "Louisiana", citations: 2 },
+    ]);
+    // Named, sorted by name, and a malformed "us-nc:manual" root counted under North Carolina.
+    const more = [
+      ...attempts,
+      pipelineAttempt({ id: "7", citation: "us-nc/x", jurisdiction: "us-nc" }),
+      pipelineAttempt({ id: "8", citation: "us-nc:manual/y", jurisdiction: "us-nc:manual" }),
+      pipelineAttempt({ id: "9", citation: "us-al/z", jurisdiction: "us-al" }),
+    ];
+    expect(scopeOptions(more, { jurisdiction: "us", only: false }).within.map((o) => `${o.label} ${o.citations}`)).toEqual([
+      "US Federal only 1",
+      "Alabama 1",
+      "Louisiana 2",
+      "North Carolina 2",
     ]);
     expect(scopeOptions(attempts, { jurisdiction: "dk", only: false }).within).toEqual([]);
+  });
+});
+
+describe("run statistics beside other sources", () => {
+  it("count dispatches only, but add the cost of modules encoded inside other citations' runs", () => {
+    const rows = [
+      pipelineAttempt({ id: "a", citation: "us/a", cost_usd: 1, encoder_version: "0.2.1" }),
+      pipelineAttempt({ id: "b", citation: "us/a", dispatched_at: day(21), run_conclusion: "success", cost_usd: 2, encoder_version: "0.2.1" }),
+      // Merged by hand and encoded in another run: neither is a dispatch or a retry.
+      outsideAttempt({ citation: "us/a", encoder_version: "0.2.1" }),
+      dependentAttempt({ citation: "us/a", cost_usd: 0.5, encoder_version: "0.2.1" }),
+      dependentAttempt({ id: "dep:2", citation: "us/b", cost_usd: 0.25, run_conclusion: "success" }),
+    ];
+    const stats = runStats(rows);
+    expect(stats.firstAttempt).toEqual({ success: 0, total: 1 });
+    expect(stats.byAttempt.map((rate) => rate.total)).toEqual([1, 1]);
+    expect(stats.cost).toEqual({
+      recorded: 2,
+      finished: 2,
+      total: 3.75,
+      onFailures: 1.5,
+      dependent: { count: 2, total: 0.75 },
+    });
+    expect(versionBins(rows)).toEqual([{ from: "0.2.1", to: "0.2.1", runs: 2, successes: 1, lastAt: day(21) }]);
+    // Citation views take every source.
+    expect(pipelineFunnel(rows)).toMatchObject({ citations: 2, encoded: 2 });
   });
 });

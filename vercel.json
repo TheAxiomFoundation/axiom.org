@@ -147,6 +147,14 @@
     {
       "source": "/:site(advisors|advisors-[a-z0-9-]+)/:path(.*)",
       "destination": "https://axiom-advisors.vercel.app/:site/:path(.*)"
+    },
+    {
+      "source": "/:site(partners|partners-[a-z0-9-]+)",
+      "destination": "https://axiom-partners-sigma.vercel.app/:site"
+    },
+    {
+      "source": "/:site(partners|partners-[a-z0-9-]+)/:path(.*)",
+      "destination": "https://axiom-partners-sigma.vercel.app/:site/:path(.*)"
     }
   ],
   "redirects": [

@@ -49,7 +49,7 @@ describe("Nav", () => {
     // The small company checker was pulled from the gallery.
     expect(screen.queryByText("Small company checker")).not.toBeInTheDocument();
     expect(
-      screen.getAllByText("Get accurate answers")[0].closest("a"),
+      screen.getAllByText("Ask about benefits and taxes")[0].closest("a"),
     ).toHaveAttribute("href", "/demos?d=chatbot");
     expect(
       screen.getAllByText("Explore benefits cliffs")[0].closest("a"),
@@ -58,6 +58,18 @@ describe("Nav", () => {
       "href",
       "/demos",
     );
+  });
+
+  // Nav labels are public claims about the demos. The chatbot is an OpenAI
+  // model with tool access to the rules engine, giving estimates
+  // (finbot-snap-demo), so no label may promise accurate, certified, or
+  // official answers.
+  it("makes no accuracy or certification claims in demo labels", () => {
+    const { container } = render(<Nav />);
+    const text = container.textContent ?? "";
+    expect(text).not.toMatch(/\baccurate\b/i);
+    expect(text).not.toMatch(/\b(certified|verified|official)\b/i);
+    expect(text).not.toMatch(/ground truth/i);
   });
 
   it("renders the Axiom Foundation logo", () => {
@@ -75,6 +87,13 @@ describe("Nav", () => {
       "href",
       "https://axiom-foundation.org/team",
     );
+  });
+
+  it("lists the slides index under the About dropdown", () => {
+    render(<Nav />);
+    for (const el of screen.getAllByText("Slides")) {
+      expect(el.closest("a")).toHaveAttribute("href", "/slides");
+    }
   });
 
   it("highlights active link based on pathname", () => {

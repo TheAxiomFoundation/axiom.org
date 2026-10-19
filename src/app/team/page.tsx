@@ -11,13 +11,18 @@ export const metadata: Metadata = {
 const MEMBERS = [
   {
     name: "Max Ghenis",
-    // Bio rewritten and fact-confirmed by Max 2026-07-12, receipts revised
-    // by him 2026-07-14 (Round1-Website-Copy.md §3).
+    // Reframed 2026-10-06 per Max's 2026-10-05 direction: a leader described
+    // by his organizations' missions, with no builder lines. Wording from his
+    // own Aspen (2026-06-15) and Center for Civic Futures (2026-06-07) bios;
+    // facts carried from the version he confirmed 2026-07-12 and revised
+    // 2026-07-14 (Round1-Website-Copy.md §3). Google line narrowed to
+    // "data scientist at Google" by Max 2026-10-08.
     title: "Chief Executive Officer and Founder",
     image: "/team/max-ghenis.jpg",
     linkedin: "https://www.linkedin.com/in/maxghenis",
     bio: [
-      "Max founded the Axiom Foundation to make the law itself an open, verifiable codebase, and he builds its machinery: the encoder pipeline, the RuleSpec format, and the verification method behind every published rule. He is co-founder and CEO of PolicyEngine, the open-source platform that computes how tax and benefit policy reaches households and whole populations in the US and UK — used by the Joint Economic Committee, the Bureau of Economic Analysis, and 10 Downing Street, and powering the benefit screeners several partners run to connect families with programs they qualify for. He also built PolicyBench, a public benchmark that grades AI models against exact computations of the law. Before the Axiom Foundation, he founded the UBI Center, whose team published 60+ open studies of universal basic income and cash transfers, and spent eight years in data science at Google and YouTube. He holds an M.S. in Data, Economics, and Development Policy from MIT and a B.S. in operations research from UC Berkeley.",
+      "Max leads the Axiom Foundation, which publishes open, machine-readable encodings of the world's rules — starting with tax and benefit policy — so anyone can run, audit, or reform them. He is also co-founder and CEO of PolicyEngine, a nonprofit whose open-source software computes how taxes and benefits affect households and populations in the US and UK, and how proposed reforms would change eligibility, costs, and poverty. The Joint Economic Committee, the Bureau of Economic Analysis, and 10 Downing Street use PolicyEngine, and it powers the benefit screeners several partners run to connect families with programs they qualify for.",
+      "Before PolicyEngine, he founded the UBI Center, a think tank whose team published 60+ open studies of universal basic income and cash transfers. Earlier, he spent eight years at Google as a data scientist. He holds a bachelor's in operations research from UC Berkeley and a master's in Data, Economics, and Development Policy from MIT, and is an elected member of the National Academy of Social Insurance.",
     ],
   },
   {

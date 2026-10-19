@@ -48,7 +48,10 @@ export function parseCitation(citation: string): ParsedCitation {
     };
   }
 
-  const colon = citation.indexOf(":");
+  // A colon after the jurisdiction separates it from the path; a colon inside
+  // the path is part of a section's own number (Louisiana's `47:32`).
+  const first = citation.indexOf(":");
+  const colon = first > 0 && !citation.slice(0, first).includes("/") ? first : -1;
   let scope = colon >= 0 ? citation.slice(0, colon) : "";
   const segments = (colon >= 0 ? citation.slice(colon + 1) : citation)
     .split("/")
@@ -71,6 +74,26 @@ export function parseCitation(citation: string): ParsedCitation {
     segments,
     documentDepth: Math.min(documentDepth, segments.length),
   };
+}
+
+const JURISDICTION_RE = /^[a-z]{2}(?:-[a-z0-9]+)*$/;
+
+/**
+ * A dispatch's citation in the corpus's own spelling, so the spellings of
+ * one provision count as one: a colon after the jurisdiction becomes a slash
+ * (`us-nc:manual/...` is `us-nc/manual/...`), the document class after it is
+ * singular, and a federal regulation's title is its number
+ * (`us/regulations/7-cfr/273/4` is `us/regulation/7/273/4`). A citation of
+ * any other shape is left as it is.
+ */
+export function normalizeCitation(citation: string): string {
+  const match = citation.match(/^([a-z]{2}(?:-[a-z0-9]+)*)[:/]([a-z]+)\/(.+)$/);
+  if (!match || !JURISDICTION_RE.test(match[1])) return citation;
+  const [, scope, kind, rest] = match;
+  const singular = CLASS_SINGULAR[kind];
+  if (!singular) return citation;
+  const path = scope === "us" && singular === "regulation" ? rest.replace(/^(\d+)-cfr(?=\/|$)/i, "$1") : rest;
+  return `${scope}/${singular}/${path}`;
 }
 
 export function documentKeyFromCitation(citation: string): string {
@@ -144,4 +167,64 @@ export function corpusLookupPathsForCitation(citation: string): string[] {
     paths.push([scope, ...cleaned.slice(0, depth)].join("/"));
   }
   return [...new Set(paths)];
+}
+
+/**
+ * The label at one lookup path, unless it merely echoes the path's own
+ * designator ("105-153.7" labeled "105-153.7") — those add nothing, so the
+ * caller keeps walking toward an ancestor with a real name.
+ */
+export function meaningfulLabelAt(
+  paths: string[],
+  index: number,
+  labels: Record<string, string>,
+): string | null {
+  const label = labels[paths[index]];
+  if (!label) return null;
+  const segment = paths[index].split("/").pop() ?? "";
+  return label.trim().toLowerCase() === segment.toLowerCase() ? null : label;
+}
+
+/** Deepest meaningfully-named node, the document itself included. */
+export function deepestLabelForCitation(
+  citation: string | null,
+  labels: Record<string, string>,
+): string | null {
+  if (!citation) return null;
+  const paths = corpusLookupPathsForCitation(citation);
+  for (let i = paths.length - 1; i >= 0; i--) {
+    const label = meaningfulLabelAt(paths, i, labels);
+    if (label) return label;
+  }
+  return null;
+}
+
+/** Deepest meaningfully-named node below the document itself. */
+export function sectionLabelForCitation(
+  citation: string | null,
+  labels: Record<string, string>,
+): string | null {
+  if (!citation) return null;
+  const paths = corpusLookupPathsForCitation(citation);
+  for (let i = paths.length - 1; i >= 1; i--) {
+    const label = meaningfulLabelAt(paths, i, labels);
+    if (label) return label;
+  }
+  return null;
+}
+
+/** A readable identifier, never an invented title, while metadata is absent. */
+export function documentIdentifier(key: string): string {
+  const { scope, segments } = parseCitation(key);
+  if (!scope || segments.length < 2) return key;
+  return segments
+    .slice(1)
+    .map((segment) => {
+      // Preserve identifiers and their punctuation; only make short code tokens
+      // readable as acronyms. No jurisdiction- or document-specific names.
+      return segment.replace(/[a-z]+/gi, (token) =>
+        token.length <= 4 ? token.toUpperCase() : token,
+      );
+    })
+    .join(" · ");
 }

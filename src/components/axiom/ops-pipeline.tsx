@@ -1,13 +1,12 @@
 "use client";
 
-import { type ReactNode, useMemo, useRef, useState } from "react";
+import { Fragment, type ReactNode, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { AlertTriangle, X } from "lucide-react";
+import { X } from "lucide-react";
 import styles from "./ops-pipeline.module.css";
 import {
   ageLabel,
-  bottleneckStage,
   durationLabel,
   isExitStage,
   journeyHref,
@@ -19,21 +18,43 @@ import {
   type WeeklyThroughput,
 } from "@/lib/axiom/encoding-pipeline";
 import type { QueuedSummary, QueueItemView } from "@/lib/axiom/encoding-queues";
-import type {
-  AttemptRate,
-  PipelineInsights,
-  PipelineScope,
-  RunStats,
-  ScopeOption,
-  VersionBin,
+import {
+  scopeName,
+  scopeSearch,
+  type AttemptRate,
+  type PipelineInsights,
+  type PipelineScope,
+  type RunStats,
+  type ScopeOption,
+  type VersionBin,
+  VERSION_BIN_RUNS,
 } from "@/lib/axiom/encoding-pipeline-insights";
 import {
-  CORPUS_STATUS_LABELS,
+  CORPUS_FLAG_LABELS,
+  CORPUS_FLAGS,
+  type CorpusFlag,
   type CorpusJurisdiction,
   type CorpusView,
 } from "@/lib/axiom/corpus-releases";
+import { jurisdictionName, ownLevelName } from "@/lib/axiom/jurisdiction-names";
+import { RunTimeline } from "./run-timeline";
+import {
+  dispatchFlow,
+  type FlowGate,
+  type FlowSegment,
+  type EncodeParts,
+  type GateKey,
+  runTimeline,
+  type RunRow,
+  shortDuration,
+  type StepTimes,
+  type StepTiming,
+  type TestsParts,
+  type TimedStep,
+  type TriesUsed,
+} from "@/lib/axiom/encoding-pipeline-runs";
 
-/** The stages a citation moves through, in order, with a short status when nothing is stuck. */
+/** The stages a citation moves through, in order, with a short status (a tile's tooltip) when nothing is stuck. */
 const FLOW: Array<{ stage: PipelineStage; hint: string }> = [
   { stage: "encoding", hint: "running now" },
   { stage: "review", hint: "PR open" },
@@ -74,9 +95,25 @@ interface CitationListing {
 }
 
 /** What the list panel shows: citations, the queue's items, or the corpus releases. */
-type Listing = CitationListing | { kind: "queue" } | { kind: "corpus" };
+type Listing =
+  | CitationListing
+  | { kind: "queue" }
+  | { kind: "corpus" }
+  | { kind: "runs"; title: string; rows: RunRow[] };
+
+type DetailsTab = "flow" | "cards";
+
+const DETAILS_TABS: Array<{ id: DetailsTab; label: string }> = [
+  { id: "flow", label: "Flow" },
+  { id: "cards", label: "Breakdowns" },
+];
+
+/** The /ops/runs query for a scope. */
+const scopeQuery = scopeSearch;
 
 const NO_SCOPES = { roots: [], within: [] };
+
+
 
 export function OpsPipeline({
   view,
@@ -85,6 +122,10 @@ export function OpsPipeline({
   scopes = NO_SCOPES,
   queued,
   corpus = null,
+  flow = null,
+  times = null,
+  parts = null,
+  testParts = null,
   referenceMs,
 }: {
   view: PipelineView;
@@ -94,11 +135,45 @@ export function OpsPipeline({
   scopes?: { roots: ScopeOption[]; within: ScopeOption[] };
   queued: QueuedSummary | null;
   corpus?: CorpusView | null;
+  /** Every dispatch's path through the gates, counts only; rows load on demand. */
+  flow?: FlowGate[] | null;
+  /** How long each of the flow's gates takes. */
+  times?: StepTimes[] | null;
+  /** The encode run's parts and the tries its encode loop used. */
+  parts?: EncodeParts | null;
+  /** The tests on main's parts and how the first ones ended. */
+  testParts?: TestsParts | null;
   referenceMs: number;
 }) {
   const [listing, setListing] = useState<Listing | null>(null);
+  const [detailsTab, setDetailsTab] = useState<DetailsTab>(flow ? "flow" : "cards");
+  const runsRequest = useRef<Promise<RunsPayload> | null>(null);
+  // Every dispatch in the scope, with its citations' names, fetched once
+  // when the ledger or a flow segment first needs it.
+  const loadRuns = useCallback(() => {
+    runsRequest.current ??= fetch(`/ops/runs${scopeQuery(scope)}`)
+      .then((response) => {
+        if (!response.ok) throw new Error(`runs: ${response.status}`);
+        return response.json() as Promise<RunsPayload>;
+      })
+      .catch((error: unknown) => {
+        runsRequest.current = null;
+        throw error;
+      });
+    return runsRequest.current;
+  }, [scope]);
+  const openSegment = (gate: FlowGate, segment: FlowSegment) =>
+    loadRuns()
+      .then(({ rows }) => {
+        const ids = new Set(
+          dispatchFlow(rows)
+            .find((g) => g.key === gate.key)
+            ?.segments.find((s) => s.key === segment.key)?.ids ?? []
+        );
+        show({ kind: "runs", title: `${gate.label}: ${segment.label}`, rows: rows.filter((r) => ids.has(r.id)) });
+      })
+      .catch(() => undefined);
   const listRef = useRef<HTMLDivElement>(null);
-  const bottleneck = bottleneckStage(view);
   const shows = (title: string) => listing?.kind === "citations" && listing.title === title;
 
   // The list opens under the stage strip; bring it into view, since it may
@@ -121,6 +196,15 @@ export function OpsPipeline({
       count: view.stages[stage].count,
       newestFirst: isExitStage(stage),
     });
+  const showGroupOfStages = (group: CitationGroup) =>
+    show({
+      kind: "citations",
+      title: group.label,
+      description: group.description,
+      items: group.stages.flatMap((stage) => view.stages[stage].items),
+      count: group.count,
+      newestFirst: group.stages.every(isExitStage),
+    });
   const showGroup = (heading: string, group: PipelineGroupView, newestFirst: boolean) =>
     show({
       kind: "citations",
@@ -132,39 +216,110 @@ export function OpsPipeline({
       groupLabel: group.label,
     });
 
+  // The largest piles of stuck citations, wherever they sit: failed
+  // encodes by the step that stopped them, PRs by what holds them, and the
+  // ways out after a merge.
+  const blockers: Blocker[] = [
+    ...view.gates.map((group) => ({
+      key: `gate:${group.key}`,
+      label: group.label,
+      where: "Encode",
+      count: group.count,
+      open: () => showGroup("Failed", group, true),
+    })),
+    ...view.holds.map((group) => ({
+      key: `hold:${group.key}`,
+      label: group.label,
+      where: "Review",
+      count: group.count,
+      open: () => showGroup("In review", group, false),
+    })),
+    ...BLOCKER_STAGES.filter(({ stage }) => view.stages[stage].count > 0).map(({ stage, where }) => ({
+      key: `stage:${stage}`,
+      label: STAGE_COPY[stage].label,
+      where,
+      count: view.stages[stage].count,
+      open: () => showStage(stage),
+    })),
+  ]
+    .sort((a, b) => b.count - a.count)
+    .slice(0, TOP_BLOCKERS);
+
   return (
     <section aria-labelledby="pipeline-title" className={styles.pipeline}>
       <header className={styles.head}>
         <div>
           <p className={styles.eyebrow}>Pipeline</p>
           <h2 id="pipeline-title">Where every citation is</h2>
-          <p className={styles.sub}>
-            {number(view.citationCount)} citations · {number(view.dispatchCount)} dispatches
-            {view.firstDispatchAt && ` since ${formatDay(view.firstDispatchAt)}`}
-          </p>
+          {view.collectedAt && (
+            <p className={styles.updated}>
+              Updated{" "}
+              {ageLabel(view.collectedAt, referenceMs) ? `${ageLabel(view.collectedAt, referenceMs)} ago` : "just now"},
+              from GitHub and the index every 30 minutes.
+            </p>
+          )}
         </div>
-        {view.collectedAt && (
-          <p className={styles.updated}>Updated {ageLabel(view.collectedAt, referenceMs)} ago</p>
-        )}
       </header>
 
       {scopes.roots.length > 1 && <ScopeBar scope={scope} scopes={scopes} />}
-      {insights && <Funnel funnel={insights.funnel} />}
 
-      {bottleneck && (
-        <button
-          type="button"
-          className={styles.headline}
-          onClick={() => showStage(bottleneck)}
-        >
-          <AlertTriangle size={14} aria-hidden />
-          <span>
-            Biggest bottleneck: <strong>{number(view.stages[bottleneck].stuck)}</strong>{" "}
-            {inline(STAGE_COPY[bottleneck].label)}
-          </span>
-        </button>
+
+      <CitationStates
+        view={view}
+        queued={queued}
+        referenceMs={referenceMs}
+        isOpen={shows}
+        onGroup={showGroupOfStages}
+        onQueue={() => show({ kind: "queue" })}
+      />
+
+      <div className={styles.summaryRow}>
+        <TopBlockers blockers={blockers} />
+        <TrendRows weeks={view.weekly} />
+      </div>
+
+      {listing && (
+        <div ref={listRef} className={styles.listAnchor}>
+          {listing.kind === "citations" && (
+            <CitationList listing={listing} referenceMs={referenceMs} onClose={() => setListing(null)} />
+          )}
+          {listing.kind === "queue" && queued && (
+            <QueueList queued={queued} referenceMs={referenceMs} onClose={() => setListing(null)} />
+          )}
+          {listing.kind === "corpus" && corpus && (
+            <CorpusList corpus={corpus} referenceMs={referenceMs} onClose={() => setListing(null)} />
+          )}
+          {listing.kind === "runs" && (
+            <RunList title={listing.title} rows={listing.rows} referenceMs={referenceMs} onClose={() => setListing(null)} />
+          )}
+        </div>
       )}
 
+      <div className={styles.detailsHead}>
+        <h3 id="pipeline-details-title">Details</h3>
+        {scope && <span className={styles.detailsScope}>{scopeName(scope)}</span>}
+      </div>
+
+      <div id="pipeline-details" className={styles.details} aria-labelledby="pipeline-details-title">
+          {flow && (
+            <div className={styles.tabs} role="tablist" aria-label="Details view">
+              {DETAILS_TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={detailsTab === tab.id}
+                  className={styles.tab}
+                  onClick={() => setDetailsTab(tab.id)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          )}
+          {flow && detailsTab === "flow" && <FlowView gates={flow} times={times} parts={parts} testParts={testParts} onOpen={openSegment} />}
+          {detailsTab === "cards" && (
+          <>
       <ol
         className={`${styles.flow} ${corpus ? styles.flowWide : ""}`}
         aria-label="Pipeline stages"
@@ -175,13 +330,11 @@ export function OpsPipeline({
               type="button"
               className={`${styles.tile} ${corpus.outOfSync > 0 ? styles.tileStuck : ""}`}
               aria-pressed={listing?.kind === "corpus"}
+              title={corpus.outOfSync > 0 ? `${number(corpus.outOfSync)} out of sync` : "all in sync"}
               onClick={() => show({ kind: "corpus" })}
             >
               <span className={styles.tileLabel}>Corpus</span>
               <span className={styles.tileValue}>{number(corpus.jurisdictions.length)}</span>
-              <span className={styles.tileHint}>
-                {corpus.outOfSync > 0 ? `${number(corpus.outOfSync)} out of sync` : "all in sync"}
-              </span>
             </button>
           </li>
         )}
@@ -191,26 +344,26 @@ export function OpsPipeline({
               type="button"
               className={`${styles.tile} ${queued.blocked > 0 ? styles.tileStuck : ""}`}
               aria-pressed={listing?.kind === "queue"}
+              title={[
+                pauseText(queued, referenceMs),
+                queued.blocked > 0
+                  ? [`${number(queued.blocked)} blocked`, queued.blockedNote?.note].filter(Boolean).join(": ")
+                  : queued.paused
+                    ? null
+                    : `${number(queued.inFlight)} in flight`,
+                queued.skipped > 0 ? `${number(queued.skipped)} skipped` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
               onClick={() => show({ kind: "queue" })}
             >
               <span className={styles.tileLabel}>Queued</span>
               <span className={styles.tileValue}>{number(queued.pending)}</span>
-              <span
-                className={styles.tileHint}
-                title={(queued.blocked ? queued.blockedNote?.note : queued.pausedReason) ?? undefined}
-              >
-                {queued.blocked > 0
-                  ? `${number(queued.blocked)} blocked`
-                  : queued.pausedReason
-                    ? "paused"
-                    : `${number(queued.inFlight)} in flight`}
-              </span>
             </button>
           ) : (
             <div className={`${styles.tile} ${styles.static}`}>
               <span className={styles.tileLabel}>Queued</span>
               <span className={styles.tileValue}>—</span>
-              <span className={styles.tileHint}>no queues</span>
             </div>
           )}
         </li>
@@ -229,11 +382,11 @@ export function OpsPipeline({
                 type="button"
                 className={`${styles.tile} ${summary.stuck > 0 ? styles.tileStuck : ""}`}
                 aria-pressed={shows(STAGE_COPY[stage].label)}
+                title={status}
                 onClick={() => showStage(stage)}
               >
                 <span className={styles.tileLabel}>{STAGE_COPY[stage].label}</span>
                 <span className={styles.tileValue}>{number(summary.count)}</span>
-                <span className={styles.tileHint}>{status}</span>
               </button>
             </li>
           );
@@ -261,24 +414,10 @@ export function OpsPipeline({
         )}
       </div>
 
-      {listing && (
-        <div ref={listRef} className={styles.listAnchor}>
-          {listing.kind === "citations" && (
-            <CitationList listing={listing} referenceMs={referenceMs} onClose={() => setListing(null)} />
-          )}
-          {listing.kind === "queue" && queued && (
-            <QueueList queued={queued} referenceMs={referenceMs} onClose={() => setListing(null)} />
-          )}
-          {listing.kind === "corpus" && corpus && (
-            <CorpusList corpus={corpus} referenceMs={referenceMs} onClose={() => setListing(null)} />
-          )}
-        </div>
-      )}
-
       <div className={styles.cards}>
         <Breakdown
           title="Why encodes fail"
-          description={`${number(view.stages.encode_failed.count)} citations whose latest encode failed`}
+          description={`${number(view.stages.encode_failed.count)} citations whose latest run failed or was cancelled`}
           views={[
             { id: "step", label: "By step", groups: view.gates },
             { id: "rule", label: "By cause", groups: view.failures },
@@ -301,8 +440,44 @@ export function OpsPipeline({
         <SigningApproval view={view} referenceMs={referenceMs} />
         <Throughput view={view} />
       </div>
+          </>
+          )}
+      </div>
     </section>
   );
+}
+
+/**
+ * Why nothing new is dispatched, or null when dispatch runs: "Paused 13d ·
+ * dispatch workflow disabled", "Paused: <reason>" when the queue states one.
+ */
+function pauseText(queued: QueuedSummary, referenceMs: number): string | null {
+  if (!queued.paused) return queued.dispatchDisabled ? "Dispatch workflow disabled" : null;
+  const disabled = queued.dispatchDisabled ? "dispatch workflow disabled" : null;
+  const age = ageLabel(queued.pausedSince, referenceMs);
+  const reason = queued.pausedReason?.replace(/\.$/, "");
+  return [`Paused${age ? ` ${age}` : ""}${reason ? `: ${reason}` : ""}`, disabled].filter(Boolean).join(" · ");
+}
+
+/** Groups a breakdown card shows by name; the rest share one row. */
+const BREAKDOWN_ROWS = 7;
+
+/**
+ * A breakdown's rows: the largest BREAKDOWN_ROWS groups, then one row for
+ * the rest, so the rows always add up to the card's total.
+ */
+function breakdownRows(groups: PipelineGroupView[]): PipelineGroupView[] {
+  if (groups.length <= BREAKDOWN_ROWS) return groups;
+  const rest = groups.slice(BREAKDOWN_ROWS);
+  return [
+    ...groups.slice(0, BREAKDOWN_ROWS),
+    {
+      key: "other",
+      label: `${rest.length} other ${rest.length === 1 ? "group" : "groups"}`,
+      count: rest.reduce((total, group) => total + group.count, 0),
+      items: rest.flatMap((group) => group.items),
+    },
+  ];
 }
 
 /** Ranked groups of one stage, with a toggle when there is more than one way to cut it. */
@@ -319,8 +494,8 @@ function Breakdown({
 }) {
   const [active, setActive] = useState(views[0].id);
   const current = views.find((v) => v.id === active) ?? views[0];
-  const groups = current.groups.slice(0, 7);
-  const max = groups[0]?.count ?? 0;
+  const groups = breakdownRows(current.groups);
+  const max = Math.max(0, ...groups.map((group) => group.count));
   return (
     <div className={styles.card} role="group" aria-label={title}>
       <div className={styles.cardHead}>
@@ -514,6 +689,8 @@ function ItemRow({
     .filter((part): part is string => !!part && part !== groupLabel)
     .join(" · ");
   const flags = [
+    item.source === "outside" ? "outside the pipeline" : item.source === "dependent" ? "in another citation's run" : null,
+    item.stuck ? "stuck" : null,
     item.dispatches > 1 ? `${item.dispatches} dispatches` : null,
     item.openPrs > 1 ? `${item.openPrs} open PRs` : null,
     item.reachedIndex && !["indexed", "runs", "verified"].includes(item.stage)
@@ -543,13 +720,17 @@ function ItemRow({
   );
 }
 
-const QUEUE_GROUPS: Array<{ state: QueueItemView["state"]; title: string }> = [
-  { state: "blocked", title: "Needs a person" },
-  { state: "dispatched", title: "Run open" },
-  { state: "retrying", title: "Retrying after a failed run" },
-];
+/** The queue's item groups; a retry waits for the queue to resume while it is paused. */
+function queueGroups(paused: boolean): Array<{ state: QueueItemView["state"]; title: string }> {
+  return [
+    { state: "blocked", title: "Needs a person" },
+    { state: "dispatched", title: "Run open" },
+    { state: "retrying", title: paused ? "Will retry when resumed" : "Retrying after a failed run" },
+    { state: "skipped", title: "Skipped" },
+  ];
+}
 
-/** The dispatcher queues' items: what needs a person, what is running, what will retry. */
+/** The dispatcher queues' items: what needs a person, what is running, what will retry, what was set aside. */
 function QueueList({
   queued,
   referenceMs,
@@ -563,23 +744,23 @@ function QueueList({
     blocked: queued.blocked,
     dispatched: queued.inFlight,
     retrying: queued.items.filter((item) => item.state === "retrying").length,
+    skipped: queued.skipped,
   };
+  const paused = pauseText(queued, referenceMs);
   return (
     <ListPanel
       title="Queued"
       label="Queued items"
       count={queued.pending}
       description={[
-        queued.pausedReason
-          ? `Paused${queued.pausedReason === "Paused" ? "" : `: ${queued.pausedReason}`}; nothing new is dispatched.`
-          : null,
-        "Each item is sent to the targeted encode. A failed run is retried once; then the item waits for a person.",
+        paused ? `${paused}; nothing new is dispatched.` : null,
+        "Each item is sent to the targeted encode. A failed run is retried once; then the item waits for a person. A skipped item was set aside before any run and waits to be requeued.",
       ]
         .filter(Boolean)
         .join(" ")}
       onClose={onClose}
     >
-      {QUEUE_GROUPS.map(({ state, title }) => {
+      {queueGroups(queued.paused).map(({ state, title }) => {
         const items = queued.items.filter((item) => item.state === state);
         if (items.length === 0) return null;
         // Items that share a reason sit under it once, in first-seen order.
@@ -650,31 +831,107 @@ function shortRelease(name: string, jurisdiction: string): string {
       : name;
 }
 
-function corpusDetail(row: CorpusJurisdiction): string {
+/** "1 scope", "1,567 scopes". */
+function counted(count: number, one: string, many = `${one}s`): string {
+  return `${number(count)} ${count === 1 ? one : many}`;
+}
+
+/** A flag in a few words, for a row listed under another flag. */
+const CORPUS_FLAG_SHORT: Record<CorpusFlag, string> = {
+  newer_not_active: "newer release not activated",
+  encoder_lacks: "encoder lacks served scopes",
+  encoder_off: "encoder reads unserved scopes",
+  encoder_other: "encoder pins another release",
+  not_serving: "not serving",
+  pin_unsigned: "pin names an unsigned manifest",
+  pin_unknown: "pin names no known release",
+  no_release: "no release cut yet",
+};
+
+/** What the jurisdiction's rulespec repo pins, compared with what serves. */
+function encoderText(row: CorpusJurisdiction, short: (name: string) => string): string | null {
+  const { encoder } = row;
+  if (!encoder) return null;
+  if (!encoder.release) return "encoder pins no release yet (placeholder)";
+  const name = short(encoder.release);
+  if (encoder.state === "manifest") return `encoder pins ${name}, an unsigned manifest`;
+  if (encoder.state === "unknown") return `encoder pins ${name}, not a known release`;
+  if (encoder.lacks) {
+    return `encoder reads ${name}, which lacks ${counted(encoder.lacks, "served scope version")}${
+      encoder.extra ? ` and has ${counted(encoder.extra, "scope version")} the site doesn't serve` : ""
+    }`;
+  }
+  if (encoder.extra) return `encoder reads ${name}, with ${counted(encoder.extra, "scope version")} the site doesn't serve`;
+  if (row.flags.includes("encoder_other")) return `encoder pins ${name}, with the same scopes as serving`;
+  if (encoder.release === row.serving?.release) return "encoder reads the same release";
+  return `encoder reads ${name}`;
+}
+
+/** What serves, what to activate next, and what the encoder reads, in one line. */
+function corpusWhy(row: CorpusJurisdiction): string {
   const short = (name: string) => shortRelease(name, row.jurisdiction);
+  const { serving, next, other, newest } = row;
   return [
-    row.serving ? `serving ${short(row.serving.release)}` : "serving nothing",
-    row.newest.release !== row.serving?.release
-      ? `newest ${short(row.newest.release)} (${number(row.newest.scopes)} scopes)`
+    serving
+      ? `serving ${short(serving.release)}${serving.releases > 1 ? ` and ${counted(serving.releases - 1, "other release")}` : ""}`
+      : newest
+        ? "serving nothing"
+        : "no signed release",
+    next ? `next ${short(next.release)} (${counted(next.scopes, "scope")}, adds ${number(next.adds)})` : null,
+    !serving && newest ? `newest ${short(newest.release)} (${counted(newest.scopes, "scope")})` : null,
+    // A side release the encoder pins is said once, with the encoder.
+    other && other.release !== row.encoder?.release
+      ? `also signed ${short(other.release)} (${counted(other.scopes, "scope")}), which lacks ${counted(other.lacks, "served scope version")}`
       : null,
-    row.encoder
-      ? `encoder reads ${short(row.encoder.release)}${row.encoder.registered ? "" : " (not a registered release)"}`
-      : null,
+    encoderText(row, short),
   ]
     .filter(Boolean)
     .join(" · ")
     .replace(/^./, (c) => c.toUpperCase());
 }
 
-/** Out-of-sync statuses, most actionable first. */
-const CORPUS_GROUPS: Array<Exclude<CorpusJurisdiction["status"], "current">> = [
-  "newer_not_active",
-  "encoder_behind",
-  "encoder_off",
-  "not_serving",
-];
+/** When what serves was activated, and how much it is. */
+function corpusServing(row: CorpusJurisdiction, referenceMs: number): string | null {
+  const { serving } = row;
+  if (!serving) return null;
+  return [
+    `Activated ${ageLabel(serving.since, referenceMs)} ago`,
+    serving.provisions !== null ? counted(serving.provisions, "provision") : null,
+    counted(serving.scopes, "scope version"),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
 
-/** Signed corpus releases per jurisdiction: what serves, what is newest, what the encoder reads. */
+function CorpusRow({ row, referenceMs }: { row: CorpusJurisdiction; referenceMs: number }) {
+  const others = row.flags.slice(1).map((flag) => CORPUS_FLAG_SHORT[flag]);
+  return (
+    <Row
+      title={`${row.name} · ${row.jurisdiction}`}
+      href={null}
+      why={corpusWhy(row)}
+      detail={corpusServing(row, referenceMs)}
+      age={ageLabel(row.since, referenceMs)}
+      links={
+        row.encoder
+          ? [
+              {
+                label: "pin",
+                href: `https://github.com/TheAxiomFoundation/${row.encoder.repo}/blob/main/.axiom/toolchain.toml`,
+              },
+            ]
+          : []
+      }
+      flags={others.length > 0 ? `also: ${others.join(" · ")}` : null}
+    />
+  );
+}
+
+/**
+ * Corpus releases per jurisdiction: what serves, the release to activate
+ * next, and what the encoder reads. A row sits under its most actionable
+ * flag and names the rest.
+ */
 function CorpusList({
   corpus,
   referenceMs,
@@ -684,14 +941,16 @@ function CorpusList({
   referenceMs: number;
   onClose: () => void;
 }) {
-  const current = corpus.jurisdictions.filter((row) => row.status === "current");
+  const current = corpus.jurisdictions
+    .filter((row) => row.flags.length === 0)
+    .sort((a, b) => a.name.localeCompare(b.name));
   const { openPrs, lastPublish } = corpus;
   return (
     <ListPanel
       title="Corpus"
       label="Corpus releases"
       count={corpus.jurisdictions.length}
-      description="Per jurisdiction: the signed corpus release the site serves, the newest one signed, and the one its encoder reads. axiom-corpus's publish workflow signs a release; a person activates it."
+      description="Per jurisdiction: the signed corpus release the site serves, the one to activate next, and the one its rulespec repo's encoder reads, compared by the scope versions each holds. axiom-corpus's publish workflow signs a release; a person activates it."
       onClose={onClose}
     >
       {(openPrs || lastPublish) && (
@@ -699,6 +958,9 @@ function CorpusList({
           {openPrs && (
             <a href={openPrs.url} target="_blank" rel="noreferrer">
               {number(openPrs.count)} open PR{openPrs.count === 1 ? "" : "s"} in axiom-corpus
+              {openPrs.draft !== null &&
+                openPrs.count > 0 &&
+                ` (${number(Math.max(0, openPrs.count - openPrs.draft))} ready · ${number(openPrs.draft)} draft)`}
               {openPrs.oldestAt && `, oldest ${ageLabel(openPrs.oldestAt, referenceMs)}`}
             </a>
           )}
@@ -711,58 +973,53 @@ function CorpusList({
           )}
         </p>
       )}
-      {CORPUS_GROUPS.map((status) => {
+      {CORPUS_FLAGS.map((flag) => {
         // Most recently signed first: where work is happening now.
         const rows = corpus.jurisdictions
-          .filter((row) => row.status === status)
-          .sort((a, b) => b.newest.signedAt.localeCompare(a.newest.signedAt));
+          .filter((row) => row.flags[0] === flag)
+          .sort(
+            (a, b) =>
+              (b.newest?.signedAt ?? "").localeCompare(a.newest?.signedAt ?? "") || a.name.localeCompare(b.name)
+          );
         if (rows.length === 0) return null;
-        const title = CORPUS_STATUS_LABELS[status];
+        const title = CORPUS_FLAG_LABELS[flag];
         return (
-          <section key={status} className={styles.listGroup} aria-label={title}>
+          <section key={flag} className={styles.listGroup} aria-label={title}>
             <h4>
               {title}
               <span className={styles.listCount}>{number(rows.length)}</span>
             </h4>
             <ul className={styles.items}>
               {rows.map((row) => (
-                <Row
-                  key={row.jurisdiction}
-                  title={`${row.name} · ${row.jurisdiction}`}
-                  href={null}
-                  why={corpusDetail(row)}
-                  detail={null}
-                  age={ageLabel(row.since, referenceMs)}
-                  links={
-                    row.encoder
-                      ? [
-                          {
-                            label: "pin",
-                            href: `https://github.com/TheAxiomFoundation/${row.encoder.repo}/blob/main/.axiom/toolchain.toml`,
-                          },
-                        ]
-                      : []
-                  }
-                  flags={null}
-                />
+                <CorpusRow key={row.jurisdiction} row={row} referenceMs={referenceMs} />
               ))}
             </ul>
           </section>
         );
       })}
       {current.length > 0 && (
-        <p className={styles.listNote}>
-          Up to date: {current.map((row) => row.name).join(", ")}
-        </p>
+        <section className={styles.listGroup} aria-label="Up to date">
+          <h4>
+            Up to date
+            <span className={styles.listCount}>{number(current.length)}</span>
+          </h4>
+          <ul className={styles.items}>
+            {current.map((row) => (
+              <CorpusRow key={row.jurisdiction} row={row} referenceMs={referenceMs} />
+            ))}
+          </ul>
+        </section>
       )}
     </ListPanel>
   );
 }
 
-/** A URL for a scope, landing back on the pipeline section. */
+/** A URL for a scope, landing back on the pipeline tab and section. */
 function scopeHref(pathname: string, scope: PipelineScope | null): string {
-  if (!scope) return `${pathname}#pipeline-title`;
-  const query = new URLSearchParams({ j: scope.jurisdiction, ...(scope.only ? { only: "1" } : {}) });
+  const query = new URLSearchParams({
+    tab: "pipeline",
+    ...(scope ? { j: scope.jurisdiction, ...(scope.only ? { only: "1" } : {}) } : {}),
+  });
   return `${pathname}?${query}#pipeline-title`;
 }
 
@@ -778,26 +1035,32 @@ function ScopeBar({
   const router = useRouter();
   const root = scope?.jurisdiction.split("-")[0] ?? null;
   const withinValue = scope && scope.jurisdiction !== root ? scope.jurisdiction : scope?.only ? `${root}:only` : "";
+  const total = scopes.roots.reduce((sum, option) => sum + option.citations, 0);
   return (
     <nav className={styles.scopes} aria-label="Jurisdiction">
-      <Link href={scopeHref(pathname, null)} className={styles.scope} aria-current={!scope ? "page" : undefined}>
-        All
-      </Link>
-      {scopes.roots.map((option) => (
-        <Link
-          key={option.jurisdiction}
-          href={scopeHref(pathname, option)}
-          className={styles.scope}
-          aria-current={root === option.jurisdiction ? "page" : undefined}
-        >
-          {option.label}
-          <span className={styles.scopeCount}>{number(option.citations)}</span>
+      <div className={styles.scopeRow}>
+        <Link href={scopeHref(pathname, null)} className={styles.scope} aria-current={!scope ? "page" : undefined}>
+          All
+          <span className={styles.scopeCount}>{number(total)}</span>
         </Link>
-      ))}
+        {scopes.roots.map((option) => (
+          <Link
+            key={option.jurisdiction}
+            href={scopeHref(pathname, option)}
+            className={styles.scope}
+            aria-current={root === option.jurisdiction ? "page" : undefined}
+          >
+            {jurisdictionName(option.jurisdiction)}
+            <span className={styles.scopeCount}>{number(option.citations)}</span>
+          </Link>
+        ))}
+      </div>
       {scopes.within.length > 0 && root && (
-        <select
+        <label className={styles.scopeWithin}>
+          <span>{root === "us" ? "State" : "Region"}</span>
+          <select
           className={styles.scopeSelect}
-          aria-label={`Within ${root}`}
+          aria-label={`Within ${jurisdictionName(root)}`}
           value={withinValue}
           onChange={(event) => {
             const value = event.target.value;
@@ -805,40 +1068,274 @@ function ScopeBar({
             router.push(scopeHref(pathname, option ?? { jurisdiction: root, only: false }));
           }}
         >
-          <option value="">All of {root}</option>
-          {scopes.within.map((option) => (
-            <option
-              key={`${option.jurisdiction}${option.only ? ":only" : ""}`}
-              value={option.only ? `${option.jurisdiction}:only` : option.jurisdiction}
-            >
-              {option.label} ({number(option.citations)})
-            </option>
-          ))}
-        </select>
+          <option value="">
+            All ({number(scopes.roots.find((o) => o.jurisdiction === root)?.citations ?? 0)})
+          </option>
+          {scopes.within
+            .filter((option) => option.only)
+            .map((option) => (
+              <option key={`${option.jurisdiction}:only`} value={`${option.jurisdiction}:only`}>
+                {option.label} ({number(option.citations)})
+              </option>
+            ))}
+          <optgroup label={root === "us" ? "States" : "Regions"}>
+            {scopes.within
+              .filter((option) => !option.only)
+              .map((option) => (
+                <option key={option.jurisdiction} value={option.jurisdiction}>
+                  {option.label} ({number(option.citations)})
+                </option>
+              ))}
+          </optgroup>
+          </select>
+        </label>
       )}
     </nav>
   );
 }
 
-/** How many citations ever got how far, across all their dispatches. */
-function Funnel({ funnel }: { funnel: PipelineInsights["funnel"] }) {
-  const steps = [
-    { label: "citations", value: funnel.citations },
-    { label: "encoded", value: funnel.encoded },
-    { label: "merged", value: funnel.merged },
-    { label: "into main", value: funnel.mergedMain },
-    { label: "passing on main", value: funnel.passing },
-  ];
+/** Where the stuck citations sit between two funnel steps, in a few words. */
+const GAP_LABELS: Partial<Record<PipelineStage, string>> = {
+  encoding: "running",
+  encode_failed: "failed",
+  review: "in review",
+  no_pr: "without a PR",
+  closed: "PRs closed",
+  merged_off_main: "merged into another branch",
+  awaiting_sync: "pending index",
+  not_indexed: "not indexed",
+  indexed: "tests pending",
+  runs: "tests unconfirmed",
+  compile_failed: "compile failed",
+  tests_failing: "tests failed",
+  oracle_disagrees: "oracle disagrees",
+};
+
+/** Where a citation can be now, in pipeline order; every stage belongs to exactly one group. */
+const CITATION_GROUPS: Array<{
+  key: string;
+  label: string;
+  stages: PipelineStage[];
+  /** What the group means (a row's tooltip); groups of several stages list their parts instead. */
+  detail: string | null;
+}> = [
+  { key: "failing", label: "Encoding fails", stages: ["encode_failed"], detail: "latest run failed" },
+  { key: "encoding", label: "Encoding", stages: ["encoding"], detail: "a run is in progress" },
+  { key: "no-pr", label: "No open PR", stages: ["no_pr", "closed"], detail: null },
+  { key: "review", label: "In review", stages: ["review"], detail: "PR open" },
+  { key: "elsewhere", label: "Merged elsewhere", stages: ["merged_off_main"], detail: "merged into another branch" },
+  {
+    key: "main",
+    label: "In main",
+    stages: ["awaiting_sync", "not_indexed", "indexed", "runs", "compile_failed", "tests_failing", "oracle_disagrees"],
+    detail: null,
+  },
+  { key: "done", label: "Done", stages: ["verified"], detail: "tests pass on main" },
+];
+
+interface CitationGroup {
+  key: string;
+  label: string;
+  stages: PipelineStage[];
+  count: number;
+  description: string;
+}
+
+/**
+ * Every citation in the scope, once each, at the stage its latest run
+ * reached: a row per group in pipeline order, with its count and a bar for
+ * its share of all citations, that lists its citations. The groups add up
+ * to all citations.
+ */
+function CitationStates({
+  view,
+  queued,
+  referenceMs,
+  isOpen,
+  onGroup,
+  onQueue,
+}: {
+  view: PipelineView;
+  queued: QueuedSummary | null;
+  referenceMs: number;
+  isOpen: (title: string) => boolean;
+  onGroup: (group: CitationGroup) => void;
+  onQueue: () => void;
+}) {
+  const halted = queued ? pauseText(queued, referenceMs) : null;
+  const groups: CitationGroup[] = CITATION_GROUPS.map((group) => {
+    const parts = group.stages.filter((stage) => view.stages[stage].count > 0);
+    return {
+      ...group,
+      count: group.stages.reduce((sum, stage) => sum + view.stages[stage].count, 0),
+      description:
+        group.detail ??
+        parts
+          .map((stage) => {
+            const count = view.stages[stage].count;
+            const label = GAP_LABELS[stage] ?? STAGE_COPY[stage].label.toLowerCase();
+            return `${number(count)} ${count === 1 ? label.replace(/^PRs /, "PR ") : label}`;
+          })
+          .join(" · "),
+    };
+  }).filter((group) => group.count > 0);
+  const total = groups.reduce((sum, group) => sum + group.count, 0);
   return (
-    <div className={styles.funnel}>
-      <span className={styles.funnelLabel}>Ever reached</span>
-      <ol aria-label="Citations that ever reached each point">
-        {steps.map((step) => (
-          <li key={step.label}>
-            <strong>{number(step.value)}</strong> {step.label}
+    <div className={styles.citationStates}>
+      <div className={styles.summaryFunnelHead}>
+        <span className={styles.miniLabel}>
+          {number(total)} {total === 1 ? "citation" : "citations"} · where each one is now
+        </span>
+        <Explain label="Where each citation is now">
+          Each citation counts once, at the stage its latest run reached. The groups follow the pipeline and add up
+          to all citations. Click a group to list its citations.
+        </Explain>
+        {queued && queued.pending > 0 && (
+          <button
+            type="button"
+            className={styles.gapChip}
+            title={halted ? `${halted}; nothing new is dispatched.` : undefined}
+            onClick={onQueue}
+          >
+            <strong>{number(queued.pending)}</strong> queued{queued.paused ? " · paused" : ""}
+          </button>
+        )}
+      </div>
+      <ul className={styles.stateList} aria-label="Where each citation is now">
+        {groups.map((group) => (
+          <li key={group.key}>
+            <button
+              type="button"
+              className={styles.stateRow}
+              aria-pressed={isOpen(group.label)}
+              title={group.description}
+              onClick={() => onGroup(group)}
+            >
+              <span className={styles.stateLabel}>{group.label}</span>
+              <span className={styles.stateCount}>{number(group.count)}</span>
+              <span className={styles.stateTrack} aria-hidden>
+                <span className={styles.stateBar} style={{ width: `${(group.count / total) * 100}%` }} />
+              </span>
+            </button>
           </li>
         ))}
-      </ol>
+      </ul>
+      <SourcesLine sources={view.sources} />
+    </div>
+  );
+}
+
+/** How many citations the states hold because of encodings that were not dispatches. */
+function SourcesLine({ sources }: { sources: PipelineView["sources"] | undefined }) {
+  if (!sources || (sources.outside === 0 && sources.dependent === 0)) return null;
+  return (
+    <p className={styles.sourcesLine}>
+      {`Includes ${number(sources.outside)} ${sources.outside === 1 ? "citation" : "citations"} encoded outside the pipeline and ${number(sources.dependent)} encoded inside another citation's run.`}
+      <Explain label="Encodings that were not dispatches">
+        Outside the pipeline: a person&apos;s PR merged the module into the default branch with no dispatch. Such a
+        citation shows the steps after the merge: the index and the tests on main. Inside another citation&apos;s run:
+        the encoder wrote the module while it encoded another citation, as a source or a module that depends on it.
+        Such a citation shows how that went. A citation counts here when its latest attempt is one of these. Run
+        statistics (the flow, attempts, versions, the weekly runs) count dispatches only.
+      </Explain>
+    </p>
+  );
+}
+
+interface Blocker {
+  key: string;
+  label: string;
+  /** Where in the pipeline it holds citations. */
+  where: string;
+  count: number;
+  open: () => void;
+}
+
+const TOP_BLOCKERS = 3;
+
+/** Ways out after a merge, ranked against encode failures and review holds. */
+const BLOCKER_STAGES: Array<{ stage: PipelineStage; where: string }> = [
+  { stage: "no_pr", where: "Review" },
+  { stage: "closed", where: "Review" },
+  { stage: "merged_off_main", where: "Merge" },
+  { stage: "not_indexed", where: "Index" },
+  { stage: "compile_failed", where: "Main" },
+  { stage: "tests_failing", where: "Main" },
+  { stage: "oracle_disagrees", where: "Main" },
+];
+
+/** The largest piles of stuck citations; each opens its citations. */
+function TopBlockers({ blockers }: { blockers: Blocker[] }) {
+  return (
+    <div className={styles.summaryCard} role="group" aria-label="Top blockers">
+      <div className={styles.cardHead}>
+        <h3 className={styles.miniLabel}>Top blockers</h3>
+        <Explain label="Top blockers">
+          The biggest groups of stuck citations, and the step that holds them. Click one to list its citations.
+        </Explain>
+      </div>
+      {blockers.length === 0 ? (
+        <p className={styles.empty}>Nothing is stuck.</p>
+      ) : (
+        <ol className={styles.blockers}>
+          {blockers.map((blocker) => (
+            <li key={blocker.key}>
+              <button type="button" className={styles.blocker} onClick={blocker.open}>
+                <span className={styles.blockerWhere}>{blocker.where}</span>
+                <span className={styles.blockerLabel} title={blocker.label}>
+                  {blocker.label}
+                </span>
+                <span className={styles.blockerCount}>{number(blocker.count)}</span>
+              </button>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Each series' last eight weeks as a row of small bars, with the count of
+ * the last full week (the current week has only just begun).
+ */
+function TrendRows({ weeks }: { weeks: WeeklyThroughput[] }) {
+  const full = weeks.length > 1 ? weeks.length - 2 : weeks.length - 1;
+  return (
+    <div className={styles.summaryCard} role="group" aria-label="Weekly trend">
+      <div className={styles.cardHead}>
+        <h3 className={styles.miniLabel}>Weekly</h3>
+        <Explain label="Weekly">
+          Runs dispatched, runs encoded, and their PRs merged in each of the last {weeks.length} weeks, and the PRs
+          merged outside the pipeline (with no dispatch). Each row has its own scale. The number is the last full
+          week.
+        </Explain>
+      </div>
+      <ul className={styles.trendRows}>
+        {TREND_SERIES.map((series, i) => {
+          const values = weeks.map((week) => week[series.key]);
+          const max = Math.max(1, ...values);
+          return (
+            <li key={series.key} className={styles.trendRow}>
+              <span className={styles.trendName}>{series.label}</span>
+              <span className={styles.spark} aria-hidden>
+                {weeks.map((week) => (
+                  <span
+                    key={week.weekStart}
+                    className={styles.sparkBar}
+                    data-series={i + 1}
+                    style={{ height: `${Math.max(4, (week[series.key] / max) * 100)}%` }}
+                    title={`Week of ${formatWeek(week.weekStart)}: ${number(week[series.key])}`}
+                  />
+                ))}
+              </span>
+              <span className={styles.trendValue}>
+                {number(values[full] ?? 0)}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
@@ -876,12 +1373,15 @@ function RateBars({ rows }: { rows: Array<{ key: string; label: string; rate: At
 /** What each dispatch yields: first attempts, retries, the citations re-run most, and cost. */
 function RunsCard({ runs }: { runs: RunStats }) {
   const { firstAttempt, cost } = runs;
+  // Modules encoded inside another citation's run have their own records, so their cost adds to the runs'.
+  const dependent = cost.dependent ?? { count: 0, total: 0 };
+  const costed = cost.recorded > 0 || dependent.count > 0;
   return (
     <div className={styles.card} role="group" aria-label="Runs and retries">
       <div className={styles.cardHead}>
         <div>
           <h3>Runs and retries</h3>
-          <p>Finished runs, not counting cancellations.</p>
+          <p>Finished dispatches, not counting cancellations.</p>
         </div>
       </div>
       <div className={styles.stats}>
@@ -893,19 +1393,21 @@ function RunsCard({ runs }: { runs: RunStats }) {
           </span>
         </div>
         <div className={styles.statBlock}>
-          <span className={styles.statValue}>
-            {cost.recorded > 0 ? `${percent(cost.onFailures, cost.total)}%` : "—"}
-          </span>
+          <span className={styles.statValue}>{costed ? `${percent(cost.onFailures, cost.total)}%` : "—"}</span>
           <span className={styles.statLabel}>
-            {cost.recorded > 0
-              ? `of recorded cost went to failed runs ($${cost.onFailures.toFixed(0)} of $${cost.total.toFixed(0)}; ${number(cost.recorded)} of ${number(cost.finished)} runs record a cost)`
+            {costed
+              ? `of recorded cost went to failed runs ($${cost.onFailures.toFixed(0)} of $${cost.total.toFixed(0)}; ${number(cost.recorded)} of ${number(cost.finished)} runs record a cost${
+                  dependent.count
+                    ? `; the total includes $${dependent.total.toFixed(0)} for ${number(dependent.count)} ${dependent.count === 1 ? "module" : "modules"} encoded inside another citation's run`
+                    : ""
+                })`
               : "No run records its cost yet"}
           </span>
         </div>
       </div>
       {runs.byAttempt.length > 0 && (
         <>
-          <p className={styles.miniLabel}>Success by attempt</p>
+          <p className={styles.miniLabel}>Success by attempt, until a citation&apos;s first success</p>
           <RateBars
             rows={runs.byAttempt.map((rate) => ({ key: rate.label, label: `${rate.label} attempt`, rate }))}
           />
@@ -922,7 +1424,7 @@ function RunsCard({ runs }: { runs: RunStats }) {
                 </a>
                 <span>
                   {number(entry.dispatches)} dispatches · {number(entry.successes)} encoded ·{" "}
-                  {number(entry.merged)} merged
+                  {number(entry.merged)} merged into main
                 </span>
               </li>
             ))}
@@ -935,12 +1437,20 @@ function RunsCard({ runs }: { runs: RunStats }) {
 
 /** Success across encoder releases, pooled so each bar has enough runs to compare. */
 function VersionsCard({ bins }: { bins: VersionBin[] }) {
+  // Only the newest bin can close short of VERSION_BIN_RUNS: its versions are still collecting runs.
+  const newest = bins.at(-1);
+  const short = newest && newest.runs < VERSION_BIN_RUNS ? newest : null;
   return (
     <div className={styles.card} role="group" aria-label="By encoder version">
       <div className={styles.cardHead}>
         <div>
           <h3>By encoder version</h3>
-          <p>Success of finished runs. Consecutive versions are pooled to at least 10 runs; newest last.</p>
+          <p>
+            Success of finished runs. Consecutive versions are pooled to at least {VERSION_BIN_RUNS} runs; newest
+            last. These are the newest {number(bins.length)} groups, {number(bins.reduce((total, bin) => total + bin.runs, 0))}{" "}
+            runs.
+            {short && ` The newest group is the current encoder so far: ${number(short.runs)} ${short.runs === 1 ? "run" : "runs"}.`}
+          </p>
         </div>
       </div>
       {bins.length === 0 ? (
@@ -956,6 +1466,495 @@ function VersionsCard({ bins }: { bins: VersionBin[] }) {
       )}
     </div>
   );
+}
+
+/** What the runs that went on from each step are called. */
+const WENT_ON: Record<GateKey, string> = {
+  approval: "approved",
+  run: "encoded",
+  pr: "PR opened",
+  review: "merged",
+  main: "into main",
+  index: "indexed",
+  tests: "tests pass",
+};
+
+/** Short names for the runs that stopped or wait at a step, by segment. */
+const STOPPED: Record<string, string> = {
+  "approval:waiting": "pending approval",
+  "approval:cancelled": "cancelled",
+  "approval:before": "stopped before approval",
+  "run:cancelled": "cancelled",
+  "run:running": "running",
+  "pr:none": "without a PR",
+  "review:open": "in review",
+  "review:closed": "PRs closed",
+  "main:off": "merged into another branch",
+  "index:awaiting": "pending index",
+  "index:missing": "not indexed",
+  "tests:pending": "tests pending",
+  "tests:fail": "tests failed",
+};
+
+/** One timing for a "?" note: "Encoded: 15m typical over 72 runs; the slowest 10% 33m or more". */
+function timingLine(timing: StepTiming): string {
+  const runs = `${number(timing.runs)} ${timing.runs === 1 ? "run" : "runs"}`;
+  const slow = timing.slowMs !== null ? `; the slowest 10% ${shortDuration(timing.slowMs)} or more` : "";
+  return `${timing.label ? `${timing.label}: ` : ""}${shortDuration(timing.medianMs)} typical over ${runs}${slow}`;
+}
+
+/**
+ * Every step in one table, in order: the typical time a run spends there,
+ * how many of the runs that reached it went on, and the runs that stopped
+ * or still wait there. Encode failures fold into one "failed" that opens
+ * their reasons, and every number lists its runs. A step's "?" says what
+ * its time measures and every timing behind it; for the tests on main, also
+ * the wait for the shard, its run, and the first results. The rows stop
+ * after a step nothing went on from.
+ */
+function StepTable({
+  gates,
+  times,
+  testParts,
+  onOpen,
+}: {
+  gates: FlowGate[];
+  times: StepTimes[] | null;
+  testParts: TestsParts | null;
+  onOpen: (gate: FlowGate, segment: FlowSegment) => void;
+}) {
+  const [reasonsOpen, setReasonsOpen] = useState(false);
+  const timeOf = new Map((times ?? []).map((step) => [step.key, step]));
+  const shown: FlowGate[] = [];
+  for (const gate of gates) {
+    shown.push(gate);
+    if (!gate.segments.some((segment) => segment.kind === "continue")) break;
+  }
+  return (
+    <table className={styles.stepTable}>
+      <colgroup>
+        <col className={styles.stepColName} />
+        <col className={styles.stepColTime} />
+        <col className={styles.stepColWent} />
+        <col />
+      </colgroup>
+      <thead>
+        <tr>
+          <th scope="col">Step</th>
+          <th scope="col" className={styles.stepNumber}>
+            Median time
+          </th>
+          <th scope="col" className={styles.stepNumber}>
+            Runs advanced
+          </th>
+          <th scope="col">Stopped or pending</th>
+        </tr>
+      </thead>
+      <tbody>
+        {shown.map((gate) => {
+          const time = timeOf.get(gate.key);
+          const on = gate.segments.find((segment) => segment.kind === "continue");
+          const losses = gate.segments.filter((segment) => segment.kind === "loss");
+          const pending = gate.segments.filter((segment) => segment.kind === "pending");
+          // The encode run's failures fold into one "failed"; its cancellations stay apart.
+          const failures = gate.key === "run" ? losses.filter((segment) => segment.key.startsWith("run:failed:")) : [];
+          const folded = failures.length > 0;
+          const side = [...losses.filter((segment) => !failures.includes(segment)), ...pending];
+          const firstTests = gate.key === "tests" ? testParts : null;
+          return (
+            <Fragment key={gate.key}>
+              <tr>
+                <th scope="row">
+                  <span className={styles.stepName}>
+                    {gate.label}
+                    <Explain label={gate.label}>
+                      {time?.measures}
+                      <span className={styles.explainList}>
+                        {time?.timings.map((timing) => (
+                          <span key={timing.label}>{timingLine(timing)}</span>
+                        ))}
+                        {firstTests?.parts.map((part) =>
+                          part.timings[0] ? (
+                            <span key={part.key}>{timingLine({ ...part.timings[0], label: part.label })}</span>
+                          ) : null
+                        )}
+                        {firstTests && firstTests.first.pass + firstTests.first.fail > 0 && (
+                          <span>
+                            First result at the merge: {number(firstTests.first.pass)} pass,{" "}
+                            {number(firstTests.first.fail)} fail
+                          </span>
+                        )}
+                      </span>
+                    </Explain>
+                  </span>
+                </th>
+                <td className={styles.stepTime}>
+                  {time?.timings.length
+                    ? time.timings.map((timing) => (
+                        <span key={timing.label} className={styles.stepTimeLine}>
+                          {shortDuration(timing.medianMs)}
+                          {timing.label && <span className={styles.stepTimeLabel}> {timing.label.toLowerCase()}</span>}
+                        </span>
+                      ))
+                    : "—"}
+                </td>
+                <td className={styles.stepWent}>
+                  {on ? (
+                    <button
+                      type="button"
+                      aria-label={`${number(on.count)} ${WENT_ON[gate.key]}`}
+                      onClick={() => onOpen(gate, on)}
+                    >
+                      {number(on.count)}
+                    </button>
+                  ) : (
+                    <span className={styles.stepNone}>0</span>
+                  )}{" "}
+                  <span className={styles.stepOf}>of {number(gate.input)}</span>
+                </td>
+                <td className={styles.stepStopped}>
+                  {folded || side.length > 0 ? (
+                    <span className={styles.stopList}>
+                      {folded && (
+                        <button
+                          type="button"
+                          className={styles.stopItem}
+                          aria-expanded={reasonsOpen}
+                          onClick={() => setReasonsOpen((open) => !open)}
+                        >
+                          {number(failures.reduce((total, segment) => total + segment.count, 0))} failed{" "}
+                          <span aria-hidden>{reasonsOpen ? "▴" : "▾"}</span>
+                        </button>
+                      )}
+                      {side.map((segment) => (
+                        <button
+                          key={segment.key}
+                          type="button"
+                          className={styles.stopItem}
+                          onClick={() => onOpen(gate, segment)}
+                        >
+                          {number(segment.count)} {STOPPED[segment.key] ?? segment.label.toLowerCase()}
+                        </button>
+                      ))}
+                    </span>
+                  ) : (
+                    <span className={styles.stepNone}>—</span>
+                  )}
+                </td>
+              </tr>
+              {folded && reasonsOpen && (
+                <tr className={styles.stepReasons}>
+                  <td colSpan={4}>
+                    <span className={styles.reasonList} role="group" aria-label="Why encode runs failed">
+                      {failures.map((segment) => (
+                        <button
+                          key={segment.key}
+                          type="button"
+                          className={styles.reasonChip}
+                          onClick={() => onOpen(gate, segment)}
+                        >
+                          {segment.label} <strong>{number(segment.count)}</strong>
+                        </button>
+                      ))}
+                    </span>
+                  </td>
+                </tr>
+              )}
+            </Fragment>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+/**
+ * A "?" that opens a short note on what something means, so the page shows
+ * names and numbers and explains them only when asked. Closes on a click
+ * elsewhere or Escape, and opens leftward when it would run off the screen.
+ */
+export function Explain({ label, children }: { label: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const [alignRight, setAlignRight] = useState(false);
+  const root = useRef<HTMLSpanElement>(null);
+  const note = useRef<HTMLSpanElement>(null);
+  const id = useId();
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (event: PointerEvent) => {
+      if (!root.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  useLayoutEffect(() => {
+    if (!open || !note.current || !root.current) return;
+    const width = note.current.getBoundingClientRect().width;
+    setAlignRight(root.current.getBoundingClientRect().left + width > window.innerWidth - 16);
+  }, [open]);
+  return (
+    <span ref={root} className={styles.explain}>
+      <button
+        type="button"
+        className={styles.explainButton}
+        aria-label={`What ${label} means`}
+        aria-expanded={open}
+        aria-controls={open ? id : undefined}
+        onClick={() => setOpen((value) => !value)}
+      >
+        ?
+      </button>
+      {open && (
+        <span ref={note} id={id} role="note" className={styles.explainNote} data-align={alignRight ? "right" : undefined}>
+          {children}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** A heading with its "?". */
+function PartHead({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+  return (
+    <div className={styles.flowPartHead}>
+      <h4 id={id}>{title}</h4>
+      <Explain label={title}>{children}</Explain>
+    </div>
+  );
+}
+
+/** One timed step: its name and typical time; what it measures, how many runs, and the slowest 10% behind its "?". */
+function TimedCell({ step }: { step: TimedStep }) {
+  return (
+    <li className={styles.timeStep}>
+      <div className={styles.cellHead}>
+        <span className={styles.tileLabel}>{step.label}</span>
+        <Explain label={step.label}>
+          {step.measures}
+          {step.timings.length > 0 && (
+            <span className={styles.explainList}>
+              {step.timings.map((timing) => (
+                <span key={timing.label}>
+                  {timing.label ? `${timing.label}: ` : ""}
+                  {number(timing.runs)} {timing.runs === 1 ? "run" : "runs"}
+                  {timing.slowMs !== null && `, the slowest 10% ${shortDuration(timing.slowMs)} or more`}
+                </span>
+              ))}
+            </span>
+          )}
+        </Explain>
+      </div>
+      {step.timings.length === 0 ? (
+        <span className={styles.timeNone}>{step.untimed ?? "No runs timed"}</span>
+      ) : (
+        <dl className={styles.timeStats}>
+          {step.timings.map((timing) => (
+            <div key={timing.label}>
+              {timing.label && <dt>{timing.label}</dt>}
+              <dd>{shortDuration(timing.medianMs)}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </li>
+  );
+}
+
+/** How many generation attempts encoded and failed runs used. */
+function TriesTable({ tries }: { tries: TriesUsed }) {
+  return (
+    <div className={styles.timeStep}>
+      <div className={styles.cellHead}>
+        <span className={styles.tileLabel}>Tries used</span>
+        <Explain label="Tries used">
+          How many tries the encode loop needed: each try writes the encoding again from the checks&apos; feedback,
+          up to four. From the encoder&apos;s own record, which {number(tries.recorded)} of {number(tries.finished)}{" "}
+          finished runs have.
+        </Explain>
+      </div>
+      {tries.tries.length === 0 ? (
+        <span className={styles.timeNone}>Not recorded yet</span>
+      ) : (
+        <table className={styles.triesTable}>
+          <thead>
+            <tr>
+              <th scope="col">Tries</th>
+              {tries.tries.map((n) => (
+                <th key={n} scope="col">
+                  {n}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {(["encoded", "failed"] as const).map((outcome) => (
+              <tr key={outcome}>
+                <th scope="row">{outcome === "encoded" ? "Encoded" : "Failed"}</th>
+                {tries[outcome].map((count, i) => (
+                  <td key={tries.tries[i]}>{number(count)}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+/** A step opened up into its parts, with one more cell beside them. */
+function PartsRow({
+  id,
+  title,
+  note,
+  parts,
+  extra,
+}: {
+  id: string;
+  title: string;
+  note: ReactNode;
+  parts: TimedStep[];
+  extra: ReactNode;
+}) {
+  return (
+    <section className={styles.flowPart} aria-labelledby={id}>
+      <PartHead id={id} title={title}>
+        {note}
+      </PartHead>
+      <div className={styles.partsRow}>
+        <ol className={styles.partsSteps}>
+          {parts.map((part) => (
+            <TimedCell key={part.key} step={part} />
+          ))}
+        </ol>
+        {extra}
+      </div>
+    </section>
+  );
+}
+
+function FlowView({
+  gates,
+  times,
+  parts,
+  testParts,
+  onOpen,
+}: {
+  gates: FlowGate[];
+  times: StepTimes[] | null;
+  parts: EncodeParts | null;
+  testParts: TestsParts | null;
+  onOpen: (gate: FlowGate, segment: FlowSegment) => void;
+}) {
+  return (
+    <>
+      <section className={styles.flowPart} aria-labelledby="flow-steps-title">
+        <PartHead id="flow-steps-title" title="Steps">
+          One row per step, in order; every number counts runs (dispatches), not citations. Median time is how long a
+          run typically spends at the step, for each kind of run that left it (encoded or failed, merged or closed).
+          Runs advanced counts the runs that moved on to the next step, out of those that reached it. Stopped or pending lists the runs
+          that stopped at the step or have not finished it yet. Click a number to list its runs, and a step&apos;s ?
+          for its details.
+        </PartHead>
+        <StepTable gates={gates} times={times} testParts={testParts} onOpen={onOpen} />
+      </section>
+      {parts && (
+        <PartsRow
+          id="flow-parts-title"
+          title="Inside the encode run"
+          note="The encode run is one GitHub Actions job in three parts: setup, the encode loop, then signing and opening the PR. Model time and check time are parts of the encode loop."
+          parts={parts.parts}
+          extra={<TriesTable tries={parts.tries} />}
+        />
+      )}
+    </>
+  );
+}
+
+/** One run's provenance in a line: when, by whom, which encoder, how long it waited and ran. */
+function runProvenance(row: RunRow): string {
+  return [
+    `dispatched ${formatDay(row.dispatchedAt)}`,
+    row.by ? `by ${row.by}` : null,
+    row.encoder ? `encoder ${row.encoder}` : null,
+    row.approvalMs !== null ? `approval ${shortDuration(row.approvalMs)}` : null,
+    row.runMs !== null ? `run ${durationLabel(row.runMs)}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function runWhere(row: RunRow): string | null {
+  if (!row.pr) return null;
+  const parts = [
+    row.merged ? `merged ${row.merged === "main" ? "into main" : "off main"}` : `PR ${row.pr.state}`,
+    row.index === "indexed" ? "indexed" : row.index === "missing" ? "missing from the index" : null,
+    row.tests ? `tests ${row.tests}` : null,
+  ];
+  return parts.filter(Boolean).join(" · ");
+}
+
+const RUN_LIST_MAX = 60;
+
+/** The runs behind one part of the flow, newest first. */
+function RunList({
+  title,
+  rows,
+  referenceMs,
+  onClose,
+}: {
+  title: string;
+  rows: RunRow[];
+  referenceMs: number;
+  onClose: () => void;
+}) {
+  const shown = rows.slice(0, RUN_LIST_MAX);
+  return (
+    <ListPanel title={title} label={`${title} runs`} count={rows.length} description="" onClose={onClose}>
+      {rows.length === 0 ? (
+        <p className={styles.empty}>Nothing here right now.</p>
+      ) : (
+        <>
+          {shown.length < rows.length && (
+            <p className={styles.listNote}>
+              Latest {number(shown.length)} of {number(rows.length)}. The run log has all of them.
+            </p>
+          )}
+          <ul className={styles.items}>
+            {shown.map((row) => (
+              <Row
+                key={row.id}
+                title={row.citation}
+                href={journeyHref(row.citation)}
+                why={[row.outcomeLabel, row.cause].filter(Boolean).join(" · ")}
+                detail={runProvenance(row)}
+                age={ageLabel(row.dispatchedAt, referenceMs)}
+                links={[
+                  { label: "run", href: row.runUrl },
+                  ...(row.pr ? [{ label: row.pr.label, href: row.pr.url }] : []),
+                ]}
+                flags={runWhere(row)}
+              />
+            ))}
+          </ul>
+        </>
+      )}
+    </ListPanel>
+  );
+}
+
+/** What /ops/runs returns: every run in the scope, and its citations' names and source documents. */
+interface RunsPayload {
+  rows: RunRow[];
+  labels?: Record<string, string>;
+  documentPaths?: Record<string, string>;
 }
 
 /** The production-signing approval: a human gate every encode waits at. */
@@ -1028,11 +2027,19 @@ function SigningApproval({ view, referenceMs }: { view: PipelineView; referenceM
   );
 }
 
+/** The dispatch series: the weekly chart draws these on one scale. */
 const SERIES: Array<{ key: keyof Omit<WeeklyThroughput, "weekStart">; label: string }> = [
   { key: "dispatched", label: "Dispatched" },
   { key: "encoded", label: "Encoded" },
   { key: "merged", label: "Merged" },
 ];
+
+/**
+ * The weekly trend's rows: the dispatch series, then the PRs merged outside
+ * the pipeline. Each row has its own scale, so a small series stays
+ * readable; the chart keeps to the dispatch series.
+ */
+const TREND_SERIES: typeof SERIES = [...SERIES, { key: "outside", label: "Merged outside" }];
 
 const CHART = { width: 560, height: 200, left: 34, right: 8, top: 18, bottom: 26 };
 
@@ -1069,7 +2076,7 @@ function Throughput({ view }: { view: PipelineView }) {
       <div className={styles.cardHead}>
         <div>
           <h3>Weekly throughput</h3>
-          <p>Dispatched, encoded, and merged, by week.</p>
+          <p>Dispatches: dispatched, encoded, and merged, by week.</p>
         </div>
       </div>
       {rate && (
@@ -1079,7 +2086,8 @@ function Throughput({ view }: { view: PipelineView }) {
               {Math.round((rate.failed / rate.finished) * 100)}%
             </span>
             <span className={styles.statLabel}>
-              of runs failed, last 14 days ({number(rate.failed)} of {number(rate.finished)})
+              of runs failed, last 14 days ({number(rate.failed)} of {number(rate.finished)}
+              {rate.leftOut > 0 && `; ${number(rate.leftOut)} cancelled or budget-stopped left out`})
             </span>
           </div>
         </div>

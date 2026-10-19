@@ -5,7 +5,7 @@ import { Reveal } from "@/components/landing/reveal";
 export const metadata: Metadata = {
   title: "Live demos — Axiom Foundation",
   description:
-    "Applications running on the Axiom encodings: statutes computed in your browser, AI assistants grounded in cited rules, and policy tools built on the open layer.",
+    "Applications running on the Axiom encodings: statutes computed in your browser, an AI chat demo with tool access to the rules engine, and policy tools built on the open layer.",
 };
 
 /**
@@ -57,7 +57,7 @@ export default async function DemosPage({ searchParams }: PageProps) {
           </span>
           <h1 className="heading-page mb-6 mt-2">Built on the open layer</h1>
           <p className="font-body text-[1.2rem] text-[var(--color-ink-secondary)] leading-relaxed text-pretty">
-            Every demo runs on the same published encodings &mdash; the
+            The demos run on Axiom&apos;s published encodings &mdash; the
             statute text, the RuleSpec rules, and the citations connecting
             them. What one encoding powers, anyone can build.
           </p>

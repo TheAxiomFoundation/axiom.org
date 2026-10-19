@@ -160,6 +160,7 @@ assessed_income_period_satisfied:
       "This is the layer we hardened most aggressively over the past few weeks. It catches structural failures before oracles and reviewers spend time on them.",
     details: [
       "We validate compileability, companion tests, embedded scalar literals, numeric occurrence coverage, date-scalar pathologies, and import discipline.",
+      "In rulespec-us, CI skips validation, companion tests, and proof checks for modules on a public waiver list: 1,940 modules on October 2, 2026, holding 23,735 of our 34,810 US rules.",
       "Promoted stub files are blocked when the official source is already ingested.",
       "CI also normalizes and checks test shape, including period formats and mapping-style YAML.",
     ],

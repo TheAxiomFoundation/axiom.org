@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   isRuntimeApiConfigured,
   listRuntimePackages,
+  listParityCases,
   getProgramGraph,
   runCalculate,
   runCalculateRoot,
@@ -202,6 +203,7 @@ describe("runtime api client", () => {
     expect(outcome).toEqual({
       kind: "ok",
       result: { outputs: { net_income: 1200 } },
+      relationMembership: "convention",
     });
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toContain("/calculate");
@@ -218,6 +220,46 @@ describe("runtime api client", () => {
     vi.stubGlobal("fetch", fetchMock);
     await runCalculateRoot({root: "us:statutes/26/21", facts: {age: 8}, people: {person_2: {age: 30}}, variables: ["count"]});
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({root: "us:statutes/26/21", facts: {age: 8}, household: {people: {person_1: {}, person_2: {age: 30}}}, variables: ["count"]});
+  });
+
+  it("sends explicit membership as household.relations and confirms it only from a complete echo", async () => {
+    vi.stubEnv("AXIOM_RUNTIME_API_KEY", "test-key");
+    const QC = "us:statutes/26/32#relation.qualifying_child_of_tax_unit";
+    const OTHER = "us:statutes/26/63/c/5#relation.exemption_individual_of_another_tax_unit";
+    const relations = [
+      { name: QC, tuples: [["household:1", "person:1:2"]] },
+      { name: OTHER, tuples: [] },
+    ];
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(okEnvelope({ outputs: { eitc: 3400 }, explicit_relations: [QC, OTHER] }))
+      .mockResolvedValueOnce(okEnvelope({ outputs: { eitc: 3400 }, explicit_relations: [QC] }))
+      .mockResolvedValueOnce(okEnvelope({ outputs: { eitc: 3400 } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const confirmed = await runCalculateRoot({ root: "us:statutes/26/32", facts: {}, people: { person_2: { age: 8 } }, variables: ["eitc"], relations });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      root: "us:statutes/26/32", facts: {}, variables: ["eitc"],
+      household: { people: { person_1: {}, person_2: { age: 8 } }, relations },
+    });
+    expect(confirmed).toMatchObject({ kind: "ok", relationMembership: "explicit" });
+    // An echo that misses a relation we sent did not apply it.
+    const partial = await runCalculateRoot({ root: "us:statutes/26/32", facts: {}, variables: ["eitc"], relations });
+    expect(partial).toMatchObject({ kind: "ok", relationMembership: "convention" });
+    // A single filer still travels as person_1; a runtime without the echo
+    // predates explicit membership.
+    const ignored = await runCalculateRoot({ root: "us:statutes/26/32", facts: {}, variables: ["eitc"], relations });
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body).household).toEqual({ people: { person_1: {} }, relations });
+    expect(ignored).toMatchObject({ kind: "ok", relationMembership: "convention" });
+  });
+
+  it("presents a refused household (400 invalid_household) instead of hiding the run", async () => {
+    vi.stubEnv("AXIOM_RUNTIME_API_KEY", "test-key");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: async () => ({ status: "error", error: { code: "invalid_household", message: "household.relations[0]: a tuple does not fit" } }),
+    }));
+    const outcome = await runCalculateRoot({ root: "us:statutes/26/32", facts: {}, variables: ["eitc"], relations: [{ name: "x", tuples: [] }] });
+    expect(outcome).toEqual({ kind: "refused", code: "invalid_household", message: "household.relations[0]: a tuple does not fit" });
   });
 
   it("feature-detects run-by-root: upstream 400/404 map to unsupported", async () => {
@@ -490,5 +532,111 @@ describe("runtime api client", () => {
       body: { status: "error", error: { code: "upstream_misconfigured" } },
     });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("reduces parity cases to their declared comparison engines, skipping malformed entries", async () => {
+    vi.stubEnv("AXIOM_RUNTIME_API_KEY", "test-key");
+    // Shaped like GET /v1/parity/cases on 2026-10-03, before the API
+    // published results: an external comparison carries its setup only.
+    const comparison = {
+      id: "co-snap-policyengine-current",
+      engine: "policyengine",
+      description: "PolicyEngine current comparison.",
+      request: { country_id: "us", version: "current", household: {} },
+      mappings: [
+        {
+          axiom_variable: "snap_benefit_amount",
+          external_path: "result.spm_units.spm_unit.snap.2026",
+          transform: "annual_to_monthly",
+        },
+      ],
+      trace_mappings: [],
+      notes: [],
+      tolerance: { amount: 0.01 },
+    };
+    const cases = [
+      {
+        id: "co-snap-us-co-family-1",
+        description: "Colorado SNAP canonical two-person household.",
+        program_id: "co-snap",
+        jurisdiction: "us-co",
+        runtime_supported: true,
+        external_comparisons: [
+          comparison,
+          { ...comparison, id: "second-policyengine" },
+          { ...comparison, id: "no-engine", engine: undefined },
+          null,
+        ],
+        known_deviation: null,
+      },
+      {
+        id: "snap-us-ca-family-1",
+        description: null,
+        program_id: "snap",
+        jurisdiction: "us-ca",
+        runtime_supported: true,
+        external_comparisons: [],
+        known_deviation: null,
+      },
+    ];
+    const fetchMock = vi.fn().mockResolvedValue(okEnvelope({ cases }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(await listParityCases()).toEqual([
+      {
+        id: "co-snap-us-co-family-1",
+        description: "Colorado SNAP canonical two-person household.",
+        program_id: "co-snap",
+        jurisdiction: "us-co",
+        comparisonEngines: ["policyengine"],
+        comparisonResults: [
+          { engine: "policyengine", status: null, observedAt: null, engineVersion: null },
+          { engine: "policyengine", status: null, observedAt: null, engineVersion: null },
+        ],
+      },
+      {
+        id: "snap-us-ca-family-1",
+        description: "",
+        program_id: "snap",
+        jurisdiction: "us-ca",
+        comparisonEngines: [],
+        comparisonResults: [],
+      },
+    ]);
+    expect(fetchMock.mock.calls[0][0]).toContain("/parity/cases");
+  });
+
+  it("reads each comparison's latest published result and ignores a malformed one", async () => {
+    vi.stubEnv("AXIOM_RUNTIME_API_KEY", "test-key");
+    // Shaped like axiom-api#258's external_comparisons[].latest_result.
+    const latest = {
+      status: "known_difference",
+      observed_at: "2026-10-03T12:41:07.512Z",
+      engine_version: "2.9.0",
+      mappings: [],
+    };
+    const cases = [
+      {
+        id: "co-snap-us-co-family-1",
+        description: "Colorado SNAP canonical two-person household.",
+        program_id: "co-snap",
+        jurisdiction: "us-co",
+        external_comparisons: [
+          { id: "a", engine: "policyengine", latest_result: latest },
+          { id: "b", engine: "policyengine", latest_result: { ...latest, status: "match", engine_version: 7 } },
+          { id: "c", engine: "policyengine", latest_result: { ...latest, status: "verified" } },
+          { id: "d", engine: "policyengine", latest_result: null },
+        ],
+      },
+    ];
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(okEnvelope({ cases })));
+    const [summary] = await listParityCases();
+    expect(summary.comparisonResults).toEqual([
+      { engine: "policyengine", status: "known_difference", observedAt: "2026-10-03T12:41:07.512Z", engineVersion: "2.9.0" },
+      { engine: "policyengine", status: "match", observedAt: "2026-10-03T12:41:07.512Z", engineVersion: null },
+      // An unknown status is no result, so it can never read as a match.
+      { engine: "policyengine", status: null, observedAt: null, engineVersion: null },
+      { engine: "policyengine", status: null, observedAt: null, engineVersion: null },
+    ]);
   });
 });

@@ -1,5 +1,6 @@
 import { availableGraphCitations } from "@/lib/axiom/ops-graph-availability";
 import { corpusLookupPathsForCitation } from "@/lib/axiom/ops-citations";
+import { ownLevelName } from "@/lib/axiom/jurisdiction-names";
 
 const STATUS_REVALIDATE_SECONDS = 300;
 
@@ -175,37 +176,152 @@ export interface RecentCorpusScope {
   jurisdiction: string;
   document_class: string;
   version: string;
-  synced_at: string | null;
 }
 
-const RECENT_SCOPE_LIMIT = 8;
+/** Rows per read (the REST API returns at most 1,000), and reads at most. */
+const RECENT_SCOPE_PAGES = 5;
+const RECENT_SCOPE_PAGE = 1000;
+/** Ingest days each place shows. */
+const RECENT_PLACE_DAYS = 3;
 
 /**
- * The most recently synced scopes of the active corpus release — the ops
- * dashboard's "recently ingested" feed. Scope versions are the ingest
- * batches themselves (e.g. `2026-08-04-dk-full-parity-tier1`). Best-effort:
- * failures return an empty list.
+ * The ingest batches of the active corpus release — the ops dashboard's
+ * "recently ingested" feed, newest first. Scope versions are the ingest
+ * batches themselves and start with their ingest date (e.g.
+ * `2026-08-04-dk-full-parity-tier1`), so the feed orders by version: an
+ * activation re-syncs every scope whose release it changes, so a scope's
+ * `synced_at` says when the release moved, not when it was ingested.
+ * Versions without a leading date are left out. Reads every page, up to
+ * RECENT_SCOPE_PAGES of them, so each place has its newest days.
+ * Best-effort: failures return an empty list.
  */
 export async function getRecentCorpusScopes(): Promise<RecentCorpusScope[]> {
   const config = getSupabaseRestConfig();
   if (!config) return [];
   try {
-    return await readSupabaseRows<RecentCorpusScope>(
-      config,
-      "corpus",
-      "current_release_scopes",
-      {
-        select: "jurisdiction,document_class,version,synced_at",
-        order: "synced_at.desc.nullslast",
-        limit: String(RECENT_SCOPE_LIMIT),
-      }
-    );
+    const scopes: RecentCorpusScope[] = [];
+    for (let page = 0; page < RECENT_SCOPE_PAGES; page++) {
+      const rows = await readSupabaseRows<RecentCorpusScope>(
+        config,
+        "corpus",
+        "current_release_scopes",
+        {
+          select: "jurisdiction,document_class,version",
+          version: "match.^[0-9]{4}-[0-9]{2}-[0-9]{2}-",
+          order: "version.desc,jurisdiction.asc,document_class.asc",
+          limit: String(RECENT_SCOPE_PAGE),
+          offset: String(page * RECENT_SCOPE_PAGE),
+        }
+      );
+      scopes.push(...rows);
+      if (rows.length < RECENT_SCOPE_PAGE) break;
+    }
+    return scopes;
   } catch {
     return [];
   }
 }
 
+export interface RecentIngestDay {
+  /** YYYY-MM-DD. */
+  day: string;
+  /** By version, numbers in numeric order (title 8 before title 20). */
+  scopes: RecentCorpusScope[];
+}
+
+export interface RecentIngestPlace {
+  /** A US state (`us-co`), the US federal level (`us`), or a country (`uk`). */
+  place: string;
+  /** Its newest ingest days, newest first. */
+  days: RecentIngestDay[];
+}
+
+/** The ingest date a scope version starts with. */
+export function versionDate(version: string): string | null {
+  return /^(\d{4}-\d{2}-\d{2})-/.exec(version)?.[1] ?? null;
+}
+
+/**
+ * The place a scope is listed under: a US state and the US federal level
+ * are each their own place; elsewhere the country is (`uk-wakefield` is
+ * under `uk`, `be-bru` under `be`).
+ */
+export function ingestPlace(jurisdiction: string): string {
+  const parts = jurisdiction.split("-");
+  return parts[0] === "us" ? parts.slice(0, 2).join("-") : parts[0];
+}
+
+/**
+ * Recent scopes by place, then by ingest day: the place ingested most
+ * recently first (US Federal first on a tie, then by name), each with its
+ * newest `dayLimit` days. A wave ingests dozens of places on one day,
+ * which a flat list would show as one long run of rows.
+ */
+export function groupRecentScopes(
+  scopes: RecentCorpusScope[],
+  dayLimit = RECENT_PLACE_DAYS,
+): RecentIngestPlace[] {
+  const places = new Map<string, Map<string, RecentCorpusScope[]>>();
+  for (const scope of scopes) {
+    const day = versionDate(scope.version);
+    if (!day) continue;
+    const place = ingestPlace(scope.jurisdiction);
+    const days = places.get(place) ?? new Map<string, RecentCorpusScope[]>();
+    days.set(day, [...(days.get(day) ?? []), scope]);
+    places.set(place, days);
+  }
+  return [...places.entries()]
+    .map(([place, days]) => {
+      const sorted = [...days.entries()]
+        .sort(([a], [b]) => b.localeCompare(a))
+        .map(([day, dayScopes]) => ({
+          day,
+          scopes: [...dayScopes].sort((a, b) =>
+            a.version.localeCompare(b.version, "en", { numeric: true }),
+          ),
+        }));
+      return { place, days: sorted.slice(0, dayLimit) };
+    })
+    .sort(
+      (a, b) =>
+        b.days[0].day.localeCompare(a.days[0].day) ||
+        Number(b.place === "us") - Number(a.place === "us") ||
+        ownLevelName(a.place).localeCompare(ownLevelName(b.place)),
+    );
+}
+
 const CITATION_LABEL_LOOKUP_LIMIT = 200;
+/** Citations per batched lookup: their ancestor paths stay under the lookup limit. */
+const CITATION_METADATA_BATCH = 25;
+
+export interface CitationMetadata {
+  labels: Record<string, string>;
+  documentPaths: Record<string, string>;
+}
+
+/**
+ * Names and source documents for any number of citations (the /ops
+ * ledger's), read in batches so a whole jurisdiction fits the lookup
+ * limit. Empty where Supabase is not configured or a batch fails.
+ */
+export async function getCitationMetadata(citations: string[]): Promise<CitationMetadata> {
+  const config = getSupabaseRestConfig();
+  if (!config) return { labels: {}, documentPaths: {} };
+  const unique = [...new Set(citations)];
+  const batches: string[][] = [];
+  for (let i = 0; i < unique.length; i += CITATION_METADATA_BATCH) {
+    batches.push(unique.slice(i, i + CITATION_METADATA_BATCH));
+  }
+  const results = await Promise.all(
+    batches.map((batch) =>
+      readCitationMetadata(config, batch, {}).catch(() => ({ labels: {}, documentPaths: {} }))
+    )
+  );
+  return {
+    labels: Object.assign({}, ...results.map((result) => result.labels)),
+    documentPaths: Object.assign({}, ...results.map((result) => result.documentPaths)),
+  };
+}
 
 /**
  * Resolve human-readable labels for run citations from corpus navigation
@@ -274,7 +390,8 @@ async function readCitationMetadata(
     options,
   ).catch(() => []);
 
-  const roots = new Set<string>();
+  // Parentless provisions, and whether each has a heading of its own.
+  const roots = new Map<string, boolean>();
   const provisionLabels = new Set<string>();
   for (const row of provisions) {
     if (!row.citation_path) continue;
@@ -283,19 +400,33 @@ async function readCitationMetadata(
       labels[row.citation_path] = heading;
       provisionLabels.add(row.citation_path);
     }
-    if (row.parent_id === null) roots.add(row.citation_path);
+    if (row.parent_id === null) roots.set(row.citation_path, (roots.get(row.citation_path) ?? false) || !!heading);
   }
   const documentPaths: Record<string, string> = {};
   for (const citation of citations) {
     if (!citation) continue;
     const leaf = corpusLookupPathsForCitation(citation).at(-1);
     if (!leaf) continue;
-    const root = [...roots]
-      .filter((path) => leaf === path || leaf.startsWith(`${path}/`))
-      .sort((a, b) => b.length - a.length)[0];
+    const root = documentRootFor(leaf, roots);
     if (root) documentPaths[citation] = root;
   }
   return { labels, documentPaths };
+}
+
+/**
+ * The source document a corpus path sits in: the shallowest parentless node
+ * at or above it (on a "/" boundary) that has a heading of its own, else the
+ * shallowest parentless one. The corpus leaves some sections without a parent
+ * (`us/statute/26/32` beside `us/statute/26`), so the deepest would split one
+ * code into a document per section; a parentless node without a heading is a
+ * stray part (`us/regulation/42/435/603/b`), or a folder of documents that
+ * have their own (`us-az/manual/des/faa5`).
+ */
+export function documentRootFor(leaf: string, roots: Map<string, boolean>): string | null {
+  const above = [...roots]
+    .filter(([path]) => leaf === path || leaf.startsWith(`${path}/`))
+    .sort(([a], [b]) => a.length - b.length);
+  return (above.find(([, headed]) => headed) ?? above[0])?.[0] ?? null;
 }
 
 export interface SupabaseFetchOptions {

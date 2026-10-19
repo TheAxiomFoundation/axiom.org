@@ -1,4 +1,5 @@
 import { DISPLAY_ACRONYMS } from "@/lib/display-acronyms";
+import type { RelationDecl } from "@/lib/axiom/runtime/relation-roles";
 import type {
   Country,
   LegalId,
@@ -181,11 +182,24 @@ export interface RootInputSlot {
 // defaults the runtime inferred from the compiled artifact. The run
 // panel types its controls from this. A successful catalog establishes
 // compile readiness, not household/scenario correctness.
+export interface RootCatalog {
+  inputs: RootInputSlot[];
+  /** Source-declared data relations in the closure. */
+  relations: RelationDecl[];
+  /** "explicit": the scenario must state each person's relation roles;
+   *  "convention": every person joins the scope's (at most one) relation. */
+  relationMembership: "explicit" | "convention";
+}
+
 export async function fetchRootInputs(root: string): Promise<RootInputSlot[]> {
+  return (await fetchRootCatalog(root)).inputs;
+}
+
+export async function fetchRootCatalog(root: string): Promise<RootCatalog> {
   const url = `${trimSlash(API_BASE)}/runtime/root-inputs?root=${encodeURIComponent(root)}`;
   const response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(30_000) });
   const json = await response.json().catch(() => null) as {
-    data?: { inputs?: RootInputSlot[] };
+    data?: { inputs?: RootInputSlot[]; relations?: RelationDecl[]; relation_membership?: string };
     error?: { code?: string; message?: string };
   } | null;
   if (!response.ok) {
@@ -195,6 +209,7 @@ export async function fetchRootInputs(root: string): Promise<RootInputSlot[]> {
       root_not_found: "This source is not available in the runtime's serving catalog.",
       composition_root: "This source assembles a program and cannot run as an individual provision.",
       composition_in_closure: "This source depends on a program assembly that cannot run as an individual provision.",
+      relationships_unsupported: "This source relates people to units in a way a scenario cannot represent yet.",
     };
     const error = new Error(
       (typeof reason?.message === "string" && reason.message.trim()) ||
@@ -207,7 +222,12 @@ export async function fetchRootInputs(root: string): Promise<RootInputSlot[]> {
   if (!Array.isArray(json?.data?.inputs)) {
     throw new Error("The runtime returned an incomplete input catalog. Try again later.");
   }
-  return json.data.inputs;
+  const relations = Array.isArray(json.data.relations) ? json.data.relations : [];
+  const relationMembership = json.data.relation_membership === "explicit" ? "explicit" : "convention";
+  if (relationMembership === "explicit" && relations.length === 0) {
+    throw new Error("The runtime returned an incomplete relationship catalog. Try again later.");
+  }
+  return { inputs: json.data.inputs, relations, relationMembership };
 }
 
 export function displayNameForProgram(program: ProgramSummary | ProgramRef): string {

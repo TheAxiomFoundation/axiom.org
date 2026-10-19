@@ -27,12 +27,12 @@ const APPLICATIONS = [
   },
   {
     n: "02",
-    title: "Ground truth for AI",
+    title: "Rules a model can call",
     body:
-      "People keep asking models policy questions. The Axiom Foundation gives them a key — verifiable answers grounded in actual law, useful for both training and inference.",
+      "People keep asking models policy questions. Encoded rules give a model something to call for the numbers, with the legal source linked where one is recorded — useful for both training and inference.",
     actor: "for AI labs",
     demo: {
-      label: "A grounded assistant",
+      label: "Benefits and tax chatbot",
       href: "/demos?d=chatbot",
       src: "https://axiom.org/chatbot",
       poster: "/demo-posters/chatbot.png",

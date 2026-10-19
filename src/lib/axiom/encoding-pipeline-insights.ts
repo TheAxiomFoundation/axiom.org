@@ -7,12 +7,16 @@
  */
 
 import {
+  attemptSource,
   checkErrorLabel,
   citationStates,
+  isDispatch,
   pipelineItem,
+  reachedMain,
   type PipelineAttempt,
   type PipelineGroupView,
 } from "./encoding-pipeline";
+import { jurisdictionName, ownLevelName } from "./jurisdiction-names";
 
 /** Citations that ever reached each point, across all their dispatches. */
 export interface PipelineFunnel {
@@ -37,8 +41,19 @@ export interface RunStats {
   byAttempt: AttemptRate[];
   /** The citations dispatched most, when any was dispatched three times or more. */
   mostDispatched: Array<{ citation: string; dispatches: number; successes: number; merged: number }>;
-  /** Encoder-reported cost, over the runs that report one. */
-  cost: { recorded: number; finished: number; total: number; onFailures: number };
+  /**
+   * Encoder-reported cost, over the dispatches that report one plus the
+   * modules encoded inside another citation's run: each of those has its
+   * own record, so its cost is spend the run's own record leaves out.
+   * `recorded` and `finished` count dispatches; `dependent` the rest.
+   */
+  cost: {
+    recorded: number;
+    finished: number;
+    total: number;
+    onFailures: number;
+    dependent: { count: number; total: number };
+  };
 }
 
 /** Consecutive encoder versions pooled until they hold enough finished runs to compare. */
@@ -62,7 +77,7 @@ const ORDINALS = ["1st", "2nd", "3rd", "4th", "5th"];
 const MOST_DISPATCHED = 5;
 const MOST_DISPATCHED_MIN = 3;
 /** A version bin closes once it holds this many finished runs. */
-const VERSION_BIN_RUNS = 10;
+export const VERSION_BIN_RUNS = 10;
 const VERSION_BINS_SHOWN = 8;
 const CHECK_ERROR_ITEMS = 30;
 
@@ -85,7 +100,7 @@ export function pipelineFunnel(attempts: PipelineAttempt[]): PipelineFunnel {
   const groups = byCitation(attempts);
   const ever = (test: (attempt: PipelineAttempt) => boolean) =>
     groups.filter((list) => list.some(test)).length;
-  const mergedMain = (a: PipelineAttempt) => a.pr_state === "merged" && a.pr_targets_default !== false;
+  const mergedMain = reachedMain;
   return {
     citations: groups.length,
     encoded: ever((a) => a.run_conclusion === "success"),
@@ -95,7 +110,10 @@ export function pipelineFunnel(attempts: PipelineAttempt[]): PipelineFunnel {
   };
 }
 
-export function runStats(attempts: PipelineAttempt[]): RunStats {
+/** Run statistics: dispatches only, but for cost, which adds the modules encoded inside other citations' runs. */
+export function runStats(rows: PipelineAttempt[]): RunStats {
+  const attempts = rows.filter(isDispatch);
+  const dependents = rows.filter((row) => attemptSource(row) === "dependent" && row.cost_usd !== null);
   const groups = byCitation(attempts);
   const buckets = [...ORDINALS, `${ORDINALS.length + 1}th+`].map((label) => ({
     label,
@@ -105,7 +123,11 @@ export function runStats(attempts: PipelineAttempt[]): RunStats {
   let firstSuccess = 0;
   let firstTotal = 0;
   for (const list of groups) {
-    list.filter(finished).forEach((attempt, index) => {
+    // Up to the citation's first success: later runs re-encode a citation
+    // already encoded, so they are not retries of a failure.
+    const done = list.filter(finished);
+    const first = done.findIndex((attempt) => attempt.run_conclusion === "success");
+    done.slice(0, first === -1 ? done.length : first + 1).forEach((attempt, index) => {
       const bucket = buckets[Math.min(index, buckets.length - 1)];
       const success = attempt.run_conclusion === "success";
       bucket.total += 1;
@@ -124,10 +146,12 @@ export function runStats(attempts: PipelineAttempt[]): RunStats {
       citation: list[0].citation,
       dispatches: list.length,
       successes: list.filter((a) => a.run_conclusion === "success").length,
-      merged: list.filter((a) => a.pr_state === "merged").length,
+      merged: list.filter((a) => a.pr_state === "merged" && a.pr_targets_default !== false).length,
     }));
   const costed = attempts.filter((a) => a.cost_usd !== null);
-  const sum = (list: PipelineAttempt[]) => list.reduce((total, a) => total + (a.cost_usd ?? 0), 0);
+  // Stored as numeric, a cost can arrive as a string.
+  const sum = (list: PipelineAttempt[]) => list.reduce((total, a) => total + Number(a.cost_usd ?? 0), 0);
+  const spent = [...costed, ...dependents];
   return {
     firstAttempt: { success: firstSuccess, total: firstTotal },
     byAttempt: buckets.filter((bucket) => bucket.total > 0),
@@ -135,8 +159,9 @@ export function runStats(attempts: PipelineAttempt[]): RunStats {
     cost: {
       recorded: costed.length,
       finished: attempts.filter(finished).length,
-      total: sum(costed),
-      onFailures: sum(costed.filter((a) => a.run_conclusion === "failure")),
+      total: sum(spent),
+      onFailures: sum(spent.filter((a) => a.run_conclusion === "failure")),
+      dependent: { count: dependents.length, total: sum(dependents) },
     },
   };
 }
@@ -163,7 +188,7 @@ export function compareVersions(a: string, b: string): number {
 export function versionBins(attempts: PipelineAttempt[]): VersionBin[] {
   const byVersion = new Map<string, PipelineAttempt[]>();
   for (const attempt of attempts) {
-    if (!attempt.encoder_version || !finished(attempt)) continue;
+    if (!isDispatch(attempt) || !attempt.encoder_version || !finished(attempt)) continue;
     byVersion.set(attempt.encoder_version, [...(byVersion.get(attempt.encoder_version) ?? []), attempt]);
   }
   const bins: VersionBin[] = [];
@@ -234,7 +259,8 @@ export interface ScopeOption extends PipelineScope {
 
 /** The jurisdiction a dispatch belongs to, from its citation when not recorded. */
 export function attemptJurisdiction(attempt: Pick<PipelineAttempt, "jurisdiction" | "citation">): string {
-  return attempt.jurisdiction ?? attempt.citation.split("/")[0];
+  // A malformed citation root such as "us-nc:manual" belongs to us-nc.
+  return (attempt.jurisdiction ?? attempt.citation.split("/")[0]).split(":")[0];
 }
 
 export function inScope(jurisdiction: string, scope: PipelineScope | null): boolean {
@@ -245,6 +271,17 @@ export function inScope(jurisdiction: string, scope: PipelineScope | null): bool
 
 /** The top-level jurisdiction: "us" for "us-la", "uk" for "uk-wakefield". */
 export const rootJurisdiction = (jurisdiction: string) => jurisdiction.split("-")[0];
+
+/** The query string that asks for a scope: "?j=us", "?j=us&only=1", or "" for everything. */
+export function scopeSearch(scope: PipelineScope | null): string {
+  if (!scope) return "";
+  return `?${new URLSearchParams({ j: scope.jurisdiction, ...(scope.only ? { only: "1" } : {}) })}`;
+}
+
+/** What a scope covers, by name: "United States", "North Carolina", "US Federal only". */
+export function scopeName(scope: PipelineScope): string {
+  return scope.only ? `${ownLevelName(scope.jurisdiction)} only` : jurisdictionName(scope.jurisdiction);
+}
 
 /** The scope a URL asks for (`?j=us`, `?j=us&only=1`), or null for everything. */
 export function parseScope(params: Record<string, string | string[] | undefined>): PipelineScope | null {
@@ -278,10 +315,13 @@ export function scopeOptions(
   const root = rootJurisdiction(selected.jurisdiction);
   const members = [...citations.keys()].filter((j) => rootJurisdiction(j) === root).sort();
   if (members.length < 2) return { roots, within: [] };
-  const within: ScopeOption[] = members.map((jurisdiction) =>
-    jurisdiction === root
-      ? { jurisdiction, only: true, label: `${root} only`, citations: count({ jurisdiction, only: true }) }
-      : { jurisdiction, only: false, label: jurisdiction, citations: count({ jurisdiction, only: false }) }
-  );
+  // The root's own level first ("US Federal only"), then those under it by name.
+  const within: ScopeOption[] = members
+    .map((jurisdiction) =>
+      jurisdiction === root
+        ? { jurisdiction, only: true, label: `${ownLevelName(root)} only`, citations: count({ jurisdiction, only: true }) }
+        : { jurisdiction, only: false, label: jurisdictionName(jurisdiction), citations: count({ jurisdiction, only: false }) }
+    )
+    .sort((a, b) => Number(b.only) - Number(a.only) || a.label.localeCompare(b.label));
   return { roots, within };
 }

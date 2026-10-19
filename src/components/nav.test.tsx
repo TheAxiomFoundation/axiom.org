@@ -76,7 +76,7 @@ describe('Nav', () => {
     mockUsePathname.mockReturnValue('/')
     render(<NavClient />)
     expect(screen.getAllByText('Build a form').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Get accurate answers').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Ask about benefits and taxes').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Explore benefits cliffs').length).toBeGreaterThan(0)
     expect(screen.getAllByText('All demos').length).toBeGreaterThan(0)
   })

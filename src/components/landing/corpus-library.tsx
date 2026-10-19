@@ -388,7 +388,7 @@ function Plaques({ dark }: { dark?: boolean }) {
   const label = (bi: number) =>
     !dark
       ? BAYS[bi].name
-      : ["us:states · in progress", "us:statutes · 3,323 rules", "uk:legislation · next", "ca:laws-lois · next", "be:codes · pilot"][bi];
+      : ["us:states · in progress", "us:statutes · in progress", "uk:legislation · next", "ca:laws-lois · next", "be:codes · pilot"][bi];
   return (
     <g>
       {BAYS.map((b, bi) => (
@@ -656,7 +656,7 @@ function ActStacks({ auto }: { auto: boolean }) {
       className="clib-svg"
       viewBox="0 0 1420 700"
       role="img"
-      aria-label="A law library: five bays of shelves — state codes, the United States Code, the United Kingdom, Canada, Belgium — holding 1,742,391 provisions. The camera pushes into the titles shelf; the amber volume, Title 7 · Agriculture, pulls off the shelf, opens to chapter 51, and settles on § 2017 — Value of allotment, the page the encoding begins from."
+      aria-label="A law library: five bays of shelves — state codes, the United States Code, the United Kingdom, Canada, Belgium. The camera pushes into the titles shelf; the amber volume, Title 7 · Agriculture, pulls off the shelf, opens to chapter 51, and settles on § 2017 — Value of allotment, the page the encoding begins from."
     >
       <Defs />
       <g clipPath="url(#clib-stage)">

@@ -154,7 +154,7 @@ context_files:
     stageIds: ["encode"],
     title: "Encode law into RuleSpec corpora",
     summary:
-      "RuleSpec is the rules language and corpus layer. This is where statutes, regulations, and manuals become tested, versioned rule files.",
+      "RuleSpec is the rules language and corpus layer. This is where statutes, regulations, and manuals become versioned rule files with companion tests.",
     details: [
       "The corpus repos hold `.yaml` files, companion tests, imports, wave manifests, and provenance policies.",
       "The point is not just DSL syntax; it is durable, reviewable legal source-to-rule mapping.",
@@ -167,7 +167,7 @@ context_files:
       "import graph",
     ],
     repos: ["axiom-rules-engine", "rulespec-uk", "rulespec-us", "rulespec-us-co"],
-    outputs: ["compileable rules", "tests", "provenance manifests"],
+    outputs: ["rule files", "tests", "provenance manifests"],
     snippetLabel: "RuleSpec leaf",
     snippetLanguage: "yaml",
     snippet: `format: rulespec/v1
@@ -227,7 +227,7 @@ rules:
     summary:
       "The RuleSpec engine is what turns encodings into something executable: validators, test runners, interpreters, and code generation targets.",
     details: [
-      "The `axiom-rules-engine` compiler, runtime, and test harness are the first execution surfaces every encoding sees.",
+      "The `axiom-rules-engine` compiler, runtime, and test harness are where an encoding first runs. In rulespec-us CI, modules on a public waiver list skip validation, companion tests, and proof checks.",
       "The runtime and codegen layers are what make a `.yaml` file more than documentation: they let the same encoding drive evaluation and external integrations.",
       "This is where imports, periods, dtypes, formulas, and built-ins become machine behavior.",
     ],
@@ -251,7 +251,7 @@ python -m pytest -q python/tests`,
     stageIds: ["publish"],
     title: "Publish and inspect in Axiom",
     summary:
-      "Axiom is the public-facing inspection layer where source trees, RuleSpec files, encodings, provenance, and agent logs become explorable.",
+      "Axiom is the public-facing inspection layer where source trees, RuleSpec files, encodings, and provenance become explorable, with agent logs for rules that have a linked agent session.",
     details: [
       "Axiom is downstream of the corpus and harness, not the source of truth.",
       "It exposes source documents, rule trees, encoding records, and agent logs in one place.",
@@ -271,7 +271,7 @@ python -m pytest -q python/tests`,
 - official source documents
 - RuleSpec encodings
 - optional legacy encoding-run metadata
-- per-encoding agent logs`,
+- agent logs, where an agent session is linked to the rule`,
     icon: <TargetIcon className="w-5 h-5" />,
   },
 ];
@@ -293,13 +293,13 @@ const runtimeStages: RuntimeStage[] = [
     id: "check",
     label: "Verify",
     detail:
-      "Deterministic CI, tests, and semantic review decide whether the candidate is promotion-safe.",
+      "Deterministic CI, tests, and semantic review decide whether the candidate is promotion-safe. Modules on the public waiver list skip three CI steps.",
   },
   {
     id: "run",
     label: "Execute",
     detail:
-      "The RuleSpec engine validates, tests, and executes the accepted encoding.",
+      "The RuleSpec engine compiles and executes the accepted encoding.",
   },
   {
     id: "publish",
@@ -500,13 +500,18 @@ export function StackSystemPage() {
             <div className="flex flex-wrap items-start justify-between gap-8">
               <div className="max-w-[720px]">
                 <p className="font-body text-[1rem] text-[var(--color-ink)] leading-relaxed mb-4">
-                  Encoder is one layer in a longer chain. A provision moves from
-                  official document capture, to structural normalization, to a
-                  reproducible source slice, to a tested RuleSpec file, to harness
-                  evaluation, to runtime execution, and finally to Axiom. The
-                  system is split this way so authority, transformation,
-                  correctness, and presentation can each be inspected on their
-                  own terms.
+                  Encoder is one layer in a longer chain. On the encoder path, a
+                  provision moves from official document capture, to structural
+                  normalization, to a reproducible source slice, to a RuleSpec
+                  file with companion tests, to harness evaluation, to runtime
+                  execution, and finally to Axiom. The system is split this way
+                  so authority, transformation, correctness, and presentation
+                  can each be inspected on their own terms. Not every rule takes
+                  the encoder path: in September 2026, about 16,300 of our
+                  34,810 US rules matched a signed manifest that names the
+                  encoder&apos;s apply step, and about 15,300 more (mostly the
+                  generated US tariff schedule) were signed in by manual
+                  attestation.
                 </p>
                 <div className="flex flex-wrap gap-3">
                   <Link href="/encoder" className="btn-outline">
@@ -1032,9 +1037,13 @@ export function StackSystemPage() {
                 Execution and promotion path
               </h2>
               <p className="font-body text-[1rem] text-[var(--color-ink-secondary)] max-w-[760px] leading-relaxed">
-                After a rule is encoded, the downstream path is verification,
-                runtime execution, and public inspection. This section is the
-                post-encoding path, not a second architecture map.
+                After a rule is encoded, it moves to CI checks, runtime
+                execution, and public inspection. CI skips validation,
+                companion tests, and proof checks for modules on a public
+                waiver list: on October 2, 2026, 1,940 rulespec-us modules
+                carried an active validation waiver, and they hold 23,735 of
+                our 34,810 US rules. This section covers the steps after encoding;
+                the layer detail above maps the architecture.
               </p>
             </div>
             <Link href="/encoder" className="btn-outline">
