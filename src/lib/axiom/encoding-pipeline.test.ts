@@ -570,7 +570,7 @@ describe("tests and oracle stages", () => {
     expect(steps({ oracle_status: "match", oracle_engine: "policyengine", oracle_report: "axiom-policyengine-x.json" })[1]).toMatchObject({
       state: "done",
       detail: "Matches PolicyEngine — axiom-policyengine-x.json",
-      href: "https://github.com/TheAxiomFoundation/axiom-oracles/blob/main/dashboard/public/data/axiom-policyengine-x.json",
+      href: "https://github.com/TheAxiomFoundation/axiom-oracles/blob/oracle-data/dashboard/public/data/axiom-policyengine-x.json",
     });
     expect(steps({ oracle_status: "disagree" })[1].state).toBe("failed");
     expect(steps({ oracle_status: "stale", oracle_checked_at: "O" })[1]).toMatchObject({ state: "pending", at: null });

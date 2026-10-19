@@ -19,7 +19,7 @@ import {
 } from "@/lib/aspen/content";
 import type { ChatSource } from "@/lib/aspen/openai";
 import { AnswerText } from "./answer-text";
-import { RatingCard, RulesCheck } from "./answer-feedback";
+import { RatingCard } from "./answer-feedback";
 import { CHAT_KEY, newId, participantId, readStored, sendEvent, writeStored } from "./client";
 import { Disclosure } from "./disclosure";
 import { BUTTON, BUTTON_QUIET, Chip, FIELD, STEP_NUMBER } from "./ui";
@@ -113,15 +113,16 @@ export async function readNdjson(
 
 export function ChatWindow({
   stage,
-  rulesUnlocked,
   onRateOverall,
+  overallShared = false,
   onStatus,
   onNewQuestion,
 }: {
   stage: string;
-  rulesUnlocked: boolean;
   /** Leads to the overall rating, below the chat, once the answer is rated. */
   onRateOverall?: () => void;
+  /** The overall ratings are in, so nothing points to them any more. */
+  overallShared?: boolean;
   onStatus?: (status: ChatStatus) => void;
   /** Called when the participant starts a new question. */
   onNewQuestion?: () => void;
@@ -192,11 +193,15 @@ export function ChatWindow({
   }, [hydrated, asked, rated, current, onStatus]);
 
   // The question box grows to show the whole question, so nobody scrolls inside it on a phone.
+  // Measuring collapses it for a moment, which would shorten the page and jump it while typing:
+  // the scroll position goes back where it was.
   useEffect(() => {
     const el = draftBox.current;
     if (!el) return;
+    const y = window.scrollY;
     el.style.height = "auto";
     if (el.scrollHeight > 0) el.style.height = `${el.scrollHeight + 2}px`;
+    if (window.scrollY !== y) window.scrollTo({ top: y, behavior: "instant" });
   }, [draft]);
 
   const started = turns.length > 0;
@@ -342,8 +347,11 @@ export function ChatWindow({
           messages: turns.slice(0, latestIndex).map((t) => ({ role: t.role, content: t.content })),
         }
       : null;
-  // Rating is not optional: a follow-up or a new question waits for it.
+  // Rating is not optional for Try it, but a blank question can go back and forth first:
+  // its follow-ups don't wait for the rating. Start over never waits.
   const mustRate = Boolean(latest?.promptId && !rated.has(latest.promptId));
+  const blank = householdId === OWN || householdId === null;
+  const followUpWaits = mustRate && !blank;
 
   const tile = (selected: boolean) =>
     `flex flex-col items-start justify-start rounded-lg border px-3 py-2.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-[var(--color-accent)] ${
@@ -361,16 +369,19 @@ export function ChatWindow({
         {started && (
           <div className="flex items-center justify-between gap-3 border-b border-[var(--color-rule)] px-4 py-3">
             <span className="font-body text-[0.95rem] text-[var(--color-ink-secondary)]">Your conversation</span>
-            {!mustRate && (
-              <button type="button" className="aspen-link font-body text-[0.95rem]" onClick={startOver}>
-                New question
-              </button>
-            )}
+            <button type="button" className="aspen-link font-body text-[1rem] font-medium" onClick={startOver}>
+              Start over
+            </button>
           </div>
         )}
 
         {!started && (
           <div className="flex flex-col gap-5 px-4 pt-4">
+            {(householdId !== null || draft.trim() !== "") && (
+              <button type="button" className="aspen-link -mb-2 self-end font-body text-[1rem] font-medium" onClick={startOver}>
+                Start over
+              </button>
+            )}
             <fieldset className="m-0 border-0 p-0">
               <legend className={STEP}>
                 <span className={STEP_NUMBER}>{step.askAs}</span>Ask as
@@ -539,17 +550,18 @@ export function ChatWindow({
 
         {started && !followUp ? (
           <div className="flex flex-col gap-2 border-t border-[var(--color-rule)] px-4 py-3">
-            {mustRate ? (
-              <p className="m-0 font-body text-[0.98rem] text-[var(--color-ink)]">
-                Rate this answer to ask another question.{" "}
+            {followUpWaits ? (
+              <>
+                <p className="m-0 font-body text-[0.98rem] text-[var(--color-ink)]">Rate this answer to ask another question.</p>
+                {/* The rating comes next, so on a phone it is a button, not a link in the sentence. */}
                 <button
                   type="button"
-                  className="aspen-link whitespace-nowrap font-medium lg:hidden"
+                  className={`${BUTTON} w-full py-3 text-[1rem] lg:hidden`}
                   onClick={() => ratingBox.current?.scrollIntoView?.({ behavior: "smooth", block: "start" })}
                 >
                   Rate it ↓
                 </button>
-              </p>
+              </>
             ) : (
               <button
                 type="button"
@@ -613,10 +625,10 @@ export function ChatWindow({
                 <span aria-hidden className="mr-1.5 text-[var(--color-success)]">✓</span>
                 Your rating is saved. Thank you.
               </p>
-              {onRateOverall && (
-                <button type="button" onClick={onRateOverall} className={`${BUTTON} w-full justify-between py-3.5 text-left text-[1.02rem]`}>
+              {onRateOverall && !overallShared && (
+                <button type="button" onClick={onRateOverall} className={`${BUTTON_QUIET} w-full justify-between py-3 text-left text-[1rem]`}>
                   Next: how did AI do overall?
-                  <span aria-hidden>↓</span>
+                  <span aria-hidden className="text-[var(--color-accent)]">↓</span>
                 </button>
               )}
               {/* On a phone the chat's own "New question" link is far above; this one sits where the thumb is. */}
@@ -628,7 +640,7 @@ export function ChatWindow({
                 }}
                 className={`${BUTTON_QUIET} w-full justify-between py-3 text-left text-[1rem]`}
               >
-                Ask a new question
+                Start over
                 <span aria-hidden className="text-[var(--color-accent)]">↑</span>
               </button>
             </div>
@@ -637,15 +649,6 @@ export function ChatWindow({
               key={latest.promptId}
               promptId={latest.promptId}
               onRated={() => setRated((s) => new Set(s).add(latest.promptId as string))}
-            />
-          )}
-          {/* The rules check waits for its stage; no note about it before then, so the next step stays clear. */}
-          {rulesUnlocked && (
-            <RulesCheck
-              key={`rules-${latest.promptId}`}
-              promptId={latest.promptId}
-              messages={latest.messages}
-              unlocked={rulesUnlocked}
             />
           )}
         </section>
@@ -658,7 +661,6 @@ export function ChatWindow({
             <li>Pick a household, add details if you like, and ask.</li>
             <li>Rate the answer you get.</li>
             <li>Then rate how AI did overall, right below.</li>
-            <li>Later, check the answer against the encoded rules.</li>
           </ol>
         </aside>
       )}

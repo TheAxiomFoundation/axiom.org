@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { olderVersion, screenerParity, staleRun, type ComparisonReport } from "./screener-parity";
 
-const source = { repo: "TheAxiomFoundation/axiom-oracles", suite: "az-snap-ecps", report: "dashboard/public/data/r.json" };
+const source = {
+  repo: "TheAxiomFoundation/axiom-oracles",
+  suite: "az-snap-ecps",
+  report: "dashboard/public/data/r.json",
+  report_ref: "0123456789abcdef0123456789abcdef01234567",
+};
 const issue = "https://github.com/TheAxiomFoundation/rulespec-us/issues/1116";
 
 // Four households, weights 10, 20, 30 and 40. PolicyEngine finds the first
@@ -57,12 +62,21 @@ describe("screenerParity", () => {
       issues: [{ url: issue, mismatches: 2 }],
       policyengine_us: "1.767.3",
       run_kind: "manual",
-      report_url: "https://github.com/TheAxiomFoundation/axiom-oracles/blob/main/dashboard/public/data/r.json",
+      report_url: `https://github.com/TheAxiomFoundation/axiom-oracles/blob/${source.report_ref}/dashboard/public/data/r.json`,
     });
     expect(parity.outputs.map((o) => [o.description, o.mismatches])).toEqual([
       ["SNAP eligibility", 1],
       ["SNAP benefit amount", 2],
     ]);
+  });
+
+  it("keeps a collected verdict's evidence at the commit it read, including the main fallback", () => {
+    const fallbackSha = "fedcba9876543210fedcba9876543210fedcba98";
+    const parity = screenerParity(report, { ...source, report_ref: fallbackSha });
+    expect(parity.report_url).toBe(
+      `https://github.com/TheAxiomFoundation/axiom-oracles/blob/${fallbackSha}/dashboard/public/data/r.json`,
+    );
+    expect(parity.report_url).not.toContain("/main/");
   });
 
   it("gives no share when Axiom finds nobody eligible and PolicyEngine does: 0%", () => {

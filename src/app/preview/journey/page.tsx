@@ -21,7 +21,8 @@ export default function JourneyPreviewPage() {
       <JourneyDigital />
       <section className="section-tint-cream relative z-1 py-32 px-8">
         <p className="text-center font-body text-[0.95rem] text-[var(--color-ink-muted)] max-w-[640px] mx-auto leading-relaxed">
-          The encoder logs every decision.
+          Each time the encoder applies an encoding, it leaves a signed
+          manifest naming the source citation and the model.
         </p>
       </section>
     </main>

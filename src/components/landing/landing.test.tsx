@@ -99,7 +99,10 @@ describe('Landing sections', () => {
   // eligible" is drawn on the canvas, never in the page text).
   it('keeps the journey captions inside the copy rules', () => {
     const { container } = render(<EncoderSection />)
-    const text = container.textContent ?? ''
+    // the journey alone (the section's own copy may name the signed
+    // apply manifest; the story's captions claim no signature)
+    const journey = container.querySelector('.jl-posters, .jl-track')
+    const text = journey?.textContent ?? ''
     // the two disclosures ride in the step titles: the encode step is an
     // illustration, and the registry's numbers carry their snapshot month
     expect(text).toMatch(/an illustration: ai drafts a rule/i)

@@ -899,7 +899,7 @@ export const GOLDEN_A = [
      * end-of-2027 requirement, since the credits are computed on it.
      */
     programs: ["SNAP", "Medicaid", "CHIP", "TANF", "WIC", "LIHEAP", "CCDF", "SSI", "Medicare", "UI", "EITC", "CTC"],
-    takes: "Nothing from your team.",
+    takes: "Publicly available documents.",
     medal: null,
   },
   {
@@ -972,7 +972,7 @@ export const DISCLOSURE = {
   short: "We keep everyone's answers to learn from and don't publish them. Taking part is optional.",
   details: [
     { title: "No names", text: "We don't ask who you are. Please don't type details about real people." },
-    { title: "Where questions go", text: "To OpenAI for the AI's answer, and to the Axiom rules chatbot if you check the rules." },
+    { title: "Where questions go", text: "To OpenAI, for the AI's answer." },
     { title: "What we save", text: "Questions and ratings, to learn which rules are hardest. We don't publish them or show who asked what." },
     { title: "Your choice", text: "Skip anything, or just watch." },
     { title: "Email", text: "Only on the next-steps form, to follow up." },

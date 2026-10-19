@@ -1,7 +1,12 @@
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import { render } from '@testing-library/react'
+import fc from 'fast-check'
 import { describe, it, expect, vi } from 'vitest'
+import { encoderRecordClaims, markdownClaims } from '@/test/encoder-record-guard'
+import { copyFiles, fileCopy, htmlCopy, pageText, publicHtmlFiles, sourceCopy, stringsIn } from '@/test/claim-copy'
+import { sweepPublicHtmlClaims } from '@/test/public-html-claims'
 
 vi.mock('next/link', () => ({
   default: ({ children, href, ...props }: any) => <a href={href} {...props}>{children}</a>,
@@ -13,6 +18,8 @@ import VerifyPage from '@/app/verify/page'
 import ReceiptsPage from '@/app/receipts/page'
 import { EncodedLawSection } from '@/components/landing/encoded-law-section'
 import { EncoderSection } from '@/components/landing/encoder-section'
+import OverviewPage from '@/app/overview/page'
+import * as overviewContent from '@/components/overview/overview-content'
 import { SOUTHMOD_CAVEATS } from '@/lib/verification-evidence'
 
 // The verification copy must describe what the oracle harness does.
@@ -148,4 +155,113 @@ describe('verification claims', () => {
     expect(validationMetadata.description).not.toMatch(/independent/i)
     expect(validationMetadata.description).not.toMatch(/\bevery\b/i)
   })
+})
+
+// The encoder's record is its signed apply manifest. A failed re-encode's
+// 90-day diagnostics artifact can contain a trace. Read from code on 2026-10-11:
+// - An apply manifest (axiom-encode cli.py _MODEL_APPLY_MANIFEST_FIELDS) names
+//   the citation, the runner, backend and model, and the path and SHA-256 of
+//   each file written, and is signed before it is written. It holds a trace's
+//   path and hash, never the trace, which stays on the machine that ran the
+//   encoder.
+// - No rules repo holds a trace, and the signed CI workflows put none in the
+//   artifacts that land. A failed targeted re-encode's diagnostics artifact
+//   can keep its trace for 90 days.
+// - The run telemetry in Supabase (encodings.encoding_runs,
+//   telemetry.sdk_session_events) records a run's request, result, outcome
+//   and validation issues: about four events a run, none a decision.
+//
+// The executable guard lives in src/test/encoder-record-guard.ts. Ops owns
+// the canonical labels and publishes their byte-level digest. These are local
+// artifact pins: neither repository's offline CI observes a later one-sided
+// update in the other. encoder-record-reference.test.ts also checks exact
+// Python outputs recorded at the immutable ops snapshot named in that artifact.
+// scripts/check-encoder-record-reference.py --ops <checkout> rechecks that
+// snapshot against local git objects and runs Python without network access.
+const FIXTURES_PATH = join(process.cwd(), 'src/test/encoder-record-fixtures.json')
+const FIXTURES_SHA256 = 'f266b1add1d0239662823f10aa8ba4f5a94345f9d3dd82ec4e88efda762b8cf3'
+const FIXTURES: { text: string; banned: boolean; markdown?: boolean }[] = JSON.parse(readFileSync(FIXTURES_PATH, 'utf8')).cases
+
+describe('encoder record claims', () => {
+  it('reads the fixtures it shares with ops comms/check_claims.py', () => {
+    const digest = createHash('sha256').update(readFileSync(FIXTURES_PATH)).digest('hex')
+    expect(
+      digest,
+      'the canonical fixture bytes changed: verify the ops sidecar and refresh the recorded reference outputs',
+    ).toBe(FIXTURES_SHA256)
+  })
+
+  it('reproduces every fixture label', () => {
+    const wrong = FIXTURES.filter((c) => (c.markdown ? markdownClaims(c.text) : encoderRecordClaims(c.text)).length > 0 !== c.banned)
+    expect(wrong).toEqual([])
+  })
+
+  const plainClaims = FIXTURES.filter((c) => !c.markdown && c.banned && c.text.split('.').length === 2 && !c.text.includes('\n')).map((c) => c.text)
+  const plainAllowed = FIXTURES.filter((c) => !c.markdown && !c.banned && c.text.split('.').length === 2 && !c.text.includes('\n')).map((c) => c.text)
+  it('finds a claim whatever sentence comes before it', () => {
+    fc.assert(
+      fc.property(fc.stringMatching(/^[A-Za-z0-9 ,'()-]{0,80}$/), fc.constantFrom(...plainClaims), (prefix, claim) => {
+        expect(encoderRecordClaims(`${prefix}. ${claim}`)).not.toEqual([])
+      }),
+    )
+  })
+
+  it('reads a block break as a clause break', () => {
+    fc.assert(
+      fc.property(fc.constantFrom(...plainAllowed), fc.constantFrom(...plainClaims), (allowed, claim) => {
+        expect(encoderRecordClaims(`${allowed}\n${claim}`)).not.toEqual([])
+        expect(encoderRecordClaims(`${allowed}\n${allowed}`)).toEqual([])
+      }),
+    )
+  })
+
+  const RENDERED = [...SURFACES, ['/overview', () => render(<OverviewPage />)]] as const
+  for (const [route, renderSurface] of RENDERED) {
+    it(`${route} makes no claim about the encoder's record`, () => {
+      expect(encoderRecordClaims(pageText(renderSurface))).toEqual([])
+    })
+  }
+
+  it('the overview copy, every audience panel included, makes no such claim', () => {
+    expect(stringsIn(overviewContent).flatMap(encoderRecordClaims)).toEqual([])
+  })
+
+  // The downloadable PDF is rendered from this file (pdf/overview/README.md).
+  it('the overview PDF print source makes no such claim', () => {
+    const html = readFileSync(join(process.cwd(), 'pdf/overview/axiom-overview.html'), 'utf8')
+    expect(encoderRecordClaims(htmlCopy(html))).toEqual([])
+  })
+
+  it('the source extraction keeps copy and drops comments', () => {
+    const read = (source: string) => sourceCopy('probe.tsx', source).flatMap(encoderRecordClaims)
+    expect(read('const a = <p>Every encoding decision is {/* note */} recorded.</p>')).not.toEqual([])
+    expect(read('const a = <p>We do not {/* note */} publish its traces, the encoder says.</p>')).toEqual([])
+    expect(read('const a = <p aria-label="The encoder logs every decision.">Hi</p>')).not.toEqual([])
+    expect(read('const a = "The encoder logs every " + "decision."')).not.toEqual([])
+    expect(read('// The encoder logs every decision.\nconst a = 1')).toEqual([])
+    // An inline element joins its neighbours' words; a block element breaks the clause.
+    expect(read('const a = <div><span>Decision</span> <span>logs are kept.</span></div>')).not.toEqual([])
+    expect(read('const a = <div><h2>Decision</h2> <p>logs are kept.</p></div>')).toEqual([])
+  })
+
+  it('sweeps website-owned public HTML, including the embedded tariff paper', () => {
+    const root = join(process.cwd(), 'public')
+    const files = publicHtmlFiles(root)
+    expect(files).toContain(join(root, 'tariff/paper/web/index.html'))
+    const result = sweepPublicHtmlClaims(files.map((path) => ({
+      path: relative(process.cwd(), path).split('\\').join('/'),
+      html: readFileSync(path, 'utf8'),
+    })))
+    expect(result).toEqual({ hits: [], unusedExceptions: [] })
+  }, 60_000)
+
+  // A backstop for pages no test renders: every file under src/ that can
+  // carry copy.
+  it('no source file makes such a claim', () => {
+    const root = join(process.cwd(), 'src')
+    const hits = copyFiles(root).flatMap((path) =>
+      fileCopy(path).flatMap(encoderRecordClaims).map((claim) => `${relative(root, path)}: ${claim}`),
+    )
+    expect(hits).toEqual([])
+  }, 60_000)
 })

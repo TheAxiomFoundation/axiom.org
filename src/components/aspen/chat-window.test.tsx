@@ -132,7 +132,7 @@ describe("ChatWindow composing", () => {
       "/api/aspen/rate": () => jsonResponse({ ok: true }),
     });
     const onRateOverall = vi.fn();
-    render(<ChatWindow stage="try" rulesUnlocked={false} onRateOverall={onRateOverall} />);
+    render(<ChatWindow stage="try" onRateOverall={onRateOverall} />);
     pickRetiree();
     fireEvent.click(screen.getByRole("button", { name: "Ask the AI" }));
     await screen.findByText("Ok");
@@ -147,7 +147,7 @@ describe("ChatWindow composing", () => {
 
   it("shows each step as a bold, numbered heading, starting with who you ask as", () => {
     routeFetch({});
-    render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    render(<ChatWindow stage="try" />);
     const steps = () => [...document.querySelectorAll("legend, div.font-semibold")].map((el) => el.textContent?.replace(/\s+/g, " ").trim());
     expect(steps()).toEqual(["1Ask as", "2Pick a household", "3Your question (edit it if you like)"]);
     pickRetiree();
@@ -162,7 +162,7 @@ describe("ChatWindow composing", () => {
 
   it("starts empty with no household picked, asking as a resident", () => {
     routeFetch({});
-    render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    render(<ChatWindow stage="try" />);
     expect(screen.getByRole("button", { name: "A resident" })).toHaveAttribute("aria-pressed", "true");
     // Before the first answer the side column explains the steps.
     expect(screen.getByRole("complementary", { name: "How it works" })).toHaveTextContent("Then rate how AI did overall, right below.");
@@ -177,7 +177,7 @@ describe("ChatWindow composing", () => {
 
   it("keeps a typed question when the perspective changes, and drops a composed one for the own question", () => {
     routeFetch({});
-    render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    render(<ChatWindow stage="try" />);
     fireEvent.change(draftBox(), { target: { value: "Can I get WIC in Ohio?" } });
     fireEvent.click(screen.getByRole("button", { name: "A caseworker" }));
     expect(draftBox().value).toBe("Can I get WIC in Ohio?");
@@ -189,7 +189,7 @@ describe("ChatWindow composing", () => {
 
   it("composes the question from the perspective, household and question chips", () => {
     const fetchMock = routeFetch({});
-    render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    render(<ChatWindow stage="try" />);
 
     expect(draftBox().value).toBe("");
     pickRetiree();
@@ -243,7 +243,7 @@ describe("ChatWindow composing", () => {
 
   it("adds details to the household in the right voice, and drops ones a new household contradicts", () => {
     const fetchMock = routeFetch({});
-    render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    render(<ChatWindow stage="try" />);
     expect(screen.queryByRole("group", { name: "Details" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Working parent of two/ }));
     const details = within(screen.getByRole("group", { name: "Details" }));
@@ -280,7 +280,7 @@ describe("ChatWindow composing", () => {
 
   it("clears the draft and hides the question chips for the participant's own question", () => {
     routeFetch({});
-    render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    render(<ChatWindow stage="try" />);
     const own = screen.getByRole("button", { name: /Your own question/ });
     fireEvent.click(own);
     expect(own).toHaveAttribute("aria-pressed", "true");
@@ -304,7 +304,7 @@ describe("ChatWindow asking", () => {
       "/api/aspen/ask": [() => streamResponse(first.stream), () => streamResponse(second.stream)],
       "/api/aspen/rate": () => jsonResponse({ ok: true }),
     });
-    render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    render(<ChatWindow stage="try" />);
     pickRetiree();
     const question = draftBox().value;
 
@@ -380,8 +380,8 @@ describe("ChatWindow asking", () => {
     fireEvent.click(within(verdict).getByRole("button", { name: "Save rating" }));
     expect(await screen.findByText("Your rating is saved. Thank you.")).toBeInTheDocument();
     expect(screen.queryByText(/Later in the session, you'll check this answer/)).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Ask a new question/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "New question" })).toBeInTheDocument();
+    // Start over sits in the conversation's header and again under the saved rating.
+    expect(screen.getAllByRole("button", { name: /^Start over/ })).toHaveLength(2);
     expect(screen.getByRole("button", { name: "Ask a follow-up" })).toBeEnabled();
     expect(calls(fetchMock, "/api/aspen/rate")[0]).toMatchObject({ promptId: "prompt-1", verdict: "right" });
     await waitFor(() => expect(saved().rated).toEqual(["prompt-1"]));
@@ -428,7 +428,7 @@ describe("ChatWindow asking", () => {
   it("keeps the thinking line while only empty text has arrived", async () => {
     const stream = controlledStream();
     routeFetch({ "/api/aspen/ask": () => streamResponse(stream.stream) });
-    render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    render(<ChatWindow stage="try" />);
     pickRetiree();
     fireEvent.click(screen.getByRole("button", { name: "Ask the AI" }));
     await act(async () => {
@@ -457,7 +457,7 @@ describe("ChatWindow asking", () => {
           ]),
         ),
     });
-    render(<ChatWindow stage="try" rulesUnlocked />);
+    render(<ChatWindow stage="try"/>);
     pickRetiree();
     fireEvent.click(screen.getByRole("button", { name: "Ask the AI" }));
     expect(await screen.findByText("The model is busy. Try again.")).toHaveClass("text-[var(--color-error)]");
@@ -474,7 +474,7 @@ describe("ChatWindow asking", () => {
         () => jsonResponse({}, true),
       ],
     });
-    render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    render(<ChatWindow stage="try" />);
     pickRetiree();
     fireEvent.click(screen.getByRole("button", { name: "Ask the AI" }));
     expect(await screen.findByText("Slow down: too many questions.")).toBeInTheDocument();
@@ -499,7 +499,7 @@ describe("ChatWindow asking", () => {
         () => streamResponse(streamOf([{ type: "meta", promptId: "p" }, { type: "delta", text: "Hi" }, { type: "done" }])),
       ],
     });
-    render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    render(<ChatWindow stage="try" />);
     pickRetiree();
     const question = draftBox().value;
     fireEvent.click(screen.getByRole("button", { name: "Ask the AI" }));
@@ -516,7 +516,7 @@ describe("ChatWindow asking", () => {
 
   it("reports a dropped connection", async () => {
     routeFetch({ "/api/aspen/ask": () => Promise.reject(new Error("offline")) });
-    render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    render(<ChatWindow stage="try" />);
     pickRetiree();
     fireEvent.click(screen.getByRole("button", { name: "Ask the AI" }));
     expect(await screen.findByText("The connection dropped. Try again.")).toBeInTheDocument();
@@ -536,7 +536,7 @@ describe("ChatWindow asking", () => {
         () => streamResponse(streamOf([{ type: "meta", promptId: "p-empty" }])),
       ],
     });
-    render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    render(<ChatWindow stage="try" />);
     pickRetiree();
     fireEvent.click(screen.getByRole("button", { name: "Ask the AI" }));
     expect(await screen.findByText("Cut short")).toBeInTheDocument();
@@ -563,7 +563,7 @@ describe("ChatWindow asking", () => {
           ]),
         ),
     });
-    render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    render(<ChatWindow stage="try" />);
     pickRetiree();
     fireEvent.click(screen.getByRole("button", { name: "Ask the AI" }));
     await screen.findByText("Answer");
@@ -575,7 +575,7 @@ describe("ChatWindow asking", () => {
     const fetchMock = routeFetch({
       "/api/aspen/ask": () => streamResponse(streamOf([{ type: "meta", promptId: "p-t" }, { type: "delta", text: "Ok" }, { type: "done" }])),
     });
-    render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    render(<ChatWindow stage="try" />);
     pickRetiree();
     fireEvent.click(screen.getByRole("button", { name: "+ Savings" }));
     fireEvent.click(screen.getByRole("button", { name: "Ask the AI" }));
@@ -588,7 +588,7 @@ describe("ChatWindow asking", () => {
     const fetchMock = routeFetch({
       "/api/aspen/ask": () => streamResponse(streamOf([{ type: "delta", text: "Sure." }, { type: "done" }])),
     });
-    render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    render(<ChatWindow stage="try" />);
     fireEvent.click(screen.getByRole("button", { name: "A caseworker" }));
     pickRetiree();
     fireEvent.click(screen.getByRole("button", { name: /Your own question/ }));
@@ -628,7 +628,7 @@ describe("ChatWindow saved conversation", () => {
       rated: ["p1"],
     });
     routeFetch({});
-    render(<ChatWindow stage="reveal" rulesUnlocked={false} />);
+    render(<ChatWindow stage="reveal" />);
 
     expect(await screen.findByText("Interrupted. Ask again.")).toBeInTheDocument();
     expect(screen.getByText("Answer one")).toBeInTheDocument();
@@ -656,10 +656,10 @@ describe("ChatWindow saved conversation", () => {
       rated: ["p1"],
     });
     routeFetch({});
-    render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    render(<ChatWindow stage="try" />);
     // An older save held one question; it comes back as a one-item list.
     await waitFor(() => expect(saved().questionIds).toEqual(["eligible"]));
-    fireEvent.click(await screen.findByRole("button", { name: "New question" }));
+    fireEvent.click((await screen.findAllByRole("button", { name: /^Start over/ }))[0]);
 
     expect(screen.queryByText("Answer one")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "A caseworker" })).toHaveAttribute("aria-pressed", "true");
@@ -689,9 +689,9 @@ describe("ChatWindow saved conversation", () => {
     routeFetch({});
     const scrollIntoView = vi.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
-    render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    render(<ChatWindow stage="try" />);
     const verdict = await screen.findByRole("region", { name: "Your verdict" });
-    fireEvent.click(within(verdict).getByRole("button", { name: /Ask a new question/ }));
+    fireEvent.click(within(verdict).getByRole("button", { name: /^Start over/ }));
     expect(screen.queryByText("Answer one")).not.toBeInTheDocument();
     // Blank again: no household picked and an empty box.
     expect(screen.getByRole("button", { name: /Working parent of two/ })).toHaveAttribute("aria-pressed", "false");
@@ -701,15 +701,45 @@ describe("ChatWindow saved conversation", () => {
     delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
   });
 
-  it("keeps the new-question button away until the answer is rated", async () => {
+  it("offers Start over before the answer is rated, in the conversation's header", async () => {
     store({ perspective: "resident", householdId: "az-retiree", questionIds: ["amount"], conversationId: "c-8", turns: turns.slice(0, 2), rated: [] });
     routeFetch({});
-    render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    render(<ChatWindow stage="try" />);
     await screen.findByText("Answer one");
-    expect(screen.queryByRole("button", { name: /Ask a new question/ })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^Start over/ })).toHaveLength(1);
+    expect(within(screen.getByRole("region", { name: "Your verdict" })).queryByRole("button", { name: /^Start over/ })).not.toBeInTheDocument();
   });
 
-  it("starts over with 'New question' from an open follow-up, closing it", async () => {
+  it("lets a blank question go back and forth before the rating", async () => {
+    store({ perspective: "resident", householdId: "own", questionIds: ["amount"], conversationId: "c-10", turns: turns.slice(0, 2), rated: [] });
+    routeFetch({});
+    render(<ChatWindow stage="try" />);
+    await screen.findByText("Answer one");
+    expect(screen.getByRole("button", { name: "Ask a follow-up" })).toBeEnabled();
+    expect(screen.queryByText(/Rate this answer to ask another question/)).not.toBeInTheDocument();
+    // The rating stays right there for when they're ready.
+    expect(within(screen.getByRole("region", { name: "Your verdict" })).getByText("Rate this answer")).toBeInTheDocument();
+  });
+
+  it("lets a typed question go back and forth before the rating, with nothing picked", async () => {
+    store({ perspective: "resident", householdId: null, questionIds: [], conversationId: "c-11", turns: turns.slice(0, 2), rated: [] });
+    routeFetch({});
+    render(<ChatWindow stage="try" />);
+    await screen.findByText("Answer one");
+    expect(screen.getByRole("button", { name: "Ask a follow-up" })).toBeEnabled();
+  });
+
+  it("offers Start over before anything is asked, once something is picked", async () => {
+    routeFetch({});
+    render(<ChatWindow stage="try" />);
+    expect(screen.queryByRole("button", { name: /^Start over/ })).not.toBeInTheDocument();
+    pickRetiree();
+    fireEvent.click(screen.getByRole("button", { name: /^Start over/ }));
+    expect(screen.getByRole("button", { name: /Retiree in Phoenix/ })).toHaveAttribute("aria-pressed", "false");
+    expect(draftBox().value).toBe("");
+  });
+
+  it("starts over from an open follow-up, closing it", async () => {
     store({
       perspective: "resident",
       householdId: "own",
@@ -721,10 +751,10 @@ describe("ChatWindow saved conversation", () => {
       rated: ["p1"],
     });
     routeFetch({});
-    render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    render(<ChatWindow stage="try" />);
     fireEvent.click(await screen.findByRole("button", { name: "Ask a follow-up" }));
     expect(draftBox()).toHaveAttribute("placeholder", "Ask a follow-up");
-    fireEvent.click(screen.getByRole("button", { name: "New question" }));
+    fireEvent.click(screen.getAllByRole("button", { name: /^Start over/ })[0]);
     expect(screen.getByRole("button", { name: /Start from a blank question/ })).toHaveAttribute("aria-pressed", "false");
     expect(draftBox().value).toBe("");
     expect(draftBox()).toHaveAttribute("placeholder", "Pick a household above, or type your own question");
@@ -734,7 +764,7 @@ describe("ChatWindow saved conversation", () => {
   it("falls back to defaults for a partial or unknown saved state", async () => {
     store({ perspective: "alien", householdId: "own", questionId: "amount", conversationId: "c-2", turns: [] });
     routeFetch({});
-    render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    render(<ChatWindow stage="try" />);
     await waitFor(() => expect(screen.getByRole("button", { name: /Your own question/ })).toHaveAttribute("aria-pressed", "true"));
     expect(screen.getByRole("button", { name: "A resident" })).toHaveAttribute("aria-pressed", "true");
     expect(draftBox().value).toBe("");
@@ -751,7 +781,7 @@ describe("ChatWindow saved conversation", () => {
       rated: [],
     });
     routeFetch({});
-    render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    render(<ChatWindow stage="try" />);
     await waitFor(() => expect(screen.getByRole("button", { name: "✓ How much?" })).toHaveAttribute("aria-pressed", "true"));
     expect(screen.getByRole("button", { name: "✓ Eligible?" })).toHaveAttribute("aria-pressed", "true");
     await waitFor(() => expect(saved().questionIds).toEqual(["amount", "eligible"]));
@@ -760,20 +790,20 @@ describe("ChatWindow saved conversation", () => {
   it("falls back to the amount question when no saved question is known", async () => {
     store({ perspective: "resident", householdId: "az-retiree", questionIds: ["bogus"], conversationId: "c-6", turns: [], rated: [] });
     routeFetch({});
-    render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    render(<ChatWindow stage="try" />);
     await waitFor(() => expect(saved().questionIds).toEqual(["amount"]));
   });
 
   it("ignores a saved value without turns", async () => {
     store({ perspective: "caseworker", householdId: "ga-ctc", turns: "nope" });
     routeFetch({});
-    render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    render(<ChatWindow stage="try" />);
     await waitFor(() => expect(saved().turns).toEqual([]));
     expect(screen.getByRole("button", { name: "A resident" })).toHaveAttribute("aria-pressed", "true");
     expect(draftBox().value).toBe("");
   });
 
-  it("locks a new question until the restored answer is rated, and points to the rating", async () => {
+  it("waits for the rating before a follow-up on a picked household, never before Start over", async () => {
     store({
       perspective: "resident",
       householdId: "az-retiree",
@@ -788,28 +818,28 @@ describe("ChatWindow saved conversation", () => {
     const onStatus = vi.fn();
     const scrollIntoView = vi.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
-    render(<ChatWindow stage="try" rulesUnlocked={false} onStatus={onStatus} />);
+    render(<ChatWindow stage="try" onStatus={onStatus} />);
     await screen.findByText("Answer one");
     await waitFor(() => expect(onStatus).toHaveBeenLastCalledWith({ asked: true, rated: false, current: false }));
-    expect(screen.queryByRole("button", { name: "New question" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^Start over/ })).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Ask a follow-up" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Rate it ↓" }));
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
     await rateAnswer();
     await waitFor(() => expect(onStatus).toHaveBeenLastCalledWith({ asked: true, rated: true, current: true }));
-    expect(screen.getByRole("button", { name: "New question" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^Start over/ })).toHaveLength(2);
     // A new question: some answer is still rated, but not the current conversation's.
     const onNewQuestion = vi.fn();
     cleanup();
     onStatus.mockClear();
-    render(<ChatWindow stage="try" rulesUnlocked={false} onStatus={onStatus} onNewQuestion={onNewQuestion} />);
-    fireEvent.click(await screen.findByRole("button", { name: "New question" }));
+    render(<ChatWindow stage="try" onStatus={onStatus} onNewQuestion={onNewQuestion} />);
+    fireEvent.click((await screen.findAllByRole("button", { name: /^Start over/ }))[0]);
     expect(onNewQuestion).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(onStatus).toHaveBeenLastCalledWith({ asked: false, rated: true, current: false }));
     delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
   });
 
-  it("offers the rules check before rating once the rules are unlocked", async () => {
+  it("never shows the rules check in Try it, even at the shared foundation", async () => {
     store({
       perspective: "resident",
       householdId: "az-retiree",
@@ -820,28 +850,11 @@ describe("ChatWindow saved conversation", () => {
       turns: turns.slice(0, 2),
       rated: [],
     });
-    const fetchMock = routeFetch({
-      "/api/aspen/rules": () =>
-        jsonResponse({
-          text: "No calculation.",
-          computations: [],
-          amount: null,
-          program: null,
-          period: null,
-          incomplete: [],
-          citations: [],
-          errors: [],
-        }),
-    });
-    render(<ChatWindow stage="foundation" rulesUnlocked />);
+    routeFetch({});
+    render(<ChatWindow stage="foundation" />);
     const verdict = await screen.findByRole("region", { name: "Your verdict" });
     expect(within(verdict).getByText("Rate this answer")).toBeInTheDocument();
-    fireEvent.click(within(verdict).getByRole("button", { name: "Check against the rules" }));
-    expect(await screen.findByText(/answered without running a calculation/)).toBeInTheDocument();
-    expect(calls(fetchMock, "/api/aspen/rules")[0]).toEqual({
-      participantId: "p-1",
-      promptId: "p1",
-      messages: [{ role: "user", content: "Q1" }],
-    });
+    // The chatbot demo checks answers against the rules now.
+    expect(screen.queryByRole("button", { name: "Check against the rules" })).not.toBeInTheDocument();
   });
 });
