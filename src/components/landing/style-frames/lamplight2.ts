@@ -360,7 +360,15 @@ function drawCodeRows(
       const max = w - 230;
       let t = text;
       while (g.measureText(t).width > max) t = t.slice(0, -1);
-      g.fillText(t === text ? t : `${t.slice(0, -1)}…`, 190, y);
+      const shown = t === text ? t : `${t.slice(0, -1)}…`;
+      // "|-" drawn as two pieces: the code font would join them into one sign
+      const j = shown.indexOf("|-");
+      if (j < 0) g.fillText(shown, 190, y);
+      else {
+        const head = shown.slice(0, j + 1);
+        g.fillText(head, 190, y);
+        g.fillText(shown.slice(j + 1), 190 + g.measureText(head).width, y);
+      }
     }
     y += CODE_LH;
   });
@@ -383,9 +391,10 @@ function draftFace(state: "pass" | "fail" | "drafting") {
   const mono = fontVar("--font-mono");
   const w = CARD_W;
   const h = CARD_H;
-  const edge = state === "pass" ? "#ffb45c" : state === "fail" ? "rgba(255, 200, 170, 0.28)" : "rgba(255, 190, 120, 0.5)";
+  const edge = state === "pass" ? "#ffb45c" : state === "fail" ? "rgba(255, 110, 80, 0.85)" : "rgba(255, 190, 120, 0.5)";
   return glass(w, h, (g) => {
-    g.globalAlpha = state === "fail" ? 0.45 : 1;
+    // the failed draft reads clearly, with a red edge and its failure
+    g.globalAlpha = state === "fail" ? 0.8 : 1;
     g.fillStyle = "rgba(255, 225, 190, 0.55)";
     g.font = `500 28px ${mono}`;
     // the one that passes is no longer a draft: it is the encoded rule
@@ -407,8 +416,10 @@ function draftFace(state: "pass" | "fail" | "drafting") {
 }
 // the rows' band on a card, in its local units (for a card w wide, h tall)
 function cardRowsRect(wl: number, hl: number) {
-  const py0 = CARD_TOP - 36;
-  const py1 = CARD_TOP + (RULE_ROWS.length - 1) * CODE_LH + 12;
+  // room above and below the rows, so the strip's soft edge only touches
+  // empty space
+  const py0 = CARD_TOP - 64;
+  const py1 = CARD_TOP + (RULE_ROWS.length - 1) * CODE_LH + 34;
   // inside the card's border, on both sides
   return { x0: (ROWS_X0 / CARD_W - 0.5) * wl, x1: (ROWS_X1 / CARD_W - 0.5) * wl, y0: (0.5 - py1 / CARD_H) * hl, y1: (0.5 - py0 / CARD_H) * hl };
 }
@@ -561,7 +572,8 @@ export function lamplightBeat3(ctx: BeatCtx): BeatSpec {
   // failure runs back round the loop into encode, as dust. Draft 2 leaves
   // encode as loose dust that draws tighter at every gate, and after the
   // last it is one line, into the final version.
-  const CW = 1.6;
+  // large enough to read the rule's rows
+  const CW = 2.55;
   const CH = (CARD_H / CARD_W) * CW;
   const F = new THREE.Vector3(0.15, -0.62, 0.8); // in front of and a little below each gate
   const front = (p: THREE.Vector3) => p.clone().add(F);
@@ -585,12 +597,14 @@ export function lamplightBeat3(ctx: BeatCtx): BeatSpec {
   const draft1 = card("drafting", 1.05);
   const failCard = card("fail", 0.85);
   // the encoded rule: larger than the drafts, set past the last gate
-  const FW = CW * 1.55;
+  const FW = CW * 1.2;
   const passCard = cardMesh(draftFace("pass"), FW, FW * (CARD_H / CARD_W), 1.12);
   passCard.position.copy(gatePos[3].clone().add(dir.clone().multiplyScalar(1.95)).add(new THREE.Vector3(0.1, -0.12, 0.35)));
   passCard.lookAt(camera.position);
   scene.add(passCard);
-  const failTo = front(gatePos[1]).add(new THREE.Vector3(0.75, -0.5, 0.1));
+  // caught at checks: the draft stops just before the gate
+  const stopAt = front(gatePos[1]).add(new THREE.Vector3(-0.55, 0, 0.15));
+  const failTo = stopAt.clone().add(new THREE.Vector3(0.1, -0.85, -0.3));
   // the loop: from the failed draft, under the gates, back into encode
   const loopEnd = a.clone().lerp(b, 0.1).add(new THREE.Vector3(0, 0.05, 0));
   const back = new THREE.CubicBezierCurve3(
@@ -708,37 +722,40 @@ export function lamplightBeat3(ctx: BeatCtx): BeatSpec {
     // the gates come up out of the dark after the sentence has arrived
     const appear = ease(seg(t, 0.0, 0.14));
     // draft 1: the text into encode, out into the card, on to checks
-    drawShare(text1, ease(seg(t, 0.04, 0.17)));
-    matOf(text1).uniforms.uOpacity.value = 1 - 0.75 * seg(t, 0.36, 0.5);
-    drawShare(out1, ease(seg(t, 0.16, 0.24)));
-    matOf(out1).uniforms.uOpacity.value = 1 - seg(t, 0.25, 0.31);
-    const k1 = seg(t, 0.27, 0.33);
-    draft1.position.copy(cardTrack.getPoint(gateOn[1] * ease(k1)));
-    fade(draft1, seg(t, 0.2, 0.27) * (1 - seg(t, 0.33, 0.36)));
-    // caught at checks: it turns into the failed draft and drops away
-    fade(failCard, seg(t, 0.33, 0.36) * (1 - 0.4 * seg(t, 0.58, 0.68)));
-    failCard.position.lerpVectors(front(gatePos[1]), failTo, ease(seg(t, 0.36, 0.46)));
-    drawShare(loopDust, ease(seg(t, 0.42, 0.52)));
-    matOf(loopDust).uniforms.uOpacity.value = 1 - 0.6 * seg(t, 0.6, 0.7);
-    const pk = seg(t, 0.44, 0.54);
+    drawShare(text1, ease(seg(t, 0.03, 0.14)));
+    matOf(text1).uniforms.uOpacity.value = 1 - 0.75 * seg(t, 0.4, 0.52);
+    drawShare(out1, ease(seg(t, 0.13, 0.22)));
+    matOf(out1).uniforms.uOpacity.value = 1 - seg(t, 0.22, 0.28);
+    // draft 1 forms out of encode, then moves up to checks and stops there
+    const k1 = ease(seg(t, 0.22, 0.33));
+    draft1.position.lerpVectors(formAt, stopAt, k1);
+    fade(draft1, seg(t, 0.17, 0.23) * (1 - seg(t, 0.35, 0.38)));
+    // caught at checks: it turns into the failed draft where it stands,
+    // with a shudder, holds a moment, then drops away
+    const shake = Math.sin(seg(t, 0.35, 0.4) * Math.PI * 6) * (1 - seg(t, 0.35, 0.4)) * 0.05;
+    fade(failCard, seg(t, 0.35, 0.38) * (1 - 0.4 * seg(t, 0.62, 0.72)));
+    failCard.position.lerpVectors(stopAt, failTo, ease(seg(t, 0.43, 0.52))).add(new THREE.Vector3(shake, 0, 0));
+    drawShare(loopDust, ease(seg(t, 0.48, 0.58)));
+    matOf(loopDust).uniforms.uOpacity.value = 1 - 0.6 * seg(t, 0.66, 0.76);
+    const pk = seg(t, 0.5, 0.6);
     pulse.position.copy(back.getPoint(ease(pk)));
     pulse.visible = pk > 0 && pk < 1;
-    redraft.el.style.opacity = String(seg(t, 0.46, 0.53));
+    redraft.el.style.opacity = String(seg(t, 0.52, 0.59));
     // draft 2: back into encode, then out through every gate, tightening,
     // and as one line into the final version
-    drawShare(text2, ease(seg(t, 0.52, 0.59)));
-    const k2 = ease(seg(t, 0.59, 0.86));
+    drawShare(text2, ease(seg(t, 0.58, 0.64)));
+    const k2 = ease(seg(t, 0.64, 0.88));
     drawShare(draft2Dust, k2);
     drawShare(finalLine, seg(k2, gateT[2], 1));
-    fade(passCard, seg(t, 0.84, 0.9));
+    fade(passCard, seg(t, 0.86, 0.92));
     // each gate lights as the text or a draft passes it; checks flashes
     // when draft 1 fails it, then passes draft 2
     const at2 = (g: number) => seg(k2, gateT[g - 1] - 0.03, gateT[g - 1] + 0.02);
-    const pass1 = [seg(t, 0.15, 0.19), 0, 0, 0];
-    const pass2 = [seg(t, 0.56, 0.6), at2(1), at2(2), at2(3)];
-    const fail = seg(t, 0.32, 0.35) * (1 - seg(t, 0.46, 0.58));
+    const pass1 = [seg(t, 0.11, 0.15), 0, 0, 0];
+    const pass2 = [seg(t, 0.62, 0.66), at2(1), at2(2), at2(3)];
+    const fail = seg(t, 0.33, 0.36) * (1 - seg(t, 0.55, 0.64));
     gateMats.forEach((m, i) => {
-      const on = Math.max(pass1[i] * (1 - seg(t, 0.46, 0.58)), pass2[i]);
+      const on = Math.max(pass1[i] * (1 - seg(t, 0.55, 0.64)), pass2[i]);
       if (paper) {
         m.color.copy(gateIdle).lerp(gateLit, on);
         if (i === 1) m.color.lerp(gateRed, fail * (1 - pass2[1]));
@@ -753,7 +770,7 @@ export function lamplightBeat3(ctx: BeatCtx): BeatSpec {
       const sheen = glares[i * 2];
       const band = glares[i * 2 + 1];
       sheen.mat.opacity = (THEME.paper ? 0.6 : 0.8) * on * appear;
-      const sweep = i === 0 ? Math.max(pass1[0] * (1 - seg(t, 0.46, 0.56)), pass2[0]) : pass2[i];
+      const sweep = i === 0 ? Math.max(pass1[0] * (1 - seg(t, 0.55, 0.62)), pass2[0]) : pass2[i];
       band.tex.offset.set(lerp(0.75, -0.75, sweep), 0);
       band.mat.opacity = (THEME.paper ? 0.75 : 0.9) * Math.sin(Math.PI * Math.min(1, sweep)) * appear;
     });
@@ -1018,7 +1035,7 @@ export function lamplightBeat4(ctx: BeatCtx): BeatSpec {
   fadeOut = new SceneFade([scene, fx], (m) => strips.some((st) => st.fly.fly.material === m));
   // where the encoded rule's lines (13–27) sit on the code page: the same
   // band, row for row, as on the encode cards
-  const ruleRect = { x0: pxX(ROWS_X0), x1: pxX(ROWS_X1), y0: pxY((cf.lines.get(27) ?? 0) + 12), y1: pxY((cf.lines.get(13) ?? 0) - 36) };
+  const ruleRect = { x0: pxX(ROWS_X0), x1: pxX(ROWS_X1), y0: pxY((cf.lines.get(27) ?? 0) + 34), y1: pxY((cf.lines.get(13) ?? 0) - 64) };
   return { camera, look, update, cutIn: () => {}, cutOut, parts: { right, ruleRect } };
 
 }
