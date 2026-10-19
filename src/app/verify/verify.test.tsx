@@ -17,6 +17,16 @@ describe("Verify page", () => {
     expect(metadata.description).toMatch(/^US launch verification evidence/);
   });
 
+  it("names the active module waiver count and the CI checks it bypasses", () => {
+    render(<Page />);
+
+    expect(
+      screen.getByRole("heading", {
+        name: "The public list's 1,935 active module waivers let modules skip CI validation, companion tests, and proof checks",
+      }),
+    ).toBeInTheDocument();
+  });
+
   it("keeps the launch evidence US-only and uses the committed figures", () => {
     render(<Page />);
 

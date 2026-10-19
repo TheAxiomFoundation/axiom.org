@@ -312,7 +312,7 @@ export const openIssues: OpenIssue[] = [
     // source modules at the same rulespec-us commit.
     id: "validation-waivers",
     title:
-      `CI skips validation, companion tests, and proof checks for modules with active entries on a public waiver list with ${formatCount(VALIDATION_WAIVERS.activeWaivers)} active module waivers`,
+      `The public list's ${formatCount(VALIDATION_WAIVERS.activeWaivers)} active module waivers let modules skip CI validation, companion tests, and proof checks`,
     status: `Open — counted ${VALIDATION_WAIVERS.source.date}`,
     detail:
       `rulespec-us keeps a waiver list, known-validation-gaps.yaml. Modules with an active waiver skip three steps of the shared validation workflow: RuleSpec validation, companion tests, and proof and claim checks. ${waiverCoverageClause()}. Each waiver names an owner, an issue, and an expiry date: all ${formatCount(VALIDATION_WAIVERS.activeWaivers)} expire on ${VALIDATION_WAIVERS.expiryLabel}, and ${formatCount(VALIDATION_WAIVERS.issue782)} link to rulespec-us#782, which tracks the waiver list as a merge bypass.`,
