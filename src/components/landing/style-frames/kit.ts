@@ -899,6 +899,23 @@ export function carryOnScreen(p: THREE.Vector3, from: THREE.Camera, to: THREE.Pe
   return out.multiplyScalar(dist).add(to.position);
 }
 
+// target corners reshaped to a given width:height, centred and fitted
+// inside the target (so a strip of text settles into a card unstretched)
+export function containAspect(c: THREE.Vector3[], aspect: number): THREE.Vector3[] {
+  const [tl, tr, bl, br] = c;
+  const centre = tl.clone().add(tr).add(bl).add(br).multiplyScalar(0.25);
+  const ux = tr.clone().sub(tl);
+  const uy = bl.clone().sub(tl);
+  let w = ux.length();
+  let h = uy.length();
+  ux.normalize();
+  uy.normalize();
+  if (w / h > aspect) w = h * aspect;
+  else h = w / aspect;
+  const p = (sx: number, sy: number) => centre.clone().addScaledVector(ux, (sx * w) / 2).addScaledVector(uy, (sy * h) / 2);
+  return [p(-1, -1), p(1, -1), p(-1, 1), p(1, 1)];
+}
+
 // target corners reshaped to a given width:height, kept to the left edge
 // and the height of the target (so a card shrinks into place unstretched)
 export function keepAspect(c: THREE.Vector3[], aspect: number): THREE.Vector3[] {

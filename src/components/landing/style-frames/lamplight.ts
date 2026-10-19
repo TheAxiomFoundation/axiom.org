@@ -738,7 +738,9 @@ export function lamplightBeat5(ctx: BeatCtx): BeatSpec {
   // toward $182 while the camera eases in
   const at = (lv: number) => 0.04 + lv * 0.14;
   const camTo = camera.position.clone();
-  const camFrom = camTo.clone().add(new THREE.Vector3(-1.2, 0.5, 2.4));
+  // only a slight drift in: the code's blocks land on the cards where the
+  // cards will stay
+  const camFrom = camTo.clone().add(new THREE.Vector3(-0.2, 0.08, 0.45));
   // the way out: the graph shrinks into its own small cluster in the
   // registry, each card into its node
   const HERO_INDEX: Record<string, number> = { imp2014: 0, impUsda: 1, net: 2, rate30: 3, size2: 4, rate8: 5, contrib: 6, minimum: 7, before: 8, regular: 9 };
@@ -765,7 +767,7 @@ export function lamplightBeat5(ctx: BeatCtx): BeatSpec {
         [1, -1],
       ].map(([x, y]) => carryOnScreen(node.clone().addScaledVector(right, x * hs).addScaledVector(upV, y * hs), nc, camera, d));
       const e = ease(seg(k, 0.015 * i, 0.5 + 0.015 * i));
-      fly.set(e, to, 1 - seg(k, 0.5, 0.8));
+      fly.set(e, to);
       c.mesh.visible = false;
     });
     // the wires draw back out as the cards leave

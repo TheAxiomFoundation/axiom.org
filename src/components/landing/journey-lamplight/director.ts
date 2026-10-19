@@ -324,7 +324,9 @@ export async function createDirector(opts: {
     const now = performance.now();
     lightLinks(b, motionTime(j, P), now);
     if (a) lightLinks(a, motionTime(j - 1, P), now);
-    front = { beat: mix >= 0.5 || !a ? b : a, t: mix >= 0.5 || !a ? motionTime(j, P) : motionTime(j - 1, P), mix };
+    // nothing is clickable while one scene hands over to the next
+    front = a ? null : { beat: b, t: motionTime(j, P), mix };
+    if (a && hovered) setHover(null);
     shoot(pb, b, db);
     if (a) {
       const ownOut = !!a.cutOut;

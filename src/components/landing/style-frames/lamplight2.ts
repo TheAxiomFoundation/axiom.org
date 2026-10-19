@@ -36,6 +36,7 @@ import {
   themed,
   themedLook,
   QuadMorph,
+  containAspect,
   carryOnScreen,
   planeCorners,
   SceneFade,
@@ -787,7 +788,7 @@ export function lamplightBeat3(ctx: BeatCtx): BeatSpec {
     const e = ease(seg(k, 0, 0.55));
     // the rule settles into its own lines of the file (13–27), unstretched,
     // and hands over to the code page as it arrives
-    passFly.set(e, passFly.toward(target, next.camera, camera, ruleRect), 1 - seg(k, 0.5, 0.8));
+    passFly.set(e, passFly.toward(target, next.camera, camera, ruleRect));
     // the rest of the scene clears away as it leaves
     const rest = 1 - ease(seg(k, 0, 0.35));
     fadeOut?.apply(rest);
@@ -1027,12 +1028,14 @@ export function lamplightBeat4(ctx: BeatCtx): BeatSpec {
     strips.forEach((st, i) => {
       const card = cards.get(st.id);
       if (!card) return;
-      const e = ease(seg(k, 0.02 * i, 0.45 + 0.02 * i));
-      st.fly.set(e, st.fly.toward(card.mesh, next.camera, camera));
+      const e = ease(seg(k, 0.02 * i, 0.5 + 0.02 * i));
+      // the block keeps its own proportions, fitted inside its card; it
+      // fades only in the cross-fade, as the card comes up behind it
+      const aspect = (st.rect.x1 - st.rect.x0) / (st.rect.y1 - st.rect.y0);
+      st.fly.set(e, containAspect(st.fly.toward(card.mesh, next.camera, camera), aspect));
     });
     // the page itself goes as its blocks leave it; the rest clears away
     fadeOut?.apply(1 - ease(seg(k, 0, 0.3)));
-    strips.forEach((st) => ((st.fly.fly.material as THREE.MeshBasicMaterial).opacity *= 1 - seg(k, 0.5, 0.8)));
   };
   let fadeOut: SceneFade | null = null;
   fadeOut = new SceneFade([scene, fx], (m) => strips.some((st) => st.fly.fly.material === m));
