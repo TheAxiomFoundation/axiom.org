@@ -49,8 +49,8 @@ const scrollAt = (P: number) => (P > TOTAL ? S_STORY + (P - TOTAL) : paced ? loo
 // screen and a half of scroll, before the page moves on
 const END = TOTAL + 1.0;
 const END_S = scrollAt(END);
-// scroll length, in screen heights: ~1.8 per scroll beat
-const TRACK = Math.round(END_S * 1.8);
+// scroll length, in screen heights: ~1.45 per scroll beat
+const TRACK = Math.round(END_S * 1.45);
 
 // the stills (paper); the night version keeps its own under /journey/night
 const night = () => typeof window !== "undefined" && new URLSearchParams(window.location.search).has("night");

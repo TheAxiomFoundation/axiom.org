@@ -28,6 +28,29 @@ const REFINE_STEP = 0.02;
 // only so much more, so it stays smooth without dragging
 const MAX_STRETCH = 3;
 const MAX_STRETCH2 = 1.6; // (on top of the first pass)
+// each hand-over between scenes gets at least this stretch, whatever the
+// picture does (a cross-fade changes little per frame, so measuring alone
+// would hurry it). Read from the timeline in captions.ts.
+const CUT_MIN = 3.5;
+const timeline = (() => {
+  const src = fs.readFileSync(path.join(__dirname, "../src/components/landing/journey-lamplight/captions.ts"), "utf8");
+  const spans = JSON.parse(src.match(/export const SPANS = (\[[^\]]*\])/)[1]);
+  const overlap = Number(src.match(/export const OVERLAP = ([\d.]+)/)[1]);
+  let acc = 0;
+  const starts = spans.map((x) => ((acc += x), acc - x));
+  return { cuts: starts.slice(1).map((st) => [st - overlap, st]) };
+})();
+// the floor at story time p: CUT_MIN inside a hand-over, easing in and out
+// over a quarter beat on either side
+const cutFloor = (p) => {
+  let f = 1;
+  for (const [a, b] of timeline.cuts) {
+    const ramp = 0.25;
+    const w = p < a ? (p - (a - ramp)) / ramp : p > b ? (b + ramp - p) / ramp : 1;
+    if (w > 0) f = Math.max(f, 1 + (CUT_MIN - 1) * (0.5 - 0.5 * Math.cos(Math.PI * Math.min(1, w))));
+  }
+  return f;
+};
 const STEP = 0.01; // measuring step, in beats
 const OUT_STEP = 0.02; // table step, in beats
 const SMOOTH = 17; // smoothing window, in measuring steps (±0.08 beats)
@@ -144,7 +167,7 @@ async function refine() {
   const v = data.v.map((x) => x[1]);
   // smooth the speed (a Hann window), then stretch only what is too fast
   const vs = smooth(v, SMOOTH);
-  const stretch = vs.map((x) => Math.min(MAX_STRETCH, Math.max(1, x / TARGET)));
+  const stretch = vs.map((x, i) => Math.max(cutFloor((i + 0.5) * step), Math.min(MAX_STRETCH, Math.max(1, x / TARGET))));
   // cumulative scroll (in scroll beats) at each table point of story time
   const P = [];
   const S = [];

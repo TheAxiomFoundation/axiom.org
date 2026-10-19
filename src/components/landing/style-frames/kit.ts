@@ -20,9 +20,12 @@ export const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 // how far t is through the window [a, b], 0..1
 export const seg = (t: number, a: number, b: number) => clamp01((t - a) / (b - a));
 // ease in and out
+// every move in the story: a sine ease, gentle at both ends and never
+// more than ~1.6x its average speed in the middle (a cubic peaks at 3x,
+// which reads as a lurch)
 export const ease = (v: number) => {
   const x = clamp01(v);
-  return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+  return 0.5 - 0.5 * Math.cos(Math.PI * x);
 };
 export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 

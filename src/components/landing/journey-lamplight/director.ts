@@ -354,11 +354,12 @@ export async function createDirector(opts: {
     raf = 0;
     if (dead) return;
     // the glide depends on elapsed time, not on frames: a slow frame does
-    // not show as a stutter (time constant ~210 ms)
+    // not show as a stutter (time constant ~340 ms: a flick of the wheel
+    // glides through a scene change rather than jumping it)
     const dt = last ? Math.min(0.1, (now - last) / 1000) : 1 / 60;
     last = now;
     const d = target - current;
-    current = Math.abs(d) < 0.0004 || current < 0 ? target : current + d * (1 - Math.exp(-dt / 0.21));
+    current = Math.abs(d) < 0.0004 || current < 0 ? target : current + d * (1 - Math.exp(-dt / 0.34));
     const moving = current !== target;
     // a steady run of long frames while moving marks a slow GPU (once)
     if (moving && dt < 0.1) {
