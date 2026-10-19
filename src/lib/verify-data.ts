@@ -315,7 +315,7 @@ export const openIssues: OpenIssue[] = [
       `CI skips validation, companion tests, and proof checks for modules with active entries on a public waiver list with ${formatCount(VALIDATION_WAIVERS.activeWaivers)} active module waivers`,
     status: `Open — counted ${VALIDATION_WAIVERS.source.date}`,
     detail:
-      `rulespec-us keeps a waiver list, known-validation-gaps.yaml. Modules with an active waiver skip three steps of the shared validation workflow: RuleSpec validation, companion tests, and proof and claim checks. ${waiverCoverageClause()}. Each waiver names an owner, an issue, and an expiry date: all ${formatCount(VALIDATION_WAIVERS.activeWaivers)} expire on ${VALIDATION_WAIVERS.expiryLabel}, and ${formatCount(VALIDATION_WAIVERS.issue782)} link to rulespec-us#782, which tracks the waiver list as a merge bypass. One listed path is absent from the current tree; the ledger count includes it.`,
+      `rulespec-us keeps a waiver list, known-validation-gaps.yaml. Modules with an active waiver skip three steps of the shared validation workflow: RuleSpec validation, companion tests, and proof and claim checks. ${waiverCoverageClause()}. Each waiver names an owner, an issue, and an expiry date: all ${formatCount(VALIDATION_WAIVERS.activeWaivers)} expire on ${VALIDATION_WAIVERS.expiryLabel}, and ${formatCount(VALIDATION_WAIVERS.issue782)} link to rulespec-us#782, which tracks the waiver list as a merge bypass.`,
     evidence:
       `git clone https://github.com/TheAxiomFoundation/rulespec-us && cd rulespec-us\ngit show ${VALIDATION_WAIVERS.source.commit}:known-validation-gaps.yaml | grep -c '^    active:'\n${VALIDATION_WAIVERS.activeWaivers}`,
     fix: "Repair a waived module until it validates, then delete its waiver.",

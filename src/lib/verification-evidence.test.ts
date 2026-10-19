@@ -50,7 +50,7 @@ describe("verification evidence: pinned totals", () => {
       "On October 18, 2026, 34,803 of our 34,832 US rules carried a source citation",
     );
     expect(VALIDATION_WAIVERS.activeWaivers).toBe(1_935);
-    expect(VALIDATION_WAIVERS.existingModules).toBe(1_934);
+    expect(VALIDATION_WAIVERS.existingModules).toBe(1_935);
     expect(VALIDATION_WAIVERS.waivedRules).toBe(23_666);
     expect(VALIDATION_WAIVERS.totalRules).toBe(RULE_COVERAGE.totalRules);
     expect(VALIDATION_WAIVERS.issue782).toBe(1_646);
@@ -162,7 +162,8 @@ describe("verification evidence: literal copy in verify-data.ts", () => {
     expect(issue?.detail).toContain(waiverCoverageClause());
     expect(issue?.detail).toContain("all 1,935 expire on December 21, 2026");
     expect(issue?.detail).toContain("1,646 link to rulespec-us#782");
-    expect(issue?.detail).toContain("One listed path is absent from the current tree");
+    expect(issue?.detail).not.toContain("absent from the current tree");
+    expect(VALIDATION_WAIVERS.existingModules).toBe(VALIDATION_WAIVERS.activeWaivers);
     expect(issue?.evidence).toContain(`git show ${VALIDATION_WAIVERS.source.commit}:known-validation-gaps.yaml`);
   });
 

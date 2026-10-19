@@ -99,15 +99,16 @@ export function sourceCitationClause(): string {
 
 /**
  * Active entries in known-validation-gaps.yaml, joined by module path to
- * the named rules at RULESPEC_MAIN. The ledger has 1,935 active entries;
- * one path is absent from the current tree, so this is a waiver count,
- * rather than a claim that all listed paths are extant modules. All entries
- * have an owner, issue and expiry; 1,646 point to rulespec-us#782.
+ * the named rules at RULESPEC_MAIN. The ledger has 1,935 active entries,
+ * and every listed path is a tracked module at that commit (counted with
+ * `git ls-tree -rz --name-only`, which keeps non-ASCII names such as the
+ * en dash in 42 USC 1437c-1 literal). All entries have an owner, issue and
+ * expiry; 1,646 point to rulespec-us#782.
  */
 export const VALIDATION_WAIVERS = {
   dateLabel: "October 18, 2026",
   activeWaivers: 1_935,
-  existingModules: 1_934,
+  existingModules: 1_935,
   waivedRules: 23_666,
   totalRules: 34_832,
   issue782: 1_646,
