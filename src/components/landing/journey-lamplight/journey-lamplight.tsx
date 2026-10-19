@@ -123,14 +123,12 @@ function PosterJourney() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={POSTER(i)} alt={ALT[i]} loading="lazy" />
           <figcaption>
-            <span className="jl-kicker">{c.kicker}</span>
             <span className="jl-title">{c.title}</span>
             <StepLink i={i} />
           </figcaption>
         </figure>
       ))}
       <div className="jl-explore jl-explore--static">
-        <span className="jl-kicker">Explore</span>
         <span className="jl-title">Open any step.</span>
         {/* the posters were just shown: here the steps are a list of links */}
         <ExploreCards compact />
@@ -347,13 +345,11 @@ function ScrollJourney() {
               if (el) capRefs.current[i] = el;
             }}
           >
-            <span className="jl-kicker">{c.kicker}</span>
             <span className="jl-title">{c.title}</span>
           </div>
         ))}
         <div ref={exploreRef} className="jl-explore" inert>
-          <span className="jl-kicker">Explore</span>
-          <span className="jl-title">Open any step.</span>
+            <span className="jl-title">Open any step.</span>
           <ExploreCards />
         </div>
       </div>

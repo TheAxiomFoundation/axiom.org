@@ -1,6 +1,7 @@
-// What the page says over each beat: a small kicker and one title. The
-// two disclosures the copy rules need ride in the kicker: the encode
-// beat is an illustration, and registry numbers carry their snapshot.
+// What the page says over each beat: one title (the kicker is kept as
+// data, not shown). The two disclosures the copy rules need ride in the
+// titles: the encode beat is an illustration, and the registry's numbers
+// carry their snapshot month.
 
 import { snapshotMonth } from "../registry-snapshot";
 
@@ -34,9 +35,9 @@ export const CAPTIONS: Array<{ kicker: string; title: string }> = [
   { kicker: "1 / 8 · Off the shelf", title: "It starts with the law as written." },
   { kicker: "2 / 8 · The law, as published", title: "Hundreds of official sources, word for word." },
   { kicker: "3 / 8 · The corpus", title: "Every provision has an address." },
-  { kicker: "4 / 8 · Encode · an illustration", title: "AI drafts a rule. A failed check sends it back." },
+  { kicker: "4 / 8 · Encode · an illustration", title: "An illustration: AI drafts a rule, and a failed check sends it back." },
   { kicker: "5 / 8 · Cited code", title: "Every value cites the sentence it came from." },
   { kicker: "6 / 8 · The graph", title: "Typed, cited, executable." },
-  { kicker: `7 / 8 · All the law · ${snapshotMonth()} snapshot`, title: "The same structure, at scale." },
+  { kicker: `7 / 8 · All the law · ${snapshotMonth()} snapshot`, title: `The same structure, at scale (${snapshotMonth()} snapshot).` },
   { kicker: "8 / 8 · Every system", title: "One set of rules powers every kind of tool, built by anyone." },
 ];

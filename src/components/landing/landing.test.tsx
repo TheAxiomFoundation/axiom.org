@@ -100,8 +100,10 @@ describe('Landing sections', () => {
   it('keeps the journey captions inside the copy rules', () => {
     const { container } = render(<EncoderSection />)
     const text = container.textContent ?? ''
-    expect(text).toMatch(/encode · an illustration/i)
-    expect(text).toMatch(/all the law · \w+ \d{4} snapshot/i)
+    // the two disclosures ride in the step titles: the encode step is an
+    // illustration, and the registry's numbers carry their snapshot month
+    expect(text).toMatch(/an illustration: ai drafts a rule/i)
+    expect(text).toMatch(/at scale \(\w+ \d{4} snapshot\)/i)
     expect(text).not.toMatch(/\b(certified|signed|sealed)\b/i)
   })
 
