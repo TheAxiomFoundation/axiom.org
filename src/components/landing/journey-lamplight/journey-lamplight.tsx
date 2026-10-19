@@ -222,17 +222,29 @@ function ScrollJourney() {
     // (or at once if the reader is already near), so the first approach to
     // the story does not pay for building it
     let started = false;
+    // building the scenes is one long task (~100 ms): run it while the
+    // reader is not scrolling, unless the story is already close
+    let lastScroll = 0;
+    const onScroll = () => (lastScroll = performance.now());
+    window.addEventListener("scroll", onScroll, { passive: true });
+    const near = () => track.getBoundingClientRect().top < window.innerHeight * 3.5;
     const start = () => {
       if (started || director || dead) return;
+      if (!near() && performance.now() - lastScroll < 220) {
+        window.setTimeout(start, 120);
+        return;
+      }
       started = true;
       io.disconnect();
+      window.removeEventListener("scroll", onScroll);
       load();
     };
     const io = new IntersectionObserver(
       (entries) => {
         if (entries.some((en) => en.isIntersecting)) start();
       },
-      { rootMargin: "150% 0px" },
+      // start well ahead of the story, never at its entrance
+      { rootMargin: "350% 0px" },
     );
     const idle = (cb: () => void) => {
       if (typeof window.requestIdleCallback === "function") window.requestIdleCallback(cb, { timeout: 4000 });
@@ -295,6 +307,7 @@ function ScrollJourney() {
     return () => {
       dead = true;
       window.clearTimeout(early);
+      window.removeEventListener("scroll", onScroll);
       io.disconnect();
       window.removeEventListener("resize", onResize);
       st.kill();

@@ -462,7 +462,9 @@ export function lamplightShelfToBook(ctx: BeatCtx): BeatSpec {
     // focus a little in front of the book's middle, so its near edge and
     // the table under it are sharp
     if (u < R0) look.dof!.focus = camera.position.distanceTo(bookNow) - 0.5 * ease(seg(u, 0.7, 1.0));
-    look.dof!.aperture = u < 0.45 ? 0.0008 : u < R0 ? lerp(0.0008, 0.0003, seg(u, 0.6, 1.0)) : lerp(0.0003, 0.0012, seg(u, 2.2, 3.0));
+    // the first frame is sharp from edge to edge; a little depth comes in
+    // as the volume leaves the shelf
+    look.dof!.aperture = u < 0.45 ? lerp(THEME.paper ? 0.00008 : 0.0008, 0.0008, seg(u, 0.2, 0.45)) : u < R0 ? lerp(0.0008, 0.0003, seg(u, 0.6, 1.0)) : lerp(0.0003, 0.0012, seg(u, 2.2, 3.0));
 
     // ── the light: the library's lamp falls away as the table's comes up
     libLamp.intensity = libLampOn * lerp(1, 0.28, seg(u, 0.5, 1.1));

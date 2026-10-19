@@ -199,7 +199,15 @@ export async function createDirector(opts: {
         });
       }),
     );
-    seen.forEach((t) => renderer.initTexture(t));
+    // upload in slices of ~8 ms, letting frames through between them
+    let slice = performance.now();
+    for (const t of seen) {
+      renderer.initTexture(t);
+      if (performance.now() - slice > 8) {
+        await new Promise((r) => setTimeout(r, 0));
+        slice = performance.now();
+      }
+    }
     // compile what is hidden too: a scene that shows a part only later
     // would otherwise compile its shaders mid-scroll, on first sight
     const hidden: THREE.Object3D[] = [];

@@ -382,7 +382,7 @@
   position: absolute;
   inset: -48px -80px -40px -64px;
   z-index: -1;
-  background: radial-gradient(ellipse at 40% 55%, rgba(250, 249, 246, 0.94) 0%, rgba(250, 249, 246, 0.8) 38%, rgba(250, 249, 246, 0) 72%);
+  background: radial-gradient(ellipse at 40% 55%, rgba(250, 249, 246, 0.7) 0%, rgba(250, 249, 246, 0.45) 40%, rgba(250, 249, 246, 0) 70%);
   pointer-events: none;
 }
 /* the end cards, on paper */

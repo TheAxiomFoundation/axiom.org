@@ -806,6 +806,10 @@ export function makeRenderer(canvas?: HTMLCanvasElement) {
   // transparent in the last pass), so the page shows behind the scenes
   const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true, canvas, preserveDrawingBuffer: true, powerPreference: "high-performance" });
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  // in production, never wait on a shader to read back its error log: that
+  // check blocks until the driver finishes compiling, which stalls a frame
+  // (shaders then compile in parallel, out of the way)
+  renderer.debug.checkShaderErrors = process.env.NODE_ENV !== "production";
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.VSMShadowMap;
   return renderer;

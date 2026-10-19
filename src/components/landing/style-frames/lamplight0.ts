@@ -353,16 +353,26 @@ export function lamplightShelf(ctx: BeatCtx): BeatSpec {
   lamp.shadow.blurSamples = 16;
   lamp.shadow.bias = -0.0004;
   scene.add(lamp, lamp.target);
+  // on paper, a soft amber light picks out Title 7 among the volumes
+  if (THEME.paper) {
+    const pick = new THREE.SpotLight("#ffb05a", 26, 6, 0.16, 0.85, 2);
+    pick.position.set(heroAt.x - 0.3, heroAt.y + 1.4, heroAt.z + 2.2);
+    pick.target.position.copy(heroAt);
+    scene.add(pick, pick.target);
+  }
   const fill = new THREE.PointLight("#ff9a50", 3.5, 12, 2);
   fill.position.set(3.5, 2.2, 2.2);
   scene.add(fill);
   scene.add(new THREE.AmbientLight("#ffe2c0", THEME.paper ? 0.9 : 0.03));
   // the motion: the camera drifts in from across the room while the
   // volume comes out of its slot; dust drifts in the lamp's beam
-  const camFrom = new THREE.Vector3(-3.9, 1.95, 6.4);
+  // far enough back that the whole bookcase sits above the caption
+  const camFrom = new THREE.Vector3(-3.4, 2.0, 7.6);
   const camTo = camera.position.clone();
-  const aimFrom = new THREE.Vector3(0.2, 1.35, -0.2);
-  const aimTo = new THREE.Vector3(0.75, 1.2, -0.1);
+  // the camera looks a little low, so the shelves sit high in the frame
+  // and the caption has clear page beneath them
+  const aimFrom = new THREE.Vector3(0.2, 1.05, -0.2);
+  const aimTo = new THREE.Vector3(0.75, 0.9, -0.1);
   const update = (t: number) => {
     const c = ease(t);
     camera.position.lerpVectors(camFrom, camTo, c);
