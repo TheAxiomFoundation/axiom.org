@@ -26,8 +26,8 @@ const TARGET2 = Number(process.env.PACE_TARGET2 ?? 260); // the refining pass (m
 const REFINE_STEP = 0.02;
 // a big camera move changes most of the screen: it gets more scroll, but
 // only so much more, so it stays smooth without dragging
-const MAX_STRETCH = 3;
-const MAX_STRETCH2 = 1.6; // (on top of the first pass)
+const MAX_STRETCH = 2;
+const MAX_STRETCH2 = 1.3; // (on top of the first pass)
 // each hand-over between scenes gets at least this stretch, whatever the
 // picture does (a cross-fade changes little per frame, so measuring alone
 // would hurry it). Read from the timeline in captions.ts.

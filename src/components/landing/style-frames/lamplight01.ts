@@ -114,7 +114,7 @@ export function lamplightShelfToBook(ctx: BeatCtx): BeatSpec {
   // same direction; the room is dark by the time the camera gets there
   const CS = 1.6; // the corpus, scaled to this world
   const C0 = 3.7; // u: the corpus scene's clock starts
-  const C1 = 5.3; // u: and its motion is done (the address holds after)
+  const C1 = 4.95; // u: and its motion is done (the address holds after)
   const cFrom = new THREE.Vector3(-2.4, 2.6, 0.6); // corpus: top of its stream
   const cHero = new THREE.Vector3(1.0, 0, -1.25); // corpus: the one cell
   const joinAt = 0.5; // where on the book's stream the corpus stream begins
@@ -478,35 +478,36 @@ export function lamplightShelfToBook(ctx: BeatCtx): BeatSpec {
 
     // ── into the corpus: the room goes dark around the stream, the camera
     // rides it down onto the plain; nothing cuts
-    const lit = 1 - ease(seg(u, 3.6, 4.2));
+    const lit = 1 - ease(seg(u, 3.55, 4.0));
     // at night the room's lights go out; on paper the room fades into the
     // page (dimmed lights would turn it into a black silhouette)
     if (!THEME.paper) roomLights.forEach(([l]) => (l.intensity *= lit));
     // (the white fog clears again once the room is gone and the plain comes up)
-    const roomFog = THEME.paper ? 0.6 * (1 - lit) * (1 - ease(seg(u, 4.2, 4.6))) : 0;
+    const roomFog = THEME.paper ? 0.6 * (1 - lit) * (1 - ease(seg(u, 3.95, 4.3))) : 0;
     if (lit <= 0.004) roomObjects.forEach(([o]) => (o.visible = false));
     const tc = seg(u, C0, C1);
     corpus.update?.(tc);
     // the corpus stream grows on from the book's; the plain comes up from
     // the dark only once the room has gone
-    drawShare(CP.fall, ease(seg(u, 3.4, 4.6)));
-    corpusG.visible = u > 3.75;
+    drawShare(CP.fall, ease(seg(u, 3.4, 4.3)));
+    corpusG.visible = u > 3.65;
     // a fade is opacity on paper: a darker colour there is darker ink
-    const plainUp = ease(seg(u, 3.85, 4.6));
+    const plainUp = ease(seg(u, 3.7, 4.3));
     if (THEME.paper) CP.plainMat.opacity *= plainUp;
     else CP.plainMat.color.multiplyScalar(plainUp);
     cLabels.forEach((l, i) => {
       // the address and its note fade in on the corpus clock; the far
       // districts once the camera is over the plain
-      if (i >= 2) l.el.style.opacity = String(seg(u, 4.7, 5.1));
+      if (i >= 2) l.el.style.opacity = String(seg(u, 4.4, 4.8));
       else if (u < 4.5) l.el.style.opacity = "0";
     });
-    const b1 = ease(seg(u, 3.5, 4.1)); // from the reading view onto the stream
-    const b2 = ease(seg(u, 4.55, 5.05)); // from the stream to the corpus view
+    const b1 = ease(seg(u, 3.5, 3.95)); // from the reading view onto the stream
+    const b2 = ease(seg(u, 4.15, 4.65)); // from the stream to the corpus view
     if (b1 > 0) {
       // behind and above the letters, looking on down the stream; higher
       // as it nears the plain, so the plain opens out below
-      const rs = ease(seg(u, 3.5, 4.85)) * 0.72;
+      // (a short ride: the stream is a link, not a scene of its own)
+      const rs = ease(seg(u, 3.5, 4.45)) * 0.72;
       const at = ride.getPoint(rs);
       const ahead = ride.getPoint(Math.min(1, rs + 0.16));
       const tg = ride.getTangent(rs);
@@ -534,7 +535,7 @@ export function lamplightShelfToBook(ctx: BeatCtx): BeatSpec {
       letterMat.uniforms.uFocus.value = letterFocus0;
     }
     // the look moves from the lamplit room to the plain's
-    const lk = ease(seg(u, 3.8, 4.8));
+    const lk = ease(seg(u, 3.7, 4.5));
     // (no glow on paper)
     if (look.bloom && bloom0 && cLook.bloom) {
       look.bloom.strength = lerp(bloom0.strength, cLook.bloom.strength, lk);

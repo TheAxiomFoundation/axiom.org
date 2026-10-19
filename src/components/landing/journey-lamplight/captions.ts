@@ -23,7 +23,7 @@ export const SCENE_START = SPANS.map((_, i) => SPANS.slice(0, i).reduce((a, b) =
 // come up inside the opening shot: as the cover opens, and as the camera
 // comes down over the corpus
 export const captionCut = (j: number) =>
-  j === 0 ? -1 : j === 1 ? 0.95 : j === 2 ? 4.45 : SCENE_START[j - 2] - OVERLAP / 2;
+  j === 0 ? -1 : j === 1 ? 0.95 : j === 2 ? 4.2 : SCENE_START[j - 2] - OVERLAP / 2;
 // the caption on screen at P
 export const captionAt = (P: number) => {
   for (let j = CAPTIONS.length - 1; j > 0; j--) if (P >= captionCut(j)) return j;
