@@ -63,7 +63,7 @@ const STANDIN = (i: number) => (i === 0 && !night() ? "/journey/start.webp" : PO
 const THUMB = (i: number) => `/journey${night() ? "/night" : ""}/thumbs/beat-${i + 1}.jpg`;
 
 const ALT = [
-  "A dark law library under one lamp. The amber volume, United States Code Title 7, Agriculture, is pulled half off its shelf.",
+  "A law library: a bookcase of law books on the page, with the amber volume, United States Code Title 7, Agriculture, lit on the middle shelf.",
   "An open law book. Its pages lift off and break into small square cells that stream away as letters of light.",
   "A dark plain of lit page-cells, like a city at night. A stream of letters lands in one cell, addressed us/statute/7/2017/a.",
   "The words “30 per centum” flow into the first of four gates: encode, checks, compare and AI review. Draft 1 comes out of encode and fails checks; a pulse of light carries the failure back round a loop into encode. Draft 2 comes out as loose letters that draw tighter at every gate and run as one line into the encoded rule.",

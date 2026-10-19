@@ -193,8 +193,8 @@ export const GRAPH_EDGES: Array<[GraphNodeId, GraphNodeId]> = [
 // page behind each step. Shown as clickable cards in the end state.
 export const EXPLORE: Array<{ n: number; name: string; go: string; href: string; about: string }> = [
   { n: 1, name: "Off the shelf", go: "See what is covered", href: "/coverage", about: "The official sources in the corpus, by jurisdiction and kind." },
-  { n: 2, name: "The law, as published", go: "Read § 2017", href: "/us/statute/7/2017", about: "Section 2017 of the U.S. Code, word for word, as the corpus holds it." },
-  { n: 3, name: "The corpus", go: "Browse Title 7", href: "/us/statute/7", about: "Every provision with its address. Start at Title 7 and go down." },
+  { n: 2, name: "The law, as published", go: "Explore § 2017", href: "/app", about: "Find section 2017 and its rules in the app: search, filter by jurisdiction, open any rule." },
+  { n: 3, name: "The corpus", go: "Open the app", href: "/app", about: "Every encoded provision, by jurisdiction: pick one and follow its rules." },
   { n: 4, name: "Encode", go: "How the encoder works", href: "/encoder", about: "How a draft is written, and the checks it must pass." },
   { n: 5, name: "Cited code", go: "Open a.yaml", href: "https://github.com/TheAxiomFoundation/rulespec-us/blob/main/us/statutes/7/2017/a.yaml", about: "Every value in the encoding cites the words it came from. Read the file, line by line." },
   { n: 6, name: "The graph", go: "Run the rules", href: "/demos", about: "Put a household through the rules and get a cited answer." },

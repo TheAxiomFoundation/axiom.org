@@ -69,12 +69,17 @@ describe('Landing sections', () => {
     // The journey opens on the law library (jsdom has no WebGL, so it
     // renders the poster sequence) and ends on links to each step.
     expect(
-      screen.getByRole('img', { name: /a dark law library under one lamp/i }),
+      screen.getByRole('img', { name: /a law library/i }),
     ).toBeInTheDocument()
     // each step links to the real page behind it, under its caption and
     // again on the end cards
-    for (const link of screen.getAllByRole('link', { name: /read § 2017/i })) {
-      expect(link).toHaveAttribute('href', '/us/statute/7/2017')
+    for (const link of screen.getAllByRole('link', { name: /explore § 2017/i })) {
+      expect(link).toHaveAttribute('href', '/app')
+    }
+    // the corpus reader is never linked from the journey: its steps open
+    // the app (or the coverage page) instead
+    for (const link of screen.getAllByRole('link')) {
+      expect(link.getAttribute('href') ?? '').not.toMatch(/^\/(us|uk|ca|nz)(-[a-z]+)?\//)
     }
     // The Read / Encode / Verify step cards stay removed.
     for (const step of ['Read', 'Encode', 'Verify']) {

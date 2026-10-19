@@ -633,7 +633,7 @@ export function lamplightBeat5(ctx: BeatCtx): BeatSpec {
     scene.add(m);
     cards.set(n.id, { mesh: m, w });
     if (n.id === "regular") ctx.link(m, "/demos", "Run this case yourself", { when: [0.62, 1.4] });
-    if (n.id === "imp2014") ctx.link(m, "/us/statute/7/2014", "§ 2014 · where net income comes from", { when: [0.1, 1.4] });
+    if (n.id === "imp2014") ctx.link(m, "/app", "Explore § 2014 in the app", { when: [0.1, 1.4] });
   });
 
   // edges: from the right edge of one card to the left edge of the next;
