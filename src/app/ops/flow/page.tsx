@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { FlowPage, flowHref, type FlowParams, type FlowView } from "@/components/ops/flow/flow-page";
 import type { DocumentTile, ProgramTile } from "@/components/ops/flow/level-canvases";
 import { caseDetail, citationLanes } from "@/lib/axiom/pipeline-flow";
-import { loadFlow, parseWindow } from "@/lib/axiom/pipeline-flow-data";
+import { loadFlow, parsePopulation, parseWindow } from "@/lib/axiom/pipeline-flow-data";
 import { getBundleSummaries, getProgramBundle, type BundleSummary } from "@/lib/axiom/program-bundles-data";
 import { distinctByDocument } from "@/lib/axiom/program-bundles";
 import { SITE_URL } from "@/lib/urls";
@@ -30,6 +30,7 @@ export default async function OpsFlowPage({ searchParams }: { searchParams?: Pro
   const params: FlowParams = {
     window: parseWindow(raw.window),
     j: one(raw.j),
+    pop: parsePopulation(one(raw.pop)),
     view: view && VIEWS.includes(view) ? view : "pipeline",
     station: one(raw.station),
     citation: one(raw.citation),
@@ -40,7 +41,7 @@ export default async function OpsFlowPage({ searchParams }: { searchParams?: Pro
   if (params.bundle) params.view = "programs";
 
   const [data, summaries, bundle] = await Promise.all([
-    loadFlow({ days: params.window, jurisdiction: params.j }),
+    loadFlow({ days: params.window, jurisdiction: params.j, population: params.pop }),
     params.view === "programs" && !params.bundle ? getBundleSummaries() : Promise.resolve(null),
     params.bundle ? getProgramBundle(params.bundle) : Promise.resolve(null),
   ]);

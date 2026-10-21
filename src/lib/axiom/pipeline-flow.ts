@@ -107,7 +107,112 @@ export interface StationStats {
   position: number;
   /** Column in the flow: the longest path to it over forward edges. */
   rank: number;
+  /** Where the window's cases came from and went at this station. */
+  flow: StationFlow;
 }
+
+/**
+ * Where a reason comes from: the system that wrote it. Read from the reason
+ * id's prefix, which the event derivation sets (pipeline-events.ts).
+ */
+export type CauseOrigin = "validator" | "encoder_text" | "workflow" | "ci_check" | "review" | "merge" | "tests_on_main" | "index" | "compile" | "oracle" | "cancel" | "unknown";
+
+export const CAUSE_ORIGINS: Record<CauseOrigin, { label: string; source: string }> = {
+  validator: { label: "Validator check", source: "axiom-encode's checks on the generated RuleSpec. The rule id is the bracketed name in the encoder error of the run's last try." },
+  encoder_text: { label: "Encoder message", source: "An encoder error that names no rule id, grouped by its first words." },
+  workflow: { label: "Workflow step", source: "The step of the re-encode GitHub workflow that failed (failed_step on the run)." },
+  ci_check: { label: "PR check", source: "The first failing GitHub check on the signed manifest PR." },
+  review: { label: "Review", source: "The PR's review state on GitHub: changes requested, closed without a merge, or no reviewer yet." },
+  merge: { label: "Merge", source: "How the PR reached the default branch (a side branch waits for its own PR)." },
+  tests_on_main: { label: "Tests on main", source: "The RuleSpec repo's validation of the jurisdiction on the default branch after the merge (a waiver counts as a pass)." },
+  index: { label: "Index", source: "The rulespec_files mirror: no indexed row matches the merge commit." },
+  compile: { label: "Compile sweep", source: "axiom-api's nightly compile of the merged module." },
+  oracle: { label: "Oracle report", source: "The axiom-oracles comparison against a reference model." },
+  cancel: { label: "Cancelled", source: "A person or a newer run cancelled the run, or the PR was closed while its checks failed." },
+  unknown: { label: "No reason recorded", source: "The record has no failed step, rule or error text." },
+};
+
+const ORIGIN_BY_PREFIX: Record<string, CauseOrigin> = {
+  check: "ci_check",
+  infra: "workflow",
+  publish: "workflow",
+  text: "encoder_text",
+  review: "review",
+  merge: "merge",
+  tests: "tests_on_main",
+  index: "index",
+  compile: "compile",
+  oracle: "oracle",
+  cancel: "cancel",
+  wait: "unknown",
+};
+
+export function causeOrigin(cause: string | null): CauseOrigin {
+  if (!cause) return "unknown";
+  const prefix = cause.split(":")[0];
+  if (ORIGIN_BY_PREFIX[prefix]) return ORIGIN_BY_PREFIX[prefix];
+  // Any other "family:check" id is a validator rule (complete-source-unit:tests).
+  return cause.includes(":") ? "validator" : "unknown";
+}
+
+/**
+ * A plain sentence for the reasons the derivation names itself (cancels,
+ * waits without a reason, a run with no PR). Every other reason is the id
+ * its system reported, shown as is with that system's error text.
+ */
+export function causeText(cause: string): string | null {
+  const [prefix, rest] = [cause.split(":")[0], cause.slice(cause.indexOf(":") + 1)];
+  if (prefix === "cancel") {
+    return (
+      {
+        approval: "Cancelled while it waited for the signing approval",
+        setup: "Cancelled before the encode job started",
+        validate: "Cancelled during the encode",
+        pr_checks: "PR closed while its checks failed",
+      }[rest] ?? `Cancelled at ${stationLabel(rest)}`
+    );
+  }
+  if (prefix === "wait" || cause === "unknown") return "No reason recorded";
+  if (cause === "infra:no-pr") return "The run passed but opened no PR";
+  if (cause === "check:unknown") return "A check failed; the record does not name it";
+  if (cause === "publish:in-host-run") return "Published inside another citation's run";
+  if (cause === "review:awaiting-reviewer") return "No reviewer has looked at it yet";
+  if (cause === "merge:side-branch") return "Merged into a side branch that is not on main yet";
+  if (cause === "index:missing") return "Merged, but no indexed module matches the merge commit";
+  return null;
+}
+
+/** Why cases ended (or wait) at a station: one reason, how many, and an example. */
+export interface StationCause {
+  cause: string;
+  origin: CauseOrigin;
+  cases: number;
+  /** The latest case with this reason, and its error text. */
+  example_case: string;
+  example_citation: string;
+  message: string | null;
+}
+
+export interface StationFlow {
+  /** Window cases whose first visit is here (a PR merged without a dispatch starts at its checks). */
+  joined: number;
+  /** Went on from here to a later station. */
+  moved_on: number;
+  failed_here: number;
+  cancelled_here: number;
+  /** The case's last station, and it cleared every station it reached. */
+  landed_here: number;
+  /** Window cases still open here. */
+  waiting_here: number;
+  /** Median time from the station before to this one (a queue before the station). */
+  wait_before_ms: number | null;
+  /** Why cases failed or were cancelled here, most first. */
+  exit_causes: StationCause[];
+  /** Why the open items here wait (all of them, not only the window's). */
+  wait_causes: StationCause[];
+}
+
+const EMPTY_FLOW: StationFlow = { joined: 0, moved_on: 0, failed_here: 0, cancelled_here: 0, landed_here: 0, waiting_here: 0, wait_before_ms: null, exit_causes: [], wait_causes: [] };
 
 export interface FlowEdge {
   from: string;
@@ -267,6 +372,9 @@ export interface FollowPair {
 
 export interface FlowModel {
   window: { from: string; to: string; days: number };
+  population: Population;
+  /** Window cases of each kind, for the population control. */
+  populations: Record<Population, number>;
   jurisdiction: string | null;
   stations: StationStats[];
   edges: FlowEdge[];
@@ -291,7 +399,30 @@ export interface WorkflowSignal {
   detail?: string | null;
 }
 
+/**
+ * Which cases the line shows. The log holds three kinds, told apart by id:
+ * a dispatched re-encode run (the GitHub run id), a module file a PR merged
+ * with no run behind it (`pr:`), and a module the encoder wrote inside
+ * another citation's run (`dep:`).
+ */
+export type Population = "all" | "runs" | "prs" | "modules";
+
+export const POPULATION_LABELS: Record<Population, string> = {
+  all: "All cases",
+  runs: "Dispatched runs",
+  prs: "PRs merged without a run",
+  modules: "Modules inside another run",
+};
+
+export function casePopulation(caseId: string): Exclude<Population, "all"> {
+  if (caseId.startsWith("pr:")) return "prs";
+  if (caseId.startsWith("dep:")) return "modules";
+  return "runs";
+}
+
 export interface FlowOptions {
+  /** Which cases the line, sinks and totals count; the discovery views always use every case. */
+  population?: Population;
   now: number;
   days: number;
   jurisdiction?: string | null;
@@ -485,7 +616,15 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
   // Encoder changes are not cases; they mark when a rule was worked on.
   const changes = events.filter((e) => e.kind === "change");
   const all = buildCases(scoped);
-  const factory = [...all.values()].filter((c) => c.source === "pipeline_attempts" || c.source === "failure_bundle");
+  const population = options.population ?? "all";
+  const everyFactory = [...all.values()].filter((c) => c.source === "pipeline_attempts" || c.source === "failure_bundle");
+  const populations: Record<Population, number> = { all: 0, runs: 0, prs: 0, modules: 0 };
+  for (const c of everyFactory) {
+    if (c.start < from || c.start > now) continue;
+    populations.all++;
+    populations[casePopulation(c.id)]++;
+  }
+  const factory = population === "all" ? everyFactory : everyFactory.filter((c) => casePopulation(c.id) === population);
   const windowCases = factory.filter((c) => c.start >= from && c.start <= now);
   const targets = new Map((options.targets ?? []).map((t) => [t.station, t]));
 
@@ -571,6 +710,7 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
       target,
       position: positions.length ? positions.reduce((s, p) => s + p, 0) / positions.length : Number.MAX_SAFE_INTEGER,
       rank: 0,
+      flow: EMPTY_FLOW,
     });
   }
 
@@ -610,11 +750,13 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
   const ranks = rankStations(stations, edges);
   for (const s of stations) s.rank = ranks.get(s.id) ?? 0;
   stations.sort((a, b) => a.rank - b.rank || a.position - b.position);
+  const flows = stationFlows(windowCases, factory, stations, edges);
+  for (const s of stations) s.flow = flows.get(s.id) ?? EMPTY_FLOW;
 
   const ladderCases = [...all.values()].filter((c) => c.start <= now && (c.source === "local_ab" || c.start >= from));
   const ladder = issueLadder(ladderCases);
   const follows = followPairs(ladderCases);
-  const trends = ruleTrends(factory, changes, ladder, now, from);
+  const trends = ruleTrends(everyFactory, changes, ladder, now, from);
   const looping = loopingCitations(windowCases);
   const retry = retryCurve(windowCases, edges);
 
@@ -651,6 +793,8 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
 
   const model: FlowModel = {
     window: { from: new Date(from).toISOString(), to: new Date(now).toISOString(), days },
+    population,
+    populations,
     jurisdiction: options.jurisdiction ?? null,
     stations,
     edges,
@@ -722,6 +866,90 @@ export function rankStations(stations: Array<{ id: string; cases: number }>, edg
   }
   for (const e of edges) if (e.from === e.to) e.loop = true;
   return rank;
+}
+
+/** A cancelled visit names no rule; its station says what was cancelled. */
+function cancelCause(station: string): string {
+  return `cancel:${station}`;
+}
+
+function causeList(items: Array<{ cause: string; c: Case; v: Visit }>, limit = 6): StationCause[] {
+  const map = new Map<string, StationCause & { at: number; ids: Set<string> }>();
+  for (const { cause, c, v } of items) {
+    const at = v.end ?? v.start;
+    const entry = map.get(cause) ?? { cause, origin: causeOrigin(cause), cases: 0, example_case: c.id, example_citation: c.citation, message: null, at: -Infinity, ids: new Set<string>() };
+    entry.ids.add(c.id);
+    if (at > entry.at) {
+      entry.at = at;
+      entry.example_case = c.id;
+      entry.example_citation = c.citation;
+      entry.message = v.message ?? (v.reason && v.reason !== cause ? v.reason : entry.message);
+    }
+    map.set(cause, entry);
+  }
+  return [...map.values()]
+    .map(({ at: _at, ids, ...rest }) => ({ ...rest, cases: ids.size }))
+    .sort((a, b) => b.cases - a.cases || a.cause.localeCompare(b.cause))
+    .slice(0, limit);
+}
+
+/**
+ * Each station's share of the window's flow: cases that joined there, went
+ * on, ended there (failed, cancelled, landed) or wait there, and why. A case
+ * ends at one station only, so the stations' exits add up to the sinks.
+ */
+export function stationFlows(windowCases: Case[], allCases: Case[], stations: StationStats[], edges: FlowEdge[]): Map<string, StationFlow> {
+  const rank = new Map(stations.map((s) => [s.id, s.rank]));
+  const flows = new Map<string, StationFlow>();
+  const exits = new Map<string, Array<{ cause: string; c: Case; v: Visit }>>();
+  const waits = new Map<string, Array<{ cause: string; c: Case; v: Visit }>>();
+  for (const s of stations) flows.set(s.id, { ...EMPTY_FLOW, exit_causes: [], wait_causes: [] });
+  const push = (map: typeof exits, id: string, item: { cause: string; c: Case; v: Visit }) => {
+    const list = map.get(id);
+    if (list) list.push(item);
+    else map.set(id, [item]);
+  };
+  for (const c of windowCases) {
+    const first = c.visits[0];
+    if (first) flows.get(first.station)!.joined++;
+    const seen = new Set<string>();
+    for (let i = 0; i < c.visits.length; i++) {
+      const v = c.visits[i];
+      if (seen.has(v.station)) continue;
+      seen.add(v.station);
+      const r = rank.get(v.station) ?? 0;
+      if (c.visits.slice(i + 1).some((w) => (rank.get(w.station) ?? 0) > r)) flows.get(v.station)!.moved_on++;
+    }
+    if (c.end === "exit:landed") flows.get(c.visits.at(-1)!.station)!.landed_here++;
+    if ((c.end === "exit:failed" || c.end === "exit:cancelled") && c.failedAt) {
+      const flow = flows.get(c.failedAt)!;
+      const lastThere = [...c.visits].reverse().find((v) => v.station === c.failedAt)!;
+      if (c.end === "exit:failed") {
+        flow.failed_here++;
+        push(exits, c.failedAt, { cause: lastThere.rule_id ?? "unknown", c, v: lastThere });
+      } else {
+        flow.cancelled_here++;
+        push(exits, c.failedAt, { cause: lastThere.rule_id ?? cancelCause(c.failedAt), c, v: lastThere });
+      }
+    }
+    if (c.end == null) for (const v of c.visits) if (v.outcome === "open") flows.get(v.station)!.waiting_here++;
+  }
+  // Open items over all time, like a station's WIP.
+  for (const c of allCases) {
+    for (const v of c.visits) {
+      if (v.outcome !== "open") continue;
+      const cause = v.reason ? v.reason.split(": ")[0] : `wait:${v.station}`;
+      push(waits, v.station, { cause, c, v });
+    }
+  }
+  for (const [id, flow] of flows) {
+    flow.exit_causes = causeList(exits.get(id) ?? []);
+    flow.wait_causes = causeList(waits.get(id) ?? [], 4);
+    // The queue before the station: the median wait on its busiest forward edge in.
+    const into = edges.filter((e) => e.to === id && !e.loop && e.from !== id && e.median_wait_ms != null).sort((a, b) => b.cases - a.cases)[0];
+    flow.wait_before_ms = into?.median_wait_ms ?? null;
+  }
+  return flows;
 }
 
 function ruleCounts(items: Array<{ c: Case; v: Visit }>): RuleCount[] {
@@ -1281,6 +1509,21 @@ export function agentBrief(model: FlowModel, siteUrl: string): string {
     `Last ${model.window.days} days to ${model.window.to.slice(0, 16)}Z: ${t.dispatched} runs dispatched, ${t.dispatched_merged} merged (${pct(t.dispatched ? t.dispatched_merged / t.dispatched : null)}), ${t.dispatched_landed} cleared every station. Dispatch to merge, median ${formatDuration(t.dispatch_to_merge_p50_ms)}. ${t.waiting} items wait at a station now, ${t.waiting_over_sla} over their SLA.`
   );
   lines.push("");
+  const leaving = model.stations.filter((st) => st.flow.failed_here + st.flow.cancelled_here > 0).sort((a, b) => b.flow.failed_here + b.flow.cancelled_here - (a.flow.failed_here + a.flow.cancelled_here));
+  if (leaving.length) {
+    const out = leaving.reduce((n, st) => n + st.flow.failed_here + st.flow.cancelled_here, 0);
+    lines.push(`## Where cases leave the line, and why (${POPULATION_LABELS[model.population].toLowerCase()})`);
+    lines.push(`${out} of ${t.cases} cases left without landing. Each reason names the system that reported it.`);
+    lines.push("");
+    for (const st of leaving) {
+      const f = st.flow;
+      lines.push(`- **${st.label}**: ${f.failed_here} failed, ${f.cancelled_here} cancelled (${pct((f.failed_here + f.cancelled_here) / out)} of all exits).`);
+      for (const c of f.exit_causes.slice(0, 4)) {
+        lines.push(`  - ${c.cases} \`${c.cause}\` (${CAUSE_ORIGINS[c.origin].label})${c.message ? `: ${c.message.slice(0, 140)}` : ""}`);
+      }
+    }
+    lines.push("");
+  }
   if (model.trends.length) {
     lines.push("## Did our fixes work?");
     lines.push("For each rule the encoder does not fix: its share of runs, first and last week; whether the same citation still hits it when run again a week or more later; encoder PRs that name it.");

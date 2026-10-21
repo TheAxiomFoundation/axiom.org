@@ -1,6 +1,6 @@
 import { getPipelineEvents, getStationTargets, type EventsOrigin } from "./pipeline-events-data";
 import type { PipelineEvent } from "./pipeline-events";
-import { mineFlow, type FlowModel, type WorkflowSignal } from "./pipeline-flow";
+import { mineFlow, type FlowModel, type Population, type WorkflowSignal } from "./pipeline-flow";
 import { getWorkflowHealth, gradeWorkflow, WORKFLOWS, type WorkflowSpec } from "./workflow-health";
 
 /** The workflows /ops watches, and the axiom-api ones the flow depends on. */
@@ -22,6 +22,14 @@ export const FLOW_WORKFLOWS: WorkflowSpec[] = [
 
 export const WINDOW_OPTIONS = [7, 30, 90] as const;
 export const DEFAULT_WINDOW = 30;
+
+const POPULATIONS: Population[] = ["all", "runs", "prs", "modules"];
+
+/** The line's population from a query value; every case by default. */
+export function parsePopulation(value: string | string[] | null | undefined): Population {
+  const v = Array.isArray(value) ? value[0] : value;
+  return POPULATIONS.includes(v as Population) ? (v as Population) : "all";
+}
 
 export function parseWindow(value: string | string[] | undefined): number {
   const n = Number(Array.isArray(value) ? value[0] : value);
@@ -70,7 +78,7 @@ export function eventDeadlines(events: PipelineEvent[], now: number): Array<{ la
 }
 
 /** Everything /ops/flow and /api/ops/flow need, mined once per request. */
-export async function loadFlow(options: { days: number; jurisdiction: string | null; now?: number }): Promise<FlowData> {
+export async function loadFlow(options: { days: number; jurisdiction: string | null; population?: Population; now?: number }): Promise<FlowData> {
   const now = options.now ?? Date.now();
   const [events, targets, workflows] = await Promise.all([
     getPipelineEvents(),
@@ -85,6 +93,7 @@ export async function loadFlow(options: { days: number; jurisdiction: string | n
     now,
     days: options.days,
     jurisdiction: options.jurisdiction,
+    population: options.population,
     targets: targets.targets,
     workflows: signals,
     deadlines: eventDeadlines(events.events, now),

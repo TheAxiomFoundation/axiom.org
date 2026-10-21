@@ -113,7 +113,6 @@ export default defineConfig({
         // layout is pure and covered (flow-layout.ts); the views are checked
         // in real Chrome against live data.
         'src/components/ops/flow/canvas-shell.tsx',
-        'src/components/ops/flow/pipeline-canvas.tsx',
         'src/components/ops/flow/level-canvases.tsx',
         'src/app/ops/flow/page.tsx', // thin server route wrapper
         'src/components/axiom/graph-viewer/mini-graph.tsx',

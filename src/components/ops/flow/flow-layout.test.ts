@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { FlowEdge, FlowModel, StationStats } from "@/lib/axiom/pipeline-flow";
-import { laneLayout, pipelineLayout, stationsPerRow, stationStatus } from "./flow-layout";
+import type { FlowModel, StationStats } from "@/lib/axiom/pipeline-flow";
+import { bandWidth, laneLayout, lineEnds, stationStatus, timeShare } from "./flow-layout";
 
 function station(id: string, rank: number, extra: Partial<StationStats> = {}): StationStats {
   return {
@@ -26,73 +26,38 @@ function station(id: string, rank: number, extra: Partial<StationStats> = {}): S
     target: null,
     position: rank,
     rank,
+    flow: { joined: 0, moved_on: 0, failed_here: 0, cancelled_here: 0, landed_here: 0, waiting_here: 0, wait_before_ms: null, exit_causes: [], wait_causes: [] },
     ...extra,
   };
 }
 
-const edge = (from: string, to: string, cases: number, loop = false): FlowEdge => ({ from, to, cases, median_wait_ms: null, loop });
-
-describe("pipelineLayout", () => {
-  const ids = "abcdefghij".split("");
-  const model: Pick<FlowModel, "stations" | "edges" | "sinks"> = {
-    stations: ids.map((id, i) => station(id, i)),
-    edges: [
-      ...ids.slice(1).map((id, i) => edge(ids[i], id, 100)),
-      edge("d", "c", 40, true),
-      edge("c", "c", 5),
-      edge("j", "a", 1, true),
-      edge("c", "exit:failed", 30),
-      edge("j", "exit:landed", 60),
-    ],
-    sinks: [
-      { id: "exit:failed", label: "Failed", cases: 30 },
-      { id: "exit:landed", label: "Landed", cases: 60 },
-    ],
-  };
-  const layout = pipelineLayout(model);
-
-  it("lays ten stations on a serpentine of two rows", () => {
-    const at = Object.fromEntries(layout.stations.map((p) => [p.id, p]));
-    expect(at.a.row).toBe(0);
-    expect(at.e.row).toBe(0);
-    expect(at.f.row).toBe(1);
-    // The second row runs back: its first station sits under the first row's last.
-    expect(at.f.x).toBe(at.e.x);
-    expect(at.j.x).toBe(at.a.x);
+describe("process map geometry", () => {
+  it("scales bands linearly against the busiest station, never thinner than 2px", () => {
+    expect(bandWidth(0, 100)).toBe(0);
+    expect(bandWidth(100, 100)).toBe(72);
+    expect(bandWidth(50, 100)).toBe(36);
+    expect(bandWidth(1, 1000)).toBe(2);
   });
 
-  it("routes edges by geometry and kind, keeps self loops on the node and drops noise", () => {
-    const byId = Object.fromEntries(layout.edges.map((e) => [`${e.from}>${e.to}`, e]));
-    expect(byId["a>b"]).toMatchObject({ kind: "main", sourceHandle: "s-r", targetHandle: "t-l" });
-    expect(byId["f>g"]).toMatchObject({ kind: "main", sourceHandle: "s-l", targetHandle: "t-r" });
-    expect(byId["e>f"]).toMatchObject({ sourceHandle: "s-b", targetHandle: "t-t" });
-    expect(byId["d>c"].kind).toBe("loop");
-    expect(byId["c>exit:failed"].kind).toBe("exit");
-    expect(byId["j>a"]).toBeUndefined();
-    expect(layout.selfLoops.get("c")).toBe(5);
-    expect(layout.sinks.map((s) => s.sink).sort()).toEqual(["exit:failed", "exit:landed"]);
-    expect(layout.exits.get("c")).toBe(30);
+  it("places times on one log axis from a minute to a month", () => {
+    expect(timeShare(null)).toBeNull();
+    expect(timeShare(10_000)).toBe(0);
+    expect(timeShare(60_000)).toBe(0);
+    expect(timeShare(30 * 86_400_000)).toBe(1);
+    expect(timeShare(3_600_000)).toBeCloseTo(0.38, 2);
   });
 
-  it("balances shorter rows, puts Landed in the next slot on the line and the other sinks under the floor", () => {
-    const narrow = pipelineLayout(model, 4);
-    const at = Object.fromEntries([...narrow.stations, ...narrow.sinks].map((p) => [p.id, p]));
-    // 10 stations on rows of at most 4: three rows of 4, 4 and 2.
-    expect(narrow.stations.map((p) => p.row)).toEqual([0, 0, 0, 0, 1, 1, 1, 1, 2, 2]);
-    expect(at["exit:landed"].row).toBe(2);
-    expect(at["exit:landed"].x).toBeGreaterThan(at.j.x);
-    expect(narrow.edges.find((e) => e.to === "exit:landed")).toMatchObject({ sourceHandle: "s-r", targetHandle: "t-l" });
-    expect(at["exit:failed"].y).toBeGreaterThan(at.j.y);
-    expect(narrow.height).toBe(at["exit:failed"].y + 64);
-  });
-});
-
-describe("stationsPerRow", () => {
-  it("fits rows to the canvas width, from 3 to 7", () => {
-    expect(stationsPerRow(400)).toBe(3);
-    expect(stationsPerRow(942)).toBe(3);
-    expect(stationsPerRow(1360)).toBe(5);
-    expect(stationsPerRow(5000)).toBe(7);
+  it("orders where cases ended: landed, each station's exits, still in the line", () => {
+    const flow = (failed: number, cancelled: number) => ({ ...station("x", 0).flow, failed_here: failed, cancelled_here: cancelled });
+    const ends = lineEnds({
+      stations: [station("a", 0, { label: "A", flow: flow(0, 0) }), station("b", 1, { label: "B", flow: flow(3, 1) })],
+      totals: { cases: 10, landed: 5, failed: 3, cancelled: 1, open: 1 } as FlowModel["totals"],
+    });
+    expect(ends.map((e) => [e.key, e.cases])).toEqual([
+      ["landed", 5],
+      ["exit:b", 4],
+      ["open", 1],
+    ]);
   });
 });
 

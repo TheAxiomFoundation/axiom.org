@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { attemptEvents, type PipelineEvent } from "./pipeline-events";
-import { agentBrief, caseDetail, citationLanes, formatDuration, mineFlow, quantile, retryCutoff, trendSentence } from "./pipeline-flow";
+import { agentBrief, caseDetail, causeOrigin, causeText, citationLanes, formatDuration, mineFlow, quantile, retryCutoff, trendSentence } from "./pipeline-flow";
 import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 
 const NOW = Date.parse("2026-09-30T12:00:00Z");
@@ -125,6 +125,37 @@ describe("mineFlow", () => {
     expect(prChecks.p50_ms).toBeNull();
   });
 
+  it("says where each station's cases came from and went, and why they left", () => {
+    const at = (id: string) => model.stations.find((s) => s.id === id)!.flow;
+    expect(at("dispatch")).toMatchObject({ joined: 5, moved_on: 5 });
+    // Two runs fail at Validate on their last try's rule; one is cancelled at the approval.
+    expect(at("validate")).toMatchObject({ failed_here: 2, cancelled_here: 0 });
+    expect(at("validate").exit_causes.map((c) => [c.cause, c.cases, c.origin])).toEqual([
+      ["r:deferral", 1, "validator"],
+      ["r:tests", 1, "validator"],
+    ]);
+    expect(at("approval")).toMatchObject({ cancelled_here: 1, waiting_here: 1 });
+    expect(at("approval").exit_causes[0]).toMatchObject({ cause: "cancel:approval", origin: "cancel" });
+    expect(at("approval").wait_causes[0]).toMatchObject({ cause: "wait:approval", cases: 1 });
+    expect(at("compile").landed_here).toBe(1);
+    // A case ends at one station: the exits add up to the sinks.
+    const exits = model.stations.reduce((n, s) => n + s.flow.failed_here + s.flow.cancelled_here, 0);
+    expect(exits).toBe(model.totals.failed + model.totals.cancelled);
+  });
+
+  it("narrows the line to one kind of case and counts each kind", () => {
+    const outside = attemptEvents(
+      mergedAttempt({ id: "pr:rulespec-us#9:statutes/x.yaml", citation: "us/x", indexed_at: "2026-09-21T12:00:00Z", index_status: "indexed", tests_status: "pass" })
+    );
+    const both = [...log(), ...outside];
+    const all = mineFlow(both, { now: NOW, days: 30 });
+    expect(all.populations).toEqual({ all: 6, runs: 5, prs: 1, modules: 0 });
+    const prs = mineFlow(both, { now: NOW, days: 30, population: "prs" });
+    expect(prs.population).toBe("prs");
+    expect(prs.totals.cases).toBe(1);
+    expect(prs.stations[0].flow.joined).toBe(1);
+  });
+
   it("writes an agent brief with the alerts, stations and rules", () => {
     const brief = agentBrief(model, "https://axiom.org");
     expect(brief).toContain("# Encoding pipeline brief");
@@ -132,6 +163,8 @@ describe("mineFlow", () => {
     expect(brief).toContain("5 runs dispatched, 1 merged (20%)");
     expect(brief).toContain("| Validate |");
     expect(brief).toContain("## How much these numbers can see");
+    expect(brief).toContain("## Where cases leave the line, and why (all cases)");
+    expect(brief).toContain("`r:tests` (Validator check)");
     expect(brief.indexOf("## Alerts")).toBeLessThan(brief.indexOf("## Stations"));
   });
 });
@@ -179,6 +212,21 @@ describe("ruleTrends and followPairs", () => {
 });
 
 describe("helpers", () => {
+  it("causeOrigin names the system behind a reason from its prefix", () => {
+    expect(causeOrigin("complete-source-unit:tests")).toBe("validator");
+    expect(causeOrigin("check:build")).toBe("ci_check");
+    expect(causeOrigin("infra:no-pr")).toBe("workflow");
+    expect(causeOrigin("compile:compile_error")).toBe("compile");
+    expect(causeOrigin("text:proof-source-evidence")).toBe("encoder_text");
+    expect(causeOrigin("cancel:setup")).toBe("cancel");
+    expect(causeOrigin("unknown")).toBe("unknown");
+    expect(causeOrigin(null)).toBe("unknown");
+    expect(causeText("cancel:approval")).toBe("Cancelled while it waited for the signing approval");
+    expect(causeText("cancel:merge")).toBe("Cancelled at Merge");
+    expect(causeText("wait:tests")).toBe("No reason recorded");
+    expect(causeText("complete-source-unit:tests")).toBeNull();
+  });
+
   it("retryCutoff finds the try from which every later try passes under 5%", () => {
     const step = (try_no: number, tries: number, passed: number) => ({ try_no, label: String(try_no), tries, passed, cost_usd: tries / 10, models: [] });
     const cut = retryCutoff([step(1, 368, 40), step(2, 339, 37), step(3, 295, 25), step(4, 261, 8)]);

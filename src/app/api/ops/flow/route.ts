@@ -1,7 +1,7 @@
 /* v8 ignore start -- thin Next route wrapper */
 import { NextResponse, type NextRequest } from "next/server";
 import { agentBrief, citationLanes } from "@/lib/axiom/pipeline-flow";
-import { loadFlow, parseWindow } from "@/lib/axiom/pipeline-flow-data";
+import { loadFlow, parsePopulation, parseWindow } from "@/lib/axiom/pipeline-flow-data";
 import { SITE_URL } from "@/lib/urls";
 
 export const dynamic = "force-dynamic";
@@ -13,13 +13,14 @@ export const dynamic = "force-dynamic";
  *   GET /api/ops/flow?format=md            the same as a short markdown brief
  *   GET /api/ops/flow?citation=<path>      one citation's cases, station by station
  *
- * `window` (7, 30 or 90 days) and `j` (a jurisdiction and those under it) narrow it.
+ * `window` (7, 30 or 90 days), `j` (a jurisdiction and those under it) and
+ * `pop` (all, runs, prs, modules: which cases the line counts) narrow it.
  */
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
   const days = parseWindow(params.get("window") ?? undefined);
   const jurisdiction = params.get("j") || null;
-  const { model, events, origin, error } = await loadFlow({ days, jurisdiction });
+  const { model, events, origin, error } = await loadFlow({ days, jurisdiction, population: parsePopulation(params.get("pop")) });
   const headers = { "Cache-Control": "no-store" };
 
   const citation = params.get("citation");

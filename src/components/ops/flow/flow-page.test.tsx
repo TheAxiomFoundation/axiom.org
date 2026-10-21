@@ -6,10 +6,6 @@ import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 import { FlowPage, flowHref, type FlowParams } from "./flow-page";
 
 // The canvases need a real browser (React Flow measures the DOM).
-vi.mock("./pipeline-canvas", () => ({
-  PipelineCanvas: () => <div data-testid="pipeline-canvas" />,
-  StatusIcon: () => null,
-}));
 vi.mock("./level-canvases", () => ({
   LanesCanvas: () => <div data-testid="lanes-canvas" />,
   CaseCanvas: () => <div data-testid="case-canvas" />,
@@ -29,7 +25,7 @@ const model = mineFlow(events, {
   targets: [{ station: "validate", min_yield: 0.9, max_p95_hours: null, max_wip: null, sla_hours: null }],
   workflows: [{ label: "Release activation", grade: "failing", url: "https://x", detail: "Last run failed" }],
 });
-const params: FlowParams = { window: 30, j: null, view: "pipeline", station: null, citation: null, case: null, program: null, bundle: null };
+const params: FlowParams = { window: 30, j: null, pop: "all", view: "pipeline", station: null, citation: null, case: null, program: null, bundle: null };
 
 function page(overrides: Partial<Parameters<typeof FlowPage>[0]> = {}) {
   return render(
@@ -55,14 +51,21 @@ describe("flowHref", () => {
     expect(flowHref(params, {})).toBe("/ops/flow");
     expect(flowHref({ ...params, window: 7, j: "us" }, { station: "validate" })).toBe("/ops/flow?window=7&j=us&station=validate");
     expect(flowHref(params, { view: "discovery" })).toBe("/ops/flow?view=discovery");
+    expect(flowHref(params, { pop: "runs" })).toBe("/ops/flow?pop=runs");
   });
 });
 
 describe("FlowPage", () => {
-  it("shows the line with KPIs, alerts and the stations table", () => {
+  it("shows the line as a process map, with where cases end and why", () => {
     page();
     expect(screen.getByRole("heading", { name: "The encoding line" })).toBeTruthy();
-    expect(screen.getByTestId("pipeline-canvas")).toBeTruthy();
+    expect(screen.getByRole("table", { name: /The encoding line, all cases: one row per station/ })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Where do cases end?" })).toBeTruthy();
+    // The failed run leaves at Validate, and its reason names the validator rule.
+    expect(screen.getAllByText("r:tests").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Validator check").length).toBeGreaterThan(0);
+    expect(screen.getByRole("heading", { name: "Where do these reasons come from?" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Dispatched runs 2/ })).toBeTruthy();
     expect(screen.getByText("Release activation is failing")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Is each station getting better or worse?" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "How much can these numbers see?" })).toBeTruthy();
@@ -70,8 +73,9 @@ describe("FlowPage", () => {
     expect(screen.getByText(/Derived from encodings.pipeline_attempts/)).toBeTruthy();
   });
 
-  it("opens a station's panel", () => {
+  it("opens a station's detail under its row", () => {
     page({ params: { ...params, station: "validate" } });
+    expect(screen.getAllByRole("link", { name: "Validate" }).some((a) => a.getAttribute("aria-expanded") === "true")).toBe(true);
     expect(screen.getByRole("complementary", { name: "Validate details" })).toBeTruthy();
     expect(screen.getAllByText("r:tests").length).toBeGreaterThan(0);
   });

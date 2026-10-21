@@ -8,6 +8,8 @@ import {
   type CitationLane,
   type FlowAlert,
   type FlowModel,
+  POPULATION_LABELS,
+  type Population,
   retryCutoff,
   trendEnds,
   trendSentence,
@@ -17,7 +19,8 @@ import {
 import type { EventsOrigin } from "@/lib/axiom/pipeline-events-data";
 import { stationStatus } from "./flow-layout";
 import { CaseCanvas, DocumentsCanvas, LanesCanvas, ProgramsCanvas, type DocumentTile, type ProgramTile } from "./level-canvases";
-import { PipelineCanvas, StatusIcon } from "./pipeline-canvas";
+import { ProcessMap } from "./process-map";
+import { StatusIcon } from "./status-icon";
 import styles from "./flow.module.css";
 
 export type FlowView = "pipeline" | "discovery" | "programs";
@@ -25,6 +28,8 @@ export type FlowView = "pipeline" | "discovery" | "programs";
 export interface FlowParams {
   window: number;
   j: string | null;
+  /** Which cases the line counts. */
+  pop: Population;
   view: FlowView;
   station: string | null;
   citation: string | null;
@@ -39,6 +44,7 @@ export function flowHref(params: FlowParams, change: Partial<FlowParams>): strin
   const q = new URLSearchParams();
   if (next.window !== 30) q.set("window", String(next.window));
   if (next.j) q.set("j", next.j);
+  if (next.pop !== "all") q.set("pop", next.pop);
   if (next.view !== "pipeline") q.set("view", next.view);
   for (const key of ["station", "citation", "case", "program", "bundle"] as const) {
     const v = next[key];
@@ -47,6 +53,13 @@ export function flowHref(params: FlowParams, change: Partial<FlowParams>): strin
   const s = q.toString();
   return s ? `/ops/flow?${s}` : "/ops/flow";
 }
+
+const POPULATION_DESCRIPTIONS: Record<Population, string> = {
+  all: "Every case in the window",
+  runs: "Targeted re-encode runs: dispatch to merge and after",
+  prs: "Module files a PR merged into a rulespec repo with no run behind it; they start at PR checks",
+  modules: "Modules the encoder wrote inside another citation's run; they start at Generate",
+};
 
 const ORIGIN_NOTE: Record<EventsOrigin, string> = {
   table: "Read from encodings.pipeline_events.",
@@ -83,9 +96,6 @@ export function FlowPage({
   const stationOrder = model.stations.map((s) => s.id);
   const selected = params.station ? (model.stations.find((s) => s.id === params.station) ?? null) : null;
   const level = detail ? "case" : lanes ? "citation" : params.view;
-  const hrefFor = Object.fromEntries(
-    model.stations.map((s) => [s.id, flowHref(params, { station: params.station === s.id ? null : s.id })])
-  );
 
   return (
     <div className={`${dashboard.dashboard} ${styles.page} min-h-screen pt-28 pb-16`}>
@@ -129,6 +139,21 @@ export function FlowPage({
                 )
               )}
             </nav>
+            {params.view === "pipeline" ? (
+              <nav className={styles.seg} aria-label="Which cases">
+                {(["all", "runs", "prs", "modules"] as Population[]).map((p) =>
+                  p === params.pop ? (
+                    <span key={p} aria-current="page">
+                      {POPULATION_LABELS[p]} {model.populations[p].toLocaleString("en-US")}
+                    </span>
+                  ) : (
+                    <a key={p} href={flowHref(params, { pop: p, station: null })} title={POPULATION_DESCRIPTIONS[p]}>
+                      {POPULATION_LABELS[p]} {model.populations[p].toLocaleString("en-US")}
+                    </a>
+                  )
+                )}
+              </nav>
+            ) : null}
           </div>
         </header>
 
@@ -210,18 +235,16 @@ export function FlowPage({
           <div className={styles.floor}>{documents ? <DocumentsCanvas documents={documents} /> : <ProgramsCanvas programs={programs ?? []} />}</div>
         ) : (
           <>
-            <div className={styles.floor} data-panel={selected ? "true" : "false"}>
-              {model.stations.length ? (
-                <PipelineCanvas model={model} selected={selected?.id ?? null} hrefFor={hrefFor} />
-              ) : (
-                <div className={styles.canvas}>
-                  <div className={styles.empty}>
-                    <p>No events in this window and scope. Choose a longer window or another jurisdiction.</p>
-                  </div>
-                </div>
-              )}
-              {selected ? <StationPanel station={selected} model={model} params={params} /> : null}
-            </div>
+            {model.stations.length ? (
+              <ProcessMap
+                model={model}
+                selected={selected?.id ?? null}
+                href={(change) => flowHref(params, change)}
+                detail={selected ? <StationPanel station={selected} model={model} params={params} /> : null}
+              />
+            ) : (
+              <p className={styles.note}>No events in this window and scope. Choose a longer window or another jurisdiction.</p>
+            )}
             <StationsTable model={model} params={params} />
             <Trust model={model} />
           </>
