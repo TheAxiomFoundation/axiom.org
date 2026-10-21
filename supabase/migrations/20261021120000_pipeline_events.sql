@@ -10,7 +10,8 @@
 -- pipeline_attempts (source = 'pipeline_attempts') and loads issues from
 -- archived failure bundles and local A/B runs ('failure_bundle',
 -- 'local_ab') and the RuleSpec repos' validation waivers with their expiry
--- ('waiver_ledger'). Ids are deterministic, so a rebuild upserts. Live writers
+-- ('waiver_ledger') and merged axiom-encode PRs that name a validator rule
+-- ('encoder_change'). Ids are deterministic, so a rebuild upserts. Live writers
 -- (the encoder, the corpus release workflows) add their own sources later.
 --
 -- The stations, edges, counts, rates and colours on /ops/flow are all
@@ -27,7 +28,8 @@ create table if not exists encodings.pipeline_events (
   -- review | merge | index | compile | tests | oracle, and upstream
   -- corpus_ingest | release_publish | release_activate | target_gate.
   station         text not null,
-  -- enter | leave | fail | cancel | wait | issue
+  -- enter | leave | fail | cancel | wait | issue, and change: a merged
+  -- encoder PR that names a validator rule (rule_id), for before/after.
   kind            text not null,
   at              timestamptz not null,
   -- How long the station took, on leave / fail / cancel.
@@ -44,14 +46,14 @@ create table if not exists encodings.pipeline_events (
   actor           text,
   cost_usd        numeric,
   encoder_version text,
-  -- pipeline_attempts | failure_bundle | local_ab | encoder | waiver_ledger
+  -- pipeline_attempts | failure_bundle | local_ab | encoder | waiver_ledger | encoder_change
   source          text not null,
   -- The GitHub run, PR, check job or report the event comes from.
   ref_url         text,
   attrs           jsonb not null default '{}',
   collected_at    timestamptz not null default now(),
   constraint pipeline_events_kind_check
-    check (kind in ('enter', 'leave', 'fail', 'cancel', 'wait', 'issue'))
+    check (kind in ('enter', 'leave', 'fail', 'cancel', 'wait', 'issue', 'change'))
 );
 
 create index if not exists pipeline_events_station_idx

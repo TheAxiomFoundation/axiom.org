@@ -29,6 +29,11 @@
  *                  repos the attempts' PRs name) and write one `wait` event per
  *                  waived module, with its expiry, under source waiver_ledger.
  *                  /ops/flow raises a deadline alert from them.
+ *   --encoder-prs  read axiom-encode PRs merged since --since (default 2026-07-01)
+ *                  and write one `change` event per validator rule a PR names
+ *                  (title or body), under source encoder_change. /ops/flow
+ *                  compares each rule's rate before and after them. Uses
+ *                  GITHUB_TOKEN when set.
  */
 
 import { readFileSync, statSync, writeFileSync } from "node:fs";
@@ -156,6 +161,59 @@ if (has("--waivers")) {
   events.push(...waivers);
 }
 
+const RULE_TOKEN_RE = /\b([a-z][a-z0-9-]*:[a-z0-9][a-z0-9:-]*[a-z0-9])\b/g;
+
+/** One `change` event per (merged axiom-encode PR, validator rule it names). */
+async function encoderChangeEvents(knownRules, since) {
+  const headers = { Accept: "application/vnd.github+json", "User-Agent": "axiom-pipeline-events" };
+  if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  const events = [];
+  for (let page = 1; page <= 10; page++) {
+    const q = encodeURIComponent(`repo:TheAxiomFoundation/axiom-encode is:pr is:merged merged:>=${since}`);
+    const res = await fetch(`https://api.github.com/search/issues?q=${q}&per_page=100&page=${page}`, { headers });
+    if (!res.ok) throw new Error(`search merged axiom-encode PRs: HTTP ${res.status}`);
+    const { items } = await res.json();
+    for (const pr of items) {
+      const text = `${pr.title}\n${pr.body ?? ""}`;
+      const rules = new Set([...text.matchAll(RULE_TOKEN_RE)].map((m) => m[1]).filter((r) => knownRules.has(r)));
+      const mergedAt = pr.pull_request?.merged_at ?? pr.closed_at;
+      for (const rule of rules) {
+        const id = `pr:axiom-encode#${pr.number}`;
+        events.push({
+          id: `${id}/validate/change/${rule}`,
+          case_id: id,
+          citation: "axiom-encode",
+          jurisdiction: null,
+          station: "validate",
+          kind: "change",
+          at: mergedAt,
+          duration_ms: null,
+          outcome: "merged",
+          try_no: null,
+          rule_id: rule,
+          message: pr.title.slice(0, 500),
+          actor: pr.user?.login ?? null,
+          cost_usd: null,
+          encoder_version: null,
+          source: "encoder_change",
+          ref_url: pr.html_url,
+          attrs: { number: pr.number },
+        });
+      }
+    }
+    if (items.length < 100) break;
+  }
+  return events;
+}
+
+if (has("--encoder-prs")) {
+  // Rules the pipeline has seen fail, with their own ids (not text: or infra: classes).
+  const known = new Set(events.map((e) => e.rule_id).filter((r) => r && !r.startsWith("text:") && !r.startsWith("infra:")));
+  const changes = await encoderChangeEvents(known, opt("--since") ?? "2026-07-01");
+  console.error(`encoder changes: ${changes.length} (PR, rule) events`);
+  events.push(...changes);
+}
+
 const out = opt("--out");
 if (out) {
   writeFileSync(out, JSON.stringify(events));
@@ -172,7 +230,7 @@ if (writing) {
   }
   // Events pipeline_attempts no longer implies (a case moved on) are stale:
   // drop this source's rows the pass did not write.
-  const rebuilt = has("--waivers") ? ["pipeline_attempts", "waiver_ledger"] : ["pipeline_attempts"];
+  const rebuilt = ["pipeline_attempts", ...(has("--waivers") ? ["waiver_ledger"] : []), ...(has("--encoder-prs") ? ["encoder_change"] : [])];
   const { error } = await db
     .from("pipeline_events")
     .delete()

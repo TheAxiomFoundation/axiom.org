@@ -510,9 +510,17 @@
   font-weight: 600;
 }
 
-.spark {
+.week {
   margin-top: 8px;
-  display: block;
+  padding-top: 6px;
+  border-top: 1px solid var(--floor-line);
+  font-size: 11px;
+  color: var(--floor-ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.week[data-worse="true"] {
+  color: var(--warning);
 }
 
 .handle {
@@ -1093,6 +1101,88 @@
   .tryBars li > :last-child {
     display: none;
   }
+}
+
+.trendGrid {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 18px 24px;
+}
+
+.trendCell code {
+  font-size: 12px;
+}
+
+.trendCell p {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-ink-secondary);
+}
+
+.trendChart {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: 6px;
+}
+
+.trendChart .grid,
+.grid {
+  stroke: var(--color-rule);
+  stroke-width: 1;
+}
+
+.axis {
+  font-size: 9px;
+  fill: var(--color-ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.trendLine {
+  fill: none;
+  stroke: var(--flow);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.trendDot {
+  fill: var(--flow);
+  stroke: var(--color-paper-elevated);
+  stroke-width: 2;
+}
+
+.prMark {
+  stroke: var(--color-ink-muted);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.follows {
+  margin-top: 14px;
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  padding: 0;
+}
+
+.follows li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  font-size: 13px;
+}
+
+.follows code {
+  font-size: 12px;
+}
+
+.followStat {
+  margin-left: auto;
+  color: var(--color-ink-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .srOnly {

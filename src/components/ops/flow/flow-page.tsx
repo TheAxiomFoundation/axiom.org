@@ -8,8 +8,11 @@ import {
   type CitationLane,
   type FlowAlert,
   type FlowModel,
+  retryCutoff,
+  trendEnds,
+  trendSentence,
+  type RuleTrend,
   type StationStats,
-  type TryStep,
 } from "@/lib/axiom/pipeline-flow";
 import type { EventsOrigin } from "@/lib/axiom/pipeline-events-data";
 import { stationStatus } from "./flow-layout";
@@ -220,6 +223,7 @@ export function FlowPage({
               {selected ? <StationPanel station={selected} model={model} params={params} /> : null}
             </div>
             <StationsTable model={model} params={params} />
+            <Trust model={model} />
           </>
         )}
 
@@ -235,47 +239,29 @@ export function FlowPage({
 
 function Kpis({ model }: { model: FlowModel }) {
   const t = model.totals;
-  const finished = t.landed + t.failed + t.cancelled;
-  // The loop station whose tries pass least often (the encode loop's checks).
-  const validate = model.stations
-    .filter((s) => s.tries && s.tries.total)
-    .sort((a, b) => a.tries!.ok / a.tries!.total - b.tries!.ok / b.tries!.total)[0];
-  const wip = model.stations.reduce((s, x) => s + x.wip, 0);
   return (
     <dl className={styles.kpis}>
       <div className={styles.kpi}>
-        <dt>Cases started</dt>
-        <dd>{t.cases.toLocaleString("en-US")}</dd>
-        <small>last {model.window.days} days</small>
+        <dt>How many runs went in?</dt>
+        <dd>{t.dispatched.toLocaleString("en-US")}</dd>
+        <small>targeted re-encodes dispatched in {model.window.days} days</small>
       </div>
       <div className={styles.kpi}>
-        <dt>Landed per week</dt>
-        <dd>{t.landed_per_week.toFixed(1)}</dd>
-        <small>{t.landed.toLocaleString("en-US")} cleared every station</small>
+        <dt>How many merged?</dt>
+        <dd>
+          {t.dispatched_merged.toLocaleString("en-US")} <small style={{ display: "inline" }}>({pct(t.dispatched ? t.dispatched_merged / t.dispatched : null)})</small>
+        </dd>
+        <small>{t.dispatched_landed.toLocaleString("en-US")} also cleared every check after the merge</small>
       </div>
       <div className={styles.kpi}>
-        <dt>End-to-end yield</dt>
-        <dd>{pct(finished ? t.landed / finished : null)}</dd>
-        <small>
-          {t.failed.toLocaleString("en-US")} failed · {t.cancelled.toLocaleString("en-US")} cancelled
-        </small>
-      </div>
-      {validate?.tries ? (
-        <div className={styles.kpi}>
-          <dt>{validate.label} pass per try</dt>
-          <dd>{pct(validate.tries.total ? validate.tries.ok / validate.tries.total : null)}</dd>
-          <small>{validate.tries.total.toLocaleString("en-US")} tries</small>
-        </div>
-      ) : null}
-      <div className={styles.kpi}>
-        <dt>Open now</dt>
-        <dd>{wip.toLocaleString("en-US")}</dd>
-        <small>waiting at a station, all time</small>
+        <dt>How long to merge?</dt>
+        <dd>{formatDuration(t.dispatch_to_merge_p50_ms)}</dd>
+        <small>dispatch to default branch, median</small>
       </div>
       <div className={styles.kpi}>
-        <dt>Lead time, p50</dt>
-        <dd>{formatDuration(t.lead_p50_ms)}</dd>
-        <small>first event to last timed one</small>
+        <dt>What waits now?</dt>
+        <dd>{t.waiting.toLocaleString("en-US")}</dd>
+        <small>{t.waiting_over_sla.toLocaleString("en-US")} over their station&apos;s SLA</small>
       </div>
     </dl>
   );
@@ -325,6 +311,9 @@ function StationPanel({ station: s, model, params }: { station: StationStats; mo
         <StatusIcon status={status} /> {status === "neutral" ? "No target set" : status === "good" ? "On target" : status === "warning" ? "Off target" : "Alert"}
       </p>
       <p style={{ marginTop: 8 }}>{s.description}</p>
+      <p style={{ marginTop: 8 }}>
+        <b>This week:</b> {trendSentence(s.trend)}
+      </p>
       <h3>Last {model.window.days} days</h3>
       <div className={styles.metrics}>
         <div className={styles.metric}>
@@ -339,9 +328,7 @@ function StationPanel({ station: s, model, params }: { station: StationStats; mo
         </div>
         <div className={styles.metric}>
           <span>p50 / p95</span>
-          <b>
-            {formatDuration(s.p50_ms)} / {formatDuration(s.p95_ms)}
-          </b>
+          <b>{s.timed ? `${formatDuration(s.p50_ms)} / ${formatDuration(s.p95_ms)}` : "not timed"}</b>
           <small>{t?.max_p95_hours != null ? `p95 target ${formatDuration(t.max_p95_hours * 3_600_000)}` : "no target"}</small>
         </div>
         <div className={styles.metric}>
@@ -419,8 +406,8 @@ function StationPanel({ station: s, model, params }: { station: StationStats; mo
 function StationsTable({ model, params }: { model: FlowModel; params: FlowParams }) {
   return (
     <section className={styles.section}>
-      <h2>Stations as a table</h2>
-      <p>The same numbers as the floor, for reading and for screen readers. Yield counts each case's last visit; tries count every visit of a loop station.</p>
+      <h2>Is each station getting better or worse?</h2>
+      <p>The floor&apos;s numbers as a table, with each station&apos;s last 7 days against the 7 before. Yield counts each case&apos;s last visit at the station.</p>
       <div className={styles.tableWrap}>
         <table className={styles.table}>
           <thead>
@@ -432,6 +419,7 @@ function StationsTable({ model, params }: { model: FlowModel; params: FlowParams
               <th className={styles.num}>Open</th>
               <th className={styles.num}>p50</th>
               <th className={styles.num}>p95</th>
+              <th>This week against the week before</th>
               <th>Top cause</th>
             </tr>
           </thead>
@@ -454,8 +442,12 @@ function StationsTable({ model, params }: { model: FlowModel; params: FlowParams
                     {s.tries ? ` (${pct(s.tries.total ? s.tries.ok / s.tries.total : null)}/try)` : ""}
                   </td>
                   <td className={styles.num}>{s.wip.toLocaleString("en-US")}</td>
-                  <td className={styles.num}>{formatDuration(s.p50_ms)}</td>
-                  <td className={styles.num}>{formatDuration(s.p95_ms)}</td>
+                  <td className={styles.num}>
+                    {s.timed ? formatDuration(s.p50_ms) : "not timed"}
+                    {s.timed && s.timed_share < 0.5 ? <small style={{ display: "block" }}>{pct(s.timed_share)} of visits timed</small> : null}
+                  </td>
+                  <td className={styles.num}>{s.timed ? formatDuration(s.p95_ms) : "–"}</td>
+                  <td>{trendSentence(s.trend)}</td>
                   <td>{s.failures[0] ? <code>{`${s.failures[0].rule_id} (${s.failures[0].count})`}</code> : ""}</td>
                 </tr>
               );
@@ -467,82 +459,167 @@ function StationsTable({ model, params }: { model: FlowModel; params: FlowParams
   );
 }
 
-/** Below this pass rate a later try is not worth its cost (as the retry alert). */
-const LOW_PASS = 0.05;
+/** How much of the window the page can see, and where it is blind. */
+function Trust({ model }: { model: FlowModel }) {
+  const t = model.trust;
+  const share = (n: number) => pct(t.dispatched ? n / t.dispatched : null);
+  return (
+    <section className={styles.section}>
+      <h2>How much can these numbers see?</h2>
+      <p>
+        {`Of ${t.dispatched.toLocaleString("en-US")} runs dispatched in the window: ${share(t.with_tries)} have the encoder's per-try record${
+          t.tries_since ? ` (it exists from ${t.tries_since.slice(0, 10)})` : ""
+        }, ${share(t.with_cost)} a recorded model cost, and ${share(t.with_issue_list)} a full issue list for a try. Every other run shows only its first error. `}
+        {t.untimed.length ? `Not timed: ${t.untimed.map(stationLabel).join(", ")}. ` : "Every station is timed. "}
+        {t.partly_timed.length
+          ? `Timed for part of their visits only: ${t.partly_timed.map((x) => `${stationLabel(x.station)} (${pct(x.share)})`).join(", ")}.`
+          : ""}
+      </p>
+    </section>
+  );
+}
 
-/** The first try number from which every later try passes under LOW_PASS. */
-export function retryVerdict(steps: TryStep[]): { from: TryStep; tries: number; passed: number; cost: number } | null {
-  for (let i = 1; i < steps.length; i++) {
-    const rest = steps.slice(i);
-    const tries = rest.reduce((s, x) => s + x.tries, 0);
-    const passed = rest.reduce((s, x) => s + x.passed, 0);
-    if (tries && passed / tries < LOW_PASS) {
-      return { from: steps[i], tries, passed, cost: rest.reduce((s, x) => s + x.cost_usd, 0) };
-    }
+/** One rule's weekly rate as a small line chart, with the encoder PRs that name it marked. */
+function RuleTrendChart({ trend }: { trend: RuleTrend }) {
+  const w = 300;
+  const h = 96;
+  const pad = { l: 30, r: 8, t: 10, b: 20 };
+  const pts = trend.weekly;
+  if (pts.length < 2) return <p className={styles.note}>Too few runs per week to draw.</p>;
+  const t0 = Date.parse(pts[0].week);
+  const t1 = Date.parse(pts[pts.length - 1].week);
+  const x = (ms: number) => pad.l + ((ms - t0) / Math.max(1, t1 - t0)) * (w - pad.l - pad.r);
+  const y = (share: number) => pad.t + (1 - share) * (h - pad.t - pad.b);
+  const line = pts.map((p) => `${x(Date.parse(p.week)).toFixed(1)},${y(p.hit / p.cases).toFixed(1)}`).join(" ");
+  const marks = trend.changes.filter((c) => Date.parse(c.at) >= t0 && Date.parse(c.at) <= t1 + 6 * 86_400_000);
+  return (
+    <svg className={styles.trendChart} viewBox={`0 0 ${w} ${h}`} role="img" aria-label={`${trend.rule_id}: share of runs by week`}>
+      {[0, 0.5, 1].map((v) => (
+        <g key={v}>
+          <line x1={pad.l} x2={w - pad.r} y1={y(v)} y2={y(v)} className={styles.grid} />
+          <text x={pad.l - 4} y={y(v) + 3} textAnchor="end" className={styles.axis}>
+            {Math.round(v * 100)}%
+          </text>
+        </g>
+      ))}
+      {marks.map((m) => (
+        <g key={`${m.number}-${m.at}`}>
+          <line x1={x(Date.parse(m.at))} x2={x(Date.parse(m.at))} y1={pad.t} y2={h - pad.b} className={styles.prMark} />
+          <text
+            x={x(Date.parse(m.at)) + (x(Date.parse(m.at)) > w - 50 ? -3 : 3)}
+            y={pad.t + 8}
+            textAnchor={x(Date.parse(m.at)) > w - 50 ? "end" : "start"}
+            className={styles.axis}
+          >
+            #{m.number}
+          </text>
+          <title>{`#${m.number} merged ${m.at.slice(0, 10)}: ${m.title ?? ""}`}</title>
+        </g>
+      ))}
+      <polyline points={line} className={styles.trendLine} />
+      {pts.map((p) => (
+        <circle key={p.week} cx={x(Date.parse(p.week))} cy={y(p.hit / p.cases)} r={4} className={styles.trendDot}>
+          <title>{`Week of ${p.week}: ${p.hit} of ${p.cases} runs (${pct(p.hit / p.cases)})`}</title>
+        </circle>
+      ))}
+      <text x={pad.l} y={h - 4} className={styles.axis}>
+        {pts[0].week.slice(5)}
+      </text>
+      <text x={w - pad.r} y={h - 4} textAnchor="end" className={styles.axis}>
+        {pts[pts.length - 1].week.slice(5)}
+      </text>
+    </svg>
+  );
+}
+
+function trendAnswer(t: RuleTrend): string {
+  const ends = trendEnds(t);
+  const parts: string[] = [];
+  if (ends) {
+    const delta = Math.round((ends.last - ends.first) * 100);
+    parts.push(
+      Math.abs(delta) < 5
+        ? `Steady at about ${pct(ends.last)} of runs`
+        : `${delta > 0 ? "Up" : "Down"} from ${pct(ends.first)} to ${pct(ends.last)} of runs`
+    );
   }
-  return null;
+  if (t.rerun.citations) parts.push(`${t.rerun.still} of ${t.rerun.citations} citations still hit it when run again a week or more later`);
+  parts.push(t.changes.length ? `after ${t.changes.length === 1 ? "PR" : "PRs"} ${t.changes.map((c) => `#${c.number}`).join(", ")}` : "no encoder PR names it");
+  return `${parts.join("; ")}.`;
 }
 
 function Discovery({ model, params }: { model: FlowModel; params: FlowParams }) {
-  const retry = model.retry;
-  const verdict = retry ? retryVerdict(retry.steps) : null;
-  const totalPassed = retry ? retry.steps.reduce((s, x) => s + x.passed, 0) : 0;
-  const maxTries = retry ? Math.max(1, ...retry.steps.map((s) => s.tries)) : 1;
-  const maxShare = Math.max(0.01, ...model.variants.map((v) => v.share));
+  const cut = model.retry ? retryCutoff(model.retry.steps) : null;
   const loopCost = model.looping.reduce((s, l) => s + (l.cost_usd ?? 0), 0);
   const loopUnpriced = model.looping.filter((l) => l.cost_usd == null).length;
+  const rerun = model.trends.reduce((acc, t) => ({ citations: acc.citations + t.rerun.citations, still: acc.still + t.rerun.still }), { citations: 0, still: 0 });
+  const worse = model.trends.filter((t) => {
+    const e = trendEnds(t);
+    return e && e.last - e.first >= 0.05;
+  });
   return (
     <>
       <p className={styles.lede} style={{ marginTop: 16 }}>
-        Patterns across runs and tries, for decisions the Line tab cannot show: whether another try is worth it, which rules the encoder does not fix, and which citations to stop
-        dispatching. The agent brief starts with the same three answers.
+        Patterns across runs and tries that one station cannot show. Each card answers one question; its numbers are the evidence. The agent brief starts with the same answers.
       </p>
       <div className={styles.cards}>
-        <section className={styles.card} aria-labelledby="retry-h">
-          <p className={styles.eyebrow}>1 · Is retrying worth it?</p>
-          <h2 id="retry-h">{retry ? `${stationLabel(retry.judge)} pass rate by try` : "No retry loop in this window"}</h2>
-          {retry ? (
-            <>
-              <p className={styles.answer}>
-                {verdict
-                  ? `From try ${verdict.from.label} on, ${verdict.passed} of ${verdict.tries} tries pass (${pct(verdict.passed / verdict.tries)}) for $${verdict.cost.toFixed(2)} of model cost. Cap the loop at ${verdict.from.try_no - 1} tries, or change what the encoder gets before try ${verdict.from.label}.`
-                  : `Every try still passes at least ${pct(LOW_PASS)} of the time; the loop earns its cost.`}
-              </p>
-              <ol className={styles.tryBars} aria-label="Tries and passes by try number">
-                {retry.steps.map((st) => {
-                  const rate = st.tries ? st.passed / st.tries : 0;
-                  const low = st.try_no > 1 && rate < LOW_PASS;
-                  return (
-                    <li key={st.label}>
-                      <span className={styles.tryLabel}>Try {st.label}</span>
-                      <span className={styles.tryTrack} title={`${st.tries} tries, ${st.passed} passed`}>
-                        <i style={{ width: `${(st.tries / maxTries) * 100}%` }} />
-                        <b data-low={low} style={{ width: `${(st.passed / maxTries) * 100}%` }} />
-                      </span>
-                      <span className={styles.tryNum}>
-                        {pct(rate)} <small>({st.passed}/{st.tries})</small>
-                        {low ? <em> below {pct(LOW_PASS)}</em> : null}
-                      </span>
-                      <span className={styles.tryNum}>${st.cost_usd.toFixed(2)}</span>
-                    </li>
-                  );
-                })}
-              </ol>
-              <p className={styles.note}>
-                Dark bar: tries that passed; light bar: tries that reached this number. {totalPassed} passes in all. Cost is the recorded model cost of {stationLabel(retry.work)} on that try
-                (runs before the cost ledger have none).
-              </p>
-            </>
+        <section className={styles.card} aria-labelledby="fixes-h">
+          <p className={styles.eyebrow}>1 · Did our fixes work?</p>
+          <h2 id="fixes-h">The rules the encoder does not fix, week by week</h2>
+          <p className={styles.answer}>
+            {model.trends.length
+              ? worse.length
+                ? `${worse.length} of ${model.trends.length} rules hit a larger share of runs now than in the first week with try records.${rerun.citations ? ` When the same citation ran again a week or more later, it still hit the rule in ${rerun.still} of ${rerun.citations} cases (${pct(rerun.still / rerun.citations)}).` : ""}`
+                : `None of these rules got more frequent in the window.${rerun.citations ? ` Re-runs of the same citation still hit them in ${rerun.still} of ${rerun.citations} cases.` : ""}`
+              : "No runs with try records in this window."}
+          </p>
+          <div className={styles.trendGrid}>
+            {model.trends.map((t) => (
+              <div key={t.rule_id} className={styles.trendCell}>
+                <code>{t.rule_id}</code>
+                <RuleTrendChart trend={t} />
+                <p>{trendAnswer(t)}</p>
+              </div>
+            ))}
+          </div>
+          <p className={styles.note}>
+            Share of runs with the encoder&apos;s per-try record whose tries hit the rule, per week with 15 runs or more. Dashed lines: merged axiom-encode PRs that name the rule. The mix
+            of citations changes each week; the re-run count compares the same citation.
+          </p>
+        </section>
+
+        <section className={styles.card} aria-labelledby="follows-h">
+          <p className={styles.eyebrow}>2 · What follows a fix?</p>
+          <h2 id="follows-h">When one rule is fixed, which one comes next</h2>
+          <p className={styles.answer}>
+            {model.follows[0]
+              ? `When ${model.follows[0].fixed} is fixed, ${model.follows[0].next} appears in the next try ${pct(model.follows[0].share)} of the time, ${model.follows[0].lift}× its usual rate. Fix such pairs together.`
+              : "No pair of rules follows each other much more often than chance."}
+          </p>
+          {model.follows.length ? (
+            <ol className={styles.follows}>
+              {model.follows.map((f) => (
+                <li key={`${f.fixed}|${f.next}`}>
+                  <code>{f.fixed}</code>
+                  <span aria-hidden>→</span>
+                  <code>{f.next}</code>
+                  <span className={styles.followStat}>
+                    {pct(f.share)} · {f.lift}× usual · {f.count} tries
+                  </span>
+                </li>
+              ))}
+            </ol>
           ) : null}
         </section>
 
         <section className={styles.card} aria-labelledby="stubborn-h">
-          <p className={styles.eyebrow}>2 · Which rules does the encoder not fix?</p>
+          <p className={styles.eyebrow}>3 · Which rules does another try not fix?</p>
           <h2 id="stubborn-h">Rules that come back on the next try</h2>
           <p className={styles.answer}>
             {model.ladder.stubborn[0]
-              ? `${model.ladder.stubborn[0].rule_id} fails ${model.ladder.stubborn[0].occurrences} tries, and the next try fails it again ${pct(model.ladder.stubborn[0].stick_rate)} of the time. Another try does not fix these; change the prompt, the example or the check.`
+              ? `${model.ladder.stubborn[0].rule_id} fails ${model.ladder.stubborn[0].occurrences} tries, and the next try fails it again ${pct(model.ladder.stubborn[0].stick_rate)} of the time.`
               : "No rule with enough tries in this window."}
+            {cut ? ` From try ${cut.from.label} on, ${cut.passed} of ${cut.tries} tries pass (${pct(cut.passed / cut.tries)}) for $${cut.cost.toFixed(2)}.` : ""}
           </p>
           <div className={styles.tableWrap}>
             <table className={styles.table}>
@@ -552,7 +629,6 @@ function Discovery({ model, params }: { model: FlowModel; params: FlowParams }) 
                   <th className={styles.num}>Failed tries</th>
                   <th>Next try fails it again</th>
                   <th className={styles.num}>Cases recovered</th>
-                  <th>When fixed, next comes</th>
                 </tr>
               </thead>
               <tbody>
@@ -573,13 +649,6 @@ function Discovery({ model, params }: { model: FlowModel; params: FlowParams }) 
                     <td className={styles.num}>
                       {r.recovered} <small>of {r.cases}</small>
                     </td>
-                    <td>
-                      {r.followed_by.slice(0, 2).map((f) => (
-                        <code key={f.rule_id} style={{ display: "block" }}>
-                          → {f.rule_id} ({f.count})
-                        </code>
-                      ))}
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -588,7 +657,7 @@ function Discovery({ model, params }: { model: FlowModel; params: FlowParams }) 
         </section>
 
         <section className={styles.card} aria-labelledby="looping-h">
-          <p className={styles.eyebrow}>3 · Which citations to stop dispatching?</p>
+          <p className={styles.eyebrow}>4 · Which citations to stop dispatching?</p>
           <h2 id="looping-h">Dispatched again and again, never merged</h2>
           <p className={styles.answer}>
             {model.looping.length
@@ -633,85 +702,6 @@ function Discovery({ model, params }: { model: FlowModel; params: FlowParams }) 
           ) : null}
         </section>
       </div>
-
-      {model.cooccurrence.length ? (
-        <section className={styles.section}>
-          <h2>Failure modes that come together</h2>
-          <p>Pairs of rules in the same try. Lift above 1 means they come together more often than chance; one fix may clear both.</p>
-          <div className={styles.tableWrap}>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>Rule</th>
-                  <th>With</th>
-                  <th className={styles.num}>Tries</th>
-                  <th className={styles.num}>Lift</th>
-                </tr>
-              </thead>
-              <tbody>
-                {model.cooccurrence.slice(0, 8).map((c) => (
-                  <tr key={`${c.a}|${c.b}`}>
-                    <td>
-                      <code>{c.a}</code>
-                    </td>
-                    <td>
-                      <code>{c.b}</code>
-                    </td>
-                    <td className={styles.num}>{c.count.toLocaleString("en-US")}</td>
-                    <td className={styles.num}>{c.lift}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      ) : null}
-      <section className={styles.section}>
-        <h2>Common paths</h2>
-        <p>Each case&apos;s stations in order (first visit of each) and where it ended, most common first.</p>
-        <div className={styles.tableWrap}>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>Share</th>
-                <th>Path</th>
-                <th className={styles.num}>Lead p50</th>
-                <th>Example</th>
-              </tr>
-            </thead>
-            <tbody>
-              {model.variants.map((v) => (
-                <tr key={`${v.path.join(">")}|${v.end}`}>
-                  <td className={styles.num} style={{ whiteSpace: "nowrap" }}>
-                    <span className={styles.share} style={{ width: `${(v.share / maxShare) * 60}px` }} aria-hidden />
-                    {pct(v.share)} ({v.cases})
-                  </td>
-                  <td>
-                    <span className={styles.path}>
-                      {v.path.map((s) => (
-                        <span key={s} className={styles.chip}>
-                          {stationLabel(s)}
-                        </span>
-                      ))}
-                      <span aria-hidden>→</span>
-                      <span className={styles.chip} data-end={v.end.split(" ")[0]}>
-                        {v.end.replace(/ at (\w+)/, (_, s: string) => ` at ${stationLabel(s)}`)}
-                      </span>
-                      {v.median_repeats > 1 ? <span className={styles.more}>×{v.median_repeats} tries</span> : null}
-                    </span>
-                  </td>
-                  <td className={styles.num}>{formatDuration(v.median_lead_ms)}</td>
-                  <td>
-                    <a href={flowHref(params, { citation: v.example_citation, case: v.example_case, view: "pipeline" })}>
-                      <code>{v.example_citation}</code>
-                    </a>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
     </>
   );
 }

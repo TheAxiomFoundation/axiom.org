@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { attemptEvents, type PipelineEvent } from "./pipeline-events";
-import { agentBrief, caseDetail, citationLanes, formatDuration, mineFlow, quantile } from "./pipeline-flow";
+import { agentBrief, caseDetail, citationLanes, formatDuration, mineFlow, quantile, retryCutoff, trendSentence } from "./pipeline-flow";
 import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 
 const NOW = Date.parse("2026-09-30T12:00:00Z");
@@ -115,14 +115,24 @@ describe("mineFlow", () => {
     expect(dk.totals.cases).toBe(1);
   });
 
+  it("counts dispatches, merges and what waits, and says where the data is blind", () => {
+    expect(model.totals).toMatchObject({ dispatched: 5, dispatched_merged: 1, waiting: 1 });
+    expect(model.totals.dispatch_to_merge_p50_ms).toBe(Date.parse("2026-09-21T09:00:00Z") - Date.parse("2026-09-20T10:00:00Z"));
+    expect(model.trust).toMatchObject({ dispatched: 5, with_tries: 3, with_cost: 3, with_issue_list: 0 });
+    expect(model.trust.untimed).toContain("pr_checks");
+    const prChecks = model.stations.find((s) => s.id === "pr_checks")!;
+    expect(prChecks.timed).toBe(false);
+    expect(prChecks.p50_ms).toBeNull();
+  });
+
   it("writes an agent brief with the alerts, stations and rules", () => {
     const brief = agentBrief(model, "https://axiom.org");
     expect(brief).toContain("# Encoding pipeline brief");
     expect(brief).toContain("Release activation is failing");
-    expect(brief).toContain("## Is retrying worth it? (Validate by try)");
-    expect(brief).toContain("| 2 | 3 | 1 | 33% | $0.03 |");
+    expect(brief).toContain("5 runs dispatched, 1 merged (20%)");
     expect(brief).toContain("| Validate |");
-    expect(brief.indexOf("Is retrying worth it")).toBeLessThan(brief.indexOf("## Alerts"));
+    expect(brief).toContain("## How much these numbers can see");
+    expect(brief.indexOf("## Alerts")).toBeLessThan(brief.indexOf("## Stations"));
   });
 });
 
@@ -140,7 +150,48 @@ describe("citation lanes and case detail", () => {
   });
 });
 
+describe("ruleTrends and followPairs", () => {
+  // Ten citations, each run twice two weeks apart; the rule sticks on re-run in 6 of 10.
+  const runs = Array.from({ length: 10 }, (_, i) => [
+    pipelineAttempt({ id: `a${i}`, citation: `us/c${i}`, dispatched_at: "2026-09-01T10:00:00Z", failed_step: "encode_apply", tries: [tryOf(1, false, "r:x"), tryOf(2, false, "r:y")] }),
+    pipelineAttempt({ id: `b${i}`, citation: `us/c${i}`, dispatched_at: "2026-09-15T10:00:00Z", failed_step: "encode_apply", tries: i < 6 ? [tryOf(1, false, "r:x"), tryOf(2, false, "r:x")] : [tryOf(1, false, "r:z"), tryOf(2, false, "r:w")] }),
+    pipelineAttempt({ id: `c${i}`, citation: `us/d${i}`, dispatched_at: "2026-09-25T10:00:00Z", failed_step: "encode_apply", tries: [tryOf(1, false, "r:q"), tryOf(2, false, "r:v")] }),
+  ]).flat();
+  const events: PipelineEvent[] = [
+    ...runs.flatMap(attemptEvents),
+    { ...attemptEvents(runs[0])[0], id: "pr:axiom-encode#5/validate/change/r:x", case_id: "pr:axiom-encode#5", citation: "axiom-encode", station: "validate", kind: "change", at: "2026-09-08T00:00:00Z", rule_id: "r:x", source: "encoder_change", message: "Fix x", ref_url: "https://x/5", attrs: { number: 5 } },
+  ];
+  const m = mineFlow(events, { now: NOW, days: 60 });
+
+  it("compares a rule week by week, on re-runs of the same citation, and marks the PRs that name it", () => {
+    const x = m.trends.find((t) => t.rule_id === "r:x")!;
+    expect(x.rerun).toEqual({ citations: 10, still: 6 });
+    expect(x.changes).toEqual([{ at: "2026-09-08T00:00:00Z", number: 5, title: "Fix x", ref_url: "https://x/5" }]);
+    // Change events are not cases.
+    expect(m.totals.cases).toBe(30);
+  });
+
+  it("finds a rule that follows another's fix more often than usual", () => {
+    // x is fixed 10 times and y follows every time; y appears new in 10 of 30 steps.
+    const xy = m.follows.find((f) => f.fixed === "r:x" && f.next === "r:y");
+    expect(xy).toMatchObject({ count: 10, share: 1, lift: 3 });
+  });
+});
+
 describe("helpers", () => {
+  it("retryCutoff finds the try from which every later try passes under 5%", () => {
+    const step = (try_no: number, tries: number, passed: number) => ({ try_no, label: String(try_no), tries, passed, cost_usd: tries / 10, models: [] });
+    const cut = retryCutoff([step(1, 368, 40), step(2, 339, 37), step(3, 295, 25), step(4, 261, 8)]);
+    expect([cut?.from.try_no, cut?.tries, cut?.passed]).toEqual([4, 261, 8]);
+    expect(retryCutoff([step(1, 10, 5), step(2, 10, 5)])).toBeNull();
+  });
+
+  it("trendSentence compares this week with the week before", () => {
+    expect(trendSentence({ now: { finished: 0, ok: 0 }, before: { finished: 0, ok: 0 } })).toBe("No dated finishes in the last two weeks.");
+    expect(trendSentence({ now: { finished: 20, ok: 5 }, before: { finished: 10, ok: 5 } })).toBe("10 more finished than the week before; yield down from 50% to 25%.");
+    expect(trendSentence({ now: { finished: 10, ok: 5 }, before: { finished: 10, ok: 5 } })).toBe("Same volume as the week before; yield steady at 50%.");
+  });
+
   it("quantile and formatDuration", () => {
     expect(quantile([], 0.5)).toBeNull();
     expect(quantile([1, 2, 3, 4], 0.5)).toBe(2.5);

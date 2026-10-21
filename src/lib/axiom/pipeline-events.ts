@@ -14,9 +14,9 @@
 
 import { attemptSource, mainMergedAt, type PipelineAttempt } from "./encoding-pipeline";
 
-export type EventKind = "enter" | "leave" | "fail" | "cancel" | "wait" | "issue";
+export type EventKind = "enter" | "leave" | "fail" | "cancel" | "wait" | "issue" | "change";
 
-export type EventSource = "pipeline_attempts" | "failure_bundle" | "local_ab" | "encoder" | "waiver_ledger";
+export type EventSource = "pipeline_attempts" | "failure_bundle" | "local_ab" | "encoder" | "waiver_ledger" | "encoder_change";
 
 /** One row of encodings.pipeline_events. */
 export interface PipelineEvent {
@@ -362,7 +362,8 @@ function prEvents(
     }
     if (attempt.pr_checks === "pending" && !merged) return;
     if (attempt.pr_state === "closed" && attempt.pr_checks !== "success") {
-      ev({ station: "pr_checks", kind: "cancel", at: attempt.pr_closed_at ?? prAt, outcome: "closed", ref_url: prUrl });
+      // Closed with checks not passing: the time to the close is not check time.
+      ev({ station: "pr_checks", kind: "cancel", at: attempt.pr_closed_at ?? prAt, outcome: "closed", ref_url: prUrl, attrs: { untimed: true } });
       return;
     }
     // The rollup has no finish time: untimed.
@@ -425,7 +426,7 @@ function prEvents(
       rule_id: ok ? null : "tests:fail-on-main",
       duration_ms: attempt.tests_first_at ? spanMs(mergedAt, testsAt) : null,
       ref_url: attempt.tests_run_url ?? attempt.tests_first_run_url ?? null,
-      attrs: attempt.tests_first_at ? {} : { untimed: true },
+      attrs: attempt.tests_first_at ? {} : { untimed: true, read_time: true },
     });
   }
   if (attempt.index_status === "missing") {
@@ -448,8 +449,9 @@ function prEvents(
       outcome: attempt.compile_status,
       rule_id: ok ? null : `compile:${attempt.compile_status}`,
       message: clip(attempt.compile_error),
-      // compile_checked_at is the latest nightly sweep, not the first: untimed.
-      attrs: { untimed: true },
+      // compile_checked_at is the latest nightly sweep, not the first: untimed,
+      // and its time is when it was read, not when the station finished.
+      attrs: { untimed: true, read_time: true },
     });
   }
 

@@ -65,17 +65,21 @@ function Ring({ value, status }: { value: number | null; status: Status }) {
   );
 }
 
-function Sparkline({ values }: { values: number[] }) {
-  if (values.length < 2) return null;
-  const w = 188;
-  const h = 22;
-  const max = Math.max(1, ...values);
-  const pts = values.map((v, i) => `${(i / (values.length - 1)) * w},${h - 2 - (v / max) * (h - 4)}`).join(" ");
+/** This week against the week before, short enough for a node: "▲ 12 · yield 30% → 26%". */
+function WeekTrend({ trend }: { trend: StationStats["trend"] }) {
+  const { now, before } = trend;
+  if (!now.finished && !before.finished) return <p className={styles.week}>No dated finishes in two weeks</p>;
+  const delta = now.finished - before.finished;
+  const y = (b: { finished: number; ok: number }) => (b.finished ? b.ok / b.finished : null);
+  const yNow = y(now);
+  const yBefore = y(before);
+  const yieldMove = yNow != null && yBefore != null && Math.abs(yNow - yBefore) >= 0.03;
+  const worse = yieldMove && yNow! < yBefore!;
   return (
-    <svg className={styles.spark} width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden>
-      <polyline points={`0,${h} ${pts} ${w},${h}`} fill="rgba(245,158,11,0.12)" stroke="none" />
-      <polyline points={pts} fill="none" stroke="#f59e0b" strokeWidth="1.5" strokeLinejoin="round" />
-    </svg>
+    <p className={styles.week} data-worse={worse}>
+      This week {delta === 0 ? "same volume" : `${delta > 0 ? "▲" : "▼"} ${Math.abs(delta)} finished`}
+      {yieldMove ? ` · yield ${pct(yBefore)} → ${pct(yNow)}` : yNow != null ? ` · yield ${pct(yNow)}` : ""}
+    </p>
   );
 }
 
@@ -89,7 +93,7 @@ const StationNode = memo(function StationNode({ data }: NodeProps<Node<StationDa
       data-status={status}
       data-selected={selected}
       tabIndex={0}
-      aria-label={`${s.label}: yield ${pct(s.yield)}, ${s.wip} open, median ${formatDuration(s.p50_ms)}. ${STATUS_LABEL[status]}.`}
+      aria-label={`${s.label}: yield ${pct(s.yield)}, ${s.wip} open, median ${s.timed ? formatDuration(s.p50_ms) : "not timed"}. ${STATUS_LABEL[status]}.`}
     >
       <Handles />
       <div className={styles.stationTop}>
@@ -108,8 +112,8 @@ const StationNode = memo(function StationNode({ data }: NodeProps<Node<StationDa
             {s.wip.toLocaleString("en-US")}
           </dd>
           <dt>p50 · p95</dt>
-          <dd>
-            {formatDuration(s.p50_ms)} · {formatDuration(s.p95_ms)}
+          <dd title={s.timed && s.timed_share < 0.5 ? `From ${pct(s.timed_share)} of visits` : undefined}>
+            {s.timed ? `${formatDuration(s.p50_ms)} · ${formatDuration(s.p95_ms)}${s.timed_share < 0.5 ? "*" : ""}` : "not timed"}
           </dd>
         </dl>
       </div>
@@ -119,7 +123,7 @@ const StationNode = memo(function StationNode({ data }: NodeProps<Node<StationDa
           {selfLoop ? ` · ${selfLoop} re-runs` : ""}
         </dt>
       </div>
-      <Sparkline values={s.weekly} />
+      <WeekTrend trend={s.trend} />
     </div>
   );
 });
@@ -258,7 +262,7 @@ export function PipelineCanvas({ model, selected, hrefFor }: { model: FlowModel;
               <StatusIcon status={s} size={11} /> <span style={{ color: "var(--floor-ink-2)" }}>{STATUS_LABEL[s]}</span>
             </span>
           ))}
-          <span>Ring = yield · click a station</span>
+          <span>Ring = yield · * = times from part of the visits · click a station</span>
         </>
       }
     />

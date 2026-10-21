@@ -92,8 +92,12 @@ export interface StationStats {
   wip: number;
   p50_ms: number | null;
   p95_ms: number | null;
-  /** Visits finished per week, oldest week first. */
-  weekly: number[];
+  /** The last 7 days against the 7 before: finished visits and how many left ok. */
+  trend: { now: { finished: number; ok: number }; before: { finished: number; ok: number } };
+  /** Whether the station's time is measured: enough finished visits carry a real duration. */
+  timed: boolean;
+  /** The share of finished visits whose duration the times come from. */
+  timed_share: number;
   failures: RuleCount[];
   oldest: OpenItem[];
   /** Open items older than the station's SLA. */
@@ -210,10 +214,55 @@ export interface FlowTotals {
   failed: number;
   cancelled: number;
   open: number;
-  /** Cases that landed per week over the window. */
-  landed_per_week: number;
-  /** Dispatch to landing, median over landed cases. */
-  lead_p50_ms: number | null;
+  /** Targeted re-encode runs dispatched in the window (not outside merges or dependent modules). */
+  dispatched: number;
+  /** Of those: merged into the default branch, and landed (cleared every station). */
+  dispatched_merged: number;
+  dispatched_landed: number;
+  /** Dispatch to merge into the default branch, median over merged dispatches. */
+  dispatch_to_merge_p50_ms: number | null;
+  /** Open now at any station, and how many of those are over their station's SLA. */
+  waiting: number;
+  waiting_over_sla: number;
+}
+
+/** How much of the window's data the page can see: where it is blind. */
+export interface DataTrust {
+  dispatched: number;
+  /** Dispatches with the encoder's per-try record (model, time per try). */
+  with_tries: number;
+  /** ... with a recorded model cost. */
+  with_cost: number;
+  /** ... with a full issue list for some try (archived bundle or, later, the encoder). */
+  with_issue_list: number;
+  /** Stations whose time is not measured. */
+  untimed: string[];
+  /** Stations timed for under half their visits, with that share. */
+  partly_timed: Array<{ station: string; share: number }>;
+  /** The first day any try record exists. */
+  tries_since: string | null;
+}
+
+/** One validator rule over time: does the encoder stop hitting it? */
+export interface RuleTrend {
+  rule_id: string;
+  /** Per week (Monday, UTC) with enough cases: cases with try records, and cases whose tries hit the rule. */
+  weekly: Array<{ week: string; cases: number; hit: number }>;
+  /** Citations that hit the rule and were run again 7 days or more later: how many still hit it then. */
+  rerun: { citations: number; still: number };
+  /** Merged encoder PRs that name the rule. */
+  changes: Array<{ at: string; number: number | null; title: string | null; ref_url: string | null }>;
+}
+
+/** After the encoder fixes one rule, another appears in the next try more often than usual. */
+export interface FollowPair {
+  fixed: string;
+  next: string;
+  count: number;
+  /** Of tries where `fixed` was fixed: the next try hit `next` (new). */
+  share: number;
+  /** share over `next`'s usual rate of appearing new in a try. */
+  lift: number;
 }
 
 export interface FlowModel {
@@ -222,10 +271,11 @@ export interface FlowModel {
   stations: StationStats[];
   edges: FlowEdge[];
   sinks: Array<{ id: SinkId; label: string; cases: number }>;
-  variants: Variant[];
   ladder: IssueLadder;
   retry: RetryCurve | null;
-  cooccurrence: CoOccurrence[];
+  trends: RuleTrend[];
+  follows: FollowPair[];
+  trust: DataTrust;
   looping: LoopingCitation[];
   alerts: FlowAlert[];
   totals: FlowTotals;
@@ -267,6 +317,8 @@ interface Visit {
   actor: string | null;
   cost_usd: number | null;
   message: string | null;
+  /** The end is when the visit was read (a nightly sweep), not when it finished. */
+  readTime: boolean;
 }
 
 interface Case {
@@ -279,11 +331,15 @@ interface Case {
   /** Rule ids per try, from validate fails and issues. */
   tryRules: Map<number, Set<string>>;
   passedTry: number | null;
+  /** Archived or recorded issue events: a full issue list exists for some try. */
+  issueCount: number;
   end: SinkId | null;
   failedAt: string | null;
 }
 
 const TERMINAL = new Set(["leave", "fail", "cancel"]);
+/** A station counts as timed with this many real durations. */
+const TIMED_MIN = 10;
 
 /** Whether a jurisdiction is the scope or under it (us covers us-ca). */
 export function inJurisdiction(value: string | null, scope: string | null | undefined): boolean {
@@ -310,9 +366,11 @@ function buildCases(events: PipelineEvent[]): Map<string, Case> {
     const tryRules = new Map<number, Set<string>>();
     let passedTry: number | null = null;
     let source = "pipeline_attempts";
+    let issueCount = 0;
     for (const { e, t } of sorted) {
       if (e.source !== "pipeline_attempts") source = e.source;
       if (e.kind === "issue") {
+        issueCount++;
         if (e.rule_id) addRule(tryRules, e.try_no ?? 0, e.rule_id);
         continue;
       }
@@ -327,7 +385,7 @@ function buildCases(events: PipelineEvent[]): Map<string, Case> {
         }
       }
       if (!visit) {
-        visit = { station: e.station, start: t, end: null, outcome: "open", try_no: e.try_no, rule_id: null, reason: null, ref_url: e.ref_url, duration_ms: null, waived: false, actor: e.actor, cost_usd: null, message: null };
+        visit = { station: e.station, start: t, end: null, outcome: "open", try_no: e.try_no, rule_id: null, reason: null, ref_url: e.ref_url, duration_ms: null, waived: false, actor: e.actor, cost_usd: null, message: null, readTime: false };
         visits.push(visit);
         open.set(e.station, visit);
         if (e.kind !== "enter" && TERMINAL.has(e.kind)) unentered.set(e.station, visit);
@@ -347,6 +405,7 @@ function buildCases(events: PipelineEvent[]): Map<string, Case> {
         visit.actor = e.actor ?? visit.actor;
         visit.cost_usd = e.cost_usd != null ? Number(e.cost_usd) : null;
         visit.message = e.message;
+        visit.readTime = Boolean(e.attrs?.read_time);
         visit.duration_ms = e.duration_ms ?? (e.attrs?.untimed ? null : t - visit.start);
         visit.ref_url = e.ref_url ?? visit.ref_url;
         open.delete(e.station);
@@ -373,6 +432,7 @@ function buildCases(events: PipelineEvent[]): Map<string, Case> {
       visits,
       tryRules,
       passedTry,
+      issueCount,
       end: null,
       failedAt: null,
     };
@@ -421,7 +481,9 @@ export function quantile(values: number[], q: number): number | null {
 export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowModel {
   const { now, days } = options;
   const from = now - days * DAY_MS;
-  const scoped = events.filter((e) => inJurisdiction(e.jurisdiction, options.jurisdiction));
+  const scoped = events.filter((e) => e.kind !== "change" && inJurisdiction(e.jurisdiction, options.jurisdiction));
+  // Encoder changes are not cases; they mark when a rule was worked on.
+  const changes = events.filter((e) => e.kind === "change");
   const all = buildCases(scoped);
   const factory = [...all.values()].filter((c) => c.source === "pipeline_attempts" || c.source === "failure_bundle");
   const windowCases = factory.filter((c) => c.start >= from && c.start <= now);
@@ -430,7 +492,6 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
   // Stations: every station any case visited, with counts over the window.
   const stationIds = new Set<string>();
   for (const c of factory) for (const v of c.visits) stationIds.add(v.station);
-  const weeks = Math.max(1, Math.ceil(days / 7));
   const stations: StationStats[] = [];
   for (const id of stationIds) {
     const visitsIn: Array<{ c: Case; v: Visit }> = [];
@@ -451,12 +512,21 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
     }
     const perTry = visitsIn.filter((x) => x.v.try_no != null && x.v.outcome !== "open");
     const repeated = visitsIn.length > caseIds.size;
-    const durations = visitsIn.map((x) => x.v.duration_ms).filter((d): d is number => d != null);
-    const weekly = new Array(weeks).fill(0);
-    for (const { v } of visitsIn) {
-      if (v.end == null || v.end < from) continue;
-      const w = Math.min(weeks - 1, Math.floor((v.end - from) / WEEK_MS));
-      weekly[w]++;
+    const finishedVisits = visitsIn.filter((x) => x.v.outcome !== "open");
+    const durations = finishedVisits.map((x) => x.v.duration_ms).filter((d): d is number => d != null && d > 0);
+    // A station whose visits are points (dispatch) or carry only a read time
+    // (a check rollup) has no time to show.
+    const timed = durations.length >= TIMED_MIN;
+    const timedShare = finishedVisits.length ? durations.length / finishedVisits.length : 0;
+    const trend = { now: { finished: 0, ok: 0 }, before: { finished: 0, ok: 0 } };
+    for (const c of factory) {
+      for (const v of c.visits) {
+        if (v.station !== id || v.end == null || v.outcome === "open" || v.readTime) continue;
+        const bucket = v.end > now - WEEK_MS ? trend.now : v.end > now - 2 * WEEK_MS ? trend.before : null;
+        if (!bucket) continue;
+        bucket.finished++;
+        if (v.outcome === "ok") bucket.ok++;
+      }
     }
     const failures = ruleCounts(visitsIn.filter((x) => x.v.outcome === "fail" || x.v.reason).map((x) => ({ c: x.c, v: x.v })));
     // WIP over all time: cases open at the station now.
@@ -490,9 +560,11 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
       yield: finished ? ok / finished : null,
       tries: repeated || perTry.length > caseIds.size ? { total: perTry.length, ok: perTry.filter((x) => x.v.outcome === "ok").length } : null,
       wip: openItems.length,
-      p50_ms: quantile(durations, 0.5),
-      p95_ms: quantile(durations, 0.95),
-      weekly,
+      p50_ms: timed ? quantile(durations, 0.5) : null,
+      p95_ms: timed ? quantile(durations, 0.95) : null,
+      trend,
+      timed,
+      timed_share: timedShare,
       failures,
       oldest: openItems.slice(0, 8),
       over_sla: overSla,
@@ -539,23 +611,39 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
   for (const s of stations) s.rank = ranks.get(s.id) ?? 0;
   stations.sort((a, b) => a.rank - b.rank || a.position - b.position);
 
-  const variants = mineVariants(windowCases);
   const ladderCases = [...all.values()].filter((c) => c.start <= now && (c.source === "local_ab" || c.start >= from));
   const ladder = issueLadder(ladderCases);
-  const cooccurrence = coOccurrence(ladderCases);
+  const follows = followPairs(ladderCases);
+  const trends = ruleTrends(factory, changes, ladder, now, from);
   const looping = loopingCitations(windowCases);
   const retry = retryCurve(windowCases, edges);
 
   const landed = windowCases.filter((c) => c.end === "exit:landed");
-  const leads = landed.map((c) => caseEnd(c) - c.start);
+  const dispatches = windowCases.filter((c) => c.visits[0]?.station === "dispatch");
+  const mergedAt = (c: Case) => c.visits.find((v) => v.station === "merge" && v.outcome === "ok")?.end ?? null;
+  const merged = dispatches.filter((c) => mergedAt(c) != null);
   const totals: FlowTotals = {
     cases: windowCases.length,
     landed: landed.length,
     failed: sinkCounts["exit:failed"],
     cancelled: sinkCounts["exit:cancelled"],
     open: windowCases.filter((c) => c.end == null).length,
-    landed_per_week: landed.length / (days / 7),
-    lead_p50_ms: quantile(leads, 0.5),
+    dispatched: dispatches.length,
+    dispatched_merged: merged.length,
+    dispatched_landed: dispatches.filter((c) => c.end === "exit:landed").length,
+    dispatch_to_merge_p50_ms: quantile(merged.map((c) => mergedAt(c)! - c.start), 0.5),
+    waiting: stations.reduce((s, x) => s + x.wip, 0),
+    waiting_over_sla: stations.reduce((s, x) => s + x.over_sla, 0),
+  };
+  const tryStart = Math.min(...factory.flatMap((c) => c.visits.filter((v) => v.try_no != null && v.actor).map((v) => v.start)));
+  const trust: DataTrust = {
+    dispatched: dispatches.length,
+    with_tries: dispatches.filter((c) => c.visits.some((v) => v.try_no != null && v.actor)).length,
+    with_cost: dispatches.filter((c) => c.visits.some((v) => v.cost_usd != null)).length,
+    with_issue_list: dispatches.filter((c) => c.issueCount > 0).length,
+    untimed: stations.filter((x) => !x.timed && x.id !== "dispatch").map((x) => x.id),
+    partly_timed: stations.filter((x) => x.timed && x.timed_share < 0.5).map((x) => ({ station: x.id, share: x.timed_share })),
+    tries_since: Number.isFinite(tryStart) ? new Date(tryStart).toISOString() : null,
   };
 
   const sources: Record<string, number> = {};
@@ -567,10 +655,11 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
     stations,
     edges,
     sinks: (Object.keys(sinkCounts) as SinkId[]).filter((id) => sinkCounts[id] > 0).map((id) => ({ id, label: SINK_LABELS[id], cases: sinkCounts[id] })),
-    variants,
     ladder,
     retry,
-    cooccurrence,
+    trends,
+    follows,
+    trust,
     looping,
     alerts: [],
     totals,
@@ -655,43 +744,6 @@ function ruleCounts(items: Array<{ c: Case; v: Visit }>): RuleCount[] {
     .slice(0, 10);
 }
 
-function mineVariants(cases: Case[]): Variant[] {
-  const groups = new Map<string, { path: string[]; end: string; cases: Case[]; repeats: number[] }>();
-  for (const c of cases) {
-    const path: string[] = [];
-    const counts = new Map<string, number>();
-    for (const v of c.visits) {
-      counts.set(v.station, (counts.get(v.station) ?? 0) + 1);
-      if (!path.includes(v.station)) path.push(v.station);
-    }
-    const end = c.end === "exit:landed" ? "landed" : c.end ? `${c.end === "exit:failed" ? "failed" : "cancelled"} at ${c.failedAt}` : `open at ${c.visits.at(-1)?.station ?? "?"}`;
-    const repeats = Math.max(1, ...counts.values());
-    const key = `${path.join(">")}|${end}`;
-    const group = groups.get(key) ?? { path, end, cases: [], repeats: [] };
-    group.cases.push(c);
-    group.repeats.push(repeats);
-    groups.set(key, group);
-  }
-  const total = cases.length || 1;
-  return [...groups.values()]
-    .sort((a, b) => b.cases.length - a.cases.length)
-    .slice(0, 12)
-    .map((g) => {
-      const leads = g.cases.map((c) => caseEnd(c) - c.start);
-      const example = g.cases[g.cases.length - 1];
-      return {
-        path: g.path,
-        end: g.end,
-        cases: g.cases.length,
-        share: g.cases.length / total,
-        median_lead_ms: quantile(leads, 0.5),
-        median_repeats: quantile(g.repeats, 0.5) ?? 1,
-        example_case: example.id,
-        example_citation: example.citation,
-      };
-    });
-}
-
 const STUBBORN_MIN = 10;
 
 /**
@@ -748,6 +800,108 @@ export function issueLadder(cases: Case[]): IssueLadder {
   return { rules, stubborn, cases: usable.length };
 }
 
+const FOLLOW_MIN = 10;
+const FOLLOW_MIN_LIFT = 2;
+
+/**
+ * Pairs of rules where fixing the first makes the second appear in the next
+ * try more often than it usually appears new: the whack-a-mole loop.
+ */
+export function followPairs(cases: Case[]): FollowPair[] {
+  const fixed = new Map<string, number>();
+  const pairs = new Map<string, number>();
+  const appearedNew = new Map<string, number>();
+  let steps = 0;
+  for (const c of cases) {
+    const tries = [...c.tryRules.keys()].filter((n) => n > 0).sort((a, b) => a - b);
+    for (let i = 0; i + 1 < tries.length; i++) {
+      const a = c.tryRules.get(tries[i])!;
+      const b = c.tryRules.get(tries[i + 1])!;
+      steps++;
+      const fresh = [...b].filter((r) => !a.has(r));
+      for (const y of fresh) appearedNew.set(y, (appearedNew.get(y) ?? 0) + 1);
+      for (const x of a) {
+        if (b.has(x)) continue;
+        fixed.set(x, (fixed.get(x) ?? 0) + 1);
+        for (const y of fresh) pairs.set(`${x}|${y}`, (pairs.get(`${x}|${y}`) ?? 0) + 1);
+      }
+    }
+  }
+  const out: FollowPair[] = [];
+  for (const [key, count] of pairs) {
+    if (count < FOLLOW_MIN) continue;
+    const [x, y] = key.split("|");
+    const share = count / fixed.get(x)!;
+    const lift = share / (appearedNew.get(y)! / steps);
+    if (lift < FOLLOW_MIN_LIFT) continue;
+    out.push({ fixed: x, next: y, count, share, lift: Math.round(lift * 10) / 10 });
+  }
+  return out.sort((a, b) => b.count * Math.log2(b.lift) - a.count * Math.log2(a.lift)).slice(0, 10);
+}
+
+const TREND_RULES = 6;
+const TREND_MIN_WEEK = 15;
+const RERUN_GAP_MS = 7 * DAY_MS;
+
+function weekOf(ms: number): string {
+  const d = new Date(ms);
+  const monday = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) - ((d.getUTCDay() + 6) % 7) * DAY_MS;
+  return new Date(monday).toISOString().slice(0, 10);
+}
+
+/**
+ * For the rules the encoder does not fix: their weekly rate over runs with
+ * try records, whether the same citation still hits them when run again a
+ * week or more later, and the merged encoder PRs that name them.
+ */
+export function ruleTrends(cases: Case[], changes: PipelineEvent[], ladder: IssueLadder, now: number, from: number): RuleTrend[] {
+  // One population for every week: runs with the encoder's own per-try
+  // record (model and time per try). Archived bundles alone are failed runs
+  // only, so mixing them in would bias the early weeks.
+  const withTries = cases.filter((c) => c.start >= from && c.start <= now && c.visits.some((v) => v.try_no != null && v.actor));
+  const hits = (c: Case, rule: string) => [...c.tryRules.values()].some((set) => set.has(rule));
+  const seen = new Set(withTries.flatMap((c) => [...c.tryRules.values()].flatMap((set) => [...set])));
+  const rules = (ladder.stubborn.length ? ladder.stubborn : ladder.rules)
+    .filter((r) => seen.has(r.rule_id))
+    .slice(0, TREND_RULES)
+    .map((r) => r.rule_id);
+  const byCitation = new Map<string, Case[]>();
+  for (const c of withTries) byCitation.set(c.citation, [...(byCitation.get(c.citation) ?? []), c]);
+  return rules.map((rule) => {
+    const weeks = new Map<string, { cases: number; hit: number }>();
+    for (const c of withTries) {
+      const w = weekOf(c.start);
+      const entry = weeks.get(w) ?? { cases: 0, hit: 0 };
+      entry.cases++;
+      if (hits(c, rule)) entry.hit++;
+      weeks.set(w, entry);
+    }
+    let citations = 0;
+    let still = 0;
+    for (const list of byCitation.values()) {
+      const sorted = [...list].sort((a, b) => a.start - b.start);
+      const first = sorted.find((c) => hits(c, rule));
+      if (!first) continue;
+      const later = sorted.find((c) => c.start - first.start >= RERUN_GAP_MS);
+      if (!later) continue;
+      citations++;
+      if (hits(later, rule)) still++;
+    }
+    return {
+      rule_id: rule,
+      weekly: [...weeks.entries()]
+        .filter(([, v]) => v.cases >= TREND_MIN_WEEK)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([week, v]) => ({ week, ...v })),
+      rerun: { citations, still },
+      changes: changes
+        .filter((e) => e.rule_id === rule && Date.parse(e.at) >= from)
+        .sort((a, b) => a.at.localeCompare(b.at))
+        .map((e) => ({ at: e.at, number: typeof e.attrs?.number === "number" ? e.attrs.number : null, title: e.message, ref_url: e.ref_url })),
+    };
+  });
+}
+
 const TRY_CAP = 6;
 
 /** Pass rate and cost by try number for the busiest loop in the flow. */
@@ -793,34 +947,6 @@ export function retryCurve(cases: Case[], edges: FlowEdge[]): RetryCurve | null 
         models: [...st.models.entries()].sort((a, b) => b[1] - a[1]).map(([m]) => m),
       })),
   };
-}
-
-function coOccurrence(cases: Case[]): CoOccurrence[] {
-  const single = new Map<string, number>();
-  const pairs = new Map<string, number>();
-  let sets = 0;
-  for (const c of cases) {
-    for (const set of c.tryRules.values()) {
-      if (!set.size) continue;
-      sets++;
-      const list = [...set].sort();
-      for (const r of list) single.set(r, (single.get(r) ?? 0) + 1);
-      for (let i = 0; i < list.length; i++) {
-        for (let j = i + 1; j < list.length; j++) {
-          const key = `${list[i]}|${list[j]}`;
-          pairs.set(key, (pairs.get(key) ?? 0) + 1);
-        }
-      }
-    }
-  }
-  const out: CoOccurrence[] = [];
-  for (const [key, count] of pairs) {
-    if (count < 5) continue;
-    const [a, b] = key.split("|");
-    const lift = (count * sets) / (single.get(a)! * single.get(b)!);
-    out.push({ a, b, count, lift: Math.round(lift * 10) / 10 });
-  }
-  return out.sort((x, y) => y.count * Math.log2(1 + y.lift) - x.count * Math.log2(1 + x.lift)).slice(0, 15);
 }
 
 const LOOPING_MIN_CASES = 4;
@@ -1110,27 +1236,75 @@ export function caseDetail(events: PipelineEvent[], caseId: string): CaseDetail 
   };
 }
 
-/** Markdown brief of systemic problems, for an agent to read before it dispatches. */
+/** A rule's rate in the first and last weeks of its trend, as shares. */
+export function trendEnds(t: RuleTrend): { first: number; last: number; firstWeek: string; lastWeek: string } | null {
+  if (t.weekly.length < 2) return null;
+  const a = t.weekly[0];
+  const b = t.weekly[t.weekly.length - 1];
+  return { first: a.hit / a.cases, last: b.hit / b.cases, firstWeek: a.week, lastWeek: b.week };
+}
+
+/** The first try from which every later try passes under `floor`; null when every try earns its keep. */
+export function retryCutoff(steps: TryStep[], floor = 0.05): { from: TryStep; tries: number; passed: number; cost: number } | null {
+  for (let i = 1; i < steps.length; i++) {
+    const rest = steps.slice(i);
+    const tries = rest.reduce((s, x) => s + x.tries, 0);
+    const passed = rest.reduce((s, x) => s + x.passed, 0);
+    if (tries && passed / tries < floor) return { from: steps[i], tries, passed, cost: rest.reduce((s, x) => s + x.cost_usd, 0) };
+  }
+  return null;
+}
+
+/** "▲ 12 more finished, yield 30% → 26%": a station this week against last week. */
+export function trendSentence(t: StationStats["trend"]): string {
+  const { now, before } = t;
+  if (!now.finished && !before.finished) return "No dated finishes in the last two weeks.";
+  const delta = now.finished - before.finished;
+  const volume = delta === 0 ? "Same volume as the week before" : `${Math.abs(delta)} ${delta > 0 ? "more" : "fewer"} finished than the week before`;
+  const y = (b: { finished: number; ok: number }) => (b.finished ? b.ok / b.finished : null);
+  const yNow = y(now);
+  const yBefore = y(before);
+  if (yNow == null || yBefore == null) return `${volume}.`;
+  const change = Math.round((yNow - yBefore) * 100);
+  const yieldText = Math.abs(change) < 3 ? `yield steady at ${pct(yNow)}` : `yield ${change > 0 ? "up" : "down"} from ${pct(yBefore)} to ${pct(yNow)}`;
+  return `${volume}; ${yieldText}.`;
+}
+
+/** Markdown brief of the pipeline, for an agent to read before it dispatches. */
 export function agentBrief(model: FlowModel, siteUrl: string): string {
   const lines: string[] = [];
+  const t = model.totals;
   const scope = model.jurisdiction ? ` (${model.jurisdiction})` : "";
   lines.push(`# Encoding pipeline brief${scope}`);
   lines.push("");
-  lines.push(`Window: last ${model.window.days} days to ${model.window.to.slice(0, 16)}Z. ${model.totals.cases} cases, ${model.totals.landed} landed, ${model.totals.failed} failed, ${model.totals.cancelled} cancelled, ${model.totals.open} open. Lead time p50 ${formatDuration(model.totals.lead_p50_ms)}.`);
+  lines.push(
+    `Last ${model.window.days} days to ${model.window.to.slice(0, 16)}Z: ${t.dispatched} runs dispatched, ${t.dispatched_merged} merged (${pct(t.dispatched ? t.dispatched_merged / t.dispatched : null)}), ${t.dispatched_landed} cleared every station. Dispatch to merge, median ${formatDuration(t.dispatch_to_merge_p50_ms)}. ${t.waiting} items wait at a station now, ${t.waiting_over_sla} over their SLA.`
+  );
   lines.push("");
-  if (model.retry) {
-    lines.push(`## Is retrying worth it? (${stationLabel(model.retry.judge)} by try)`);
-    lines.push("| try | tries | passed | pass rate | model cost |");
-    lines.push("|---|---|---|---|---|");
-    for (const st of model.retry.steps) lines.push(`| ${st.label} | ${st.tries} | ${st.passed} | ${pct(st.tries ? st.passed / st.tries : null)} | $${st.cost_usd.toFixed(2)} |`);
+  if (model.trends.length) {
+    lines.push("## Did our fixes work?");
+    lines.push("For each rule the encoder does not fix: its share of runs, first and last week; whether the same citation still hits it when run again a week or more later; encoder PRs that name it.");
+    lines.push("");
+    for (const r of model.trends) {
+      const ends = trendEnds(r);
+      const rate = ends ? `${pct(ends.first)} of runs in the week of ${ends.firstWeek}, ${pct(ends.last)} in the week of ${ends.lastWeek}` : "too few runs per week";
+      const rerun = r.rerun.citations ? `; re-run a week later, ${r.rerun.still} of ${r.rerun.citations} citations still hit it` : "";
+      const prs = r.changes.length ? `; PRs: ${r.changes.map((c) => `#${c.number}`).join(", ")}` : "; no PR names it";
+      lines.push(`- \`${r.rule_id}\`: ${rate}${rerun}${prs}.`);
+    }
+    lines.push("");
+  }
+  if (model.follows.length) {
+    lines.push("## What follows a fix?");
+    for (const f of model.follows) lines.push(`- When \`${f.fixed}\` is fixed, \`${f.next}\` appears in the next try ${pct(f.share)} of the time (${f.lift}× its usual rate, ${f.count} tries).`);
     lines.push("");
   }
   if (model.ladder.stubborn.length) {
     lines.push("## Rules the encoder does not fix");
-    lines.push("Ranked by failures times the share of next tries that fail the same rule again. Fix these at the source (prompt, validator, example), not by another dispatch.");
-    lines.push("");
+    const cut = model.retry ? retryCutoff(model.retry.steps) : null;
+    if (cut) lines.push(`Retries: from try ${cut.from.label} on, ${cut.passed} of ${cut.tries} tries pass (${pct(cut.passed / cut.tries)}) for $${cut.cost.toFixed(2)}.`);
     for (const r of model.ladder.stubborn.slice(0, 8)) {
-      lines.push(`- \`${r.rule_id}\`: ${r.occurrences} tries in ${r.cases} cases; the next try fails it again ${pct(r.stick_rate)}; ${r.recovered} cases recovered.`);
+      lines.push(`- \`${r.rule_id}\`: ${r.occurrences} failed tries in ${r.cases} cases; the next try fails it again ${pct(r.stick_rate)}; ${r.recovered} cases recovered.`);
     }
     lines.push("");
   }
@@ -1144,24 +1318,19 @@ export function agentBrief(model: FlowModel, siteUrl: string): string {
   for (const a of model.alerts.slice(0, 15)) lines.push(`- **${a.severity}** ${a.title}. ${a.detail}${a.href ? ` (${link(a.href, siteUrl)})` : ""}`);
   lines.push("");
   lines.push("## Stations");
-  lines.push("| station | cases | yield | WIP | p50 | p95 | top failure |");
-  lines.push("|---|---|---|---|---|---|---|");
+  lines.push("| station | cases | yield | waiting (over SLA) | p50 | p95 | this week | top cause |");
+  lines.push("|---|---|---|---|---|---|---|---|");
   for (const s of model.stations) {
     const top = s.failures[0] ? `${s.failures[0].rule_id} (${s.failures[0].count})` : "";
-    const yieldText = s.tries ? `${pct(s.yield)} (tries ${pct(s.tries.total ? s.tries.ok / s.tries.total : null)})` : pct(s.yield);
-    lines.push(`| ${s.label} | ${s.cases} | ${yieldText} | ${s.wip} | ${formatDuration(s.p50_ms)} | ${formatDuration(s.p95_ms)} | ${top} |`);
+    const time = (ms: number | null) => (s.timed ? formatDuration(ms) : "not timed");
+    lines.push(`| ${s.label} | ${s.cases} | ${pct(s.yield)} | ${s.wip} (${s.over_sla}) | ${time(s.p50_ms)} | ${time(s.p95_ms)} | ${trendSentence(s.trend)} | ${top} |`);
   }
   lines.push("");
-  if (model.cooccurrence.length) {
-    lines.push("");
-    lines.push("## Failure modes that come together");
-    for (const c of model.cooccurrence.slice(0, 6)) lines.push(`- \`${c.a}\` + \`${c.b}\`: ${c.count} tries, lift ${c.lift}.`);
-  }
-  lines.push("");
-  lines.push("## Common paths");
-  for (const v of model.variants.slice(0, 6)) {
-    lines.push(`- ${pct(v.share)} (${v.cases}): ${v.path.map(stationLabel).join(" → ")} → **${v.end}**${v.median_repeats > 1 ? `, ${v.median_repeats} tries median` : ""}`);
-  }
+  const tr = model.trust;
+  lines.push("## How much these numbers can see");
+  lines.push(
+    `Of ${tr.dispatched} dispatched runs: ${tr.with_tries} have per-try records (since ${tr.tries_since?.slice(0, 10) ?? "never"}), ${tr.with_cost} a recorded cost, ${tr.with_issue_list} a full issue list. Not timed: ${tr.untimed.map(stationLabel).join(", ") || "none"}.${tr.partly_timed.length ? ` Timed for part of their visits: ${tr.partly_timed.map((x) => `${stationLabel(x.station)} (${pct(x.share)})`).join(", ")}.` : ""}`
+  );
   lines.push("");
   lines.push(`Data: ${model.events} events (${Object.entries(model.sources).map(([s, n]) => `${s} ${n}`).join(", ")}). JSON: ${link("/api/ops/flow", siteUrl)}.`);
   return lines.join("\n");

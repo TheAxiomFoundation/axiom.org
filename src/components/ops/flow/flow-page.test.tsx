@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { attemptEvents } from "@/lib/axiom/pipeline-events";
 import { caseDetail, citationLanes, mineFlow } from "@/lib/axiom/pipeline-flow";
 import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
-import { FlowPage, flowHref, retryVerdict, type FlowParams } from "./flow-page";
+import { FlowPage, flowHref, type FlowParams } from "./flow-page";
 
 // The canvases need a real browser (React Flow measures the DOM).
 vi.mock("./pipeline-canvas", () => ({
@@ -58,23 +58,15 @@ describe("flowHref", () => {
   });
 });
 
-describe("retryVerdict", () => {
-  const step = (try_no: number, tries: number, passed: number) => ({ try_no, label: String(try_no), tries, passed, cost_usd: tries / 10, models: [] });
-  it("finds the try from which every later try passes under 5%", () => {
-    const v = retryVerdict([step(1, 368, 40), step(2, 339, 37), step(3, 295, 25), step(4, 261, 8)]);
-    expect(v?.from.try_no).toBe(4);
-    expect([v?.tries, v?.passed]).toEqual([261, 8]);
-    expect(retryVerdict([step(1, 10, 5), step(2, 10, 5)])).toBeNull();
-  });
-});
-
 describe("FlowPage", () => {
   it("shows the line with KPIs, alerts and the stations table", () => {
     page();
     expect(screen.getByRole("heading", { name: "The encoding line" })).toBeTruthy();
     expect(screen.getByTestId("pipeline-canvas")).toBeTruthy();
     expect(screen.getByText("Release activation is failing")).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Stations as a table" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Is each station getting better or worse?" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "How much can these numbers see?" })).toBeTruthy();
+    expect(screen.getByText("How many runs went in?")).toBeTruthy();
     expect(screen.getByText(/Derived from encodings.pipeline_attempts/)).toBeTruthy();
   });
 
@@ -84,12 +76,13 @@ describe("FlowPage", () => {
     expect(screen.getAllByText("r:tests").length).toBeGreaterThan(0);
   });
 
-  it("shows discovery as three answers, then the supporting tables", () => {
+  it("shows discovery as four questions with answers", () => {
     page({ params: { ...params, view: "discovery" } });
-    expect(screen.getByRole("heading", { name: "Validate pass rate by try" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "The rules the encoder does not fix, week by week" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "When one rule is fixed, which one comes next" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Rules that come back on the next try" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Dispatched again and again, never merged" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Common paths" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Common paths" })).toBeNull();
   });
 
   it("zooms to a citation and to one run", () => {

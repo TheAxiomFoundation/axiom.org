@@ -65,7 +65,7 @@ Migration: `supabase/migrations/20261021120000_pipeline_events.sql`.
 | `case_id` | the `pipeline_attempts.id` (a dispatch, `pr:` outside merge, or `dep:` module) |
 | `citation`, `jurisdiction` | the case's unit of law |
 | `station` | see above |
-| `kind` | `enter`, `leave`, `fail`, `cancel`, `wait`, `issue` |
+| `kind` | `enter`, `leave`, `fail`, `cancel`, `wait`, `issue`, and `change` (a merged encoder PR that names a rule) |
 | `at`, `duration_ms` | when, and how long the station took (on `leave`/`fail`) |
 | `outcome` | `ok`, `fail`, `cancelled`, `waived`, `pending`, `match`, ... |
 | `try_no` | the encode-loop try (generate/validate/issue) |
@@ -73,7 +73,7 @@ Migration: `supabase/migrations/20261021120000_pipeline_events.sql`.
 | `message` | the issue text, cut to 500 characters |
 | `actor` | the model on a try, the dispatcher, the reviewer |
 | `cost_usd`, `encoder_version` | per try / per run |
-| `source` | `pipeline_attempts`, `failure_bundle`, `local_ab`, `encoder` (live writer, later) |
+| `source` | `pipeline_attempts`, `failure_bundle`, `local_ab`, `waiver_ledger`, `encoder_change`, `encoder` (live writer, later) |
 | `ref_url` | the GitHub run, PR, check job or report the event comes from |
 | `attrs` | anything else (phases' tool times, file, lane, model params) |
 
@@ -116,19 +116,30 @@ little gain on a 13-node DAG.
 
 ## Process discovery
 
-Pure functions over events (`src/lib/axiom/pipeline-flow.ts`):
+Every block on the page answers one question and starts with a one-sentence
+answer; its numbers are the evidence and link to the runs behind them. Pure
+functions over events (`src/lib/axiom/pipeline-flow.ts`):
 
-- **Directly-follows graph (DFG).** For each case, order its station events
-  by time; count each `a → b` and the median wait between them.
-- **Variants.** Each case's station path plus its end (`merged`, `failed at
-  validate`, ...); top variants with share and median lead time.
-- **Waiting hotspots.** Edges ranked by total waiting time (count × median).
-- **Issue transitions.** For cases with two or more tries that carry rule
-  ids, edges `rule at try n → rule at try n+1`, and `rule → passed`. Self
-  loops mean the encoder did not fix the rule; long chains show the
-  whack-a-mole pattern (deferral → tests → structure).
-- **Co-occurrence.** Pairs of rule ids in the same try, by lift.
-- **Looping citations.** Citations with many cases and no merge.
+- **Did our fixes work?** For the rules the encoder does not fix: the share of
+  runs with try records whose tries hit the rule, per week; whether the same
+  citation still hits it when run again a week or more later (controls for the
+  changing mix of citations); and merged axiom-encode PRs that name the rule
+  (`change` events, source `encoder_change`, written by the backfill).
+- **What follows a fix?** Pairs where fixing rule X makes rule Y appear in the
+  next try at 2× or more its usual rate (10 tries or more): the whack-a-mole
+  loop.
+- **Which rules does another try not fix?** Failed tries times the share of
+  next tries that fail the same rule again, cases that still recovered, and
+  the try from which retries stop paying (under 5% pass).
+- **Which citations to stop dispatching?** Citations with 4 or more runs in
+  the window and no merge, with their failures and recorded cost.
+- **Is each station getting better or worse?** The last 7 days against the 7
+  before: finished visits and yield.
+- **How much can these numbers see?** Share of dispatches with per-try
+  records, cost and full issue lists; stations that are not timed.
+
+Station order and the encode loop come from the directly-follows graph (a
+depth-first walk marks back edges as loops).
 
 ## Agent interface
 
