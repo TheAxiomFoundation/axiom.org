@@ -34,6 +34,7 @@ export function CanvasShell({
   empty,
   height,
   fitKey,
+  onSelect,
 }: {
   nodes: Node[];
   edges: Edge[];
@@ -51,6 +52,8 @@ export function CanvasShell({
   height?: number;
   /** Changes when the layout changes shape, so the view fits it again. */
   fitKey?: string | number;
+  /** Handles a node click in place; without it, a node with an `href` opens that page. */
+  onSelect?: (id: string) => void;
 }) {
   const router = useRouter();
   // React Flow measures the DOM; render it after mount so the server's HTML
@@ -60,9 +63,11 @@ export function CanvasShell({
   const onNodeClick = useCallback(
     (_: unknown, node: Node) => {
       const href = (node.data as { href?: string } | undefined)?.href;
-      if (href) router.push(href, { scroll: false });
+      if (!href) return;
+      if (onSelect) onSelect(node.id);
+      else router.push(href, { scroll: false });
     },
-    [router]
+    [router, onSelect]
   );
 
   if (!nodes.length) {

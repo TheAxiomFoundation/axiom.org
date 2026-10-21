@@ -275,7 +275,17 @@ const edgeTypes = { flow: FlowEdgeView, drain: DrainEdgeView };
 /** fitView's padding, as a share of the canvas on each side. */
 const FIT_PADDING = 0.12;
 
-export function PipelineCanvas({ model, selected, hrefFor }: { model: FlowModel; selected: string | null; hrefFor: Record<string, string> }) {
+export function PipelineCanvas({
+  model,
+  selected,
+  hrefFor,
+  onSelect,
+}: {
+  model: FlowModel;
+  selected: string | null;
+  hrefFor: Record<string, string>;
+  onSelect?: (station: string) => void;
+}) {
   // The row length follows the canvas width, so the stations read at a
   // useful zoom on any screen; the canvas is then as tall as the graph.
   const box = useRef<HTMLDivElement>(null);
@@ -355,6 +365,7 @@ export function PipelineCanvas({ model, selected, hrefFor }: { model: FlowModel;
         nodes={nodes}
         height={height}
         fitKey={perRow}
+        onSelect={onSelect}
         edges={edges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
