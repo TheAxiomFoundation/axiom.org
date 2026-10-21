@@ -32,6 +32,8 @@ export function CanvasShell({
   minimap = false,
   fitIds,
   empty,
+  height,
+  fitKey,
 }: {
   nodes: Node[];
   edges: Edge[];
@@ -45,6 +47,10 @@ export function CanvasShell({
   fitIds?: string[];
   /** Shown instead of the graph when it has no nodes. */
   empty?: ReactNode;
+  /** A fixed canvas height in px (the graph's own height at its fitted zoom); the stylesheet's otherwise. */
+  height?: number;
+  /** Changes when the layout changes shape, so the view fits it again. */
+  fitKey?: string | number;
 }) {
   const router = useRouter();
   // React Flow measures the DOM; render it after mount so the server's HTML
@@ -65,9 +71,9 @@ export function CanvasShell({
 
   return (
     <div className={styles.canvasWrap} role="region" aria-label={label}>
-      <div className={styles.canvas}>
+      <div className={styles.canvas} style={height ? { height, minHeight: 0 } : undefined}>
         {mounted ? (
-          <ReactFlowProvider>
+          <ReactFlowProvider key={fitKey}>
             <ReactFlow
               nodes={nodes}
               edges={edges}

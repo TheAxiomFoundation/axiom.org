@@ -19,7 +19,8 @@ import {
 import type { EventsOrigin } from "@/lib/axiom/pipeline-events-data";
 import { stationStatus } from "./flow-layout";
 import { CaseCanvas, DocumentsCanvas, LanesCanvas, ProgramsCanvas, type DocumentTile, type ProgramTile } from "./level-canvases";
-import { ProcessMap } from "./process-map";
+import { PipelineCanvas } from "./pipeline-canvas";
+import { ReasonSources } from "./reason-sources";
 import { StatusIcon } from "./status-icon";
 import styles from "./flow.module.css";
 
@@ -235,16 +236,19 @@ export function FlowPage({
           <div className={styles.floor}>{documents ? <DocumentsCanvas documents={documents} /> : <ProgramsCanvas programs={programs ?? []} />}</div>
         ) : (
           <>
-            {model.stations.length ? (
-              <ProcessMap
-                model={model}
-                selected={selected?.id ?? null}
-                href={(change) => flowHref(params, change)}
-                detail={selected ? <StationPanel station={selected} model={model} params={params} /> : null}
-              />
-            ) : (
+            {!model.stations.length ? (
               <p className={styles.note}>No events in this window and scope. Choose a longer window or another jurisdiction.</p>
+            ) : (
+              <div className={styles.floor} data-panel={selected ? "true" : "false"}>
+                <PipelineCanvas
+                  model={model}
+                  selected={selected?.id ?? null}
+                  hrefFor={Object.fromEntries(model.stations.map((s) => [s.id, flowHref(params, { station: params.station === s.id ? null : s.id })]))}
+                />
+                {selected ? <StationPanel station={selected} model={model} params={params} /> : null}
+              </div>
             )}
+            <ReasonSources model={model} />
             <StationsTable model={model} params={params} />
             <Trust model={model} />
           </>

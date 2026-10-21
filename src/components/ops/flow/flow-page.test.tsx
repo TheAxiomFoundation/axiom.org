@@ -6,6 +6,9 @@ import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 import { FlowPage, flowHref, type FlowParams } from "./flow-page";
 
 // The canvases need a real browser (React Flow measures the DOM).
+vi.mock("./pipeline-canvas", () => ({
+  PipelineCanvas: () => <div data-testid="pipeline-canvas" />,
+}));
 vi.mock("./level-canvases", () => ({
   LanesCanvas: () => <div data-testid="lanes-canvas" />,
   CaseCanvas: () => <div data-testid="case-canvas" />,
@@ -56,15 +59,13 @@ describe("flowHref", () => {
 });
 
 describe("FlowPage", () => {
-  it("shows the line as a process map, with where cases end and why", () => {
+  it("shows the line as a diagram, with where its reasons come from", () => {
     page();
     expect(screen.getByRole("heading", { name: "The encoding line" })).toBeTruthy();
-    expect(screen.getByRole("table", { name: /The encoding line, all cases: one row per station/ })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Where do cases end?" })).toBeTruthy();
-    // The failed run leaves at Validate, and its reason names the validator rule.
-    expect(screen.getAllByText("r:tests").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Validator check").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("pipeline-canvas")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Where do cases end?" })).toBeNull();
     expect(screen.getByRole("heading", { name: "Where do these reasons come from?" })).toBeTruthy();
+    expect(screen.getAllByText("Validator check").length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: /Dispatched runs 2/ })).toBeTruthy();
     expect(screen.getByText("Release activation is failing")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Is each station getting better or worse?" })).toBeTruthy();
@@ -73,9 +74,8 @@ describe("FlowPage", () => {
     expect(screen.getByText(/Derived from encodings.pipeline_attempts/)).toBeTruthy();
   });
 
-  it("opens a station's detail under its row", () => {
+  it("opens a station's detail beside the diagram", () => {
     page({ params: { ...params, station: "validate" } });
-    expect(screen.getAllByRole("link", { name: "Validate" }).some((a) => a.getAttribute("aria-expanded") === "true")).toBe(true);
     expect(screen.getByRole("complementary", { name: "Validate details" })).toBeTruthy();
     expect(screen.getAllByText("r:tests").length).toBeGreaterThan(0);
   });

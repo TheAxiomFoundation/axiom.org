@@ -87,22 +87,22 @@ are data, so Pavel can tune them without a deploy.
 The page is one graph canvas with a breadcrumb; each level is a graph, and a
 click on a node goes one level deeper (URL parameters keep the place):
 
-1. **Pipeline** (`/ops/flow`). A process map: one row per station, in the
-   order the directly-follows graph ranks them. Each row shows the cases
-   that reached the station and went on (an amber band, linear in cases),
-   the cases that left the line there (a red drain) with every reason, the
-   system that reported it and its latest case, the time at the station on
-   one log axis shared by every row (with the queue before it), and what
-   waits there now and why. A bar above the map says where the window's
-   cases ended: landed, left at each station, or still in the line. The
-   map replaced a node-and-edge graph: with 14 stations, loops and exits,
-   lines crossed boxes at every layout tried, and a row per station cannot
-   overlap. A window selector (7/30/90 days), a jurisdiction filter and a
+1. **Pipeline** (`/ops/flow`). Stations as boxes on a serpentine line, as
+   many per row as the canvas shows at a readable zoom. Edge width = cases;
+   particles move faster with more throughput. Edges are routed so none
+   crosses a box: neighbours on a row meet side to side, a skip or a step
+   back on a row (the encode loop's retries) arcs through the aisle under
+   the row from the boxes' inner quarters, adjacent rows meet through the
+   aisle between them, and an edge that would cross a whole row is a note
+   on its station. Failures are drawn on the boxes, not as lines across
+   the floor: a red bar for the share of the station's cases that left the
+   line there, the count and the top reason (hover for the system that
+   reported it), and a red glow on the stations with the biggest share of
+   all exits. A window selector (7/30/90 days), a jurisdiction filter and a
    population filter (`pop`: all, dispatched runs, PRs merged without a
    run, modules inside another run) re-mine the log. The three kinds start
-   at different stations (Dispatch, PR checks, Generate), so the map says
-   how many started at each station.
-2. **Station** (`?station=validate`). Opens under its row: targets, the
+   at different stations (Dispatch, PR checks, Generate).
+2. **Station** (`?station=validate`). Opens beside the diagram: targets, the
    week's trend, every failure the station raised (also the tries a later
    try recovered) and the oldest open items.
 3. **Programs** (`?view=bundles`). Program → jurisdiction bundle → documents,
@@ -112,8 +112,8 @@ click on a node goes one level deeper (URL parameters keep the place):
 5. **Run** (`?case=<id>`). Each try: model, time, cost, the issues it hit,
    and links to the GitHub run, the PR and the failure bundle.
 
-Library for the deeper levels: **React Flow (`@xyflow/react`) with `dagre`
-layout**; the pipeline level is plain HTML and CSS. Both are
+Library: **React Flow (`@xyflow/react`)** with positions computed in
+`flow-layout.ts`. Both are
 already dependencies (the rule graph viewer uses them), so the PR adds no
 package. React Flow renders nodes as DOM (good text, focus and screen-reader
 support, custom React nodes) and edges as SVG; with
