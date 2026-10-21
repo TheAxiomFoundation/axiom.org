@@ -1042,16 +1042,17 @@
   font-size: 13px;
 }
 
+/* Narrow: the band runs down the left of each row, the cells stack beside it. */
 .mapHead,
 .mapRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 96px;
+  grid-template-columns: 88px minmax(0, 1fr);
   grid-template-areas:
-    "station flow"
-    "exits flow"
-    "time flow"
-    "wait flow";
-  column-gap: 16px;
+    "flow station"
+    "flow exits"
+    "flow time"
+    "flow wait";
+  column-gap: 14px;
 }
 
 .mapHead {
@@ -1059,7 +1060,7 @@
 }
 
 .mapRow {
-  padding: 18px 16px;
+  padding: 18px 16px 18px 0;
   border-top: 1px solid var(--floor-line);
   row-gap: 12px;
 }
@@ -1068,7 +1069,25 @@
   background: var(--floor-raised);
 }
 
-@media (min-width: 1100px) {
+/* Medium: band, station and its exits side by side; time and waits under them. */
+@media (min-width: 760px) {
+  .mapHead,
+  .mapRow {
+    grid-template-columns: 96px minmax(0, 1fr) minmax(0, 1.6fr);
+    grid-template-areas:
+      "flow station exits"
+      "flow time wait";
+    column-gap: 20px;
+    row-gap: 14px;
+  }
+
+  .mapRow {
+    padding-right: 20px;
+  }
+}
+
+/* Wide: one line per station, the band between the station and where its cases left. */
+@media (min-width: 1200px) {
   .mapHead,
   .mapRow {
     grid-template-columns: minmax(180px, 1.05fr) 112px minmax(300px, 2.3fr) minmax(190px, 1.1fr) minmax(120px, 0.7fr);
@@ -1122,7 +1141,7 @@
 .mapTime { grid-area: time; min-width: 0; }
 .mapWait { grid-area: wait; min-width: 0; }
 
-@media (max-width: 1099px) {
+@media (max-width: 1199px) {
   .mapExits::before,
   .mapTime::before,
   .mapWait::before {
