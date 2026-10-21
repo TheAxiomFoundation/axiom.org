@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { attemptEvents, type PipelineEvent } from "./pipeline-events";
-import { agentBrief, caseDetail, causeOrigin, causeText, citationLanes, formatDuration, mineFlow, quantile, retryCutoff, trendSentence } from "./pipeline-flow";
+import { agentBrief, caseDetail, causeOrigin, causeText, citationLanes, formatDuration, mineFlow, quantile, retryCutoff, ruleWords, splitMessage, trendSentence } from "./pipeline-flow";
 import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 
 const NOW = Date.parse("2026-09-30T12:00:00Z");
@@ -78,6 +78,10 @@ describe("mineFlow", () => {
     expect(tests.stick_rate).toBe(0.5);
     expect(tests.recovered).toBe(1);
     expect(tests.followed_by).toEqual([{ rule_id: "r:deferral", count: 1 }]);
+    // Each failure keeps its latest error text and its latest cases, one per citation.
+    const validateTests = model.stations.find((s) => s.id === "validate")!.failures.find((f) => f.rule_id === "r:tests")!;
+    expect(validateTests.message).toBe("x.yaml: ci: [r:tests] no");
+    expect(validateTests.examples.map((x) => x.citation).sort()).toEqual(["us/a", "us/b"]);
     // Under 10 failed tries: not ranked as stubborn yet.
     expect(model.ladder.stubborn).toEqual([]);
   });
@@ -212,6 +216,16 @@ describe("ruleTrends and followPairs", () => {
 });
 
 describe("helpers", () => {
+  it("splitMessage separates the file from what the check said, and ruleWords reads an id", () => {
+    expect(splitMessage("statutes/7/1.yaml: ci: [complete-source-unit:tests] Source branch (a) is not tested.")).toEqual({
+      file: "statutes/7/1.yaml",
+      text: "Source branch (a) is not tested.",
+    });
+    expect(splitMessage("Axiom rules engine compile failed")).toEqual({ file: null, text: "Axiom rules engine compile failed" });
+    expect(ruleWords("complete-source-unit:numeric-recall")).toBe("Complete source unit: numeric recall");
+    expect(ruleWords("proof-source-evidence-not-found-rule")).toBe("Proof source evidence not found rule");
+  });
+
   it("causeOrigin names the system behind a reason from its prefix", () => {
     expect(causeOrigin("complete-source-unit:tests")).toBe("validator");
     expect(causeOrigin("check:build")).toBe("ci_check");

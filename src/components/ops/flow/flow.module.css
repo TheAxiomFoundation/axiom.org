@@ -1317,3 +1317,101 @@
   border-color: var(--critical);
   box-shadow: 0 0 0 2px rgba(208, 59, 59, 0.45), 0 0 36px -4px rgba(208, 59, 59, 0.7);
 }
+
+/* Failure modes in the station panel: one card per way cases fail. */
+.modesLede {
+  margin-top: -2px;
+  color: var(--floor-ink-3);
+}
+
+.modes {
+  margin-top: 10px;
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.mode {
+  padding: 10px 12px;
+  border: 1px solid var(--floor-line);
+  border-radius: 10px;
+  background: var(--floor-card);
+}
+
+.modeHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.modeHead b {
+  color: var(--floor-ink);
+  font-weight: 500;
+}
+
+.modeId {
+  display: block;
+  margin-top: 2px;
+  font-size: 10.5px;
+  color: var(--floor-ink-3);
+  overflow-wrap: anywhere;
+}
+
+.modeMsg {
+  margin-top: 8px;
+  padding: 6px 8px;
+  border-left: 2px solid var(--critical);
+  background: rgba(208, 59, 59, 0.08);
+  font-family: var(--font-mono), monospace;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--floor-ink);
+  overflow-wrap: anywhere;
+}
+
+/* The clamp sits inside the padding, so no half line shows under it. */
+.modeMsgText {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.modeMsgText span {
+  color: var(--floor-ink-3);
+}
+
+.modeImpact {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 12px;
+}
+
+.modeEnded b {
+  font-size: 15px;
+  color: #f08a8a;
+}
+
+.modeEnded[data-zero="true"] b {
+  color: var(--floor-ink-2);
+}
+
+.modeLine {
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.modeLine[data-bad="true"] {
+  color: var(--warning);
+}
+
+.modeCases {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--floor-ink-3);
+  overflow-wrap: anywhere;
+}

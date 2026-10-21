@@ -62,6 +62,10 @@ export interface RuleCount {
   cases: number;
   example: string | null;
   last_at: string;
+  /** The latest error text the rule came with. */
+  message: string | null;
+  /** The latest cases with the rule, newest first, one per citation. */
+  examples: Array<{ citation: string; case_id: string }>;
 }
 
 export interface OpenItem {
@@ -180,6 +184,28 @@ export function causeText(cause: string): string | null {
   if (cause === "merge:side-branch") return "Merged into a side branch that is not on main yet";
   if (cause === "index:missing") return "Merged, but no indexed module matches the merge commit";
   return null;
+}
+
+/**
+ * An encoder or check message split into the file it names and what it
+ * says: "statutes/7/1.yaml: ci: [rule] Source branch (a) is not tested."
+ * becomes { file: "statutes/7/1.yaml", text: "Source branch (a) is not tested." }.
+ */
+export function splitMessage(message: string): { file: string | null; text: string } {
+  const m = message.match(/^(\S+\.ya?ml):\s*(?:[a-z_-]+:\s*)?([\s\S]*)$/);
+  const file = m ? m[1] : null;
+  const rest = (m ? m[2] : message).replace(/^\[[^\]]+\]\s*/, "").trim();
+  return { file, text: rest || message };
+}
+
+/** A rule id as words: "complete-source-unit:numeric-recall" → "Complete source unit: numeric recall". */
+export function ruleWords(rule: string): string {
+  const [family, ...rest] = rule.split(":");
+  const words = (x: string) => x.replace(/[-_]+/g, " ").trim();
+  const head = words(family);
+  const tail = words(rest.join(":"));
+  const text = tail ? `${head}: ${tail}` : head;
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 /** Why cases ended (or wait) at a station: one reason, how many, and an example. */
@@ -953,21 +979,31 @@ export function stationFlows(windowCases: Case[], allCases: Case[], stations: St
 }
 
 function ruleCounts(items: Array<{ c: Case; v: Visit }>): RuleCount[] {
-  const map = new Map<string, RuleCount & { caseSet: Set<string> }>();
+  const map = new Map<string, RuleCount & { caseSet: Set<string>; seen: Array<{ at: number; citation: string; case_id: string }> }>();
   for (const { c, v } of items) {
     const rule = v.rule_id ?? (v.reason ? v.reason.split(":")[0] : "unknown");
-    const entry = map.get(rule) ?? { rule_id: rule, count: 0, cases: 0, example: null, last_at: "", caseSet: new Set<string>() };
+    const entry = map.get(rule) ?? { rule_id: rule, count: 0, cases: 0, example: null, last_at: "", message: null, examples: [], caseSet: new Set<string>(), seen: [] };
     entry.count++;
     entry.caseSet.add(c.id);
-    const at = new Date(v.end ?? v.start).toISOString();
+    const t = v.end ?? v.start;
+    const at = new Date(t).toISOString();
+    entry.seen.push({ at: t, citation: c.citation, case_id: c.id });
     if (at > entry.last_at) {
       entry.last_at = at;
       entry.example = c.citation;
+      entry.message = v.message ?? (v.reason && v.reason !== rule ? v.reason : entry.message);
     }
     map.set(rule, entry);
   }
   return [...map.values()]
-    .map(({ caseSet, ...rest }) => ({ ...rest, cases: caseSet.size }))
+    .map(({ caseSet, seen, ...rest }) => {
+      const examples: RuleCount["examples"] = [];
+      for (const x of seen.sort((a, b) => b.at - a.at)) {
+        if (examples.length >= 3) break;
+        if (!examples.some((e) => e.citation === x.citation)) examples.push({ citation: x.citation, case_id: x.case_id });
+      }
+      return { ...rest, cases: caseSet.size, examples };
+    })
     .sort((a, b) => b.count - a.count)
     .slice(0, 10);
 }

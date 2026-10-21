@@ -77,7 +77,9 @@ describe("FlowPage", () => {
   it("opens a station's detail beside the diagram", () => {
     page({ params: { ...params, station: "validate" } });
     expect(screen.getByRole("complementary", { name: "Validate details" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "How cases fail here" })).toBeTruthy();
     expect(screen.getAllByText("r:tests").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/runs ended/).length).toBeGreaterThan(0);
   });
 
   it("shows discovery as four questions with answers", () => {
