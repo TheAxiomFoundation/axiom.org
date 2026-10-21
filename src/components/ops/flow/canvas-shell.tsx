@@ -32,6 +32,8 @@ export function CanvasShell({
   minimap = false,
   fitIds,
   empty,
+  height,
+  fitKey,
 }: {
   nodes: Node[];
   edges: Edge[];
@@ -45,6 +47,10 @@ export function CanvasShell({
   fitIds?: string[];
   /** Shown instead of the graph when it has no nodes. */
   empty?: ReactNode;
+  /** A fixed canvas height in px (the graph's own height at its fitted zoom); the stylesheet's otherwise. */
+  height?: number;
+  /** Changes when the layout changes shape, so the view fits it again. */
+  fitKey?: string | number;
 }) {
   const router = useRouter();
   // React Flow measures the DOM; render it after mount so the server's HTML
@@ -64,33 +70,35 @@ export function CanvasShell({
   }
 
   return (
-    <div className={styles.canvas} role="region" aria-label={label}>
+    <div className={styles.canvasWrap} role="region" aria-label={label}>
+      <div className={styles.canvas} style={height ? { height, minHeight: 0 } : undefined}>
+        {mounted ? (
+          <ReactFlowProvider key={fitKey}>
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
+              onNodeClick={onNodeClick}
+              nodesDraggable={false}
+              nodesConnectable={false}
+              elementsSelectable
+              onlyRenderVisibleElements={nodes.length > 300}
+              fitView
+              fitViewOptions={{ padding: 0.12, maxZoom: 1.1, nodes: fitIds?.length ? fitIds.map((id) => ({ id })) : undefined }}
+              minZoom={0.15}
+              maxZoom={2.5}
+              proOptions={{ hideAttribution: true }}
+              colorMode="dark"
+            >
+              <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#2a2622" />
+              <Controls showInteractive={false} position="bottom-right" />
+              {minimap ? <MiniMap pannable zoomable position="top-right" maskColor="rgba(18,17,15,0.7)" nodeColor="#8f877d" nodeStrokeColor="#c9c3bb" /> : null}
+            </ReactFlow>
+          </ReactFlowProvider>
+        ) : null}
+      </div>
       {legend ? <div className={styles.legend}>{legend}</div> : null}
-      {mounted ? (
-        <ReactFlowProvider>
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
-            onNodeClick={onNodeClick}
-            nodesDraggable={false}
-            nodesConnectable={false}
-            elementsSelectable
-            onlyRenderVisibleElements={nodes.length > 300}
-            fitView
-            fitViewOptions={{ padding: 0.12, maxZoom: 1.1, nodes: fitIds?.length ? fitIds.map((id) => ({ id })) : undefined }}
-            minZoom={0.15}
-            maxZoom={2.5}
-            proOptions={{ hideAttribution: true }}
-            colorMode="dark"
-          >
-            <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#2a2622" />
-            <Controls showInteractive={false} position="bottom-right" />
-            {minimap ? <MiniMap pannable zoomable position="top-right" maskColor="rgba(18,17,15,0.7)" nodeColor="#8f877d" nodeStrokeColor="#c9c3bb" /> : null}
-          </ReactFlow>
-        </ReactFlowProvider>
-      ) : null}
     </div>
   );
 }

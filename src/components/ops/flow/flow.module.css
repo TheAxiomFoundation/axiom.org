@@ -342,20 +342,20 @@
   border-radius: 8px;
 }
 
+.canvasWrap {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Under the canvas, not over it: the legend never hides a station. */
 .legend {
-  position: absolute;
-  left: 12px;
-  bottom: 12px;
-  z-index: 5;
   display: flex;
   flex-wrap: wrap;
   gap: 6px 14px;
-  max-width: calc(100% - 80px);
-  padding: 8px 12px;
-  border: 1px solid var(--floor-line);
-  border-radius: 10px;
-  background: rgba(18, 17, 15, 0.85);
-  backdrop-filter: blur(6px);
+  padding: 10px 16px;
+  border-top: 1px solid var(--floor-line);
+  background: var(--floor-raised);
   font-size: 11px;
   color: var(--floor-ink-2);
 }
@@ -1192,4 +1192,8 @@
   overflow: hidden;
   clip: rect(0 0 0 0);
   white-space: nowrap;
+}
+
+.left {
+  color: #f08a8a;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { FlowEdge, StationStats } from "@/lib/axiom/pipeline-flow";
-import { laneLayout, pipelineLayout, stationStatus } from "./flow-layout";
+import type { FlowEdge, FlowModel, StationStats } from "@/lib/axiom/pipeline-flow";
+import { laneLayout, pipelineLayout, stationsPerRow, stationStatus } from "./flow-layout";
 
 function station(id: string, rank: number, extra: Partial<StationStats> = {}): StationStats {
   return {
@@ -34,7 +34,7 @@ const edge = (from: string, to: string, cases: number, loop = false): FlowEdge =
 
 describe("pipelineLayout", () => {
   const ids = "abcdefghij".split("");
-  const layout = pipelineLayout({
+  const model: Pick<FlowModel, "stations" | "edges" | "sinks"> = {
     stations: ids.map((id, i) => station(id, i)),
     edges: [
       ...ids.slice(1).map((id, i) => edge(ids[i], id, 100)),
@@ -48,7 +48,8 @@ describe("pipelineLayout", () => {
       { id: "exit:failed", label: "Failed", cases: 30 },
       { id: "exit:landed", label: "Landed", cases: 60 },
     ],
-  });
+  };
+  const layout = pipelineLayout(model);
 
   it("lays ten stations on a serpentine of two rows", () => {
     const at = Object.fromEntries(layout.stations.map((p) => [p.id, p]));
@@ -70,6 +71,28 @@ describe("pipelineLayout", () => {
     expect(byId["j>a"]).toBeUndefined();
     expect(layout.selfLoops.get("c")).toBe(5);
     expect(layout.sinks.map((s) => s.sink).sort()).toEqual(["exit:failed", "exit:landed"]);
+    expect(layout.exits.get("c")).toBe(30);
+  });
+
+  it("balances shorter rows, puts Landed in the next slot on the line and the other sinks under the floor", () => {
+    const narrow = pipelineLayout(model, 4);
+    const at = Object.fromEntries([...narrow.stations, ...narrow.sinks].map((p) => [p.id, p]));
+    // 10 stations on rows of at most 4: three rows of 4, 4 and 2.
+    expect(narrow.stations.map((p) => p.row)).toEqual([0, 0, 0, 0, 1, 1, 1, 1, 2, 2]);
+    expect(at["exit:landed"].row).toBe(2);
+    expect(at["exit:landed"].x).toBeGreaterThan(at.j.x);
+    expect(narrow.edges.find((e) => e.to === "exit:landed")).toMatchObject({ sourceHandle: "s-r", targetHandle: "t-l" });
+    expect(at["exit:failed"].y).toBeGreaterThan(at.j.y);
+    expect(narrow.height).toBe(at["exit:failed"].y + 64);
+  });
+});
+
+describe("stationsPerRow", () => {
+  it("fits rows to the canvas width, from 3 to 7", () => {
+    expect(stationsPerRow(400)).toBe(3);
+    expect(stationsPerRow(942)).toBe(3);
+    expect(stationsPerRow(1360)).toBe(5);
+    expect(stationsPerRow(5000)).toBe(7);
   });
 });
 

@@ -10,10 +10,13 @@ export type Status = "good" | "warning" | "critical" | "neutral";
 
 export const STATION_W = 216;
 export const STATION_H = 150;
-const COL = 320;
-const ROW = 430;
+export const COL = 320;
+/** Row pitch: a station plus an aisle wide enough for a loop arc. */
+const ROW = STATION_H + 150;
 /** Stations per row before the floor turns back (a serpentine line). */
 const MAX_PER_ROW = 7;
+/** Space around the graph when it is fitted to the canvas. */
+export const FIT_PAD = 40;
 
 /** A station's status: its worst alert, else good when it has targets, else neutral. */
 export function stationStatus(station: StationStats, alerts: FlowAlert[]): Status {
@@ -21,6 +24,16 @@ export function stationStatus(station: StationStats, alerts: FlowAlert[]): Statu
   if (own.some((a) => a.severity === "critical")) return "critical";
   if (own.some((a) => a.severity === "warning")) return "warning";
   return station.target ? "good" : "neutral";
+}
+
+/**
+ * How many stations fit on one row of a canvas this wide, read at a zoom of
+ * at least `minZoom`. Between 3 and 7: fewer rows on a wide screen, more
+ * rows (and a taller canvas) on a narrow one.
+ */
+export function stationsPerRow(canvasWidth: number, minZoom = 0.8): number {
+  const fits = Math.floor((canvasWidth / minZoom - 2 * FIT_PAD - STATION_W) / COL) + 1;
+  return Math.max(3, Math.min(MAX_PER_ROW, fits));
 }
 
 export type Side = "l" | "r" | "t" | "b";
@@ -44,67 +57,86 @@ export interface PipelineLayout {
   edges: RoutedEdge[];
   /** Self loops (a station straight back to itself), shown on the node. */
   selfLoops: Map<string, number>;
+  /** Cases that left the line at each station (its exit edges). */
+  exits: Map<string, number>;
+  /** The graph's extent, for sizing the canvas. */
+  width: number;
+  height: number;
 }
+
+const SINK_W = 132;
+const SINK_H = 64;
 
 /**
  * The station floor: stations in rank order on a serpentine line (left to
- * right, then right to left below), the Failed and Cancelled sinks in the
- * aisle between the rows, Landed after the last station.
+ * right, then right to left below). Landed takes the next slot on the line
+ * after the last station (below it when the row is full); Failed and
+ * Cancelled sit in a row under the floor, so no sink lies in an aisle.
  */
-export function pipelineLayout(model: Pick<FlowModel, "stations" | "edges" | "sinks">): PipelineLayout {
+export function pipelineLayout(model: Pick<FlowModel, "stations" | "edges" | "sinks">, maxPerRow = MAX_PER_ROW): PipelineLayout {
   const ordered = [...model.stations].sort((a, b) => a.rank - b.rank || a.position - b.position);
-  const perRow = ordered.length > MAX_PER_ROW ? Math.ceil(ordered.length / 2) : ordered.length;
-  const stations: Placed[] = ordered.map((s, i) => {
+  const rowsNeeded = Math.ceil(ordered.length / Math.max(1, maxPerRow));
+  // Balance the rows: 14 stations on 4-wide rows become 4+4+4+2, not 7+7 squeezed.
+  const perRow = Math.max(1, Math.ceil(ordered.length / Math.max(1, rowsNeeded)));
+  const slot = (i: number) => {
     const row = Math.floor(i / perRow);
     const col = i % perRow;
-    const x = row % 2 === 0 ? col * COL : (perRow - 1 - col) * COL;
-    return { id: s.id, x, y: row * ROW, row };
-  });
-  const rows = Math.max(1, Math.ceil(ordered.length / perRow));
-  const width = (perRow - 1) * COL + STATION_W;
+    return { row, x: row % 2 === 0 ? col * COL : (perRow - 1 - col) * COL, y: row * ROW };
+  };
+  const stations: Placed[] = ordered.map((s, i) => ({ id: s.id, ...slot(i) }));
+  const width = (Math.min(perRow, ordered.length) - 1) * COL + STATION_W;
   const at = new Map(stations.map((p) => [p.id, p]));
-  const aisleY = rows > 1 ? STATION_H + (ROW - STATION_H) / 2 - 30 : STATION_H + 120;
+  let bottom = stations.length ? Math.max(...stations.map((p) => p.y)) + STATION_H : 0;
 
   const sinks: PipelineLayout["sinks"] = [];
-  for (const sink of model.sinks) {
-    if (sink.id === "exit:landed") {
-      const last = stations.at(-1);
-      if (!last) continue;
-      // Below the last station, off the line, so the edges into it cross nothing.
-      sinks.push({ id: sink.id, sink: sink.id, x: last.x + STATION_W / 2 - 66, y: last.y + STATION_H + 110, row: last.row + 1 });
-    } else if (sink.id === "exit:failed") {
-      sinks.push({ id: sink.id, sink: sink.id, x: width / 2 - 66, y: aisleY, row: 0 });
-    } else {
-      sinks.push({ id: sink.id, sink: sink.id, x: width / 2 - 66 - COL * 1.4, y: aisleY, row: 0 });
-    }
+  const last = stations.at(-1);
+  const landed = model.sinks.find((s) => s.id === "exit:landed");
+  if (landed && last) {
+    const next = slot(stations.length);
+    const room = stations.length % perRow !== 0;
+    const pos = room
+      ? { x: next.x + (STATION_W - SINK_W) / 2, y: last.y + (STATION_H - SINK_H) / 2, row: last.row }
+      : { x: last.x + (STATION_W - SINK_W) / 2, y: last.y + STATION_H + 70, row: last.row + 1 };
+    sinks.push({ id: landed.id, sink: landed.id, ...pos });
+    bottom = Math.max(bottom, pos.y + SINK_H);
+  }
+  const others = model.sinks.filter((s) => s.id !== "exit:landed");
+  if (others.length) {
+    const y = bottom + 70;
+    const span = others.length * SINK_W + (others.length - 1) * 40;
+    others.forEach((sink, i) => sinks.push({ id: sink.id, sink: sink.id, x: (width - span) / 2 + i * (SINK_W + 40), y, row: -1 }));
+    bottom = y + SINK_H;
   }
   for (const s of sinks) at.set(s.id, s);
 
   const selfLoops = new Map<string, number>();
+  const exits = new Map<string, number>();
   const edges: RoutedEdge[] = [];
   // Edges with a handful of cases (a stray order of events) are noise at
   // this zoom: under 0.5% of the busiest edge, and under 3 cases, are left out.
   const busiest = Math.max(1, ...model.edges.map((e) => e.cases));
   const floor = Math.max(3, busiest * 0.005);
   for (const e of model.edges) {
-    if (e.cases < floor && e.from !== e.to) continue;
     const a = at.get(e.from);
     const b = at.get(e.to);
+    const kind: RoutedEdge["kind"] = e.to.startsWith("exit:") && e.to !== "exit:landed" ? "exit" : e.loop ? "loop" : "main";
+    if (kind === "exit" && a) exits.set(e.from, (exits.get(e.from) ?? 0) + e.cases);
+    if (e.cases < floor && e.from !== e.to) continue;
     if (!a || !b) continue;
     if (e.from === e.to) {
       selfLoops.set(e.from, e.cases);
       continue;
     }
-    const kind: RoutedEdge["kind"] = e.to.startsWith("exit:") && e.to !== "exit:landed" ? "exit" : e.loop ? "loop" : "main";
     edges.push({ ...e, kind, ...handles(a, b, kind) });
   }
-  return { stations, sinks, edges, selfLoops };
+  return { stations, sinks, edges, selfLoops, exits, width, height: bottom };
 }
 
 function handles(a: Placed, b: Placed, kind: RoutedEdge["kind"]): Pick<RoutedEdge, "sourceHandle" | "targetHandle"> {
-  if (kind === "loop") return a.y === b.y ? { sourceHandle: a.row % 2 === 0 ? "s-t" : "s-b", targetHandle: a.row % 2 === 0 ? "t-t" : "t-b" } : { sourceHandle: "s-t", targetHandle: "t-b" };
+  // A retry on one row arcs through the aisle under it, never over the top edge of the floor.
+  if (kind === "loop") return a.row === b.row ? { sourceHandle: "s-b", targetHandle: "t-b" } : { sourceHandle: "s-t", targetHandle: "t-b" };
   if (kind === "exit") return a.y < b.y ? { sourceHandle: "s-b", targetHandle: "t-t" } : { sourceHandle: "s-t", targetHandle: "t-b" };
-  if (Math.abs(a.y - b.y) < 40) return a.x < b.x ? { sourceHandle: "s-r", targetHandle: "t-l" } : { sourceHandle: "s-l", targetHandle: "t-r" };
+  if (a.row === b.row) return a.x < b.x ? { sourceHandle: "s-r", targetHandle: "t-l" } : { sourceHandle: "s-l", targetHandle: "t-r" };
   return a.y < b.y ? { sourceHandle: "s-b", targetHandle: "t-t" } : { sourceHandle: "s-t", targetHandle: "t-b" };
 }
 

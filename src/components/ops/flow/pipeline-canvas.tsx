@@ -1,11 +1,11 @@
 "use client";
 
-import { memo, useMemo } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, Handle, Position, type Edge, type EdgeProps, type Node, type NodeProps } from "@xyflow/react";
 import { AlertTriangle, CheckCircle2, CircleDot, OctagonAlert } from "lucide-react";
 import { formatDuration, pct, type FlowModel, type SinkId, type StationStats } from "@/lib/axiom/pipeline-flow";
 import { CanvasShell } from "./canvas-shell";
-import { pipelineLayout, stationStatus, type RoutedEdge, type Status } from "./flow-layout";
+import { pipelineLayout, stationsPerRow, stationStatus, type RoutedEdge, type Status } from "./flow-layout";
 import styles from "./flow.module.css";
 
 const STATUS_COLOR: Record<Status, string> = {
@@ -29,7 +29,7 @@ export function StatusIcon({ status, size = 12 }: { status: Status; size?: numbe
   return <CircleDot size={size} aria-hidden />;
 }
 
-type StationData = { station: StationStats; status: Status; selected: boolean; selfLoop: number | null; href: string };
+type StationData = { station: StationStats; status: Status; selected: boolean; selfLoop: number | null; left: number; href: string };
 type SinkData = { sink: SinkId; label: string; cases: number; href?: string };
 type FlowEdgeData = { routed: RoutedEdge; max: number };
 
@@ -84,7 +84,7 @@ function WeekTrend({ trend }: { trend: StationStats["trend"] }) {
 }
 
 const StationNode = memo(function StationNode({ data }: NodeProps<Node<StationData>>) {
-  const { station: s, status, selected, selfLoop } = data;
+  const { station: s, status, selected, selfLoop, left } = data;
   const yieldText = s.tries && s.tries.total ? `${pct(s.tries.ok / s.tries.total)} of ${s.tries.total.toLocaleString("en-US")} tries` : `${s.ok + s.failed + s.cancelled} finished`;
   const hot = s.target?.max_wip != null ? s.wip > s.target.max_wip : s.over_sla > 0;
   return (
@@ -121,6 +121,12 @@ const StationNode = memo(function StationNode({ data }: NodeProps<Node<StationDa
         <dt>
           {yieldText}
           {selfLoop ? ` · ${selfLoop} re-runs` : ""}
+          {left ? (
+            <span className={styles.left}>
+              {" · "}
+              {left.toLocaleString("en-US")} left here
+            </span>
+          ) : null}
         </dt>
       </div>
       <WeekTrend trend={s.trend} />
@@ -149,7 +155,7 @@ const FlowEdgeView = memo(function FlowEdgeView(props: EdgeProps<Edge<FlowEdgeDa
   if (routed.kind === "loop" && Math.abs(sourceY - targetY) < 40) {
     // An arc over (or under) the two stations.
     const up = sourcePosition === Position.Top ? -1 : 1;
-    const lift = 90 + Math.min(120, Math.abs(sourceX - targetX) * 0.15);
+    const lift = 70 + Math.min(40, Math.abs(sourceX - targetX) * 0.1);
     path = `M ${sourceX} ${sourceY} C ${sourceX} ${sourceY + up * lift}, ${targetX} ${targetY + up * lift}, ${targetX} ${targetY}`;
     labelX = (sourceX + targetX) / 2;
     labelY = sourceY + up * lift * 0.75;
@@ -200,9 +206,25 @@ const FlowEdgeView = memo(function FlowEdgeView(props: EdgeProps<Edge<FlowEdgeDa
 const nodeTypes = { station: StationNode, sink: SinkNode };
 const edgeTypes = { flow: FlowEdgeView };
 
+/** fitView's padding, as a share of the canvas on each side. */
+const FIT_PADDING = 0.12;
+
 export function PipelineCanvas({ model, selected, hrefFor }: { model: FlowModel; selected: string | null; hrefFor: Record<string, string> }) {
-  const { nodes, edges } = useMemo(() => {
-    const layout = pipelineLayout(model);
+  // The row length follows the canvas width, so the stations read at a
+  // useful zoom on any screen; the canvas is then as tall as the graph.
+  const box = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => setWidth(Math.round(entry.contentRect.width)));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  const perRow = width ? stationsPerRow(width) : 7;
+
+  const { nodes, edges, height } = useMemo(() => {
+    const layout = pipelineLayout(model, perRow);
     const byId = new Map(model.stations.map((s) => [s.id, s]));
     const nodes: Node[] = [
       ...layout.stations.map((p) => {
@@ -216,6 +238,7 @@ export function PipelineCanvas({ model, selected, hrefFor }: { model: FlowModel;
             status: stationStatus(station, model.alerts),
             selected: selected === p.id,
             selfLoop: layout.selfLoops.get(p.id) ?? null,
+            left: layout.exits.get(p.id) ?? 0,
             href: hrefFor[p.id],
           } satisfies StationData,
         };
@@ -226,45 +249,55 @@ export function PipelineCanvas({ model, selected, hrefFor }: { model: FlowModel;
       }),
     ];
     const max = Math.max(1, ...layout.edges.filter((e) => e.kind === "main").map((e) => e.cases));
-    const edges: Edge[] = layout.edges.map((e) => ({
-      id: `${e.from}→${e.to}`,
-      source: e.from,
-      target: e.to,
-      sourceHandle: e.sourceHandle,
-      targetHandle: e.targetHandle,
-      type: "flow",
-      zIndex: e.kind === "exit" ? 0 : 1,
-      data: { routed: e, max } satisfies FlowEdgeData,
-    }));
-    return { nodes, edges };
-  }, [model, selected, hrefFor]);
+    // Exits would cross the floor to the sinks under it: each station says
+    // how many left it instead, and its panel says why.
+    const edges: Edge[] = layout.edges
+      .filter((e) => e.kind !== "exit")
+      .map((e) => ({
+        id: `${e.from}→${e.to}`,
+        source: e.from,
+        target: e.to,
+        sourceHandle: e.sourceHandle,
+        targetHandle: e.targetHandle,
+        type: "flow",
+        zIndex: e.kind === "exit" ? 0 : 1,
+        data: { routed: e, max } satisfies FlowEdgeData,
+      }));
+    const zoom = width ? Math.min(1.1, width / (layout.width * (1 + 2 * FIT_PADDING))) : 0;
+    const height = zoom ? Math.round(Math.min(1400, Math.max(420, layout.height * (1 + 2 * FIT_PADDING) * zoom))) : undefined;
+    return { nodes, edges, height };
+  }, [model, selected, hrefFor, perRow, width]);
 
   return (
-    <CanvasShell
-      nodes={nodes}
-      edges={edges}
-      nodeTypes={nodeTypes}
-      edgeTypes={edgeTypes}
-      label="The encoding pipeline: stations, the cases that moved between them, and where they left"
-      legend={
-        <>
-          <span>
-            <i className={styles.line} /> cases moving on (width = cases)
-          </span>
-          <span>
-            <i className={styles.line} data-kind="loop" /> back to an earlier station
-          </span>
-          <span>
-            <i className={styles.line} data-kind="exit" /> left the line
-          </span>
-          {(["good", "warning", "critical", "neutral"] as Status[]).map((s) => (
-            <span key={s} style={{ color: STATUS_COLOR[s] }}>
-              <StatusIcon status={s} size={11} /> <span style={{ color: "var(--floor-ink-2)" }}>{STATUS_LABEL[s]}</span>
+    <div ref={box} style={{ minWidth: 0 }}>
+      <CanvasShell
+        nodes={nodes}
+        height={height}
+        fitKey={perRow}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        label="The encoding pipeline: stations, the cases that moved between them, and where they left"
+        legend={
+          <>
+            <span>
+              <i className={styles.line} /> cases moving on (width = cases)
             </span>
-          ))}
-          <span>Ring = yield · * = times from part of the visits · click a station</span>
-        </>
-      }
-    />
+            <span>
+              <i className={styles.line} data-kind="loop" /> back to an earlier station
+            </span>
+            <span>
+              <span className={styles.left}>N left here</span> = cases that left the line at that station
+            </span>
+            {(["good", "warning", "critical", "neutral"] as Status[]).map((s) => (
+              <span key={s} style={{ color: STATUS_COLOR[s] }}>
+                <StatusIcon status={s} size={11} /> <span style={{ color: "var(--floor-ink-2)" }}>{STATUS_LABEL[s]}</span>
+              </span>
+            ))}
+            <span>Ring = yield · * = times from part of the visits · click a station for why</span>
+          </>
+        }
+      />
+    </div>
   );
 }
