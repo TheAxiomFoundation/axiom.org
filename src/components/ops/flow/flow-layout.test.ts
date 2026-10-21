@@ -94,6 +94,25 @@ describe("pipelineLayout", () => {
     expect(narrow.edges.find((e) => e.from === "a" && e.to === "j")).toBeUndefined();
     expect(narrow.offRoute.get("a")).toEqual([{ to: "j", cases: 20, loop: false }]);
   });
+
+  it("routes exit lines around every box into the Failed sink under the floor", () => {
+    const [drain] = layout.drains;
+    expect(drain).toMatchObject({ from: "c", to: "exit:failed", cases: 30 });
+    const box = (p: { x: number; y: number }) => ({ x0: p.x, x1: p.x + 216, y0: p.y, y1: p.y + 196 });
+    const boxes = layout.stations.map(box);
+    // Every straight piece of the line stays outside every box (it may touch the box it leaves).
+    for (let i = 1; i < drain.points.length; i++) {
+      const [[ax, ay], [bx, by]] = [drain.points[i - 1], drain.points[i]];
+      for (const b of boxes) {
+        const crosses = Math.max(ax, bx) > b.x0 && Math.min(ax, bx) < b.x1 && Math.max(ay, by) > b.y0 && Math.min(ay, by) < b.y1;
+        expect(crosses).toBe(false);
+      }
+    }
+    // It ends on the sink's top, and the sink sits under every station.
+    const sink = layout.sinks.find((x) => x.sink === "exit:failed")!;
+    expect(drain.points.at(-1)![1]).toBe(sink.y);
+    expect(sink.y).toBeGreaterThan(Math.max(...layout.stations.map((p) => p.y + 196)));
+  });
 });
 
 describe("stationsPerRow", () => {

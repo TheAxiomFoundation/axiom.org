@@ -94,11 +94,13 @@ click on a node goes one level deeper (URL parameters keep the place):
    back on a row (the encode loop's retries) arcs through the aisle under
    the row from the boxes' inner quarters, adjacent rows meet through the
    aisle between them, and an edge that would cross a whole row is a note
-   on its station. Failures are drawn on the boxes, not as lines across
-   the floor: a red bar for the share of the station's cases that left the
-   line there, the count and the top reason (hover for the system that
-   reported it), and a red glow on the stations with the biggest share of
-   all exits. A window selector (7/30/90 days), a jurisdiction filter and a
+   on its station. Exits are lines too, routed around every box: down
+   from the box into the aisle under its row (below that row's arcs), right
+   to a gutter beside the floor, down, and left into the Failed (red) or
+   Cancelled (grey, dashed) sink under the floor; width = cases. Each box
+   also shows a red bar for the share of its cases that left there, the
+   count and the top reason (hover for the system that reported it), and
+   the stations with the biggest share of all exits glow red. A window selector (7/30/90 days), a jurisdiction filter and a
    population filter (`pop`: all, dispatched runs, PRs merged without a
    run, modules inside another run) re-mine the log. The three kinds start
    at different stations (Dispatch, PR checks, Generate).

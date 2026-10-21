@@ -4,7 +4,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, Handle, Position, type Edge, type EdgeProps, type Node, type NodeProps } from "@xyflow/react";
 import { CAUSE_ORIGINS, causeText, formatDuration, pct, stationLabel, type FlowModel, type SinkId, type StationStats } from "@/lib/axiom/pipeline-flow";
 import { CanvasShell } from "./canvas-shell";
-import { pipelineLayout, stationsPerRow, stationStatus, type RoutedEdge, type Status } from "./flow-layout";
+import { pipelineLayout, stationsPerRow, stationStatus, type Drain, type RoutedEdge, type Status } from "./flow-layout";
 import { STATUS_LABEL, StatusIcon } from "./status-icon";
 import styles from "./flow.module.css";
 
@@ -223,8 +223,54 @@ const FlowEdgeView = memo(function FlowEdgeView(props: EdgeProps<Edge<FlowEdgeDa
   );
 });
 
+type DrainData = { drain: Drain; max: number; from: string };
+
+/** A path through the given corners, with rounded turns. */
+function roundedPath(points: Array<[number, number]>, radius = 12): string {
+  let d = `M ${points[0][0]} ${points[0][1]}`;
+  for (let i = 1; i < points.length - 1; i++) {
+    const [px, py] = points[i - 1];
+    const [x, y] = points[i];
+    const [nx, ny] = points[i + 1];
+    const r = Math.min(radius, Math.hypot(x - px, y - py) / 2, Math.hypot(nx - x, ny - y) / 2);
+    const inX = x - Math.sign(x - px) * r;
+    const inY = y - Math.sign(y - py) * r;
+    const outX = x + Math.sign(nx - x) * r;
+    const outY = y + Math.sign(ny - y) * r;
+    d += ` L ${inX} ${inY} Q ${x} ${y} ${outX} ${outY}`;
+  }
+  const end = points[points.length - 1];
+  return `${d} L ${end[0]} ${end[1]}`;
+}
+
+/**
+ * An exit line: from under the station, along the aisle below its row, down
+ * the gutter beside the floor, into the Failed or Cancelled sink. Its corners
+ * come from the layout, so it never crosses a box. Width = cases.
+ */
+const DrainEdgeView = memo(function DrainEdgeView(props: EdgeProps<Edge<DrainData>>) {
+  const { drain, max, from } = props.data!;
+  const path = roundedPath(drain.points);
+  const ratio = Math.sqrt(drain.cases / Math.max(1, max));
+  const failed = drain.to === "exit:failed";
+  const color = failed ? "#d03b3b" : "#8f877d";
+  return (
+    <>
+      <BaseEdge
+        id={props.id}
+        path={path}
+        style={{ stroke: color, strokeWidth: 1 + ratio * 9, strokeOpacity: failed ? 0.6 : 0.5, strokeLinejoin: "round", strokeDasharray: failed ? undefined : "5 5" }}
+      />
+      <title>{`${drain.cases.toLocaleString("en-US")} ${failed ? "failed" : "cancelled"} at ${stationLabel(from)}`}</title>
+      <circle r={2} fill={color} className={styles.particle}>
+        <animateMotion dur={`${9 - ratio * 3}s`} repeatCount="indefinite" path={path} />
+      </circle>
+    </>
+  );
+});
+
 const nodeTypes = { station: StationNode, sink: SinkNode };
-const edgeTypes = { flow: FlowEdgeView };
+const edgeTypes = { flow: FlowEdgeView, drain: DrainEdgeView };
 
 /** fitView's padding, as a share of the canvas on each side. */
 const FIT_PADDING = 0.12;
@@ -272,8 +318,6 @@ export function PipelineCanvas({ model, selected, hrefFor }: { model: FlowModel;
       }),
     ];
     const max = Math.max(1, ...layout.edges.filter((e) => e.kind === "main").map((e) => e.cases));
-    // Exits would cross the floor to the sinks under it: each station says
-    // how many left it instead, and its panel says why.
     const edges: Edge[] = layout.edges
       .filter((e) => e.kind !== "exit")
       .map((e) => ({
@@ -286,6 +330,20 @@ export function PipelineCanvas({ model, selected, hrefFor }: { model: FlowModel;
         zIndex: e.kind === "exit" ? 0 : 1,
         data: { routed: e, max } satisfies FlowEdgeData,
       }));
+    const maxDrain = Math.max(1, ...layout.drains.map((d) => d.cases));
+    for (const d of layout.drains) {
+      edges.push({
+        id: `${d.from}→${d.to}`,
+        source: d.from,
+        target: d.to,
+        sourceHandle: "s-b",
+        targetHandle: "t-t",
+        type: "drain",
+        zIndex: 0,
+        selectable: false,
+        data: { drain: d, max: maxDrain, from: d.from } satisfies DrainData,
+      });
+    }
     const zoom = width ? Math.min(1.1, width / (layout.width * (1 + 2 * FIT_PADDING))) : 0;
     const height = zoom ? Math.round(Math.min(1400, Math.max(420, layout.height * (1 + 2 * FIT_PADDING) * zoom))) : undefined;
     return { nodes, edges, height };
@@ -308,6 +366,12 @@ export function PipelineCanvas({ model, selected, hrefFor }: { model: FlowModel;
             </span>
             <span>
               <i className={styles.line} data-kind="loop" /> back to an earlier station
+            </span>
+            <span>
+              <i className={styles.line} data-kind="exit" /> failed, to the Failed sink
+            </span>
+            <span>
+              <i className={styles.line} data-kind="cancel" /> cancelled
             </span>
             <span>
               <i className={styles.legendLeak} /> red bar = share of the station&apos;s cases that left the line there, with the top reason (hover for its source); a red glow = a big share of all exits (strong: a fifth or more; faint: a twelfth or more)

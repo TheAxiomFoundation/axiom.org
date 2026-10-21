@@ -382,7 +382,11 @@
 }
 
 .line[data-kind="exit"] {
-  border-top: 2px dashed var(--critical);
+  border-top: 3px solid var(--critical);
+}
+
+.line[data-kind="cancel"] {
+  border-top: 2px dashed var(--neutral);
 }
 
 .line[data-kind="loop"] {

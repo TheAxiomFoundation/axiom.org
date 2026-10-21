@@ -26,6 +26,12 @@ const ROW = STATION_H + 150;
 const MAX_PER_ROW = 7;
 /** Space around the graph when it is fitted to the canvas. */
 export const FIT_PAD = 40;
+/** The channel right of the floor that exit lines run down to the Failed and Cancelled sinks. */
+const DRAIN_GUTTER = 80;
+/** How far under a row's boxes its exit lines run: below the arcs of that row, above the next row. */
+const LANE_DROP = 118;
+/** Space between parallel exit lines. */
+const DRAIN_STEP = 7;
 
 /**
  * How many stations fit on one row of a canvas this wide, read at a zoom of
@@ -33,7 +39,7 @@ export const FIT_PAD = 40;
  * rows (and a taller canvas) on a narrow one.
  */
 export function stationsPerRow(canvasWidth: number, minZoom = 0.8): number {
-  const fits = Math.floor((canvasWidth / minZoom - 2 * FIT_PAD - STATION_W) / COL) + 1;
+  const fits = Math.floor((canvasWidth / minZoom - 2 * FIT_PAD - STATION_W - DRAIN_GUTTER) / COL) + 1;
   return Math.max(3, Math.min(MAX_PER_ROW, fits));
 }
 
@@ -63,11 +69,21 @@ export interface PipelineLayout {
   selfLoops: Map<string, number>;
   /** Cases that left the line at each station (its exit edges). */
   exits: Map<string, number>;
+  /** Exit lines, routed around every box: down under the row, right to the gutter, down, and left into the sink. */
+  drains: Drain[];
   /** Edges left out because any route would cross a row of stations: shown as a note on the source station. */
   offRoute: Map<string, Array<{ to: string; cases: number; loop: boolean }>>;
   /** The graph's extent, for sizing the canvas. */
   width: number;
   height: number;
+}
+
+export interface Drain {
+  from: string;
+  to: SinkId;
+  cases: number;
+  /** The corners of the line, in floor coordinates. */
+  points: Array<[number, number]>;
 }
 
 const SINK_W = 132;
@@ -106,13 +122,63 @@ export function pipelineLayout(model: Pick<FlowModel, "stations" | "edges" | "si
     sinks.push({ id: landed.id, sink: landed.id, ...pos });
     bottom = Math.max(bottom, pos.y + SINK_H);
   }
+  // The lane under each row that its exit lines run along; under the last
+  // row it also clears a Landed sink placed below it.
+  const landedBelow = sinks.find((x) => x.sink === "exit:landed" && last && x.row > last.row);
+  const laneY = (row: number) => {
+    const y = row * ROW + STATION_H + LANE_DROP;
+    return landedBelow && last && row === last.row ? Math.max(y, landedBelow.y + SINK_H + 24) : y;
+  };
+
+  const busiest = Math.max(1, ...model.edges.map((e) => e.cases));
+  const floor = Math.max(3, busiest * 0.005);
+  const exitEdges = model.edges
+    .filter((e) => (e.to === "exit:failed" || e.to === "exit:cancelled") && e.cases >= floor && at.has(e.from))
+    .sort((a, b) => stations.findIndex((p) => p.id === a.from) - stations.findIndex((p) => p.id === b.from) || a.to.localeCompare(b.to));
   const others = model.sinks.filter((s) => s.id !== "exit:landed");
+  const drains: Drain[] = [];
   if (others.length) {
-    // Clear of the arcs under the last row.
-    const y = bottom + 120;
+    const deepestLane = Math.max(bottom, ...stations.map((p) => laneY(p.row) + DRAIN_STEP * 2));
+    const n = exitEdges.length;
+    const bottomLane = deepestLane + 30;
+    // Under the floor, right-aligned, so the lines come down the gutter and turn left into them.
+    const y = bottomLane + n * DRAIN_STEP + 40;
     const span = others.length * SINK_W + (others.length - 1) * 40;
-    others.forEach((sink, i) => sinks.push({ id: sink.id, sink: sink.id, x: (width - span) / 2 + i * (SINK_W + 40), y, row: -1, w: SINK_W }));
+    others.forEach((sink, i) => sinks.push({ id: sink.id, sink: sink.id, x: width - span + i * (SINK_W + 40), y, row: -1, w: SINK_W }));
     bottom = y + SINK_H;
+    const into = new Map<string, number>();
+    const perSink = new Map<string, number>();
+    for (const e of exitEdges) perSink.set(e.to, (perSink.get(e.to) ?? 0) + 1);
+    exitEdges.forEach((e, j) => {
+      const a = at.get(e.from)!;
+      const sink = sinks.find((x) => x.sink === e.to);
+      if (!sink) return;
+      const cancel = e.to === "exit:cancelled";
+      // The top row's lines run outermost, so lines from lower rows join inside them.
+      const outer = (n - 1 - j) * DRAIN_STEP;
+      const sx = a.x + STATION_W - 18 - (cancel ? 10 : 0);
+      const lane = laneY(a.row) + (cancel ? DRAIN_STEP : 0);
+      const gx = width + 36 + outer;
+      const by = bottomLane + outer;
+      // Into the sink as one bundle: the outer (lower) line lands rightmost, so no line crosses another on the way in.
+      const k = into.get(e.to) ?? 0;
+      into.set(e.to, k + 1);
+      const count = perSink.get(e.to) ?? 1;
+      const tx = sink.x + SINK_W / 2 - ((count - 1) * DRAIN_STEP) / 2 + (count - 1 - k) * DRAIN_STEP;
+      drains.push({
+        from: e.from,
+        to: e.to as SinkId,
+        cases: e.cases,
+        points: [
+          [sx, a.y + STATION_H],
+          [sx, lane],
+          [gx, lane],
+          [gx, by],
+          [tx, by],
+          [tx, sink.y],
+        ],
+      });
+    });
   }
   for (const s of sinks) at.set(s.id, s);
 
@@ -120,9 +186,8 @@ export function pipelineLayout(model: Pick<FlowModel, "stations" | "edges" | "si
   const exits = new Map<string, number>();
   const edges: RoutedEdge[] = [];
   // Edges with a handful of cases (a stray order of events) are noise at
-  // this zoom: under 0.5% of the busiest edge, and under 3 cases, are left out.
-  const busiest = Math.max(1, ...model.edges.map((e) => e.cases));
-  const floor = Math.max(3, busiest * 0.005);
+  // this zoom: under 0.5% of the busiest edge, and under 3 cases, are left out
+  // (floor, above).
   const offRoute = new Map<string, Array<{ to: string; cases: number; loop: boolean }>>();
   for (const e of model.edges) {
     const a = at.get(e.from);
@@ -145,7 +210,8 @@ export function pipelineLayout(model: Pick<FlowModel, "stations" | "edges" | "si
     }
     edges.push({ ...e, kind, ...route });
   }
-  return { stations, sinks, edges, selfLoops, exits, offRoute, width, height: bottom };
+  const extent = drains.length ? width + 36 + drains.length * DRAIN_STEP + 12 : width;
+  return { stations, sinks, edges, selfLoops, exits, drains, offRoute, width: extent, height: bottom };
 }
 
 /**
