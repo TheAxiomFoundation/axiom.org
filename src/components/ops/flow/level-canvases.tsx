@@ -2,9 +2,9 @@
 
 import { memo, useMemo } from "react";
 import { BaseEdge, getBezierPath, getStraightPath, Handle, Position, type Edge, type EdgeProps, type Node, type NodeProps } from "@xyflow/react";
-import { formatDuration, LADDER_GAVE_UP, LADDER_OTHER, LADDER_PASSED, stationLabel, type CaseDetail, type CitationLane, type IssueLadder, type LaneVisit } from "@/lib/axiom/pipeline-flow";
+import { formatDuration, stationLabel, type CaseDetail, type CitationLane, type LaneVisit } from "@/lib/axiom/pipeline-flow";
 import { CanvasShell } from "./canvas-shell";
-import { LADDER_COL, ladderLayout, laneLayout, LANE_ROW } from "./flow-layout";
+import { laneLayout, LANE_ROW } from "./flow-layout";
 import styles from "./flow.module.css";
 
 function H({ side = "lr" }: { side?: "lr" | "tb" }) {
@@ -38,82 +38,6 @@ const WeightedEdge = memo(function WeightedEdge(props: EdgeProps<Edge<{ width: n
 });
 
 const edgeTypes = { weighted: WeightedEdge };
-
-/* ── Issue ladder ── */
-
-type RuleData = { rule: string; tryNo: number; cases: number; href?: string };
-
-const RuleNode = memo(function RuleNode({ data }: NodeProps<Node<RuleData>>) {
-  const terminal = data.rule === LADDER_PASSED || data.rule === LADDER_GAVE_UP ? data.rule : undefined;
-  return (
-    <div className={styles.rule} data-terminal={terminal} aria-label={`Try ${data.tryNo}: ${data.rule}, ${data.cases} cases`}>
-      <H />
-      <code>{data.rule}</code>
-      {data.cases.toLocaleString("en-US")} cases
-    </div>
-  );
-});
-
-const HeadNode = memo(function HeadNode({ data }: NodeProps<Node<{ text: string }>>) {
-  return <div className={styles.colHead} style={{ width: 210 }}>{data.text}</div>;
-});
-
-export function LadderCanvas({ ladder }: { ladder: IssueLadder }) {
-  const { nodes, edges } = useMemo(() => {
-    const placed = ladderLayout(ladder);
-    const nodes: Node[] = placed.map((n) => ({
-      id: n.id,
-      type: "rule",
-      position: { x: n.x, y: n.y },
-      data: { rule: n.rule_id, tryNo: n.try_no, cases: n.cases } satisfies RuleData,
-    }));
-    for (let t = 1; t <= ladder.max_try; t++) {
-      nodes.push({ id: `head:${t}`, type: "head", position: { x: (t - 1) * LADDER_COL, y: 0 }, data: { text: t === 5 ? "Try 5 or later" : `Try ${t}` }, selectable: false });
-    }
-    const max = Math.max(1, ...ladder.edges.map((e) => e.weight));
-    const ruleOf = (id: string) => id.slice(0, id.lastIndexOf("@"));
-    const edges: Edge[] = ladder.edges
-      .filter((e) => e.weight >= Math.max(1, max * 0.01))
-      .map((e) => {
-        const from = ruleOf(e.from);
-        const to = ruleOf(e.to);
-        const color = to === LADDER_PASSED ? "#0ca30c" : to === LADDER_GAVE_UP ? "#d03b3b" : from === to && from !== LADDER_OTHER ? "#fab219" : "#8f877d";
-        return { id: `${e.from}>${e.to}`, source: e.from, target: e.to, type: "weighted", data: { width: 1 + Math.sqrt(e.weight / max) * 12, color } };
-      });
-    return { nodes, edges };
-  }, [ladder]);
-  return (
-    <CanvasShell
-      nodes={nodes}
-      edges={edges}
-      nodeTypes={{ rule: RuleNode, head: HeadNode }}
-      edgeTypes={edgeTypes}
-      label="Validator rules by try, and what the next try hit"
-      legend={
-        <>
-          <span>
-            <i className={styles.line} data-kind="loop" /> same rule again (not fixed)
-          </span>
-          <span>
-            <i className={styles.line} style={{ borderTopColor: "#8f877d" }} /> a different rule next
-          </span>
-          <span>
-            <i className={styles.line} style={{ borderTopColor: "#0ca30c" }} /> passed
-          </span>
-          <span>
-            <i className={styles.line} style={{ borderTopColor: "#d03b3b" }} /> gave up
-          </span>
-          <span>{ladder.cases.toLocaleString("en-US")} cases with rule ids on their tries</span>
-        </>
-      }
-      empty={
-        <div className={styles.empty}>
-          <p>No tries with validator rule ids in this window. Production records keep one error per try; run the backfill with archived issues to fill this graph.</p>
-        </div>
-      }
-    />
-  );
-}
 
 /* ── Citation lanes ── */
 

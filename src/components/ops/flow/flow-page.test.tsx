@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { attemptEvents } from "@/lib/axiom/pipeline-events";
 import { caseDetail, citationLanes, mineFlow } from "@/lib/axiom/pipeline-flow";
 import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
-import { FlowPage, flowHref, type FlowParams } from "./flow-page";
+import { FlowPage, flowHref, retryVerdict, type FlowParams } from "./flow-page";
 
 // The canvases need a real browser (React Flow measures the DOM).
 vi.mock("./pipeline-canvas", () => ({
@@ -11,7 +11,6 @@ vi.mock("./pipeline-canvas", () => ({
   StatusIcon: () => null,
 }));
 vi.mock("./level-canvases", () => ({
-  LadderCanvas: () => <div data-testid="ladder-canvas" />,
   LanesCanvas: () => <div data-testid="lanes-canvas" />,
   CaseCanvas: () => <div data-testid="case-canvas" />,
   ProgramsCanvas: () => <div data-testid="programs-canvas" />,
@@ -59,6 +58,16 @@ describe("flowHref", () => {
   });
 });
 
+describe("retryVerdict", () => {
+  const step = (try_no: number, tries: number, passed: number) => ({ try_no, label: String(try_no), tries, passed, cost_usd: tries / 10, models: [] });
+  it("finds the try from which every later try passes under 5%", () => {
+    const v = retryVerdict([step(1, 368, 40), step(2, 339, 37), step(3, 295, 25), step(4, 261, 8)]);
+    expect(v?.from.try_no).toBe(4);
+    expect([v?.tries, v?.passed]).toEqual([261, 8]);
+    expect(retryVerdict([step(1, 10, 5), step(2, 10, 5)])).toBeNull();
+  });
+});
+
 describe("FlowPage", () => {
   it("shows the line with KPIs, alerts and the stations table", () => {
     page();
@@ -75,10 +84,11 @@ describe("FlowPage", () => {
     expect(screen.getAllByText("r:tests").length).toBeGreaterThan(0);
   });
 
-  it("shows discovery tables", () => {
+  it("shows discovery as three answers, then the supporting tables", () => {
     page({ params: { ...params, view: "discovery" } });
-    expect(screen.getByTestId("ladder-canvas")).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Rules across tries" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Validate pass rate by try" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Rules that come back on the next try" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Dispatched again and again, never merged" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Common paths" })).toBeTruthy();
   });
 

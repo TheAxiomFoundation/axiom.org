@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FlowEdge, StationStats } from "@/lib/axiom/pipeline-flow";
-import { ladderLayout, laneLayout, pipelineLayout, stationStatus } from "./flow-layout";
+import { laneLayout, pipelineLayout, stationStatus } from "./flow-layout";
 
 function station(id: string, rank: number, extra: Partial<StationStats> = {}): StationStats {
   return {
@@ -83,7 +83,7 @@ describe("stationStatus", () => {
   });
 });
 
-describe("laneLayout and ladderLayout", () => {
+describe("laneLayout", () => {
   it("puts a pip per station a case visited, in the pipeline's columns", () => {
     const visit = (station: string, outcome: "ok" | "fail") => ({
       station,
@@ -109,23 +109,5 @@ describe("laneLayout and ladderLayout", () => {
       ["b", 2, "fail"],
     ]);
     expect(layout.links).toHaveLength(1);
-  });
-
-  it("stacks rules down each try column with the ends last", () => {
-    const placed = ladderLayout({
-      nodes: [
-        { id: "gave up@2", rule_id: "gave up", try_no: 2, cases: 9 },
-        { id: "r@2", rule_id: "r", try_no: 2, cases: 1 },
-        { id: "other@2", rule_id: "other", try_no: 2, cases: 5 },
-        { id: "r@1", rule_id: "r", try_no: 1, cases: 3 },
-      ],
-      edges: [],
-      max_try: 2,
-      rules: [],
-      cases: 3,
-    });
-    const col2 = placed.filter((n) => n.try_no === 2).sort((a, b) => a.y - b.y).map((n) => n.rule_id);
-    expect(col2).toEqual(["r", "other", "gave up"]);
-    expect(placed.find((n) => n.id === "r@1")!.x).toBe(0);
   });
 });

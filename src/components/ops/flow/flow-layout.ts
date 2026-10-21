@@ -4,8 +4,7 @@
  * follows from data (the stations' ranks, the cases' visits).
  */
 
-import type { CitationLane, FlowAlert, FlowEdge, FlowModel, IssueLadder, SinkId, StationStats } from "@/lib/axiom/pipeline-flow";
-import { LADDER_GAVE_UP, LADDER_OTHER, LADDER_PASSED } from "@/lib/axiom/pipeline-flow";
+import type { CitationLane, FlowAlert, FlowEdge, FlowModel, SinkId, StationStats } from "@/lib/axiom/pipeline-flow";
 
 export type Status = "good" | "warning" | "critical" | "neutral";
 
@@ -146,29 +145,4 @@ export function laneLayout(lanes: CitationLane[], stationOrder: string[]) {
     }
   });
   return { columns, colX, pips, links, labelX: 0 };
-}
-
-export const LADDER_COL = 300;
-
-/** The issue ladder: a column per try, rules down each column by cases; passed and gave up at the bottom. */
-export function ladderLayout(ladder: IssueLadder) {
-  const byTry = new Map<number, typeof ladder.nodes>();
-  for (const n of ladder.nodes) {
-    const list = byTry.get(n.try_no) ?? [];
-    list.push(n);
-    byTry.set(n.try_no, list);
-  }
-  const placed: Array<(typeof ladder.nodes)[number] & { x: number; y: number }> = [];
-  for (const [tryNo, list] of byTry) {
-    const terminal = (r: string) => r === LADDER_PASSED || r === LADDER_GAVE_UP;
-    // Named rules by cases, then the folded rest, then the ends.
-    const rankOf = (r: string) => (terminal(r) ? 2 : r === LADDER_OTHER ? 1 : 0);
-    list.sort((a, b) => rankOf(a.rule_id) - rankOf(b.rule_id) || b.cases - a.cases);
-    let y = 40;
-    for (const n of list) {
-      placed.push({ ...n, x: (tryNo - 1) * LADDER_COL, y });
-      y += 64 + Math.min(40, Math.sqrt(n.cases) * 2);
-    }
-  }
-  return placed;
 }

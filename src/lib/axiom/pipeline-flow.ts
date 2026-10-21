@@ -127,19 +127,6 @@ export interface Variant {
   example_citation: string;
 }
 
-export interface LadderNode {
-  id: string;
-  rule_id: string;
-  try_no: number;
-  cases: number;
-}
-
-export interface LadderEdge {
-  from: string;
-  to: string;
-  weight: number;
-}
-
 export interface RuleTrajectory {
   rule_id: string;
   /** Try sets the rule was in. */
@@ -151,14 +138,40 @@ export interface RuleTrajectory {
   fixed: number;
   /** Rules that first showed up in the try right after this one, most first. */
   followed_by: Array<{ rule_id: string; count: number }>;
+  /** Cases that hit the rule and still passed on a later try. */
+  recovered: number;
+  /** persisted / (persisted + fixed): how often the next try fails it again. */
+  stick_rate: number | null;
 }
 
+/** How validator rules behave across the tries of the encode loop. */
 export interface IssueLadder {
-  nodes: LadderNode[];
-  edges: LadderEdge[];
-  max_try: number;
   rules: RuleTrajectory[];
+  /** The rules the encoder does not fix: most failures times stick rate. */
+  stubborn: RuleTrajectory[];
   cases: number;
+}
+
+/** One try number of the loop: how many tries reached it, passed, and what they cost. */
+export interface TryStep {
+  try_no: number;
+  label: string;
+  tries: number;
+  passed: number;
+  cost_usd: number;
+  /** Models that ran this try, most used first. */
+  models: string[];
+}
+
+/**
+ * The retry curve of the busiest loop (a judge station that sends cases back
+ * to a work station, as validate sends them back to generate): pass rate and
+ * cost by try number.
+ */
+export interface RetryCurve {
+  judge: string;
+  work: string;
+  steps: TryStep[];
 }
 
 export interface CoOccurrence {
@@ -173,6 +186,10 @@ export interface LoopingCitation {
   cases: number;
   last_at: string;
   rules: string[];
+  /** Failed visits over all its cases (tries that failed, setup failures, ...). */
+  failed_visits: number;
+  /** Recorded model cost over all its cases; null when no case recorded any. */
+  cost_usd: number | null;
 }
 
 export type AlertSeverity = "critical" | "warning" | "info";
@@ -207,6 +224,7 @@ export interface FlowModel {
   sinks: Array<{ id: SinkId; label: string; cases: number }>;
   variants: Variant[];
   ladder: IssueLadder;
+  retry: RetryCurve | null;
   cooccurrence: CoOccurrence[];
   looping: LoopingCitation[];
   alerts: FlowAlert[];
@@ -526,6 +544,7 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
   const ladder = issueLadder(ladderCases);
   const cooccurrence = coOccurrence(ladderCases);
   const looping = loopingCitations(windowCases);
+  const retry = retryCurve(windowCases, edges);
 
   const landed = windowCases.filter((c) => c.end === "exit:landed");
   const leads = landed.map((c) => caseEnd(c) - c.start);
@@ -550,6 +569,7 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
     sinks: (Object.keys(sinkCounts) as SinkId[]).filter((id) => sinkCounts[id] > 0).map((id) => ({ id, label: SINK_LABELS[id], cases: sinkCounts[id] })),
     variants,
     ladder,
+    retry,
     cooccurrence,
     looping,
     alerts: [],
@@ -672,101 +692,107 @@ function mineVariants(cases: Case[]): Variant[] {
     });
 }
 
-const LADDER_RULES = 9;
-const LADDER_TRIES = 5;
-export const LADDER_OTHER = "other";
-export const LADDER_PASSED = "passed";
-export const LADDER_GAVE_UP = "gave up";
+const STUBBORN_MIN = 10;
 
 /**
- * The issue ladder: for cases whose tries carry rule ids, which rules each
+ * Rules across tries: for cases whose tries carry rule ids, which rules each
  * try hit and what the next try hit instead. A rule that stays from one try
  * to the next was not fixed; a new one after a fix is the whack-a-mole loop.
  */
 export function issueLadder(cases: Case[]): IssueLadder {
   const usable = cases.filter((c) => c.tryRules.size > 0);
-  const ruleTotals = new Map<string, number>();
-  for (const c of usable) for (const set of c.tryRules.values()) for (const r of set) ruleTotals.set(r, (ruleTotals.get(r) ?? 0) + 1);
-  const top = new Set([...ruleTotals.entries()].sort((a, b) => b[1] - a[1]).slice(0, LADDER_RULES).map(([r]) => r));
-  const fold = (r: string) => (top.has(r) ? r : LADDER_OTHER);
-  const cap = (n: number) => Math.min(LADDER_TRIES, n);
-
-  const nodeCases = new Map<string, { rule_id: string; try_no: number; cases: Set<string> }>();
-  const edgeWeights = new Map<string, number>();
-  const node = (rule: string, tryNo: number, caseId: string) => {
-    const id = `${rule}@${tryNo}`;
-    const entry = nodeCases.get(id) ?? { rule_id: rule, try_no: tryNo, cases: new Set<string>() };
-    entry.cases.add(caseId);
-    nodeCases.set(id, entry);
-    return id;
-  };
-  const traj = new Map<string, { occurrences: number; cases: Set<string>; persisted: number; fixed: number; followed: Map<string, number> }>();
+  const traj = new Map<string, { occurrences: number; cases: Set<string>; persisted: number; fixed: number; followed: Map<string, number>; recovered: Set<string> }>();
   const trajOf = (r: string) => {
-    const t = traj.get(r) ?? { occurrences: 0, cases: new Set<string>(), persisted: 0, fixed: 0, followed: new Map<string, number>() };
+    const t = traj.get(r) ?? { occurrences: 0, cases: new Set<string>(), persisted: 0, fixed: 0, followed: new Map<string, number>(), recovered: new Set<string>() };
     traj.set(r, t);
     return t;
   };
-  let maxTry = 1;
-
   for (const c of usable) {
     const tries = [...c.tryRules.keys()].filter((n) => n > 0).sort((a, b) => a - b);
-    if (!tries.length) continue;
     for (let i = 0; i < tries.length; i++) {
-      const n = tries[i];
-      const rules = c.tryRules.get(n)!;
-      const folded = new Set([...rules].map(fold));
-      const ids = [...folded].map((r) => node(r, cap(n), c.id));
-      maxTry = Math.max(maxTry, cap(n));
+      const rules = c.tryRules.get(tries[i])!;
       for (const r of rules) {
         const t = trajOf(r);
         t.occurrences++;
         t.cases.add(c.id);
+        if (c.passedTry != null && c.passedTry > tries[i]) t.recovered.add(c.id);
       }
       const nextN = tries[i + 1];
-      if (nextN != null) {
-        const next = c.tryRules.get(nextN)!;
-        const nextFolded = new Set([...next].map(fold));
-        const nextIds = [...nextFolded].map((r) => node(r, cap(nextN), c.id));
-        for (const r of rules) {
-          const t = trajOf(r);
-          if (next.has(r)) t.persisted++;
-          else {
-            t.fixed++;
-            for (const q of next) if (!rules.has(q)) t.followed.set(q, (t.followed.get(q) ?? 0) + 1);
-          }
+      if (nextN == null) continue;
+      const next = c.tryRules.get(nextN)!;
+      for (const r of rules) {
+        const t = trajOf(r);
+        if (next.has(r)) t.persisted++;
+        else {
+          t.fixed++;
+          for (const q of next) if (!rules.has(q)) t.followed.set(q, (t.followed.get(q) ?? 0) + 1);
         }
-        if (cap(n) !== cap(nextN)) {
-          const w = 1 / (ids.length * nextIds.length);
-          for (const a of ids) for (const b of nextIds) edgeWeights.set(`${a}→${b}`, (edgeWeights.get(`${a}→${b}`) ?? 0) + w * ids.length);
-        }
-      } else {
-        // The last try with issues: the case passed on a later try, or gave up.
-        const passed = c.passedTry != null && c.passedTry > n;
-        const endId = passed ? node(LADDER_PASSED, cap(c.passedTry!), c.id) : node(LADDER_GAVE_UP, cap(n) + (cap(n) < LADDER_TRIES ? 1 : 0), c.id);
-        if (passed) maxTry = Math.max(maxTry, cap(c.passedTry!));
-        else maxTry = Math.max(maxTry, cap(n) + (cap(n) < LADDER_TRIES ? 1 : 0));
-        for (const a of ids) edgeWeights.set(`${a}→${endId}`, (edgeWeights.get(`${a}→${endId}`) ?? 0) + 1 / ids.length);
       }
     }
   }
+  const all: RuleTrajectory[] = [...traj.entries()].map(([rule_id, t]) => ({
+    rule_id,
+    occurrences: t.occurrences,
+    cases: t.cases.size,
+    persisted: t.persisted,
+    fixed: t.fixed,
+    followed_by: [...t.followed.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([r, count]) => ({ rule_id: r, count })),
+    recovered: t.recovered.size,
+    stick_rate: t.persisted + t.fixed ? t.persisted / (t.persisted + t.fixed) : null,
+  }));
+  const rules = [...all].sort((a, b) => b.occurrences - a.occurrences).slice(0, 25);
+  const stubborn = all
+    .filter((r) => r.occurrences >= STUBBORN_MIN && r.stick_rate != null)
+    .sort((a, b) => b.occurrences * b.stick_rate! - a.occurrences * a.stick_rate!)
+    .slice(0, 10);
+  return { rules, stubborn, cases: usable.length };
+}
 
-  const nodes: LadderNode[] = [...nodeCases.entries()].map(([id, n]) => ({ id, rule_id: n.rule_id, try_no: n.try_no, cases: n.cases.size }));
-  const edges: LadderEdge[] = [...edgeWeights.entries()].map(([key, weight]) => {
-    const [from, to] = key.split("→");
-    return { from, to, weight: Math.round(weight * 10) / 10 };
-  });
-  const rules: RuleTrajectory[] = [...traj.entries()]
-    .map(([rule_id, t]) => ({
-      rule_id,
-      occurrences: t.occurrences,
-      cases: t.cases.size,
-      persisted: t.persisted,
-      fixed: t.fixed,
-      followed_by: [...t.followed.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([r, count]) => ({ rule_id: r, count })),
-    }))
-    .sort((a, b) => b.occurrences - a.occurrences)
-    .slice(0, 25);
-  return { nodes, edges, max_try: maxTry, rules, cases: usable.length };
+const TRY_CAP = 6;
+
+/** Pass rate and cost by try number for the busiest loop in the flow. */
+export function retryCurve(cases: Case[], edges: FlowEdge[]): RetryCurve | null {
+  const loop = edges.filter((e) => e.loop && e.from !== e.to && !e.to.startsWith("exit:")).sort((a, b) => b.cases - a.cases)[0];
+  if (!loop) return null;
+  const judge = loop.from;
+  const work = loop.to;
+  const steps = new Map<number, { tries: number; passed: number; cost: number; models: Map<string, number> }>();
+  const stepOf = (n: number) => {
+    const k = Math.min(n, TRY_CAP);
+    const st = steps.get(k) ?? { tries: 0, passed: 0, cost: 0, models: new Map<string, number>() };
+    steps.set(k, st);
+    return st;
+  };
+  for (const c of cases) {
+    for (const v of c.visits) {
+      if (v.try_no == null || v.try_no < 1) continue;
+      if (v.station === judge && (v.outcome === "ok" || v.outcome === "fail")) {
+        const st = stepOf(v.try_no);
+        st.tries++;
+        if (v.outcome === "ok") st.passed++;
+      } else if (v.station === work && v.outcome === "ok") {
+        const st = stepOf(v.try_no);
+        st.cost += v.cost_usd ?? 0;
+        if (v.actor) st.models.set(v.actor, (st.models.get(v.actor) ?? 0) + 1);
+      }
+    }
+  }
+  if (!steps.size) return null;
+  return {
+    judge,
+    work,
+    steps: [...steps.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .filter(([, st]) => st.tries > 0)
+      .map(([n, st]) => ({
+        try_no: n,
+        label: n === TRY_CAP ? `${n}+` : String(n),
+        tries: st.tries,
+        passed: st.passed,
+        cost_usd: Math.round(st.cost * 100) / 100,
+        models: [...st.models.entries()].sort((a, b) => b[1] - a[1]).map(([m]) => m),
+      })),
+  };
 }
 
 function coOccurrence(cases: Case[]): CoOccurrence[] {
@@ -813,11 +839,21 @@ function loopingCitations(cases: Case[]): LoopingCitation[] {
     if (list.some((c) => c.visits.some((v) => v.station === "merge" && v.outcome === "ok"))) continue;
     const rules = new Map<string, number>();
     for (const c of list) for (const v of c.visits) if (v.outcome === "fail" && v.rule_id) rules.set(v.rule_id, (rules.get(v.rule_id) ?? 0) + 1);
+    let failedVisits = 0;
+    let cost: number | null = null;
+    for (const c of list) {
+      for (const v of c.visits) {
+        if (v.outcome === "fail") failedVisits++;
+        if (v.cost_usd != null) cost = (cost ?? 0) + v.cost_usd;
+      }
+    }
     out.push({
       citation,
       cases: list.length,
       last_at: new Date(Math.max(...list.map((c) => c.start))).toISOString(),
       rules: [...rules.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([r]) => r),
+      failed_visits: failedVisits,
+      cost_usd: cost == null ? null : Math.round(cost * 100) / 100,
     });
   }
   return out.sort((a, b) => b.cases - a.cases).slice(0, 15);
@@ -826,6 +862,10 @@ function loopingCitations(cases: Case[]): LoopingCitation[] {
 const HOUR_MS = 3_600_000;
 const DEADLINE_WINDOW_MS = 90 * DAY_MS;
 const SPIKE_DAYS = 7;
+/** A try number needs this many tries before its pass rate raises an alert. */
+const RETRY_MIN_TRIES = 30;
+/** Below this pass rate a later try is not worth its cost. */
+const RETRY_MIN_PASS = 0.05;
 
 /** Alerts from stations against their targets, workflows, deadlines and rule trends. */
 function flowAlerts(model: FlowModel, factory: Case[], options: FlowOptions): FlowAlert[] {
@@ -944,6 +984,24 @@ function flowAlerts(model: FlowModel, factory: Case[], options: FlowOptions): Fl
       }
     }
   }
+  // A late try that almost never passes: the loop spends without return.
+  const retry = model.retry;
+  if (retry) {
+    for (const st of retry.steps) {
+      if (st.try_no < 2 || st.tries < RETRY_MIN_TRIES) continue;
+      const rate = st.passed / st.tries;
+      if (rate >= RETRY_MIN_PASS) continue;
+      alerts.push({
+        id: `retry:${retry.judge}:${st.label}`,
+        rule: "retry_low_yield",
+        severity: "warning",
+        station: retry.judge,
+        title: `${stationLabel(retry.judge)} try ${st.label} passes ${pct(rate)} (${st.passed} of ${st.tries})`,
+        detail: `$${st.cost_usd.toFixed(2)} of model cost on try ${st.label} in ${model.window.days} days. Cap the loop before it, or change what the encoder gets.`,
+        href: `/ops/flow?view=discovery${scope}`,
+      });
+    }
+  }
   for (const l of model.looping.slice(0, 5)) {
     alerts.push({
       id: `looping:${l.citation}`,
@@ -1060,6 +1118,27 @@ export function agentBrief(model: FlowModel, siteUrl: string): string {
   lines.push("");
   lines.push(`Window: last ${model.window.days} days to ${model.window.to.slice(0, 16)}Z. ${model.totals.cases} cases, ${model.totals.landed} landed, ${model.totals.failed} failed, ${model.totals.cancelled} cancelled, ${model.totals.open} open. Lead time p50 ${formatDuration(model.totals.lead_p50_ms)}.`);
   lines.push("");
+  if (model.retry) {
+    lines.push(`## Is retrying worth it? (${stationLabel(model.retry.judge)} by try)`);
+    lines.push("| try | tries | passed | pass rate | model cost |");
+    lines.push("|---|---|---|---|---|");
+    for (const st of model.retry.steps) lines.push(`| ${st.label} | ${st.tries} | ${st.passed} | ${pct(st.tries ? st.passed / st.tries : null)} | $${st.cost_usd.toFixed(2)} |`);
+    lines.push("");
+  }
+  if (model.ladder.stubborn.length) {
+    lines.push("## Rules the encoder does not fix");
+    lines.push("Ranked by failures times the share of next tries that fail the same rule again. Fix these at the source (prompt, validator, example), not by another dispatch.");
+    lines.push("");
+    for (const r of model.ladder.stubborn.slice(0, 8)) {
+      lines.push(`- \`${r.rule_id}\`: ${r.occurrences} tries in ${r.cases} cases; the next try fails it again ${pct(r.stick_rate)}; ${r.recovered} cases recovered.`);
+    }
+    lines.push("");
+  }
+  if (model.looping.length) {
+    lines.push("## Do not re-dispatch without a change");
+    for (const l of model.looping.slice(0, 10)) lines.push(`- ${l.citation}: ${l.cases} runs, none merged, ${l.failed_visits} failures, ${l.cost_usd == null ? "cost not recorded" : `$${l.cost_usd.toFixed(2)} model cost`}; ${l.rules.join(", ") || "no rule"} (${link(`/ops/flow?citation=${encodeURIComponent(l.citation)}`, siteUrl)})`);
+    lines.push("");
+  }
   lines.push("## Alerts");
   if (!model.alerts.length) lines.push("- None.");
   for (const a of model.alerts.slice(0, 15)) lines.push(`- **${a.severity}** ${a.title}. ${a.detail}${a.href ? ` (${link(a.href, siteUrl)})` : ""}`);
@@ -1073,23 +1152,10 @@ export function agentBrief(model: FlowModel, siteUrl: string): string {
     lines.push(`| ${s.label} | ${s.cases} | ${yieldText} | ${s.wip} | ${formatDuration(s.p50_ms)} | ${formatDuration(s.p95_ms)} | ${top} |`);
   }
   lines.push("");
-  lines.push("## Validator rules across tries");
-  lines.push("A rule that persists was not fixed by the next try. \"Then\" lists rules that appeared after it was fixed.");
-  lines.push("");
-  for (const r of model.ladder.rules.slice(0, 10)) {
-    const next = r.persisted + r.fixed;
-    const then = r.followed_by.length ? `; then ${r.followed_by.map((f) => `${f.rule_id} (${f.count})`).join(", ")}` : "";
-    lines.push(`- \`${r.rule_id}\`: ${r.occurrences} tries in ${r.cases} cases; persisted ${next ? pct(r.persisted / next) : "–"}${then}.`);
-  }
   if (model.cooccurrence.length) {
     lines.push("");
     lines.push("## Failure modes that come together");
     for (const c of model.cooccurrence.slice(0, 6)) lines.push(`- \`${c.a}\` + \`${c.b}\`: ${c.count} tries, lift ${c.lift}.`);
-  }
-  if (model.looping.length) {
-    lines.push("");
-    lines.push("## Looping citations (do not re-dispatch without a change)");
-    for (const l of model.looping.slice(0, 10)) lines.push(`- ${l.citation}: ${l.cases} runs, none merged; ${l.rules.join(", ") || "no rule"} (${link(`/ops/flow?citation=${encodeURIComponent(l.citation)}`, siteUrl)})`);
   }
   lines.push("");
   lines.push("## Common paths");

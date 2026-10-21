@@ -70,14 +70,35 @@ describe("mineFlow", () => {
     expect(model.totals.landed).toBe(1);
   });
 
-  it("builds the issue ladder: what persisted, what replaced a fixed rule, what passed", () => {
+  it("finds the rules that come back on the next try, and the cases that recovered", () => {
     const tests = model.ladder.rules.find((r) => r.rule_id === "r:tests")!;
     expect(tests.occurrences).toBe(4);
     expect(tests.persisted).toBe(1);
     expect(tests.fixed).toBe(1);
+    expect(tests.stick_rate).toBe(0.5);
+    expect(tests.recovered).toBe(1);
     expect(tests.followed_by).toEqual([{ rule_id: "r:deferral", count: 1 }]);
-    expect(model.ladder.nodes.find((n) => n.id === "passed@2")?.cases).toBe(1);
-    expect(model.ladder.nodes.find((n) => n.rule_id === "gave up")?.cases).toBe(2);
+    // Under 10 failed tries: not ranked as stubborn yet.
+    expect(model.ladder.stubborn).toEqual([]);
+  });
+
+  it("measures the retry loop: pass rate and cost by try", () => {
+    expect(model.retry?.judge).toBe("validate");
+    expect(model.retry?.work).toBe("generate");
+    expect(model.retry?.steps.map((s) => [s.label, s.tries, s.passed, s.cost_usd])).toEqual([
+      ["1", 3, 0, 0.03],
+      ["2", 3, 1, 0.03],
+    ]);
+  });
+
+  it("puts the cost and failures on looping citations", () => {
+    const busy = mineFlow(
+      Array.from({ length: 4 }, (_, i) =>
+        attemptEvents(pipelineAttempt({ id: `L${i}`, citation: "us/loop", failed_step: "encode_apply", tries: [tryOf(1, false, "r:x")] }))
+      ).flat(),
+      { now: NOW, days: 30 }
+    );
+    expect(busy.looping).toEqual([expect.objectContaining({ citation: "us/loop", cases: 4, failed_visits: 4, cost_usd: 0.04, rules: ["r:x"] })]);
   });
 
   it("raises alerts from targets, workflows and deadlines, worst first", () => {
@@ -98,8 +119,10 @@ describe("mineFlow", () => {
     const brief = agentBrief(model, "https://axiom.org");
     expect(brief).toContain("# Encoding pipeline brief");
     expect(brief).toContain("Release activation is failing");
-    expect(brief).toContain("`r:tests`");
+    expect(brief).toContain("## Is retrying worth it? (Validate by try)");
+    expect(brief).toContain("| 2 | 3 | 1 | 33% | $0.03 |");
     expect(brief).toContain("| Validate |");
+    expect(brief.indexOf("Is retrying worth it")).toBeLessThan(brief.indexOf("## Alerts"));
   });
 });
 

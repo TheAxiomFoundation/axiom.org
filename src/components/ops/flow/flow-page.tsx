@@ -9,10 +9,11 @@ import {
   type FlowAlert,
   type FlowModel,
   type StationStats,
+  type TryStep,
 } from "@/lib/axiom/pipeline-flow";
 import type { EventsOrigin } from "@/lib/axiom/pipeline-events-data";
 import { stationStatus } from "./flow-layout";
-import { CaseCanvas, DocumentsCanvas, LadderCanvas, LanesCanvas, ProgramsCanvas, type DocumentTile, type ProgramTile } from "./level-canvases";
+import { CaseCanvas, DocumentsCanvas, LanesCanvas, ProgramsCanvas, type DocumentTile, type ProgramTile } from "./level-canvases";
 import { PipelineCanvas, StatusIcon } from "./pipeline-canvas";
 import styles from "./flow.module.css";
 
@@ -201,12 +202,7 @@ export function FlowPage({
             <LanesCanvas lanes={lanes} stationOrder={stationOrder} caseHref={Object.fromEntries(lanes.map((l) => [l.case_id, flowHref(params, { case: l.case_id })]))} />
           </div>
         ) : params.view === "discovery" ? (
-          <>
-            <div className={styles.floor}>
-              <LadderCanvas ladder={model.ladder} />
-            </div>
-            <Discovery model={model} params={params} />
-          </>
+          <Discovery model={model} params={params} />
         ) : params.view === "programs" ? (
           <div className={styles.floor}>{documents ? <DocumentsCanvas documents={documents} /> : <ProgramsCanvas programs={programs ?? []} />}</div>
         ) : (
@@ -471,54 +467,173 @@ function StationsTable({ model, params }: { model: FlowModel; params: FlowParams
   );
 }
 
+/** Below this pass rate a later try is not worth its cost (as the retry alert). */
+const LOW_PASS = 0.05;
+
+/** The first try number from which every later try passes under LOW_PASS. */
+export function retryVerdict(steps: TryStep[]): { from: TryStep; tries: number; passed: number; cost: number } | null {
+  for (let i = 1; i < steps.length; i++) {
+    const rest = steps.slice(i);
+    const tries = rest.reduce((s, x) => s + x.tries, 0);
+    const passed = rest.reduce((s, x) => s + x.passed, 0);
+    if (tries && passed / tries < LOW_PASS) {
+      return { from: steps[i], tries, passed, cost: rest.reduce((s, x) => s + x.cost_usd, 0) };
+    }
+  }
+  return null;
+}
+
 function Discovery({ model, params }: { model: FlowModel; params: FlowParams }) {
+  const retry = model.retry;
+  const verdict = retry ? retryVerdict(retry.steps) : null;
+  const totalPassed = retry ? retry.steps.reduce((s, x) => s + x.passed, 0) : 0;
+  const maxTries = retry ? Math.max(1, ...retry.steps.map((s) => s.tries)) : 1;
   const maxShare = Math.max(0.01, ...model.variants.map((v) => v.share));
+  const loopCost = model.looping.reduce((s, l) => s + (l.cost_usd ?? 0), 0);
+  const loopUnpriced = model.looping.filter((l) => l.cost_usd == null).length;
   return (
     <>
-      <section className={styles.section}>
-        <h2>Rules across tries</h2>
-        <p>
-          For each validator rule: how often the next try still hit it (persisted) or cleared it (fixed), and which rules showed up right after it was fixed. A high persist rate means the encoder
-          does not learn from that rule&apos;s message; a fix that is always followed by the same new rule is the whack-a-mole loop.
-        </p>
-        <div className={styles.tableWrap}>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>Rule</th>
-                <th className={styles.num}>Tries</th>
-                <th className={styles.num}>Cases</th>
-                <th className={styles.num}>Persisted</th>
-                <th className={styles.num}>Fixed</th>
-                <th>Then</th>
-              </tr>
-            </thead>
-            <tbody>
-              {model.ladder.rules.slice(0, 15).map((r) => {
-                const next = r.persisted + r.fixed;
-                return (
+      <p className={styles.lede} style={{ marginTop: 16 }}>
+        Patterns across runs and tries, for decisions the Line tab cannot show: whether another try is worth it, which rules the encoder does not fix, and which citations to stop
+        dispatching. The agent brief starts with the same three answers.
+      </p>
+      <div className={styles.cards}>
+        <section className={styles.card} aria-labelledby="retry-h">
+          <p className={styles.eyebrow}>1 · Is retrying worth it?</p>
+          <h2 id="retry-h">{retry ? `${stationLabel(retry.judge)} pass rate by try` : "No retry loop in this window"}</h2>
+          {retry ? (
+            <>
+              <p className={styles.answer}>
+                {verdict
+                  ? `From try ${verdict.from.label} on, ${verdict.passed} of ${verdict.tries} tries pass (${pct(verdict.passed / verdict.tries)}) for $${verdict.cost.toFixed(2)} of model cost. Cap the loop at ${verdict.from.try_no - 1} tries, or change what the encoder gets before try ${verdict.from.label}.`
+                  : `Every try still passes at least ${pct(LOW_PASS)} of the time; the loop earns its cost.`}
+              </p>
+              <ol className={styles.tryBars} aria-label="Tries and passes by try number">
+                {retry.steps.map((st) => {
+                  const rate = st.tries ? st.passed / st.tries : 0;
+                  const low = st.try_no > 1 && rate < LOW_PASS;
+                  return (
+                    <li key={st.label}>
+                      <span className={styles.tryLabel}>Try {st.label}</span>
+                      <span className={styles.tryTrack} title={`${st.tries} tries, ${st.passed} passed`}>
+                        <i style={{ width: `${(st.tries / maxTries) * 100}%` }} />
+                        <b data-low={low} style={{ width: `${(st.passed / maxTries) * 100}%` }} />
+                      </span>
+                      <span className={styles.tryNum}>
+                        {pct(rate)} <small>({st.passed}/{st.tries})</small>
+                        {low ? <em> below {pct(LOW_PASS)}</em> : null}
+                      </span>
+                      <span className={styles.tryNum}>${st.cost_usd.toFixed(2)}</span>
+                    </li>
+                  );
+                })}
+              </ol>
+              <p className={styles.note}>
+                Dark bar: tries that passed; light bar: tries that reached this number. {totalPassed} passes in all. Cost is the recorded model cost of {stationLabel(retry.work)} on that try
+                (runs before the cost ledger have none).
+              </p>
+            </>
+          ) : null}
+        </section>
+
+        <section className={styles.card} aria-labelledby="stubborn-h">
+          <p className={styles.eyebrow}>2 · Which rules does the encoder not fix?</p>
+          <h2 id="stubborn-h">Rules that come back on the next try</h2>
+          <p className={styles.answer}>
+            {model.ladder.stubborn[0]
+              ? `${model.ladder.stubborn[0].rule_id} fails ${model.ladder.stubborn[0].occurrences} tries, and the next try fails it again ${pct(model.ladder.stubborn[0].stick_rate)} of the time. Another try does not fix these; change the prompt, the example or the check.`
+              : "No rule with enough tries in this window."}
+          </p>
+          <div className={styles.tableWrap}>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th>Rule</th>
+                  <th className={styles.num}>Failed tries</th>
+                  <th>Next try fails it again</th>
+                  <th className={styles.num}>Cases recovered</th>
+                  <th>When fixed, next comes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {model.ladder.stubborn.map((r) => (
                   <tr key={r.rule_id}>
                     <td>
                       <code>{r.rule_id}</code>
                     </td>
-                    <td className={styles.num}>{r.occurrences.toLocaleString("en-US")}</td>
-                    <td className={styles.num}>{r.cases.toLocaleString("en-US")}</td>
-                    <td className={styles.num}>{next ? pct(r.persisted / next) : "–"}</td>
-                    <td className={styles.num}>{next ? pct(r.fixed / next) : "–"}</td>
+                    <td className={styles.num}>
+                      {r.occurrences.toLocaleString("en-US")} <small>in {r.cases}</small>
+                    </td>
                     <td>
-                      {r.followed_by.map((f) => (
+                      <span className={styles.stick}>
+                        <i style={{ width: `${(r.stick_rate ?? 0) * 100}%` }} />
+                      </span>{" "}
+                      {pct(r.stick_rate)}
+                    </td>
+                    <td className={styles.num}>
+                      {r.recovered} <small>of {r.cases}</small>
+                    </td>
+                    <td>
+                      {r.followed_by.slice(0, 2).map((f) => (
                         <code key={f.rule_id} style={{ display: "block" }}>
-                          {f.rule_id} ({f.count})
+                          → {f.rule_id} ({f.count})
                         </code>
                       ))}
                     </td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className={styles.card} aria-labelledby="looping-h">
+          <p className={styles.eyebrow}>3 · Which citations to stop dispatching?</p>
+          <h2 id="looping-h">Dispatched again and again, never merged</h2>
+          <p className={styles.answer}>
+            {model.looping.length
+              ? `${model.looping.length} citations ran ${model.looping.reduce((s, l) => s + l.cases, 0)} times in ${model.window.days} days with no merge, for $${loopCost.toFixed(2)} of recorded model cost${loopUnpriced ? ` (${loopUnpriced} of them ran before the cost ledger)` : ""}. Do not dispatch them again until something changes for their top rule.`
+              : "No citation looped in this window."}
+          </p>
+          {model.looping.length ? (
+            <div className={styles.tableWrap}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Citation</th>
+                    <th className={styles.num}>Runs</th>
+                    <th className={styles.num}>Failures</th>
+                    <th className={styles.num}>Cost</th>
+                    <th>Fails on</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {model.looping.map((l) => (
+                    <tr key={l.citation}>
+                      <td>
+                        <a href={flowHref(params, { citation: l.citation, view: "pipeline" })}>
+                          <code>{l.citation}</code>
+                        </a>
+                      </td>
+                      <td className={styles.num}>{l.cases}</td>
+                      <td className={styles.num}>{l.failed_visits}</td>
+                      <td className={styles.num}>{l.cost_usd == null ? "–" : `$${l.cost_usd.toFixed(2)}`}</td>
+                      <td>
+                        {l.rules.map((r) => (
+                          <code key={r} style={{ display: "block" }}>
+                            {r}
+                          </code>
+                        ))}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </section>
+      </div>
+
       {model.cooccurrence.length ? (
         <section className={styles.section}>
           <h2>Failure modes that come together</h2>
@@ -534,7 +649,7 @@ function Discovery({ model, params }: { model: FlowModel; params: FlowParams }) 
                 </tr>
               </thead>
               <tbody>
-                {model.cooccurrence.map((c) => (
+                {model.cooccurrence.slice(0, 8).map((c) => (
                   <tr key={`${c.a}|${c.b}`}>
                     <td>
                       <code>{c.a}</code>
@@ -597,44 +712,6 @@ function Discovery({ model, params }: { model: FlowModel; params: FlowParams }) 
           </table>
         </div>
       </section>
-      {model.looping.length ? (
-        <section className={styles.section}>
-          <h2>Looping citations</h2>
-          <p>Citations dispatched again and again in the window with no merge. Do not re-dispatch one without a change to the encoder, validator or source.</p>
-          <div className={styles.tableWrap}>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>Citation</th>
-                  <th className={styles.num}>Runs</th>
-                  <th>Fails on</th>
-                  <th>Last</th>
-                </tr>
-              </thead>
-              <tbody>
-                {model.looping.map((l) => (
-                  <tr key={l.citation}>
-                    <td>
-                      <a href={flowHref(params, { citation: l.citation, view: "pipeline" })}>
-                        <code>{l.citation}</code>
-                      </a>
-                    </td>
-                    <td className={styles.num}>{l.cases}</td>
-                    <td>
-                      {l.rules.map((r) => (
-                        <code key={r} style={{ display: "block" }}>
-                          {r}
-                        </code>
-                      ))}
-                    </td>
-                    <td>{l.last_at.slice(0, 10)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      ) : null}
     </>
   );
 }

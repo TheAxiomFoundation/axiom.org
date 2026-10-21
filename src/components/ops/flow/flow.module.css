@@ -811,7 +811,7 @@
   margin-right: 6px;
 }
 
-/* Lanes and ladder nodes */
+/* Lanes and run nodes */
 .pip {
   width: 30px;
   height: 30px;
@@ -879,31 +879,6 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--floor-ink-3);
-}
-
-.rule {
-  width: 210px;
-  padding: 8px 10px;
-  border-radius: 10px;
-  border: 1px solid var(--floor-line);
-  background: var(--floor-card);
-  font-size: 11px;
-  color: var(--floor-ink-2);
-}
-
-.rule code {
-  display: block;
-  font-size: 11px;
-  color: var(--floor-ink);
-  overflow-wrap: anywhere;
-}
-
-.rule[data-terminal="passed"] {
-  border-color: rgba(12, 163, 12, 0.7);
-}
-
-.rule[data-terminal="gave up"] {
-  border-color: rgba(208, 59, 59, 0.7);
 }
 
 .visit {
@@ -1001,6 +976,123 @@
   margin-top: 10px;
   font-size: 12px;
   color: var(--color-ink-muted);
+}
+
+/* Discovery: answer cards */
+.cards {
+  margin-top: 16px;
+  display: grid;
+  gap: 16px;
+}
+
+.card {
+  padding: 20px 22px;
+  border: 1px solid var(--color-rule);
+  border-radius: 14px;
+  background: var(--color-paper-elevated);
+}
+
+.card h2 {
+  margin-top: 4px;
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.answer {
+  margin-top: 8px;
+  max-width: 90ch;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--color-ink);
+}
+
+.tryBars {
+  margin-top: 16px;
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  padding: 0;
+}
+
+.tryBars li {
+  display: grid;
+  grid-template-columns: 64px minmax(120px, 1fr) 190px 80px;
+  gap: 12px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.tryLabel {
+  color: var(--color-ink-muted);
+}
+
+.tryTrack {
+  position: relative;
+  height: 18px;
+}
+
+.tryTrack i,
+.tryTrack b {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 0 4px 4px 0;
+}
+
+.tryTrack i {
+  background: rgba(245, 158, 11, 0.22);
+}
+
+.tryTrack b {
+  min-width: 2px;
+  background: var(--flow);
+}
+
+.tryTrack b[data-low="true"] {
+  background: var(--critical);
+}
+
+.tryNum {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.tryNum small {
+  color: var(--color-ink-muted);
+}
+
+.tryNum em {
+  display: block;
+  font-style: normal;
+  font-size: 11px;
+  color: var(--critical);
+}
+
+.stick {
+  display: inline-block;
+  width: 80px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-rule);
+  overflow: hidden;
+  vertical-align: middle;
+}
+
+.stick i {
+  display: block;
+  height: 100%;
+  background: var(--warning);
+}
+
+@media (max-width: 640px) {
+  .tryBars li {
+    grid-template-columns: 48px 1fr 110px;
+  }
+  .tryBars li > :last-child {
+    display: none;
+  }
 }
 
 .srOnly {
