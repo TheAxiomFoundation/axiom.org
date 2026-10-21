@@ -229,7 +229,7 @@ export interface FlowOptions {
   jurisdiction?: string | null;
   targets?: StationTarget[];
   workflows?: WorkflowSignal[];
-  /** Dated items to watch (waiver expiry, ...): alert within 60 days. */
+  /** Dated items to watch (waiver expiry, ...): alert within 90 days. */
   deadlines?: Array<{ label: string; at: string; href: string | null }>;
 }
 
@@ -246,6 +246,9 @@ interface Visit {
   duration_ms: number | null;
   /** Left ok under a waiver (tests on main). */
   waived: boolean;
+  actor: string | null;
+  cost_usd: number | null;
+  message: string | null;
 }
 
 interface Case {
@@ -306,7 +309,7 @@ function buildCases(events: PipelineEvent[]): Map<string, Case> {
         }
       }
       if (!visit) {
-        visit = { station: e.station, start: t, end: null, outcome: "open", try_no: e.try_no, rule_id: null, reason: null, ref_url: e.ref_url, duration_ms: null, waived: false };
+        visit = { station: e.station, start: t, end: null, outcome: "open", try_no: e.try_no, rule_id: null, reason: null, ref_url: e.ref_url, duration_ms: null, waived: false, actor: e.actor, cost_usd: null, message: null };
         visits.push(visit);
         open.set(e.station, visit);
         if (e.kind !== "enter" && TERMINAL.has(e.kind)) unentered.set(e.station, visit);
@@ -323,6 +326,9 @@ function buildCases(events: PipelineEvent[]): Map<string, Case> {
         visit.outcome = e.kind === "leave" ? "ok" : e.kind === "fail" ? "fail" : "cancel";
         visit.rule_id = e.rule_id;
         visit.waived = e.outcome === "waived";
+        visit.actor = e.actor ?? visit.actor;
+        visit.cost_usd = e.cost_usd != null ? Number(e.cost_usd) : null;
+        visit.message = e.message;
         visit.duration_ms = e.duration_ms ?? (e.attrs?.untimed ? null : t - visit.start);
         visit.ref_url = e.ref_url ?? visit.ref_url;
         open.delete(e.station);
@@ -818,7 +824,7 @@ function loopingCitations(cases: Case[]): LoopingCitation[] {
 }
 
 const HOUR_MS = 3_600_000;
-const DEADLINE_WINDOW_MS = 60 * DAY_MS;
+const DEADLINE_WINDOW_MS = 90 * DAY_MS;
 const SPIKE_DAYS = 7;
 
 /** Alerts from stations against their targets, workflows, deadlines and rule trends. */
@@ -972,7 +978,41 @@ export interface CitationLane {
   start: string;
   source: string;
   end: string;
-  visits: Array<{ station: string; start: string; end: string | null; outcome: Visit["outcome"]; rule_id: string | null; try_no: number | null }>;
+  visits: LaneVisit[];
+}
+
+export interface LaneVisit {
+  station: string;
+  start: string;
+  end: string | null;
+  outcome: Visit["outcome"];
+  rule_id: string | null;
+  try_no: number | null;
+  duration_ms: number | null;
+  actor: string | null;
+  cost_usd: number | null;
+  message: string | null;
+  reason: string | null;
+  ref_url: string | null;
+  waived: boolean;
+}
+
+function laneVisit(v: Visit): LaneVisit {
+  return {
+    station: v.station,
+    start: new Date(v.start).toISOString(),
+    end: v.end != null ? new Date(v.end).toISOString() : null,
+    outcome: v.outcome,
+    rule_id: v.rule_id,
+    try_no: v.try_no,
+    duration_ms: v.duration_ms,
+    actor: v.actor,
+    cost_usd: v.cost_usd,
+    message: v.message,
+    reason: v.reason,
+    ref_url: v.ref_url,
+    waived: v.waived,
+  };
 }
 
 export function citationLanes(events: PipelineEvent[], citation: string): CitationLane[] {
@@ -984,15 +1024,32 @@ export function citationLanes(events: PipelineEvent[], citation: string): Citati
       start: new Date(c.start).toISOString(),
       source: c.source,
       end: c.end === "exit:landed" ? "landed" : c.end ? `${SINK_LABELS[c.end].toLowerCase()} at ${stationLabel(c.failedAt!)}` : "open",
-      visits: c.visits.map((v) => ({
-        station: v.station,
-        start: new Date(v.start).toISOString(),
-        end: v.end != null ? new Date(v.end).toISOString() : null,
-        outcome: v.outcome,
-        rule_id: v.rule_id,
-        try_no: v.try_no,
-      })),
+      visits: c.visits.map(laneVisit),
     }));
+}
+
+/** One case in full: its visits, every issue by try, and its pages. */
+export interface CaseDetail extends CitationLane {
+  citation: string;
+  jurisdiction: string | null;
+  issues: Array<{ try_no: number | null; rule_id: string | null; message: string | null; source: string; final: boolean }>;
+  encoder_version: string | null;
+}
+
+export function caseDetail(events: PipelineEvent[], caseId: string): CaseDetail | null {
+  const own = events.filter((e) => e.case_id === caseId);
+  const c = buildCases(own).get(caseId);
+  if (!c) return null;
+  const lane = citationLanes(own, c.citation)[0];
+  return {
+    ...lane,
+    citation: c.citation,
+    jurisdiction: c.jurisdiction,
+    encoder_version: own.find((e) => e.encoder_version)?.encoder_version ?? null,
+    issues: own
+      .filter((e) => e.kind === "issue")
+      .map((e) => ({ try_no: e.try_no, rule_id: e.rule_id, message: e.message, source: e.source, final: Boolean(e.attrs?.final) })),
+  };
 }
 
 /** Markdown brief of systemic problems, for an agent to read before it dispatches. */

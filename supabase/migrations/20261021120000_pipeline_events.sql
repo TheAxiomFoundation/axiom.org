@@ -9,7 +9,8 @@
 -- scripts/backfill-pipeline-events.mjs rebuilds the rows derived from
 -- pipeline_attempts (source = 'pipeline_attempts') and loads issues from
 -- archived failure bundles and local A/B runs ('failure_bundle',
--- 'local_ab'). Ids are deterministic, so a rebuild upserts. Live writers
+-- 'local_ab') and the RuleSpec repos' validation waivers with their expiry
+-- ('waiver_ledger'). Ids are deterministic, so a rebuild upserts. Live writers
 -- (the encoder, the corpus release workflows) add their own sources later.
 --
 -- The stations, edges, counts, rates and colours on /ops/flow are all
@@ -43,7 +44,7 @@ create table if not exists encodings.pipeline_events (
   actor           text,
   cost_usd        numeric,
   encoder_version text,
-  -- pipeline_attempts | failure_bundle | local_ab | encoder
+  -- pipeline_attempts | failure_bundle | local_ab | encoder | waiver_ledger
   source          text not null,
   -- The GitHub run, PR, check job or report the event comes from.
   ref_url         text,

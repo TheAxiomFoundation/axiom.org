@@ -151,14 +151,14 @@ Each alert has a severity, a station, a one-line reason and links:
 | `wip_over_target` | open cases at a station exceed the ceiling |
 | `case_over_sla` | a case sits at a station longer than the station SLA |
 | `workflow_red` | a watched workflow (release activation, publish, signer, collector) is failing |
-| `deadline_near` | a dated item is within 60 days (waiver expiry, bundle retention) |
+| `deadline_near` | a dated item is within 90 days (waiver expiry, bundle retention) |
 | `rule_spike` | a validator rule's share of failures in the last 7 days is 2× its share before |
 | `looping_citation` | a citation has ≥ 4 cases in the window and none merged |
 
 Deadlines come from data where it exists: the oldest failure-bundle expiry
 (90 days after the run) from `pipeline_events` with `source=failure_bundle`,
 and waiver expiry from the RuleSpec repos' `known-validation-gaps.yaml`
-(read by the bundle collector). Waivers are not yet read by this prototype.
+(the backfill writes one `waiver_ledger` event per active waiver).
 
 ## Telemetry: add
 

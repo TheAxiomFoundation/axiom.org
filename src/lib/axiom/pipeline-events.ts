@@ -16,7 +16,7 @@ import { attemptSource, mainMergedAt, type PipelineAttempt } from "./encoding-pi
 
 export type EventKind = "enter" | "leave" | "fail" | "cancel" | "wait" | "issue";
 
-export type EventSource = "pipeline_attempts" | "failure_bundle" | "local_ab" | "encoder";
+export type EventSource = "pipeline_attempts" | "failure_bundle" | "local_ab" | "encoder" | "waiver_ledger";
 
 /** One row of encodings.pipeline_events. */
 export interface PipelineEvent {

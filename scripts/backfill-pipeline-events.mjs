@@ -25,10 +25,15 @@
  *
  * Options:
  *   --attempts F   read pipeline_attempts from a collector dry run instead of the table.
+ *   --waivers      read every RuleSpec repo's known-validation-gaps.yaml (the
+ *                  repos the attempts' PRs name) and write one `wait` event per
+ *                  waived module, with its expiry, under source waiver_ledger.
+ *                  /ops/flow raises a deadline alert from them.
  */
 
 import { readFileSync, statSync, writeFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
+import yaml from "js-yaml";
 import { attemptEvents, caseIndex, issueEvents } from "../src/lib/axiom/pipeline-events.ts";
 
 const args = process.argv.slice(2);
@@ -102,6 +107,55 @@ if (issuesFile) {
   events.push(...issues);
 }
 
+/** One event per waived module: its expiry, owner and tracking issue. */
+async function waiverEvents(repos, readAt) {
+  const events = [];
+  for (const repo of repos) {
+    const res = await fetch(`https://raw.githubusercontent.com/TheAxiomFoundation/${repo}/main/known-validation-gaps.yaml`, {
+      headers: { "User-Agent": "axiom-pipeline-events" },
+    });
+    if (res.status === 404) continue;
+    if (!res.ok) throw new Error(`read ${repo} known-validation-gaps.yaml: HTTP ${res.status}`);
+    const doc = yaml.load(await res.text()) ?? {};
+    for (const [ledger, entries] of Object.entries(doc)) {
+      if (!entries || typeof entries !== "object") continue;
+      for (const [path, entry] of Object.entries(entries)) {
+        const active = entry?.active;
+        if (!active?.expires) continue;
+        const id = `waiver:${repo}/${path}`;
+        events.push({
+          id: `${id}/tests/wait/0`,
+          case_id: id,
+          citation: path.replace(/\.ya?ml$/, ""),
+          jurisdiction: repo.replace(/^rulespec-/, ""),
+          station: "tests",
+          kind: "wait",
+          at: readAt,
+          duration_ms: null,
+          outcome: "waived",
+          try_no: null,
+          rule_id: `waiver:${ledger}`,
+          message: null,
+          actor: active.owner ?? null,
+          cost_usd: null,
+          encoder_version: null,
+          source: "waiver_ledger",
+          ref_url: active.issue ?? null,
+          attrs: { expires_at: String(active.expires), repo, ledger },
+        });
+      }
+    }
+  }
+  return events;
+}
+
+if (has("--waivers")) {
+  const repos = [...new Set(attempts.map((a) => a.pr_repo).filter(Boolean))].sort();
+  const waivers = await waiverEvents(repos, new Date().toISOString());
+  console.error(`waivers: ${waivers.length} active entries in ${repos.length} repos`);
+  events.push(...waivers);
+}
+
 const out = opt("--out");
 if (out) {
   writeFileSync(out, JSON.stringify(events));
@@ -118,10 +172,11 @@ if (writing) {
   }
   // Events pipeline_attempts no longer implies (a case moved on) are stale:
   // drop this source's rows the pass did not write.
+  const rebuilt = has("--waivers") ? ["pipeline_attempts", "waiver_ledger"] : ["pipeline_attempts"];
   const { error } = await db
     .from("pipeline_events")
     .delete()
-    .eq("source", "pipeline_attempts")
+    .in("source", rebuilt)
     .lt("collected_at", collectedAt);
   if (error) throw new Error(`pipeline_events prune: ${error.message}`);
   console.error(`upserted ${events.length} events`);
