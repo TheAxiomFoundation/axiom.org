@@ -122,7 +122,7 @@ export async function loadFlow(options: { days: number; jurisdiction: string | n
  */
 export async function loadAccepted(events: PipelineEvent[], now = Date.now()): Promise<AcceptedSeries & { modules: ModuleLedger }> {
   const ledger = moduleLedger(events);
-  const untagged = ledger.accepted.filter((m) => m.programs.includes(UNTAGGED));
+  const untagged = [...ledger.accepted, ...ledger.not_measured].filter((m) => m.programs.includes(UNTAGGED));
   if (untagged.length) {
     const members = await getBundleIndex([...new Set(untagged.map((m) => m.citation))]).catch(() => []);
     if (members.length) {

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { FlowPage, flowHref, type FlowParams, type FlowView } from "@/components/ops/flow/flow-page";
 import type { DocumentTile, ProgramTile } from "@/components/ops/flow/level-canvases";
 import { caseDetail, citationLanes } from "@/lib/axiom/pipeline-flow";
+import { acceptedSeries, moduleLedger } from "@/lib/axiom/accepted-modules";
 import { loadFlow, parsePopulation, parseWindow } from "@/lib/axiom/pipeline-flow-data";
 import { getBundleSummaries, getProgramBundle, type BundleSummary } from "@/lib/axiom/program-bundles-data";
 import { distinctByDocument } from "@/lib/axiom/program-bundles";
@@ -55,6 +56,8 @@ export default async function OpsFlowPage({ searchParams }: { searchParams?: Pro
   }
   const jurisdictions = [...roots.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([j]) => j);
 
+  // The headline needs no programs, so no bundle lookup: the API has those.
+  const accepted = acceptedSeries(moduleLedger(data.events));
   const detail = params.case ? caseDetail(data.events, params.case) : null;
   const lanes = !detail && params.citation ? citationLanes(data.events, params.citation) : null;
 
@@ -80,6 +83,7 @@ export default async function OpsFlowPage({ searchParams }: { searchParams?: Pro
   return (
     <FlowPage
       model={data.model}
+      accepted={accepted}
       origin={data.origin}
       targetsSeeded={data.targetsSeeded}
       error={data.error}

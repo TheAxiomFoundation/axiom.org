@@ -16,6 +16,7 @@ import {
   type RuleTrend,
   type StationStats,
 } from "@/lib/axiom/pipeline-flow";
+import type { AcceptedSeries } from "@/lib/axiom/accepted-modules";
 import type { EventsOrigin } from "@/lib/axiom/pipeline-events-data";
 import { stationStatus } from "./flow-layout";
 import { CaseCanvas, DocumentsCanvas, LanesCanvas, ProgramsCanvas, type DocumentTile, type ProgramTile } from "./level-canvases";
@@ -43,6 +44,7 @@ const ORIGIN_NOTE: Record<EventsOrigin, string> = {
 
 export function FlowPage({
   model,
+  accepted = null,
   origin,
   targetsSeeded,
   error,
@@ -55,6 +57,8 @@ export function FlowPage({
   bundleTitle,
 }: {
   model: FlowModel;
+  /** The strict-accepted module count, the whole history (see accepted-modules.ts). */
+  accepted?: AcceptedSeries | null;
   origin: EventsOrigin;
   targetsSeeded: boolean;
   error: string | null;
@@ -130,6 +134,7 @@ export function FlowPage({
           </div>
         </header>
 
+        {accepted ? <AcceptedHeadline series={accepted} /> : null}
         <Kpis model={model} />
         <Alerts alerts={model.alerts} />
 
@@ -226,6 +231,54 @@ export function FlowPage({
         </p>
       </div>
     </div>
+  );
+}
+
+/**
+ * The roadmap's number: modules accepted, all time and in the last four
+ * weeks, with the modules not measured beside it (merged, no compile or test
+ * result: unknown, not failed) and the rework merges.
+ */
+function AcceptedHeadline({ series }: { series: AcceptedSeries }) {
+  const { total, rework, not_measured, not_measured_by_repo, not_accepted } = series.totals;
+  const recent = series.weeks.slice(-4);
+  const recentPipeline = recent.reduce((n, w) => n + w.total.pipeline, 0);
+  const recentHand = recent.reduce((n, w) => n + w.total.hand, 0);
+  const n = (v: number) => v.toLocaleString("en-US");
+  const repos = Object.entries(not_measured_by_repo)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([repo, count]) => `${repo.replace(/^rulespec-/, "")} ${count}`)
+    .join(", ");
+  return (
+    <dl className={styles.kpis} aria-label="Accepted modules">
+      <div className={styles.kpi}>
+        <dt>How many modules are accepted?</dt>
+        <dd>{n(total.pipeline + total.hand)}</dd>
+        <small>
+          {n(total.pipeline)} pipeline ({n(total.dispatch)} dispatch, {n(total.dep)} dep) · {n(total.hand)} by hand
+        </small>
+      </div>
+      <div className={styles.kpi}>
+        <dt>In the last four weeks?</dt>
+        <dd>{n(recentPipeline + recentHand)}</dd>
+        <small>
+          {n(recentPipeline)} pipeline · {n(recentHand)} by hand
+        </small>
+      </div>
+      <div className={styles.kpi}>
+        <dt>Not measured</dt>
+        <dd>{n(not_measured.pipeline + not_measured.hand)}</dd>
+        <small>merged, no compile or test result{repos ? ` (${repos}…)` : ""}</small>
+      </div>
+      <div className={styles.kpi}>
+        <dt>Rework / not accepted</dt>
+        <dd>
+          {n(rework.pipeline + rework.hand)} <small style={{ display: "inline" }}>/ {n(not_accepted.pipeline + not_accepted.hand)}</small>
+        </dd>
+        <small>later merges of accepted modules / merged, failing or waived</small>
+      </div>
+    </dl>
   );
 }
 

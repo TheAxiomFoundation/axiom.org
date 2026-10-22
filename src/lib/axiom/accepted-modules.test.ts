@@ -56,6 +56,7 @@ describe("moduleLedger", () => {
     const events = tagPrograms(attemptEvents(mergedAttempt(accepted)), index);
     expect(moduleLedger(events).accepted).toEqual([
       {
+        status: "accepted",
         key: "rulespec-us:us/statutes/7/2017/a.yaml",
         repo: "rulespec-us",
         path: "us/statutes/7/2017/a.yaml",
@@ -85,6 +86,8 @@ describe("moduleLedger", () => {
     expect(ledger.accepted).toEqual([]);
     expect(ledger.not_accepted.map((m) => m.case_id).sort()).toEqual(["compile", "tests", "waived"]);
     expect(ledger.not_measured.map((m) => m.case_id).sort()).toEqual(["unindexed", "unswept"]);
+    expect(ledger.not_measured.every((m) => m.status === "not_measured" && m.week === "2026-09-21")).toBe(true);
+    expect(ledger.not_accepted.every((m) => m.status === "not_accepted")).toBe(true);
   });
 
   it("counts a module once at its first accepting merge, later merges as rework, with sub-routes", () => {
@@ -110,7 +113,7 @@ describe("moduleLedger", () => {
       ["us/policies/usitc/ch01.yaml", "pr:rulespec-us#900:us/statutes/7/2017/a.yaml", "hand", "hand", UNTAGGED],
       ["us/statutes/42/402/q.yaml", "dep:5e2a7c10", "pipeline", "dep", UNTAGGED],
     ]);
-    expect(ledger.rework.map((r) => [r.case_id, r.week])).toEqual([["late", "2026-10-05"]]);
+    expect(ledger.rework.map((r) => [r.status, r.case_id, r.week])).toEqual([["rework", "late", "2026-10-05"]]);
     expect(ledger.not_measured).toEqual([]);
   });
 });
@@ -137,9 +140,16 @@ describe("acceptedSeries", () => {
     expect(series.totals.total).toEqual({ pipeline: 1, dispatch: 1, dep: 0, hand: 1 });
     expect(series.totals.not_measured).toEqual({ pipeline: 1, dispatch: 1, dep: 0, hand: 0 });
     expect(series.totals.not_measured_by_repo).toEqual({ "rulespec-dk": 1 });
+    expect(series.totals.not_measured_programs).toEqual({
+      snap: { pipeline: 1, dispatch: 1, dep: 0, hand: 0 },
+      tanf: { pipeline: 1, dispatch: 1, dep: 0, hand: 0 },
+    });
+    expect(series.weeks[0].not_measured).toEqual({ pipeline: 1, dispatch: 1, dep: 0, hand: 0 });
+    expect(series.weeks[0].not_measured_programs.snap).toEqual({ pipeline: 1, dispatch: 1, dep: 0, hand: 0 });
     expect(series.programs).toEqual(["snap", "tanf", OUT_OF_PLAN]);
     const brief = acceptedBrief(series);
-    expect(brief).toContain("| out_of_plan | 0 | 0 | 1 |");
+    expect(brief).toContain("| out_of_plan | 0 | 0 | 1 | 0 |");
+    expect(brief).toContain("| snap | 1 | 0 | 0 | 1 |");
     expect(brief).toContain("Not measured (merged, no compile or test result): 1 (rulespec-dk 1).");
     expect(brief).toContain("Rework (later merges of accepted modules): 1.");
     expect(acceptedSeries({ accepted: [], rework: [], not_measured: [], not_accepted: [] }).weeks).toEqual([]);

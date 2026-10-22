@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { acceptedSeries, moduleLedger } from "@/lib/axiom/accepted-modules";
 import { attemptEvents } from "@/lib/axiom/pipeline-events";
 import { caseDetail, citationLanes, mineFlow } from "@/lib/axiom/pipeline-flow";
 import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
@@ -72,6 +73,18 @@ describe("FlowPage", () => {
     expect(screen.getByRole("heading", { name: "How much can these numbers see?" })).toBeTruthy();
     expect(screen.getByText("How many runs went in?")).toBeTruthy();
     expect(screen.getByText(/Derived from encodings.pipeline_attempts/)).toBeTruthy();
+  });
+
+  it("shows the accepted headline with the modules not measured beside it", () => {
+    const rows = [
+      mergedAttempt({ id: "a", index_status: "indexed", synced_at: "2026-09-21T10:00:00Z", compile_status: "ok", compile_checked_at: "2026-09-22T03:00:00Z", tests_status: "pass" }),
+      mergedAttempt({ id: "dk", pr_repo: "rulespec-dk", module_paths: ["dk/x.yaml"], index_status: "missing" }),
+    ];
+    page({ accepted: acceptedSeries(moduleLedger(rows.flatMap(attemptEvents)), NOW) });
+    const headline = screen.getByLabelText("Accepted modules");
+    expect(headline.textContent).toContain("How many modules are accepted?1");
+    expect(headline.textContent).toContain("Not measured1");
+    expect(headline.textContent).toContain("dk 1");
   });
 
   it("opens a station's detail beside the diagram", () => {

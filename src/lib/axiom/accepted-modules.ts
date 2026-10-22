@@ -26,7 +26,7 @@ export const OUT_OF_PLAN = "out_of_plan";
 export const UNTAGGED = "untagged";
 
 export const ACCEPTED_DEFINITION =
-  "A RuleSpec module file counts as accepted when it is merged into its repo's default branch, compiles in axiom-api's sweep (compile_status = ok), and passes its jurisdiction's tests on main with no active validation waiver (tests_status = pass). Each file counts once, in the ISO week (Monday, UTC) of the first merge that made it accepted; a later merge of an accepted file counts as rework, not as a new module. A merged file with no compile or test result (its repo is not in the rulespec_files index, or the sweep has not reached it) is not measured: it is neither accepted nor failed, and is counted beside the headline. Route: pipeline = the encoder wrote it, split into dispatch (a targeted run) and dep (a module written inside another citation's run); hand = a PR merged it with no dispatch. A module in several programs' bundles counts in each program, and once in the total.";
+  "A RuleSpec module file counts as accepted when it is merged into its repo's default branch, compiles in axiom-api's sweep (compile_status = ok), and passes its jurisdiction's tests on main with no active validation waiver (tests_status = pass). Each file counts once, in the ISO week (Monday, UTC) of the first merge that made it accepted; a later merge of an accepted file counts as rework, not as a new module. A merged file with no compile or test result (its repo is not in the rulespec_files index, or the sweep has not reached it) is not measured: it is neither accepted nor failed, and is counted beside the headline, in the week of its latest merge, with the same route and program split. Route: pipeline = the encoder wrote it, split into dispatch (a targeted run) and dep (a module written inside another citation's run); hand = a PR merged it with no dispatch. A module in several programs' bundles counts in each program, and once in the total.";
 
 // ---- Programs -------------------------------------------------------------
 
@@ -87,6 +87,9 @@ export function tagPrograms(events: PipelineEvent[], index: Map<string, Set<stri
 
 // ---- The module ledger ----------------------------------------------------
 
+/** Where a merged module stands: the headline, a later merge of it, or never accepted (by the checks on its latest merge). */
+export type ModuleStatus = "accepted" | "rework" | "not_measured" | "not_accepted";
+
 /** One module file's merge, as one case saw it. */
 interface MergeFacts {
   key: string;
@@ -102,6 +105,7 @@ interface MergeFacts {
 }
 
 export interface AcceptedModule {
+  status: "accepted";
   /** `<repo>:<path>` */
   key: string;
   repo: string;
@@ -119,6 +123,7 @@ export interface AcceptedModule {
 
 /** A later merge of a module that was already accepted: rework, which uses capacity but adds no module. */
 export interface ReworkMerge {
+  status: "rework";
   key: string;
   case_id: string;
   route: AcceptRoute;
@@ -130,14 +135,18 @@ export interface ReworkMerge {
 
 /** A merged module never accepted, by the checks on its latest merge. */
 export interface OpenModule {
+  status: "not_measured" | "not_accepted";
   key: string;
   repo: string;
   path: string;
+  citation: string;
   case_id: string;
   route: AcceptRoute;
   sub_route: SubRoute;
   programs: string[];
   merged_at: string;
+  /** Monday (UTC) of the latest merge's ISO week. */
+  week: string;
 }
 
 export interface ModuleLedger {
@@ -239,6 +248,7 @@ export function moduleLedger(events: PipelineEvent[]): ModuleLedger {
     const first = merges.find((m) => m.verdict === "accepted");
     if (first) {
       ledger.accepted.push({
+        status: "accepted",
         key: first.key,
         repo: first.repo,
         path: first.path,
@@ -252,13 +262,25 @@ export function moduleLedger(events: PipelineEvent[]): ModuleLedger {
       });
       for (const m of merges) {
         if (m.merged_at <= first.merged_at) continue;
-        ledger.rework.push({ key: m.key, case_id: m.case_id, route: routeOf(m.sub_route), sub_route: m.sub_route, programs: m.programs, merged_at: m.merged_at, week: isoWeek(m.merged_at) });
+        ledger.rework.push({ status: "rework", key: m.key, case_id: m.case_id, route: routeOf(m.sub_route), sub_route: m.sub_route, programs: m.programs, merged_at: m.merged_at, week: isoWeek(m.merged_at) });
       }
       continue;
     }
     const last = merges[merges.length - 1];
-    const open: OpenModule = { key: last.key, repo: last.repo, path: last.path, case_id: last.case_id, route: routeOf(last.sub_route), sub_route: last.sub_route, programs: last.programs, merged_at: last.merged_at };
-    (last.verdict === "not_measured" ? ledger.not_measured : ledger.not_accepted).push(open);
+    const status = last.verdict === "not_measured" ? "not_measured" : "not_accepted";
+    ledger[status].push({
+      status,
+      key: last.key,
+      repo: last.repo,
+      path: last.path,
+      citation: last.citation,
+      case_id: last.case_id,
+      route: routeOf(last.sub_route),
+      sub_route: last.sub_route,
+      programs: last.programs,
+      merged_at: last.merged_at,
+      week: isoWeek(last.merged_at),
+    });
   }
   const byTime = <T extends { key: string }>(at: (x: T) => string) => (a: T, b: T) => at(a).localeCompare(at(b)) || a.key.localeCompare(b.key);
   ledger.accepted.sort(byTime((m) => m.accepted_at));
@@ -286,11 +308,14 @@ export interface AcceptedWeek {
   programs: Record<string, RouteCounts>;
   /** Merges of modules already accepted. */
   rework: RouteCounts;
+  /** Shown beside the headline: modules whose latest merge falls in the week and that have no compile or test result. */
+  not_measured: RouteCounts;
+  not_measured_programs: Record<string, RouteCounts>;
 }
 
 export interface AcceptedSeries {
   definition: string;
-  /** Every week from the first accepted module to `now`, empty weeks included. */
+  /** Every week from the first accepted or not-measured module to `now`, empty weeks included. */
   weeks: AcceptedWeek[];
   totals: {
     total: RouteCounts;
@@ -298,14 +323,16 @@ export interface AcceptedSeries {
     rework: RouteCounts;
     /** Shown beside the headline: merged modules with no compile or test result yet, by repo too. */
     not_measured: RouteCounts;
+    not_measured_programs: Record<string, RouteCounts>;
     not_measured_by_repo: Record<string, number>;
     not_accepted: RouteCounts;
   };
-  /** Programs seen among accepted modules, plan programs first, then out_of_plan and untagged. */
+  /** Programs seen among accepted and not-measured modules, plan programs first, then out_of_plan and untagged. */
   programs: string[];
 }
 
 const zero = (): RouteCounts => ({ pipeline: 0, dispatch: 0, dep: 0, hand: 0 });
+const emptyWeek = (week: string): AcceptedWeek => ({ week, total: zero(), programs: {}, rework: zero(), not_measured: zero(), not_measured_programs: {} });
 
 function add(counts: RouteCounts, subRoute: SubRoute): void {
   counts[subRoute]++;
@@ -318,7 +345,7 @@ export function acceptedSeries(ledger: ModuleLedger, now: number = Date.now()): 
   const week = (w: string) => {
     let entry = byWeek.get(w);
     if (!entry) {
-      entry = { week: w, total: zero(), programs: {}, rework: zero() };
+      entry = emptyWeek(w);
       byWeek.set(w, entry);
     }
     return entry;
@@ -328,6 +355,7 @@ export function acceptedSeries(ledger: ModuleLedger, now: number = Date.now()): 
     programs: {},
     rework: zero(),
     not_measured: zero(),
+    not_measured_programs: {},
     not_measured_by_repo: {},
     not_accepted: zero(),
   };
@@ -347,7 +375,14 @@ export function acceptedSeries(ledger: ModuleLedger, now: number = Date.now()): 
     add(totals.rework, r.sub_route);
   }
   for (const m of ledger.not_measured) {
+    const w = week(m.week);
+    add(w.not_measured, m.sub_route);
     add(totals.not_measured, m.sub_route);
+    for (const p of m.programs) {
+      seen.add(p);
+      add((w.not_measured_programs[p] ??= zero()), m.sub_route);
+      add((totals.not_measured_programs[p] ??= zero()), m.sub_route);
+    }
     totals.not_measured_by_repo[m.repo] = (totals.not_measured_by_repo[m.repo] ?? 0) + 1;
   }
   for (const m of ledger.not_accepted) add(totals.not_accepted, m.sub_route);
@@ -357,7 +392,7 @@ export function acceptedSeries(ledger: ModuleLedger, now: number = Date.now()): 
   if (starts.length) {
     const last = isoWeek(new Date(now).toISOString());
     for (let w = starts[0]; w <= last; ) {
-      weeks.push(byWeek.get(w) ?? { week: w, total: zero(), programs: {}, rework: zero() });
+      weeks.push(byWeek.get(w) ?? emptyWeek(w));
       const d = new Date(`${w}T00:00:00Z`);
       d.setUTCDate(d.getUTCDate() + 7);
       w = d.toISOString().slice(0, 10);
@@ -382,9 +417,13 @@ export function acceptedBrief(series: AcceptedSeries): string {
     `Not measured (merged, no compile or test result): ${not_measured.pipeline + not_measured.hand}${byRepo ? ` (${byRepo})` : ""}.`,
     `Rework (later merges of accepted modules): ${rework.pipeline + rework.hand}.`,
     "",
-    "| program | dispatch | dep | hand |",
-    "|---|---:|---:|---:|",
-    ...series.programs.map((p) => `| ${p} | ${programs[p].dispatch} | ${programs[p].dep} | ${programs[p].hand} |`),
+    "| program | accepted: dispatch | dep | hand | not measured |",
+    "|---|---:|---:|---:|---:|",
+    ...series.programs.map((p) => {
+      const a = programs[p] ?? zero();
+      const n = series.totals.not_measured_programs[p];
+      return `| ${p} | ${a.dispatch} | ${a.dep} | ${a.hand} | ${n ? n.pipeline + n.hand : 0} |`;
+    }),
     "",
     series.definition,
     "",

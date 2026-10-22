@@ -83,9 +83,12 @@ checks on main as they stand now:
 - **Not measured**: no verdict against it, but a result is missing: no
   compile result (the repo is not in the `rulespec_files` index, as
   rulespec-de and rulespec-dk are today, or the sweep has not reached it
-  yet) or no test result. An unknown result is not a failure. The count of
-  modules not measured sits beside the headline, by repo, so the gap stays
-  visible; indexing rulespec-de and rulespec-dk brings it toward zero.
+  yet) or no test result. An unknown result is not a failure: it is not
+  counted as accepted, and not as a failure. The count of modules not
+  measured sits beside the headline, per week (the week of the module's
+  latest merge) with the same route and program split, and by repo, so the
+  gap stays visible; indexing rulespec-de and rulespec-dk brings it toward
+  zero.
 
 An accepted module counts **once**, in the ISO week (Monday, UTC) of the
 first merge that made it accepted. Every later merge of the same file is
@@ -140,18 +143,24 @@ and once in the total, so program rows can sum to more than the total.
 `GET /api/ops/flow?accepted` returns only the accepted series:
 
 - `accepted.definition`: the definition as text.
-- `accepted.weeks[]`: every week from the first accepted module to now,
-  empty weeks included. Each has `total` (new accepted modules),
-  `programs` (the same, by program) and `rework`.
+- `accepted.weeks[]`: every week from the first accepted or not-measured
+  module to now, empty weeks included. Each has `total` (new accepted
+  modules), `programs` (the same, by program), `rework`, `not_measured` and
+  `not_measured_programs`.
 - `accepted.totals`: `total`, `programs`, `rework`, `not_measured`,
-  `not_measured_by_repo` and `not_accepted`.
+  `not_measured_programs`, `not_measured_by_repo` and `not_accepted`.
 - `accepted.programs`: plan programs first, then `out_of_plan`, `untagged`.
 - `accepted.modules`: the ledger itself, `accepted[]`, `rework[]`,
-  `not_measured[]` and `not_accepted[]`, each entry with its module, case,
-  route, sub-route, programs and time.
+  `not_measured[]` and `not_accepted[]`, each entry with its `status`
+  (`accepted`, `rework`, `not_measured`, `not_accepted`), module, case,
+  route, sub-route, programs, time and week.
 
 The full `GET /api/ops/flow` includes the same `accepted` object, and the
-markdown brief ends with a summary of it. The `window`, `j` and `pop`
+markdown brief ends with a summary of it: the headline, the not-measured
+count by repo, rework, and a table by program with a not-measured column.
+The `/ops/flow` page shows the headline above the station KPIs: accepted
+(all time, and the last four weeks), not measured (with its largest repos),
+and rework / not accepted. The page counts without the program lookup. The `window`, `j` and `pop`
 parameters do not narrow it: it is the whole history.
 
 ### Counts when the definition was agreed
@@ -175,7 +184,11 @@ Beside the headline:
 
 - **Not measured**: 55 modules (15 dispatch, 40 hand): rulespec-de 17,
   rulespec-dk 14, rulespec-us 9, rulespec-zm 8, rulespec-ug 4, and one each
-  in rulespec-rw, rulespec-et and rulespec-ng.
+  in rulespec-rw, rulespec-et and rulespec-ng. The draft's "26 files in
+  rulespec-de (7) and rulespec-dk (19)" counted dispatch module rows; this
+  counts distinct modules over every route, so hand merges in those repos
+  are in it too. 24 of the 55 are in indexed repos with no sweep or test
+  result yet, so indexing rulespec-de and rulespec-dk leaves those.
 - **Not accepted**: 524 modules (1 dispatch, 523 hand). Most hand-merged
   modules are merged under an active waiver. The one dispatch module passes
   its tests but fails to compile (`exec_error`).
