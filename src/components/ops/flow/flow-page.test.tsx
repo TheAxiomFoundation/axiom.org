@@ -56,7 +56,7 @@ describe("FlowLine", () => {
     expect(screen.getByTestId("pipeline-canvas")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Where do these reasons come from?" })).toBeTruthy();
     expect(screen.getAllByText("Validator check").length).toBeGreaterThan(0);
-    expect(screen.getByRole("link", { name: /Dispatched runs 2/ })).toBeTruthy();
+    expect(screen.queryByRole("navigation", { name: "Which cases" })).toBeNull();
     expect(screen.getByText("Release activation is failing")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Is each station getting better or worse?" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "How much can these numbers see?" })).toBeTruthy();

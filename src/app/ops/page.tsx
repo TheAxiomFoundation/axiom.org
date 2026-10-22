@@ -19,7 +19,7 @@ import { LEGACY_OPS_TABS, opsHref } from "@/lib/axiom/ops-href";
 import { parseScope, scopeName } from "@/lib/axiom/encoding-pipeline-insights";
 import { getPipelineEvents } from "@/lib/axiom/pipeline-events-data";
 import type { PipelineEvent } from "@/lib/axiom/pipeline-events";
-import { loadAccepted, loadFlow, parsePopulation, parseWindow } from "@/lib/axiom/pipeline-flow-data";
+import { loadAccepted, loadFlow, parseWindow } from "@/lib/axiom/pipeline-flow-data";
 import { getBundleSummaries, getProgramBundle } from "@/lib/axiom/program-bundles-data";
 import { getEncodingStatus, getRecentCorpusScopes, groupRecentScopes } from "@/lib/corpus-status";
 import { SITE_URL } from "@/lib/urls";
@@ -70,7 +70,8 @@ export default async function OpsPage({ searchParams }: { searchParams?: Promise
       ...DEFAULT_FLOW_PARAMS,
       window: parseWindow(params.window),
       j: one(params.j),
-      pop: parsePopulation(one(params.pop)),
+      // The Line tab counts every case; it has no population filter.
+      pop: "all",
       view: one(params.view) === "discovery" ? "discovery" : "pipeline",
       station: one(params.station),
     };

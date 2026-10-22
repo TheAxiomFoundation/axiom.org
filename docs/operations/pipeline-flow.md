@@ -139,8 +139,7 @@ Each module carries the route of its merge, and a sub-route:
 
 Every count has the form `{pipeline, dispatch, dep, hand}`, where
 `pipeline = dispatch + dep`, so the headline can show the pipeline whole or
-split. The route comes from the case id today (`attemptSource`, the `pop`
-filter). When axiom-encode #1750 lands, the GitHub Actions run id on each
+split. The route comes from the case id today (`attemptSource`). When axiom-encode #1750 lands, the GitHub Actions run id on each
 encoder record replaces the time-window join for the pipeline route.
 
 ### Program
@@ -280,10 +279,11 @@ parameters keep the place):
    Cancelled (grey, dashed) sink under the floor; width = cases. Each box
    also shows a red bar for the share of its cases that left there, the
    count and the top reason (hover for the system that reported it), and
-   the stations with the biggest share of all exits glow red. A window selector (7/30/90 days), a jurisdiction filter and a
-   population filter (`pop`: all, dispatched runs, PRs merged without a
-   run, modules inside another run) re-mine the log. The three kinds start
-   at different stations (Dispatch, PR checks, Generate).
+   the stations with the biggest share of all exits glow red. A window selector (7/30/90 days) and a jurisdiction filter
+   re-mine the log. The line counts every case: dispatched runs, PRs
+   merged without a run and modules inside another run, which start at
+   different stations (Dispatch, PR checks, Generate). The page has no
+   filter by kind; the API still takes `pop`.
 2. **Station** (`?station=validate`). Opens beside the diagram: targets, the
    week's trend, every failure the station raised (also the tries a later
    try recovered) and the oldest open items.

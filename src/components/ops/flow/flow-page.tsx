@@ -8,8 +8,6 @@ import {
   type CitationLane,
   type FlowAlert,
   type FlowModel,
-  POPULATION_LABELS,
-  type Population,
   retryCutoff,
   trendEnds,
   trendSentence,
@@ -28,13 +26,6 @@ import { StatusIcon } from "./status-icon";
 import styles from "./flow.module.css";
 
 export { flowHref, type FlowParams, type FlowView } from "./flow-params";
-
-const POPULATION_DESCRIPTIONS: Record<Population, string> = {
-  all: "Every case in the window",
-  runs: "Targeted re-encode runs: dispatch to merge and after",
-  prs: "Module files a PR merged into a rulespec repo with no run behind it; they start at PR checks",
-  modules: "Modules the encoder wrote inside another citation's run; they start at Generate",
-};
 
 const ORIGIN_NOTE: Record<EventsOrigin, string> = {
   table: "Read from encodings.pipeline_events.",
@@ -98,21 +89,6 @@ export function FlowLine({
               )
             )}
           </nav>
-          {params.view === "pipeline" ? (
-            <nav className={styles.seg} aria-label="Which cases">
-              {(["all", "runs", "prs", "modules"] as Population[]).map((p) =>
-                p === params.pop ? (
-                  <span key={p} aria-current="page">
-                    {POPULATION_LABELS[p]} {model.populations[p].toLocaleString("en-US")}
-                  </span>
-                ) : (
-                  <a key={p} href={flowHref(params, { pop: p, station: null })} title={POPULATION_DESCRIPTIONS[p]}>
-                    {POPULATION_LABELS[p]} {model.populations[p].toLocaleString("en-US")}
-                  </a>
-                )
-              )}
-            </nav>
-          ) : null}
         </div>
       </header>
 

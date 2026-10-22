@@ -1,6 +1,6 @@
 import { permanentRedirect } from "next/navigation";
 import { DEFAULT_FLOW_PARAMS, flowHref, type FlowParams } from "@/components/ops/flow/flow-params";
-import { parsePopulation, parseWindow } from "@/lib/axiom/pipeline-flow-data";
+import { parseWindow } from "@/lib/axiom/pipeline-flow-data";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +11,7 @@ const one = (value: string | string[] | undefined): string | null => {
 
 /**
  * /ops/flow became the /ops "Line" tab. Its old links land in the same
- * place: the line (window, scope, cases, station, discovery) on the Line
+ * place: the line (window, scope, station, discovery) on the Line
  * tab, a citation or a run on the journey page, the programs view on the
  * Programs tab.
  */
@@ -22,7 +22,8 @@ export default async function OpsFlowRedirect({ searchParams }: { searchParams?:
     ...DEFAULT_FLOW_PARAMS,
     window: parseWindow(raw.window),
     j: one(raw.j),
-    pop: parsePopulation(one(raw.pop)),
+    // The Line tab has no population filter: an old pop drops out.
+    pop: "all",
     view: view === "discovery" || view === "programs" ? view : "pipeline",
     station: one(raw.station),
     citation: one(raw.citation),
