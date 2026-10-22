@@ -3,7 +3,7 @@
 import { ArrowDown, ArrowLeft, ArrowUp, ChevronRight, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import styles from "./program-bundle.module.css";
-import { Explain } from "./ops-pipeline";
+import { Explain } from "./explain";
 import { ageLabel, STAGE_COPY } from "@/lib/axiom/encoding-pipeline";
 import {
   bundlesTabHref,

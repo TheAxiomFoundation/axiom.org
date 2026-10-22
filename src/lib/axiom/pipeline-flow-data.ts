@@ -87,7 +87,7 @@ export function eventDeadlines(events: PipelineEvent[], now: number): Array<{ la
   return out;
 }
 
-/** Everything /ops/flow and /api/ops/flow need, mined once per request. */
+/** Everything the /ops Line tab and /api/ops/flow need, mined once per request. */
 export async function loadFlow(options: { days: number; jurisdiction: string | null; population?: Population; now?: number }): Promise<FlowData> {
   const now = options.now ?? Date.now();
   const [events, targets, workflows] = await Promise.all([

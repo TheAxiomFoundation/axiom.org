@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import styles from "./ops-dashboard.module.css";
 import { relativeTime } from "./ops-dashboard";
-import { Explain } from "./ops-pipeline";
+import { Explain } from "./explain";
 import { gradeWorkflow, type WorkflowGrade, type WorkflowHealth } from "@/lib/axiom/workflow-health";
 
 const GRADES: Record<WorkflowGrade, { icon: LucideIcon; word: string; className?: string }> = {

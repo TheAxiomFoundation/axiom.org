@@ -51,7 +51,7 @@ describe("PipelineLedger", () => {
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     // The program bundle and tier the section belongs to.
-    expect(within(row).getByRole("link", { name: "Arizona SNAP · Tier 1" })).toHaveAttribute("href", "/ops?tab=bundles&bundle=us-az/snap");
+    expect(within(row).getByRole("link", { name: "Arizona SNAP · Tier 1" })).toHaveAttribute("href", "/ops?tab=programs&bundle=us-az/snap");
     expect(within(screen.getByRole("button", { name: "Runs of us-la/statute/47/32" }).closest("tr")!).queryByRole("link", { name: /SNAP/ })).toBeNull();
     expect(screen.getByRole("button", { name: "Runs of us-la/statute/47/32" }).closest("tr")).toHaveTextContent("Failed validation");
   });

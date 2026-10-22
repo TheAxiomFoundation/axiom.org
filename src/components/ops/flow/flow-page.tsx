@@ -14,10 +14,11 @@ import {
   trendEnds,
   trendSentence,
   type RuleTrend,
-  type StationStats,
 } from "@/lib/axiom/pipeline-flow";
 import type { AcceptedSeries } from "@/lib/axiom/accepted-modules";
 import type { EventsOrigin } from "@/lib/axiom/pipeline-events-data";
+import type { BundleMembership } from "@/lib/axiom/program-bundles";
+import { bundleHref, tiersLabel } from "@/lib/axiom/program-bundles";
 import { stationStatus } from "./flow-layout";
 import { CaseCanvas, DocumentsCanvas, LanesCanvas, ProgramsCanvas, type DocumentTile, type ProgramTile } from "./level-canvases";
 import { flowHref, type FlowParams } from "./flow-params";
@@ -42,204 +43,221 @@ const ORIGIN_NOTE: Record<EventsOrigin, string> = {
     "Derived from encodings.pipeline_attempts in-process: the events table is not there yet, so issue lists beyond each try's first error are missing.",
 };
 
-export function FlowPage({
+/**
+ * The /ops "Line" tab: where cases wait, fail or loop. Every encoding as a
+ * case moving through stations, mined from the pipeline event log, with the
+ * discovery view (which rules follow each other across tries) beside it.
+ */
+export function FlowLine({
   model,
-  accepted = null,
   origin,
   targetsSeeded,
   error,
   params,
   jurisdictions,
-  lanes,
-  detail,
-  programs,
-  documents,
-  bundleTitle,
 }: {
   model: FlowModel;
-  /** The strict-accepted module count, the whole history (see accepted-modules.ts). */
-  accepted?: AcceptedSeries | null;
   origin: EventsOrigin;
   targetsSeeded: boolean;
   error: string | null;
   params: FlowParams;
   jurisdictions: string[];
-  lanes: CitationLane[] | null;
-  detail: CaseDetail | null;
-  programs: ProgramTile[] | null;
-  documents: DocumentTile[] | null;
-  bundleTitle: string | null;
 }) {
-  const stationOrder = model.stations.map((s) => s.id);
   const selected = params.station ? (model.stations.find((s) => s.id === params.station) ?? null) : null;
-  const level = detail ? "case" : lanes ? "citation" : params.view;
+  return (
+    <section aria-label="The encoding line">
+      <header className={styles.head}>
+        <p className={styles.lede}>
+          Every encoding as a case moving through stations, mined from the pipeline event log: what moves, where it waits, where it leaves the line, and which validator rules
+          keep it looping. The stations, edges and colours come from the events.
+        </p>
+        <div className={styles.controls}>
+          <nav className={styles.seg} aria-label="Window">
+            {[7, 30, 90].map((d) =>
+              d === params.window ? (
+                <span key={d} aria-current="page">
+                  {d} days
+                </span>
+              ) : (
+                <a key={d} href={flowHref(params, { window: d })}>
+                  {d} days
+                </a>
+              )
+            )}
+          </nav>
+          <nav className={styles.seg} aria-label="Jurisdiction">
+            {[null, ...jurisdictions].slice(0, 7).map((j) =>
+              j === params.j ? (
+                <span key={j ?? "all"} aria-current="page">
+                  {j ?? "All"}
+                </span>
+              ) : (
+                <a key={j ?? "all"} href={flowHref(params, { j, station: null })}>
+                  {j ?? "All"}
+                </a>
+              )
+            )}
+          </nav>
+          {params.view === "pipeline" ? (
+            <nav className={styles.seg} aria-label="Which cases">
+              {(["all", "runs", "prs", "modules"] as Population[]).map((p) =>
+                p === params.pop ? (
+                  <span key={p} aria-current="page">
+                    {POPULATION_LABELS[p]} {model.populations[p].toLocaleString("en-US")}
+                  </span>
+                ) : (
+                  <a key={p} href={flowHref(params, { pop: p, station: null })} title={POPULATION_DESCRIPTIONS[p]}>
+                    {POPULATION_LABELS[p]} {model.populations[p].toLocaleString("en-US")}
+                  </a>
+                )
+              )}
+            </nav>
+          ) : null}
+        </div>
+      </header>
 
+      <Kpis model={model} />
+      <Alerts alerts={model.alerts} />
+
+      <nav className={styles.tabs} aria-label="Views">
+        <a href={flowHref(params, { view: "pipeline", station: null })} aria-current={params.view === "pipeline" && !selected ? "page" : undefined}>
+          Stations{selected && params.view === "pipeline" ? ` › ${selected.label}` : ""}
+        </a>
+        <a href={flowHref(params, { view: "discovery", station: null })} aria-current={params.view === "discovery" ? "page" : undefined}>
+          Loops and rules
+        </a>
+      </nav>
+
+      {error ? <p className={styles.note}>Could not read the event log: {error}</p> : null}
+
+      {params.view === "discovery" ? (
+        <Discovery model={model} params={params} />
+      ) : (
+        <>
+          {!model.stations.length ? (
+            <p className={styles.note}>No events in this window and scope. Choose a longer window or another jurisdiction.</p>
+          ) : (
+            <PipelineFloor model={model} params={params} />
+          )}
+          <ReasonSources model={model} />
+          <StationsTable model={model} params={params} />
+          <Trust model={model} />
+        </>
+      )}
+
+      <p className={styles.note}>
+        {model.events.toLocaleString("en-US")} events ({Object.entries(model.sources).map(([s, n]) => `${s.replace(/_/g, " ")} ${n.toLocaleString("en-US")}`).join(", ")}). {ORIGIN_NOTE[origin]}{" "}
+        {targetsSeeded ? "Targets are the migration's starting values (encodings.pipeline_station_targets is not there yet). " : ""}
+        Agents: <a href="/api/ops/flow?format=md">markdown brief</a> · <a href="/api/ops/flow">JSON</a>.
+      </p>
+    </section>
+  );
+}
+
+/**
+ * The one drill-down: a citation's cases, station by station, from the event
+ * log; a run's own path when `detail` is set. /api/ops/flow?citation= returns
+ * the same lanes as JSON.
+ */
+export function JourneyView({
+  citation,
+  stationOrder,
+  lanes,
+  detail,
+  bundles,
+  origin,
+  error,
+}: {
+  citation: string | null;
+  stationOrder: string[];
+  lanes: CitationLane[];
+  detail: CaseDetail | null;
+  bundles: BundleMembership[];
+  origin: EventsOrigin;
+  error: string | null;
+}) {
+  const params: FlowParams = { window: 30, j: null, pop: "all", view: "pipeline", station: null, citation, case: detail?.case_id ?? null, program: null, bundle: null };
   return (
     <div className={`${dashboard.dashboard} ${styles.page} min-h-screen pt-28 pb-16`}>
       <div className={styles.wrap}>
-        <a href="/ops" className={dashboard.back ?? undefined} style={{ fontSize: 12, color: "var(--color-ink-muted)", display: "inline-flex", gap: 6, alignItems: "center", textDecoration: "none" }}>
+        <a href="/ops?tab=line" style={{ fontSize: 12, color: "var(--color-ink-muted)", display: "inline-flex", gap: 6, alignItems: "center", textDecoration: "none" }}>
           <ArrowLeft size={13} aria-hidden /> Operations
         </a>
         <header className={styles.head} style={{ marginTop: 14 }}>
           <div>
-            <p className={styles.eyebrow}>Axiom / Operations / Flow</p>
-            <h1 className={styles.title}>The encoding line</h1>
+            <p className={styles.eyebrow}>Axiom / Operations / Journey</p>
+            <h1 className={styles.title}>{citation ?? "Encoding journey"}</h1>
             <p className={styles.lede}>
-              Every encoding as a case moving through stations, mined from the pipeline event log: what moves, where it waits, where it leaves the line, and which validator rules
-              keep it looping. Nothing on this page is fixed in code; the stations, edges and colours come from the events.
+              {citation
+                ? "Every case of this citation, station by station: each dispatch and its tries, the PR, the merge, the index, the compile sweep, the tests on main and the oracle. Click a lane to open that run."
+                : "Pick a citation from the Line tab, or add ?citation=<path> to the address."}
             </p>
-          </div>
-          <div className={styles.controls}>
-            <nav className={styles.seg} aria-label="Window">
-              {[7, 30, 90].map((d) =>
-                d === params.window ? (
-                  <span key={d} aria-current="page">
-                    {d} days
-                  </span>
-                ) : (
-                  <a key={d} href={flowHref(params, { window: d })}>
-                    {d} days
-                  </a>
-                )
-              )}
-            </nav>
-            <nav className={styles.seg} aria-label="Jurisdiction">
-              {[null, ...jurisdictions].slice(0, 7).map((j) =>
-                j === params.j ? (
-                  <span key={j ?? "all"} aria-current="page">
-                    {j ?? "All"}
-                  </span>
-                ) : (
-                  <a key={j ?? "all"} href={flowHref(params, { j, station: null })}>
-                    {j ?? "All"}
-                  </a>
-                )
-              )}
-            </nav>
-            {params.view === "pipeline" ? (
-              <nav className={styles.seg} aria-label="Which cases">
-                {(["all", "runs", "prs", "modules"] as Population[]).map((p) =>
-                  p === params.pop ? (
-                    <span key={p} aria-current="page">
-                      {POPULATION_LABELS[p]} {model.populations[p].toLocaleString("en-US")}
-                    </span>
-                  ) : (
-                    <a key={p} href={flowHref(params, { pop: p, station: null })} title={POPULATION_DESCRIPTIONS[p]}>
-                      {POPULATION_LABELS[p]} {model.populations[p].toLocaleString("en-US")}
-                    </a>
-                  )
-                )}
-              </nav>
-            ) : null}
           </div>
         </header>
 
-        {accepted ? <AcceptedHeadline series={accepted} /> : null}
-        <Kpis model={model} />
-        <Alerts alerts={model.alerts} />
+        {bundles.length ? (
+          <p className={styles.note}>
+            In{" "}
+            {bundles.map((b, i) => (
+              <span key={b.bundle_id}>
+                {i ? ", " : ""}
+                <a href={bundleHref(b.bundle_id)}>{b.bundle_title}</a> ({tiersLabel(b)})
+              </span>
+            ))}
+            .
+          </p>
+        ) : null}
 
-        <nav className={styles.crumbs} aria-label="Zoom level">
-          <a href={flowHref(params, { view: "pipeline", station: null, citation: null, case: null, program: null, bundle: null })} aria-current={level === "pipeline" && !selected ? "page" : undefined}>
-            Pipeline
-          </a>
-          {selected && level === "pipeline" ? (
-            <>
-              <span aria-hidden>›</span>
-              <span aria-current="page">{selected.label}</span>
-            </>
-          ) : null}
-          {params.view === "programs" || params.bundle ? (
-            <>
-              <span aria-hidden>›</span>
-              <a href={flowHref(params, { view: "programs", bundle: null, citation: null, case: null })} aria-current={level === "programs" && !params.bundle ? "page" : undefined}>
-                Programs
-              </a>
-            </>
-          ) : null}
-          {params.bundle ? (
-            <>
-              <span aria-hidden>›</span>
-              <a href={flowHref(params, { view: "programs", citation: null, case: null })} aria-current={level === "programs" ? "page" : undefined}>
-                {bundleTitle ?? params.bundle}
-              </a>
-            </>
-          ) : null}
-          {params.citation ? (
-            <>
-              <span aria-hidden>›</span>
-              <a href={flowHref(params, { case: null })} aria-current={level === "citation" ? "page" : undefined}>
-                {params.citation}
-              </a>
-            </>
-          ) : null}
-          {detail ? (
-            <>
-              <span aria-hidden>›</span>
-              <span aria-current="page">Run {detail.case_id}</span>
-            </>
-          ) : null}
-        </nav>
-
-        {level === "pipeline" || level === "discovery" || level === "programs" ? (
-          <nav className={styles.tabs} aria-label="Views">
-            <a href={flowHref(params, { view: "pipeline", program: null, bundle: null })} aria-current={params.view === "pipeline" ? "page" : undefined}>
-              Line
+        {citation ? (
+          <nav className={styles.crumbs} aria-label="Zoom level">
+            <a href={flowHref(params, { case: null })} aria-current={detail ? undefined : "page"}>
+              {citation}
             </a>
-            <a href={flowHref(params, { view: "discovery", station: null, program: null, bundle: null })} aria-current={params.view === "discovery" ? "page" : undefined}>
-              Discovery
-            </a>
-            <a href={flowHref(params, { view: "programs", station: null })} aria-current={params.view === "programs" ? "page" : undefined}>
-              Programs
-            </a>
+            {detail ? (
+              <>
+                <span aria-hidden>›</span>
+                <span aria-current="page">Run {detail.case_id}</span>
+              </>
+            ) : null}
           </nav>
         ) : null}
 
         {error ? <p className={styles.note}>Could not read the event log: {error}</p> : null}
 
-        {level === "case" && detail ? (
-          <>
-            <div className={styles.floor} data-panel="true">
-              <CaseCanvas detail={detail} stationOrder={stationOrder} />
-              <CasePanel detail={detail} params={params} />
-            </div>
-          </>
-        ) : level === "citation" && lanes ? (
+        {detail ? (
+          <div className={styles.floor} data-panel="true">
+            <CaseCanvas detail={detail} stationOrder={stationOrder} />
+            <CasePanel detail={detail} params={params} />
+          </div>
+        ) : citation && lanes.length ? (
           <div className={styles.floor}>
             <LanesCanvas lanes={lanes} stationOrder={stationOrder} caseHref={Object.fromEntries(lanes.map((l) => [l.case_id, flowHref(params, { case: l.case_id })]))} />
           </div>
-        ) : params.view === "discovery" ? (
-          <Discovery model={model} params={params} />
-        ) : params.view === "programs" ? (
-          <div className={styles.floor}>{documents ? <DocumentsCanvas documents={documents} /> : <ProgramsCanvas programs={programs ?? []} />}</div>
-        ) : (
-          <>
-            {!model.stations.length ? (
-              <p className={styles.note}>No events in this window and scope. Choose a longer window or another jurisdiction.</p>
-            ) : (
-              <PipelineFloor model={model} params={params} />
-            )}
-            <ReasonSources model={model} />
-            <StationsTable model={model} params={params} />
-            <Trust model={model} />
-          </>
-        )}
+        ) : citation ? (
+          <p className={styles.note}>No case of this citation is in the event log.</p>
+        ) : null}
 
         <p className={styles.note}>
-          {model.events.toLocaleString("en-US")} events ({Object.entries(model.sources).map(([s, n]) => `${s.replace(/_/g, " ")} ${n.toLocaleString("en-US")}`).join(", ")}). {ORIGIN_NOTE[origin]}{" "}
-          {targetsSeeded ? "Targets are the migration's starting values (encodings.pipeline_station_targets is not there yet). " : ""}
-          Agents: <a href="/api/ops/flow?format=md">markdown brief</a> · <a href="/api/ops/flow">JSON</a>.
+          {ORIGIN_NOTE[origin]} Agents: <a href={`/api/ops/flow?citation=${encodeURIComponent(citation ?? "")}`}>this citation as JSON</a>.
         </p>
       </div>
     </div>
   );
 }
 
+/** The programs map at the top of the /ops "Programs" tab: a tile per program, or a bundle's documents. */
+export function ProgramsMap({ programs, documents }: { programs: ProgramTile[] | null; documents: DocumentTile[] | null }) {
+  if (!documents && !programs?.length) return null;
+  return <div className={styles.floor}>{documents ? <DocumentsCanvas documents={documents} /> : <ProgramsCanvas programs={programs ?? []} />}</div>;
+}
+
+
 /**
  * The roadmap's number: modules accepted, all time and in the last four
  * weeks, with the modules not measured beside it (merged, no compile or test
  * result: unknown, not failed) and the rework merges.
  */
-function AcceptedHeadline({ series }: { series: AcceptedSeries }) {
+export function AcceptedHeadline({ series }: { series: AcceptedSeries }) {
   const { total, rework, not_measured, not_measured_by_repo, not_accepted } = series.totals;
   const recent = series.weeks.slice(-4);
   const recentPipeline = recent.reduce((n, w) => n + w.total.pipeline, 0);

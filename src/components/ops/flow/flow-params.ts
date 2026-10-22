@@ -15,18 +15,42 @@ export interface FlowParams {
   bundle: string | null;
 }
 
-/** A link inside /ops/flow that keeps the window and scope and changes the rest. */
+export const DEFAULT_FLOW_PARAMS: FlowParams = {
+  window: 30,
+  j: null,
+  pop: "all",
+  view: "pipeline",
+  station: null,
+  citation: null,
+  case: null,
+  program: null,
+  bundle: null,
+};
+
+/**
+ * A link from the line that keeps the window and scope and changes the rest.
+ * The line is the /ops "Line" tab; a citation (and one run of it) opens the
+ * journey drill-down; the programs view is the /ops "Programs" tab.
+ */
 export function flowHref(params: FlowParams, change: Partial<FlowParams>): string {
   const next = { ...params, ...change };
   const q = new URLSearchParams();
+  if (next.citation) {
+    q.set("citation", next.citation);
+    if (next.case) q.set("case", next.case);
+    return `/ops/journey?${q}`;
+  }
+  if (next.view === "programs") {
+    q.set("tab", "programs");
+    if (next.bundle) q.set("bundle", next.bundle);
+    else if (next.program) q.set("program", next.program);
+    return `/ops?${q}`;
+  }
+  q.set("tab", "line");
   if (next.window !== 30) q.set("window", String(next.window));
   if (next.j) q.set("j", next.j);
   if (next.pop !== "all") q.set("pop", next.pop);
   if (next.view !== "pipeline") q.set("view", next.view);
-  for (const key of ["station", "citation", "case", "program", "bundle"] as const) {
-    const v = next[key];
-    if (v) q.set(key, v);
-  }
-  const s = q.toString();
-  return s ? `/ops/flow?${s}` : "/ops/flow";
+  if (next.station) q.set("station", next.station);
+  return `/ops?${q}`;
 }

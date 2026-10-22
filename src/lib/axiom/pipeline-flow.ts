@@ -1,6 +1,6 @@
 /**
  * Process mining over the pipeline event log (see pipeline-events.ts):
- * the station graph /ops/flow draws, the variants, the issue ladder across
+ * the station graph the /ops Line tab draws, the variants, the issue ladder across
  * tries, alerts, and the brief agents read before they dispatch.
  *
  * Nothing here knows the pipeline's shape. Stations are whatever the events
@@ -634,7 +634,7 @@ export function quantile(values: number[], q: number): number | null {
   return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
 }
 
-/** Mine the event log into everything /ops/flow and the agent brief show. */
+/** Mine the event log into everything the /ops Line tab and the agent brief show. */
 export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowModel {
   const { now, days } = options;
   const from = now - days * DAY_MS;
@@ -1263,7 +1263,7 @@ function flowAlerts(model: FlowModel, factory: Case[], options: FlowOptions): Fl
   const scope = options.jurisdiction ? `&j=${encodeURIComponent(options.jurisdiction)}` : "";
   for (const s of model.stations) {
     const t = s.target;
-    const href = `/ops/flow?station=${encodeURIComponent(s.id)}${scope}`;
+    const href = `/ops?tab=line&station=${encodeURIComponent(s.id)}${scope}`;
     if (!t) continue;
     if (t.min_yield != null && s.yield != null && s.ok + s.failed + s.cancelled >= 10 && s.yield < t.min_yield) {
       alerts.push({
@@ -1388,7 +1388,7 @@ function flowAlerts(model: FlowModel, factory: Case[], options: FlowOptions): Fl
         station: retry.judge,
         title: `${stationLabel(retry.judge)} try ${st.label} passes ${pct(rate)} (${st.passed} of ${st.tries})`,
         detail: `$${st.cost_usd.toFixed(2)} of model cost on try ${st.label} in ${model.window.days} days. Cap the loop before it, or change what the encoder gets.`,
-        href: `/ops/flow?view=discovery${scope}`,
+        href: `/ops?tab=line&view=discovery${scope}`,
       });
     }
   }
@@ -1400,7 +1400,7 @@ function flowAlerts(model: FlowModel, factory: Case[], options: FlowOptions): Fl
       station: null,
       title: `${l.citation}: ${l.cases} runs, none merged`,
       detail: l.rules.length ? `Fails on ${l.rules.join(", ")}.` : "",
-      href: `/ops/flow?citation=${encodeURIComponent(l.citation)}`,
+      href: `/ops/journey?citation=${encodeURIComponent(l.citation)}`,
     });
   }
   const order: Record<AlertSeverity, number> = { critical: 0, warning: 1, info: 2 };
@@ -1465,8 +1465,11 @@ function laneVisit(v: Visit): LaneVisit {
 
 export function citationLanes(events: PipelineEvent[], citation: string): CitationLane[] {
   const cases = buildCases(events.filter((e) => e.citation === citation));
+  // The line's own cases first, newest first; experiment runs (local A/B,
+  // failure bundles with no case of their own) after them.
+  const own = (c: { source: string }) => (c.source === "pipeline_attempts" ? 0 : 1);
   return [...cases.values()]
-    .sort((a, b) => b.start - a.start)
+    .sort((a, b) => own(a) - own(b) || b.start - a.start)
     .map((c) => ({
       case_id: c.id,
       start: new Date(c.start).toISOString(),
@@ -1589,7 +1592,7 @@ export function agentBrief(model: FlowModel, siteUrl: string): string {
   }
   if (model.looping.length) {
     lines.push("## Do not re-dispatch without a change");
-    for (const l of model.looping.slice(0, 10)) lines.push(`- ${l.citation}: ${l.cases} runs, none merged, ${l.failed_visits} failures, ${l.cost_usd == null ? "cost not recorded" : `$${l.cost_usd.toFixed(2)} model cost`}; ${l.rules.join(", ") || "no rule"} (${link(`/ops/flow?citation=${encodeURIComponent(l.citation)}`, siteUrl)})`);
+    for (const l of model.looping.slice(0, 10)) lines.push(`- ${l.citation}: ${l.cases} runs, none merged, ${l.failed_visits} failures, ${l.cost_usd == null ? "cost not recorded" : `$${l.cost_usd.toFixed(2)} model cost`}; ${l.rules.join(", ") || "no rule"} (${link(`/ops/journey?citation=${encodeURIComponent(l.citation)}`, siteUrl)})`);
     lines.push("");
   }
   lines.push("## Alerts");
@@ -1617,4 +1620,9 @@ export function agentBrief(model: FlowModel, siteUrl: string): string {
 
 function link(path: string, siteUrl: string): string {
   return path.startsWith("http") ? path : `${siteUrl}${path}`;
+}
+
+/** The stations in line order over the whole log, for drawing one citation's lanes. */
+export function stationOrderOf(events: PipelineEvent[], now: number = Date.now()): string[] {
+  return mineFlow(events, { now, days: 3650 }).stations.map((s) => s.id);
 }

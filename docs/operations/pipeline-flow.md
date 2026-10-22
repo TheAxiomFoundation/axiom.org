@@ -1,7 +1,33 @@
 # Pipeline flow: an event log and a zoomable graph of the encoding pipeline
 
-Status: prototype (draft PR). Page: `/ops/flow`. Agent API: `/api/ops/flow`
-(JSON) and `/api/ops/flow?format=md` (markdown).
+Status: prototype (draft PR). Pages: the `/ops` tabs (Now, Line, Output,
+Programs) and the `/ops/journey` drill-down; `/ops/flow` redirects to the
+Line tab. Agent API: `/api/ops/flow` (JSON) and `/api/ops/flow?format=md`
+(markdown).
+
+## Where it lives: one /ops page
+
+`/ops` is one page with an accepted-modules headline on every tab
+(accepted all time and in the last four weeks, not measured, rework / not
+accepted) and four tabs, each its own page load that reads only its data:
+
+| tab | question | built from |
+|---|---|---|
+| Now (`/ops`) | What runs now, and what runs next? | the fleet box, the workflows strip, the run ledger, the queues and recent ingests |
+| Line (`?tab=line`) | Where do cases wait, fail or loop? | the station diagram and panel, alerts, reason sources, station trends, and the "Loops and rules" view (`&view=discovery`) |
+| Output (`?tab=output`) | How many modules does the line put out? | the accepted series by week, program and route, with rework and not measured |
+| Programs (`?tab=programs`) | How far is each program? | the programs map, the bundle grid and a bundle's page (`&bundle=`), and validation waivers |
+
+One drill-down: `/ops/journey?citation=<path>` (and `&case=<id>` for one
+run) draws a citation's cases from the event log, derived from
+`pipeline_attempts` until `encodings.pipeline_events` is live;
+`/api/ops/flow?citation=` serves the same lanes as JSON.
+
+Old addresses keep working: `?tab=ledger`, `?tab=pipeline` and
+`?tab=bundles` redirect to Now, Line and Programs; `/ops/flow` redirects
+to the Line tab (a citation or run to the journey, the programs view to
+Programs); `/axiom/ops` redirects to `/ops`; `/ops/bundles/<id>` opens the
+bundle on the Programs tab.
 
 ## Why
 
@@ -158,9 +184,10 @@ and once in the total, so program rows can sum to more than the total.
 The full `GET /api/ops/flow` includes the same `accepted` object, and the
 markdown brief ends with a summary of it: the headline, the not-measured
 count by repo, rework, and a table by program with a not-measured column.
-The `/ops/flow` page shows the headline above the station KPIs: accepted
-(all time, and the last four weeks), not measured (with its largest repos),
-and rework / not accepted. The page counts without the program lookup. The `window`, `j` and `pop`
+Every `/ops` tab shows the headline above its body: accepted (all time, and
+the last four weeks), not measured (with its largest repos), and rework /
+not accepted. The headline counts without the program lookup; the Output
+tab has it. The `window`, `j` and `pop`
 parameters do not narrow it: it is the whole history.
 
 ### Counts when the definition was agreed
@@ -237,10 +264,10 @@ are data, so Pavel can tune them without a deploy.
 
 ## Zoom model
 
-The page is one graph canvas with a breadcrumb; each level is a graph, and a
-click on a node goes one level deeper (URL parameters keep the place):
+Each level is a graph, and a click on a node goes one level deeper (URL
+parameters keep the place):
 
-1. **Pipeline** (`/ops/flow`). Stations as boxes on a serpentine line, as
+1. **Pipeline** (`/ops?tab=line`). Stations as boxes on a serpentine line, as
    many per row as the canvas shows at a readable zoom. Edge width = cases;
    particles move faster with more throughput. Edges are routed so none
    crosses a box: neighbours on a row meet side to side, a skip or a step
@@ -260,11 +287,12 @@ click on a node goes one level deeper (URL parameters keep the place):
 2. **Station** (`?station=validate`). Opens beside the diagram: targets, the
    week's trend, every failure the station raised (also the tries a later
    try recovered) and the oldest open items.
-3. **Programs** (`?view=bundles`). Program → jurisdiction bundle → documents,
-   coloured by encoding status from `program_bundle_documents`.
-4. **Citation** (`?citation=us/statute/7/2014`). Every case of one citation
-   over time as parallel lanes through the stations.
-5. **Run** (`?case=<id>`). Each try: model, time, cost, the issues it hit,
+3. **Programs** (`/ops?tab=programs`). Program → jurisdiction bundle →
+   documents, coloured by encoding status from `program_bundle_documents`.
+4. **Citation** (`/ops/journey?citation=us/statute/7/2014`). Every case of
+   one citation over time as parallel lanes through the stations, the
+   line's own cases first.
+5. **Run** (`/ops/journey?citation=…&case=<id>`). Each try: model, time, cost, the issues it hit,
    and links to the GitHub run, the PR and the failure bundle.
 
 Library: **React Flow (`@xyflow/react`)** with positions computed in

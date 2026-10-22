@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OpsDashboard } from "./ops-dashboard";
 import { groupRecentScopes } from "@/lib/corpus-status";
@@ -147,54 +147,52 @@ describe("OpsDashboard", () => {
     expect(screen.getByRole("region", { name: "Every run" })).toBeInTheDocument();
   });
 
-  it("shows the ledger, the program bundles and the pipeline one tab at a time", () => {
+  it("shows four tabs as links, the headline on every tab, and one tab's body at a time", () => {
     const props = {
       initialStatus: status({}),
       encodingError: null,
       queues: [],
       recentPlaces: [],
+      headline: <section aria-label="Accepted modules" />,
       ledger: <section aria-label="Every run" />,
-      bundles: <section aria-label="Bundles" />,
-      pipeline: <section aria-label="Where every citation is" />,
+      panel: <section aria-label="The encoding line" />,
     };
     render(<OpsDashboard {...props} />);
-    const tabs = screen.getByRole("tablist", { name: "Operations" });
-    expect(within(tabs).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Ledger", "Program bundles", "Pipeline"]);
+    const tabs = screen.getByRole("navigation", { name: "Operations" });
+    expect(within(tabs).getAllByRole("link").map((t) => [t.textContent, t.getAttribute("href")])).toEqual([
+      ["Now", "/ops"],
+      ["Line", "/ops?tab=line"],
+      ["Output", "/ops?tab=output"],
+      ["Programs", "/ops?tab=programs"],
+    ]);
+    expect(within(tabs).getByRole("link", { name: "Now" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("region", { name: "Accepted modules" })).toBeVisible();
     expect(screen.getByRole("region", { name: "Every run" })).toBeVisible();
-    expect(screen.getByRole("region", { name: "Bundles", hidden: true })).not.toBeVisible();
-    fireEvent.click(within(tabs).getByRole("tab", { name: "Program bundles" }));
-    expect(screen.getByRole("region", { name: "Bundles" })).toBeVisible();
-    expect(screen.getByRole("region", { name: "Every run", hidden: true })).not.toBeVisible();
-    expect(window.location.search).toBe("?tab=bundles");
+    expect(screen.queryByRole("region", { name: "The encoding line" })).not.toBeInTheDocument();
     cleanup();
-    render(<OpsDashboard {...props} initialTab="pipeline" />);
-    expect(screen.getByRole("region", { name: "Where every citation is" })).toBeVisible();
-    cleanup();
-    // Without the bundles and the pipeline, no tabs.
-    render(<OpsDashboard {...props} bundles={undefined} pipeline={undefined} />);
-    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
-    window.history.replaceState(null, "", "/");
+    render(<OpsDashboard {...props} initialTab="line" />);
+    expect(screen.getByRole("region", { name: "Accepted modules" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "The encoding line" })).toBeVisible();
+    expect(screen.queryByRole("region", { name: "Every run" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Live encoding activity" })).not.toBeInTheDocument();
   });
 
-  it("shows the workflows strip under the fleet box, above the tabs, on every tab", () => {
+  it("shows the workflows strip under the fleet box on the Now tab", () => {
     render(
       <OpsDashboard
         initialStatus={status({})}
         encodingError={null}
         queues={[]}
         recentPlaces={[]}
-        bundles={<section aria-label="Bundles" />}
-        initialTab="bundles"
         workflows={<section aria-label="Workflows" />}
       />,
     );
     const fleet = screen.getByRole("region", { name: "Live encoding activity" });
     const strip = screen.getByRole("region", { name: "Workflows" });
-    const tabs = screen.getByRole("tablist", { name: "Operations" });
+    const tabs = screen.getByRole("navigation", { name: "Operations" });
     expect(strip).toBeVisible();
     expect(fleet.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(strip.compareDocumentPosition(tabs) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(strip.nextElementSibling).toBe(tabs);
+    expect(tabs.compareDocumentPosition(fleet) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("shows stalled runs when the heartbeat dies", () => {

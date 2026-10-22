@@ -1,10 +1,10 @@
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { acceptedSeries, moduleLedger } from "@/lib/axiom/accepted-modules";
 import { attemptEvents } from "@/lib/axiom/pipeline-events";
 import { caseDetail, citationLanes, mineFlow } from "@/lib/axiom/pipeline-flow";
 import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
-import { FlowPage, flowHref, type FlowParams } from "./flow-page";
+import { AcceptedHeadline, FlowLine, flowHref, JourneyView, ProgramsMap, type FlowParams } from "./flow-page";
 
 // The canvases need a real browser (React Flow measures the DOM).
 vi.mock("./pipeline-canvas", () => ({
@@ -31,40 +31,29 @@ const model = mineFlow(events, {
 });
 const params: FlowParams = { window: 30, j: null, pop: "all", view: "pipeline", station: null, citation: null, case: null, program: null, bundle: null };
 
-function page(overrides: Partial<Parameters<typeof FlowPage>[0]> = {}) {
-  return render(
-    <FlowPage
-      model={model}
-      origin="derived"
-      targetsSeeded
-      error={null}
-      params={params}
-      jurisdictions={["us", "dk"]}
-      lanes={null}
-      detail={null}
-      programs={null}
-      documents={null}
-      bundleTitle={null}
-      {...overrides}
-    />
-  );
+function line(overrides: Partial<FlowParams> = {}) {
+  return render(<FlowLine model={model} origin="derived" targetsSeeded error={null} params={{ ...params, ...overrides }} jurisdictions={["us", "dk"]} />);
 }
 
 describe("flowHref", () => {
-  it("keeps the window and scope and drops defaults", () => {
-    expect(flowHref(params, {})).toBe("/ops/flow");
-    expect(flowHref({ ...params, window: 7, j: "us" }, { station: "validate" })).toBe("/ops/flow?window=7&j=us&station=validate");
-    expect(flowHref(params, { view: "discovery" })).toBe("/ops/flow?view=discovery");
-    expect(flowHref(params, { pop: "runs" })).toBe("/ops/flow?pop=runs");
+  it("links the line to the Line tab, keeping the window and scope", () => {
+    expect(flowHref(params, {})).toBe("/ops?tab=line");
+    expect(flowHref({ ...params, window: 7, j: "us" }, { station: "validate" })).toBe("/ops?tab=line&window=7&j=us&station=validate");
+    expect(flowHref(params, { view: "discovery" })).toBe("/ops?tab=line&view=discovery");
+    expect(flowHref(params, { pop: "runs" })).toBe("/ops?tab=line&pop=runs");
+  });
+
+  it("links a citation and a run to the journey, and programs to the Programs tab", () => {
+    expect(flowHref(params, { citation: "us/a", case: "7" })).toBe("/ops/journey?citation=us%2Fa&case=7");
+    expect(flowHref(params, { view: "programs", bundle: "us-or/snap" })).toBe("/ops?tab=programs&bundle=us-or%2Fsnap");
+    expect(flowHref(params, { view: "programs", program: "snap" })).toBe("/ops?tab=programs&program=snap");
   });
 });
 
-describe("FlowPage", () => {
+describe("FlowLine", () => {
   it("shows the line as a diagram, with where its reasons come from", () => {
-    page();
-    expect(screen.getByRole("heading", { name: "The encoding line" })).toBeTruthy();
+    line();
     expect(screen.getByTestId("pipeline-canvas")).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "Where do cases end?" })).toBeNull();
     expect(screen.getByRole("heading", { name: "Where do these reasons come from?" })).toBeTruthy();
     expect(screen.getAllByText("Validator check").length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: /Dispatched runs 2/ })).toBeTruthy();
@@ -75,48 +64,75 @@ describe("FlowPage", () => {
     expect(screen.getByText(/Derived from encodings.pipeline_attempts/)).toBeTruthy();
   });
 
-  it("shows the accepted headline with the modules not measured beside it", () => {
-    const rows = [
-      mergedAttempt({ id: "a", index_status: "indexed", synced_at: "2026-09-21T10:00:00Z", compile_status: "ok", compile_checked_at: "2026-09-22T03:00:00Z", tests_status: "pass" }),
-      mergedAttempt({ id: "dk", pr_repo: "rulespec-dk", module_paths: ["dk/x.yaml"], index_status: "missing" }),
-    ];
-    page({ accepted: acceptedSeries(moduleLedger(rows.flatMap(attemptEvents)), NOW) });
-    const headline = screen.getByLabelText("Accepted modules");
-    expect(headline.textContent).toContain("How many modules are accepted?1");
-    expect(headline.textContent).toContain("Not measured1");
-    expect(headline.textContent).toContain("dk 1");
-  });
-
   it("opens a station's detail beside the diagram", () => {
-    page({ params: { ...params, station: "validate" } });
+    line({ station: "validate" });
     expect(screen.getByRole("complementary", { name: "Validate details" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "How cases fail here" })).toBeTruthy();
     expect(screen.getAllByText("r:tests").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/runs ended/).length).toBeGreaterThan(0);
   });
 
-  it("shows discovery as four questions with answers", () => {
-    page({ params: { ...params, view: "discovery" } });
+  it("shows loops and rules as four questions with answers", () => {
+    line({ view: "discovery" });
     expect(screen.getByRole("heading", { name: "The rules the encoder does not fix, week by week" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "When one rule is fixed, which one comes next" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Rules that come back on the next try" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Dispatched again and again, never merged" })).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "Common paths" })).toBeNull();
   });
+});
 
-  it("zooms to a citation and to one run", () => {
-    page({ params: { ...params, citation: "us/statute/7/2017/a" }, lanes: citationLanes(events, "us/statute/7/2017/a") });
+describe("AcceptedHeadline", () => {
+  it("shows the accepted headline with the modules not measured beside it", () => {
+    const rows = [
+      mergedAttempt({ id: "a", index_status: "indexed", synced_at: "2026-09-21T10:00:00Z", compile_status: "ok", compile_checked_at: "2026-09-22T03:00:00Z", tests_status: "pass" }),
+      mergedAttempt({ id: "dk", pr_repo: "rulespec-dk", module_paths: ["dk/x.yaml"], index_status: "missing" }),
+    ];
+    render(<AcceptedHeadline series={acceptedSeries(moduleLedger(rows.flatMap(attemptEvents)), NOW)} />);
+    const headline = screen.getByLabelText("Accepted modules");
+    expect(headline.textContent).toContain("How many modules are accepted?1");
+    expect(headline.textContent).toContain("Not measured1");
+    expect(headline.textContent).toContain("dk 1");
+  });
+});
+
+describe("JourneyView", () => {
+  const stationOrder = model.stations.map((s) => s.id);
+
+  it("shows a citation's lanes, and one run", () => {
+    render(
+      <JourneyView
+        citation="us/statute/7/2017/a"
+        stationOrder={stationOrder}
+        lanes={citationLanes(events, "us/statute/7/2017/a")}
+        detail={null}
+        bundles={[{ bundle_id: "us/snap", bundle_title: "SNAP", tiers: [{ tier: "full", index: 2, title: "Full", document: "7 USC 2017" }] }]}
+        origin="derived"
+        error={null}
+      />
+    );
     expect(screen.getByTestId("lanes-canvas")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "SNAP" })).toHaveAttribute("href", "/ops?tab=programs&bundle=us/snap");
+    cleanup();
     const detail = caseDetail(events, "1")!;
-    page({ params: { ...params, citation: detail.citation, case: "1" }, detail });
+    render(<JourneyView citation={detail.citation} stationOrder={stationOrder} lanes={[]} detail={detail} bundles={[]} origin="derived" error={null} />);
     expect(screen.getByRole("complementary", { name: "Run details" })).toBeTruthy();
   });
 
-  it("shows programs, and a bundle's documents", () => {
-    page({ params: { ...params, view: "programs" }, programs: [] });
+  it("says what to do with no citation", () => {
+    render(<JourneyView citation={null} stationOrder={[]} lanes={[]} detail={null} bundles={[]} origin="table" error={null} />);
+    expect(screen.getByText(/Pick a citation from the Line tab/)).toBeTruthy();
+  });
+});
+
+describe("ProgramsMap", () => {
+  it("shows programs, or a bundle's documents", () => {
+    render(<ProgramsMap programs={[{ id: "snap", title: "SNAP", bundles: [], documents: 1, done: 0, href: "/x" }]} documents={null} />);
     expect(screen.getByTestId("programs-canvas")).toBeTruthy();
-    page({ params: { ...params, view: "programs", bundle: "us-or/snap" }, documents: [], bundleTitle: "Oregon SNAP" });
+    cleanup();
+    render(<ProgramsMap programs={null} documents={[]} />);
     expect(screen.getByTestId("documents-canvas")).toBeTruthy();
-    expect(screen.getAllByText("Oregon SNAP").length).toBeGreaterThan(0);
+    cleanup();
+    const { container } = render(<ProgramsMap programs={[]} documents={null} />);
+    expect(container.innerHTML).toBe("");
   });
 });

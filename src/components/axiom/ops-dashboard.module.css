@@ -203,7 +203,8 @@
   border-bottom: 1px solid var(--color-rule);
 }
 
-.tabs [role="tab"] {
+.tabs [role="tab"],
+.tabs > a {
   margin-bottom: -1px;
   padding: 10px 16px;
   border: 0;
@@ -213,19 +214,23 @@
   font-weight: 500;
   color: var(--color-ink-secondary);
   cursor: pointer;
+  text-decoration: none;
 }
 
+.tabs > a:hover,
 .tabs [role="tab"]:hover {
   color: var(--color-ink);
 }
 
+.tabs > a[aria-current="page"],
 .tabs [role="tab"][aria-selected="true"] {
   border-bottom-color: var(--color-accent);
   color: var(--color-ink);
 }
 
 .tabs + .workspace,
-.tabs + .ledgerOnly {
+.tabs + .ledgerOnly,
+.tabs + [id^="ops-panel-"] {
   margin-top: 24px;
 }
 

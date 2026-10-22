@@ -4,7 +4,7 @@
  *
  * A case is one row of encodings.pipeline_attempts. attemptEvents derives a
  * case's events from that row, so the backfill and the collector write the
- * same events, and /ops/flow can derive them in-process before the table
+ * same events, and /ops can derive them in-process before the table
  * exists. issueEvents turns archived validator issues (failure bundles,
  * local A/B runs) into `issue` events on the same cases.
  *

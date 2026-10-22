@@ -4,7 +4,7 @@ import { Fragment, useEffect, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import styles from "./ops-dashboard.module.css";
 import { relativeTime } from "./ops-dashboard";
-import { Explain } from "./ops-pipeline";
+import { Explain } from "./explain";
 import { RunTimeline } from "./run-timeline";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { scopeSearch, type PipelineScope } from "@/lib/axiom/encoding-pipeline-insights";

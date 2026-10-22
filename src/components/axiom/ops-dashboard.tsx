@@ -68,13 +68,13 @@ interface OpsDashboardProps {
   queues: EncodingQueueSummary[];
   /** The "recently ingested" feed, grouped by place on the server. */
   recentPlaces: RecentIngestPlace[];
-  /** The end-to-end pipeline section, rendered server-side by the page. */
-  pipeline?: ReactNode;
   /** A ledger of every run, in place of the one built from encoder records. */
   ledger?: ReactNode;
-  /** The entry to the program bundles, shown with the pipeline section. */
-  bundles?: ReactNode;
-  /** The tab to open on (?tab=bundles or ?tab=pipeline); the ledger otherwise. */
+  /** The accepted-modules headline, on every tab. */
+  headline?: ReactNode;
+  /** The open tab's body when it is not "now", rendered server-side by the page. */
+  panel?: ReactNode;
+  /** The open tab (?tab=line, output or programs); "now" otherwise. */
   initialTab?: OpsTab;
   /** The workflows the pipeline depends on, shown under the fleet box. */
   workflows?: ReactNode;
@@ -93,12 +93,26 @@ export interface StartingRuns {
   collectedAt: string | null;
 }
 
-export type OpsTab = "ledger" | "bundles" | "pipeline";
+/**
+ * The four tabs: what runs now and next; where cases wait, fail or loop;
+ * what the line puts out; and the programs it works toward.
+ */
+export type OpsTab = "now" | "line" | "output" | "programs";
+
+export const OPS_TABS: OpsTab[] = ["now", "line", "output", "programs"];
 
 const TAB_LABELS: Record<OpsTab, string> = {
-  ledger: "Ledger",
-  bundles: "Program bundles",
-  pipeline: "Pipeline",
+  now: "Now",
+  line: "Line",
+  output: "Output",
+  programs: "Programs",
+};
+
+const TAB_HINTS: Record<OpsTab, string> = {
+  now: "What runs now and what runs next",
+  line: "Where cases wait, fail or loop",
+  output: "Accepted modules per week, by program and route",
+  programs: "Bundles, documents and waivers",
 };
 
 type LiveRunState = "running" | "stale" | "finished" | "expired";
@@ -253,31 +267,22 @@ export function OpsDashboard({
   encodingError,
   queues,
   recentPlaces,
-  pipeline,
   ledger,
-  bundles,
-  initialTab = "ledger",
+  headline,
+  panel,
+  initialTab = "now",
   workflows,
   starting,
 }: OpsDashboardProps) {
   const [status, setStatus] = useState(initialStatus);
-  // One section at a time: the ledger, the program bundles, the pipeline.
-  const tabs = (["ledger", "bundles", "pipeline"] as OpsTab[]).filter(
-    (tab) => tab === "ledger" || (tab === "bundles" ? Boolean(bundles) : Boolean(pipeline))
-  );
-  const [tab, setTab] = useState<OpsTab>(tabs.includes(initialTab) ? initialTab : "ledger");
-  const choose = (next: OpsTab) => {
-    setTab(next);
-    // Keep the tab in the address, so a link or a reload opens it.
-    const url = new URL(window.location.href);
-    if (next === "ledger") url.searchParams.delete("tab");
-    else url.searchParams.set("tab", next);
-    window.history.replaceState(null, "", url);
-  };
+  // One tab at a time, each its own page load: a tab reads only its own data.
+  const tab: OpsTab = OPS_TABS.includes(initialTab) ? initialTab : "now";
   const [nowMs, setNowMs] = useState<number | null>(null);
 
   useEffect(() => {
     setNowMs(Date.now());
+    // Only the "now" tab shows the fleet; the others need no poll.
+    if (tab !== "now") return;
     const clock = setInterval(() => setNowMs(Date.now()), CLOCK_TICK_MS);
     // The server rendered this data just now; a quick first return to the
     // tab does not need to fetch it again.
@@ -317,7 +322,7 @@ export function OpsDashboard({
       clearInterval(poll);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, []);
+  }, [tab]);
 
   // Before the first client tick, measure "ago" against the payload's own
   // refresh stamp so server and client render identical text.
@@ -345,11 +350,30 @@ export function OpsDashboard({
             Encoding operations
           </h1>
           <p className="mt-3 max-w-[640px] text-sm md:text-base text-[var(--color-ink-secondary)]">
-            From source law to executable rules. Follow the fleet, explore
-            recent encodings, and see what’s next.
+            From source law to executable rules: what runs now and next,
+            where cases wait or fail on the line, the modules it puts out
+            each week, and the programs it works toward.
           </p>
         </header>
 
+        {headline}
+
+        <nav className={styles.tabs} aria-label="Operations">
+          {OPS_TABS.map((value) => (
+            <a
+              key={value}
+              id={`ops-tab-${value}`}
+              href={value === "now" ? "/ops" : `/ops?tab=${value}`}
+              aria-current={tab === value ? "page" : undefined}
+              title={TAB_HINTS[value]}
+            >
+              {TAB_LABELS[value]}
+            </a>
+          ))}
+        </nav>
+
+        {tab === "now" ? (
+          <>
         <DocketBand
           status={status}
           error={encodingError}
@@ -360,29 +384,9 @@ export function OpsDashboard({
 
         {workflows}
 
-        {tabs.length > 1 && (
-          <div className={styles.tabs} role="tablist" aria-label="Operations">
-            {tabs.map((value) => (
-              <button
-                key={value}
-                id={`ops-tab-${value}`}
-                type="button"
-                role="tab"
-                aria-selected={tab === value}
-                aria-controls={`ops-panel-${value}`}
-                onClick={() => choose(value)}
-              >
-                {TAB_LABELS[value]}
-              </button>
-            ))}
-          </div>
-        )}
-
         <div
-          id="ops-panel-ledger"
-          role={tabs.length > 1 ? "tabpanel" : undefined}
-          aria-labelledby={tabs.length > 1 ? "ops-tab-ledger" : undefined}
-          hidden={tab !== "ledger"}
+          id="ops-panel-now"
+          aria-labelledby="ops-tab-now"
           className={
             queues.length || recentPlaces.length
               ? styles.workspace
@@ -406,16 +410,10 @@ export function OpsDashboard({
             </aside>
           )}
         </div>
-
-        {bundles && (
-          <div id="ops-panel-bundles" role="tabpanel" aria-labelledby="ops-tab-bundles" hidden={tab !== "bundles"}>
-            {bundles}
-          </div>
-        )}
-
-        {pipeline && (
-          <div id="ops-panel-pipeline" role="tabpanel" aria-labelledby="ops-tab-pipeline" hidden={tab !== "pipeline"}>
-            {pipeline}
+          </>
+        ) : (
+          <div id={`ops-panel-${tab}`} aria-labelledby={`ops-tab-${tab}`}>
+            {panel}
           </div>
         )}
       </div>
