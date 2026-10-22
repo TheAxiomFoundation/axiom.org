@@ -34,11 +34,17 @@
  *                  (title or body), under source encoder_change. /ops/flow
  *                  compares each rule's rate before and after them. Uses
  *                  GITHUB_TOKEN when set.
+ *   --no-programs  skip the program tags. By default every case's events get
+ *                  attrs.programs: the programs whose bundles
+ *                  (program_bundle_documents, in scope) hold its citation or a
+ *                  path above it, or ["out_of_plan"] when none does. The
+ *                  accepted-module count splits by them.
  */
 
 import { readFileSync, statSync, writeFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import yaml from "js-yaml";
+import { acceptedModules, programIndex, tagPrograms } from "../src/lib/axiom/accepted-modules.ts";
 import { attemptEvents, caseIndex, issueEvents } from "../src/lib/axiom/pipeline-events.ts";
 
 const args = process.argv.slice(2);
@@ -212,6 +218,38 @@ if (has("--encoder-prs")) {
   const changes = await encoderChangeEvents(known, opt("--since") ?? "2026-07-01");
   console.error(`encoder changes: ${changes.length} (PR, rule) events`);
   events.push(...changes);
+}
+
+/** In-scope bundle documents: which program's bundle holds which corpus path. */
+async function readBundleMembers() {
+  const db = createClient(url, key, { db: { schema: "encodings" }, auth: { persistSession: false } });
+  const rows = [];
+  for (let page = 0; ; page++) {
+    const { data, error } = await db
+      .from("program_bundle_documents")
+      .select("bundle_id,citation_path")
+      .eq("scope", "in")
+      .order("bundle_id")
+      .order("tier")
+      .order("key")
+      .range(page * PAGE, page * PAGE + PAGE - 1);
+    if (error) throw new Error(`program_bundle_documents: ${error.message}`);
+    rows.push(...data);
+    if (data.length < PAGE) break;
+  }
+  return rows;
+}
+
+if (!has("--no-programs")) {
+  if (!url || !key) throw new Error("program tags read program_bundle_documents: set SUPABASE_URL and a key, or pass --no-programs");
+  const members = await readBundleMembers();
+  tagPrograms(events, programIndex(members));
+  const accepted = acceptedModules(events);
+  const byRoute = { pipeline: 0, hand: 0 };
+  for (const m of accepted) byRoute[m.route]++;
+  console.error(
+    `programs: ${members.length} bundle documents; ${accepted.length} accepted modules (${byRoute.pipeline} pipeline, ${byRoute.hand} hand)`
+  );
 }
 
 const out = opt("--out");

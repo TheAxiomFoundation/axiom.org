@@ -55,12 +55,12 @@ Display names and one-line descriptions of stations are copy (in
 `pipeline-flow.ts`), not data: an unknown station still renders, with its id
 as its name.
 
-## Accepted modules (draft, for review)
+## Accepted modules
 
 The flow model in axiom-roadmap-dashboard (#233) runs on one number:
 **accepted modules per week**. This page is its measured source, and the
-monthly ramp report reads it from here. The definition below is a draft for
-review; nothing is built on it until it is agreed.
+monthly ramp report reads it from here. Pavel agreed the definition below on
+2026-10-22. Code: `src/lib/axiom/accepted-modules.ts`.
 
 ### Definition
 
@@ -82,16 +82,21 @@ of the default branch:
 
 A module counts **once**, in the ISO week (Monday, UTC) of the merge that
 first made it strictly accepted. A later merge of the same file is a
-revision, not a new accepted module. If a module loses acceptance (a sweep
-or the tests later fail, or a waiver is added) it leaves the total, and the
-week it left is recorded, so the weekly series can show both.
+revision, not a new accepted module. The checks are read as they stand now,
+so a module that later fails a sweep or its tests, or gets a waiver, leaves
+the count (its week included) until it passes again.
+
+A module in a repo the compile sweep does not reach (rulespec-de and
+rulespec-dk are not in the `rulespec_files` index today) has no compile
+result, so it is **not accepted**: "not measured" is not a pass.
 
 ### Route: pipeline or hand merge
 
 Each accepted module carries the route of its accepting merge:
 
 - **pipeline**: a dispatch row or a `dep:` row (a module the encoder wrote
-  inside another citation's run). The encoder wrote it.
+  inside another citation's run). The encoder wrote it. `dep:` modules are
+  not a route of their own.
 - **hand**: a `pr:<repo>#<n>:<path>` row, a PR merged into the default
   branch with no dispatch behind it.
 
@@ -101,12 +106,38 @@ record replaces the time-window join for the pipeline route.
 
 ### Program
 
-Each module carries a program (`snap`, `medicaid`, `chip`, `tanf`, ...) from
-`program_bundle_documents` membership of its cited provisions, or
-`out_of_plan` when no plan program covers it (tariff and customs rules, for
-example). Out-of-plan modules stay in the counts, in their own row.
+Each case carries `attrs.programs` on its events: the programs (`snap`,
+`medicaid`, `chip`, `tanf`, ...) whose in-scope `program_bundle_documents`
+sit at the case's citation or a path above it, in any jurisdiction's layer.
+The program is the part of the bundle id after the slash (`us-or/snap` →
+`snap`). A citation that no bundle holds is `["out_of_plan"]` (tariff and
+customs rules, Canadian and other non-US modules): it stays in the counts,
+in its own row. A module in several programs' bundles (a federal tax
+provision sits in `ctc`, `eitc` and `income_tax`) counts in each program
+and once in the total, so program rows can sum to more than the total.
 
-### Weekly counts under this draft
+- **Backfill**: `scripts/backfill-pipeline-events.mjs` tags every case
+  (skip with `--no-programs`).
+- **Request time**: events derived from `pipeline_attempts` (while the
+  events table is not live) carry no tag; `/api/ops/flow` looks up the
+  accepted modules' citations in the bundle tables. If that lookup returns
+  nothing, they read `untagged`, not out of plan.
+- **New runs**: the program should come from axiom-encode itself, on its
+  encoder record, so a run carries it from dispatch (follow-up).
+
+### API
+
+`GET /api/ops/flow?accepted` returns only the accepted series:
+`accepted.definition`, `accepted.weeks[]` (every week from the first
+accepted module to now, empty weeks included; each with `total` and
+`programs`, both `{pipeline, hand}`), `accepted.totals`, `accepted.programs`
+(plan programs first, then `out_of_plan`, `untagged`) and
+`accepted.modules[]` (each module with its route, programs, case and week).
+The full `GET /api/ops/flow` includes the same `accepted` object, and the
+markdown brief ends with a table of it. The `window`, `j` and `pop`
+parameters do not narrow it: it is the whole history.
+
+### Weekly counts when the definition was agreed
 
 From `encodings.pipeline_attempts` on 2026-10-22 (2,233 rows: 1,352
 dispatches, 44 `dep:`, 837 hand-merged module files). Distinct modules,
@@ -137,17 +168,11 @@ The four pipeline modules:
 (rulespec-ca#21), `us/statutes/7/2015/f.yaml` (rulespec-us#1347),
 `us/policies/irs/rev-proc-2025-32/page-15.yaml` (rulespec-us#1366),
 `us-az/policies/des/faa5/na-categorical-eligibility/basic-categorical-eligibility.yaml`
-(rulespec-us#1448). #233 reports 3; the difference is likely the rulespec-ca
-module.
+(rulespec-us#1448). #233 reports 3; the difference is the rulespec-ca
+module, which no plan program covers (`out_of_plan`).
 
-### Open questions for review
-
-1. Do modules in repos the compile sweep does not reach (rulespec-de,
-   rulespec-dk) count as "not accepted" (this draft) or "not measured"?
-2. Does a revision of an accepted module (a second merge of the same file)
-   count again, as throughput, or only once (this draft)?
-3. Should `dep:` modules count as pipeline (this draft), or as their own
-   route?
+By program, the same 131 modules: `out_of_plan` 1 pipeline + 121 hand,
+`snap` 2 + 1, `income_tax` 1 + 5, `ctc` 1 + 0, `eitc` 1 + 0.
 
 ## Event schema: `encodings.pipeline_events`
 
@@ -289,6 +314,9 @@ and waiver expiry from the RuleSpec repos' `known-validation-gaps.yaml`
    `validate` WIP.
 3. **Document type and program** on each case (from the corpus path and
    bundle membership), so yield splits by statute / regulation / manual.
+   Program: done in the backfill and at request time (see "Accepted
+   modules"); still to do in axiom-encode's own records for new runs, and
+   the document type.
 4. **PR block reason** (`pin_mismatch`, `check_failed:<rule>`,
    `awaiting_review`, `superseded`) as a `wait` event at `review`.
 5. **Local and A/B runs** with `source=local_ab` and `attrs.experiment`.

@@ -406,7 +406,16 @@ function prEvents(
     }
     return;
   }
-  ev({ station: "merge", kind: "leave", at: mergedAt, outcome: "ok", duration_ms: spanMs(mergeEnter, mergedAt), ref_url: attempt.pr_via_url ?? prUrl });
+  // The merged module files: the accepted-module count keys on them.
+  ev({
+    station: "merge",
+    kind: "leave",
+    at: mergedAt,
+    outcome: "ok",
+    duration_ms: spanMs(mergeEnter, mergedAt),
+    ref_url: attempt.pr_via_url ?? prUrl,
+    attrs: { repo: attempt.pr_repo, modules: attempt.module_paths ?? [] },
+  });
 
   // Index (the rulespec_files sync) and tests on main both start at the
   // merge: the jurisdiction's validation runs on the merge commit, often

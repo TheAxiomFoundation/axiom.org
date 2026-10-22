@@ -1,3 +1,13 @@
+import {
+  acceptedModules,
+  acceptedSeries,
+  citationPrograms,
+  programIndex,
+  UNTAGGED,
+  type AcceptedModule,
+  type AcceptedSeries,
+} from "./accepted-modules";
+import { getBundleIndex } from "./program-bundles-data";
 import { getPipelineEvents, getStationTargets, type EventsOrigin } from "./pipeline-events-data";
 import type { PipelineEvent } from "./pipeline-events";
 import { mineFlow, type FlowModel, type Population, type WorkflowSignal } from "./pipeline-flow";
@@ -99,4 +109,25 @@ export async function loadFlow(options: { days: number; jurisdiction: string | n
     deadlines: eventDeadlines(events.events, now),
   });
   return { model, events: events.events, origin: events.origin, targetsSeeded: targets.seeded, error: events.error };
+}
+
+/**
+ * The weekly strict-accepted module count, by route and program, from the
+ * event log. Events the backfill tagged carry their programs; untagged ones
+ * (events derived from pipeline_attempts at request time) are looked up in
+ * the bundle tables here, only for the accepted modules. When that lookup
+ * finds nothing at all (the tables are unreachable), they stay `untagged`
+ * rather than read as out of plan.
+ */
+export async function loadAccepted(events: PipelineEvent[], now = Date.now()): Promise<AcceptedSeries & { modules: AcceptedModule[] }> {
+  const modules = acceptedModules(events);
+  const untagged = modules.filter((m) => m.programs.includes(UNTAGGED));
+  if (untagged.length) {
+    const members = await getBundleIndex([...new Set(untagged.map((m) => m.citation))]).catch(() => []);
+    if (members.length) {
+      const index = programIndex(members);
+      for (const m of untagged) m.programs = citationPrograms(m.citation, index);
+    }
+  }
+  return { ...acceptedSeries(modules, now), modules };
 }
