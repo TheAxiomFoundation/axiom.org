@@ -60,49 +60,59 @@ as its name.
 The flow model in axiom-roadmap-dashboard (#233) runs on one number:
 **accepted modules per week**. This page is its measured source, and the
 monthly ramp report reads it from here. Pavel agreed the definition below on
-2026-10-22. Code: `src/lib/axiom/accepted-modules.ts`.
+2026-10-22. Code: `src/lib/axiom/accepted-modules.ts` (`moduleLedger`,
+`acceptedSeries`).
 
 ### Definition
 
-A **module** is one RuleSpec file, keyed by `<repo>:<path>`.
+A **module** is one RuleSpec file, keyed by `<repo>:<path>`. Every module
+merged into a default branch lands in exactly one of three groups, by the
+checks on main as they stand now:
 
-A module is **strictly accepted** when all four hold, on the current state
-of the default branch:
+- **Accepted** (the headline). All four hold:
+  1. **Merged** into the default branch: `mainMergedAt` is set (a merge into
+     a side branch counts only once that branch's own PR merged).
+  2. **Compiles**: axiom-api's compile sweep reports `compile_status = ok`.
+  3. **Passes tests**: the jurisdiction's validation on main reports
+     `tests_status = pass`.
+  4. **No active waiver**: the module is not in the repo's
+     `known-validation-gaps.yaml` with an `active` waiver.
+- **Not accepted**: a check gave a verdict against it: the compile failed or
+  was `skipped` (the sweep skips a waived module), the tests failed, or the
+  tests are `waived`.
+- **Not measured**: no verdict against it, but a result is missing: no
+  compile result (the repo is not in the `rulespec_files` index, as
+  rulespec-de and rulespec-dk are today, or the sweep has not reached it
+  yet) or no test result. An unknown result is not a failure. The count of
+  modules not measured sits beside the headline, by repo, so the gap stays
+  visible; indexing rulespec-de and rulespec-dk brings it toward zero.
 
-1. **Merged** into the default branch: `mainMergedAt` is set (a merge into
-   a side branch counts only once that branch's own PR merged).
-2. **Compiles**: axiom-api's compile sweep reports `compile_status = ok`.
-   `skipped` (the sweep skipped a waived module) and no result yet do not
-   count.
-3. **Passes tests**: the jurisdiction's validation on main reports
-   `tests_status = pass`.
-4. **No active waiver**: the module is not in the repo's
-   `known-validation-gaps.yaml` with an `active` waiver (`tests_status =
-   waived`). A waived module is "merged, not accepted".
+An accepted module counts **once**, in the ISO week (Monday, UTC) of the
+first merge that made it accepted. Every later merge of the same file is
+**rework**: it uses capacity but adds no module, so it is counted
+separately, in the week of that merge, whatever its own checks say. A
+module never accepted is grouped by the checks on its latest merge.
 
-A module counts **once**, in the ISO week (Monday, UTC) of the merge that
-first made it strictly accepted. A later merge of the same file is a
-revision, not a new accepted module. The checks are read as they stand now,
-so a module that later fails a sweep or its tests, or gets a waiver, leaves
-the count (its week included) until it passes again.
+The checks are read as they stand now, so a module that later fails a
+sweep or its tests, or gets a waiver, leaves the headline (its week
+included) until it passes again.
 
-A module in a repo the compile sweep does not reach (rulespec-de and
-rulespec-dk are not in the `rulespec_files` index today) has no compile
-result, so it is **not accepted**: "not measured" is not a pass.
+### Route and sub-route
 
-### Route: pipeline or hand merge
+Each module carries the route of its merge, and a sub-route:
 
-Each accepted module carries the route of its accepting merge:
-
-- **pipeline**: a dispatch row or a `dep:` row (a module the encoder wrote
-  inside another citation's run). The encoder wrote it. `dep:` modules are
-  not a route of their own.
+- **pipeline**: the encoder wrote it. Sub-routes:
+  - **dispatch**: a targeted re-encode run;
+  - **dep**: a `dep:` row, a module the encoder wrote inside another
+    citation's run.
 - **hand**: a `pr:<repo>#<n>:<path>` row, a PR merged into the default
   branch with no dispatch behind it.
 
-The route comes from the case id today (`attemptSource`, the `pop` filter).
-When axiom-encode #1750 lands, the GitHub Actions run id on each encoder
-record replaces the time-window join for the pipeline route.
+Every count has the form `{pipeline, dispatch, dep, hand}`, where
+`pipeline = dispatch + dep`, so the headline can show the pipeline whole or
+split. The route comes from the case id today (`attemptSource`, the `pop`
+filter). When axiom-encode #1750 lands, the GitHub Actions run id on each
+encoder record replaces the time-window join for the pipeline route.
 
 ### Program
 
@@ -128,40 +138,51 @@ and once in the total, so program rows can sum to more than the total.
 ### API
 
 `GET /api/ops/flow?accepted` returns only the accepted series:
-`accepted.definition`, `accepted.weeks[]` (every week from the first
-accepted module to now, empty weeks included; each with `total` and
-`programs`, both `{pipeline, hand}`), `accepted.totals`, `accepted.programs`
-(plan programs first, then `out_of_plan`, `untagged`) and
-`accepted.modules[]` (each module with its route, programs, case and week).
+
+- `accepted.definition`: the definition as text.
+- `accepted.weeks[]`: every week from the first accepted module to now,
+  empty weeks included. Each has `total` (new accepted modules),
+  `programs` (the same, by program) and `rework`.
+- `accepted.totals`: `total`, `programs`, `rework`, `not_measured`,
+  `not_measured_by_repo` and `not_accepted`.
+- `accepted.programs`: plan programs first, then `out_of_plan`, `untagged`.
+- `accepted.modules`: the ledger itself, `accepted[]`, `rework[]`,
+  `not_measured[]` and `not_accepted[]`, each entry with its module, case,
+  route, sub-route, programs and time.
+
 The full `GET /api/ops/flow` includes the same `accepted` object, and the
-markdown brief ends with a table of it. The `window`, `j` and `pop`
+markdown brief ends with a summary of it. The `window`, `j` and `pop`
 parameters do not narrow it: it is the whole history.
 
-### Weekly counts when the definition was agreed
+### Counts when the definition was agreed
 
 From `encodings.pipeline_attempts` on 2026-10-22 (2,233 rows: 1,352
-dispatches, 44 `dep:`, 837 hand-merged module files). Distinct modules,
-first strict acceptance:
+dispatches, 44 `dep:`, 837 hand-merged module files). Distinct modules:
 
-| week of | pipeline | hand | of hand: `us/policies/usitc` |
-|---|---:|---:|---:|
-| 2026-07-20 | 1 | 17 | |
-| 2026-07-27 | 0 | 94 | 85 |
-| 2026-08-17 | 0 | 3 | |
-| 2026-09-07 | 1 | 9 | |
-| 2026-09-14 | 1 | 0 | |
-| 2026-09-21 | 0 | 2 | |
-| 2026-09-28 | 1 | 1 | |
-| 2026-10-12 | 0 | 1 | |
-| **total** | **4** | **127** | |
+| week of | accepted: dispatch | dep | hand | of hand: `us/policies/usitc` | rework (hand) |
+|---|---:|---:|---:|---:|---:|
+| 2026-07-20 | 1 | 0 | 17 | | 9 |
+| 2026-07-27 | 0 | 0 | 94 | 85 | 5 |
+| 2026-08-17 | 0 | 0 | 3 | | 2 |
+| 2026-09-07 | 1 | 0 | 9 | | |
+| 2026-09-14 | 1 | 0 | 0 | | |
+| 2026-09-21 | 0 | 0 | 2 | | |
+| 2026-09-28 | 1 | 0 | 1 | | |
+| 2026-10-12 | 0 | 0 | 1 | | |
+| **total** | **4** | **0** | **127** | | **16** |
 
-The funnel behind the pipeline number: 400 module files in dispatch rows,
-31 merged into a default branch, 4 strictly accepted. Of the other 27, one
-(rulespec-us) passes its tests but fails to compile (`exec_error`), and 26
-(rulespec-de 7, rulespec-dk 19) have no compile or test result: those repos
-are not in the `rulespec_files` index, so the sweep never sees them. Of 837
-hand-merged files,
-519 are merged under an active waiver.
+Beside the headline:
+
+- **Not measured**: 55 modules (15 dispatch, 40 hand): rulespec-de 17,
+  rulespec-dk 14, rulespec-us 9, rulespec-zm 8, rulespec-ug 4, and one each
+  in rulespec-rw, rulespec-et and rulespec-ng.
+- **Not accepted**: 524 modules (1 dispatch, 523 hand). Most hand-merged
+  modules are merged under an active waiver. The one dispatch module passes
+  its tests but fails to compile (`exec_error`).
+
+No `dep:` module has merged on its own row yet: a module the encoder wrote
+inside another run reaches main in its host run's PR, so it counts there
+as dispatch until the encoder records which modules a PR carries.
 
 The four pipeline modules:
 `ca/policies/cra/td1-2026/provincial-territorial-personal-credits.yaml`
@@ -171,8 +192,8 @@ The four pipeline modules:
 (rulespec-us#1448). #233 reports 3; the difference is the rulespec-ca
 module, which no plan program covers (`out_of_plan`).
 
-By program, the same 131 modules: `out_of_plan` 1 pipeline + 121 hand,
-`snap` 2 + 1, `income_tax` 1 + 5, `ctc` 1 + 0, `eitc` 1 + 0.
+By program, the 131 accepted modules (pipeline + hand): `out_of_plan`
+1 + 121, `snap` 2 + 1, `income_tax` 1 + 5, `ctc` 1 + 0, `eitc` 1 + 0.
 
 ## Event schema: `encodings.pipeline_events`
 

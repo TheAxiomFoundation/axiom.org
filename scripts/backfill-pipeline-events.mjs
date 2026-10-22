@@ -44,7 +44,7 @@
 import { readFileSync, statSync, writeFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import yaml from "js-yaml";
-import { acceptedModules, programIndex, tagPrograms } from "../src/lib/axiom/accepted-modules.ts";
+import { moduleLedger, programIndex, tagPrograms } from "../src/lib/axiom/accepted-modules.ts";
 import { attemptEvents, caseIndex, issueEvents } from "../src/lib/axiom/pipeline-events.ts";
 
 const args = process.argv.slice(2);
@@ -244,11 +244,13 @@ if (!has("--no-programs")) {
   if (!url || !key) throw new Error("program tags read program_bundle_documents: set SUPABASE_URL and a key, or pass --no-programs");
   const members = await readBundleMembers();
   tagPrograms(events, programIndex(members));
-  const accepted = acceptedModules(events);
-  const byRoute = { pipeline: 0, hand: 0 };
-  for (const m of accepted) byRoute[m.route]++;
+  const ledger = moduleLedger(events);
+  const bySubRoute = { dispatch: 0, dep: 0, hand: 0 };
+  for (const m of ledger.accepted) bySubRoute[m.sub_route]++;
   console.error(
-    `programs: ${members.length} bundle documents; ${accepted.length} accepted modules (${byRoute.pipeline} pipeline, ${byRoute.hand} hand)`
+    `programs: ${members.length} bundle documents; ${ledger.accepted.length} accepted modules ` +
+      `(${bySubRoute.dispatch} dispatch, ${bySubRoute.dep} dep, ${bySubRoute.hand} hand), ` +
+      `${ledger.not_measured.length} not measured, ${ledger.rework.length} rework merges`
   );
 }
 

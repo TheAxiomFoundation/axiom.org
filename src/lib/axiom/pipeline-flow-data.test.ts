@@ -71,8 +71,8 @@ describe("loadAccepted", () => {
     ]);
     const accepted = await loadAccepted(events, NOW);
     expect(getBundleIndex).toHaveBeenCalledWith(["us/statute/7/2017/a"]);
-    expect(accepted.modules[0].programs).toEqual(["snap"]);
-    expect(accepted.totals.programs).toEqual({ snap: { pipeline: 1, hand: 0 } });
+    expect(accepted.modules.accepted[0].programs).toEqual(["snap"]);
+    expect(accepted.totals.programs).toEqual({ snap: { pipeline: 1, dispatch: 1, dep: 0, hand: 0 } });
   });
 
   it("keeps them untagged when the lookup finds nothing", async () => {
