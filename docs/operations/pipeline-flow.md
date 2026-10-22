@@ -55,6 +55,100 @@ Display names and one-line descriptions of stations are copy (in
 `pipeline-flow.ts`), not data: an unknown station still renders, with its id
 as its name.
 
+## Accepted modules (draft, for review)
+
+The flow model in axiom-roadmap-dashboard (#233) runs on one number:
+**accepted modules per week**. This page is its measured source, and the
+monthly ramp report reads it from here. The definition below is a draft for
+review; nothing is built on it until it is agreed.
+
+### Definition
+
+A **module** is one RuleSpec file, keyed by `<repo>:<path>`.
+
+A module is **strictly accepted** when all four hold, on the current state
+of the default branch:
+
+1. **Merged** into the default branch: `mainMergedAt` is set (a merge into
+   a side branch counts only once that branch's own PR merged).
+2. **Compiles**: axiom-api's compile sweep reports `compile_status = ok`.
+   `skipped` (the sweep skipped a waived module) and no result yet do not
+   count.
+3. **Passes tests**: the jurisdiction's validation on main reports
+   `tests_status = pass`.
+4. **No active waiver**: the module is not in the repo's
+   `known-validation-gaps.yaml` with an `active` waiver (`tests_status =
+   waived`). A waived module is "merged, not accepted".
+
+A module counts **once**, in the ISO week (Monday, UTC) of the merge that
+first made it strictly accepted. A later merge of the same file is a
+revision, not a new accepted module. If a module loses acceptance (a sweep
+or the tests later fail, or a waiver is added) it leaves the total, and the
+week it left is recorded, so the weekly series can show both.
+
+### Route: pipeline or hand merge
+
+Each accepted module carries the route of its accepting merge:
+
+- **pipeline**: a dispatch row or a `dep:` row (a module the encoder wrote
+  inside another citation's run). The encoder wrote it.
+- **hand**: a `pr:<repo>#<n>:<path>` row, a PR merged into the default
+  branch with no dispatch behind it.
+
+The route comes from the case id today (`attemptSource`, the `pop` filter).
+When axiom-encode #1750 lands, the GitHub Actions run id on each encoder
+record replaces the time-window join for the pipeline route.
+
+### Program
+
+Each module carries a program (`snap`, `medicaid`, `chip`, `tanf`, ...) from
+`program_bundle_documents` membership of its cited provisions, or
+`out_of_plan` when no plan program covers it (tariff and customs rules, for
+example). Out-of-plan modules stay in the counts, in their own row.
+
+### Weekly counts under this draft
+
+From `encodings.pipeline_attempts` on 2026-10-22 (2,233 rows: 1,352
+dispatches, 44 `dep:`, 837 hand-merged module files). Distinct modules,
+first strict acceptance:
+
+| week of | pipeline | hand | of hand: `us/policies/usitc` |
+|---|---:|---:|---:|
+| 2026-07-20 | 1 | 17 | |
+| 2026-07-27 | 0 | 94 | 85 |
+| 2026-08-17 | 0 | 3 | |
+| 2026-09-07 | 1 | 9 | |
+| 2026-09-14 | 1 | 0 | |
+| 2026-09-21 | 0 | 2 | |
+| 2026-09-28 | 1 | 1 | |
+| 2026-10-12 | 0 | 1 | |
+| **total** | **4** | **127** | |
+
+The funnel behind the pipeline number: 400 module files in dispatch rows,
+31 merged into a default branch, 4 strictly accepted. Of the other 27, one
+(rulespec-us) passes its tests but fails to compile (`exec_error`), and 26
+(rulespec-de 7, rulespec-dk 19) have no compile or test result: those repos
+are not in the `rulespec_files` index, so the sweep never sees them. Of 837
+hand-merged files,
+519 are merged under an active waiver.
+
+The four pipeline modules:
+`ca/policies/cra/td1-2026/provincial-territorial-personal-credits.yaml`
+(rulespec-ca#21), `us/statutes/7/2015/f.yaml` (rulespec-us#1347),
+`us/policies/irs/rev-proc-2025-32/page-15.yaml` (rulespec-us#1366),
+`us-az/policies/des/faa5/na-categorical-eligibility/basic-categorical-eligibility.yaml`
+(rulespec-us#1448). #233 reports 3; the difference is likely the rulespec-ca
+module.
+
+### Open questions for review
+
+1. Do modules in repos the compile sweep does not reach (rulespec-de,
+   rulespec-dk) count as "not accepted" (this draft) or "not measured"?
+2. Does a revision of an accepted module (a second merge of the same file)
+   count again, as throughput, or only once (this draft)?
+3. Should `dep:` modules count as pipeline (this draft), or as their own
+   route?
+
 ## Event schema: `encodings.pipeline_events`
 
 Migration: `supabase/migrations/20261021120000_pipeline_events.sql`.
