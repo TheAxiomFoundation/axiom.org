@@ -31,5 +31,6 @@ export default async function OpsFlowRedirect({ searchParams }: { searchParams?:
     bundle: one(raw.bundle),
   };
   if (params.bundle) params.view = "programs";
-  permanentRedirect(flowHref(params, {}));
+  // A window the old link named stays in the address, default or not.
+  permanentRedirect(flowHref(params, {}, { keepWindow: one(raw.window) != null }));
 }

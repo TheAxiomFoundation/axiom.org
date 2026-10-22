@@ -31,8 +31,9 @@ export const DEFAULT_FLOW_PARAMS: FlowParams = {
  * A link from the line that keeps the window and scope and changes the rest.
  * The line is the /ops "Line" tab; a citation (and one run of it) opens the
  * journey drill-down; the programs view is the /ops "Programs" tab.
+ * `keepWindow` keeps the window in the address even at its default.
  */
-export function flowHref(params: FlowParams, change: Partial<FlowParams>): string {
+export function flowHref(params: FlowParams, change: Partial<FlowParams>, options: { keepWindow?: boolean } = {}): string {
   const next = { ...params, ...change };
   const q = new URLSearchParams();
   if (next.citation) {
@@ -47,7 +48,8 @@ export function flowHref(params: FlowParams, change: Partial<FlowParams>): strin
     return `/ops?${q}`;
   }
   q.set("tab", "line");
-  if (next.window !== 30) q.set("window", String(next.window));
+  // The default window drops out, unless an old link named it (keepWindow).
+  if (next.window !== 30 || options.keepWindow) q.set("window", String(next.window));
   if (next.j) q.set("j", next.j);
   if (next.pop !== "all") q.set("pop", next.pop);
   if (next.view !== "pipeline") q.set("view", next.view);
