@@ -34,7 +34,8 @@
  *                  (title or body), under source encoder_change. /ops/flow
  *                  compares each rule's rate before and after them. Uses
  *                  GITHUB_TOKEN when set.
- *   --no-programs  skip the program tags. By default every case's events get
+ *   --no-programs  skip the program tags (they are also skipped, with a note,
+ *                  when no Supabase URL and key are set). By default every case's events get
  *                  attrs.programs: the programs whose bundles
  *                  (program_bundle_documents, in scope) hold its citation or a
  *                  path above it, or ["out_of_plan"] when none does. The
@@ -240,8 +241,10 @@ async function readBundleMembers() {
   return rows;
 }
 
-if (!has("--no-programs")) {
-  if (!url || !key) throw new Error("program tags read program_bundle_documents: set SUPABASE_URL and a key, or pass --no-programs");
+if (!has("--no-programs") && (!url || !key)) {
+  // An offline dry run (--attempts <file>, no credentials) still works: untagged.
+  console.error("programs: skipped (no SUPABASE_URL and key to read program_bundle_documents); cases stay untagged");
+} else if (!has("--no-programs")) {
   const members = await readBundleMembers();
   tagPrograms(events, programIndex(members));
   const ledger = moduleLedger(events);

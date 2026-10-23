@@ -7,6 +7,7 @@ import {
   type AcceptedSeries,
   type ModuleLedger,
 } from "./accepted-modules";
+import { unstable_cache } from "next/cache";
 import { getBundleIndex } from "./program-bundles-data";
 import { getPipelineEvents, getStationTargets, type EventsOrigin } from "./pipeline-events-data";
 import type { PipelineEvent } from "./pipeline-events";
@@ -131,4 +132,22 @@ export async function loadAccepted(events: PipelineEvent[], now = Date.now()): P
     }
   }
   return { ...acceptedSeries(ledger, now), modules: ledger };
+}
+
+/** How long the /ops headline keeps a count: the collector refreshes every 30 minutes. */
+const HEADLINE_SECONDS = 600;
+
+const cachedHeadline = unstable_cache(
+  async (): Promise<AcceptedSeries> => acceptedSeries(moduleLedger((await getPipelineEvents()).events)),
+  ["ops-accepted-headline-v1"],
+  { revalidate: HEADLINE_SECONDS }
+);
+
+/**
+ * The accepted-modules series for the /ops headline on tabs that do not read
+ * the event log themselves (Now, Programs): counted from the whole log, kept
+ * for HEADLINE_SECONDS, without the program lookup.
+ */
+export async function getAcceptedHeadline(): Promise<AcceptedSeries> {
+  return cachedHeadline();
 }

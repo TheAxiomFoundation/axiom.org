@@ -1,12 +1,8 @@
-import type { Population } from "@/lib/axiom/pipeline-flow";
-
 export type FlowView = "pipeline" | "discovery" | "programs";
 
 export interface FlowParams {
   window: number;
   j: string | null;
-  /** Which cases the line counts. */
-  pop: Population;
   view: FlowView;
   station: string | null;
   citation: string | null;
@@ -18,7 +14,6 @@ export interface FlowParams {
 export const DEFAULT_FLOW_PARAMS: FlowParams = {
   window: 30,
   j: null,
-  pop: "all",
   view: "pipeline",
   station: null,
   citation: null,
@@ -51,7 +46,6 @@ export function flowHref(params: FlowParams, change: Partial<FlowParams>, option
   // The default window drops out, unless an old link named it (keepWindow).
   if (next.window !== 30 || options.keepWindow) q.set("window", String(next.window));
   if (next.j) q.set("j", next.j);
-  if (next.pop !== "all") q.set("pop", next.pop);
   if (next.view !== "pipeline") q.set("view", next.view);
   if (next.station) q.set("station", next.station);
   return `/ops?${q}`;

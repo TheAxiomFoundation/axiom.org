@@ -42,12 +42,15 @@ describe("programs", () => {
     expect(citationPrograms("us/policy/usitc/ch01", index)).toEqual([OUT_OF_PLAN]);
   });
 
-  it("tags every event of a case, and leaves encoder changes alone", () => {
+  it("tags every event of a case, and leaves encoder changes and waiver rows alone", () => {
     const events = attemptEvents(mergedAttempt());
     const change = { ...events[0], id: "c", case_id: "pr:axiom-encode#1", citation: "axiom-encode", source: "encoder_change" as const, attrs: {} };
-    tagPrograms([...events, change], index);
+    // A waiver row's citation is a module path, which matches no corpus citation.
+    const waiver = { ...events[0], id: "w", case_id: "waiver:x", citation: "us/statute/7/2017/a", source: "waiver_ledger" as const, attrs: { repo: "rulespec-us" } };
+    tagPrograms([...events, change, waiver], index);
     expect(events.every((e) => (e.attrs.programs as string[]).join() === "snap,tanf")).toBe(true);
     expect(change.attrs).toEqual({});
+    expect(waiver.attrs).toEqual({ repo: "rulespec-us" });
   });
 });
 

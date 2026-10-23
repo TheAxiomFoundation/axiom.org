@@ -71,6 +71,70 @@ export async function getPipelineEvents(): Promise<PipelineEventsResult> {
 }
 
 /**
+ * The events that match a PostgREST filter, from the same source
+ * getPipelineEvents would read: the table (filtered there), else the dev
+ * file or the derived log (filtered here, `keep` deciding).
+ */
+async function filteredEvents(filter: Record<string, string>, keep: (e: PipelineEvent) => boolean, derive: () => Promise<PipelineEventsResult>): Promise<PipelineEventsResult> {
+  const file = process.env.AXIOM_OPS_EVENTS_FILE;
+  if (file && process.env.NODE_ENV === "development") {
+    const all = await getPipelineEvents();
+    return { ...all, events: all.events.filter(keep) };
+  }
+  const config = getSupabaseRestConfig();
+  if (config) {
+    try {
+      const events: PipelineEvent[] = [];
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const rows = await readSupabaseRows<PipelineEvent>(config, "encodings", "pipeline_events", {
+          select: "*",
+          ...filter,
+          order: "id.asc",
+          limit: String(PAGE_SIZE),
+          offset: String(page * PAGE_SIZE),
+        });
+        events.push(...rows);
+        if (rows.length < PAGE_SIZE) break;
+      }
+      // An empty answer may mean the backfill has not run: derive instead.
+      if (events.length) return { events, origin: "table", available: true, error: null };
+    } catch (error) {
+      if (!/returned 404/.test(message(error))) {
+        return { events: [], origin: "table", available: false, error: message(error) };
+      }
+    }
+  }
+  return derive();
+}
+
+/** One citation's events, for the journey: filtered in the table, or derived from that citation's attempts only. */
+export async function getCitationEvents(citation: string): Promise<PipelineEventsResult> {
+  return filteredEvents(
+    { citation: `eq.${citation}` },
+    (e) => e.citation === citation,
+    async () => {
+      const pipeline = await getPipelineAttempts();
+      return {
+        events: pipeline.attempts.filter((a) => a.citation === citation).flatMap(attemptEvents),
+        origin: "derived",
+        available: pipeline.available,
+        error: pipeline.error,
+      };
+    }
+  );
+}
+
+/** The waiver rows (source waiver_ledger). The derived log has none: they come only from the backfill. */
+export async function getWaiverEvents(): Promise<PipelineEventsResult> {
+  return filteredEvents({ source: "eq.waiver_ledger" }, (e) => e.source === "waiver_ledger", async () => ({
+    events: [],
+    origin: "derived",
+    available: true,
+    error: null,
+  }));
+}
+
+/**
  * The starting targets, as the migration seeds them. Used only while
  * encodings.pipeline_station_targets is not there.
  */

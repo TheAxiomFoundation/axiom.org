@@ -68,13 +68,15 @@ export function citationPrograms(citation: string, index: Map<string, Set<string
 
 /**
  * Tag every event of a case with its programs (`attrs.programs`), from its
- * citation. Cases with no citation of their own (encoder changes) stay
+ * citation. Encoder changes and waiver rows (keyed by module path) stay
  * untagged. Returns the events, changed in place.
  */
 export function tagPrograms(events: PipelineEvent[], index: Map<string, Set<string>>): PipelineEvent[] {
   const cache = new Map<string, string[]>();
   for (const e of events) {
-    if (e.source === "encoder_change" || !e.citation.includes("/")) continue;
+    // Encoder changes name no citation, and a waiver row's "citation" is a
+    // module file path, not a corpus citation: neither has a program here.
+    if (e.source === "encoder_change" || e.source === "waiver_ledger" || !e.citation.includes("/")) continue;
     let programs = cache.get(e.citation);
     if (!programs) {
       programs = citationPrograms(e.citation, index);
@@ -404,8 +406,9 @@ export function acceptedSeries(ledger: ModuleLedger, now: number = Date.now()): 
 }
 
 /** A short markdown section for the agent brief: the headline, rework and not measured, then programs. */
-export function acceptedBrief(series: AcceptedSeries): string {
-  const { total, programs, rework, not_measured, not_measured_by_repo } = series.totals;
+export function acceptedBrief(series: AcceptedSeries, options: { programs?: boolean } = {}): string {
+  const withPrograms = options.programs ?? true;
+  const { total, rework, not_measured, not_measured_by_repo } = series.totals;
   const byRepo = Object.entries(not_measured_by_repo)
     .sort((a, b) => b[1] - a[1])
     .map(([repo, n]) => `${repo} ${n}`)
@@ -417,6 +420,16 @@ export function acceptedBrief(series: AcceptedSeries): string {
     `Not measured (merged, no compile or test result): ${not_measured.pipeline + not_measured.hand}${byRepo ? ` (${byRepo})` : ""}.`,
     `Rework (later merges of accepted modules): ${rework.pipeline + rework.hand}.`,
     "",
+    ...(withPrograms ? programTable(series) : ["By program: /api/ops/flow?accepted.", ""]),
+    series.definition,
+    "",
+  ];
+  return lines.join("\n");
+}
+
+function programTable(series: AcceptedSeries): string[] {
+  const { programs } = series.totals;
+  return [
     "| program | accepted: dispatch | dep | hand | not measured |",
     "|---|---:|---:|---:|---:|",
     ...series.programs.map((p) => {
@@ -425,8 +438,5 @@ export function acceptedBrief(series: AcceptedSeries): string {
       return `| ${p} | ${a.dispatch} | ${a.dep} | ${a.hand} | ${n ? n.pipeline + n.hand : 0} |`;
     }),
     "",
-    series.definition,
-    "",
   ];
-  return lines.join("\n");
 }

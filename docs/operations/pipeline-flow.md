@@ -180,14 +180,17 @@ and once in the total, so program rows can sum to more than the total.
   (`accepted`, `rework`, `not_measured`, `not_accepted`), module, case,
   route, sub-route, programs, time and week.
 
-The full `GET /api/ops/flow` includes the same `accepted` object, and the
-markdown brief ends with a summary of it: the headline, the not-measured
-count by repo, rework, and a table by program with a not-measured column.
-Every `/ops` tab shows the headline above its body: accepted (all time, and
-the last four weeks), not measured (with its largest repos), and rework /
-not accepted. The headline counts without the program lookup; the Output
-tab has it. The `window`, `j` and `pop`
-parameters do not narrow it: it is the whole history.
+Only `?accepted` runs the program lookup. The full `GET /api/ops/flow`
+carries the cached headline series as `accepted` (totals, weeks, routes,
+not measured, rework; programs read `untagged` until the backfill tags the
+events), and the markdown brief ends with its summary and a pointer to
+`?accepted` for programs. Every `/ops` tab shows the same headline above
+its body: accepted (all time, and the last four weeks), not measured (with
+its largest repos), and rework / not accepted. The Line and Output tabs
+count it from the events they read anyway; the Now and Programs tabs, and
+the API, read it from a cache kept for ten minutes (`getAcceptedHeadline`).
+The `window`, `j` and `pop` parameters do not narrow it: it is the whole
+history.
 
 ### Counts when the definition was agreed
 

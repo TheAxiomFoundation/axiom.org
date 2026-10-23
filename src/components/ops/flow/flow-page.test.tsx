@@ -29,7 +29,7 @@ const model = mineFlow(events, {
   targets: [{ station: "validate", min_yield: 0.9, max_p95_hours: null, max_wip: null, sla_hours: null }],
   workflows: [{ label: "Release activation", grade: "failing", url: "https://x", detail: "Last run failed" }],
 });
-const params: FlowParams = { window: 30, j: null, pop: "all", view: "pipeline", station: null, citation: null, case: null, program: null, bundle: null };
+const params: FlowParams = { window: 30, j: null, view: "pipeline", station: null, citation: null, case: null, program: null, bundle: null };
 
 function line(overrides: Partial<FlowParams> = {}) {
   return render(<FlowLine model={model} origin="derived" targetsSeeded error={null} params={{ ...params, ...overrides }} jurisdictions={["us", "dk"]} />);
@@ -40,7 +40,6 @@ describe("flowHref", () => {
     expect(flowHref(params, {})).toBe("/ops?tab=line");
     expect(flowHref({ ...params, window: 7, j: "us" }, { station: "validate" })).toBe("/ops?tab=line&window=7&j=us&station=validate");
     expect(flowHref(params, { view: "discovery" })).toBe("/ops?tab=line&view=discovery");
-    expect(flowHref(params, { pop: "runs" })).toBe("/ops?tab=line&pop=runs");
   });
 
   it("links a citation and a run to the journey, and programs to the Programs tab", () => {

@@ -841,13 +841,6 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
   return model;
 }
 
-/** When a case's last timed visit ended (untimed checks carry a read time, not a finish time). */
-function caseEnd(c: Case): number {
-  let end = c.start;
-  for (const v of c.visits) if (v.end != null && v.duration_ms != null) end = Math.max(end, v.end);
-  return end;
-}
-
 /**
  * Columns for the flow: a depth-first walk from the busiest entry station
  * marks back edges (loops), and each station's rank is its longest path
@@ -1622,7 +1615,29 @@ function link(path: string, siteUrl: string): string {
   return path.startsWith("http") ? path : `${siteUrl}${path}`;
 }
 
-/** The stations in line order over the whole log, for drawing one citation's lanes. */
-export function stationOrderOf(events: PipelineEvent[], now: number = Date.now()): string[] {
-  return mineFlow(events, { now, days: 3650 }).stations.map((s) => s.id);
+/** The stations the line emits today, in line order (see docs/operations/pipeline-flow.md, "Stations"). */
+export const LINE_STATIONS = [
+  "dispatch",
+  "approval",
+  "setup",
+  "generate",
+  "validate",
+  "publish",
+  "pr_checks",
+  "review",
+  "merge",
+  "index",
+  "tests",
+  "compile",
+  "oracle",
+];
+
+/**
+ * The stations for drawing a few cases' lanes: the line's own order, then
+ * any other station the events name, in the order they first appear.
+ */
+export function stationOrderOf(events: PipelineEvent[]): string[] {
+  const order = [...LINE_STATIONS];
+  for (const e of events) if (!order.includes(e.station)) order.push(e.station);
+  return order;
 }

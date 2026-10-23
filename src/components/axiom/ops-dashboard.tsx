@@ -30,6 +30,7 @@ import {
 } from "@/lib/axiom/jurisdictions-seed";
 import type { EncodingQueueSummary } from "@/lib/axiom/encoding-queues";
 import { ageLabel } from "@/lib/axiom/encoding-pipeline";
+import { opsHref } from "@/lib/axiom/ops-href";
 import type { RecentIngestDay, RecentIngestPlace } from "@/lib/corpus-status";
 import { jurisdictionName as placeName, ownLevelName } from "@/lib/axiom/jurisdiction-names";
 import {
@@ -76,6 +77,8 @@ interface OpsDashboardProps {
   panel?: ReactNode;
   /** The open tab (?tab=line, output or programs); "now" otherwise. */
   initialTab?: OpsTab;
+  /** The parameters every tab link carries (the jurisdiction scope, the window). */
+  shared?: Record<string, string>;
   /** The workflows the pipeline depends on, shown under the fleet box. */
   workflows?: ReactNode;
   /**
@@ -271,6 +274,7 @@ export function OpsDashboard({
   headline,
   panel,
   initialTab = "now",
+  shared = {},
   workflows,
   starting,
 }: OpsDashboardProps) {
@@ -363,7 +367,7 @@ export function OpsDashboard({
             <a
               key={value}
               id={`ops-tab-${value}`}
-              href={value === "now" ? "/ops" : `/ops?tab=${value}`}
+              href={opsHref(shared, value)}
               aria-current={tab === value ? "page" : undefined}
               title={TAB_HINTS[value]}
             >

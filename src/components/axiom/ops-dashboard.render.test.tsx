@@ -170,7 +170,14 @@ describe("OpsDashboard", () => {
     expect(screen.getByRole("region", { name: "Every run" })).toBeVisible();
     expect(screen.queryByRole("region", { name: "The encoding line" })).not.toBeInTheDocument();
     cleanup();
-    render(<OpsDashboard {...props} initialTab="line" />);
+    // The scope and the window travel with every tab link.
+    render(<OpsDashboard {...props} initialTab="line" shared={{ j: "us", window: "7" }} />);
+    expect(within(screen.getByRole("navigation", { name: "Operations" })).getAllByRole("link").map((t) => t.getAttribute("href"))).toEqual([
+      "/ops?j=us&window=7",
+      "/ops?tab=line&j=us&window=7",
+      "/ops?tab=output&j=us&window=7",
+      "/ops?tab=programs&j=us&window=7",
+    ]);
     expect(screen.getByRole("region", { name: "Accepted modules" })).toBeVisible();
     expect(screen.getByRole("region", { name: "The encoding line" })).toBeVisible();
     expect(screen.queryByRole("region", { name: "Every run" })).not.toBeInTheDocument();

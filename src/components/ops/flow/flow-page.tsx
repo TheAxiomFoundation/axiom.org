@@ -22,6 +22,7 @@ import { CaseCanvas, DocumentsCanvas, LanesCanvas, ProgramsCanvas, type Document
 import { flowHref, type FlowParams } from "./flow-params";
 import { PipelineFloor } from "./pipeline-floor";
 import { ReasonSources } from "./reason-sources";
+import { ScopeNav } from "./scope-nav";
 import { StatusIcon } from "./status-icon";
 import styles from "./flow.module.css";
 
@@ -76,19 +77,7 @@ export function FlowLine({
               )
             )}
           </nav>
-          <nav className={styles.seg} aria-label="Jurisdiction">
-            {[null, ...jurisdictions].slice(0, 7).map((j) =>
-              j === params.j ? (
-                <span key={j ?? "all"} aria-current="page">
-                  {j ?? "All"}
-                </span>
-              ) : (
-                <a key={j ?? "all"} href={flowHref(params, { j, station: null })}>
-                  {j ?? "All"}
-                </a>
-              )
-            )}
-          </nav>
+          <ScopeNav current={params.j} options={jurisdictions} href={(j) => flowHref(params, { j, station: null })} />
         </div>
       </header>
 
@@ -152,7 +141,7 @@ export function JourneyView({
   origin: EventsOrigin;
   error: string | null;
 }) {
-  const params: FlowParams = { window: 30, j: null, pop: "all", view: "pipeline", station: null, citation, case: detail?.case_id ?? null, program: null, bundle: null };
+  const params: FlowParams = { window: 30, j: null, view: "pipeline", station: null, citation, case: detail?.case_id ?? null, program: null, bundle: null };
   return (
     <div className={`${dashboard.dashboard} ${styles.page} min-h-screen pt-28 pb-16`}>
       <div className={styles.wrap}>
