@@ -69,3 +69,36 @@ it('answers 503 when the closure evidence is unavailable', async () => {
  expect(response.status).toBe(503);
  expect(response.headers.get('cache-control')).toBe('no-store');
 });
+
+const S22 = [
+ describeRelation({name:'taxpayer_or_spouse_of_tax_unit', kind:'data_relation', data_relation:{arity:2, arguments:['TaxUnit','Person']}}, 'us:statutes/26/22'),
+ describeRelation({name:'section_22_payment_of_tax_unit', kind:'data_relation', data_relation:{arity:2, arguments:['TaxUnit','Payment']}}, 'us:statutes/26/22'),
+];
+const s22Runtime = {
+ inputs:[{name:'payment_amount',entity:'Payment'}],
+ relation_membership:['convention','explicit'],
+ relations:[
+  {name:'us:statutes/26/22#relation.taxpayer_or_spouse_of_tax_unit', slot_entities:['TaxUnit','Person'], tuple:['household:1','person:1:{index}'], explicit:true},
+  {name:'us:statutes/26/22#relation.section_22_payment_of_tax_unit', slot_entities:['TaxUnit','Payment'], tuple:['household:1','payment:1:{index}'], explicit:true},
+ ],
+};
+it('offers Run for 26 USC 22 only when the runtime allocates payments per request', async () => {
+ vi.mocked(compositionScope).mockResolvedValue({readiness:'roles_required',relations:S22});
+ // A runtime with explicit membership (#267) but no per-request instances.
+ vi.mocked(runtimeProxyGet).mockResolvedValueOnce({status:200,body:{status:'ok',data:{...s22Runtime, relations:[s22Runtime.relations[0], {...s22Runtime.relations[1], tuple:['person:1:{index}','household:1'], explicit:false}]}}});
+ const older = await GET(request());
+ expect(older.status).toBe(422);
+ expect((await older.json()).error.message).toMatch(/cannot allocate them yet/);
+ // Allocated, but with an id template the Plane does not expect.
+ vi.mocked(runtimeProxyGet).mockResolvedValueOnce({status:200,body:{status:'ok',data:{...s22Runtime, instance_kinds:[{entity:'Payment',id_template:'pay:{index}'}]}}});
+ const odd = await GET(request());
+ expect(odd.status).toBe(422);
+ expect((await odd.json()).error.message).toMatch(/do not match/);
+ vi.mocked(runtimeProxyGet).mockResolvedValueOnce({status:200,body:{status:'ok',data:{...s22Runtime, instance_kinds:[{entity:'Payment',id_template:'payment:1:{index}'}]}}});
+ const newer = await GET(request());
+ expect(newer.status).toBe(200);
+ const data = (await newer.json()).data;
+ expect(data.relation_membership).toBe('explicit');
+ expect(data.instance_kinds).toEqual([{entity:'Payment',id_template:'payment:1:{index}'}]);
+ expect(data.relations.find((relation: {name: string}) => relation.name === 'section_22_payment_of_tax_unit')).toMatchObject({instanceEntity:'Payment', instanceSlot:1, unitEntity:'TaxUnit'});
+});

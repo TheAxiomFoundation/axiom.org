@@ -21,8 +21,8 @@ const DATA: RunData = {
       turn: 0,
       created_at: "2026-10-26T18:01:00Z",
       perspective: "resident",
-      household_id: "az-savings",
-      prompt: "I live in Phoenix. How much SNAP can I get?",
+      household_id: "ct-couple",
+      prompt: "We live in Hartford. How much SNAP can we get?",
       answer: "You would not qualify because of your savings.",
       verdict: "wrong",
       would_act: "no",
@@ -121,7 +121,7 @@ describe("ResultsBoard", () => {
     render(<ResultsBoard summary={SUMMARY} />);
     expect(screen.getByRole("heading", { name: "Where the answers broke down" })).toBeInTheDocument();
     const row = (label: string) => screen.getByTitle(label).parentElement as HTMLElement;
-    expect(row("Disabled, with savings")).toHaveTextContent("1 of 1");
+    expect(row("Couple, with savings")).toHaveTextContent("1 of 1");
     expect(row("+ Gig income")).toHaveTextContent("0 of 1");
     expect(row("Asked as a caseworker")).toHaveTextContent("0 of 1");
     expect(screen.getByText("What went wrong")).toBeInTheDocument();
@@ -190,9 +190,48 @@ describe("ResultsBoard", () => {
     render(<ResultsBoard summary={harmful} />);
     expect(screen.getByText("What would a resident do next?")).toBeInTheDocument();
     const card = screen.getByText("Would not apply").parentElement as HTMLElement;
-    expect(card).toHaveTextContent("1answers would lead a resident not to apply. 1 of those households qualify under the encoded rules.");
+    expect(card).toHaveTextContent("1answer would lead a resident not to apply. 1 of those households qualifies under the encoded rules.");
     expect(screen.getByText("Rules the room says people misread")).toBeInTheDocument();
     expect(screen.getByTitle("Asset tests")).toBeInTheDocument();
+  });
+
+  it("keeps an amount from rules that don't test eligibility apart from households that qualify", () => {
+    const arizona = summarizeRun({
+      ...DATA,
+      prompts: [
+        { ...DATA.prompts[0], household_id: "az-retiree", resident_action: "not-apply", rules_program_id: "us-az-snap", rules_eligibility_tested: false },
+        { ...DATA.prompts[1], resident_action: "apply" },
+      ],
+    });
+    render(<ResultsBoard summary={arizona} />);
+    const card = screen.getByText("Would not apply").parentElement as HTMLElement;
+    expect(card).toHaveTextContent(
+      "1answer would lead a resident not to apply. For 1 of those, the rules give an amount but don't test eligibility yet.",
+    );
+    expect(card).not.toHaveTextContent("qualify under the encoded rules");
+    const spotlight = within(screen.getByRole("heading", { name: "Answers worth discussing" }).closest("section") as HTMLElement);
+    expect(spotlight.getByText("$24").parentElement).toHaveTextContent("· The rules say $24 if eligible");
+    expect(spotlight.getByText(/is the FY2026 minimum benefit/)).toHaveTextContent(
+      "$24 is the FY2026 minimum benefit. It rose to $25 on October 1, 2026.",
+    );
+  });
+
+  it("puts the minimum-benefit note only beside a $24 from rules that don't test eligibility", () => {
+    render(<ResultsBoard summary={summarizeRun({
+      ...DATA,
+      prompts: [{ ...DATA.prompts[0], household_id: "az-retiree", rules_amount: 30, rules_program_id: "us-az-snap", rules_eligibility_tested: false }],
+    })} />);
+    expect(screen.getByText("$30")).toBeInTheDocument();
+    expect(screen.queryByText(/is the FY2026 minimum benefit/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the Arizona minimum-benefit note out of other programs' $24 checks", () => {
+    render(<ResultsBoard summary={summarizeRun({
+      ...DATA,
+      prompts: [{ ...DATA.prompts[0], household_id: "ny-parent", rules_program: "New York SNAP" }],
+    })} />);
+    expect(screen.getByText("$24")).toBeInTheDocument();
+    expect(screen.queryByText(/is the FY2026 minimum benefit/)).not.toBeInTheDocument();
   });
 
   it("shows the source-of-truth answers under how it felt", () => {

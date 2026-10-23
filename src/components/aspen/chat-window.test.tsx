@@ -571,6 +571,40 @@ describe("ChatWindow asking", () => {
     expect(screen.queryByRole("link", { name: "Source 6" })).not.toBeInTheDocument();
   });
 
+  it("keeps a long source title from widening the page on a phone", async () => {
+    const title = "Nutrition Assistance Frequently Asked Questions | Arizona Department of Economic Security";
+    routeFetch({
+      "/api/aspen/ask": () =>
+        streamResponse(
+          streamOf([
+            { type: "meta", promptId: "p" },
+            { type: "delta", text: "Answer\n\n## Apply\n\n- des.az.gov/node/4875" },
+            { type: "done", model: "gpt-5", webSearch: true, sources: [{ url: "https://des.az.gov/node/4875", title }] },
+          ]),
+        ),
+    });
+    const { container } = render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    pickRetiree();
+    fireEvent.click(screen.getByRole("button", { name: "Ask the AI" }));
+    await screen.findByText("Answer");
+    // jsdom has no layout, so check the CSS that bounds the width: the chip truncates, and
+    // at every breakpoint each column has a 0 minimum (grid-cols-1 or minmax(0, ...) tracks),
+    // never an auto track that grows to fit the chip's one line.
+    expect(screen.getByRole("link", { name: title })).toHaveClass("max-w-full", "truncate");
+    const grid = container.firstElementChild as HTMLElement;
+    const columns = grid.className.split(/\s+/).filter((c) => /(^|:)grid-cols-/.test(c));
+    expect(columns.some((c) => c.startsWith("grid-cols-"))).toBe(true);
+    for (const c of columns) {
+      expect(c.replace(/^.*grid-cols-/, "")).toMatch(/^(1|\[minmax\(0,[^\]_]+\)(_minmax\(0,[^\]_]+\))*\])$/);
+    }
+    // Long unbroken text wraps instead of running past the bubble or the answer.
+    expect(screen.getByText(/^I live in Phoenix|^I'm 67/, { selector: "div" })).toHaveClass("break-words");
+    // On the answer's root, so paragraphs, headings and list items all inherit it.
+    for (const block of [screen.getByText("Answer", { selector: "p" }), screen.getByText("Apply"), screen.getByText("des.az.gov/node/4875")]) {
+      expect(block.closest(".break-words")).not.toBeNull();
+    }
+  });
+
   it("sends the details with a household question", async () => {
     const fetchMock = routeFetch({
       "/api/aspen/ask": () => streamResponse(streamOf([{ type: "meta", promptId: "p-t" }, { type: "delta", text: "Ok" }, { type: "done" }])),

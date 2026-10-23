@@ -6,11 +6,14 @@ import { humanizeRuleName } from "./citations";
 import { parseFormulaStrict, type AstNode } from "./formula";
 import { resolveLogicIdentifier } from "./rule-logic";
 import { lookedUpTableRow } from "./parameter-table";
+import type { InstanceAnswers } from "@/lib/axiom/runtime/relation-roles";
 
 export type ExplanationRun = {
   outputs: Record<string, unknown>;
   trace: Array<{ variable: string; value: unknown; instances?: Array<{ entity_id: string; value: unknown }>; dependencies?: Array<{ variable: string; entity_id: string; value: unknown }> }>;
   submittedFacts?: Record<string, unknown>;
+  /** Per-request answers copied when the run was submitted, by kind and key. */
+  submittedInstances?: InstanceAnswers;
   submittedPersonIds?: Record<string, string>;
 };
 
@@ -25,6 +28,14 @@ export function recordedEvidence(graph: ProgramGraph, run: ExplanationRun, id: s
   if (trace) return { value: trace.instances?.length ? Object.fromEntries(trace.instances.map((item) => [item.entity_id, item.value])) : trace.value, origin: "Recorded by engine" };
   const input = graph.inputs.find((item) => item.legalId === id);
   const inputName = input?.name.replace(/^input\./, "");
+  if (inputName && input?.entity && Object.hasOwn(run.submittedInstances ?? {}, input.entity)) {
+    // An allocated kind owns its inputs: flat facts and registry defaults
+    // cannot stand in for an instance, including when none were allocated.
+    const answers = Object.entries(run.submittedInstances![input.entity]!)
+      .filter(([, values]) => Object.hasOwn(values, inputName))
+      .map(([key, values]) => [key, values[inputName]]);
+    return { value: Object.fromEntries(answers), origin: "Submitted input" };
+  }
   if (inputName && Object.hasOwn(run.submittedFacts ?? {}, inputName)) return { value: run.submittedFacts![inputName], origin: "Submitted input" };
   return undefined;
 }

@@ -6,6 +6,18 @@ import { humanizeRuleName } from "./citations";
 type Field = { name: string; label: string; entity?: string | null; category?: string; order?: number };
 const RELATIONSHIPS_ID = "relationships";
 
+/** A per-request instance kind the scenario allocates instance by instance
+ *  (Payment in a (TaxUnit, Payment) relation): its instances, in order,
+ *  and how to add or remove one. */
+export interface InstanceCollection {
+  entity: string;
+  /** Scenario keys (`payment_1`, …) in request order. */
+  items: string[];
+  max: number;
+  onAdd: () => void;
+  onRemove: (id: string) => void;
+}
+
 export function groupHouseholdInputs(fields: Field[]) {
   const buckets = new Map<string, Field[]>();
   for (const field of fields) {
@@ -18,8 +30,20 @@ export function groupHouseholdInputs(fields: Field[]) {
     ) }));
 }
 
+/** `TaxUnit` → "Tax unit". */
+export function entityLabel(entity: string): string {
+  return humanizeRuleName(entity.replace(/([a-z])([A-Z])/g, "$1 $2"));
+}
+
+/** "Payment" → "Payments", "Family" → "Families". */
+export function pluralLabel(label: string): string {
+  if (/[^aeiou]y$/i.test(label)) return `${label.slice(0, -1)}ies`;
+  if (/(s|x|z|ch|sh)$/i.test(label)) return `${label}es`;
+  return `${label}s`;
+}
+
 /** Entity composition and answers share one workspace; adding a field is unnecessary. */
-export function HouseholdComposer({ fields, members, canAddPeople, running, onAddPerson, onRemovePerson, renderControl, relationships }: {
+export function HouseholdComposer({ fields, members, canAddPeople, running, onAddPerson, onRemovePerson, renderControl, relationships, collections = [] }: {
   fields: Field[];
   members: string[];
   canAddPeople: boolean;
@@ -29,6 +53,9 @@ export function HouseholdComposer({ fields, members, canAddPeople, running, onAd
   renderControl: (field: Field, member: string | null) => ReactNode;
   /** Who belongs to each declared relation — its own composition entry. */
   relationships?: ReactNode;
+  /** Per-request instance kinds (payments), each its own branch of
+   *  instances with their own answers. */
+  collections?: InstanceCollection[];
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -37,9 +64,19 @@ export function HouseholdComposer({ fields, members, canAddPeople, running, onAd
     const entity = field.entity || "Unspecified entity";
     groups.set(entity, [...(groups.get(entity) ?? []), field]);
   }
-  const entities = [...groups].flatMap(([entity, inputs]) => entity === "Person"
-    ? [null, ...members].map(member => ({ id: member ?? "person_1", label: member ? `Person ${member.split("_")[1]}` : "Person 1", entity, member, inputs }))
-    : [{id: `entity:${entity}`, label: humanizeRuleName(entity.replace(/([a-z])([A-Z])/g, "$1 $2")), entity, member: null, inputs}]);
+  const byKind = new Map(collections.map(collection => [collection.entity, collection]));
+  for (const collection of collections) if (!groups.has(collection.entity)) groups.set(collection.entity, []);
+  type Entry = { id: string; label: string; entity: string; member: string | null; inputs: Field[]; onRemove?: () => void };
+  const entities: Entry[] = [...groups].flatMap(([entity, inputs]): Entry[] => {
+    if (entity === "Person") {
+      return [null, ...members].map(member => ({ id: member ?? "person_1", label: member ? `Person ${member.split("_")[1]}` : "Person 1", entity, member, inputs, ...(member ? { onRemove: () => onRemovePerson(member) } : {}) }));
+    }
+    const collection = byKind.get(entity);
+    if (collection) {
+      return collection.items.map(item => ({ id: item, label: `${entityLabel(entity)} ${item.split("_").at(-1)}`, entity, member: item, inputs, onRemove: () => collection.onRemove(item) }));
+    }
+    return [{id: `entity:${entity}`, label: entityLabel(entity), entity, member: null, inputs}];
+  });
   const showingRelationships = Boolean(relationships) && selected === RELATIONSHIPS_ID;
   const current = entities.find(item => item.id === selected) ?? entities[0];
   const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -51,25 +88,36 @@ export function HouseholdComposer({ fields, members, canAddPeople, running, onAd
     )),
   })).filter(item => item.inputs.length > 0);
   const people = entities.filter(item => item.entity === "Person");
-  const entityRow = (item: typeof entities[number]) => <div className="household-entity-row" key={item.id}>
+  const entityRow = (item: Entry) => <div className="household-entity-row" key={item.id}>
     <button type="button" className="household-entity" aria-current={!showingRelationships && current?.id === item.id ? "true" : undefined} onClick={() => {setSelected(item.id); setQuery("");}}>
       <span>{item.label}</span>
     </button>
-    {item.member && <button type="button" className="household-remove" disabled={running} aria-label={`Remove ${item.label}`} onClick={() => onRemovePerson(item.member!)}>×</button>}
+    {item.onRemove && <button type="button" className="household-remove" disabled={running} aria-label={`Remove ${item.label}`} onClick={item.onRemove}>×</button>}
   </div>;
   const peopleBranch = people.length > 0 && <section className="household-tree-branch" aria-label="People">
     <h4>People</h4>
     {people.map(entityRow)}
     {canAddPeople && <button type="button" className="household-add" disabled={running || members.length >= 11} onClick={onAddPerson}>＋ Add person</button>}
   </section>;
+  const collectionBranches = collections.map(collection => {
+    const label = entityLabel(collection.entity);
+    const plural = pluralLabel(label);
+    return <section className="household-tree-branch" key={`kind:${collection.entity}`} aria-label={plural}>
+      <h4>{plural}</h4>
+      {entities.filter(item => item.entity === collection.entity).map(entityRow)}
+      {collection.items.length === 0 && <p className="household-empty">No {plural.toLowerCase()} in this scenario.</p>}
+      <button type="button" className="household-add" disabled={running || collection.items.length >= collection.max} onClick={collection.onAdd}>＋ Add {label.toLowerCase()}</button>
+    </section>;
+  });
   return <div className="household-composer">
     <nav className="household-composition" aria-label="Household composition">
       <h3>Entities</h3>
       <div className="household-tree">
-        {entities.filter(item => item.entity !== "Person").map(item => <section className="household-tree-branch" key={item.id} aria-label={item.label}>
+        {entities.filter(item => item.entity !== "Person" && !byKind.has(item.entity)).map(item => <section className="household-tree-branch" key={item.id} aria-label={item.label}>
           {entityRow(item)}
         </section>)}
         {peopleBranch}
+        {collectionBranches}
         {relationships && <section className="household-tree-branch" aria-label="Relationships">
           <div className="household-entity-row"><button type="button" className="household-entity" aria-current={showingRelationships ? "true" : undefined} onClick={() => {setSelected(RELATIONSHIPS_ID); setQuery("");}}><span>Relationships</span></button></div>
         </section>}
