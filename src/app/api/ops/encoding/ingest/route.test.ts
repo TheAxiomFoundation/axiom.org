@@ -235,45 +235,73 @@ describe("POST /api/ops/encoding/ingest", () => {
     type Row = {
       id: string;
       status: string;
+      started_at: string;
       last_heartbeat_at: string;
       runner: Record<string, unknown>;
     };
 
+    const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+    const TAG = /^[0-9a-f]{16}$/;
+    /** The filters the route may send, each with the value grammar
+     *  PostgREST would accept for it. */
+    const FILTERS: Record<string, (value: string) => (row: Row) => boolean> = {
+      id: eqOf(/^live-[a-z0-9]{8,32}$/, (row) => row.id),
+      status: eqOf(/^(running|completed|failed)$/, (row) => row.status),
+      "runner->>reported_via": eqOf(/^public_ingest$/, (row) => row.runner.reported_via),
+      last_heartbeat_at: gteOf((row) => row.last_heartbeat_at),
+      started_at: gteOf((row) => row.started_at),
+      "runner->>ingest_client": (value) => {
+        const list = /^in\.\(([^()]*)\)$/.exec(value);
+        const tags = list?.[1].split(",");
+        if (!tags || !tags.every((tag) => TAG.test(tag))) {
+          throw new Error(`invalid in-list ${value}`);
+        }
+        return (row) => tags.includes(String(row.runner.ingest_client));
+      },
+    };
+    function eqOf(grammar: RegExp, field: (row: Row) => unknown) {
+      return (value: string) => {
+        const match = /^eq\.(.*)$/.exec(value);
+        if (!match || !grammar.test(match[1])) throw new Error(`invalid eq ${value}`);
+        return (row: Row) => field(row) === match[1];
+      };
+    }
+    function gteOf(field: (row: Row) => string) {
+      return (value: string) => {
+        const match = /^gte\.(.*)$/.exec(value);
+        if (!match || !ISO.test(match[1])) throw new Error(`invalid gte ${value}`);
+        return (row: Row) => field(row) >= match[1];
+      };
+    }
+
     /**
      * live_encoding_runs behind PostgREST, as far as the ingest uses it.
-     * Filters must carry their operator (eq., gte., in.(…)) or the stub
-     * throws, as PostgREST would reject them; HEAD counts need the exact
-     * count and schema headers. POST inserts; PATCH updates the rows the
-     * filters select and returns them.
+     * Every filter is parsed against its grammar before any row is read,
+     * so a malformed query throws even on an empty table; HEAD counts need
+     * the exact-count and schema headers. POST inserts; PATCH updates the
+     * rows the filters select and returns them.
      */
     function stubTable(rows: Row[]) {
-      const fieldOf = (row: Row, name: string): unknown =>
-        name.startsWith("runner->>")
-          ? row.runner[name.slice("runner->>".length)]
-          : (row as unknown as Record<string, unknown>)[name];
-      const matches = (row: Row, query: URLSearchParams) =>
-        [...query.entries()]
+      const select = (query: URLSearchParams) => {
+        const tests = [...query.entries()]
           .filter(([name]) => name !== "select")
-          .every(([name, filter]) => {
-            const value = fieldOf(row, name);
-            const eq = /^eq\.(.*)$/.exec(filter);
-            const gte = /^gte\.(.*)$/.exec(filter);
-            const inList = /^in\.\((.*)\)$/.exec(filter);
-            if (eq) return value === eq[1];
-            if (gte) return typeof value === "string" && value >= gte[1];
-            if (inList) return inList[1].split(",").includes(String(value));
-            throw new Error(`invalid PostgREST filter ${name}=${filter}`);
+          .map(([name, value]) => {
+            const parse = FILTERS[name];
+            if (!parse) throw new Error(`unexpected filter ${name}`);
+            return parse(value);
           });
+        return rows.filter((row) => tests.every((test) => test(row)));
+      };
       const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
         const query = new URL(String(url)).searchParams;
         const headers = (init?.headers ?? {}) as Record<string, string>;
         if (init?.method === "HEAD") {
-          expect(headers.Prefer).toBe("count=exact");
-          expect(headers["Accept-Profile"]).toBe("encodings");
-          const count = rows.filter((row) => matches(row, query)).length;
+          if (headers.Prefer !== "count=exact" || headers["Accept-Profile"] !== "encodings") {
+            throw new Error("count without exact-count or schema headers");
+          }
           return new Response(null, {
             status: 200,
-            headers: { "content-range": `*/${count}` },
+            headers: { "content-range": `*/${select(query).length}` },
           });
         }
         if (init?.method === "POST") {
@@ -281,29 +309,32 @@ describe("POST /api/ops/encoding/ingest", () => {
           return new Response(null, { status: 201 });
         }
         if (init?.method === "PATCH") {
-          expect(headers["Content-Profile"]).toBe("encodings");
-          const hit = rows.filter((row) => matches(row, query));
+          if (headers["Content-Profile"] !== "encodings") throw new Error("update without schema header");
+          const hit = select(query);
           for (const row of hit) Object.assign(row, JSON.parse(String(init.body)));
           return new Response(JSON.stringify(hit), { status: 200 });
         }
         throw new Error(`unexpected ${init?.method} ${url}`);
       });
       vi.stubGlobal("fetch", fetchMock);
-      return rows;
+      return { rows, fetchMock };
     }
 
+    const seeded = (n: number, overrides: Partial<Row> = {}): Row[] =>
+      Array.from({ length: n }, (_, i) => ({
+        id: `live-seeded${String(i).padStart(4, "0")}`,
+        status: "running",
+        started_at: minutesAgo(60),
+        last_heartbeat_at: minutesAgo(1),
+        runner: { reported_via: "public_ingest", ingest_client: `${String(i).padStart(16, "0")}` },
+        ...overrides,
+      }));
     const runId = (n: number, ip: string) =>
       `live-${ip.replace(/\D/g, "")}x${String(n).padStart(4, "0")}`;
     const start = (n: number, ip: string) =>
       POST(post(startBody({ id: runId(n, ip) }), ip));
     const beat = (n: number, ip: string) =>
       POST(post({ op: "heartbeat", id: runId(n, ip) }, ip));
-    const freshFor = (rows: Row[], tag: unknown) =>
-      rows.filter(
-        (row) =>
-          row.runner.ingest_client === tag &&
-          row.last_heartbeat_at >= minutesAgo(10)
-      ).length;
 
     beforeEach(() => {
       vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
@@ -312,33 +343,40 @@ describe("POST /api/ops/encoding/ingest", () => {
       vi.useRealTimers();
     });
 
+    it("the table stub rejects malformed queries, even on an empty table", async () => {
+      const { fetchMock } = stubTable([]);
+      const head = (query: string, headers: Record<string, string> = { Prefer: "count=exact", "Accept-Profile": "encodings" }) =>
+        fetchMock(`${SUPABASE_URL}/rest/v1/live_encoding_runs?select=id&${query}`, { method: "HEAD", headers });
+      const ok = "status=eq.running&runner->>reported_via=eq.public_ingest";
+      await expect(head(`${ok}&last_heartbeat_at=gte.2026-10-23T11:50:00.000Z`)).resolves.toBeInstanceOf(Response);
+      await expect(head(`${ok}&last_heartbeat_at=2026-10-23T11:50:00.000Z`)).rejects.toThrow();
+      await expect(head(`${ok}&last_heartbeat_at=gte.2026-10-23T11:50:00.000Zjunk`)).rejects.toThrow();
+      await expect(head(`${ok}&runner->>ingest_client=in.(0123456789abcdef,junk)`)).rejects.toThrow();
+      await expect(head(`${ok}&runner->>ingest_client=in.(0123456789abcdef))`)).rejects.toThrow();
+      await expect(head(`${ok}&started_at=lt.2026-10-23T11:50:00.000Z`)).rejects.toThrow();
+      await expect(head(ok, { "Accept-Profile": "encodings" })).rejects.toThrow();
+    });
+
     it("frees the slots of runs that stopped heartbeating (the reported board_full lockout)", async () => {
       // 200 registrations nobody finished, last heard from eight days ago.
-      const abandoned = Array.from({ length: 200 }, (_, i) => ({
-        id: `live-abandoned${String(i).padStart(4, "0")}`,
-        status: "running",
-        last_heartbeat_at: minutesAgo(8 * 24 * 60),
-        runner: { reported_via: "public_ingest", ingest_client: `tag${i}` },
-      }));
-      stubTable(abandoned);
+      stubTable(seeded(200, { started_at: minutesAgo(8 * 24 * 60 + 5), last_heartbeat_at: minutesAgo(8 * 24 * 60) }));
       expect((await start(1, "192.0.2.10")).status).toBe(204);
     });
 
     it("still counts a run that heartbeat within the window", async () => {
-      const live = Array.from({ length: 200 }, (_, i) => ({
-        id: `live-fresh${String(i).padStart(4, "0")}`,
-        status: "running",
-        last_heartbeat_at: minutesAgo(9),
-        runner: { reported_via: "public_ingest", ingest_client: `tag${i}` },
-      }));
-      stubTable(live);
+      stubTable(seeded(200, { last_heartbeat_at: minutesAgo(9) }));
       const response = await start(1, "192.0.2.10");
       expect(response.status).toBe(429);
       expect(await response.json()).toEqual({ error: "board_full" });
     });
 
+    it("frees a slot a day after its start, however long it heartbeats", async () => {
+      stubTable(seeded(200, { started_at: minutesAgo(24 * 60 + 1) }));
+      expect((await start(1, "192.0.2.10")).status).toBe(204);
+    });
+
     it("holds one client to its share while others can still start", async () => {
-      const rows = stubTable([]);
+      const { rows } = stubTable([]);
       for (let n = 0; n < 20; n += 1) {
         expect((await start(n, "198.51.100.20")).status).toBe(204);
       }
@@ -349,18 +387,30 @@ describe("POST /api/ops/encoding/ingest", () => {
       expect(rows).toHaveLength(21);
     });
 
-    it("keeps a live run alive with heartbeats", async () => {
-      const rows = stubTable([]);
+    it("admits only a client's share of concurrent starts", async () => {
+      const { rows } = stubTable([]);
+      const responses = await Promise.all(
+        Array.from({ length: 60 }, (_, n) => start(n, "198.51.100.20"))
+      );
+      expect(responses.filter((r) => r.status === 204)).toHaveLength(20);
+      expect(responses.filter((r) => r.status === 429)).toHaveLength(40);
+      expect(rows).toHaveLength(20);
+    });
+
+    it("renews a slot only with time to spare", async () => {
+      const { rows } = stubTable([]);
       await start(0, "198.51.100.20");
-      advance(9);
-      expect((await beat(0, "198.51.100.20")).status).toBe(204);
-      advance(9);
+      advance(7.9);
       expect((await beat(0, "198.51.100.20")).status).toBe(204);
       expect(rows[0].last_heartbeat_at).toBe(new Date(Date.now()).toISOString());
+      // Still counted for capacity until 10 minutes, but 8 minutes on a
+      // renewal could land after the slot has been handed out again.
+      advance(8.1);
+      expect((await beat(0, "198.51.100.20")).status).toBe(404);
     });
 
     it("won't heartbeat a lapsed run back into a slot (start, lapse, restart, revive)", async () => {
-      const rows = stubTable([]);
+      const { rows } = stubTable([]);
       const ip = "198.51.100.20";
       for (let n = 0; n < 20; n += 1) await start(n, ip);
       advance(11);
@@ -372,16 +422,24 @@ describe("POST /api/ops/encoding/ingest", () => {
       for (let n = 0; n < 20; n += 1) {
         expect((await beat(n, ip)).status).toBe(404);
       }
-      expect(freshFor(rows, rows[20].runner.ingest_client)).toBe(20);
+      const fresh = rows.filter((row) => row.last_heartbeat_at >= minutesAgo(10));
+      expect(fresh).toHaveLength(20);
       expect((await start(40, ip)).status).toBe(429);
     });
 
-    it("keeps a client's share across the midnight tag change", async () => {
+    it("keeps a client's share across midnight for as long as its runs heartbeat", async () => {
       vi.setSystemTime(new Date("2026-10-23T23:59:30.000Z"));
-      const rows = stubTable([]);
+      const { rows } = stubTable([]);
       const ip = "198.51.100.20";
       for (let n = 0; n < 20; n += 1) await start(n, ip);
-      advance(1);
+      const beatAll = async () => {
+        for (let n = 0; n < 20; n += 1) expect((await beat(n, ip)).status).toBe(204);
+      };
+      // Heartbeat through midnight and well past the first ten minutes.
+      for (let step = 0; step < 4; step += 1) {
+        advance(5);
+        await beatAll();
+      }
       const over = await start(20, ip);
       expect(over.status).toBe(429);
       expect(await over.json()).toEqual({ error: "client_full" });
@@ -389,7 +447,7 @@ describe("POST /api/ops/encoding/ingest", () => {
     });
 
     it("stamps rows with a keyed client tag, never the IP or a client-supplied tag", async () => {
-      const rows = stubTable([]);
+      const { rows } = stubTable([]);
       await POST(
         post(
           startBody({ runner: { hostname: "box", ingest_client: "spoofed" } }),
@@ -397,13 +455,13 @@ describe("POST /api/ops/encoding/ingest", () => {
         )
       );
       const tag = rows[0].runner.ingest_client as string;
-      expect(tag).toMatch(/^[0-9a-f]{16}$/);
+      expect(tag).toMatch(TAG);
       expect(JSON.stringify(rows[0])).not.toContain("198.51.100.20");
 
       // The tag changes with the UTC day, so it links a client's runs for a day at most.
       vi.setSystemTime(new Date("2026-10-24T12:00:00.000Z"));
       await POST(post(startBody({ id: "live-nextday000001" }), "198.51.100.20"));
-      expect(rows[1].runner.ingest_client).toMatch(/^[0-9a-f]{16}$/);
+      expect(rows[1].runner.ingest_client).toMatch(TAG);
       expect(rows[1].runner.ingest_client).not.toBe(tag);
     });
   });
