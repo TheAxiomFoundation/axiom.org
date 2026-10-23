@@ -44,7 +44,6 @@ import {
 import type { Control } from "@/lib/aspen/types";
 import { EMPTY_SUMMARY, ifEligibleSentence, type Count, type RunSummary, type ScaleSummary } from "@/lib/aspen/results";
 import { postJson, useControl, useResults } from "./client";
-import { BAD, GOOD, MAYBE, REASON_LABEL } from "./results-board";
 import { BUTTON_QUIET, FIELD } from "./ui";
 import { BrandLogo } from "./brand-logo";
 import { JoinQr } from "./join-qr";
@@ -56,6 +55,19 @@ const SLIDE_H = 900;
 
 /** Aspen headings read in sentence case, not the site's uppercase display style. */
 const SENTENCE = { textTransform: "none", letterSpacing: "-0.01em" } as const;
+
+/** Bar colours for a good, bad or in-between answer. */
+const GOOD = "var(--color-success)";
+const BAD = "var(--color-error)";
+const MAYBE = "var(--color-rule-strong)";
+
+/** Why an answer is worth discussing. */
+const REASON_LABEL: Record<string, string> = {
+  convincing: "Wrong but convincing",
+  "checked-wrong": "Wrong against the rules",
+  wrong: "Looked wrong",
+  unsure: "Not sure",
+};
 
 /** A slide that turns its stage's argument gets its own heading. */
 const SLIDE_TITLES: Partial<Record<StageId, Record<number, string>>> = {
@@ -215,7 +227,6 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
                     // The agency rating; the 5x5 "How did the AI do?" grid left the phones on Oct 23, so its slide went too.
                     <RatingSlide
                       summary={summary}
-                      question="experience"
                       comments={
                         showComments
                           ? summary.discussion.notes.filter((n) => n.question === "experience").map((n) => n.text)
@@ -630,15 +641,13 @@ function TrySlide({ summary, joinPassword }: { summary: RunSummary; joinPassword
  */
 function RatingSlide({
   summary,
-  question,
   comments = null,
 }: {
   summary: RunSummary;
-  question: "performance" | "experience";
   /** Agency comments, once the presenter shows them; null keeps them hidden. */
   comments?: string[] | null;
 }) {
-  const scale = summary.discussion.scales.find((sc) => sc.question === question);
+  const scale = summary.discussion.scales.find((sc) => sc.question === "experience");
   const ratings = scale ? Math.max(0, ...scale.categories.map((c) => c.count)) : 0;
   return (
     <div className="flex h-full flex-col gap-[24px]">
