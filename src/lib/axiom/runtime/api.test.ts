@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import fc from "fast-check";
 import {
   isRuntimeApiConfigured,
   listRuntimePackages,
@@ -221,6 +222,95 @@ describe("runtime api client", () => {
     vi.stubGlobal("fetch", fetchMock);
     await runCalculateRoot({root: "us:statutes/26/21", facts: {age: 8}, people: {person_2: {age: 30}}, variables: ["count"]});
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({root: "us:statutes/26/21", facts: {age: 8}, household: {people: {person_1: {}, person_2: {age: 30}}}, variables: ["count"]});
+  });
+
+  it.each([false, true])("sends payment instances in the HTTP household and retains the runtime allocation (other household fields: %s)", async (withPeopleAndRelations) => {
+    vi.stubEnv("AXIOM_RUNTIME_API_KEY", "test-key");
+    const instances = {
+      Payment: {
+        payment_1: { amount: 1000, taxable: true },
+        payment_2: { amount: 0, taxable: false },
+      },
+      Adjustment: {},
+    };
+    const allocatedInstances = {
+      Payment: { payment_1: "payment:1:1", payment_2: "payment:1:2" },
+      Adjustment: {},
+    };
+    const people = { person_2: { age: 70 } };
+    const relations = [{
+      name: "us:statutes/26/22#relation.section_22_payment_of_tax_unit",
+      tuples: [["household:1", "payment_2"]],
+    }];
+    const result = {
+      outputs: { credit: 150 },
+      allocated_instances: allocatedInstances,
+      explicit_relations: withPeopleAndRelations ? relations.map(({ name }) => name) : [],
+    };
+    const fetchMock = vi.fn().mockResolvedValue(okEnvelope(result));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const outcome = await runCalculateRoot({
+      root: "us:statutes/26/22",
+      facts: { age: 65 },
+      variables: ["credit"],
+      instances,
+      ...(withPeopleAndRelations ? { people, relations } : {}),
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toContain("/calculate");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({
+      root: "us:statutes/26/22",
+      facts: { age: 65 },
+      variables: ["credit"],
+      household: {
+        people: { person_1: {}, ...(withPeopleAndRelations ? people : {}) },
+        instances,
+        ...(withPeopleAndRelations ? { relations } : {}),
+      },
+    });
+    expect(outcome).toEqual({
+      kind: "ok",
+      result,
+      allocatedInstances,
+      relationMembership: withPeopleAndRelations ? "explicit" : "convention",
+    });
+  });
+
+  it("preserves every instance answer and allocation key across the HTTP boundary", async () => {
+    vi.stubEnv("AXIOM_RUNTIME_API_KEY", "test-key");
+    await fc.assert(fc.asyncProperty(
+      fc.array(fc.record({
+        amount: fc.integer({ min: 0, max: 1_000_000 }),
+        taxable: fc.boolean(),
+      }), { maxLength: 5 }),
+      async (payments) => {
+        const instances = {
+          Payment: Object.fromEntries(payments.map((answers, index) => [`payment_${index + 1}`, answers])),
+        };
+        const allocatedInstances = {
+          Payment: Object.fromEntries(payments.map((_, index) => [`payment_${index + 1}`, `payment:1:${index + 1}`])),
+        };
+        const fetchMock = vi.fn().mockResolvedValue(okEnvelope({
+          outputs: { credit: 0 },
+          allocated_instances: allocatedInstances,
+        }));
+        vi.stubGlobal("fetch", fetchMock);
+
+        const outcome = await runCalculateRoot({ root: "us:statutes/26/22", facts: {}, instances });
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+          root: "us:statutes/26/22",
+          facts: {},
+          household: { people: { person_1: {} }, instances },
+        });
+        expect(outcome).toMatchObject({ kind: "ok", allocatedInstances });
+      },
+    ), { seed: 318, numRuns: 50 });
   });
 
   it("sends explicit membership as household.relations and confirms it only from a complete echo", async () => {

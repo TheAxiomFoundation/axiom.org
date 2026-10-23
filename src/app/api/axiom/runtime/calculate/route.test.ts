@@ -366,6 +366,28 @@ describe("explicit relation roles (roles_required scopes)", () => {
     expect(response.status).toBe(200);
     expect(runCalculateRootMock).toHaveBeenCalledWith({ root: "us:statutes/26/21", facts: {}, people: undefined, variables: ["n"] });
   });
+
+  it("rejects supplied instances in scopes without instance kinds before any upstream call", async () => {
+    runCalculateRootMock.mockResolvedValue({ kind: "ok", result: { outputs: {}, trace: [] }, relationMembership: "explicit" });
+    for (const readiness of ["ready", "roles_required"] as const) {
+      vi.mocked(compositionScope).mockResolvedValue({ readiness, relations: readiness === "ready" ? [EITC[0]!] : EITC });
+      for (const instances of [null, true, 7, "Payment", [], { Payment: {} }]) {
+        const response = await POST(post({ root: "us:statutes/26/32", facts: {}, people: { person_4: {} }, relations: roles, instances }));
+        expect(response.status).toBe(422);
+        expect((await response.json()).error).toBe("unknown_instance_kind");
+      }
+    }
+    expect(runCalculateRootMock).not.toHaveBeenCalled();
+    expect(runtimeProxyGetMock).not.toHaveBeenCalled();
+  });
+
+  it("accepts empty instance objects without adding allocations to scopes without instance kinds", async () => {
+    runCalculateRootMock.mockResolvedValue({ kind: "ok", result: { outputs: {}, trace: [] }, relationMembership: "explicit" });
+    const response = await POST(post({ root: "us:statutes/26/32", facts: {}, people: { person_4: {} }, relations: roles, instances: {} }));
+    expect(response.status).toBe(200);
+    expect(runCalculateRootMock.mock.calls[0]![0]).not.toHaveProperty("instances");
+    expect(await response.json()).not.toHaveProperty("allocated_instances");
+  });
 });
 
 describe("per-request instances (26 USC 22 payments of the tax unit)", () => {
@@ -458,6 +480,20 @@ describe("per-request instances (26 USC 22 payments of the tax unit)", () => {
       instances: { Payment: {} },
       relations: [expect.anything(), { name: "us:statutes/26/22#relation.section_22_payment_of_tax_unit", tuples: [] }],
     });
+  });
+
+  it("rejects malformed supplied payment containers instead of running an empty payment scenario", async () => {
+    runCalculateRootMock.mockResolvedValue(ok({ Payment: {} }));
+    const emptyRoles = { ...roles, "us:statutes/26/22#section_22_payment_of_tax_unit": [] };
+    for (const malformed of [null, true, 7, "payment", []]) {
+      for (const instances of [malformed, { Payment: malformed }]) {
+        const response = await POST(post({ root: "us:statutes/26/22", facts: {}, relations: emptyRoles, instances }));
+        expect(response.status).toBe(422);
+        expect((await response.json()).error).toBe(instances === malformed ? "unknown_instance_kind" : "unknown_instance");
+      }
+    }
+    expect(runCalculateRootMock).not.toHaveBeenCalled();
+    expect(runtimeProxyGetMock).not.toHaveBeenCalled();
   });
 
   it("refuses links and instances the scenario cannot hold, before any upstream call", async () => {

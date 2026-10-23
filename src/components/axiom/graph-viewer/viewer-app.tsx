@@ -4,8 +4,8 @@ import { NodeMetadata } from "./node-metadata";
 import { HouseholdComposer } from "./household-composer";
 import { ConventionNote, RelationRoles } from "./relation-roles";
 import { RelationTuples } from "./relation-tuples";
-import { flattenRoles, instanceKindsOf, kindStem, MAX_KIND_INSTANCES, reconcileRoles, rolesForRun, type RelationDecl, type RoleMembership } from "@/lib/axiom/runtime/relation-roles";
-import { ResultExplanation, inputAwareEvidence, recordedTableRow } from "./result-explanation";
+import { flattenRoles, instanceKindsOf, kindStem, MAX_KIND_INSTANCES, reconcileRoles, rolesForRun, type InstanceAnswers, type RelationDecl, type RoleMembership } from "@/lib/axiom/runtime/relation-roles";
+import { ResultExplanation, inputAwareEvidence, recordedEvidence, recordedTableRow } from "./result-explanation";
 import { ParameterTableView } from "./parameter-table";
 import { GraphLoading } from "./graph-loading";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -284,6 +284,7 @@ export function GraphViewerApp({
   const [explanationTrail, setExplanationTrail] = useState<string[]>([]);
   const [runResult, setRunResult] = useState<{
     submittedFacts?: Record<string, unknown>;
+    submittedInstances?: InstanceAnswers;
     submittedPersonIds?: Record<string, string>;
     /** The relation roles this run used, so a stale result is explained by
      *  the roles that produced it, not the ones being edited. */
@@ -1179,7 +1180,7 @@ export function GraphViewerApp({
     const runInstances = composeFocus && scopeInstanceKinds.length > 0
       ? Object.fromEntries(scopeInstanceKinds.map((kind) => [
           kind,
-          Object.fromEntries((scopeInstanceKeys[kind] ?? []).map((key) => [key, memberScenario[key] ?? {}])),
+          Object.fromEntries((scopeInstanceKeys[kind] ?? []).map((key) => [key, { ...memberScenario[key] }])),
         ]))
       : undefined;
     ranScenarioKey.current = scenarioKey({
@@ -1430,7 +1431,13 @@ export function GraphViewerApp({
         ((data as { allocated_instances?: unknown }).allocated_instances ?? {}) as Record<string, Record<string, string>>,
       ).flatMap((byKey) => (byKey && typeof byKey === "object" ? Object.entries(byKey) : []))
         .filter((entry): entry is [string, string] => typeof entry[1] === "string");
-      setRunResult({ ...data, submittedFacts: { ...scenario }, submittedPersonIds: Object.fromEntries([...["person_1", ...extraMembers].map((id, index) => [id, `person:1:${index + 1}`]), ...allocatedIds]), ...(runRoles ? { submittedRoles: runRoles } : {}) });
+      setRunResult({
+        ...data,
+        submittedFacts: { ...scenario },
+        submittedInstances: runInstances,
+        submittedPersonIds: Object.fromEntries([...["person_1", ...extraMembers].map((id, index) => [id, `person:1:${index + 1}`]), ...allocatedIds]),
+        ...(runRoles ? { submittedRoles: runRoles } : {}),
+      });
       setEditingRunInputs(false);
       trackRun("ok");
     } catch (err) {
@@ -2193,7 +2200,7 @@ export function GraphViewerApp({
 
   // Execution overlay: clone the structural traces and light them
   // with the run's computed values (rules by durable id or bare
-  // fragment) and the scenario's input values.
+  // fragment) and its submitted input values.
   const liveTraces = useMemo(() => {
     if (!runResult)
       return {
@@ -2202,18 +2209,19 @@ export function GraphViewerApp({
         valueOf: () => undefined as unknown,
       };
     const { valueByFragment, valueByLegalId } = runValueMaps(runResult);
-    // Inputs of a per-request kind (payments) are answered per instance,
-    // never as flat facts: show each instance's answer, joined like the
-    // per-instance rule values above.
-    const instanceInputValues = new Map<string, string>();
-    for (const field of allScenarioFields) {
-      if (!field.entity || !scopeInstanceKinds.includes(field.entity)) continue;
-      const answers = (scopeInstanceKeys[field.entity] ?? []).map((key) => memberScenario[key]?.[field.name]);
-      if (answers.every((answer) => answer === undefined)) continue;
-      instanceInputValues.set(
-        field.name,
-        answers.map((answer) => (typeof answer === "boolean" ? (answer ? "✓" : "✗") : String(answer ?? "—"))).join(" · "),
-      );
+    // The canvas and Relationships resolve the same immutable run evidence.
+    // Draft edits may mark it stale, but cannot change a previous result.
+    const inputValues = new Map<string, unknown>();
+    const submittedInputs = new Set<string>();
+    if (graph) for (const input of graph.inputs) {
+      const evidence = recordedEvidence(graph, runResult, input.legalId);
+      if (evidence?.value === undefined || evidence.value === null) continue;
+      const answers = typeof evidence.value === "object" ? Object.values(evidence.value) : null;
+      if (answers?.length === 0) continue;
+      inputValues.set(input.legalId, answers
+        ? answers.map((answer) => (typeof answer === "boolean" ? (answer ? "✓" : "✗") : String(answer ?? "—"))).join(" · ")
+        : evidence.value);
+      if (evidence.origin === "Submitted input") submittedInputs.add(input.legalId);
     }
     const executed = new Set<string>();
     const seen = new Map<TraceNode, TraceNode>();
@@ -2223,20 +2231,14 @@ export function GraphViewerApp({
       const fragment = node.legalId.split("#").pop() ?? "";
       const ranValue =
         valueByLegalId.get(node.legalId) ?? valueByFragment.get(fragment);
-      const scenarioValue =
+      const inputValue =
         node.dtype === "input"
-          ? debouncedScenario[fragment.replace(/^input\./, "")]
+          ? inputValues.get(node.legalId)
           : undefined;
-      // A per-request input (payments) shows each instance's answer,
-      // joined, beside the member rows its card lists.
-      const instanceValue =
-        node.dtype === "input"
-          ? instanceInputValues.get(fragment.replace(/^input\./, ""))
-          : undefined;
-      if (ranValue !== undefined || scenarioValue !== undefined || instanceValue !== undefined) {
+      if (ranValue !== undefined || inputValue !== undefined) {
         executed.add(node.legalId);
       }
-      let value: unknown = ranValue ?? scenarioValue ?? instanceValue;
+      let value: unknown = ranValue ?? inputValue;
       // The engine traces no parameters: a table shows the row the
       // run's recorded index picked.
       if (value === undefined && node.ruleKind === "parameter" && graph) {
@@ -2248,8 +2250,7 @@ export function GraphViewerApp({
           value === undefined ? node.value : (value as TraceNode["value"]),
         inputSource:
           node.dtype === "input" &&
-          (fragment.replace(/^input\./, "") in scenario ||
-            instanceInputValues.has(fragment.replace(/^input\./, "")))
+          submittedInputs.has(node.legalId)
             ? "user"
             : node.inputSource,
       };
@@ -2259,15 +2260,14 @@ export function GraphViewerApp({
     };
     // Point lookup for anything that isn't a canvas card — the
     // inspector's mini graph asks by legal id and gets the same value
-    // the canvas box would show, scenario answers included.
+    // the canvas box would show, submitted answers included.
     const valueOf = (legalId: string): unknown => {
       const fragment = legalId.split("#").pop() ?? "";
       const ran =
         valueByLegalId.get(legalId) ?? valueByFragment.get(fragment);
       if (ran !== undefined) return ran;
       if (fragment.startsWith("input.")) {
-        const name = fragment.replace(/^input\./, "");
-        return debouncedScenario[name] ?? instanceInputValues.get(name);
+        return inputValues.get(legalId);
       }
       return undefined;
     };
@@ -2281,7 +2281,7 @@ export function GraphViewerApp({
       executed,
       valueOf,
     };
-  }, [structureTraces, runResult, debouncedScenario, graph, allScenarioFields, scopeInstanceKinds, scopeInstanceKeys, memberScenario]);
+  }, [structureTraces, runResult, graph]);
 
   useEffect(() => {
     if (!runResult) return;

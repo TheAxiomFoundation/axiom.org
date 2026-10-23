@@ -399,7 +399,10 @@ export function scenarioInstances(
   sanitize: (values: unknown) => { sanitized: Record<string, number | boolean>; rejected: string[] },
 ): InstancesResult {
   const kinds = instanceKindsOf(relations);
-  const given = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  if (raw !== undefined && (!raw || typeof raw !== "object" || Array.isArray(raw))) {
+    return { ok: false, error: "unknown_instance_kind", detail: "an invalid instance container" };
+  }
+  const given = (raw ?? {}) as Record<string, unknown>;
   for (const kind of Object.keys(given)) {
     if (!kinds.includes(kind)) {
       const detail = /^[\w-]{1,64}$/.test(kind) ? kind : "an unrecognized entity kind";
@@ -411,9 +414,11 @@ export function scenarioInstances(
   const dropped: string[] = [];
   for (const kind of kinds) {
     const pattern = instanceKeyPattern(kind);
-    const entries = given[kind] && typeof given[kind] === "object" && !Array.isArray(given[kind])
-      ? Object.entries(given[kind] as Record<string, unknown>)
-      : [];
+    const container = given[kind];
+    if (Object.hasOwn(given, kind) && (!container || typeof container !== "object" || Array.isArray(container))) {
+      return { ok: false, error: "unknown_instance", detail: `an invalid ${kind} container` };
+    }
+    const entries = Object.entries((container ?? {}) as Record<string, unknown>);
     if (entries.length > MAX_KIND_INSTANCES) {
       return { ok: false, error: "unknown_instance", detail: `more than ${MAX_KIND_INSTANCES} ${kind} entries` };
     }

@@ -372,6 +372,29 @@ describe("unit–instance relations (payments of the tax unit)", () => {
     expect(scenarioInstances([PAY], { Payment: { payment_1: 5 } }, sanitizeAll)).toMatchObject({ ok: false, error: "unknown_instance" });
   });
 
+  const malformedContainer = fc.jsonValue().filter((value) => value === null || typeof value !== "object" || Array.isArray(value));
+
+  it("rejects every supplied non-object instance container instead of treating it as no instances", () => {
+    fc.assert(
+      fc.property(malformedContainer, (value) => {
+        // Omission alone means no allocations. A supplied malformed
+        // container must not change into an empty payment scenario.
+        expect(scenarioInstances([FILER, PAY], value, sanitizeAll)).toMatchObject({ ok: false, error: "unknown_instance_kind" });
+        expect(scenarioInstances([FILER], value, sanitizeAll)).toMatchObject({ ok: false, error: "unknown_instance_kind" });
+      }),
+    );
+    expect(scenarioInstances([PAY], {}, sanitizeAll)).toMatchObject({ ok: true, instances: { Payment: {} } });
+    expect(scenarioInstances([PAY], { Payment: {} }, sanitizeAll)).toMatchObject({ ok: true, instances: { Payment: {} } });
+  });
+
+  it("rejects every supplied non-object kind container instead of treating it as an empty kind", () => {
+    fc.assert(
+      fc.property(malformedContainer, (value) => {
+        expect(scenarioInstances([PAY], { Payment: value }, sanitizeAll)).toMatchObject({ ok: false, error: "unknown_instance" });
+      }),
+    );
+  });
+
   it("P5: offers roles only when the runtime allocates the kind and lists the relation in its declared layout", () => {
     fc.assert(
       fc.property(fc.boolean(), (paymentFirst) => {

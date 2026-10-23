@@ -162,7 +162,7 @@ export async function POST(request: Request) {
     // fact in for an instance the scenario did not create.
     let instances: InstanceAnswers | undefined;
     let instanceKeys: InstanceKeys = {};
-    if (readiness === "roles_required" && instanceKindsOf(scope.relations).length > 0) {
+    if (body.instances !== undefined || instanceKindsOf(scope.relations).length > 0) {
       const allocated = scenarioInstances(scope.relations, body.instances, sanitizeValues);
       if (!allocated.ok) {
         const message =
@@ -174,7 +174,7 @@ export async function POST(request: Request) {
           { status: 422, headers: { "cache-control": "no-store" } }
         );
       }
-      instances = allocated.instances;
+      instances = Object.keys(allocated.instances).length > 0 ? allocated.instances : undefined;
       instanceKeys = allocated.keys;
       droppedFacts.push(...allocated.dropped);
     }
