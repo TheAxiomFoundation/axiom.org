@@ -830,8 +830,45 @@ export const FRONT_DOOR = {
   axiom: { label: "With Axiom", source: "Encoded law", sourceDetail: "open, cited, executable", result: "The rule", detail: "with its citation" },
 } as const;
 
+// ---------------------------------------------------------------------------
+// The same models with a rules engine as a tool (PolicyBench's tool pilot).
+// From the October 20, 2026 note on policybench.org, "Given a tool that runs
+// PolicyEngine, three models score above 99%": 100 US households, run
+// October 14–15; the no-tool arm is each model's October 14 board row.
+// Recomputed Oct 23 from notes/data/tool_pilot_20261015.csv against release
+// dashboard-data-20261014: 187 nonzero dollar amounts (1/0 eligibility
+// outputs excluded), within $1 of the reference. Both scripts/tool_pilot_note.py
+// and an independent loop over the release's groundTruth give these figures.
+// ---------------------------------------------------------------------------
+
 /**
- * At scale 6/6: the live chatbot demo (TheAxiomFoundation/finbot-snap-demo,
+ * At scale 6/7: what changes when a model can call a rules engine. Each arm is
+ * one bar per model; a later run (more arms, such as web search, or other
+ * models) only changes `arms` and `rows`.
+ */
+export const TOOL_PILOT = {
+  title: "The same models, given a rules engine as a tool",
+  note: "Dollar amounts that aren't $0, within $1 of PolicyBench's reference: 187 amounts across 100 US households",
+  arms: [
+    { id: "alone", label: "On its own" },
+    { id: "tool", label: "With a tool that runs PolicyEngine" },
+  ],
+  rows: [
+    { model: "GPT-6 Sol", alone: 67.4, tool: 96.8 },
+    { model: "Claude Opus 5.5", alone: 70.1, tool: 98.9 },
+    { model: "Gemini 4 Argon", alone: 46.5, tool: 99.5 },
+  ],
+  /** The note's own caveat: the tool runs the engine behind the reference, so the scores are agreement with it. */
+  measures:
+    "The tool runs the engine behind PolicyBench's reference answers. So this shows whether a model can describe a household to a rules engine, not whether the engine is right.",
+  misses:
+    "The 12 answers still wrong, across the three models, came from how the model described the household or read back the answer, not from the calculation.",
+  source:
+    "PolicyBench note, October 20, 2026: “Given a tool that runs PolicyEngine, three models score above 99%” · runs October 14–15 · no-tool answers from the October 14 board",
+} as const;
+
+/**
+ * At scale 7/7: the live chatbot demo (TheAxiomFoundation/finbot-snap-demo,
  * served at axiom.org/gallery/chatbot). `compare=1` puts plain AI beside AI
  * with the Axiom rules engine, and `q` prefills the demo's own Fresno example.
  * Inside a frame the demo never sends on its own, so the presenter presses

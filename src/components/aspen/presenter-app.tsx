@@ -32,6 +32,7 @@ import {
   POLICYBENCH,
   SAME_RULES,
   SILVER_ASK,
+  TOOL_PILOT,
   WHAT_MODELS_MISS,
   WHERE_MODELS_BREAK,
   STAGES,
@@ -58,12 +59,12 @@ const SENTENCE = { textTransform: "none", letterSpacing: "-0.01em" } as const;
 
 /** A slide that turns its stage's argument gets its own heading. */
 const SLIDE_TITLES: Partial<Record<StageId, Record<number, string>>> = {
-  scale: { 4: FRONT_DOOR.heading, 5: FRONT_DOOR.heading },
+  scale: { 4: FRONT_DOOR.heading, 5: FRONT_DOOR.heading, 6: FRONT_DOOR.heading },
   foundation: { 1: SAME_RULES.heading, 2: BUILD_HEADING },
 };
 
 /** Stages shown as more than one slide; the arrows step through them before moving the room. */
-const SLIDES: Partial<Record<StageId, number>> = { reveal: 3, scale: 6, foundation: 3, groups: 2, next: 2 };
+const SLIDES: Partial<Record<StageId, number>> = { reveal: 3, scale: 7, foundation: 3, groups: 2, next: 2 };
 const slideCount = (id: StageId) => SLIDES[id] ?? 1;
 
 /** The largest scale at which the 16:9 canvas fits the window. */
@@ -221,7 +222,7 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
                       }
                     />
                   ))}
-                {/* Slides 2 to 5 of At scale, and 2 of Shared foundation, come from Max's Nava deck; 6 is the live chatbot. */}
+                {/* Slides 2 to 5 of At scale, and 2 of Shared foundation, come from Max's Nava deck; 6 is the tool pilot and 7 the live chatbot. */}
                 {stage === "scale" &&
                   [
                     <ScaleShareSlide key="share" />,
@@ -229,6 +230,7 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
                     <BreakSlide key="break" />,
                     <MissSlide key="miss" />,
                     <FrontDoorSlide key="front-door" />,
+                    <ToolSlide key="tool" />,
                     <LiveDemoSlide key="live-demo" />,
                   ][sub]}
                 {stage === "foundation" &&
@@ -334,8 +336,9 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
         {error && <p className="m-0 w-full font-body text-[0.85rem] text-[var(--color-error)]">{error}</p>}
       </div>
 
-      {/* The only control at the bottom: a small toggle on the slides that hide something until asked. */}
-      {((stage === "reveal" && sub === 2) || (stage === "scale" && sub === 5)) && (
+      {/* The only control at the bottom: a small toggle on the slides that hide something until asked.
+          The live demo is At scale's last slide. */}
+      {((stage === "reveal" && sub === 2) || (stage === "scale" && sub === slideCount("scale") - 1)) && (
         <div
           className={`absolute bottom-3 right-3 rounded-full border border-[var(--color-rule)] bg-[var(--color-paper)]/95 px-1.5 py-1 ${fade}`}
         >
@@ -1022,7 +1025,7 @@ function FrontDoorDiagram() {
   );
 }
 
-/** At scale, slide 6 (Max's Nava deck): AI is becoming the front door to the law. */
+/** At scale, slide 5 (Max's Nava deck): AI is becoming the front door to the law. */
 function FrontDoorSlide() {
   const f = FRONT_DOOR;
   return (
@@ -1036,7 +1039,69 @@ function FrontDoorSlide() {
 }
 
 /**
- * At scale, slide 6: the live chatbot, plain AI beside AI with the Axiom rules
+ * The tool pilot's bar colours, by arm: the model on its own recedes in the
+ * same gray as the "Where models still break" chart, and the tool carries the
+ * accent. Every bar is labelled with its value, so color never carries it alone.
+ */
+const ARM_COLORS: Record<string, string> = { alone: "#bdb6ae", tool: "var(--color-accent)" };
+
+/**
+ * At scale, slide 6: PolicyBench's tool pilot. The same models on their own
+ * and with a tool that runs a rules engine, beside the note's own caveat that
+ * the tool runs the engine behind the reference.
+ */
+function ToolSlide() {
+  const t = TOOL_PILOT;
+  return (
+    <div className="flex h-full flex-col gap-[12px]">
+      <div className="flex items-end justify-between gap-[24px]">
+        <p className="m-0 font-display text-[40px] font-light leading-tight text-[var(--color-ink)]">{t.title}</p>
+        <span className="flex shrink-0 gap-[24px] font-body text-[20px] text-[var(--color-ink-secondary)]">
+          {t.arms.map((arm) => (
+            <span key={arm.id} className="flex items-center gap-[8px]">
+              <span aria-hidden className="h-[14px] w-[14px] rounded-[3px]" style={{ background: ARM_COLORS[arm.id] }} /> {arm.label}
+            </span>
+          ))}
+        </span>
+      </div>
+      <p className="m-0 font-body text-[20px] text-[var(--color-ink-secondary)]">{t.note}</p>
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1.4fr)_minmax(0,0.6fr)] items-start gap-[40px] pt-[16px]">
+        <ul className="m-0 flex list-none flex-col gap-[44px] p-0">
+          {t.rows.map((row) => (
+            <li key={row.model} className="grid grid-cols-[240px_minmax(0,1fr)] items-center gap-[24px]">
+              <span className={BOX_TEXT}>{row.model}</span>
+              <span className="flex flex-col gap-[8px]">
+                {t.arms.map((arm) => {
+                  const value = row[arm.id];
+                  return (
+                    <span key={arm.id} className="flex items-center gap-[14px]">
+                      <span className="h-[26px] rounded-[4px]" style={{ width: `${value * 0.78}%`, background: ARM_COLORS[arm.id] }} />
+                      <span
+                        className={`whitespace-nowrap font-mono text-[22px] tabular-nums ${arm.id === "tool" ? "text-[var(--color-ink)]" : "text-[var(--color-ink-muted)]"}`}
+                      >
+                        <span className="sr-only">{arm.label}: </span>
+                        {value.toFixed(1)}%
+                      </span>
+                    </span>
+                  );
+                })}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <Panel className="flex flex-col gap-[16px]">
+          <Label className="mb-0">What this measures</Label>
+          <p className={`m-0 ${BOX_TEXT}`}>{t.measures}</p>
+          <p className="m-0 font-body text-[21px] leading-snug text-[var(--color-ink-secondary)]">{t.misses}</p>
+        </Panel>
+      </div>
+      <BenchFooter source={t.source} />
+    </div>
+  );
+}
+
+/**
+ * At scale, slide 7: the live chatbot, plain AI beside AI with the Axiom rules
  * engine. A cross-origin frame inside the slide's scaled canvas paints blank,
  * so the slide holds a slot and the frame sits over it, fixed to the slot's
  * on-screen box; the demo also shows at its own size rather than scaled.

@@ -14,6 +14,7 @@ import {
   RATING_SCALES,
   SAME_RULES,
   WHAT_MODELS_MISS,
+  TOOL_PILOT,
   WHERE_MODELS_BREAK,
   SILVER_ASK,
   STAGES,
@@ -279,28 +280,28 @@ describe("PresenterApp navigation", () => {
 
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     await onStage("scale");
-    expect(screen.getByText("1/6")).toBeInTheDocument();
+    expect(screen.getByText("1/7")).toBeInTheDocument();
     expect(screen.getByText("42%")).toBeInTheDocument();
     // A household, not a family: four of the five minimum-benefit households are one person.
     expect(screen.getByText(/of AI answers told a household that qualifies for SNAP it would get/)).toBeInTheDocument();
     expect(screen.getByText(STAGES.find((st) => st.id === "scale")!.summary)).toBeInTheDocument();
 
-    // At scale: the share, then Max's household, chart, what the models miss and the front door.
+    // At scale: the share, then Max's household, chart, what the models miss, the front door and the tool pilot.
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("2/6")).toBeInTheDocument();
+    expect(screen.getByText("2/7")).toBeInTheDocument();
     expect(screen.getByText(EXAMPLE_HOUSEHOLD.title)).toBeInTheDocument();
     // The summary shows on the first slide only.
     expect(screen.queryByText(STAGES.find((st) => st.id === "scale")!.summary)).not.toBeInTheDocument();
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("3/6")).toBeInTheDocument();
+    expect(screen.getByText("3/7")).toBeInTheDocument();
     expect(screen.getByText(WHERE_MODELS_BREAK.title)).toBeInTheDocument();
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("4/6")).toBeInTheDocument();
+    expect(screen.getByText("4/7")).toBeInTheDocument();
     for (const q of WHAT_MODELS_MISS.quotes) expect(screen.getByText(q.model)).toBeInTheDocument();
     // The Arizona review flag is gone: the example moved to Connecticut (d1919).
     expect(screen.queryByRole("note")).not.toBeInTheDocument();
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("5/6")).toBeInTheDocument();
+    expect(screen.getByText("5/7")).toBeInTheDocument();
     // The last slide turns the stage from the problem to the fix.
     expect(screen.getByRole("heading", { level: 1, name: FRONT_DOOR.heading })).toBeInTheDocument();
     expect(screen.getByText(FRONT_DOOR.title)).toBeInTheDocument();
@@ -308,7 +309,21 @@ describe("PresenterApp navigation", () => {
     expect(screen.getByRole("img", { name: /ask an AI model what the law says/i })).toBeInTheDocument();
     expect(screen.queryByText(/it has to get the rules right/)).not.toBeInTheDocument();
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("6/6")).toBeInTheDocument();
+    expect(screen.getByText("6/7")).toBeInTheDocument();
+    // PolicyBench's tool pilot: each model on its own and with the tool, the note's caveat and its source.
+    expect(screen.getByRole("heading", { level: 1, name: FRONT_DOOR.heading })).toBeInTheDocument();
+    expect(screen.getByText(TOOL_PILOT.title)).toBeInTheDocument();
+    for (const row of TOOL_PILOT.rows) {
+      expect(screen.getByText(row.model)).toBeInTheDocument();
+      expect(screen.getByText(`${row.alone.toFixed(1)}%`)).toBeInTheDocument();
+      expect(screen.getByText(`${row.tool.toFixed(1)}%`)).toBeInTheDocument();
+    }
+    expect(screen.getByText(TOOL_PILOT.measures)).toBeInTheDocument();
+    expect(screen.getByText(TOOL_PILOT.source)).toBeInTheDocument();
+    // The demo's own link stays with the demo, At scale's last slide.
+    expect(screen.queryByRole("link", { name: /Open demo in a new tab/ })).not.toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("7/7")).toBeInTheDocument();
     // The live chatbot, in compare mode with the demo's Fresno question filled in.
     const demo = screen.getByTitle(/Live chatbot demo/);
     expect(demo.getAttribute("src")).toMatch(/^https:\/\/axiom\.org\/gallery\/chatbot\?compare=1&q=I/);
@@ -322,15 +337,17 @@ describe("PresenterApp navigation", () => {
 
     // Back from a stage's first slide lands on the last slide of the stage before.
     fireEvent.keyDown(document.body, { key: "ArrowLeft" });
-    await waitFor(() => expect(screen.getByText("6/6")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("7/7")).toBeInTheDocument());
     expect(screen.getByRole("heading", { level: 1, name: FRONT_DOOR.heading })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Previous slide" }));
-    expect(screen.getByText("5/6")).toBeInTheDocument();
+    expect(screen.getByText("6/7")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Previous slide" }));
-    expect(screen.getByText("4/6")).toBeInTheDocument();
+    expect(screen.getByText("5/7")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Previous slide" }));
+    expect(screen.getByText("4/7")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1, name: STAGES.find((st) => st.id === "scale")!.title })).toBeInTheDocument();
     for (let i = 0; i < 3; i++) fireEvent.keyDown(document.body, { key: "ArrowLeft" });
-    expect(screen.getByText("1/6")).toBeInTheDocument();
+    expect(screen.getByText("1/7")).toBeInTheDocument();
     fireEvent.keyDown(document.body, { key: "ArrowLeft" });
     await onStage("reveal");
     // Back onto the reveal lands on its last slide.
@@ -338,13 +355,13 @@ describe("PresenterApp navigation", () => {
     expect(posts()).toEqual([{ stage: "scale" }, { stage: "foundation" }, { stage: "scale" }, { stage: "reveal" }]);
   });
 
-  it("shows no review flag on At scale 4/6, even with ?review", async () => {
+  it("shows no review flag on At scale 4/7, even with ?review", async () => {
     window.history.pushState({}, "", "/aspen/present?review");
     try {
       setup({ stage: "scale" });
       await onStage("scale");
       for (let i = 0; i < 3; i++) fireEvent.keyDown(document.body, { key: "ArrowRight" });
-      expect(screen.getByText("4/6")).toBeInTheDocument();
+      expect(screen.getByText("4/7")).toBeInTheDocument();
       expect(screen.queryByRole("note")).not.toBeInTheDocument();
     } finally {
       window.history.pushState({}, "", "/");
@@ -478,7 +495,7 @@ describe("PresenterApp stages", () => {
     setup({ stage: "scale" });
     await onStage("scale");
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("2/6")).toBeInTheDocument();
+    expect(screen.getByText("2/7")).toBeInTheDocument();
     // The big number and the one tile that matched it.
     expect(screen.getAllByText("$288")).toHaveLength(2);
     // The panel label says "SNAP for 2026", so the big number doesn't repeat the year (Pavel's review).
@@ -505,7 +522,7 @@ describe("PresenterApp stages", () => {
 
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("4/6")).toBeInTheDocument();
+    expect(screen.getByText("4/7")).toBeInTheDocument();
     expect(screen.getByText("$288")).toBeInTheDocument();
     expect(screen.getByText("in 2026")).toBeInTheDocument();
     expect(screen.getByText(/\$24 a month all year under FY2026 standards\./)).toBeInTheDocument();

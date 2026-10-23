@@ -21,6 +21,7 @@ import {
   percent,
   stageIndex,
   MINIMUM_BENEFIT,
+  TOOL_PILOT,
 } from './content'
 import { federalFiscalYear } from './coverage'
 
@@ -197,5 +198,27 @@ describe('aspen content', () => {
     expect(answers.at(-2)).toBe(EXAMPLE_HOUSEHOLD.reference)
     expect(findHousehold('ct-couple')?.plural).toBe(true)
     expect(findHousehold('ct-couple')?.firstPerson).not.toContain('disability. My')
+  })
+
+  it("gives every tool-pilot model a share for every arm, as the October 20 note reports them", () => {
+    for (const row of TOOL_PILOT.rows) {
+      for (const arm of TOOL_PILOT.arms) {
+        const value = row[arm.id]
+        expect(Number.isFinite(value)).toBe(true)
+        expect(value).toBeGreaterThanOrEqual(0)
+        expect(value).toBeLessThanOrEqual(100)
+        // One decimal, as the note prints them.
+        expect(Math.round(value * 10) / 10).toBe(value)
+      }
+    }
+    // The note's nonzero-amount shares (policybench.org, Oct 20, 2026), recomputed Oct 23 from its data.
+    expect(TOOL_PILOT.rows.map((r) => [r.model, r.alone, r.tool])).toEqual([
+      ['GPT-6 Sol', 67.4, 96.8],
+      ['Claude Opus 5.5', 70.1, 98.9],
+      ['Gemini 4 Argon', 46.5, 99.5],
+    ])
+    expect(TOOL_PILOT.note).toContain('187 amounts across 100 US households')
+    // The note's own caveat travels with the numbers.
+    expect(TOOL_PILOT.measures).toMatch(/not whether the engine is right/)
   })
 })
