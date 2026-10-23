@@ -189,6 +189,22 @@ describe('aspen API routes', () => {
     expect(other.summary.prompts).toBe(0)
   })
 
+  it('keeps agency comments off participants\' results until the presenter reads them', async () => {
+    await signIn(post({ password: 'room' }))
+    await event(post({ participantId: P, kind: 'discussion', payload: { question: 'experience', note: 'Our chatbot misread the asset test' } }))
+    await event(post({ participantId: P, kind: 'discussion', payload: { question: 'misunderstood', topics: ['Asset tests'], note: 'BBCE' } }))
+
+    const phone = await (await results(new Request('https://axiom.org/api/aspen/results'))).json()
+    expect(phone.summary.discussion.notes).toEqual([{ question: 'misunderstood', text: 'BBCE' }])
+    expect(JSON.stringify(phone)).not.toContain('chatbot misread')
+    // The question still counts; only the comment text is held back.
+    expect(phone.summary.discussion.questions.find((c: { id: string }) => c.id === 'experience').count).toBe(1)
+
+    await signIn(post({ password: 'stage' }))
+    const presenter = await (await results(new Request('https://axiom.org/api/aspen/results'))).json()
+    expect(presenter.summary.discussion.notes).toContainEqual({ question: 'experience', text: 'Our chatbot misread the asset test' })
+  })
+
   it('rejects bad questions and records failed answers', async () => {
     await signIn(post({ password: 'room' }))
     expect((await ask(post({ participantId: P, conversationId: C, turn: 0, messages: [] }))).status).toBe(400)

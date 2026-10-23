@@ -426,6 +426,22 @@ export function summarizeRun(data: RunData): RunSummary {
   };
 }
 
+/**
+ * The summary a participant may read. Agency comments (the "experience"
+ * question's notes) stay with the presenter, who chooses when the room
+ * sees them; the presenter's toggle is only local state, so the server
+ * is what keeps them off the phones.
+ */
+export function participantSummary(summary: RunSummary): RunSummary {
+  return {
+    ...summary,
+    discussion: {
+      ...summary.discussion,
+      notes: summary.discussion.notes.filter((n) => n.question !== "experience"),
+    },
+  };
+}
+
 export const EMPTY_SUMMARY: RunSummary = summarizeRun({
   participants: [],
   prompts: [],
