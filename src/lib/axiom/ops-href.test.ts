@@ -8,6 +8,7 @@ describe("opsHref", () => {
     );
     expect(opsHref({ tab: "pipeline", j: "us" }, LEGACY_OPS_TABS.pipeline)).toBe("/ops?tab=line&j=us");
     expect(opsHref({ tab: "ledger" }, LEGACY_OPS_TABS.ledger)).toBe("/ops");
+    expect(opsHref({ tab: "output", program: "snap" }, LEGACY_OPS_TABS.output)).toBe("/ops?program=snap");
     expect(opsHref({ tab: "ledger", j: ["us", "ca"], x: undefined }, "now")).toBe("/ops?j=us&j=ca");
   });
 });

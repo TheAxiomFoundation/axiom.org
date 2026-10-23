@@ -1,8 +1,8 @@
 /** The /ops tabs, as their `?tab=` values ("now" has none). */
-export type OpsTabId = "now" | "line" | "output" | "programs";
+export type OpsTabId = "now" | "line" | "programs";
 
-/** The tabs before the four-tab layout, and the tab that took each over. */
-export const LEGACY_OPS_TABS: Record<string, OpsTabId> = { ledger: "now", pipeline: "line", bundles: "programs" };
+/** Retired tabs, and the tab that took each over (Output's counts are in /api/ops/flow?accepted). */
+export const LEGACY_OPS_TABS: Record<string, OpsTabId> = { ledger: "now", pipeline: "line", bundles: "programs", output: "now" };
 
 /** An /ops address on `tab`, every other query parameter kept in order. */
 export function opsHref(params: Record<string, string | string[] | undefined>, tab: OpsTabId): string {

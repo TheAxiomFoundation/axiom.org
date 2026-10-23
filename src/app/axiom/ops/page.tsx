@@ -3,7 +3,7 @@ import { LEGACY_OPS_TABS, opsHref, type OpsTabId } from "@/lib/axiom/ops-href";
 
 export const dynamic = "force-dynamic";
 
-const TABS: OpsTabId[] = ["now", "line", "output", "programs"];
+const TABS: OpsTabId[] = ["now", "line", "programs"];
 
 /**
  * The ops dashboard's old /axiom mount: the dashboard is /ops (the proxy

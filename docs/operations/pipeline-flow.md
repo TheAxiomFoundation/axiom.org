@@ -1,21 +1,21 @@
 # Pipeline flow: an event log and a zoomable graph of the encoding pipeline
 
-Status: prototype (draft PR). Pages: the `/ops` tabs (Now, Line, Output,
+Status: prototype (draft PR). Pages: the `/ops` tabs (Now, Line,
 Programs) and the `/ops/journey` drill-down; `/ops/flow` redirects to the
 Line tab. Agent API: `/api/ops/flow` (JSON) and `/api/ops/flow?format=md`
 (markdown).
 
 ## Where it lives: one /ops page
 
-`/ops` is one page with four tabs, each its own page load that reads only
-its data (the accepted-modules counts live on the Output tab):
+`/ops` is one page with three tabs, each its own page load that reads only
+its data. The accepted-modules counts are not on the page: they are in
+`/api/ops/flow?accepted`, which the roadmap flow model reads.
 
 | tab | question | built from |
 |---|---|---|
 | Now (`/ops`) | What runs now, and what runs next? | the fleet box, the workflows strip, the run ledger, the queues and recent ingests |
 | Line (`?tab=line`) | Where do cases wait, fail or loop? | the station diagram and panel, alerts, reason sources, station trends, and the "Loops and rules" view (`&view=discovery`) |
-| Output (`?tab=output`) | How many modules does the line put out? | the accepted series by week, program and route, with rework and not measured |
-| Programs (`?tab=programs`) | How far is each program? | the programs map, the bundle grid and a bundle's page (`&bundle=`), and validation waivers |
+| Programs (`?tab=programs`) | How far is each program? | the bundle grid first (or a bundle's page, `&bundle=`), then the programs map, then validation waivers |
 
 One drill-down: `/ops/journey?citation=<path>` (and `&case=<id>` for one
 run) draws a citation's cases from the event log, derived from
@@ -23,7 +23,8 @@ run) draws a citation's cases from the event log, derived from
 `/api/ops/flow?citation=` serves the same lanes as JSON.
 
 Old addresses keep working: `?tab=ledger`, `?tab=pipeline` and
-`?tab=bundles` redirect to Now, Line and Programs; `/ops/flow` redirects
+`?tab=bundles` redirect to Now, Line and Programs, and the retired
+`?tab=output` to Now; `/ops/flow` redirects
 to the Line tab (a citation or run to the journey, the programs view to
 Programs); `/axiom/ops` redirects to `/ops`; `/ops/bundles/<id>` opens the
 bundle on the Programs tab.
@@ -184,8 +185,7 @@ carries the cached headline series as `accepted` (totals, weeks, routes,
 not measured, rework; programs read `untagged` until the backfill tags the
 events), and the markdown brief ends with its summary and a pointer to
 `?accepted` for programs; the API reads that series from a cache kept for
-ten minutes (`getAcceptedHeadline`). On the page the counts are on the
-Output tab only. The `window`, `j` and `pop` parameters do not narrow them:
+ten minutes (`getAcceptedHeadline`). The page does not show them. The `window`, `j` and `pop` parameters do not narrow them:
 they are the whole history.
 
 ### Counts when the definition was agreed

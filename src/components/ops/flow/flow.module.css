@@ -1416,42 +1416,10 @@
   overflow-wrap: anywhere;
 }
 
-/* Output tab */
+/* Section headings below the floor (waivers) */
 .sectionTitle {
   margin-top: 28px;
   font-size: 18px;
   font-weight: 500;
   letter-spacing: -0.02em;
-}
-
-.outputBar {
-  display: inline-flex;
-  width: 120px;
-  height: 8px;
-  margin-right: 8px;
-  vertical-align: middle;
-  gap: 2px;
-}
-
-.outputBar span,
-.outputKey {
-  display: inline-block;
-  height: 8px;
-  border-radius: 0 2px 2px 0;
-}
-
-.outputBar span[data-route="pipeline"],
-.outputKey[data-route="pipeline"] {
-  background: var(--flow);
-}
-
-.outputBar span[data-route="hand"],
-.outputKey[data-route="hand"] {
-  background: var(--color-ink-muted);
-}
-
-.outputKey {
-  width: 10px;
-  border-radius: 2px;
-  vertical-align: middle;
 }

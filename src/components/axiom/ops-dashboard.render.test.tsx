@@ -147,7 +147,7 @@ describe("OpsDashboard", () => {
     expect(screen.getByRole("region", { name: "Every run" })).toBeInTheDocument();
   });
 
-  it("shows four tabs as links and one tab's body at a time", () => {
+  it("shows three tabs as links and one tab's body at a time", () => {
     const props = {
       initialStatus: status({}),
       encodingError: null,
@@ -161,7 +161,6 @@ describe("OpsDashboard", () => {
     expect(within(tabs).getAllByRole("link").map((t) => [t.textContent, t.getAttribute("href")])).toEqual([
       ["Now", "/ops"],
       ["Line", "/ops?tab=line"],
-      ["Output", "/ops?tab=output"],
       ["Programs", "/ops?tab=programs"],
     ]);
     expect(within(tabs).getByRole("link", { name: "Now" })).toHaveAttribute("aria-current", "page");
@@ -173,7 +172,6 @@ describe("OpsDashboard", () => {
     expect(within(screen.getByRole("navigation", { name: "Operations" })).getAllByRole("link").map((t) => t.getAttribute("href"))).toEqual([
       "/ops?j=us&window=7",
       "/ops?tab=line&j=us&window=7",
-      "/ops?tab=output&j=us&window=7",
       "/ops?tab=programs&j=us&window=7",
     ]);
     expect(screen.getByRole("region", { name: "The encoding line" })).toBeVisible();

@@ -19,7 +19,9 @@ async function target(query: Record<string, string>): Promise<string> {
 describe("/axiom/ops redirect", () => {
   it("lands on /ops with its tab, old tab names mapped in one hop", async () => {
     expect(await target({})).toBe("/ops");
-    expect(await target({ tab: "output" })).toBe("/ops?tab=output");
+    expect(await target({ tab: "line" })).toBe("/ops?tab=line");
+    // Output is retired: its counts are in /api/ops/flow?accepted.
+    expect(await target({ tab: "output" })).toBe("/ops");
     expect(await target({ tab: "bundles", bundle: "us-az/snap" })).toBe("/ops?tab=programs&bundle=us-az%2Fsnap");
     expect(await target({ tab: "ledger", j: "us" })).toBe("/ops?j=us");
     expect(await target({ tab: "nonsense" })).toBe("/ops");

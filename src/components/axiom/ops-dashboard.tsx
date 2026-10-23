@@ -73,7 +73,7 @@ interface OpsDashboardProps {
   ledger?: ReactNode;
   /** The open tab's body when it is not "now", rendered server-side by the page. */
   panel?: ReactNode;
-  /** The open tab (?tab=line, output or programs); "now" otherwise. */
+  /** The open tab (?tab=line or programs); "now" otherwise. */
   initialTab?: OpsTab;
   /** The parameters every tab link carries (the jurisdiction scope, the window). */
   shared?: Record<string, string>;
@@ -95,24 +95,22 @@ export interface StartingRuns {
 }
 
 /**
- * The four tabs: what runs now and next; where cases wait, fail or loop;
- * what the line puts out; and the programs it works toward.
+ * The three tabs: what runs now and next; where cases wait, fail or loop;
+ * and the programs the line works toward.
  */
-export type OpsTab = "now" | "line" | "output" | "programs";
+export type OpsTab = "now" | "line" | "programs";
 
-export const OPS_TABS: OpsTab[] = ["now", "line", "output", "programs"];
+export const OPS_TABS: OpsTab[] = ["now", "line", "programs"];
 
 const TAB_LABELS: Record<OpsTab, string> = {
   now: "Now",
   line: "Line",
-  output: "Output",
   programs: "Programs",
 };
 
 const TAB_HINTS: Record<OpsTab, string> = {
   now: "What runs now and what runs next",
   line: "Where cases wait, fail or loop",
-  output: "Accepted modules per week, by program and route",
   programs: "Bundles, documents and waivers",
 };
 
@@ -352,8 +350,8 @@ export function OpsDashboard({
           </h1>
           <p className="mt-3 max-w-[640px] text-sm md:text-base text-[var(--color-ink-secondary)]">
             From source law to executable rules: what runs now and next,
-            where cases wait or fail on the line, the modules it puts out
-            each week, and the programs it works toward.
+            where cases wait or fail on the line, and the programs it works
+            toward.
           </p>
         </header>
 

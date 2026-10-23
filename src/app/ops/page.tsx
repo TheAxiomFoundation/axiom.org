@@ -9,7 +9,6 @@ import { WorkflowHealthStrip } from "@/components/axiom/workflow-health";
 import { FlowLine, ProgramsMap } from "@/components/ops/flow/flow-page";
 import flowStyles from "@/components/ops/flow/flow.module.css";
 import { DEFAULT_FLOW_PARAMS, type FlowParams } from "@/components/ops/flow/flow-params";
-import { OutputTab } from "@/components/ops/flow/output-tab";
 import { documentTiles, programTiles } from "@/components/ops/flow/program-tiles";
 import { Waivers } from "@/components/ops/flow/waivers";
 import { getPipelineAttempts } from "@/lib/axiom/encoding-pipeline-data";
@@ -17,8 +16,8 @@ import { getEncodingQueues } from "@/lib/axiom/encoding-queues";
 import { busiestRoots, LEGACY_OPS_TABS, opsHref, sharedOpsParams } from "@/lib/axiom/ops-href";
 import { ScopeNav } from "@/components/ops/flow/scope-nav";
 import { attemptJurisdiction, parseScope, scopeName } from "@/lib/axiom/encoding-pipeline-insights";
-import { getPipelineEvents, getWaiverEvents } from "@/lib/axiom/pipeline-events-data";
-import { loadAccepted, loadFlow, parseWindow } from "@/lib/axiom/pipeline-flow-data";
+import { getWaiverEvents } from "@/lib/axiom/pipeline-events-data";
+import { loadFlow, parseWindow } from "@/lib/axiom/pipeline-flow-data";
 import { getBundleSummaries, getProgramBundle } from "@/lib/axiom/program-bundles-data";
 import { getEncodingStatus, getRecentCorpusScopes, groupRecentScopes } from "@/lib/corpus-status";
 import { SITE_URL } from "@/lib/urls";
@@ -50,7 +49,7 @@ export default async function OpsPage({ searchParams }: { searchParams?: Promise
   const asked = one(params.tab);
   // Old links (?tab=ledger, pipeline, bundles) open the tab that took them over.
   if (asked && LEGACY_OPS_TABS[asked]) permanentRedirect(opsHref(params, LEGACY_OPS_TABS[asked]));
-  const tab: OpsTab = asked === "line" || asked === "output" || asked === "programs" ? asked : "now";
+  const tab: OpsTab = asked === "line" || asked === "programs" ? asked : "now";
   const referenceMs = Date.now();
 
   const [encodingStatus, recentScopes, queues] =
@@ -76,9 +75,6 @@ export default async function OpsPage({ searchParams }: { searchParams?: Promise
     panel = (
       <FlowLine model={data.model} origin={data.origin} targetsSeeded={data.targetsSeeded} error={data.error} params={flowParams} jurisdictions={jurisdictions} />
     );
-  } else if (tab === "output") {
-    const accepted = await loadAccepted((await getPipelineEvents()).events, referenceMs);
-    panel = <OutputTab series={accepted} ledger={accepted.modules} program={one(params.program)} />;
   } else if (tab === "programs") {
     const bundleId = one(params.bundle);
     const validBundle = bundleId && BUNDLE_ID_RE.test(bundleId) ? bundleId : null;
@@ -90,7 +86,7 @@ export default async function OpsPage({ searchParams }: { searchParams?: Promise
     ]);
     panel = (
       <>
-        <ProgramsMap programs={bundle ? null : programTiles(bundles)} documents={bundle ? documentTiles(bundle.documents) : null} />
+        {/* The bundle table first; the zoomable map of the same bundles below it. */}
         {bundle ? (
           <ProgramBundle
             key={validBundle}
@@ -106,6 +102,9 @@ export default async function OpsPage({ searchParams }: { searchParams?: Promise
         ) : (
           <p className={flowStyles.note}>No program bundles yet: encodings.program_bundles is empty or not there.</p>
         )}
+        <div style={{ marginTop: 24 }}>
+          <ProgramsMap programs={bundle ? null : programTiles(bundles)} documents={bundle ? documentTiles(bundle.documents) : null} />
+        </div>
         <Waivers events={waivers.events} referenceMs={referenceMs} />
       </>
     );
