@@ -614,31 +614,6 @@
   white-space: nowrap;
 }
 
-.origins {
-  margin-top: 10px;
-  display: grid;
-  gap: 8px;
-}
-
-.origins > div {
-  display: grid;
-  grid-template-columns: 150px minmax(0, 1fr);
-  gap: 12px;
-  font-size: 13px;
-  color: var(--color-ink-secondary);
-}
-
-.origins .originTag {
-  color: var(--color-ink-muted);
-  border-color: var(--color-rule);
-}
-
-@media (max-width: 699px) {
-  .origins > div {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 4px;
-  }
-}
 
 /* The diagram: station boxes, sinks, edges and their labels. */
 .station {

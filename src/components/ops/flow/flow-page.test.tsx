@@ -49,8 +49,7 @@ describe("FlowLine", () => {
   it("shows the line as a diagram, with where its reasons come from", () => {
     line();
     expect(screen.getByTestId("pipeline-canvas")).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Where do these reasons come from?" })).toBeTruthy();
-    expect(screen.getAllByText("Validator check").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("heading", { name: "Where do these reasons come from?" })).toBeNull();
     expect(screen.queryByRole("navigation", { name: "Which cases" })).toBeNull();
     // Alerts stay in the API and the brief, not on the page.
     expect(screen.queryByText("Release activation is failing")).toBeNull();

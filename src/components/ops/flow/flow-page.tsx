@@ -16,7 +16,6 @@ import { stationStatus } from "./flow-layout";
 import { CaseCanvas, LanesCanvas } from "./level-canvases";
 import { flowHref, type FlowParams } from "./flow-params";
 import { PipelineFloor } from "./pipeline-floor";
-import { ReasonSources } from "./reason-sources";
 import { ScopeNav } from "./scope-nav";
 import { StatusIcon } from "./status-icon";
 import styles from "./flow.module.css";
@@ -78,7 +77,6 @@ export function FlowLine({
       ) : (
         <PipelineFloor model={model} params={params} />
       )}
-      <ReasonSources model={model} />
       <StationsTable model={model} params={params} />
       <Trust model={model} />
 
