@@ -90,7 +90,7 @@ export const STAGES: readonly Stage[] = [
     label: "At scale",
     title: "AI gets it wrong at scale",
     agenda: "PolicyBench: 50 AI models on SNAP.",
-    summary: "We asked 50 AI models to calculate SNAP for real households.",
+    summary: "We asked 50 AI models to calculate SNAP for realistic households from PolicyEngine's US microdata.",
   },
   {
     id: "foundation",
@@ -791,11 +791,11 @@ export const WHAT_MODELS_MISS = {
     },
   ],
   ruleLabel: "Broad-based categorical eligibility",
-  rule: "Since March 2026, Arizona has extended SNAP's categorical eligibility to every household with gross income under 200% of the poverty line. A categorically eligible household skips SNAP's income and asset tests, and a household of one or two gets SNAP's minimum benefit.",
+  rule: "Arizona's expanded categorical eligibility covers every household with gross income up to 200% of the poverty line (raised from 185% in March 2026). Those households skip SNAP's income and asset tests, and a household of one or two gets at least the minimum benefit.",
   amount: 240,
   amountLabel: "PolicyEngine's reference in PolicyBench for this household in 2026",
   sources:
-    "7 CFR 273.2(j)(2) · USDA FNS broad-based categorical eligibility chart, June 29, 2026 · PolicyBench, October 14, 2026",
+    "7 CFR 273.2(j)(2) · USDA FNA broad-based categorical eligibility chart, June 2026 · Arizona DES, What's Changed on 03/23/2026 · PolicyBench, October 14, 2026",
 } as const;
 
 /**
@@ -875,7 +875,7 @@ export function percent(part: number, whole: number): number {
 
 /** What makes the one set of rules checkable: the dark box on Shared foundation 1/3 and on phones. */
 export const FOUNDATION_TRAITS = [
-  "Every value cites the provision it comes from",
+  "Every value is built to cite the provision it comes from",
   "Every change carries its effective date",
   "Every release is versioned, so you can see what changed",
 ] as const;

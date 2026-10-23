@@ -406,6 +406,7 @@ describe("ThankYouContent", () => {
     expect(screen.getByRole("link", { name: /Try the rules chatbot/ })).toHaveTextContent(
       "Ask the same question, answered by the encoded rules.",
     );
+    expect(screen.getByRole("link", { name: /The Axiom Foundation/ })).toHaveTextContent("Open, cited rules that states can validate.");
     expect(screen.getByRole("link", { name: EVENT.contactEmail })).toHaveAttribute("href", `mailto:${EVENT.contactEmail}`);
     fireEvent.click(screen.getByRole("button", { name: "Back to your question" }));
     expect(onReturn).toHaveBeenCalledTimes(1);
@@ -459,10 +460,11 @@ describe("PolicyBenchContent", () => {
     render(<PolicyBenchContent />);
     expect(screen.getByText("42%")).toBeInTheDocument();
     expect(screen.getByText("268 of 643 answers, from 50 models.")).toBeInTheDocument();
+    expect(screen.getByText(/of AI answers told a household that qualifies for SNAP it would get/)).toBeInTheDocument();
     // The same shape as What we saw: a block heading, then numbered parts.
     expect(screen.getByRole("heading", { level: 2, name: "Across 50 AI models" })).toBeInTheDocument();
     expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([
-      "1Families who qualify, told $0",
+      "1Households that qualify, told $0",
       "2One Arizona household",
     ]);
     expect(screen.getByText("All 50 AI models said $0.")).toBeInTheDocument();

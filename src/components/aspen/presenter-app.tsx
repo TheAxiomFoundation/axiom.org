@@ -448,18 +448,31 @@ function BigStat({
   label,
   tone = "ink",
   size = 96,
+  unit,
 }: {
   value: ReactNode;
   label: string;
   tone?: "ink" | "bad" | "accent";
   size?: number;
+  /** A short unit beside the number, e.g. "in 2026", so an annual total doesn't read as monthly. */
+  unit?: string;
 }) {
   const color = { ink: "var(--color-ink)", bad: "var(--color-error)", accent: "var(--color-accent)" }[tone];
+  const number = (
+    <span className="block font-display font-light leading-none tabular-nums" style={{ fontSize: size, color }}>
+      {value}
+    </span>
+  );
   return (
     <div>
-      <span className="block font-display font-light leading-none tabular-nums" style={{ fontSize: size, color }}>
-        {value}
-      </span>
+      {unit ? (
+        <span className="flex items-baseline gap-[12px]">
+          {number}
+          <span className="font-body text-[28px] text-[var(--color-ink-secondary)]">{unit}</span>
+        </span>
+      ) : (
+        number
+      )}
       <span className="mt-[8px] block font-body text-[24px] text-[var(--color-ink-secondary)]">{label}</span>
     </div>
   );
@@ -738,7 +751,7 @@ function ScaleShareSlide() {
       </span>
       <div className="flex max-w-[760px] flex-col gap-[24px]">
         <p className="m-0 font-display text-[52px] font-light leading-tight text-[var(--color-ink)]">
-          of AI answers told a family that qualifies for SNAP they&apos;d get <strong className="font-normal">$0</strong>.
+          of AI answers told a household that qualifies for SNAP it would get <strong className="font-normal">$0</strong>.
         </p>
         <p className="m-0 font-body text-[24px] text-[var(--color-ink-muted)]">
           {POLICYBENCH.saidZero} of {POLICYBENCH.eligibleAnswers} answers · {POLICYBENCH.models} AI models ·{" "}
@@ -763,7 +776,7 @@ function ArizonaStandardsNote() {
   const az = POLICYBENCH.azCase;
   return (
     <p className="m-0 font-body text-[18px] leading-snug text-[var(--color-ink-secondary)]">
-      ${az.reference.monthly} a month under {az.reference.standards} standards (PolicyEngine&apos;s reference in PolicyBench).{" "}
+      ${az.reference.monthly} a month from March under {az.reference.standards} standards (PolicyEngine&apos;s reference in PolicyBench).{" "}
       The minimum benefit rose to ${az.fromOctober.monthly} on {az.fromOctober.effective}.
     </p>
   );
@@ -831,7 +844,7 @@ function HouseholdSlide() {
         <Panel className="flex flex-col gap-[18px]">
           <Label className="mb-0">{h.program}</Label>
           <div className="grid grid-cols-2 gap-[24px]">
-            <BigStat value={`$${h.reference}`} label="PolicyEngine's reference in PolicyBench" tone="accent" />
+            <BigStat value={`$${h.reference}`} unit="in 2026" label="PolicyEngine's reference in PolicyBench" tone="accent" />
             <BigStat value="$0" label={`from all ${h.models} AI models`} tone="bad" />
           </div>
           <ArizonaStandardsNote />
@@ -900,7 +913,7 @@ function MissSlide() {
           <Label>{m.ruleLabel}</Label>
           <p className={`m-0 ${BOX_TEXT}`}>{m.rule}</p>
           <div className="mt-auto pt-[8px]">
-            <BigStat value={`$${m.amount}`} label={m.amountLabel} tone="accent" size={80} />
+            <BigStat value={`$${m.amount}`} unit="in 2026" label={m.amountLabel} tone="accent" size={80} />
           </div>
           <ArizonaStandardsNote />
         </Panel>
@@ -1305,7 +1318,8 @@ function TiersSlide() {
                 <ul className="m-0 grid list-none grid-cols-2 gap-x-[16px] gap-y-[6px] p-0 font-body text-[18px] leading-snug text-[var(--color-ink-secondary)]">
                   {(tier.programs as readonly string[]).map((program) => (
                     <li key={program} className="flex gap-[8px]">
-                      <Check aria-hidden size={18} strokeWidth={2.25} className="mt-[3px] shrink-0 text-[var(--color-accent)]" />
+                      {/* A plain bullet, not a check: these are the programs to encode, not programs done. */}
+                      <span aria-hidden className="mt-[10px] h-[6px] w-[6px] shrink-0 rounded-full bg-[var(--color-ink-muted)]" />
                       {program}
                     </li>
                   ))}

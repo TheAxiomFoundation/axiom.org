@@ -282,13 +282,13 @@ export function PolicyBenchContent() {
   return (
     <div className="flex flex-col gap-8">
       <BlockHeading>Across {POLICYBENCH.models} AI models</BlockHeading>
-      <Part n={1} title="Families who qualify, told $0">
+      <Part n={1} title="Households that qualify, told $0">
         <Card className="flex flex-col gap-2 border-l-4 border-l-[var(--color-error)] p-5">
           <span className="font-display text-[3.6rem] font-light leading-none tabular-nums text-[var(--color-error)]">
             {zeroShare}%
           </span>
           <p className="m-0 font-body text-[1.15rem] leading-snug text-[var(--color-ink)]">
-            of AI answers told a family that qualifies for SNAP they&apos;d get <strong>$0</strong>.
+            of AI answers told a household that qualifies for SNAP it would get <strong>$0</strong>.
           </p>
           <p className="m-0 font-body text-[1.02rem] text-[var(--color-ink)]">
             {POLICYBENCH.saidZero} of {POLICYBENCH.eligibleAnswers} answers, from {POLICYBENCH.models} models.
@@ -715,7 +715,7 @@ export function ThankYouContent({ onReturn }: { onReturn?: () => void }) {
       href: "https://axiom.org/gallery/chatbot",
     },
     { label: "PolicyBench", detail: `How ${POLICYBENCH.models} AI models do on benefits, case by case.`, href: POLICYBENCH.url },
-    { label: "The Axiom Foundation", detail: "Open, validated rules for every state.", href: "https://axiom.org" },
+    { label: "The Axiom Foundation", detail: "Open, cited rules that states can validate.", href: "https://axiom.org" },
   ];
   return (
     <div className="mx-auto flex max-w-[860px] flex-col items-center gap-10 py-6 text-center">

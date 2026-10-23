@@ -282,6 +282,8 @@ describe("PresenterApp navigation", () => {
     await onStage("scale");
     expect(screen.getByText("1/6")).toBeInTheDocument();
     expect(screen.getByText("42%")).toBeInTheDocument();
+    // A household, not a family: four of the five minimum-benefit households are one person.
+    expect(screen.getByText(/of AI answers told a household that qualifies for SNAP it would get/)).toBeInTheDocument();
     expect(screen.getByText(STAGES.find((st) => st.id === "scale")!.summary)).toBeInTheDocument();
 
     // At scale: the share, then Max's household, chart, what the models miss and the front door.
@@ -481,15 +483,22 @@ describe("PresenterApp stages", () => {
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     expect(screen.getByText("2/6")).toBeInTheDocument();
     expect(screen.getByText("$240")).toBeInTheDocument();
-    expect(screen.getByText(/\$24 a month under FY2026 standards/)).toHaveTextContent("PolicyEngine's reference in PolicyBench");
+    // The annual total carries its unit, so it doesn't read as a monthly amount.
+    expect(screen.getByText("in 2026")).toBeInTheDocument();
+    expect(screen.getByText(/\$24 a month from March under FY2026 standards/)).toHaveTextContent("PolicyEngine's reference in PolicyBench");
     expect(screen.getByText(/The minimum benefit rose to \$25 on October 1, 2026\./)).toBeInTheDocument();
 
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     expect(screen.getByText("4/6")).toBeInTheDocument();
     expect(screen.getByText("$240")).toBeInTheDocument();
-    expect(screen.getByText(/\$24 a month under FY2026 standards/)).toHaveTextContent("PolicyEngine's reference in PolicyBench");
+    expect(screen.getByText("in 2026")).toBeInTheDocument();
+    expect(screen.getByText(/\$24 a month from March under FY2026 standards/)).toHaveTextContent("PolicyEngine's reference in PolicyBench");
     expect(screen.getByText(/The minimum benefit rose to \$25 on October 1, 2026\./)).toBeInTheDocument();
+    // Arizona raised an existing limit in March 2026; the minimum is a floor, not the amount.
+    expect(screen.getByText(/up to 200% of the poverty line \(raised from 185% in March 2026\)/)).toBeInTheDocument();
+    expect(screen.getByText(/a household of one or two gets at least the minimum benefit\./)).toBeInTheDocument();
+    expect(screen.getByText(/USDA FNA broad-based categorical eligibility chart, June 2026 · Arizona DES, What's Changed on 03\/23\/2026/)).toBeInTheDocument();
   });
 
   it("keeps the plain labels when no answer would send a resident the wrong way", async () => {
@@ -521,7 +530,7 @@ describe("PresenterApp stages", () => {
     expect(screen.getByText("One open, validated set of rules")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText(/In this room/)).toHaveTextContent("In this room, 5 of 6 can't fully check"));
     for (const trait of [
-      "Every value cites the provision it comes from",
+      "Every value is built to cite the provision it comes from",
       "Every change carries its effective date",
       "Every release is versioned, so you can see what changed",
     ]) {
@@ -540,6 +549,8 @@ describe("PresenterApp stages", () => {
     for (const tier of GOLDEN_A) expect(screen.getByText(tier.name)).toBeInTheDocument();
     expect(screen.queryByText("Bronze A")).not.toBeInTheDocument();
     expect(screen.getByText("Rules from public documents")).toBeInTheDocument();
+    // The programs to encode carry plain bullets, not checks that read as done.
+    expect(screen.getByText("Medicaid").closest("li")!.querySelector("svg")).toBeNull();
     // Silver and Gold A read as in the core deck.
     expect(screen.getByText("Government validation")).toBeInTheDocument();
     expect(screen.getByText("Government system runs on Axiom")).toBeInTheDocument();
