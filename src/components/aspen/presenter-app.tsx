@@ -636,8 +636,8 @@ function TrySlide({ summary, joinPassword }: { summary: RunSummary; joinPassword
 }
 
 /**
- * What we saw, slides 2 and 3: one rating question each. Slide 2 is how the
- * AI did on the answers; slide 3 is how AI is performing in their agencies.
+ * What we saw, slide 2: how AI is doing in their agencies, the room's 1–5
+ * ratings, with the comments once the presenter shows them.
  */
 function RatingSlide({
   summary,
