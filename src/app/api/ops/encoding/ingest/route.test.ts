@@ -224,4 +224,118 @@ describe("POST /api/ops/encoding/ingest", () => {
     const response = await POST(post(startBody()));
     expect(response.status).toBe(502);
   });
+
+  describe("capacity", () => {
+    const NOW = new Date("2026-10-23T12:00:00.000Z");
+    const minutesAgo = (minutes: number) =>
+      new Date(NOW.getTime() - minutes * 60_000).toISOString();
+
+    type Row = {
+      id: string;
+      status: string;
+      last_heartbeat_at: string;
+      runner: Record<string, unknown>;
+    };
+
+    /** live_encoding_runs behind PostgREST, as far as the ingest uses it:
+     *  HEAD counts honour the status, provenance, heartbeat and client
+     *  filters; POST inserts. */
+    function stubTable(rows: Row[]) {
+      const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+        const query = new URL(String(url)).searchParams;
+        const value = (name: string, op: string) =>
+          query.get(name)?.replace(new RegExp(`^${op}\\.`), "");
+        if (init?.method === "HEAD") {
+          const status = value("status", "eq");
+          const via = value("runner->>reported_via", "eq");
+          const since = value("last_heartbeat_at", "gte");
+          const client = value("runner->>ingest_client", "eq");
+          const count = rows.filter(
+            (row) =>
+              (!status || row.status === status) &&
+              (!via || row.runner.reported_via === via) &&
+              (!since || row.last_heartbeat_at >= since) &&
+              (!client || row.runner.ingest_client === client)
+          ).length;
+          return new Response(null, {
+            status: 200,
+            headers: { "content-range": `*/${count}` },
+          });
+        }
+        if (init?.method === "POST") {
+          rows.push(JSON.parse(String(init.body)) as Row);
+          return new Response(null, { status: 201 });
+        }
+        throw new Error(`unexpected ${init?.method} ${url}`);
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      return rows;
+    }
+
+    const start = (n: number, ip: string) =>
+      POST(post(startBody({ id: `live-${ip.replace(/\D/g, "")}x${String(n).padStart(4, "0")}` }), ip));
+
+    beforeEach(() => {
+      vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("frees the slots of runs that stopped heartbeating (the reported board_full lockout)", async () => {
+      // 200 registrations nobody finished, last heard from eight days ago.
+      const abandoned = Array.from({ length: 200 }, (_, i) => ({
+        id: `live-abandoned${String(i).padStart(4, "0")}`,
+        status: "running",
+        last_heartbeat_at: minutesAgo(8 * 24 * 60),
+        runner: { reported_via: "public_ingest", ingest_client: `tag${i}` },
+      }));
+      stubTable(abandoned);
+      expect((await start(1, "192.0.2.10")).status).toBe(204);
+    });
+
+    it("still counts a run that heartbeat within the window", async () => {
+      const live = Array.from({ length: 200 }, (_, i) => ({
+        id: `live-fresh${String(i).padStart(4, "0")}`,
+        status: "running",
+        last_heartbeat_at: minutesAgo(9),
+        runner: { reported_via: "public_ingest", ingest_client: `tag${i}` },
+      }));
+      stubTable(live);
+      const response = await start(1, "192.0.2.10");
+      expect(response.status).toBe(429);
+      expect(await response.json()).toEqual({ error: "board_full" });
+    });
+
+    it("holds one client to its share while others can still start", async () => {
+      const rows = stubTable([]);
+      for (let n = 0; n < 20; n += 1) {
+        expect((await start(n, "198.51.100.20")).status).toBe(204);
+      }
+      const over = await start(20, "198.51.100.20");
+      expect(over.status).toBe(429);
+      expect(await over.json()).toEqual({ error: "client_full" });
+      expect((await start(0, "203.0.113.30")).status).toBe(204);
+      expect(rows).toHaveLength(21);
+    });
+
+    it("stamps rows with a keyed client tag, never the IP or a client-supplied tag", async () => {
+      const rows = stubTable([]);
+      await POST(
+        post(
+          startBody({ runner: { hostname: "box", ingest_client: "spoofed" } }),
+          "198.51.100.20"
+        )
+      );
+      const tag = rows[0].runner.ingest_client as string;
+      expect(tag).toMatch(/^[0-9a-f]{16}$/);
+      expect(JSON.stringify(rows[0])).not.toContain("198.51.100.20");
+
+      // The tag changes with the UTC day, so it links a client's runs for a day at most.
+      vi.setSystemTime(new Date("2026-10-24T00:00:01.000Z"));
+      await POST(post(startBody({ id: "live-nextday000001" }), "198.51.100.20"));
+      expect(rows[1].runner.ingest_client).toMatch(/^[0-9a-f]{16}$/);
+      expect(rows[1].runner.ingest_client).not.toBe(tag);
+    });
+  });
 });

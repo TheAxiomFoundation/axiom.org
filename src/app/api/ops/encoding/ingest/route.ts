@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { NextResponse } from "next/server";
 import { clientKey, isRateLimited } from "./limiter";
 
@@ -24,6 +25,13 @@ const MAX_ATTEMPT = 1000;
 /** Hard ceiling on concurrently 'running' self-reported rows — keeps a
  *  spammer from flooding the board even under rotating client keys. */
 const MAX_PUBLIC_RUNNING_ROWS = 200;
+/** One client's share of that ceiling, so a single caller can't take it all. */
+const MAX_RUNNING_ROWS_PER_CLIENT = 20;
+/** A running row holds a slot only while it heartbeats. Encoders beat
+ *  about twice a minute and the board calls a run stale after two
+ *  minutes; ten leaves room for a slow network. Without this, rows an
+ *  encoder abandoned (or never meant to finish) held their slots forever. */
+const CAPACITY_HEARTBEAT_WINDOW_MS = 10 * 60 * 1000;
 
 interface IngestConfig {
   url: string;
@@ -84,9 +92,28 @@ function sanitizeRunner(value: unknown): Record<string, unknown> {
   return clean;
 }
 
-async function countPublicRunningRows(config: IngestConfig): Promise<number> {
+/**
+ * A per-client tag for the rows a client starts: a keyed hash of the
+ * client key (its IP) and the UTC day, so the stored tag identifies no
+ * one and links a client's runs for a day at most.
+ */
+function clientTag(config: IngestConfig, key: string, now: string): string {
+  return createHmac("sha256", config.key)
+    .update(`ingest-client:${now.slice(0, 10)}:${key}`)
+    .digest("hex")
+    .slice(0, 16);
+}
+
+/** Running self-reported rows that heartbeat since `since`, optionally
+ *  only one client's. */
+async function countPublicRunningRows(
+  config: IngestConfig,
+  since: string,
+  tag?: string
+): Promise<number> {
+  const clientFilter = tag ? `&runner->>ingest_client=eq.${tag}` : "";
   const response = await fetch(
-    `${config.url}/rest/v1/live_encoding_runs?select=id&status=eq.running&runner->>reported_via=eq.public_ingest`,
+    `${config.url}/rest/v1/live_encoding_runs?select=id&status=eq.running&runner->>reported_via=eq.public_ingest&last_heartbeat_at=gte.${encodeURIComponent(since)}${clientFilter}`,
     {
       method: "HEAD",
       headers: {
@@ -131,7 +158,8 @@ export async function POST(request: Request) {
   if (!config) {
     return NextResponse.json({ error: "ingest_unconfigured" }, { status: 503 });
   }
-  if (isRateLimited(clientKey(request))) {
+  const key = clientKey(request);
+  if (isRateLimited(key)) {
     return NextResponse.json({ error: "rate_limited" }, { status: 429 });
   }
 
@@ -155,8 +183,18 @@ export async function POST(request: Request) {
       if (!citation) {
         return NextResponse.json({ error: "invalid_citation" }, { status: 400 });
       }
-      if ((await countPublicRunningRows(config)) >= MAX_PUBLIC_RUNNING_ROWS) {
+      const since = new Date(
+        Date.parse(now) - CAPACITY_HEARTBEAT_WINDOW_MS
+      ).toISOString();
+      if ((await countPublicRunningRows(config, since)) >= MAX_PUBLIC_RUNNING_ROWS) {
         return NextResponse.json({ error: "board_full" }, { status: 429 });
+      }
+      const tag = clientTag(config, key, now);
+      if (
+        (await countPublicRunningRows(config, since, tag)) >=
+        MAX_RUNNING_ROWS_PER_CLIENT
+      ) {
+        return NextResponse.json({ error: "client_full" }, { status: 429 });
       }
       const row: Record<string, unknown> = {
         id,
@@ -171,7 +209,7 @@ export async function POST(request: Request) {
         encoder_version: cleanText(body.encoder_version, MAX_FIELD_LENGTH),
         // Encoders open a run already in its first phase (resolve).
         phase: cleanText(body.phase, MAX_FIELD_LENGTH),
-        runner: sanitizeRunner(body.runner),
+        runner: { ...sanitizeRunner(body.runner), ingest_client: tag },
       };
       const response = await fetch(`${config.url}/rest/v1/live_encoding_runs`, {
         method: "POST",
