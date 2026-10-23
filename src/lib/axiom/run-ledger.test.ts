@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { runRow, runRows } from "./encoding-pipeline-runs";
-import { causeHeadline, endings, newestDocuments, runLedger, sectionOverview, sectionStatus } from "./run-ledger";
+import { causeHeadline, newestDocuments, runLedger, sectionBrief, sectionOverview, sectionStatus } from "./run-ledger";
 import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 
 const day = (n: number) => `2026-09-${String(n).padStart(2, "0")}T10:00:00Z`;
@@ -110,11 +110,6 @@ describe("sectionOverview", () => {
     ]);
     const overview = sectionOverview(runLedger(rows)[0].documents[0].sections[0]);
     expect(overview).toMatchObject({ runs: 2, failed: 1, cancelled: 1 });
-    expect(endings(overview)).toEqual(["1 failed", "1 cancelled"]);
-    expect(endings({ runs: 3, failed: 3, cancelled: 0 })).toEqual(["all failed"]);
-    expect(endings({ runs: 2, failed: 0, cancelled: 2 })).toEqual(["all cancelled"]);
-    expect(endings({ runs: 3, failed: 1, cancelled: 0 })).toEqual(["1 failed"]);
-    expect(endings({ runs: 2, failed: 0, cancelled: 0 })).toEqual([]);
   });
 });
 
@@ -191,5 +186,43 @@ describe("causeHeadline", () => {
     expect(causeHeadline("error: rulespec ref is not the exact pull request base branch tip")).toBe(
       "rulespec ref is not the exact pull request base branch tip"
     );
+  });
+});
+
+describe("sectionBrief", () => {
+  const brief = (attempts: Parameters<typeof pipelineAttempt>[0][]) => {
+    const [jurisdiction] = runLedger(runRows(attempts.map((a, i) => pipelineAttempt({ id: `x${i}`, dispatched_at: day(i + 1), ...a }))));
+    return sectionBrief(jurisdiction.documents[0].sections[0]);
+  };
+
+  it("asks for the approval a waiting run needs, with its run to open", () => {
+    const b = brief([{ run_status: "waiting", run_conclusion: null, run_url: "https://x/run/1" }]);
+    expect(b.headline).toBe("Not encoded yet · 1 run, none merged");
+    expect(b.now).toEqual({ text: "Waiting for approval", link: { label: "Approve on GitHub ↗", url: "https://x/run/1" } });
+    expect(b.repeated).toEqual([]);
+    expect(b.marks.map((m) => m.tone)).toEqual(["waiting"]);
+  });
+
+  it("points at the PR in review, the tests that fail, and the side branch's own PR", () => {
+    const pr = { pr_repo: "rulespec-us", pr_number: 7, pr_url: "https://x/pr/7", pr_created_at: day(2), run_conclusion: "success" };
+    expect(brief([{ ...pr, pr_state: "open" }]).now).toEqual({ text: "In review", link: { label: "rulespec-us#7 ↗", url: "https://x/pr/7" } });
+    const merged = (o: Parameters<typeof mergedAttempt>[0]) => {
+      const [j] = runLedger(runRows([mergedAttempt(o)]));
+      return sectionBrief(j.documents[0].sections[0]);
+    };
+    const failing = merged({ tests_status: "fail", tests_run_url: "https://x/tests" });
+    expect(failing.headline).toBe("Not encoded yet · 1 run, 1 merged");
+    expect(failing.now).toEqual({ text: "Tests fail", link: { label: "Open the tests ↗", url: "https://x/tests" } });
+    const side = merged({ pr_targets_default: false, pr_base_branch: "side", pr_via_number: 9, pr_via_url: "https://x/pr/9", pr_via_state: "open" });
+    expect(side.now?.link).toEqual({ label: "rulespec-us#9 ↗", url: "https://x/pr/9" });
+  });
+
+  it("has no next step once the latest run is encoded and passes its tests", () => {
+    const [j] = runLedger(runRows([mergedAttempt({ tests_status: "pass" })]));
+    const b = sectionBrief(j.documents[0].sections[0]);
+    expect(b.encoded).toBe(true);
+    expect(b.headline).toBe("Encoded · merged rulespec-us#42 · tests pass");
+    expect(b.now).toBeNull();
+    expect(b.marks[0]).toMatchObject({ tone: "done", url: "https://github.com/TheAxiomFoundation/rulespec-us/pull/42" });
   });
 });

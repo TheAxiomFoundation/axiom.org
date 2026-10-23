@@ -51,23 +51,22 @@ describe("PipelineLedger", () => {
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     // The program bundle and tier the section belongs to.
-    expect(within(row).getByRole("link", { name: "Arizona SNAP · Tier 1" })).toHaveAttribute("href", "/ops?tab=bundles&bundle=us-az/snap");
+    expect(within(row).getByRole("link", { name: "Arizona SNAP · Tier 1" })).toHaveAttribute("href", "/ops?tab=programs&bundle=us-az/snap");
     expect(within(screen.getByRole("button", { name: "Runs of us-la/statute/47/32" }).closest("tr")!).queryByRole("link", { name: /SNAP/ })).toBeNull();
     expect(screen.getByRole("button", { name: "Runs of us-la/statute/47/32" }).closest("tr")).toHaveTextContent("Failed validation");
   });
 
-  it("drops down an overview of a section's runs with the latest run's timeline, and every run on request", async () => {
+  it("opens a section as what it needs: not encoded yet, the next step, the failure that comes back, and every run as a mark", async () => {
     const cause = (i: number) => (i % 3 === 0 ? "complete-source-unit:tests" : `ci: cause ${"abcdefghijkl"[i]}`);
-    // Each "ci: cause x" headline is the message without its source: "cause x".
     serve({
       rows: runRows(
         Array.from({ length: 12 }, (_, i) =>
           pipelineAttempt({
             id: `r${i}`,
+            run_url: `https://github.com/TheAxiomFoundation/axiom-encode/actions/runs/${i}`,
             citation: "us/statute/7/2015/f",
             jurisdiction: "us",
             dispatched_at: `2026-09-${String(i + 1).padStart(2, "0")}T10:00:00Z`,
-            encoder_version: `0.2.${2000 + i}`,
             encoder_error: cause(i),
             encoder_error_rule: i % 3 === 0 ? "complete-source-unit:tests" : null,
             failure_source: "diagnostics",
@@ -77,72 +76,66 @@ describe("PipelineLedger", () => {
     });
     render(<PipelineLedger scope={null} scopeName={null} referenceMs={NOW} />);
     const section = await screen.findByRole("button", { name: "Runs of us/statute/7/2015/f" });
-    expect(screen.getByText(/^Every run, grouped/)).toBeInTheDocument();
     fireEvent.click(section);
-    expect(section).toHaveAttribute("aria-expanded", "true");
-    // A summary line, then where and why each run stopped (count first), then the latest run.
-    expect(screen.getByText("12 runs").parentElement).toHaveTextContent("12 runs · all failed · latest 18d ago");
-    const list = (name: string) => within(screen.getByRole("list", { name })).getAllByRole("listitem").map((item) => item.textContent);
-    const stops = "Where each run stopped, and why";
-    expect(list(stops)).toEqual([
-      "4Failed validation — Completeness rule: tests",
-      "1Failed validation — cause l",
-      "1Failed validation — cause k",
-      "1Failed validation — cause i",
-      "+5 more",
-    ]);
-    // "+5 more" opens the rest of the list, and "Show fewer" folds it again.
-    fireEvent.click(screen.getByRole("button", { name: "+5 more" }));
-    expect(list(stops)).toHaveLength(10);
-    fireEvent.click(screen.getByRole("button", { name: "Show fewer" }));
-    expect(list(stops)).toHaveLength(5);
-    expect(screen.getByText("Latest run").parentElement).toHaveTextContent("Latest runFailed validation cause ldispatched 18d ago · Run on GitHub ↗");
-    // The latest run's timeline shows under the overview, with nothing to open.
-    expect(screen.queryByRole("button", { name: /^Timeline of / })).not.toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Encode run" })).toBeInTheDocument();
-    // Every run opens on the page, one line each, and a line opens its run's timeline.
-    const every = screen.getByRole("button", { name: "Show all 12 runs" });
-    fireEvent.click(every);
-    const lines = within(screen.getByRole("list", { name: "Every run" })).getAllByRole("listitem");
-    expect(lines).toHaveLength(12);
-    expect(lines[11]).toHaveTextContent("29d ago0.2.2000Failed validationCompleteness rule: tests");
-    fireEvent.click(within(lines[11]).getByRole("button", { name: "Timeline of us/statute/7/2015/f, run r0" }));
-    expect(screen.getAllByRole("region", { name: "Encode run" })).toHaveLength(2);
-    fireEvent.click(screen.getByRole("button", { name: "Hide the runs" }));
-    expect(screen.queryByRole("list", { name: "Every run" })).not.toBeInTheDocument();
-    // Closing the section closes its overview.
+    expect(screen.getByText(/^Not encoded yet/)).toHaveTextContent("Not encoded yet · 12 runs since 2026-09-01, none merged");
+    const now = screen.getByText("Now").parentElement!;
+    expect(now).toHaveTextContent("NowFailed validation: cause lOpen the failed run ↗");
+    expect(within(now).getByRole("link", { name: "Open the failed run ↗" })).toHaveAttribute(
+      "href",
+      "https://github.com/TheAxiomFoundation/axiom-encode/actions/runs/11"
+    );
+    // Only the failure that came back; the one-off causes stay out.
+    const repeats = within(screen.getByText("Keeps failing on").parentElement!).getAllByRole("listitem");
+    expect(repeats.map((r) => r.textContent)).toEqual(["Failed validation — Completeness rule: tests (4 runs)latest ↗"]);
+    expect(within(repeats[0]).getByRole("link", { name: "latest ↗" })).toHaveAttribute("href", "https://github.com/TheAxiomFoundation/axiom-encode/actions/runs/9");
+    // Every run as a mark, oldest first, each opening its run; the journey has the full history.
+    const marks = within(screen.getByRole("list", { name: "Every run, oldest first" })).getAllByRole("listitem");
+    expect(marks).toHaveLength(12);
+    expect(marks[0]).toHaveAttribute("title", "2026-09-01 · Failed validation: Completeness rule: tests");
+    expect(marks[0]).toHaveAttribute("data-tone", "failed");
+    expect(screen.getByRole("link", { name: "Full history →" })).toHaveAttribute("href", "/ops/journey?citation=us%2Fstatute%2F7%2F2015%2Ff");
+    // No count list and no run list; one timeline, of the latest run until a mark picks another.
+    expect(screen.queryByRole("list", { name: "Where each run stopped, and why" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Show all/ })).toBeNull();
+    const latest = screen.getByRole("region", { name: "Latest run" });
+    expect(latest).toHaveTextContent(/Failed validation · Sep 12, 10:00 UTC/);
+    expect(latest).toHaveTextContent(/Stopped: Failed validation/);
+    expect(marks[11]).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(marks[0]);
+    expect(marks[0]).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("region", { name: "Chosen run" })).toHaveTextContent(/Sep 1, 10:00 UTC/);
+    expect(screen.queryByRole("region", { name: "Latest run" })).toBeNull();
     fireEvent.click(section);
-    expect(screen.queryByRole("region", { name: "Encode run" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Now")).toBeNull();
   });
 
-  it("shows the latest run's tries in the encode loop", async () => {
+  it("draws the chosen run's stages, its tries and the steps after its PR", async () => {
     serve({
       rows: runRows([
-        pipelineAttempt({
+        mergedAttempt({
           id: "t",
           citation: "us/statute/42/416/l",
           jurisdiction: "us",
-          encode_seconds: 600,
+          setup_seconds: 120,
+          encode_seconds: 900,
+          publish_seconds: 60,
           tries: [
             { attempt: 1, model: "gpt-6-luna", ms: 37_000, cost: 0.0075, ok: false, error: "statutes/42/416/l.yaml: ci: [complete-source-unit:structure] Source branch (A)" },
-            { attempt: 2, model: "gpt-6-sol", ms: 20_000, cost: 0.14, ok: false, error: "statutes/42/416/l.yaml: ci: Embedded scalar literal: 5" },
+            { attempt: 2, model: "gpt-6-sol", ms: 20_000, cost: 0.14, ok: true, error: null },
           ],
         }),
       ]),
     });
     render(<PipelineLedger scope={null} scopeName={null} referenceMs={NOW} />);
     fireEvent.click(await screen.findByRole("button", { name: "Runs of us/statute/42/416/l" }));
-    expect(screen.getByText("The run").parentElement).toHaveTextContent(/2 tries/);
-    const rows = within(screen.getByRole("list", { name: "Inside the encode loop" })).getAllByRole("listitem");
-    // The encoder times each try's model call only: the rest of the loop is one row, so the group sums to the loop.
-    expect(rows.map((row) => row.textContent)).toEqual([
-      "├Try 1 gpt-6-luna 37s <$0.01 Completeness rule: structure",
-      "├Try 2 gpt-6-sol 20s $0.14 Embedded scalar literal · stopped the run",
-      "└Checks and review 9m 3s between and after the tries, not timed per try; with the tries' model time (57s) the loop's 10m",
-    ]);
+    const run = screen.getByRole("region", { name: "Latest run" });
+    const tries = within(run).getAllByRole("listitem").filter((li) => li.closest("ol")?.getAttribute("aria-label") === "Tries in the encode loop");
+    expect(tries.map((t) => t.textContent)).toEqual(["Try 1gpt-6-luna37s<$0.01Completeness rule: structure", "Try 2gpt-6-sol20s$0.14passed"]);
+    expect(within(run).getByRole("list", { name: "After the PR" })).toHaveTextContent(/Review/);
+    expect(within(run).getByRole("img")).toHaveAccessibleName("Setup 2m, Encode loop 15m, Sign and open the PR 1m");
   });
 
-  it("shows a merge outside the pipeline and a module encoded in another citation's run as runs of their sections", async () => {
+  it("reads an encoded section in one line, and a module encoded in another run by its next step", async () => {
     const host = pipelineAttempt({ id: "1001", citation: "us/statute/42/416/l", jurisdiction: "us" });
     serve({
       rows: runRows([
@@ -158,34 +151,24 @@ describe("PipelineLedger", () => {
     });
     render(<PipelineLedger scope={null} scopeName={null} referenceMs={NOW} />);
     const merged = await screen.findByRole("button", { name: "Runs of us/statute/7/2017/a" });
-    // The section's status follows its latest attempt: the merge.
     expect(merged.closest("tr")).toHaveTextContent(/Tests pass/);
     fireEvent.click(merged);
-    expect(screen.getByText("Latest run").parentElement).toHaveTextContent(
-      "Latest runMerged outside the pipeline merged 7d ago · by MaxGhenis · rulespec-us#900 · merged"
-    );
-    expect(screen.queryByRole("link", { name: "Run on GitHub ↗" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Show all 2 runs" }));
-    const lines = within(screen.getByRole("list", { name: "Every run" })).getAllByRole("listitem");
-    expect(lines[0]).toHaveTextContent("7d agoMerged outside the pipeline · MaxGhenisrulespec-us#900");
-    expect(within(lines[0]).getByRole("link", { name: "rulespec-us#900" })).toHaveAttribute(
+    expect(screen.getByText(/^Encoded/)).toHaveTextContent("Encoded · merged rulespec-us#900 · tests pass");
+    expect(screen.queryByText("Now")).toBeNull();
+    const marks = within(screen.getByRole("list", { name: "Every run, oldest first" })).getAllByRole("listitem");
+    expect(marks.map((m) => m.getAttribute("data-tone"))).toEqual(["failed", "done"]);
+    // The latest run, a merge outside the pipeline, links to its PR.
+    expect(within(screen.getByRole("region", { name: "Latest run" })).getByRole("link", { name: "PR ↗" })).toHaveAttribute(
       "href",
       "https://github.com/TheAxiomFoundation/rulespec-us/pull/900"
     );
-    expect(lines[1]).toHaveTextContent(/Failed validation/);
     fireEvent.click(merged);
 
     const dependent = screen.getByRole("button", { name: "Runs of us/statute/42/402/q" });
     expect(dependent.closest("tr")).toHaveTextContent(/Failed the compile check/);
     fireEvent.click(dependent);
-    const latest = screen.getByText("The run").parentElement!;
-    expect(latest).toHaveTextContent(/^The runFailed the compile check/);
-    expect(within(latest).getByRole("link", { name: "Encoded in the run for us/statute/42/416/l ↗" })).toHaveAttribute(
-      "href",
-      "https://github.com/TheAxiomFoundation/axiom-encode/actions/runs/1001"
-    );
-    // Its own encode loop, on its own clock.
-    expect(screen.getByRole("region", { name: "Encode run" })).toHaveTextContent(/Its encode loop/);
+    expect(screen.getByText("Now").parentElement).toHaveTextContent(/^NowFailed the compile check/);
+    expect(screen.queryByText("Keeps failing on")).toBeNull();
   });
 
   it("shows ten documents at a time", async () => {
@@ -224,7 +207,7 @@ describe("PipelineLedger", () => {
     expect(screen.getByRole("button", { name: "Runs of us/statute/99/100/a" })).toBeInTheDocument();
   });
 
-  it("says how old the runs are, what the statuses mean, and names each document with its citation", async () => {
+  it("says how old the runs are, what the statuses mean, names each document, and the next step after a cancellation", async () => {
     serve({
       rows: runRows([
         pipelineAttempt({ id: "f", citation: "us/statute/26/32", jurisdiction: "us", dispatched_at: "2026-09-20T10:00:00Z", encoder_error_rule: "rule-a", failure_source: "diagnostics" }),
@@ -241,9 +224,12 @@ describe("PipelineLedger", () => {
     const legend = screen.getByRole("button", { name: "What Status means" });
     fireEvent.click(legend);
     expect(screen.getByRole("note")).toHaveTextContent(/Done: tests pass\..*Going: .*Stopped: /);
-    // A failure and a cancellation are not two failures.
+    // The latest run was cancelled at approval: that is the next thing to look at.
     fireEvent.click(screen.getByRole("button", { name: "Runs of us/statute/26/32" }));
-    expect(screen.getByText("2 runs").parentElement).toHaveTextContent("2 runs · 1 failed · 1 cancelled · latest 9d ago");
+    expect(screen.getByText(/^Not encoded yet/)).toHaveTextContent("Not encoded yet · 2 runs since 2026-09-20, none merged");
+    expect(screen.getByText("Now").parentElement).toHaveTextContent("NowCancelled at approvalOpen the run ↗");
+    const marks = within(screen.getByRole("list", { name: "Every run, oldest first" })).getAllByRole("listitem");
+    expect(marks.map((m) => m.getAttribute("data-tone"))).toEqual(["failed", "cancelled"]);
   });
 
   it("says when it cannot load, and when the scope has no runs", async () => {

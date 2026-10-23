@@ -91,7 +91,7 @@ describe("BundleOverview", () => {
       "California",
     ]);
     expect(rows[1]).toHaveTextContent("2%1 complete (1 validated) · 57 not started2%4 complete (4 validated) · 183 not started");
-    expect(within(rows[1]).getByRole("link", { name: "Arizona" })).toHaveAttribute("href", "/ops?tab=bundles&bundle=us-az/snap");
+    expect(within(rows[1]).getByRole("link", { name: "Arizona" })).toHaveAttribute("href", "/ops?tab=programs&bundle=us-az/snap");
     // The programs in alphabetical order too.
     expect(within(programs).getAllByRole("button").map((b) => b.textContent?.replace(/\d+%$/, ""))).toEqual([
       "Medicaid",
@@ -104,7 +104,7 @@ describe("BundleOverview", () => {
     fireEvent.click(screen.getByRole("radio", { name: "Provisions" }));
     const table = screen.getByRole("table", { name: "SNAP by state" });
     const arizona = within(table).getByRole("link", { name: "Arizona" });
-    expect(arizona).toHaveAttribute("href", "/ops?tab=bundles&bundle=us-az/snap&count=provisions");
+    expect(arizona).toHaveAttribute("href", "/ops?tab=programs&bundle=us-az/snap&count=provisions");
     expect(arizona.closest("tr")).toHaveTextContent("13%68 of 527 Tier 1 provisions (68 validated)6%71 of 1,212 provisions (71 validated)");
     fireEvent.click(within(screen.getByRole("list", { name: "Programs" })).getByRole("button", { name: /Medicaid/ }));
     expect(screen.getByRole("table", { name: "Medicaid by state" })).toBeInTheDocument();
@@ -130,7 +130,7 @@ describe("BundleOverview", () => {
     // SNAP's federal law (1 of 56) and Medicaid's (0 of 115).
     expect(federal).toHaveAttribute("title", "Federal law: 1 of 171 documents complete (1 validated), the federal law of 2 programs");
     const federalTable = screen.getByRole("table", { name: "Federal law by program" });
-    expect(within(federalTable).getByRole("link", { name: "SNAP" })).toHaveAttribute("href", "/ops?tab=bundles&bundle=us/snap");
+    expect(within(federalTable).getByRole("link", { name: "SNAP" })).toHaveAttribute("href", "/ops?tab=programs&bundle=us/snap");
     fireEvent.click(within(list).getByRole("button", { name: /Arizona/ }));
     // Arizona's own: SNAP 0 of 2 (1 of 58 less the federal 1 of 56), Medicaid 0 of 5.
     expect(within(list).getByRole("button", { name: /Arizona/ })).toHaveAttribute(
@@ -139,7 +139,7 @@ describe("BundleOverview", () => {
     );
     const arizona = screen.getByRole("table", { name: "Arizona by program" });
     const snap = within(arizona).getByRole("link", { name: "SNAP" });
-    expect(snap).toHaveAttribute("href", "/ops?tab=bundles&bundle=us-az/snap");
+    expect(snap).toHaveAttribute("href", "/ops?tab=programs&bundle=us-az/snap");
     expect(snap.closest("tr")).toHaveTextContent("SNAP0%0 complete · 2 not started7%3 complete (3 validated) · 40 not started");
   });
 

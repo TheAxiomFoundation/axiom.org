@@ -219,15 +219,89 @@ export function sectionOverview(section: LedgerSection): SectionOverview {
   };
 }
 
+/** One run as a mark in a section's history row. */
+export interface RunMark {
+  id: string;
+  tone: LedgerTone | "cancelled";
+  /** What a hover says: when, and how it ended. */
+  title: string;
+  url: string;
+}
+
 /**
- * How a section's runs ended, beyond their count: failures and cancellations
- * apart ("1 failed", "1 cancelled"), or "all failed" when every run failed.
+ * An open section in a few lines, for the question "why is this not encoded
+ * yet, and what is next?": whether it is encoded, what is happening now with
+ * the one link to act on, the failures that come back (two runs or more),
+ * and every run as a mark, oldest first.
  */
-export function endings(overview: Pick<SectionOverview, "runs" | "failed" | "cancelled">): string[] {
-  if (overview.failed === overview.runs) return ["all failed"];
-  if (overview.cancelled === overview.runs) return ["all cancelled"];
-  return [
-    overview.failed ? `${overview.failed} failed` : null,
-    overview.cancelled ? `${overview.cancelled} cancelled` : null,
-  ].filter((part): part is string => part !== null);
+export interface SectionBrief {
+  encoded: boolean;
+  /** "Encoded · merged rulespec-us#1448 · tests pass", or "Not encoded yet · 11 runs since 2026-09-03, none merged". */
+  headline: string;
+  /** What is happening now and the next step; null once the section is encoded and nothing is open. */
+  now: { text: string; link: { label: string; url: string } | null } | null;
+  /** Failures more than one run hit, most first. */
+  repeated: Array<{ label: string; cause: string | null; detail: string | null; count: number; url: string }>;
+  marks: RunMark[];
+}
+
+const day = (iso: string) => iso.slice(0, 10);
+
+/** The next step for a section, from its latest run: approve it, open the failure, or open the PR. */
+function nextStep(latest: RunRow): SectionBrief["now"] {
+  const run = (label: string) => ({ label, url: latest.runUrl });
+  switch (latest.outcome) {
+    case "waiting":
+      return { text: latest.outcomeLabel, link: run(/approval/i.test(latest.outcomeLabel) ? "Approve on GitHub ↗" : "Open the run ↗") };
+    case "running":
+      return { text: latest.outcomeLabel, link: run("Open the run ↗") };
+    case "failed":
+      return {
+        text: latest.cause ? `${latest.outcomeLabel}: ${causeHeadline(latest.cause)}` : latest.outcomeLabel,
+        link: run("Open the failed run ↗"),
+      };
+    case "cancelled":
+      return { text: latest.outcomeLabel, link: run("Open the run ↗") };
+  }
+  const { status, tone } = sectionStatus(latest);
+  if (tone === "done") return null;
+  const pr = latest.pr ? { label: `${latest.pr.label} ↗`, url: latest.pr.url } : null;
+  if (latest.merged === "off main" && latest.via?.url) return { text: status, link: { label: `${latest.via.label} ↗`, url: latest.via.url } };
+  if (latest.tests === "fail" && latest.testsUrl) return { text: status, link: { label: "Open the tests ↗", url: latest.testsUrl } };
+  return { text: status, link: pr };
+}
+
+export function sectionBrief(section: LedgerSection): SectionBrief {
+  const runs = section.runs;
+  const latest = runs[0];
+  const done = runs.find((run) => sectionStatus(run).tone === "done");
+  const merged = runs.filter((run) => run.merged === "main").length;
+  const oldest = runs[runs.length - 1];
+  const headline = done
+    ? ["Encoded", done.pr ? `merged ${done.pr.label}` : null, "tests pass"].filter(Boolean).join(" · ")
+    : `Not encoded yet · ${runs.length} ${runs.length === 1 ? "run" : "runs"}${runs.length > 1 ? ` since ${day(oldest.at ?? oldest.dispatchedAt)}` : ""}, ${merged ? `${merged} merged` : "none merged"}`;
+
+  // A failure that came back: the same stop and cause in two runs or more,
+  // with the newest run that hit it to open.
+  const repeated = sectionOverview(section)
+    .stops.filter((stop) => stop.tone === "failed" && stop.count >= 2)
+    .map((stop) => {
+      const hit = runs.find((run) => {
+        const group = run.causeGroup ?? run.cause;
+        return `${sectionStatus(run).status}|${group ? causeHeadline(group) : ""}` === stop.key;
+      });
+      return { label: stop.label, cause: stop.cause, detail: stop.detail, count: stop.count, url: (hit ?? latest).runUrl };
+    });
+
+  const marks = [...runs].reverse().map((run): RunMark => {
+    const { status, tone } = sectionStatus(run);
+    return {
+      id: run.id,
+      tone: run.outcome === "cancelled" ? "cancelled" : tone,
+      title: `${day(run.at ?? run.dispatchedAt)} · ${status}${run.cause ? `: ${causeHeadline(run.cause)}` : ""}`,
+      url: run.pr && run.outcome === "encoded" ? run.pr.url : run.runUrl,
+    };
+  });
+
+  return { encoded: !!done, headline, now: done && latest === done ? null : nextStep(latest), repeated, marks };
 }
