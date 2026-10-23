@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AGENCY_COMMENT, RATING_POINTS, RATING_SCALES, SOURCE_OF_TRUTH } from "@/lib/aspen/content";
-import { OVERALL_KEY, participantId, postJson, readStored, writeStored } from "./client";
+import { OVERALL_KEY, participantId, readStored, saveJson, writeStored } from "./client";
 import { BUTTON_QUIET, FIELD, QUESTION } from "./ui";
 
 /** One category on a 1–5 scale: five equal buttons; the ends are labelled once above the list. */
@@ -61,8 +61,9 @@ const AGENCY = RATING_SCALES.experience;
 export function OverallRating({ stage }: { stage: string }) {
   const [answers, setAnswers] = useState<OverallAnswers>({});
   const [comment, setComment] = useState("");
-  const [commentSaved, setCommentSaved] = useState(false);
-  const [failed, setFailed] = useState(false);
+  // By kind: the truth answer (survey) and the agency rating (discussion) save as separate events,
+  // so each clears only when that kind saves again, and a later rating never hides a failed truth answer.
+  const [failed, setFailed] = useState<Record<string, boolean>>({});
   // Sends go one after another, so a slow earlier tap never lands after a later one and counts as the latest.
   const queue = useRef<Promise<unknown>>(Promise.resolve());
 
@@ -71,7 +72,6 @@ export function OverallRating({ stage }: { stage: string }) {
     if (stored && typeof stored === "object") {
       setAnswers(stored);
       setComment(stored.comment ?? "");
-      setCommentSaved(Boolean(stored.comment));
     }
   }, []);
 
@@ -82,10 +82,8 @@ export function OverallRating({ stage }: { stage: string }) {
 
   function send(kind: string, payload: Record<string, unknown>) {
     queue.current = queue.current.then(async () => {
-      const { ok } = await postJson("/api/aspen/event", { participantId: participantId(), kind, payload, stage }).catch(
-        () => ({ ok: false }),
-      );
-      setFailed(!ok);
+      const ok = await saveJson("/api/aspen/event", { participantId: participantId(), kind, payload, stage });
+      setFailed((f) => ({ ...f, [kind]: !ok }));
     });
   }
 
@@ -105,13 +103,18 @@ export function OverallRating({ stage }: { stage: string }) {
     sendAgency(agency, answers.comment ?? "");
   }
 
+  /** Saves the box as it is; an empty box takes back a comment saved earlier. */
   function saveComment() {
     const note = comment.trim();
     keep({ ...answers, comment: note });
     sendAgency(answers.agency ?? {}, note);
-    setCommentSaved(true);
   }
 
+  const savedComment = answers.comment ?? "";
+  const commentChanged = comment.trim() !== savedComment;
+  // A failed agency save may have carried the comment, so it can be sent again.
+  const commentPending = commentChanged || failed.discussion === true;
+  const anyFailed = Object.values(failed).some(Boolean);
   const done =
     Boolean(answers.truth) && (AGENCY?.categories.every((c) => answers.agency?.[c.id] !== undefined) ?? false);
 
@@ -155,26 +158,23 @@ export function OverallRating({ stage }: { stage: string }) {
               rows={2}
               maxLength={500}
               value={comment}
-              onChange={(e) => {
-                setComment(e.target.value);
-                setCommentSaved(false);
-              }}
+              onChange={(e) => setComment(e.target.value)}
               className={FIELD}
               aria-describedby="agency-comment-hint"
             />
             <span id="agency-comment-hint" className="text-[0.9rem] text-[var(--color-ink-muted)]">
               {AGENCY_COMMENT.hint}
             </span>
-            {comment.trim() && (
-              <button type="button" className={`${BUTTON_QUIET} self-start`} disabled={commentSaved && !failed} onClick={saveComment}>
-                {commentSaved && !failed ? "Comment saved" : "Save comment"}
+            {(commentChanged || savedComment) && (
+              <button type="button" className={`${BUTTON_QUIET} self-start`} disabled={!commentPending} onClick={saveComment}>
+                {!commentPending ? "Comment saved" : comment.trim() ? "Save comment" : "Remove comment"}
               </button>
             )}
           </div>
         </fieldset>
       )}
       <p role="status" className="m-0 font-body text-[0.95rem] text-[var(--color-ink-muted)]">
-        {failed ? (
+        {anyFailed ? (
           <span className="text-[var(--color-error)]">That didn&apos;t save. Tap it again.</span>
         ) : done ? (
           <>

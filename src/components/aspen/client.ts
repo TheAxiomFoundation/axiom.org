@@ -14,6 +14,10 @@ export const CHAT_KEY = "aspen.chat.v1";
 export const OVERALL_KEY = "aspen.overall.v2";
 /** The use case this device voted for. It belongs to one run. */
 export const VOTE_KEY = "aspen.vote.v1";
+/** Ratings in progress, by prompt id, so a reloaded tab reopens a card where it was. It belongs to one run. */
+export const RATING_KEY = "aspen.rating.v1";
+/** Keys from earlier versions of the page, dropped with the rest at a new run. */
+const RETIRED_KEYS = ["aspen.overall.v1"];
 /** The participant's text size: kept on the phone, never sent anywhere. */
 export const TEXT_SIZE_KEY = "aspen.textSize.v1";
 
@@ -77,7 +81,7 @@ export function enterRun(runId: string): boolean {
   writeStored(RUN_KEY, runId);
   if (previous === null) return false;
   let dropped = false;
-  for (const key of [CHAT_KEY, OVERALL_KEY, VOTE_KEY]) {
+  for (const key of [CHAT_KEY, OVERALL_KEY, VOTE_KEY, RATING_KEY, ...RETIRED_KEYS]) {
     try {
       if (window.localStorage.getItem(key) === null) continue;
       window.localStorage.removeItem(key);
@@ -100,6 +104,33 @@ export async function postJson<T = Record<string, unknown>>(
   });
   const data = (await response.json().catch(() => ({}))) as T;
   return { ok: response.ok, status: response.status, data };
+}
+
+/** How long a save may take before it counts as failed, so one stalled request never holds up the taps after it. */
+export const SAVE_TIMEOUT_MS = 10_000;
+
+/**
+ * Posts one save and says whether the store kept it. A timeout, a dropped
+ * connection, an error status and a store failure (the routes answer
+ * `saved: false`) all count as not saved. It never throws.
+ */
+export async function saveJson(url: string, body: unknown, timeoutMs = SAVE_TIMEOUT_MS): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    const data = (await response.json().catch(() => ({}))) as { saved?: unknown };
+    return response.ok && data.saved !== false;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Fire-and-forget activity record; a failure never interrupts the page. */

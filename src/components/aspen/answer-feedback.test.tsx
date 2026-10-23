@@ -10,11 +10,12 @@ import {
   outputLabel,
   panelRows,
   RatingCard,
+  readRatingDraft,
   RulesCheck,
   rulesCaveats,
   shownValue,
 } from "./answer-feedback";
-import { formatValue } from "./client";
+import { RATING_KEY, SAVE_TIMEOUT_MS, formatValue } from "./client";
 
 function jsonResponse(data: unknown, ok = true) {
   return { ok, status: ok ? 200 : 500, json: async () => data } as unknown as Response;
@@ -279,6 +280,94 @@ describe("RatingCard", () => {
     render(<RatingCard promptId="p1" />);
     fireEvent.click(screen.getByRole("button", { name: "Looks wrong" }));
     expect(await screen.findByText("That didn't save. Tap it again.")).toBeInTheDocument();
+  });
+
+  it("reports a store failure as a failed save, in a region a screen reader announces", async () => {
+    // The route answers 200 with saved: false when the database write fails.
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ ok: true, saved: false })));
+    render(<RatingCard promptId="p1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Looks wrong" }));
+    const line = await screen.findByText("That didn't save. Tap it again.");
+    expect(line).toHaveAttribute("aria-live", "polite");
+  });
+
+  it("gives up on a save that never answers, says so, and sends the tap waiting behind it", async () => {
+    vi.useFakeTimers();
+    try {
+      // A request that stalls until it is aborted.
+      const stall = (_url: string, init: RequestInit) =>
+        new Promise<Response>((_, reject) => init.signal?.addEventListener("abort", () => reject(new Error("aborted"))));
+      const fetchMock = vi.fn().mockImplementationOnce(stall).mockImplementationOnce(stall).mockResolvedValue(jsonResponse({ ok: true }));
+      vi.stubGlobal("fetch", fetchMock);
+      render(<RatingCard promptId="p1" />);
+      fireEvent.click(screen.getByRole("button", { name: "Looks wrong" }));
+      await act(async () => {});
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      await act(async () => vi.advanceTimersByTime(SAVE_TIMEOUT_MS));
+      expect(screen.getByText("That didn't save. Tap it again.")).toBeInTheDocument();
+
+      // A second save stalls too, with a tap queued behind it: the queue moves on once it gives up.
+      fireEvent.click(screen.getByRole("button", { name: "Wrong amount" }));
+      fireEvent.click(screen.getByRole("button", { name: "Too vague" }));
+      await act(async () => {});
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      await act(async () => vi.advanceTimersByTime(SAVE_TIMEOUT_MS));
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(bodyOf(fetchMock, 2).wentWrong).toEqual(["Wrong amount", "Too vague"]);
+      expect(screen.queryByText("That didn't save. Tap it again.")).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reopens where it was after a reload, so the next tap keeps the note and tags already saved", async () => {
+    const fetchMock = ok();
+    vi.stubGlobal("fetch", fetchMock);
+    const first = render(<RatingCard promptId="p1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Looks wrong" }));
+    fireEvent.click(screen.getByRole("button", { name: "Wrong amount" }));
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "  Ignored BBCE " } });
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(bodyOf(fetchMock, 2).note).toBe("Ignored BBCE");
+    // The tab reloads: a locked phone often drops it during the TV moments.
+    first.unmount();
+    render(<RatingCard promptId="p1" />);
+    expect(await screen.findByText("2 of 2")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    expect(bodyOf(fetchMock, 3)).toMatchObject({
+      verdict: "wrong",
+      residentAction: "apply",
+      wentWrong: ["Wrong amount"],
+      note: "Ignored BBCE",
+    });
+    // Back on the first step, the choices are as they were.
+    fireEvent.click(screen.getByRole("button", { name: /Back/ }));
+    expect(screen.getByRole("button", { name: "Looks wrong" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("textbox")).toHaveValue("Ignored BBCE");
+  });
+
+  it("keeps each answer's card apart, and ignores a draft it can't read", () => {
+    localStorage.setItem(
+      RATING_KEY,
+      JSON.stringify({
+        p1: { rating: { verdict: "right", residentAction: null, wentWell: ["Clear"], wentWrong: [], note: "Good" }, step: 0 },
+        p2: { rating: "garbage", step: 1 },
+        p3: { rating: { verdict: 7, wentWell: "Clear", note: 3 }, step: 1 },
+      }),
+    );
+    expect(readRatingDraft("p1")).toEqual({
+      rating: { verdict: "right", residentAction: null, wentWell: ["Clear"], wentWrong: [], note: "Good" },
+      step: 0,
+    });
+    expect(readRatingDraft("p2")).toBeNull();
+    // Wrong types become empty, and a draft without a verdict reopens on the first step.
+    expect(readRatingDraft("p3")).toEqual({
+      rating: { verdict: null, residentAction: null, wentWell: [], wentWrong: [], note: "" },
+      step: 0,
+    });
+    expect(readRatingDraft("p4")).toBeNull();
   });
 });
 

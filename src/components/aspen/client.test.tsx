@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CHAT_KEY,
   OVERALL_KEY,
+  RATING_KEY,
+  SAVE_TIMEOUT_MS,
   VOTE_KEY,
   enterRun,
   formatValue,
@@ -10,6 +12,7 @@ import {
   participantId,
   postJson,
   readStored,
+  saveJson,
   sendEvent,
   useControl,
   usePoll,
@@ -120,11 +123,16 @@ describe("enterRun", () => {
     localStorage.setItem(CHAT_KEY, "{}");
     localStorage.setItem(OVERALL_KEY, "true");
     localStorage.setItem(VOTE_KEY, JSON.stringify("project"));
+    localStorage.setItem(RATING_KEY, "{}");
+    localStorage.setItem("aspen.overall.v1", "true");
     localStorage.setItem("aspen.participant", "p-1");
     expect(enterRun("phoenix")).toBe(true);
     expect(localStorage.getItem(CHAT_KEY)).toBeNull();
     expect(localStorage.getItem(OVERALL_KEY)).toBeNull();
     expect(localStorage.getItem(VOTE_KEY)).toBeNull();
+    expect(localStorage.getItem(RATING_KEY)).toBeNull();
+    // A key from an earlier version of the page goes too.
+    expect(localStorage.getItem("aspen.overall.v1")).toBeNull();
     expect(localStorage.getItem("aspen.participant")).toBe("p-1");
     expect(readStored("aspen.run")).toBe("phoenix");
   });
@@ -346,5 +354,52 @@ describe("useControl / useResults", () => {
     render(<ResultsProbe enabled />);
     await waitFor(() => expect(screen.getByTestId("run")).toHaveTextContent("default"));
     expect(fetchMock.mock.calls[0][0]).toBe("/api/aspen/results");
+  });
+});
+
+describe("saveJson", () => {
+  const respond = (ok: boolean, data: unknown) => ({ ok, status: ok ? 200 : 500, json: async () => data }) as unknown as Response;
+
+  it("is true only when the server says it kept the save", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(respond(true, { ok: true, saved: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await saveJson("/api/aspen/event", { a: 1 })).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith("/api/aspen/event", expect.objectContaining({ method: "POST", body: '{"a":1}' }));
+    // An older route that doesn't say counts as kept.
+    fetchMock.mockResolvedValue(respond(true, { ok: true }));
+    expect(await saveJson("/x", {})).toBe(true);
+  });
+
+  it("is false for a store failure, an error status, an unreadable body with an error, or a dropped connection", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respond(true, { ok: true, saved: false })));
+    expect(await saveJson("/x", {})).toBe(false);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respond(false, { error: "no" })));
+    expect(await saveJson("/x", {})).toBe(false);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 502, json: async () => { throw new Error("html") } } as unknown as Response));
+    expect(await saveJson("/x", {})).toBe(false);
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    expect(await saveJson("/x", {})).toBe(false);
+  });
+
+  it("gives up after the timeout, by aborting the request", async () => {
+    vi.useFakeTimers();
+    try {
+      let signal: AbortSignal | undefined;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((_url: string, init: RequestInit) => {
+          signal = init.signal ?? undefined;
+          return new Promise<Response>((_, reject) => init.signal?.addEventListener("abort", () => reject(new Error("aborted"))));
+        }),
+      );
+      const result = saveJson("/x", {});
+      await vi.advanceTimersByTimeAsync(SAVE_TIMEOUT_MS - 1);
+      expect(signal?.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(signal?.aborted).toBe(true);
+      expect(await result).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -169,6 +169,10 @@ describe('aspen API routes', () => {
     await event(post({ participantId: P, kind: 'breakout', payload: { useCase: 'project', note: 'Model it', who: ' Policy staff ', trust: 'Matches the manual', raised: '  Training time  ' } }))
     expect((await event(post({ participantId: P, kind: 'breakout', payload: { useCase: 'bogus', note: ' ', raised: '' } }))).status).toBe(400)
     expect((await event(post({ participantId: P, kind: 'discussion', payload: {} }))).status).toBe(400)
+    expect((await event(post({ participantId: P, kind: 'discussion', payload: { question: 'nope', note: '' } }))).status).toBe(400)
+    // An empty answer to a known question is someone taking back their comment: it saves.
+    const cleared = await event(post({ participantId: P, kind: 'discussion', payload: { question: 'experience', ratings: {}, topics: [], note: '' } }))
+    expect(cleared.status).toBe(200)
     expect((await event(post({ participantId: P, kind: 'hack', payload: {} }))).status).toBe(400)
     expect((await event(post({ participantId: P, kind: 'stage_view', payload: { stage: 'nope' } }))).status).toBe(400)
 

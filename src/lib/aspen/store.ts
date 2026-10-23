@@ -207,7 +207,8 @@ export function createSupabaseStore(
           `aspen_prompts?${runFilter(runId)}&select=${RUN_PROMPT_SELECT}&${order}`,
         ),
         request<EventRow[]>(
-          `aspen_events?${runFilter(runId)}&kind=in.(discussion,breakout,survey,vote)&select=run_id,participant_id,kind,stage,payload,created_at&${order}`,
+          // Ties in time fall back to insert order, so each person's latest answer is the same on every read.
+          `aspen_events?${runFilter(runId)}&kind=in.(discussion,breakout,survey,vote)&select=run_id,participant_id,kind,stage,payload,created_at&order=created_at.asc,id.asc&limit=${RUN_LIMIT}`,
         ),
         request<PublicPledge[]>(
           `aspen_pledges?${runFilter(runId)}&select=state,accurate_ai,state_systems,show_state,created_at&${order}`,

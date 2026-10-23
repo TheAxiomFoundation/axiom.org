@@ -139,6 +139,14 @@ export function ChatWindow({
   const [followUp, setFollowUp] = useState(false);
   // A picked household asks its question as written; details, question type and edits open on request.
   const [editing, setEditing] = useState(false);
+  // "Change the question" goes away when pressed; focus moves to the details it opens, not to the page.
+  const detailsLegend = useRef<HTMLLegendElement>(null);
+  const focusDetails = useRef(false);
+  useEffect(() => {
+    if (!editing || !focusDetails.current) return;
+    focusDetails.current = false;
+    detailsLegend.current?.focus({ preventScroll: true });
+  }, [editing]);
   const threadEnd = useRef<HTMLDivElement>(null);
   const draftBox = useRef<HTMLTextAreaElement>(null);
   const ratingBox = useRef<HTMLElement>(null);
@@ -445,7 +453,7 @@ export function ChatWindow({
             </fieldset>
             {household && editing && (
               <fieldset className="m-0 border-0 border-t border-[var(--color-rule)] p-0 pt-4">
-                <legend className={`${STEP} float-left w-full`}>
+                <legend ref={detailsLegend} tabIndex={-1} className={`${STEP} float-left w-full outline-none`}>
                   <span className={STEP_NUMBER}>{step.details}</span>Add details <span className={STEP_NOTE}>(optional)</span>
                 </legend>
                 <div role="group" aria-label="Details" className="clear-left flex flex-col gap-3">
@@ -595,7 +603,10 @@ export function ChatWindow({
                 <button
                   type="button"
                   className="aspen-link self-start font-body text-[1rem] font-medium"
-                  onClick={() => setEditing(true)}
+                  onClick={() => {
+                    focusDetails.current = true;
+                    setEditing(true);
+                  }}
                 >
                   Change the question
                 </button>

@@ -159,6 +159,8 @@ describe("ChatWindow composing", () => {
     expect(screen.queryByLabelText("Your question")).not.toBeInTheDocument();
     changeQuestion();
     expect(screen.queryByRole("group", { name: /The question$/ })).not.toBeInTheDocument();
+    // The button is gone, so focus moves to the details it opened rather than falling to the page.
+    expect(document.activeElement?.textContent?.replace(/\s+/g, " ").trim()).toBe("3Add details (optional)");
     expect(steps()).toEqual([
       "1Ask as",
       "2Pick a household",

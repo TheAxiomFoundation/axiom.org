@@ -33,6 +33,10 @@ import {
   SAME_RULES,
   SILVER_ASK,
   TOOL_PILOT,
+  share,
+  toolPilotMisses,
+  type ToolPilot,
+  type ToolPilotArmId,
   WHAT_MODELS_MISS,
   WHERE_MODELS_BREAK,
   STAGES,
@@ -63,11 +67,16 @@ const MAYBE = "var(--color-rule-strong)";
 
 /** Why an answer is worth discussing. */
 const REASON_LABEL: Record<string, string> = {
-  convincing: "Wrong but convincing",
   "checked-wrong": "Wrong against the rules",
   wrong: "Looked wrong",
   unsure: "Not sure",
 };
+
+/** Why an answer is worth discussing, in the rater's own terms: an answer acted on says how it looked. */
+function reasonLabel(item: { reason: string; verdict: string | null }): string {
+  if (item.reason === "convincing") return item.verdict === "unsure" ? "Not sure, yet acted on" : "Looked wrong, yet acted on";
+  return REASON_LABEL[item.reason] ?? item.reason;
+}
 
 /** A slide that turns its stage's argument gets its own heading. */
 const SLIDE_TITLES: Partial<Record<StageId, Record<number, string>>> = {
@@ -463,6 +472,7 @@ function BigStat({
   tone = "ink",
   size = 96,
   unit,
+  note,
 }: {
   value: ReactNode;
   label: string;
@@ -470,6 +480,8 @@ function BigStat({
   size?: number;
   /** A short unit beside the number, e.g. "in 2026", so an annual total doesn't read as monthly. */
   unit?: string;
+  /** A caveat on the count, smaller than the label so a long one doesn't push the slide off the screen. */
+  note?: string | null;
 }) {
   const color = { ink: "var(--color-ink)", bad: "var(--color-error)", accent: "var(--color-accent)" }[tone];
   const number = (
@@ -487,7 +499,8 @@ function BigStat({
       ) : (
         number
       )}
-      <span className="mt-[8px] block font-body text-[24px] text-[var(--color-ink-secondary)]">{label}</span>
+      <span className="mt-[8px] block font-body text-[24px] leading-snug text-[var(--color-ink-secondary)]">{label}</span>
+      {note && <span className="mt-[6px] block font-body text-[19px] leading-snug text-[var(--color-ink-muted)]">{note}</span>}
     </div>
   );
 }
@@ -495,7 +508,11 @@ function BigStat({
 /** Text inside a box on the big screen: one size on every slide. */
 const BOX_TEXT = "font-body text-[24px] leading-snug text-[var(--color-ink)]";
 
-/** A split bar at slide size: one track, then a legend with counts. */
+/**
+ * A split bar at slide size: one track, then a legend with counts. The legend
+ * is a step smaller than box text so four parts with two-digit counts stay on
+ * one line in half the slide.
+ */
 function BigSplit({ parts }: { parts: { label: string; count: number; color: string }[] }) {
   const total = parts.reduce((sum, p) => sum + p.count, 0);
   return (
@@ -511,10 +528,10 @@ function BigSplit({ parts }: { parts: { label: string; count: number; color: str
           ) : null,
         )}
       </div>
-      <div className="flex flex-wrap gap-x-[22px] gap-y-[6px]">
+      <div className="flex flex-wrap gap-x-[18px] gap-y-[4px]">
         {parts.map((p) => (
-          <span key={p.label} className={`flex items-center gap-[10px] ${BOX_TEXT}`}>
-            <span aria-hidden className="h-[14px] w-[14px] rounded-full" style={{ background: p.color }} />
+          <span key={p.label} className="flex items-center gap-[8px] font-body text-[20px] leading-snug text-[var(--color-ink)]">
+            <span aria-hidden className="h-[12px] w-[12px] rounded-full" style={{ background: p.color }} />
             {p.label} <span className="font-mono tabular-nums">{p.count}</span>
           </span>
         ))}
@@ -677,17 +694,18 @@ function RatingSlide({
 }
 
 /**
- * "would stop a resident from applying. 2 of them qualify." An amount from
- * rules that don't test eligibility counts apart (ifEligibleSentence).
+ * The note under "would stop a resident from applying": "2 of them qualify."
+ * An amount from rules that don't test eligibility counts apart
+ * (ifEligibleSentence). Null when there's nothing to add.
  */
-export function notApplyLabel(v: Pick<RunSummary["viability"], "wouldNotApplyEligible" | "wouldNotApplyIfEligible">): string {
+export function notApplyNote(v: Pick<RunSummary["viability"], "wouldNotApplyEligible" | "wouldNotApplyIfEligible">): string | null {
   const parts: string[] = [];
   if (v.wouldNotApplyEligible > 0) {
     parts.push(`${v.wouldNotApplyEligible} of them ${v.wouldNotApplyEligible === 1 ? "qualifies" : "qualify"}.`);
   }
   const ifEligible = ifEligibleSentence(v, "of them");
   if (ifEligible) parts.push(ifEligible);
-  return parts.length ? `would stop a resident from applying. ${parts.join(" ")}` : "would stop a resident from applying";
+  return parts.length ? parts.join(" ") : null;
 }
 
 function RevealSlide({ summary }: { summary: RunSummary }) {
@@ -696,30 +714,33 @@ function RevealSlide({ summary }: { summary: RunSummary }) {
     return <p className="m-0 font-body text-[30px] text-[var(--color-ink-muted)]">Results appear here as people rate their answers.</p>;
   }
   return (
-    <div className="flex h-full flex-col gap-[14px]">
-      <div className="grid grid-cols-3 gap-[24px]">
-        <Panel className="py-[20px]">
-          <BigStat size={76} value={`${v.right} of ${v.rated}`} label="answers looked right" />
+    // Sized to fit 1600×900 with the longest labels, two-digit counts and two long spotlight notes.
+    <div className="flex h-full flex-col gap-[12px]">
+      {/* The third stat carries the eligibility note, so it gets the most room. */}
+      <div className="grid grid-cols-[0.85fr_1fr_1.25fr] gap-[24px]">
+        <Panel className="py-[14px]">
+          <BigStat size={64} value={`${v.right} of ${v.rated}`} label="answers looked right" />
         </Panel>
-        <Panel className={`py-[20px] ${v.convincing > 0 ? "border-l-[8px] border-l-[var(--color-error)]" : ""}`}>
+        <Panel className={`py-[14px] ${v.convincing > 0 ? "border-l-[8px] border-l-[var(--color-error)]" : ""}`}>
           <BigStat
-            size={76}
+            size={64}
             value={v.convincing}
             label="looked wrong or unsure, yet a resident would act on them"
             tone={v.convincing > 0 ? "bad" : "ink"}
           />
         </Panel>
-        <Panel className={`py-[20px] ${v.wouldNotApply > 0 ? "border-l-[8px] border-l-[var(--color-error)]" : ""}`}>
+        <Panel className={`py-[14px] ${v.wouldNotApply > 0 ? "border-l-[8px] border-l-[var(--color-error)]" : ""}`}>
           <BigStat
-            size={76}
+            size={64}
             value={v.wouldNotApply}
-            label={notApplyLabel(v)}
+            label="would stop a resident from applying"
+            note={notApplyNote(v)}
             tone={v.wouldNotApply > 0 ? "bad" : "ink"}
           />
         </Panel>
       </div>
       <div className="grid grid-cols-2 gap-[24px]">
-        <Panel className="py-[20px]">
+        <Panel className="py-[16px]">
           <Prompt>Did the answer look right?</Prompt>
           <BigSplit
             parts={[
@@ -729,7 +750,7 @@ function RevealSlide({ summary }: { summary: RunSummary }) {
             ]}
           />
         </Panel>
-        <Panel className="py-[20px]">
+        <Panel className="py-[16px]">
           <Prompt>What would a resident do next?</Prompt>
           <BigSplit
             parts={v.residentActions.map((a) => ({
@@ -766,13 +787,13 @@ function WorthDiscussing({ summary }: { summary: RunSummary }) {
     );
   }
   return (
-    <Panel className="mt-auto py-[20px]">
+    <Panel className="mt-auto py-[16px]">
       <Label>Answers worth discussing</Label>
       <ul className="m-0 grid list-none grid-cols-2 gap-[32px] p-0">
         {items.map((item) => (
           <li key={item.id} className="flex min-w-0 flex-col gap-[6px]">
             <span className="font-body text-[19px] font-medium text-[var(--color-ink-muted)]">
-              <span className={item.reason === "unsure" ? "" : "text-[var(--color-error)]"}>{REASON_LABEL[item.reason]}</span>
+              <span className={item.reason === "unsure" ? "" : "text-[var(--color-error)]"}>{reasonLabel(item)}</span>
               {" · "}
               {item.household ?? "Own question"}
             </span>
@@ -784,7 +805,7 @@ function WorthDiscussing({ summary }: { summary: RunSummary }) {
               )
             )}
             {item.answer && (
-              <p className="m-0 line-clamp-2 font-body text-[18px] leading-snug text-[var(--color-ink-secondary)]">
+              <p className="m-0 line-clamp-1 font-body text-[18px] leading-snug text-[var(--color-ink-secondary)]">
                 <span className="font-medium text-[var(--color-ink-muted)]">The AI: </span>
                 {item.answer}
               </p>
@@ -1096,20 +1117,30 @@ function FrontDoorSlide() {
  * same gray as the "Where models still break" chart, and the tool carries the
  * accent. Every bar is labelled with its value, so color never carries it alone.
  */
-const ARM_COLORS: Record<string, string> = { alone: "#bdb6ae", tool: "var(--color-accent)" };
+const ARM_COLORS: Record<ToolPilotArmId, string> = {
+  alone: "#bdb6ae",
+  web: "#8e9aaa",
+  tool: "var(--color-accent)",
+  both: "var(--color-accent-hover)",
+};
+/** Arms that run the engine, whose numbers read in full ink. */
+const ENGINE_ARMS: ReadonlySet<ToolPilotArmId> = new Set(["tool", "both"]);
 
 /**
- * At scale, slide 6: PolicyBench's tool pilot. The same models on their own
- * and with a tool that runs a rules engine, beside the note's own caveat that
- * the tool runs the engine behind the reference.
+ * At scale, slide 6: PolicyBench's tool pilot. The same models in each arm
+ * (on their own, and with a tool that runs a rules engine) beside the benefit
+ * amounts on their own, then the note's caveat that the tool runs the engine
+ * behind the reference, across the full width so it fits at 1600×900.
  */
 function ToolSlide() {
   const t = TOOL_PILOT;
+  const { misses, scored } = toolPilotMisses(t);
+  const bar = t.arms.length > 2 ? 20 : 26;
   return (
     <div className="flex h-full flex-col gap-[12px]">
       <div className="flex items-end justify-between gap-[24px]">
         <p className="m-0 font-display text-[40px] font-light leading-tight text-[var(--color-ink)]">{t.title}</p>
-        <span className="flex shrink-0 gap-[24px] font-body text-[20px] text-[var(--color-ink-secondary)]">
+        <span className="flex shrink-0 flex-wrap justify-end gap-x-[24px] gap-y-[4px] font-body text-[20px] text-[var(--color-ink-secondary)]">
           {t.arms.map((arm) => (
             <span key={arm.id} className="flex items-center gap-[8px]">
               <span aria-hidden className="h-[14px] w-[14px] rounded-[3px]" style={{ background: ARM_COLORS[arm.id] }} /> {arm.label}
@@ -1118,19 +1149,23 @@ function ToolSlide() {
         </span>
       </div>
       <p className="m-0 font-body text-[20px] text-[var(--color-ink-secondary)]">{t.note}</p>
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1.4fr)_minmax(0,0.6fr)] items-start gap-[40px] pt-[16px]">
-        <ul className="m-0 flex list-none flex-col gap-[44px] p-0">
+      <div
+        className={`grid min-h-0 items-start gap-[40px] pt-[8px] ${t.benefits ? "grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)]" : "grid-cols-1"}`}
+      >
+        <ul className={`m-0 flex list-none flex-col p-0 ${t.arms.length > 2 ? "gap-[20px]" : "gap-[28px]"}`}>
           {t.rows.map((row) => (
-            <li key={row.model} className="grid grid-cols-[240px_minmax(0,1fr)] items-center gap-[24px]">
+            <li key={row.model} className="grid grid-cols-[220px_minmax(0,1fr)] items-center gap-[24px]">
               <span className={BOX_TEXT}>{row.model}</span>
               <span className="flex flex-col gap-[8px]">
                 {t.arms.map((arm) => {
-                  const value = row[arm.id];
+                  const hits = row.hits[arm.id];
+                  if (typeof hits !== "number") return null;
+                  const value = share(hits, t.amounts);
                   return (
                     <span key={arm.id} className="flex items-center gap-[14px]">
-                      <span className="h-[26px] rounded-[4px]" style={{ width: `${value * 0.78}%`, background: ARM_COLORS[arm.id] }} />
+                      <span className="rounded-[4px]" style={{ height: bar, width: `${value * 0.78}%`, background: ARM_COLORS[arm.id] }} />
                       <span
-                        className={`whitespace-nowrap font-mono text-[22px] tabular-nums ${arm.id === "tool" ? "text-[var(--color-ink)]" : "text-[var(--color-ink-muted)]"}`}
+                        className={`whitespace-nowrap font-mono text-[22px] leading-none tabular-nums ${ENGINE_ARMS.has(arm.id) ? "text-[var(--color-ink)]" : "text-[var(--color-ink-muted)]"}`}
                       >
                         <span className="sr-only">{arm.label}: </span>
                         {value.toFixed(1)}%
@@ -1142,14 +1177,69 @@ function ToolSlide() {
             </li>
           ))}
         </ul>
-        <Panel className="flex flex-col gap-[16px]">
-          <Label className="mb-0">What this measures</Label>
-          <p className={`m-0 ${BOX_TEXT}`}>{t.measures}</p>
-          <p className="m-0 font-body text-[21px] leading-snug text-[var(--color-ink-secondary)]">{t.misses}</p>
-        </Panel>
+        {t.benefits && <BenefitsPanel benefits={t.benefits} />}
       </div>
+      <Panel className="flex flex-col gap-[8px] py-[18px]">
+        <Label className="mb-0">What this measures</Label>
+        <p className="m-0 font-body text-[22px] leading-snug text-[var(--color-ink)]">
+          {t.measures}{" "}
+          <span className="text-[var(--color-ink-secondary)]">
+            The {misses} of {scored} amounts still wrong with the tool {t.missesCause}
+          </span>
+        </p>
+      </Panel>
       <BenchFooter source={t.source} />
     </div>
+  );
+}
+
+/** The benefit amounts alone, as a small table: the part of the pilot this room runs. */
+function BenefitsPanel({ benefits: b }: { benefits: NonNullable<ToolPilot["benefits"]> }) {
+  const cell = "px-[10px] py-[2px] text-right font-mono text-[22px] tabular-nums";
+  return (
+    <Panel className="flex flex-col gap-[10px] py-[16px]">
+      <Label className="mb-0">{b.title}</Label>
+      <table className="w-full border-collapse font-body text-[21px] leading-snug text-[var(--color-ink)]">
+        <caption className="sr-only">Benefit amounts right, of {b.amounts}, by model</caption>
+        <thead>
+          <tr className="text-[var(--color-ink-muted)]">
+            <th scope="col" className="py-[2px] text-left font-normal">
+              <span className="sr-only">Arm</span>
+            </th>
+            {b.rows.map((r) => (
+              <th key={r.model} scope="col" className={`${cell} font-body font-normal`}>
+                <abbr title={r.model} className="no-underline">
+                  {r.short}
+                </abbr>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row" className="py-[2px] text-left font-normal text-[var(--color-ink-secondary)]">
+              On its own
+            </th>
+            {b.rows.map((r) => (
+              <td key={r.model} className={`${cell} text-[var(--color-ink-muted)]`}>
+                {r.alone}
+              </td>
+            ))}
+          </tr>
+          <tr>
+            <th scope="row" className="py-[2px] text-left font-normal text-[var(--color-ink-secondary)]">
+              With the tool
+            </th>
+            {b.rows.map((r) => (
+              <td key={r.model} className={`${cell} font-medium`}>
+                {r.tool}
+              </td>
+            ))}
+          </tr>
+        </tbody>
+      </table>
+      <p className="m-0 font-body text-[19px] leading-snug text-[var(--color-ink-secondary)]">{b.also}</p>
+    </Panel>
   );
 }
 
@@ -1394,7 +1484,7 @@ function FoundationSlide({ summary }: { summary: RunSummary }) {
         <p className="m-0 mt-auto border-l-[4px] border-[var(--color-accent)] pl-[24px] font-body text-[26px] text-[var(--color-ink)]">
           In this room, <strong className="font-medium tabular-nums">{cannot}</strong> of{" "}
           <strong className="font-medium tabular-nums">{answered}</strong>{" "}
-          can&apos;t fully check an answer against their state&apos;s rules today.
+          say a resident, screener or AI can&apos;t fully check an answer against their state&apos;s rules today.
         </p>
       )}
     </div>

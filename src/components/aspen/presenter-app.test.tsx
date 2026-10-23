@@ -15,6 +15,7 @@ import {
   SAME_RULES,
   WHAT_MODELS_MISS,
   TOOL_PILOT,
+  share,
   WHERE_MODELS_BREAK,
   SILVER_ASK,
   STAGES,
@@ -22,7 +23,7 @@ import {
 } from "@/lib/aspen/content";
 import { EMPTY_SUMMARY, summarizeRun, type RunSummary } from "@/lib/aspen/results";
 import type { Control, RunData } from "@/lib/aspen/types";
-import { notApplyLabel, PresenterApp } from "./presenter-app";
+import { notApplyNote, PresenterApp } from "./presenter-app";
 
 const DATA: RunData = {
   participants: [{ id: "a", run_id: "r1", perspective: "resident", state: "Arizona" }],
@@ -311,11 +312,18 @@ describe("PresenterApp navigation", () => {
     expect(screen.getByText(TOOL_PILOT.title)).toBeInTheDocument();
     for (const row of TOOL_PILOT.rows) {
       expect(screen.getByText(row.model)).toBeInTheDocument();
-      expect(screen.getByText(`${row.alone.toFixed(1)}%`)).toBeInTheDocument();
-      expect(screen.getByText(`${row.tool.toFixed(1)}%`)).toBeInTheDocument();
+      expect(screen.getByText(`${share(row.hits.alone!, TOOL_PILOT.amounts).toFixed(1)}%`)).toBeInTheDocument();
+      expect(screen.getByText(`${share(row.hits.tool!, TOOL_PILOT.amounts).toFixed(1)}%`)).toBeInTheDocument();
     }
     expect(screen.getByText(TOOL_PILOT.measures)).toBeInTheDocument();
     expect(screen.getByText(TOOL_PILOT.source)).toBeInTheDocument();
+    // The miss count is the bars' own: 6 + 2 + 1 of 561.
+    expect(screen.getByText(/^The 9 of 561 amounts still wrong with the tool came from how the model described/)).toBeInTheDocument();
+    // The benefit amounts on their own, for a room that runs benefits.
+    const benefits = screen.getByRole("table", { name: /Benefit amounts right, of 16, by model/ });
+    expect(within(benefits).getByRole("row", { name: /On its own/ })).toHaveTextContent("On its own670");
+    expect(within(benefits).getByRole("row", { name: /With the tool/ })).toHaveTextContent("With the tool161616");
+    expect(screen.getByText(TOOL_PILOT.benefits!.also)).toBeInTheDocument();
     // The demo's own link stays with the demo, At scale's last slide.
     expect(screen.queryByRole("link", { name: /Open demo in a new tab/ })).not.toBeInTheDocument();
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
@@ -451,11 +459,13 @@ describe("PresenterApp stages", () => {
     await onStage("reveal");
     await waitFor(() => expect(screen.getByText("answers looked right").previousSibling).toHaveTextContent("0 of 1"));
     expect(screen.getByText("looked wrong or unsure, yet a resident would act on them").previousSibling).toHaveTextContent("1");
-    expect(screen.getByText("would stop a resident from applying. 1 of them qualifies.").previousSibling).toHaveTextContent("1");
+    const stop = screen.getByText("would stop a resident from applying");
+    expect(stop.previousSibling).toHaveTextContent("1");
+    expect(stop.nextSibling).toHaveTextContent("1 of them qualifies.");
     expect(screen.getByText("What would a resident do next?")).toBeInTheDocument();
     // Phones stay quiet in What we saw, so the answers to talk about are on the screen.
     expect(screen.getByText("Answers worth discussing")).toBeInTheDocument();
-    expect(screen.getByText("Wrong but convincing")).toBeInTheDocument();
+    expect(screen.getByText("Looked wrong, yet acted on")).toBeInTheDocument();
     expect(screen.getByText("About $0.")).toBeInTheDocument();
     expect(screen.queryByText("To discuss")).not.toBeInTheDocument();
   });
@@ -479,12 +489,23 @@ describe("PresenterApp stages", () => {
     const items = within(panel).getAllByRole("listitem");
     // At most two, most harmful first: a convincing wrong answer, then a wrong one with a note.
     expect(items).toHaveLength(2);
-    expect(items[0]).toHaveTextContent("Wrong but convincing · Retiree in Phoenix");
+    expect(items[0]).toHaveTextContent("Looked wrong, yet acted on · Retiree in Phoenix");
     expect(items[0]).toHaveTextContent("Wrong amount · Said I don't qualify");
     expect(items[0]).toHaveTextContent("The AI: You don't qualify.");
     expect(items[1]).toHaveTextContent("Looked wrong");
     expect(within(items[1]).getByText("Ignored BBCE").tagName).toBe("Q");
     expect(screen.queryByText("About $24.")).not.toBeInTheDocument();
+    cleanup();
+
+    // "Not sure" and acted on says so, rather than calling the answer wrong.
+    setup({
+      stage: "reveal",
+      summary: summarizeRun({ ...DATA, prompts: [{ ...base, verdict: "unsure", resident_action: "apply", answer: "Maybe $50." }] }),
+    });
+    await onStage("reveal");
+    const unsure = within((await screen.findByText("Answers worth discussing")).parentElement!).getAllByRole("listitem");
+    expect(unsure[0]).toHaveTextContent("Not sure, yet acted on · Retiree in Phoenix");
+    expect(screen.queryByText(/Looked wrong, yet/)).not.toBeInTheDocument();
     cleanup();
 
     // Rated, but nothing flagged: the spoken questions instead, without the agency one (it has its own slide).
@@ -498,18 +519,14 @@ describe("PresenterApp stages", () => {
   });
 
   it("counts an amount from rules that don't test eligibility apart from households that qualify", () => {
-    expect(notApplyLabel({ wouldNotApplyEligible: 0, wouldNotApplyIfEligible: 0 })).toBe("would stop a resident from applying");
-    expect(notApplyLabel({ wouldNotApplyEligible: 2, wouldNotApplyIfEligible: 0 })).toBe(
-      "would stop a resident from applying. 2 of them qualify.",
+    expect(notApplyNote({ wouldNotApplyEligible: 0, wouldNotApplyIfEligible: 0 })).toBeNull();
+    expect(notApplyNote({ wouldNotApplyEligible: 2, wouldNotApplyIfEligible: 0 })).toBe("2 of them qualify.");
+    expect(notApplyNote({ wouldNotApplyEligible: 1, wouldNotApplyIfEligible: 0 })).toBe("1 of them qualifies.");
+    expect(notApplyNote({ wouldNotApplyEligible: 0, wouldNotApplyIfEligible: 1 })).toBe(
+      "For 1 of them, the rules give an amount but don't test eligibility yet.",
     );
-    expect(notApplyLabel({ wouldNotApplyEligible: 1, wouldNotApplyIfEligible: 0 })).toBe(
-      "would stop a resident from applying. 1 of them qualifies.",
-    );
-    expect(notApplyLabel({ wouldNotApplyEligible: 0, wouldNotApplyIfEligible: 1 })).toBe(
-      "would stop a resident from applying. For 1 of them, the rules give an amount but don't test eligibility yet.",
-    );
-    expect(notApplyLabel({ wouldNotApplyEligible: 2, wouldNotApplyIfEligible: 3 })).toBe(
-      "would stop a resident from applying. 2 of them qualify. For 3 more, the rules give an amount but don't test eligibility yet.",
+    expect(notApplyNote({ wouldNotApplyEligible: 2, wouldNotApplyIfEligible: 3 })).toBe(
+      "2 of them qualify. For 3 more, the rules give an amount but don't test eligibility yet.",
     );
   });
 
@@ -526,9 +543,8 @@ describe("PresenterApp stages", () => {
     });
     setup({ stage: "reveal", summary: harmful });
     await onStage("reveal");
-    await waitFor(() => expect(screen.getByText(
-      "would stop a resident from applying. For 1 of them, the rules give an amount but don't test eligibility yet.",
-    ).previousSibling).toHaveTextContent("1"));
+    await waitFor(() => expect(screen.getByText("would stop a resident from applying").previousSibling).toHaveTextContent("1"));
+    expect(screen.getByText("For 1 of them, the rules give an amount but don't test eligibility yet.")).toBeInTheDocument();
     expect(screen.queryByText(/of them qualif/)).not.toBeInTheDocument();
   });
 
@@ -581,6 +597,7 @@ describe("PresenterApp stages", () => {
     setup({ stage: "reveal" });
     await onStage("reveal");
     await waitFor(() => expect(screen.getByText("would stop a resident from applying").previousSibling).toHaveTextContent("0"));
+    expect(screen.getByText("would stop a resident from applying").nextSibling).toBeNull();
   });
 
   it("waits for ratings on the reveal", async () => {
@@ -604,7 +621,10 @@ describe("PresenterApp stages", () => {
     });
     await onStage("foundation");
     expect(screen.getByText("One open, validated set of rules")).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText(/In this room/)).toHaveTextContent("In this room, 5 of 6 can't fully check"));
+    // About whether a resident, screener or AI can check, as the question asked; not about the people in the room.
+    await waitFor(() =>
+      expect(screen.getByText(/In this room/)).toHaveTextContent("In this room, 5 of 6 say a resident, screener or AI can't fully check"),
+    );
     for (const trait of [
       "Every value is built to cite the provision it comes from",
       "Every change carries its effective date",

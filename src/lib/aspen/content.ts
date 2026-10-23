@@ -132,7 +132,7 @@ export const LOOK_UP = {
   reveal: { label: "answers in this room looked right", empty: "The room's results are on the screen." },
   scale: { label: "of AI answers told a household that qualifies for SNAP it would get $0" },
   foundation: {
-    label: "in this room can't fully check an answer against their state's rules today",
+    label: "in this room say a resident, screener or AI can't fully check an answer against their state's rules today",
     empty: "What one open set of rules would do is on the screen.",
   },
   later: "Your phone comes back for the vote.",
@@ -855,40 +855,88 @@ export const FRONT_DOOR = {
 
 // ---------------------------------------------------------------------------
 // The same models with a rules engine as a tool (PolicyBench's tool pilot).
-// From the October 20, 2026 note on policybench.org, "Given a tool that runs
-// PolicyEngine, three models score above 99%": 100 US households, run
+// From the October 20, 2026 note on policybench.org: 100 US households, run
 // October 14–15; the no-tool arm is each model's October 14 board row.
-// Recomputed Oct 23 from notes/data/tool_pilot_20261015.csv against release
-// dashboard-data-20261014: 187 nonzero dollar amounts (1/0 eligibility
-// outputs excluded), within $1 of the reference. Both scripts/tool_pilot_note.py
-// and an independent loop over the release's groundTruth give these figures.
+// Recomputed Oct 23 with the note's own scripts/tool_pilot_note.py functions
+// (references, is_amount, hit, board and tool predictions) on
+// notes/data/tool_pilot_20261015.csv: 187 dollar amounts per model whose
+// reference isn't $0 (1/0 eligibility outputs excluded), a hit within $1.
+// 171 are taxes and tax credits and 16 are benefits. The note's headline
+// ("above 99%") is a different score, household-weighted over all 1,935
+// outputs, so the slide doesn't quote it.
 // ---------------------------------------------------------------------------
+
+export type ToolPilotArmId = "alone" | "web" | "tool" | "both";
+
+export interface ToolPilot {
+  title: string;
+  /** Dollar amounts scored per model; every count below is how many of them were right. */
+  amounts: number;
+  note: string;
+  arms: readonly { id: ToolPilotArmId; label: string }[];
+  rows: readonly { model: string; hits: Readonly<Partial<Record<ToolPilotArmId, number>>> }[];
+  /** The benefit amounts among them, by model, for a room that runs benefits. */
+  benefits?: {
+    title: string;
+    amounts: number;
+    rows: readonly { model: string; short: string; alone: number; tool: number }[];
+    /** What the tool got wrong on benefits outside these amounts. */
+    also: string;
+  };
+  measures: string;
+  /** Why the amounts still wrong with the tool were wrong; the count comes from the rows. */
+  missesCause: string;
+  source: string;
+}
+
+/** A share of `of`, as a percentage to one decimal. */
+export function share(hits: number, of: number): number {
+  return Math.round((1000 * hits) / of) / 10;
+}
+
+/** The amounts still wrong with the tool, across every model, and how many were scored. */
+export function toolPilotMisses(p: ToolPilot): { misses: number; scored: number } {
+  const withTool = p.rows.filter((r) => typeof r.hits.tool === "number");
+  return {
+    misses: withTool.reduce((sum, r) => sum + (p.amounts - (r.hits.tool as number)), 0),
+    scored: withTool.length * p.amounts,
+  };
+}
 
 /**
  * At scale 6/7: what changes when a model can call a rules engine. Each arm is
  * one bar per model; a later run (more arms, such as web search, or other
- * models) only changes `arms` and `rows`.
+ * models) only changes `amounts`, `arms` and `rows`.
  */
-export const TOOL_PILOT = {
+export const TOOL_PILOT: ToolPilot = {
   title: "The same models, given a rules engine as a tool",
-  note: "Dollar amounts that aren't $0, within $1 of PolicyBench's reference: 187 amounts across 100 US households",
+  amounts: 187,
+  note: "Dollar amounts that aren't $0, within $1 of PolicyBench's reference: 187 per model across 100 US households, 171 of them taxes and tax credits and 16 benefits",
   arms: [
     { id: "alone", label: "On its own" },
     { id: "tool", label: "With a tool that runs PolicyEngine" },
   ],
   rows: [
-    { model: "GPT-6 Sol", alone: 67.4, tool: 96.8 },
-    { model: "Claude Opus 5.5", alone: 70.1, tool: 98.9 },
-    { model: "Gemini 4 Argon", alone: 46.5, tool: 99.5 },
+    { model: "GPT-6 Sol", hits: { alone: 126, tool: 181 } },
+    { model: "Claude Opus 5.5", hits: { alone: 131, tool: 185 } },
+    { model: "Gemini 4 Argon", hits: { alone: 87, tool: 186 } },
   ],
+  benefits: {
+    title: "The 16 benefit amounts: 13 SNAP, 2 SSI, 1 TANF",
+    amounts: 16,
+    rows: [
+      { model: "GPT-6 Sol", short: "Sol", alone: 6, tool: 16 },
+      { model: "Claude Opus 5.5", short: "Opus", alone: 7, tool: 16 },
+      { model: "Gemini 4 Argon", short: "Argon", alone: 0, tool: 16 },
+    ],
+    also: "With the tool, GPT-6 Sol also gave SNAP to 2 households the reference says get none.",
+  },
   /** The note's own caveat: the tool runs the engine behind the reference, so the scores are agreement with it. */
   measures:
     "The tool runs the engine behind PolicyBench's reference answers. So this shows whether a model can describe a household to a rules engine, not whether the engine is right.",
-  misses:
-    "The 12 answers still wrong, across the three models, came from how the model described the household or read back the answer, not from the calculation.",
-  source:
-    "PolicyBench note, October 20, 2026: “Given a tool that runs PolicyEngine, three models score above 99%” · runs October 14–15 · no-tool answers from the October 14 board",
-} as const;
+  missesCause: "came from how the model described the household or read back the answer, not from the calculation.",
+  source: "PolicyBench note, October 20, 2026 · runs October 14–15 · no-tool answers from the October 14 board · counts from the note's data",
+};
 
 /**
  * At scale 7/7: the live chatbot demo (TheAxiomFoundation/finbot-snap-demo,

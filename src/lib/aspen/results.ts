@@ -220,6 +220,16 @@ function payloadList(payload: Record<string, unknown>, key: string): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
 }
 
+/** Whether a discussion event says anything: a rating, a topic or a note. */
+function hasAnswer(e: { payload: Record<string, unknown> }): boolean {
+  const ratings = e.payload.ratings;
+  return (
+    Boolean(payloadString(e.payload, "note")) ||
+    payloadList(e.payload, "topics").length > 0 ||
+    (Boolean(ratings) && typeof ratings === "object" && Object.keys(ratings as object).length > 0)
+  );
+}
+
 const SPOTLIGHT_SIZE = 4;
 const VOICES_SIZE = 12;
 
@@ -267,16 +277,13 @@ export function ifEligibleSentence(
 
 /**
  * Whether an answer would be acted on without checking: a resident would apply,
- * or not apply, on it. Ratings saved before "Would you act on it?" was dropped
- * still count through it.
+ * or not apply, on it. A rating saved while the card still asked "Would you act
+ * on it?" counts by that answer alone, as it did then, so earlier runs read the
+ * same as before.
  */
 export function actedOn(p: Pick<PromptRow, "would_act" | "resident_action">): boolean {
-  return (
-    p.resident_action === "apply" ||
-    p.resident_action === "not-apply" ||
-    p.would_act === "yes" ||
-    p.would_act === "maybe"
-  );
+  if (p.would_act) return p.would_act === "yes" || p.would_act === "maybe";
+  return p.resident_action === "apply" || p.resident_action === "not-apply";
 }
 
 /**
@@ -412,6 +419,8 @@ export function summarizeRun(data: RunData): RunSummary {
     .sort(
       (a, b) =>
         REASON_RANK[a.reason] - REASON_RANK[b.reason] ||
+        // Among answers acted on, one that looked wrong comes before one nobody was sure of.
+        Number(b.p.verdict === "wrong") - Number(a.p.verdict === "wrong") ||
         Number(Boolean(b.p.rating_note)) - Number(Boolean(a.p.rating_note)) ||
         (b.p.created_at ?? "").localeCompare(a.p.created_at ?? ""),
     )
@@ -477,8 +486,9 @@ export function summarizeRun(data: RunData): RunSummary {
     spotlight,
     voices,
     discussion: {
+      // A cleared answer (no ratings, topics or note) is someone taking theirs back, so it doesn't count.
       questions: countBy(
-        discussion.map((e) => payloadString(e.payload, "question")),
+        discussion.filter(hasAnswer).map((e) => payloadString(e.payload, "question")),
         DISCUSSION_QUESTIONS,
       ),
       topics: countBy(

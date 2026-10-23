@@ -130,6 +130,8 @@ describe('supabase store', () => {
     expect(eventQuery).toContain('kind=in.(discussion,breakout,survey,vote)')
     // The participant id lets the summary keep each person's latest answer; it never leaves the server.
     expect(eventQuery).toContain('select=run_id,participant_id,kind,stage,payload,created_at')
+    // Ties in time fall back to insert order, so each person's latest answer reads the same every time.
+    expect(eventQuery).toContain('order=created_at.asc,id.asc')
   })
 
   it('raises on HTTP errors and tolerates 204', async () => {

@@ -473,7 +473,8 @@ describe('latestPerParticipant', () => {
     )
   })
 
-  it('is idempotent, and its result does not depend on the order events arrive in', () => {
+  // Which of two events tied in time wins does depend on order; the next test pins that down.
+  it('is idempotent, and keeps the same person, key and time whatever order the events arrive in', () => {
     fc.assert(
       fc.property(events, fc.integer(), (es, seed) => {
         const once = latestPerParticipant(es, byQ)
@@ -502,14 +503,22 @@ describe('actedOn', () => {
   const action = fc.constantFrom(null, undefined, 'apply', 'not-apply', 'call', 'unsure')
   const wouldAct = fc.constantFrom(null, undefined, 'yes', 'maybe', 'no')
 
-  it('is true exactly when a resident would apply or not apply, or an older rating said it would be acted on', () => {
-    fc.assert(
-      fc.property(action, wouldAct, (resident_action, would_act) => {
-        const expected =
-          resident_action === 'apply' || resident_action === 'not-apply' || would_act === 'yes' || would_act === 'maybe'
-        expect(actedOn({ resident_action, would_act } as Pick<PromptRow, 'would_act' | 'resident_action'>)).toBe(expected)
-      }),
-    )
+  it('reads an older rating by "Would you act on it?" alone, and a new one by what a resident would do', () => {
+    // Every combination, written out by hand rather than from the rule.
+    const actions = [null, undefined, 'apply', 'not-apply', 'call', 'unsure'] as const
+    const expected: [string | null | undefined, boolean[]][] = [
+      ['yes', [true, true, true, true, true, true]],
+      ['maybe', [true, true, true, true, true, true]],
+      // As before this change: an older "no" stays not acted on, whatever the resident would do.
+      ['no', [false, false, false, false, false, false]],
+      [null, [false, false, true, true, false, false]],
+      [undefined, [false, false, true, true, false, false]],
+    ]
+    for (const [would_act, row] of expected) {
+      actions.forEach((resident_action, i) =>
+        expect(actedOn({ resident_action, would_act } as Pick<PromptRow, 'would_act' | 'resident_action'>), `${would_act}/${resident_action}`).toBe(row[i]),
+      )
+    }
   })
 
   it('counts convincing answers as the wrong or unsure ones acted on, never more than those', () => {
@@ -529,6 +538,7 @@ describe('actedOn', () => {
     expect(actedOn({ resident_action: 'call', would_act: null })).toBe(false)
     expect(actedOn({ resident_action: 'unsure', would_act: 'no' })).toBe(false)
     expect(actedOn({ resident_action: null, would_act: 'maybe' })).toBe(true)
+    expect(actedOn({ resident_action: 'apply', would_act: 'no' })).toBe(false)
   })
 })
 
@@ -568,5 +578,42 @@ describe('summarizeRun with answers saved as they are tapped', () => {
       ['no', 1],
     ])
     expect(s.votes.filter((c) => c.count > 0).map((c) => [c.id, c.count])).toEqual([['flows', 1]])
+  })
+
+  it('drops a comment someone took back, and stops counting them on the question', () => {
+    const agency = (ratings: Record<string, number>, note: string | null) => ({ question: 'experience', ratings, topics: [], note })
+    const s = summarizeRun({
+      ...DATA,
+      events: [
+        ev('p1', 1, 'discussion', agency({}, 'Residents get wrong amounts')),
+        // The route stores a cleared note as null.
+        ev('p1', 2, 'discussion', agency({}, null)),
+        ev('p2', 1, 'discussion', agency({ you: 4 }, 'Staff like it')),
+        ev('p2', 2, 'discussion', agency({ you: 4 }, null)),
+      ],
+    })
+    expect(s.discussion.notes.filter((n) => n.question === 'experience')).toEqual([])
+    // p2 still rated, so still counts; p1 said nothing in the end.
+    expect(s.discussion.questions.find((q) => q.id === 'experience')!.count).toBe(1)
+    const you = s.discussion.scales.find((sc) => sc.question === 'experience')!.categories.find((c) => c.id === 'you')!
+    expect(you).toMatchObject({ count: 1, average: 4 })
+  })
+
+  it('puts an answer that looked wrong ahead of one nobody was sure of, when a resident would act on both', () => {
+    const at = (m: number) => `2026-10-26T18:0${m}:00Z`
+    const row = (id: string, m: number, verdict: string, extra: Partial<PromptRow> = {}) =>
+      ({ ...base, id, turn: 0, created_at: at(m), prompt: 'q', answer: 'a', verdict, resident_action: 'apply', ...extra }) as PromptRow
+    const s = summarizeRun({
+      ...DATA,
+      prompts: [
+        // Newer and with a note, but only "Not sure".
+        row('u', 3, 'unsure', { rating_note: 'Not sure about the asset test' }),
+        row('w', 1, 'wrong'),
+      ],
+    })
+    expect(s.spotlight.map((x) => [x.id, x.reason])).toEqual([
+      ['w', 'convincing'],
+      ['u', 'convincing'],
+    ])
   })
 })

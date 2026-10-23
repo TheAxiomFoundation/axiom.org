@@ -120,6 +120,63 @@ describe("OverallRating", () => {
     expect(screen.getByRole("button", { name: "Save comment" })).toBeEnabled();
   });
 
+  it("takes a saved comment back when the box is cleared, and the ratings after it stop carrying it", async () => {
+    const fetchMock = stubFetch();
+    render(<OverallRating stage="try" />);
+    fireEvent.change(box(), { target: { value: "Residents get wrong amounts" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save comment" }));
+    await waitFor(() => expect(bodies(fetchMock)).toHaveLength(1));
+    // Clearing the box offers to remove it, rather than hiding the button.
+    fireEvent.change(box(), { target: { value: "  " } });
+    fireEvent.click(screen.getByRole("button", { name: "Remove comment" }));
+    await waitFor(() => expect(bodies(fetchMock)).toHaveLength(2));
+    expect(bodies(fetchMock)[1].payload).toEqual({ question: "experience", ratings: {}, topics: [], note: "" });
+    // Nothing left to save or show as saved.
+    expect(screen.queryByRole("button", { name: /comment/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "For you: 3 of 5" }));
+    await waitFor(() => expect(bodies(fetchMock)).toHaveLength(3));
+    expect(bodies(fetchMock)[2].payload.note).toBe("");
+    // And a reload doesn't bring it back.
+    expect(JSON.parse(localStorage.getItem("aspen.overall.v2")!).comment).toBe("");
+  });
+
+  it("keeps a failed answer to the first question flagged until that answer saves, whatever saves after it", async () => {
+    const fail = { ok: false, status: 500, json: async () => ({}) } as unknown as Response;
+    const ok = { ok: true, status: 200, json: async () => ({ ok: true }) } as unknown as Response;
+    const fetchMock = vi.fn().mockResolvedValueOnce(fail).mockResolvedValue(ok);
+    vi.stubGlobal("fetch", fetchMock);
+    render(<OverallRating stage="try" />);
+    fireEvent.click(screen.getByRole("button", { name: "Partly" }));
+    expect(await screen.findByText("That didn't save. Tap it again.")).toBeInTheDocument();
+    // The agency ratings save, but the truth answer still hasn't: no "Saved." yet.
+    for (const name of ["For residents: 2 of 5", "For your staff: 3 of 5", "For you: 4 of 5"]) {
+      fireEvent.click(screen.getByRole("button", { name }));
+    }
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    await act(async () => {});
+    expect(screen.getByText("That didn't save. Tap it again.")).toBeInTheDocument();
+    expect(screen.queryByText(/Saved\. You'll see/)).not.toBeInTheDocument();
+    // Tapping it again saves it, and only then does the phone say so.
+    fireEvent.click(screen.getByRole("button", { name: "Partly" }));
+    expect(await screen.findByText(/Saved\. You'll see/)).toBeInTheDocument();
+  });
+
+  it("offers the comment again after a failed agency save, which may have carried it", async () => {
+    const fail = { ok: false, status: 500, json: async () => ({}) } as unknown as Response;
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(fail));
+    render(<OverallRating stage="try" />);
+    fireEvent.change(box(), { target: { value: "Staff like it" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save comment" }));
+    expect(await screen.findByRole("button", { name: "Save comment" })).toBeEnabled();
+  });
+
+  it("counts a 200 with saved: false, a store failure, as not saved", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ ok: true, saved: false }) } as unknown as Response));
+    render(<OverallRating stage="try" />);
+    fireEvent.click(screen.getByRole("button", { name: "Yes" }));
+    expect(await screen.findByText("That didn't save. Tap it again.")).toBeInTheDocument();
+  });
+
   it("sends one event at a time, in the order of the taps", async () => {
     const resolvers: ((r: Response) => void)[] = [];
     const fetchMock = vi.fn(() => new Promise<Response>((r) => resolvers.push(r)));

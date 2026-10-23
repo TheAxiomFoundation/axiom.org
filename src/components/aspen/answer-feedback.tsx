@@ -5,7 +5,7 @@ import { POST_CHECK, RESIDENT_ACTIONS, VERDICTS, WENT_WELL, WENT_WRONG } from "@
 import { eligibilityNote, otherDisclosures, standardsMismatch, standardsUsed, testsEligibility } from "@/lib/aspen/coverage";
 import type { RulesAnswer, RulesComputation, RulesOutput } from "@/lib/aspen/rules";
 import { AnswerText } from "./answer-text";
-import { formatValue, participantId, postJson } from "./client";
+import { RATING_KEY, formatValue, participantId, postJson, readStored, saveJson, writeStored } from "./client";
 import { BUTTON, BUTTON_QUIET, Chip, Eyebrow, FIELD, QUESTION, StepFrame } from "./ui";
 
 function toggle(list: string[], value: string): string[] {
@@ -21,6 +21,40 @@ interface Rating {
   note: string;
 }
 
+const EMPTY_RATING: Rating = { verdict: null, residentAction: null, wentWell: [], wentWrong: [], note: "" };
+
+/** A card in progress, kept on the phone so a reloaded tab reopens it where it was. */
+interface RatingDraft {
+  rating: Rating;
+  step: number;
+}
+
+const strings = (value: unknown): string[] => (Array.isArray(value) ? value.filter((v) => typeof v === "string") : []);
+const stringOrNull = (value: unknown): string | null => (typeof value === "string" ? value : null);
+
+/** This prompt's saved draft, if the phone has a readable one. */
+export function readRatingDraft(promptId: string): RatingDraft | null {
+  const all = readStored<Record<string, unknown>>(RATING_KEY);
+  const raw = all && typeof all === "object" ? (all[promptId] as Partial<{ rating: Record<string, unknown>; step: unknown }>) : null;
+  if (!raw || typeof raw !== "object" || !raw.rating || typeof raw.rating !== "object") return null;
+  const r = raw.rating;
+  return {
+    rating: {
+      verdict: stringOrNull(r.verdict),
+      residentAction: stringOrNull(r.residentAction),
+      wentWell: strings(r.wentWell),
+      wentWrong: strings(r.wentWrong),
+      note: typeof r.note === "string" ? r.note : "",
+    },
+    step: raw.step === 1 && typeof r.verdict === "string" ? 1 : 0,
+  };
+}
+
+function writeRatingDraft(promptId: string, draft: RatingDraft) {
+  const all = readStored<Record<string, unknown>>(RATING_KEY);
+  writeStored(RATING_KEY, { ...(all && typeof all === "object" ? all : {}), [promptId]: draft });
+}
+
 /**
  * How the participant rates one chatbot answer, in two short steps: does it
  * look right (with what went well or wrong, and a note, all optional, on the
@@ -31,7 +65,7 @@ interface Rating {
  */
 export function RatingCard({ promptId, onRated }: { promptId: string; onRated?: () => void }) {
   const [step, setStep] = useState(0);
-  const [rating, setRating] = useState<Rating>({ verdict: null, residentAction: null, wentWell: [], wentWrong: [], note: "" });
+  const [rating, setRating] = useState<Rating>(EMPTY_RATING);
   // The last rating sent; every save carries the whole rating, so a later one also carries the note.
   const sent = useRef<Rating | null>(null);
   const [failed, setFailed] = useState(false);
@@ -41,24 +75,40 @@ export function RatingCard({ promptId, onRated }: { promptId: string; onRated?: 
   // Saves go one after another, so a quick second tap never lands before the first.
   const queue = useRef<Promise<unknown>>(Promise.resolve());
 
+  // A reloaded tab (a locked phone often drops it) reopens the card where it was,
+  // so the next tap doesn't save an empty rating over the one already saved.
+  useEffect(() => {
+    const draft = readRatingDraft(promptId);
+    if (!draft) return;
+    setRating(draft.rating);
+    setStep(draft.step);
+  }, [promptId]);
+
   useEffect(() => {
     // Not on first render: only once the participant has moved between steps.
     if (moved.current) question.current?.focus({ preventScroll: true });
   }, [step]);
 
+  /** Shows and keeps the card's state; every change goes through here. */
+  function keep(nextRating: Rating, nextStep: number) {
+    setRating(nextRating);
+    setStep(nextStep);
+    writeRatingDraft(promptId, { rating: nextRating, step: nextStep });
+  }
+
   function go(next: number) {
     moved.current = true;
-    setStep(next);
+    keep(rating, next);
   }
 
   /** Saves the whole rating with `patch` applied; the server needs a verdict first. */
   function save(patch: Partial<Rating>, then?: () => void) {
     const next = { ...rating, ...patch };
-    setRating(next);
+    keep(next, step);
     if (!next.verdict) return;
     sent.current = next;
     queue.current = queue.current.then(async () => {
-      const { ok } = await postJson("/api/aspen/rate", {
+      const ok = await saveJson("/api/aspen/rate", {
         participantId: participantId(),
         promptId,
         verdict: next.verdict,
@@ -66,7 +116,7 @@ export function RatingCard({ promptId, onRated }: { promptId: string; onRated?: 
         wentWell: next.wentWell,
         wentWrong: next.wentWrong,
         note: next.note,
-      }).catch(() => ({ ok: false }));
+      });
       setFailed(!ok);
       if (ok) then?.();
     });
@@ -135,7 +185,7 @@ export function RatingCard({ promptId, onRated }: { promptId: string; onRated?: 
                   rows={2}
                   value={note}
                   maxLength={1000}
-                  onChange={(e) => setRating((r) => ({ ...r, note: e.target.value }))}
+                  onChange={(e) => keep({ ...rating, note: e.target.value }, step)}
                   className={FIELD}
                   placeholder="What would you tell the resident?"
                 />
@@ -144,8 +194,9 @@ export function RatingCard({ promptId, onRated }: { promptId: string; onRated?: 
                 type="button"
                 className={`${BUTTON} w-full py-3`}
                 onClick={() => {
+                  moved.current = true;
                   if (!noteSaved) save({ note: note.trim() });
-                  go(1);
+                  keep({ ...rating, note: noteSaved ? note : note.trim() }, 1);
                 }}
               >
                 Next
@@ -166,7 +217,10 @@ export function RatingCard({ promptId, onRated }: { promptId: string; onRated?: 
           </div>
         </fieldset>
       )}
-      {failed && <span className="font-body text-[0.9rem] text-[var(--color-error)]">That didn&apos;t save. Tap it again.</span>}
+      {/* Always in the page, so a screen reader announces the failure when it appears. */}
+      <p aria-live="polite" className="m-0 font-body text-[0.9rem] text-[var(--color-error)] empty:hidden">
+        {failed ? "That didn't save. Tap it again." : ""}
+      </p>
     </StepFrame>
   );
 }

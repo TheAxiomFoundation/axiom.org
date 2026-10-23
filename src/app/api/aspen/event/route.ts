@@ -46,7 +46,8 @@ const CLEANERS: Record<string, (raw: Payload) => Payload | null> = {
     const topics = cleanChoices(raw.topics, DISCUSSION_TOPICS);
     const ratings = cleanRatings(raw.ratings, question ? RATING_SCALES[question] : undefined);
     const note = clipText(raw.note, 1000);
-    return topics.length || note || Object.keys(ratings).length ? { question, topics, ratings, note } : null;
+    // An empty answer to a known question is kept: it is the latest answer, taking back an earlier comment.
+    return question || topics.length || note || Object.keys(ratings).length ? { question, topics, ratings, note } : null;
   },
   breakout: (raw) => {
     const useCase = cleanChoice(raw.useCase, USE_CASES.map((u) => u.id));
