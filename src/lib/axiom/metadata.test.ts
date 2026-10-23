@@ -1,4 +1,7 @@
+import fc from "fast-check";
 import { describe, it, expect, vi } from "vitest";
+import { serializeJsonLd } from "@/lib/json-ld";
+import { hostileString } from "@/test/hostile-strings";
 
 const { mockIn } = vi.hoisted(() => ({ mockIn: vi.fn() }));
 
@@ -14,6 +17,7 @@ vi.mock("@/lib/supabase", () => ({
 
 import {
   AXIOM_APP_URL,
+  citationUrl,
   getAxiomRuleMetadata,
   buildLegislationJsonLd,
 } from "./metadata";
@@ -210,7 +214,7 @@ describe("buildLegislationJsonLd", () => {
     expect(json.legislationType).toBe("Statute");
     expect(json.legislationIdentifier).toBe("us/statute/26/32");
     expect(json.legislationJurisdiction).toBe("us");
-    expect(json.url).toBe("https://example.com/x");
+    expect(json.url).toBe(`${AXIOM_APP_URL}/us/statute/26/32`);
   });
 
   it("maps regulation rules to schema.org Regulation", () => {
@@ -253,5 +257,143 @@ describe("buildLegislationJsonLd", () => {
       docType: "legislation",
     }) as Record<string, unknown>;
     expect(json.legislationType).toBe("Act");
+  });
+});
+
+// A body-bearing section: the reader renders it for any suffix below it
+// (src/lib/axiom/section-page.ts, ancestor fallback), so the suffix is
+// attacker-chosen text the metadata must not carry into URLs.
+const SECTION = {
+  id: "r1",
+  citation_path: "us/statute/26/32",
+  heading: "Earned income",
+  body: "There shall be allowed a credit...",
+  jurisdiction: "us",
+  doc_type: "statute",
+  updated_at: "2026-01-01",
+};
+const SECTION_URL = `${AXIOM_APP_URL}/us/statute/26/32`;
+
+/** Answer the metadata lookup from `rows`, as current_provisions would. */
+function serveRows(rows: Array<{ citation_path: string }>) {
+  mockIn.mockImplementation((_column: string, paths: string[]) =>
+    Promise.resolve({
+      data: rows.filter((row) => paths.includes(row.citation_path)),
+      error: null,
+    })
+  );
+}
+
+describe("reader URLs come from the resolved row", () => {
+  it("canonicalizes a suffix with no row of its own to the section it renders", async () => {
+    serveRows([SECTION]);
+    const meta = await getAxiomRuleMetadata([
+      "us",
+      "statute",
+      "26",
+      "32",
+      "</script><script>alert(document.domain)</script>",
+    ]);
+    expect(meta.rule?.id).toBe("r1");
+    expect(meta.canonicalUrl).toBe(SECTION_URL);
+    expect(meta.title).not.toContain("<");
+    const json = buildLegislationJsonLd(meta) as Record<string, unknown>;
+    expect(json.url).toBe(SECTION_URL);
+    expect(serializeJsonLd(json)).not.toContain("<");
+  });
+
+  it("keeps a deeper row's own URL when the suffix names it", async () => {
+    serveRows([SECTION, { ...SECTION, id: "r2", citation_path: "us/statute/26/32/a" }]);
+    const meta = await getAxiomRuleMetadata(["us", "statute", "26", "32", "a"]);
+    expect(meta.rule?.id).toBe("r2");
+    expect(meta.canonicalUrl).toBe(`${SECTION_URL}/a`);
+  });
+
+  it("encodes the requested path when no row matches", async () => {
+    serveRows([]);
+    const meta = await getAxiomRuleMetadata(["us", "statute", "99", "<b>?x#y"]);
+    expect(meta.rule).toBeNull();
+    expect(meta.canonicalUrl).toBe(
+      `${AXIOM_APP_URL}/us/statute/99/%3Cb%3E%3Fx%23y`
+    );
+    expect(buildLegislationJsonLd(meta)).toBeNull();
+  });
+
+  it("for any suffix and any corpus text, JSON-LD and canonical name only the section, and never spell </script", async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.array(hostileString, { minLength: 1, maxLength: 4 }),
+        hostileString,
+        hostileString,
+        async (suffix, heading, body) => {
+          serveRows([{ ...SECTION, heading, body }]);
+          const meta = await getAxiomRuleMetadata([
+            "us",
+            "statute",
+            "26",
+            "32",
+            ...suffix,
+          ]);
+          expect(meta.canonicalUrl).toBe(SECTION_URL);
+          const json = buildLegislationJsonLd(meta) as Record<string, unknown>;
+          expect(json.url).toBe(SECTION_URL);
+          const out = serializeJsonLd(json);
+          expect(out).not.toMatch(/<\/script/i);
+          expect(JSON.parse(out)).toEqual(JSON.parse(JSON.stringify(json)));
+        }
+      ),
+      { numRuns: 200 }
+    );
+  });
+});
+
+describe("citationUrl", () => {
+  it("joins plain segments under the app URL", () => {
+    expect(citationUrl("us/statute/26/32")).toBe(SECTION_URL);
+    expect(citationUrl("")).toBe(AXIOM_APP_URL);
+    expect(citationUrl("/us//statute/")).toBe(`${AXIOM_APP_URL}/us/statute`);
+  });
+
+  it("encodes the en dash the corpus uses for lettered USC sections", () => {
+    expect(citationUrl("us/statute/42/1396u\u20131")).toBe(
+      `${AXIOM_APP_URL}/us/statute/42/1396u%E2%80%931`
+    );
+  });
+
+  it("gives one URL for the encoded and decoded spellings of a path", () => {
+    expect(citationUrl("us/statute/42/1396u%E2%80%931")).toBe(
+      citationUrl("us/statute/42/1396u\u20131")
+    );
+    expect(citationUrl("us/x/%3C%2Fscript%3E")).toBe(
+      `${AXIOM_APP_URL}/us/x/%3C%2Fscript%3E`
+    );
+  });
+
+  // Every segment, whatever it holds, becomes exactly one URL path level
+  // made only of characters a URL path and HTML both read literally.
+  const segmentText = fc.oneof(hostileString, fc.string({ unit: "binary" }));
+
+  it("emits one inert path level per input segment, for any segments", () => {
+    fc.assert(
+      fc.property(fc.array(segmentText, { maxLength: 6 }), (segments) => {
+        const url = citationUrl(segments.join("/"));
+        const levels = segments.join("/").split("/").filter(Boolean).length;
+        expect(url.startsWith(AXIOM_APP_URL)).toBe(true);
+        const path = url.slice(AXIOM_APP_URL.length);
+        expect(path).toMatch(/^(\/[A-Za-z0-9\-_.!~*'()%]+)*$/);
+        expect(path.split("/").filter(Boolean)).toHaveLength(levels);
+      }),
+      { numRuns: 500 }
+    );
+  });
+
+  it("is idempotent: re-encoding its own path changes nothing", () => {
+    fc.assert(
+      fc.property(fc.array(segmentText, { maxLength: 6 }), (segments) => {
+        const url = citationUrl(segments.join("/"));
+        expect(citationUrl(url.slice(AXIOM_APP_URL.length))).toBe(url);
+      }),
+      { numRuns: 500 }
+    );
   });
 });

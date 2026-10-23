@@ -5,6 +5,7 @@ import {
   buildLegislationJsonLd,
   getAxiomRuleMetadata,
 } from "@/lib/axiom/metadata";
+import { JsonLd } from "@/components/json-ld";
 import {
   getSectionPageDataFromResolution,
   resolveSection,
@@ -97,12 +98,7 @@ async function SectionBody({
 
   return (
     <>
-      {jsonLd && (
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-        />
-      )}
+      {jsonLd && <JsonLd data={jsonLd} />}
       <SectionReader data={data} highlightRule={highlightRule} />
     </>
   );

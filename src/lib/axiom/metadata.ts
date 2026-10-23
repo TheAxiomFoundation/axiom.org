@@ -26,6 +26,30 @@ export interface AxiomRuleMetadata {
 
 const METADATA_QUERY_TIMEOUT_MS = 1200;
 
+/**
+ * Absolute app URL for a citation path. Each segment is percent-encoded
+ * (after undoing any encoding it arrived with, so already-encoded and
+ * decoded spellings give the same URL): a segment can't add a path
+ * level, a query, a fragment, or markup. toWellFormed keeps a lone
+ * surrogate from making encodeURIComponent throw.
+ */
+export function citationUrl(citationPath: string): string {
+  const encoded = citationPath
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(safeDecode(segment).toWellFormed()))
+    .join("/");
+  return encoded ? `${AXIOM_APP_URL}/${encoded}` : AXIOM_APP_URL;
+}
+
+function safeDecode(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
 function firstSentence(text: string, maxLen = 200): string {
   const trimmed = text.trim().replace(/\s+/g, " ");
   if (trimmed.length <= maxLen) return trimmed;
@@ -46,9 +70,10 @@ export async function getAxiomRuleMetadata(
   segments: string[] | undefined
 ): Promise<AxiomRuleMetadata> {
   const citationPath = (segments ?? []).join("/");
-  const canonicalUrl = citationPath
-    ? `${AXIOM_APP_URL}/${citationPath}`
-    : AXIOM_APP_URL;
+  // Only for a path no row matched: once a row resolves, its own
+  // citation path is the canonical URL (below), so an unmatched suffix
+  // under a body-bearing ancestor never reaches the page's URLs.
+  const canonicalUrl = citationUrl(citationPath);
 
   if (!citationPath) {
     return {
@@ -107,13 +132,6 @@ export async function getAxiomRuleMetadata(
   const heading = rule.heading?.trim();
   const body = rule.body?.trim();
   const citationLabel = rule.citation_path ?? citationPath;
-  const isAliasHit =
-    !!rule.citation_path &&
-    rule.citation_path !== citationPath &&
-    lookupCandidates.includes(rule.citation_path);
-  const resolvedCanonicalUrl = isAliasHit
-    ? `${AXIOM_APP_URL}/${rule.citation_path}`
-    : canonicalUrl;
   const title = heading
     ? `${citationLabel} — ${heading} · Axiom`
     : `${citationLabel} · Axiom`;
@@ -127,7 +145,7 @@ export async function getAxiomRuleMetadata(
     rule,
     title,
     description,
-    canonicalUrl: resolvedCanonicalUrl,
+    canonicalUrl: citationUrl(citationLabel),
     citationPath,
     jurisdiction: rule.jurisdiction,
     docType: rule.doc_type,
@@ -180,7 +198,9 @@ export function buildLegislationJsonLd(meta: AxiomRuleMetadata): object | null {
         : meta.rule.doc_type === "legislation"
           ? "Act"
           : "Statute",
-    url: meta.canonicalUrl,
+    // The described row's own URL, never the request's: a reader URL
+    // may carry a suffix the row doesn't have.
+    url: citationUrl(citationLabel),
     inLanguage: inferLanguage(meta.rule.jurisdiction),
     text: meta.rule.body || undefined,
     dateModified: meta.rule.updated_at || undefined,
