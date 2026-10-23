@@ -207,7 +207,7 @@ export function createSupabaseStore(
           `aspen_prompts?${runFilter(runId)}&select=${RUN_PROMPT_SELECT}&${order}`,
         ),
         request<EventRow[]>(
-          `aspen_events?${runFilter(runId)}&kind=in.(discussion,breakout,survey,vote)&select=run_id,kind,stage,payload,created_at&${order}`,
+          `aspen_events?${runFilter(runId)}&kind=in.(discussion,breakout,survey,vote)&select=run_id,participant_id,kind,stage,payload,created_at&${order}`,
         ),
         request<PublicPledge[]>(
           `aspen_pledges?${runFilter(runId)}&select=state,accurate_ai,state_systems,show_state,created_at&${order}`,

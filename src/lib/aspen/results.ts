@@ -53,7 +53,11 @@ export interface Viability {
   wouldAct: number;
   maybe: number;
   wouldNot: number;
-  /** Looked wrong or unsure, yet the person would (or might) act on it: the risky ones. */
+  /**
+   * Looked wrong or unsure, yet it would be acted on: a resident would apply,
+   * or not apply, on it without checking (or, in ratings saved before that
+   * question replaced "Would you act on it?", the person would or might act on it).
+   */
   convincing: number;
   /** What people think a resident would do next with the answer. */
   residentActions: Count[];
@@ -261,9 +265,45 @@ export function ifEligibleSentence(
   return `For ${v.wouldNotApplyIfEligible} ${who}, the rules give an amount but don't test eligibility yet.`;
 }
 
+/**
+ * Whether an answer would be acted on without checking: a resident would apply,
+ * or not apply, on it. Ratings saved before "Would you act on it?" was dropped
+ * still count through it.
+ */
+export function actedOn(p: Pick<PromptRow, "would_act" | "resident_action">): boolean {
+  return (
+    p.resident_action === "apply" ||
+    p.resident_action === "not-apply" ||
+    p.would_act === "yes" ||
+    p.would_act === "maybe"
+  );
+}
+
+/**
+ * Each person's latest event per key: answers save on every tap, so someone
+ * who changes their mind counts once, with their last choice. Events saved
+ * without a participant each count on their own.
+ */
+export function latestPerParticipant<T extends { participant_id?: string | null; created_at?: string }>(
+  events: T[],
+  key: (e: T) => string,
+): T[] {
+  const loose: T[] = [];
+  const latest = new Map<string, T>();
+  for (const e of events) {
+    if (!e.participant_id) {
+      loose.push(e);
+      continue;
+    }
+    const k = `${e.participant_id}\u0000${key(e)}`;
+    const prev = latest.get(k);
+    if (!prev || (e.created_at ?? "") >= (prev.created_at ?? "")) latest.set(k, e);
+  }
+  return [...loose, ...latest.values()].sort((a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? ""));
+}
+
 export function viabilityOf(rated: PromptRow[]): Viability {
   const count = (pred: (p: PromptRow) => boolean) => rated.filter(pred).length;
-  const acts = (p: PromptRow) => p.would_act === "yes" || p.would_act === "maybe";
   const notApplyWithAmount = (p: PromptRow) =>
     p.resident_action === "not-apply" && typeof p.rules_amount === "number" && p.rules_amount > 0;
   return {
@@ -274,7 +314,7 @@ export function viabilityOf(rated: PromptRow[]): Viability {
     wouldAct: count((p) => p.would_act === "yes"),
     maybe: count((p) => p.would_act === "maybe"),
     wouldNot: count((p) => p.would_act === "no"),
-    convincing: count((p) => (p.verdict === "wrong" || p.verdict === "unsure") && acts(p)),
+    convincing: count((p) => (p.verdict === "wrong" || p.verdict === "unsure") && actedOn(p)),
     residentActions: countBy(
       rated.map((p) => p.resident_action),
       RESIDENT_ACTIONS,
@@ -309,8 +349,7 @@ export function breakdownOf(firstTurns: PromptRow[]): BreakdownRow[] {
 }
 
 function spotlightReason(p: PromptRow): Spotlight["reason"] | null {
-  const acts = p.would_act === "yes" || p.would_act === "maybe";
-  if ((p.verdict === "wrong" || p.verdict === "unsure") && acts) return "convincing";
+  if ((p.verdict === "wrong" || p.verdict === "unsure") && actedOn(p)) return "convincing";
   if (p.post_check_verdict === "wrong") return "checked-wrong";
   if (p.verdict === "wrong") return "wrong";
   if (p.verdict === "unsure") return "unsure";
@@ -327,9 +366,20 @@ export function summarizeRun(data: RunData): RunSummary {
   // First turns only: follow-ups repeat the household and perspective.
   const firstTurns = prompts.filter((p) => p.turn === 0);
 
-  const discussion = events.filter((e) => e.kind === "discussion");
+  // Answers save as they're tapped: each person's last discussion answer per question, survey answer and vote count.
+  const discussion = latestPerParticipant(
+    events.filter((e) => e.kind === "discussion"),
+    (e) => payloadString(e.payload, "question") ?? "",
+  );
+  const surveys = latestPerParticipant(
+    events.filter((e) => e.kind === "survey"),
+    (e) => payloadString(e.payload, "question") ?? "",
+  );
   const breakouts = events.filter((e) => e.kind === "breakout");
-  const votes = events.filter((e) => e.kind === "vote");
+  const votes = latestPerParticipant(
+    events.filter((e) => e.kind === "vote"),
+    () => "vote",
+  );
 
   const householdLabel = new Map(HOUSEHOLDS.map((h) => [h.id, h.label]));
   const perspectiveLabel = new Map<string, string>(PERSPECTIVES.map((p) => [p.id, p.label]));
@@ -420,7 +470,7 @@ export function summarizeRun(data: RunData): RunSummary {
     feed,
     viability: viabilityOf(rated),
     sourceOfTruth: countBy(
-      events.filter((e) => e.kind === "survey" && e.payload.question === SOURCE_OF_TRUTH.id).map((e) => payloadString(e.payload, "answer")),
+      surveys.filter((e) => e.payload.question === SOURCE_OF_TRUTH.id).map((e) => payloadString(e.payload, "answer")),
       SOURCE_OF_TRUTH.options,
     ),
     breakdown: breakdownOf(firstTurns),
