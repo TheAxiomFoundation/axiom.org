@@ -105,11 +105,6 @@ export function StationPanel({ station: s, model, params, onClose }: { station: 
           </ul>
         </>
       ) : null}
-      {s.id === "validate" ? (
-        <p style={{ marginTop: 16 }}>
-          <a href={flowHref(params, { view: "discovery", station: null })}>See how rules follow each other across tries →</a>
-        </p>
-      ) : null}
     </aside>
   );
 }

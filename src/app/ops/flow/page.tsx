@@ -11,7 +11,7 @@ const one = (value: string | string[] | undefined): string | null => {
 
 /**
  * /ops/flow became the /ops "Line" tab. Its old links land in the same
- * place: the line (window, scope, station, discovery) on the Line
+ * place: the line (window, scope, station) on the Pipeline
  * tab, a citation or a run on the journey page, the programs view on the
  * Programs tab. The Line tab has no population filter, so an old `pop`
  * drops out.
@@ -23,7 +23,7 @@ export default async function OpsFlowRedirect({ searchParams }: { searchParams?:
     ...DEFAULT_FLOW_PARAMS,
     window: parseWindow(raw.window),
     j: one(raw.j),
-    view: view === "discovery" || view === "programs" ? view : "pipeline",
+    view: view === "programs" ? view : "pipeline",
     station: one(raw.station),
     citation: one(raw.citation),
     case: one(raw.case),

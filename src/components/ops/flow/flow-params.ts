@@ -1,4 +1,4 @@
-export type FlowView = "pipeline" | "discovery" | "programs";
+export type FlowView = "pipeline" | "programs";
 
 export interface FlowParams {
   window: number;
@@ -46,7 +46,6 @@ export function flowHref(params: FlowParams, change: Partial<FlowParams>, option
   // The default window drops out, unless an old link named it (keepWindow).
   if (next.window !== 30 || options.keepWindow) q.set("window", String(next.window));
   if (next.j) q.set("j", next.j);
-  if (next.view !== "pipeline") q.set("view", next.view);
   if (next.station) q.set("station", next.station);
   return `/ops?${q}`;
 }

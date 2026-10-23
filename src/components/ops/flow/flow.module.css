@@ -103,51 +103,7 @@
   color: var(--color-paper);
 }
 
-.select {
-  padding: 6px 10px;
-  font-size: 12px;
-  border: 1px solid var(--color-rule);
-  border-radius: 8px;
-  background: var(--color-paper);
-  color: var(--color-ink);
-}
-
 /* KPI row */
-.kpis {
-  margin-top: 20px;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 1px;
-  background: var(--color-rule);
-  border: 1px solid var(--color-rule);
-  border-radius: 12px;
-  overflow: hidden;
-}
-
-.kpi {
-  padding: 14px 16px;
-  background: var(--color-paper-elevated);
-}
-
-.kpi dt {
-  font-size: 11px;
-  color: var(--color-ink-muted);
-}
-
-.kpi dd {
-  margin-top: 4px;
-  font-size: 22px;
-  font-weight: 500;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-}
-
-.kpi small {
-  display: block;
-  margin-top: 2px;
-  font-size: 11px;
-  color: var(--color-ink-muted);
-}
 
 /* Alerts */
 .alerts {
@@ -253,31 +209,6 @@
 .crumbs [aria-current="page"] {
   color: var(--color-ink);
   font-weight: 500;
-}
-
-.tabs {
-  margin-top: 12px;
-  display: flex;
-  gap: 4px;
-  border-bottom: 1px solid var(--color-rule);
-}
-
-.tabs a {
-  padding: 8px 14px;
-  font-size: 13px;
-  color: var(--color-ink-muted);
-  text-decoration: none;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-}
-
-.tabs a:hover {
-  color: var(--color-ink);
-}
-
-.tabs a[aria-current="page"] {
-  color: var(--color-ink);
-  border-bottom-color: var(--flow);
 }
 
 /* The floor: canvas and side panel */
@@ -509,44 +440,6 @@
   color: var(--floor-ink-3);
 }
 
-.bars {
-  display: grid;
-  gap: 6px;
-}
-
-.bar {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 2px 8px;
-  font-size: 12px;
-}
-
-.bar code {
-  font-size: 11px;
-  overflow-wrap: anywhere;
-  color: var(--floor-ink);
-}
-
-.bar span {
-  font-variant-numeric: tabular-nums;
-  color: var(--floor-ink-2);
-}
-
-.bar i {
-  grid-column: 1 / -1;
-  display: block;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--critical);
-  opacity: 0.85;
-}
-
-.bar small {
-  grid-column: 1 / -1;
-  font-size: 10px;
-  color: var(--floor-ink-3);
-}
-
 .items {
   display: grid;
   gap: 4px;
@@ -623,33 +516,6 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 3px;
-}
-
-.chip {
-  padding: 1px 6px;
-  border-radius: 4px;
-  border: 1px solid var(--color-rule);
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-.chip[data-end="failed"] {
-  border-color: var(--critical);
-  color: var(--critical);
-}
-
-.chip[data-end="landed"] {
-  border-color: var(--good);
-  color: var(--good);
-}
-
-.share {
-  display: inline-block;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--flow);
-  vertical-align: middle;
-  margin-right: 6px;
 }
 
 /* Lanes and run nodes */
@@ -788,112 +654,6 @@
 }
 
 /* Discovery: answer cards */
-.cards {
-  margin-top: 16px;
-  display: grid;
-  gap: 16px;
-}
-
-.card {
-  padding: 20px 22px;
-  border: 1px solid var(--color-rule);
-  border-radius: 14px;
-  background: var(--color-paper-elevated);
-}
-
-.card h2 {
-  margin-top: 4px;
-  font-size: 20px;
-  font-weight: 500;
-  letter-spacing: -0.02em;
-}
-
-.answer {
-  margin-top: 8px;
-  max-width: 90ch;
-  font-size: 15px;
-  line-height: 1.55;
-  color: var(--color-ink);
-}
-
-.tryBars {
-  margin-top: 16px;
-  display: grid;
-  gap: 8px;
-  list-style: none;
-  padding: 0;
-}
-
-.tryBars li {
-  display: grid;
-  grid-template-columns: 64px minmax(120px, 1fr) 190px 80px;
-  gap: 12px;
-  align-items: center;
-  font-size: 13px;
-}
-
-.tryLabel {
-  color: var(--color-ink-muted);
-}
-
-.tryTrack {
-  position: relative;
-  height: 18px;
-}
-
-.tryTrack i,
-.tryTrack b {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  border-radius: 0 4px 4px 0;
-}
-
-.tryTrack i {
-  background: rgba(245, 158, 11, 0.22);
-}
-
-.tryTrack b {
-  min-width: 2px;
-  background: var(--flow);
-}
-
-.tryTrack b[data-low="true"] {
-  background: var(--critical);
-}
-
-.tryNum {
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-.tryNum small {
-  color: var(--color-ink-muted);
-}
-
-.tryNum em {
-  display: block;
-  font-style: normal;
-  font-size: 11px;
-  color: var(--critical);
-}
-
-.stick {
-  display: inline-block;
-  width: 80px;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--color-rule);
-  overflow: hidden;
-  vertical-align: middle;
-}
-
-.stick i {
-  display: block;
-  height: 100%;
-  background: var(--warning);
-}
 
 @media (max-width: 640px) {
   .tryBars li {
@@ -902,88 +662,6 @@
   .tryBars li > :last-child {
     display: none;
   }
-}
-
-.trendGrid {
-  margin-top: 16px;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 18px 24px;
-}
-
-.trendCell code {
-  font-size: 12px;
-}
-
-.trendCell p {
-  margin-top: 4px;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--color-ink-secondary);
-}
-
-.trendChart {
-  display: block;
-  width: 100%;
-  height: auto;
-  margin-top: 6px;
-}
-
-.trendChart .grid,
-.grid {
-  stroke: var(--color-rule);
-  stroke-width: 1;
-}
-
-.axis {
-  font-size: 9px;
-  fill: var(--color-ink-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.trendLine {
-  fill: none;
-  stroke: var(--flow);
-  stroke-width: 2;
-  stroke-linejoin: round;
-}
-
-.trendDot {
-  fill: var(--flow);
-  stroke: var(--color-paper-elevated);
-  stroke-width: 2;
-}
-
-.prMark {
-  stroke: var(--color-ink-muted);
-  stroke-width: 1;
-  stroke-dasharray: 3 3;
-}
-
-.follows {
-  margin-top: 14px;
-  display: grid;
-  gap: 8px;
-  list-style: none;
-  padding: 0;
-}
-
-.follows li {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px 10px;
-  font-size: 13px;
-}
-
-.follows code {
-  font-size: 12px;
-}
-
-.followStat {
-  margin-left: auto;
-  color: var(--color-ink-muted);
-  font-variant-numeric: tabular-nums;
 }
 
 .srOnly {
@@ -1006,12 +684,6 @@
   letter-spacing: 0.04em;
   color: var(--floor-ink-2);
   white-space: nowrap;
-}
-
-.topCauses .originTag {
-  margin-left: 6px;
-  color: var(--color-ink-muted);
-  border-color: var(--color-rule);
 }
 
 .origins {
@@ -1207,7 +879,6 @@
   color: #f2a3a3;
   border-color: rgba(208, 59, 59, 0.4);
 }
-
 
 /* A station's top exit reason, and edges with no clear route, on the box itself. */
 .reason {

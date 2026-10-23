@@ -36,7 +36,6 @@ describe("flowHref", () => {
   it("links the line to the Line tab, keeping the window and scope", () => {
     expect(flowHref(params, {})).toBe("/ops?tab=line");
     expect(flowHref({ ...params, window: 7, j: "us" }, { station: "validate" })).toBe("/ops?tab=line&window=7&j=us&station=validate");
-    expect(flowHref(params, { view: "discovery" })).toBe("/ops?tab=line&view=discovery");
   });
 
   it("links a citation and a run to the journey, and programs to the Programs tab", () => {
@@ -56,7 +55,11 @@ describe("FlowLine", () => {
     expect(screen.getByText("Release activation is failing")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Is each station getting better or worse?" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "How much can these numbers see?" })).toBeTruthy();
-    expect(screen.getByText("How many runs went in?")).toBeTruthy();
+    expect(screen.queryByText("How many runs went in?")).toBeNull();
+    // The alerts sit under the diagram.
+    const canvas = screen.getByTestId("pipeline-canvas");
+    const alert = screen.getByText("Release activation is failing");
+    expect(canvas.compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByText(/Derived from encodings.pipeline_attempts/)).toBeTruthy();
   });
 
@@ -66,14 +69,6 @@ describe("FlowLine", () => {
     expect(screen.getByRole("heading", { name: "How cases fail here" })).toBeTruthy();
     expect(screen.getAllByText("r:tests").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/runs ended/).length).toBeGreaterThan(0);
-  });
-
-  it("shows loops and rules as four questions with answers", () => {
-    line({ view: "discovery" });
-    expect(screen.getByRole("heading", { name: "The rules the encoder does not fix, week by week" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "When one rule is fixed, which one comes next" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Rules that come back on the next try" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Dispatched again and again, never merged" })).toBeTruthy();
   });
 });
 

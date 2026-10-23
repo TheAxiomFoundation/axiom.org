@@ -64,7 +64,7 @@ export default async function OpsPage({ searchParams }: { searchParams?: Promise
       ...DEFAULT_FLOW_PARAMS,
       window: parseWindow(params.window),
       j: one(params.j),
-      view: one(params.view) === "discovery" ? "discovery" : "pipeline",
+      view: "pipeline",
       station: one(params.station),
     };
     // The Line tab counts every case: it has no population filter.

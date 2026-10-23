@@ -20,7 +20,8 @@ describe("/ops/flow redirect", () => {
   it("keeps the window it names, the default one too, and every line parameter but the retired pop", async () => {
     expect(await target({ window: "30", j: "us" })).toBe("/ops?tab=line&window=30&j=us");
     expect(await target({ window: "7", j: "us-co", pop: "runs", station: "validate" })).toBe("/ops?tab=line&window=7&j=us-co&station=validate");
-    expect(await target({ window: "90", view: "discovery" })).toBe("/ops?tab=line&window=90&view=discovery");
+    // The retired discovery view lands on the line itself.
+    expect(await target({ window: "90", view: "discovery" })).toBe("/ops?tab=line&window=90");
     expect(await target({})).toBe("/ops?tab=line");
   });
 

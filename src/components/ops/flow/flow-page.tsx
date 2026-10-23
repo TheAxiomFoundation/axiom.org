@@ -8,10 +8,7 @@ import {
   type CitationLane,
   type FlowAlert,
   type FlowModel,
-  retryCutoff,
-  trendEnds,
   trendSentence,
-  type RuleTrend,
 } from "@/lib/axiom/pipeline-flow";
 import type { EventsOrigin } from "@/lib/axiom/pipeline-events-data";
 import type { BundleMembership } from "@/lib/axiom/program-bundles";
@@ -35,9 +32,9 @@ const ORIGIN_NOTE: Record<EventsOrigin, string> = {
 };
 
 /**
- * The /ops "Line" tab: where cases wait, fail or loop. Every encoding as a
- * case moving through stations, mined from the pipeline event log, with the
- * discovery view (which rules follow each other across tries) beside it.
+ * The /ops "Pipeline" tab (`?tab=line`): where cases wait, fail or loop.
+ * Every encoding as a case moving through stations, mined from the
+ * pipeline event log.
  */
 export function FlowLine({
   model,
@@ -54,7 +51,6 @@ export function FlowLine({
   params: FlowParams;
   jurisdictions: string[];
 }) {
-  const selected = params.station ? (model.stations.find((s) => s.id === params.station) ?? null) : null;
   return (
     <section aria-label="The encoding line">
       <header className={styles.head}>
@@ -80,34 +76,17 @@ export function FlowLine({
         </div>
       </header>
 
-      <Kpis model={model} />
-      <Alerts alerts={model.alerts} />
-
-      <nav className={styles.tabs} aria-label="Views">
-        <a href={flowHref(params, { view: "pipeline", station: null })} aria-current={params.view === "pipeline" && !selected ? "page" : undefined}>
-          Stations{selected && params.view === "pipeline" ? ` › ${selected.label}` : ""}
-        </a>
-        <a href={flowHref(params, { view: "discovery", station: null })} aria-current={params.view === "discovery" ? "page" : undefined}>
-          Loops and rules
-        </a>
-      </nav>
-
       {error ? <p className={styles.note}>Could not read the event log: {error}</p> : null}
 
-      {params.view === "discovery" ? (
-        <Discovery model={model} params={params} />
+      {!model.stations.length ? (
+        <p className={styles.note}>No events in this window and scope. Choose a longer window or another jurisdiction.</p>
       ) : (
-        <>
-          {!model.stations.length ? (
-            <p className={styles.note}>No events in this window and scope. Choose a longer window or another jurisdiction.</p>
-          ) : (
-            <PipelineFloor model={model} params={params} />
-          )}
-          <ReasonSources model={model} />
-          <StationsTable model={model} params={params} />
-          <Trust model={model} />
-        </>
+        <PipelineFloor model={model} params={params} />
       )}
+      <Alerts alerts={model.alerts} />
+      <ReasonSources model={model} />
+      <StationsTable model={model} params={params} />
+      <Trust model={model} />
 
       <p className={styles.note}>
         {model.events.toLocaleString("en-US")} events ({Object.entries(model.sources).map(([s, n]) => `${s.replace(/_/g, " ")} ${n.toLocaleString("en-US")}`).join(", ")}). {ORIGIN_NOTE[origin]}{" "}
@@ -206,36 +185,6 @@ export function JourneyView({
         </p>
       </div>
     </div>
-  );
-}
-
-function Kpis({ model }: { model: FlowModel }) {
-  const t = model.totals;
-  return (
-    <dl className={styles.kpis}>
-      <div className={styles.kpi}>
-        <dt>How many runs went in?</dt>
-        <dd>{t.dispatched.toLocaleString("en-US")}</dd>
-        <small>targeted re-encodes dispatched in {model.window.days} days</small>
-      </div>
-      <div className={styles.kpi}>
-        <dt>How many merged?</dt>
-        <dd>
-          {t.dispatched_merged.toLocaleString("en-US")} <small style={{ display: "inline" }}>({pct(t.dispatched ? t.dispatched_merged / t.dispatched : null)})</small>
-        </dd>
-        <small>{t.dispatched_landed.toLocaleString("en-US")} also cleared every check after the merge</small>
-      </div>
-      <div className={styles.kpi}>
-        <dt>How long to merge?</dt>
-        <dd>{formatDuration(t.dispatch_to_merge_p50_ms)}</dd>
-        <small>dispatch to default branch, median</small>
-      </div>
-      <div className={styles.kpi}>
-        <dt>What waits now?</dt>
-        <dd>{t.waiting.toLocaleString("en-US")}</dd>
-        <small>{t.waiting_over_sla.toLocaleString("en-US")} over their station&apos;s SLA</small>
-      </div>
-    </dl>
   );
 }
 
@@ -341,233 +290,6 @@ function Trust({ model }: { model: FlowModel }) {
           : ""}
       </p>
     </section>
-  );
-}
-
-/** One rule's weekly rate as a small line chart, with the encoder PRs that name it marked. */
-function RuleTrendChart({ trend }: { trend: RuleTrend }) {
-  const w = 300;
-  const h = 96;
-  const pad = { l: 30, r: 8, t: 10, b: 20 };
-  const pts = trend.weekly;
-  if (pts.length < 2) return <p className={styles.note}>Too few runs per week to draw.</p>;
-  const t0 = Date.parse(pts[0].week);
-  const t1 = Date.parse(pts[pts.length - 1].week);
-  const x = (ms: number) => pad.l + ((ms - t0) / Math.max(1, t1 - t0)) * (w - pad.l - pad.r);
-  const y = (share: number) => pad.t + (1 - share) * (h - pad.t - pad.b);
-  const line = pts.map((p) => `${x(Date.parse(p.week)).toFixed(1)},${y(p.hit / p.cases).toFixed(1)}`).join(" ");
-  const marks = trend.changes.filter((c) => Date.parse(c.at) >= t0 && Date.parse(c.at) <= t1 + 6 * 86_400_000);
-  return (
-    <svg className={styles.trendChart} viewBox={`0 0 ${w} ${h}`} role="img" aria-label={`${trend.rule_id}: share of runs by week`}>
-      {[0, 0.5, 1].map((v) => (
-        <g key={v}>
-          <line x1={pad.l} x2={w - pad.r} y1={y(v)} y2={y(v)} className={styles.grid} />
-          <text x={pad.l - 4} y={y(v) + 3} textAnchor="end" className={styles.axis}>
-            {Math.round(v * 100)}%
-          </text>
-        </g>
-      ))}
-      {marks.map((m) => (
-        <g key={`${m.number}-${m.at}`}>
-          <line x1={x(Date.parse(m.at))} x2={x(Date.parse(m.at))} y1={pad.t} y2={h - pad.b} className={styles.prMark} />
-          <text
-            x={x(Date.parse(m.at)) + (x(Date.parse(m.at)) > w - 50 ? -3 : 3)}
-            y={pad.t + 8}
-            textAnchor={x(Date.parse(m.at)) > w - 50 ? "end" : "start"}
-            className={styles.axis}
-          >
-            #{m.number}
-          </text>
-          <title>{`#${m.number} merged ${m.at.slice(0, 10)}: ${m.title ?? ""}`}</title>
-        </g>
-      ))}
-      <polyline points={line} className={styles.trendLine} />
-      {pts.map((p) => (
-        <circle key={p.week} cx={x(Date.parse(p.week))} cy={y(p.hit / p.cases)} r={4} className={styles.trendDot}>
-          <title>{`Week of ${p.week}: ${p.hit} of ${p.cases} runs (${pct(p.hit / p.cases)})`}</title>
-        </circle>
-      ))}
-      <text x={pad.l} y={h - 4} className={styles.axis}>
-        {pts[0].week.slice(5)}
-      </text>
-      <text x={w - pad.r} y={h - 4} textAnchor="end" className={styles.axis}>
-        {pts[pts.length - 1].week.slice(5)}
-      </text>
-    </svg>
-  );
-}
-
-function trendAnswer(t: RuleTrend): string {
-  const ends = trendEnds(t);
-  const parts: string[] = [];
-  if (ends) {
-    const delta = Math.round((ends.last - ends.first) * 100);
-    parts.push(
-      Math.abs(delta) < 5
-        ? `Steady at about ${pct(ends.last)} of runs`
-        : `${delta > 0 ? "Up" : "Down"} from ${pct(ends.first)} to ${pct(ends.last)} of runs`
-    );
-  }
-  if (t.rerun.citations) parts.push(`${t.rerun.still} of ${t.rerun.citations} citations still hit it when run again a week or more later`);
-  parts.push(t.changes.length ? `after ${t.changes.length === 1 ? "PR" : "PRs"} ${t.changes.map((c) => `#${c.number}`).join(", ")}` : "no encoder PR names it");
-  return `${parts.join("; ")}.`;
-}
-
-function Discovery({ model, params }: { model: FlowModel; params: FlowParams }) {
-  const cut = model.retry ? retryCutoff(model.retry.steps) : null;
-  const loopCost = model.looping.reduce((s, l) => s + (l.cost_usd ?? 0), 0);
-  const loopUnpriced = model.looping.filter((l) => l.cost_usd == null).length;
-  const rerun = model.trends.reduce((acc, t) => ({ citations: acc.citations + t.rerun.citations, still: acc.still + t.rerun.still }), { citations: 0, still: 0 });
-  const worse = model.trends.filter((t) => {
-    const e = trendEnds(t);
-    return e && e.last - e.first >= 0.05;
-  });
-  return (
-    <>
-      <p className={styles.lede} style={{ marginTop: 16 }}>
-        Patterns across runs and tries that one station cannot show. Each card answers one question; its numbers are the evidence. The agent brief starts with the same answers.
-      </p>
-      <div className={styles.cards}>
-        <section className={styles.card} aria-labelledby="fixes-h">
-          <p className={styles.eyebrow}>1 · Did our fixes work?</p>
-          <h2 id="fixes-h">The rules the encoder does not fix, week by week</h2>
-          <p className={styles.answer}>
-            {model.trends.length
-              ? worse.length
-                ? `${worse.length} of ${model.trends.length} rules hit a larger share of runs now than in the first week with try records.${rerun.citations ? ` When the same citation ran again a week or more later, it still hit the rule in ${rerun.still} of ${rerun.citations} cases (${pct(rerun.still / rerun.citations)}).` : ""}`
-                : `None of these rules got more frequent in the window.${rerun.citations ? ` Re-runs of the same citation still hit them in ${rerun.still} of ${rerun.citations} cases.` : ""}`
-              : "No runs with try records in this window."}
-          </p>
-          <div className={styles.trendGrid}>
-            {model.trends.map((t) => (
-              <div key={t.rule_id} className={styles.trendCell}>
-                <code>{t.rule_id}</code>
-                <RuleTrendChart trend={t} />
-                <p>{trendAnswer(t)}</p>
-              </div>
-            ))}
-          </div>
-          <p className={styles.note}>
-            Share of runs with the encoder&apos;s per-try record whose tries hit the rule, per week with 15 runs or more. Dashed lines: merged axiom-encode PRs that name the rule. The mix
-            of citations changes each week; the re-run count compares the same citation.
-          </p>
-        </section>
-
-        <section className={styles.card} aria-labelledby="follows-h">
-          <p className={styles.eyebrow}>2 · What follows a fix?</p>
-          <h2 id="follows-h">When one rule is fixed, which one comes next</h2>
-          <p className={styles.answer}>
-            {model.follows[0]
-              ? `When ${model.follows[0].fixed} is fixed, ${model.follows[0].next} appears in the next try ${pct(model.follows[0].share)} of the time, ${model.follows[0].lift}× its usual rate. Fix such pairs together.`
-              : "No pair of rules follows each other much more often than chance."}
-          </p>
-          {model.follows.length ? (
-            <ol className={styles.follows}>
-              {model.follows.map((f) => (
-                <li key={`${f.fixed}|${f.next}`}>
-                  <code>{f.fixed}</code>
-                  <span aria-hidden>→</span>
-                  <code>{f.next}</code>
-                  <span className={styles.followStat}>
-                    {pct(f.share)} · {f.lift}× usual · {f.count} tries
-                  </span>
-                </li>
-              ))}
-            </ol>
-          ) : null}
-        </section>
-
-        <section className={styles.card} aria-labelledby="stubborn-h">
-          <p className={styles.eyebrow}>3 · Which rules does another try not fix?</p>
-          <h2 id="stubborn-h">Rules that come back on the next try</h2>
-          <p className={styles.answer}>
-            {model.ladder.stubborn[0]
-              ? `${model.ladder.stubborn[0].rule_id} fails ${model.ladder.stubborn[0].occurrences} tries, and the next try fails it again ${pct(model.ladder.stubborn[0].stick_rate)} of the time.`
-              : "No rule with enough tries in this window."}
-            {cut ? ` From try ${cut.from.label} on, ${cut.passed} of ${cut.tries} tries pass (${pct(cut.passed / cut.tries)}) for $${cut.cost.toFixed(2)}.` : ""}
-          </p>
-          <div className={styles.tableWrap}>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>Rule</th>
-                  <th className={styles.num}>Failed tries</th>
-                  <th>Next try fails it again</th>
-                  <th className={styles.num}>Cases recovered</th>
-                </tr>
-              </thead>
-              <tbody>
-                {model.ladder.stubborn.map((r) => (
-                  <tr key={r.rule_id}>
-                    <td>
-                      <code>{r.rule_id}</code>
-                    </td>
-                    <td className={styles.num}>
-                      {r.occurrences.toLocaleString("en-US")} <small>in {r.cases}</small>
-                    </td>
-                    <td>
-                      <span className={styles.stick}>
-                        <i style={{ width: `${(r.stick_rate ?? 0) * 100}%` }} />
-                      </span>{" "}
-                      {pct(r.stick_rate)}
-                    </td>
-                    <td className={styles.num}>
-                      {r.recovered} <small>of {r.cases}</small>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section className={styles.card} aria-labelledby="looping-h">
-          <p className={styles.eyebrow}>4 · Which citations to stop dispatching?</p>
-          <h2 id="looping-h">Dispatched again and again, never merged</h2>
-          <p className={styles.answer}>
-            {model.looping.length
-              ? `${model.looping.length} citations ran ${model.looping.reduce((s, l) => s + l.cases, 0)} times in ${model.window.days} days with no merge, for $${loopCost.toFixed(2)} of recorded model cost${loopUnpriced ? ` (${loopUnpriced} of them ran before the cost ledger)` : ""}. Do not dispatch them again until something changes for their top rule.`
-              : "No citation looped in this window."}
-          </p>
-          {model.looping.length ? (
-            <div className={styles.tableWrap}>
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th>Citation</th>
-                    <th className={styles.num}>Runs</th>
-                    <th className={styles.num}>Failures</th>
-                    <th className={styles.num}>Cost</th>
-                    <th>Fails on</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {model.looping.map((l) => (
-                    <tr key={l.citation}>
-                      <td>
-                        <a href={flowHref(params, { citation: l.citation, view: "pipeline" })}>
-                          <code>{l.citation}</code>
-                        </a>
-                      </td>
-                      <td className={styles.num}>{l.cases}</td>
-                      <td className={styles.num}>{l.failed_visits}</td>
-                      <td className={styles.num}>{l.cost_usd == null ? "–" : `$${l.cost_usd.toFixed(2)}`}</td>
-                      <td>
-                        {l.rules.map((r) => (
-                          <code key={r} style={{ display: "block" }}>
-                            {r}
-                          </code>
-                        ))}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : null}
-        </section>
-      </div>
-    </>
   );
 }
 
