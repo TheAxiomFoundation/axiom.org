@@ -1,5 +1,6 @@
+import { createHmac } from "node:crypto";
 import { NextResponse } from "next/server";
-import { clientKey, isRateLimited } from "./limiter";
+import { clientKey, isRateLimited, oneStartAtATime } from "./limiter";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,21 @@ const MAX_ATTEMPT = 1000;
 /** Hard ceiling on concurrently 'running' self-reported rows — keeps a
  *  spammer from flooding the board even under rotating client keys. */
 const MAX_PUBLIC_RUNNING_ROWS = 200;
+/** One client's share of that ceiling, so a single caller can't take it all. */
+const MAX_RUNNING_ROWS_PER_CLIENT = 20;
+/** A running row holds a slot only while it heartbeats. Encoders beat
+ *  about twice a minute and the board calls a run stale after two
+ *  minutes; ten leaves room for a slow network. Without this, rows an
+ *  encoder abandoned (or never meant to finish) held their slots forever. */
+const CAPACITY_HEARTBEAT_WINDOW_MS = 10 * 60 * 1000;
+/** A heartbeat renews only a row that will hold its slot for at least
+ *  this long more, so a renewal can't land after the slot lapsed and was
+ *  handed to a new start, however slowly the update reaches the table. */
+const HEARTBEAT_GRACE_MS = 2 * 60 * 1000;
+/** A registration holds a slot for at most a day from its start, however
+ *  long it heartbeats: encodes take minutes to hours, and a client tag
+ *  (which changes daily) then covers every row that counts. */
+const MAX_SLOT_AGE_MS = 24 * 60 * 60 * 1000;
 
 interface IngestConfig {
   url: string;
@@ -84,9 +100,32 @@ function sanitizeRunner(value: unknown): Record<string, unknown> {
   return clean;
 }
 
-async function countPublicRunningRows(config: IngestConfig): Promise<number> {
+/**
+ * A per-client tag for the rows a client starts: a keyed hash of the
+ * client key (its IP) and the UTC day of `at`, so the stored tag
+ * identifies no one and links a client's runs for a day at most.
+ */
+function clientTag(config: IngestConfig, key: string, at: number): string {
+  const day = new Date(at).toISOString().slice(0, 10);
+  return createHmac("sha256", config.key)
+    .update(`ingest-client:${day}:${key}`)
+    .digest("hex")
+    .slice(0, 16);
+}
+
+/** Self-reported rows holding a slot at `nowMs` (running, heartbeat
+ *  within the window, started within a day), optionally only those with
+ *  one of a client's tags. */
+async function countPublicRunningRows(
+  config: IngestConfig,
+  nowMs: number,
+  tags?: string[]
+): Promise<number> {
+  const since = new Date(nowMs - CAPACITY_HEARTBEAT_WINDOW_MS).toISOString();
+  const startedSince = new Date(nowMs - MAX_SLOT_AGE_MS).toISOString();
+  const clientFilter = tags ? `&runner->>ingest_client=in.(${tags.join(",")})` : "";
   const response = await fetch(
-    `${config.url}/rest/v1/live_encoding_runs?select=id&status=eq.running&runner->>reported_via=eq.public_ingest`,
+    `${config.url}/rest/v1/live_encoding_runs?select=id&status=eq.running&runner->>reported_via=eq.public_ingest&last_heartbeat_at=gte.${encodeURIComponent(since)}&started_at=gte.${encodeURIComponent(startedSince)}${clientFilter}`,
     {
       method: "HEAD",
       headers: {
@@ -104,14 +143,17 @@ async function countPublicRunningRows(config: IngestConfig): Promise<number> {
   return Number.isNaN(count) ? 0 : count;
 }
 
-/** Update an ingest-stamped row; resolves to false when nothing matched. */
+/** Update an ingest-stamped row (only one that heartbeat since `since`,
+ *  when given); resolves to false when nothing matched. */
 async function updateIngestRow(
   config: IngestConfig,
   id: string,
-  data: Record<string, unknown>
+  data: Record<string, unknown>,
+  since?: string
 ): Promise<boolean> {
+  const fresh = since ? `&last_heartbeat_at=gte.${encodeURIComponent(since)}` : "";
   const response = await fetch(
-    `${config.url}/rest/v1/live_encoding_runs?id=eq.${encodeURIComponent(id)}&runner->>reported_via=eq.public_ingest`,
+    `${config.url}/rest/v1/live_encoding_runs?id=eq.${encodeURIComponent(id)}&runner->>reported_via=eq.public_ingest${fresh}`,
     {
       method: "PATCH",
       headers: { ...restHeaders(config), Prefer: "return=representation" },
@@ -126,12 +168,64 @@ async function updateIngestRow(
   return rows.length > 0;
 }
 
+/** Admit and insert a public run, if the board and the client's share
+ *  have room. Runs one at a time per client (oneStartAtATime). */
+async function startRun(
+  config: IngestConfig,
+  key: string,
+  id: string,
+  citation: string,
+  body: Record<string, unknown>
+): Promise<NextResponse> {
+  const nowMs = Date.now();
+  const now = new Date(nowMs).toISOString();
+  if ((await countPublicRunningRows(config, nowMs)) >= MAX_PUBLIC_RUNNING_ROWS) {
+    return NextResponse.json({ error: "board_full" }, { status: 429 });
+  }
+  const tag = clientTag(config, key, nowMs);
+  // Yesterday's tag too: a row holds a slot for at most a day, so these
+  // two tags cover every row of this client's that still counts.
+  const tags = Array.from(new Set([tag, clientTag(config, key, nowMs - MAX_SLOT_AGE_MS)]));
+  if ((await countPublicRunningRows(config, nowMs, tags)) >= MAX_RUNNING_ROWS_PER_CLIENT) {
+    return NextResponse.json({ error: "client_full" }, { status: 429 });
+  }
+  const row: Record<string, unknown> = {
+    id,
+    citation,
+    status: "running",
+    // Server clock only — client clocks are not trusted.
+    started_at: now,
+    last_heartbeat_at: now,
+    backend: cleanText(body.backend, MAX_FIELD_LENGTH),
+    model: cleanText(body.model, MAX_FIELD_LENGTH),
+    attempt: cleanAttempt(body.attempt) ?? 1,
+    encoder_version: cleanText(body.encoder_version, MAX_FIELD_LENGTH),
+    // Encoders open a run already in its first phase (resolve).
+    phase: cleanText(body.phase, MAX_FIELD_LENGTH),
+    runner: { ...sanitizeRunner(body.runner), ingest_client: tag },
+  };
+  const response = await fetch(`${config.url}/rest/v1/live_encoding_runs`, {
+    method: "POST",
+    headers: restHeaders(config),
+    body: JSON.stringify(row),
+    cache: "no-store",
+  });
+  if (response.status === 409) {
+    return NextResponse.json({ error: "duplicate_id" }, { status: 409 });
+  }
+  if (!response.ok) {
+    throw new Error(`Supabase returned ${response.status}`);
+  }
+  return new NextResponse(null, { status: 204 });
+}
+
 export async function POST(request: Request) {
   const config = getIngestConfig();
   if (!config) {
     return NextResponse.json({ error: "ingest_unconfigured" }, { status: 503 });
   }
-  if (isRateLimited(clientKey(request))) {
+  const key = clientKey(request);
+  if (isRateLimited(key)) {
     return NextResponse.json({ error: "rate_limited" }, { status: 429 });
   }
 
@@ -147,46 +241,21 @@ export async function POST(request: Request) {
   if (!LIVE_ID_RE.test(id)) {
     return NextResponse.json({ error: "invalid_id" }, { status: 400 });
   }
-  const now = new Date().toISOString();
-
   try {
     if (op === "start") {
       const citation = cleanText(body.citation, MAX_CITATION_LENGTH);
       if (!citation) {
         return NextResponse.json({ error: "invalid_citation" }, { status: 400 });
       }
-      if ((await countPublicRunningRows(config)) >= MAX_PUBLIC_RUNNING_ROWS) {
-        return NextResponse.json({ error: "board_full" }, { status: 429 });
-      }
-      const row: Record<string, unknown> = {
-        id,
-        citation,
-        status: "running",
-        // Server clock only — client clocks are not trusted.
-        started_at: now,
-        last_heartbeat_at: now,
-        backend: cleanText(body.backend, MAX_FIELD_LENGTH),
-        model: cleanText(body.model, MAX_FIELD_LENGTH),
-        attempt: cleanAttempt(body.attempt) ?? 1,
-        encoder_version: cleanText(body.encoder_version, MAX_FIELD_LENGTH),
-        // Encoders open a run already in its first phase (resolve).
-        phase: cleanText(body.phase, MAX_FIELD_LENGTH),
-        runner: sanitizeRunner(body.runner),
-      };
-      const response = await fetch(`${config.url}/rest/v1/live_encoding_runs`, {
-        method: "POST",
-        headers: restHeaders(config),
-        body: JSON.stringify(row),
-        cache: "no-store",
-      });
-      if (response.status === 409) {
-        return NextResponse.json({ error: "duplicate_id" }, { status: 409 });
-      }
-      if (!response.ok) {
-        throw new Error(`Supabase returned ${response.status}`);
-      }
-      return new NextResponse(null, { status: 204 });
+      // One start per client at a time on this instance, so concurrent
+      // starts each count the rows the others inserted.
+      return await oneStartAtATime(key, () =>
+        startRun(config, key, id, citation, body)
+      );
     }
+
+    const nowMs = Date.now();
+    const now = new Date(nowMs).toISOString();
 
     if (op === "heartbeat") {
       const data: Record<string, unknown> = { last_heartbeat_at: now };
@@ -196,7 +265,15 @@ export async function POST(request: Request) {
       if (attempt !== null) data.attempt = attempt;
       const model = cleanText(body.model, MAX_FIELD_LENGTH);
       if (model) data.model = model;
-      const matched = await updateIngestRow(config, id, data);
+      // Only a row that holds its slot for a while yet: a heartbeat can't
+      // revive a run whose slot has lapsed (or is about to), or a client
+      // could start 20, let them lapse, start 20 more and beat the first
+      // batch back to life. Encoders beat every 30 s and treat telemetry
+      // as best-effort, so a lapsed run just stays stale on the board.
+      const renewable = new Date(
+        nowMs - (CAPACITY_HEARTBEAT_WINDOW_MS - HEARTBEAT_GRACE_MS)
+      ).toISOString();
+      const matched = await updateIngestRow(config, id, data, renewable);
       if (!matched) {
         return NextResponse.json({ error: "unknown_run" }, { status: 404 });
       }
