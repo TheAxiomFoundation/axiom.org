@@ -1,5 +1,5 @@
 import {
-  AZ_HOUSEHOLD,
+  EXAMPLE_HOUSEHOLD,
   RATING_SCALES,
   TWISTS,
   TWIST_GROUPS,
@@ -45,7 +45,7 @@ describe('aspen content', () => {
     expect(isPerspectiveId('leader')).toBe(false)
     expect(isUsState('Arizona')).toBe(true)
     expect(isUsState('Atlantis')).toBe(false)
-    expect(findHousehold('az-savings')?.state).toBe('Arizona')
+    expect(findHousehold('ct-couple')?.state).toBe('Connecticut')
     expect(findHousehold('own')).toBeUndefined()
     expect(findHousehold(null)).toBeUndefined()
   })
@@ -140,7 +140,7 @@ describe('aspen content', () => {
     expect(TWIST_IDS).toHaveLength(TWISTS.length)
     expect(twistsFor(undefined)).toEqual([])
     expect(twistsFor(findHousehold('az-retiree')).map((t) => t.id)).not.toContain('student')
-    expect(twistsFor(findHousehold('az-savings')).map((t) => t.id)).not.toContain('savings')
+    expect(twistsFor(findHousehold('ct-couple')).map((t) => t.id)).not.toContain('savings')
     expect(twistsFor(findHousehold('ny-parent')).map((t) => t.id)).not.toContain('utilities')
     expect(twistsFor(findHousehold('md-tca')).map((t) => t.id)).toEqual(TWIST_IDS)
   })
@@ -156,27 +156,38 @@ describe('aspen content', () => {
     expect(percent(1, 0)).toBe(0)
   })
 
-  it('labels the Arizona amount with the standards year it comes from', () => {
-    const { reference, fromOctober, answer } = POLICYBENCH.azCase
+  it('labels the example amount with the standards year it comes from', () => {
+    const ex = POLICYBENCH.example
     // The sourced figures (content.ts comments): PolicyBench's FY2026 reference, and
     // USDA's FY2027 minimum for households of one or two in the 48 states and DC.
-    expect(reference).toEqual({ monthly: 24, standards: 'FY2026' })
-    expect(fromOctober).toEqual({ monthly: 25, standards: 'FY2027', effective: 'October 1, 2026' })
+    expect(ex.reference).toEqual({ monthly: 24, annual: 288, standards: 'FY2026' })
+    expect(ex.fromOctober).toEqual({ monthly: 25, standards: 'FY2027', effective: 'October 1, 2026' })
     // October 2026 is the first month of FY2027.
     expect(federalFiscalYear('2026-10')).toBe(2027)
     expect(federalFiscalYear('2026-09')).toBe(2026)
-    for (const text of [answer, findHousehold('az-savings')!.why]) {
-      expect(text).toContain('$24 a month under FY2026 standards')
-      expect(text).toContain("PolicyBench's reference")
-      expect(text).toContain('The minimum benefit rose to $25 on October 1, 2026.')
-      expect(text).toContain("Axiom's Arizona SNAP rules don't test eligibility yet")
-      expect(text).toContain('the rules check shows the amount if eligible')
-    }
-    // Master's slides keep the annual reference: ten months at the benchmark's
-    // FY2026 minimum, alongside the monthly standards caveat.
-    expect(AZ_HOUSEHOLD.reference).toBe(10 * reference.monthly)
-    expect(WHAT_MODELS_MISS.amount).toBe(AZ_HOUSEHOLD.reference)
-    expect(POLICYBENCH.azCase.modelsAsked).toBe(POLICYBENCH.models)
-    expect(POLICYBENCH.azCase.modelsSaidZero).toBe(POLICYBENCH.models)
+    const why = findHousehold('ct-couple')!.why
+    expect(why).toContain('$24 a month under FY2026 standards')
+    expect(why).toContain("PolicyBench's reference")
+    expect(why).toContain('$25 from October 1, 2026')
+    // The rules check is gone from the chat, so no copy promises one.
+    expect(why).not.toContain('rules check')
+    // Twelve months at the benchmark's FY2026 minimum, on both At scale slides.
+    expect(ex.reference.annual).toBe(12 * ex.reference.monthly)
+    expect(EXAMPLE_HOUSEHOLD.reference).toBe(ex.reference.annual)
+    expect(WHAT_MODELS_MISS.amount).toBe(ex.reference.annual)
+    expect(ex.modelsAsked).toBe(POLICYBENCH.models)
+  })
+
+  it("keeps the example's tiles in step with its counts (PolicyBench scenario_027)", () => {
+    const ex = POLICYBENCH.example
+    const answers = EXAMPLE_HOUSEHOLD.answers
+    expect(answers).toHaveLength(ex.modelsAsked)
+    expect(answers.filter((a) => a !== null)).toHaveLength(ex.modelsAnswered)
+    expect(answers.filter((a) => a === 0)).toHaveLength(ex.modelsSaidZero)
+    expect(answers.filter((a) => a === EXAMPLE_HOUSEHOLD.reference)).toHaveLength(ex.modelsRight)
+    // The tiles read $0 first, then other amounts, the right answer, and the one that didn't parse.
+    expect(answers.at(-1)).toBeNull()
+    expect(answers.at(-2)).toBe(EXAMPLE_HOUSEHOLD.reference)
+    expect(findHousehold('ct-couple')?.plural).toBe(true)
   })
 })

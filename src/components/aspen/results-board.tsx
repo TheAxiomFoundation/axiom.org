@@ -1,5 +1,5 @@
 import { ifEligibleSentence, type Count, type RunSummary, type ScaleSummary } from "@/lib/aspen/results";
-import { findHousehold, POLICYBENCH, SOURCE_OF_TRUTH } from "@/lib/aspen/content";
+import { POLICYBENCH, SOURCE_OF_TRUTH } from "@/lib/aspen/content";
 import { formatValue } from "./client";
 import { Bars, BlockHeading, Card, Part, Prompt, Stat } from "./ui";
 
@@ -300,14 +300,13 @@ function SpotlightList({ summary }: { summary: RunSummary }) {
                   </span>
                 )}
               </span>
-              {item.rulesAmount === POLICYBENCH.azCase.reference.monthly &&
-                (item.rulesProgram === "Arizona SNAP" || item.household === findHousehold("az-savings")?.label) && (
-                  <p className="m-0 font-body text-[0.8rem] leading-relaxed text-[var(--color-ink-secondary)]">
-                    PolicyBench&apos;s Arizona reference: ${POLICYBENCH.azCase.reference.monthly} a month under{" "}
-                    {POLICYBENCH.azCase.reference.standards} standards. The minimum benefit rose to ${POLICYBENCH.azCase.fromOctober.monthly}{" "}
-                    on {POLICYBENCH.azCase.fromOctober.effective}.
-                  </p>
-                )}
+              {/* A saved check from rules that don't test eligibility (Arizona's) shows FY2026's $24 minimum; say so beside it. */}
+              {item.rulesAmount === POLICYBENCH.example.reference.monthly && item.rulesIfEligible && (
+                <p className="m-0 font-body text-[0.8rem] leading-relaxed text-[var(--color-ink-secondary)]">
+                  ${POLICYBENCH.example.reference.monthly} is the {POLICYBENCH.example.reference.standards} minimum benefit. It rose to $
+                  {POLICYBENCH.example.fromOctober.monthly} on {POLICYBENCH.example.fromOctober.effective}.
+                </p>
+              )}
               {item.wentWrong.length > 0 && (
                 <span className="font-body text-[0.95rem] text-[var(--color-error)]">{item.wentWrong.join(" · ")}</span>
               )}

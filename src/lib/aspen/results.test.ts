@@ -30,7 +30,7 @@ const DATA: RunData = {
       turn: 0,
       created_at: '2026-10-26T18:00:00Z',
       perspective: 'resident',
-      household_id: 'az-savings',
+      household_id: 'ct-couple',
       prompt: 'Can I get SNAP?\n  with   savings',
       answer: 'You may not qualify. '.repeat(30),
       verdict: 'wrong',
@@ -47,7 +47,7 @@ const DATA: RunData = {
       turn: 1,
       created_at: '2026-10-26T18:01:00Z',
       perspective: 'resident',
-      household_id: 'az-savings',
+      household_id: 'ct-couple',
       prompt: 'Follow-up',
       answer: 'Short.',
       verdict: 'unsure',
@@ -111,7 +111,7 @@ describe('aspen results', () => {
       ['caseworker', 1],
       ['stranger', 1],
     ])
-    expect(s.households.find((h) => h.id === 'az-savings')?.count).toBe(1)
+    expect(s.households.find((h) => h.id === 'ct-couple')?.count).toBe(1)
     expect(s.households.find((h) => h.id === 'own')?.count).toBe(1)
     expect(s.states).toEqual([{ id: 'Arizona', label: 'Arizona', count: 2 }])
     expect(s.verdicts.map((c) => c.count)).toEqual([0, 1, 1])
@@ -127,7 +127,7 @@ describe('aspen results', () => {
     expect(first.prompt).toBe('Can I get SNAP? with savings')
     expect(first.answer?.endsWith('…')).toBe(true)
     expect(first.answer!.length).toBeLessThanOrEqual(360)
-    expect(first).toMatchObject({ perspective: 'A resident', household: 'Disabled, with savings', rulesAmount: 24 })
+    expect(first).toMatchObject({ perspective: 'A resident', household: 'Couple, with savings', rulesAmount: 24 })
     const unknown = feed.find((f) => f.id === 'd')!
     expect(unknown).toMatchObject({ perspective: 'stranger', household: null, createdAt: null })
   })
@@ -349,13 +349,13 @@ describe('aspen results', () => {
 
   it('breaks first questions down by household, detail and perspective, worst first', () => {
     const rows = breakdownOf([
-      { ...base, id: '1', turn: 0, prompt: 'q', household_id: 'az-savings', perspective: 'resident', twists: ['gig'], verdict: 'wrong' },
-      { ...base, id: '2', turn: 0, prompt: 'q', household_id: 'az-savings', perspective: 'caseworker', verdict: 'right' },
+      { ...base, id: '1', turn: 0, prompt: 'q', household_id: 'ct-couple', perspective: 'resident', twists: ['gig'], verdict: 'wrong' },
+      { ...base, id: '2', turn: 0, prompt: 'q', household_id: 'ct-couple', perspective: 'caseworker', verdict: 'right' },
       { ...base, id: '3', turn: 0, prompt: 'q', household_id: null, perspective: 'resident', verdict: 'unsure' },
       { ...base, id: '4', turn: 0, prompt: 'q', household_id: 'ny-parent', perspective: 'resident' },
     ])
     expect(rows[0]).toMatchObject({ kind: 'detail', id: 'gig', label: '+ Gig income', asked: 1, rated: 1, wrong: 1 })
-    expect(rows.find((r) => r.id === 'az-savings')).toMatchObject({ asked: 2, rated: 2, wrong: 1 })
+    expect(rows.find((r) => r.id === 'ct-couple')).toMatchObject({ asked: 2, rated: 2, wrong: 1 })
     expect(rows.find((r) => r.id === 'own')).toMatchObject({ label: 'Their own question', unsure: 1, wrong: 0 })
     expect(rows.find((r) => r.id === 'resident')).toMatchObject({ label: 'Asked as a resident', asked: 3, rated: 2, wrong: 1 })
     // Unrated rows sort last.

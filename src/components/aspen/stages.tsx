@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check } from "lucide-react";
 import {
   GROUP_PHONE_INTRO,
   EVENT,
@@ -192,8 +191,8 @@ export function YourThread({
     action = "Ask the AI";
   } else if (stage === "scale") {
     line =
-      thread?.householdId === "az-savings"
-        ? `You asked about the Arizona household below: every one of the ${POLICYBENCH.azCase.modelsAsked} models said it gets $0.`
+      thread?.householdId === "ct-couple"
+        ? `You asked about the Connecticut household below: ${POLICYBENCH.example.modelsSaidZero} of the ${POLICYBENCH.example.modelsAnswered} models that answered said it gets $0.`
         : `You asked about ${about}. Here's how AI does at scale.`;
   } else {
     // The rules check lives in the chatbot demo now, so the foundation just recalls the question.
@@ -275,10 +274,10 @@ export function YourContribution({ thread, onOpen }: { thread: ThreadQuestion | 
 // At scale: PolicyBench
 // ---------------------------------------------------------------------------
 
-/** At scale, on a phone: the one number, then the one household every model got wrong. */
+/** At scale, on a phone: the one number, then the example household most models got wrong. */
 export function PolicyBenchContent() {
   const zeroShare = percent(POLICYBENCH.saidZero, POLICYBENCH.eligibleAnswers);
-  const az = POLICYBENCH.azCase;
+  const ex = POLICYBENCH.example;
   return (
     <div className="flex flex-col gap-8">
       <BlockHeading>Across {POLICYBENCH.models} AI models</BlockHeading>
@@ -295,18 +294,17 @@ export function PolicyBenchContent() {
           </p>
         </Card>
       </Part>
-      <Part n={2} title="One Arizona household">
+      <Part n={2} title={`One ${ex.state} household`}>
         <Card className="flex flex-col gap-3 p-5">
-          <p className="m-0 font-body text-[1.08rem] leading-relaxed text-[var(--color-ink)]">{az.description}</p>
+          <p className="m-0 font-body text-[1.08rem] leading-relaxed text-[var(--color-ink)]">{ex.description}</p>
           <p className="m-0 font-body text-[1.08rem] font-semibold leading-relaxed text-[var(--color-error)]">
-            {az.modelsSaidZero === az.modelsAsked ? `All ${az.modelsAsked}` : `${az.modelsSaidZero} of ${az.modelsAsked}`} AI
-            models said $0.
+            {ex.modelsSaidZero} of the {ex.modelsAnswered} AI models that answered said $0. {ex.modelsRight} got it right.
           </p>
           <p className="m-0 font-body text-[1.08rem] leading-relaxed">
             <strong className="text-[var(--color-accent)]">
-              PolicyEngine&apos;s reference in PolicyBench, under {az.reference.standards} standards: ${az.reference.monthly} a month.
+              PolicyEngine&apos;s reference in PolicyBench, under {ex.reference.standards} standards: ${ex.reference.monthly} a month.
             </strong>{" "}
-            The minimum benefit rose to ${az.fromOctober.monthly} on {az.fromOctober.effective}.
+            The minimum benefit rose to ${ex.fromOctober.monthly} on {ex.fromOctober.effective}.
           </p>
         </Card>
       </Part>
@@ -344,7 +342,8 @@ export function FoundationContent({ sourceOfTruth }: { sourceOfTruth?: Count[] }
         <ul className="m-0 flex list-none flex-col gap-3 rounded-xl bg-[var(--color-ink)] p-5 font-body text-[1.08rem] leading-snug text-white">
           {FOUNDATION_TRAITS.map((trait) => (
             <li key={trait} className="flex gap-2.5">
-              <Check aria-hidden size={20} strokeWidth={2.25} className="mt-[2px] shrink-0 text-[#e8a25c]" />
+              {/* A plain bullet, not a check: these describe how the rules are built, not work that is finished. */}
+              <span aria-hidden className="mt-[0.55em] h-[7px] w-[7px] shrink-0 rounded-full bg-[#e8a25c]" />
               {trait}
             </li>
           ))}

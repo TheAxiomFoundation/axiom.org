@@ -21,7 +21,7 @@ const DATA: RunData = {
       turn: 0,
       created_at: "2026-10-26T18:01:00Z",
       perspective: "resident",
-      household_id: "az-savings",
+      household_id: "ct-couple",
       prompt: "I live in Phoenix. How much SNAP can I get?",
       answer: "You would not qualify because of your savings.",
       verdict: "wrong",
@@ -121,7 +121,7 @@ describe("ResultsBoard", () => {
     render(<ResultsBoard summary={SUMMARY} />);
     expect(screen.getByRole("heading", { name: "Where the answers broke down" })).toBeInTheDocument();
     const row = (label: string) => screen.getByTitle(label).parentElement as HTMLElement;
-    expect(row("Disabled, with savings")).toHaveTextContent("1 of 1");
+    expect(row("Couple, with savings")).toHaveTextContent("1 of 1");
     expect(row("+ Gig income")).toHaveTextContent("0 of 1");
     expect(row("Asked as a caseworker")).toHaveTextContent("0 of 1");
     expect(screen.getByText("What went wrong")).toBeInTheDocument();
@@ -211,18 +211,18 @@ describe("ResultsBoard", () => {
     expect(card).not.toHaveTextContent("qualify under the encoded rules");
     const spotlight = within(screen.getByRole("heading", { name: "Answers worth discussing" }).closest("section") as HTMLElement);
     expect(spotlight.getByText("$24").parentElement).toHaveTextContent("· The rules say $24 if eligible");
-    expect(spotlight.getByText(/PolicyBench's Arizona reference/)).toHaveTextContent(
-      "PolicyBench's Arizona reference: $24 a month under FY2026 standards. The minimum benefit rose to $25 on October 1, 2026.",
+    expect(spotlight.getByText(/is the FY2026 minimum benefit/)).toHaveTextContent(
+      "$24 is the FY2026 minimum benefit. It rose to $25 on October 1, 2026.",
     );
   });
 
-  it("keeps the Arizona reference out of other programs' $24 checks", () => {
+  it("keeps the Arizona minimum-benefit note out of other programs' $24 checks", () => {
     render(<ResultsBoard summary={summarizeRun({
       ...DATA,
       prompts: [{ ...DATA.prompts[0], household_id: "ny-parent", rules_program: "New York SNAP" }],
     })} />);
     expect(screen.getByText("$24")).toBeInTheDocument();
-    expect(screen.queryByText(/PolicyBench's Arizona reference/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/is the FY2026 minimum benefit/)).not.toBeInTheDocument();
   });
 
   it("shows the source-of-truth answers under how it felt", () => {
