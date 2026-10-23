@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   ChartColumn,
@@ -24,8 +24,7 @@ import {
   ONE_SET_OF_RULES,
   ONE_SET_STATEMENT,
   FOUNDATION_TRAITS,
-  AZ_HOUSEHOLD,
-  AZ_SCENARIO_REVIEW,
+  EXAMPLE_HOUSEHOLD,
   BUILD_HEADING,
   FRONT_DOOR,
   LIVE_DEMO,
@@ -42,7 +41,7 @@ import {
   type StageId,
 } from "@/lib/aspen/content";
 import type { Control } from "@/lib/aspen/types";
-import { EMPTY_SUMMARY, type Count, type RunSummary, type ScaleSummary } from "@/lib/aspen/results";
+import { EMPTY_SUMMARY, ifEligibleSentence, type Count, type RunSummary, type ScaleSummary } from "@/lib/aspen/results";
 import { postJson, useControl, useResults } from "./client";
 import { BAD, GOOD, MAYBE } from "./results-board";
 import { BUTTON_QUIET, FIELD } from "./ui";
@@ -448,18 +447,31 @@ function BigStat({
   label,
   tone = "ink",
   size = 96,
+  unit,
 }: {
   value: ReactNode;
   label: string;
   tone?: "ink" | "bad" | "accent";
   size?: number;
+  /** A short unit beside the number, e.g. "in 2026", so an annual total doesn't read as monthly. */
+  unit?: string;
 }) {
   const color = { ink: "var(--color-ink)", bad: "var(--color-error)", accent: "var(--color-accent)" }[tone];
+  const number = (
+    <span className="block font-display font-light leading-none tabular-nums" style={{ fontSize: size, color }}>
+      {value}
+    </span>
+  );
   return (
     <div>
-      <span className="block font-display font-light leading-none tabular-nums" style={{ fontSize: size, color }}>
-        {value}
-      </span>
+      {unit ? (
+        <span className="flex items-baseline gap-[12px]">
+          {number}
+          <span className="font-body text-[28px] text-[var(--color-ink-secondary)]">{unit}</span>
+        </span>
+      ) : (
+        number
+      )}
       <span className="mt-[8px] block font-body text-[24px] text-[var(--color-ink-secondary)]">{label}</span>
     </div>
   );
@@ -651,6 +663,20 @@ function RatingSlide({
   );
 }
 
+/**
+ * "would stop a resident from applying. 2 of them qualify." An amount from
+ * rules that don't test eligibility counts apart (ifEligibleSentence).
+ */
+export function notApplyLabel(v: Pick<RunSummary["viability"], "wouldNotApplyEligible" | "wouldNotApplyIfEligible">): string {
+  const parts: string[] = [];
+  if (v.wouldNotApplyEligible > 0) {
+    parts.push(`${v.wouldNotApplyEligible} of them ${v.wouldNotApplyEligible === 1 ? "qualifies" : "qualify"}.`);
+  }
+  const ifEligible = ifEligibleSentence(v, "of them");
+  if (ifEligible) parts.push(ifEligible);
+  return parts.length ? `would stop a resident from applying. ${parts.join(" ")}` : "would stop a resident from applying";
+}
+
 function RevealSlide({ summary }: { summary: RunSummary }) {
   const v = summary.viability;
   if (v.rated === 0) {
@@ -674,11 +700,7 @@ function RevealSlide({ summary }: { summary: RunSummary }) {
           <BigStat
             size={76}
             value={v.wouldNotApply}
-            label={
-              v.wouldNotApplyEligible > 0
-                ? `would stop a resident from applying. ${v.wouldNotApplyEligible} of them qualify.`
-                : "would stop a resident from applying"
-            }
+            label={notApplyLabel(v)}
             tone={v.wouldNotApply > 0 ? "bad" : "ink"}
           />
         </Panel>
@@ -728,7 +750,7 @@ function ScaleShareSlide() {
       </span>
       <div className="flex max-w-[760px] flex-col gap-[24px]">
         <p className="m-0 font-display text-[52px] font-light leading-tight text-[var(--color-ink)]">
-          of AI answers told a family that qualifies for SNAP they&apos;d get <strong className="font-normal">$0</strong>.
+          of AI answers told a household that qualifies for SNAP it would get <strong className="font-normal">$0</strong>.
         </p>
         <p className="m-0 font-body text-[24px] text-[var(--color-ink-muted)]">
           {POLICYBENCH.saidZero} of {POLICYBENCH.eligibleAnswers} answers · {POLICYBENCH.models} AI models ·{" "}
@@ -746,6 +768,26 @@ function BenchFooter({ source }: { source: string }) {
       {source}
     </p>
   );
+}
+
+/** The annual reference uses FY2026's monthly minimum in every month, October to December included. */
+function StandardsNote() {
+  const ex = POLICYBENCH.example;
+  return (
+    <p className="m-0 font-body text-[18px] leading-snug text-[var(--color-ink-secondary)]">
+      ${ex.reference.monthly} a month all year under {ex.reference.standards} standards.{" "}
+      The minimum benefit rose to ${ex.fromOctober.monthly} on {ex.fromOctober.effective}.
+    </p>
+  );
+}
+
+/** One tile per model: $0 in red, other wrong amounts muted, the reference amount in the accent, no answer as a dash. */
+function answerTile(answer: number | null, reference: number) {
+  if (answer === null) return { text: "–", label: "no answer", tone: "border-[var(--color-rule)] text-[var(--color-ink-muted)]" };
+  if (answer === reference)
+    return { text: `$${answer}`, label: `$${answer}, matches the reference`, tone: "border-[var(--color-accent)] bg-[var(--color-accent-light)] font-semibold text-[var(--color-accent)]" };
+  if (answer <= 0) return { text: "$0", label: "$0", tone: "border-[var(--color-error)]/30 text-[var(--color-error)]" };
+  return { text: `$${answer.toLocaleString("en-US")}`, label: `$${answer.toLocaleString("en-US")}`, tone: "border-[var(--color-rule)] text-[var(--color-ink-secondary)]" };
 }
 
 /** At scale, slide 2 (Max's Nava deck): accuracy by program, owed money against owed $0. */
@@ -792,9 +834,10 @@ function BreakSlide() {
   );
 }
 
-/** At scale, slide 2 (Max's Nava deck): the Arizona household, as every model answers it. */
+/** At scale, slide 2 (Max's Nava deck): the example household, as every model answers it. */
 function HouseholdSlide() {
-  const h = AZ_HOUSEHOLD;
+  const h = EXAMPLE_HOUSEHOLD;
+  const ex = POLICYBENCH.example;
   return (
     <div className="flex h-full flex-col gap-[20px]">
       <p className="m-0 font-display text-[40px] font-light leading-tight text-[var(--color-ink)]">{h.title}</p>
@@ -810,18 +853,37 @@ function HouseholdSlide() {
         <Panel className="flex flex-col gap-[18px]">
           <Label className="mb-0">{h.program}</Label>
           <div className="grid grid-cols-2 gap-[24px]">
-            <BigStat value={`$${h.reference}`} label="PolicyEngine's reference" tone="accent" />
-            <BigStat value="$0" label={`from all ${h.models} AI models`} tone="bad" />
+            <BigStat value={`$${h.reference}`} label="PolicyEngine's reference in PolicyBench" tone="accent" />
+            <BigStat value="$0" label={`from ${ex.modelsSaidZero} of ${ex.modelsAnswered} AI models · ${ex.modelsExact} matched exactly`} tone="bad" />
           </div>
-          <div aria-label={`${h.models} model answers, all $0`} className="grid grid-cols-12 gap-[6px]">
-            {Array.from({ length: h.models }, (_, i) => (
-              <span
-                key={i}
-                className="rounded-[6px] border border-[var(--color-error)]/30 py-[4px] text-center font-mono text-[15px] text-[var(--color-error)]"
-              >
-                $0
-              </span>
-            ))}
+          <StandardsNote />
+          {/* Every model's answer: the $0s as one block, then the others at full width so no amount is cut. */}
+          <div
+            role="group"
+            aria-label={`${h.models} models: ${ex.modelsSaidZero} said $0, ${ex.modelsExact} said $${h.reference}, ${ex.modelsAnswered - ex.modelsSaidZero - ex.modelsExact} gave other amounts, ${h.models - ex.modelsAnswered} gave no answer`}
+            className="flex flex-col gap-[8px]"
+          >
+            <ul className="m-0 grid list-none grid-cols-[repeat(21,minmax(0,1fr))] gap-[6px] p-0">
+              {h.answers.filter((a) => a === 0).map((answer, i) => {
+                const tile = answerTile(answer, h.reference);
+                return (
+                  <li key={i} className={`rounded-[6px] border py-[4px] text-center font-mono text-[15px] ${tile.tone}`}>
+                    {tile.text}
+                  </li>
+                );
+              })}
+            </ul>
+            <ul className="m-0 flex list-none flex-wrap items-center gap-[6px] p-0">
+              {h.answers.filter((a) => a !== 0).map((answer, i) => {
+                const tile = answerTile(answer, h.reference);
+                return (
+                  <li key={i} className={`rounded-[6px] border px-[10px] py-[4px] text-center font-mono text-[15px] ${tile.tone}`}>
+                    <span aria-hidden={tile.text !== tile.label}>{tile.text}</span>
+                    {tile.text !== tile.label && <span className="sr-only">{tile.label}</span>}
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         </Panel>
       </div>
@@ -830,38 +892,12 @@ function HouseholdSlide() {
   );
 }
 
-const noSubscribe = () => () => {};
-
-/** Review notes for the team show only with ?review in the presenter URL, never on the room's screen. */
-function useReviewMode() {
-  return useSyncExternalStore(
-    noSubscribe,
-    () => new URLSearchParams(window.location.search).has("review"),
-    () => false,
-  );
-}
-
 /** At scale, slide 5 (Max's Nava deck): how the top two models explain $0, beside the rule they skip. */
 function MissSlide() {
   const m = WHAT_MODELS_MISS;
-  const review = useReviewMode();
   return (
     <div className="flex h-full flex-col gap-[16px]">
-      <div className="relative">
-        <p className="m-0 font-display text-[40px] font-light leading-tight text-[var(--color-ink)]">{m.title}</p>
-        {/* Floats beside the title, growing upward into the header margin, so it never changes the slide's fit. */}
-        {review && (
-          <p
-            role="note"
-            className="absolute bottom-0 right-0 m-0 max-w-[780px] rounded-[10px] border-2 border-dashed border-[var(--color-accent)] bg-[var(--color-accent-light)] px-[16px] py-[8px] font-body text-[16px] leading-snug text-[var(--color-ink)]"
-          >
-            <strong className="font-mono text-[15px] uppercase tracking-[0.18em] text-[var(--color-accent)]">
-              {AZ_SCENARIO_REVIEW.label}
-            </strong>{" "}
-            <strong>{AZ_SCENARIO_REVIEW.question}</strong> {AZ_SCENARIO_REVIEW.text}
-          </p>
-        )}
-      </div>
+      <p className="m-0 font-display text-[40px] font-light leading-tight text-[var(--color-ink)]">{m.title}</p>
       {/* One row of column labels, then boxes that share a top edge and a bottom edge. */}
       <div className="grid grid-cols-2 gap-x-[24px] gap-y-[10px]">
         <Label className="mb-0">How the top two models explain $0</Label>
@@ -878,8 +914,9 @@ function MissSlide() {
           <Label>{m.ruleLabel}</Label>
           <p className={`m-0 ${BOX_TEXT}`}>{m.rule}</p>
           <div className="mt-auto pt-[8px]">
-            <BigStat value={`$${m.amount}`} label={m.amountLabel} tone="accent" size={80} />
+            <BigStat value={`$${m.amount}`} unit="in 2026" label={m.amountLabel} tone="accent" size={80} />
           </div>
+          <StandardsNote />
         </Panel>
       </div>
       <BenchFooter source={m.sources} />
@@ -1207,7 +1244,8 @@ function FoundationSlide({ summary }: { summary: RunSummary }) {
           <ul className="m-0 flex list-none flex-col gap-[10px] p-0 font-body text-[22px] leading-snug text-white/80">
             {FOUNDATION_TRAITS.map((trait) => (
               <li key={trait} className="flex gap-[12px]">
-                <Check aria-hidden size={24} strokeWidth={2.25} className="mt-[2px] shrink-0 text-[#e8a25c]" />
+                {/* A plain bullet, not a check: these describe how the rules are built, not work that is finished. */}
+                <span aria-hidden className="mt-[12px] h-[8px] w-[8px] shrink-0 rounded-full bg-[#e8a25c]" />
                 {trait}
               </li>
             ))}
@@ -1282,7 +1320,8 @@ function TiersSlide() {
                 <ul className="m-0 grid list-none grid-cols-2 gap-x-[16px] gap-y-[6px] p-0 font-body text-[18px] leading-snug text-[var(--color-ink-secondary)]">
                   {(tier.programs as readonly string[]).map((program) => (
                     <li key={program} className="flex gap-[8px]">
-                      <Check aria-hidden size={18} strokeWidth={2.25} className="mt-[3px] shrink-0 text-[var(--color-accent)]" />
+                      {/* A plain bullet, not a check: these are the programs to encode, not programs done. */}
+                      <span aria-hidden className="mt-[10px] h-[6px] w-[6px] shrink-0 rounded-full bg-[var(--color-ink-muted)]" />
                       {program}
                     </li>
                   ))}

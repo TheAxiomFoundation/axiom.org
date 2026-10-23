@@ -53,6 +53,10 @@ export interface PromptRow {
   rules_period?: string | null;
   rules_amount?: number | null;
   rules_outputs?: unknown;
+  /** Read out of rules_outputs by the run's select (store.ts RUN_PROMPT_SELECT), not a column. */
+  rules_program_id?: string | null;
+  /** Read out of rules_outputs by the run's select: the check's saved eligibilityTested. */
+  rules_eligibility_tested?: boolean | null;
   rules_latency_ms?: number | null;
   rules_error?: string | null;
   post_check_verdict?: string | null;

@@ -162,15 +162,15 @@ describe("YourThread", () => {
     expect(screen.queryByText(/You asked about/)).not.toBeInTheDocument();
   });
 
-  it("ties the Arizona household to PolicyBench at scale", () => {
+  it("ties the example household to PolicyBench at scale", () => {
     render(
       <YourThread
         stage="scale"
-        thread={{ ...asked, householdId: "az-savings", householdLabel: "Disabled, with savings" }}
+        thread={{ ...asked, householdId: "ct-couple", householdLabel: "Couple, with savings" }}
         onOpen={vi.fn()}
       />,
     );
-    expect(screen.getByText(/every one of the 50 models said it gets \$0/)).toBeInTheDocument();
+    expect(screen.getByText("You asked about the Connecticut household below: 42 of the 49 models that answered said it gets $0.")).toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
@@ -406,6 +406,7 @@ describe("ThankYouContent", () => {
     expect(screen.getByRole("link", { name: /Try the rules chatbot/ })).toHaveTextContent(
       "Ask the same question, answered by the encoded rules.",
     );
+    expect(screen.getByRole("link", { name: /The Axiom Foundation/ })).toHaveTextContent("Open, cited rules that states can validate.");
     expect(screen.getByRole("link", { name: EVENT.contactEmail })).toHaveAttribute("href", `mailto:${EVENT.contactEmail}`);
     fireEvent.click(screen.getByRole("button", { name: "Back to your question" }));
     expect(onReturn).toHaveBeenCalledTimes(1);
@@ -455,18 +456,21 @@ describe("YourContribution", () => {
 });
 
 describe("PolicyBenchContent", () => {
-  it("shows the one number and the Arizona household every model got wrong", () => {
+  it("shows the one number and the example household most models got wrong", () => {
     render(<PolicyBenchContent />);
     expect(screen.getByText("42%")).toBeInTheDocument();
     expect(screen.getByText("268 of 643 answers, from 50 models.")).toBeInTheDocument();
+    expect(screen.getByText(/of AI answers told a household that qualifies for SNAP it would get/)).toBeInTheDocument();
     // The same shape as What we saw: a block heading, then numbered parts.
     expect(screen.getByRole("heading", { level: 2, name: "Across 50 AI models" })).toBeInTheDocument();
     expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([
-      "1Families who qualify, told $0",
-      "2One Arizona household",
+      "1Households that qualify, told $0",
+      "2One Connecticut household",
     ]);
-    expect(screen.getByText("All 50 AI models said $0.")).toBeInTheDocument();
-    expect(screen.getByText("The rules: eligible, $24 a month.")).toBeInTheDocument();
+    expect(screen.getByText("42 of the 49 AI models that answered said $0. 1 matched exactly.")).toBeInTheDocument();
+    expect(screen.getByText("PolicyEngine's reference in PolicyBench, under FY2026 standards: $24 a month.").parentElement).toHaveTextContent(
+      "PolicyEngine's reference in PolicyBench, under FY2026 standards: $24 a month. The minimum benefit rose to $25 on October 1, 2026.",
+    );
     expect(screen.getByRole("link", { name: "policybench.org" })).toHaveAttribute("href", "https://policybench.org");
   });
 });

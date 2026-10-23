@@ -6,8 +6,8 @@
  *
  * Follows the session plan sent to Aspen on Oct 7: participants try the
  * problem before we name it, and the session builds to one idea: a single
- * set of open, validated rules changes what's possible for benefits
- * delivery. The copy avoids "tonight" and "this evening" (Ariel's notes).
+ * open set of rules that anyone can check changes what's possible for
+ * benefits delivery. The copy avoids "tonight" and "this evening" (Ariel's notes).
  */
 
 export const EVENT = {
@@ -90,7 +90,7 @@ export const STAGES: readonly Stage[] = [
     label: "At scale",
     title: "AI gets it wrong at scale",
     agenda: "PolicyBench: 50 AI models on SNAP.",
-    summary: "We asked 50 AI models to calculate SNAP for real households.",
+    summary: "We asked 50 AI models to calculate SNAP for households sampled from PolicyEngine's US microdata.",
   },
   {
     id: "foundation",
@@ -102,7 +102,7 @@ export const STAGES: readonly Stage[] = [
   {
     id: "groups",
     label: "Small groups",
-    title: "What would you build first with an open, validated set of rules?",
+    title: "What would you build first with one open set of rules?",
     agenda: "Vote on what to build first, then talk it through in groups.",
     summary: "Vote on your phone, then talk through your choice with your group.",
     optional: true,
@@ -184,10 +184,13 @@ export function isUsState(value: unknown): value is (typeof US_STATES)[number] {
 // ---------------------------------------------------------------------------
 
 /**
- * The household chips. Each one is a household the Axiom rules can
- * compute today (rulespec-us programs served by the gallery chatbot), so
- * "Check against the rules" has an answer for it. Arizona leads: the
- * convening is in Phoenix and Arizona DES is in the room. The first person and
+ * The household chips. Participants ask the AI about them; the chat runs no
+ * rules check. All but the Connecticut couple are in states whose SNAP the
+ * gallery chatbot's Axiom rules cover; finbot has no Connecticut SNAP, so the
+ * live demo on At scale 6/6 stays on its Fresno question. The retiree in
+ * Phoenix leads: the convening is in Phoenix. The Connecticut couple is At
+ * scale's example household (PolicyBench scenario_027), so participants can
+ * ask the AI about it before the room sees how 50 models did. The first person and
  * client wordings are hand-written so every perspective reads naturally.
  */
 export interface Household {
@@ -203,7 +206,7 @@ export interface Household {
   firstPerson: string;
   /** A caseworker describing the household. */
   thirdPerson: string;
-  /** Why this household is on the list (shown to presenters only). */
+  /** Why this household is on the list, for presenters (no component shows it yet). */
   why: string;
   /** The resident speaks as "we", not "I". */
   plural?: boolean;
@@ -224,17 +227,18 @@ export const HOUSEHOLDS: readonly Household[] = [
     why: "Plain elderly household; the shelter deduction for elderly households has no cap.",
   },
   {
-    id: "az-savings",
-    label: "Disabled, with savings",
-    blurb: "80, disability, pension, $58,700 in the bank",
-    state: "Arizona",
+    id: "ct-couple",
+    label: "Couple, with savings",
+    blurb: "68 and 39, disability income, $48,000 in the bank",
+    state: "Connecticut",
     program: "SNAP",
     programShort: "SNAP (food stamps)",
+    plural: true,
     firstPerson:
-      "I live in Phoenix, Arizona. I'm 80, I have a disability and I live alone. I get $1,978 a month from Social Security and $560 a month from a private pension. I have $58,700 in the bank.",
+      "We live in Hartford, Connecticut. I'm 68 and I get $2,513 a month from Social Security. My spouse is 39, blind and has a disability. We have $48,000 in the bank.",
     thirdPerson:
-      "an 80-year-old in Phoenix, Arizona with a disability who lives alone, gets $1,978 a month from Social Security and $560 a month from a pension, and has $58,700 in the bank",
-    why: "PolicyBench: all 46 models said $0. Arizona's expanded categorical eligibility drops the asset test, so the household qualifies.",
+      "a couple in Hartford, Connecticut: a 68-year-old who gets $2,513 a month from Social Security and a 39-year-old spouse who is blind and has a disability, with $48,000 in the bank",
+    why: "PolicyBench scenario_027: 42 of the 49 models that answered said $0. Connecticut's broad-based categorical eligibility (200% of poverty, no asset limit) waives the net income and asset tests, so the couple qualifies for the minimum benefit: $24 a month under FY2026 standards (PolicyBench's reference), $25 from October 1, 2026.",
   },
   {
     id: "ny-parent",
@@ -354,7 +358,7 @@ export const TWISTS: readonly Twist[] = [
     i: "I'm also a part-time college student.",
     we: "One of us is a part-time college student.",
     they: "They're also a part-time college student.",
-    skip: ["az-retiree", "az-savings"],
+    skip: ["az-retiree", "ct-couple"],
   },
   {
     id: "green-card",
@@ -388,7 +392,7 @@ export const TWISTS: readonly Twist[] = [
     i: "I have $8,000 in savings.",
     we: "We have $8,000 in savings.",
     they: "They have $8,000 in savings.",
-    skip: ["az-savings"],
+    skip: ["ct-couple"],
   },
   {
     id: "roommate",
@@ -405,7 +409,7 @@ export const TWISTS: readonly Twist[] = [
     i: "I'm also pregnant.",
     we: "One of us is pregnant.",
     they: "They're also pregnant.",
-    skip: ["az-retiree", "az-savings"],
+    skip: ["az-retiree", "ct-couple"],
   },
 ];
 
@@ -681,6 +685,13 @@ export const GROUP_RAISED = {
   placeholder: "Barriers, what your workforce would need, open questions",
 } as const;
 
+/**
+ * SNAP's minimum benefit for households of one or two in the 48 states and DC:
+ * $24 under FY2026 standards; $25 from October 1, 2026 (USDA FY2027 COLA memo,
+ * August 21, 2026).
+ */
+export const MINIMUM_BENEFIT = { fy2026: 24, fy2027: 25, effective: "October 1, 2026" } as const;
+
 // ---------------------------------------------------------------------------
 // PolicyBench
 // ---------------------------------------------------------------------------
@@ -704,14 +715,41 @@ export const POLICYBENCH = {
   eligibleAnswers: 643,
   saidZero: 268,
   saidZeroBbce: 197,
-  bestModelZeros: 2,
-  /** The household every model got wrong (scenario_013). */
-  azCase: {
-    description: "Age 80, with a disability, living alone on $2,538 a month. $58,700 in savings.",
+  /** At scale's example household (scenario_027): 42 of the 49 models that answered said $0; one got it right. */
+  example: {
+    state: "Connecticut",
+    description: "A couple, 68 and 39. The 39-year-old is blind and has a disability. $2,536 a month, almost all Social Security disability. $48,000 in savings.",
     modelsAsked: 50,
-    modelsSaidZero: 50,
-    answer:
-      "Eligible. Income is under Arizona's expanded categorical eligibility limit (200% of poverty), so there is no asset test, and the household gets the minimum benefit of $24 a month.",
+    /** glm-5.2's answer didn't parse. */
+    modelsAnswered: 49,
+    modelsSaidZero: 42,
+    /**
+     * gpt-6-astra matched the $288 reference exactly. Four more said $276 (FY2025's $23
+     * minimum), which At scale 3/6's within-10% rule would also count; one said $388 and
+     * one $5,160. The slides say "matched exactly" so the two counts don't collide.
+     */
+    modelsExact: 1,
+    /**
+     * PolicyBench's reference: the FY2026 minimum benefit, $24 a month, every
+     * month of 2026. Models were asked for the annual amount
+     * (policybench/prompts.py), so the reference is $288. PolicyEngine kept
+     * USDA's FY2026 allotments and deductions for every month, October to
+     * December included ($24 minimum, $546 two-person maximum), with the 2026
+     * poverty guideline from October. Gross income is 1.44 times the
+     * poverty guideline, under Connecticut's 200% limit, so the couple is
+     * categorically eligible and the $48,000 doesn't count.
+     */
+    reference: { monthly: 24, annual: 288, standards: "FY2026" },
+    /**
+     * USDA's FY 2027 standards (October 1, 2026, to September 30, 2027;
+     * memo of August 21, 2026): the minimum allotment for households of one
+     * or two in the 48 states and DC is $25 and the two-person maximum is
+     * $562 (https://www.fna.usda.gov/snap/allotment/cola). Under them the
+     * couple's $2,536 is still below 200% of poverty ($3,607), and 30% of
+     * its net income (about $633) is above the maximum, so it gets the
+     * minimum.
+     */
+    fromOctober: { monthly: 25, standards: "FY2027", effective: "October 1, 2026" },
   },
 } as const;
 
@@ -741,21 +779,22 @@ export const WHERE_MODELS_BREAK = {
   ],
 } as const;
 
-/** One household, as every model sees it (PolicyBench household 13; Pavel's At scale case). */
-export const AZ_HOUSEHOLD = {
+/** One household, as every model sees it (PolicyBench scenario_027, from the October 14 snapshot). */
+export const EXAMPLE_HOUSEHOLD = {
   title: "One household, as every model sees it",
   facts: [
-    "Arizona, 2026",
-    "Lives alone",
-    "Age 80, disabled",
-    "Social Security $23,736 a year",
-    "Private pension $6,720 a year",
-    "$58,700 in the bank",
-    "Plus health premiums, a mortgage balance and small investment income",
+    "Connecticut, 2026",
+    "A couple, 68 and 39",
+    "The 39-year-old is blind and has a disability",
+    "Social Security disability $30,160 a year",
+    "$48,000 in the bank",
+    "Plus $275 in interest and $650 in medical costs a year",
   ],
   program: "SNAP for 2026",
-  reference: 240,
+  reference: 288,
   models: 50,
+  /** Every model's annual answer, as the tiles show them: $0 first, the right answer last, then the one that didn't parse. */
+  answers: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 276, 276, 276, 276, 388, 5160, 288, null] as readonly (number | null)[],
   source: "Scenario explorer, policybench.org, October 14, 2026 snapshot",
 } as const;
 
@@ -765,33 +804,19 @@ export const WHAT_MODELS_MISS = {
   quotes: [
     {
       model: "GPT-6 Sol · rank 1",
-      text: "Monthly Social Security and pension income exceeds the amount that would produce a SNAP allotment for one person after the listed deductions.",
+      text: "Monthly Social Security income of about 2513 exceeds the two-person SNAP net-income limit even after the applicable standard and reported medical deductions.",
     },
     {
       model: "Claude Opus 5.5 · rank 2",
-      text: "Countable income is about $2,545 per month. After the standard and small medical deductions, net income is about $2,330, which exceeds 100% of the poverty line (about $1,304).",
+      text: "Monthly gross income is about $2,536. Subtracting the standard deduction and a small medical deduction leaves net income of about $2,308. This exceeds the roughly $1,763 net income limit for a household of 2, and there are no shelter costs to reduce it.",
     },
   ],
   ruleLabel: "Broad-based categorical eligibility",
-  rule: "Since March 2026, Arizona has extended SNAP's categorical eligibility to every household with gross income under 200% of the poverty line. A categorically eligible household skips SNAP's income and asset tests, and a household of one or two gets SNAP's minimum benefit.",
-  amount: 240,
-  amountLabel: "PolicyEngine's reference SNAP for this household in 2026",
+  rule: "Connecticut's broad-based categorical eligibility covers households with gross income up to 200% of the poverty line and sets no asset limit. Covered households skip SNAP's net income and asset tests, so the $48,000 doesn't count. Net income still sets the amount, and a household of one or two gets at least the minimum benefit.",
+  amount: 288,
+  amountLabel: "PolicyEngine's reference in PolicyBench",
   sources:
-    "7 CFR 273.2(j)(2) · USDA FNS broad-based categorical eligibility chart, June 29, 2026 · PolicyBench, October 14, 2026",
-} as const;
-
-/**
- * REVIEW (AK, Oct 15, 2026): decide with Max before Monday whether to keep the Arizona household.
- * DES announced a cut in the ECE gross limit from 185% to 130% of FPL on 02/23/2026, recalled it
- * on 03/23/2026 and raised the limit to 200% for benefit months 03/2026 on ("What's Changed on
- * 03/23/2026"; rulespec-us#1460). This household sits near 195% of FPL, so it qualifies only under
- * the new 200% limit, and the federal push to end BBCE adds risk.
- * Shown on At scale 4/5 only with ?review in the presenter URL; delete once decided.
- */
-export const AZ_SCENARIO_REVIEW = {
-  label: "Review",
-  question: "Change this scenario?",
-  text: "This household sits near 195% of FPL. It qualifies only because DES raised the limit from 185% to 200% in March, after recalling a February cut to 130%. Under 185% or 130%, $0 is right.",
+    "7 CFR 273.2(j)(2) · USDA FNA BBCE chart, June 2026 · USDA SNAP FY2027 COLA memo, Aug 21, 2026 · PolicyBench, Oct 14, 2026",
 } as const;
 
 /** Why this matters for AI: the front door to the law. */
@@ -810,7 +835,8 @@ export const FRONT_DOOR = {
  * served at axiom.org/gallery/chatbot). `compare=1` puts plain AI beside AI
  * with the Axiom rules engine, and `q` prefills the demo's own Fresno example.
  * Inside a frame the demo never sends on its own, so the presenter presses
- * Send. The model is OpenAI's (GPT-5.5 on Oct 15, 2026); the demo's copy
+ * Send. The model is OpenAI's GPT-6 Luna (finbot's default; production sets no
+ * FINBOT_MODEL, checked Oct 23, 2026); the demo's copy
  * says what it does and doesn't promise, so the slide stays plain too.
  */
 export const LIVE_DEMO = {
@@ -827,7 +853,7 @@ export function liveDemoUrl(): string {
 /** The same rules for every system: what one shared set of rules gives each group. */
 export const SAME_RULES = {
   /** Shared foundation 2/3's heading. */
-  heading: "What does an open, validated set of rules enable?",
+  heading: "What does one open set of rules enable?",
   /** The room is state benefits leaders, so governments get the big box and the most uses. */
   governments: {
     label: "For governments",
@@ -840,7 +866,7 @@ export const SAME_RULES = {
     ],
   },
   audiences: [
-    { label: "For individuals", text: "Accurate information to plan for their futures and receive assistance on any channel they use." },
+    { label: "For individuals", text: "Information to plan for their futures and receive assistance on any channel they use." },
     { label: "For AI systems", text: "One source of record, so models stop estimating benefits amounts and start citing them." },
     { label: "For builders", text: "Tools that guide people through benefits and taxes, built on rules they don't have to re-encode." },
     { label: "For researchers", text: "A computational model of the rules, for estimating what a policy does and reproducing the analysis." },
@@ -857,7 +883,7 @@ export function percent(part: number, whole: number): number {
 
 /** What makes the one set of rules checkable: the dark box on Shared foundation 1/3 and on phones. */
 export const FOUNDATION_TRAITS = [
-  "Every value cites the provision it comes from",
+  "Every value is built to cite the provision it comes from",
   "Every change carries its effective date",
   "Every release is versioned, so you can see what changed",
 ] as const;
@@ -878,7 +904,7 @@ export const ONE_SET_OF_RULES = [
 ] as const;
 
 /** Shared foundation 3/3's heading. */
-export const BUILD_HEADING = "How do we build an open, validated set of rules?";
+export const BUILD_HEADING = "How do we build one open set of rules?";
 
 /**
  * How a shared foundation gets built for a state: rules from public documents
@@ -951,7 +977,7 @@ export const NEXT_STEPS = {
     {
       id: "state_systems",
       label: "State systems",
-      detail: "Your eligibility systems, screeners and caseworker tools on open, validated rules.",
+      detail: "Your eligibility systems, screeners and caseworker tools on open rules your team has validated.",
     },
   ],
 } as const;

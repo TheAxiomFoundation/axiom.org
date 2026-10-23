@@ -198,7 +198,7 @@ describe('asking the chatbot', () => {
       text: 'Maybe $120.',
       sources: [],
       backend: 'finbot-raw',
-      model: 'gpt-5.5 (gallery chatbot, plain)',
+      model: 'gpt-6-luna (gallery chatbot, plain)',
       webSearch: false,
     })
     expect(onDelta).toHaveBeenCalledWith('Maybe $120.')
