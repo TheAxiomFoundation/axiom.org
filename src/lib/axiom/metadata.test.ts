@@ -20,7 +20,9 @@ import {
   citationUrl,
   getAxiomRuleMetadata,
   buildLegislationJsonLd,
+  metadataForResolution,
 } from "./metadata";
+import type { Rule } from "@/lib/supabase";
 
 describe("getAxiomRuleMetadata", () => {
   it("returns a generic axiom payload when segments is empty", async () => {
@@ -275,7 +277,7 @@ const SECTION = {
 const SECTION_URL = `${AXIOM_APP_URL}/us/statute/26/32`;
 
 /** Answer the metadata lookup from `rows`, as current_provisions would. */
-function serveRows(rows: Array<{ citation_path: string }>) {
+function serveRows(rows: Array<{ citation_path: string } & Record<string, unknown>>) {
   mockIn.mockImplementation((_column: string, paths: string[]) =>
     Promise.resolve({
       data: rows.filter((row) => paths.includes(row.citation_path)),
@@ -319,7 +321,20 @@ describe("reader URLs come from the resolved row", () => {
     expect(buildLegislationJsonLd(meta)).toBeNull();
   });
 
-  it("for any suffix and any corpus text, JSON-LD and canonical name only the section, and never spell </script", async () => {
+  it("keeps the request's own URL when only a bodyless container matched", async () => {
+    // The v1 page doesn't show Title 42 for a section path below it, so
+    // Title 42 isn't the canonical; the JSON-LD still names the row it
+    // describes.
+    serveRows([{ ...SECTION, citation_path: "us/statute/42", body: null }]);
+    const meta = await getAxiomRuleMetadata(["us", "statute", "42", "1396a"]);
+    expect(meta.rule?.citation_path).toBe("us/statute/42");
+    expect(meta.canonicalUrl).toBe(`${AXIOM_APP_URL}/us/statute/42/1396a`);
+    expect((buildLegislationJsonLd(meta) as Record<string, unknown>).url).toBe(
+      `${AXIOM_APP_URL}/us/statute/42`
+    );
+  });
+
+  it("for any suffix and any corpus text, the JSON-LD names only the section and never spells </script", async () => {
     await fc.assert(
       fc.asyncProperty(
         fc.array(hostileString, { minLength: 1, maxLength: 4 }),
@@ -334,7 +349,12 @@ describe("reader URLs come from the resolved row", () => {
             "32",
             ...suffix,
           ]);
-          expect(meta.canonicalUrl).toBe(SECTION_URL);
+          // A body-bearing section stands in for the suffix; a blank one
+          // is a container, and the request keeps its own (encoded) URL.
+          const requested = ["us", "statute", "26", "32", ...suffix].join("/");
+          expect(meta.canonicalUrl).toBe(
+            body.trim() ? SECTION_URL : citationUrl(requested)
+          );
           const json = buildLegislationJsonLd(meta) as Record<string, unknown>;
           expect(json.url).toBe(SECTION_URL);
           const out = serializeJsonLd(json);
@@ -344,6 +364,43 @@ describe("reader URLs come from the resolved row", () => {
       ),
       { numRuns: 200 }
     );
+  });
+});
+
+describe("metadataForResolution", () => {
+  const row = (citation_path: string, overrides: Partial<Rule> = {}) =>
+    ({ ...SECTION, citation_path, ...overrides }) as Rule;
+
+  it("names the section the reader resolved, not the ancestor a prefix walk would find", () => {
+    // 42 USC 1396a: no section row, so the reader synthesizes a root.
+    const synthetic = metadataForResolution({
+      root: row("us/statute/42/1396a", { id: "synthetic:us/statute/42/1396a", body: null, heading: "§ 1396a - State plans" }),
+      citationPath: "us/statute/42/1396a",
+      focusAnchor: null,
+    });
+    expect(synthetic.canonicalUrl).toBe(`${AXIOM_APP_URL}/us/statute/42/1396a`);
+    expect(synthetic.title).toBe("us/statute/42/1396a — § 1396a - State plans · Axiom");
+    expect((buildLegislationJsonLd(synthetic) as Record<string, unknown>).url).toBe(
+      `${AXIOM_APP_URL}/us/statute/42/1396a`
+    );
+
+    // A hyphen-typed URL for an en-dash section: the row's own spelling.
+    const dashed = metadataForResolution({
+      root: row("us/statute/42/1396u\u20131"),
+      citationPath: "us/statute/42/1396u\u20131",
+      focusAnchor: null,
+    });
+    expect(dashed.canonicalUrl).toBe(`${AXIOM_APP_URL}/us/statute/42/1396u%E2%80%931`);
+  });
+
+  it("keeps a focused subsection in the canonical, and the JSON-LD on the section", () => {
+    const meta = metadataForResolution({
+      root: row("us/statute/26/32"),
+      citationPath: "us/statute/26/32",
+      focusAnchor: "a",
+    });
+    expect(meta.canonicalUrl).toBe(`${SECTION_URL}/a`);
+    expect((buildLegislationJsonLd(meta) as Record<string, unknown>).url).toBe(SECTION_URL);
   });
 });
 
@@ -360,6 +417,11 @@ describe("citationUrl", () => {
     );
   });
 
+  it("drops dot segments, which a URL parser would collapse even encoded", () => {
+    expect(citationUrl("us/statute/99/..")).toBe(`${AXIOM_APP_URL}/us/statute/99`);
+    expect(citationUrl("us/./x/%2e%2E")).toBe(`${AXIOM_APP_URL}/us/x`);
+  });
+
   it("gives one URL for the encoded and decoded spellings of a path", () => {
     expect(citationUrl("us/statute/42/1396u%E2%80%931")).toBe(
       citationUrl("us/statute/42/1396u\u20131")
@@ -369,19 +431,49 @@ describe("citationUrl", () => {
     );
   });
 
-  // Every segment, whatever it holds, becomes exactly one URL path level
-  // made only of characters a URL path and HTML both read literally.
-  const segmentText = fc.oneof(hostileString, fc.string({ unit: "binary" }));
+  const segmentText = fc.oneof(
+    hostileString,
+    fc.string({ unit: "binary" }),
+    fc.constantFrom(".", "..", "%2e", "%2E%2e", "%", "%zz", "a%2Fb")
+  );
+  const decodeLoosely = (segment: string) => {
+    try {
+      return decodeURIComponent(segment);
+    } catch {
+      return segment;
+    }
+  };
 
-  it("emits one inert path level per input segment, for any segments", () => {
+  it("is a URL a parser leaves alone, under the app origin, for any segments", () => {
     fc.assert(
       fc.property(fc.array(segmentText, { maxLength: 6 }), (segments) => {
         const url = citationUrl(segments.join("/"));
-        const levels = segments.join("/").split("/").filter(Boolean).length;
-        expect(url.startsWith(AXIOM_APP_URL)).toBe(true);
-        const path = url.slice(AXIOM_APP_URL.length);
-        expect(path).toMatch(/^(\/[A-Za-z0-9\-_.!~*'()%]+)*$/);
-        expect(path.split("/").filter(Boolean)).toHaveLength(levels);
+        // No dot segment to collapse, nothing left to percent-encode,
+        // no query or fragment: parsing changes nothing.
+        expect(new URL(url).href).toBe(url === AXIOM_APP_URL ? `${url}/` : url);
+        expect(new URL(url).origin).toBe(new URL(AXIOM_APP_URL).origin);
+        expect(url.slice(AXIOM_APP_URL.length)).toMatch(/^(\/[A-Za-z0-9\-_.!~*'()%]+)*$/);
+      }),
+      { numRuns: 500 }
+    );
+  });
+
+  it("decodes back to exactly the input's segments, minus empty and dot ones", () => {
+    fc.assert(
+      fc.property(fc.array(segmentText, { maxLength: 6 }), (segments) => {
+        const url = citationUrl(segments.join("/"));
+        const expected = segments
+          .join("/")
+          .split("/")
+          .filter(Boolean)
+          .map((segment) => decodeLoosely(segment).toWellFormed())
+          .filter((segment) => segment !== "." && segment !== "..");
+        const back = url
+          .slice(AXIOM_APP_URL.length)
+          .split("/")
+          .filter(Boolean)
+          .map(decodeURIComponent);
+        expect(back).toEqual(expected);
       }),
       { numRuns: 500 }
     );

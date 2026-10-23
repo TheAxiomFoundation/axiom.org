@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Suspense } from "react";
+import { cache, Suspense } from "react";
 import {
   buildLegislationJsonLd,
-  getAxiomRuleMetadata,
+  metadataForResolution,
+  unresolvedMetadata,
 } from "@/lib/axiom/metadata";
 import { JsonLd } from "@/components/json-ld";
 import { DEFAULT_SHARE_IMAGE, SITE_NAME } from "@/lib/share";
@@ -48,6 +49,14 @@ interface PageProps {
   searchParams?: Promise<{ page?: string; embed?: string; rule?: string }>;
 }
 
+/** The reader's resolution of a path, once per request: React cache
+ *  memoizes by argument, so the decoded segments are keyed as a string. */
+const resolveSectionOnce = cache((key: string) =>
+  resolveSection(JSON.parse(key) as string[]),
+);
+const resolveDecoded = (decoded: string[]) =>
+  resolveSectionOnce(JSON.stringify(decoded));
+
 function decodeSegments(segments: string[]): string[] {
   return segments.map((segment) => {
     try {
@@ -69,7 +78,12 @@ export async function generateMetadata({
       robots: { index: false, follow: true },
     };
   }
-  const meta = await getAxiomRuleMetadata(decoded);
+  // Metadata describes what the reader renders, so canonical and og:url
+  // name the resolved section, never an unmatched suffix of the request.
+  const resolution = await resolveDecoded(decoded);
+  const meta = resolution
+    ? metadataForResolution(resolution)
+    : unresolvedMetadata(decoded.join("/"));
   return {
     title: meta.title,
     description: meta.description,
@@ -93,20 +107,15 @@ export async function generateMetadata({
 
 async function SectionBody({
   resolution,
-  decoded,
   highlightRule,
 }: {
   resolution: SectionResolution;
-  decoded: string[];
   highlightRule: string | null;
 }) {
-  const [data, meta] = await Promise.all([
-    getSectionPageDataFromResolution(resolution),
-    getAxiomRuleMetadata(decoded),
-  ]);
+  const data = await getSectionPageDataFromResolution(resolution);
   if (!data) notFound();
 
-  const jsonLd = buildLegislationJsonLd(meta);
+  const jsonLd = buildLegislationJsonLd(metadataForResolution(resolution));
 
   return (
     <>
@@ -149,7 +158,7 @@ export default async function SectionPage({
     return shell(<BrowseView data={browse} />);
   }
 
-  const resolution = await resolveSection(decoded);
+  const resolution = await resolveDecoded(decoded);
 
   // Container paths (a CFR part, a statute chapter) — bodyless roots
   // whose subtrees blow the reader cap — divert to the browse view
@@ -167,7 +176,7 @@ export default async function SectionPage({
 
   return shell(
     <Suspense fallback={<SectionSkeleton />}>
-      <SectionBody resolution={resolution} decoded={decoded} highlightRule={highlightRule} />
+      <SectionBody resolution={resolution} highlightRule={highlightRule} />
     </Suspense>,
   );
 }

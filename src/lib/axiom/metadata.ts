@@ -30,14 +30,17 @@ const METADATA_QUERY_TIMEOUT_MS = 1200;
  * Absolute app URL for a citation path. Each segment is percent-encoded
  * (after undoing any encoding it arrived with, so already-encoded and
  * decoded spellings give the same URL): a segment can't add a path
- * level, a query, a fragment, or markup. toWellFormed keeps a lone
- * surrogate from making encodeURIComponent throw.
+ * level, a query, a fragment, or markup. Dot segments are dropped, since
+ * a URL parser would collapse them even percent-encoded. toWellFormed
+ * keeps a lone surrogate from making encodeURIComponent throw.
  */
 export function citationUrl(citationPath: string): string {
   const encoded = citationPath
     .split("/")
     .filter(Boolean)
-    .map((segment) => encodeURIComponent(safeDecode(segment).toWellFormed()))
+    .map((segment) => safeDecode(segment).toWellFormed())
+    .filter((segment) => segment !== "." && segment !== "..")
+    .map(encodeURIComponent)
     .join("/");
   return encoded ? `${AXIOM_APP_URL}/${encoded}` : AXIOM_APP_URL;
 }
@@ -65,28 +68,16 @@ function firstSentence(text: string, maxLen = 200): string {
  * Called from ``generateMetadata`` on the server so Axiom rule URLs
  * render as first-class shareable objects — the OG preview shows the
  * actual citation and a snippet of body text, not a generic header.
+ *
+ * The v1 page's resolver. The v2 reader resolves paths its own way
+ * (en-dash spellings, synthetic roots …) and uses
+ * metadataForResolution instead.
  */
 export async function getAxiomRuleMetadata(
   segments: string[] | undefined
 ): Promise<AxiomRuleMetadata> {
   const citationPath = (segments ?? []).join("/");
-  // Only for a path no row matched: once a row resolves, its own
-  // citation path is the canonical URL (below), so an unmatched suffix
-  // under a body-bearing ancestor never reaches the page's URLs.
-  const canonicalUrl = citationUrl(citationPath);
-
-  if (!citationPath) {
-    return {
-      rule: null,
-      title: "Axiom — Axiom Foundation",
-      description:
-        "Browse every atomic rule in the encoded legal code: source text, RuleSpec encoding, and the citation graph that ties them together.",
-      canonicalUrl,
-      citationPath: "",
-      jurisdiction: null,
-      docType: null,
-    };
-  }
+  if (!citationPath) return unresolvedMetadata("");
 
   const lookupCandidates = citationPathLookupCandidates(citationPath);
   const prefixes = uniqueCitationPaths([
@@ -116,19 +107,72 @@ export async function getAxiomRuleMetadata(
     }
   }
 
-  if (!rule) {
+  if (!rule) return unresolvedMetadata(citationPath);
+
+  // The row's own URL is canonical when the row is what the request
+  // names (an exact or alias hit) or a body-bearing ancestor, which the
+  // reader shows in the request's place. A bodyless ancestor is a
+  // container the page doesn't show, so the request keeps its own URL.
+  const rowPath = rule.citation_path ?? citationPath;
+  const named = rowPath === citationPath || lookupCandidates.includes(rowPath);
+  const canonicalPath = named || rule.body?.trim() ? rowPath : citationPath;
+  return describeRule(rule, citationPath, citationUrl(canonicalPath));
+}
+
+/**
+ * Metadata for a page the v2 reader resolved. The resolution is what the
+ * page shows, so its citation path (with the focused subsection, when
+ * the reader found one) is the canonical URL: a suffix the corpus
+ * doesn't have collapses to the section rendered in its place, and
+ * paths the reader resolves its own way (synthetic roots, en-dash and
+ * joined-segment spellings, NYCRR splits) keep their section's URL.
+ */
+export function metadataForResolution(resolution: {
+  root: Rule;
+  citationPath: string;
+  focusAnchor: string | null;
+}): AxiomRuleMetadata {
+  const shown = resolution.focusAnchor
+    ? `${resolution.citationPath}/${resolution.focusAnchor}`
+    : resolution.citationPath;
+  return describeRule(resolution.root, resolution.citationPath, citationUrl(shown));
+}
+
+/**
+ * Metadata for a path no row answers: generic copy, and the path itself,
+ * encoded, as the canonical URL. No JSON-LD is written for it.
+ */
+export function unresolvedMetadata(citationPath: string): AxiomRuleMetadata {
+  if (!citationPath) {
     return {
       rule: null,
-      title: `${citationPath} — Axiom`,
+      title: "Axiom — Axiom Foundation",
       description:
-        "Browse available Axiom legal-code entries for this citation path, including source text, RuleSpec encodings, and citation graph context.",
-      canonicalUrl,
-      citationPath,
+        "Browse every atomic rule in the encoded legal code: source text, RuleSpec encoding, and the citation graph that ties them together.",
+      canonicalUrl: AXIOM_APP_URL,
+      citationPath: "",
       jurisdiction: null,
       docType: null,
     };
   }
+  return {
+    rule: null,
+    title: `${citationPath} — Axiom`,
+    description:
+      "Browse available Axiom legal-code entries for this citation path, including source text, RuleSpec encodings, and citation graph context.",
+    canonicalUrl: citationUrl(citationPath),
+    citationPath,
+    jurisdiction: null,
+    docType: null,
+  };
+}
 
+/** Title and description for `rule`, on a page canonical at `canonicalUrl`. */
+function describeRule(
+  rule: Rule,
+  citationPath: string,
+  canonicalUrl: string
+): AxiomRuleMetadata {
   const heading = rule.heading?.trim();
   const body = rule.body?.trim();
   const citationLabel = rule.citation_path ?? citationPath;
@@ -145,7 +189,7 @@ export async function getAxiomRuleMetadata(
     rule,
     title,
     description,
-    canonicalUrl: citationUrl(citationLabel),
+    canonicalUrl,
     citationPath,
     jurisdiction: rule.jurisdiction,
     docType: rule.doc_type,
