@@ -90,7 +90,7 @@ export const surfaces: Surface[] = [
     claim:
       "Where a policy is covered, every disagreement with the reference calculator is classified with evidence: reconciled arithmetically, traced to a bug in the other engine, or attributed to the comparison harness itself (bridge artifacts) — a bounded class we disclose rather than blend in.",
     check:
-      "git clone https://github.com/TheAxiomFoundation/axiom-oracles\ncat conformance/scoreboard.json\nuv run scripts/apply_dispositions.py --check",
+      "git clone https://github.com/TheAxiomFoundation/axiom-oracles\ncd axiom-oracles\nif [ -f scripts/oracle_data.py ]; then\n  python3 scripts/oracle_data.py materialize\nfi &&\ncat conformance/scoreboard.json &&\nuv run scripts/apply_dispositions.py --check",
     expect:
       "The scoreboard's own predicate: covered == in_scope, unexplained == 0, Axiom-attributed == 0. For the US, unexplained and Axiom-attributed are 0, but live suites cover 36 of 127 in-scope PolicyEngine policies, so the US row is not yet conformant. The dispositions check recomputes every classification's arithmetic from the committed evidence.",
     limit:

@@ -19,6 +19,9 @@ import {
   encodingPathCandidates,
   splitRootBodyAroundChildren,
   declaredExternalComparisons,
+  EXTERNAL_MATCH_CLOCK_SKEW_MS,
+  EXTERNAL_MATCH_MAX_AGE_DAYS,
+  rfc3339Instant,
 } from "./section-page";
 import type { ParityCaseSummary } from "./runtime/api";
 
@@ -668,6 +671,256 @@ describe("declaredExternalComparisons", () => {
     expect(taxsim).toMatchObject({ engine: "taxsim", caseCount: 1, matchingCaseCount: 1 });
   });
 
+  // A result is current when its timestamp lies in
+  // [now - 7 days, now + 5 minutes], both ends included. The bounds are
+  // written out here so a change to either constant fails a test.
+  const SEVEN_DAYS = 7 * 86_400_000;
+  const FIVE_MINUTES = 5 * 60_000;
+  const observed = (offsetMs: number) => new Date(NOW.getTime() + offsetMs).toISOString();
+  const NO_CURRENT_RESULT = {
+    matchingCaseCount: 0,
+    matchingAsOf: null,
+    matchingEngineVersions: [],
+    resultCounts: { match: 0, known_difference: 0, diff: 0, errored: 0, none: 1 },
+  };
+
+  it("keeps the window at seven days back and five minutes ahead", () => {
+    expect(EXTERNAL_MATCH_MAX_AGE_DAYS * 86_400_000).toBe(SEVEN_DAYS);
+    expect(EXTERNAL_MATCH_CLOCK_SKEW_MS).toBe(FIVE_MINUTES);
+  });
+
+  it("does not count a match dated in the future", () => {
+    // The probe from the review of #299: a match dated 2099 counted as
+    // current, because the age test had no lower bound.
+    const outcome = declaredExternalComparisons(
+      [coSnap],
+      [parityCase({ comparisonResults: [result("match", "2099-10-08T00:00:00.000Z")] })],
+      NOW,
+    );
+    expect(outcome!.engines[0]).toMatchObject(NO_CURRENT_RESULT);
+  });
+
+  it.each(["match", "known_difference", "diff", "errored"] as const)(
+    "counts a future-dated %s result as no current result",
+    (status) => {
+      const outcome = declaredExternalComparisons(
+        [coSnap],
+        [parityCase({ comparisonResults: [result(status, observed(86_400_000))] })],
+        NOW,
+      );
+      expect(outcome!.engines[0]).toMatchObject(NO_CURRENT_RESULT);
+    },
+  );
+
+  it.each([
+    { when: "exactly seven days old", offsetMs: -SEVEN_DAYS, counts: true },
+    { when: "one millisecond older than seven days", offsetMs: -SEVEN_DAYS - 1, counts: false },
+    { when: "observed this instant", offsetMs: 0, counts: true },
+    { when: "one millisecond ahead of the clock", offsetMs: 1, counts: true },
+    { when: "exactly at the clock-skew tolerance", offsetMs: FIVE_MINUTES, counts: true },
+    { when: "one millisecond past the clock-skew tolerance", offsetMs: FIVE_MINUTES + 1, counts: false },
+  ])("a match $when counts: $counts", ({ offsetMs, counts }) => {
+    const observedAt = observed(offsetMs);
+    const outcome = declaredExternalComparisons(
+      [coSnap],
+      [parityCase({ comparisonResults: [result("match", observedAt)] })],
+      NOW,
+    );
+    expect(outcome!.engines[0]).toMatchObject(
+      counts
+        ? {
+            matchingCaseCount: 1,
+            matchingAsOf: observedAt,
+            matchingEngineVersions: ["2.9.0"],
+            resultCounts: { match: 1, known_difference: 0, diff: 0, errored: 0, none: 0 },
+          }
+        : NO_CURRENT_RESULT,
+    );
+  });
+
+  it("does not count a case whose other comparison is dated in the future", () => {
+    const outcome = declaredExternalComparisons(
+      [coSnap],
+      [
+        parityCase({
+          comparisonResults: [result("match"), result("match", observed(FIVE_MINUTES + 1))],
+        }),
+      ],
+      NOW,
+    );
+    expect(outcome!.engines[0]).toMatchObject({
+      matchingCaseCount: 0,
+      matchingAsOf: null,
+      resultCounts: { match: 1, known_difference: 0, diff: 0, errored: 0, none: 1 },
+    });
+  });
+
+  it("reads the timestamp as an instant, whatever offset it is written in", () => {
+    // 10:05:00.001+02:00 is 08:05:00.001Z, one millisecond past the tolerance.
+    const outcome = declaredExternalComparisons(
+      [coSnap],
+      [
+        parityCase({ id: "a", comparisonResults: [result("match", "2026-10-04T10:05:00.000+02:00")] }),
+        parityCase({ id: "b", comparisonResults: [result("match", "2026-10-04T10:05:00.001+02:00")] }),
+      ],
+      NOW,
+    );
+    expect(outcome!.engines[0]).toMatchObject({
+      matchingCaseCount: 1,
+      matchingAsOf: "2026-10-04T10:05:00.000+02:00",
+      resultCounts: { match: 1, known_difference: 0, diff: 0, errored: 0, none: 1 },
+    });
+  });
+
+  // Each of these names 07:30Z on NOW's day, half an hour before NOW.
+  it.each([
+    "2026-10-04T07:30:00Z",
+    "2026-10-04T07:30:00.000Z",
+    "2026-10-04T07:30:00.123456Z",
+    "2026-10-04t07:30:00z",
+    "2026-10-04T09:30:00+02:00",
+    "2026-10-04T02:30:00-05:00",
+    "2026-10-04T07:30:00.5+00:00",
+  ])("counts an RFC 3339 date-time with a UTC offset: %s", (observedAt) => {
+    const outcome = declaredExternalComparisons(
+      [coSnap],
+      [parityCase({ comparisonResults: [result("match", observedAt)] })],
+      NOW,
+    );
+    expect(outcome!.engines[0]).toMatchObject({ matchingCaseCount: 1, matchingAsOf: observedAt });
+  });
+
+  it.each([
+    // Date.parse reads this in the server's timezone: half an hour old
+    // in UTC, six and a half hours ahead in Los Angeles (PDT), thirteen
+    // and a half hours old in Auckland (NZDT).
+    "2026-10-04T07:30:00",
+    "2026-10-04T07:30:00.000",
+    "2026-10-04 07:30:00",
+    "2026-10-04",
+    "Sun, 04 Oct 2026 07:30:00 GMT",
+    "Oct 4, 2026",
+    "10/04/2026",
+    // Unambiguous, but not RFC 3339.
+    "2026-10-04 07:30:00Z",
+    "2026-10-04T07:30Z",
+    "2026-10-04T09:30:00+0200",
+    "+002026-10-04T07:30:00Z",
+    " 2026-10-04T07:30:00Z",
+    // Date.parse accepts a trailing NUL and reads 07:30Z.
+    "2026-10-04T07:30:00Z\u0000",
+    "2026-10-04T07:30:00Zjunk",
+    "2026-10-04T07:30:00+02:00\n",
+  ])("counts a timestamp that is not an RFC 3339 date-time with a UTC offset as no current result: %j", (observedAt) => {
+    const outcome = declaredExternalComparisons(
+      [coSnap],
+      [parityCase({ comparisonResults: [result("match", observedAt)] })],
+      NOW,
+    );
+    expect(outcome!.engines[0]).toMatchObject(NO_CURRENT_RESULT);
+  });
+
+  it.each([
+    // Date.parse rolls these over into an instant inside the window.
+    { observedAt: "2026-02-30T00:00:00Z", now: "2026-03-02T00:00:00Z" },
+    { observedAt: "2026-02-29T00:00:00Z", now: "2026-03-01T00:00:00Z" },
+    { observedAt: "2026-10-03T24:00:00Z", now: "2026-10-04T00:00:00Z" },
+    // Date.parse rejects these too.
+    { observedAt: "2026-10-04T07:30:60Z", now: "2026-10-04T08:00:00Z" },
+    { observedAt: "2026-10-04T07:60:00Z", now: "2026-10-04T08:00:00Z" },
+    { observedAt: "2026-13-04T07:30:00Z", now: "2026-10-04T08:00:00Z" },
+    { observedAt: "2026-00-04T07:30:00Z", now: "2026-10-04T08:00:00Z" },
+    { observedAt: "2026-10-00T07:30:00Z", now: "2026-10-04T08:00:00Z" },
+    { observedAt: "2026-10-32T07:30:00Z", now: "2026-10-04T08:00:00Z" },
+    { observedAt: "2026-10-05T07:30:00+24:00", now: "2026-10-04T08:00:00Z" },
+    { observedAt: "2026-10-04T08:30:00+00:60", now: "2026-10-04T08:00:00Z" },
+  ])("counts a date-time with a field out of range as no current result: $observedAt", ({ observedAt, now }) => {
+    const outcome = declaredExternalComparisons(
+      [coSnap],
+      [parityCase({ comparisonResults: [result("match", observedAt)] })],
+      new Date(now),
+    );
+    expect(outcome!.engines[0]).toMatchObject(NO_CURRENT_RESULT);
+  });
+
+  it.each([
+    { observedAt: "2028-02-29T00:00:00Z", now: "2028-03-01T00:00:00Z" },
+    { observedAt: "2026-10-04T07:30:00-00:00", now: "2026-10-04T08:00:00Z" },
+    { observedAt: "2026-10-04T21:29:00+13:59", now: "2026-10-04T08:00:00Z" },
+  ])("counts a valid date-time near a field's limit: $observedAt", ({ observedAt, now }) => {
+    const outcome = declaredExternalComparisons(
+      [coSnap],
+      [parityCase({ comparisonResults: [result("match", observedAt)] })],
+      new Date(now),
+    );
+    expect(outcome!.engines[0]).toMatchObject({ matchingCaseCount: 1, matchingAsOf: observedAt });
+  });
+
+  it.each([
+    // The newest edge is 08:05:00.000Z; any nonzero digit past it is later.
+    { observedAt: "2026-10-04T08:05:00.000000Z", counts: true },
+    { observedAt: "2026-10-04T08:05:00.0001Z", counts: false },
+    { observedAt: "2026-10-04T08:05:00.000000001Z", counts: false },
+    { observedAt: "2026-10-04T08:04:59.9999999Z", counts: true },
+    { observedAt: "2026-10-04T10:05:00.0001+02:00", counts: false },
+    // The oldest edge is 2026-09-27T08:00:00.000Z.
+    { observedAt: "2026-09-27T08:00:00.0000001Z", counts: true },
+    { observedAt: "2026-09-27T07:59:59.9999Z", counts: false },
+  ])("reads fractions past the millisecond exactly: $observedAt counts: $counts", ({ observedAt, counts }) => {
+    const outcome = declaredExternalComparisons(
+      [coSnap],
+      [parityCase({ comparisonResults: [result("match", observedAt)] })],
+      NOW,
+    );
+    expect(outcome!.engines[0]!.matchingCaseCount).toBe(counts ? 1 : 0);
+  });
+
+  it("decides the same way whatever timezone the server runs in", () => {
+    const timestamps = [
+      "2026-10-04T07:30:00Z",
+      "2026-10-04T09:30:00+02:00",
+      "2026-10-04T07:30:00",
+      "2026-10-04T20:00:00",
+      "2026-10-04",
+      "Oct 4, 2026",
+      observed(-SEVEN_DAYS),
+      observed(FIVE_MINUTES),
+      observed(FIVE_MINUTES + 1),
+    ];
+    const outcomes = (tz: string) => {
+      process.env.TZ = tz;
+      return timestamps.map((observedAt) => [
+        observedAt,
+        declaredExternalComparisons(
+          [coSnap],
+          [parityCase({ comparisonResults: [result("match", observedAt)] })],
+          NOW,
+        )!.engines[0]!.matchingCaseCount,
+      ]);
+    };
+    const original = process.env.TZ;
+    try {
+      // The zone switch must take effect, or this test proves nothing.
+      process.env.TZ = "Pacific/Auckland";
+      const auckland = Date.parse("2026-10-04T07:30:00");
+      process.env.TZ = "America/Los_Angeles";
+      expect(Date.parse("2026-10-04T07:30:00")).not.toBe(auckland);
+      const utc = outcomes("UTC");
+      expect(utc.filter(([, count]) => count === 1).map(([when]) => when)).toEqual([
+        "2026-10-04T07:30:00Z",
+        "2026-10-04T09:30:00+02:00",
+        observed(-SEVEN_DAYS),
+        observed(FIVE_MINUTES),
+      ]);
+      for (const tz of ["Pacific/Auckland", "America/Los_Angeles", "Pacific/Kiritimati", "Pacific/Pago_Pago"]) {
+        expect(outcomes(tz)).toEqual(utc);
+      }
+    } finally {
+      if (original === undefined) delete process.env.TZ;
+      else process.env.TZ = original;
+    }
+  });
+
   it("never counts a case that reports no comparison results, as older API responses do", () => {
     const outcome = declaredExternalComparisons(
       [coSnap],
@@ -720,5 +973,48 @@ describe("declaredExternalComparisons", () => {
     expect(outcome?.engines).toMatchObject([
       { engine: "policyengine", caseCount: 1, caseDescriptions: [] },
     ]);
+  });
+});
+
+describe("rfc3339Instant", () => {
+  it("reads a date-time as its instant, whatever offset it is written in", () => {
+    for (const value of [
+      "2026-10-04T07:30:00Z",
+      "2026-10-04t07:30:00z",
+      "2026-10-04T09:30:00+02:00",
+      "2026-10-04T02:30:00-05:00",
+      "2026-10-04T07:30:00-00:00",
+    ]) {
+      expect(rfc3339Instant(value)).toEqual({ ms: Date.UTC(2026, 9, 4, 7, 30), later: false });
+    }
+  });
+
+  it("keeps the milliseconds and says whether finer digits put the instant after them", () => {
+    expect(rfc3339Instant("2026-10-04T07:30:00.5Z")).toEqual({ ms: Date.UTC(2026, 9, 4, 7, 30, 0, 500), later: false });
+    expect(rfc3339Instant("2026-10-04T07:30:00.123000Z")).toEqual({ ms: Date.UTC(2026, 9, 4, 7, 30, 0, 123), later: false });
+    expect(rfc3339Instant("2026-10-04T07:30:00.1230001Z")).toEqual({ ms: Date.UTC(2026, 9, 4, 7, 30, 0, 123), later: true });
+    // V8's Date.parse reads this one as 6 ms; it is 0.6 ms.
+    expect(rfc3339Instant("1970-01-01T00:00:00.0006000000Z")).toEqual({ ms: 0, later: true });
+  });
+
+  it("keeps years below 100 as written", () => {
+    // Date.UTC(50, 0, 1) is 1950; the year written is 0050.
+    expect(rfc3339Instant("0050-01-01T00:00:00Z")!.ms).toBe(Date.parse("0050-01-01T00:00:00Z"));
+    expect(new Date(rfc3339Instant("0050-01-01T00:00:00Z")!.ms).getUTCFullYear()).toBe(50);
+    expect(rfc3339Instant("0000-01-01T00:00:00Z")!.ms).toBe(Date.parse("0000-01-01T00:00:00Z"));
+  });
+
+  it.each([
+    "2026-10-04T07:30:00",
+    "2026-10-04T07:30Z",
+    "2026-10-04T07:30:00Z\u0000",
+    " 2026-10-04T07:30:00Z",
+    "2026-02-30T00:00:00Z",
+    "2026-10-04T24:00:00Z",
+    "2026-10-04T07:30:60Z",
+    "2026-10-04T07:30:00+24:00",
+    "",
+  ])("rejects %j", (value) => {
+    expect(rfc3339Instant(value)).toBeNull();
   });
 });

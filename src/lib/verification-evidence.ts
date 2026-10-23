@@ -48,8 +48,9 @@ export const RULE_COVERAGE = {
   month: "September 2026",
   totalRules: 34_810,
   rulesOnComparedSurface: 14_030,
+  // The detail link stays live; the dated evidence below remains at its cited commit.
   perRuleFileUrl:
-    "https://github.com/TheAxiomFoundation/axiom-oracles/blob/main/dashboard/public/data/rule_verification.json",
+    "https://github.com/TheAxiomFoundation/axiom-oracles/blob/oracle-data/dashboard/public/data/rule_verification.json",
   source: {
     repo: ORACLES_REPO,
     path: "dashboard/public/data/rule_verification_summary.json",

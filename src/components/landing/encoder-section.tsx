@@ -1,13 +1,14 @@
 import { ArrowRightIcon } from "@/components/icons";
 import { axiomAppHref } from "@/lib/urls";
-import { JourneyScrolly } from "./journey-scrolly";
+import { JourneyLamplight } from "./journey-lamplight/journey-lamplight";
 import { Reveal } from "./reveal";
 
 export function EncoderSection() {
   return (
+    <>
     <section
       id="encoder"
-      className="section-tint-cream relative z-1 py-32 px-8"
+      className="section-tint-cream relative z-1 pt-32 pb-20 px-8"
     >
       <div className="max-w-[1280px] mx-auto">
         <Reveal className="text-center mb-16">
@@ -33,15 +34,29 @@ export function EncoderSection() {
           </p>
         </Reveal>
 
-        {/* The journey film, scrubbed by scroll — replaces the old
-            terminal animation. */}
-        <JourneyScrolly />
+      </div>
+    </section>
 
+    {/* The journey, full-bleed: a law book off the shelf to the systems
+        that run on the rules, scrubbed by scroll (journey-lamplight). */}
+    <JourneyLamplight />
+
+    <section className="section-tint-cream relative z-1 pt-20 pb-32 px-8">
+      <div className="max-w-[1280px] mx-auto">
+        {/*
+          The encoder's record is its signed apply manifest (axiom-encode
+          cli.py _MODEL_APPLY_MANIFEST_FIELDS): the citation, the model, and
+          a hash of each file written. It holds a trace's path and hash, not
+          the trace, which stays on the machine that ran the encoder. A
+          failed re-encode's 90-day diagnostics artifact can contain a trace.
+          This line claims the manifest and no per-decision record.
+        */}
         <Reveal
           as="p"
           className="mt-14 text-center font-body text-[0.95rem] text-[var(--color-ink-muted)] max-w-[640px] mx-auto leading-relaxed"
         >
-          The encoder logs every decision.{" "}
+          Each time the encoder applies an encoding, it leaves a signed
+          manifest naming the source citation and the model.{" "}
           <span className="serif-italic text-[var(--color-ink-secondary)]">
             Disagreements are classified and published, including the ones
             not yet explained.
@@ -59,5 +74,6 @@ export function EncoderSection() {
         </Reveal>
       </div>
     </section>
+    </>
   );
 }

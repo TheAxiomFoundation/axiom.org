@@ -1,0 +1,368 @@
+/* Style frames: a fixed 1920×1080 stage; the site chrome is hidden. */
+
+.sf-body header.nav-bar,
+.sf-body footer {
+  display: none !important;
+}
+
+.sf {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1000;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+  background: #000;
+}
+.sf-host,
+.sf-overlay {
+  position: absolute;
+  inset: 0;
+}
+.sf-host canvas {
+  display: block;
+}
+.sf-overlay {
+  pointer-events: none;
+}
+.sf-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  white-space: nowrap;
+  will-change: transform;
+}
+.sf-caption {
+  position: absolute;
+  left: 96px;
+  bottom: 84px;
+  max-width: 860px;
+}
+
+/* A — lamplight: the brand serif, large and quiet, on night */
+.sf--lamplight .sf-caption__kicker {
+  font: 500 15px/1 var(--font-mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(255, 196, 130, 0.75);
+}
+.sf--lamplight .sf-caption__title {
+  margin-top: 18px;
+  font: 400 54px/1.08 var(--font-serif);
+  color: #f6ecdc;
+  letter-spacing: -0.01em;
+}
+.sf--lamplight .sf-caption__sub {
+  margin-top: 16px;
+  font: 400 19px/1.4 var(--font-geist-sans), system-ui, sans-serif;
+  color: rgba(240, 225, 205, 0.6);
+}
+
+/* B — paper: ink on cream, editorial */
+.sf--paper .sf-caption__kicker {
+  font: 500 15px/1 var(--font-mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #b4530a;
+}
+.sf--paper .sf-caption__title {
+  margin-top: 18px;
+  font: 400 54px/1.08 var(--font-serif);
+  color: #1c1917;
+  letter-spacing: -0.01em;
+}
+.sf--paper .sf-caption__sub {
+  margin-top: 16px;
+  font: 400 19px/1.4 var(--font-geist-sans), system-ui, sans-serif;
+  color: rgba(28, 25, 23, 0.62);
+}
+
+/* C — scan: instrument typography, all mono */
+.sf--scan .sf-caption {
+  bottom: 72px;
+}
+.sf--scan .sf-caption__kicker {
+  font: 500 14px/1 var(--font-mono);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #ffb45c;
+}
+.sf--scan .sf-caption__title {
+  margin-top: 16px;
+  font: 500 40px/1.15 var(--font-mono);
+  color: #e6edf3;
+  letter-spacing: -0.02em;
+}
+.sf--scan .sf-caption__sub {
+  margin-top: 14px;
+  font: 400 16px/1.5 var(--font-mono);
+  color: rgba(200, 214, 228, 0.55);
+}
+.sf--scan .sf-label {
+  font: 500 13px/1.3 var(--font-mono);
+  letter-spacing: 0.08em;
+  color: rgba(214, 226, 238, 0.8);
+  text-transform: uppercase;
+}
+.sf--scan .sf-label--amber {
+  color: #ffb45c;
+}
+.sf--paper .sf-label {
+  font: 500 14px/1.3 var(--font-mono);
+  color: rgba(28, 25, 23, 0.7);
+}
+
+/* C — schematic node labels sit on the node's left edge */
+.sf--scan .sf-node {
+  display: grid;
+  gap: 4px;
+  transform: translate(0, -50%);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.sf--scan .sf-k {
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(200, 214, 228, 0.5);
+}
+.sf--scan .sf-n {
+  font-size: 13px;
+  color: #e6edf3;
+}
+.sf--scan .sf-v {
+  font-size: 16px;
+  color: #b9d6ef;
+}
+.sf--scan .sf-node--hero .sf-k,
+.sf--scan .sf-node--hero .sf-v {
+  color: #ffb45c;
+}
+.sf--scan .sf-node--hero .sf-v {
+  font-size: 22px;
+}
+.sf--scan .sf-label--tag {
+  padding: 2px 6px;
+  border: 1px solid rgba(255, 180, 92, 0.6);
+  background: rgba(9, 12, 15, 0.75);
+  transform: translate(-50%, -50%) rotate(-90deg);
+}
+
+/* A — labels in the lamplight world */
+.sf--lamplight .sf-label {
+  font: 500 13px/1.3 var(--font-mono);
+  letter-spacing: 0.06em;
+  color: rgba(255, 225, 190, 0.7);
+}
+.sf--lamplight .sf-label--addr {
+  font-size: 18px;
+  color: #ffcf94;
+  text-shadow: 0 0 18px rgba(255, 160, 70, 0.6);
+}
+.sf--lamplight .sf-label--addr b {
+  color: #fff1dc;
+  font-weight: 600;
+}
+.sf--lamplight .sf-label--quiet {
+  color: rgba(255, 225, 190, 0.45);
+  transform: translate(0, -50%);
+}
+.sf--lamplight .sf-label--far {
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 210, 160, 0.4);
+}
+.sf--lamplight .sf-label--gate {
+  font-size: 14px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #ffcf94;
+}
+.sf--lamplight .sf-label--pkg {
+  font-size: 12px;
+  color: rgba(255, 225, 190, 0.55);
+}
+.sf--lamplight .sf-gate-n {
+  display: inline-block;
+  margin-right: 6px;
+  color: rgba(255, 225, 190, 0.5);
+}
+
+/* the end state: card labels and the hover note */
+.sf--lamplight .sf-x {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  transform: translate(0, -50%);
+  font: 500 14px/1.2 var(--font-mono);
+  letter-spacing: 0.02em;
+  color: rgba(255, 225, 190, 0.62);
+}
+.sf--lamplight .sf-x-n {
+  color: rgba(255, 196, 130, 0.6);
+}
+.sf--lamplight .sf-x-name {
+  font: 400 19px/1.2 var(--font-serif);
+  letter-spacing: 0;
+  color: rgba(246, 234, 216, 0.8);
+}
+.sf--lamplight .sf-x-go {
+  color: #ffb45c;
+}
+.sf--lamplight .sf-x--hot .sf-x-name {
+  color: #fff1dc;
+}
+.sf--lamplight .sf-x--hot .sf-x-go {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.sf--lamplight .sf-pop {
+  transform: none;
+  width: 330px;
+  padding: 18px 20px 18px;
+  border: 1px solid rgba(255, 180, 92, 0.7);
+  border-radius: 10px;
+  background: rgba(22, 16, 11, 0.94);
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.9), 0 0 40px -10px rgba(255, 160, 70, 0.35);
+  white-space: normal;
+}
+.sf--lamplight .sf-pop__k {
+  font: 500 12px/1 var(--font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #ffb45c;
+}
+.sf--lamplight .sf-pop__t {
+  margin-top: 10px;
+  font: 400 19px/1.4 var(--font-serif);
+  color: #f6ead8;
+}
+.sf--lamplight .sf-pop__a {
+  margin-top: 14px;
+  font: 500 13px/1.4 var(--font-mono);
+  color: #ffcf94;
+}
+
+/* titles break into even lines: "Hundreds of official sources, / word for word." */
+.sf-caption__title {
+  text-wrap: balance;
+}
+
+/* a link on a thing in the scene: a breathing amber ring; its words only
+   on hover or focus */
+.sf-hot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 3;
+  width: 34px;
+  height: 34px;
+  will-change: transform;
+  pointer-events: auto;
+  text-decoration: none;
+  outline: none;
+}
+.sf-hot__ring {
+  position: absolute;
+  inset: 9px;
+  border: 1.5px solid #ffb45c;
+  border-radius: 50%;
+  background: rgba(255, 171, 74, 0.18);
+  box-shadow: 0 0 14px 2px rgba(255, 160, 70, 0.55);
+}
+/* the breathing halo: transform and opacity only, so it composites on the
+   GPU and never repaints the page */
+.sf-hot__ring::before {
+  content: "";
+  position: absolute;
+  inset: -7px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 180, 92, 0.7);
+  will-change: transform, opacity;
+  animation: sf-hot-breathe 2.4s ease-in-out infinite;
+}
+.sf-hot__ring::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: #ffcf94;
+}
+@keyframes sf-hot-breathe {
+  0% {
+    transform: scale(0.7);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+.sf-hot__text {
+  position: absolute;
+  left: 30px;
+  top: 50%;
+  transform: translate(-6px, -50%);
+  padding: 7px 11px;
+  border: 1px solid rgba(255, 180, 92, 0.6);
+  border-radius: 6px;
+  background: rgba(18, 13, 9, 0.92);
+  font: 500 13px/1 var(--font-mono);
+  letter-spacing: 0.03em;
+  color: #ffcf94;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+.sf-hot:hover .sf-hot__text,
+.sf-hot:focus-visible .sf-hot__text {
+  opacity: 1;
+  transform: translate(0, -50%);
+}
+.sf-hot:focus-visible .sf-hot__ring {
+  outline: 2px solid #ffcf94;
+  outline-offset: 4px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sf-hot__ring::before {
+    animation: none;
+  }
+}
+.sf-hot--left .sf-hot__text {
+  left: auto;
+  right: 30px;
+  transform: translate(6px, -50%);
+}
+.sf-hot--left:hover .sf-hot__text,
+.sf-hot--left:focus-visible .sf-hot__text {
+  transform: translate(0, -50%);
+}
+
+/* scene-object links: no dot; the anchor shows only to the keyboard */
+.sf-hot--quiet .sf-hot__ring {
+  opacity: 0;
+}
+.sf-hot--quiet {
+  pointer-events: none;
+}
+.sf-hot--quiet:focus-visible .sf-hot__ring {
+  opacity: 1;
+}
+
+/* in the scenes on the page: labels a step smaller, to match the wider view */
+.jl-stage .sf-label {
+  font-size: 11px;
+}
+.jl-stage .sf-label--gate {
+  font-size: 11.5px;
+}
+.jl-stage .sf-label--addr {
+  font-size: 14.5px;
+}
+.jl-stage .sf-label--far,
+.jl-stage .sf-label--pkg {
+  font-size: 10px;
+}
