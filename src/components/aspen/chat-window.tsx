@@ -584,8 +584,10 @@ export function ChatWindow({
         ) : (
           <div className={`flex flex-col gap-3 px-4 pb-4 ${started ? "border-t border-[var(--color-rule)] pt-3" : "mt-5 border-t border-[var(--color-rule)] pt-4"}`}>
             {preview ? (
-              <div className="flex flex-col gap-2">
-                <span className={`${STEP} mb-0`}>The question</span>
+              <div role="group" aria-labelledby="aspen-question-preview" className="flex flex-col gap-2">
+                <span id="aspen-question-preview" className={`${STEP} mb-0`}>
+                  The question
+                </span>
                 <p className="m-0 whitespace-pre-wrap rounded-lg bg-[var(--color-paper)] px-3.5 py-3 font-body text-[1rem] leading-relaxed text-[var(--color-ink)]">
                   {draft}
                 </p>
@@ -685,7 +687,7 @@ export function ChatWindow({
           <ol className="m-0 flex list-decimal flex-col gap-2 pl-5 font-body text-[0.9rem] leading-snug text-[var(--color-ink-secondary)]">
             <li>Pick a household, or write your own question, and ask.</li>
             <li>Rate the answer you get.</li>
-            <li>Then rate how AI did overall, right below.</li>
+            <li>Then answer two more, about your agency, right below.</li>
           </ol>
         </aside>
       )}

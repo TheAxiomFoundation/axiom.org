@@ -82,7 +82,7 @@ export const STAGES: readonly Stage[] = [
     title: "What we saw",
     agenda: "The room's results, then discussion.",
     summary: "Could a resident act on these answers?",
-    // The phone opens with what you contributed; the question is part 1's heading there.
+    // The phone shows the look-up card under the heading, so no line of its own.
     phoneSummary: "",
   },
   {
@@ -740,7 +740,7 @@ export const POLICYBENCH = {
     modelsSaidZero: 42,
     /**
      * gpt-6-astra matched the $288 reference exactly. Four more said $276 (FY2025's $23
-     * minimum), which At scale 3/6's within-10% rule would also count; one said $388 and
+     * minimum), which At scale 3/7's within-10% rule would also count; one said $388 and
      * one $5,160. The slides say "matched exactly" so the two counts don't collide.
      */
     modelsExact: 1,
@@ -760,10 +760,10 @@ export const POLICYBENCH = {
      * memo of August 21, 2026): the minimum allotment for households of one
      * or two in the 48 states and DC is $25 and the two-person maximum is
      * $562 (https://www.fna.usda.gov/snap/allotment/cola). Under them the
-     * couple's $2,536 is still below 200% of poverty ($3,607), and 30% of
-     * its net income (about $690: $2,536 less the $217 standard deduction
-     * and $19 of medical costs above $35 a month) is above the maximum, so
-     * it gets the minimum.
+     * couple's $2,536 is still below 200% of poverty ($3,607). Its net
+     * income is about $2,300 ($2,536 less the $217 standard deduction and
+     * $19 of medical costs above $35 a month), and 30% of that, about $690,
+     * is above the maximum, so it gets the minimum.
      */
     fromOctober: { monthly: 25, standards: "FY2027", effective: "October 1, 2026" },
     /**
@@ -941,7 +941,7 @@ export function percent(part: number, whole: number): number {
 // The fix
 // ---------------------------------------------------------------------------
 
-/** What makes the one set of rules checkable: the dark box on Shared foundation 1/3 and on phones. */
+/** What makes the one set of rules checkable: the dark box on Shared foundation 1/3. */
 export const FOUNDATION_TRAITS = [
   "Every value is built to cite the provision it comes from",
   "Every change carries its effective date",

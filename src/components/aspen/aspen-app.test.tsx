@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { EVENT, STAGES, type StageId } from "@/lib/aspen/content";
+import { EVENT, LOOK_UP, STAGES, type StageId } from "@/lib/aspen/content";
 import { EMPTY_SUMMARY, type RunSummary } from "@/lib/aspen/results";
 import type { Control } from "@/lib/aspen/types";
 import { AspenApp } from "./aspen-app";
@@ -45,6 +45,19 @@ function storeChat(chat: Partial<SavedChat>) {
   localStorage.setItem(CHAT_KEY, JSON.stringify(chat));
 }
 
+/** The phone's card while the room looks at the TV. */
+const lookUp = () => within(screen.getByRole("region", { name: LOOK_UP.heading }));
+
+const RATED_CHAT: Partial<SavedChat> = {
+  perspective: "resident",
+  householdId: "az-retiree",
+  turns: [
+    { key: "u", role: "user", content: "Q" },
+    { key: "a", role: "assistant", content: "A", status: "done", promptId: "p" },
+  ],
+  rated: ["p"],
+};
+
 beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
@@ -72,11 +85,12 @@ describe("AspenApp following the presenter", () => {
     await onView("reveal");
 
     expect(screen.queryByRole("button", { name: /The room has moved on/ })).not.toBeInTheDocument();
-    expect(await screen.findByText("Answers appear here as people ask.")).toBeInTheDocument();
-    // The discussion card is gone: ratings and notes come in through Rate it.
+    // The phone points at the TV; nobody has rated yet, so there's no number (the run-through, Oct 22).
+    expect(lookUp().getByText(LOOK_UP.reveal.empty)).toBeInTheDocument();
+    expect(lookUp().getByText(LOOK_UP.later)).toBeInTheDocument();
     expect(screen.queryByText("Add to the discussion")).not.toBeInTheDocument();
-    expect(screen.getByText(/You haven't asked the AI yet/)).toBeInTheDocument();
-    expect(fetchMock.mock.calls.some(([url]) => url === "/api/aspen/results")).toBe(true);
+    expect(screen.queryByText(/You haven't asked the AI yet/)).not.toBeInTheDocument();
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === "/api/aspen/results")).toBe(true));
 
     const live = nav().getByRole("button", { name: /What we saw/ });
     expect(live).toHaveAttribute("aria-current", "step");
@@ -139,7 +153,38 @@ describe("AspenApp following the presenter", () => {
     });
     render(<AspenApp />);
     await onView("reveal");
-    expect(screen.getByText("Loading the room's results…")).toBeInTheDocument();
+    // Until the results arrive the card says where to look, with no number.
+    expect(lookUp().getByText(LOOK_UP.reveal.empty)).toBeInTheDocument();
+    expect(lookUp().queryByText(LOOK_UP.reveal.label)).not.toBeInTheDocument();
+  });
+
+  it("shows the room's number on the phone while the TV shows What we saw and Shared foundation", async () => {
+    control.live = false;
+    summary = {
+      ...EMPTY_SUMMARY,
+      viability: { ...EMPTY_SUMMARY.viability, rated: 9, right: 4 },
+      sourceOfTruth: [
+        { id: "yes", label: "Yes", count: 2 },
+        { id: "partly", label: "Partly", count: 5 },
+        { id: "no", label: "No", count: 3 },
+      ],
+    };
+    render(<AspenApp />);
+    fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
+    await onView("reveal");
+    expect(await screen.findByText("4 of 9")).toBeInTheDocument();
+    expect(lookUp().getByText(LOOK_UP.reveal.label)).toBeInTheDocument();
+
+    fireEvent.click(nav().getByRole("button", { name: /At scale/ }));
+    await onView("scale");
+    expect(lookUp().getByText("42%")).toBeInTheDocument();
+    expect(lookUp().getByText(LOOK_UP.scale.label)).toBeInTheDocument();
+
+    fireEvent.click(nav().getByRole("button", { name: /Shared foundation/ }));
+    await onView("foundation");
+    // "Partly" counts: they can't fully check an answer.
+    expect(await screen.findByText("8 of 10")).toBeInTheDocument();
+    expect(lookUp().getByText(LOOK_UP.foundation.label)).toBeInTheDocument();
   });
 
   it("nudges a participant who fell behind, and goes back to the room on request", async () => {
@@ -185,7 +230,7 @@ describe("AspenApp following the presenter", () => {
     await onView("scale");
     fireEvent.click(nextTo("foundation"));
     await onView("foundation");
-    expect(screen.getByText("One open, validated set of rules")).toBeInTheDocument();
+    expect(lookUp().getByText(LOOK_UP.foundation.empty)).toBeInTheDocument();
   });
 
   it("restores the participant's own stage from sessionStorage", async () => {
@@ -313,7 +358,10 @@ describe("AspenApp without a live presenter", () => {
 
     fireEvent.click(nextTo("next"));
     await onView("next");
-    expect(screen.getByRole("combobox", { name: "State" })).toHaveValue("");
+    // Just an email: Aspen's roster has each leader's name, title and state.
+    expect(screen.getByRole("textbox", { name: "Email" })).toHaveValue("");
+    expect(screen.queryByRole("combobox", { name: "State" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Name" })).not.toBeInTheDocument();
 
     fireEvent.click(nextTo("dinner"));
     await onView("dinner");
@@ -325,149 +373,85 @@ describe("AspenApp without a live presenter", () => {
     await onView("try");
   });
 
-  it("clears the 'ratings are in' line when a new question starts, and keeps Next open", async () => {
-    storeChat({
-      perspective: "resident",
-      householdId: "az-retiree",
-      turns: [
-        { key: "u", role: "user", content: "Q" },
-        { key: "a", role: "assistant", content: "A", status: "done", promptId: "p" },
-      ],
-      rated: ["p"],
-    });
-    localStorage.setItem("aspen.overall.v1", "true");
+  it("keeps the two agency questions open after Start over, and Next open", async () => {
+    storeChat(RATED_CHAT);
     render(<AspenApp />);
     fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
     await onView("try");
-    expect(await screen.findByText(/Your ratings are in/)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Two more, about your agency" })).toBeInTheDocument();
     fireEvent.click(screen.getAllByRole("button", { name: /^Start over/ })[0]);
-    await waitFor(() => expect(screen.queryByText(/Your ratings are in/)).not.toBeInTheDocument());
-    expect(screen.queryByRole("heading", { name: "One more: how did AI do overall?" })).not.toBeInTheDocument();
-    // The earlier rated answer still counts for the Next link.
+    // Starting over never hides them (Ariel, Oct 23), and the earlier rated answer still opens Next.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Ask the AI" })).toBeDisabled());
+    expect(screen.getByRole("heading", { name: "Two more, about your agency" })).toBeInTheDocument();
     expect(nextTo("reveal")).toBeEnabled();
   });
 
-  it("hides the overall questions after a new question until the new answer is rated, if not yet shared", async () => {
-    storeChat({
-      perspective: "resident",
-      householdId: "az-retiree",
-      turns: [
-        { key: "u", role: "user", content: "Q" },
-        { key: "a", role: "assistant", content: "A", status: "done", promptId: "p" },
-      ],
-      rated: ["p"],
-    });
+  it("asks the two agency questions right under the chat, once the answer is rated", async () => {
     render(<AspenApp />);
     fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
     await onView("try");
-    expect(await screen.findByRole("heading", { name: "One more: how did AI do overall?" })).toBeInTheDocument();
-    fireEvent.click(screen.getAllByRole("button", { name: /^Start over/ })[0]);
-    await waitFor(() =>
-      expect(screen.queryByRole("heading", { name: "One more: how did AI do overall?" })).not.toBeInTheDocument(),
-    );
-  });
-
-  it("asks how AI did overall right under the chat, once the answer is rated", async () => {
-    render(<AspenApp />);
-    fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
-    await onView("try");
-    // No overall questions before the answer is rated.
-    expect(screen.queryByRole("heading", { name: "One more: how did AI do overall?" })).not.toBeInTheDocument();
+    // Nothing before the answer is rated.
+    expect(screen.queryByRole("heading", { name: "Two more, about your agency" })).not.toBeInTheDocument();
     cleanup();
 
-    storeChat({
-      perspective: "resident",
-      householdId: "az-retiree",
-      turns: [
-        { key: "u", role: "user", content: "Q" },
-        { key: "a", role: "assistant", content: "A", status: "done", promptId: "p" },
-      ],
-      rated: ["p"],
-    });
+    storeChat(RATED_CHAT);
     const scrollIntoView = vi.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
     render(<AspenApp />);
     fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
     await onView("try");
-    expect(await screen.findByRole("heading", { name: "One more: how did AI do overall?" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Next: how did AI do overall\?/ }));
+    expect(await screen.findByRole("heading", { name: "Two more, about your agency" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Next: two more, about your agency/ }));
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
-    fireEvent.click(screen.getByRole("button", { name: "Got the amount right: 2 of 5" }));
-    // One step at a time, Continue to the end, then share.
-    for (let i = 0; i < 4; i++) fireEvent.click(screen.getByRole("button", { name: "Continue" }));
-    fireEvent.click(screen.getByRole("button", { name: "Share my ratings" }));
-    expect(await screen.findByText(/Your ratings are in/)).toBeInTheDocument();
-    // Done folds to one line: no heading, and nothing left pointing down to it.
-    expect(screen.queryByRole("heading", { name: "One more: how did AI do overall?" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Next: how did AI do overall\?/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Partly" }));
+    fireEvent.click(screen.getByRole("button", { name: "For residents: 2 of 5" }));
     await waitFor(() =>
-      expect(events()).toContainEqual(
-        expect.objectContaining({ kind: "discussion", stage: "try", payload: expect.objectContaining({ question: "performance" }) }),
+      expect(events()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ kind: "survey", stage: "try", payload: { question: "source-of-truth", answer: "partly" } }),
+          expect.objectContaining({
+            kind: "discussion",
+            stage: "try",
+            payload: expect.objectContaining({ question: "experience", ratings: { residents: 2 } }),
+          }),
+        ]),
       ),
     );
     delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
   });
 });
 
-describe("AspenApp thread", () => {
+describe("AspenApp look-up moments", () => {
   beforeEach(() => {
     control.live = false;
   });
 
-  it("ties later stages back to the participant's question", async () => {
-    storeChat({
-      perspective: "resident",
-      householdId: "ct-couple",
-      turns: [
-        { key: "u", role: "user", content: "Q" },
-        { key: "a", role: "assistant", content: "A", status: "done", promptId: "p" },
-      ],
-      rated: [],
-    });
+  it("shows the same card whether or not this phone asked, with no thread back to Try it", async () => {
+    storeChat({ ...RATED_CHAT, householdId: "ct-couple", rated: [] });
     render(<AspenApp />);
     fireEvent.click(nav().getByRole("button", { name: /At scale/ }));
     await onView("scale");
-    expect(screen.getByText(/42 of the 49 models that answered said it gets \$0/)).toBeInTheDocument();
+    expect(lookUp().getByText("42%")).toBeInTheDocument();
+    // The thread cards are gone from the phone (the run-through, Oct 22).
+    expect(screen.queryByText(/You asked about/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rate my answer →" })).not.toBeInTheDocument();
 
-    fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
-    await onView("reveal");
-    // What we saw opens with what you contributed: your question, and the rating still to do.
-    expect(screen.getByText("You asked about “Couple, with savings”.")).toBeInTheDocument();
-    expect(screen.getByText("You haven't rated an answer yet.")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Rate my answer →" }));
-    await onView("try");
-  });
-
-  it("names the participant's own question and a missing rating list", async () => {
-    storeChat({
-      householdId: "own",
-      turns: [
-        { key: "u", role: "user", content: "Q" },
-        { key: "a", role: "assistant", content: "A", status: "done", promptId: "p" },
-      ],
-    } as Partial<SavedChat>);
-    render(<AspenApp />);
     fireEvent.click(nav().getByRole("button", { name: /Shared foundation/ }));
     await onView("foundation");
-    // The rules check is in the chatbot demo now; the foundation just recalls the question.
-    expect(screen.getByText("You asked about your own question.")).toBeInTheDocument();
+    expect(lookUp().getByText(LOOK_UP.foundation.empty)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Check my answer/ })).not.toBeInTheDocument();
   });
 
-  it("treats a chat without a user turn or a finished answer as not asked", async () => {
-    storeChat({ perspective: "resident", householdId: "az-retiree", turns: [], rated: ["x"] });
-    render(<AspenApp />);
-    fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
-    await onView("reveal");
-    expect(screen.getByText(/You haven't asked the AI yet/)).toBeInTheDocument();
-  });
-
-  it("ignores a saved chat without turns", async () => {
-    localStorage.setItem(CHAT_KEY, JSON.stringify({ householdId: "az-retiree" }));
-    render(<AspenApp />);
-    fireEvent.click(nav().getByRole("button", { name: /At scale/ }));
-    await onView("scale");
-    expect(screen.getByText(/You haven't asked the AI yet/)).toBeInTheDocument();
+  it("asks nothing on the phone during the TV stages", async () => {
+    for (const id of ["reveal", "scale", "foundation"] as const) {
+      cleanup();
+      render(<AspenApp />);
+      const label = STAGES.find((st) => st.id === id)!.label;
+      fireEvent.click(nav().getByRole("button", { name: new RegExp(label) }));
+      await onView(id);
+      expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+      expect(screen.queryAllByRole("button", { pressed: false })).toHaveLength(0);
+    }
   });
 });
 
@@ -477,14 +461,14 @@ describe("AspenApp after a new run", () => {
     householdId: "ct-couple",
     turns: [
       { key: "u", role: "user", content: "Q" },
-      { key: "a", role: "assistant", content: "A", status: "done", promptId: "p" },
+      { key: "a", role: "assistant", content: "The answer for the couple", status: "done", promptId: "p" },
     ],
     rated: [],
   };
 
   it("drops a rehearsal's chat and shared ratings, and follows the room again", async () => {
     localStorage.setItem("aspen.run", JSON.stringify("rehearsal"));
-    localStorage.setItem("aspen.overall.v1", "true");
+    localStorage.setItem("aspen.overall.v2", JSON.stringify({ truth: "no" }));
     storeChat(asked);
     sessionStorage.setItem("aspen.view", JSON.stringify({ view: "scale", follow: false }));
     render(<AspenApp />);
@@ -493,12 +477,13 @@ describe("AspenApp after a new run", () => {
     await waitFor(() => expect(localStorage.getItem("aspen.run")).toBe(JSON.stringify("phoenix")));
     expect(JSON.parse(localStorage.getItem(CHAT_KEY) ?? "{}").turns).toEqual([]);
 
-    fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
-    await onView("reveal");
-    expect(screen.getByText(/You haven't asked the AI yet/)).toBeInTheDocument();
+    fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
+    await onView("try");
+    expect(screen.queryByText("The answer for the couple")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ask the AI" })).toBeDisabled();
 
-    // The shared-ratings flag is gone too, so the overall rating can be given again.
-    expect(localStorage.getItem("aspen.overall.v1")).toBeNull();
+    // The overall answers are gone too, so they can be given again.
+    expect(localStorage.getItem("aspen.overall.v2")).toBeNull();
   });
 
   it("keeps the chat while the run stays the same", async () => {
@@ -506,11 +491,11 @@ describe("AspenApp after a new run", () => {
     storeChat(asked);
     render(<AspenApp />);
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === "/api/aspen/state")).toBe(true));
-    fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
-    await onView("reveal");
-    // What we saw opens with what you contributed: your question, and the rating still to do.
-    expect(screen.getByText("You asked about “Couple, with savings”.")).toBeInTheDocument();
-    expect(screen.getByText("You haven't rated an answer yet.")).toBeInTheDocument();
+    fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
+    await onView("try");
+    // The conversation is still there, waiting for its rating.
+    expect(await screen.findByText("The answer for the couple")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Your verdict" })).toBeInTheDocument();
   });
 
   it("keeps the chat when the control row is not live (a database error)", async () => {
@@ -519,11 +504,11 @@ describe("AspenApp after a new run", () => {
     storeChat(asked);
     render(<AspenApp />);
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === "/api/aspen/state")).toBe(true));
-    fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
-    await onView("reveal");
-    // What we saw opens with what you contributed: your question, and the rating still to do.
-    expect(screen.getByText("You asked about “Couple, with savings”.")).toBeInTheDocument();
-    expect(screen.getByText("You haven't rated an answer yet.")).toBeInTheDocument();
+    fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
+    await onView("try");
+    // The conversation is still there, waiting for its rating.
+    expect(await screen.findByText("The answer for the couple")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Your verdict" })).toBeInTheDocument();
     expect(localStorage.getItem("aspen.run")).toBe(JSON.stringify("phoenix"));
   });
 });

@@ -184,6 +184,9 @@ describe('aspen content', () => {
     expect(MINIMUM_BENEFIT).toEqual({ fy2026: 24, fy2027: 25, effective: 'October 1, 2026' })
     expect(POLICYBENCH.example.reference.monthly).toBe(MINIMUM_BENEFIT.fy2026)
     expect(POLICYBENCH.example.fromOctober.monthly).toBe(MINIMUM_BENEFIT.fy2027)
+    // PolicyBench's $288 is twelve months at FY2026's minimum; current law is nine at $24, then three at $25.
+    expect(POLICYBENCH.example.reference.annual).toBe(12 * MINIMUM_BENEFIT.fy2026)
+    expect(POLICYBENCH.example.currentLaw.annual).toBe(9 * MINIMUM_BENEFIT.fy2026 + 3 * MINIMUM_BENEFIT.fy2027)
   })
 
   it("keeps the example's tiles in step with its counts (PolicyBench scenario_027)", () => {

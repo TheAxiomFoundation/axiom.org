@@ -1,7 +1,9 @@
 import fc from 'fast-check'
 import {
   EMPTY_SUMMARY,
+  actedOn,
   breakdownOf,
+  latestPerParticipant,
   countBy,
   plainText,
   ifEligibleSentence,
@@ -427,5 +429,144 @@ describe('aspen results', () => {
     })
     expect(s.voices.map((v) => v.text)).toEqual(['Great session'])
     expect(s.discussion.notes.find((n) => n.question === 'experience')?.text).toBe('Our chatbot struggles with SNAP')
+  })
+})
+
+describe('latestPerParticipant', () => {
+  type E = { id: number; participant_id: string | null; q: string; created_at: string }
+  const event = fc.record({
+    participant_id: fc.option(fc.constantFrom('p1', 'p2', 'p3'), { nil: null }),
+    q: fc.constantFrom('experience', 'source-of-truth'),
+    // Same-format ISO times, ties included, as the database writes them.
+    created_at: fc.integer({ min: 0, max: 20 }).map((m) => `2026-10-26T18:${String(m).padStart(2, '0')}:00Z`),
+  })
+  const events = fc.array(event, { maxLength: 30 }).map((es) => es.map((e, id) => ({ ...e, id }) as E))
+  const byQ = (e: E) => e.q
+
+  it('keeps one event per person and key, the latest, and every event without a person', () => {
+    fc.assert(
+      fc.property(events, (es) => {
+        const out = latestPerParticipant(es, byQ)
+        // Only input events, each at most once.
+        expect(new Set(out.map((e) => e.id)).size).toBe(out.length)
+        expect(out.every((e) => es.includes(e))).toBe(true)
+        // Every loose event stays.
+        expect(out.filter((e) => !e.participant_id).map((e) => e.id).sort()).toEqual(
+          es.filter((e) => !e.participant_id).map((e) => e.id).sort(),
+        )
+        // Exactly one per (person, key), with the group's latest time.
+        const groups = new Map<string, E[]>()
+        for (const e of es.filter((e) => e.participant_id)) {
+          const k = `${e.participant_id}|${e.q}`
+          groups.set(k, [...(groups.get(k) ?? []), e])
+        }
+        const kept = out.filter((e) => e.participant_id)
+        expect(kept).toHaveLength(groups.size)
+        for (const e of kept) {
+          const group = groups.get(`${e.participant_id}|${e.q}`)!
+          expect(e.created_at).toBe(group.map((g) => g.created_at).sort().at(-1))
+        }
+        // Oldest first, as the rest of the summary expects.
+        const times = out.map((e) => e.created_at)
+        expect(times).toEqual([...times].sort())
+      }),
+    )
+  })
+
+  it('is idempotent, and its result does not depend on the order events arrive in', () => {
+    fc.assert(
+      fc.property(events, fc.integer(), (es, seed) => {
+        const once = latestPerParticipant(es, byQ)
+        expect(latestPerParticipant(once, byQ).map((e) => e.id).sort()).toEqual(once.map((e) => e.id).sort())
+        const shuffled = [...es].sort((a, b) => ((a.id * 7919 + seed) % 31) - ((b.id * 7919 + seed) % 31))
+        const sig = (xs: E[]) => xs.map((e) => `${e.participant_id}|${e.q}|${e.created_at}`).sort()
+        expect(sig(latestPerParticipant(shuffled, byQ))).toEqual(sig(once))
+      }),
+    )
+  })
+
+  it('breaks a tie in time with the later event', () => {
+    const at = '2026-10-26T18:00:00Z'
+    const out = latestPerParticipant(
+      [
+        { id: 1, participant_id: 'p1', q: 'experience', created_at: at },
+        { id: 2, participant_id: 'p1', q: 'experience', created_at: at },
+      ],
+      byQ,
+    )
+    expect(out.map((e) => e.id)).toEqual([2])
+  })
+})
+
+describe('actedOn', () => {
+  const action = fc.constantFrom(null, undefined, 'apply', 'not-apply', 'call', 'unsure')
+  const wouldAct = fc.constantFrom(null, undefined, 'yes', 'maybe', 'no')
+
+  it('is true exactly when a resident would apply or not apply, or an older rating said it would be acted on', () => {
+    fc.assert(
+      fc.property(action, wouldAct, (resident_action, would_act) => {
+        const expected =
+          resident_action === 'apply' || resident_action === 'not-apply' || would_act === 'yes' || would_act === 'maybe'
+        expect(actedOn({ resident_action, would_act } as Pick<PromptRow, 'would_act' | 'resident_action'>)).toBe(expected)
+      }),
+    )
+  })
+
+  it('counts convincing answers as the wrong or unsure ones acted on, never more than those', () => {
+    const verdict = fc.constantFrom('right', 'unsure', 'wrong')
+    const row = fc.record({ verdict, resident_action: action, would_act: wouldAct })
+    fc.assert(
+      fc.property(fc.array(row, { maxLength: 25 }), (rows) => {
+        const rated = rows.map((r, i) => ({ ...base, id: `x${i}`, turn: 0, ...r }) as PromptRow)
+        const v = viabilityOf(rated)
+        expect(v.convincing).toBe(rated.filter((p) => p.verdict !== 'right' && actedOn(p)).length)
+        expect(v.convincing).toBeLessThanOrEqual(v.unsure + v.wrong)
+      }),
+    )
+  })
+
+  it('reads a call to check, or not sure, as not acted on', () => {
+    expect(actedOn({ resident_action: 'call', would_act: null })).toBe(false)
+    expect(actedOn({ resident_action: 'unsure', would_act: 'no' })).toBe(false)
+    expect(actedOn({ resident_action: null, would_act: 'maybe' })).toBe(true)
+  })
+})
+
+describe('summarizeRun with answers saved as they are tapped', () => {
+  const ev = (participant_id: string, minute: number, kind: string, payload: Record<string, unknown>) => ({
+    run_id: 'r',
+    participant_id,
+    kind,
+    payload,
+    created_at: `2026-10-26T18:${String(minute).padStart(2, '0')}:00Z`,
+  })
+
+  it('counts each person once, with their last tap, for the agency rating, the source of truth and the vote', () => {
+    const agency = (ratings: Record<string, number>, note = '') => ({ question: 'experience', ratings, topics: [], note })
+    const s = summarizeRun({
+      ...DATA,
+      events: [
+        ev('p1', 1, 'discussion', agency({ residents: 1 })),
+        ev('p1', 2, 'discussion', agency({ residents: 1, staff: 2 })),
+        ev('p1', 3, 'discussion', agency({ residents: 5, staff: 2 }, 'Helps staff')),
+        ev('p2', 2, 'discussion', agency({ residents: 3 })),
+        ev('p1', 1, 'survey', { question: 'source-of-truth', answer: 'yes' }),
+        ev('p1', 4, 'survey', { question: 'source-of-truth', answer: 'no' }),
+        ev('p2', 4, 'survey', { question: 'source-of-truth', answer: 'partly' }),
+        ev('p1', 5, 'vote', { useCase: 'project' }),
+        ev('p1', 6, 'vote', { useCase: 'flows' }),
+      ],
+    })
+    const experience = s.discussion.scales.find((sc) => sc.question === 'experience')!
+    const cat = (id: string) => experience.categories.find((c) => c.id === id)!
+    expect(cat('residents')).toMatchObject({ count: 2, average: 4 })
+    expect(cat('staff')).toMatchObject({ count: 1, average: 2 })
+    expect(s.discussion.notes.filter((n) => n.question === 'experience').map((n) => n.text)).toEqual(['Helps staff'])
+    expect(s.sourceOfTruth.map((c) => [c.id, c.count])).toEqual([
+      ['yes', 0],
+      ['partly', 1],
+      ['no', 1],
+    ])
+    expect(s.votes.filter((c) => c.count > 0).map((c) => [c.id, c.count])).toEqual([['flows', 1]])
   })
 })

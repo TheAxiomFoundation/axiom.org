@@ -126,7 +126,10 @@ describe('supabase store', () => {
     const pledgeQuery = calls.find((c) => c.url.includes('aspen_pledges'))!.url
     expect(pledgeQuery).toContain('select=state,accurate_ai,state_systems,show_state,created_at')
     expect(pledgeQuery).not.toContain('email')
-    expect(calls.find((c) => c.url.includes('aspen_events'))!.url).toContain('kind=in.(discussion,breakout,survey,vote)')
+    const eventQuery = calls.find((c) => c.url.includes('aspen_events'))!.url
+    expect(eventQuery).toContain('kind=in.(discussion,breakout,survey,vote)')
+    // The participant id lets the summary keep each person's latest answer; it never leaves the server.
+    expect(eventQuery).toContain('select=run_id,participant_id,kind,stage,payload,created_at')
   })
 
   it('raises on HTTP errors and tolerates 204', async () => {
