@@ -12,7 +12,7 @@
  * same instant, so the flow mining never needs a hard-coded station order.
  */
 
-import { attemptSource, mainMergedAt, type PipelineAttempt } from "./encoding-pipeline";
+import { attemptSource, failedStepStation, mainMergedAt, type PipelineAttempt } from "./encoding-pipeline";
 
 export type EventKind = "enter" | "leave" | "fail" | "cancel" | "wait" | "issue" | "change";
 
@@ -42,26 +42,7 @@ export interface PipelineEvent {
 
 const MESSAGE_LIMIT = 500;
 
-/** Encoder step ids a failure bundle names, by the station they belong to. */
-const ENCODER_STEP_STATION: Record<string, string> = {
-  encode_apply: "validate",
-  repair_candidate: "validate",
-  package_exact_generated_changes: "publish",
-  verify_generated_provenance: "publish",
-};
-
-/**
- * The station a failed workflow step belongs to. Workflow step names read
- * "<job> / <step>"; encoder step ids are bare. Anything else before the
- * encode step is setup.
- */
-export function failedStepStation(step: string): string {
-  if (ENCODER_STEP_STATION[step]) return ENCODER_STEP_STATION[step];
-  const name = step.includes(" / ") ? step.slice(step.lastIndexOf(" / ") + 3) : step;
-  if (/^Encode, review, validate/i.test(name)) return "validate";
-  if (/pull request|^Push |^Package|^Sign/i.test(name)) return "publish";
-  return "setup";
-}
+export { failedStepStation } from "./encoding-pipeline";
 
 /** A short rule id for an infrastructure failure: infra:<step name, kebab-cased>. */
 export function infraRuleId(step: string): string {

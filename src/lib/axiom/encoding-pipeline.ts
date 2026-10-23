@@ -701,6 +701,32 @@ const STEP_GATES: Array<[RegExp, EncodeGate]> = [
   [/encode_apply|encode, review, validate, and apply/i, "encode"],
 ];
 
+/** Encoder step ids a failure bundle names, by the station they belong to. */
+const ENCODER_STEP_STATION: Record<string, string> = {
+  encode_apply: "validate",
+  repair_candidate: "validate",
+  package_exact_generated_changes: "publish",
+  verify_generated_provenance: "publish",
+  finalize_signed_reencode_artifact: "publish",
+};
+
+/**
+ * The station a failed workflow step belongs to. Workflow step names read
+ * "<job> / <step>"; encoder step ids are bare. Anything else before the
+ * encode step is setup. The ledger's gates and the event log's stations
+ * both read it, so a new step name lands in the same place in both.
+ */
+export function failedStepStation(step: string): string {
+  if (ENCODER_STEP_STATION[step]) return ENCODER_STEP_STATION[step];
+  const name = step.includes(" / ") ? step.slice(step.lastIndexOf(" / ") + 3) : step;
+  if (/^Encode, review, validate|dependent cascade/i.test(name)) return "validate";
+  if (/pull request|^Push |^Package|^Sign/i.test(name)) return "publish";
+  return "setup";
+}
+
+/** A station from failedStepStation, as the gate a failed run's label names. */
+const STATION_GATES: Record<string, EncodeGate> = { setup: "setup", validate: "validate", publish: "sign" };
+
 export function encodeGate(attempt: PipelineAttempt): EncodeGate {
   if (attempt.run_conclusion === "cancelled" || attempt.run_conclusion === "timed_out") {
     return "cancelled";
@@ -717,6 +743,9 @@ export function encodeGate(attempt: PipelineAttempt): EncodeGate {
     for (const [pattern, gate] of STEP_GATES) {
       if (pattern.test(attempt.failed_step)) return gate;
     }
+    // A step the list does not name still has a place in the run: before
+    // the encode step it is setup (fetching the corpus, migrations).
+    return STATION_GATES[failedStepStation(attempt.failed_step)] ?? "setup";
   }
   return attempt.failure_source ? "unknown" : "pending";
 }
