@@ -71,8 +71,6 @@ interface OpsDashboardProps {
   recentPlaces: RecentIngestPlace[];
   /** A ledger of every run, in place of the one built from encoder records. */
   ledger?: ReactNode;
-  /** The accepted-modules headline, on every tab. */
-  headline?: ReactNode;
   /** The open tab's body when it is not "now", rendered server-side by the page. */
   panel?: ReactNode;
   /** The open tab (?tab=line, output or programs); "now" otherwise. */
@@ -271,7 +269,6 @@ export function OpsDashboard({
   queues,
   recentPlaces,
   ledger,
-  headline,
   panel,
   initialTab = "now",
   shared = {},
@@ -359,8 +356,6 @@ export function OpsDashboard({
             each week, and the programs it works toward.
           </p>
         </header>
-
-        {headline}
 
         <nav className={styles.tabs} aria-label="Operations">
           {OPS_TABS.map((value) => (

@@ -1,10 +1,9 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { acceptedSeries, moduleLedger } from "@/lib/axiom/accepted-modules";
 import { attemptEvents } from "@/lib/axiom/pipeline-events";
 import { caseDetail, citationLanes, mineFlow } from "@/lib/axiom/pipeline-flow";
 import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
-import { AcceptedHeadline, FlowLine, flowHref, JourneyView, ProgramsMap, type FlowParams } from "./flow-page";
+import { FlowLine, flowHref, JourneyView, ProgramsMap, type FlowParams } from "./flow-page";
 
 // The canvases need a real browser (React Flow measures the DOM).
 vi.mock("./pipeline-canvas", () => ({
@@ -77,20 +76,6 @@ describe("FlowLine", () => {
     expect(screen.getByRole("heading", { name: "When one rule is fixed, which one comes next" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Rules that come back on the next try" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Dispatched again and again, never merged" })).toBeTruthy();
-  });
-});
-
-describe("AcceptedHeadline", () => {
-  it("shows the accepted headline with the modules not measured beside it", () => {
-    const rows = [
-      mergedAttempt({ id: "a", index_status: "indexed", synced_at: "2026-09-21T10:00:00Z", compile_status: "ok", compile_checked_at: "2026-09-22T03:00:00Z", tests_status: "pass" }),
-      mergedAttempt({ id: "dk", pr_repo: "rulespec-dk", module_paths: ["dk/x.yaml"], index_status: "missing" }),
-    ];
-    render(<AcceptedHeadline series={acceptedSeries(moduleLedger(rows.flatMap(attemptEvents)), NOW)} />);
-    const headline = screen.getByLabelText("Accepted modules");
-    expect(headline.textContent).toContain("How many modules are accepted?1");
-    expect(headline.textContent).toContain("Not measured1");
-    expect(headline.textContent).toContain("dk 1");
   });
 });
 

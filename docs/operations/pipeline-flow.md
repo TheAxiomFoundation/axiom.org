@@ -7,9 +7,8 @@ Line tab. Agent API: `/api/ops/flow` (JSON) and `/api/ops/flow?format=md`
 
 ## Where it lives: one /ops page
 
-`/ops` is one page with an accepted-modules headline on every tab
-(accepted all time and in the last four weeks, not measured, rework / not
-accepted) and four tabs, each its own page load that reads only its data:
+`/ops` is one page with four tabs, each its own page load that reads only
+its data (the accepted-modules counts live on the Output tab):
 
 | tab | question | built from |
 |---|---|---|
@@ -111,7 +110,7 @@ checks on main as they stand now:
   rulespec-de and rulespec-dk are today, or the sweep has not reached it
   yet) or no test result. An unknown result is not a failure: it is not
   counted as accepted, and not as a failure. The count of modules not
-  measured sits beside the headline, per week (the week of the module's
+  measured sits beside the accepted count, per week (the week of the module's
   latest merge) with the same route and program split, and by repo, so the
   gap stays visible; indexing rulespec-de and rulespec-dk brings it toward
   zero.
@@ -184,13 +183,10 @@ Only `?accepted` runs the program lookup. The full `GET /api/ops/flow`
 carries the cached headline series as `accepted` (totals, weeks, routes,
 not measured, rework; programs read `untagged` until the backfill tags the
 events), and the markdown brief ends with its summary and a pointer to
-`?accepted` for programs. Every `/ops` tab shows the same headline above
-its body: accepted (all time, and the last four weeks), not measured (with
-its largest repos), and rework / not accepted. The Line and Output tabs
-count it from the events they read anyway; the Now and Programs tabs, and
-the API, read it from a cache kept for ten minutes (`getAcceptedHeadline`).
-The `window`, `j` and `pop` parameters do not narrow it: it is the whole
-history.
+`?accepted` for programs; the API reads that series from a cache kept for
+ten minutes (`getAcceptedHeadline`). On the page the counts are on the
+Output tab only. The `window`, `j` and `pop` parameters do not narrow them:
+they are the whole history.
 
 ### Counts when the definition was agreed
 

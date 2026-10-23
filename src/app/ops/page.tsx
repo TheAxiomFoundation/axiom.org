@@ -6,20 +6,19 @@ import { BundleOverview } from "@/components/axiom/bundle-overview";
 import { ProgramBundle } from "@/components/axiom/program-bundle";
 import { PipelineLedger } from "@/components/axiom/pipeline-ledger";
 import { WorkflowHealthStrip } from "@/components/axiom/workflow-health";
-import { AcceptedHeadline, FlowLine, ProgramsMap } from "@/components/ops/flow/flow-page";
+import { FlowLine, ProgramsMap } from "@/components/ops/flow/flow-page";
 import flowStyles from "@/components/ops/flow/flow.module.css";
 import { DEFAULT_FLOW_PARAMS, type FlowParams } from "@/components/ops/flow/flow-params";
 import { OutputTab } from "@/components/ops/flow/output-tab";
 import { documentTiles, programTiles } from "@/components/ops/flow/program-tiles";
 import { Waivers } from "@/components/ops/flow/waivers";
-import { acceptedSeries, moduleLedger, type AcceptedSeries } from "@/lib/axiom/accepted-modules";
 import { getPipelineAttempts } from "@/lib/axiom/encoding-pipeline-data";
 import { getEncodingQueues } from "@/lib/axiom/encoding-queues";
 import { busiestRoots, LEGACY_OPS_TABS, opsHref, sharedOpsParams } from "@/lib/axiom/ops-href";
 import { ScopeNav } from "@/components/ops/flow/scope-nav";
 import { attemptJurisdiction, parseScope, scopeName } from "@/lib/axiom/encoding-pipeline-insights";
 import { getPipelineEvents, getWaiverEvents } from "@/lib/axiom/pipeline-events-data";
-import { getAcceptedHeadline, loadAccepted, loadFlow, parseWindow } from "@/lib/axiom/pipeline-flow-data";
+import { loadAccepted, loadFlow, parseWindow } from "@/lib/axiom/pipeline-flow-data";
 import { getBundleSummaries, getProgramBundle } from "@/lib/axiom/program-bundles-data";
 import { getEncodingStatus, getRecentCorpusScopes, groupRecentScopes } from "@/lib/corpus-status";
 import { SITE_URL } from "@/lib/urls";
@@ -57,10 +56,6 @@ export default async function OpsPage({ searchParams }: { searchParams?: Promise
   const [encodingStatus, recentScopes, queues] =
     tab === "now" ? await Promise.all([getEncodingStatus(), getRecentCorpusScopes(), getEncodingQueues()]) : [null, [], []];
 
-  // Every tab carries the headline, from the event log (derived from
-  // pipeline_attempts until encodings.pipeline_events is live): counted from
-  // the events a tab reads anyway, or the cached count where it reads none.
-  let series: AcceptedSeries;
   let panel: ReactNode = null;
   let ledger: ReactNode;
   let workflows: ReactNode;
@@ -76,7 +71,6 @@ export default async function OpsPage({ searchParams }: { searchParams?: Promise
     };
     // The Line tab counts every case: it has no population filter.
     const data = await loadFlow({ days: flowParams.window, jurisdiction: flowParams.j, now: referenceMs });
-    series = acceptedSeries(moduleLedger(data.events), referenceMs);
     // Jurisdictions to scope by: the busiest roots among dispatches.
     const jurisdictions = busiestRoots(data.events.filter((e) => e.station === "dispatch").map((e) => e.jurisdiction));
     panel = (
@@ -84,19 +78,16 @@ export default async function OpsPage({ searchParams }: { searchParams?: Promise
     );
   } else if (tab === "output") {
     const accepted = await loadAccepted((await getPipelineEvents()).events, referenceMs);
-    series = accepted;
     panel = <OutputTab series={accepted} ledger={accepted.modules} program={one(params.program)} />;
   } else if (tab === "programs") {
     const bundleId = one(params.bundle);
     const validBundle = bundleId && BUNDLE_ID_RE.test(bundleId) ? bundleId : null;
     const count = params.count === "provisions" ? "provisions" : "documents";
-    const [waivers, headline, bundles, bundle] = await Promise.all([
+    const [waivers, bundles, bundle] = await Promise.all([
       getWaiverEvents(),
-      getAcceptedHeadline(),
       getBundleSummaries(),
       validBundle ? getProgramBundle(validBundle) : null,
     ]);
-    series = headline;
     panel = (
       <>
         <ProgramsMap programs={bundle ? null : programTiles(bundles)} documents={bundle ? documentTiles(bundle.documents) : null} />
@@ -121,8 +112,7 @@ export default async function OpsPage({ searchParams }: { searchParams?: Promise
   } else {
     // ?j=us narrows the ledger to one jurisdiction (and those under it).
     const scope = parseScope(params);
-    const [pipeline, headline, health] = await Promise.all([getPipelineAttempts(), getAcceptedHeadline(), getWorkflowHealth()]);
-    series = headline;
+    const [pipeline, health] = await Promise.all([getPipelineAttempts(), getWorkflowHealth()]);
     const attempts = pipeline.attempts;
     // Runs waiting for approval or in setup have no live row until their encoder starts.
     starting = {
@@ -150,13 +140,6 @@ export default async function OpsPage({ searchParams }: { searchParams?: Promise
       ) : undefined;
   }
 
-  // The headline counts without the program lookup (the Output tab has it).
-  // Keys: React warns about elements passed as props without them.
-  const headline = (
-    <div key="headline" className={flowStyles.page}>
-      <AcceptedHeadline series={series} />
-    </div>
-  );
 
   return (
     <OpsDashboard
@@ -167,7 +150,6 @@ export default async function OpsPage({ searchParams }: { searchParams?: Promise
       starting={starting}
       initialTab={tab}
       shared={sharedOpsParams(params)}
-      headline={headline}
       workflows={workflows}
       ledger={ledger}
       panel={panel ? <div key={`panel:${tab}`} className={flowStyles.page}>{panel}</div> : null}

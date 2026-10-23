@@ -147,13 +147,12 @@ describe("OpsDashboard", () => {
     expect(screen.getByRole("region", { name: "Every run" })).toBeInTheDocument();
   });
 
-  it("shows four tabs as links, the headline on every tab, and one tab's body at a time", () => {
+  it("shows four tabs as links and one tab's body at a time", () => {
     const props = {
       initialStatus: status({}),
       encodingError: null,
       queues: [],
       recentPlaces: [],
-      headline: <section aria-label="Accepted modules" />,
       ledger: <section aria-label="Every run" />,
       panel: <section aria-label="The encoding line" />,
     };
@@ -166,7 +165,6 @@ describe("OpsDashboard", () => {
       ["Programs", "/ops?tab=programs"],
     ]);
     expect(within(tabs).getByRole("link", { name: "Now" })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("region", { name: "Accepted modules" })).toBeVisible();
     expect(screen.getByRole("region", { name: "Every run" })).toBeVisible();
     expect(screen.queryByRole("region", { name: "The encoding line" })).not.toBeInTheDocument();
     cleanup();
@@ -178,7 +176,6 @@ describe("OpsDashboard", () => {
       "/ops?tab=output&j=us&window=7",
       "/ops?tab=programs&j=us&window=7",
     ]);
-    expect(screen.getByRole("region", { name: "Accepted modules" })).toBeVisible();
     expect(screen.getByRole("region", { name: "The encoding line" })).toBeVisible();
     expect(screen.queryByRole("region", { name: "Every run" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Live encoding activity" })).not.toBeInTheDocument();
