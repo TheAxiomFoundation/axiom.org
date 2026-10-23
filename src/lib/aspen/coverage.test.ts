@@ -237,7 +237,7 @@ describe("disclosures the panel states itself", () => {
     const longer = "Arizona SNAP rules do not test eligibility yet. Shelter costs are not included in this amount.";
     // The result still reads as untested (the panel shows its note), and the extra limit stays.
     expect(testsEligibility({ program: "us-xx-snap", disclosures: [longer] })).toBe(false);
-    expect(otherDisclosures({ program: "us-xx-snap", period: "2026-10", disclosures: [longer] })).toEqual([longer]);
+    expect(otherDisclosures({ program: "us-xx-snap", displayName: "XX SNAP", period: "2026-10", disclosures: [longer] })).toEqual([longer]);
     // A saved "tested" verdict means no panel note, so finbot's sentence stays.
     expect(otherDisclosures({ ...az, eligibilityTested: true, disclosures: [AZ_NOTE] })).toEqual([AZ_NOTE]);
     // A limit written before the sentence's own words stays too (GPT-6.1 Sol, round 3).

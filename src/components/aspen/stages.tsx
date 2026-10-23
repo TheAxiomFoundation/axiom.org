@@ -298,7 +298,7 @@ export function PolicyBenchContent() {
         <Card className="flex flex-col gap-3 p-5">
           <p className="m-0 font-body text-[1.08rem] leading-relaxed text-[var(--color-ink)]">{ex.description}</p>
           <p className="m-0 font-body text-[1.08rem] font-semibold leading-relaxed text-[var(--color-error)]">
-            {ex.modelsSaidZero} of the {ex.modelsAnswered} AI models that answered said $0. {ex.modelsRight} got it right.
+            {ex.modelsSaidZero} of the {ex.modelsAnswered} AI models that answered said $0. {ex.modelsExact} matched exactly.
           </p>
           <p className="m-0 font-body text-[1.08rem] leading-relaxed">
             <strong className="text-[var(--color-accent)]">

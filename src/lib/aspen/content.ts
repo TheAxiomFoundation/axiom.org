@@ -184,12 +184,13 @@ export function isUsState(value: unknown): value is (typeof US_STATES)[number] {
 // ---------------------------------------------------------------------------
 
 /**
- * The household chips. Each one is a household the Axiom rules can
- * compute today (rulespec-us programs served by the gallery chatbot), so
- * "Check against the rules" has an answer for it. The retiree in Phoenix
- * leads: the convening is in Phoenix. The Connecticut couple is At scale's
- * example household (PolicyBench scenario_027), so participants can ask
- * the AI about it before the room sees how 50 models did. The first person and
+ * The household chips. Participants ask the AI about them; the chat runs no
+ * rules check. All but the Connecticut couple are in states whose SNAP the
+ * gallery chatbot's Axiom rules cover; finbot has no Connecticut SNAP, so the
+ * live demo on At scale 6/6 stays on its Fresno question. The retiree in
+ * Phoenix leads: the convening is in Phoenix. The Connecticut couple is At
+ * scale's example household (PolicyBench scenario_027), so participants can
+ * ask the AI about it before the room sees how 50 models did. The first person and
  * client wordings are hand-written so every perspective reads naturally.
  */
 export interface Household {
@@ -234,10 +235,10 @@ export const HOUSEHOLDS: readonly Household[] = [
     programShort: "SNAP (food stamps)",
     plural: true,
     firstPerson:
-      "We live in Hartford, Connecticut. I'm 68 and I get $2,513 a month from Social Security disability. My spouse is 39, blind and has a disability. We have $48,000 in the bank.",
+      "We live in Hartford, Connecticut. I'm 68 and I get $2,513 a month from Social Security. My spouse is 39, blind and has a disability. We have $48,000 in the bank.",
     thirdPerson:
-      "a couple in Hartford, Connecticut: a 68-year-old who gets $2,513 a month from Social Security disability and a 39-year-old spouse who is blind and has a disability, with $48,000 in the bank",
-    why: "PolicyBench scenario_027: 42 of the 49 models that answered said $0. Connecticut's broad-based categorical eligibility (200% of poverty, no asset limit) drops the asset test, so the couple qualifies for the minimum benefit: $24 a month under FY2026 standards (PolicyBench's reference), $25 from October 1, 2026.",
+      "a couple in Hartford, Connecticut: a 68-year-old who gets $2,513 a month from Social Security and a 39-year-old spouse who is blind and has a disability, with $48,000 in the bank",
+    why: "PolicyBench scenario_027: 42 of the 49 models that answered said $0. Connecticut's broad-based categorical eligibility (200% of poverty, no asset limit) waives the net income and asset tests, so the couple qualifies for the minimum benefit: $24 a month under FY2026 standards (PolicyBench's reference), $25 from October 1, 2026.",
   },
   {
     id: "ny-parent",
@@ -684,6 +685,13 @@ export const GROUP_RAISED = {
   placeholder: "Barriers, what your workforce would need, open questions",
 } as const;
 
+/**
+ * SNAP's minimum benefit for households of one or two in the 48 states and DC:
+ * $24 under FY2026 standards; $25 from October 1, 2026 (USDA FY2027 COLA memo,
+ * August 21, 2026).
+ */
+export const MINIMUM_BENEFIT = { fy2026: 24, fy2027: 25, effective: "October 1, 2026" } as const;
+
 // ---------------------------------------------------------------------------
 // PolicyBench
 // ---------------------------------------------------------------------------
@@ -707,7 +715,6 @@ export const POLICYBENCH = {
   eligibleAnswers: 643,
   saidZero: 268,
   saidZeroBbce: 197,
-  bestModelZeros: 2,
   /** At scale's example household (scenario_027): 42 of the 49 models that answered said $0; one got it right. */
   example: {
     state: "Connecticut",
@@ -716,14 +723,19 @@ export const POLICYBENCH = {
     /** glm-5.2's answer didn't parse. */
     modelsAnswered: 49,
     modelsSaidZero: 42,
-    /** gpt-6-astra, $288. Four more said $276 (FY2025's $23 minimum), one $388 and one $5,160. */
-    modelsRight: 1,
+    /**
+     * gpt-6-astra matched the $288 reference exactly. Four more said $276 (FY2025's $23
+     * minimum), which At scale 3/6's within-10% rule would also count; one said $388 and
+     * one $5,160. The slides say "matched exactly" so the two counts don't collide.
+     */
+    modelsExact: 1,
     /**
      * PolicyBench's reference: the FY2026 minimum benefit, $24 a month, every
      * month of 2026. Models were asked for the annual amount
-     * (policybench/prompts.py), so the reference is $288. PolicyEngine applied
-     * USDA's FY2026 standards to every month, October to December included
-     * ($24 minimum, $546 two-person maximum). Gross income is 1.44 times the
+     * (policybench/prompts.py), so the reference is $288. PolicyEngine kept
+     * USDA's FY2026 allotments and deductions for every month, October to
+     * December included ($24 minimum, $546 two-person maximum), with the 2026
+     * poverty guideline from October. Gross income is 1.44 times the
      * poverty guideline, under Connecticut's 200% limit, so the couple is
      * categorically eligible and the $48,000 doesn't count.
      */
@@ -733,8 +745,8 @@ export const POLICYBENCH = {
      * memo of August 21, 2026): the minimum allotment for households of one
      * or two in the 48 states and DC is $25 and the two-person maximum is
      * $562 (https://www.fna.usda.gov/snap/allotment/cola). Under them the
-     * couple's $2,536 is still below 200% of poverty ($3,608), and 30% of
-     * its net income (about $635) is above the maximum, so it gets the
+     * couple's $2,536 is still below 200% of poverty ($3,607), and 30% of
+     * its net income (about $633) is above the maximum, so it gets the
      * minimum.
      */
     fromOctober: { monthly: 25, standards: "FY2027", effective: "October 1, 2026" },
@@ -854,7 +866,7 @@ export const SAME_RULES = {
     ],
   },
   audiences: [
-    { label: "For individuals", text: "Accurate information to plan for their futures and receive assistance on any channel they use." },
+    { label: "For individuals", text: "Information to plan for their futures and receive assistance on any channel they use." },
     { label: "For AI systems", text: "One source of record, so models stop estimating benefits amounts and start citing them." },
     { label: "For builders", text: "Tools that guide people through benefits and taxes, built on rules they don't have to re-encode." },
     { label: "For researchers", text: "A computational model of the rules, for estimating what a policy does and reproducing the analysis." },

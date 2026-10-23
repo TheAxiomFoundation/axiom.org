@@ -785,7 +785,7 @@ function StandardsNote() {
 function answerTile(answer: number | null, reference: number) {
   if (answer === null) return { text: "–", label: "no answer", tone: "border-[var(--color-rule)] text-[var(--color-ink-muted)]" };
   if (answer === reference)
-    return { text: `$${answer}`, label: `$${answer}, the reference`, tone: "border-[var(--color-accent)] bg-[var(--color-accent-light)] font-semibold text-[var(--color-accent)]" };
+    return { text: `$${answer}`, label: `$${answer}, matches the reference`, tone: "border-[var(--color-accent)] bg-[var(--color-accent-light)] font-semibold text-[var(--color-accent)]" };
   if (answer <= 0) return { text: "$0", label: "$0", tone: "border-[var(--color-error)]/30 text-[var(--color-error)]" };
   return { text: `$${answer.toLocaleString("en-US")}`, label: `$${answer.toLocaleString("en-US")}`, tone: "border-[var(--color-rule)] text-[var(--color-ink-secondary)]" };
 }
@@ -854,20 +854,20 @@ function HouseholdSlide() {
           <Label className="mb-0">{h.program}</Label>
           <div className="grid grid-cols-2 gap-[24px]">
             <BigStat value={`$${h.reference}`} label="PolicyEngine's reference in PolicyBench" tone="accent" />
-            <BigStat value="$0" label={`from ${ex.modelsSaidZero} of ${ex.modelsAnswered} AI models · ${ex.modelsRight} got it right`} tone="bad" />
+            <BigStat value="$0" label={`from ${ex.modelsSaidZero} of ${ex.modelsAnswered} AI models · ${ex.modelsExact} matched exactly`} tone="bad" />
           </div>
           <StandardsNote />
           {/* Every model's answer: the $0s as one block, then the others at full width so no amount is cut. */}
           <div
             role="group"
-            aria-label={`${h.models} models: ${ex.modelsSaidZero} said $0, ${ex.modelsRight} said $${h.reference}, ${ex.modelsAnswered - ex.modelsSaidZero - ex.modelsRight} gave other amounts, ${h.models - ex.modelsAnswered} gave no answer`}
+            aria-label={`${h.models} models: ${ex.modelsSaidZero} said $0, ${ex.modelsExact} said $${h.reference}, ${ex.modelsAnswered - ex.modelsSaidZero - ex.modelsExact} gave other amounts, ${h.models - ex.modelsAnswered} gave no answer`}
             className="flex flex-col gap-[8px]"
           >
             <ul className="m-0 grid list-none grid-cols-[repeat(21,minmax(0,1fr))] gap-[6px] p-0">
               {h.answers.filter((a) => a === 0).map((answer, i) => {
                 const tile = answerTile(answer, h.reference);
                 return (
-                  <li key={i} aria-label={tile.label} className={`rounded-[6px] border py-[4px] text-center font-mono text-[15px] ${tile.tone}`}>
+                  <li key={i} className={`rounded-[6px] border py-[4px] text-center font-mono text-[15px] ${tile.tone}`}>
                     {tile.text}
                   </li>
                 );
@@ -877,8 +877,9 @@ function HouseholdSlide() {
               {h.answers.filter((a) => a !== 0).map((answer, i) => {
                 const tile = answerTile(answer, h.reference);
                 return (
-                  <li key={i} aria-label={tile.label} className={`rounded-[6px] border px-[10px] py-[4px] text-center font-mono text-[15px] ${tile.tone}`}>
-                    {tile.text}
+                  <li key={i} className={`rounded-[6px] border px-[10px] py-[4px] text-center font-mono text-[15px] ${tile.tone}`}>
+                    <span aria-hidden={tile.text !== tile.label}>{tile.text}</span>
+                    {tile.text !== tile.label && <span className="sr-only">{tile.label}</span>}
                   </li>
                 );
               })}

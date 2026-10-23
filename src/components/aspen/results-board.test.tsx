@@ -22,7 +22,7 @@ const DATA: RunData = {
       created_at: "2026-10-26T18:01:00Z",
       perspective: "resident",
       household_id: "ct-couple",
-      prompt: "I live in Phoenix. How much SNAP can I get?",
+      prompt: "We live in Hartford. How much SNAP can we get?",
       answer: "You would not qualify because of your savings.",
       verdict: "wrong",
       would_act: "no",
@@ -199,7 +199,7 @@ describe("ResultsBoard", () => {
     const arizona = summarizeRun({
       ...DATA,
       prompts: [
-        { ...DATA.prompts[0], resident_action: "not-apply", rules_program_id: "us-az-snap", rules_eligibility_tested: false },
+        { ...DATA.prompts[0], household_id: "az-retiree", resident_action: "not-apply", rules_program_id: "us-az-snap", rules_eligibility_tested: false },
         { ...DATA.prompts[1], resident_action: "apply" },
       ],
     });
@@ -214,6 +214,15 @@ describe("ResultsBoard", () => {
     expect(spotlight.getByText(/is the FY2026 minimum benefit/)).toHaveTextContent(
       "$24 is the FY2026 minimum benefit. It rose to $25 on October 1, 2026.",
     );
+  });
+
+  it("puts the minimum-benefit note only beside a $24 from rules that don't test eligibility", () => {
+    render(<ResultsBoard summary={summarizeRun({
+      ...DATA,
+      prompts: [{ ...DATA.prompts[0], household_id: "az-retiree", rules_amount: 30, rules_program_id: "us-az-snap", rules_eligibility_tested: false }],
+    })} />);
+    expect(screen.getByText("$30")).toBeInTheDocument();
+    expect(screen.queryByText(/is the FY2026 minimum benefit/)).not.toBeInTheDocument();
   });
 
   it("keeps the Arizona minimum-benefit note out of other programs' $24 checks", () => {

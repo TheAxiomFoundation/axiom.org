@@ -20,6 +20,7 @@ import {
   isUsState,
   percent,
   stageIndex,
+  MINIMUM_BENEFIT,
 } from './content'
 import { federalFiscalYear } from './coverage'
 
@@ -178,16 +179,23 @@ describe('aspen content', () => {
     expect(ex.modelsAsked).toBe(POLICYBENCH.models)
   })
 
+  it("keeps USDA's minimum benefit in one place, matching the example's reference", () => {
+    expect(MINIMUM_BENEFIT).toEqual({ fy2026: 24, fy2027: 25, effective: 'October 1, 2026' })
+    expect(POLICYBENCH.example.reference.monthly).toBe(MINIMUM_BENEFIT.fy2026)
+    expect(POLICYBENCH.example.fromOctober.monthly).toBe(MINIMUM_BENEFIT.fy2027)
+  })
+
   it("keeps the example's tiles in step with its counts (PolicyBench scenario_027)", () => {
     const ex = POLICYBENCH.example
     const answers = EXAMPLE_HOUSEHOLD.answers
     expect(answers).toHaveLength(ex.modelsAsked)
     expect(answers.filter((a) => a !== null)).toHaveLength(ex.modelsAnswered)
     expect(answers.filter((a) => a === 0)).toHaveLength(ex.modelsSaidZero)
-    expect(answers.filter((a) => a === EXAMPLE_HOUSEHOLD.reference)).toHaveLength(ex.modelsRight)
+    expect(answers.filter((a) => a === EXAMPLE_HOUSEHOLD.reference)).toHaveLength(ex.modelsExact)
     // The tiles read $0 first, then other amounts, the right answer, and the one that didn't parse.
     expect(answers.at(-1)).toBeNull()
     expect(answers.at(-2)).toBe(EXAMPLE_HOUSEHOLD.reference)
     expect(findHousehold('ct-couple')?.plural).toBe(true)
+    expect(findHousehold('ct-couple')?.firstPerson).not.toContain('disability. My')
   })
 })

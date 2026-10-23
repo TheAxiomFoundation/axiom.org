@@ -467,7 +467,7 @@ describe("PolicyBenchContent", () => {
       "1Households that qualify, told $0",
       "2One Connecticut household",
     ]);
-    expect(screen.getByText("42 of the 49 AI models that answered said $0. 1 got it right.")).toBeInTheDocument();
+    expect(screen.getByText("42 of the 49 AI models that answered said $0. 1 matched exactly.")).toBeInTheDocument();
     expect(screen.getByText("PolicyEngine's reference in PolicyBench, under FY2026 standards: $24 a month.").parentElement).toHaveTextContent(
       "PolicyEngine's reference in PolicyBench, under FY2026 standards: $24 a month. The minimum benefit rose to $25 on October 1, 2026.",
     );

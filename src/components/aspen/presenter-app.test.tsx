@@ -486,15 +486,22 @@ describe("PresenterApp stages", () => {
     expect(screen.getByText(/\$24 a month all year under FY2026 standards\./)).toBeInTheDocument();
     expect(screen.getByText("PolicyEngine's reference in PolicyBench")).toBeInTheDocument();
     expect(screen.getByText(/The minimum benefit rose to \$25 on October 1, 2026\./)).toBeInTheDocument();
-    expect(screen.getByText("from 42 of 49 AI models · 1 got it right")).toBeInTheDocument();
+    expect(screen.getByText("from 42 of 49 AI models · 1 matched exactly")).toBeInTheDocument();
     // One tile per model: 42 at $0, the one right answer, four at FY2025's $23 a month, and one that didn't parse.
     const tiles = within(screen.getByRole("group", { name: /^50 models: 42 said \$0, 1 said \$288, 6 gave other amounts, 1 gave no answer$/ })).getAllByRole("listitem");
     expect(tiles).toHaveLength(50);
     expect(tiles.filter((t) => t.textContent === "$0")).toHaveLength(42);
-    expect(tiles.filter((t) => t.textContent === "$288")).toHaveLength(1);
+    expect(tiles.filter((t) => t.textContent?.startsWith("$288"))).toHaveLength(1);
     expect(tiles.filter((t) => t.textContent === "$276")).toHaveLength(4);
     expect(tiles.filter((t) => t.textContent === "$5,160")).toHaveLength(1);
-    expect(tiles.filter((t) => t.getAttribute("aria-label") === "no answer")).toHaveLength(1);
+    expect(tiles.filter((t) => t.textContent?.includes("no answer"))).toHaveLength(1);
+    // The one exact answer stands out, and a screen reader hears why.
+    const exact = tiles.find((t) => t.textContent?.startsWith("$288"))!;
+    expect(exact).toHaveTextContent("$288, matches the reference");
+    const other = tiles.find((t) => t.textContent === "$276")!;
+    expect(exact.className).toContain("bg-[var(--color-accent-light)]");
+    expect(exact.className).toContain("font-semibold");
+    expect(other.className).not.toContain("color-accent");
 
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     fireEvent.keyDown(document.body, { key: "ArrowRight" });

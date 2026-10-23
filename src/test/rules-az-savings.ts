@@ -1,5 +1,6 @@
 /**
- * The rules chatbot's answer for the Aspen "az-savings" household, recorded
+ * The rules chatbot's answer for the former Aspen "az-savings" household (the chip
+ * became the Connecticut couple on Oct 23, 2026; this stays as a real Arizona fixture), recorded
  * from the live gallery chatbot (POST
  * https://finbot-snap-demo.vercel.app/gallery/chatbot/api/chat) on
  * 2026-10-12, when finbot-snap-demo main was at 87fa9db (the stream names no
