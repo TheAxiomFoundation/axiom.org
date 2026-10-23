@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AGENCY_COMMENT, RATING_POINTS, RATING_SCALES, SOURCE_OF_TRUTH } from "@/lib/aspen/content";
-import { OVERALL_KEY, readStored, sendEvent, writeStored } from "./client";
+import { OVERALL_KEY, participantId, postJson, readStored, writeStored } from "./client";
 import { BUTTON_QUIET, FIELD, QUESTION } from "./ui";
 
 /** One category on a 1–5 scale: five equal buttons; the ends are labelled once above the list. */
@@ -62,6 +62,9 @@ export function OverallRating({ stage }: { stage: string }) {
   const [answers, setAnswers] = useState<OverallAnswers>({});
   const [comment, setComment] = useState("");
   const [commentSaved, setCommentSaved] = useState(false);
+  const [failed, setFailed] = useState(false);
+  // Sends go one after another, so a slow earlier tap never lands after a later one and counts as the latest.
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
 
   useEffect(() => {
     const stored = readStored<OverallAnswers>(OVERALL_KEY);
@@ -77,14 +80,23 @@ export function OverallRating({ stage }: { stage: string }) {
     writeStored(OVERALL_KEY, next);
   }
 
+  function send(kind: string, payload: Record<string, unknown>) {
+    queue.current = queue.current.then(async () => {
+      const { ok } = await postJson("/api/aspen/event", { participantId: participantId(), kind, payload, stage }).catch(
+        () => ({ ok: false }),
+      );
+      setFailed(!ok);
+    });
+  }
+
   function pickTruth(answer: string) {
     keep({ ...answers, truth: answer });
-    sendEvent("survey", { question: SOURCE_OF_TRUTH.id, answer }, stage);
+    send("survey", { question: SOURCE_OF_TRUTH.id, answer });
   }
 
   /** The agency rating and its comment go together, so the latest event carries both. */
   function sendAgency(agency: Record<string, number>, note: string) {
-    sendEvent("discussion", { question: "experience", ratings: agency, topics: [], note }, stage);
+    send("discussion", { question: "experience", ratings: agency, topics: [], note });
   }
 
   function rate(category: string, score: number) {
@@ -154,15 +166,17 @@ export function OverallRating({ stage }: { stage: string }) {
               {AGENCY_COMMENT.hint}
             </span>
             {comment.trim() && (
-              <button type="button" className={`${BUTTON_QUIET} self-start`} disabled={commentSaved} onClick={saveComment}>
-                {commentSaved ? "Comment saved" : "Save comment"}
+              <button type="button" className={`${BUTTON_QUIET} self-start`} disabled={commentSaved && !failed} onClick={saveComment}>
+                {commentSaved && !failed ? "Comment saved" : "Save comment"}
               </button>
             )}
           </div>
         </fieldset>
       )}
       <p role="status" className="m-0 font-body text-[0.95rem] text-[var(--color-ink-muted)]">
-        {done ? (
+        {failed ? (
+          <span className="text-[var(--color-error)]">That didn&apos;t save. Tap it again.</span>
+        ) : done ? (
           <>
             <span aria-hidden className="mr-1.5 text-[var(--color-success)]">✓</span>
             Saved. You&apos;ll see the room&apos;s results on the screen.

@@ -123,43 +123,43 @@ describe("outputLabel", () => {
 });
 
 describe("RatingCard", () => {
-  it("asks one question at a time, moves on with each answer, and goes back", () => {
+  const ok = () => vi.fn().mockResolvedValue(jsonResponse({ ok: true }));
+
+  it("asks two things: how it looks, with optional tags and a note, then what a resident would do", async () => {
+    vi.stubGlobal("fetch", ok());
     render(<RatingCard promptId="p1" />);
-    expect(screen.getByText("1 of 4")).toBeInTheDocument();
+    expect(screen.getByText("1 of 2")).toBeInTheDocument();
     expect(screen.getByText("Does it look right?")).toBeInTheDocument();
+    // "Would you act on it?" is gone (the run-through, Oct 22).
     expect(screen.queryByText("Would you act on it?")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Back/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Save rating" })).not.toBeInTheDocument();
+    // Nothing else until there is a verdict.
+    expect(screen.queryByText(/What went wrong\?/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Next" })).not.toBeInTheDocument();
 
-    // Tapping an answer moves on to the next question; the last one leaves the screen.
     fireEvent.click(screen.getByRole("button", { name: "Not sure" }));
-    expect(screen.getByText("2 of 4")).toBeInTheDocument();
-    expect(screen.queryByText("Does it look right?")).not.toBeInTheDocument();
-    expect(screen.getByText("Would you act on it?")).toHaveFocus();
-
-    // Back shows the answer already picked.
-    fireEvent.click(screen.getByRole("button", { name: /Back/ }));
     expect(screen.getByRole("button", { name: "Not sure" })).toHaveAttribute("aria-pressed", "true");
-    fireEvent.click(screen.getByRole("button", { name: "Not sure" }));
-
-    fireEvent.click(screen.getByRole("button", { name: "Maybe" }));
-    expect(screen.getByText("3 of 4")).toBeInTheDocument();
-    expect(screen.getByText("What would a resident do next?")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Save rating" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Call to check" }));
-    expect(screen.getByText("4 of 4")).toBeInTheDocument();
     expect(screen.getByText(/What went wrong\?/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Wrong amount" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Plain and clear" })).not.toBeInTheDocument();
     expect(screen.getByLabelText(/Anything the room should know about this answer\?/)).toHaveValue("");
-    expect(screen.getByRole("button", { name: "Save rating" })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("2 of 2")).toBeInTheDocument();
+    expect(screen.getByText("What would a resident do next?")).toHaveFocus();
+    expect(screen.queryByText("Does it look right?")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save rating" })).not.toBeInTheDocument();
+
+    // Back shows the verdict already picked.
+    fireEvent.click(screen.getByRole("button", { name: /Back/ }));
+    expect(screen.getByRole("button", { name: "Not sure" })).toHaveAttribute("aria-pressed", "true");
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
   });
 
   it("leads with what went well for a right answer and offers the rest on request", () => {
+    vi.stubGlobal("fetch", ok());
     render(<RatingCard promptId="p1" />);
     fireEvent.click(screen.getByRole("button", { name: "Looks right" }));
-    fireEvent.click(screen.getByRole("button", { name: "Yes" }));
-    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
     expect(screen.getByText(/What went well\?/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Plain and clear" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Wrong amount" })).not.toBeInTheDocument();
@@ -168,74 +168,117 @@ describe("RatingCard", () => {
     expect(screen.queryByRole("button", { name: "Something went wrong too?" })).not.toBeInTheDocument();
   });
 
-  it("posts the rating and reports success", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ ok: true }));
+  it("saves the whole rating with every tap, and calls onRated once the resident's next step saves", async () => {
+    const fetchMock = ok();
     vi.stubGlobal("fetch", fetchMock);
     const onRated = vi.fn();
     render(<RatingCard promptId="p1" onRated={onRated} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Looks wrong" }));
-    fireEvent.click(screen.getByRole("button", { name: "No" }));
-    fireEvent.click(screen.getByRole("button", { name: "Not apply" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/aspen/rate");
+    expect(bodyOf(fetchMock, 0)).toEqual({
+      participantId: "p-1",
+      promptId: "p1",
+      verdict: "wrong",
+      residentAction: null,
+      wentWell: [],
+      wentWrong: [],
+      note: "",
+    });
+
     fireEvent.click(screen.getByRole("button", { name: "Wrong amount" }));
     fireEvent.click(screen.getByRole("button", { name: "Something went well too?" }));
     fireEvent.click(screen.getByRole("button", { name: "Plain and clear" }));
     fireEvent.click(screen.getByRole("button", { name: "Gave a number" }));
+    // A second tap takes a tag back off.
     fireEvent.click(screen.getByRole("button", { name: "Plain and clear" }));
     expect(screen.getByRole("button", { name: "Plain and clear" })).toHaveAttribute("aria-pressed", "false");
-    fireEvent.change(screen.getByLabelText(/Anything the room should know about this answer\?/), { target: { value: "Missed BBCE" } });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
+    expect(bodyOf(fetchMock, 4)).toMatchObject({ wentWell: ["Gave a number"], wentWrong: ["Wrong amount"], note: "" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Save rating" }));
-    expect(await screen.findByText("Rating saved. Thank you.")).toBeInTheDocument();
-    expect(onRated).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0][0]).toBe("/api/aspen/rate");
-    expect(bodyOf(fetchMock)).toEqual({
+    // Typing doesn't save; Next saves the note.
+    fireEvent.change(screen.getByLabelText(/Anything the room should know about this answer\?/), { target: { value: "  Missed BBCE " } });
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(6));
+    expect(bodyOf(fetchMock, 5)).toMatchObject({ note: "Missed BBCE", residentAction: null });
+    expect(onRated).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Not apply" }));
+    await waitFor(() => expect(onRated).toHaveBeenCalledTimes(1));
+    expect(bodyOf(fetchMock, 6)).toEqual({
       participantId: "p-1",
       promptId: "p1",
       verdict: "wrong",
-      wouldAct: "no",
       residentAction: "not-apply",
       wentWell: ["Gave a number"],
       wentWrong: ["Wrong amount"],
       note: "Missed BBCE",
     });
+    // The retired question is never sent, so a new rating can't carry an old answer.
+    expect(fetchMock.mock.calls.every((c) => !("wouldAct" in JSON.parse(c[1].body as string)))).toBe(true);
   });
 
-  it("shows a saving state while the request is open", async () => {
-    let resolve: (r: Response) => void = () => {};
-    vi.stubGlobal("fetch", vi.fn().mockReturnValue(new Promise<Response>((r) => (resolve = r))));
+  it("doesn't save the note again on Next when it hasn't changed", async () => {
+    const fetchMock = ok();
+    vi.stubGlobal("fetch", fetchMock);
     render(<RatingCard promptId="p1" />);
     fireEvent.click(screen.getByRole("button", { name: "Looks right" }));
-    fireEvent.click(screen.getByRole("button", { name: "Yes" }));
-    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save rating" }));
-    expect(await screen.findByRole("button", { name: "Saving…" })).toBeDisabled();
-    await act(async () => resolve(jsonResponse({ ok: true })));
-    expect(await screen.findByText("Rating saved. Thank you.")).toBeInTheDocument();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("2 of 2")).toBeInTheDocument();
+    await act(async () => {});
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("reports a failed save and keeps the form", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ error: "no" }, false)));
+  it("sends one save at a time, in the order of the taps", async () => {
+    const resolvers: ((r: Response) => void)[] = [];
+    const fetchMock = vi.fn().mockImplementation(() => new Promise<Response>((r) => resolvers.push(r)));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<RatingCard promptId="p1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Looks wrong" }));
+    fireEvent.click(screen.getByRole("button", { name: "Wrong amount" }));
+    fireEvent.click(screen.getByRole("button", { name: "Too vague" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    // The second waits for the first, so a slow first save can't land last and undo a tag.
+    await act(async () => {});
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await act(async () => resolvers[0](jsonResponse({ ok: true })));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await act(async () => resolvers[1](jsonResponse({ ok: true })));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(bodyOf(fetchMock, 1).wentWrong).toEqual(["Wrong amount"]);
+    expect(bodyOf(fetchMock, 2).wentWrong).toEqual(["Wrong amount", "Too vague"]);
+    await act(async () => resolvers[2](jsonResponse({ ok: true })));
+  });
+
+  it("says when a save fails, keeps the choice, and saves on the next tap", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ ok: true }))
+      .mockResolvedValueOnce(jsonResponse({ error: "no" }, false))
+      .mockResolvedValue(jsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
     const onRated = vi.fn();
     render(<RatingCard promptId="p1" onRated={onRated} />);
     fireEvent.click(screen.getByRole("button", { name: "Not sure" }));
-    fireEvent.click(screen.getByRole("button", { name: "Maybe" }));
-    // One question at a time, so the resident's "Not sure" is the only one on screen.
-    fireEvent.click(screen.getByRole("button", { name: "Not sure" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save rating" }));
-    expect(await screen.findByText("That didn't save. Try again.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Save rating" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    fireEvent.click(screen.getByRole("button", { name: "Call to check" }));
+    expect(await screen.findByText("That didn't save. Tap it again.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Call to check" })).toHaveAttribute("aria-pressed", "true");
     expect(onRated).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Call to check" }));
+    await waitFor(() => expect(onRated).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText("That didn't save. Tap it again.")).not.toBeInTheDocument();
   });
 
   it("reports a dropped connection as a failed save", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
     render(<RatingCard promptId="p1" />);
     fireEvent.click(screen.getByRole("button", { name: "Looks wrong" }));
-    fireEvent.click(screen.getByRole("button", { name: "Yes" }));
-    fireEvent.click(screen.getByRole("button", { name: "Not apply" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save rating" }));
-    expect(await screen.findByText("That didn't save. Try again.")).toBeInTheDocument();
+    expect(await screen.findByText("That didn't save. Tap it again.")).toBeInTheDocument();
   });
 });
 

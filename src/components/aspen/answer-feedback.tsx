@@ -32,7 +32,8 @@ interface Rating {
 export function RatingCard({ promptId, onRated }: { promptId: string; onRated?: () => void }) {
   const [step, setStep] = useState(0);
   const [rating, setRating] = useState<Rating>({ verdict: null, residentAction: null, wentWell: [], wentWrong: [], note: "" });
-  const [saved, setSaved] = useState<Rating | null>(null);
+  // The last rating sent; every save carries the whole rating, so a later one also carries the note.
+  const sent = useRef<Rating | null>(null);
   const [failed, setFailed] = useState(false);
   const [showOther, setShowOther] = useState(false);
   const question = useRef<HTMLLegendElement>(null);
@@ -55,6 +56,7 @@ export function RatingCard({ promptId, onRated }: { promptId: string; onRated?: 
     const next = { ...rating, ...patch };
     setRating(next);
     if (!next.verdict) return;
+    sent.current = next;
     queue.current = queue.current.then(async () => {
       const { ok } = await postJson("/api/aspen/rate", {
         participantId: participantId(),
@@ -66,10 +68,7 @@ export function RatingCard({ promptId, onRated }: { promptId: string; onRated?: 
         note: next.note,
       }).catch(() => ({ ok: false }));
       setFailed(!ok);
-      if (ok) {
-        setSaved(next);
-        then?.();
-      }
+      if (ok) then?.();
     });
   }
 
@@ -79,7 +78,7 @@ export function RatingCard({ promptId, onRated }: { promptId: string; onRated?: 
   const otherTags = praise ? WENT_WRONG : WENT_WELL;
   const firstKey = praise ? "wentWell" : "wentWrong";
   const otherKey = praise ? "wentWrong" : "wentWell";
-  const noteSaved = saved?.note === note.trim();
+  const noteSaved = sent.current?.note === note.trim();
   const legend = (text: ReactNode) => (
     <legend ref={question} tabIndex={-1} className={`${QUESTION} outline-none`}>
       {text}

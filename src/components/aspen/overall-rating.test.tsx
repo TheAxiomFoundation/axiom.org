@@ -1,9 +1,11 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OverallRating, ScaleRow } from "./overall-rating";
 
 function stubFetch() {
-  const mock = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ ok: true }) }) as unknown as Response);
+  const mock = vi.fn(
+    async (_url: string, _init?: RequestInit) => ({ ok: true, status: 200, json: async () => ({ ok: true }) }) as unknown as Response,
+  );
   vi.stubGlobal("fetch", mock);
   return mock;
 }
@@ -35,76 +37,67 @@ describe("ScaleRow", () => {
   });
 });
 
-/** Moves on one step; the overall ratings ask one thing at a time. */
-const next = () => fireEvent.click(screen.getByRole("button", { name: "Continue" }));
-const steps = (n: number) => {
-  for (let i = 0; i < n; i++) next();
-};
+const box = () => screen.getByLabelText(/Where has AI helped your agency, and where has it fallen short\?/);
 
 describe("OverallRating", () => {
-  it("asks one thing at a time, with where you are and a way back", () => {
-    stubFetch();
-    render(<OverallRating stage="try" />);
-    expect(screen.getByText("1 of 5")).toBeInTheDocument();
-    expect(screen.getByText("1 = Not at all · 5 = Fully")).toBeInTheDocument();
-    expect(screen.queryByText("1 = Not well · 5 = Very well")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Share my ratings" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Back/ })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Got the amount right: 3 of 5" }));
-    next();
-    expect(screen.getByText("2 of 5")).toBeInTheDocument();
-    expect(screen.getByText("1 = Not well · 5 = Very well")).toBeInTheDocument();
-    // Back keeps what was picked.
-    fireEvent.click(screen.getByRole("button", { name: /Back/ }));
-    expect(screen.getByRole("button", { name: "Got the amount right: 3 of 5" })).toHaveAttribute("aria-pressed", "true");
-    steps(4);
-    expect(screen.getByText("5 of 5")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Share my ratings" })).toBeEnabled();
-  });
-
-  it("rates both scales and shares one event per rated question", async () => {
+  it("asks both questions on one screen, and saves each tap as the latest answer", async () => {
     const fetchMock = stubFetch();
     render(<OverallRating stage="try" />);
-    fireEvent.click(screen.getByRole("button", { name: "Got the amount right: 2 of 5" }));
-    fireEvent.click(screen.getByRole("button", { name: "Got the amount right: 3 of 5" }));
-    fireEvent.click(screen.getByRole("button", { name: "Admitted what it didn't know: 1 of 5" }));
-    next();
-    fireEvent.click(screen.getByRole("button", { name: "For your staff: 4 of 5" }));
-    steps(3);
-    const share = screen.getByRole("button", { name: "Share my ratings" });
-    expect(share).toBeEnabled();
-    fireEvent.click(share);
+    expect(screen.getByText(/check an answer against the state's official rules today\?/)).toBeInTheDocument();
+    expect(screen.getByText("How is AI performing overall in your agency?")).toBeInTheDocument();
+    expect(screen.getByText("1 = Not well · 5 = Very well")).toBeInTheDocument();
+    // The 5x5 grid, the misread rules and the evening note are gone (the run-through, Oct 22).
+    expect(screen.queryByText(/Got the amount right/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Asset tests" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Share my ratings" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Continue" })).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Each answer saves as you tap it.");
 
-    await waitFor(() => expect(bodies(fetchMock)).toHaveLength(2));
+    fireEvent.click(screen.getByRole("button", { name: "Partly" }));
+    expect(screen.getByRole("button", { name: "Partly" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "For residents: 2 of 5" }));
+    fireEvent.click(screen.getByRole("button", { name: "For your staff: 4 of 5" }));
+    fireEvent.click(screen.getByRole("button", { name: "For residents: 3 of 5" }));
+    await waitFor(() => expect(bodies(fetchMock)).toHaveLength(4));
     expect(bodies(fetchMock)).toEqual([
+      { participantId: "p-1", kind: "survey", payload: { question: "source-of-truth", answer: "partly" }, stage: "try" },
       {
         participantId: "p-1",
         kind: "discussion",
-        payload: { question: "performance", ratings: { amount: 3, uncertainty: 1 }, topics: [], note: "" },
+        payload: { question: "experience", ratings: { residents: 2 }, topics: [], note: "" },
         stage: "try",
       },
       {
         participantId: "p-1",
         kind: "discussion",
-        payload: { question: "experience", ratings: { staff: 4 }, topics: [], note: "" },
+        payload: { question: "experience", ratings: { residents: 2, staff: 4 }, topics: [], note: "" },
+        stage: "try",
+      },
+      {
+        participantId: "p-1",
+        kind: "discussion",
+        payload: { question: "experience", ratings: { residents: 3, staff: 4 }, topics: [], note: "" },
         stage: "try",
       },
     ]);
-    expect(screen.getByText(/Your ratings are in/)).toBeInTheDocument();
-    expect(localStorage.getItem("aspen.overall.v1")).toBe("true");
+    expect(screen.getByRole("status")).toHaveTextContent("Each answer saves as you tap it.");
+
+    fireEvent.click(screen.getByRole("button", { name: "For you: 4 of 5" }));
+    expect(screen.getByRole("status")).toHaveTextContent("Saved. You'll see the room's results on the screen.");
+    await waitFor(() => expect(bodies(fetchMock)).toHaveLength(5));
+    expect(bodies(fetchMock)[4].payload.ratings).toEqual({ residents: 3, staff: 4, you: 4 });
   });
 
-  it("sends the agency comment with the agency question, even without ratings", async () => {
+  it("sends the comment with the agency ratings, and the ratings after it keep the comment", async () => {
     const fetchMock = stubFetch();
     render(<OverallRating stage="try" />);
-    next();
-    const box = screen.getByLabelText("Where has AI helped your agency, and where has it fallen short?");
     expect(screen.getByText(/Optional and anonymous/)).toBeInTheDocument();
-    fireEvent.change(box, { target: { value: "  Helps staff find policy; residents get wrong amounts  " } });
-    steps(3);
-    const share = screen.getByRole("button", { name: "Share my ratings" });
-    expect(share).toBeEnabled();
-    fireEvent.click(share);
+    expect(screen.queryByRole("button", { name: "Save comment" })).not.toBeInTheDocument();
+    fireEvent.change(box(), { target: { value: "   " } });
+    expect(screen.queryByRole("button", { name: "Save comment" })).not.toBeInTheDocument();
+    fireEvent.change(box(), { target: { value: "  Helps staff find policy; residents get wrong amounts  " } });
+    fireEvent.click(screen.getByRole("button", { name: "Save comment" }));
+    expect(screen.getByRole("button", { name: "Comment saved" })).toBeDisabled();
     await waitFor(() => expect(bodies(fetchMock)).toHaveLength(1));
     expect(bodies(fetchMock)[0]).toEqual({
       participantId: "p-1",
@@ -112,94 +105,76 @@ describe("OverallRating", () => {
       payload: { question: "experience", ratings: {}, topics: [], note: "Helps staff find policy; residents get wrong amounts" },
       stage: "try",
     });
-  });
 
-  it("shares a note on its own, as a note about the evening", async () => {
-    const fetchMock = stubFetch();
-    render(<OverallRating stage="rate" />);
-    steps(4);
-    const share = screen.getByRole("button", { name: "Share my ratings" });
-    fireEvent.change(screen.getByLabelText(/What should the room hear\?/), { target: { value: "   " } });
-    expect(share).toBeDisabled();
-    fireEvent.change(screen.getByLabelText(/What should the room hear\?/), { target: { value: "Staff already use it for policy lookups" } });
-    expect(share).toBeEnabled();
-    fireEvent.click(share);
-    await waitFor(() => expect(bodies(fetchMock)).toHaveLength(1));
-    expect(bodies(fetchMock)[0]).toEqual({
-      participantId: "p-1",
-      kind: "discussion",
-      payload: { question: null, ratings: {}, topics: [], note: "Staff already use it for policy lookups" },
-      stage: "rate",
+    fireEvent.click(screen.getByRole("button", { name: "For you: 5 of 5" }));
+    await waitFor(() => expect(bodies(fetchMock)).toHaveLength(2));
+    expect(bodies(fetchMock)[1].payload).toEqual({
+      question: "experience",
+      ratings: { you: 5 },
+      topics: [],
+      note: "Helps staff find policy; residents get wrong amounts",
     });
+
+    // Editing the comment offers the save again.
+    fireEvent.change(box(), { target: { value: "Helps staff" } });
+    expect(screen.getByRole("button", { name: "Save comment" })).toBeEnabled();
   });
 
-  it("sends the note alongside the ratings", async () => {
-    const fetchMock = stubFetch();
-    render(<OverallRating stage="rate" />);
-    fireEvent.click(screen.getByRole("button", { name: "Was clear to a resident: 4 of 5" }));
-    steps(4);
-    fireEvent.change(screen.getByLabelText(/What should the room hear\?/), { target: { value: "Clear but wrong" } });
-    fireEvent.click(screen.getByRole("button", { name: "Share my ratings" }));
-    await waitFor(() => expect(bodies(fetchMock)).toHaveLength(2));
-    expect(bodies(fetchMock).map((b) => b.payload.question)).toEqual(["performance", null]);
-  });
-
-  it("shares the source-of-truth answer and the misread rules", async () => {
-    const fetchMock = stubFetch();
-    render(<OverallRating stage="rate" />);
-    steps(2);
-    const yes = screen.getByRole("button", { name: "Partly" });
-    fireEvent.click(yes);
-    expect(yes).toHaveAttribute("aria-pressed", "true");
-    next();
-    const assets = screen.getByRole("button", { name: "Asset tests" });
-    fireEvent.click(assets);
-    fireEvent.click(screen.getByRole("button", { name: "Benefit cliffs" }));
-    fireEvent.click(assets);
-    expect(assets).toHaveAttribute("aria-pressed", "false");
-    next();
-    fireEvent.click(screen.getByRole("button", { name: "Share my ratings" }));
-    await waitFor(() => expect(bodies(fetchMock)).toHaveLength(2));
-    expect(bodies(fetchMock)).toEqual([
-      { participantId: "p-1", kind: "survey", payload: { question: "source-of-truth", answer: "partly" }, stage: "rate" },
-      {
-        participantId: "p-1",
-        kind: "discussion",
-        payload: { question: "misunderstood", topics: ["Benefit cliffs"], ratings: {}, note: "" },
-        stage: "rate",
-      },
-    ]);
-  });
-
-  it("skips a question nobody rated", async () => {
-    const fetchMock = stubFetch();
+  it("sends one event at a time, in the order of the taps", async () => {
+    const resolvers: ((r: Response) => void)[] = [];
+    const fetchMock = vi.fn(() => new Promise<Response>((r) => resolvers.push(r)));
+    vi.stubGlobal("fetch", fetchMock);
+    const done = () => resolvers[resolvers.length - 1]({ ok: true, status: 200, json: async () => ({ ok: true }) } as unknown as Response);
     render(<OverallRating stage="try" />);
-    next();
     fireEvent.click(screen.getByRole("button", { name: "For residents: 2 of 5" }));
-    steps(3);
-    fireEvent.click(screen.getByRole("button", { name: "Share my ratings" }));
-    await waitFor(() => expect(bodies(fetchMock)).toHaveLength(1));
-    expect(bodies(fetchMock)[0].payload).toMatchObject({ question: "experience", ratings: { residents: 2 } });
+    fireEvent.click(screen.getByRole("button", { name: "For your staff: 4 of 5" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    // A slow first send can't land after the second and count as the latest answer.
+    await act(async () => {});
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await act(async () => done());
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await act(async () => done());
   });
 
-  it("rates how AI is performing for the person themselves", async () => {
-    const fetchMock = stubFetch();
+  it("says when a tap didn't save, and clears it once the next one does", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({}) } as unknown as Response)
+      .mockResolvedValue({ ok: true, status: 200, json: async () => ({ ok: true }) } as unknown as Response);
+    vi.stubGlobal("fetch", fetchMock);
     render(<OverallRating stage="try" />);
-    next();
-    fireEvent.click(screen.getByRole("button", { name: "For you: 4 of 5" }));
-    steps(3);
-    fireEvent.click(screen.getByRole("button", { name: "Share my ratings" }));
-    await waitFor(() => expect(bodies(fetchMock)).toHaveLength(1));
-    expect(bodies(fetchMock)[0].payload).toMatchObject({ question: "experience", ratings: { you: 4 } });
+    fireEvent.click(screen.getByRole("button", { name: "No" }));
+    expect(await screen.findByText("That didn't save. Tap it again.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "No" }));
+    await waitFor(() => expect(screen.queryByText("That didn't save. Tap it again.")).not.toBeInTheDocument());
   });
 
-  it("says the ratings are in once a phone has shared", async () => {
+  it("reports a dropped connection as a failed save", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    render(<OverallRating stage="try" />);
+    fireEvent.click(screen.getByRole("button", { name: "Yes" }));
+    expect(await screen.findByText("That didn't save. Tap it again.")).toBeInTheDocument();
+  });
+
+  it("shows this phone's answers again after a reload", async () => {
+    localStorage.setItem(
+      "aspen.overall.v2",
+      JSON.stringify({ truth: "no", agency: { residents: 1, staff: 2, you: 3 }, comment: "Too slow" }),
+    );
+    stubFetch();
+    render(<OverallRating stage="try" />);
+    expect(await screen.findByRole("button", { name: "No" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "For your staff: 2 of 5" })).toHaveAttribute("aria-pressed", "true");
+    expect(box()).toHaveValue("Too slow");
+    expect(screen.getByRole("button", { name: "Comment saved" })).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent("Saved.");
+  });
+
+  it("ignores answers saved by the old five-step flow", () => {
     localStorage.setItem("aspen.overall.v1", "true");
     stubFetch();
     render(<OverallRating stage="try" />);
-    expect(await screen.findByText(/Your ratings are in/)).toHaveTextContent(
-      "Your ratings are in. You'll see the room's results in What we saw.",
-    );
-    expect(screen.queryByRole("button", { name: "Share my ratings" })).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Each answer saves as you tap it.");
   });
 });
