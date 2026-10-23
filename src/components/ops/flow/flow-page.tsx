@@ -54,10 +54,6 @@ export function FlowLine({
   return (
     <section aria-label="The encoding line">
       <header className={styles.head}>
-        <p className={styles.lede}>
-          Every encoding as a case moving through stations, mined from the pipeline event log: what moves, where it waits, where it leaves the line, and which validator rules
-          keep it looping. The stations, edges and colours come from the events.
-        </p>
         <div className={styles.controls}>
           <nav className={styles.seg} aria-label="Window">
             {[7, 30, 90].map((d) =>
