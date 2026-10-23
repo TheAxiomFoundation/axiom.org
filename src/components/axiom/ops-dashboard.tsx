@@ -103,15 +103,15 @@ export type OpsTab = "now" | "line" | "programs";
 export const OPS_TABS: OpsTab[] = ["now", "line", "programs"];
 
 const TAB_LABELS: Record<OpsTab, string> = {
-  now: "Now",
-  line: "Line",
-  programs: "Programs",
+  now: "Running now",
+  line: "Pipeline",
+  programs: "Program coverage",
 };
 
 const TAB_HINTS: Record<OpsTab, string> = {
-  now: "What runs now and what runs next",
-  line: "Where cases wait, fail or loop",
-  programs: "Bundles, documents and waivers",
+  now: "What the encoders run now, and what is queued next",
+  line: "Where encodings wait, fail or loop, station by station",
+  programs: "How much of each program's law is encoded, and the waivers",
 };
 
 type LiveRunState = "running" | "stale" | "finished" | "expired";

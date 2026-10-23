@@ -17,7 +17,7 @@ import type { EventsOrigin } from "@/lib/axiom/pipeline-events-data";
 import type { BundleMembership } from "@/lib/axiom/program-bundles";
 import { bundleHref, tiersLabel } from "@/lib/axiom/program-bundles";
 import { stationStatus } from "./flow-layout";
-import { CaseCanvas, DocumentsCanvas, LanesCanvas, ProgramsCanvas, type DocumentTile, type ProgramTile } from "./level-canvases";
+import { CaseCanvas, LanesCanvas } from "./level-canvases";
 import { flowHref, type FlowParams } from "./flow-params";
 import { PipelineFloor } from "./pipeline-floor";
 import { ReasonSources } from "./reason-sources";
@@ -154,7 +154,7 @@ export function JourneyView({
             <p className={styles.lede}>
               {citation
                 ? "Every case of this citation, station by station: each dispatch and its tries, the PR, the merge, the index, the compile sweep, the tests on main and the oracle. Click a lane to open that run."
-                : "Pick a citation from the Line tab, or add ?citation=<path> to the address."}
+                : "Pick a citation on the Pipeline tab, or add ?citation=<path> to the address."}
             </p>
           </div>
         </header>
@@ -208,13 +208,6 @@ export function JourneyView({
     </div>
   );
 }
-
-/** The programs map at the top of the /ops "Programs" tab: a tile per program, or a bundle's documents. */
-export function ProgramsMap({ programs, documents }: { programs: ProgramTile[] | null; documents: DocumentTile[] | null }) {
-  if (!documents && !programs?.length) return null;
-  return <div className={styles.floor}>{documents ? <DocumentsCanvas documents={documents} /> : <ProgramsCanvas programs={programs ?? []} />}</div>;
-}
-
 
 function Kpis({ model }: { model: FlowModel }) {
   const t = model.totals;

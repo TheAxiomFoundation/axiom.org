@@ -159,11 +159,11 @@ describe("OpsDashboard", () => {
     render(<OpsDashboard {...props} />);
     const tabs = screen.getByRole("navigation", { name: "Operations" });
     expect(within(tabs).getAllByRole("link").map((t) => [t.textContent, t.getAttribute("href")])).toEqual([
-      ["Now", "/ops"],
-      ["Line", "/ops?tab=line"],
-      ["Programs", "/ops?tab=programs"],
+      ["Running now", "/ops"],
+      ["Pipeline", "/ops?tab=line"],
+      ["Program coverage", "/ops?tab=programs"],
     ]);
-    expect(within(tabs).getByRole("link", { name: "Now" })).toHaveAttribute("aria-current", "page");
+    expect(within(tabs).getByRole("link", { name: "Running now" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("region", { name: "Every run" })).toBeVisible();
     expect(screen.queryByRole("region", { name: "The encoding line" })).not.toBeInTheDocument();
     cleanup();

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { attemptEvents } from "@/lib/axiom/pipeline-events";
 import { caseDetail, citationLanes, mineFlow } from "@/lib/axiom/pipeline-flow";
 import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
-import { FlowLine, flowHref, JourneyView, ProgramsMap, type FlowParams } from "./flow-page";
+import { FlowLine, flowHref, JourneyView, type FlowParams } from "./flow-page";
 
 // The canvases need a real browser (React Flow measures the DOM).
 vi.mock("./pipeline-canvas", () => ({
@@ -12,8 +12,6 @@ vi.mock("./pipeline-canvas", () => ({
 vi.mock("./level-canvases", () => ({
   LanesCanvas: () => <div data-testid="lanes-canvas" />,
   CaseCanvas: () => <div data-testid="case-canvas" />,
-  ProgramsCanvas: () => <div data-testid="programs-canvas" />,
-  DocumentsCanvas: () => <div data-testid="documents-canvas" />,
 }));
 
 const NOW = Date.parse("2026-09-30T12:00:00Z");
@@ -104,19 +102,6 @@ describe("JourneyView", () => {
 
   it("says what to do with no citation", () => {
     render(<JourneyView citation={null} stationOrder={[]} lanes={[]} detail={null} bundles={[]} origin="table" error={null} />);
-    expect(screen.getByText(/Pick a citation from the Line tab/)).toBeTruthy();
-  });
-});
-
-describe("ProgramsMap", () => {
-  it("shows programs, or a bundle's documents", () => {
-    render(<ProgramsMap programs={[{ id: "snap", title: "SNAP", bundles: [], documents: 1, done: 0, href: "/x" }]} documents={null} />);
-    expect(screen.getByTestId("programs-canvas")).toBeTruthy();
-    cleanup();
-    render(<ProgramsMap programs={null} documents={[]} />);
-    expect(screen.getByTestId("documents-canvas")).toBeTruthy();
-    cleanup();
-    const { container } = render(<ProgramsMap programs={[]} documents={null} />);
-    expect(container.innerHTML).toBe("");
+    expect(screen.getByText(/Pick a citation on the Pipeline tab/)).toBeTruthy();
   });
 });

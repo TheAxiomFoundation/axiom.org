@@ -1,7 +1,7 @@
 # Pipeline flow: an event log and a zoomable graph of the encoding pipeline
 
-Status: prototype (draft PR). Pages: the `/ops` tabs (Now, Line,
-Programs) and the `/ops/journey` drill-down; `/ops/flow` redirects to the
+Status: prototype (draft PR). Pages: the `/ops` tabs (Running now, Pipeline,
+Program coverage) and the `/ops/journey` drill-down; `/ops/flow` redirects to the
 Line tab. Agent API: `/api/ops/flow` (JSON) and `/api/ops/flow?format=md`
 (markdown).
 
@@ -13,9 +13,9 @@ its data. The accepted-modules counts are not on the page: they are in
 
 | tab | question | built from |
 |---|---|---|
-| Now (`/ops`) | What runs now, and what runs next? | the fleet box, the workflows strip, the run ledger, the queues and recent ingests |
-| Line (`?tab=line`) | Where do cases wait, fail or loop? | the station diagram and panel, alerts, reason sources, station trends, and the "Loops and rules" view (`&view=discovery`) |
-| Programs (`?tab=programs`) | How far is each program? | the bundle grid first (or a bundle's page, `&bundle=`), then the programs map, then validation waivers |
+| Running now (`/ops`) | What runs now, and what runs next? | the fleet box, the workflows strip, the run ledger, the queues and recent ingests |
+| Pipeline (`?tab=line`) | Where do cases wait, fail or loop? | the station diagram and panel, alerts, reason sources, station trends, and the "Loops and rules" view (`&view=discovery`) |
+| Program coverage (`?tab=programs`) | How far is each program? | the bundle table (or a bundle's page, `&bundle=`), then validation waivers |
 
 One drill-down: `/ops/journey?citation=<path>` (and `&case=<id>` for one
 run) draws a citation's cases from the event log, derived from
@@ -286,12 +286,10 @@ parameters keep the place):
 2. **Station** (`?station=validate`). Opens beside the diagram: targets, the
    week's trend, every failure the station raised (also the tries a later
    try recovered) and the oldest open items.
-3. **Programs** (`/ops?tab=programs`). Program → jurisdiction bundle →
-   documents, coloured by encoding status from `program_bundle_documents`.
-4. **Citation** (`/ops/journey?citation=us/statute/7/2014`). Every case of
+3. **Citation** (`/ops/journey?citation=us/statute/7/2014`). Every case of
    one citation over time as parallel lanes through the stations, the
    line's own cases first.
-5. **Run** (`/ops/journey?citation=…&case=<id>`). Each try: model, time, cost, the issues it hit,
+4. **Run** (`/ops/journey?citation=…&case=<id>`). Each try: model, time, cost, the issues it hit,
    and links to the GitHub run, the PR and the failure bundle.
 
 Library: **React Flow (`@xyflow/react`)** with positions computed in

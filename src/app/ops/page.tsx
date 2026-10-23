@@ -6,10 +6,9 @@ import { BundleOverview } from "@/components/axiom/bundle-overview";
 import { ProgramBundle } from "@/components/axiom/program-bundle";
 import { PipelineLedger } from "@/components/axiom/pipeline-ledger";
 import { WorkflowHealthStrip } from "@/components/axiom/workflow-health";
-import { FlowLine, ProgramsMap } from "@/components/ops/flow/flow-page";
+import { FlowLine } from "@/components/ops/flow/flow-page";
 import flowStyles from "@/components/ops/flow/flow.module.css";
 import { DEFAULT_FLOW_PARAMS, type FlowParams } from "@/components/ops/flow/flow-params";
-import { documentTiles, programTiles } from "@/components/ops/flow/program-tiles";
 import { Waivers } from "@/components/ops/flow/waivers";
 import { getPipelineAttempts } from "@/lib/axiom/encoding-pipeline-data";
 import { getEncodingQueues } from "@/lib/axiom/encoding-queues";
@@ -86,7 +85,6 @@ export default async function OpsPage({ searchParams }: { searchParams?: Promise
     ]);
     panel = (
       <>
-        {/* The bundle table first; the zoomable map of the same bundles below it. */}
         {bundle ? (
           <ProgramBundle
             key={validBundle}
@@ -102,9 +100,6 @@ export default async function OpsPage({ searchParams }: { searchParams?: Promise
         ) : (
           <p className={flowStyles.note}>No program bundles yet: encodings.program_bundles is empty or not there.</p>
         )}
-        <div style={{ marginTop: 24 }}>
-          <ProgramsMap programs={bundle ? null : programTiles(bundles)} documents={bundle ? documentTiles(bundle.documents) : null} />
-        </div>
         <Waivers events={waivers.events} referenceMs={referenceMs} />
       </>
     );

@@ -20,12 +20,6 @@
   --serious: #ec835a;
   --critical: #d03b3b;
   --neutral: #8f877d;
-  /* One amber ramp, light to dark, for done-share (sequential). */
-  --seq-0: #3a3026;
-  --seq-1: #6b4a17;
-  --seq-2: #a8650c;
-  --seq-3: #e08a0b;
-  --seq-4: #fbbf24;
 }
 
 .wrap {
@@ -769,38 +763,6 @@
 .visit[data-outcome="open"] {
   border-left-color: var(--warning);
   border-style: dashed;
-}
-
-.tile {
-  width: 180px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid var(--floor-line);
-  background: var(--floor-card);
-  font-size: 11px;
-  color: var(--floor-ink-2);
-  cursor: pointer;
-}
-
-.tile b {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--floor-ink);
-  overflow-wrap: anywhere;
-}
-
-.meter {
-  margin-top: 6px;
-  display: flex;
-  height: 6px;
-  border-radius: 3px;
-  overflow: hidden;
-  gap: 1px;
-  background: var(--floor);
 }
 
 .empty {

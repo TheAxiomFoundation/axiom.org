@@ -3,7 +3,7 @@
  * pipeline depends on, each with its state (on or turned off), its last
  * finished run, the run in progress, and its runs, failures and
  * cancellations over the last 7 days. The encode runs' own failures are on
- * the Line tab; these are the workflows around them, which otherwise
+ * the Pipeline tab; these are the workflows around them, which otherwise
  * fail unseen.
  *
  * Reads are best-effort and cached: a workflow that cannot be read is
@@ -42,7 +42,7 @@ export interface WorkflowSpec {
    * last run is the newest one that was not cancelled.
    */
   routineCancels?: boolean;
-  /** Shown by its state and last run only: its failures are on the Line tab. */
+  /** Shown by its state and last run only: its failures are on the Pipeline tab. */
   stateOnly?: boolean;
   /** A warning when no run is in progress and the last one finished longer ago than this. */
   staleAfterMinutes?: number;
@@ -74,7 +74,7 @@ export const WORKFLOWS: WorkflowSpec[] = [
     repo: "axiom-encode",
     file: "targeted-signed-reencode.yml",
     label: "Encode runs",
-    does: "Encodes one section per run; its failures are on the Line tab",
+    does: "Encodes one section per run; its failures are on the Pipeline tab",
     stateOnly: true,
   },
   {
