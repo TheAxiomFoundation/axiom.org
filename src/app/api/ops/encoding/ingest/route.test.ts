@@ -228,7 +228,9 @@ describe("POST /api/ops/encoding/ingest", () => {
   describe("capacity", () => {
     const NOW = new Date("2026-10-23T12:00:00.000Z");
     const minutesAgo = (minutes: number) =>
-      new Date(NOW.getTime() - minutes * 60_000).toISOString();
+      new Date(Date.now() - minutes * 60_000).toISOString();
+    const advance = (minutes: number) =>
+      vi.setSystemTime(new Date(Date.now() + minutes * 60_000));
 
     type Row = {
       id: string;
@@ -237,26 +239,38 @@ describe("POST /api/ops/encoding/ingest", () => {
       runner: Record<string, unknown>;
     };
 
-    /** live_encoding_runs behind PostgREST, as far as the ingest uses it:
-     *  HEAD counts honour the status, provenance, heartbeat and client
-     *  filters; POST inserts. */
+    /**
+     * live_encoding_runs behind PostgREST, as far as the ingest uses it.
+     * Filters must carry their operator (eq., gte., in.(…)) or the stub
+     * throws, as PostgREST would reject them; HEAD counts need the exact
+     * count and schema headers. POST inserts; PATCH updates the rows the
+     * filters select and returns them.
+     */
     function stubTable(rows: Row[]) {
+      const fieldOf = (row: Row, name: string): unknown =>
+        name.startsWith("runner->>")
+          ? row.runner[name.slice("runner->>".length)]
+          : (row as unknown as Record<string, unknown>)[name];
+      const matches = (row: Row, query: URLSearchParams) =>
+        [...query.entries()]
+          .filter(([name]) => name !== "select")
+          .every(([name, filter]) => {
+            const value = fieldOf(row, name);
+            const eq = /^eq\.(.*)$/.exec(filter);
+            const gte = /^gte\.(.*)$/.exec(filter);
+            const inList = /^in\.\((.*)\)$/.exec(filter);
+            if (eq) return value === eq[1];
+            if (gte) return typeof value === "string" && value >= gte[1];
+            if (inList) return inList[1].split(",").includes(String(value));
+            throw new Error(`invalid PostgREST filter ${name}=${filter}`);
+          });
       const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
         const query = new URL(String(url)).searchParams;
-        const value = (name: string, op: string) =>
-          query.get(name)?.replace(new RegExp(`^${op}\\.`), "");
+        const headers = (init?.headers ?? {}) as Record<string, string>;
         if (init?.method === "HEAD") {
-          const status = value("status", "eq");
-          const via = value("runner->>reported_via", "eq");
-          const since = value("last_heartbeat_at", "gte");
-          const client = value("runner->>ingest_client", "eq");
-          const count = rows.filter(
-            (row) =>
-              (!status || row.status === status) &&
-              (!via || row.runner.reported_via === via) &&
-              (!since || row.last_heartbeat_at >= since) &&
-              (!client || row.runner.ingest_client === client)
-          ).length;
+          expect(headers.Prefer).toBe("count=exact");
+          expect(headers["Accept-Profile"]).toBe("encodings");
+          const count = rows.filter((row) => matches(row, query)).length;
           return new Response(null, {
             status: 200,
             headers: { "content-range": `*/${count}` },
@@ -266,14 +280,30 @@ describe("POST /api/ops/encoding/ingest", () => {
           rows.push(JSON.parse(String(init.body)) as Row);
           return new Response(null, { status: 201 });
         }
+        if (init?.method === "PATCH") {
+          expect(headers["Content-Profile"]).toBe("encodings");
+          const hit = rows.filter((row) => matches(row, query));
+          for (const row of hit) Object.assign(row, JSON.parse(String(init.body)));
+          return new Response(JSON.stringify(hit), { status: 200 });
+        }
         throw new Error(`unexpected ${init?.method} ${url}`);
       });
       vi.stubGlobal("fetch", fetchMock);
       return rows;
     }
 
+    const runId = (n: number, ip: string) =>
+      `live-${ip.replace(/\D/g, "")}x${String(n).padStart(4, "0")}`;
     const start = (n: number, ip: string) =>
-      POST(post(startBody({ id: `live-${ip.replace(/\D/g, "")}x${String(n).padStart(4, "0")}` }), ip));
+      POST(post(startBody({ id: runId(n, ip) }), ip));
+    const beat = (n: number, ip: string) =>
+      POST(post({ op: "heartbeat", id: runId(n, ip) }, ip));
+    const freshFor = (rows: Row[], tag: unknown) =>
+      rows.filter(
+        (row) =>
+          row.runner.ingest_client === tag &&
+          row.last_heartbeat_at >= minutesAgo(10)
+      ).length;
 
     beforeEach(() => {
       vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
@@ -319,6 +349,45 @@ describe("POST /api/ops/encoding/ingest", () => {
       expect(rows).toHaveLength(21);
     });
 
+    it("keeps a live run alive with heartbeats", async () => {
+      const rows = stubTable([]);
+      await start(0, "198.51.100.20");
+      advance(9);
+      expect((await beat(0, "198.51.100.20")).status).toBe(204);
+      advance(9);
+      expect((await beat(0, "198.51.100.20")).status).toBe(204);
+      expect(rows[0].last_heartbeat_at).toBe(new Date(Date.now()).toISOString());
+    });
+
+    it("won't heartbeat a lapsed run back into a slot (start, lapse, restart, revive)", async () => {
+      const rows = stubTable([]);
+      const ip = "198.51.100.20";
+      for (let n = 0; n < 20; n += 1) await start(n, ip);
+      advance(11);
+      // The first batch has lapsed, so a second batch of 20 is admitted…
+      for (let n = 20; n < 40; n += 1) {
+        expect((await start(n, ip)).status).toBe(204);
+      }
+      // …but the first batch can't be beaten back to life on top of it.
+      for (let n = 0; n < 20; n += 1) {
+        expect((await beat(n, ip)).status).toBe(404);
+      }
+      expect(freshFor(rows, rows[20].runner.ingest_client)).toBe(20);
+      expect((await start(40, ip)).status).toBe(429);
+    });
+
+    it("keeps a client's share across the midnight tag change", async () => {
+      vi.setSystemTime(new Date("2026-10-23T23:59:30.000Z"));
+      const rows = stubTable([]);
+      const ip = "198.51.100.20";
+      for (let n = 0; n < 20; n += 1) await start(n, ip);
+      advance(1);
+      const over = await start(20, ip);
+      expect(over.status).toBe(429);
+      expect(await over.json()).toEqual({ error: "client_full" });
+      expect(rows).toHaveLength(20);
+    });
+
     it("stamps rows with a keyed client tag, never the IP or a client-supplied tag", async () => {
       const rows = stubTable([]);
       await POST(
@@ -332,7 +401,7 @@ describe("POST /api/ops/encoding/ingest", () => {
       expect(JSON.stringify(rows[0])).not.toContain("198.51.100.20");
 
       // The tag changes with the UTC day, so it links a client's runs for a day at most.
-      vi.setSystemTime(new Date("2026-10-24T00:00:01.000Z"));
+      vi.setSystemTime(new Date("2026-10-24T12:00:00.000Z"));
       await POST(post(startBody({ id: "live-nextday000001" }), "198.51.100.20"));
       expect(rows[1].runner.ingest_client).toMatch(/^[0-9a-f]{16}$/);
       expect(rows[1].runner.ingest_client).not.toBe(tag);

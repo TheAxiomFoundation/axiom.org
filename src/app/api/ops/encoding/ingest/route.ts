@@ -94,24 +94,25 @@ function sanitizeRunner(value: unknown): Record<string, unknown> {
 
 /**
  * A per-client tag for the rows a client starts: a keyed hash of the
- * client key (its IP) and the UTC day, so the stored tag identifies no
- * one and links a client's runs for a day at most.
+ * client key (its IP) and the UTC day of `at`, so the stored tag
+ * identifies no one and links a client's runs for a day at most.
  */
-function clientTag(config: IngestConfig, key: string, now: string): string {
+function clientTag(config: IngestConfig, key: string, at: number): string {
+  const day = new Date(at).toISOString().slice(0, 10);
   return createHmac("sha256", config.key)
-    .update(`ingest-client:${now.slice(0, 10)}:${key}`)
+    .update(`ingest-client:${day}:${key}`)
     .digest("hex")
     .slice(0, 16);
 }
 
 /** Running self-reported rows that heartbeat since `since`, optionally
- *  only one client's. */
+ *  only those with one of a client's tags. */
 async function countPublicRunningRows(
   config: IngestConfig,
   since: string,
-  tag?: string
+  tags?: string[]
 ): Promise<number> {
-  const clientFilter = tag ? `&runner->>ingest_client=eq.${tag}` : "";
+  const clientFilter = tags ? `&runner->>ingest_client=in.(${tags.join(",")})` : "";
   const response = await fetch(
     `${config.url}/rest/v1/live_encoding_runs?select=id&status=eq.running&runner->>reported_via=eq.public_ingest&last_heartbeat_at=gte.${encodeURIComponent(since)}${clientFilter}`,
     {
@@ -131,14 +132,17 @@ async function countPublicRunningRows(
   return Number.isNaN(count) ? 0 : count;
 }
 
-/** Update an ingest-stamped row; resolves to false when nothing matched. */
+/** Update an ingest-stamped row (only one that heartbeat since `since`,
+ *  when given); resolves to false when nothing matched. */
 async function updateIngestRow(
   config: IngestConfig,
   id: string,
-  data: Record<string, unknown>
+  data: Record<string, unknown>,
+  since?: string
 ): Promise<boolean> {
+  const fresh = since ? `&last_heartbeat_at=gte.${encodeURIComponent(since)}` : "";
   const response = await fetch(
-    `${config.url}/rest/v1/live_encoding_runs?id=eq.${encodeURIComponent(id)}&runner->>reported_via=eq.public_ingest`,
+    `${config.url}/rest/v1/live_encoding_runs?id=eq.${encodeURIComponent(id)}&runner->>reported_via=eq.public_ingest${fresh}`,
     {
       method: "PATCH",
       headers: { ...restHeaders(config), Prefer: "return=representation" },
@@ -175,7 +179,9 @@ export async function POST(request: Request) {
   if (!LIVE_ID_RE.test(id)) {
     return NextResponse.json({ error: "invalid_id" }, { status: 400 });
   }
-  const now = new Date().toISOString();
+  const nowMs = Date.now();
+  const now = new Date(nowMs).toISOString();
+  const since = new Date(nowMs - CAPACITY_HEARTBEAT_WINDOW_MS).toISOString();
 
   try {
     if (op === "start") {
@@ -183,15 +189,15 @@ export async function POST(request: Request) {
       if (!citation) {
         return NextResponse.json({ error: "invalid_citation" }, { status: 400 });
       }
-      const since = new Date(
-        Date.parse(now) - CAPACITY_HEARTBEAT_WINDOW_MS
-      ).toISOString();
       if ((await countPublicRunningRows(config, since)) >= MAX_PUBLIC_RUNNING_ROWS) {
         return NextResponse.json({ error: "board_full" }, { status: 429 });
       }
-      const tag = clientTag(config, key, now);
+      const tag = clientTag(config, key, nowMs);
+      // Yesterday's tag too: rows a client started just before midnight
+      // still hold slots, and the new day's tag mustn't reset its share.
+      const tags = [tag, clientTag(config, key, nowMs - CAPACITY_HEARTBEAT_WINDOW_MS)];
       if (
-        (await countPublicRunningRows(config, since, tag)) >=
+        (await countPublicRunningRows(config, since, Array.from(new Set(tags)))) >=
         MAX_RUNNING_ROWS_PER_CLIENT
       ) {
         return NextResponse.json({ error: "client_full" }, { status: 429 });
@@ -234,7 +240,11 @@ export async function POST(request: Request) {
       if (attempt !== null) data.attempt = attempt;
       const model = cleanText(body.model, MAX_FIELD_LENGTH);
       if (model) data.model = model;
-      const matched = await updateIngestRow(config, id, data);
+      // Only a fresh row: a heartbeat can't revive a run whose slot has
+      // lapsed, or a client could start 20, let them lapse, start 20 more
+      // and beat the first batch back to life. Encoders treat telemetry
+      // as best-effort, so a lapsed run just stays stale on the board.
+      const matched = await updateIngestRow(config, id, data, since);
       if (!matched) {
         return NextResponse.json({ error: "unknown_run" }, { status: 404 });
       }
