@@ -883,6 +883,20 @@ export function rankStations(stations: Array<{ id: string; cases: number }>, edg
       rank.set(e.to, Math.max(rank.get(e.to) ?? 0, rank.get(id)! + 1));
     }
   }
+  // A station no case reached from another one in the window (Oracle, with
+  // no comparison yet) has no edge to place it: put it after every station
+  // the line runs before it, so it keeps its place at the end.
+  const lineIndex = new Map(LINE_STATIONS.map((id, i) => [id, i]));
+  for (const id of ids) {
+    const at = lineIndex.get(id);
+    if (at == null || at === 0 || inflow(id) > 0) continue;
+    let after = -1;
+    for (const other of ids) {
+      const i = lineIndex.get(other);
+      if (other !== id && i != null && i < at) after = Math.max(after, rank.get(other) ?? 0);
+    }
+    if (after >= 0) rank.set(id, Math.max(rank.get(id) ?? 0, after + 1));
+  }
   for (const e of edges) if (e.from === e.to) e.loop = true;
   return rank;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { attemptEvents, type PipelineEvent } from "./pipeline-events";
-import { agentBrief, caseDetail, causeOrigin, causeText, citationLanes, formatDuration, mineFlow, quantile, retryCutoff, ruleWords, splitMessage, trendSentence } from "./pipeline-flow";
+import { agentBrief, caseDetail, causeOrigin, causeText, citationLanes, formatDuration, mineFlow, quantile, rankStations, retryCutoff, ruleWords, splitMessage, trendSentence, type FlowEdge } from "./pipeline-flow";
 import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 
 const NOW = Date.parse("2026-09-30T12:00:00Z");
@@ -262,5 +262,22 @@ describe("helpers", () => {
     expect(formatDuration(5 * 60_000)).toBe("5m");
     expect(formatDuration(3 * 3_600_000)).toBe("3.0h");
     expect(formatDuration(3 * 86_400_000)).toBe("3.0d");
+  });
+});
+
+describe("rankStations", () => {
+  const edge = (from: string, to: string, cases = 5): FlowEdge => ({ from, to, cases, median_wait_ms: null, loop: false });
+
+  it("puts a line station that nothing reaches in the window after the stations before it", () => {
+    const stations = ["dispatch", "setup", "merge", "compile", "oracle"].map((id) => ({ id, cases: 5 }));
+    const rank = rankStations(stations, [edge("dispatch", "setup"), edge("setup", "merge"), edge("merge", "compile")]);
+    expect(rank.get("oracle")).toBe(4);
+    expect(rank.get("dispatch")).toBe(0);
+  });
+
+  it("leaves the entry station and stations off the line where the edges put them", () => {
+    const stations = ["dispatch", "setup", "custom"].map((id) => ({ id, cases: 5 }));
+    const rank = rankStations(stations, [edge("dispatch", "setup")]);
+    expect([rank.get("dispatch"), rank.get("setup"), rank.get("custom")]).toEqual([0, 1, 0]);
   });
 });
