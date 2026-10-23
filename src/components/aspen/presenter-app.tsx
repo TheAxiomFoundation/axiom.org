@@ -776,7 +776,7 @@ function ArizonaStandardsNote() {
   const az = POLICYBENCH.azCase;
   return (
     <p className="m-0 font-body text-[18px] leading-snug text-[var(--color-ink-secondary)]">
-      ${az.reference.monthly} a month from March under {az.reference.standards} standards (PolicyEngine&apos;s reference in PolicyBench).{" "}
+      ${az.reference.monthly} a month from March to December under {az.reference.standards} standards.{" "}
       The minimum benefit rose to ${az.fromOctober.monthly} on {az.fromOctober.effective}.
     </p>
   );
@@ -849,7 +849,7 @@ function HouseholdSlide() {
           </div>
           <ArizonaStandardsNote />
           {/* Two rows of 25, so the panel leaves room for the standards note and the slide keeps its footer. */}
-          <div aria-label={`${h.models} model answers, all $0`} className="grid grid-cols-[repeat(25,minmax(0,1fr))] gap-[6px]">
+          <div aria-label={`${h.models} model answers, all $0`} className="grid grid-cols-25 gap-[6px]">
             {Array.from({ length: h.models }, (_, i) => (
               <span
                 key={i}

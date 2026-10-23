@@ -485,7 +485,8 @@ describe("PresenterApp stages", () => {
     expect(screen.getByText("$240")).toBeInTheDocument();
     // The annual total carries its unit, so it doesn't read as a monthly amount.
     expect(screen.getByText("in 2026")).toBeInTheDocument();
-    expect(screen.getByText(/\$24 a month from March under FY2026 standards/)).toHaveTextContent("PolicyEngine's reference in PolicyBench");
+    expect(screen.getByText(/\$24 a month from March to December under FY2026 standards\./)).toBeInTheDocument();
+    expect(screen.getByText("PolicyEngine's reference in PolicyBench")).toBeInTheDocument();
     expect(screen.getByText(/The minimum benefit rose to \$25 on October 1, 2026\./)).toBeInTheDocument();
 
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
@@ -493,12 +494,14 @@ describe("PresenterApp stages", () => {
     expect(screen.getByText("4/6")).toBeInTheDocument();
     expect(screen.getByText("$240")).toBeInTheDocument();
     expect(screen.getByText("in 2026")).toBeInTheDocument();
-    expect(screen.getByText(/\$24 a month from March under FY2026 standards/)).toHaveTextContent("PolicyEngine's reference in PolicyBench");
+    expect(screen.getByText(/\$24 a month from March to December under FY2026 standards\./)).toBeInTheDocument();
+    expect(screen.getByText("PolicyEngine's reference in PolicyBench")).toBeInTheDocument();
     expect(screen.getByText(/The minimum benefit rose to \$25 on October 1, 2026\./)).toBeInTheDocument();
     // Arizona raised an existing limit in March 2026; the minimum is a floor, not the amount.
     expect(screen.getByText(/up to 200% of the poverty line \(185% before March 2026\)/)).toBeInTheDocument();
     expect(screen.getByText(/a household of one or two gets at least the minimum benefit\./)).toBeInTheDocument();
-    expect(screen.getByText(/USDA FNA broad-based categorical eligibility chart, June 2026 · Arizona DES, What's Changed on 03\/23\/2026/)).toBeInTheDocument();
+    expect(screen.getByText(/Covered households skip SNAP's income and asset tests/)).toBeInTheDocument();
+    expect(screen.getByText(/USDA FNA BBCE chart, June 2026 · Arizona DES, What's Changed, 03\/23\/2026 · USDA SNAP FY2027 COLA memo, Aug 21, 2026/)).toBeInTheDocument();
   });
 
   it("keeps the plain labels when no answer would send a resident the wrong way", async () => {

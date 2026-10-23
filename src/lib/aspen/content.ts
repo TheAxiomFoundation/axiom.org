@@ -90,7 +90,7 @@ export const STAGES: readonly Stage[] = [
     label: "At scale",
     title: "AI gets it wrong at scale",
     agenda: "PolicyBench: 50 AI models on SNAP.",
-    summary: "We asked 50 AI models to calculate SNAP for realistic households from PolicyEngine's US microdata.",
+    summary: "We asked 50 AI models to calculate SNAP for households sampled from PolicyEngine's US microdata.",
   },
   {
     id: "foundation",
@@ -791,11 +791,11 @@ export const WHAT_MODELS_MISS = {
     },
   ],
   ruleLabel: "Broad-based categorical eligibility",
-  rule: "Arizona's expanded categorical eligibility covers every household with gross income up to 200% of the poverty line (185% before March 2026). They skip SNAP's income and asset tests, and a household of one or two gets at least the minimum benefit.",
+  rule: "Arizona's expanded categorical eligibility covers every household with gross income up to 200% of the poverty line (185% before March 2026). Covered households skip SNAP's income and asset tests, and a household of one or two gets at least the minimum benefit.",
   amount: 240,
   amountLabel: "PolicyEngine's reference in PolicyBench",
   sources:
-    "7 CFR 273.2(j)(2) · USDA FNA broad-based categorical eligibility chart, June 2026 · Arizona DES, What's Changed on 03/23/2026 · PolicyBench, October 14, 2026",
+    "7 CFR 273.2(j)(2) · USDA FNA BBCE chart, June 2026 · Arizona DES, What's Changed, 03/23/2026 · USDA SNAP FY2027 COLA memo, Aug 21, 2026 · PolicyBench, Oct 14, 2026",
 } as const;
 
 /**
