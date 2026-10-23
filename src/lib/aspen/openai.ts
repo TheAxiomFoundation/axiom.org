@@ -34,8 +34,8 @@ export interface StreamHandlers {
 /** GPT-6 Luna: the newest generation's smallest tier, which free ChatGPT moved to in October 2026. */
 export const DEFAULT_CHAT_MODEL = "gpt-6-luna";
 
-/** The gallery chatbot's model (finbot's default; its FINBOT_MODEL is unset). Only labels fallback answers. */
-export const FALLBACK_MODEL = "gpt-5.5";
+/** The gallery chatbot's model (finbot's default since it moved to GPT-6 Luna; its FINBOT_MODEL is unset). Only labels fallback answers. */
+export const FALLBACK_MODEL = "gpt-6-luna";
 
 export function chatConfig() {
   const effort = process.env.ASPEN_CHAT_REASONING?.trim() || "low";
