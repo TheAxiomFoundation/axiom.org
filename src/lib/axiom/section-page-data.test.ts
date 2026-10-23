@@ -881,6 +881,21 @@ describe("reader metadata follows the resolution", () => {
     expect(urlsOf(resolution!).canonical).toBe(url("us/statute/42/1396u%E2%80%931"));
   });
 
+  it("keeps the reader's spelling for a joined-segment section stored at browse depth", async () => {
+    // Iowa stores 422.12C as one segment; /us-ia/statute/422.12C would
+    // route to the browse view, so the split request is the reader URL.
+    getProvisionByCitationPathMock.mockImplementation((path: string) =>
+      Promise.resolve(path === "us-ia/statute/422.12C" ? rule(path, { jurisdiction: "us-ia" }) : null)
+    );
+    fromMock.mockImplementation(() => chain({ data: [], error: null }));
+    const resolution = await resolveSection(["us-ia", "statute", "422", "12C"]);
+    expect(resolution?.citationPath).toBe("us-ia/statute/422.12C");
+    expect(urlsOf(resolution!)).toMatchObject({
+      canonical: url("us-ia/statute/422/12C"),
+      jsonLd: url("us-ia/statute/422.12C"),
+    });
+  });
+
   it("for any suffix below a body-bearing section, names only the section and never spells </script", async () => {
     getProvisionByCitationPathMock.mockImplementation((path: string) =>
       Promise.resolve(path === "us/statute/26/32" ? rule(path) : null)

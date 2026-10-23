@@ -376,7 +376,7 @@ describe("metadataForResolution", () => {
     const synthetic = metadataForResolution({
       root: row("us/statute/42/1396a", { id: "synthetic:us/statute/42/1396a", body: null, heading: "§ 1396a - State plans" }),
       citationPath: "us/statute/42/1396a",
-      focusAnchor: null,
+      requestedPath: "us/statute/42/1396a",
     });
     expect(synthetic.canonicalUrl).toBe(`${AXIOM_APP_URL}/us/statute/42/1396a`);
     expect(synthetic.title).toBe("us/statute/42/1396a — § 1396a - State plans · Axiom");
@@ -388,19 +388,75 @@ describe("metadataForResolution", () => {
     const dashed = metadataForResolution({
       root: row("us/statute/42/1396u\u20131"),
       citationPath: "us/statute/42/1396u\u20131",
-      focusAnchor: null,
+      requestedPath: "us/statute/42/1396u-1",
     });
     expect(dashed.canonicalUrl).toBe(`${AXIOM_APP_URL}/us/statute/42/1396u%E2%80%931`);
   });
 
-  it("keeps a focused subsection in the canonical, and the JSON-LD on the section", () => {
+  it("collapses a subsection the reader focuses within its section to the section", () => {
     const meta = metadataForResolution({
       root: row("us/statute/26/32"),
       citationPath: "us/statute/26/32",
-      focusAnchor: "a",
+      requestedPath: "us/statute/26/32/a/see section 32",
     });
-    expect(meta.canonicalUrl).toBe(`${SECTION_URL}/a`);
+    expect(meta.canonicalUrl).toBe(SECTION_URL);
     expect((buildLegislationJsonLd(meta) as Record<string, unknown>).url).toBe(SECTION_URL);
+  });
+
+  it("keeps the reader's spelling for a section stored at browse depth", () => {
+    // us-ia/statute/422.12C is three segments, which route to the browse
+    // view; the split spelling is the URL that reaches the reader.
+    const meta = metadataForResolution({
+      root: row("us-ia/statute/422.12C"),
+      citationPath: "us-ia/statute/422.12C",
+      requestedPath: "us-ia/statute/422/12C",
+    });
+    expect(meta.canonicalUrl).toBe(`${AXIOM_APP_URL}/us-ia/statute/422/12C`);
+    expect((buildLegislationJsonLd(meta) as Record<string, unknown>).url).toBe(
+      `${AXIOM_APP_URL}/us-ia/statute/422.12C`
+    );
+  });
+
+  // The v2 reader only renders paths deeper than browse depth, and
+  // resolveSection only sees those, so its requestedPath always is.
+  // Dot segments are left out: citationUrl drops them, and no corpus
+  // path or routed request segment is one.
+  it("always gives a canonical the reader serves, for any resolution", () => {
+    const segment = fc
+      .oneof(hostileString, fc.constantFrom("a", "422.12C", "1396u\u20131"))
+      .filter((text) =>
+        text.split("/").every((part) => {
+          let decoded = part;
+          try {
+            decoded = decodeURIComponent(part);
+          } catch {
+            // kept as typed
+          }
+          return decoded !== "." && decoded !== "..";
+        })
+      );
+    const pathOf = (min: number) =>
+      fc
+        .array(segment, { minLength: min, maxLength: 6 })
+        .map((segments) => ["us", ...segments].join("/"));
+    fc.assert(
+      fc.property(pathOf(1), pathOf(3), (citationPath, requested) => {
+        const requestedPath = requested.split("/").filter(Boolean).length > 3
+          ? requested
+          : `${requested}/x/y/z`;
+        const meta = metadataForResolution({
+          root: row(citationPath),
+          citationPath,
+          requestedPath,
+        });
+        const levels = meta.canonicalUrl
+          .slice(AXIOM_APP_URL.length)
+          .split("/")
+          .filter(Boolean).length;
+        expect(levels).toBeGreaterThan(3);
+      }),
+      { numRuns: 300 }
+    );
   });
 });
 

@@ -2,6 +2,7 @@ import { supabaseCorpus, type Rule } from "@/lib/supabase";
 import { AXIOM_APP_URL, SITE_URL } from "@/lib/urls";
 import { citationPathLookupCandidates } from "./citation-path-aliases";
 import { citationPathPrefixes } from "./resolver";
+import { MAX_BROWSE_SEGMENTS } from "./browse-page";
 
 /**
  * Canonical base URL for Axiom app links in OpenGraph, sitemap, and
@@ -121,21 +122,25 @@ export async function getAxiomRuleMetadata(
 
 /**
  * Metadata for a page the v2 reader resolved. The resolution is what the
- * page shows, so its citation path (with the focused subsection, when
- * the reader found one) is the canonical URL: a suffix the corpus
- * doesn't have collapses to the section rendered in its place, and
- * paths the reader resolves its own way (synthetic roots, en-dash and
- * joined-segment spellings, NYCRR splits) keep their section's URL.
+ * page shows, so its citation path is the canonical URL: a suffix the
+ * corpus doesn't have, or a subsection focused within the section,
+ * collapses to the section rendered in its place, and paths the reader
+ * resolves its own way (synthetic roots, en-dash spellings, NYCRR
+ * splits) keep their section's URL. One exception: a section stored at
+ * browse depth (a joined "422.12C" segment) has no reader URL of its
+ * own, since paths that short route to the browse view, so it keeps the
+ * spelling that reached the reader. The JSON-LD names the row either way.
  */
 export function metadataForResolution(resolution: {
   root: Rule;
   citationPath: string;
-  focusAnchor: string | null;
+  requestedPath: string;
 }): AxiomRuleMetadata {
-  const shown = resolution.focusAnchor
-    ? `${resolution.citationPath}/${resolution.focusAnchor}`
-    : resolution.citationPath;
-  return describeRule(resolution.root, resolution.citationPath, citationUrl(shown));
+  const own = citationUrl(resolution.citationPath);
+  const levels = own.slice(AXIOM_APP_URL.length).split("/").filter(Boolean).length;
+  const canonical =
+    levels > MAX_BROWSE_SEGMENTS ? own : citationUrl(resolution.requestedPath);
+  return describeRule(resolution.root, resolution.citationPath, canonical);
 }
 
 /**
