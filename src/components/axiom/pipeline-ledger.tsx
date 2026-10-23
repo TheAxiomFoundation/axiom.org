@@ -5,10 +5,9 @@ import { ChevronRight } from "lucide-react";
 import styles from "./ops-dashboard.module.css";
 import { relativeTime } from "./ops-dashboard";
 import { Explain } from "./explain";
-import { RunTimeline } from "./run-timeline";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { scopeSearch, type PipelineScope } from "@/lib/axiom/encoding-pipeline-insights";
-import { hostLabel, OUTSIDE_LABEL, runTimeline, type RunRow } from "@/lib/axiom/encoding-pipeline-runs";
+import type { RunRow } from "@/lib/axiom/encoding-pipeline-runs";
 import {
   bundleHref,
   bundleMemberships,
@@ -18,11 +17,9 @@ import {
   type BundleIndexEntry,
 } from "@/lib/axiom/program-bundles";
 import {
-  causeHeadline,
-  endings,
   newestDocuments,
   runLedger,
-  sectionOverview,
+  sectionBrief,
   type LedgerDocument,
   type LedgerSection,
   type LedgerTone,
@@ -41,8 +38,6 @@ interface RunsPayload {
 
 /** Documents shown before "Show more", as the encoding ledger always showed. */
 const DOCUMENTS_SHOWN = 10;
-/** Groups an overview list shows before "+N more". */
-const OVERVIEW_GROUPS = 4;
 
 const TONE_CLASS: Record<LedgerTone, string> = {
   done: styles.completed,
@@ -309,7 +304,7 @@ function DocumentSections({
             {open && (
               <TableRow className="hover:bg-transparent">
                 <TableCell colSpan={6} className={styles.ledgerRunCell}>
-                  <SectionRuns section={section} referenceMs={referenceMs} />
+                  <SectionRuns section={section} />
                 </TableCell>
               </TableRow>
             )}
@@ -321,205 +316,66 @@ function DocumentSections({
 }
 
 /**
- * One overview list, count first: "2  Failed to compile — Axiom rules engine
- * compile failed", the largest few until "+N more" opens the rest. A row's
- * tooltip holds a full message.
+ * An open section, for the question "why is this not encoded yet, and what
+ * is next?": whether it is encoded, what happens now with the one link to
+ * act on, the failures that came back, every run as a mark, and the journey
+ * for the full history.
  */
-function CountList({
-  title,
-  groups,
-}: {
-  title: string;
-  groups: Array<{ key: string; label: string; count: number; cause?: string | null; detail?: string | null }>;
-}) {
-  const [all, setAll] = useState(false);
-  const more = groups.length - OVERVIEW_GROUPS;
-  return (
-    <div>
-      <p className={styles.ledgerLabel}>{title}</p>
-      <ul className={styles.ledgerCounts} aria-label={title}>
-        {(all ? groups : groups.slice(0, OVERVIEW_GROUPS)).map((group) => (
-          <li key={group.key} title={group.detail ?? group.label}>
-            <span className={styles.ledgerCount}>{group.count}</span>
-            <span>
-              <span className={styles.ledgerStop}>{group.label}</span>
-              {group.cause && <span className={styles.ledgerCause}> — {group.cause}</span>}
-            </span>
-          </li>
-        ))}
-        {more > 0 && (
-          <li>
-            <span />
-            <button type="button" className={styles.ledgerShowMore} aria-expanded={all} onClick={() => setAll((open) => !open)}>
-              {all ? "Show fewer" : `+${more} more`}
-            </button>
-          </li>
-        )}
-      </ul>
-    </div>
-  );
-}
-
-/**
- * What a run line says after its time: the encoder, the outcome (a link to
- * the run), why it failed, and its PR. A module merged outside the pipeline
- * reads "Merged outside the pipeline · <author> · <repo>#<n>"; one encoded
- * inside another citation's run names that run.
- */
-function RunWhat({ run }: { run: RunRow }) {
-  if (run.source === "outside") {
-    return (
-      <>
-        <span>{[OUTSIDE_LABEL, run.by].filter(Boolean).join(" · ")}</span>
-        {run.pr && (
-          <a href={run.pr.url} target="_blank" rel="noreferrer">
-            {run.pr.label}
-          </a>
-        )}
-      </>
-    );
-  }
-  const dependent = run.source === "dependent";
-  return (
-    <>
-      {run.encoder && <span className="font-mono">{run.encoder}</span>}
-      <a href={run.runUrl} target="_blank" rel="noreferrer" data-outcome={run.outcome}>
-        {dependent ? hostLabel(run.host) : run.outcomeLabel}
-      </a>
-      {dependent && run.outcome !== "encoded" && <span>{run.outcomeLabel}</span>}
-      {run.cause && <span title={run.cause}>{causeHeadline(run.cause)}</span>}
-      {run.pr && (
-        <a href={run.pr.url} target="_blank" rel="noreferrer">
-          {run.pr.label} · {run.pr.state}
-        </a>
-      )}
-    </>
-  );
-}
-
-/** Every run of a section, one line each, newest first; a line opens its run's timeline. */
-function RunLines({ runs, referenceMs }: { runs: RunRow[]; referenceMs: number }) {
-  const [open, setOpen] = useState<string | null>(null);
-  return (
-    <ol className={styles.ledgerRuns} aria-label="Every run">
-      {runs.map((run) => (
-        <li key={run.id}>
-          <div className={styles.ledgerRunLine}>
-            <button
-              type="button"
-              className={styles.ledgerToggle}
-              aria-expanded={open === run.id}
-              aria-label={`Timeline of ${run.citation}, run ${run.id}`}
-              title={run.at ?? run.dispatchedAt}
-              onClick={() => setOpen((current) => (current === run.id ? null : run.id))}
-            >
-              <ChevronRight size={14} aria-hidden className={styles.ledgerChevron} />
-              <span>{relativeTime(run.at ?? run.dispatchedAt, referenceMs)}</span>
-            </button>
-            <RunWhat run={run} />
-          </div>
-          {open === run.id && <RunTimeline timeline={runTimeline(run, referenceMs)} showStopped={false} />}
-        </li>
-      ))}
-    </ol>
-  );
-}
-
-/** An open section: how many runs, where and why each stopped, the latest run's timeline, and every run on request. */
-function SectionRuns({ section, referenceMs }: { section: LedgerSection; referenceMs: number }) {
-  const [everyRun, setEveryRun] = useState(false);
-  const overview = sectionOverview(section);
-  const latest = overview.latest;
+function SectionRuns({ section }: { section: LedgerSection }) {
+  const brief = sectionBrief(section);
   return (
     <div className={styles.ledgerOverview}>
-      {/* One run: its own line says it all. */}
-      {overview.runs > 1 && (
-        <>
-          <p className={styles.ledgerSummary}>
-            <strong>{overview.runs} runs</strong>
-            {endings(overview).map((part) => (
-              <Fragment key={part}>
-                <span className={styles.ledgerVerdictSep} aria-hidden>
-                  {" · "}
+      <p className={styles.ledgerSummary} data-encoded={brief.encoded || undefined}>
+        <strong>{brief.headline}</strong>
+      </p>
+      {brief.now && (
+        <p className={styles.ledgerNow}>
+          <span className={styles.ledgerLabel}>Now</span>
+          <span>{brief.now.text}</span>
+          {brief.now.link && (
+            <a href={brief.now.link.url} target="_blank" rel="noreferrer">
+              {brief.now.link.label}
+            </a>
+          )}
+        </p>
+      )}
+      {brief.repeated.length > 0 && (
+        <div className={styles.ledgerNow}>
+          <span className={styles.ledgerLabel}>Keeps failing on</span>
+          <ul className={styles.ledgerRepeats}>
+            {brief.repeated.map((r) => (
+              <li key={`${r.label}|${r.cause ?? ""}`} title={r.detail ?? undefined}>
+                <span>
+                  {r.label}
+                  {r.cause ? ` — ${r.cause}` : ""} ({r.count} runs)
                 </span>
-                <span>{part}</span>
-              </Fragment>
+                <a href={r.url} target="_blank" rel="noreferrer">
+                  latest ↗
+                </a>
+              </li>
             ))}
-            <span className={styles.ledgerVerdictSep} aria-hidden>
-              {" · "}
-            </span>
-            <span>latest {relativeTime(overview.lastAt, referenceMs)}</span>
-          </p>
-          <CountList title="Where each run stopped, and why" groups={overview.stops} />
-        </>
-      )}
-      {/* The latest run as one unit: what happened, then where the time went, then the tries inside the loop. */}
-      <section
-        className={styles.ledgerLatest}
-        data-after-summary={overview.runs > 1 || undefined}
-        aria-label={overview.runs === 1 ? "The run" : "Latest run"}
-      >
-        <div className={styles.ledgerVerdict}>
-          <p className={styles.ledgerLabel}>{overview.runs === 1 ? "The run" : "Latest run"}</p>
-          <p className={styles.ledgerVerdictLine}>
-            <span className={styles.ledgerOutcome} data-outcome={latest.outcome}>
-              {latest.outcomeLabel}
-            </span>{" "}
-            {latest.cause && (
-              <span className={styles.ledgerVerdictCause} title={latest.cause}>
-                {causeHeadline(latest.cause)}
-              </span>
-            )}
-          </p>
-          <p className={styles.ledgerVerdictMeta}>
-            {[
-              <span key="dispatched" title={latest.at ?? latest.dispatchedAt}>
-                {latest.source === "outside" ? "merged" : latest.source === "dependent" ? "encoded" : "dispatched"}{" "}
-                {relativeTime(latest.at ?? latest.dispatchedAt, referenceMs)}
-              </span>,
-              latest.source === "outside" && latest.by && <span key="by">by {latest.by}</span>,
-              latest.tries && (
-                <span key="tries">
-                  {latest.tries.length} {latest.tries.length === 1 ? "try" : "tries"} in the encode loop
-                </span>
-              ),
-              latest.pr && (
-                <a key="pr" href={latest.pr.url} target="_blank" rel="noreferrer">
-                  {latest.pr.label} · {latest.pr.state}
-                </a>
-              ),
-              latest.source !== "outside" && (
-                <a key="run" href={latest.runUrl} target="_blank" rel="noreferrer">
-                  {latest.source === "dependent" ? `${hostLabel(latest.host)} ↗` : "Run on GitHub ↗"}
-                </a>
-              ),
-            ]
-              .filter(Boolean)
-              .map((item, index) => (
-                <Fragment key={index}>
-                  {index > 0 && (
-                    <span className={styles.ledgerVerdictSep} aria-hidden>
-                      {" · "}
-                    </span>
-                  )}
-                  {item}
-                </Fragment>
-              ))}
-          </p>
+          </ul>
         </div>
-        <RunTimeline timeline={runTimeline(latest, referenceMs)} showStopped={false} />
-      </section>
-      {overview.runs > 1 && (
-        <button
-          type="button"
-          className={styles.ledgerShowMore}
-          aria-expanded={everyRun}
-          onClick={() => setEveryRun((open) => !open)}
-        >
-          {everyRun ? "Hide the runs" : `Show all ${overview.runs} runs`}
-        </button>
       )}
-      {everyRun && <RunLines runs={section.runs} referenceMs={referenceMs} />}
+      <p className={styles.ledgerNow}>
+        <span className={styles.ledgerLabel}>Runs</span>
+        <span className={styles.ledgerMarks} role="list" aria-label="Every run, oldest first">
+          {brief.marks.map((mark) => (
+            <a
+              key={mark.id}
+              role="listitem"
+              href={mark.url}
+              target="_blank"
+              rel="noreferrer"
+              className={styles.ledgerMark}
+              data-tone={mark.tone}
+              title={mark.title}
+              aria-label={mark.title}
+            />
+          ))}
+        </span>
+        <a href={`/ops/journey?citation=${encodeURIComponent(section.citation)}`}>Full history →</a>
+      </p>
     </div>
   );
 }
