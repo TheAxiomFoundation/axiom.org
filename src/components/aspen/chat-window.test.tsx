@@ -67,7 +67,7 @@ function saved(): SavedChat {
 const draftBox = () => screen.getByLabelText("Your question") as HTMLTextAreaElement;
 /** The question as it will be sent: a picked household shows it as written, otherwise it's in the box. */
 const shownQuestion = () => {
-  const preview = screen.queryByRole("group", { name: "The question" });
+  const preview = screen.queryByRole("group", { name: /The question$/ });
   return preview ? (preview.querySelector("p")?.textContent ?? "") : draftBox().value;
 };
 const changeQuestion = () => fireEvent.click(screen.getByRole("button", { name: "Change the question" }));
@@ -154,11 +154,11 @@ describe("ChatWindow composing", () => {
     expect(steps()).toEqual(["1Ask as", "2Pick a household", "3Your question (any benefit, any state)"]);
     // A picked household shows its question as written; changing it opens the rest (the run-through, Oct 22).
     pickRetiree();
-    expect(steps()).toEqual(["1Ask as", "2Pick a household"]);
-    expect(screen.getByRole("group", { name: "The question" })).toBeInTheDocument();
+    expect(steps()).toEqual(["1Ask as", "2Pick a household", "3The question"]);
+    expect(screen.getByRole("group", { name: /The question$/ })).toBeInTheDocument();
     expect(screen.queryByLabelText("Your question")).not.toBeInTheDocument();
     changeQuestion();
-    expect(screen.queryByRole("group", { name: "The question" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: /The question$/ })).not.toBeInTheDocument();
     expect(steps()).toEqual([
       "1Ask as",
       "2Pick a household",

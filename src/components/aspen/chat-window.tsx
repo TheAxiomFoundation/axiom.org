@@ -207,7 +207,7 @@ export function ChatWindow({
   const household = findHousehold(householdId);
   // Steps number in the order they show: details, questions and the editable question open under "Change the question".
   const step = household
-    ? { askAs: 1, household: 2, details: 3, question: 4, draft: editing ? 5 : null }
+    ? { askAs: 1, household: 2, details: 3, question: 4, draft: editing ? 5 : 3 }
     : { askAs: 1, household: 2, details: null, question: null, draft: 3 };
   // A household's question shows as written until the participant opens it to change it.
   const preview = !started && Boolean(household) && !editing;
@@ -585,9 +585,10 @@ export function ChatWindow({
           <div className={`flex flex-col gap-3 px-4 pb-4 ${started ? "border-t border-[var(--color-rule)] pt-3" : "mt-5 border-t border-[var(--color-rule)] pt-4"}`}>
             {preview ? (
               <div role="group" aria-labelledby="aspen-question-preview" className="flex flex-col gap-2">
-                <span id="aspen-question-preview" className={`${STEP} mb-0`}>
+                <div id="aspen-question-preview" className={`${STEP} mb-0`}>
+                  <span className={STEP_NUMBER}>{step.draft}</span>
                   The question
-                </span>
+                </div>
                 <p className="m-0 whitespace-pre-wrap rounded-lg bg-[var(--color-paper)] px-3.5 py-3 font-body text-[1rem] leading-relaxed text-[var(--color-ink)]">
                   {draft}
                 </p>
@@ -607,7 +608,7 @@ export function ChatWindow({
                   </label>
                 ) : (
                   <div className={`${STEP} mb-0`}>
-                    {step.draft && <span className={STEP_NUMBER}>{step.draft}</span>}
+                    <span className={STEP_NUMBER}>{step.draft}</span>
                     <label htmlFor="aspen-draft">Your question</label>{" "}
                     <span className={STEP_NOTE}>{household ? "(edit it if you like)" : "(any benefit, any state)"}</span>
                   </div>
