@@ -202,7 +202,7 @@ export function isUsState(value: unknown): value is (typeof US_STATES)[number] {
  * The household chips. Participants ask the AI about them; the chat runs no
  * rules check. All but the Connecticut couple are in states whose SNAP the
  * gallery chatbot's Axiom rules cover; finbot has no Connecticut SNAP, so the
- * live demo on At scale 6/6 stays on its Fresno question. The retiree in
+ * live demo on At scale 7/7 asks its own question (LIVE_DEMO). The retiree in
  * Phoenix leads: the convening is in Phoenix. The Connecticut couple is At
  * scale's example household (PolicyBench scenario_027), so participants can
  * ask the AI about it before the room sees how 50 models did. The first person and
@@ -893,17 +893,24 @@ export const TOOL_PILOT = {
 /**
  * At scale 7/7: the live chatbot demo (TheAxiomFoundation/finbot-snap-demo,
  * served at axiom.org/gallery/chatbot). `compare=1` puts plain AI beside AI
- * with the Axiom rules engine, and `q` prefills the demo's own Fresno example.
- * Inside a frame the demo never sends on its own, so the presenter presses
- * Send. The model is OpenAI's GPT-6 Luna (finbot's default; production sets no
- * FINBOT_MODEL, checked Oct 23, 2026); the demo's copy
- * says what it does and doesn't promise, so the slide stays plain too.
+ * with the Axiom rules engine, and `q` prefills the question. Inside a frame
+ * the demo never sends on its own, so the presenter presses Send. The model
+ * is OpenAI's GPT-6 Luna (finbot's default; production sets no FINBOT_MODEL,
+ * checked Oct 23, 2026); the demo's copy says what it does and doesn't
+ * promise, so the slide stays plain too.
+ *
+ * The question is the top pick from Pavel's error ledger (#aspen, Oct 23,
+ * 2026). Alabama's TANF State Plan, effective October 1, 2024, sets $344 a
+ * month for a family of three (Attachment E); Georgia pays $280. Plain AI
+ * cites Alabama's older $215, so it says Georgia. On the live chatbot on
+ * Oct 23, 2026, plain AI said Georgia 10 times out of 10, and AI with the
+ * engine said Alabama, $344 against $280, 10 times out of 10. The earlier
+ * Fresno CalFresh question showed no contrast: both sides gave about $250.
  */
 export const LIVE_DEMO = {
   title: "The same AI model, on its own and with the Axiom rules engine",
   base: "https://axiom.org/gallery/chatbot",
-  question:
-    "I'm a single mom in Fresno, California with two kids (8 and 5). I make $3,400 a month before taxes, pay $1,500 rent, and pay about $120 a month for utilities, including heat. Can we get CalFresh, and how much would we get each month?",
+  question: "Single mom with two kids: does Alabama or Georgia pay more TANF?",
 } as const;
 
 export function liveDemoUrl(): string {

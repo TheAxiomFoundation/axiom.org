@@ -320,9 +320,9 @@ describe("PresenterApp navigation", () => {
     expect(screen.queryByRole("link", { name: /Open demo in a new tab/ })).not.toBeInTheDocument();
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     expect(screen.getByText("7/7")).toBeInTheDocument();
-    // The live chatbot, in compare mode with the demo's Fresno question filled in.
+    // The live chatbot, in compare mode with the demo's question filled in.
     const demo = screen.getByTitle(/Live chatbot demo/);
-    expect(demo.getAttribute("src")).toMatch(/^https:\/\/axiom\.org\/gallery\/chatbot\?compare=1&q=I/);
+    expect(demo.getAttribute("src")).toMatch(/^https:\/\/axiom\.org\/gallery\/chatbot\?compare=1&q=Single%20mom/);
     expect(demo.getAttribute("src")).not.toMatch(/go=1/);
     expect(screen.getByRole("link", { name: /Open demo in a new tab/ })).toHaveAttribute("href", liveDemoUrl());
     expect(posts()).toEqual([{ stage: "scale" }]);

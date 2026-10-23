@@ -22,6 +22,8 @@ import {
   stageIndex,
   MINIMUM_BENEFIT,
   TOOL_PILOT,
+  LIVE_DEMO,
+  liveDemoUrl,
 } from './content'
 import { federalFiscalYear } from './coverage'
 
@@ -223,5 +225,15 @@ describe('aspen content', () => {
     expect(TOOL_PILOT.note).toContain('187 amounts across 100 US households')
     // The note's own caveat travels with the numbers.
     expect(TOOL_PILOT.measures).toMatch(/not whether the engine is right/)
+  })
+
+  it('opens the live demo in compare mode with its question intact', () => {
+    const url = new URL(liveDemoUrl())
+    expect(url.origin + url.pathname).toBe(LIVE_DEMO.base)
+    expect(url.searchParams.get('compare')).toBe('1')
+    // Round trip: the frame asks exactly the question the run-of-show scripts.
+    expect(url.searchParams.get('q')).toBe(LIVE_DEMO.question)
+    // The frame never sends on its own; the presenter presses Send.
+    expect(url.searchParams.has('go')).toBe(false)
   })
 })
