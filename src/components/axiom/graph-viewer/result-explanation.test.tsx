@@ -1,10 +1,21 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
+import fc from "fast-check";
 import { inputAwareEvidence, recordedEvidence, relevantInputs, resultReason, resultBlockers, ResultExplanation, type ExplanationRun } from "./result-explanation";
 import type { ProgramGraph, RuleNode } from "./types";
 const rule = (legalId: string): RuleNode => ({ legalId, name: legalId.split("#").at(-1)!, fileLegalId: "law", kind: "derived", entity: null, dtype: null, period: null, unit: null, source: null, ruleDeps: [], inputDeps: [], relationDeps: [] });
 const graph: ProgramGraph = { rules: [{...rule("law#result"), ruleDeps:["law#condition","law#missing"], formula:"if condition: 5 else: 0"},rule("law#condition")], inputs:[],relations:[],ownOutputs:[],terminalOutputs:[] };
 const run: ExplanationRun = { outputs:{result:0},trace:[{variable:"condition",value:false}] };
+it("keeps submitted instance answers keyed by entity and instance, including zero and false", () => {
+ const data: ProgramGraph = { ...graph, inputs: [{ legalId: "law#input.amount", name: "input.amount", entity: "Payment", fileLegalId: "law" }] };
+ fc.assert(fc.property(fc.array(fc.oneof(fc.integer(), fc.boolean()), { maxLength: 12 }), answers => {
+  const instances = Object.fromEntries(answers.map((amount, index) => [`payment_${index + 1}`, { amount }]));
+  const expected = Object.fromEntries(answers.map((amount, index) => [`payment_${index + 1}`, amount]));
+  const submitted = { ...run, submittedFacts: { amount: 999 }, submittedInstances: { Payment: instances, Other: { other_1: { amount: 888 } } } };
+  expect(recordedEvidence(data, submitted, "law#input.amount")).toEqual({ value: expected, origin: "Submitted input" });
+  expect(inputAwareEvidence(data, submitted, "law#input.amount", { amount: 777 })).toEqual(expected);
+ }), { seed: 318, numRuns: 50, examples: [[[0, false]]] });
+});
 describe("execution evidence", () => {
  it("preserves false and zero", () => {
   expect(recordedEvidence(graph,run,"law#result")?.value).toBe(0);

@@ -39,6 +39,64 @@ export const DEFAULT_CONTROL: Control = {
 
 const RUN_LIMIT = 5000;
 
+/**
+ * The prompt fields the room's results read, for both stores, so a field
+ * the Supabase select leaves out is missing in a memory-store rehearsal
+ * too, not only in production. The rules check's program id and saved
+ * eligibility verdict come out of rules_outputs by JSON path (PostgREST
+ * `->` keeps JSON, `->>` gives text), so the results poll doesn't ship
+ * every saved computation.
+ */
+const RUN_PROMPT_COLUMNS = [
+  "id",
+  "run_id",
+  "participant_id",
+  "conversation_id",
+  "turn",
+  "created_at",
+  "perspective",
+  "household_id",
+  "question_id",
+  "prompt",
+  "twists",
+  "answer",
+  "error",
+  "verdict",
+  "would_act",
+  "resident_action",
+  "went_well",
+  "went_wrong",
+  "rating_note",
+  "rules_program",
+  "rules_period",
+  "rules_amount",
+  "post_check_verdict",
+] as const satisfies readonly (keyof PromptRow)[];
+
+const RUN_PROMPT_PATHS = [
+  { alias: "rules_program_id", column: "rules_outputs", index: 0, key: "program", text: true },
+  { alias: "rules_eligibility_tested", column: "rules_outputs", index: 0, key: "eligibilityTested", text: false },
+] as const satisfies readonly { alias: keyof PromptRow; column: keyof PromptRow; index: number; key: string; text: boolean }[];
+
+export const RUN_PROMPT_SELECT = [
+  ...RUN_PROMPT_COLUMNS,
+  ...RUN_PROMPT_PATHS.map((p) => `${p.alias}:${p.column}->${p.index}${p.text ? "->>" : "->"}${p.key}`),
+].join(",");
+
+/** A stored prompt as RUN_PROMPT_SELECT returns it from PostgREST: those fields only, null when absent. */
+export function projectRunPrompt(row: PromptRow): PromptRow {
+  const out: Record<string, unknown> = {};
+  for (const column of RUN_PROMPT_COLUMNS) out[column] = row[column] ?? null;
+  for (const path of RUN_PROMPT_PATHS) {
+    const list = row[path.column];
+    const item: unknown = Array.isArray(list) ? list[path.index] : undefined;
+    const value = item && typeof item === "object" ? (item as Record<string, unknown>)[path.key] : undefined;
+    out[path.alias] =
+      value === undefined || value === null ? null : path.text && typeof value !== "string" ? JSON.stringify(value) : value;
+  }
+  return out as unknown as PromptRow;
+}
+
 // ---------------------------------------------------------------------------
 // Supabase (PostgREST)
 // ---------------------------------------------------------------------------
@@ -146,7 +204,7 @@ export function createSupabaseStore(
           `aspen_participants?${runFilter(runId)}&select=id,run_id,perspective,state,role&order=created_at.asc&limit=${RUN_LIMIT}`,
         ),
         request<PromptRow[]>(
-          `aspen_prompts?${runFilter(runId)}&select=id,run_id,participant_id,conversation_id,turn,created_at,perspective,household_id,question_id,prompt,twists,answer,error,verdict,would_act,resident_action,went_well,went_wrong,rating_note,rules_program,rules_period,rules_amount,post_check_verdict&${order}`,
+          `aspen_prompts?${runFilter(runId)}&select=${RUN_PROMPT_SELECT}&${order}`,
         ),
         request<EventRow[]>(
           `aspen_events?${runFilter(runId)}&kind=in.(discussion,breakout,survey,vote)&select=run_id,kind,stage,payload,created_at&${order}`,
@@ -226,7 +284,7 @@ export function createMemoryStore(state: MemoryState = freshMemory()): AspenStor
         [...rows].filter((r) => r.run_id === runId);
       return {
         participants: inRun(state.participants.values()),
-        prompts: inRun(state.prompts.values()),
+        prompts: inRun(state.prompts.values()).map(projectRunPrompt),
         events: inRun(state.events).filter((e) => ["discussion", "breakout", "survey", "vote"].includes(e.kind)),
         pledges: inRun(state.pledges).map(({ state: st, accurate_ai, state_systems, show_state, created_at }) => ({
           state: st ?? null,

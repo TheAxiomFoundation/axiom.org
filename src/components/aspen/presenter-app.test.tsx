@@ -6,8 +6,7 @@ import {
   DISCUSSION_QUESTIONS,
   EVENT,
   GOLDEN_A,
-  AZ_HOUSEHOLD,
-  AZ_SCENARIO_REVIEW,
+  EXAMPLE_HOUSEHOLD,
   BUILD_HEADING,
   FRONT_DOOR,
   liveDemoUrl,
@@ -22,7 +21,7 @@ import {
 } from "@/lib/aspen/content";
 import { EMPTY_SUMMARY, summarizeRun, type RunSummary } from "@/lib/aspen/results";
 import type { Control, RunData } from "@/lib/aspen/types";
-import { PresenterApp } from "./presenter-app";
+import { notApplyLabel, PresenterApp } from "./presenter-app";
 
 const DATA: RunData = {
   participants: [{ id: "a", run_id: "r1", perspective: "resident", state: "Arizona" }],
@@ -282,12 +281,14 @@ describe("PresenterApp navigation", () => {
     await onStage("scale");
     expect(screen.getByText("1/6")).toBeInTheDocument();
     expect(screen.getByText("42%")).toBeInTheDocument();
+    // A household, not a family: four of the five minimum-benefit households are one person.
+    expect(screen.getByText(/of AI answers told a household that qualifies for SNAP it would get/)).toBeInTheDocument();
     expect(screen.getByText(STAGES.find((st) => st.id === "scale")!.summary)).toBeInTheDocument();
 
     // At scale: the share, then Max's household, chart, what the models miss and the front door.
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     expect(screen.getByText("2/6")).toBeInTheDocument();
-    expect(screen.getByText(AZ_HOUSEHOLD.title)).toBeInTheDocument();
+    expect(screen.getByText(EXAMPLE_HOUSEHOLD.title)).toBeInTheDocument();
     // The summary shows on the first slide only.
     expect(screen.queryByText(STAGES.find((st) => st.id === "scale")!.summary)).not.toBeInTheDocument();
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
@@ -296,8 +297,8 @@ describe("PresenterApp navigation", () => {
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     expect(screen.getByText("4/6")).toBeInTheDocument();
     for (const q of WHAT_MODELS_MISS.quotes) expect(screen.getByText(q.model)).toBeInTheDocument();
-    // The review flag stays off the room's screen.
-    expect(screen.queryByText(AZ_SCENARIO_REVIEW.question)).not.toBeInTheDocument();
+    // The Arizona review flag is gone: the example moved to Connecticut (d1919).
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     expect(screen.getByText("5/6")).toBeInTheDocument();
     // The last slide turns the stage from the problem to the fix.
@@ -337,16 +338,14 @@ describe("PresenterApp navigation", () => {
     expect(posts()).toEqual([{ stage: "scale" }, { stage: "foundation" }, { stage: "scale" }, { stage: "reveal" }]);
   });
 
-  it("flags the Arizona scenario for review on At scale 4/6 only with ?review", async () => {
+  it("shows no review flag on At scale 4/6, even with ?review", async () => {
     window.history.pushState({}, "", "/aspen/present?review");
     try {
       setup({ stage: "scale" });
       await onStage("scale");
       for (let i = 0; i < 3; i++) fireEvent.keyDown(document.body, { key: "ArrowRight" });
       expect(screen.getByText("4/6")).toBeInTheDocument();
-      expect(screen.getByRole("note")).toHaveTextContent(AZ_SCENARIO_REVIEW.question);
-      fireEvent.keyDown(document.body, { key: "ArrowRight" });
-      expect(screen.queryByText(AZ_SCENARIO_REVIEW.question)).not.toBeInTheDocument();
+      expect(screen.queryByRole("note")).not.toBeInTheDocument();
     } finally {
       window.history.pushState({}, "", "/");
     }
@@ -430,7 +429,7 @@ describe("PresenterApp stages", () => {
     await onStage("reveal");
     await waitFor(() => expect(screen.getByText("answers looked right").previousSibling).toHaveTextContent("0 of 1"));
     expect(screen.getByText("looked wrong, yet people would act on them").previousSibling).toHaveTextContent("1");
-    expect(screen.getByText("would stop a resident from applying. 1 of them qualify.").previousSibling).toHaveTextContent("1");
+    expect(screen.getByText("would stop a resident from applying. 1 of them qualifies.").previousSibling).toHaveTextContent("1");
     expect(screen.getByText("What would a resident do next?")).toBeInTheDocument();
     expect(screen.getByText("To discuss")).toBeInTheDocument();
     // The agency question has its own slide, so the list leaves it out.
@@ -438,6 +437,86 @@ describe("PresenterApp stages", () => {
       if (q.id === "experience") expect(screen.queryByText(q.label)).not.toBeInTheDocument();
       else expect(screen.getByText(q.label)).toBeInTheDocument();
     }
+  });
+
+  it("counts an amount from rules that don't test eligibility apart from households that qualify", () => {
+    expect(notApplyLabel({ wouldNotApplyEligible: 0, wouldNotApplyIfEligible: 0 })).toBe("would stop a resident from applying");
+    expect(notApplyLabel({ wouldNotApplyEligible: 2, wouldNotApplyIfEligible: 0 })).toBe(
+      "would stop a resident from applying. 2 of them qualify.",
+    );
+    expect(notApplyLabel({ wouldNotApplyEligible: 1, wouldNotApplyIfEligible: 0 })).toBe(
+      "would stop a resident from applying. 1 of them qualifies.",
+    );
+    expect(notApplyLabel({ wouldNotApplyEligible: 0, wouldNotApplyIfEligible: 1 })).toBe(
+      "would stop a resident from applying. For 1 of them, the rules give an amount but don't test eligibility yet.",
+    );
+    expect(notApplyLabel({ wouldNotApplyEligible: 2, wouldNotApplyIfEligible: 3 })).toBe(
+      "would stop a resident from applying. 2 of them qualify. For 3 more, the rules give an amount but don't test eligibility yet.",
+    );
+  });
+
+  it("keeps an Arizona rules amount conditional on eligibility in the reveal", async () => {
+    const harmful = summarizeRun({
+      ...DATA,
+      prompts: [{
+        ...DATA.prompts[0],
+        household_id: "ct-couple",
+        rules_program: "Arizona SNAP",
+        rules_outputs: [{ program: "us-az-snap", eligibilityTested: false }],
+        resident_action: "not-apply",
+      }],
+    });
+    setup({ stage: "reveal", summary: harmful });
+    await onStage("reveal");
+    await waitFor(() => expect(screen.getByText(
+      "would stop a resident from applying. For 1 of them, the rules give an amount but don't test eligibility yet.",
+    ).previousSibling).toHaveTextContent("1"));
+    expect(screen.queryByText(/of them qualif/)).not.toBeInTheDocument();
+  });
+
+  it("labels the monthly standards beside both annual references, and shows every model's answer", async () => {
+    setup({ stage: "scale" });
+    await onStage("scale");
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("2/6")).toBeInTheDocument();
+    // The big number and the one tile that matched it.
+    expect(screen.getAllByText("$288")).toHaveLength(2);
+    // The panel label says "SNAP for 2026", so the big number doesn't repeat the year (Pavel's review).
+    expect(screen.queryByText("in 2026")).not.toBeInTheDocument();
+    expect(screen.getByText(/\$24 a month all year under FY2026 standards\./)).toBeInTheDocument();
+    expect(screen.getByText("PolicyEngine's reference in PolicyBench")).toBeInTheDocument();
+    expect(screen.getByText(/The minimum benefit rose to \$25 on October 1, 2026\./)).toBeInTheDocument();
+    expect(screen.getByText("from 42 of 49 AI models · 1 matched exactly")).toBeInTheDocument();
+    // One tile per model: 42 at $0, the one right answer, four at FY2025's $23 a month, and one that didn't parse.
+    const tiles = within(screen.getByRole("group", { name: /^50 models: 42 said \$0, 1 said \$288, 6 gave other amounts, 1 gave no answer$/ })).getAllByRole("listitem");
+    expect(tiles).toHaveLength(50);
+    expect(tiles.filter((t) => t.textContent === "$0")).toHaveLength(42);
+    expect(tiles.filter((t) => t.textContent?.startsWith("$288"))).toHaveLength(1);
+    expect(tiles.filter((t) => t.textContent === "$276")).toHaveLength(4);
+    expect(tiles.filter((t) => t.textContent === "$5,160")).toHaveLength(1);
+    expect(tiles.filter((t) => t.textContent?.includes("no answer"))).toHaveLength(1);
+    // The one exact answer stands out, and a screen reader hears why.
+    const exact = tiles.find((t) => t.textContent?.startsWith("$288"))!;
+    expect(exact).toHaveTextContent("$288, matches the reference");
+    const other = tiles.find((t) => t.textContent === "$276")!;
+    expect(exact.className).toContain("bg-[var(--color-accent-light)]");
+    expect(exact.className).toContain("font-semibold");
+    expect(other.className).not.toContain("color-accent");
+
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("4/6")).toBeInTheDocument();
+    expect(screen.getByText("$288")).toBeInTheDocument();
+    expect(screen.getByText("in 2026")).toBeInTheDocument();
+    expect(screen.getByText(/\$24 a month all year under FY2026 standards\./)).toBeInTheDocument();
+    expect(screen.getByText("PolicyEngine's reference in PolicyBench")).toBeInTheDocument();
+    expect(screen.getByText(/The minimum benefit rose to \$25 on October 1, 2026\./)).toBeInTheDocument();
+    // Connecticut's limit and its missing asset test, and the minimum as a floor, not the amount.
+    expect(screen.getByText(/gross income up to 200% of the poverty line and sets no asset limit/)).toBeInTheDocument();
+    expect(screen.getByText(/Covered households skip SNAP's net income and asset tests, so the \$48,000 doesn't count\./)).toBeInTheDocument();
+    expect(screen.getByText(/Net income still sets the amount, and a household of one or two gets at least the minimum benefit\./)).toBeInTheDocument();
+    expect(screen.getByText(/USDA FNA BBCE chart, June 2026 · USDA SNAP FY2027 COLA memo, Aug 21, 2026 · PolicyBench, Oct 14, 2026/)).toBeInTheDocument();
+    expect(screen.queryByText(/Arizona/)).not.toBeInTheDocument();
   });
 
   it("keeps the plain labels when no answer would send a resident the wrong way", async () => {
@@ -469,7 +548,7 @@ describe("PresenterApp stages", () => {
     expect(screen.getByText("One open, validated set of rules")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText(/In this room/)).toHaveTextContent("In this room, 5 of 6 can't fully check"));
     for (const trait of [
-      "Every value cites the provision it comes from",
+      "Every value is built to cite the provision it comes from",
       "Every change carries its effective date",
       "Every release is versioned, so you can see what changed",
     ]) {
@@ -488,6 +567,8 @@ describe("PresenterApp stages", () => {
     for (const tier of GOLDEN_A) expect(screen.getByText(tier.name)).toBeInTheDocument();
     expect(screen.queryByText("Bronze A")).not.toBeInTheDocument();
     expect(screen.getByText("Rules from public documents")).toBeInTheDocument();
+    // The programs to encode carry plain bullets, not checks that read as done.
+    expect(screen.getByText("Medicaid").closest("li")!.querySelector("svg")).toBeNull();
     // Silver and Gold A read as in the core deck.
     expect(screen.getByText("Government validation")).toBeInTheDocument();
     expect(screen.getByText("Government system runs on Axiom")).toBeInTheDocument();
@@ -583,7 +664,7 @@ describe("PresenterApp stages", () => {
     setup({ stage: "scale" });
     await onStage("scale");
     // Slides 2 to 4 are Max's PolicyBench slides.
-    for (const source of [AZ_HOUSEHOLD.source, WHERE_MODELS_BREAK.source, WHAT_MODELS_MISS.sources]) {
+    for (const source of [EXAMPLE_HOUSEHOLD.source, WHERE_MODELS_BREAK.source, WHAT_MODELS_MISS.sources]) {
       fireEvent.keyDown(document.body, { key: "ArrowRight" });
       expect(screen.getByText(source)).toBeInTheDocument();
       expect(screen.queryByText(/CEO of both/)).not.toBeInTheDocument();

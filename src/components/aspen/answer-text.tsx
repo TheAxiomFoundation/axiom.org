@@ -105,8 +105,9 @@ export function renderInline(text: string, keyPrefix = "i"): ReactNode[] {
 
 export function AnswerText({ text, className }: { text: string; className?: string }) {
   const blocks = parseBlocks(text);
+  // break-words is inherited: paragraphs, headings and list items all wrap a long unbroken path.
   return (
-    <div className={className ?? "flex flex-col gap-3"}>
+    <div className={`${className ?? "flex flex-col gap-3"} break-words`}>
       {blocks.map((block, b) => {
         const key = `b${b}`;
         if (block.type === "h") {

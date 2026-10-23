@@ -1,5 +1,19 @@
-import { EMPTY_SUMMARY, breakdownOf, countBy, plainText, rank, summarizeRun, summarizeScales, viabilityOf } from './results'
-import type { RunData } from './types'
+import fc from 'fast-check'
+import {
+  EMPTY_SUMMARY,
+  breakdownOf,
+  countBy,
+  plainText,
+  ifEligibleSentence,
+  rank,
+  rulesIfEligible,
+  rulesProgramId,
+  summarizeRun,
+  summarizeScales,
+  viabilityOf,
+} from './results'
+import { ELIGIBILITY_NOT_TESTED } from './coverage'
+import type { PromptRow, RunData } from './types'
 
 const base = { run_id: 'r', conversation_id: 'c', participant_id: 'p' }
 
@@ -16,7 +30,7 @@ const DATA: RunData = {
       turn: 0,
       created_at: '2026-10-26T18:00:00Z',
       perspective: 'resident',
-      household_id: 'az-savings',
+      household_id: 'ct-couple',
       prompt: 'Can I get SNAP?\n  with   savings',
       answer: 'You may not qualify. '.repeat(30),
       verdict: 'wrong',
@@ -33,7 +47,7 @@ const DATA: RunData = {
       turn: 1,
       created_at: '2026-10-26T18:01:00Z',
       perspective: 'resident',
-      household_id: 'az-savings',
+      household_id: 'ct-couple',
       prompt: 'Follow-up',
       answer: 'Short.',
       verdict: 'unsure',
@@ -97,7 +111,7 @@ describe('aspen results', () => {
       ['caseworker', 1],
       ['stranger', 1],
     ])
-    expect(s.households.find((h) => h.id === 'az-savings')?.count).toBe(1)
+    expect(s.households.find((h) => h.id === 'ct-couple')?.count).toBe(1)
     expect(s.households.find((h) => h.id === 'own')?.count).toBe(1)
     expect(s.states).toEqual([{ id: 'Arizona', label: 'Arizona', count: 2 }])
     expect(s.verdicts.map((c) => c.count)).toEqual([0, 1, 1])
@@ -113,7 +127,7 @@ describe('aspen results', () => {
     expect(first.prompt).toBe('Can I get SNAP? with savings')
     expect(first.answer?.endsWith('…')).toBe(true)
     expect(first.answer!.length).toBeLessThanOrEqual(360)
-    expect(first).toMatchObject({ perspective: 'A resident', household: 'Disabled, with savings', rulesAmount: 24 })
+    expect(first).toMatchObject({ perspective: 'A resident', household: 'Couple, with savings', rulesAmount: 24 })
     const unknown = feed.find((f) => f.id === 'd')!
     expect(unknown).toMatchObject({ perspective: 'stranger', household: null, createdAt: null })
   })
@@ -194,6 +208,86 @@ describe('aspen results', () => {
     ])
   })
 
+  it('reads the program a saved rules check ran on', () => {
+    // The run select's alias first (store.ts RUN_PROMPT_SELECT), whole saved computations second.
+    expect(rulesProgramId({ rules_program_id: 'us-az-snap', rules_outputs: [{ program: 'us-ny-snap' }] })).toBe('us-az-snap')
+    expect(rulesProgramId({ rules_outputs: [{ program: 'us-az-snap' }, { program: 'us-ny-snap' }] })).toBe('us-az-snap')
+    for (const rules_outputs of [undefined, null, [], ['junk'], [null], [{ program: 7 }], [{}], { program: 'us-az-snap' }]) {
+      expect(rulesProgramId({ rules_outputs })).toBeNull()
+    }
+  })
+
+  it('reads a saved check the way the panel showed it', () => {
+    // The verdict saved with the check wins over today's list.
+    expect(rulesIfEligible({ rules_eligibility_tested: false, rules_program_id: 'us-ny-snap' })).toBe(true)
+    expect(rulesIfEligible({ rules_eligibility_tested: true, rules_program_id: 'us-az-snap' })).toBe(false)
+    expect(rulesIfEligible({ rules_outputs: [{ program: 'us-az-snap', eligibilityTested: true }] })).toBe(false)
+    // A check saved before the verdict was: its program decides.
+    expect(rulesIfEligible({ rules_eligibility_tested: null, rules_program_id: 'us-az-snap' })).toBe(true)
+    expect(rulesIfEligible({ rules_outputs: [{ program: 'us-az-snap' }] })).toBe(true)
+    expect(rulesIfEligible({ rules_program_id: 'us-ny-snap' })).toBe(false)
+    // Nothing known about the check: no known limit.
+    expect(rulesIfEligible({ rules_outputs: null })).toBe(false)
+  })
+
+  it('does not count an amount from rules that skip eligibility as a household that qualifies', () => {
+    const p = (id: string, program: string | null, rules_amount: number) => ({
+      ...base,
+      id,
+      turn: 0,
+      prompt: 'q',
+      verdict: 'wrong',
+      resident_action: 'not-apply',
+      rules_amount,
+      rules_program_id: program,
+      rules_eligibility_tested: program === null ? null : !ELIGIBILITY_NOT_TESTED.includes(program),
+    })
+    const v = viabilityOf([p('az', 'us-az-snap', 24), p('ny', 'us-ny-snap', 300), p('old', null, 50), p('az0', 'us-az-snap', 0)])
+    expect(v).toMatchObject({ wouldNotApply: 4, wouldNotApplyEligible: 2, wouldNotApplyIfEligible: 1 })
+    const feed = summarizeRun({ ...DATA, prompts: [{ ...p('az', 'us-az-snap', 24), answer: 'No.' }, { ...p('ny', 'us-ny-snap', 300), answer: 'No.' }] }).feed
+    expect(feed.map((f) => [f.id, f.rulesAmount, f.rulesIfEligible])).toEqual(
+      expect.arrayContaining([
+        ['az', 24, true],
+        ['ny', 300, false],
+      ]),
+    )
+  })
+
+  it('splits every not-apply answer with a rules amount into qualifies or if-eligible, never both', () => {
+    const row = fc.record({
+      resident_action: fc.constantFrom('not-apply', 'apply', 'call', null),
+      rules_amount: fc.option(fc.integer({ min: -5, max: 500 }), { nil: undefined }),
+      rules_program_id: fc.constantFrom(null, ...ELIGIBILITY_NOT_TESTED, 'us-ny-snap', 'us-co-snap'),
+      rules_eligibility_tested: fc.constantFrom(null, true, false),
+    })
+    fc.assert(
+      fc.property(fc.array(row, { maxLength: 12 }), (rows) => {
+        const prompts = rows.map((r, i) => ({ ...base, id: String(i), turn: 0, prompt: 'q', verdict: 'wrong', ...r }) as PromptRow)
+        const v = viabilityOf(prompts)
+        const withAmount = prompts.filter(
+          (p) => p.resident_action === 'not-apply' && typeof p.rules_amount === 'number' && p.rules_amount > 0,
+        )
+        const ifEligible = (p: PromptRow) =>
+          typeof p.rules_eligibility_tested === 'boolean'
+            ? !p.rules_eligibility_tested
+            : ELIGIBILITY_NOT_TESTED.includes(p.rules_program_id ?? '')
+        expect(v.wouldNotApplyEligible + v.wouldNotApplyIfEligible).toBe(withAmount.length)
+        expect(v.wouldNotApplyIfEligible).toBe(withAmount.filter(ifEligible).length)
+        expect(v.wouldNotApplyEligible + v.wouldNotApplyIfEligible).toBeLessThanOrEqual(v.wouldNotApply)
+      }),
+    )
+  })
+
+  it('says how many more got an amount from rules that skip eligibility', () => {
+    expect(ifEligibleSentence({ wouldNotApplyEligible: 0, wouldNotApplyIfEligible: 0 }, 'of those')).toBeNull()
+    expect(ifEligibleSentence({ wouldNotApplyEligible: 0, wouldNotApplyIfEligible: 1 }, 'of those')).toBe(
+      "For 1 of those, the rules give an amount but don't test eligibility yet.",
+    )
+    expect(ifEligibleSentence({ wouldNotApplyEligible: 2, wouldNotApplyIfEligible: 3 }, 'of them')).toBe(
+      "For 3 more, the rules give an amount but don't test eligibility yet.",
+    )
+  })
+
   it('keeps what else each group raised, also from a group that shared no idea', () => {
     const { breakouts } = summarizeRun({
       ...DATA,
@@ -255,13 +349,13 @@ describe('aspen results', () => {
 
   it('breaks first questions down by household, detail and perspective, worst first', () => {
     const rows = breakdownOf([
-      { ...base, id: '1', turn: 0, prompt: 'q', household_id: 'az-savings', perspective: 'resident', twists: ['gig'], verdict: 'wrong' },
-      { ...base, id: '2', turn: 0, prompt: 'q', household_id: 'az-savings', perspective: 'caseworker', verdict: 'right' },
+      { ...base, id: '1', turn: 0, prompt: 'q', household_id: 'ct-couple', perspective: 'resident', twists: ['gig'], verdict: 'wrong' },
+      { ...base, id: '2', turn: 0, prompt: 'q', household_id: 'ct-couple', perspective: 'caseworker', verdict: 'right' },
       { ...base, id: '3', turn: 0, prompt: 'q', household_id: null, perspective: 'resident', verdict: 'unsure' },
       { ...base, id: '4', turn: 0, prompt: 'q', household_id: 'ny-parent', perspective: 'resident' },
     ])
     expect(rows[0]).toMatchObject({ kind: 'detail', id: 'gig', label: '+ Gig income', asked: 1, rated: 1, wrong: 1 })
-    expect(rows.find((r) => r.id === 'az-savings')).toMatchObject({ asked: 2, rated: 2, wrong: 1 })
+    expect(rows.find((r) => r.id === 'ct-couple')).toMatchObject({ asked: 2, rated: 2, wrong: 1 })
     expect(rows.find((r) => r.id === 'own')).toMatchObject({ label: 'Their own question', unsure: 1, wrong: 0 })
     expect(rows.find((r) => r.id === 'resident')).toMatchObject({ label: 'Asked as a resident', asked: 3, rated: 2, wrong: 1 })
     // Unrated rows sort last.

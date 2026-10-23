@@ -1,3 +1,4 @@
+import { AZ_SAVINGS_TEXT, azSavingsStream } from '@/test/rules-az-savings'
 import { askRules, parseDataStream, summarizeRules } from './rules'
 
 const line = (code: string, value: unknown) => `${code}:${JSON.stringify(value)}`
@@ -80,6 +81,65 @@ describe('rules chatbot stream', () => {
     expect(judgment.program).toBe('p')
     expect(judgment.computations[0].primary?.name).toBe('eligible')
     expect(judgment.period).toBeNull()
+  })
+
+  it('keeps what each output is, and the limits the chatbot attached', () => {
+    const rules = summarizeRules({
+      text: '',
+      toolCalls: [],
+      toolResults: [
+        {
+          toolCallId: 'x',
+          toolName: 'compute',
+          result: {
+            program: 'us-ny-snap',
+            period: '2026-03',
+            outputs: [
+              { name: 'snap_benefit', value: 100, unit: 'USD', semantics: 'scalar', published_output: true },
+              { name: 'snap_net_income_test', value: 'holds', semantics: 'judgment', published_output: false },
+              { name: 'snap_eligible', value: 'holds' },
+            ],
+            applied: { disclosures: ['Note A', 'Note A', 7, null, 'SNAP figures use FY2026 standards; later ones are not encoded yet.'] },
+            citations: [{ id: 'us:policies/usda/snap/fy-2026-cola/deductions' }, { id: 3 }, null, 'junk'],
+          },
+        },
+        {
+          toolCallId: 'y',
+          toolName: 'compute',
+          result: { program: 'p', outputs: [], applied: 'junk', citations: 'junk' },
+        },
+      ],
+      errors: [],
+    })
+    const [ny, p] = rules.computations
+    expect(ny.outputs.map((o) => [o.name, o.semantics])).toEqual([
+      ['snap_benefit', 'scalar'],
+      ['snap_net_income_test', 'judgment'],
+      ['snap_eligible', null],
+    ])
+    expect(ny.disclosures).toEqual(['Note A', 'SNAP figures use FY2026 standards; later ones are not encoded yet.'])
+    expect(ny.standardsYears).toEqual([2026])
+    expect(ny.eligibilityTested).toBe(true)
+    expect(p.disclosures).toEqual([])
+    expect(p.standardsYears).toEqual([])
+    expect(p.eligibilityTested).toBe(true)
+  })
+
+  it('summarizes the recorded Arizona answer: $24, eligibility untested, FY2026 standards', () => {
+    const rules = summarizeRules(parseDataStream(azSavingsStream()))
+    expect(rules.text).toBe(AZ_SAVINGS_TEXT)
+    expect(rules).toMatchObject({ amount: 24, program: 'Arizona SNAP', period: '2026-10', incomplete: [], errors: [] })
+    const [az] = rules.computations
+    expect(az.program).toBe('us-az-snap')
+    expect(az.outputs.find((o) => o.name === 'snap_eligible')).toMatchObject({ value: 'holds', semantics: 'judgment', incomplete: false })
+    expect(az.outputs.find((o) => o.name === 'snap_maximum_allotment')).toMatchObject({ value: 298, semantics: 'scalar' })
+    // Saved with the check, so the results read it the way the panel showed it.
+    expect(az.eligibilityTested).toBe(false)
+    expect(az.disclosures).toEqual([
+      "Axiom's Arizona SNAP encoding doesn't test eligibility yet: every household shows as eligible, so read the amount as \"if eligible\".",
+      'SNAP figures use FY2026 standards; FY2027 standards took effect October 1, 2026 and are not encoded yet.',
+    ])
+    expect(az.standardsYears).toEqual([2026])
   })
 
   it('asks the gallery chatbot with only the participant’s turns', async () => {
