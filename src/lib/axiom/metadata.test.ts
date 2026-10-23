@@ -433,8 +433,10 @@ describe("metadataForResolution", () => {
 
   // The v2 reader only renders paths deeper than browse depth, and
   // resolveSection only sees those, so its requestedPath always is.
-  // Dot segments are left out: citationUrl drops them, and no corpus
-  // path or routed request segment is one.
+  // Dot segments are left out: citationUrl drops them. A double-encoded
+  // one (%252E%252E) can still reach resolveSection, and below a
+  // browse-depth row its canonical then falls to browse depth; accepted,
+  // since only a crafted URL gets there and the URL stays encoded.
   it("always gives a canonical the reader serves, for any resolution", () => {
     const segment = fc
       .oneof(hostileString, fc.constantFrom("a", "422.12C", "1396u\u20131"))
