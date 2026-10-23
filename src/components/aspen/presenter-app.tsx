@@ -848,7 +848,8 @@ function HouseholdSlide() {
             <BigStat value="$0" label={`from all ${h.models} AI models`} tone="bad" />
           </div>
           <ArizonaStandardsNote />
-          <div aria-label={`${h.models} model answers, all $0`} className="grid grid-cols-12 gap-[6px]">
+          {/* Two rows of 25, so the panel leaves room for the standards note and the slide keeps its footer. */}
+          <div aria-label={`${h.models} model answers, all $0`} className="grid grid-cols-[repeat(25,minmax(0,1fr))] gap-[6px]">
             {Array.from({ length: h.models }, (_, i) => (
               <span
                 key={i}

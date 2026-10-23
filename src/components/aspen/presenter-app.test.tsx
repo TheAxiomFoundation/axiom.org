@@ -496,7 +496,7 @@ describe("PresenterApp stages", () => {
     expect(screen.getByText(/\$24 a month from March under FY2026 standards/)).toHaveTextContent("PolicyEngine's reference in PolicyBench");
     expect(screen.getByText(/The minimum benefit rose to \$25 on October 1, 2026\./)).toBeInTheDocument();
     // Arizona raised an existing limit in March 2026; the minimum is a floor, not the amount.
-    expect(screen.getByText(/up to 200% of the poverty line \(raised from 185% in March 2026\)/)).toBeInTheDocument();
+    expect(screen.getByText(/up to 200% of the poverty line \(185% before March 2026\)/)).toBeInTheDocument();
     expect(screen.getByText(/a household of one or two gets at least the minimum benefit\./)).toBeInTheDocument();
     expect(screen.getByText(/USDA FNA broad-based categorical eligibility chart, June 2026 · Arizona DES, What's Changed on 03\/23\/2026/)).toBeInTheDocument();
   });

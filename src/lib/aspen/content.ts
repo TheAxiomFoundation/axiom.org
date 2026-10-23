@@ -791,9 +791,9 @@ export const WHAT_MODELS_MISS = {
     },
   ],
   ruleLabel: "Broad-based categorical eligibility",
-  rule: "Arizona's expanded categorical eligibility covers every household with gross income up to 200% of the poverty line (raised from 185% in March 2026). Those households skip SNAP's income and asset tests, and a household of one or two gets at least the minimum benefit.",
+  rule: "Arizona's expanded categorical eligibility covers every household with gross income up to 200% of the poverty line (185% before March 2026). They skip SNAP's income and asset tests, and a household of one or two gets at least the minimum benefit.",
   amount: 240,
-  amountLabel: "PolicyEngine's reference in PolicyBench for this household in 2026",
+  amountLabel: "PolicyEngine's reference in PolicyBench",
   sources:
     "7 CFR 273.2(j)(2) · USDA FNA broad-based categorical eligibility chart, June 2026 · Arizona DES, What's Changed on 03/23/2026 · PolicyBench, October 14, 2026",
 } as const;
