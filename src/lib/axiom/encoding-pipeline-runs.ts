@@ -5,23 +5,48 @@
  */
 
 import {
+  attemptSource,
+  attemptTime,
+  cancelledBeforeEncode,
+  dependentHostId,
   durationLabel,
   ENCODE_GATE_LABELS,
   encodeGate,
+  errorMessage,
   failureReason,
+  hostCitations,
+  mainMergedAt,
+  reachedMain,
+  viaPrLabel,
+  type AttemptSource,
+  type EncodeLoopTiming,
   type PipelineAttempt,
   type PipelineTry,
 } from "./encoding-pipeline";
 import { attemptJurisdiction } from "./encoding-pipeline-insights";
+import { normalizeCitation } from "./ops-citations";
 
 export type RunOutcome = "encoded" | "failed" | "cancelled" | "running" | "waiting";
 
-/** One dispatch and everything recorded about it. */
+/** One dispatch (or another encoding, see `source`) and everything recorded about it. */
 export interface RunRow {
   id: string;
+  /** In the corpus's spelling (`normalizeCitation`), so a provision's spellings count as one. */
   citation: string;
   jurisdiction: string;
+  /**
+   * A dispatch; a module merged outside the pipeline (its PR is `pr`, its
+   * author `by`); or a module encoded inside another citation's run (`host`).
+   * Run statistics count dispatches only.
+   */
+  source: AttemptSource;
+  /** For a module encoded inside another citation's run: that run, and its citation when known. */
+  host: { id: string; citation: string | null } | null;
   dispatchedAt: string;
+  /** When it happened, for ordering: the dispatch, or the merge of a PR outside the pipeline (attemptTime). */
+  at: string;
+  /** When the run ended, once it has. */
+  finishedAt: string | null;
   by: string | null;
   /** The axiom-encode package version the run used. */
   encoder: string | null;
@@ -35,11 +60,22 @@ export interface RunRow {
   attempts: number | null;
   /** Each try of the encode loop, when the encoder's record has them. */
   tries: PipelineTry[] | null;
+  /** The encode loop's own clock, when the encoder's record has it. */
+  loop: EncodeLoopTiming | null;
+  /** What the encoder's record says the run's model calls cost, in US dollars. */
+  cost: number | null;
   outcome: RunOutcome;
   /** In a few words: "Encoded", "Failed validation", "Cancelled at approval". */
   outcomeLabel: string;
-  /** For a failure, what stopped it: the validator rule, step, or error. */
+  /** How far a cancelled run got: before the approval, before its job, or during it. */
+  cancelStage: PipelineAttempt["cancel_stage"];
+  /** For a failure, what stopped it: the error as the encoder wrote it, else the validator rule or step. */
   cause: string | null;
+  /**
+   * The group that cause falls in, the same for runs failing the same way:
+   * the validator rule, or the error without its values ("expected integer N").
+   */
+  causeGroup: string | null;
   runUrl: string;
   pr: {
     label: string;
@@ -52,9 +88,16 @@ export interface RunRow {
     closedAt: string | null;
   } | null;
   merged: "main" | "off main" | null;
+  /** When the change reached main: the PR's merge, or its side branch's. */
+  mainMergedAt: string | null;
+  /** For a merge into a side branch: that branch's own PR into main. */
+  via: { label: string; url: string | null; state: NonNullable<PipelineAttempt["pr_via_state"]> } | null;
   index: "indexed" | "missing" | "awaiting" | null;
   tests: "pass" | "fail" | "waived" | null;
+  /** The latest validation run on main that includes the merge. */
   testsUrl: string | null;
+  /** The first validation run at the merge commit (what testsAt times). */
+  testsFirstUrl: string | null;
   /** When the first index sync after the merge finished. */
   indexedAt: string | null;
   /** When the module's validation first finished at the merge commit on main. */
@@ -64,35 +107,78 @@ export interface RunRow {
   testsFirst: "pass" | "fail" | null;
 }
 
+/** A module a person's PR merged into the default branch, with no dispatch. */
+export const OUTSIDE_LABEL = "Merged outside the pipeline";
+
+/** Where a module encoded inside another citation's run came from, by that citation. */
+export function hostLabel(host: RunRow["host"]): string {
+  return host?.citation ? `Encoded in the run for ${host.citation}` : "Encoded in another citation's run";
+}
+
 const CANCEL_OUTCOMES: Record<string, string> = {
   approval: "Cancelled at approval",
   before_job: "Cancelled before the run",
   running: "Cancelled mid-run",
 };
 
-function outcomeOf(attempt: PipelineAttempt): Pick<RunRow, "outcome" | "outcomeLabel" | "cause"> {
-  if (attempt.run_status === "waiting") {
-    return { outcome: "waiting", outcomeLabel: "Waiting for approval", cause: null };
-  }
-  if (attempt.run_status !== "completed") {
-    return { outcome: "running", outcomeLabel: "Running", cause: null };
-  }
-  if (attempt.run_conclusion === "success") {
-    return { outcome: "encoded", outcomeLabel: "Encoded", cause: null };
-  }
+type Outcome = Pick<RunRow, "outcome" | "outcomeLabel" | "cancelStage" | "cause" | "causeGroup">;
+
+function outcomeOf(attempt: PipelineAttempt): Outcome {
+  const plain = (outcome: RunOutcome, outcomeLabel: string, cancelStage: RunRow["cancelStage"] = null): Outcome => ({
+    outcome,
+    outcomeLabel,
+    cancelStage,
+    cause: null,
+    causeGroup: null,
+  });
+  if (attemptSource(attempt) === "outside") return plain("encoded", OUTSIDE_LABEL);
+  if (attempt.run_status === "waiting") return plain("waiting", "Waiting for approval");
+  if (attempt.run_status !== "completed") return plain("running", "Running");
+  if (attempt.run_conclusion === "success") return plain("encoded", "Encoded");
   if (attempt.run_conclusion === "cancelled") {
     const label = (attempt.cancel_stage && CANCEL_OUTCOMES[attempt.cancel_stage]) ?? "Cancelled";
-    return { outcome: "cancelled", outcomeLabel: label, cause: null };
+    return plain("cancelled", label, attempt.cancel_stage ?? null);
   }
-  if (attempt.run_conclusion === "timed_out") {
-    return { outcome: "cancelled", outcomeLabel: "Timed out", cause: null };
-  }
+  if (attempt.run_conclusion === "timed_out") return plain("cancelled", "Timed out");
+  // The cause reads as the encoder wrote it ("expected integer 400, got
+  // integer 1200"); the failure group, with its values set aside, only groups.
   const reason = failureReason(attempt);
+  const group = reason.kind === "run" ? null : reason.label;
   return {
     outcome: "failed",
     outcomeLabel: ENCODE_GATE_LABELS[encodeGate(attempt)],
-    cause: reason.kind === "run" ? null : clip(reason.label),
+    cancelStage: null,
+    cause: clip(attempt.encoder_error ? errorMessage(attempt.encoder_error) : group),
+    causeGroup: clip(group),
   };
+}
+
+/**
+ * Whether a run got to its encode step. A run cancelled at the approval or
+ * before its job, one whose job never started, and one whose steps were read
+ * without an encode step did not; a run still going may yet.
+ */
+export function reachedEncode(attempt: PipelineAttempt): boolean {
+  if (cancelledBeforeEncode(attempt)) return false;
+  if (attempt.run_status !== "completed") return true;
+  if (!attempt.encode_started_at && attempt.jobs_checked_at) return false;
+  return !(attempt.steps_read_at && attempt.encode_seconds == null);
+}
+
+/**
+ * A dispatch with only what it did itself. A run that never reached its
+ * encode step tried nothing, so an encoder record matched to it belongs to
+ * another run: its tries, loop clock, cost, and attempt count are dropped,
+ * and its error too when the cause came from that record rather than from
+ * the run's own log.
+ */
+export function ownRecord(attempt: PipelineAttempt): PipelineAttempt {
+  if (reachedEncode(attempt)) return attempt;
+  const borrowedCause =
+    attempt.failure_source === "encoder_run"
+      ? { encoder_run_id: null, encoder_status: null, encoder_error: null, encoder_error_rule: null }
+      : {};
+  return { ...attempt, tries: null, encode_loop: null, cost_usd: null, generation_attempts: null, ...borrowedCause };
 }
 
 /** Long causes and check errors are cut here; the run and the PR hold the rest. */
@@ -105,14 +191,24 @@ const ms = (from: string | null | undefined, to: string | null | undefined) =>
 
 const secondsMs = (value: number | null | undefined) => (value == null ? null : value * 1000);
 
-export function runRow(attempt: PipelineAttempt): RunRow {
-  const merged =
-    attempt.pr_state === "merged" ? (attempt.pr_targets_default === false ? "off main" : "main") : null;
+/**
+ * One row as the run lists show it. `hosts` names the run a module encoded
+ * inside another citation's run came from (see hostCitations).
+ */
+export function runRow(dispatch: PipelineAttempt, hosts: Map<string, string> = new Map()): RunRow {
+  const attempt = ownRecord(dispatch);
+  const merged = attempt.pr_state === "merged" ? (reachedMain(attempt) ? "main" : "off main") : null;
+  const viaLabel = viaPrLabel(attempt);
+  const hostId = dependentHostId(attempt);
   return {
     id: attempt.id,
-    citation: attempt.citation,
+    citation: normalizeCitation(attempt.citation),
     jurisdiction: attemptJurisdiction(attempt),
+    source: attemptSource(attempt),
+    host: hostId ? { id: hostId, citation: hosts.get(hostId) ?? null } : null,
     dispatchedAt: attempt.dispatched_at,
+    at: attemptTime(attempt),
+    finishedAt: attempt.finished_at,
     by: attempt.dispatched_by ?? null,
     encoder: attempt.encoder_version ?? null,
     approvalMs: ms(attempt.dispatched_at, attempt.encode_started_at),
@@ -124,6 +220,8 @@ export function runRow(attempt: PipelineAttempt): RunRow {
     },
     attempts: attempt.generation_attempts,
     tries: attempt.tries ?? null,
+    loop: attempt.encode_loop ?? null,
+    cost: attempt.cost_usd ?? null,
     ...outcomeOf(attempt),
     runUrl: attempt.run_url,
     pr:
@@ -139,6 +237,11 @@ export function runRow(attempt: PipelineAttempt): RunRow {
           }
         : null,
     merged,
+    mainMergedAt: mainMergedAt(attempt),
+    via:
+      viaLabel && attempt.pr_via_state
+        ? { label: viaLabel, url: attempt.pr_via_url ?? null, state: attempt.pr_via_state }
+        : null,
     index:
       merged === "main"
         ? attempt.index_status === "missing"
@@ -149,6 +252,7 @@ export function runRow(attempt: PipelineAttempt): RunRow {
         : null,
     tests: attempt.tests_status ?? null,
     testsUrl: attempt.tests_run_url ?? null,
+    testsFirstUrl: merged === "main" ? (attempt.tests_first_run_url ?? null) : null,
     indexedAt: merged === "main" ? (attempt.indexed_at ?? null) : null,
     testsAt: merged === "main" ? (attempt.tests_first_at ?? null) : null,
     testsStartedAt: merged === "main" ? (attempt.tests_first_started_at ?? null) : null,
@@ -156,12 +260,20 @@ export function runRow(attempt: PipelineAttempt): RunRow {
   };
 }
 
-/** Every dispatch, newest first. */
-export function runRows(attempts: PipelineAttempt[]): RunRow[] {
+/**
+ * Every row, newest first. `hostsFrom` holds the runs that dependent modules
+ * were encoded in (by default the rows themselves; pass every attempt when
+ * the rows are scoped, so a host outside the scope still has its name).
+ */
+export function runRows(attempts: PipelineAttempt[], hostsFrom: PipelineAttempt[] = attempts): RunRow[] {
+  const hosts = hostCitations(hostsFrom);
   return attempts
-    .map(runRow)
-    .sort((a, b) => b.dispatchedAt.localeCompare(a.dispatchedAt) || b.id.localeCompare(a.id));
+    .map((attempt) => runRow(attempt, hosts))
+    .sort((a, b) => b.at.localeCompare(a.at) || b.id.localeCompare(a.id));
 }
+
+/** The dispatches among run rows: only they count in the flow and its times. */
+const dispatchRows = (rows: RunRow[]) => rows.filter((row) => row.source !== "outside" && row.source !== "dependent");
 
 /** Where the runs at one gate went: on to the next gate, out, or not yet. */
 export interface FlowSegment {
@@ -219,21 +331,31 @@ function gate(
  */
 export function dispatchFlow(rows: RunRow[]): FlowGate[] {
   const gates: FlowGate[] = [];
-  let input = rows;
+  let input = dispatchRows(rows);
   const add = (...args: Parameters<typeof gate>) => {
     const { gate: result, next } = gate(...args);
     gates.push(result);
     input = next;
   };
+  // Some runs never reached the approval: the attempt budget stopped them,
+  // they were cancelled before the encode job, or they failed with no encode
+  // job start (before the job).
+  const waiting = (r: RunRow) => r.outcome === "waiting";
+  const cancelledAtApproval = (r: RunRow) => r.outcomeLabel === "Cancelled at approval";
+  const beforeApproval = (r: RunRow) =>
+    r.outcomeLabel === "Cancelled before the run" ||
+    r.outcomeLabel === ENCODE_GATE_LABELS.budget ||
+    (r.outcome === "failed" && r.approvalMs === null);
   add("approval", input, [
     {
       key: "approved",
       label: "Approved",
       kind: "continue",
-      test: (r) => r.outcome !== "waiting" && r.outcomeLabel !== "Cancelled at approval",
+      test: (r) => !waiting(r) && !cancelledAtApproval(r) && !beforeApproval(r),
     },
-    { key: "waiting", label: "Waiting", kind: "pending", test: (r) => r.outcome === "waiting" },
-    { key: "cancelled", label: "Cancelled at approval", kind: "loss", test: (r) => r.outcomeLabel === "Cancelled at approval" },
+    { key: "waiting", label: "Waiting", kind: "pending", test: waiting },
+    { key: "cancelled", label: "Cancelled at approval", kind: "loss", test: cancelledAtApproval },
+    { key: "before", label: "Stopped before approval", kind: "loss", test: beforeApproval },
   ]);
   // Failures by the step that stopped them, largest first.
   const failedAt = new Map<string, number>();
@@ -325,7 +447,8 @@ function timing(label: string, values: Array<number | null>): StepTiming | null 
  * main are timed only for merges whose first sync and first validation the
  * collector recorded (from the 2026-10-05 step-times migration on).
  */
-export function stepTimes(rows: RunRow[], referenceMs: number): StepTimes[] {
+export function stepTimes(all: RunRow[], referenceMs: number): StepTimes[] {
+  const rows = dispatchRows(all);
   const timed = (key: GateKey, span: string, measures: string, ...timings: Array<StepTiming | null>): StepTimes => ({
     key,
     label: GATE_LABELS[key],
@@ -348,9 +471,11 @@ export function stepTimes(rows: RunRow[], referenceMs: number): StepTimes[] {
   const withPr = rows.filter((row) => row.pr?.openedAt);
   const prMs = (row: RunRow, end: string | null | undefined) => ms(row.pr?.openedAt, end);
   const now = new Date(referenceMs).toISOString();
-  // Times from the merge, over merges into main whose time is recorded.
+  // Times from the merge, over the merges into main that reached the step:
+  // the index over every merge into main, the tests over the indexed ones.
   const afterMerge = (key: GateKey, span: string, measures: string, none: string, end: (row: RunRow) => string | null) => {
-    const time = timing("", rows.filter((row) => row.merged === "main").map((row) => ms(row.pr?.mergedAt, end(row))));
+    const reached = rows.filter((row) => row.merged === "main" && (key !== "tests" || row.index === "indexed"));
+    const time = timing("", reached.map((row) => ms(row.mainMergedAt, end(row))));
     return time ? timed(key, span, measures, time) : untimed(key, span, "Not timed yet", none);
   };
   return [
@@ -379,7 +504,17 @@ export function stepTimes(rows: RunRow[], referenceMs: number): StepTimes[] {
         withPr.filter((row) => row.pr?.state === "draft" || row.pr?.state === "open").map((row) => prMs(row, now))
       )
     ),
-    untimed("main", "set at the merge", "No wait", "The PR's base branch decides it at the merge."),
+    // The step itself takes no time (the PR's base branch decides it at the
+    // merge), so its row gives the whole path instead: dispatch to merge.
+    timed(
+      "main",
+      "dispatch → merge into main",
+      "The PR's base branch decides this step at the merge, so it takes no time of its own. Its time is the whole path: from the dispatch until the PR merges into the default branch.",
+      timing(
+        "From dispatch",
+        rows.filter((row) => row.merged === "main").map((row) => ms(row.dispatchedAt, row.mainMergedAt))
+      )
+    ),
     afterMerge(
       "index",
       "merge → index sync",
@@ -426,8 +561,19 @@ const modelTime = (row: RunRow) => {
   return timed.length ? timed.reduce((sum, attempt) => sum + attempt.ms!, 0) : null;
 };
 
+/** The check phases' time across a run's tries, when the encoder recorded its phases. */
+const checkTime = (row: RunRow) => {
+  const phased = (row.tries ?? []).filter((attempt) => attempt.phases);
+  if (!phased.length) return null;
+  return phased.reduce(
+    (sum, attempt) =>
+      sum + attempt.phases!.filter((phase) => phaseKind(phase.name) === "checks").reduce((n, phase) => n + phase.ms, 0),
+    0
+  );
+};
+
 export function encodeParts(rows: RunRow[]): EncodeParts {
-  const finished = rows.filter((row) => row.outcome === "encoded" || row.outcome === "failed");
+  const finished = dispatchRows(rows).filter((row) => row.outcome === "encoded" || row.outcome === "failed");
   // Setup is timed over runs that got past it, so a run stopped in setup does not shorten it.
   const pastSetup = finished.filter((row) => row.phases.encodeMs !== null);
   const parts = [
@@ -453,6 +599,14 @@ export function encodeParts(rows: RunRow[]): EncodeParts {
       "The model's own time across the encode loop's tries, from the encoder's record (runs that have one). The rest of the loop is the checks and the review.",
       timing("Encoded", finished.filter((row) => row.outcome === "encoded").map(modelTime)),
       timing("Failed", finished.filter((row) => row.outcome === "failed").map(modelTime))
+    ),
+    timedPart(
+      "checks",
+      "Check time",
+      "compile, tests, completeness, all tries",
+      "The encoder's check phases across the encode loop's tries: the candidate's compile, static checks, test cases, and source completeness, and the validation of the modules that depend on it. Recorded by axiom-encode 0.2.2157 and later.",
+      timing("Encoded", finished.filter((row) => row.outcome === "encoded").map(checkTime)),
+      timing("Failed", finished.filter((row) => row.outcome === "failed").map(checkTime))
     ),
     timedPart(
       "publish",
@@ -487,7 +641,8 @@ export interface TestsParts {
 }
 
 export function testsParts(rows: RunRow[]): TestsParts {
-  const merges = rows.filter((row) => row.merged === "main");
+  // The merges that reached the tests step: into main and indexed.
+  const merges = dispatchRows(rows).filter((row) => row.merged === "main" && row.index === "indexed");
   return {
     parts: [
       timedPart(
@@ -495,7 +650,7 @@ export function testsParts(rows: RunRow[]): TestsParts {
         "Wait to start",
         "merge → shard starts",
         "From the merge until the jurisdiction's validation shard starts at the merge commit: CI starting and waiting for a runner.",
-        timing("", merges.map((row) => ms(row.pr?.mergedAt, row.testsStartedAt)))
+        timing("", merges.map((row) => ms(row.mainMergedAt, row.testsStartedAt)))
       ),
       timedPart(
         "run",
@@ -512,9 +667,31 @@ export function testsParts(rows: RunRow[]): TestsParts {
   };
 }
 
+/** A loop's time from its tries: their whole times once timed, else the model's. */
+function triesMs(tries: PipelineTry[] | null): number | null {
+  if (!tries?.length) return null;
+  const walls = tries.filter((attempt) => attempt.wallMs !== undefined);
+  if (walls.length === tries.length) return walls.reduce((sum, attempt) => sum + attempt.wallMs!, 0);
+  const timed = tries.filter((attempt) => attempt.ms !== null);
+  return timed.length ? timed.reduce((sum, attempt) => sum + attempt.ms!, 0) : null;
+}
+
 /** Seconds under a minute; otherwise as the rest of /ops writes durations. */
 export function shortDuration(ms: number): string {
   return ms < 60_000 ? `${Math.round(ms / 1000)}s` : durationLabel(ms);
+}
+
+/**
+ * A run timeline's durations: seconds under a minute, minutes and seconds
+ * under ten ("1m 40s"), then as the rest of /ops writes them. Whole units,
+ * rounded down like every age and duration on /ops, so a try never reads
+ * longer than the loop it sits in.
+ */
+export function clockDuration(ms: number): string {
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 600) return seconds % 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${seconds / 60}m`;
+  return durationLabel(ms);
 }
 
 /** One part of the encode run on the run's own clock, from its dispatch. */
@@ -526,12 +703,16 @@ export interface TimelineBar {
   state: "done" | "failed" | "cancelled" | "running";
 }
 
-/** One step after the PR opened: how long it took from the step before, and how it went. */
+/** One step after the PR opened: how long it took, from when, and how it went. */
 export interface TimelineStep {
   key: string;
   label: string;
   /** Null when the step is not timed. */
   ms: number | null;
+  /** What `ms` counts from, when not the PR's opening: "from the merge". */
+  from?: string | null;
+  /** When the step finished (or was last checked), when known. */
+  at?: string | null;
   state: "done" | "failed" | "waiting";
   detail: string | null;
   href: string | null;
@@ -547,6 +728,123 @@ export interface TimelineTry {
   /** What sent the try back, in a few words; `error` is the full message. */
   headline: string | null;
   error: string | null;
+  /** The try's whole time with its checks, when the encoder timed its phases. */
+  wallMs: number | null;
+  /** Its phases on the timeline's clock (from the dispatch); empty before the encoder timed them. */
+  phases: TimelinePhase[];
+}
+
+/** What the encoder spends a try's time on: the model, the checks, or the work between them. */
+export type PhaseKind = "model" | "checks" | "other";
+
+/** One phase of a try on the timeline's clock. */
+export interface TimelinePhase {
+  name: string;
+  label: string;
+  kind: PhaseKind;
+  /** For a check phase: whether it checked the candidate itself or the modules that depend on it. */
+  part: CheckPart | null;
+  startMs: number;
+  ms: number;
+  /** A check phase's time by tool, longest first. */
+  tools: TimelineTool[];
+}
+
+export type CheckPart = "candidate" | "dependents";
+
+export interface TimelineTool {
+  name: string;
+  label: string;
+  ms: number;
+}
+
+/** Where the encode loop's time went, from the tries' phases: by kind, and around the tries. */
+export interface LoopSplit {
+  /** Model, checks, and other, in that order, summed over the timed tries; the checks also by part and tool. */
+  kinds: Array<{
+    kind: PhaseKind;
+    label: string;
+    ms: number;
+    parts: Array<{ part: CheckPart; label: string; ms: number }>;
+    tools: TimelineTool[];
+  }>;
+  /** The loop's time as shares that add up to it: the model, each part of the checks, other, outside the tries. */
+  shares: LoopShare[];
+  /** The encode step's time outside the tries, when the step was timed and every try has phases. */
+  outsideMs: number | null;
+  /** That time's parts, when the encoder's loop clock gives them. */
+  outside: Array<{ label: string; ms: number }>;
+}
+
+/** One share of the encode loop's time, for its stacked bar and legend. */
+export interface LoopShare {
+  key: string;
+  kind: PhaseKind | "outside";
+  part: CheckPart | null;
+  label: string;
+  ms: number;
+}
+
+const PHASE_LABELS: Record<string, string> = {
+  prepare: "Prepare the try",
+  retained_candidate_preflight: "Recheck the kept candidate",
+  model_call: "Model writes",
+  stage_candidate: "Stage the candidate",
+  repair_overlay: "Repair overlay",
+  candidate_validation: "Check the candidate",
+  review_model_call: "Model reviews",
+  artifact_repair: "Repair artifacts",
+  record_result: "Record the result",
+  apply_repair: "Apply a repair",
+  overlay_validation: "Check dependent modules",
+  apply_write: "Write the files",
+  retry_handoff: "Hand off to the next try",
+  other: "Other",
+};
+
+const MODEL_PHASES = new Set(["model_call", "review_model_call"]);
+const CHECK_PHASES = new Set(["retained_candidate_preflight", "candidate_validation", "overlay_validation"]);
+
+export function phaseKind(name: string): PhaseKind {
+  return MODEL_PHASES.has(name) ? "model" : CHECK_PHASES.has(name) ? "checks" : "other";
+}
+
+const KIND_LABELS: Record<PhaseKind, string> = { model: "model", checks: "checks", other: "other" };
+
+const CHECK_PARTS: Record<string, CheckPart> = {
+  retained_candidate_preflight: "candidate",
+  candidate_validation: "candidate",
+  overlay_validation: "dependents",
+};
+
+const PART_LABELS: Record<CheckPart, string> = { candidate: "the candidate", dependents: "dependent modules" };
+
+const TOOL_LABELS: Record<string, string> = {
+  rules_engine_compile: "compile",
+  ci_static_checks: "static checks",
+  ci_test_cases: "test cases",
+  source_completeness_checks: "source completeness",
+  policyengine_oracle: "PolicyEngine oracle",
+  other: "other",
+};
+
+const phaseLabel = (name: string) => PHASE_LABELS[name] ?? name.replaceAll("_", " ");
+
+function toolList(tools: Record<string, number> | undefined): TimelineTool[] {
+  return Object.entries(tools ?? {})
+    .filter(([, ms]) => ms > 0)
+    .map(([name, ms]) => ({ name, label: TOOL_LABELS[name] ?? name.replaceAll("_", " "), ms }))
+    .sort((a, b) => b.ms - a.ms);
+}
+
+/** Tool times summed across phases, longest first, "other" last. */
+function mergeTools(lists: TimelineTool[][]): TimelineTool[] {
+  const byName = new Map<string, TimelineTool>();
+  for (const tool of lists.flat()) {
+    const seen = byName.get(tool.name);
+    byName.set(tool.name, seen ? { ...seen, ms: seen.ms + tool.ms } : { ...tool });
+  }
+  return [...byName.values()].sort((a, b) => (a.name === "other" ? 1 : b.name === "other" ? -1 : b.ms - a.ms));
 }
 
 /** One run from its dispatch: the encode run as bars on one clock, then the slower steps after the PR. */
@@ -559,6 +857,8 @@ export interface RunTimeline {
   /** The model's own time across the tries, and the encode loop's whole time, to tell writing from checking. */
   modelMs: number | null;
   loopMs: number | null;
+  /** Where the loop's time went, once the encoder timed its tries' phases. */
+  split: LoopSplit | null;
   /** What stopped a run that did not encode. */
   stopped: string | null;
   after: TimelineStep[];
@@ -602,27 +902,41 @@ export function runTimeline(row: RunRow, referenceMs: number, details: TimelineD
     bars.push({ key, label, startMs: last ? last.startMs + last.ms : 0, ms, state: "done" });
   };
   const dispatched = Date.parse(row.dispatchedAt);
-  if (row.outcome === "waiting") {
+  // Cancelled before its encode job started: the whole run was the wait, and no encode run follows it.
+  const cancelledWaiting =
+    row.outcome === "cancelled" && (row.cancelStage === "approval" || row.cancelStage === "before_job");
+  const { setupMs, encodeMs, publishMs } = row.phases;
+  const triesText = row.attempts ? ` · ${row.attempts} ${row.attempts === 1 ? "try" : "tries"}` : "";
+  if (row.source === "dependent") {
+    // A module encoded inside another citation's run has no run of its own: one bar, its encode loop.
+    add("encode", `Encode loop${triesText}`, row.loop?.wallMs ?? triesMs(row.tries));
+  } else if (row.outcome === "waiting") {
     add("approval", "Waiting for approval", Math.max(0, referenceMs - dispatched));
     bars[0].state = "running";
+  } else if (cancelledWaiting) {
+    add(
+      "approval",
+      row.cancelStage === "approval" ? "Wait for approval" : "Before the encode job",
+      ms(row.dispatchedAt, row.finishedAt) ?? row.runMs
+    );
   } else {
     add("approval", "Wait for approval", row.approvalMs);
   }
-  const { setupMs, encodeMs, publishMs } = row.phases;
-  if (setupMs !== null || encodeMs !== null) {
-    add("setup", "Setup", setupMs);
-    const tries = row.attempts ? ` · ${row.attempts} ${row.attempts === 1 ? "try" : "tries"}` : "";
-    add("encode", `Encode loop${tries}`, encodeMs);
-    add("publish", "Sign and open the PR", publishMs);
-  } else if (row.outcome === "running" && row.approvalMs !== null) {
-    add("run", "Running", Math.max(0, referenceMs - dispatched - row.approvalMs));
-  } else if (row.outcome !== "waiting") {
-    add("run", "Encode run", row.runMs);
+  if (!cancelledWaiting && row.source !== "dependent") {
+    if (setupMs !== null || encodeMs !== null) {
+      add("setup", "Setup", setupMs);
+      add("encode", `Encode loop${triesText}`, encodeMs);
+      add("publish", "Sign and open the PR", publishMs);
+    } else if (row.outcome === "running" && row.approvalMs !== null) {
+      add("run", "Running", Math.max(0, referenceMs - dispatched - row.approvalMs));
+    } else if (row.outcome !== "waiting") {
+      add("run", "Encode run", row.runMs);
+    }
   }
   const lastBar = bars.at(-1);
   if (lastBar && LAST_BAR_STATE[row.outcome]) lastBar.state = LAST_BAR_STATE[row.outcome]!;
   const total = bars.reduce((end, bar) => Math.max(end, bar.startMs + bar.ms), 0);
-  const title = TIMELINE_TITLES[row.outcome];
+  const title = row.source === "dependent" ? "Its encode loop" : TIMELINE_TITLES[row.outcome];
   const stopped =
     row.outcome === "failed" || row.outcome === "cancelled"
       ? (details.stopped ?? ([row.outcomeLabel, row.cause && causeText(row.cause)].filter(Boolean).join(": ") || null))
@@ -636,12 +950,19 @@ export function runTimeline(row: RunRow, referenceMs: number, details: TimelineD
       key: "review",
       label: "Review",
       ms: ms(pr.openedAt, end ?? new Date(referenceMs).toISOString()),
-      state: row.merged === "main" ? "done" : row.merged === "off main" || pr.state === "closed" ? "failed" : "waiting",
+      at: end ?? null,
+      // A side branch's own PR goes on as its own step.
+      state:
+        row.merged === "main" || (row.merged && row.via)
+          ? "done"
+          : row.merged === "off main" || pr.state === "closed"
+            ? "failed"
+            : "waiting",
       detail:
         details.review ??
-        (row.merged === "main"
+        (row.merged === "main" && !row.via
           ? "Merged into main"
-          : row.merged === "off main"
+          : row.merged
             ? "Merged into a side branch"
             : pr.state === "closed"
               ? "Closed without merging"
@@ -649,51 +970,173 @@ export function runTimeline(row: RunRow, referenceMs: number, details: TimelineD
       href: pr.url,
     });
   }
-  if (row.merged === "main" && pr?.mergedAt) {
+  // A side branch's own PR carries the merge on to main, or holds it.
+  if (pr?.mergedAt && row.via) {
+    const { via } = row;
+    after.push({
+      key: "side",
+      label: "Side branch",
+      ms: ms(pr.mergedAt, row.mainMergedAt ?? (via.state === "closed" ? null : new Date(referenceMs).toISOString())),
+      state: via.state === "merged" ? "done" : via.state === "closed" ? "failed" : "waiting",
+      detail:
+        via.state === "merged"
+          ? `Into main by ${via.label}`
+          : via.state === "closed"
+            ? `${via.label} closed without merging`
+            : `Waits for ${via.label} to merge into main`,
+      href: via.url,
+    });
+  }
+  // The index and the tests on main both count from the merge into main:
+  // they run side by side, not one after the other.
+  const mainAt = row.mainMergedAt;
+  if (row.merged === "main" && mainAt) {
     after.push({
       key: "index",
       label: "Index",
-      ms: ms(pr.mergedAt, row.indexedAt),
+      ms: ms(mainAt, row.indexedAt),
+      from: "from the merge",
+      at: row.indexedAt,
       state: row.index === "indexed" ? "done" : row.index === "missing" ? "failed" : "waiting",
       detail:
         details.index ??
         (row.index === "indexed" ? "Indexed" : row.index === "missing" ? "Missing from the index" : "Waiting for the index"),
       href: null,
     });
-    const wait = ms(pr.mergedAt, row.testsStartedAt);
+    const wait = ms(mainAt, row.testsStartedAt);
     const run = ms(row.testsStartedAt, row.testsAt);
     const latest = row.tests && row.testsFirst && row.tests !== row.testsFirst ? `latest ${row.tests}` : null;
     after.push({
       key: "tests",
       label: "Tests on main",
-      ms: ms(pr.mergedAt, row.testsAt),
+      ms: ms(mainAt, row.testsAt),
+      from: "from the merge",
+      at: row.testsAt,
       state: row.tests === "pass" || row.tests === "waived" ? "done" : row.tests === "fail" ? "failed" : "waiting",
       detail:
         [
-          wait !== null ? `wait ${shortDuration(wait)}` : null,
-          run !== null ? `run ${shortDuration(run)}` : null,
+          wait !== null ? `wait ${clockDuration(wait)}` : null,
+          run !== null ? `run ${clockDuration(run)}` : null,
           row.testsFirst ? `first result ${row.testsFirst}` : null,
           latest,
           !row.testsFirst && row.tests ? `result ${row.tests}` : null,
         ]
           .filter(Boolean)
           .join(" · ") || "No result yet",
-      href: row.testsUrl,
+      // The text times the first run at the merge commit, so the link opens that run.
+      href: row.testsFirstUrl ?? row.testsUrl,
     });
     after.push(...(details.extra ?? []));
   }
-  const tries: TimelineTry[] = (row.tries ?? []).map((attempt) => ({
-    attempt: attempt.attempt,
-    model: attempt.model,
-    ms: attempt.ms,
-    cost: attempt.cost,
-    ok: attempt.ok,
-    headline: attempt.error ? causeHeadline(attempt.error) : null,
-    error: attempt.error,
-  }));
+  // A timed try sits on the timeline's clock at its own start: the clock counts from the dispatch
+  // (for a module encoded inside another run, from its own loop's start).
+  // It stays inside the encode step's bar (the runner's clock and GitHub's can differ by a little).
+  const dispatched0 = Date.parse(
+    row.source === "dependent"
+      ? (row.loop?.startedAt ?? row.tries?.find((attempt) => attempt.startedAt)?.startedAt ?? row.dispatchedAt)
+      : row.dispatchedAt
+  );
+  const loopBar = bars.find((bar) => bar.key === "encode");
+  const lane = loopBar ? { from: loopBar.startMs, to: loopBar.startMs + loopBar.ms } : { from: 0, to: total };
+  const clamp = (at: number) => Math.min(Math.max(at, lane.from), lane.to);
+  const tries: TimelineTry[] = (row.tries ?? []).map((attempt) => {
+    const phases: TimelinePhase[] = [];
+    if (attempt.phases && attempt.startedAt) {
+      let at = Date.parse(attempt.startedAt) - dispatched0;
+      for (const phase of attempt.phases) {
+        const start = clamp(at);
+        phases.push({
+          name: phase.name,
+          label: phaseLabel(phase.name),
+          kind: phaseKind(phase.name),
+          part: CHECK_PARTS[phase.name] ?? null,
+          startMs: start,
+          ms: clamp(at + phase.ms) - start,
+          tools: toolList(phase.tools),
+        });
+        at += phase.ms;
+      }
+    }
+    return {
+      attempt: attempt.attempt,
+      model: attempt.model,
+      ms: attempt.ms,
+      cost: attempt.cost,
+      ok: attempt.ok,
+      headline: attempt.error ? causeHeadline(attempt.error) : null,
+      error: attempt.error,
+      wallMs: attempt.phases ? (attempt.wallMs ?? null) : null,
+      phases,
+    };
+  });
   const timed = tries.filter((attempt) => attempt.ms !== null);
   const modelMs = timed.length ? timed.reduce((sum, attempt) => sum + attempt.ms!, 0) : null;
-  return { title, totalMs: total, bars, tries, modelMs, loopMs: row.phases.encodeMs, stopped, after };
+  return {
+    title,
+    totalMs: total,
+    bars,
+    tries,
+    modelMs,
+    loopMs: row.phases.encodeMs,
+    split: loopSplit(row, tries),
+    stopped,
+    after,
+  };
+}
+
+/**
+ * Where an encode loop's time went: the timed tries' phases by kind (with the
+ * check phases' time by tool), then the encode step's time outside the tries.
+ * The encoder's loop clock splits that into the time before the first try,
+ * between tries, and after the last; the rest of the step is its other work
+ * (other encoder passes over sources or dependents, and the signing helpers).
+ */
+function loopSplit(row: RunRow, tries: TimelineTry[]): LoopSplit | null {
+  const source = (row.tries ?? []).filter((attempt) => attempt.phases);
+  if (!source.length) return null;
+  const phases = source.flatMap((attempt) => attempt.phases!);
+  const kinds = (["model", "checks", "other"] as const).map((kind) => {
+    const own = phases.filter((phase) => phaseKind(phase.name) === kind);
+    const parts = (["candidate", "dependents"] as const)
+      .map((part) => ({
+        part,
+        label: PART_LABELS[part],
+        ms: own.filter((phase) => CHECK_PARTS[phase.name] === part).reduce((sum, phase) => sum + phase.ms, 0),
+      }))
+      .filter((part) => part.ms > 0);
+    return {
+      kind,
+      label: KIND_LABELS[kind],
+      ms: own.reduce((sum, phase) => sum + phase.ms, 0),
+      parts: kind === "checks" ? parts : [],
+      tools: kind === "checks" ? mergeTools(own.map((phase) => toolList(phase.tools))) : [],
+    };
+  });
+  const stepMs = row.phases.encodeMs;
+  const allTimed = source.length === tries.length;
+  const triesMs = source.reduce((sum, attempt) => sum + (attempt.wallMs ?? 0), 0);
+  const outsideMs = stepMs !== null && allTimed ? Math.max(0, stepMs - triesMs) : null;
+  const outside: LoopSplit["outside"] = [];
+  const loop = row.loop;
+  if (outsideMs !== null && loop) {
+    const add = (label: string, ms: number | null) => {
+      if (ms !== null && ms >= 1000) outside.push({ label, ms });
+    };
+    add("before the first try", loop.setupMs);
+    add("between tries", loop.betweenMs);
+    add("after the last try", loop.finalizeMs);
+    add("other work in the step", stepMs! - loop.wallMs > 0 ? stepMs! - loop.wallMs : null);
+  }
+  const [model, checks, other] = kinds;
+  const shares: LoopShare[] = [
+    { key: "model", kind: "model", part: null, label: "model", ms: model.ms },
+    ...(checks.parts.length > 1
+      ? checks.parts.map((part) => ({ key: part.part, kind: "checks" as const, part: part.part, label: `checks on ${part.label}`, ms: part.ms }))
+      : [{ key: "checks", kind: "checks" as const, part: null, label: "checks", ms: checks.ms }]),
+    { key: "other", kind: "other", part: null, label: "other", ms: other.ms },
+    { key: "outside", kind: "outside", part: null, label: "outside the tries", ms: outsideMs ?? 0 },
+  ];
+  return { kinds, shares: shares.filter((share) => share.ms > 0), outsideMs, outside };
 }
 
 /** Prefixes that name where an error came from rather than what it says. */
@@ -728,10 +1171,27 @@ export function causeText(cause: string): string {
  * ("ci: Ungrounded generated numeric literal: N does not…" is "Ungrounded
  * generated numeric literal"). Causes with one headline count together.
  */
+/** A command-line tool's error: "jq: error: syntax error, unexpected …". */
+const TOOL_ERROR_RE = /^([a-z][\w-]{1,20}):\s*error:\s*([\s\S]+)$/i;
+/** An exception raised under its module path: "axiom_encode.corpus_resolver.CorpusLayoutError: …". */
+const MODULE_EXCEPTION_RE = /^(?:[a-z_][\w]*\.)+([A-Z]\w*?)(Error|Exception):\s*/;
+
+/** "CorpusLayout" as "Corpus layout". */
+const words = (camel: string) => {
+  const spaced = camel.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+};
+
 export function causeHeadline(cause: string): string {
   const text = causeBody(cause);
   const rule = text.match(COMPLETENESS_RULE_RE);
   if (rule) return `Completeness rule: ${rule[1]}`;
+  // A tool's error by the tool and its first clause: "jq: syntax error".
+  const tool = text.match(TOOL_ERROR_RE);
+  if (tool) return `${tool[1]}: ${tool[2].split(/[,:]\s/)[0].replace(/[.\s]+$/, "")}`;
+  // An exception by its class in words: "Corpus layout error".
+  const raised = text.match(MODULE_EXCEPTION_RE);
+  if (raised) return `${words(raised[1])} ${raised[2].toLowerCase()}`;
   const clause = text.split(/:\s/)[0];
   const headline = (clause.length >= 12 ? clause : text).replace(/[.\s]+$/, "");
   return headline.length > CAUSE_HEADLINE_MAX ? `${headline.slice(0, CAUSE_HEADLINE_MAX - 1)}…` : headline;

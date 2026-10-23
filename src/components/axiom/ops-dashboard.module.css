@@ -81,6 +81,154 @@
   margin-top: 12px;
 }
 
+/* ── Workflows: the GitHub workflows the pipeline depends on, one chip each ── */
+
+.health {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 16px;
+}
+
+.healthHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.healthLabel {
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+}
+
+.healthChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.healthChips > li {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.healthChip {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  max-width: 100%;
+  padding: 4px 10px;
+  border: 1px solid var(--color-rule);
+  border-radius: 999px;
+  background: var(--color-paper-elevated);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--color-ink-muted);
+  text-decoration: none;
+}
+
+.healthChip:hover {
+  border-color: var(--color-rule-strong);
+}
+
+.healthIcon {
+  flex: none;
+  color: var(--color-success);
+}
+
+.healthName {
+  font-weight: 500;
+  color: var(--color-ink);
+}
+
+.healthWhen,
+.healthFailed {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.healthWhen::before,
+.healthFailed::before {
+  content: "·";
+  /* Not read aloud where alternative text is supported. */
+  content: "·" / "";
+  margin-right: 6px;
+  color: var(--color-rule-strong);
+}
+
+.healthFailed {
+  color: var(--color-warning);
+}
+
+.healthChip[data-grade="off"] .healthIcon,
+.healthChip[data-grade="unknown"] .healthIcon {
+  color: var(--color-ink-muted);
+}
+
+.healthWarning {
+  border-color: color-mix(in srgb, var(--color-warning) 30%, transparent);
+  background: color-mix(in srgb, var(--color-warning) 6%, var(--color-paper-elevated));
+}
+
+.healthWarning .healthIcon {
+  color: var(--color-warning);
+}
+
+.healthFailing {
+  border-color: color-mix(in srgb, var(--color-error) 35%, transparent);
+  background: color-mix(in srgb, var(--color-error) 6%, var(--color-paper-elevated));
+}
+
+.healthFailing .healthIcon,
+.healthFailing .healthFailed {
+  color: var(--color-error);
+}
+
+/* One section at a time: the ledger, the program bundles, the pipeline. */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 32px;
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.tabs [role="tab"] {
+  margin-bottom: -1px;
+  padding: 10px 16px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-ink-secondary);
+  cursor: pointer;
+}
+
+.tabs [role="tab"]:hover {
+  color: var(--color-ink);
+}
+
+.tabs [role="tab"][aria-selected="true"] {
+  border-bottom-color: var(--color-accent);
+  color: var(--color-ink);
+}
+
+.tabs + .workspace,
+.tabs + .ledgerOnly {
+  margin-top: 24px;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 340px;
@@ -176,7 +324,13 @@
 
 .ledgerTable th:first-child {
   padding-left: 24px;
-  width: 21%;
+  width: 26%;
+}
+
+/* The provision name under the citation: shown only where the Provision
+   column is hidden (a phone). */
+.ledgerNarrowLabel {
+  display: none;
 }
 
 .ledgerTable th:last-child,
@@ -206,27 +360,43 @@
 
 /* ── Ledger dropdowns: a section's runs, a run's timeline ── */
 
+/* A toggle is its row's label with a chevron before it: the label itself
+   opens the dropdown, and the chevron turns down while it is open. */
 .ledgerToggle {
-  display: inline-grid;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  margin-right: 8px;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
   padding: 0;
-  border: 1px solid var(--color-rule);
-  border-radius: 5px;
-  background: var(--color-paper);
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
-  font-size: 9px;
-  color: var(--color-ink-muted);
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--color-ink);
+  text-align: left;
   cursor: pointer;
-  vertical-align: 1px;
 }
 
-.ledgerToggle:hover,
-.ledgerToggle[aria-expanded="true"] {
-  border-color: var(--color-accent);
+.ledgerChevron {
+  flex-shrink: 0;
+  /* On the first line when the label wraps. */
+  align-self: flex-start;
+  margin-top: 0.2em;
   color: var(--color-accent);
+  transition: transform 120ms ease;
+}
+
+.ledgerToggle[aria-expanded="true"] .ledgerChevron {
+  transform: rotate(90deg);
+}
+
+.ledgerToggle:hover > span {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.ledgerToggle:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 3px;
 }
 
 .ledgerTable .ledgerRunCell {
@@ -237,14 +407,16 @@
 
 .ledgerOverview {
   display: grid;
-  gap: 12px;
+  gap: 16px;
+  padding: 6px 0 4px;
 }
 
 .ledgerSummary {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 2px 14px;
+  gap: 2px 0;
+  margin: 0;
   font-size: 13px;
   color: var(--color-ink-secondary);
 }
@@ -252,12 +424,6 @@
 .ledgerSummary strong {
   font-weight: 600;
   color: var(--color-ink);
-}
-
-.ledgerColumns {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px 32px;
 }
 
 .ledgerLabel {
@@ -287,6 +453,14 @@
   color: var(--color-ink-secondary);
 }
 
+.ledgerStop {
+  color: var(--color-ink);
+}
+
+.ledgerCause {
+  color: var(--color-ink-secondary);
+}
+
 .ledgerCount {
   text-align: right;
   font-weight: 600;
@@ -308,28 +482,87 @@
   text-decoration: underline;
 }
 
+/* The latest run as one unit; under a summary of several runs, a rule sets it apart. */
 .ledgerLatest {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 12px;
-  font-size: 12px;
-  color: var(--color-ink-secondary);
+  display: grid;
+  gap: 14px;
 }
 
-.ledgerLatest .ledgerLabel {
+.ledgerLatest[data-after-summary] {
+  padding-top: 16px;
+  border-top: 1px solid var(--color-rule);
+}
+
+.ledgerVerdict {
+  display: grid;
+  gap: 6px;
+}
+
+.ledgerVerdict .ledgerLabel {
   margin: 0;
 }
 
-.ledgerLatest a {
+.ledgerVerdictLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.35;
   color: var(--color-ink);
-  text-decoration: underline;
-  text-decoration-color: var(--color-rule-strong);
 }
 
-.ledgerLatest a[data-outcome="failed"],
-.ledgerLatest a[data-outcome="cancelled"] {
+.ledgerOutcome {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
+  color: var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 12%, transparent);
+}
+
+.ledgerOutcome[data-outcome="failed"],
+.ledgerOutcome[data-outcome="cancelled"] {
   color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+}
+
+.ledgerOutcome[data-outcome="running"],
+.ledgerOutcome[data-outcome="waiting"] {
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+
+.ledgerVerdictCause {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.ledgerVerdictMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 0;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-ink-muted);
+}
+
+.ledgerVerdictSep {
+  padding: 0 8px;
+  color: var(--color-rule-strong);
+  white-space: pre;
+}
+
+.ledgerVerdictMeta a {
+  color: var(--color-ink-secondary);
+  text-decoration: underline;
+  text-decoration-color: var(--color-rule-strong);
+  text-underline-offset: 2px;
 }
 
 .ledgerRuns {
@@ -351,7 +584,7 @@
 }
 
 .ledgerRunLine .ledgerToggle {
-  margin-right: 0;
+  color: var(--color-ink-secondary);
 }
 
 .ledgerRunLine a {
@@ -363,12 +596,6 @@
 .ledgerRunLine a[data-outcome="failed"],
 .ledgerRunLine a[data-outcome="cancelled"] {
   color: var(--color-warning);
-}
-
-@media (max-width: 700px) {
-  .ledgerColumns {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 .ledgerMore {
@@ -426,6 +653,43 @@
     padding-top: 0;
   }
 
+  /* The ledger fits a phone: Provision and Bundle give way, the provision's
+     name moves under the citation, and the table no longer scrolls sideways. */
+  .ledgerTable {
+    min-width: 0;
+  }
+  .ledgerTable .ledgerWide {
+    display: none;
+  }
+  .ledgerTable th:first-child {
+    width: auto;
+    padding-left: 16px;
+  }
+  .ledgerTable th:last-child,
+  .ledgerTable td:last-child {
+    padding-right: 16px;
+  }
+  /* A long status ("A dependent module failed") wraps instead of pushing
+     the last column off the screen. */
+  .ledgerTable .ledgerStatus {
+    white-space: normal;
+  }
+  .ledgerNarrowLabel {
+    display: block;
+    margin: 2px 0 0 20px;
+    font-family: var(--font-geist-sans), system-ui, sans-serif;
+    font-size: 11.5px;
+    color: var(--color-ink-secondary);
+  }
+  .ledgerTable .documentBand,
+  .ledgerTable .jurisdictionBand {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .ledgerTable .ledgerRunCell {
+    padding: 8px 16px;
+  }
+
   .sidebar {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -450,4 +714,40 @@
   font-size: 14px;
   font-weight: 600;
   letter-spacing: -0.01em;
+}
+
+/* The program bundle and tiers a ledger section belongs to. */
+.ledgerBundles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.ledgerBundle {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 0 7px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 35%, var(--color-rule));
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--color-accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.ledgerBundle span {
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  color: var(--color-ink-muted);
+}
+
+.ledgerBundle:hover {
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+}
+
+.workspace[hidden],
+.ledgerOnly[hidden] {
+  display: none;
 }

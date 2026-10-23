@@ -2,7 +2,8 @@
  * The /ops ledger: every dispatch grouped the way the encoding ledger reads,
  * by jurisdiction, source document, and section, each section with its
  * latest status and every run behind it. Built from the pipeline's run rows,
- * so failures with no encoder record count too.
+ * so failures with no encoder record count too, and so do modules merged
+ * outside the pipeline and modules encoded inside another citation's run.
  */
 
 import { causeHeadline, type RunRow } from "./encoding-pipeline-runs";
@@ -38,6 +39,8 @@ export interface LedgerDocument {
   /** The source's title, or a readable identifier while its title is not indexed. */
   title: string;
   titled: boolean;
+  /** The document's own citation path (`us/statute/26`), shown beside its title; null when the key is not a path. */
+  path: string | null;
   lastAt: string;
   sections: LedgerSection[];
 }
@@ -63,7 +66,11 @@ export function sectionStatus(latest: RunRow): { status: string; tone: LedgerTon
   if (!pr) return { status: "Without a PR", tone: "failed" };
   if (pr.state === "draft" || pr.state === "open") return { status: "In review", tone: "waiting" };
   if (pr.state === "closed") return { status: "PR closed", tone: "failed" };
-  if (latest.merged === "off main") return { status: "Merged into another branch", tone: "failed" };
+  if (latest.merged === "off main") {
+    return latest.via?.state === "open" || latest.via?.state === "draft"
+      ? { status: `In a side branch, waits for ${latest.via.label}`, tone: "waiting" }
+      : { status: "Merged into another branch", tone: "failed" };
+  }
   if (latest.tests === "pass") return { status: "Tests pass", tone: "done" };
   if (latest.tests === "fail") return { status: "Tests fail", tone: "failed" };
   if (latest.index === "missing") return { status: "Not indexed", tone: "failed" };
@@ -87,7 +94,8 @@ export function runLedger(
 
   const documents = new Map<string, LedgerDocument & { jurisdiction: string }>();
   for (const [citation, runs] of bySection) {
-    const sorted = [...runs].sort((a, b) => b.dispatchedAt.localeCompare(a.dispatchedAt));
+    // Newest first by when each happened: a PR merged outside the pipeline counts from its merge.
+    const sorted = [...runs].sort((a, b) => (b.at ?? b.dispatchedAt).localeCompare(a.at ?? a.dispatchedAt));
     const latest = sorted[0];
     const known = documentPaths[citation];
     const key = known ? known.replace("/", ":") : documentKeyFromCitation(citation);
@@ -106,7 +114,7 @@ export function runLedger(
       designator: isDocument ? (key.split("/").pop() ?? key) : within,
       label: isDocument ? deepestLabelForCitation(citation, labels) : sectionLabelForCitation(citation, labels),
       ...sectionStatus(latest),
-      lastAt: latest.dispatchedAt,
+      lastAt: latest.at ?? latest.dispatchedAt,
       runs: sorted,
     };
     const title = documentPath ? labels[documentPath]?.trim() || null : null;
@@ -114,6 +122,7 @@ export function runLedger(
       key,
       title: title ?? documentIdentifier(key),
       titled: !!title,
+      path: documentPath,
       lastAt: section.lastAt,
       sections: [],
       jurisdiction: latest.jurisdiction,
@@ -136,17 +145,40 @@ export function runLedger(
     .sort(newest);
 }
 
-/** A section's runs in a few lines: how many and over what span, how they ended, why they failed, and the latest. */
+/**
+ * The `count` most recently active documents across every jurisdiction,
+ * each under its own jurisdiction's heading, in the ledger's order: a page
+ * of the ledger, so a jurisdiction with a newer document is not held back
+ * until every document of a busier one has shown.
+ */
+export function newestDocuments(ledger: LedgerJurisdiction[], count: number): LedgerJurisdiction[] {
+  const shown = new Set(
+    ledger
+      .flatMap((jurisdiction) => jurisdiction.documents)
+      .sort(newest)
+      .slice(0, Math.max(0, count))
+  );
+  return ledger
+    .map((jurisdiction) => ({ ...jurisdiction, documents: jurisdiction.documents.filter((document) => shown.has(document)) }))
+    .filter((jurisdiction) => jurisdiction.documents.length > 0);
+}
+
+/** A section's runs in a few lines: how many, where and why each stopped, and the latest. */
 export interface SectionOverview {
   runs: number;
-  firstAt: string;
+  /** How many of them failed. */
+  failed: number;
+  /** How many were cancelled or timed out: stopped by a person or the clock, not by a failure. */
+  cancelled: number;
   lastAt: string;
-  /** The oldest and newest encoder versions its runs used, when recorded. */
-  encoders: { from: string; to: string } | null;
-  /** Where each run ended, as a section's status reads, largest first. */
-  ended: Array<{ label: string; tone: LedgerTone; count: number }>;
-  /** What stopped the runs that failed, by headline, largest first; `detail` is one full message. */
-  causes: Array<{ label: string; count: number; detail: string }>;
+  /**
+   * Where each run stopped and why, one line per pair, largest first: its
+   * status as a section's status reads ("Failed the compile check"), and for
+   * a failed run the cause's headline (`cause`) and one full message
+   * (`detail`). Runs failing the same way count together by their cause's
+   * group; a line whose runs all give one message heads it with that message.
+   */
+  stops: Array<{ key: string; label: string; cause: string | null; tone: LedgerTone; count: number; detail: string | null }>;
   latest: RunRow;
 }
 
@@ -156,28 +188,46 @@ function counted<T extends { count: number; label: string }>(groups: Map<string,
 
 export function sectionOverview(section: LedgerSection): SectionOverview {
   const runs = section.runs;
-  const ended = new Map<string, { label: string; tone: LedgerTone; count: number }>();
-  const causes = new Map<string, { label: string; count: number; detail: string }>();
+  const stops = new Map<string, SectionOverview["stops"][number]>();
+  const messages = new Map<string, Set<string>>();
+  let failed = 0;
+  let cancelled = 0;
   for (const run of runs) {
     const { status, tone } = sectionStatus(run);
-    ended.set(status, { label: status, tone, count: (ended.get(status)?.count ?? 0) + 1 });
-    if (run.cause) {
-      const label = causeHeadline(run.cause);
-      const known = causes.get(label);
-      causes.set(label, { label, count: (known?.count ?? 0) + 1, detail: known?.detail ?? run.cause });
-    }
+    if (run.outcome === "failed") failed++;
+    if (run.outcome === "cancelled") cancelled++;
+    const group = run.causeGroup ?? run.cause;
+    const headline = group ? causeHeadline(group) : null;
+    const key = `${status}|${headline ?? ""}`;
+    const stop = stops.get(key) ?? { key, label: status, cause: headline, tone, count: 0, detail: null };
+    stop.count += 1;
+    stop.detail ??= run.cause;
+    stops.set(key, stop);
+    if (run.cause) messages.set(key, (messages.get(key) ?? new Set<string>()).add(run.cause));
   }
-  const versions = runs
-    .map((run) => run.encoder)
-    .filter((version): version is string => !!version)
-    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  // One message behind a line: its own words, values and all, rather than the group's.
+  for (const [key, said] of messages) {
+    if (said.size === 1) stops.get(key)!.cause = causeHeadline([...said][0]);
+  }
   return {
     runs: runs.length,
-    firstAt: runs.at(-1)!.dispatchedAt,
-    lastAt: runs[0].dispatchedAt,
-    encoders: versions.length ? { from: versions[0], to: versions.at(-1)! } : null,
-    ended: counted(ended),
-    causes: counted(causes),
+    failed,
+    cancelled,
+    lastAt: runs[0].at ?? runs[0].dispatchedAt,
+    stops: counted(stops),
     latest: runs[0],
   };
+}
+
+/**
+ * How a section's runs ended, beyond their count: failures and cancellations
+ * apart ("1 failed", "1 cancelled"), or "all failed" when every run failed.
+ */
+export function endings(overview: Pick<SectionOverview, "runs" | "failed" | "cancelled">): string[] {
+  if (overview.failed === overview.runs) return ["all failed"];
+  if (overview.cancelled === overview.runs) return ["all cancelled"];
+  return [
+    overview.failed ? `${overview.failed} failed` : null,
+    overview.cancelled ? `${overview.cancelled} cancelled` : null,
+  ].filter((part): part is string => part !== null);
 }

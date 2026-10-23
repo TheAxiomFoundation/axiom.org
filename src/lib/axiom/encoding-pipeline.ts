@@ -1,13 +1,81 @@
 /**
- * The encoding pipeline, end to end: every targeted re-encode dispatch
- * followed from the fleet to a rule that compiles and runs.
+ * The encoding pipeline, end to end: every encoding followed from the fleet
+ * to a rule that compiles and runs. Most rows are targeted re-encode
+ * dispatches; the rest are modules merged outside the pipeline and modules
+ * the encoder wrote inside another citation's run (see attemptSource).
  *
  * Rows come from encodings.pipeline_attempts, rebuilt on a schedule by
  * scripts/collect-encoding-pipeline.mjs. Everything here is a pure
  * derivation over those rows, so a new stage rule never needs a backfill.
  */
 
-/** One targeted re-encode dispatch and every stage it has reached. */
+import { normalizeCitation } from "./ops-citations";
+
+/**
+ * Where a row comes from. A dispatch is a targeted re-encode run (its id is
+ * the GitHub run id, or `pr:<repo>#<n>` for a manifest PR whose run is gone).
+ * An outside row is one module file a PR merged into the default branch
+ * without a dispatch (`pr:<repo>#<n>:<module path>`). A dependent row is a
+ * module the encoder wrote inside another citation's run, a source or a
+ * dependent module (`dep:<encoder record id>`).
+ */
+export type AttemptSource = "dispatch" | "outside" | "dependent";
+
+const OUTSIDE_ID_RE = /^pr:([^#]+)#(\d+):(.+)$/;
+
+export function attemptSource(attempt: Pick<PipelineAttempt, "id">): AttemptSource {
+  if (attempt.id.startsWith("dep:")) return "dependent";
+  if (OUTSIDE_ID_RE.test(attempt.id)) return "outside";
+  return "dispatch";
+}
+
+/** Whether a row is a dispatch: only dispatches count in run statistics. */
+export function isDispatch(attempt: Pick<PipelineAttempt, "id">): boolean {
+  return attemptSource(attempt) === "dispatch";
+}
+
+/** The row id of one module file a PR merged outside the pipeline. */
+export function outsideAttemptId(repo: string, number: number, path: string): string {
+  return `pr:${repo}#${number}:${path}`;
+}
+
+/** An outside row's PR and module file, from its id. */
+export function outsideIdParts(id: string): { repo: string; number: number; path: string } | null {
+  const match = id.match(OUTSIDE_ID_RE);
+  return match ? { repo: match[1], number: Number(match[2]), path: match[3] } : null;
+}
+
+/** The row id of a module the encoder wrote inside another citation's run. */
+export function dependentAttemptId(recordId: string): string {
+  return `dep:${recordId}`;
+}
+
+const DEPENDENT_QUEUE_PREFIX = "dependent:";
+
+/** A dependent row's queue tag: the run it was encoded in. */
+export function dependentQueueRef(hostRunId: string): string {
+  return `${DEPENDENT_QUEUE_PREFIX}${hostRunId}`;
+}
+
+/** The run a dependent row was encoded in, or null for any other row. */
+export function dependentHostId(attempt: Pick<PipelineAttempt, "id" | "queue_ref">): string | null {
+  if (attemptSource(attempt) !== "dependent") return null;
+  return attempt.queue_ref?.startsWith(DEPENDENT_QUEUE_PREFIX)
+    ? attempt.queue_ref.slice(DEPENDENT_QUEUE_PREFIX.length)
+    : null;
+}
+
+/**
+ * When a row happened, for ordering: a dispatch's dispatch, a dependent
+ * module's record, and for a PR merged outside the pipeline its merge, the
+ * moment it changed the default branch.
+ */
+export function attemptTime(attempt: PipelineAttempt): string {
+  if (attemptSource(attempt) === "outside") return attempt.finished_at ?? attempt.pr_merged_at ?? attempt.dispatched_at;
+  return attempt.dispatched_at;
+}
+
+/** One targeted re-encode dispatch (or another encoding, see attemptSource) and every stage it has reached. */
 export interface PipelineAttempt {
   id: string;
   citation: string;
@@ -53,6 +121,15 @@ export interface PipelineAttempt {
   /** Users or teams a review is requested from. */
   pr_requested_reviewers?: string[] | null;
   pr_merge_commit?: string | null;
+  /** For a PR merged into a side branch: that branch's own PR into the
+   *  default branch (head = the side branch), which carries the change
+   *  there. Once it merged, the attempt counts as merged into the default
+   *  branch at its merge commit and time (see reachedMain). */
+  pr_via_number?: number | null;
+  pr_via_url?: string | null;
+  pr_via_state?: "draft" | "open" | "merged" | "closed" | null;
+  pr_via_merged_at?: string | null;
+  pr_via_merge_commit?: string | null;
   /** The module's jurisdiction validation (compile, companion tests,
    *  source-unit rules) on the default branch at a commit with the merge. */
   tests_status?: "pass" | "fail" | "waived" | null;
@@ -93,8 +170,12 @@ export interface PipelineAttempt {
   /** When that first shard run started, and how it ended. */
   tests_first_started_at?: string | null;
   tests_first_status?: "pass" | "fail" | null;
+  /** That first shard run's page. */
+  tests_first_run_url?: string | null;
   /** Each try of the encode loop, from the encoder's own record. */
   tries?: PipelineTry[] | null;
+  /** The encode loop's own clock, from the encoder's record (axiom-encode 0.2.2157 on). */
+  encode_loop?: EncodeLoopTiming | null;
 }
 
 /** One try of the encode loop: the model that wrote the candidate, its time and cost, and what sent it back. */
@@ -107,6 +188,30 @@ export interface PipelineTry {
   ok: boolean;
   /** The first check that failed this try's candidate. */
   error: string | null;
+  /** When the try started, and its whole time with its checks (encoder 0.2.2157 on). */
+  startedAt?: string;
+  wallMs?: number;
+  /** What the try did, in order and back to back; the phases add up to its whole time. */
+  phases?: PipelineTryPhase[];
+}
+
+/** One phase of a try: what the encoder did, for how long, and a check phase's time by tool. */
+export interface PipelineTryPhase {
+  /** The encoder's phase name: model_call, candidate_validation, overlay_validation, ... */
+  name: string;
+  ms: number;
+  /** A check phase's time by tool (ci_test_cases, rules_engine_compile, ...), the rest under "other". */
+  tools?: Record<string, number>;
+}
+
+/** One encoder process's loop: its start and whole time, and its time before, between, and after the tries. */
+export interface EncodeLoopTiming {
+  startedAt: string | null;
+  wallMs: number;
+  setupMs: number | null;
+  triesMs: number | null;
+  betweenMs: number | null;
+  finalizeMs: number | null;
 }
 
 /** Where one attempt sits. Main-line stages first, then the ways out. */
@@ -166,11 +271,12 @@ export const STAGE_COPY: Record<PipelineStage, StageCopy> = {
   encode_failed: {
     label: "Last encode failed",
     description:
-      "The citation's most recent dispatch failed, by the step that stopped it and the first validator rule.",
+      "The citation's most recent dispatch failed (or the encoder failed its module inside another citation's run), by the step that stopped it and the first validator rule.",
   },
   no_pr: {
     label: "Encoded, no PR",
-    description: "Runs that finished without opening a PR.",
+    description:
+      "Runs that finished without opening a PR, and modules encoded inside another citation's run that its PR does not carry.",
   },
   closed: {
     label: "PR closed unmerged",
@@ -179,7 +285,7 @@ export const STAGE_COPY: Record<PipelineStage, StageCopy> = {
   merged_off_main: {
     label: "Merged off main",
     description:
-      "Merged into a branch other than the repo's default, so they never reach the index.",
+      "Merged into a branch other than the repo's default; they reach the index only once that branch merges into it.",
   },
   not_indexed: {
     label: "Missing from the index",
@@ -209,9 +315,44 @@ export const FAILED_COMPILE_STATUSES = new Set([
   "closure_error",
 ]);
 
+/**
+ * Whether a merged attempt reached the repo's default branch: its PR merged
+ * into it, or into a side branch whose own PR then merged into it.
+ */
+export function reachedMain(attempt: PipelineAttempt): boolean {
+  return (
+    attempt.pr_state === "merged" &&
+    (attempt.pr_targets_default !== false || attempt.pr_via_state === "merged")
+  );
+}
+
+/** When the attempt's change reached the default branch: its own merge, or its side branch's. */
+export function mainMergedAt(attempt: PipelineAttempt): string | null {
+  if (!reachedMain(attempt)) return null;
+  return attempt.pr_targets_default === false ? (attempt.pr_via_merged_at ?? null) : attempt.pr_merged_at;
+}
+
+/** The side branch's own PR, as "rulespec-us#911". */
+export function viaPrLabel(attempt: PipelineAttempt): string | null {
+  if (attempt.pr_via_number == null) return null;
+  return `${attempt.pr_repo ?? ""}#${attempt.pr_via_number}`;
+}
+
+/** Where a merge went: the default branch, a side branch its own PR took on, or a side branch only. */
+export function mergeDetail(attempt: PipelineAttempt): string {
+  const into = `Into ${attempt.pr_base_branch}`;
+  if (attempt.pr_targets_default !== false) return into;
+  const via = viaPrLabel(attempt);
+  if (attempt.pr_via_state === "merged") return `${into}, then the default branch by ${via}`;
+  if (attempt.pr_via_state === "open" || attempt.pr_via_state === "draft") {
+    return `${into}; waits for ${via} to merge it into the default branch`;
+  }
+  return `${into}, not the default branch`;
+}
+
 export function attemptStage(attempt: PipelineAttempt): PipelineStage {
   if (attempt.pr_state === "merged") {
-    if (attempt.pr_targets_default === false) return "merged_off_main";
+    if (!reachedMain(attempt)) return "merged_off_main";
     if (attempt.index_status === "missing") return "not_indexed";
     if (!attempt.synced_at) return "awaiting_sync";
     if (attempt.compile_status && FAILED_COMPILE_STATUSES.has(attempt.compile_status)) {
@@ -249,17 +390,21 @@ export function stageSince(
     case "closed":
       return attempt.pr_closed_at;
     case "merged_off_main":
+      return attempt.pr_merged_at;
     case "awaiting_sync":
     case "not_indexed":
-      return attempt.pr_merged_at;
+      return mainMergedAt(attempt) ?? attempt.pr_merged_at;
     case "indexed":
     case "runs":
       return attempt.synced_at;
     case "compile_failed":
       return attempt.compile_checked_at ?? attempt.synced_at;
+    // Since validation on main first gave the result it still gives; the
+    // latest check says only when it was last confirmed.
     case "verified":
+      return (attempt.tests_first_status === "pass" ? attempt.tests_first_at : null) ?? attempt.tests_checked_at ?? attempt.synced_at;
     case "tests_failing":
-      return attempt.tests_checked_at ?? attempt.synced_at;
+      return (attempt.tests_first_status === "fail" ? attempt.tests_first_at : null) ?? attempt.tests_checked_at ?? attempt.synced_at;
     case "oracle_disagrees":
       return attempt.oracle_checked_at ?? attempt.synced_at;
   }
@@ -322,18 +467,39 @@ export function isStuck(
   return referenceMs - Date.parse(since) > limit;
 }
 
-/** A citation's current place: its latest dispatch, plus what came before. */
+/** A citation's current place: its latest attempt, plus what came before. */
 export interface CitationState {
   citation: string;
   jurisdiction: string | null;
   latest: PipelineAttempt;
   stage: PipelineStage;
   since: string | null;
+  /** Its dispatches only: merges outside the pipeline and other runs' modules are not dispatches. */
   dispatches: number;
   /** Open or draft PRs across every dispatch of the citation. */
   openPrs: number;
   /** Whether any dispatch of the citation reached the index. */
   reachedIndex: boolean;
+}
+
+/** A dispatch cancelled before its encode job started: it never tried the citation. */
+export function cancelledBeforeEncode(attempt: PipelineAttempt): boolean {
+  return (
+    attempt.run_conclusion === "cancelled" &&
+    (attempt.cancel_stage === "approval" || attempt.cancel_stage === "before_job")
+  );
+}
+
+/**
+ * The attempt a citation's status comes from: its newest of every source
+ * (by attemptTime, so a module merged by hand counts from its merge),
+ * passing over dispatches cancelled before their encode job started while
+ * an earlier attempt exists, so a cancelled re-dispatch does not hide what
+ * came before it.
+ */
+export function statusAttempt(attempts: PipelineAttempt[]): PipelineAttempt | null {
+  const sorted = [...attempts].sort(byTimeDesc);
+  return sorted.find((attempt) => !cancelledBeforeEncode(attempt)) ?? sorted[0] ?? null;
 }
 
 export function citationStates(attempts: PipelineAttempt[]): CitationState[] {
@@ -344,8 +510,7 @@ export function citationStates(attempts: PipelineAttempt[]): CitationState[] {
     byCitation.set(attempt.citation, list);
   }
   return [...byCitation.entries()].map(([citation, list]) => {
-    const sorted = [...list].sort(byDispatchedDesc);
-    const latest = sorted[0];
+    const latest = statusAttempt(list)!;
     const stage = attemptStage(latest);
     return {
       citation,
@@ -353,7 +518,7 @@ export function citationStates(attempts: PipelineAttempt[]): CitationState[] {
       latest,
       stage,
       since: stageSince(latest, stage),
-      dispatches: list.length,
+      dispatches: list.filter(isDispatch).length,
       openPrs: list.filter((a) => a.pr_state === "draft" || a.pr_state === "open")
         .length,
       reachedIndex: list.some((a) => a.synced_at !== null),
@@ -361,8 +526,8 @@ export function citationStates(attempts: PipelineAttempt[]): CitationState[] {
   });
 }
 
-function byDispatchedDesc(a: PipelineAttempt, b: PipelineAttempt): number {
-  return Date.parse(b.dispatched_at) - Date.parse(a.dispatched_at);
+function byTimeDesc(a: PipelineAttempt, b: PipelineAttempt): number {
+  return Date.parse(attemptTime(b)) - Date.parse(attemptTime(a));
 }
 
 /** Why an encode failed, grouped so one cause behind many flags stands out. */
@@ -423,6 +588,16 @@ export function errorGroupLabel(error: string): string {
   );
 }
 
+/**
+ * The other module a run's failure came from: the target module applied,
+ * and the error names a different module file (an import the encoder also
+ * wrote), so the failure is that module's, not the target's.
+ */
+export function dependentModule(attempt: PipelineAttempt): string | null {
+  if (attempt.encoder_status !== "apply_applied") return null;
+  return attempt.encoder_error?.match(/^(\S+?\.ya?ml):/)?.[1] ?? null;
+}
+
 export function failureReason(attempt: PipelineAttempt): FailureReason {
   // A cancelled run's story is how far it got, not what it last logged.
   if (attempt.run_conclusion === "timed_out") {
@@ -432,6 +607,10 @@ export function failureReason(attempt: PipelineAttempt): FailureReason {
     return attempt.cancel_stage
       ? { key: `cancel:${attempt.cancel_stage}`, label: CANCEL_LABELS[attempt.cancel_stage], kind: "run" }
       : { key: "run:cancelled", label: "Cancelled (not read yet)", kind: "run" };
+  }
+  const dependent = dependentModule(attempt);
+  if (dependent) {
+    return { key: `dependent:${dependent}`, label: `A dependent module failed: ${dependent}`, kind: "validator" };
   }
   if (attempt.encoder_error_rule) {
     return {
@@ -471,6 +650,7 @@ export function failureReason(attempt: PipelineAttempt): FailureReason {
 
 /** The step of a targeted encode run that stopped it, in run order. */
 export type EncodeGate =
+  | "dependent"
   | "budget"
   | "setup"
   | "generate"
@@ -486,10 +666,11 @@ export type EncodeGate =
 
 /** A failed run's outcome, named by the step that stopped it. */
 export const ENCODE_GATE_LABELS: Record<EncodeGate, string> = {
+  dependent: "A dependent module failed",
   budget: "Attempt budget used up",
   setup: "Failed in setup",
   generate: "Failed to generate",
-  compile: "Failed to compile",
+  compile: "Failed the compile check",
   validate: "Failed validation",
   review: "Failed review",
   sign: "Failed to sign",
@@ -500,8 +681,8 @@ export const ENCODE_GATE_LABELS: Record<EncodeGate, string> = {
   unknown: "Failed at an unknown step",
 };
 
-/** The validator's issue prefix: "<file>.yaml: <check>: ...". */
-const ERROR_CHECK_RE = /^\S+?\.ya?ml:\s*([a-z_-]+):/;
+/** The validator's issue prefix: "<file>.yaml: <check>: ...", or the check alone ("compile: ..."). */
+const ERROR_CHECK_RE = /^(?:\S+?\.ya?ml:\s*)?([a-z_-]+):/;
 const ERROR_CHECK_GATES: Record<string, EncodeGate> = {
   ci: "validate",
   compile: "compile",
@@ -514,7 +695,7 @@ const ERROR_CHECK_GATES: Record<string, EncodeGate> = {
 /** Workflow steps (by diagnostics id or job/step name) and the gate they belong to. */
 const STEP_GATES: Array<[RegExp, EncodeGate]> = [
   [/budget/i, "budget"],
-  [/repair[ _]candidate|checkout identities|corpus release|signing supervisor|compose runtime|routing|existing signed imports/i, "setup"],
+  [/repair[ _]candidate|checkout identities|corpus release|signing supervisor|compose runtime|routing|existing signed imports|source inputs/i, "setup"],
   [/package|provenance|commit[ _]reviewed/i, "sign"],
   [/pull request|publish_lane|push lane/i, "publish"],
   [/encode_apply|encode, review, validate, and apply/i, "encode"],
@@ -524,6 +705,7 @@ export function encodeGate(attempt: PipelineAttempt): EncodeGate {
   if (attempt.run_conclusion === "cancelled" || attempt.run_conclusion === "timed_out") {
     return "cancelled";
   }
+  if (dependentModule(attempt)) return "dependent";
   const check = attempt.encoder_error?.match(ERROR_CHECK_RE)?.[1];
   if (check && ERROR_CHECK_GATES[check]) return ERROR_CHECK_GATES[check];
   if (attempt.encoder_status === "apply_blocked_generation") return "generate";
@@ -633,16 +815,28 @@ export interface FailureGroup extends FailureReason {
 export interface WeeklyThroughput {
   /** Monday 00:00 UTC of the week. */
   weekStart: string;
+  /** Dispatches only, as are encoded and merged. */
   dispatched: number;
   encoded: number;
   merged: number;
+  /** PRs merged into a default branch outside the pipeline (each PR once, however many modules). */
+  outside: number;
+}
+
+/** Citations whose latest attempt is not a dispatch, by where it came from. */
+export interface SourceCounts {
+  outside: number;
+  dependent: number;
 }
 
 export interface PipelineSummary {
   collectedAt: string | null;
+  /** The first dispatch and the count of dispatches (other rows are not dispatches). */
   firstDispatchAt: string | null;
   dispatchCount: number;
   citationCount: number;
+  /** Citations whose stage comes from a merge outside the pipeline or another citation's run. */
+  sources: SourceCounts;
   stages: Record<PipelineStage, StageSummary>;
   /** Open PRs beyond the first for a citation (re-dispatches that never closed the old PR). */
   duplicatePrs: number;
@@ -653,7 +847,8 @@ export interface PipelineSummary {
   /** Citations in review by what holds their PR. */
   holds: CitationGroup[];
   /** Every dispatch's failure (not just latest) over the last FAILURE_WINDOW_DAYS. */
-  recentFailureRate: { failed: number; finished: number } | null;
+  /** Finished runs of the window that failed; cancelled runs and budget stops are left out of both. */
+  recentFailureRate: { failed: number; finished: number; leftOut: number } | null;
   weekly: WeeklyThroughput[];
 }
 
@@ -690,8 +885,11 @@ export function summarizePipeline(
   ) as Record<PipelineStage, StageSummary>;
 
   let duplicatePrs = 0;
+  const sources: SourceCounts = { outside: 0, dependent: 0 };
   const failureGroups = new Map<string, FailureGroup>();
   for (const state of states) {
+    const source = attemptSource(state.latest);
+    if (source !== "dispatch") sources[source] += 1;
     const summary = stages[state.stage];
     summary.count += 1;
     summary.citations.push(state);
@@ -728,14 +926,17 @@ export function summarizePipeline(
     group.citations.sort((a, b) => (b.since ?? "").localeCompare(a.since ?? ""));
   }
 
-  const dispatchTimes = attempts.map((a) => a.dispatched_at).sort();
+  // Run statistics count dispatches only; the citation views above count every source.
+  const dispatches = attempts.filter(isDispatch);
+  const dispatchTimes = dispatches.map((a) => a.dispatched_at).sort();
   const collectedTimes = attempts.map((a) => a.collected_at).sort();
 
   return {
     collectedAt: collectedTimes.at(-1) ?? null,
     firstDispatchAt: dispatchTimes[0] ?? null,
-    dispatchCount: attempts.length,
+    dispatchCount: dispatches.length,
     citationCount: states.length,
+    sources,
     stages,
     duplicatePrs,
     failures: [...failureGroups.values()].sort(
@@ -751,7 +952,7 @@ export function summarizePipeline(
       (state) => reviewHold(state.latest),
       (key) => REVIEW_HOLD_LABELS[key as ReviewHold]
     ),
-    recentFailureRate: recentFailureRate(attempts, referenceMs),
+    recentFailureRate: recentFailureRate(dispatches, referenceMs),
     weekly: weeklyThroughput(attempts, referenceMs),
   };
 }
@@ -767,14 +968,24 @@ function recentFailureRate(
   const since = referenceMs - FAILURE_WINDOW_DAYS * DAY_MS;
   let failed = 0;
   let finished = 0;
+  let leftOut = 0;
   for (const attempt of attempts) {
     if (attempt.run_status !== "completed" || !attempt.finished_at) continue;
     if (Date.parse(attempt.finished_at) < since) continue;
     if (attempt.run_conclusion === "skipped") continue;
+    // A cancelled run and a run the attempt budget stopped say nothing about
+    // how the encoder does: neither counts as finished or failed.
+    if (
+      attempt.run_conclusion === "cancelled" ||
+      (attempt.run_conclusion !== "success" && encodeGate(attempt) === "budget")
+    ) {
+      leftOut += 1;
+      continue;
+    }
     finished += 1;
     if (attempt.run_conclusion !== "success") failed += 1;
   }
-  return finished > 0 ? { failed, finished } : null;
+  return finished > 0 ? { failed, finished, leftOut } : null;
 }
 
 /** Monday 00:00 UTC of the week containing `ms`. */
@@ -799,6 +1010,7 @@ export function weeklyThroughput(
       dispatched: 0,
       encoded: 0,
       merged: 0,
+      outside: 0,
     };
     rows.push(row);
     index.set(start, row);
@@ -808,22 +1020,45 @@ export function weeklyThroughput(
     const row = index.get(weekStartUtc(Date.parse(value)));
     if (row) row[key] += 1;
   };
+  // A PR merged outside the pipeline has a row per module it changed; it counts once.
+  const outsidePrs = new Set<string>();
   for (const attempt of attempts) {
+    const source = attemptSource(attempt);
+    if (source === "outside") {
+      const parts = outsideIdParts(attempt.id);
+      const key = parts ? `${parts.repo}#${parts.number}` : attempt.id;
+      if (!outsidePrs.has(key) && reachedMain(attempt)) {
+        outsidePrs.add(key);
+        bump(mainMergedAt(attempt), "outside");
+      }
+      continue;
+    }
+    if (source !== "dispatch") continue;
     bump(attempt.dispatched_at, "dispatched");
     if (attempt.run_conclusion === "success") bump(attempt.finished_at, "encoded");
-    if (attempt.pr_state === "merged" && attempt.pr_targets_default !== false) {
-      bump(attempt.pr_merged_at, "merged");
-    }
+    if (reachedMain(attempt)) bump(mainMergedAt(attempt), "merged");
   }
   return rows;
 }
 
-/** A citation's every dispatch, newest first, for the journey view. */
+/**
+ * A citation's every attempt, newest first, for the journey view: under
+ * every spelling of it (`us-nc:manual/...` and `us-nc/manual/...`), as the
+ * ledger counts them.
+ */
 export function citationJourney(
   attempts: PipelineAttempt[],
   citation: string
 ): PipelineAttempt[] {
-  return attempts.filter((a) => a.citation === citation).sort(byDispatchedDesc);
+  const wanted = normalizeCitation(citation);
+  return attempts.filter((a) => a.citation === citation || normalizeCitation(a.citation) === wanted).sort(byTimeDesc);
+}
+
+/** Each dispatch's citation by its run id, to name the run a dependent module was encoded in. */
+export function hostCitations(attempts: PipelineAttempt[]): Map<string, string> {
+  const hosts = new Map<string, string>();
+  for (const attempt of attempts) if (isDispatch(attempt)) hosts.set(attempt.id, attempt.citation);
+  return hosts;
 }
 
 export interface JourneyStep {
@@ -849,9 +1084,7 @@ export function journeySteps(attempt: PipelineAttempt): JourneyStep[] {
       label: "Dispatched",
       at: attempt.dispatched_at,
       state: "done",
-      detail: attempt.queue_ref && !attempt.queue_ref.startsWith("adhoc")
-        ? `Queue ${attempt.queue_ref}`
-        : "Ad hoc dispatch",
+      detail: dispatchDetail(attempt),
       href: attempt.run_url,
     },
     {
@@ -866,12 +1099,7 @@ export function journeySteps(attempt: PipelineAttempt): JourneyStep[] {
             ? "failed"
             : "pending",
       detail: failedEncode
-        ? [
-            `${ENCODE_GATE_LABELS[encodeGate(attempt)]}: ${reason?.label}`,
-            attempt.encoder_error ? errorMessage(attempt.encoder_error) : cancellationDetail(attempt),
-          ]
-            .filter(Boolean)
-            .join(" — ")
+        ? failedEncodeDetail(attempt, reason!)
         : attempt.generation_attempts
           ? `${attempt.generation_attempts} generation attempt${attempt.generation_attempts === 1 ? "" : "s"}`
           : stage === "no_pr"
@@ -911,16 +1139,8 @@ export function journeySteps(attempt: PipelineAttempt): JourneyStep[] {
       key: "merged",
       label: "Merged",
       at: attempt.pr_merged_at,
-      state: merged
-        ? attempt.pr_targets_default === false
-          ? "failed"
-          : "done"
-        : "pending",
-      detail: merged && attempt.pr_base_branch
-        ? attempt.pr_targets_default === false
-          ? `Into ${attempt.pr_base_branch}, not the default branch`
-          : `Into ${attempt.pr_base_branch}`
-        : null,
+      state: merged ? (reachedMain(attempt) ? "done" : "failed") : "pending",
+      detail: merged && attempt.pr_base_branch ? mergeDetail(attempt) : null,
       href: attempt.pr_url,
     },
     {
@@ -997,11 +1217,41 @@ export function journeySteps(attempt: PipelineAttempt): JourneyStep[] {
         : attempt.pr_state === "merged"
           ? "No oracle report covers it"
           : null,
+      // Attempts retain a filename, so this detail link follows the live report branch.
       href: attempt.oracle_report
-        ? `https://github.com/TheAxiomFoundation/axiom-oracles/blob/main/dashboard/public/data/${attempt.oracle_report}`
+        ? `https://github.com/TheAxiomFoundation/axiom-oracles/blob/oracle-data/dashboard/public/data/${attempt.oracle_report}`
         : null,
     },
   ];
+}
+
+/** Where an attempt started: its queue, an ad hoc dispatch, a merge outside the pipeline, or another citation's run. */
+function dispatchDetail(attempt: PipelineAttempt): string {
+  switch (attemptSource(attempt)) {
+    case "outside":
+      return ["Merged outside the pipeline", attempt.dispatched_by].filter(Boolean).join(" · ");
+    case "dependent":
+      return "Encoded in another citation's run";
+    default:
+      return attempt.queue_ref && !attempt.queue_ref.startsWith("adhoc") ? `Queue ${attempt.queue_ref}` : "Ad hoc dispatch";
+  }
+}
+
+/**
+ * What stopped a failed encode, in full: the step, then the error as the
+ * encoder wrote it. The group the error falls in is made from that message,
+ * so it is left out where the message follows; a validator rule the message
+ * does not name stays in front of it. Without a message, the group and how
+ * far a cancelled run got.
+ */
+function failedEncodeDetail(attempt: PipelineAttempt, reason: FailureReason): string {
+  const gate = ENCODE_GATE_LABELS[encodeGate(attempt)];
+  const message = attempt.encoder_error ? errorMessage(attempt.encoder_error) : null;
+  if (message) {
+    const rule = attempt.encoder_error_rule && !message.includes(attempt.encoder_error_rule) ? attempt.encoder_error_rule : null;
+    return `${gate}: ${[rule, message].filter(Boolean).join(" — ")}`;
+  }
+  return [`${gate}: ${reason.label}`, cancellationDetail(attempt)].filter(Boolean).join(" — ");
 }
 
 const ORACLE_ENGINE_LABELS: Record<string, string> = {
@@ -1059,6 +1309,8 @@ export interface PipelineItem {
   dispatches: number;
   openPrs: number;
   reachedIndex: boolean;
+  /** Where the latest attempt came from: a dispatch, a merge outside the pipeline, or another citation's run. */
+  source: AttemptSource;
   runUrl: string;
   prUrl: string | null;
   prLabel: string | null;
@@ -1108,6 +1360,8 @@ export interface PipelineView {
   firstDispatchAt: string | null;
   dispatchCount: number;
   citationCount: number;
+  /** Citations whose stage comes from a merge outside the pipeline or another citation's run. */
+  sources: SourceCounts;
   stages: Record<PipelineStage, PipelineStageView>;
   duplicatePrs: number;
   failures: PipelineFailureView[];
@@ -1151,8 +1405,11 @@ function itemReason(state: CitationState): string | null {
       return oracleLabel(latest) ?? "No oracle report covers it";
     case "compile_failed":
       return latest.compile_status?.replaceAll("_", " ") ?? null;
-    case "merged_off_main":
-      return latest.pr_base_branch ? `Merged into ${latest.pr_base_branch}` : null;
+    case "merged_off_main": {
+      if (!latest.pr_base_branch) return null;
+      const waits = latest.pr_via_state === "open" || latest.pr_via_state === "draft";
+      return `Merged into ${latest.pr_base_branch}${waits ? `; waits for ${viaPrLabel(latest)}` : ""}`;
+    }
     case "not_indexed":
       return "Not in the index after a later sync";
     default:
@@ -1194,6 +1451,7 @@ export function pipelineItem(state: CitationState, referenceMs: number): Pipelin
     dispatches: state.dispatches,
     openPrs: state.openPrs,
     reachedIndex: state.reachedIndex,
+    source: attemptSource(latest),
     runUrl: latest.run_url,
     prUrl: latest.pr_url,
     prLabel: latest.pr_repo && latest.pr_number ? `${latest.pr_repo}#${latest.pr_number}` : null,
@@ -1241,6 +1499,7 @@ export function pipelineView(
     firstDispatchAt: summary.firstDispatchAt,
     dispatchCount: summary.dispatchCount,
     citationCount: summary.citationCount,
+    sources: summary.sources,
     stages,
     duplicatePrs: summary.duplicatePrs,
     failures: summary.failures.map((group) => ({
@@ -1282,25 +1541,29 @@ export function bottleneckStage(view: PipelineView): PipelineStage | null {
   return best;
 }
 
-/** A compact age: 12m, 5h, 3d, 7w. */
+/**
+ * A compact age: 12m, 5h, 3d, 7w. Whole units only, rounded down, as the
+ * page's "ago" times and durations are, so an age and a duration side by
+ * side never disagree by a rounding.
+ */
 export function ageLabel(since: string | null, referenceMs: number): string | null {
   if (!since) return null;
   const minutes = Math.max(0, referenceMs - Date.parse(since)) / 60_000;
-  if (minutes < 60) return `${Math.max(1, Math.round(minutes))}m`;
+  if (minutes < 60) return `${Math.max(1, Math.floor(minutes))}m`;
   const hours = minutes / 60;
-  if (hours < 48) return `${Math.round(hours)}h`;
+  if (hours < 48) return `${Math.floor(hours)}h`;
   const days = hours / 24;
-  if (days < 14) return `${Math.round(days)}d`;
-  return `${Math.round(days / 7)}w`;
+  if (days < 14) return `${Math.floor(days)}d`;
+  return `${Math.floor(days / 7)}w`;
 }
 
-/** A compact duration: 45m, 3h 12m, 4d. */
+/** A compact duration: 45m, 3h 12m, 4d, in whole units rounded down. */
 export function durationLabel(ms: number): string {
-  const minutes = Math.max(0, Math.round(ms / 60_000));
+  const minutes = Math.max(0, Math.floor(ms / 60_000));
   if (minutes < 60) return `${minutes}m`;
   const hours = Math.floor(minutes / 60);
   if (hours < 48) return minutes % 60 ? `${hours}h ${minutes % 60}m` : `${hours}h`;
-  return `${Math.round(hours / 24)}d`;
+  return `${Math.floor(hours / 24)}d`;
 }
 
 /** How long a run waited and who dispatched it, for a cancelled run. */
@@ -1339,11 +1602,12 @@ function quantile(sorted: number[], q: number): number | null {
   return sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))];
 }
 
-/** The signing-approval gate across every dispatch, not just each citation's latest. */
+/** The signing-approval gate across every dispatch, not just each citation's latest (other rows never wait at it). */
 export function approvalSummary(
-  attempts: PipelineAttempt[],
+  rows: PipelineAttempt[],
   referenceMs: number
 ): ApprovalSummary {
+  const attempts = rows.filter(isDispatch);
   const since = referenceMs - APPROVAL_WINDOW_DAYS * DAY_MS;
   const waiting = attempts.filter((a) => a.run_status === "waiting");
   const waits = attempts

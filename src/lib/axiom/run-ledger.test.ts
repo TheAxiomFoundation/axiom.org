@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { runRow, runRows } from "./encoding-pipeline-runs";
-import { causeHeadline, runLedger, sectionOverview, sectionStatus } from "./run-ledger";
+import { causeHeadline, endings, newestDocuments, runLedger, sectionOverview, sectionStatus } from "./run-ledger";
 import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 
 const day = (n: number) => `2026-09-${String(n).padStart(2, "0")}T10:00:00Z`;
@@ -68,7 +68,7 @@ describe("runLedger", () => {
 });
 
 describe("sectionOverview", () => {
-  it("sums a section's runs: span, encoders, where they ended, why they failed, and the latest", () => {
+  it("sums a section's runs: how many failed, where and why each stopped, and the latest", () => {
     const rows = runRows([
       pipelineAttempt({ id: "1", citation: "us/statute/42/416/l", dispatched_at: day(1), encoder_version: "0.2.2018", encoder_error_rule: "complete-source-unit:tests", failure_source: "diagnostics" }),
       pipelineAttempt({ id: "2", citation: "us/statute/42/416/l", dispatched_at: day(2), encoder_version: "0.2.2023", encoder_error_rule: "complete-source-unit:tests", failure_source: "diagnostics" }),
@@ -77,14 +77,93 @@ describe("sectionOverview", () => {
     ]);
     const [section] = runLedger(rows)[0].documents[0].sections;
     const overview = sectionOverview(section);
-    expect(overview).toMatchObject({ runs: 4, firstAt: day(1), lastAt: day(4), encoders: { from: "0.2.2018", to: "0.2.2087" } });
-    expect(overview.ended.map((e) => `${e.label}:${e.tone}:${e.count}`)).toEqual([
-      "Failed validation:failed:2",
-      "Failed at an unknown step:failed:1",
-      "Merged into another branch:failed:1",
+    expect(overview).toMatchObject({ runs: 4, failed: 3, cancelled: 0, lastAt: day(4) });
+    expect(overview.stops.map((s) => `${s.count} ${s.label} — ${s.cause}`)).toEqual([
+      "2 Failed validation — Completeness rule: tests",
+      "1 Failed the compile check — engine failed",
+      "1 Merged into another branch — null",
     ]);
-    expect(overview.causes[0]).toEqual({ label: "Completeness rule: tests", count: 2, detail: "complete-source-unit:tests" });
+    expect(overview.stops[0].detail).toBe("complete-source-unit:tests");
     expect(overview.latest.id).toBe("4");
+  });
+
+  it("counts runs failing the same way together, and names a line by its one message when it has one", () => {
+    const failure = (id: string, n: number, got: number) =>
+      pipelineAttempt({
+        id,
+        citation: "us/statute/7/2017/a",
+        dispatched_at: day(n),
+        encoder_error: `statutes/7/2017/a.yaml: ci: Test case \`base\` expected integer 400, got integer ${got}.`,
+        failure_source: "diagnostics",
+      });
+    const both = sectionOverview(runLedger(runRows([failure("1", 1, 1200), failure("2", 2, 900)]))[0].documents[0].sections[0]);
+    expect(both.stops.map((s) => `${s.count} ${s.cause}`)).toEqual(["2 Test case … expected integer N, got integer N"]);
+    expect(both.stops[0].detail).toBe("Test case `base` expected integer 400, got integer 900.");
+    const one = sectionOverview(runLedger(runRows([failure("1", 1, 1200), failure("2", 2, 1200)]))[0].documents[0].sections[0]);
+    expect(one.stops.map((s) => `${s.count} ${s.cause}`)).toEqual(["2 Test case `base` expected integer 400, got integer 1200"]);
+  });
+
+  it("counts cancellations apart from failures", () => {
+    const rows = runRows([
+      pipelineAttempt({ id: "1", dispatched_at: day(1), encoder_error_rule: "rule-a", failure_source: "diagnostics" }),
+      pipelineAttempt({ id: "2", dispatched_at: day(2), run_conclusion: "cancelled", cancel_stage: "approval" }),
+    ]);
+    const overview = sectionOverview(runLedger(rows)[0].documents[0].sections[0]);
+    expect(overview).toMatchObject({ runs: 2, failed: 1, cancelled: 1 });
+    expect(endings(overview)).toEqual(["1 failed", "1 cancelled"]);
+    expect(endings({ runs: 3, failed: 3, cancelled: 0 })).toEqual(["all failed"]);
+    expect(endings({ runs: 2, failed: 0, cancelled: 2 })).toEqual(["all cancelled"]);
+    expect(endings({ runs: 3, failed: 1, cancelled: 0 })).toEqual(["1 failed"]);
+    expect(endings({ runs: 2, failed: 0, cancelled: 0 })).toEqual([]);
+  });
+});
+
+describe("newestDocuments", () => {
+  it("pages by each document's latest run across jurisdictions, under their own headings", () => {
+    const rows = runRows([
+      ...[13, 10, 9].map((n, i) =>
+        pipelineAttempt({ id: `us${i}`, citation: `us/statute/${i + 1}/100/a`, jurisdiction: "us", dispatched_at: day(n) })
+      ),
+      pipelineAttempt({ id: "nm", citation: "us-nm/statute/7-2-39", jurisdiction: "us-nm", dispatched_at: day(12) }),
+    ]);
+    const ledger = runLedger(rows);
+    expect(ledger.map((j) => j.code)).toEqual(["us", "us-nm"]);
+    const page = newestDocuments(ledger, 2);
+    // The two newest: US title 1 (day 13) and New Mexico (day 12), before US titles 2 and 3.
+    expect(page.map((j) => [j.code, j.documents.map((d) => d.key)])).toEqual([
+      ["us", ["us:statute/1"]],
+      ["us-nm", ["us-nm:statute/7-2-39"]],
+    ]);
+    expect(newestDocuments(ledger, 10).flatMap((j) => j.documents)).toHaveLength(4);
+    expect(newestDocuments(ledger, 0)).toEqual([]);
+  });
+});
+
+describe("runLedger document names", () => {
+  it("names a document by its corpus label when its citation carries a colon of its own, and gives its path", () => {
+    const rows = runRows([pipelineAttempt({ id: "la", citation: "us-la/statute/47:32", jurisdiction: "us-la" })]);
+    const [document] = runLedger(rows, { "us-la/statute/47:32": "Rates of tax" })[0].documents;
+    expect([document.key, document.title, document.titled, document.path, document.sections[0].designator]).toEqual([
+      "us-la:statute/47:32",
+      "Rates of tax",
+      true,
+      "us-la/statute/47:32",
+      "47:32",
+    ]);
+  });
+
+  it("counts a provision's spellings as one section", () => {
+    const rows = runRows([
+      pipelineAttempt({ id: "a", citation: "us-nc:manual/dhhs/fns/fns-170-notices/page-7", jurisdiction: "us-nc", dispatched_at: day(1) }),
+      pipelineAttempt({ id: "b", citation: "us-nc/manual/dhhs/fns/fns-170-notices/page-7", jurisdiction: "us-nc", dispatched_at: day(2) }),
+      pipelineAttempt({ id: "c", citation: "us/regulations/7-cfr/273/4", jurisdiction: "us", dispatched_at: day(3) }),
+      pipelineAttempt({ id: "d", citation: "us/regulation/7/273/4", jurisdiction: "us", dispatched_at: day(4) }),
+    ]);
+    const sections = runLedger(rows).flatMap((j) => j.documents.flatMap((d) => d.sections.map((s) => [s.citation, s.runs.map((r) => r.id)])));
+    expect(sections).toEqual([
+      ["us/regulation/7/273/4", ["d", "c"]],
+      ["us-nc/manual/dhhs/fns/fns-170-notices/page-7", ["b", "a"]],
+    ]);
   });
 });
 
@@ -104,5 +183,13 @@ describe("causeHeadline", () => {
       "Completeness rule: structure"
     );
     expect(causeHeadline("statutes/42/402/q.yaml: ci: Embedded scalar literal: old_age line 6 embeds 5")).toBe("Embedded scalar literal");
+    // A tool's error by the tool and its first clause; an exception by its class.
+    expect(causeHeadline("jq: error: syntax error, unexpected INVALID_CHARACTER, expecting end of file")).toBe("jq: syntax error");
+    expect(
+      causeHeadline("axiom_encode.corpus_resolver.CorpusLayoutError: Canonical data/corpus/provisions directory is missing")
+    ).toBe("Corpus layout error");
+    expect(causeHeadline("error: rulespec ref is not the exact pull request base branch tip")).toBe(
+      "rulespec ref is not the exact pull request base branch tip"
+    );
   });
 });

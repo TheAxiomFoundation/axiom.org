@@ -1,19 +1,29 @@
 "use client";
 
 import { Fragment, useEffect, useState } from "react";
+import { ChevronRight } from "lucide-react";
 import styles from "./ops-dashboard.module.css";
 import { relativeTime } from "./ops-dashboard";
+import { Explain } from "./ops-pipeline";
 import { RunTimeline } from "./run-timeline";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { journeyHref } from "@/lib/axiom/encoding-pipeline";
 import { scopeSearch, type PipelineScope } from "@/lib/axiom/encoding-pipeline-insights";
-import { runTimeline, type RunRow } from "@/lib/axiom/encoding-pipeline-runs";
+import { hostLabel, OUTSIDE_LABEL, runTimeline, type RunRow } from "@/lib/axiom/encoding-pipeline-runs";
+import {
+  bundleHref,
+  bundleMemberships,
+  bundleProgram,
+  membershipDetail,
+  tiersLabel,
+  type BundleIndexEntry,
+} from "@/lib/axiom/program-bundles";
 import {
   causeHeadline,
+  endings,
+  newestDocuments,
   runLedger,
   sectionOverview,
   type LedgerDocument,
-  type LedgerJurisdiction,
   type LedgerSection,
   type LedgerTone,
 } from "@/lib/axiom/run-ledger";
@@ -23,6 +33,10 @@ interface RunsPayload {
   rows: RunRow[];
   labels?: Record<string, string>;
   documentPaths?: Record<string, string>;
+  /** Program bundle documents that hold some run's citation. */
+  bundles?: BundleIndexEntry[];
+  /** When the collector last read these runs. */
+  collectedAt?: string | null;
 }
 
 /** Documents shown before "Show more", as the encoding ledger always showed. */
@@ -45,16 +59,31 @@ const TONE_DOT: Record<LedgerTone, string> = {
 /** Letters and digits only, to tell a real name from one that echoes its designator ("Page 2", "page-2"). */
 const plain = (text: string) => text.toLowerCase().replace(/[^a-z0-9]/g, "");
 
-/** The first `count` documents across jurisdictions, each jurisdiction keeping its own. */
-function firstDocuments(ledger: LedgerJurisdiction[], count: number): LedgerJurisdiction[] {
-  let left = count;
-  return ledger
-    .map((jurisdiction) => {
-      const documents = jurisdiction.documents.slice(0, Math.max(0, left));
-      left -= documents.length;
-      return { ...jurisdiction, documents };
-    })
-    .filter((jurisdiction) => jurisdiction.documents.length > 0);
+/** What a section's status says, by its dot's color. */
+function StatusLegend() {
+  return (
+    <Explain label="Status">
+      <span className="font-sans text-xs normal-case tracking-normal text-[var(--color-ink-secondary)]">
+        A section&apos;s status is how far its latest run got, or what stopped it. A module merged outside the
+        pipeline, or encoded inside another citation&apos;s run, counts as a run of its section.
+      </span>
+      <span className="grid gap-1 font-sans text-xs normal-case tracking-normal text-[var(--color-ink-secondary)]">
+        <span>
+          <span aria-hidden className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${TONE_DOT.done}`} />
+          Done: tests pass. Merged into main, and its jurisdiction&apos;s validation on main passes.
+        </span>
+        <span>
+          <span aria-hidden className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${TONE_DOT.waiting}`} />
+          Going: waiting for approval, running, in review, or in main and waiting for the index and the tests.
+        </span>
+        <span>
+          <span aria-hidden className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${TONE_DOT.failed}`} />
+          Stopped: the step that failed the run (&quot;Failed validation&quot;), a cancellation, no PR, a closed PR,
+          a merge off main, failing tests, or missing from the index.
+        </span>
+      </span>
+    </Explain>
+  );
 }
 
 /**
@@ -108,6 +137,12 @@ export function PipelineLedger({
           <p>
             {scopeName ? `${scopeName}: every run` : "Every run"}, grouped by jurisdiction and document. Open a
             section for its runs.
+            {payload?.collectedAt && (
+              <>
+                {" "}
+                <span title={payload.collectedAt}>Updated {relativeTime(payload.collectedAt, referenceMs)}.</span>
+              </>
+            )}
           </p>
         </div>
       </div>
@@ -125,13 +160,19 @@ export function PipelineLedger({
                 <TableHead className="h-8 w-[34%] px-0 font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]">
                   Section
                 </TableHead>
-                <TableHead className="h-8 px-2 font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]">
+                <TableHead className={`${styles.ledgerWide} h-8 px-2 font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]`}>
                   Provision
                 </TableHead>
-                <TableHead className="h-8 w-36 px-2 font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]">
-                  Status
+                <TableHead className={`${styles.ledgerWide} h-8 w-40 px-2 font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]`}>
+                  Bundle
                 </TableHead>
-                <TableHead className="h-8 w-16 px-2 text-right font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]">
+                <TableHead className="h-8 w-36 px-2 font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]">
+                  <span className="inline-flex items-center gap-1.5">
+                    Status
+                    <StatusLegend />
+                  </span>
+                </TableHead>
+                <TableHead className={`${styles.ledgerWide} h-8 w-16 px-2 text-right font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]`}>
                   Runs
                 </TableHead>
                 <TableHead className="h-8 w-20 px-0 text-right font-mono text-[10px] font-normal uppercase tracking-wider text-[var(--color-ink-muted)]">
@@ -139,10 +180,10 @@ export function PipelineLedger({
                 </TableHead>
               </TableRow>
             </TableHeader>
-            {firstDocuments(ledger, shown).map((jurisdiction) => (
+            {newestDocuments(ledger, shown).map((jurisdiction) => (
               <TableBody key={jurisdiction.code}>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead colSpan={5} scope="rowgroup" className={styles.jurisdictionBand}>
+                  <TableHead colSpan={6} scope="rowgroup" className={styles.jurisdictionBand}>
                     {jurisdiction.name}
                   </TableHead>
                 </TableRow>
@@ -151,6 +192,7 @@ export function PipelineLedger({
                     key={document.key}
                     document={document}
                     referenceMs={referenceMs}
+                    bundles={payload?.bundles ?? []}
                     openSection={openSection}
                     onSection={(citation) => setOpenSection((open) => (open === citation ? null : citation))}
                   />
@@ -176,24 +218,30 @@ export function PipelineLedger({
 function DocumentSections({
   document,
   referenceMs,
+  bundles,
   openSection,
   onSection,
 }: {
   document: LedgerDocument;
   referenceMs: number;
+  /** Bundle documents, to name the bundle and tier each section belongs to. */
+  bundles: BundleIndexEntry[];
   openSection: string | null;
   onSection: (citation: string) => void;
 }) {
   return (
     <>
       <TableRow className="border-b border-[var(--color-rule)] hover:bg-transparent">
-        <TableCell colSpan={5} className={styles.documentBand}>
+        <TableCell colSpan={6} className={styles.documentBand}>
           <span
             className="text-sm font-semibold text-[var(--color-ink)]"
             title={document.titled ? undefined : "Document identifier; source title not yet indexed"}
           >
             {document.title}
           </span>
+          {document.path && document.path !== document.title && (
+            <span className="ml-2 font-mono text-[11px] text-[var(--color-ink-muted)]">{document.path}</span>
+          )}
         </TableCell>
       </TableRow>
       {document.sections.map((section) => {
@@ -204,35 +252,54 @@ function DocumentSections({
             : "";
         return (
           <Fragment key={section.citation}>
-            <TableRow className="border-b border-[var(--color-rule-subtle)] hover:bg-[var(--color-rule-subtle)]">
-              <TableCell className="py-1.5 pl-5 pr-2 align-baseline font-mono whitespace-normal break-all">
+            <TableRow
+              className="cursor-pointer border-b border-[var(--color-rule-subtle)] hover:bg-[var(--color-rule-subtle)]"
+              // The whole row opens the section's runs, except its own links (the bundle chips).
+              onClick={(event) => {
+                if (!(event.target as Element).closest("a, button")) onSection(section.citation);
+              }}
+            >
+              <TableCell className="py-1.5 pl-5 pr-2 align-baseline font-mono whitespace-normal break-words">
                 <button
                   type="button"
                   className={styles.ledgerToggle}
                   aria-expanded={open}
                   aria-label={`Runs of ${section.citation}`}
+                  title={section.citation}
                   onClick={() => onSection(section.citation)}
                 >
-                  <span aria-hidden>{open ? "▾" : "▸"}</span>
+                  <ChevronRight size={14} aria-hidden className={styles.ledgerChevron} />
+                  <span>{section.designator}</span>
                 </button>
-                <a
-                  href={journeyHref(section.citation)}
-                  title={section.citation}
-                  className="text-[var(--color-ink)] no-underline hover:underline"
-                >
-                  {section.designator}
-                </a>
+                {/* On a phone the Provision column is hidden; its name sits under the citation. */}
+                {label && <span className={styles.ledgerNarrowLabel}>{label}</span>}
               </TableCell>
-              <TableCell className="px-2 py-1.5 align-baseline whitespace-normal text-[var(--color-ink-secondary)]">
+              <TableCell className={`${styles.ledgerWide} px-2 py-1.5 align-baseline whitespace-normal text-[var(--color-ink-secondary)]`}>
                 {label}
               </TableCell>
-              <TableCell className="px-2 py-1.5 align-baseline whitespace-nowrap">
+              <TableCell className={`${styles.ledgerWide} px-2 py-1.5 align-baseline`}>
+                <span className={styles.ledgerBundles}>
+                  {bundleMemberships(section.citation, bundles).map((membership) => (
+                    <a
+                      key={membership.bundle_id}
+                      className={styles.ledgerBundle}
+                      href={bundleHref(membership.bundle_id)}
+                      aria-label={`${membership.bundle_title} · ${tiersLabel(membership)}`}
+                      title={membershipDetail(membership)}
+                    >
+                      {bundleProgram(membership)}
+                      <span>{tiersLabel(membership)}</span>
+                    </a>
+                  ))}
+                </span>
+              </TableCell>
+              <TableCell className={`${styles.ledgerStatus} px-2 py-1.5 align-baseline whitespace-nowrap`}>
                 <span className={`${styles.status} ${TONE_CLASS[section.tone]}`} data-tone={section.tone}>
                   <span aria-hidden className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${TONE_DOT[section.tone]}`} />
                   <span className="text-[var(--color-ink-secondary)]">{section.status}</span>
                 </span>
               </TableCell>
-              <TableCell className="px-2 py-1.5 text-right align-baseline font-mono tabular-nums text-[var(--color-ink-muted)]">
+              <TableCell className={`${styles.ledgerWide} px-2 py-1.5 text-right align-baseline font-mono tabular-nums text-[var(--color-ink-muted)]`}>
                 {section.runs.length}
               </TableCell>
               <TableCell className="px-0 py-1.5 text-right align-baseline whitespace-nowrap text-[var(--color-ink-muted)]">
@@ -241,7 +308,7 @@ function DocumentSections({
             </TableRow>
             {open && (
               <TableRow className="hover:bg-transparent">
-                <TableCell colSpan={5} className={styles.ledgerRunCell}>
+                <TableCell colSpan={6} className={styles.ledgerRunCell}>
                   <SectionRuns section={section} referenceMs={referenceMs} />
                 </TableCell>
               </TableRow>
@@ -253,13 +320,17 @@ function DocumentSections({
   );
 }
 
-/** One overview list, count first: "9  Failed validation", the largest few until "+N more" opens the rest. A row's tooltip holds a full message. */
+/**
+ * One overview list, count first: "2  Failed to compile — Axiom rules engine
+ * compile failed", the largest few until "+N more" opens the rest. A row's
+ * tooltip holds a full message.
+ */
 function CountList({
   title,
   groups,
 }: {
   title: string;
-  groups: Array<{ label: string; count: number; detail?: string }>;
+  groups: Array<{ key: string; label: string; count: number; cause?: string | null; detail?: string | null }>;
 }) {
   const [all, setAll] = useState(false);
   const more = groups.length - OVERVIEW_GROUPS;
@@ -268,9 +339,12 @@ function CountList({
       <p className={styles.ledgerLabel}>{title}</p>
       <ul className={styles.ledgerCounts} aria-label={title}>
         {(all ? groups : groups.slice(0, OVERVIEW_GROUPS)).map((group) => (
-          <li key={group.label} title={group.detail ?? group.label}>
+          <li key={group.key} title={group.detail ?? group.label}>
             <span className={styles.ledgerCount}>{group.count}</span>
-            <span>{group.label}</span>
+            <span>
+              <span className={styles.ledgerStop}>{group.label}</span>
+              {group.cause && <span className={styles.ledgerCause}> — {group.cause}</span>}
+            </span>
           </li>
         ))}
         {more > 0 && (
@@ -283,6 +357,43 @@ function CountList({
         )}
       </ul>
     </div>
+  );
+}
+
+/**
+ * What a run line says after its time: the encoder, the outcome (a link to
+ * the run), why it failed, and its PR. A module merged outside the pipeline
+ * reads "Merged outside the pipeline · <author> · <repo>#<n>"; one encoded
+ * inside another citation's run names that run.
+ */
+function RunWhat({ run }: { run: RunRow }) {
+  if (run.source === "outside") {
+    return (
+      <>
+        <span>{[OUTSIDE_LABEL, run.by].filter(Boolean).join(" · ")}</span>
+        {run.pr && (
+          <a href={run.pr.url} target="_blank" rel="noreferrer">
+            {run.pr.label}
+          </a>
+        )}
+      </>
+    );
+  }
+  const dependent = run.source === "dependent";
+  return (
+    <>
+      {run.encoder && <span className="font-mono">{run.encoder}</span>}
+      <a href={run.runUrl} target="_blank" rel="noreferrer" data-outcome={run.outcome}>
+        {dependent ? hostLabel(run.host) : run.outcomeLabel}
+      </a>
+      {dependent && run.outcome !== "encoded" && <span>{run.outcomeLabel}</span>}
+      {run.cause && <span title={run.cause}>{causeHeadline(run.cause)}</span>}
+      {run.pr && (
+        <a href={run.pr.url} target="_blank" rel="noreferrer">
+          {run.pr.label} · {run.pr.state}
+        </a>
+      )}
+    </>
   );
 }
 
@@ -299,78 +410,105 @@ function RunLines({ runs, referenceMs }: { runs: RunRow[]; referenceMs: number }
               className={styles.ledgerToggle}
               aria-expanded={open === run.id}
               aria-label={`Timeline of ${run.citation}, run ${run.id}`}
+              title={run.at ?? run.dispatchedAt}
               onClick={() => setOpen((current) => (current === run.id ? null : run.id))}
             >
-              <span aria-hidden>{open === run.id ? "▾" : "▸"}</span>
+              <ChevronRight size={14} aria-hidden className={styles.ledgerChevron} />
+              <span>{relativeTime(run.at ?? run.dispatchedAt, referenceMs)}</span>
             </button>
-            <span title={run.dispatchedAt}>{relativeTime(run.dispatchedAt, referenceMs)}</span>
-            {run.encoder && <span className="font-mono">{run.encoder}</span>}
-            <a href={run.runUrl} target="_blank" rel="noreferrer" data-outcome={run.outcome}>
-              {run.outcomeLabel}
-            </a>
-            {run.cause && <span title={run.cause}>{causeHeadline(run.cause)}</span>}
-            {run.pr && (
-              <a href={run.pr.url} target="_blank" rel="noreferrer">
-                {run.pr.label} · {run.pr.state}
-              </a>
-            )}
+            <RunWhat run={run} />
           </div>
-          {open === run.id && <RunTimeline timeline={runTimeline(run, referenceMs)} />}
+          {open === run.id && <RunTimeline timeline={runTimeline(run, referenceMs)} showStopped={false} />}
         </li>
       ))}
     </ol>
   );
 }
 
-/** An open section: its runs in a few lines, the latest run's timeline, and every run on request. */
+/** An open section: how many runs, where and why each stopped, the latest run's timeline, and every run on request. */
 function SectionRuns({ section, referenceMs }: { section: LedgerSection; referenceMs: number }) {
   const [everyRun, setEveryRun] = useState(false);
   const overview = sectionOverview(section);
   const latest = overview.latest;
-  const { encoders } = overview;
   return (
     <div className={styles.ledgerOverview}>
-      <p className={styles.ledgerSummary}>
-        <strong>
-          {overview.runs} {overview.runs === 1 ? "run" : "runs"}
-        </strong>
-        <span>
-          {overview.runs === 1
-            ? relativeTime(overview.lastAt, referenceMs)
-            : `${relativeTime(overview.firstAt, referenceMs)} → ${relativeTime(overview.lastAt, referenceMs)}`}
-        </span>
-        {encoders && (
-          <span>
-            encoder{" "}
-            <span className="font-mono">
-              {encoders.from === encoders.to ? encoders.to : `${encoders.from} → ${encoders.to}`}
+      {/* One run: its own line says it all. */}
+      {overview.runs > 1 && (
+        <>
+          <p className={styles.ledgerSummary}>
+            <strong>{overview.runs} runs</strong>
+            {endings(overview).map((part) => (
+              <Fragment key={part}>
+                <span className={styles.ledgerVerdictSep} aria-hidden>
+                  {" · "}
+                </span>
+                <span>{part}</span>
+              </Fragment>
+            ))}
+            <span className={styles.ledgerVerdictSep} aria-hidden>
+              {" · "}
             </span>
-          </span>
-        )}
-      </p>
-      <div className={styles.ledgerColumns}>
-        <CountList title="Outcome of each run" groups={overview.ended} />
-        {overview.causes.length > 0 && <CountList title="Why they failed" groups={overview.causes} />}
-      </div>
-      <p className={styles.ledgerLatest}>
-        <span className={styles.ledgerLabel}>Latest run</span>
-        <span title={latest.dispatchedAt}>{relativeTime(latest.dispatchedAt, referenceMs)}</span>
-        <a href={latest.runUrl} target="_blank" rel="noreferrer" data-outcome={latest.outcome}>
-          {latest.outcomeLabel}
-        </a>
-        {latest.tries && (
-          <span>
-            {latest.tries.length} {latest.tries.length === 1 ? "try" : "tries"}
-          </span>
-        )}
-        {latest.cause && <span title={latest.cause}>{causeHeadline(latest.cause)}</span>}
-        {latest.pr && (
-          <a href={latest.pr.url} target="_blank" rel="noreferrer">
-            {latest.pr.label} · {latest.pr.state}
-          </a>
-        )}
-      </p>
-      <RunTimeline timeline={runTimeline(latest, referenceMs)} />
+            <span>latest {relativeTime(overview.lastAt, referenceMs)}</span>
+          </p>
+          <CountList title="Where each run stopped, and why" groups={overview.stops} />
+        </>
+      )}
+      {/* The latest run as one unit: what happened, then where the time went, then the tries inside the loop. */}
+      <section
+        className={styles.ledgerLatest}
+        data-after-summary={overview.runs > 1 || undefined}
+        aria-label={overview.runs === 1 ? "The run" : "Latest run"}
+      >
+        <div className={styles.ledgerVerdict}>
+          <p className={styles.ledgerLabel}>{overview.runs === 1 ? "The run" : "Latest run"}</p>
+          <p className={styles.ledgerVerdictLine}>
+            <span className={styles.ledgerOutcome} data-outcome={latest.outcome}>
+              {latest.outcomeLabel}
+            </span>{" "}
+            {latest.cause && (
+              <span className={styles.ledgerVerdictCause} title={latest.cause}>
+                {causeHeadline(latest.cause)}
+              </span>
+            )}
+          </p>
+          <p className={styles.ledgerVerdictMeta}>
+            {[
+              <span key="dispatched" title={latest.at ?? latest.dispatchedAt}>
+                {latest.source === "outside" ? "merged" : latest.source === "dependent" ? "encoded" : "dispatched"}{" "}
+                {relativeTime(latest.at ?? latest.dispatchedAt, referenceMs)}
+              </span>,
+              latest.source === "outside" && latest.by && <span key="by">by {latest.by}</span>,
+              latest.tries && (
+                <span key="tries">
+                  {latest.tries.length} {latest.tries.length === 1 ? "try" : "tries"} in the encode loop
+                </span>
+              ),
+              latest.pr && (
+                <a key="pr" href={latest.pr.url} target="_blank" rel="noreferrer">
+                  {latest.pr.label} · {latest.pr.state}
+                </a>
+              ),
+              latest.source !== "outside" && (
+                <a key="run" href={latest.runUrl} target="_blank" rel="noreferrer">
+                  {latest.source === "dependent" ? `${hostLabel(latest.host)} ↗` : "Run on GitHub ↗"}
+                </a>
+              ),
+            ]
+              .filter(Boolean)
+              .map((item, index) => (
+                <Fragment key={index}>
+                  {index > 0 && (
+                    <span className={styles.ledgerVerdictSep} aria-hidden>
+                      {" · "}
+                    </span>
+                  )}
+                  {item}
+                </Fragment>
+              ))}
+          </p>
+        </div>
+        <RunTimeline timeline={runTimeline(latest, referenceMs)} showStopped={false} />
+      </section>
       {overview.runs > 1 && (
         <button
           type="button"

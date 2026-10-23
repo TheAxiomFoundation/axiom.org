@@ -8,8 +8,13 @@ import {
   readControl,
   safely,
   writeControl,
+  RUN_PROMPT_SELECT,
   type AspenStore,
 } from './store'
+import { azSavingsStream } from '@/test/rules-az-savings'
+import { summarizeRun } from './results'
+import { parseDataStream, summarizeRules } from './rules'
+import type { PromptRow } from './types'
 
 const P = '6f1c2d3e-4a5b-4c6d-8e9f-0a1b2c3d4e5f'
 const Q = '7f1c2d3e-4a5b-4c6d-8e9f-0a1b2c3d4e5f'
@@ -121,7 +126,7 @@ describe('supabase store', () => {
     const pledgeQuery = calls.find((c) => c.url.includes('aspen_pledges'))!.url
     expect(pledgeQuery).toContain('select=state,accurate_ai,state_systems,show_state,created_at')
     expect(pledgeQuery).not.toContain('email')
-    expect(calls.find((c) => c.url.includes('aspen_events'))!.url).toContain('kind=in.(discussion,breakout,survey)')
+    expect(calls.find((c) => c.url.includes('aspen_events'))!.url).toContain('kind=in.(discussion,breakout,survey,vote)')
   })
 
   it('raises on HTTP errors and tolerates 204', async () => {
@@ -129,6 +134,103 @@ describe('supabase store', () => {
     await expect(failing.getControl()).rejects.toThrow(/404 missing/)
     const noContent = createSupabaseStore(config, fakeFetch(() => ({ status: 204 })).fn)
     await expect(noContent.insertEvent({ run_id: 'r', kind: 'chip', payload: {} })).resolves.toBeUndefined()
+  })
+})
+
+/**
+ * What PostgREST returns for a select list, written apart from the store's
+ * own projection: plain columns, and `alias:column->key->>key` JSON paths
+ * (`->` keeps JSON, `->>` gives text, a digit indexes an array).
+ */
+function postgrestSelect(row: Record<string, unknown>, select: string): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const item of select.split(',')) {
+    const match = item.match(/^(?:(\w+):)?(\w+)((?:->>?\w+)*)$/)
+    if (!match) throw new Error(`PGRST100: failed to parse select item ${item}`)
+    const [, alias, column, path] = match
+    const steps = [...path.matchAll(/(->>?)(\w+)/g)]
+    let value: unknown = row[column] ?? null
+    let text = false
+    for (const [, arrow, key] of steps) {
+      if (value === null || typeof value !== 'object') {
+        value = null
+        break
+      }
+      value = Array.isArray(value) ? (/^\d+$/.test(key) ? value[Number(key)] : undefined) : (value as Record<string, unknown>)[key]
+      value = value ?? null
+      text = arrow === '->>'
+    }
+    if (text && value !== null && typeof value !== 'string') value = JSON.stringify(value)
+    out[alias ?? (steps.length ? steps[steps.length - 1][2] : column)] = value
+  }
+  return out
+}
+
+describe('both stores load a run the same way', () => {
+  const az = summarizeRules(parseDataStream(azSavingsStream())).computations
+  const ny = [{ ...az[0], program: 'us-ny-snap', displayName: 'New York SNAP', disclosures: [], eligibilityTested: true }]
+  // Saved before checks carried a verdict: its program decides.
+  const older = az.map(({ eligibilityTested: _dropped, ...rest }) => rest)
+  const prompt = (n: number, extra: Partial<PromptRow>): PromptRow => ({
+    id: `00000000-0000-4000-8000-00000000000${n}`,
+    run_id: 'phoenix',
+    participant_id: P,
+    conversation_id: Q,
+    turn: 0,
+    created_at: `2026-10-26T18:0${n}:00.000Z`,
+    prompt: `Question ${n}`,
+    answer: 'You would get $0.',
+    verdict: 'wrong',
+    resident_action: 'not-apply',
+    rules_answer: 'Long prose the results never read.',
+    ...extra,
+  })
+  const ROWS: PromptRow[] = [
+    prompt(1, { household_id: 'az-savings', rules_program: 'Arizona SNAP', rules_amount: 24, rules_outputs: az }),
+    prompt(2, { household_id: 'ny-parent', rules_program: 'New York SNAP', rules_amount: 300, rules_outputs: ny }),
+    prompt(3, { household_id: 'az-savings', rules_program: 'Arizona SNAP', rules_amount: 24, rules_outputs: older }),
+    prompt(4, { rules_outputs: null }),
+    prompt(5, { verdict: 'right', resident_action: 'apply' }),
+  ]
+
+  async function loadBoth() {
+    const memory = createMemoryStore()
+    for (const row of ROWS) await memory.insertPrompt(row)
+    const { fn, calls } = fakeFetch((url) => {
+      const parsed = new URL(url)
+      if (!parsed.pathname.endsWith('/aspen_prompts')) return { body: [] }
+      return { body: ROWS.map((row) => postgrestSelect(row as unknown as Record<string, unknown>, parsed.searchParams.get('select')!)) }
+    })
+    const supabase = createSupabaseStore({ url: 'https://db.example', key: 'service' }, fn)
+    return { memory: await memory.loadRun('phoenix'), supabase: await supabase.loadRun('phoenix'), calls }
+  }
+
+  it('selects the rules check by JSON path, not the whole saved computation', async () => {
+    const { calls } = await loadBoth()
+    const select = new URL(calls.find((c) => c.url.includes('aspen_prompts'))!.url).searchParams.get('select')!
+    expect(select).toBe(RUN_PROMPT_SELECT)
+    expect(select.split(',')).toEqual(
+      expect.arrayContaining([
+        'rules_program_id:rules_outputs->0->>program',
+        'rules_eligibility_tested:rules_outputs->0->eligibilityTested',
+      ]),
+    )
+    expect(select.split(',')).not.toContain('rules_outputs')
+    expect(select.split(',')).not.toContain('rules_answer')
+  })
+
+  it('returns the same prompts and the same room summary from memory and from Supabase', async () => {
+    const { memory, supabase } = await loadBoth()
+    expect(memory.prompts).toEqual(supabase.prompts)
+    expect(memory.prompts[0]).toMatchObject({ rules_program_id: 'us-az-snap', rules_eligibility_tested: false })
+    expect(memory.prompts[2]).toMatchObject({ rules_program_id: 'us-az-snap', rules_eligibility_tested: null })
+    expect(memory.prompts[3]).toMatchObject({ rules_program_id: null, rules_eligibility_tested: null })
+    expect(memory.prompts[0]).not.toHaveProperty('rules_outputs')
+    const room = (run: typeof memory) => summarizeRun({ ...run, participants: [], events: [], pledges: [] })
+    expect(room(memory)).toEqual(room(supabase))
+    // The bug this guards: in production an Arizona $24 counted as a household that qualifies.
+    expect(room(supabase).viability).toMatchObject({ wouldNotApply: 4, wouldNotApplyEligible: 1, wouldNotApplyIfEligible: 2 })
+    expect(room(supabase).feed.filter((f) => f.rulesIfEligible).map((f) => f.prompt)).toEqual(['Question 3', 'Question 1'])
   })
 })
 

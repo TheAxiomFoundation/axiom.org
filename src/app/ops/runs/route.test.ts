@@ -8,6 +8,18 @@ const getCitationMetadata = vi.fn(async (citations: string[]) => ({
   documentPaths: {},
 }));
 vi.mock("@/lib/corpus-status", () => ({ getCitationMetadata: (c: string[]) => getCitationMetadata(c) }));
+const bundleEntry = (citation_path: string) => ({
+  bundle_id: "us-la/snap",
+  bundle_title: "Louisiana SNAP",
+  tier: "full",
+  tier_index: 2,
+  tier_title: "Full document bundle",
+  document: citation_path,
+  citation_path,
+});
+vi.mock("@/lib/axiom/program-bundles-data", () => ({
+  getBundleIndex: async () => [bundleEntry("us-la"), bundleEntry("us-la/x")],
+}));
 
 const { GET } = await import("./route");
 
@@ -31,15 +43,17 @@ describe("GET /ops/runs", () => {
     expect(all.rows.map((r: { id: string }) => r.id)).toEqual(["2", "1"]);
     expect(all.labels).toEqual({ "us-la/b": "Name of us-la/b", "us/a": "Name of us/a" });
     expect(all.documentPaths).toEqual({});
+    // When the collector last read the scope's runs, for the ledger's "Updated" line.
+    expect(all.collectedAt).toBe("2026-09-30T12:00:00Z");
+    // Only the bundle documents some run's citation sits in.
+    expect(all.bundles.map((b: { citation_path: string }) => b.citation_path)).toEqual(["us-la"]);
     const federal = await GET(new Request("http://x/ops/runs?j=us&only=1"));
     expect(federal.headers.get("Cache-Control")).toBe("no-store");
     expect((await federal.json()).rows.map((r: { id: string }) => r.id)).toEqual(["1"]);
   });
 
-  it("is hidden in production with the section, and says when the table is unreadable", async () => {
+  it("serves in production too, and says when the table is unreadable", async () => {
     vi.stubEnv("VERCEL_ENV", "production");
-    expect((await GET(new Request("http://x/ops/runs"))).status).toBe(404);
-    vi.unstubAllEnvs();
     getPipelineAttempts.mockResolvedValue({ available: false, error: "down", attempts: [] });
     const response = await GET(new Request("http://x/ops/runs"));
     expect(response.status).toBe(503);

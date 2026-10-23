@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  documentRootFor,
   getEncodingStatus,
   getRecentCorpusScopes,
+  groupRecentScopes,
+  ingestPlace,
+  versionDate,
   supabaseRestUrl,
   type SupabaseRestConfig,
 } from "./corpus-status";
@@ -35,6 +39,33 @@ describe("corpus status helpers", () => {
     expect(
       supabaseRestUrl({ ...config, url: "https://example.supabase.co/" }, "encoding_runs", {})
     ).toBe("https://example.supabase.co/rest/v1/encoding_runs");
+  });
+});
+
+describe("documentRootFor", () => {
+  it("takes the shallowest parentless node with a heading of its own above a path", () => {
+    // The corpus leaves IRC sections without a parent beside the code itself.
+    const irc = new Map([
+      ["us/statute/26", true],
+      ["us/statute/26/32", true],
+    ]);
+    expect(documentRootFor("us/statute/26/32", irc)).toBe("us/statute/26");
+    expect(documentRootFor("us/statute/26/63/c/6", irc)).toBe("us/statute/26");
+    // A stray headless part is not its own document.
+    expect(
+      documentRootFor("us/regulation/42/435/603/b", new Map([["us/regulation/42/435", true], ["us/regulation/42/435/603/b", false]]))
+    ).toBe("us/regulation/42/435");
+    // A headless folder of documents gives way to the document under it that has a heading.
+    const faa5 = new Map([
+      ["us-az/manual/des/faa5", false],
+      ["us-az/manual/des/faa5/na-categorical-eligibility", true],
+    ]);
+    expect(documentRootFor("us-az/manual/des/faa5/na-categorical-eligibility/block-3", faa5)).toBe(
+      "us-az/manual/des/faa5/na-categorical-eligibility"
+    );
+    expect(documentRootFor("us-az/manual/des/faa5", faa5)).toBe("us-az/manual/des/faa5");
+    // Only on a "/" boundary, and nothing when no node is above it.
+    expect(documentRootFor("us/statute/261/1", irc)).toBeNull();
   });
 });
 
@@ -381,3 +412,62 @@ function jsonResponse(value: unknown, options: { status?: number } = {}) {
     headers,
   });
 }
+
+describe("groupRecentScopes", () => {
+  const scope = (jurisdiction: string, document_class: string, version: string) => ({
+    jurisdiction,
+    document_class,
+    version,
+  });
+
+  it("makes one entry per place, newest place first, with its days newest first", () => {
+    const places = groupRecentScopes([
+      scope("us-co", "regulation", "2026-10-12-w7-state-benefits-regulation-co"),
+      scope("us", "statute", "2026-10-12-w7-federal-usc-closure-title-26"),
+      scope("us", "form", "2026-10-06-w6-federal-irs-forms"),
+      scope("us-co", "statute", "2026-09-15-co-statutes"),
+      scope("uk-wakefield", "policy", "2026-09-05-uk-councils-wakefield"),
+      scope("uk-leeds", "policy", "2026-09-05-uk-councils-leeds"),
+      scope("be-bru", "statute", "2026-07-10-be-regions"),
+    ]);
+    expect(
+      places.map((p) => [p.place, p.days.map((d) => [d.day, d.scopes.length])]),
+    ).toEqual([
+      ["us", [["2026-10-12", 1], ["2026-10-06", 1]]],
+      ["us-co", [["2026-10-12", 1], ["2026-09-15", 1]]],
+      ["uk", [["2026-09-05", 2]]],
+      ["be", [["2026-07-10", 1]]],
+    ]);
+    expect(places[2].days[0].scopes.map((s) => s.jurisdiction)).toEqual(["uk-leeds", "uk-wakefield"]);
+    const [federal] = groupRecentScopes([
+      scope("us", "statute", "2026-10-12-w7-usc-title-26"),
+      scope("us", "statute", "2026-10-12-w7-usc-title-8"),
+    ]);
+    expect(federal.days[0].scopes.map((s) => s.version)).toEqual([
+      "2026-10-12-w7-usc-title-8",
+      "2026-10-12-w7-usc-title-26",
+    ]);
+  });
+
+  it("keeps each place's newest days and skips versions without a date", () => {
+    const [place] = groupRecentScopes(
+      [
+        scope("us", "form", "2026-10-12-a"),
+        scope("us-ky", "form", "2026-740-es"),
+        scope("us", "form", "2026-10-11-b"),
+        scope("us", "form", "2026-10-10-c"),
+      ],
+      2,
+    );
+    expect(place.days.map((d) => d.day)).toEqual(["2026-10-12", "2026-10-11"]);
+    expect(versionDate("2026-740-es")).toBeNull();
+    expect(versionDate("2026-10-12-w7-x")).toBe("2026-10-12");
+    expect(["us", "us-co", "us-co-denver", "uk-wakefield", "dk"].map(ingestPlace)).toEqual([
+      "us",
+      "us-co",
+      "us-co",
+      "uk",
+      "dk",
+    ]);
+  });
+});

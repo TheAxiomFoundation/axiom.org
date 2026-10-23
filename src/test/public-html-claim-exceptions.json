@@ -1,0 +1,8 @@
+[
+  {
+    "path": "public/tariff/paper/web/index.html",
+    "phrase": "published as numbers whose reasoning",
+    "sentenceSha256": "3716b7e21844136ffb8401246ce0ccb691836701e32d1b0c520617b49b1c7ec2",
+    "reason": "Reviewed false positive: describes third-party reference datasets whose reasoning is not published, not Axiom's encoder."
+  }
+]

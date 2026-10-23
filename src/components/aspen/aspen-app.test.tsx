@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EVENT, STAGES, type StageId } from "@/lib/aspen/content";
 import { EMPTY_SUMMARY, type RunSummary } from "@/lib/aspen/results";
@@ -33,7 +33,7 @@ function nav() {
 async function onView(id: StageId) {
   const index = STAGES.findIndex((s) => s.id === id);
   const stage = STAGES[index];
-  await waitFor(() => expect(menu()).toHaveTextContent(`${index + 1}/${STAGES.length}${stage.label}`));
+  await waitFor(() => expect(menu()).toHaveTextContent(`${stage.label}${index + 1} of ${STAGES.length}`));
   const title = id === "welcome" ? EVENT.title : stage.title;
   expect(screen.getByRole("heading", { level: 1, name: title })).toBeInTheDocument();
 }
@@ -116,7 +116,7 @@ describe("AspenApp following the presenter", () => {
     fireEvent.click(menu());
     expect(screen.getByRole("navigation", { name: "Session" })).toBeInTheDocument();
     // A click inside the menu keeps it open.
-    fireEvent.mouseDown(screen.getByText("The evening", { selector: "nav span" }));
+    fireEvent.mouseDown(screen.getByText("Agenda", { selector: "nav span" }));
     expect(screen.getByRole("navigation", { name: "Session" })).toBeInTheDocument();
     fireEvent.mouseDown(document.body);
     expect(screen.queryByRole("navigation", { name: "Session" })).not.toBeInTheDocument();
@@ -164,7 +164,7 @@ describe("AspenApp following the presenter", () => {
 
     fireEvent.click(nav().getByRole("button", { name: /At scale/ }));
     await onView("scale");
-    expect(screen.getByText("41%")).toBeInTheDocument();
+    expect(screen.getByText("42%")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /The room has moved on/ })).not.toBeInTheDocument();
     expect(JSON.parse(sessionStorage.getItem("aspen.view") ?? "null")).toEqual({ view: "scale", follow: false });
 
@@ -219,62 +219,193 @@ describe("AspenApp without a live presenter", () => {
     control.stage = "reveal";
   });
 
-  it("starts at Welcome, saves the profile and opens Try it", async () => {
+  it("starts at Welcome without asking who you are, and opens Try it", async () => {
     render(<AspenApp />);
     await onView("welcome");
     expect(screen.queryByText("Now")).not.toBeInTheDocument();
     expect(screen.getByText("Aspen Institute")).toBeInTheDocument();
     expect(screen.getByText(`${EVENT.place} · ${EVENT.shortDate}`)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /The room has moved on/ })).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: /A caseworker/ }));
-    expect(JSON.parse(localStorage.getItem("aspen.profile") ?? "null")).toEqual({
-      perspective: "caseworker",
-      state: null,
-      role: null,
-    });
-    await waitFor(() =>
-      expect(events()).toContainEqual(
-        expect.objectContaining({ kind: "profile", payload: { perspective: "caseworker", state: null, role: null } }),
-      ),
-    );
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Start: ask the AI/ }));
     await onView("try");
-    expect(screen.getByRole("button", { name: "A caseworker" })).toHaveAttribute("aria-pressed", "true");
+    // Who you ask as is picked in the chat itself, a resident to start.
+    expect(screen.getByRole("button", { name: "A resident" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "Ask the AI" })).toBeInTheDocument();
+    // Try it ends with a rated answer: Next waits for one.
+    const next = screen.getByRole("button", { name: /^Next/ });
+    expect(next).toBeDisabled();
+    expect(next).toHaveTextContent("Rate your answer to continue");
 
     fireEvent.click(screen.getByRole("button", { name: "What we keep" }));
     await waitFor(() =>
       expect(events()).toContainEqual(expect.objectContaining({ kind: "disclosure", payload: { opened: true }, stage: "try" })),
     );
 
-    // Switching perspective in the chat updates the profile too.
-    fireEvent.click(screen.getByRole("button", { name: "A resident" }));
-    expect(JSON.parse(localStorage.getItem("aspen.profile") ?? "null")).toMatchObject({ perspective: "resident" });
-
     fireEvent.click(screen.getByRole("button", { name: "Back to the start" }));
     await onView("welcome");
   });
 
-  it("opens a stage from the agenda and walks through every later stage", async () => {
-    localStorage.setItem("aspen.profile", JSON.stringify({ perspective: null, state: "Arizona", role: null }));
-    summary = { ...EMPTY_SUMMARY, prompts: 4, rated: 2 };
+  it("opens Next from Try it once an answer is rated", async () => {
+    storeChat({
+      perspective: "resident",
+      householdId: "az-retiree",
+      turns: [
+        { key: "u", role: "user", content: "Q" },
+        { key: "a", role: "assistant", content: "A", status: "done", promptId: "p" },
+      ],
+      rated: ["p"],
+    });
+    render(<AspenApp />);
+    fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
+    await onView("try");
+    await waitFor(() => expect(nextTo("reveal")).toBeEnabled());
+    fireEvent.click(nextTo("reveal"));
+    await onView("reveal");
+  });
+
+  it("goes one stage back with the small back button", async () => {
+    render(<AspenApp />);
+    await onView("welcome");
+    // The landing is the first stage: only the logo leads back to it.
+    expect(screen.queryByRole("button", { name: /^Back to (?!the start)/ })).not.toBeInTheDocument();
+    fireEvent.click(nav().getByRole("button", { name: /At scale/ }));
+    await onView("scale");
+    fireEvent.click(screen.getByRole("button", { name: "Back to What we saw" }));
+    await onView("reveal");
+    fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
+    await onView("try");
+    fireEvent.click(screen.getByRole("button", { name: "Back to Welcome" }));
+    await onView("welcome");
+  });
+
+  it("goes back to the last stage it opened with the browser's Back button", async () => {
+    render(<AspenApp />);
+    await onView("welcome");
+    expect(window.history.state).toMatchObject({ aspenStage: "welcome" });
+    fireEvent.click(screen.getByRole("button", { name: /Start: ask the AI/ }));
+    await onView("try");
+    expect(window.history.state).toMatchObject({ aspenStage: "try" });
+    fireEvent.click(nav().getByRole("button", { name: /At scale/ }));
+    await onView("scale");
+
+    act(() => {
+      window.dispatchEvent(new PopStateEvent("popstate", { state: { aspenStage: "try" } }));
+    });
+    await onView("try");
+    // An entry that is not ours (e.g. from the router) changes nothing.
+    act(() => {
+      window.dispatchEvent(new PopStateEvent("popstate", { state: { other: true } }));
+    });
+    await onView("try");
+  });
+
+  it("walks from the small groups through next steps to the thank-you", async () => {
     render(<AspenApp />);
     await onView("welcome");
 
-    fireEvent.click(screen.getByRole("button", { name: /Small groups/ }));
+    fireEvent.click(nav().getByRole("button", { name: /Small groups/ }));
     await onView("groups");
-    expect(screen.getByRole("button", { name: "Save our ideas" })).toBeInTheDocument();
+    // The vote and the group's idea share one screen.
+    expect(screen.getByRole("button", { name: "Vote" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Share with the room" })).toBeInTheDocument();
 
     fireEvent.click(nextTo("next"));
     await onView("next");
-    expect(screen.getByRole("combobox", { name: "State" })).toHaveValue("Arizona");
+    expect(screen.getByRole("combobox", { name: "State" })).toHaveValue("");
 
     fireEvent.click(nextTo("dinner"));
     await onView("dinner");
-    expect(await screen.findByText("Tonight, this room")).toBeInTheDocument();
+    expect(screen.getByText("To the Aspen Institute and to every leader in the room.")).toBeInTheDocument();
+    // The thank-you is its own page: no stage summary above it.
+    expect(screen.queryByText(STAGES.find((st) => st.id === "dinner")!.summary)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Next/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Back to your question" }));
+    await onView("try");
+  });
+
+  it("clears the 'ratings are in' line when a new question starts, and keeps Next open", async () => {
+    storeChat({
+      perspective: "resident",
+      householdId: "az-retiree",
+      turns: [
+        { key: "u", role: "user", content: "Q" },
+        { key: "a", role: "assistant", content: "A", status: "done", promptId: "p" },
+      ],
+      rated: ["p"],
+    });
+    localStorage.setItem("aspen.overall.v1", "true");
+    render(<AspenApp />);
+    fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
+    await onView("try");
+    expect(await screen.findByText(/Your ratings are in/)).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: /^Start over/ })[0]);
+    await waitFor(() => expect(screen.queryByText(/Your ratings are in/)).not.toBeInTheDocument());
+    expect(screen.queryByRole("heading", { name: "One more: how did AI do overall?" })).not.toBeInTheDocument();
+    // The earlier rated answer still counts for the Next link.
+    expect(nextTo("reveal")).toBeEnabled();
+  });
+
+  it("hides the overall questions after a new question until the new answer is rated, if not yet shared", async () => {
+    storeChat({
+      perspective: "resident",
+      householdId: "az-retiree",
+      turns: [
+        { key: "u", role: "user", content: "Q" },
+        { key: "a", role: "assistant", content: "A", status: "done", promptId: "p" },
+      ],
+      rated: ["p"],
+    });
+    render(<AspenApp />);
+    fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
+    await onView("try");
+    expect(await screen.findByRole("heading", { name: "One more: how did AI do overall?" })).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: /^Start over/ })[0]);
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { name: "One more: how did AI do overall?" })).not.toBeInTheDocument(),
+    );
+  });
+
+  it("asks how AI did overall right under the chat, once the answer is rated", async () => {
+    render(<AspenApp />);
+    fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
+    await onView("try");
+    // No overall questions before the answer is rated.
+    expect(screen.queryByRole("heading", { name: "One more: how did AI do overall?" })).not.toBeInTheDocument();
+    cleanup();
+
+    storeChat({
+      perspective: "resident",
+      householdId: "az-retiree",
+      turns: [
+        { key: "u", role: "user", content: "Q" },
+        { key: "a", role: "assistant", content: "A", status: "done", promptId: "p" },
+      ],
+      rated: ["p"],
+    });
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    render(<AspenApp />);
+    fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
+    await onView("try");
+    expect(await screen.findByRole("heading", { name: "One more: how did AI do overall?" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Next: how did AI do overall\?/ }));
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
+    fireEvent.click(screen.getByRole("button", { name: "Got the amount right: 2 of 5" }));
+    // One step at a time, Continue to the end, then share.
+    for (let i = 0; i < 4; i++) fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    fireEvent.click(screen.getByRole("button", { name: "Share my ratings" }));
+    expect(await screen.findByText(/Your ratings are in/)).toBeInTheDocument();
+    // Done folds to one line: no heading, and nothing left pointing down to it.
+    expect(screen.queryByRole("heading", { name: "One more: how did AI do overall?" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Next: how did AI do overall\?/ })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(events()).toContainEqual(
+        expect.objectContaining({ kind: "discussion", stage: "try", payload: expect.objectContaining({ question: "performance" }) }),
+      ),
+    );
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
   });
 });
 
@@ -286,7 +417,7 @@ describe("AspenApp thread", () => {
   it("ties later stages back to the participant's question", async () => {
     storeChat({
       perspective: "resident",
-      householdId: "az-savings",
+      householdId: "ct-couple",
       turns: [
         { key: "u", role: "user", content: "Q" },
         { key: "a", role: "assistant", content: "A", status: "done", promptId: "p" },
@@ -296,11 +427,13 @@ describe("AspenApp thread", () => {
     render(<AspenApp />);
     fireEvent.click(nav().getByRole("button", { name: /At scale/ }));
     await onView("scale");
-    expect(screen.getByText(/every one of the 46 models said it gets \$0/)).toBeInTheDocument();
+    expect(screen.getByText(/42 of the 49 models that answered said it gets \$0/)).toBeInTheDocument();
 
     fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
     await onView("reveal");
-    expect(screen.getByText(/You asked about “Disabled, with savings”\. Rate the answer/)).toBeInTheDocument();
+    // What we saw opens with what you contributed: your question, and the rating still to do.
+    expect(screen.getByText("You asked about “Couple, with savings”.")).toBeInTheDocument();
+    expect(screen.getByText("You haven't rated an answer yet.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Rate my answer →" }));
     await onView("try");
   });
@@ -316,7 +449,9 @@ describe("AspenApp thread", () => {
     render(<AspenApp />);
     fireEvent.click(nav().getByRole("button", { name: /Shared foundation/ }));
     await onView("foundation");
-    expect(screen.getByText(/Now check the AI's answer about your own question against the encoded rules\./)).toBeInTheDocument();
+    // The rules check is in the chatbot demo now; the foundation just recalls the question.
+    expect(screen.getByText("You asked about your own question.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Check my answer/ })).not.toBeInTheDocument();
   });
 
   it("treats a chat without a user turn or a finished answer as not asked", async () => {
@@ -339,7 +474,7 @@ describe("AspenApp thread", () => {
 describe("AspenApp after a new run", () => {
   const asked: Partial<SavedChat> = {
     perspective: "resident",
-    householdId: "az-savings",
+    householdId: "ct-couple",
     turns: [
       { key: "u", role: "user", content: "Q" },
       { key: "a", role: "assistant", content: "A", status: "done", promptId: "p" },
@@ -362,9 +497,8 @@ describe("AspenApp after a new run", () => {
     await onView("reveal");
     expect(screen.getByText(/You haven't asked the AI yet/)).toBeInTheDocument();
 
-    fireEvent.click(nav().getByRole("button", { name: /Rate it/ }));
-    await onView("rate");
-    expect(screen.getByRole("button", { name: "Share my ratings" })).toBeInTheDocument();
+    // The shared-ratings flag is gone too, so the overall rating can be given again.
+    expect(localStorage.getItem("aspen.overall.v1")).toBeNull();
   });
 
   it("keeps the chat while the run stays the same", async () => {
@@ -374,7 +508,9 @@ describe("AspenApp after a new run", () => {
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === "/api/aspen/state")).toBe(true));
     fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
     await onView("reveal");
-    expect(screen.getByText(/You asked about “Disabled, with savings”\. Rate the answer/)).toBeInTheDocument();
+    // What we saw opens with what you contributed: your question, and the rating still to do.
+    expect(screen.getByText("You asked about “Couple, with savings”.")).toBeInTheDocument();
+    expect(screen.getByText("You haven't rated an answer yet.")).toBeInTheDocument();
   });
 
   it("keeps the chat when the control row is not live (a database error)", async () => {
@@ -385,7 +521,9 @@ describe("AspenApp after a new run", () => {
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === "/api/aspen/state")).toBe(true));
     fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
     await onView("reveal");
-    expect(screen.getByText(/You asked about “Disabled, with savings”\. Rate the answer/)).toBeInTheDocument();
+    // What we saw opens with what you contributed: your question, and the rating still to do.
+    expect(screen.getByText("You asked about “Couple, with savings”.")).toBeInTheDocument();
+    expect(screen.getByText("You haven't rated an answer yet.")).toBeInTheDocument();
     expect(localStorage.getItem("aspen.run")).toBe(JSON.stringify("phoenix"));
   });
 });

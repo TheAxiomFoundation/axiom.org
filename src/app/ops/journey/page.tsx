@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { PipelineJourney } from "@/components/axiom/pipeline-journey";
-import { citationJourney } from "@/lib/axiom/encoding-pipeline";
+import { citationJourney, dependentHostId, hostCitations } from "@/lib/axiom/encoding-pipeline";
 import { getPipelineAttempts } from "@/lib/axiom/encoding-pipeline-data";
-import { opsPipelineVisible } from "@/lib/axiom/ops-pipeline-visibility";
+import { bundleMemberships } from "@/lib/axiom/program-bundles";
+import { getBundleIndex } from "@/lib/axiom/program-bundles-data";
 import { SITE_URL } from "@/lib/urls";
 
 export const dynamic = "force-dynamic";
@@ -22,15 +22,24 @@ export default async function OpsJourneyPage({
 }: {
   searchParams: Promise<{ citation?: string }>;
 }) {
-  // Hidden with the /ops pipeline section until it is made public.
-  if (!opsPipelineVisible()) notFound();
   const { citation } = await searchParams;
-  const pipeline = citation ? await getPipelineAttempts() : null;
+  const [pipeline, index] = citation ? await Promise.all([getPipelineAttempts(), getBundleIndex([citation])]) : [null, []];
+  const attempts = citation && pipeline ? citationJourney(pipeline.attempts, citation) : [];
+  // The run each module encoded inside another citation's run came from, by name.
+  const runs = pipeline ? hostCitations(pipeline.attempts) : new Map<string, string>();
+  const hosts: Record<string, string> = {};
+  for (const attempt of attempts) {
+    const host = dependentHostId(attempt);
+    const hostCitation = host ? runs.get(host) : undefined;
+    if (host && hostCitation) hosts[host] = hostCitation;
+  }
   return (
     <PipelineJourney
       citation={citation ?? null}
-      attempts={citation && pipeline ? citationJourney(pipeline.attempts, citation) : []}
+      attempts={attempts}
       available={pipeline?.available ?? true}
+      bundles={citation ? bundleMemberships(citation, index) : []}
+      hosts={hosts}
       referenceMs={Date.now()}
     />
   );
