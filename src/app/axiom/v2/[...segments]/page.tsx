@@ -6,6 +6,7 @@ import {
   getAxiomRuleMetadata,
 } from "@/lib/axiom/metadata";
 import { JsonLd } from "@/components/json-ld";
+import { DEFAULT_SHARE_IMAGE, SITE_NAME } from "@/lib/share";
 import {
   getSectionPageDataFromResolution,
   resolveSection,
@@ -73,6 +74,17 @@ export async function generateMetadata({
     title: meta.title,
     description: meta.description,
     alternates: { canonical: meta.canonicalUrl },
+    // Without its own openGraph the page inherits the root layout's,
+    // whose relative og:url echoes the request path, suffix and all.
+    // This restates the brand card, as the v1 page does.
+    openGraph: {
+      title: meta.title,
+      description: meta.description,
+      url: meta.canonicalUrl,
+      type: "article",
+      siteName: SITE_NAME,
+      images: [DEFAULT_SHARE_IMAGE],
+    },
     // Launch flip: the whole /axiom subtree is noindexed until the
     // Jul 28 reveal (see src/app/axiom/layout.tsx).
     robots: { index: false, follow: true },
