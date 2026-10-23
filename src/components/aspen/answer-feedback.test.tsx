@@ -97,25 +97,31 @@ describe("outputLabel", () => {
 });
 
 describe("RatingCard", () => {
-  it("asks one question at a time", () => {
+  it("asks one question at a time, moves on with each answer, and goes back", () => {
     render(<RatingCard promptId="p1" />);
+    expect(screen.getByText("1 of 4")).toBeInTheDocument();
     expect(screen.getByText("Does it look right?")).toBeInTheDocument();
     expect(screen.queryByText("Would you act on it?")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Back/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save rating" })).not.toBeInTheDocument();
 
-    expect(screen.queryByLabelText(/Anything the room should know about this answer\?/)).not.toBeInTheDocument();
+    // Tapping an answer moves on to the next question; the last one leaves the screen.
     fireEvent.click(screen.getByRole("button", { name: "Not sure" }));
+    expect(screen.getByText("2 of 4")).toBeInTheDocument();
+    expect(screen.queryByText("Does it look right?")).not.toBeInTheDocument();
+    expect(screen.getByText("Would you act on it?")).toHaveFocus();
+
+    // Back shows the answer already picked.
+    fireEvent.click(screen.getByRole("button", { name: /Back/ }));
     expect(screen.getByRole("button", { name: "Not sure" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText("Would you act on it?")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Save rating" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Not sure" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Maybe" }));
-    expect(screen.getByRole("button", { name: "Maybe" })).toHaveAttribute("aria-pressed", "true");
-    // Third: what a resident would do; the tags, note and save come after it.
+    expect(screen.getByText("3 of 4")).toBeInTheDocument();
     expect(screen.getByText("What would a resident do next?")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save rating" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Call to check" }));
-    expect(screen.getByRole("button", { name: "Call to check" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("4 of 4")).toBeInTheDocument();
     expect(screen.getByText(/What went wrong\?/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Wrong amount" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Plain and clear" })).not.toBeInTheDocument();
@@ -188,7 +194,8 @@ describe("RatingCard", () => {
     render(<RatingCard promptId="p1" onRated={onRated} />);
     fireEvent.click(screen.getByRole("button", { name: "Not sure" }));
     fireEvent.click(screen.getByRole("button", { name: "Maybe" }));
-    fireEvent.click(screen.getAllByRole("button", { name: "Not sure" })[1]);
+    // One question at a time, so the resident's "Not sure" is the only one on screen.
+    fireEvent.click(screen.getByRole("button", { name: "Not sure" }));
     fireEvent.click(screen.getByRole("button", { name: "Save rating" }));
     expect(await screen.findByText("That didn't save. Try again.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save rating" })).toBeEnabled();
@@ -211,7 +218,7 @@ describe("RulesCheck", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     render(<RulesCheck promptId="p1" messages={MESSAGES} unlocked={false} />);
-    expect(screen.getByText(/later tonight you'll check this answer/i)).toBeInTheDocument();
+    expect(screen.getByText(/later in the session, you'll check this answer/i)).toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
   });

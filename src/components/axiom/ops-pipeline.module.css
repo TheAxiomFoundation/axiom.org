@@ -170,6 +170,19 @@
   background: var(--color-accent);
 }
 
+/* What the states hold besides dispatches, under them. */
+.sourcesLine {
+  max-width: 640px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--color-ink-muted);
+}
+
+.sourcesLine .explain {
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
 .summaryFunnelHead {
   display: flex;
   align-items: center;
@@ -1258,6 +1271,11 @@
   fill: var(--series-3);
 }
 
+/* Merges outside the pipeline: not part of the dispatch ramp, so a neutral. */
+.sparkBar[data-series="4"] {
+  background: var(--color-ink-muted);
+}
+
 .chartWrap {
   position: relative;
   margin-top: 8px;
@@ -1491,4 +1509,22 @@
   .summaryRow {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* A step's median times, one line per kind of run: "4m encoded", "10m failed". */
+.stepTimeLine {
+  display: block;
+  white-space: nowrap;
+}
+
+.stepTimeLabel {
+  font-size: 11px;
+  color: var(--color-ink-muted);
+}
+
+/* When the pipeline table was last rebuilt, under the heading. */
+.updated {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--color-ink-muted);
 }

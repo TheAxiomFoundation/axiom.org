@@ -23,14 +23,44 @@ type Yaml = Record<string, unknown>;
 const isLaw = (path: string) => ["statute", "regulation"].includes(path.split("/")[1]);
 
 /**
- * A law path at its section or above: us/statute/7/2015, us/regulation/7/273/9.
- * Proof atoms often name the whole section a formula draws on, which says
- * nothing about which of its paragraphs the rule encodes.
+ * A law path at a US Code or CFR section's depth or above: us/statute/7/2015,
+ * us/regulation/7/273/9. The depth fits only these two: a state's paths name
+ * their sections at other depths (us-co/regulation/10-ccr-2506-1/4.130 is a
+ * section at depth 4, us-ca/regulation/cdss/eas/49/49-040 one at depth 6).
  */
-const sectionOrAbove = (path: string) => {
+export const sectionDepthOrAbove = (path: string) => {
   const parts = path.split("/");
   return (parts[1] === "statute" && parts.length <= 4) || (parts[1] === "regulation" && parts.length <= 5);
 };
+
+/** A US Code or CFR section or above: us/statute/7/2015, us/regulation/7/273/9. */
+export const federalSectionOrAbove = (path: string) => path.startsWith("us/") && sectionDepthOrAbove(path);
+
+/**
+ * Whether a law path is section-wide: a citation of all of it says nothing
+ * about which of its provisions a rule encodes (proof atoms often name the
+ * whole section a formula draws on), so it is not proof. The collector decides
+ * it with the corpus (sectionWideFromCorpus); without the corpus, by the
+ * federal depth everywhere (sectionDepthOrAbove), which misjudges state paths.
+ */
+export type SectionWide = (path: string) => boolean;
+
+/**
+ * Section-wide, with the corpus for state law:
+ * - US Code and CFR: a section or above, by depth. The corpus holds a CFR
+ *   section as one provision, but a citation of a whole federal section,
+ *   often from another jurisdiction's module drawing on it, still says
+ *   nothing about which of its paragraphs a rule encodes.
+ * - State law: a node the corpus holds provisions under (a title, chapter,
+ *   part, or a section split into subsections). A state section the corpus
+ *   holds whole, as one provision, is not: a citation of it names exactly the
+ *   provision the corpus counts, so it encodes it.
+ *
+ * hasChildren(path): the corpus holds provisions under the path.
+ */
+export function sectionWideFromCorpus(hasChildren: (path: string) => boolean): SectionWide {
+  return (path) => (path.startsWith("us/") ? federalSectionOrAbove(path) : hasChildren(path));
+}
 
 /** Atom kinds that point at another rule, not at the law a rule encodes. */
 const REFERENCE_ATOMS = new Set(["import", "ordering"]);
@@ -67,29 +97,35 @@ export function outputPath(output: string): string | null {
   return null;
 }
 
-/** The provisions a rule's proof atoms ground it in, finer than a law section. */
-function proofPaths(rule: Yaml): string[] {
+/** The provisions a rule's proof atoms ground it in, none of them section-wide. */
+function proofPaths(rule: Yaml, sectionWide: SectionWide): string[] {
   const metadata = rule.metadata as Yaml | undefined;
   const proof = metadata?.proof as Yaml | undefined;
   const atoms = (proof?.atoms as Yaml[] | undefined) ?? [];
   return atoms
     .filter((atom) => !REFERENCE_ATOMS.has(atom.kind as string))
     .map((atom) => ((atom.source as Yaml | undefined)?.corpus_citation_path as string | undefined) ?? null)
-    .filter((p): p is string => Boolean(p) && !(isLaw(p as string) && sectionOrAbove(p as string)));
+    .filter((p): p is string => Boolean(p) && !(isLaw(p as string) && sectionWide(p as string)));
 }
 
 /**
  * A module's facts. Its rules' cited paths are each rule's own source text
  * (when it names a code or CFR provision below a section) and its proof
- * atoms' corpus paths below a law section. What it names only as a whole is
- * broad: a rule source naming a whole section, and, when its rules name
+ * atoms' corpus paths, less law paths that are section-wide (sectionWide).
+ * What it names only as a whole is broad: a rule source naming a whole
+ * section, and, when its rules name
  * nothing readable, its own source (a law module's own path, a policy
  * module's non-law sources); a broad path makes provisions partly encoded.
  * A deferred module, or one with no rules, cites nothing and defers its
  * source. Policy modules keep only non-law sources: a pipeline that builds on
  * a statute does not encode it.
  */
-export function moduleFacts(row: ModuleRow, declared: string[], waivers: Set<string>): ModuleFacts {
+export function moduleFacts(
+  row: ModuleRow,
+  declared: string[],
+  waivers: Set<string>,
+  sectionWide: SectionWide = sectionDepthOrAbove
+): ModuleFacts {
   let doc: Yaml = {};
   try {
     doc = (yaml.load(row.raw_yaml ?? "") as Yaml) ?? {};
@@ -113,8 +149,8 @@ export function moduleFacts(row: ModuleRow, declared: string[], waivers: Set<str
     for (const rule of rules) {
       const fromText = typeof rule.source === "string" ? sourceTextPath(rule.source) : null;
       // A source naming a whole law section says no more than a section-wide proof atom.
-      if (fromText) (isLaw(fromText) && sectionOrAbove(fromText) ? broad : cited).add(fromText);
-      for (const path of proofPaths(rule)) cited.add(path);
+      if (fromText) (isLaw(fromText) && sectionWide(fromText) ? broad : cited).add(fromText);
+      for (const path of proofPaths(rule, sectionWide)) cited.add(path);
     }
     // Rules that name nothing a path can be read from: the module touches its
     // own source, without saying which of its provisions it encodes.

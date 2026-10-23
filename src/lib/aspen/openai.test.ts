@@ -29,15 +29,19 @@ function sseResponse(events: unknown[], { split = false, status = 200 } = {}) {
 describe('aspen chatbot config', () => {
   afterEach(() => vi.unstubAllEnvs())
 
-  it('defaults to the ChatGPT-like setup', () => {
+  it('defaults to free ChatGPT\'s model, without web search', () => {
     vi.stubEnv('OPENAI_API_KEY', '')
     vi.stubEnv('ASPEN_CHAT_MODEL', '')
     vi.stubEnv('ASPEN_CHAT_REASONING', '')
     vi.stubEnv('ASPEN_CHAT_WEB_SEARCH', '')
-    expect(chatConfig()).toEqual({ apiKey: null, model: DEFAULT_CHAT_MODEL, reasoning: 'low', webSearch: true })
+    expect(DEFAULT_CHAT_MODEL).toBe('gpt-6-luna')
+    expect(chatConfig()).toEqual({ apiKey: null, model: DEFAULT_CHAT_MODEL, reasoning: 'low', webSearch: false })
     vi.stubEnv('ASPEN_CHAT_REASONING', 'none')
     vi.stubEnv('ASPEN_CHAT_WEB_SEARCH', 'off')
     expect(chatConfig()).toMatchObject({ reasoning: null, webSearch: false })
+    // Web search only when turned on explicitly.
+    vi.stubEnv('ASPEN_CHAT_WEB_SEARCH', ' on ')
+    expect(chatConfig()).toMatchObject({ webSearch: true })
   })
 
   it('points at the gallery chatbot unless overridden', () => {
@@ -115,11 +119,11 @@ describe('OpenAI stream parsing', () => {
 describe('asking the chatbot', () => {
   afterEach(() => vi.unstubAllEnvs())
 
-  it('streams an OpenAI answer with web search on', async () => {
+  it('streams an OpenAI answer with web search turned on', async () => {
     vi.stubEnv('OPENAI_API_KEY', 'sk-test')
     vi.stubEnv('ASPEN_CHAT_MODEL', 'gpt-test')
     vi.stubEnv('ASPEN_CHAT_REASONING', '')
-    vi.stubEnv('ASPEN_CHAT_WEB_SEARCH', '')
+    vi.stubEnv('ASPEN_CHAT_WEB_SEARCH', 'on')
     const fetchImpl = vi.fn(async () =>
       sseResponse(
         [

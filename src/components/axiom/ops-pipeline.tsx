@@ -27,9 +27,12 @@ import {
   type RunStats,
   type ScopeOption,
   type VersionBin,
+  VERSION_BIN_RUNS,
 } from "@/lib/axiom/encoding-pipeline-insights";
 import {
-  CORPUS_STATUS_LABELS,
+  CORPUS_FLAG_LABELS,
+  CORPUS_FLAGS,
+  type CorpusFlag,
   type CorpusJurisdiction,
   type CorpusView,
 } from "@/lib/axiom/corpus-releases";
@@ -248,6 +251,13 @@ export function OpsPipeline({
         <div>
           <p className={styles.eyebrow}>Pipeline</p>
           <h2 id="pipeline-title">Where every citation is</h2>
+          {view.collectedAt && (
+            <p className={styles.updated}>
+              Updated{" "}
+              {ageLabel(view.collectedAt, referenceMs) ? `${ageLabel(view.collectedAt, referenceMs)} ago` : "just now"},
+              from GitHub and the index every 30 minutes.
+            </p>
+          )}
         </div>
       </header>
 
@@ -257,6 +267,7 @@ export function OpsPipeline({
       <CitationStates
         view={view}
         queued={queued}
+        referenceMs={referenceMs}
         isOpen={shows}
         onGroup={showGroupOfStages}
         onQueue={() => show({ kind: "queue" })}
@@ -333,13 +344,17 @@ export function OpsPipeline({
               type="button"
               className={`${styles.tile} ${queued.blocked > 0 ? styles.tileStuck : ""}`}
               aria-pressed={listing?.kind === "queue"}
-              title={
+              title={[
+                pauseText(queued, referenceMs),
                 queued.blocked > 0
                   ? [`${number(queued.blocked)} blocked`, queued.blockedNote?.note].filter(Boolean).join(": ")
-                  : queued.pausedReason
-                    ? `Paused: ${queued.pausedReason}`
-                    : `${number(queued.inFlight)} in flight`
-              }
+                  : queued.paused
+                    ? null
+                    : `${number(queued.inFlight)} in flight`,
+                queued.skipped > 0 ? `${number(queued.skipped)} skipped` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
               onClick={() => show({ kind: "queue" })}
             >
               <span className={styles.tileLabel}>Queued</span>
@@ -402,7 +417,7 @@ export function OpsPipeline({
       <div className={styles.cards}>
         <Breakdown
           title="Why encodes fail"
-          description={`${number(view.stages.encode_failed.count)} citations whose latest encode failed`}
+          description={`${number(view.stages.encode_failed.count)} citations whose latest run failed or was cancelled`}
           views={[
             { id: "step", label: "By step", groups: view.gates },
             { id: "rule", label: "By cause", groups: view.failures },
@@ -432,6 +447,39 @@ export function OpsPipeline({
   );
 }
 
+/**
+ * Why nothing new is dispatched, or null when dispatch runs: "Paused 13d ·
+ * dispatch workflow disabled", "Paused: <reason>" when the queue states one.
+ */
+function pauseText(queued: QueuedSummary, referenceMs: number): string | null {
+  if (!queued.paused) return queued.dispatchDisabled ? "Dispatch workflow disabled" : null;
+  const disabled = queued.dispatchDisabled ? "dispatch workflow disabled" : null;
+  const age = ageLabel(queued.pausedSince, referenceMs);
+  const reason = queued.pausedReason?.replace(/\.$/, "");
+  return [`Paused${age ? ` ${age}` : ""}${reason ? `: ${reason}` : ""}`, disabled].filter(Boolean).join(" · ");
+}
+
+/** Groups a breakdown card shows by name; the rest share one row. */
+const BREAKDOWN_ROWS = 7;
+
+/**
+ * A breakdown's rows: the largest BREAKDOWN_ROWS groups, then one row for
+ * the rest, so the rows always add up to the card's total.
+ */
+function breakdownRows(groups: PipelineGroupView[]): PipelineGroupView[] {
+  if (groups.length <= BREAKDOWN_ROWS) return groups;
+  const rest = groups.slice(BREAKDOWN_ROWS);
+  return [
+    ...groups.slice(0, BREAKDOWN_ROWS),
+    {
+      key: "other",
+      label: `${rest.length} other ${rest.length === 1 ? "group" : "groups"}`,
+      count: rest.reduce((total, group) => total + group.count, 0),
+      items: rest.flatMap((group) => group.items),
+    },
+  ];
+}
+
 /** Ranked groups of one stage, with a toggle when there is more than one way to cut it. */
 function Breakdown({
   title,
@@ -446,8 +494,8 @@ function Breakdown({
 }) {
   const [active, setActive] = useState(views[0].id);
   const current = views.find((v) => v.id === active) ?? views[0];
-  const groups = current.groups.slice(0, 7);
-  const max = groups[0]?.count ?? 0;
+  const groups = breakdownRows(current.groups);
+  const max = Math.max(0, ...groups.map((group) => group.count));
   return (
     <div className={styles.card} role="group" aria-label={title}>
       <div className={styles.cardHead}>
@@ -641,6 +689,8 @@ function ItemRow({
     .filter((part): part is string => !!part && part !== groupLabel)
     .join(" · ");
   const flags = [
+    item.source === "outside" ? "outside the pipeline" : item.source === "dependent" ? "in another citation's run" : null,
+    item.stuck ? "stuck" : null,
     item.dispatches > 1 ? `${item.dispatches} dispatches` : null,
     item.openPrs > 1 ? `${item.openPrs} open PRs` : null,
     item.reachedIndex && !["indexed", "runs", "verified"].includes(item.stage)
@@ -670,13 +720,17 @@ function ItemRow({
   );
 }
 
-const QUEUE_GROUPS: Array<{ state: QueueItemView["state"]; title: string }> = [
-  { state: "blocked", title: "Needs a person" },
-  { state: "dispatched", title: "Run open" },
-  { state: "retrying", title: "Retrying after a failed run" },
-];
+/** The queue's item groups; a retry waits for the queue to resume while it is paused. */
+function queueGroups(paused: boolean): Array<{ state: QueueItemView["state"]; title: string }> {
+  return [
+    { state: "blocked", title: "Needs a person" },
+    { state: "dispatched", title: "Run open" },
+    { state: "retrying", title: paused ? "Will retry when resumed" : "Retrying after a failed run" },
+    { state: "skipped", title: "Skipped" },
+  ];
+}
 
-/** The dispatcher queues' items: what needs a person, what is running, what will retry. */
+/** The dispatcher queues' items: what needs a person, what is running, what will retry, what was set aside. */
 function QueueList({
   queued,
   referenceMs,
@@ -690,23 +744,23 @@ function QueueList({
     blocked: queued.blocked,
     dispatched: queued.inFlight,
     retrying: queued.items.filter((item) => item.state === "retrying").length,
+    skipped: queued.skipped,
   };
+  const paused = pauseText(queued, referenceMs);
   return (
     <ListPanel
       title="Queued"
       label="Queued items"
       count={queued.pending}
       description={[
-        queued.pausedReason
-          ? `Paused${queued.pausedReason === "Paused" ? "" : `: ${queued.pausedReason}`}; nothing new is dispatched.`
-          : null,
-        "Each item is sent to the targeted encode. A failed run is retried once; then the item waits for a person.",
+        paused ? `${paused}; nothing new is dispatched.` : null,
+        "Each item is sent to the targeted encode. A failed run is retried once; then the item waits for a person. A skipped item was set aside before any run and waits to be requeued.",
       ]
         .filter(Boolean)
         .join(" ")}
       onClose={onClose}
     >
-      {QUEUE_GROUPS.map(({ state, title }) => {
+      {queueGroups(queued.paused).map(({ state, title }) => {
         const items = queued.items.filter((item) => item.state === state);
         if (items.length === 0) return null;
         // Items that share a reason sit under it once, in first-seen order.
@@ -777,31 +831,107 @@ function shortRelease(name: string, jurisdiction: string): string {
       : name;
 }
 
-function corpusDetail(row: CorpusJurisdiction): string {
+/** "1 scope", "1,567 scopes". */
+function counted(count: number, one: string, many = `${one}s`): string {
+  return `${number(count)} ${count === 1 ? one : many}`;
+}
+
+/** A flag in a few words, for a row listed under another flag. */
+const CORPUS_FLAG_SHORT: Record<CorpusFlag, string> = {
+  newer_not_active: "newer release not activated",
+  encoder_lacks: "encoder lacks served scopes",
+  encoder_off: "encoder reads unserved scopes",
+  encoder_other: "encoder pins another release",
+  not_serving: "not serving",
+  pin_unsigned: "pin names an unsigned manifest",
+  pin_unknown: "pin names no known release",
+  no_release: "no release cut yet",
+};
+
+/** What the jurisdiction's rulespec repo pins, compared with what serves. */
+function encoderText(row: CorpusJurisdiction, short: (name: string) => string): string | null {
+  const { encoder } = row;
+  if (!encoder) return null;
+  if (!encoder.release) return "encoder pins no release yet (placeholder)";
+  const name = short(encoder.release);
+  if (encoder.state === "manifest") return `encoder pins ${name}, an unsigned manifest`;
+  if (encoder.state === "unknown") return `encoder pins ${name}, not a known release`;
+  if (encoder.lacks) {
+    return `encoder reads ${name}, which lacks ${counted(encoder.lacks, "served scope version")}${
+      encoder.extra ? ` and has ${counted(encoder.extra, "scope version")} the site doesn't serve` : ""
+    }`;
+  }
+  if (encoder.extra) return `encoder reads ${name}, with ${counted(encoder.extra, "scope version")} the site doesn't serve`;
+  if (row.flags.includes("encoder_other")) return `encoder pins ${name}, with the same scopes as serving`;
+  if (encoder.release === row.serving?.release) return "encoder reads the same release";
+  return `encoder reads ${name}`;
+}
+
+/** What serves, what to activate next, and what the encoder reads, in one line. */
+function corpusWhy(row: CorpusJurisdiction): string {
   const short = (name: string) => shortRelease(name, row.jurisdiction);
+  const { serving, next, other, newest } = row;
   return [
-    row.serving ? `serving ${short(row.serving.release)}` : "serving nothing",
-    row.newest.release !== row.serving?.release
-      ? `newest ${short(row.newest.release)} (${number(row.newest.scopes)} scopes)`
+    serving
+      ? `serving ${short(serving.release)}${serving.releases > 1 ? ` and ${counted(serving.releases - 1, "other release")}` : ""}`
+      : newest
+        ? "serving nothing"
+        : "no signed release",
+    next ? `next ${short(next.release)} (${counted(next.scopes, "scope")}, adds ${number(next.adds)})` : null,
+    !serving && newest ? `newest ${short(newest.release)} (${counted(newest.scopes, "scope")})` : null,
+    // A side release the encoder pins is said once, with the encoder.
+    other && other.release !== row.encoder?.release
+      ? `also signed ${short(other.release)} (${counted(other.scopes, "scope")}), which lacks ${counted(other.lacks, "served scope version")}`
       : null,
-    row.encoder
-      ? `encoder reads ${short(row.encoder.release)}${row.encoder.registered ? "" : " (not a registered release)"}`
-      : null,
+    encoderText(row, short),
   ]
     .filter(Boolean)
     .join(" · ")
     .replace(/^./, (c) => c.toUpperCase());
 }
 
-/** Out-of-sync statuses, most actionable first. */
-const CORPUS_GROUPS: Array<Exclude<CorpusJurisdiction["status"], "current">> = [
-  "newer_not_active",
-  "encoder_behind",
-  "encoder_off",
-  "not_serving",
-];
+/** When what serves was activated, and how much it is. */
+function corpusServing(row: CorpusJurisdiction, referenceMs: number): string | null {
+  const { serving } = row;
+  if (!serving) return null;
+  return [
+    `Activated ${ageLabel(serving.since, referenceMs)} ago`,
+    serving.provisions !== null ? counted(serving.provisions, "provision") : null,
+    counted(serving.scopes, "scope version"),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
 
-/** Signed corpus releases per jurisdiction: what serves, what is newest, what the encoder reads. */
+function CorpusRow({ row, referenceMs }: { row: CorpusJurisdiction; referenceMs: number }) {
+  const others = row.flags.slice(1).map((flag) => CORPUS_FLAG_SHORT[flag]);
+  return (
+    <Row
+      title={`${row.name} · ${row.jurisdiction}`}
+      href={null}
+      why={corpusWhy(row)}
+      detail={corpusServing(row, referenceMs)}
+      age={ageLabel(row.since, referenceMs)}
+      links={
+        row.encoder
+          ? [
+              {
+                label: "pin",
+                href: `https://github.com/TheAxiomFoundation/${row.encoder.repo}/blob/main/.axiom/toolchain.toml`,
+              },
+            ]
+          : []
+      }
+      flags={others.length > 0 ? `also: ${others.join(" · ")}` : null}
+    />
+  );
+}
+
+/**
+ * Corpus releases per jurisdiction: what serves, the release to activate
+ * next, and what the encoder reads. A row sits under its most actionable
+ * flag and names the rest.
+ */
 function CorpusList({
   corpus,
   referenceMs,
@@ -811,14 +941,16 @@ function CorpusList({
   referenceMs: number;
   onClose: () => void;
 }) {
-  const current = corpus.jurisdictions.filter((row) => row.status === "current");
+  const current = corpus.jurisdictions
+    .filter((row) => row.flags.length === 0)
+    .sort((a, b) => a.name.localeCompare(b.name));
   const { openPrs, lastPublish } = corpus;
   return (
     <ListPanel
       title="Corpus"
       label="Corpus releases"
       count={corpus.jurisdictions.length}
-      description="Per jurisdiction: the signed corpus release the site serves, the newest one signed, and the one its encoder reads. axiom-corpus's publish workflow signs a release; a person activates it."
+      description="Per jurisdiction: the signed corpus release the site serves, the one to activate next, and the one its rulespec repo's encoder reads, compared by the scope versions each holds. axiom-corpus's publish workflow signs a release; a person activates it."
       onClose={onClose}
     >
       {(openPrs || lastPublish) && (
@@ -826,6 +958,9 @@ function CorpusList({
           {openPrs && (
             <a href={openPrs.url} target="_blank" rel="noreferrer">
               {number(openPrs.count)} open PR{openPrs.count === 1 ? "" : "s"} in axiom-corpus
+              {openPrs.draft !== null &&
+                openPrs.count > 0 &&
+                ` (${number(Math.max(0, openPrs.count - openPrs.draft))} ready · ${number(openPrs.draft)} draft)`}
               {openPrs.oldestAt && `, oldest ${ageLabel(openPrs.oldestAt, referenceMs)}`}
             </a>
           )}
@@ -838,49 +973,42 @@ function CorpusList({
           )}
         </p>
       )}
-      {CORPUS_GROUPS.map((status) => {
+      {CORPUS_FLAGS.map((flag) => {
         // Most recently signed first: where work is happening now.
         const rows = corpus.jurisdictions
-          .filter((row) => row.status === status)
-          .sort((a, b) => b.newest.signedAt.localeCompare(a.newest.signedAt));
+          .filter((row) => row.flags[0] === flag)
+          .sort(
+            (a, b) =>
+              (b.newest?.signedAt ?? "").localeCompare(a.newest?.signedAt ?? "") || a.name.localeCompare(b.name)
+          );
         if (rows.length === 0) return null;
-        const title = CORPUS_STATUS_LABELS[status];
+        const title = CORPUS_FLAG_LABELS[flag];
         return (
-          <section key={status} className={styles.listGroup} aria-label={title}>
+          <section key={flag} className={styles.listGroup} aria-label={title}>
             <h4>
               {title}
               <span className={styles.listCount}>{number(rows.length)}</span>
             </h4>
             <ul className={styles.items}>
               {rows.map((row) => (
-                <Row
-                  key={row.jurisdiction}
-                  title={`${row.name} · ${row.jurisdiction}`}
-                  href={null}
-                  why={corpusDetail(row)}
-                  detail={null}
-                  age={ageLabel(row.since, referenceMs)}
-                  links={
-                    row.encoder
-                      ? [
-                          {
-                            label: "pin",
-                            href: `https://github.com/TheAxiomFoundation/${row.encoder.repo}/blob/main/.axiom/toolchain.toml`,
-                          },
-                        ]
-                      : []
-                  }
-                  flags={null}
-                />
+                <CorpusRow key={row.jurisdiction} row={row} referenceMs={referenceMs} />
               ))}
             </ul>
           </section>
         );
       })}
       {current.length > 0 && (
-        <p className={styles.listNote}>
-          Up to date: {current.map((row) => row.name).join(", ")}
-        </p>
+        <section className={styles.listGroup} aria-label="Up to date">
+          <h4>
+            Up to date
+            <span className={styles.listCount}>{number(current.length)}</span>
+          </h4>
+          <ul className={styles.items}>
+            {current.map((row) => (
+              <CorpusRow key={row.jurisdiction} row={row} referenceMs={referenceMs} />
+            ))}
+          </ul>
+        </section>
       )}
     </ListPanel>
   );
@@ -1022,16 +1150,19 @@ interface CitationGroup {
 function CitationStates({
   view,
   queued,
+  referenceMs,
   isOpen,
   onGroup,
   onQueue,
 }: {
   view: PipelineView;
   queued: QueuedSummary | null;
+  referenceMs: number;
   isOpen: (title: string) => boolean;
   onGroup: (group: CitationGroup) => void;
   onQueue: () => void;
 }) {
+  const halted = queued ? pauseText(queued, referenceMs) : null;
   const groups: CitationGroup[] = CITATION_GROUPS.map((group) => {
     const parts = group.stages.filter((stage) => view.stages[stage].count > 0);
     return {
@@ -1060,8 +1191,13 @@ function CitationStates({
           to all citations. Click a group to list its citations.
         </Explain>
         {queued && queued.pending > 0 && (
-          <button type="button" className={styles.gapChip} onClick={onQueue}>
-            <strong>{number(queued.pending)}</strong> queued
+          <button
+            type="button"
+            className={styles.gapChip}
+            title={halted ? `${halted}; nothing new is dispatched.` : undefined}
+            onClick={onQueue}
+          >
+            <strong>{number(queued.pending)}</strong> queued{queued.paused ? " · paused" : ""}
           </button>
         )}
       </div>
@@ -1084,7 +1220,25 @@ function CitationStates({
           </li>
         ))}
       </ul>
+      <SourcesLine sources={view.sources} />
     </div>
+  );
+}
+
+/** How many citations the states hold because of encodings that were not dispatches. */
+function SourcesLine({ sources }: { sources: PipelineView["sources"] | undefined }) {
+  if (!sources || (sources.outside === 0 && sources.dependent === 0)) return null;
+  return (
+    <p className={styles.sourcesLine}>
+      {`Includes ${number(sources.outside)} ${sources.outside === 1 ? "citation" : "citations"} encoded outside the pipeline and ${number(sources.dependent)} encoded inside another citation's run.`}
+      <Explain label="Encodings that were not dispatches">
+        Outside the pipeline: a person&apos;s PR merged the module into the default branch with no dispatch. Such a
+        citation shows the steps after the merge: the index and the tests on main. Inside another citation&apos;s run:
+        the encoder wrote the module while it encoded another citation, as a source or a module that depends on it.
+        Such a citation shows how that went. A citation counts here when its latest attempt is one of these. Run
+        statistics (the flow, attempts, versions, the weekly runs) count dispatches only.
+      </Explain>
+    </p>
   );
 }
 
@@ -1152,12 +1306,13 @@ function TrendRows({ weeks }: { weeks: WeeklyThroughput[] }) {
       <div className={styles.cardHead}>
         <h3 className={styles.miniLabel}>Weekly</h3>
         <Explain label="Weekly">
-          Runs dispatched, runs encoded, and PRs merged in each of the last {weeks.length} weeks. The number is the
-          last full week.
+          Runs dispatched, runs encoded, and their PRs merged in each of the last {weeks.length} weeks, and the PRs
+          merged outside the pipeline (with no dispatch). Each row has its own scale. The number is the last full
+          week.
         </Explain>
       </div>
       <ul className={styles.trendRows}>
-        {SERIES.map((series, i) => {
+        {TREND_SERIES.map((series, i) => {
           const values = weeks.map((week) => week[series.key]);
           const max = Math.max(1, ...values);
           return (
@@ -1218,12 +1373,15 @@ function RateBars({ rows }: { rows: Array<{ key: string; label: string; rate: At
 /** What each dispatch yields: first attempts, retries, the citations re-run most, and cost. */
 function RunsCard({ runs }: { runs: RunStats }) {
   const { firstAttempt, cost } = runs;
+  // Modules encoded inside another citation's run have their own records, so their cost adds to the runs'.
+  const dependent = cost.dependent ?? { count: 0, total: 0 };
+  const costed = cost.recorded > 0 || dependent.count > 0;
   return (
     <div className={styles.card} role="group" aria-label="Runs and retries">
       <div className={styles.cardHead}>
         <div>
           <h3>Runs and retries</h3>
-          <p>Finished runs, not counting cancellations.</p>
+          <p>Finished dispatches, not counting cancellations.</p>
         </div>
       </div>
       <div className={styles.stats}>
@@ -1235,19 +1393,21 @@ function RunsCard({ runs }: { runs: RunStats }) {
           </span>
         </div>
         <div className={styles.statBlock}>
-          <span className={styles.statValue}>
-            {cost.recorded > 0 ? `${percent(cost.onFailures, cost.total)}%` : "—"}
-          </span>
+          <span className={styles.statValue}>{costed ? `${percent(cost.onFailures, cost.total)}%` : "—"}</span>
           <span className={styles.statLabel}>
-            {cost.recorded > 0
-              ? `of recorded cost went to failed runs ($${cost.onFailures.toFixed(0)} of $${cost.total.toFixed(0)}; ${number(cost.recorded)} of ${number(cost.finished)} runs record a cost)`
+            {costed
+              ? `of recorded cost went to failed runs ($${cost.onFailures.toFixed(0)} of $${cost.total.toFixed(0)}; ${number(cost.recorded)} of ${number(cost.finished)} runs record a cost${
+                  dependent.count
+                    ? `; the total includes $${dependent.total.toFixed(0)} for ${number(dependent.count)} ${dependent.count === 1 ? "module" : "modules"} encoded inside another citation's run`
+                    : ""
+                })`
               : "No run records its cost yet"}
           </span>
         </div>
       </div>
       {runs.byAttempt.length > 0 && (
         <>
-          <p className={styles.miniLabel}>Success by attempt</p>
+          <p className={styles.miniLabel}>Success by attempt, until a citation&apos;s first success</p>
           <RateBars
             rows={runs.byAttempt.map((rate) => ({ key: rate.label, label: `${rate.label} attempt`, rate }))}
           />
@@ -1264,7 +1424,7 @@ function RunsCard({ runs }: { runs: RunStats }) {
                 </a>
                 <span>
                   {number(entry.dispatches)} dispatches · {number(entry.successes)} encoded ·{" "}
-                  {number(entry.merged)} merged
+                  {number(entry.merged)} merged into main
                 </span>
               </li>
             ))}
@@ -1277,12 +1437,20 @@ function RunsCard({ runs }: { runs: RunStats }) {
 
 /** Success across encoder releases, pooled so each bar has enough runs to compare. */
 function VersionsCard({ bins }: { bins: VersionBin[] }) {
+  // Only the newest bin can close short of VERSION_BIN_RUNS: its versions are still collecting runs.
+  const newest = bins.at(-1);
+  const short = newest && newest.runs < VERSION_BIN_RUNS ? newest : null;
   return (
     <div className={styles.card} role="group" aria-label="By encoder version">
       <div className={styles.cardHead}>
         <div>
           <h3>By encoder version</h3>
-          <p>Success of finished runs. Consecutive versions are pooled to at least 10 runs; newest last.</p>
+          <p>
+            Success of finished runs. Consecutive versions are pooled to at least {VERSION_BIN_RUNS} runs; newest
+            last. These are the newest {number(bins.length)} groups, {number(bins.reduce((total, bin) => total + bin.runs, 0))}{" "}
+            runs.
+            {short && ` The newest group is the current encoder so far: ${number(short.runs)} ${short.runs === 1 ? "run" : "runs"}.`}
+          </p>
         </div>
       </div>
       {bins.length === 0 ? (
@@ -1315,6 +1483,8 @@ const WENT_ON: Record<GateKey, string> = {
 const STOPPED: Record<string, string> = {
   "approval:waiting": "pending approval",
   "approval:cancelled": "cancelled",
+  "approval:before": "stopped before approval",
+  "run:cancelled": "cancelled",
   "run:running": "running",
   "pr:none": "without a PR",
   "review:open": "in review",
@@ -1375,7 +1545,7 @@ function StepTable({
             Median time
           </th>
           <th scope="col" className={styles.stepNumber}>
-            Advanced
+            Runs advanced
           </th>
           <th scope="col">Stopped or pending</th>
         </tr>
@@ -1383,12 +1553,13 @@ function StepTable({
       <tbody>
         {shown.map((gate) => {
           const time = timeOf.get(gate.key);
-          const typical = time?.timings[0];
           const on = gate.segments.find((segment) => segment.kind === "continue");
           const losses = gate.segments.filter((segment) => segment.kind === "loss");
           const pending = gate.segments.filter((segment) => segment.kind === "pending");
-          const folded = gate.key === "run" && losses.length > 0;
-          const side = folded ? pending : [...losses, ...pending];
+          // The encode run's failures fold into one "failed"; its cancellations stay apart.
+          const failures = gate.key === "run" ? losses.filter((segment) => segment.key.startsWith("run:failed:")) : [];
+          const folded = failures.length > 0;
+          const side = [...losses.filter((segment) => !failures.includes(segment)), ...pending];
           const firstTests = gate.key === "tests" ? testParts : null;
           return (
             <Fragment key={gate.key}>
@@ -1417,7 +1588,16 @@ function StepTable({
                     </Explain>
                   </span>
                 </th>
-                <td className={styles.stepTime}>{typical ? shortDuration(typical.medianMs) : "—"}</td>
+                <td className={styles.stepTime}>
+                  {time?.timings.length
+                    ? time.timings.map((timing) => (
+                        <span key={timing.label} className={styles.stepTimeLine}>
+                          {shortDuration(timing.medianMs)}
+                          {timing.label && <span className={styles.stepTimeLabel}> {timing.label.toLowerCase()}</span>}
+                        </span>
+                      ))
+                    : "—"}
+                </td>
                 <td className={styles.stepWent}>
                   {on ? (
                     <button
@@ -1442,7 +1622,7 @@ function StepTable({
                           aria-expanded={reasonsOpen}
                           onClick={() => setReasonsOpen((open) => !open)}
                         >
-                          {number(losses.reduce((total, segment) => total + segment.count, 0))} failed{" "}
+                          {number(failures.reduce((total, segment) => total + segment.count, 0))} failed{" "}
                           <span aria-hidden>{reasonsOpen ? "▴" : "▾"}</span>
                         </button>
                       )}
@@ -1466,7 +1646,7 @@ function StepTable({
                 <tr className={styles.stepReasons}>
                   <td colSpan={4}>
                     <span className={styles.reasonList} role="group" aria-label="Why encode runs failed">
-                      {losses.map((segment) => (
+                      {failures.map((segment) => (
                         <button
                           key={segment.key}
                           type="button"
@@ -1677,8 +1857,9 @@ function FlowView({
     <>
       <section className={styles.flowPart} aria-labelledby="flow-steps-title">
         <PartHead id="flow-steps-title" title="Steps">
-          One row per step, in order. Median time is how long a run typically spends at the step. Advanced counts
-          the runs that moved on to the next step, out of those that reached it. Stopped or pending lists the runs
+          One row per step, in order; every number counts runs (dispatches), not citations. Median time is how long a
+          run typically spends at the step, for each kind of run that left it (encoded or failed, merged or closed).
+          Runs advanced counts the runs that moved on to the next step, out of those that reached it. Stopped or pending lists the runs
           that stopped at the step or have not finished it yet. Click a number to list its runs, and a step&apos;s ?
           for its details.
         </PartHead>
@@ -1688,7 +1869,7 @@ function FlowView({
         <PartsRow
           id="flow-parts-title"
           title="Inside the encode run"
-          note="The encode run is one GitHub Actions job in three parts: setup, the encode loop, then signing and opening the PR."
+          note="The encode run is one GitHub Actions job in three parts: setup, the encode loop, then signing and opening the PR. Model time and check time are parts of the encode loop."
           parts={parts.parts}
           extra={<TriesTable tries={parts.tries} />}
         />
@@ -1703,7 +1884,7 @@ function runProvenance(row: RunRow): string {
     `dispatched ${formatDay(row.dispatchedAt)}`,
     row.by ? `by ${row.by}` : null,
     row.encoder ? `encoder ${row.encoder}` : null,
-    row.approvalMs !== null ? `approval ${durationLabel(row.approvalMs)}` : null,
+    row.approvalMs !== null ? `approval ${shortDuration(row.approvalMs)}` : null,
     row.runMs !== null ? `run ${durationLabel(row.runMs)}` : null,
   ]
     .filter(Boolean)
@@ -1846,11 +2027,19 @@ function SigningApproval({ view, referenceMs }: { view: PipelineView; referenceM
   );
 }
 
+/** The dispatch series: the weekly chart draws these on one scale. */
 const SERIES: Array<{ key: keyof Omit<WeeklyThroughput, "weekStart">; label: string }> = [
   { key: "dispatched", label: "Dispatched" },
   { key: "encoded", label: "Encoded" },
   { key: "merged", label: "Merged" },
 ];
+
+/**
+ * The weekly trend's rows: the dispatch series, then the PRs merged outside
+ * the pipeline. Each row has its own scale, so a small series stays
+ * readable; the chart keeps to the dispatch series.
+ */
+const TREND_SERIES: typeof SERIES = [...SERIES, { key: "outside", label: "Merged outside" }];
 
 const CHART = { width: 560, height: 200, left: 34, right: 8, top: 18, bottom: 26 };
 
@@ -1887,7 +2076,7 @@ function Throughput({ view }: { view: PipelineView }) {
       <div className={styles.cardHead}>
         <div>
           <h3>Weekly throughput</h3>
-          <p>Dispatched, encoded, and merged, by week.</p>
+          <p>Dispatches: dispatched, encoded, and merged, by week.</p>
         </div>
       </div>
       {rate && (
@@ -1897,7 +2086,8 @@ function Throughput({ view }: { view: PipelineView }) {
               {Math.round((rate.failed / rate.finished) * 100)}%
             </span>
             <span className={styles.statLabel}>
-              of runs failed, last 14 days ({number(rate.failed)} of {number(rate.finished)})
+              of runs failed, last 14 days ({number(rate.failed)} of {number(rate.finished)}
+              {rate.leftOut > 0 && `; ${number(rate.leftOut)} cancelled or budget-stopped left out`})
             </span>
           </div>
         </div>

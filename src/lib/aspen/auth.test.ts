@@ -42,6 +42,9 @@ describe('aspen password gate', () => {
     expect(kindForPassword('stage')).toBe('presenter')
     expect(kindForPassword('room')).toBe('participant')
     expect(kindForPassword('wrong')).toBeNull()
+    // Phones capitalize the first letter: case never decides a match.
+    expect(kindForPassword('Room')).toBe('participant')
+    expect(kindForPassword('STAGE')).toBe('presenter')
     vi.stubEnv('ASPEN_PASSWORD', '')
     expect(kindForPassword('stage')).toBeNull()
   })

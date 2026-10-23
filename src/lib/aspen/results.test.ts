@@ -124,11 +124,11 @@ describe('aspen results', () => {
     expect(discussion.topics[0]).toMatchObject({ id: 'Asset tests', count: 1 })
     expect(discussion.notes).toEqual([{ question: 'misunderstood', text: 'BBCE' }])
     expect(breakouts.useCases.find((u) => u.id === 'project')?.count).toBe(1)
-    expect(breakouts.notes).toEqual([{ useCase: 'project', text: 'Model the change' }])
+    expect(breakouts.notes).toEqual([{ useCase: 'project', text: 'Model the change', who: null, trust: null, raised: null }])
   })
 
   it('shows pledged states only when allowed, never names', () => {
-    expect(summarizeRun(DATA).pledges).toEqual({ people: 4, states: ['Arizona'], accurateAi: 3, stateSystems: 2 })
+    expect(summarizeRun(DATA).pledges).toEqual({ people: 4, accurateAi: 3, stateSystems: 2 })
   })
 
   it('turns Markdown answers into plain excerpts', () => {
@@ -194,6 +194,48 @@ describe('aspen results', () => {
     ])
   })
 
+  it('keeps what else each group raised, also from a group that shared no idea', () => {
+    const { breakouts } = summarizeRun({
+      ...DATA,
+      events: [
+        { run_id: 'r', kind: 'breakout', payload: { useCase: 'flows', note: 'Pilot in one county', raised: 'Training time' } },
+        { run_id: 'r', kind: 'breakout', payload: { useCase: null, note: '', raised: 'Union rules' } },
+        { run_id: 'r', kind: 'breakout', payload: { useCase: 'apply', note: '', raised: '' } },
+      ],
+    })
+    expect(breakouts.notes).toEqual([
+      { useCase: '', text: '', who: null, trust: null, raised: 'Union rules' },
+      { useCase: 'flows', text: 'Pilot in one county', who: null, trust: null, raised: 'Training time' },
+    ])
+  })
+
+  it('keeps who would use each idea and what would earn trust', () => {
+    const { breakouts } = summarizeRun({
+      ...DATA,
+      events: [{ run_id: 'r', kind: 'breakout', payload: { useCase: 'flows', note: '', who: 'Intake workers', trust: 'Matches our manual' } }],
+    })
+    expect(breakouts.notes).toEqual([{ useCase: 'flows', text: '', who: 'Intake workers', trust: 'Matches our manual', raised: null }])
+  })
+
+  it('counts the votes on what to build first, in the order of the choices', () => {
+    const { votes, breakouts } = summarizeRun({
+      ...DATA,
+      events: [
+        { run_id: 'r', kind: 'vote', payload: { useCase: 'project' } },
+        { run_id: 'r', kind: 'vote', payload: { useCase: 'project' } },
+        { run_id: 'r', kind: 'vote', payload: { useCase: 'apply' } },
+      ],
+    })
+    expect(votes.map((c) => [c.id, c.count])).toEqual([
+      ['see-edit', 0],
+      ['project', 2],
+      ['flows', 0],
+      ['apply', 1],
+    ])
+    // Votes are not group ideas.
+    expect(breakouts.useCases.every((c) => c.count === 0)).toBe(true)
+  })
+
   it('counts the source-of-truth answers from Rate it', () => {
     const { sourceOfTruth } = summarizeRun({
       ...DATA,
@@ -246,31 +288,50 @@ describe('aspen results', () => {
       ['w', 'wrong'],
     ])
     expect(spotlight[0]).toMatchObject({ note: 'Scary', wouldAct: 'yes', details: ['Gig income', 'mystery'] })
-    expect(voices).toEqual([
+    // Notes on rated answers, newest first (the fixture's overall notes come with no verdict).
+    expect(voices.filter((v) => v.verdict)).toEqual([
       { text: 'Spot on', verdict: 'right' },
       { text: 'Scary', verdict: 'wrong' },
     ])
   })
 
-  it('adds the notes from Rate it to the room\'s own words', () => {
+  it('adds every overall note to the room\'s own words, newest first', () => {
     const { voices, discussion } = summarizeRun({
       ...DATA,
       prompts: [{ ...base, id: 'a', turn: 0, created_at: '2026-10-26T18:00:00Z', prompt: 'q', answer: 'a', verdict: 'wrong', rating_note: 'Wrong amount' }],
       events: [
-        { run_id: 'r', kind: 'discussion', stage: 'rate', created_at: '2026-10-26T18:10:00Z', payload: { question: null, note: 'Staff use it already' } },
-        { run_id: 'r', kind: 'discussion', stage: 'reveal', created_at: '2026-10-26T18:20:00Z', payload: { question: 'performance', note: 'Discussion note' } },
-        { run_id: 'r', kind: 'discussion', stage: 'rate', created_at: '2026-10-26T18:30:00Z', payload: { question: 'performance', ratings: { amount: 2 } } },
+        { run_id: 'r', kind: 'discussion', stage: 'try', created_at: '2026-10-26T18:10:00Z', payload: { question: null, note: 'Staff use it already' } },
+        { run_id: 'r', kind: 'discussion', stage: 'try', created_at: '2026-10-26T18:20:00Z', payload: { question: 'performance', note: 'Too confident' } },
+        { run_id: 'r', kind: 'discussion', stage: 'try', created_at: '2026-10-26T18:30:00Z', payload: { question: 'performance', ratings: { amount: 2 } } },
       ],
     })
     expect(voices).toEqual([
+      { text: 'Too confident', verdict: null },
       { text: 'Staff use it already', verdict: null },
       { text: 'Wrong amount', verdict: 'wrong' },
     ])
-    // A Rate it note shows once, in the room's own words, not again among the discussion notes.
-    expect(discussion.notes).toEqual([{ question: 'performance', text: 'Discussion note' }])
+    // The same notes by question, for the data export; a ratings-only event adds none.
+    expect(discussion.notes).toEqual([
+      { question: 'performance', text: 'Too confident' },
+      { question: '', text: 'Staff use it already' },
+    ])
   })
 
   it('has an empty summary', () => {
     expect(EMPTY_SUMMARY).toMatchObject({ participants: 0, prompts: 0, feed: [] })
+  })
+
+  it('keeps agency comments out of the voices the phones show, but in the notes', () => {
+    const s = summarizeRun({
+      participants: [],
+      prompts: [],
+      events: [
+        { run_id: 'r', kind: 'discussion', payload: { question: 'experience', ratings: {}, note: 'Our chatbot struggles with SNAP' } },
+        { run_id: 'r', kind: 'discussion', payload: { question: null, ratings: {}, note: 'Great session' } },
+      ],
+      pledges: [],
+    })
+    expect(s.voices.map((v) => v.text)).toEqual(['Great session'])
+    expect(s.discussion.notes.find((n) => n.question === 'experience')?.text).toBe('Our chatbot struggles with SNAP')
   })
 })

@@ -54,6 +54,12 @@ export function CorpusLibrary({ modules, active, mode, onModeChange, onPick, cou
     });
     return () => cancelAnimationFrame(frame);
   }, [active]);
+  // a deep link can open the library already searched, e.g. on one
+  // title: /app?q=us:statutes/7/
+  useEffect(() => {
+    const q = new URL(window.location.href).searchParams.get("q");
+    if (q) setQuery(q);
+  }, []);
   useEffect(() => { setLimit(40); }, [query, jurisdiction, country]);
   const entries = useMemo(() => libraryEntries(modules ?? []), [modules]);
   const byTarget = useMemo(() => new Map(entries.map((entry) => [entry.module.target, entry])), [entries]);

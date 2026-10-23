@@ -123,6 +123,12 @@
   text-decoration-color: var(--color-rule-strong);
 }
 
+/* What a step's time counts from, and when it ended. */
+.when {
+  color: var(--color-ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .row[data-state="failed"] .detail {
   color: var(--color-warning);
 }

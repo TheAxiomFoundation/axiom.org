@@ -26,6 +26,9 @@
  * Options:
  *   --bundle F   measure a local bundle file instead of the ones on
  *                axiom-corpus main (repeatable), e.g. a draft under review.
+ *   --every H    skip the pass when the last one is under H hours old (the
+ *                scheduled workflow: GitHub starts its cron late and skips
+ *                many starts, so the pass is due by age, not by the clock).
  *   --local-scopes TSV --local-base DIR
  *                dry run only: also count the scopes a release would add
  *                (TSV of jurisdiction, document_class, version) from their
@@ -42,10 +45,11 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import yaml from "js-yaml";
-import { measureDocument, tierCounts } from "../src/lib/axiom/program-bundles.ts";
-import { moduleFacts, waivedModules } from "../src/lib/axiom/program-bundles-modules.ts";
+import { distinctByDocument, measureDocument, tierCounts } from "../src/lib/axiom/program-bundles.ts";
+import { moduleFacts, sectionWideFromCorpus, waivedModules } from "../src/lib/axiom/program-bundles-modules.ts";
 import { screenerParity } from "../src/lib/axiom/screener-parity.ts";
 import { JURISDICTIONS_SEED } from "../src/lib/axiom/jurisdictions-seed.ts";
+import { resolveOracleDataRef } from "./lib/oracle-data-ref.mjs";
 
 const CORPUS_REPO = "TheAxiomFoundation/axiom-corpus";
 const BUNDLE_DIR = "manifests/program-bundles";
@@ -58,6 +62,7 @@ const localBundles = argValues("--bundle");
 const dryRun = Boolean(outPath);
 const localScopes = argValue("--local-scopes");
 const localBase = argValue("--local-base");
+const everyHours = Number(argValue("--every") ?? 0);
 if (localScopes && !dryRun) throw new Error("--local-scopes previews a release: use it with --out only");
 
 function argValue(name) {
@@ -295,7 +300,9 @@ async function corpusTrees(roots, previewPaths = []) {
     );
   }
   console.log(`corpus: ${found.size} nodes for ${roots.length} documents`);
-  return trees;
+  // The corpus holds provisions under a path: linked children, or nodes under it.
+  const hasChildren = (path) => (found.get(path)?.child_count ?? 0) > 0 || lowerBound(`${path}0`) > lowerBound(`${path}/`);
+  return { trees, hasChildren };
 }
 
 /**
@@ -315,12 +322,8 @@ async function readWaivers(repos) {
   return waivers;
 }
 
-/**
- * Every RuleSpec module, as the provisions its rules cite and defer
- * (program-bundles-modules.ts), indexed by every path it touches and their
- * ancestors, so a document finds its modules without a scan.
- */
-async function readModules() {
+/** Every RuleSpec module file, with the files that merged under a validation waiver. */
+async function readModuleRows() {
   // A policy module's declared sources come from its row's source_citation_paths
   // (the rule index's module-source rows need a scan that runs into the
   // statement timeout at this size).
@@ -334,7 +337,17 @@ async function readModules() {
     200
   );
   const waivers = await readWaivers([...new Set(rows.map((r) => r.repo).filter(Boolean))]);
-  const modules = rows.map((row) => moduleFacts(row, [], waivers));
+  return { rows, waivers };
+}
+
+/**
+ * Every RuleSpec module, as the provisions its rules cite and defer
+ * (program-bundles-modules.ts), indexed by every path it touches and their
+ * ancestors, so a document finds its modules without a scan. Whether a cited
+ * law path is section-wide comes from the corpus (sectionWideFromCorpus).
+ */
+function indexModules({ rows, waivers }, sectionWide) {
+  const modules = rows.map((row) => moduleFacts(row, [], waivers, sectionWide));
   // A module touches a root when one of its paths is at or under the root
   // (indexed by every ancestor of the path), or at or above it (by the path itself).
   const byAncestor = new Map();
@@ -504,9 +517,9 @@ async function newestPolicyEngine() {
   }
 }
 
-/** The comparison report files on axiom-oracles main, by name. */
-async function oracleReports() {
-  const res = await fetch(`https://api.github.com/repos/TheAxiomFoundation/axiom-oracles/contents/${ORACLE_DATA}?ref=main`, {
+/** The comparison report files at this run's pinned axiom-oracles commit, by name. */
+async function oracleReports(oracleRef) {
+  const res = await fetch(`https://api.github.com/repos/TheAxiomFoundation/axiom-oracles/contents/${ORACLE_DATA}?ref=${oracleRef.sha}`, {
     headers: githubHeaders,
   });
   if (!res.ok) {
@@ -517,22 +530,52 @@ async function oracleReports() {
 }
 
 /** A state bundle's screener-level parity from its program's comparison suite, if it has one. */
-async function readParity(comparison, st, reports) {
+async function readParity(comparison, st, reports, oracleRef) {
   if (!comparison?.repo || !comparison?.suite) return null;
   const suite = comparison.suite.replace("{st}", st);
   const name = reports.find((file) => file.endsWith(`-${suite}.json`));
   if (!name) return null;
   const report = `${ORACLE_DATA}/${name}`;
   // The raw host: no API rate limit for a public repo, and the token for a private one.
-  const res = await fetch(`https://raw.githubusercontent.com/${comparison.repo}/main/${report}`, { headers: githubHeaders });
+  const res = await fetch(`https://raw.githubusercontent.com/${comparison.repo}/${oracleRef.sha}/${report}`, { headers: githubHeaders });
   if (!res.ok) {
     console.warn(`comparison report ${report}: HTTP ${res.status}`);
     return null;
   }
-  return screenerParity(await res.json(), { repo: comparison.repo, suite, report });
+  const body = await res.json();
+  // A report that records no date of its own is dated by its file's newest commit.
+  const committedAt = body?.provenance?.generated_at ? null : await lastCommitDate(comparison.repo, report, oracleRef);
+  return screenerParity(body, { repo: comparison.repo, suite, report, report_ref: oracleRef.sha, committed_at: committedAt });
+}
+
+/** When the file last changed as of the pinned commit, even if its branch advances during the run. */
+async function lastCommitDate(repo, path, oracleRef) {
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${repo}/commits?sha=${oracleRef.sha}&per_page=1&path=${encodeURIComponent(path)}`,
+      { headers: githubHeaders }
+    );
+    if (!res.ok) return null;
+    const [commit] = await res.json();
+    return commit?.commit?.committer?.date ?? commit?.commit?.author?.date ?? null;
+  } catch {
+    return null;
+  }
 }
 
 async function main() {
+  if (everyHours > 0 && !dryRun) {
+    const { data, error } = await supabase
+      .from("program_bundles")
+      .select("collected_at")
+      .order("collected_at", { ascending: false })
+      .limit(1);
+    const last = error ? undefined : data?.[0]?.collected_at;
+    if (last && Date.now() - Date.parse(last) < everyHours * 3_600_000) {
+      console.log(`program bundles collected ${last}: the next pass is due ${everyHours} h after it`);
+      return;
+    }
+  }
   const collectedAt = new Date().toISOString();
   const day = collectedAt.slice(0, 10);
   const bundles = (await readBundles()).filter(({ bundle }) => bundle?.schema === "axiom-program-bundle/v2");
@@ -540,11 +583,14 @@ async function main() {
     console.log(`no program bundle files in ${CORPUS_REPO}/${BUNDLE_DIR}`);
     return;
   }
-  const [attempts, touching, policyengineLatest, reports] = await Promise.all([
+  // Resolve once, before any report reads or writes. Only a missing branch
+  // permits main fallback; every other resolution error aborts the collection.
+  const oracleRef = await resolveOracleDataRef({ headers: githubHeaders });
+  const [attempts, moduleRows, policyengineLatest, reports] = await Promise.all([
     pages(() => supabase.from("pipeline_attempts").select("*").order("id")),
-    readModules(),
+    readModuleRows(),
     newestPolicyEngine(),
-    oracleReports(),
+    oracleReports(oracleRef),
   ]);
   console.log(`read ${attempts.length} pipeline attempts; newest policyengine-us release: ${policyengineLatest ?? "unknown"}`);
   const attemptsUnder = (root) => attempts.filter((a) => a.citation && under(a.citation, root));
@@ -574,7 +620,9 @@ async function main() {
     for (const layer of bundle.layers)
       for (const tier of ["screener", "full"])
         for (const doc of layer[tier]) if (doc.scope === "in" && doc.citation_path) roots.add(doc.citation_path);
-  const trees = await corpusTrees([...roots], localScopePaths());
+  const { trees, hasChildren } = await corpusTrees([...roots], localScopePaths());
+  // A state's citation of a provision the corpus holds whole (a section held as one leaf) encodes it.
+  const touching = indexModules(moduleRows, sectionWideFromCorpus(hasChildren));
   // The screener documents' roots that are containers, so a citation of all of one counts once.
   const screenerRoots = new Set();
   for (const { bundle } of bundles)
@@ -645,7 +693,7 @@ async function main() {
         counts[tier] = tierCounts(rows.filter((r) => r.tier === tier));
         if (jurisdiction !== "us") snapshotRows.push({ bundle_id: bundleId, tier, day, counts: counts[tier] });
       }
-      const parity = jurisdiction === "us" ? null : await readParity(bundle.comparison, jurisdiction.slice(3), reports);
+      const parity = jurisdiction === "us" ? null : await readParity(bundle.comparison, jurisdiction.slice(3), reports, oracleRef);
       bundleRows.push({
         id: bundleId,
         title: jurisdiction === "us" ? `${bundle.title}: federal law` : `${label(jurisdiction)} ${bundle.title}`,
@@ -687,6 +735,34 @@ async function main() {
       .filter((p) => p !== program)
       .map((p) => titles.get(p) ?? p)
       .sort();
+  }
+  // Each jurisdiction's own documents across every program, each document
+  // once (the /ops grid's by-state view counts them so, where a sum of the
+  // programs would count a shared document once per program), on every bundle
+  // of the jurisdiction.
+  const ownRows = new Map();
+  for (const row of documentRows) {
+    const jurisdiction = row.bundle_id.split("/")[0];
+    if (!ownRows.has(jurisdiction)) ownRows.set(jurisdiction, []);
+    ownRows.get(jurisdiction).push(row);
+  }
+  const acrossPrograms = new Map();
+  for (const [jurisdiction, rows] of ownRows) {
+    const distinct = distinctByDocument(rows);
+    acrossPrograms.set(jurisdiction, {
+      screener: tierCounts(distinct.filter((r) => r.tier === "screener")),
+      full: tierCounts(distinct.filter((r) => r.tier === "full")),
+    });
+  }
+  for (const row of bundleRows) {
+    const own = acrossPrograms.get(row.jurisdiction);
+    if (own) row.counts = { ...row.counts, jurisdiction: own };
+  }
+  const federal = acrossPrograms.get("us");
+  if (federal) {
+    console.log(
+      `federal law across programs: ${federal.screener.documents} Tier 1 documents, ${federal.full.documents} Tier 2 documents, each once`
+    );
   }
   console.log(`${bundleRows.length} bundles, ${documentRows.length} document rows, ${snapshotRows.length} snapshots`);
 

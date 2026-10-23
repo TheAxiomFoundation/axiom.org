@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { moduleFacts, outputPath, sourceTextPath, waivedModules } from "./program-bundles-modules";
+import {
+  federalSectionOrAbove,
+  moduleFacts,
+  outputPath,
+  sectionWideFromCorpus,
+  sourceTextPath,
+  waivedModules,
+} from "./program-bundles-modules";
 
 const row = (citation_path: string, raw_yaml: string, file_path = "x.yaml") => ({
   citation_path,
@@ -99,6 +106,49 @@ rules:
       new Set()
     );
     expect(branch).toMatchObject({ cited: ["us/regulation/7/273/9/b/1"], deferred: ["us/regulation/7/273/9/d/6"] });
+  });
+
+  it("decides from the corpus whether a state citation is section-wide, and keeps the depth rule for federal law", () => {
+    // Colorado's shape: a module per section, its rules' proof atoms citing the section, its sources prose.
+    const colorado = row(
+      "us-co/regulation/10-ccr-2506-1/4.130",
+      `
+rules:
+  - name: income_limit
+    source: 10 CCR 2506-1 section 4.130(B)
+    metadata:
+      proof:
+        atoms:
+          - kind: formula
+            source: { corpus_citation_path: us-co/regulation/10-ccr-2506-1/4.130 }
+          - kind: formula
+            source: { corpus_citation_path: us-co/regulation/10-ccr-2506-1 }
+          - kind: formula
+            source: { corpus_citation_path: us/regulation/7/273/9 }
+`
+    );
+    // The corpus holds 10 CCR 2506-1 with its sections under it, and each section whole.
+    const children = new Set(["us-co/regulation/10-ccr-2506-1"]);
+    const corpus = sectionWideFromCorpus((path) => children.has(path));
+    // A section the corpus holds whole is cited: a rule names exactly that provision. The regulation, which the
+    // corpus splits, and the federal section are section-wide.
+    expect(moduleFacts(colorado, [], new Set(), corpus)).toMatchObject({
+      cited: ["us-co/regulation/10-ccr-2506-1/4.130"],
+      broad: [],
+    });
+    // A US Code or CFR section or above stays section-wide, though the corpus holds 7 CFR 273.9 as one provision;
+    // below a federal section, a citation is proof as before.
+    expect(corpus("us/regulation/7/273/9")).toBe(true);
+    expect(corpus("us/statute/7/2014/e/6")).toBe(false);
+    // A state section the corpus splits into subsections (us-ca/regulation/cdss/eas/49/49-040) is section-wide.
+    expect(sectionWideFromCorpus((path) => path === "us-ca/regulation/cdss/eas/49/49-040")("us-ca/regulation/cdss/eas/49/49-040")).toBe(true);
+    expect(federalSectionOrAbove("us-co/regulation/10-ccr-2506-1/4.130")).toBe(false);
+    // Without the corpus, the federal depth decides everywhere: the Colorado section is dropped, so the module
+    // names only its own source, broadly.
+    expect(moduleFacts(colorado, [], new Set())).toMatchObject({
+      cited: [],
+      broad: ["us-co/regulation/10-ccr-2506-1/4.130"],
+    });
   });
 
   it("keeps a policy module's non-law sources, falls back to them, and marks waived files", () => {
