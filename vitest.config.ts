@@ -71,6 +71,20 @@ export default defineConfig({
         // verify real behaviour. The work is decorative / animation.
         'src/components/landing/citation-network-3d.tsx',
         'src/components/landing/citation-network.worker.ts',
+        // The journey (encoder section): three.js scenes, their WebGL
+        // director, the scroll driver and canvas typesetting. jsdom has no
+        // WebGL, canvas text metrics or scroll geometry, so none of it can
+        // run here; it is checked in real Chrome (headless renders, frame-
+        // time and first-visit measurements). Its data stays covered: the
+        // timeline and captions (captions.ts), the pacing table, the end
+        // cards (journey-digital/data.ts), checked by landing tests.
+        'src/components/landing/style-frames/**',
+        'src/components/landing/journey-lamplight/director.ts',
+        'src/components/landing/journey-lamplight/beats.ts',
+        'src/components/landing/journey-lamplight/journey-lamplight.tsx',
+        // the earlier canvas prototype, shown only on a dev preview page
+        'src/components/landing/journey-digital/journey-digital.tsx',
+        'src/components/landing/journey-digital/field.ts',
         // Background-options preview is a developer-only design sandbox.
         'src/app/preview/**',
         // App-rebuild route wrappers: thin server/client boundaries whose
