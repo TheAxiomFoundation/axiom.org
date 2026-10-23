@@ -55,6 +55,20 @@ describe("v2 reader share card", () => {
     expect(meta).not.toHaveProperty("twitter");
   });
 
+  it("keeps a structurally focused subsection's own URL", async () => {
+    vi.mocked(resolveSection).mockResolvedValue({
+      ...RESOLUTION,
+      requestedPath: "us/statute/26/32/a",
+      focusAnchor: "a",
+      prefetchedSubtree: { provisions: [{ ...SECTION, citation_path: "us/statute/26/32/a" }], truncated: false },
+    } as unknown as SectionResolution);
+    const meta = await generateMetadata({
+      params: Promise.resolve({ segments: ["us", "statute", "26", "32", "a"] }),
+    });
+    expect(meta.alternates).toEqual({ canonical: "https://axiom.org/us/statute/26/32/a" });
+    expect((meta.openGraph as Record<string, unknown>).url).toBe("https://axiom.org/us/statute/26/32/a");
+  });
+
   it("keeps the requested path, encoded, when nothing resolves", async () => {
     vi.mocked(resolveSection).mockResolvedValue(null);
     const meta = await generateMetadata({

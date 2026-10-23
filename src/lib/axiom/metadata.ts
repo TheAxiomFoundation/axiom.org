@@ -123,24 +123,34 @@ export async function getAxiomRuleMetadata(
 /**
  * Metadata for a page the v2 reader resolved. The resolution is what the
  * page shows, so its citation path is the canonical URL: a suffix the
- * corpus doesn't have, or a subsection focused within the section,
- * collapses to the section rendered in its place, and paths the reader
- * resolves its own way (synthetic roots, en-dash spellings, NYCRR
- * splits) keep their section's URL. One exception: a section stored at
- * browse depth (a joined "422.12C" segment) has no reader URL of its
- * own, since paths that short route to the browse view, so it keeps the
- * spelling that reached the reader. The JSON-LD names the row either way.
+ * corpus doesn't have collapses to the section rendered in its place,
+ * and paths the reader resolves its own way (synthetic roots, en-dash
+ * spellings, NYCRR splits) keep their section's URL. A subsection the
+ * page is focused on keeps its own URL, as the reader's cite links give
+ * it: pass `focusAnchor` only for a structural one (structuralFocus in
+ * section-page.ts), not a marker matched in running text.
+ *
+ * One exception: a section stored at browse depth (a joined "422.12C"
+ * segment) has no reader URL of its own, since paths that short route to
+ * the browse view, so it keeps the spelling that reached the reader. The
+ * JSON-LD names the row either way.
  */
 export function metadataForResolution(resolution: {
   root: Rule;
   citationPath: string;
   requestedPath: string;
+  focusAnchor: string | null;
 }): AxiomRuleMetadata {
-  const own = citationUrl(resolution.citationPath);
+  const { root, citationPath, requestedPath, focusAnchor } = resolution;
+  const own = citationUrl(citationPath);
   const levels = own.slice(AXIOM_APP_URL.length).split("/").filter(Boolean).length;
   const canonical =
-    levels > MAX_BROWSE_SEGMENTS ? own : citationUrl(resolution.requestedPath);
-  return describeRule(resolution.root, resolution.citationPath, canonical);
+    levels <= MAX_BROWSE_SEGMENTS
+      ? citationUrl(requestedPath)
+      : focusAnchor
+        ? citationUrl(`${citationPath}/${focusAnchor}`)
+        : own;
+  return describeRule(root, citationPath, canonical);
 }
 
 /**

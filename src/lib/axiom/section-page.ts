@@ -777,22 +777,8 @@ function anchorExistsUnder(
   anchor: string,
   subtree: { provisions: Rule[] },
 ): boolean {
-  const found = subtree.provisions.some((rule) => {
-    const relative = subtreeAnchor(
-      citationPath,
-      (rule.citation_path as string) ?? "",
-    );
-    return relative === anchor || relative.startsWith(`${anchor}-`);
-  });
-  if (found) return true;
+  if (anchorIsStructural(root, citationPath, anchor, subtree)) return true;
   if (subtree.provisions.length === 0 && root.body) {
-    if (
-      splitBodyIntoSubsections(root.body).chunks.some(
-        (chunk) => chunk.anchor === anchor,
-      )
-    ) {
-      return true;
-    }
     // Some single-row sections run their subsection markers inline
     // ("(a) Month of application—(1) …", 7 CFR 273.10) where the
     // chunker finds no line-anchored boundaries. A literal "(e)"
@@ -803,6 +789,55 @@ function anchorExistsUnder(
     return new RegExp(`\\(${escapeRegExp(anchor)}\\)`).test(root.body);
   }
   return false;
+}
+
+/** Whether a subtree row or a line-anchored body chunk carries the
+ *  anchor: a subsection the reader renders as its own block, not just a
+ *  marker matched in running text. */
+function anchorIsStructural(
+  root: Rule,
+  citationPath: string,
+  anchor: string,
+  subtree: { provisions: Rule[] },
+): boolean {
+  const found = subtree.provisions.some((rule) => {
+    const relative = subtreeAnchor(
+      citationPath,
+      (rule.citation_path as string) ?? "",
+    );
+    return relative === anchor || relative.startsWith(`${anchor}-`);
+  });
+  if (found) return true;
+  return (
+    subtree.provisions.length === 0 &&
+    !!root.body &&
+    splitBodyIntoSubsections(root.body).chunks.some(
+      (chunk) => chunk.anchor === anchor,
+    )
+  );
+}
+
+/**
+ * The resolution's focus anchor when it names a structural subsection
+ * (one with a row or a body chunk of its own, as the reader's cite links
+ * use), else null. A focus matched only inline in body text is left out.
+ */
+export function structuralFocus(
+  resolution: Pick<
+    SectionResolution,
+    "root" | "citationPath" | "focusAnchor" | "prefetchedSubtree"
+  >,
+): string | null {
+  const { root, citationPath, focusAnchor, prefetchedSubtree } = resolution;
+  if (!focusAnchor) return null;
+  return anchorIsStructural(
+    root,
+    citationPath,
+    focusAnchor,
+    prefetchedSubtree ?? { provisions: [] },
+  )
+    ? focusAnchor
+    : null;
 }
 
 /**

@@ -377,6 +377,7 @@ describe("metadataForResolution", () => {
       root: row("us/statute/42/1396a", { id: "synthetic:us/statute/42/1396a", body: null, heading: "§ 1396a - State plans" }),
       citationPath: "us/statute/42/1396a",
       requestedPath: "us/statute/42/1396a",
+      focusAnchor: null,
     });
     expect(synthetic.canonicalUrl).toBe(`${AXIOM_APP_URL}/us/statute/42/1396a`);
     expect(synthetic.title).toBe("us/statute/42/1396a — § 1396a - State plans · Axiom");
@@ -389,18 +390,30 @@ describe("metadataForResolution", () => {
       root: row("us/statute/42/1396u\u20131"),
       citationPath: "us/statute/42/1396u\u20131",
       requestedPath: "us/statute/42/1396u-1",
+      focusAnchor: null,
     });
     expect(dashed.canonicalUrl).toBe(`${AXIOM_APP_URL}/us/statute/42/1396u%E2%80%931`);
   });
 
-  it("collapses a subsection the reader focuses within its section to the section", () => {
+  it("keeps a focused subsection's own URL, as the reader's cite links give it", () => {
     const meta = metadataForResolution({
       root: row("us/statute/26/32"),
       citationPath: "us/statute/26/32",
-      requestedPath: "us/statute/26/32/a/see section 32",
+      requestedPath: "us/statute/26/32/a/zzz",
+      focusAnchor: "a",
+    });
+    expect(meta.canonicalUrl).toBe(`${SECTION_URL}/a`);
+    expect((buildLegislationJsonLd(meta) as Record<string, unknown>).url).toBe(SECTION_URL);
+  });
+
+  it("collapses to the section when there is no structural focus", () => {
+    const meta = metadataForResolution({
+      root: row("us/statute/26/32"),
+      citationPath: "us/statute/26/32",
+      requestedPath: "us/statute/26/32/see section 32",
+      focusAnchor: null,
     });
     expect(meta.canonicalUrl).toBe(SECTION_URL);
-    expect((buildLegislationJsonLd(meta) as Record<string, unknown>).url).toBe(SECTION_URL);
   });
 
   it("keeps the reader's spelling for a section stored at browse depth", () => {
@@ -410,6 +423,7 @@ describe("metadataForResolution", () => {
       root: row("us-ia/statute/422.12C"),
       citationPath: "us-ia/statute/422.12C",
       requestedPath: "us-ia/statute/422/12C",
+      focusAnchor: null,
     });
     expect(meta.canonicalUrl).toBe(`${AXIOM_APP_URL}/us-ia/statute/422/12C`);
     expect((buildLegislationJsonLd(meta) as Record<string, unknown>).url).toBe(
@@ -440,7 +454,7 @@ describe("metadataForResolution", () => {
         .array(segment, { minLength: min, maxLength: 6 })
         .map((segments) => ["us", ...segments].join("/"));
     fc.assert(
-      fc.property(pathOf(1), pathOf(3), (citationPath, requested) => {
+      fc.property(pathOf(1), pathOf(3), fc.option(segment, { nil: null }), (citationPath, requested, focusAnchor) => {
         const requestedPath = requested.split("/").filter(Boolean).length > 3
           ? requested
           : `${requested}/x/y/z`;
@@ -448,6 +462,7 @@ describe("metadataForResolution", () => {
           root: row(citationPath),
           citationPath,
           requestedPath,
+          focusAnchor,
         });
         const levels = meta.canonicalUrl
           .slice(AXIOM_APP_URL.length)

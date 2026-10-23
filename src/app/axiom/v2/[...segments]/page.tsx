@@ -11,6 +11,7 @@ import { DEFAULT_SHARE_IMAGE, SITE_NAME } from "@/lib/share";
 import {
   getSectionPageDataFromResolution,
   resolveSection,
+  structuralFocus,
   type SectionResolution,
 } from "@/lib/axiom/section-page";
 import { SectionReader } from "@/components/axiom/section/section-reader";
@@ -57,6 +58,11 @@ const resolveSectionOnce = cache((key: string) =>
 const resolveDecoded = (decoded: string[]) =>
   resolveSectionOnce(JSON.stringify(decoded));
 
+/** Metadata for what the reader renders; a focused subsection keeps its
+ *  own URL only when it is a structural one the reader links to. */
+const readerMetadata = (resolution: SectionResolution) =>
+  metadataForResolution({ ...resolution, focusAnchor: structuralFocus(resolution) });
+
 function decodeSegments(segments: string[]): string[] {
   return segments.map((segment) => {
     try {
@@ -82,7 +88,7 @@ export async function generateMetadata({
   // name the resolved section, never an unmatched suffix of the request.
   const resolution = await resolveDecoded(decoded);
   const meta = resolution
-    ? metadataForResolution(resolution)
+    ? readerMetadata(resolution)
     : unresolvedMetadata(decoded.join("/"));
   return {
     title: meta.title,
@@ -115,7 +121,7 @@ async function SectionBody({
   const data = await getSectionPageDataFromResolution(resolution);
   if (!data) notFound();
 
-  const jsonLd = buildLegislationJsonLd(metadataForResolution(resolution));
+  const jsonLd = buildLegislationJsonLd(readerMetadata(resolution));
 
   return (
     <>
