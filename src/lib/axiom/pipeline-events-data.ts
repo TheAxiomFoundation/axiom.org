@@ -124,16 +124,6 @@ export async function getCitationEvents(citation: string): Promise<PipelineEvent
   );
 }
 
-/** The waiver rows (source waiver_ledger). The derived log has none: they come only from the backfill. */
-export async function getWaiverEvents(): Promise<PipelineEventsResult> {
-  return filteredEvents({ source: "eq.waiver_ledger" }, (e) => e.source === "waiver_ledger", async () => ({
-    events: [],
-    origin: "derived",
-    available: true,
-    error: null,
-  }));
-}
-
 /**
  * The starting targets, as the migration seeds them. Used only while
  * encodings.pipeline_station_targets is not there.

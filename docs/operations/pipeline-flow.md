@@ -13,9 +13,9 @@ its data. The accepted-modules counts are not on the page: they are in
 
 | tab | question | built from |
 |---|---|---|
-| Running now (`/ops`) | What runs now, and what runs next? | the fleet box, the workflows strip, the run ledger, the queues and recent ingests |
-| Pipeline (`?tab=line`) | Where do cases wait, fail or loop? | the station diagram and panel, then station trends. Alerts are not on the page: the station boxes show them (status, red glow), and the API and the agent brief list them. The rule ladder and trends stay in the station panel's cards and the agent brief (the page has no separate discovery view; an old `view=discovery` link lands on the line) |
-| Program coverage (`?tab=programs`) | How far is each program? | the bundle table (or a bundle's page, `&bundle=`), then validation waivers |
+| Running now (`/ops`) | What runs now, and what runs next? | the fleet box, the jurisdiction switch, the run ledger, the queues and recent ingests |
+| Pipeline (`?tab=line`) | Where do cases wait, fail or loop? | the station diagram and its station panel. Alerts are not on the page: the station boxes show them (status, red glow), and the API and the agent brief list them. The rule ladder and trends stay in the station panel's cards and the agent brief (the page has no separate discovery view; an old `view=discovery` link lands on the line) |
+| Program coverage (`?tab=programs`) | How far is each program? | the bundle table (or a bundle's page, `&bundle=`) |
 
 One drill-down: `/ops/journey?citation=<path>` (and `&case=<id>` for one
 run) draws a citation's cases from the event log, derived from

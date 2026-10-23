@@ -57,14 +57,6 @@
   letter-spacing: -0.035em;
 }
 
-.lede {
-  margin-top: 8px;
-  max-width: 78ch;
-  font-size: 14px;
-  line-height: 1.6;
-  color: var(--color-ink-secondary);
-}
-
 .controls {
   display: flex;
   flex-wrap: wrap;
@@ -385,60 +377,6 @@
   overflow-wrap: anywhere;
 }
 
-/* Below the floor */
-.section {
-  margin-top: 28px;
-}
-
-.section h2 {
-  font-size: 18px;
-  font-weight: 500;
-  letter-spacing: -0.02em;
-}
-
-.section > p {
-  margin-top: 4px;
-  font-size: 13px;
-  color: var(--color-ink-muted);
-  max-width: 80ch;
-}
-
-.table {
-  margin-top: 12px;
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-}
-
-.tableWrap {
-  overflow-x: auto;
-}
-
-.table th,
-.table td {
-  padding: 7px 8px;
-  border-bottom: 1px solid var(--color-rule);
-  text-align: left;
-  vertical-align: top;
-}
-
-.table th {
-  font-weight: 500;
-  color: var(--color-ink-muted);
-  font-size: 11px;
-}
-
-.table td.num,
-.table th.num {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.table code {
-  font-size: 11px;
-  overflow-wrap: anywhere;
-}
-
 .path {
   display: flex;
   flex-wrap: wrap;
@@ -613,7 +551,6 @@
   color: var(--floor-ink-2);
   white-space: nowrap;
 }
-
 
 /* The diagram: station boxes, sinks, edges and their labels. */
 .station {
@@ -950,12 +887,4 @@
   font-size: 11px;
   color: var(--floor-ink-3);
   overflow-wrap: anywhere;
-}
-
-/* Section headings below the floor (waivers) */
-.sectionTitle {
-  margin-top: 28px;
-  font-size: 18px;
-  font-weight: 500;
-  letter-spacing: -0.02em;
 }

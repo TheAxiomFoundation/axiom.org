@@ -1,33 +1,20 @@
 import { ArrowLeft } from "lucide-react";
 import dashboard from "@/components/axiom/ops-dashboard.module.css";
 import {
-  formatDuration,
-  pct,
   stationLabel,
   type CaseDetail,
   type CitationLane,
   type FlowModel,
-  trendSentence,
 } from "@/lib/axiom/pipeline-flow";
-import type { EventsOrigin } from "@/lib/axiom/pipeline-events-data";
 import type { BundleMembership } from "@/lib/axiom/program-bundles";
 import { bundleHref, tiersLabel } from "@/lib/axiom/program-bundles";
-import { stationStatus } from "./flow-layout";
 import { CaseCanvas, LanesCanvas } from "./level-canvases";
 import { flowHref, type FlowParams } from "./flow-params";
 import { PipelineFloor } from "./pipeline-floor";
 import { ScopeNav } from "./scope-nav";
-import { StatusIcon } from "./status-icon";
 import styles from "./flow.module.css";
 
 export { flowHref, type FlowParams, type FlowView } from "./flow-params";
-
-const ORIGIN_NOTE: Record<EventsOrigin, string> = {
-  table: "Read from encodings.pipeline_events.",
-  file: "Read from a local backfill file (AXIOM_OPS_EVENTS_FILE).",
-  derived:
-    "Derived from encodings.pipeline_attempts in-process: the events table is not there yet, so issue lists beyond each try's first error are missing.",
-};
 
 /**
  * The /ops "Pipeline" tab (`?tab=line`): where cases wait, fail or loop.
@@ -36,15 +23,11 @@ const ORIGIN_NOTE: Record<EventsOrigin, string> = {
  */
 export function FlowLine({
   model,
-  origin,
-  targetsSeeded,
   error,
   params,
   jurisdictions,
 }: {
   model: FlowModel;
-  origin: EventsOrigin;
-  targetsSeeded: boolean;
   error: string | null;
   params: FlowParams;
   jurisdictions: string[];
@@ -77,14 +60,6 @@ export function FlowLine({
       ) : (
         <PipelineFloor model={model} params={params} />
       )}
-      <StationsTable model={model} params={params} />
-      <Trust model={model} />
-
-      <p className={styles.note}>
-        {model.events.toLocaleString("en-US")} events ({Object.entries(model.sources).map(([s, n]) => `${s.replace(/_/g, " ")} ${n.toLocaleString("en-US")}`).join(", ")}). {ORIGIN_NOTE[origin]}{" "}
-        {targetsSeeded ? "Targets are the migration's starting values (encodings.pipeline_station_targets is not there yet). " : ""}
-        Agents: <a href="/api/ops/flow?format=md">markdown brief</a> · <a href="/api/ops/flow">JSON</a>.
-      </p>
     </section>
   );
 }
@@ -100,7 +75,6 @@ export function JourneyView({
   lanes,
   detail,
   bundles,
-  origin,
   error,
 }: {
   citation: string | null;
@@ -108,7 +82,6 @@ export function JourneyView({
   lanes: CitationLane[];
   detail: CaseDetail | null;
   bundles: BundleMembership[];
-  origin: EventsOrigin;
   error: string | null;
 }) {
   const params: FlowParams = { window: 30, j: null, view: "pipeline", station: null, citation, case: detail?.case_id ?? null, program: null, bundle: null };
@@ -122,11 +95,6 @@ export function JourneyView({
           <div>
             <p className={styles.eyebrow}>Axiom / Operations / Journey</p>
             <h1 className={styles.title}>{citation ?? "Encoding journey"}</h1>
-            <p className={styles.lede}>
-              {citation
-                ? "Every case of this citation, station by station: each dispatch and its tries, the PR, the merge, the index, the compile sweep, the tests on main and the oracle. Click a lane to open that run."
-                : "Pick a citation on the Pipeline tab, or add ?citation=<path> to the address."}
-            </p>
           </div>
         </header>
 
@@ -172,87 +140,8 @@ export function JourneyView({
           <p className={styles.note}>No case of this citation is in the event log.</p>
         ) : null}
 
-        <p className={styles.note}>
-          {ORIGIN_NOTE[origin]} Agents: <a href={`/api/ops/flow?citation=${encodeURIComponent(citation ?? "")}`}>this citation as JSON</a>.
-        </p>
       </div>
     </div>
-  );
-}
-
-function StationsTable({ model, params }: { model: FlowModel; params: FlowParams }) {
-  return (
-    <section className={styles.section}>
-      <h2>Is each station getting better or worse?</h2>
-      <p>The floor&apos;s numbers as a table, with each station&apos;s last 7 days against the 7 before. Yield counts each case&apos;s last visit at the station.</p>
-      <div className={styles.tableWrap}>
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th>Station</th>
-              <th>Status</th>
-              <th className={styles.num}>Cases</th>
-              <th className={styles.num}>Yield</th>
-              <th className={styles.num}>Open</th>
-              <th className={styles.num}>p50</th>
-              <th className={styles.num}>p95</th>
-              <th>This week against the week before</th>
-              <th>Top cause</th>
-            </tr>
-          </thead>
-          <tbody>
-            {model.stations.map((s) => {
-              const status = stationStatus(s, model.alerts);
-              return (
-                <tr key={s.id}>
-                  <td>
-                    <a href={flowHref(params, { station: s.id })}>{s.label}</a>
-                  </td>
-                  <td>
-                    <span className={styles.status} data-status={status}>
-                      <StatusIcon status={status} /> {status}
-                    </span>
-                  </td>
-                  <td className={styles.num}>{s.cases.toLocaleString("en-US")}</td>
-                  <td className={styles.num}>
-                    {pct(s.yield)}
-                    {s.tries ? ` (${pct(s.tries.total ? s.tries.ok / s.tries.total : null)}/try)` : ""}
-                  </td>
-                  <td className={styles.num}>{s.wip.toLocaleString("en-US")}</td>
-                  <td className={styles.num}>
-                    {s.timed ? formatDuration(s.p50_ms) : "not timed"}
-                    {s.timed && s.timed_share < 0.5 ? <small style={{ display: "block" }}>{pct(s.timed_share)} of visits timed</small> : null}
-                  </td>
-                  <td className={styles.num}>{s.timed ? formatDuration(s.p95_ms) : "–"}</td>
-                  <td>{trendSentence(s.trend)}</td>
-                  <td>{s.failures[0] ? <code>{`${s.failures[0].rule_id} (${s.failures[0].count})`}</code> : ""}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
-/** How much of the window the page can see, and where it is blind. */
-function Trust({ model }: { model: FlowModel }) {
-  const t = model.trust;
-  const share = (n: number) => pct(t.dispatched ? n / t.dispatched : null);
-  return (
-    <section className={styles.section}>
-      <h2>How much can these numbers see?</h2>
-      <p>
-        {`Of ${t.dispatched.toLocaleString("en-US")} runs dispatched in the window: ${share(t.with_tries)} have the encoder's per-try record${
-          t.tries_since ? ` (it exists from ${t.tries_since.slice(0, 10)})` : ""
-        }, ${share(t.with_cost)} a recorded model cost, and ${share(t.with_issue_list)} a full issue list for a try. Every other run shows only its first error. `}
-        {t.untimed.length ? `Not timed: ${t.untimed.map(stationLabel).join(", ")}. ` : "Every station is timed. "}
-        {t.partly_timed.length
-          ? `Timed for part of their visits only: ${t.partly_timed.map((x) => `${stationLabel(x.station)} (${pct(x.share)})`).join(", ")}.`
-          : ""}
-      </p>
-    </section>
   );
 }
 

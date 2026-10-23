@@ -179,18 +179,18 @@ describe("OpsDashboard", () => {
     expect(screen.queryByRole("region", { name: "Live encoding activity" })).not.toBeInTheDocument();
   });
 
-  it("shows the workflows strip under the fleet box on the Now tab", () => {
+  it("shows the scope switch under the fleet box on the Now tab", () => {
     render(
       <OpsDashboard
         initialStatus={status({})}
         encodingError={null}
         queues={[]}
         recentPlaces={[]}
-        workflows={<section aria-label="Workflows" />}
+        scope={<section aria-label="Scope" />}
       />,
     );
     const fleet = screen.getByRole("region", { name: "Live encoding activity" });
-    const strip = screen.getByRole("region", { name: "Workflows" });
+    const strip = screen.getByRole("region", { name: "Scope" });
     const tabs = screen.getByRole("navigation", { name: "Operations" });
     expect(strip).toBeVisible();
     expect(fleet.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

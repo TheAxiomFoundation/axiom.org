@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
-import { getCitationEvents, getWaiverEvents } from "./pipeline-events-data";
+import { getCitationEvents } from "./pipeline-events-data";
 import { getPipelineAttempts } from "./encoding-pipeline-data";
 import { stationOrderOf } from "./pipeline-flow";
 
@@ -19,13 +19,6 @@ describe("getCitationEvents", () => {
     const result = await getCitationEvents("us/statute/7/2017/a");
     expect(result.origin).toBe("derived");
     expect(new Set(result.events.map((e) => e.case_id))).toEqual(new Set(["a"]));
-  });
-});
-
-describe("getWaiverEvents", () => {
-  it("has none in the derived log", async () => {
-    expect(await getWaiverEvents()).toEqual({ events: [], origin: "derived", available: true, error: null });
-    expect(getPipelineAttempts).not.toHaveBeenCalled();
   });
 });
 

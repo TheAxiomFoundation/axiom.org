@@ -77,8 +77,8 @@ interface OpsDashboardProps {
   initialTab?: OpsTab;
   /** The parameters every tab link carries (the jurisdiction scope, the window). */
   shared?: Record<string, string>;
-  /** The workflows the pipeline depends on, shown under the fleet box. */
-  workflows?: ReactNode;
+  /** The ledger's jurisdiction switch, shown under the fleet box. */
+  scope?: ReactNode;
   /**
    * Dispatched runs that have not finished, from the pipeline index: the
    * fleet box shows a run only once its encoder starts, so these say what
@@ -270,7 +270,7 @@ export function OpsDashboard({
   panel,
   initialTab = "now",
   shared = {},
-  workflows,
+  scope,
   starting,
 }: OpsDashboardProps) {
   const [status, setStatus] = useState(initialStatus);
@@ -348,11 +348,6 @@ export function OpsDashboard({
           <h1 className="heading-section text-[var(--color-ink)]">
             Encoding operations
           </h1>
-          <p className="mt-3 max-w-[640px] text-sm md:text-base text-[var(--color-ink-secondary)]">
-            From source law to executable rules: what runs now and next,
-            where cases wait or fail on the line, and the programs it works
-            toward.
-          </p>
         </header>
 
         <nav className={styles.tabs} aria-label="Operations">
@@ -379,7 +374,7 @@ export function OpsDashboard({
           starting={starting}
         />
 
-        {workflows}
+        {scope}
 
         <div
           id="ops-panel-now"

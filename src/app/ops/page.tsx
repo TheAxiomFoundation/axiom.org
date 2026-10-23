@@ -5,22 +5,18 @@ import { OpsDashboard, type OpsTab } from "@/components/axiom/ops-dashboard";
 import { BundleOverview } from "@/components/axiom/bundle-overview";
 import { ProgramBundle } from "@/components/axiom/program-bundle";
 import { PipelineLedger } from "@/components/axiom/pipeline-ledger";
-import { WorkflowHealthStrip } from "@/components/axiom/workflow-health";
 import { FlowLine } from "@/components/ops/flow/flow-page";
 import flowStyles from "@/components/ops/flow/flow.module.css";
 import { DEFAULT_FLOW_PARAMS, type FlowParams } from "@/components/ops/flow/flow-params";
-import { Waivers } from "@/components/ops/flow/waivers";
 import { getPipelineAttempts } from "@/lib/axiom/encoding-pipeline-data";
 import { getEncodingQueues } from "@/lib/axiom/encoding-queues";
 import { busiestRoots, LEGACY_OPS_TABS, opsHref, sharedOpsParams } from "@/lib/axiom/ops-href";
 import { ScopeNav } from "@/components/ops/flow/scope-nav";
 import { attemptJurisdiction, parseScope, scopeName } from "@/lib/axiom/encoding-pipeline-insights";
-import { getWaiverEvents } from "@/lib/axiom/pipeline-events-data";
 import { loadFlow, parseWindow } from "@/lib/axiom/pipeline-flow-data";
 import { getBundleSummaries, getProgramBundle } from "@/lib/axiom/program-bundles-data";
 import { getEncodingStatus, getRecentCorpusScopes, groupRecentScopes } from "@/lib/corpus-status";
 import { SITE_URL } from "@/lib/urls";
-import { getWorkflowHealth } from "@/lib/axiom/workflow-health";
 
 export const dynamic = "force-dynamic";
 
@@ -56,7 +52,7 @@ export default async function OpsPage({ searchParams }: { searchParams?: Promise
 
   let panel: ReactNode = null;
   let ledger: ReactNode;
-  let workflows: ReactNode;
+  let scopeNav: ReactNode;
   let starting: Parameters<typeof OpsDashboard>[0]["starting"];
 
   if (tab === "line") {
@@ -72,14 +68,13 @@ export default async function OpsPage({ searchParams }: { searchParams?: Promise
     // Jurisdictions to scope by: the busiest roots among dispatches.
     const jurisdictions = busiestRoots(data.events.filter((e) => e.station === "dispatch").map((e) => e.jurisdiction));
     panel = (
-      <FlowLine model={data.model} origin={data.origin} targetsSeeded={data.targetsSeeded} error={data.error} params={flowParams} jurisdictions={jurisdictions} />
+      <FlowLine model={data.model} error={data.error} params={flowParams} jurisdictions={jurisdictions} />
     );
   } else if (tab === "programs") {
     const bundleId = one(params.bundle);
     const validBundle = bundleId && BUNDLE_ID_RE.test(bundleId) ? bundleId : null;
     const count = params.count === "provisions" ? "provisions" : "documents";
-    const [waivers, bundles, bundle] = await Promise.all([
-      getWaiverEvents(),
+    const [bundles, bundle] = await Promise.all([
       getBundleSummaries(),
       validBundle ? getProgramBundle(validBundle) : null,
     ]);
@@ -100,13 +95,12 @@ export default async function OpsPage({ searchParams }: { searchParams?: Promise
         ) : (
           <p className={flowStyles.note}>No program bundles yet: encodings.program_bundles is empty or not there.</p>
         )}
-        <Waivers events={waivers.events} referenceMs={referenceMs} />
       </>
     );
   } else {
     // ?j=us narrows the ledger to one jurisdiction (and those under it).
     const scope = parseScope(params);
-    const [pipeline, health] = await Promise.all([getPipelineAttempts(), getWorkflowHealth()]);
+    const pipeline = await getPipelineAttempts();
     const attempts = pipeline.attempts;
     // Runs waiting for approval or in setup have no live row until their encoder starts.
     starting = {
@@ -115,12 +109,9 @@ export default async function OpsPage({ searchParams }: { searchParams?: Promise
     };
     // The ledger's scope: All, or one of the busiest roots (and those under it).
     const roots = busiestRoots(attempts.map((attempt) => attemptJurisdiction(attempt)));
-    workflows = (
-      <div key="workflows">
-        <WorkflowHealthStrip workflows={health} referenceMs={referenceMs} />
-        <div style={{ marginTop: 16 }}>
-          <ScopeNav current={scope?.jurisdiction ?? null} options={roots} href={(j) => opsHref({ ...sharedOpsParams(params), j: j ?? undefined, only: undefined }, "now")} />
-        </div>
+    scopeNav = (
+      <div key="scope" style={{ marginTop: 16 }}>
+        <ScopeNav current={scope?.jurisdiction ?? null} options={roots} href={(j) => opsHref({ ...sharedOpsParams(params), j: j ?? undefined, only: undefined }, "now")} />
       </div>
     );
     ledger =
@@ -144,7 +135,7 @@ export default async function OpsPage({ searchParams }: { searchParams?: Promise
       starting={starting}
       initialTab={tab}
       shared={sharedOpsParams(params)}
-      workflows={workflows}
+      scope={scopeNav}
       ledger={ledger}
       panel={panel ? <div key={`panel:${tab}`} className={flowStyles.page}>{panel}</div> : null}
     />

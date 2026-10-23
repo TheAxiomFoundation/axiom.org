@@ -38,7 +38,6 @@ export default async function OpsJourneyPage({ searchParams }: { searchParams: P
       lanes={lanes}
       detail={detail}
       bundles={citation ? bundleMemberships(citation, index) : []}
-      origin={events?.origin ?? "derived"}
       error={events?.error ?? null}
     />
   );

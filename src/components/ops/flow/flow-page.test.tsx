@@ -29,7 +29,7 @@ const model = mineFlow(events, {
 const params: FlowParams = { window: 30, j: null, view: "pipeline", station: null, citation: null, case: null, program: null, bundle: null };
 
 function line(overrides: Partial<FlowParams> = {}) {
-  return render(<FlowLine model={model} origin="derived" targetsSeeded error={null} params={{ ...params, ...overrides }} jurisdictions={["us", "dk"]} />);
+  return render(<FlowLine model={model} error={null} params={{ ...params, ...overrides }} jurisdictions={["us", "dk"]} />);
 }
 
 describe("flowHref", () => {
@@ -53,10 +53,9 @@ describe("FlowLine", () => {
     expect(screen.queryByRole("navigation", { name: "Which cases" })).toBeNull();
     // Alerts stay in the API and the brief, not on the page.
     expect(screen.queryByText("Release activation is failing")).toBeNull();
-    expect(screen.getByRole("heading", { name: "Is each station getting better or worse?" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "How much can these numbers see?" })).toBeTruthy();
     expect(screen.queryByText("How many runs went in?")).toBeNull();
-    expect(screen.getByText(/Derived from encodings.pipeline_attempts/)).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Is each station getting better or worse?" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "How much can these numbers see?" })).toBeNull();
   });
 
   it("opens a station's detail beside the diagram", () => {
@@ -79,7 +78,7 @@ describe("JourneyView", () => {
         lanes={citationLanes(events, "us/statute/7/2017/a")}
         detail={null}
         bundles={[{ bundle_id: "us/snap", bundle_title: "SNAP", tiers: [{ tier: "full", index: 2, title: "Full", document: "7 USC 2017" }] }]}
-        origin="derived"
+       
         error={null}
       />
     );
@@ -87,12 +86,12 @@ describe("JourneyView", () => {
     expect(screen.getByRole("link", { name: "SNAP" })).toHaveAttribute("href", "/ops?tab=programs&bundle=us/snap");
     cleanup();
     const detail = caseDetail(events, "1")!;
-    render(<JourneyView citation={detail.citation} stationOrder={stationOrder} lanes={[]} detail={detail} bundles={[]} origin="derived" error={null} />);
+    render(<JourneyView citation={detail.citation} stationOrder={stationOrder} lanes={[]} detail={detail} bundles={[]} error={null} />);
     expect(screen.getByRole("complementary", { name: "Run details" })).toBeTruthy();
   });
 
-  it("says what to do with no citation", () => {
-    render(<JourneyView citation={null} stationOrder={[]} lanes={[]} detail={null} bundles={[]} origin="table" error={null} />);
-    expect(screen.getByText(/Pick a citation on the Pipeline tab/)).toBeTruthy();
+  it("shows a plain title with no citation", () => {
+    render(<JourneyView citation={null} stationOrder={[]} lanes={[]} detail={null} bundles={[]} error={null} />);
+    expect(screen.getByRole("heading", { name: "Encoding journey" })).toBeTruthy();
   });
 });
