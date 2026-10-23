@@ -52,14 +52,11 @@ describe("FlowLine", () => {
     expect(screen.getByRole("heading", { name: "Where do these reasons come from?" })).toBeTruthy();
     expect(screen.getAllByText("Validator check").length).toBeGreaterThan(0);
     expect(screen.queryByRole("navigation", { name: "Which cases" })).toBeNull();
-    expect(screen.getByText("Release activation is failing")).toBeTruthy();
+    // Alerts stay in the API and the brief, not on the page.
+    expect(screen.queryByText("Release activation is failing")).toBeNull();
     expect(screen.getByRole("heading", { name: "Is each station getting better or worse?" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "How much can these numbers see?" })).toBeTruthy();
     expect(screen.queryByText("How many runs went in?")).toBeNull();
-    // The alerts sit under the diagram.
-    const canvas = screen.getByTestId("pipeline-canvas");
-    const alert = screen.getByText("Release activation is failing");
-    expect(canvas.compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByText(/Derived from encodings.pipeline_attempts/)).toBeTruthy();
   });
 

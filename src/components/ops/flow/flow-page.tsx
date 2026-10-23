@@ -6,7 +6,6 @@ import {
   stationLabel,
   type CaseDetail,
   type CitationLane,
-  type FlowAlert,
   type FlowModel,
   trendSentence,
 } from "@/lib/axiom/pipeline-flow";
@@ -79,7 +78,6 @@ export function FlowLine({
       ) : (
         <PipelineFloor model={model} params={params} />
       )}
-      <Alerts alerts={model.alerts} />
       <ReasonSources model={model} />
       <StationsTable model={model} params={params} />
       <Trust model={model} />
@@ -181,35 +179,6 @@ export function JourneyView({
         </p>
       </div>
     </div>
-  );
-}
-
-const SHOWN_ALERTS = 5;
-
-function Alerts({ alerts }: { alerts: FlowAlert[] }) {
-  if (!alerts.length) return <p className={styles.note}>No alerts: every station is within its targets.</p>;
-  const row = (a: FlowAlert) => (
-    <li key={a.id} className={styles.alert} data-severity={a.severity}>
-      <span className={styles.sevTag} data-severity={a.severity}>
-        {a.severity}
-      </span>
-      <div>
-        <strong>{a.title}</strong>
-        {a.detail ? <p>{a.detail}</p> : null}
-      </div>
-      {a.href ? <a href={a.href}>Open</a> : <span />}
-    </li>
-  );
-  return (
-    <section aria-label="Alerts">
-      <ul className={styles.alerts}>{alerts.slice(0, SHOWN_ALERTS).map(row)}</ul>
-      {alerts.length > SHOWN_ALERTS ? (
-        <details className={styles.more}>
-          <summary>{alerts.length - SHOWN_ALERTS} more alerts</summary>
-          <ul className={styles.alerts}>{alerts.slice(SHOWN_ALERTS).map(row)}</ul>
-        </details>
-      ) : null}
-    </section>
   );
 }
 
