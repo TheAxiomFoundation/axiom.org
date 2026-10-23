@@ -7,7 +7,8 @@ import { relativeTime } from "./ops-dashboard";
 import { Explain } from "./explain";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { scopeSearch, type PipelineScope } from "@/lib/axiom/encoding-pipeline-insights";
-import type { RunRow } from "@/lib/axiom/encoding-pipeline-runs";
+import { runTimeline, type RunRow, type RunTimeline } from "@/lib/axiom/encoding-pipeline-runs";
+import { durationLabel } from "@/lib/axiom/encoding-pipeline";
 import {
   bundleHref,
   bundleMemberships,
@@ -304,7 +305,7 @@ function DocumentSections({
             {open && (
               <TableRow className="hover:bg-transparent">
                 <TableCell colSpan={6} className={styles.ledgerRunCell}>
-                  <SectionRuns section={section} />
+                  <SectionRuns section={section} referenceMs={referenceMs} />
                 </TableCell>
               </TableRow>
             )}
@@ -321,8 +322,11 @@ function DocumentSections({
  * act on, the failures that came back, every run as a mark, and the journey
  * for the full history.
  */
-function SectionRuns({ section }: { section: LedgerSection }) {
+function SectionRuns({ section, referenceMs }: { section: LedgerSection; referenceMs: number }) {
   const brief = sectionBrief(section);
+  // The timeline shows the latest run until a mark picks another.
+  const [chosen, setChosen] = useState<string>(section.runs[0].id);
+  const run = section.runs.find((r) => r.id === chosen) ?? section.runs[0];
   return (
     <div className={styles.ledgerOverview}>
       <p className={styles.ledgerSummary} data-encoded={brief.encoded || undefined}>
@@ -361,21 +365,118 @@ function SectionRuns({ section }: { section: LedgerSection }) {
         <span className={styles.ledgerLabel}>Runs</span>
         <span className={styles.ledgerMarks} role="list" aria-label="Every run, oldest first">
           {brief.marks.map((mark) => (
-            <a
+            <button
               key={mark.id}
+              type="button"
               role="listitem"
-              href={mark.url}
-              target="_blank"
-              rel="noreferrer"
               className={styles.ledgerMark}
               data-tone={mark.tone}
+              aria-pressed={mark.id === run.id}
               title={mark.title}
               aria-label={mark.title}
+              onClick={() => setChosen(mark.id)}
             />
           ))}
         </span>
         <a href={`/ops/journey?citation=${encodeURIComponent(section.citation)}`}>Full history →</a>
       </p>
+      <RunTrack run={run} timeline={runTimeline(run, referenceMs)} latest={run === section.runs[0]} />
     </div>
+  );
+}
+
+const DAY_FORMAT = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" });
+
+/** A duration: "37s" under a minute, else "42m", "1h 5m", "3d"; "–" when not timed. */
+const span = (ms: number | null) => (ms == null ? "–" : ms < 60_000 ? `${Math.round(ms / 1000)}s` : durationLabel(ms));
+
+/**
+ * One run as a timeline: a line naming it, one bar for its stages on one
+ * clock (the wait for approval, setup, the encode loop, signing), a line per
+ * try of the encode loop, and the steps after the PR as chips.
+ */
+function RunTrack({ run, timeline, latest }: { run: RunRow; timeline: RunTimeline; latest: boolean }) {
+  const total = timeline.totalMs || 1;
+  return (
+    <section className={styles.track} aria-label={latest ? "Latest run" : "Chosen run"}>
+      <p className={styles.trackHead}>
+        <span className={styles.ledgerLabel}>{latest ? "Latest run" : "This run"}</span>
+        <span>
+          <b>{run.outcomeLabel}</b>
+          <span className={styles.trackMeta}>
+            {" · "}
+            {DAY_FORMAT.format(new Date(run.at ?? run.dispatchedAt))} UTC
+            {timeline.totalMs ? ` · ${span(timeline.totalMs)}` : ""}
+            {run.encoder ? ` · encoder ${run.encoder}` : ""}
+          </span>
+        </span>
+        <a href={run.source === "outside" && run.pr ? run.pr.url : run.runUrl} target="_blank" rel="noreferrer">
+          {run.source === "outside" ? "PR ↗" : "Run on GitHub ↗"}
+        </a>
+      </p>
+
+      {timeline.bars.length > 0 && (
+        <>
+          <div className={styles.trackBar} role="img" aria-label={timeline.bars.map((b) => `${b.label} ${span(b.ms)}`).join(", ")}>
+            {timeline.bars.map((bar) => (
+              <span
+                key={bar.key}
+                data-stage={bar.key}
+                data-state={bar.state}
+                style={{ flexGrow: Math.max(bar.ms / total, 0.04) }}
+                title={`${bar.label}: ${span(bar.ms)}`}
+              />
+            ))}
+          </div>
+          <ul className={styles.trackLegend}>
+            {timeline.bars.map((bar) => (
+              <li key={bar.key} data-stage={bar.key} data-state={bar.state}>
+                <i aria-hidden />
+                {bar.label} <b>{span(bar.ms)}</b>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {timeline.tries.length > 0 && (
+        <ol className={styles.trackTries} aria-label="Tries in the encode loop">
+          {timeline.tries.map((t) => (
+            <li key={t.attempt} data-ok={t.ok}>
+              <span className={styles.trackTryNo}>Try {t.attempt}</span>
+              <span className={styles.trackTryModel}>{t.model ?? "model not recorded"}</span>
+              <span className={styles.trackTryTime}>{span(t.wallMs ?? t.ms)}</span>
+              <span className={styles.trackTryCost}>{t.cost == null ? "" : t.cost < 0.01 ? "<$0.01" : `$${t.cost.toFixed(2)}`}</span>
+              <span className={styles.trackTryWhy} title={t.error ?? undefined}>
+                {t.ok ? "passed" : (t.headline ?? "failed")}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      {timeline.stopped && (
+        <p className={styles.trackStopped} title={timeline.stopped}>
+          Stopped: {timeline.stopped}
+        </p>
+      )}
+
+      {timeline.after.length > 0 && (
+        <ol className={styles.trackAfter} aria-label="After the PR">
+          {timeline.after.map((step) => (
+            <li key={step.key} data-state={step.state} title={step.detail ?? undefined}>
+              {step.href ? (
+                <a href={step.href} target="_blank" rel="noreferrer">
+                  {step.label}
+                </a>
+              ) : (
+                step.label
+              )}
+              <b>{step.ms == null ? (step.state === "waiting" ? "waiting" : "") : span(step.ms)}</b>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
   );
 }

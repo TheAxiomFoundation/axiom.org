@@ -562,3 +562,238 @@
 .ledgerOnly[hidden] {
   display: none;
 }
+
+/* A run's timeline in an open section: one bar for its stages, a line per try, chips after the PR. */
+.track {
+  display: grid;
+  gap: 10px;
+  margin-top: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-rule);
+  border-radius: 10px;
+  background: var(--color-paper);
+}
+
+.trackHead {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-ink);
+}
+
+.trackHead > .ledgerLabel {
+  margin: 0;
+}
+
+.trackHead a {
+  color: var(--color-accent);
+  white-space: nowrap;
+}
+
+.trackMeta {
+  color: var(--color-ink-muted);
+}
+
+.trackBar {
+  display: flex;
+  gap: 2px;
+  height: 14px;
+}
+
+.trackBar span {
+  min-width: 6px;
+  border-radius: 3px;
+  background: var(--color-ink-muted);
+}
+
+/* Stages: waiting is quiet, the encode loop is the main colour, the rest neutral. */
+.trackBar span[data-stage="approval"],
+.trackLegend li[data-stage="approval"] i {
+  background: color-mix(in srgb, var(--color-ink) 18%, var(--color-paper));
+}
+
+.trackBar span[data-stage="setup"],
+.trackLegend li[data-stage="setup"] i {
+  background: color-mix(in srgb, var(--color-ink) 40%, var(--color-paper));
+}
+
+.trackBar span[data-stage="encode"],
+.trackBar span[data-stage="run"],
+.trackLegend li[data-stage="encode"] i,
+.trackLegend li[data-stage="run"] i {
+  background: var(--color-accent);
+}
+
+.trackBar span[data-stage="publish"],
+.trackLegend li[data-stage="publish"] i {
+  background: color-mix(in srgb, var(--color-ink) 62%, var(--color-paper));
+}
+
+.trackBar span[data-state="failed"],
+.trackLegend li[data-state="failed"] i {
+  background: var(--destructive, #991b1b);
+}
+
+.trackBar span[data-state="running"] {
+  background-image: repeating-linear-gradient(45deg, transparent 0 4px, rgba(255, 255, 255, 0.35) 4px 8px);
+}
+
+.trackBar span[data-state="cancelled"] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--color-ink-muted);
+}
+
+.trackLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--color-ink-secondary);
+}
+
+.trackLegend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.trackLegend i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.trackLegend b,
+.trackAfter b {
+  font-weight: 600;
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.trackTries {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--color-rule-subtle);
+  font-size: 12px;
+}
+
+.trackTries li {
+  display: grid;
+  grid-template-columns: 52px minmax(90px, 140px) 52px 56px minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--color-rule-subtle);
+  color: var(--color-ink-secondary);
+}
+
+.trackTryNo {
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.trackTryModel {
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trackTryTime,
+.trackTryCost {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.trackTryWhy {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--destructive, #991b1b);
+}
+
+.trackTries li[data-ok="true"] .trackTryWhy {
+  color: var(--color-success, #166534);
+}
+
+.trackStopped {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  margin: 0;
+  font-size: 12px;
+  color: var(--destructive, #991b1b);
+  overflow-wrap: anywhere;
+}
+
+.trackAfter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+.trackAfter li {
+  display: inline-flex;
+  gap: 6px;
+  align-items: baseline;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--color-rule);
+  color: var(--color-ink-secondary);
+}
+
+.trackAfter li[data-state="done"] {
+  border-color: color-mix(in srgb, var(--color-success, #166534) 45%, var(--color-paper));
+}
+
+.trackAfter li[data-state="failed"] {
+  border-color: var(--destructive, #991b1b);
+  color: var(--destructive, #991b1b);
+}
+
+.trackAfter li[data-state="waiting"] {
+  border-style: dashed;
+}
+
+.trackAfter a {
+  color: inherit;
+}
+
+.ledgerMark {
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.ledgerMark[aria-pressed="true"] {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 1px;
+}
+
+@media (max-width: 699px) {
+  .trackHead {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .trackTries li {
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+  }
+  .trackTryCost,
+  .trackTryWhy {
+    grid-column: 2 / -1;
+  }
+}
