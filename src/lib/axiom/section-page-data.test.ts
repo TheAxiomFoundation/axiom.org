@@ -1,3 +1,4 @@
+import fc from "fast-check";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -66,8 +67,16 @@ import {
   getSectionPageData,
   resolveSection,
   rulespecSourceCitationPath,
+  structuralFocus,
 } from "./section-page";
 import { _resetRuntimeApiCache } from "@/lib/axiom/runtime/api";
+import {
+  AXIOM_APP_URL,
+  buildLegislationJsonLd,
+  metadataForResolution,
+} from "./metadata";
+import { serializeJsonLd } from "@/lib/json-ld";
+import { hostileString } from "@/test/hostile-strings";
 
 
 // A synthetic gated ("xg") family: with every real family public, the
@@ -833,5 +842,109 @@ describe("rulespecSourceCitationPath", () => {
       ])
     ).toBeNull();
     expect(encodingsFromMock).not.toHaveBeenCalled();
+  });
+});
+
+// The reader's own resolution drives its canonical, og:url and JSON-LD
+// (metadataForResolution). These run the real resolveSection over the
+// mocked data layer, for the path shapes where a plain prefix walk would
+// land on an ancestor (security review 2026-10-22, PR #354 review).
+describe("reader metadata follows the resolution", () => {
+  const url = (path: string) => `${AXIOM_APP_URL}/${path}`;
+  const urlsOf = (resolution: NonNullable<Awaited<ReturnType<typeof resolveSection>>>) => {
+    // As the v2 page does: only a structural focus keeps its own URL.
+    const meta = metadataForResolution({ ...resolution, focusAnchor: structuralFocus(resolution) });
+    const json = buildLegislationJsonLd(meta) as Record<string, unknown>;
+    return { canonical: meta.canonicalUrl, jsonLd: json.url, block: serializeJsonLd(json) };
+  };
+
+  it("names a synthesized section, not the bodyless title above it", async () => {
+    getProvisionByCitationPathMock.mockImplementation((path: string) =>
+      Promise.resolve(path === "us/statute/42" ? rule(path, { body: null }) : null)
+    );
+    queueTables({
+      current_provisions: [
+        { data: [rule("us/statute/42/1396a/a"), rule("us/statute/42/1396a/e/15")], error: null },
+      ],
+      navigation_nodes: [{ data: { ...NAV_NODE, path: "us/statute/42/1396a", label: "§ 1396a" }, error: null }],
+    });
+    const resolution = await resolveSection(["us", "statute", "42", "1396a"]);
+    expect(resolution?.synthetic).toBe(true);
+    expect(urlsOf(resolution!)).toMatchObject({
+      canonical: url("us/statute/42/1396a"),
+      jsonLd: url("us/statute/42/1396a"),
+    });
+  });
+
+  it("names the en-dash section a hyphen-typed URL resolves to", async () => {
+    getProvisionByCitationPathMock.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === "us/statute/42/1396u\u20131"
+          ? rule(path)
+          : path === "us/statute/42"
+            ? rule(path, { body: null })
+            : null
+      )
+    );
+    queueTables({ current_provisions: [{ data: [], error: null }] });
+    const resolution = await resolveSection(["us", "statute", "42", "1396u-1"]);
+    expect(resolution?.citationPath).toBe("us/statute/42/1396u\u20131");
+    expect(urlsOf(resolution!).canonical).toBe(url("us/statute/42/1396u%E2%80%931"));
+  });
+
+  it("keeps a body-chunk subsection's own URL, but not a phrase matched in running text", async () => {
+    // One row, no subtree: (a) and (b) are line-anchored chunks; "(see
+    // section 32)" only matches the inline-marker fallback.
+    const body = "(a) First subsection text (see section 32).\n\n(b) Second subsection text.";
+    getProvisionByCitationPathMock.mockImplementation((path: string) =>
+      Promise.resolve(path === "us/statute/26/32" ? rule(path, { body }) : null)
+    );
+    fromMock.mockImplementation(() => chain({ data: [], error: null }));
+
+    const chunk = await resolveSection(["us", "statute", "26", "32", "a"]);
+    expect(chunk?.focusAnchor).toBe("a");
+    expect(urlsOf(chunk!).canonical).toBe(url("us/statute/26/32/a"));
+    expect(urlsOf(chunk!).jsonLd).toBe(url("us/statute/26/32"));
+
+    const phrase = await resolveSection(["us", "statute", "26", "32", "see section 32"]);
+    expect(phrase?.focusAnchor).toBe("see section 32");
+    expect(urlsOf(phrase!).canonical).toBe(url("us/statute/26/32"));
+  });
+
+  it("keeps the reader's spelling for a joined-segment section stored at browse depth", async () => {
+    // Iowa stores 422.12C as one segment; /us-ia/statute/422.12C would
+    // route to the browse view, so the split request is the reader URL.
+    getProvisionByCitationPathMock.mockImplementation((path: string) =>
+      Promise.resolve(path === "us-ia/statute/422.12C" ? rule(path, { jurisdiction: "us-ia" }) : null)
+    );
+    fromMock.mockImplementation(() => chain({ data: [], error: null }));
+    const resolution = await resolveSection(["us-ia", "statute", "422", "12C"]);
+    expect(resolution?.citationPath).toBe("us-ia/statute/422.12C");
+    expect(urlsOf(resolution!)).toMatchObject({
+      canonical: url("us-ia/statute/422/12C"),
+      jsonLd: url("us-ia/statute/422.12C"),
+    });
+  });
+
+  it("for any suffix below a body-bearing section, names only the section and never spells </script", async () => {
+    getProvisionByCitationPathMock.mockImplementation((path: string) =>
+      Promise.resolve(path === "us/statute/26/32" ? rule(path) : null)
+    );
+    // Every subtree probe and navigation lookup finds nothing.
+    fromMock.mockImplementation(() => chain({ data: [], error: null }));
+    await fc.assert(
+      fc.asyncProperty(
+        fc.array(hostileString, { minLength: 1, maxLength: 3 }),
+        async (suffix) => {
+          const resolution = await resolveSection(["us", "statute", "26", "32", ...suffix]);
+          expect(resolution?.citationPath).toBe("us/statute/26/32");
+          const { canonical, jsonLd, block } = urlsOf(resolution!);
+          expect(canonical).toBe(url("us/statute/26/32"));
+          expect(jsonLd).toBe(url("us/statute/26/32"));
+          expect(block).not.toMatch(/<\/script/i);
+        }
+      ),
+      { numRuns: 100 }
+    );
   });
 });

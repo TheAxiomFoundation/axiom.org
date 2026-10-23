@@ -4,6 +4,7 @@ import {
   buildLegislationJsonLd,
   getAxiomRuleMetadata,
 } from "@/lib/axiom/metadata";
+import { JsonLd } from "@/components/json-ld";
 import { AXIOM_ENCODED_ONLY_COOKIE } from "@/lib/axiom/preferences";
 import { DEFAULT_SHARE_IMAGE, SITE_NAME } from "@/lib/share";
 import { resolveAxiomPath } from "@/lib/tree-data";
@@ -83,12 +84,7 @@ export default async function AxiomPage({ params }: PageProps) {
 
   return (
     <>
-      {jsonLd && (
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-        />
-      )}
+      {jsonLd && <JsonLd data={jsonLd} />}
       <AxiomClient
         segments={segments ?? []}
         initialTreeState={initialTreeState}
