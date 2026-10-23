@@ -114,15 +114,12 @@ export async function readNdjson(
 export function ChatWindow({
   stage,
   onRateOverall,
-  overallShared = false,
   onStatus,
   onNewQuestion,
 }: {
   stage: string;
-  /** Leads to the overall rating, below the chat, once the answer is rated. */
+  /** Leads to the two questions about the agency, below the chat, once the answer is rated. */
   onRateOverall?: () => void;
-  /** The overall ratings are in, so nothing points to them any more. */
-  overallShared?: boolean;
   onStatus?: (status: ChatStatus) => void;
   /** Called when the participant starts a new question. */
   onNewQuestion?: () => void;
@@ -140,6 +137,8 @@ export function ChatWindow({
   const [rated, setRated] = useState<Set<string>>(new Set());
   // After the first answer the follow-up box stays closed, so rating comes next.
   const [followUp, setFollowUp] = useState(false);
+  // A picked household asks its question as written; details, question type and edits open on request.
+  const [editing, setEditing] = useState(false);
   const threadEnd = useRef<HTMLDivElement>(null);
   const draftBox = useRef<HTMLTextAreaElement>(null);
   const ratingBox = useRef<HTMLElement>(null);
@@ -202,14 +201,16 @@ export function ChatWindow({
     el.style.height = "auto";
     if (el.scrollHeight > 0) el.style.height = `${el.scrollHeight + 2}px`;
     if (window.scrollY !== y) window.scrollTo({ top: y, behavior: "instant" });
-  }, [draft]);
+  }, [draft, editing]);
 
   const started = turns.length > 0;
   const household = findHousehold(householdId);
-  // Steps number in the order they show: details and questions appear once a household is picked.
+  // Steps number in the order they show: details, questions and the editable question open under "Change the question".
   const step = household
-    ? { askAs: 1, household: 2, details: 3, question: 4, draft: 5 }
+    ? { askAs: 1, household: 2, details: 3, question: 4, draft: editing ? 5 : null }
     : { askAs: 1, household: 2, details: null, question: null, draft: 3 };
+  // A household's question shows as written until the participant opens it to change it.
+  const preview = !started && Boolean(household) && !editing;
 
   function choose(p: PerspectiveId, h: string | null, q: QuestionId[], t: string[]) {
     const found = findHousehold(h);
@@ -253,6 +254,7 @@ export function ChatWindow({
   /** A new question starts blank: no household, details or text. Who you ask as stays. */
   function startOver() {
     setFollowUp(false);
+    setEditing(false);
     setTurns([]);
     setConversationId(newId());
     setHouseholdId(null);
@@ -441,7 +443,7 @@ export function ChatWindow({
                 </button>
               </div>
             </fieldset>
-            {household && (
+            {household && editing && (
               <fieldset className="m-0 border-0 border-t border-[var(--color-rule)] p-0 pt-4">
                 <legend className={`${STEP} float-left w-full`}>
                   <span className={STEP_NUMBER}>{step.details}</span>Add details <span className={STEP_NOTE}>(optional)</span>
@@ -474,7 +476,7 @@ export function ChatWindow({
                 </div>
               </fieldset>
             )}
-            {household && (
+            {household && editing && (
               <fieldset className="m-0 border-0 border-t border-[var(--color-rule)] p-0 pt-4">
                 <legend className={`${STEP} float-left w-full`}>
                   <span className={STEP_NUMBER}>{step.question}</span>What do you want to know?{" "}
@@ -506,7 +508,7 @@ export function ChatWindow({
               ) : (
                 <div key={turn.key} className="flex flex-col gap-3">
                   {turn.status === "error" ? (
-                    <p className="m-0 font-body text-[0.92rem] text-[var(--color-error)]">{turn.content}</p>
+                    <p className="m-0 break-words font-body text-[0.92rem] text-[var(--color-error)]">{turn.content}</p>
                   ) : (
                     <>
                       {turn.content ? (
@@ -528,6 +530,7 @@ export function ChatWindow({
                                 <a
                                   key={s.url}
                                   href={s.url}
+                                  title={s.title || hostname(s.url)}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="max-w-full truncate rounded-full border border-[var(--color-rule)] px-2.5 py-0.5 font-body text-[0.8rem] text-[var(--color-ink-secondary)] no-underline hover:border-[var(--color-accent)]"
@@ -580,31 +583,49 @@ export function ChatWindow({
           </div>
         ) : (
           <div className={`flex flex-col gap-3 px-4 pb-4 ${started ? "border-t border-[var(--color-rule)] pt-3" : "mt-5 border-t border-[var(--color-rule)] pt-4"}`}>
-            {started ? (
-              <label htmlFor="aspen-draft" className="sr-only">
-                Your question
-              </label>
-            ) : (
-              <div className={`${STEP} mb-0`}>
-                <span className={STEP_NUMBER}>{step.draft}</span>
-                <label htmlFor="aspen-draft">Your question</label>{" "}
-                <span className={STEP_NOTE}>(edit it if you like)</span>
+            {preview ? (
+              <div className="flex flex-col gap-2">
+                <span className={`${STEP} mb-0`}>The question</span>
+                <p className="m-0 whitespace-pre-wrap rounded-lg bg-[var(--color-paper)] px-3.5 py-3 font-body text-[1rem] leading-relaxed text-[var(--color-ink)]">
+                  {draft}
+                </p>
+                <button
+                  type="button"
+                  className="aspen-link self-start font-body text-[1rem] font-medium"
+                  onClick={() => setEditing(true)}
+                >
+                  Change the question
+                </button>
               </div>
+            ) : (
+              <>
+                {started ? (
+                  <label htmlFor="aspen-draft" className="sr-only">
+                    Your question
+                  </label>
+                ) : (
+                  <div className={`${STEP} mb-0`}>
+                    {step.draft && <span className={STEP_NUMBER}>{step.draft}</span>}
+                    <label htmlFor="aspen-draft">Your question</label>{" "}
+                    <span className={STEP_NOTE}>{household ? "(edit it if you like)" : "(any benefit, any state)"}</span>
+                  </div>
+                )}
+                <textarea
+                  ref={draftBox}
+                  id="aspen-draft"
+                  rows={started ? 2 : 4}
+                  value={draft}
+                  maxLength={2000}
+                  autoFocus={started}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void send();
+                  }}
+                  placeholder={started ? "Ask a follow-up" : "Pick a household above, or type your own question"}
+                  className={`${FIELD} resize-none bg-[var(--color-paper)] leading-relaxed`}
+                />
+              </>
             )}
-            <textarea
-              ref={draftBox}
-              id="aspen-draft"
-              rows={started ? 2 : 4}
-              value={draft}
-              maxLength={2000}
-              autoFocus={started}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void send();
-              }}
-              placeholder={started ? "Ask a follow-up" : "Pick a household above, or type your own question"}
-              className={`${FIELD} resize-none bg-[var(--color-paper)] leading-relaxed`}
-            />
             <button
               type="button"
               className={`${BUTTON} w-full py-3`}
@@ -629,9 +650,9 @@ export function ChatWindow({
                 <span aria-hidden className="mr-1.5 text-[var(--color-success)]">✓</span>
                 Your rating is saved. Thank you.
               </p>
-              {onRateOverall && !overallShared && (
+              {onRateOverall && (
                 <button type="button" onClick={onRateOverall} className={`${BUTTON_QUIET} w-full justify-between py-3 text-left text-[1rem]`}>
-                  Next: how did AI do overall?
+                  Next: two more, about your agency
                   <span aria-hidden className="text-[var(--color-accent)]">↓</span>
                 </button>
               )}
@@ -662,7 +683,7 @@ export function ChatWindow({
             How it works
           </span>
           <ol className="m-0 flex list-decimal flex-col gap-2 pl-5 font-body text-[0.9rem] leading-snug text-[var(--color-ink-secondary)]">
-            <li>Pick a household, add details if you like, and ask.</li>
+            <li>Pick a household, or write your own question, and ask.</li>
             <li>Rate the answer you get.</li>
             <li>Then rate how AI did overall, right below.</li>
           </ol>

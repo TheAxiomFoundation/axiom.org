@@ -1,54 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { EVENT, STAGES, findHousehold, isStageId, stageIndex, type StageId } from "@/lib/aspen/content";
-import { CHAT_KEY, ChatWindow, type ChatStatus, type SavedChat } from "./chat-window";
+import { useEffect, useRef, useState } from "react";
+import { EVENT, LOOK_UP, POLICYBENCH, STAGES, isStageId, percent, stageIndex, type StageId } from "@/lib/aspen/content";
+import { ChatWindow, type ChatStatus } from "./chat-window";
 import { OverallRating } from "./overall-rating";
-import {
-  OVERALL_KEY,
-  enterRun,
-  participantId,
-  readStored,
-  sendEvent,
-  useControl,
-  useResults,
-  writeStored,
-} from "./client";
-import { ResultsBoard } from "./results-board";
-import {
-  Agenda,
-  FoundationContent,
-  NextStepsForm,
-  PolicyBenchContent,
-  SmallGroups,
-  ThankYouContent,
-  WelcomeLanding,
-  YourContribution,
-  YourThread,
-  type ThreadQuestion,
-} from "./stages";
+import { enterRun, participantId, readStored, sendEvent, useControl, useResults, writeStored } from "./client";
+import { Agenda, LookUp, NextStepsForm, SmallGroups, ThankYouContent, WelcomeLanding } from "./stages";
 import { StageHeading } from "./ui";
 import { BrandLogo } from "./brand-logo";
 import { TextSizeButton } from "./text-size";
 
 const VIEW_KEY = "aspen.view";
 
-/** The participant's question from Try it, read back from the chat's saved state. */
-function readThread(): ThreadQuestion | null {
-  const saved = readStored<SavedChat>(CHAT_KEY);
-  if (!saved || !Array.isArray(saved.turns)) return null;
-  const firstUser = saved.turns.find((t) => t.role === "user");
-  const household = firstUser && saved.householdId !== "own" ? findHousehold(saved.householdId) : undefined;
-  return {
-    householdId: household?.id ?? null,
-    householdLabel: household?.label ?? null,
-    perspective: saved.perspective ?? null,
-    asked: saved.turns.some((t) => t.role === "assistant" && t.status === "done"),
-    rated: (saved.rated ?? []).length > 0,
-  };
-}
-
-/** Stages whose screens show the room's live results. */
+/** Stages whose screens show a number from the room's live results. */
 const RESULT_STAGES: readonly StageId[] = ["reveal", "foundation"];
 
 /** The stage a history entry belongs to, if it is one of ours. */
@@ -73,13 +37,6 @@ export function AspenApp() {
   const [hydrated, setHydrated] = useState(false);
   const [tryStatus, setTryStatus] = useState<ChatStatus>({ asked: false, rated: false, current: false });
   const overall = useRef<HTMLElement>(null);
-  // Once the overall rating is shared, a new question clears its "ratings are in" line for good.
-  const [overallClosed, setOverallClosed] = useState(false);
-  // Once the overall ratings are shared, Try it folds them to one line.
-  const [overallShared, setOverallShared] = useState(false);
-  const onNewQuestion = useCallback(() => {
-    if (readStored<boolean>(OVERALL_KEY)) setOverallClosed(true);
-  }, []);
   const live = control?.live && stageIndex(control.stage) >= 0 ? (control.stage as StageId) : null;
   const top = useRef<HTMLDivElement>(null);
 
@@ -142,20 +99,16 @@ export function AspenApp() {
     if (!hydrated || !control?.live) return;
     if (enterRun(control.runId)) {
       setRunEpoch((n) => n + 1);
-      setOverallClosed(false);
       setFollow(true);
     }
   }, [hydrated, control?.live, control?.runId]);
 
-  useEffect(() => {
-    setOverallShared(Boolean(readStored<boolean>(OVERALL_KEY)));
-  }, [runEpoch]);
-
   const { data: results } = useResults(RESULT_STAGES.includes(view), 5000);
-  const [thread, setThread] = useState<ThreadQuestion | null>(null);
-  useEffect(() => {
-    setThread(readThread());
-  }, [view, runEpoch]);
+  // TV moments: the phone shows one number from the room or PolicyBench while everyone looks up.
+  const viability = results?.summary.viability;
+  const truth = results?.summary.sourceOfTruth ?? [];
+  const truthAnswered = truth.reduce((sum, c) => sum + c.count, 0);
+  const truthCannot = truth.filter((c) => c.id !== "yes").reduce((sum, c) => sum + c.count, 0);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRoot = useRef<HTMLDivElement>(null);
@@ -300,8 +253,6 @@ export function AspenApp() {
             )}
             {/* The thank-you is its own centered page, like the landing. */}
             {view !== "dinner" && <StageHeading title={current.title} summary={current.phoneSummary ?? current.summary} />}
-            <YourThread stage={view} thread={thread} onOpen={() => go("try")} />
-            {view === "reveal" && <YourContribution thread={thread} onOpen={() => go("try")} />}
           </>
         )}
 
@@ -310,37 +261,35 @@ export function AspenApp() {
             key={runEpoch}
             stage={view}
             onRateOverall={() => overall.current?.scrollIntoView?.({ behavior: "smooth", block: "start" })}
-            overallShared={overallShared}
             onStatus={setTryStatus}
-            onNewQuestion={onNewQuestion}
           />
-          {/* Both ratings happen here: the answer first, then AI overall, right below. */}
-          {tryStatus.current && !overallClosed &&
-            (overallShared ? (
-              // Done: one line, not a section.
-              <p className="mt-10 font-body text-[1.05rem] font-medium text-[var(--color-ink)]">
-                <span aria-hidden className="mr-1.5 text-[var(--color-success)]">✓</span>
-                Your ratings are in. You&apos;ll see the room&apos;s results in What we saw.
-              </p>
-            ) : (
-              <section ref={overall} aria-labelledby="aspen-overall" className="mt-12 scroll-mt-20 border-t-2 border-[var(--color-accent)] pt-6">
-                <h2 id="aspen-overall" className="m-0 mb-5 font-body text-[1.4rem] font-semibold text-[var(--color-ink)]">
-                  One more: how did AI do overall?
-                </h2>
-                <OverallRating key={runEpoch} stage="try" onShared={() => setOverallShared(true)} />
-              </section>
-            ))}
+          {/* Both ratings happen here: the answer first, then two questions about the agency, right below.
+              They stay open once any answer is rated, so starting over never hides them (Ariel, Oct 23). */}
+          {tryStatus.rated && (
+            <section ref={overall} aria-labelledby="aspen-overall" className="mt-12 scroll-mt-20 border-t-2 border-[var(--color-accent)] pt-6">
+              <h2 id="aspen-overall" className="m-0 mb-5 font-body text-[1.4rem] font-semibold text-[var(--color-ink)]">
+                Two more, about your agency
+              </h2>
+              <OverallRating key={runEpoch} stage="try" />
+            </section>
+          )}
         </div>
 
-        {view === "reveal" &&
-          (results ? (
-            <ResultsBoard summary={results.summary} />
-          ) : (
-            <p className="m-0 font-body text-[0.95rem] text-[var(--color-ink-muted)]">Loading the room&apos;s results…</p>
-          ))}
-
-        {view === "scale" && <PolicyBenchContent />}
-        {view === "foundation" && <FoundationContent sourceOfTruth={results?.summary.sourceOfTruth} />}
+        {view === "reveal" && (
+          <LookUp
+            stat={viability && viability.rated > 0 ? `${viability.right} of ${viability.rated}` : null}
+            label={viability && viability.rated > 0 ? LOOK_UP.reveal.label : LOOK_UP.reveal.empty}
+          />
+        )}
+        {view === "scale" && (
+          <LookUp stat={`${percent(POLICYBENCH.saidZero, POLICYBENCH.eligibleAnswers)}%`} label={LOOK_UP.scale.label} />
+        )}
+        {view === "foundation" && (
+          <LookUp
+            stat={truthAnswered > 0 ? `${truthCannot} of ${truthAnswered}` : null}
+            label={truthAnswered > 0 ? LOOK_UP.foundation.label : LOOK_UP.foundation.empty}
+          />
+        )}
         {view === "groups" && <SmallGroups key={runEpoch} stage={view} />}
         {view === "next" && <NextStepsForm />}
         {view === "dinner" && <ThankYouContent onReturn={() => go("try")} />}

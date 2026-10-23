@@ -10,8 +10,8 @@ const PARTICIPANT_KEY = "aspen.participant";
 const RUN_KEY = "aspen.run";
 /** The saved conversation from Try it. It belongs to one run. */
 export const CHAT_KEY = "aspen.chat.v1";
-/** Set once this device has shared its Rate it answers. It belongs to one run. */
-export const OVERALL_KEY = "aspen.overall.v1";
+/** This device's overall answers (source of truth, agency rating and comment), saved as tapped. It belongs to one run. */
+export const OVERALL_KEY = "aspen.overall.v2";
 /** The use case this device voted for. It belongs to one run. */
 export const VOTE_KEY = "aspen.vote.v1";
 /** The participant's text size: kept on the phone, never sent anywhere. */

@@ -12,10 +12,10 @@ import {
   NEXT_STEPS,
   ONE_SET_OF_RULES,
   ONE_SET_STATEMENT,
+  LOOK_UP,
   POLICYBENCH,
   STAGES,
   USE_CASES,
-  US_STATES,
   percent,
   type StageId,
 } from "@/lib/aspen/content";
@@ -155,6 +155,34 @@ export function WelcomeLanding({ onStart }: { onStart: () => void }) {
         <Disclosure onOpen={() => sendEvent("disclosure", { opened: true }, "welcome")} />
       </div>
     </div>
+  );
+}
+
+/**
+ * A TV moment on a phone (the run-through, Oct 23): while the room looks at
+ * the screen together, the phone shows one line and, when there is one, one
+ * number to carry, then says when it is needed again.
+ */
+export function LookUp({ stat, label }: { stat: string | null; label: string }) {
+  return (
+    <section aria-label={LOOK_UP.heading} className="flex flex-col gap-4 rounded-xl border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] p-6">
+      <p className="m-0 flex items-center gap-2.5 font-body text-[1.3rem] font-semibold text-[var(--color-ink)]">
+        <svg aria-hidden viewBox="0 0 24 24" className="h-6 w-6 shrink-0 text-[var(--color-accent)]">
+          <rect x="2.5" y="4" width="19" height="12.5" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.6" />
+          <path d="M8.5 20h7M12 16.5V20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+        {LOOK_UP.heading}
+      </p>
+      {stat !== null ? (
+        <p className="m-0 flex flex-col gap-1">
+          <span className="font-display text-[3.4rem] font-light leading-none tabular-nums text-[var(--color-accent)]">{stat}</span>
+          <span className="font-body text-[1.12rem] leading-snug text-[var(--color-ink)]">{label}</span>
+        </p>
+      ) : (
+        <p className="m-0 font-body text-[1.12rem] leading-snug text-[var(--color-ink)]">{label}</p>
+      )}
+      <p className="m-0 font-body text-[1rem] text-[var(--color-ink-muted)]">{LOOK_UP.later}</p>
+    </section>
   );
 }
 
@@ -568,9 +596,6 @@ export function GroupsCard({ stage }: { stage: string }) {
 // ---------------------------------------------------------------------------
 
 export function NextStepsForm() {
-  const [name, setName] = useState("");
-  const [title, setTitle] = useState("");
-  const [state, setState] = useState("");
   const [email, setEmail] = useState("");
   const [accurateAi, setAccurateAi] = useState(false);
   const [stateSystems, setStateSystems] = useState(false);
@@ -583,9 +608,6 @@ export function NextStepsForm() {
     setStatus("saving");
     const response = await postJson<{ error?: string }>("/api/aspen/pledge", {
       participantId: participantId(),
-      name,
-      title,
-      state,
       email,
       accurateAi,
       stateSystems,
@@ -636,24 +658,8 @@ export function NextStepsForm() {
         </div>
       </Part>
       <Part n={2} title="How we reach you" as="h2">
+        {/* Just an email: Aspen's roster already gives each leader's name, title and state. */}
         <div className="grid gap-4 sm:grid-cols-2">
-          <label className={label}>
-            Name
-            <input className={FIELD} value={name} maxLength={120} onChange={(e) => setName(e.target.value)} autoComplete="name" />
-          </label>
-          <label className={label}>
-            Title
-            <input className={FIELD} value={title} maxLength={160} onChange={(e) => setTitle(e.target.value)} autoComplete="organization-title" />
-          </label>
-          <label className={label}>
-            State
-            <select className={FIELD} value={state} onChange={(e) => setState(e.target.value)}>
-              <option value="">Pick a state</option>
-              {US_STATES.map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </select>
-          </label>
           <label className={label}>
             Email
             <input

@@ -74,7 +74,7 @@ export const STAGES: readonly Stage[] = [
     title: "Ask the AI",
     agenda: "Ask the AI a benefits question, then rate it.",
     summary: "Ask as a resident or caseworker. Rate the answer. Then tell us more about AI use in your agency.",
-    phoneSummary: "Build a prompt. Use the preselected options and see how they change the prompt below. Or write your own.",
+    phoneSummary: "Pick who you're asking as and a household, then ask. Or write your own question.",
   },
   {
     id: "reveal",
@@ -122,6 +122,21 @@ export const STAGES: readonly Stage[] = [
     summary: "Thank you for joining us. Enjoy dinner.",
   },
 ];
+
+/**
+ * TV moments (the run-through, Oct 23): while the room looks at the screen
+ * together, a phone shows one line and one number, and comes back for the vote.
+ */
+export const LOOK_UP = {
+  heading: "Look up at the screen",
+  reveal: { label: "answers in this room looked right", empty: "The room's results are on the screen." },
+  scale: { label: "of AI answers told a household that qualifies for SNAP it would get $0" },
+  foundation: {
+    label: "in this room can't fully check an answer against their state's rules today",
+    empty: "What one open set of rules would do is on the screen.",
+  },
+  later: "Your phone comes back for the vote.",
+} as const;
 
 export function stageIndex(id: string | null | undefined): number {
   return STAGE_IDS.indexOf(id as StageId);
@@ -746,10 +761,18 @@ export const POLICYBENCH = {
      * or two in the 48 states and DC is $25 and the two-person maximum is
      * $562 (https://www.fna.usda.gov/snap/allotment/cola). Under them the
      * couple's $2,536 is still below 200% of poverty ($3,607), and 30% of
-     * its net income (about $633) is above the maximum, so it gets the
-     * minimum.
+     * its net income (about $690: $2,536 less the $217 standard deduction
+     * and $19 of medical costs above $35 a month) is above the maximum, so
+     * it gets the minimum.
      */
     fromOctober: { monthly: 25, standards: "FY2027", effective: "October 1, 2026" },
+    /**
+     * Calendar 2026 under current law: nine months at FY2026's $24 and three
+     * at FY2027's $25. PolicyBench holds FY2026 amounts through December
+     * under its July 2026 law cutoff, which is why its reference is $288
+     * (the PolicyBench session, Oct 23).
+     */
+    currentLaw: { annual: 291 },
   },
 } as const;
 
