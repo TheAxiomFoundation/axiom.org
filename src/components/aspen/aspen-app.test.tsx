@@ -417,7 +417,7 @@ describe("AspenApp thread", () => {
   it("ties later stages back to the participant's question", async () => {
     storeChat({
       perspective: "resident",
-      householdId: "az-savings",
+      householdId: "ct-couple",
       turns: [
         { key: "u", role: "user", content: "Q" },
         { key: "a", role: "assistant", content: "A", status: "done", promptId: "p" },
@@ -427,12 +427,12 @@ describe("AspenApp thread", () => {
     render(<AspenApp />);
     fireEvent.click(nav().getByRole("button", { name: /At scale/ }));
     await onView("scale");
-    expect(screen.getByText(/every one of the 50 models said it gets \$0/)).toBeInTheDocument();
+    expect(screen.getByText(/42 of the 49 models that answered said it gets \$0/)).toBeInTheDocument();
 
     fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
     await onView("reveal");
     // What we saw opens with what you contributed: your question, and the rating still to do.
-    expect(screen.getByText("You asked about “Disabled, with savings”.")).toBeInTheDocument();
+    expect(screen.getByText("You asked about “Couple, with savings”.")).toBeInTheDocument();
     expect(screen.getByText("You haven't rated an answer yet.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Rate my answer →" }));
     await onView("try");
@@ -474,7 +474,7 @@ describe("AspenApp thread", () => {
 describe("AspenApp after a new run", () => {
   const asked: Partial<SavedChat> = {
     perspective: "resident",
-    householdId: "az-savings",
+    householdId: "ct-couple",
     turns: [
       { key: "u", role: "user", content: "Q" },
       { key: "a", role: "assistant", content: "A", status: "done", promptId: "p" },
@@ -509,7 +509,7 @@ describe("AspenApp after a new run", () => {
     fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
     await onView("reveal");
     // What we saw opens with what you contributed: your question, and the rating still to do.
-    expect(screen.getByText("You asked about “Disabled, with savings”.")).toBeInTheDocument();
+    expect(screen.getByText("You asked about “Couple, with savings”.")).toBeInTheDocument();
     expect(screen.getByText("You haven't rated an answer yet.")).toBeInTheDocument();
   });
 
@@ -522,7 +522,7 @@ describe("AspenApp after a new run", () => {
     fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
     await onView("reveal");
     // What we saw opens with what you contributed: your question, and the rating still to do.
-    expect(screen.getByText("You asked about “Disabled, with savings”.")).toBeInTheDocument();
+    expect(screen.getByText("You asked about “Couple, with savings”.")).toBeInTheDocument();
     expect(screen.getByText("You haven't rated an answer yet.")).toBeInTheDocument();
     expect(localStorage.getItem("aspen.run")).toBe(JSON.stringify("phoenix"));
   });

@@ -41,7 +41,23 @@ const RULES_STREAM = [
       display_name: 'Arizona SNAP',
       period: '2026-10',
       primary_output: 'snap_benefit',
-      outputs: [{ name: 'snap_benefit', label: 'Snap benefit', value: 24, unit: 'USD', legal_id: 'us:x#snap_benefit' }],
+      outputs: [
+        { name: 'snap_benefit', label: 'Snap benefit', value: 24, unit: 'USD', semantics: 'scalar', published_output: true, legal_id: 'us:x#snap_benefit' },
+        { name: 'snap_eligible', label: 'Snap eligible', value: 'holds', unit: null, semantics: 'judgment', published_output: true },
+        {
+          name: 'snap_maximum_allotment',
+          value: 298,
+          unit: 'USD',
+          published_output: false,
+          legal_id: 'us:policies/usda/snap/fy-2026-cola/maximum-allotments#snap_maximum_allotment',
+        },
+      ],
+      applied: {
+        disclosures: [
+          "Axiom's Arizona SNAP encoding doesn't test eligibility yet: every household shows as eligible, so read the amount as \"if eligible\".",
+          'SNAP figures use FY2026 standards; FY2027 standards took effect October 1, 2026 and are not encoded yet.',
+        ],
+      },
     },
   })}`,
   `0:${JSON.stringify('Estimated Arizona SNAP: $24/month.')}`,
@@ -118,7 +134,7 @@ describe('aspen API routes', () => {
         conversationId: C,
         turn: 0,
         messages: [{ role: 'user', content: 'Can I get SNAP?' }],
-        meta: { stage: 'try', perspective: 'resident', householdId: 'az-savings', questionIds: ['eligible', 'bogus', 'amount'], twists: ['gig', 'bogus'], promptTemplate: 'Can I get SNAP?' },
+        meta: { stage: 'try', perspective: 'resident', householdId: 'ct-couple', questionIds: ['eligible', 'bogus', 'amount'], twists: ['gig', 'bogus'], promptTemplate: 'Can I get SNAP?' },
       }),
     )
     expect(asked.headers.get('content-type')).toMatch(/ndjson/)
@@ -139,11 +155,13 @@ describe('aspen API routes', () => {
       await rules(post({ participantId: P, promptId, messages: [{ role: 'user', content: 'Can I get SNAP?' }] }))
     ).json()
     expect(checked).toMatchObject({ amount: 24, program: 'Arizona SNAP', period: '2026-10' })
+    expect(checked.computations[0]).toMatchObject({ program: 'us-az-snap', standardsYears: [2026] })
+    expect(checked.computations[0].disclosures).toHaveLength(2)
     await rate(post({ participantId: P, promptId, postCheck: 'wrong' }))
 
     await event(post({ participantId: P, kind: 'discussion', payload: { question: 'misunderstood', topics: ['Asset tests'], note: 'BBCE' } }))
     await event(post({ participantId: P, kind: "discussion", payload: { question: "performance", ratings: { amount: 2, clarity: 9, bogus: 3 } } }))
-    await event(post({ participantId: P, kind: "chip", payload: { householdId: "az-savings", questionIds: ["cliff", "x"], twists: ["gig", "nope"] } }))
+    await event(post({ participantId: P, kind: "chip", payload: { householdId: "ct-couple", questionIds: ["cliff", "x"], twists: ["gig", "nope"] } }))
     await event(post({ participantId: P, kind: "discussion", stage: "rate", payload: { question: null, note: "Staff use it already" } }))
     await event(post({ participantId: P, kind: "survey", stage: "rate", payload: { question: "source-of-truth", answer: "no" } }))
     expect((await event(post({ participantId: P, kind: "survey", payload: { question: "source-of-truth", answer: "maybe" } }))).status).toBe(400)
@@ -163,14 +181,21 @@ describe('aspen API routes', () => {
     const room = await (await results(new Request('https://axiom.org/api/aspen/results'))).json()
     expect(room.runId).toBe('phoenix')
     expect(room.summary).toMatchObject({ participants: 1, prompts: 1, rated: 1, checked: 1 })
-    expect(room.summary.feed[0]).toMatchObject({ household: 'Disabled, with savings', verdict: 'wrong', rulesAmount: 24, postCheck: 'wrong' })
+    expect(room.summary.feed[0]).toMatchObject({
+      household: 'Couple, with savings',
+      verdict: 'wrong',
+      rulesAmount: 24,
+      rulesIfEligible: true,
+      postCheck: 'wrong',
+    })
     expect(room.summary.discussion.notes).toContainEqual({ question: 'misunderstood', text: 'BBCE' })
     // Pledges give counts only: no states, names or emails reach the results.
     expect(room.summary.pledges).toEqual({ people: 1, accurateAi: 1, stateSystems: 0 })
     expect(room.summary.twists[0]).toMatchObject({ id: "gig", count: 1 })
     expect(room.summary.voices).toContainEqual({ text: "Staff use it already", verdict: null })
     expect(room.summary.sourceOfTruth.find((c: { id: string }) => c.id === "no").count).toBe(1)
-    expect(room.summary.viability).toMatchObject({ wouldNotApply: 1, wouldNotApplyEligible: 1 })
+    // Arizona's rules don't test eligibility, so the $24 is an amount if eligible, not a household that qualifies.
+    expect(room.summary.viability).toMatchObject({ wouldNotApply: 1, wouldNotApplyEligible: 0, wouldNotApplyIfEligible: 1 })
     expect(room.summary.votes.find((c: { id: string }) => c.id === 'project').count).toBe(1)
     expect(room.summary.breakouts.notes).toContainEqual({
       useCase: 'project',

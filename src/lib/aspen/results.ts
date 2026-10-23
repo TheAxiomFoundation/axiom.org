@@ -14,6 +14,7 @@ import {
   WENT_WRONG,
   WOULD_ACT,
 } from "./content";
+import { testsEligibility } from "./coverage";
 import type { PromptRow, RunData } from "./types";
 
 /**
@@ -37,6 +38,8 @@ export interface FeedItem {
   verdict: string | null;
   rulesAmount: number | null;
   rulesProgram: string | null;
+  /** The rules ran on a program whose eligibility they don't test, so the amount holds only if eligible. */
+  rulesIfEligible: boolean;
   postCheck: string | null;
   createdAt: string | null;
 }
@@ -56,8 +59,10 @@ export interface Viability {
   residentActions: Count[];
   /** Answers that would lead a resident not to apply. */
   wouldNotApply: number;
-  /** Of those, the ones whose household qualifies under the encoded rules (checked, amount above $0). */
+  /** Of those, the ones whose household qualifies under the encoded rules (checked, amount above $0, eligibility tested). */
   wouldNotApplyEligible: number;
+  /** Of those, the ones with an amount above $0 from rules that don't test eligibility: an amount if eligible, not a verdict. */
+  wouldNotApplyIfEligible: number;
 }
 
 /** How answers held up for one household, added detail, or perspective. */
@@ -214,9 +219,53 @@ function payloadList(payload: Record<string, unknown>, key: string): string[] {
 const SPOTLIGHT_SIZE = 4;
 const VOICES_SIZE = 12;
 
+type SavedCheck = Pick<PromptRow, "rules_outputs" | "rules_program_id" | "rules_eligibility_tested">;
+
+/** The saved rules check's first computation, when the row carries the whole of rules_outputs. */
+function firstComputation(p: SavedCheck): Record<string, unknown> {
+  const first: unknown = Array.isArray(p.rules_outputs) ? p.rules_outputs[0] : null;
+  return first && typeof first === "object" ? (first as Record<string, unknown>) : {};
+}
+
+/** The program id of the rules check saved on a prompt (its first computation), or null. */
+export function rulesProgramId(p: SavedCheck): string | null {
+  if (typeof p.rules_program_id === "string") return p.rules_program_id;
+  const program = firstComputation(p).program;
+  return typeof program === "string" ? program : null;
+}
+
+/**
+ * The saved rules amount holds only if the household is eligible: the
+ * rules didn't test eligibility. The verdict saved with the check wins;
+ * a check saved before there was one falls back to its program id.
+ */
+export function rulesIfEligible(p: SavedCheck): boolean {
+  const saved = p.rules_eligibility_tested ?? firstComputation(p).eligibilityTested;
+  return !testsEligibility({
+    program: rulesProgramId(p),
+    eligibilityTested: typeof saved === "boolean" ? saved : null,
+  });
+}
+
+/**
+ * "For 3 more, the rules give an amount but don't test eligibility yet.",
+ * or "For 3 of them, ..." when no checked household qualifies; null when
+ * there are none.
+ */
+export function ifEligibleSentence(
+  v: Pick<Viability, "wouldNotApplyEligible" | "wouldNotApplyIfEligible">,
+  of: string,
+): string | null {
+  if (v.wouldNotApplyIfEligible <= 0) return null;
+  const who = v.wouldNotApplyEligible > 0 ? "more" : of;
+  return `For ${v.wouldNotApplyIfEligible} ${who}, the rules give an amount but don't test eligibility yet.`;
+}
+
 export function viabilityOf(rated: PromptRow[]): Viability {
   const count = (pred: (p: PromptRow) => boolean) => rated.filter(pred).length;
   const acts = (p: PromptRow) => p.would_act === "yes" || p.would_act === "maybe";
+  const notApplyWithAmount = (p: PromptRow) =>
+    p.resident_action === "not-apply" && typeof p.rules_amount === "number" && p.rules_amount > 0;
   return {
     rated: rated.length,
     right: count((p) => p.verdict === "right"),
@@ -231,9 +280,8 @@ export function viabilityOf(rated: PromptRow[]): Viability {
       RESIDENT_ACTIONS,
     ),
     wouldNotApply: count((p) => p.resident_action === "not-apply"),
-    wouldNotApplyEligible: count(
-      (p) => p.resident_action === "not-apply" && typeof p.rules_amount === "number" && p.rules_amount > 0,
-    ),
+    wouldNotApplyEligible: count((p) => notApplyWithAmount(p) && !rulesIfEligible(p)),
+    wouldNotApplyIfEligible: count((p) => notApplyWithAmount(p) && rulesIfEligible(p)),
   };
 }
 
@@ -295,6 +343,7 @@ export function summarizeRun(data: RunData): RunSummary {
     verdict: p.verdict ?? null,
     rulesAmount: p.rules_amount ?? null,
     rulesProgram: p.rules_program ?? null,
+    rulesIfEligible: rulesIfEligible(p),
     postCheck: p.post_check_verdict ?? null,
     createdAt: p.created_at ?? null,
   });
