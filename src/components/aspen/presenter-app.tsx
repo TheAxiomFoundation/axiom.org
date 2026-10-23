@@ -44,7 +44,7 @@ import {
 import type { Control } from "@/lib/aspen/types";
 import { EMPTY_SUMMARY, ifEligibleSentence, type Count, type RunSummary, type ScaleSummary } from "@/lib/aspen/results";
 import { postJson, useControl, useResults } from "./client";
-import { BAD, GOOD, MAYBE } from "./results-board";
+import { BAD, GOOD, MAYBE, REASON_LABEL } from "./results-board";
 import { BUTTON_QUIET, FIELD } from "./ui";
 import { BrandLogo } from "./brand-logo";
 import { JoinQr } from "./join-qr";
@@ -64,7 +64,7 @@ const SLIDE_TITLES: Partial<Record<StageId, Record<number, string>>> = {
 };
 
 /** Stages shown as more than one slide; the arrows step through them before moving the room. */
-const SLIDES: Partial<Record<StageId, number>> = { reveal: 3, scale: 7, foundation: 3, groups: 2, next: 2 };
+const SLIDES: Partial<Record<StageId, number>> = { reveal: 2, scale: 7, foundation: 3, groups: 2, next: 2 };
 const slideCount = (id: StageId) => SLIDES[id] ?? 1;
 
 /** The largest scale at which the 16:9 canvas fits the window. */
@@ -212,11 +212,12 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
                   (sub === 0 ? (
                     <RevealSlide summary={summary} />
                   ) : (
+                    // The agency rating; the 5x5 "How did the AI do?" grid left the phones on Oct 23, so its slide went too.
                     <RatingSlide
                       summary={summary}
-                      question={sub === 1 ? "performance" : "experience"}
+                      question="experience"
                       comments={
-                        sub === 2 && showComments
+                        showComments
                           ? summary.discussion.notes.filter((n) => n.question === "experience").map((n) => n.text)
                           : null
                       }
@@ -338,7 +339,7 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
 
       {/* The only control at the bottom: a small toggle on the slides that hide something until asked.
           The live demo is At scale's last slide. */}
-      {((stage === "reveal" && sub === 2) || (stage === "scale" && sub === slideCount("scale") - 1)) && (
+      {((stage === "reveal" && sub === slideCount("reveal") - 1) || (stage === "scale" && sub === slideCount("scale") - 1)) && (
         <div
           className={`absolute bottom-3 right-3 rounded-full border border-[var(--color-rule)] bg-[var(--color-paper)]/95 px-1.5 py-1 ${fade}`}
         >
@@ -695,7 +696,7 @@ function RevealSlide({ summary }: { summary: RunSummary }) {
           <BigStat
             size={76}
             value={v.convincing}
-            label="looked wrong, yet people would act on them"
+            label="looked wrong or unsure, yet a resident would act on them"
             tone={v.convincing > 0 ? "bad" : "ink"}
           />
         </Panel>
@@ -730,16 +731,59 @@ function RevealSlide({ summary }: { summary: RunSummary }) {
           />
         </Panel>
       </div>
+      <WorthDiscussing summary={summary} />
+    </div>
+  );
+}
+
+/**
+ * The answers Max reads out in What we saw, on the screen now that phones
+ * stay quiet there: the two most worth discussing, with what the person
+ * said about each. Before anyone flags one, the spoken questions show instead.
+ */
+function WorthDiscussing({ summary }: { summary: RunSummary }) {
+  const items = summary.spotlight.slice(0, 2);
+  if (!items.length) {
+    return (
       <Panel className="mt-auto py-[20px]">
         <Label>To discuss</Label>
         <ol className={`m-0 grid grid-cols-2 gap-[32px] pl-[28px] ${BOX_TEXT}`}>
-          {/* The agency question has its own slide (3/3). */}
+          {/* The agency question has its own slide (2/2). */}
           {DISCUSSION_QUESTIONS.filter((q) => q.id !== "experience").map((q) => (
             <li key={q.id}>{q.label}</li>
           ))}
         </ol>
       </Panel>
-    </div>
+    );
+  }
+  return (
+    <Panel className="mt-auto py-[20px]">
+      <Label>Answers worth discussing</Label>
+      <ul className="m-0 grid list-none grid-cols-2 gap-[32px] p-0">
+        {items.map((item) => (
+          <li key={item.id} className="flex min-w-0 flex-col gap-[6px]">
+            <span className="font-body text-[19px] font-medium text-[var(--color-ink-muted)]">
+              <span className={item.reason === "unsure" ? "" : "text-[var(--color-error)]"}>{REASON_LABEL[item.reason]}</span>
+              {" · "}
+              {item.household ?? "Own question"}
+            </span>
+            {item.note ? (
+              <q className="line-clamp-2 font-body text-[22px] leading-snug text-[var(--color-ink)]">{item.note}</q>
+            ) : (
+              item.wentWrong.length > 0 && (
+                <span className="font-body text-[22px] leading-snug text-[var(--color-ink)]">{item.wentWrong.join(" · ")}</span>
+              )
+            )}
+            {item.answer && (
+              <p className="m-0 line-clamp-2 font-body text-[18px] leading-snug text-[var(--color-ink-secondary)]">
+                <span className="font-medium text-[var(--color-ink-muted)]">The AI: </span>
+                {item.answer}
+              </p>
+            )}
+          </li>
+        ))}
+      </ul>
+    </Panel>
   );
 }
 
@@ -778,8 +822,8 @@ function StandardsNote() {
   const ex = POLICYBENCH.example;
   return (
     <p className="m-0 font-body text-[18px] leading-snug text-[var(--color-ink-secondary)]">
-      ${ex.reference.monthly} a month all year under {ex.reference.standards} standards.{" "}
-      The minimum benefit rose to ${ex.fromOctober.monthly} on {ex.fromOctober.effective}.
+      ${ex.reference.monthly} a month under the benchmark&apos;s July 2026 rules ({ex.reference.standards} standards).{" "}
+      The minimum rose to ${ex.fromOctober.monthly} on October 1, so 2026 comes to ${ex.currentLaw.annual} under current law.
     </p>
   );
 }
@@ -1442,6 +1486,9 @@ function GroupsSlide({ summary }: { summary: RunSummary }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
   const useCaseLabel = (n: GroupNote) => USE_CASES.find((u) => u.id === n.useCase)?.label ?? "Group idea";
+  // Rows only for the groups there are: with four or fewer, each card gets half the space and its lines can wrap.
+  const rows = Math.min(3, Math.max(1, Math.ceil(ideas.length / 2)));
+  const roomy = rows <= 2;
   return (
     <div className="relative flex h-full flex-col gap-[18px]">
       <ol className="m-0 grid list-none grid-cols-3 gap-[16px] p-0">
@@ -1456,7 +1503,10 @@ function GroupsSlide({ summary }: { summary: RunSummary }) {
       {ideas.length === 0 ? (
         <p className="m-0 font-body text-[26px] text-[var(--color-ink-muted)]">Ideas appear here as groups share them.</p>
       ) : (
-        <ul className="m-0 grid min-h-0 flex-1 list-none grid-cols-2 grid-rows-3 gap-[14px] p-0">
+        <ul
+          className="m-0 grid min-h-0 flex-1 list-none grid-cols-2 gap-[14px] p-0"
+          style={{ gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))` }}
+        >
           {ideas.map((n, i) => {
             const [first, ...rest] = groupLines(n);
             return (
@@ -1471,12 +1521,15 @@ function GroupsSlide({ summary }: { summary: RunSummary }) {
                     {useCaseLabel(n)}
                   </span>
                   {first ? (
-                    <span className="line-clamp-2 text-[21px] leading-snug">{first.text}</span>
+                    <span className={`${roomy ? "line-clamp-3" : "line-clamp-2"} text-[21px] leading-snug`}>{first.text}</span>
                   ) : (
-                    n.raised && <span className="line-clamp-2 text-[21px] leading-snug">{n.raised}</span>
+                    n.raised && <span className={`${roomy ? "line-clamp-3" : "line-clamp-2"} text-[21px] leading-snug`}>{n.raised}</span>
                   )}
                   {rest.map((l) => (
-                    <span key={l.q.id} className="mt-[2px] line-clamp-1 text-[17px] text-[var(--color-ink-secondary)]">
+                    <span
+                      key={l.q.id}
+                      className={`mt-[2px] ${roomy ? "line-clamp-3" : "line-clamp-1"} text-[17px] text-[var(--color-ink-secondary)]`}
+                    >
                       <span className="font-medium text-[var(--color-ink)]">{l.q.short}:</span> {l.text}
                     </span>
                   ))}

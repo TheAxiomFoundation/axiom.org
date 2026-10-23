@@ -252,7 +252,8 @@ function BreakdownPanel({ summary }: { summary: RunSummary }) {
   );
 }
 
-const REASON_LABEL: Record<string, string> = {
+/** Why an answer is worth discussing, on a phone and on the TV. */
+export const REASON_LABEL: Record<string, string> = {
   convincing: "Wrong but convincing",
   "checked-wrong": "Wrong against the rules",
   wrong: "Looked wrong",
