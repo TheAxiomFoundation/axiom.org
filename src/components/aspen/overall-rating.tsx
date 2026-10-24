@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AGENCY_COMMENT, RATING_POINTS, RATING_SCALES, SOURCE_OF_TRUTH } from "@/lib/aspen/content";
-import { OVERALL_KEY, nextRev, participantId, readStored, saveJson, writeStored } from "./client";
+import { OVERALL_KEY, nextRev, participantId, readStored, saveJson, saveMark, writeStored } from "./client";
 import { BUTTON_QUIET, FIELD, QUESTION } from "./ui";
 
 /** One category on a 1–5 scale: five equal buttons; the ends are labelled once above the list. */
@@ -49,6 +49,8 @@ export interface OverallAnswers {
   unsaved?: Record<string, boolean>;
   /** A removed comment the store hasn't confirmed, so its button stays until it does. */
   removing?: boolean;
+  /** By kind, the latest save's saveMark: another tab on the phone may have saved since, and only its own answer may mark the kind saved. */
+  pending?: Record<string, string>;
 }
 
 /** Merges into this phone's stored answers. */
@@ -75,15 +77,17 @@ export function OverallRating({ stage }: { stage: string }) {
   // so each clears only when that kind saves again, and a later rating never hides a failed truth answer.
   const [failed, setFailed] = useState<Record<string, boolean>>({});
   const [removing, setRemoving] = useState(false);
+  // By kind, whether this tab's latest send is still on its way.
+  const [sending, setSending] = useState<Record<string, boolean>>({});
   // Sends go one after another, and each carries its tap's stamp, so a slow earlier tap never counts as the latest.
   const queue = useRef<Promise<unknown>>(Promise.resolve());
-  // By kind, the latest send: only it decides whether the kind is saved.
-  const latest = useRef<Record<string, number>>({});
+  // By kind, this tab's latest send: only it decides whether the kind is saved.
+  const latest = useRef<Record<string, string>>({});
 
   useEffect(() => {
     const stored = readStored<OverallAnswers>(OVERALL_KEY);
     if (stored && typeof stored === "object") {
-      const { unsaved, removing: wasRemoving, ...rest } = stored;
+      const { unsaved, removing: wasRemoving, pending: _pending, ...rest } = stored;
       setAnswers(rest);
       setComment(rest.comment ?? "");
       // A save that never confirmed before the reload still asks for the tap again.
@@ -97,24 +101,24 @@ export function OverallRating({ stage }: { stage: string }) {
     remember(next);
   }
 
-  function markUnsaved(kind: string, value: boolean) {
-    remember({ unsaved: { ...readStored<OverallAnswers>(OVERALL_KEY)?.unsaved, [kind]: value } });
-  }
-
   function send(kind: string, payload: Record<string, unknown>) {
     const rev = nextRev();
-    latest.current[kind] = rev;
-    markUnsaved(kind, true);
+    const mark = saveMark(rev);
+    latest.current[kind] = mark;
+    setSending((s) => ({ ...s, [kind]: true }));
+    const stored = readStored<OverallAnswers>(OVERALL_KEY);
+    remember({ unsaved: { ...stored?.unsaved, [kind]: true }, pending: { ...stored?.pending, [kind]: mark } });
     queue.current = queue.current.then(async () => {
       const ok = await saveJson("/api/aspen/event", { participantId: participantId(), kind, payload: { ...payload, rev }, stage });
-      if (latest.current[kind] !== rev) return; // A later tap of this kind is on its way and decides.
+      if (latest.current[kind] !== mark) return; // A later tap of this kind is on its way and decides.
+      setSending((s) => ({ ...s, [kind]: false }));
       setFailed((f) => ({ ...f, [kind]: !ok }));
-      markUnsaved(kind, !ok);
       // Every agency save carries the comment, so any saved one confirms a removal.
-      if (ok && kind === "discussion") {
-        setRemoving(false);
-        remember({ removing: false });
-      }
+      if (ok && kind === "discussion") setRemoving(false);
+      // Another tab may have saved this kind since: then the phone keeps that tab's state, not this one.
+      const now = readStored<OverallAnswers>(OVERALL_KEY);
+      if (now?.pending?.[kind] !== mark) return;
+      remember({ unsaved: { ...now.unsaved, [kind]: !ok }, ...(ok && kind === "discussion" ? { removing: false } : {}) });
     });
   }
 
@@ -203,7 +207,17 @@ export function OverallRating({ stage }: { stage: string }) {
             {/* A removal that didn't save keeps its button, so it can be tapped again. */}
             {(commentChanged || savedComment || removing) && (
               <button type="button" className={`${BUTTON_QUIET} self-start`} disabled={!commentPending} onClick={saveComment}>
-                {!commentPending ? (savedComment ? "Comment saved" : "Comment removed") : comment.trim() ? "Save comment" : "Remove comment"}
+                {commentPending
+                  ? comment.trim()
+                    ? "Save comment"
+                    : "Remove comment"
+                  : sending.discussion
+                    ? savedComment
+                      ? "Saving…"
+                      : "Removing…"
+                    : savedComment
+                      ? "Comment saved"
+                      : "Comment removed"}
               </button>
             )}
           </div>

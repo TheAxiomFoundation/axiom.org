@@ -25,6 +25,8 @@ export const TEXT_SIZE_KEY = "aspen.textSize.v1";
 
 let fallbackId: string | null = null;
 let lastRev = 0;
+// This page load's own name, for saveMark.
+const TAB = Math.random().toString(36).slice(2);
 
 function newId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -110,6 +112,16 @@ export function nextRev(now = Date.now()): number {
   lastRev = Math.max(Math.floor(now), floor + 1);
   writeStored(REV_KEY, lastRev);
   return lastRev;
+}
+
+/**
+ * One save's name across every tab on this device: its stamp and its tab.
+ * Two tabs share a stamp only if each takes one before it sees the other's,
+ * and their saves still have different names, so a tab can tell whether the
+ * answer stored on the phone is still the one its save sent.
+ */
+export function saveMark(rev: number): string {
+  return `${rev}:${TAB}`;
 }
 
 export async function postJson<T = Record<string, unknown>>(

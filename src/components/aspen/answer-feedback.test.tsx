@@ -388,6 +388,65 @@ describe("RatingCard", () => {
     expect(readRatingDraft("p1")?.rating.wentWrong).toEqual(["Wrong amount"]);
   });
 
+  it("moves on only once the latest tap saves, not an earlier one that lands first", async () => {
+    localStorage.setItem(
+      RATING_KEY,
+      JSON.stringify({ p1: { rating: { verdict: "wrong", residentAction: null, wentWell: [], wentWrong: [], note: "" }, step: 1 } }),
+    );
+    const resolvers: ((r: Response) => void)[] = [];
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((r) => resolvers.push(r))));
+    const onRated = vi.fn();
+    render(<RatingCard promptId="p1" onRated={onRated} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Apply" }));
+    fireEvent.click(screen.getByRole("button", { name: "Not apply" }));
+    await waitFor(() => expect(resolvers).toHaveLength(1));
+    await act(async () => resolvers[0](jsonResponse({ ok: true, saved: true })));
+    expect(onRated).not.toHaveBeenCalled();
+    await waitFor(() => expect(resolvers).toHaveLength(2));
+    await act(async () => resolvers[1](jsonResponse({}, false)));
+    expect(onRated).not.toHaveBeenCalled();
+    expect(screen.getByText("That didn't save. Tap it again.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Not apply" }));
+    await waitFor(() => expect(resolvers).toHaveLength(3));
+    await act(async () => resolvers[2](jsonResponse({ ok: true, saved: true })));
+    expect(onRated).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps another tab's newer answer when this tab's older save lands, so a reload still asks for it", async () => {
+    // Two tabs on one phone share its stored drafts, and each sends its own saves.
+    const resolvers: ((r: Response) => void)[] = [];
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((r) => resolvers.push(r))));
+    const tabA = render(<RatingCard promptId="p1" />);
+    const tabB = render(<RatingCard promptId="p1" />);
+    fireEvent.click(within(tabA.container).getByRole("button", { name: "Looks wrong" }));
+    fireEvent.click(within(tabB.container).getByRole("button", { name: "Looks right" }));
+    await waitFor(() => expect(resolvers).toHaveLength(2));
+    // B's fails, then A's older one lands: each tab says what happened to its own.
+    await act(async () => resolvers[1](jsonResponse({}, false)));
+    await act(async () => resolvers[0](jsonResponse({ ok: true, saved: true })));
+    expect(within(tabA.container).queryByText("That didn't save. Tap it again.")).not.toBeInTheDocument();
+    expect(within(tabB.container).getByText("That didn't save. Tap it again.")).toBeInTheDocument();
+    expect(readRatingDraft("p1")).toMatchObject({ rating: { verdict: "right" }, unsaved: true });
+    tabA.unmount();
+    tabB.unmount();
+    render(<RatingCard promptId="p1" />);
+    expect(await screen.findByText("That didn't save. Tap it again.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Looks right" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("lets a save still on its way confirm the draft after another tab opens the card and types in it", async () => {
+    const resolvers: ((r: Response) => void)[] = [];
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((r) => resolvers.push(r))));
+    const tabA = render(<RatingCard promptId="p1" />);
+    fireEvent.click(within(tabA.container).getByRole("button", { name: "Looks wrong" }));
+    await waitFor(() => expect(resolvers).toHaveLength(1));
+    // A second tab opens the card while A's save is on its way, and types a note without saving it.
+    const tabB = render(<RatingCard promptId="p1" />);
+    fireEvent.change(await within(tabB.container).findByLabelText(/Anything the room should know/), { target: { value: "Check BBCE" } });
+    await act(async () => resolvers[0](jsonResponse({ ok: true, saved: true })));
+    expect(readRatingDraft("p1")).toMatchObject({ rating: { verdict: "wrong", note: "Check BBCE" }, unsaved: false });
+  });
+
   it("keeps each answer's card apart, and ignores a draft it can't read", () => {
     localStorage.setItem(
       RATING_KEY,

@@ -249,10 +249,21 @@ describe('aspen API routes', () => {
     expect((await room()).feed[0].verdict).toBe('wrong')
     expect(await rateAt(1_792_000_003_000, 'unsure')).toEqual({ ok: true, saved: true })
     expect((await room()).feed[0].verdict).toBe('unsure')
-    // A page that sends no stamp, or a bad one, saves as it always did.
+    // A page that sends no stamp, or a bad one, saves as it always did, on arrival, at the server's time.
     expect(await rateAt(undefined, 'right')).toEqual({ ok: true, saved: true })
+    const arrived = Date.now()
     expect(await rateAt('soon', 'wrong')).toEqual({ ok: true, saved: true })
     expect((await room()).feed[0].verdict).toBe('wrong')
+    // A stamped tap from before that time doesn't replace it; the phone says so, and a tap after it saves.
+    expect(await rateAt(arrived - 60_000, 'right')).toEqual({ ok: true, saved: false })
+    expect(await rateAt(Date.now() + 1_000, 'unsure')).toEqual({ ok: true, saved: true })
+    expect((await room()).feed[0].verdict).toBe('unsure')
+    // Two tabs that stamped alike: the first to arrive stands, and the other's retry, stamped above it, saves.
+    const tie = Date.now() + 2_000
+    expect(await rateAt(tie, 'wrong')).toEqual({ ok: true, saved: true })
+    expect(await rateAt(tie, 'right')).toEqual({ ok: true, saved: false })
+    expect(await rateAt(tie + 1, 'right')).toEqual({ ok: true, saved: true })
+    expect((await room()).feed[0].verdict).toBe('right')
 
     // The same for answers that save as events: the later stamp counts, whichever landed last.
     const comment = (note: unknown, rev: number, ratings: unknown = { residents: 2 }) =>
@@ -269,6 +280,15 @@ describe('aspen API routes', () => {
     // An explicit empty answer takes it back.
     expect(await (await comment('', 1_792_000_004_000, {})).json()).toEqual({ ok: true, saved: true })
     expect(JSON.stringify(await room())).not.toContain('Later comment')
+
+    // A page too old to stamp counts by when its answer arrived, so its later answer counts over earlier taps,
+    // and a tap stamped after that arrival counts over it.
+    const unstamped = await event(post({ participantId: P, kind: 'discussion', payload: { question: 'experience', ratings: { residents: 3 }, topics: [], note: 'Old page comment' } }))
+    expect(await unstamped.json()).toEqual({ ok: true, saved: true })
+    expect((await room()).discussion.notes).toContainEqual({ question: 'experience', text: 'Old page comment' })
+    expect(await (await comment('Newest comment', Date.now() + 1_000)).json()).toEqual({ ok: true, saved: true })
+    expect((await room()).discussion.notes).toContainEqual({ question: 'experience', text: 'Newest comment' })
+    expect(JSON.stringify(await room())).not.toContain('Old page comment')
   })
 
   it('rejects bad questions and records failed answers', async () => {

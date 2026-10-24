@@ -459,6 +459,22 @@ describe("nextRev", () => {
     expect(nextRev(1)).toBe(9e12 + 2);
   });
 
+  it("names each save by its stamp and its tab, so two tabs that stamp alike still tell their saves apart", async () => {
+    vi.resetModules();
+    const tabA = await import("./client");
+    vi.resetModules();
+    const tabB = await import("./client");
+    // Each takes a stamp before it sees the other's, so they share it.
+    localStorage.setItem("aspen.rev", JSON.stringify(9e12));
+    const a = tabA.nextRev(1);
+    localStorage.setItem("aspen.rev", JSON.stringify(9e12));
+    const b = tabB.nextRev(1);
+    expect(a).toBe(b);
+    expect(tabA.saveMark(a)).not.toBe(tabB.saveMark(b));
+    expect(tabA.saveMark(a)).toBe(tabA.saveMark(a));
+    expect(tabA.saveMark(a)).not.toBe(tabA.saveMark(a + 1));
+  });
+
   it("keeps a new run's stamps going up, since enterRun leaves the stamp alone", () => {
     const before = nextRev(5e12);
     localStorage.setItem("aspen.run", JSON.stringify("rehearsal"));
