@@ -40,7 +40,9 @@ function mockModel(id: string, freePlan: string | null, k: { alone: number; web:
 export const MOCK_POLICYBENCH_EXPORT: PolicyBenchExport = {
   households: 20,
   engine: "policyengine-us 0.0.0-mock",
-  caveat: "MOCK caveat: invented numbers in the export's shape.",
+  // PolicyBench's one-size wording (aspen_export.py caveat_text), for the mock's size and noise width.
+  caveat:
+    "Preliminary internal pilot: 20 households sampled from PolicyEngine's microdata, 48 nonzero dollar amounts per model and setting. The models were called through their APIs with our prompt, not used in the free chat apps, and a change of less than about 15 points between settings is within noise at this size.",
   models: [
     mockModel("c", null, { alone: 30, web: 33, tool: 44, both: 45 }),
     mockModel("a", "Mock Free", { alone: 10, web: 15, tool: 38, both: 39 }),

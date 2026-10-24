@@ -55,6 +55,7 @@ describe("run", () => {
       "The models on free plans, with web search and with the tool",
       "  Mock model A (On Mock Free): alone 10/48, web 15/48, tool 38/48, both 39/48; tool vs alone 58.3 [43.333333333333336, 73.33333333333334]",
       "  Mock model C: alone 30/48, web 33/48, tool 44/48, both 45/48; tool vs alone 29.2 [14.166666666666668, 44.16666666666667]",
+      `Caveat, for these models: ${MOCK_POLICYBENCH_EXPORT.caveat}`,
       "Free-plan basis, for the presenter:",
       "  Mock model C: MOCK: a comparison model",
       "  Mock model A: MOCK: the default on Mock Free",

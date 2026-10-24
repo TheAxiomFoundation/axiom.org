@@ -12,11 +12,24 @@ import {
  * slide reads, or checks, are typed; the rest pass through unread.
  */
 export interface PolicyBenchExport {
-  households: number;
+  /** The free-plan models' household count; null when they ran on different counts. */
+  households: number | null;
   engine: string;
   caveat: string;
+  /** The free-plan models' noise width, in points. */
+  noisePoints?: number;
+  /** The models by household size, free-plan models' size first. Exports from before October 24 have none. */
+  sizes?: ExportSize[];
   models: ExportModel[];
   source?: { scriptCommit?: string; scriptTreeDirty?: boolean; generatedAtUtc?: string };
+}
+
+/** One household size: its households, nonzero amounts per model and setting, models, and noise width. */
+export interface ExportSize {
+  households: number;
+  n: number;
+  models: string[];
+  noisePoints: number;
 }
 
 export interface ExportModel {
@@ -83,11 +96,71 @@ function list(names: readonly string[]): string {
 }
 
 /**
+ * PolicyBench's noise width for some models (aspen_export.py noise_points):
+ * the median half-width of the free-plan models' paired intervals, or every
+ * model's when the free-plan models have none, rounded up to a multiple of 5.
+ */
+export function noisePoints(models: readonly ExportModel[]): number {
+  const halvesOf = (ms: readonly ExportModel[]) =>
+    ms
+      .flatMap((m) => Object.values(m.vsAlone))
+      .filter((c): c is PilotChange => Boolean(c))
+      .map((c) => (c.hi - c.lo) / 2);
+  const free = halvesOf(models.filter((m) => m.group === "free-plan"));
+  const halves = (free.length ? free : halvesOf(models)).sort((a, b) => a - b);
+  if (!halves.length) return 0;
+  const mid = Math.floor(halves.length / 2);
+  const median = halves.length % 2 ? halves[mid] : (halves[mid - 1] + halves[mid]) / 2;
+  return 5 * Math.ceil(median / 5);
+}
+
+/**
+ * Models grouped by household size, as aspen_export.py size_groups does: the
+ * free-plan models' size first, then larger sizes first; models in the
+ * export's order; each size with its own noise width.
+ */
+export function sizeGroups(models: readonly ExportModel[]): (ExportSize & { names: string[] })[] {
+  const groups = new Map<string, ExportModel[]>();
+  for (const m of models) {
+    const ns = [...new Set(Object.values(m.arms).flatMap((c) => (c ? [c.n] : [])))];
+    if (ns.length !== 1 || typeof ns[0] !== "number") throw new Error(`${m.model}: settings score different numbers of amounts`);
+    const key = `${m.households}|${ns[0]}`;
+    groups.set(key, [...(groups.get(key) ?? []), m]);
+  }
+  const rank = (ms: ExportModel[]) => (ms.some((m) => m.group === "free-plan") ? 0 : 1);
+  return [...groups.entries()]
+    .map(([key, ms]) => ({ ms, households: Number(key.split("|")[0]), n: Number(key.split("|")[1]) }))
+    .sort((a, b) => rank(a.ms) - rank(b.ms) || b.households - a.households || b.n - a.n)
+    .map(({ ms, households, n }) => ({ households, n, models: ms.map((m) => m.id), noisePoints: noisePoints(ms), names: ms.map((m) => m.model) }));
+}
+
+/** PolicyBench's caveat for these sizes, word for word as aspen_export.py caveat_text writes it. */
+export function caveatText(groups: readonly (ExportSize & { names: string[] })[]): string {
+  const tail = "The models were called through their APIs with our prompt, not used in the free chat apps, and a change of less than about ";
+  if (!groups.length) throw new Error("no models");
+  const [first, ...rest] = groups;
+  if (!rest.length) {
+    return `Preliminary internal pilot: ${first.households} households sampled from PolicyEngine's microdata, ${first.n} nonzero dollar amounts per model and setting. ${tail}${first.noisePoints} points between settings is within noise at this size.`;
+  }
+  const sizes = [
+    `${first.households} households, with ${first.n} nonzero dollar amounts per model and setting, for ${list(first.names)}`,
+    ...rest.map((g) => `${g.households} households, with ${g.n}, for ${list(g.names)}`),
+  ];
+  const widths = rest.map((g) => `about ${g.noisePoints} at ${g.households}`).join(", ");
+  return `Preliminary internal pilot on households sampled from PolicyEngine's microdata: ${sizes.join("; ")}. ${tail}${first.noisePoints} points between settings is within noise at ${first.households} households (${widths}).`;
+}
+
+/**
  * The slide's data from PolicyBench's export, for the chosen models. It
  * throws on anything that would put a wrong number on the screen, and
  * returns warnings for what the presenter should know: missing answers
  * counted as misses, batches left out, models on different households, and
  * how few benefit amounts there are.
+ *
+ * The caveat names the households, amounts and noise width of the models on
+ * the slide, so it's rebuilt for them with PolicyBench's own wording and
+ * rule. That rebuild is checked first against the export: for all its models
+ * it must give the export's sizes and caveat exactly.
  */
 export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions): { pilot: FreePlanPilot; warnings: string[] } {
   const warnings: string[] = [];
@@ -108,13 +181,22 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
       const c = m.arms[arm.id];
       if (!c) throw new Error(`${m.model}: no count for ${arm.id}`);
       // The slide shows k of n; the export's own percent must say the same.
-      if (!(c.n > 0) || Math.abs(c.pct - (100 * c.k) / c.n) > 0.05) throw new Error(`${m.model} ${arm.id}: ${c.pct}% isn't ${c.k} of ${c.n}`);
+      if (!(c.n > 0) || Math.abs(c.pct - (100 * c.k) / c.n) > 0.05 + 1e-9) throw new Error(`${m.model} ${arm.id}: ${c.pct}% isn't ${c.k} of ${c.n}`);
     }
     const missed = EXPORT_ARMS.filter((a) => (m.missing[a.id] ?? 0) > 0).map((a) => `${m.missing[a.id]} ${a.id}`);
     if (missed.length) warnings.push(`${m.model}: answers counted as misses because none came back (${missed.join(", ")})`);
     if (m.partialBatches.length) warnings.push(`${m.model}: ${m.partialBatches.length} household batch(es) left out because a setting hadn't reached them`);
   }
 
+  // The rebuild must match PolicyBench's own sizes and caveat before it's trusted for a subset.
+  const allGroups = sizeGroups(exp.models);
+  const strip = (gs: readonly ExportSize[]) => gs.map(({ households, n, models, noisePoints: w }) => ({ households, n, models, noisePoints: w }));
+  if (exp.sizes && JSON.stringify(strip(allGroups)) !== JSON.stringify(strip(exp.sizes))) {
+    throw new Error(`the export's sizes aren't its models' sizes: ${JSON.stringify(exp.sizes)}`);
+  }
+  if (caveatText(allGroups) !== exp.caveat) {
+    throw new Error(`the export's caveat isn't PolicyBench's wording for its models, so it can't be rebuilt for a subset:\n  export:  ${exp.caveat}\n  rebuilt: ${caveatText(allGroups)}`);
+  }
   const sizes = [...new Set(ordered.map((m) => `${m.arms.alone!.n}|${m.households}`))];
   const [n, households] = sizes[0].split("|").map(Number);
   let note: string;
@@ -122,7 +204,7 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
     note = `Dollar amounts that aren't $0, within $1 of PolicyBench's reference: ${n} per model in ${households} households sampled from PolicyEngine's microdata`;
   } else {
     note = "Dollar amounts that aren't $0, within $1 of PolicyBench's reference, in households sampled from PolicyEngine's microdata. Each count shows its own total";
-    warnings.push(`the chosen models ran on different households (${sizes.map((s) => s.replace("|", " amounts in ") + " households").join("; ")}); the export's caveat states one size, so check it`);
+    warnings.push(`the chosen models ran on different households (${sizes.map((s) => s.replace("|", " amounts in ") + " households").join("; ")}); the caveat says which, so read each count against its own total`);
   }
 
   const benefitAmounts = Math.max(0, ...ordered.map((m) => m.benefits.alone?.n ?? 0));
@@ -150,7 +232,8 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
       counts: Object.fromEntries(EXPORT_ARMS.map((a) => [a.id, { k: m.arms[a.id]!.k, n: m.arms[a.id]!.n }])),
       toolVsAlone: { points: m.vsAlone.tool!.points, lo: m.vsAlone.tool!.lo, hi: m.vsAlone.tool!.hi },
     })),
-    caveat: exp.caveat,
+    // The chosen models in the export's order, as PolicyBench lists them.
+    caveat: caveatText(sizeGroups(exp.models.filter((m) => opts.models.includes(m.id)))),
     footnotes,
     source: `PolicyBench preliminary internal pilot, not a PolicyBench result · runs ${runDateRange(ordered.flatMap((m) => m.runDates))}`,
   };

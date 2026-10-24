@@ -5,8 +5,11 @@ import { MOCK_POLICYBENCH_EXPORT } from "@/test/aspen-free-plan-export.mock";
 import { freePlanProblems, wholeShare, type FreePlanPilot } from "./content";
 import {
   EXPORT_ARMS,
+  caveatText,
   freePlanFromExport,
+  noisePoints,
   runDateRange,
+  sizeGroups,
   writePilotInto,
   type ExportModel,
   type PolicyBenchExport,
@@ -117,22 +120,118 @@ describe("freePlanFromExport", () => {
     ]);
   });
 
-  it("drops the single size from the note, and warns, when the models ran on different households", () => {
-    const arm = (k: number) => ({ k, n: 24, pct: (100 * k) / 24, lo: 0, hi: 100 });
-    const smaller = withModel("mock-c", (m) => ({
-      ...m,
-      households: 10,
-      arms: { alone: arm(15), web: arm(16), tool: arm(22), both: arm(22) },
-      vsAlone: { tool: { points: (100 * (22 - 15)) / 24, lo: 0, hi: 60 } },
-    }));
-    const { pilot, warnings } = freePlanFromExport(smaller, { models: ["mock-a", "mock-c"] });
+  // MOCK: C and D at 10 mock households with 24 amounts, A and B (the free-plan models) at 20 with 48.
+  const arm24 = (k: number) => ({ k, n: 24, pct: (100 * k) / 24, lo: 0, hi: 100 });
+  const change24 = (from: number, to: number, spread: number) => {
+    const points = (100 * (to - from)) / 24;
+    return { points, lo: points - spread, hi: points + spread };
+  };
+  const at10 = (m: ExportModel, k: [number, number, number, number], spread: number): ExportModel => ({
+    ...m,
+    households: 10,
+    arms: { alone: arm24(k[0]), web: arm24(k[1]), tool: arm24(k[2]), both: arm24(k[3]) },
+    vsAlone: { web: change24(k[0], k[1], spread), tool: change24(k[0], k[2], spread), both: change24(k[0], k[3], spread) },
+  });
+  // PolicyBench's two-size wording, written out by hand: the free-plan size first, each size's noise from its own models
+  // (A and B: half-widths of 15 and 16.5, median 15; C and D: 22 and 31, median 26.5, rounded up to 30).
+  const TWO_SIZES: PolicyBenchExport = {
+    ...exp,
+    households: 20,
+    models: exp.models.map((m) =>
+      m.id === "mock-c" ? at10(m, [15, 16, 22, 22], 22) : m.id === "mock-d" ? at10(m, [12, 14, 20, 21], 31) : m,
+    ),
+    sizes: [
+      { households: 20, n: 48, models: ["mock-a", "mock-b"], noisePoints: 15 },
+      { households: 10, n: 24, models: ["mock-c", "mock-d"], noisePoints: 30 },
+    ],
+    caveat:
+      "Preliminary internal pilot on households sampled from PolicyEngine's microdata: 20 households, with 48 nonzero dollar amounts per model and setting, for Mock model A and Mock model B; 10 households, with 24, for Mock model C and Mock model D. The models were called through their APIs with our prompt, not used in the free chat apps, and a change of less than about 15 points between settings is within noise at 20 households (about 30 at 10).",
+  };
+
+  it("keeps PolicyBench's caveat for all its models, and drops the single size from the note when they ran on different households", () => {
+    const { pilot, warnings } = freePlanFromExport(TWO_SIZES, { models: ALL });
+    expect(pilot.caveat).toBe(TWO_SIZES.caveat);
     expect(pilot.note).toBe(
       "Dollar amounts that aren't $0, within $1 of PolicyBench's reference, in households sampled from PolicyEngine's microdata. Each count shows its own total",
     );
     expect(warnings).toContain(
-      "the chosen models ran on different households (48 amounts in 20 households; 24 amounts in 10 households); the export's caveat states one size, so check it",
+      "the chosen models ran on different households (48 amounts in 20 households; 24 amounts in 10 households); the caveat says which, so read each count against its own total",
     );
-    expect(pilot.rows[1].counts.alone).toEqual({ k: 15, n: 24 });
+    expect(pilot.rows[2].counts.alone).toEqual({ k: 15, n: 24 });
+  });
+
+  it("rebuilds the caveat for the models on the slide, in PolicyBench's wording, with each size's noise from those models", () => {
+    // The free-plan models alone: one size, so PolicyBench's one-size sentence.
+    const free = freePlanFromExport(TWO_SIZES, { models: ["mock-b", "mock-a"] }).pilot;
+    expect(free.caveat).toBe(
+      "Preliminary internal pilot: 20 households sampled from PolicyEngine's microdata, 48 nonzero dollar amounts per model and setting. The models were called through their APIs with our prompt, not used in the free chat apps, and a change of less than about 15 points between settings is within noise at this size.",
+    );
+    expect(free.note).toBe("Dollar amounts that aren't $0, within $1 of PolicyBench's reference: 48 per model in 20 households sampled from PolicyEngine's microdata");
+    // One model of each size: C's noise is its own (half-width 22, rounded up to 25), not the 30 C and D give together.
+    expect(freePlanFromExport(TWO_SIZES, { models: ["mock-c", "mock-a"] }).pilot.caveat).toBe(
+      "Preliminary internal pilot on households sampled from PolicyEngine's microdata: 20 households, with 48 nonzero dollar amounts per model and setting, for Mock model A; 10 households, with 24, for Mock model C. The models were called through their APIs with our prompt, not used in the free chat apps, and a change of less than about 15 points between settings is within noise at 20 households (about 25 at 10).",
+    );
+    // No free-plan model: every shown model's intervals set the width.
+    expect(freePlanFromExport(TWO_SIZES, { models: ["mock-c", "mock-d"] }).pilot.caveat).toBe(
+      "Preliminary internal pilot: 10 households sampled from PolicyEngine's microdata, 24 nonzero dollar amounts per model and setting. The models were called through their APIs with our prompt, not used in the free chat apps, and a change of less than about 30 points between settings is within noise at this size.",
+    );
+  });
+
+  it("refuses an export whose sizes or caveat aren't what PolicyBench's rule gives for its models", () => {
+    const sizes = TWO_SIZES.sizes!;
+    expect(() => freePlanFromExport({ ...TWO_SIZES, sizes: [{ ...sizes[0], noisePoints: 20 }, sizes[1]] }, { models: ["mock-a"] })).toThrow(
+      "the export's sizes aren't its models' sizes",
+    );
+    expect(() => freePlanFromExport({ ...TWO_SIZES, sizes: [sizes[1], sizes[0]] }, { models: ["mock-a"] })).toThrow("the export's sizes aren't its models' sizes");
+    // Any change to the wording, so a subset's caveat can't be built from a template that no longer matches.
+    expect(() => freePlanFromExport({ ...TWO_SIZES, caveat: TWO_SIZES.caveat.replace("about 15", "about 10") }, { models: ["mock-a"] })).toThrow(
+      "the export's caveat isn't PolicyBench's wording for its models",
+    );
+    // An export from before sizes still has to match the one-size wording.
+    expect(() => freePlanFromExport({ ...exp, caveat: exp.caveat + " " }, { models: ["mock-a"] })).toThrow("the export's caveat isn't PolicyBench's wording");
+  });
+
+  it("takes PolicyBench's noise width: the free-plan models' median half-width, rounded up to 5", () => {
+    const withHalves = (halves: number[], group: "free-plan" | "other" = "free-plan"): ExportModel => ({
+      ...exp.models[1],
+      group,
+      vsAlone: Object.fromEntries(halves.map((h, i) => [["web", "tool", "both"][i], { points: 0, lo: -h, hi: h }])),
+    });
+    expect(noisePoints([withHalves([10, 10, 10])])).toBe(10);
+    expect(noisePoints([withHalves([10, 11, 30])])).toBe(15);
+    // An even count takes the mean of the middle two.
+    expect(noisePoints([withHalves([4, 6]), withHalves([20, 30])])).toBe(15);
+    // Comparison models' intervals don't count while a free-plan model is there.
+    expect(noisePoints([withHalves([7]), withHalves([40, 40, 40], "other")])).toBe(10);
+    expect(noisePoints([withHalves([40, 40, 40], "other")])).toBe(40);
+    expect(noisePoints([withHalves([])])).toBe(0);
+    // A free-plan model with no intervals falls back to every model's, as PolicyBench's does (found by the differential check).
+    expect(noisePoints([withHalves([]), withHalves([12, 12], "other")])).toBe(15);
+    fc.assert(
+      fc.property(fc.array(fc.double({ min: 0, max: 60, noNaN: true }), { minLength: 1, maxLength: 9 }), (halves) => {
+        const w = noisePoints([withHalves(halves.slice(0, 3)), withHalves(halves.slice(3, 6)), withHalves(halves.slice(6))].filter((m) => Object.keys(m.vsAlone).length));
+        const sorted = [...halves].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+        expect(w % 5).toBe(0);
+        expect(w).toBeGreaterThanOrEqual(median - 1e-9);
+        // Less than 5 above it (w − median, since a tiny median plus 5 rounds to 5).
+        expect(w - median).toBeLessThan(5 + 1e-9);
+      }),
+    );
+  });
+
+  it("groups models by size as PolicyBench does: the free-plan models' size first, then larger ones, in the export's order", () => {
+    const groups = sizeGroups(TWO_SIZES.models);
+    expect(groups.map((g) => [g.households, g.n, g.models])).toEqual([
+      [20, 48, ["mock-a", "mock-b"]],
+      [10, 24, ["mock-c", "mock-d"]],
+    ]);
+    // Without a free-plan model, the larger size leads.
+    const others = TWO_SIZES.models.filter((m) => m.group === "other").concat(TWO_SIZES.models.filter((m) => m.group === "free-plan").map((m) => ({ ...m, group: "other" as const, freePlan: null })));
+    expect(sizeGroups(others).map((g) => g.households)).toEqual([20, 10]);
+    expect(() => sizeGroups([{ ...exp.models[0], arms: { ...exp.models[0].arms, both: arm24(3) } }])).toThrow("settings score different numbers of amounts");
+    expect(() => caveatText([])).toThrow("no models");
   });
 
   it("gives any consistent export a slide that passes its checks, with each share its export percent made whole", () => {
@@ -155,8 +254,13 @@ describe("freePlanFromExport", () => {
             vsAlone: { tool: { points, lo: points - spread, hi: points + spread } },
           };
         });
-        const { pilot } = freePlanFromExport({ ...exp, models }, { models: models.map((m) => m.id) });
+        const consistent = { ...exp, models, sizes: undefined, caveat: caveatText(sizeGroups(models)) };
+        const { pilot } = freePlanFromExport(consistent, { models: models.map((m) => m.id) });
         expect(freePlanProblems(pilot)).toEqual([]);
+        expect(pilot.caveat).toBe(consistent.caveat);
+        // A slide of the first model alone describes only its size.
+        const one = freePlanFromExport(consistent, { models: [models[0].id] }).pilot;
+        expect(one.caveat).toMatch(new RegExp(`^Preliminary internal pilot: 20 households sampled from PolicyEngine's microdata, ${models[0].arms.alone!.n} nonzero`));
         for (const r of pilot.rows) {
           const m = models.find((x) => x.model === r.model)!;
           for (const a of EXPORT_ARMS) expect(Math.abs(wholeShare(r.counts[a.id]!) - m.arms[a.id]!.pct)).toBeLessThanOrEqual(0.5 + 1e-9);

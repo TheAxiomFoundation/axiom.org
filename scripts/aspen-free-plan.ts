@@ -9,9 +9,10 @@ import { freePlanFromExport, writePilotInto, type PolicyBenchExport } from "../s
 //   bun scripts/aspen-free-plan.ts <export.json> --sha256 <hex> --models id,id,... [--write]
 //
 // It checks the file against the sha256 PolicyBench sent, prints the slide's
-// rows, what the presenter should know and each model's free-plan basis, and
-// with --write puts the data in src/lib/aspen/content.ts. This repo is public:
-// write only once the numbers are cleared to show.
+// rows, its caveat (rebuilt for the chosen models), what the presenter should
+// know and each model's free-plan basis, and with --write puts the data in
+// src/lib/aspen/content.ts. This repo is public: write only once the numbers
+// are cleared to show.
 
 const CONTENT = resolve(dirname(fileURLToPath(import.meta.url)), "../src/lib/aspen/content.ts");
 
@@ -55,6 +56,7 @@ export function run(argv: readonly string[], { contentPath = CONTENT, log = cons
     const shares = pilot.arms.map((a) => `${a.id} ${r.counts[a.id]!.k}/${r.counts[a.id]!.n}`).join(", ");
     log(`  ${r.model}${r.freePlan ? ` (${r.freePlan})` : ""}: ${shares}; tool vs alone ${r.toolVsAlone.points.toFixed(1)} [${r.toolVsAlone.lo}, ${r.toolVsAlone.hi}]`);
   }
+  log(`Caveat, for these models: ${pilot.caveat}`);
   log("Free-plan basis, for the presenter:");
   for (const id of args.models) {
     const m = exp.models.find((x) => x.id === id)!;
