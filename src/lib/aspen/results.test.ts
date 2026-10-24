@@ -497,6 +497,49 @@ describe('latestPerParticipant', () => {
     )
     expect(out.map((e) => e.id)).toEqual([2])
   })
+
+  type S = E & { payload: { rev?: number } }
+  // Stamps unique across the run, as one device's nextRev makes them; any of them may land at any time.
+  const stamped = fc
+    .array(fc.record({ participant_id: fc.constantFrom('p1', 'p2'), q: fc.constantFrom('experience', 'source-of-truth'), stamp: fc.option(fc.integer({ min: 0, max: 20 }), { nil: null }), created_at: event.map((e) => e.created_at) }), { maxLength: 30 })
+    .map((es) =>
+      es.map(({ stamp, ...e }, id) => ({ ...e, id, payload: stamp === null ? {} : { rev: 1_792_000_000_000 + stamp * 100 + id } }) as S),
+    )
+
+  it("counts a person's highest-stamped answer, whenever each one landed, and a stamped one over any without", () => {
+    fc.assert(
+      fc.property(stamped, fc.integer(), (es, seed) => {
+        const out = latestPerParticipant(es, byQ)
+        const groups = new Map<string, S[]>()
+        for (const e of es) groups.set(`${e.participant_id}|${e.q}`, [...(groups.get(`${e.participant_id}|${e.q}`) ?? []), e])
+        expect(out).toHaveLength(groups.size)
+        for (const e of out) {
+          const group = groups.get(`${e.participant_id}|${e.q}`)!
+          const revs = group.map((g) => g.payload.rev).filter((r): r is number => r !== undefined)
+          if (revs.length) expect(e.payload.rev).toBe(Math.max(...revs))
+          else expect(e.created_at).toBe(group.map((g) => g.created_at).sort().at(-1))
+        }
+        // With stamps all different, arrival order changes nothing among stamped answers.
+        const shuffled = [...es].sort((a, b) => ((a.id * 7919 + seed) % 31) - ((b.id * 7919 + seed) % 31))
+        const pick = (xs: S[]) => xs.filter((e) => e.payload.rev !== undefined).map((e) => e.id).sort()
+        expect(pick(latestPerParticipant(shuffled, byQ))).toEqual(pick(out))
+      }),
+    )
+  })
+
+  it('keeps an earlier tap that landed last from counting over a later one', () => {
+    const out = latestPerParticipant(
+      [
+        { id: 1, participant_id: 'p1', q: 'experience', created_at: '2026-10-26T18:00:00Z', payload: { rev: 200 } },
+        // The slow first save, written after the second.
+        { id: 2, participant_id: 'p1', q: 'experience', created_at: '2026-10-26T18:00:10Z', payload: { rev: 100 } },
+        // From a page that sent no stamp: earlier, whatever its time.
+        { id: 3, participant_id: 'p1', q: 'experience', created_at: '2026-10-26T18:00:20Z', payload: {} },
+      ],
+      byQ,
+    )
+    expect(out.map((e) => e.id)).toEqual([1])
+  })
 })
 
 describe('actedOn', () => {

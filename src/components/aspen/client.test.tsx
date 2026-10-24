@@ -1,4 +1,5 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
+import fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CHAT_KEY,
@@ -9,6 +10,7 @@ import {
   enterRun,
   formatValue,
   newId,
+  nextRev,
   participantId,
   postJson,
   readStored,
@@ -365,9 +367,11 @@ describe("saveJson", () => {
     vi.stubGlobal("fetch", fetchMock);
     expect(await saveJson("/api/aspen/event", { a: 1 })).toBe(true);
     expect(fetchMock).toHaveBeenCalledWith("/api/aspen/event", expect.objectContaining({ method: "POST", body: '{"a":1}' }));
-    // An older route that doesn't say counts as kept.
+    // Only the store's own yes counts: an answer that doesn't say is not a save.
     fetchMock.mockResolvedValue(respond(true, { ok: true }));
-    expect(await saveJson("/x", {})).toBe(true);
+    expect(await saveJson("/x", {})).toBe(false);
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => null } as unknown as Response);
+    expect(await saveJson("/x", {})).toBe(false);
   });
 
   it("is false for a store failure, an error status, an unreadable body with an error, or a dropped connection", async () => {
@@ -401,5 +405,65 @@ describe("saveJson", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("counts a save whose answer the timeout cuts off as not saved, whatever the answer would have said", async () => {
+    vi.useFakeTimers();
+    try {
+      // The headers come back at once; the body stalls until the request is aborted.
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_url: string, init: RequestInit) => ({
+          ok: true,
+          status: 200,
+          json: () =>
+            new Promise((resolve, reject) => {
+              setTimeout(() => resolve({ ok: true, saved: true }), SAVE_TIMEOUT_MS * 2);
+              init.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+            }),
+        })),
+      );
+      const result = saveJson("/x", {});
+      await vi.advanceTimersByTimeAsync(SAVE_TIMEOUT_MS);
+      expect(await result).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("nextRev", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("only goes up, whatever the clock says, and is at least the tap's time", () => {
+    fc.assert(
+      fc.property(fc.array(fc.integer({ min: 0, max: 4e12 }), { minLength: 1, maxLength: 30 }), (clock) => {
+        let last = -Infinity;
+        for (const now of clock) {
+          const rev = nextRev(now);
+          expect(Number.isSafeInteger(rev)).toBe(true);
+          expect(rev).toBeGreaterThan(last);
+          expect(rev).toBeGreaterThanOrEqual(now);
+          last = rev;
+        }
+      }),
+    );
+  });
+
+  it("starts above the stamp another tab or an earlier page load left, and ignores one it can't read", () => {
+    localStorage.setItem("aspen.rev", JSON.stringify(9e12));
+    expect(nextRev(1)).toBe(9e12 + 1);
+    expect(JSON.parse(localStorage.getItem("aspen.rev")!)).toBe(9e12 + 1);
+    localStorage.setItem("aspen.rev", JSON.stringify("soon"));
+    // Still above the last stamp this page used.
+    expect(nextRev(1)).toBe(9e12 + 2);
+  });
+
+  it("keeps a new run's stamps going up, since enterRun leaves the stamp alone", () => {
+    const before = nextRev(5e12);
+    localStorage.setItem("aspen.run", JSON.stringify("rehearsal"));
+    enterRun("phoenix");
+    expect(localStorage.getItem("aspen.rev")).not.toBeNull();
+    expect(nextRev(1)).toBeGreaterThan(before);
   });
 });

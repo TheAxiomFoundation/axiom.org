@@ -23,8 +23,12 @@ export interface AspenStore {
   setControl(patch: { runId?: string; stage?: string }): Promise<Control>;
   upsertParticipant(row: ParticipantRow): Promise<void>;
   insertPrompt(row: PromptRow): Promise<void>;
-  /** Patches a participant's own prompt; false when no row matched. */
-  updatePrompt(id: string, participantId: string, patch: Partial<PromptRow>): Promise<boolean>;
+  /**
+   * Patches a participant's own prompt; false when no row matched. With
+   * `ratedAt`, it applies only over a rating stamped before it, in the same
+   * update, so a slow save that arrives after a newer one changes nothing.
+   */
+  updatePrompt(id: string, participantId: string, patch: Partial<PromptRow>, ratedAt?: string): Promise<boolean>;
   insertEvent(row: EventRow): Promise<void>;
   insertPledge(row: PledgeRow): Promise<void>;
   loadRun(runId: string): Promise<RunData>;
@@ -184,9 +188,11 @@ export function createSupabaseStore(
     async insertPrompt(row) {
       await request("aspen_prompts", { method: "POST", body: row, prefer: "return=minimal" });
     },
-    async updatePrompt(id, participantId, patch) {
+    async updatePrompt(id, participantId, patch, ratedAt) {
+      // PostgREST's or=() takes a value with dots or colons only in double quotes.
+      const older = ratedAt ? `&or=${encodeURIComponent(`(rated_at.is.null,rated_at.lt."${ratedAt}")`)}` : "";
       const rows = await request<{ id: string }[]>(
-        `aspen_prompts?id=eq.${encodeURIComponent(id)}&participant_id=eq.${encodeURIComponent(participantId)}&select=id`,
+        `aspen_prompts?id=eq.${encodeURIComponent(id)}&participant_id=eq.${encodeURIComponent(participantId)}${older}&select=id`,
         { method: "PATCH", body: patch, prefer: "return=representation" },
       );
       return rows.length > 0;
@@ -268,9 +274,10 @@ export function createMemoryStore(state: MemoryState = freshMemory()): AspenStor
     async insertPrompt(row) {
       state.prompts.set(row.id, { created_at: now(), ...row });
     },
-    async updatePrompt(id, participantId, patch) {
+    async updatePrompt(id, participantId, patch, ratedAt) {
       const row = state.prompts.get(id);
       if (!row || row.participant_id !== participantId) return false;
+      if (ratedAt && row.rated_at && !(Date.parse(row.rated_at) < Date.parse(ratedAt))) return false;
       state.prompts.set(id, { ...row, ...patch });
       return true;
     },
