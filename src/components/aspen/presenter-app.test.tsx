@@ -8,12 +8,15 @@ import {
   GOLDEN_A,
   EXAMPLE_HOUSEHOLD,
   BUILD_HEADING,
+  ENCODING_PIPELINE,
   FRONT_DOOR,
   liveDemoUrl,
   NEXT_STEPS,
   RATING_SCALES,
   SAME_RULES,
   WHAT_MODELS_MISS,
+  TOOL_PILOT,
+  share,
   WHERE_MODELS_BREAK,
   SILVER_ASK,
   STAGES,
@@ -21,7 +24,7 @@ import {
 } from "@/lib/aspen/content";
 import { EMPTY_SUMMARY, summarizeRun, type RunSummary } from "@/lib/aspen/results";
 import type { Control, RunData } from "@/lib/aspen/types";
-import { notApplyLabel, PresenterApp } from "./presenter-app";
+import { notApplyNote, PresenterApp } from "./presenter-app";
 
 const DATA: RunData = {
   participants: [{ id: "a", run_id: "r1", perspective: "resident", state: "Arizona" }],
@@ -264,43 +267,39 @@ describe("PresenterApp navigation", () => {
   it("steps through the slides of a stage before it moves the room", async () => {
     const { posts } = setup({ stage: "reveal" });
     await onStage("reveal");
-    expect(screen.getByText("1/3")).toBeInTheDocument();
+    expect(screen.getByText("1/2")).toBeInTheDocument();
 
-    // What we saw: the room's results, how the AI did, then AI in their agencies.
+    // What we saw: the room's results, then AI in their agencies. The 5x5 grid's slide is gone (Oct 23).
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("2/3")).toBeInTheDocument();
-    expect(screen.getByText(RATING_SCALES.performance!.title)).toBeInTheDocument();
-    expect(screen.queryByText(RATING_SCALES.experience!.title)).not.toBeInTheDocument();
-    fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("3/3")).toBeInTheDocument();
-    expect(screen.getByText("How is AI performing overall in your agency?")).toBeInTheDocument();
+    expect(screen.getByText("2/2")).toBeInTheDocument();
+    expect(screen.getByText(RATING_SCALES.experience!.title)).toBeInTheDocument();
     expect(screen.queryByText(RATING_SCALES.performance!.title)).not.toBeInTheDocument();
     expect(posts()).toEqual([]);
 
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     await onStage("scale");
-    expect(screen.getByText("1/6")).toBeInTheDocument();
+    expect(screen.getByText("1/7")).toBeInTheDocument();
     expect(screen.getByText("42%")).toBeInTheDocument();
     // A household, not a family: four of the five minimum-benefit households are one person.
     expect(screen.getByText(/of AI answers told a household that qualifies for SNAP it would get/)).toBeInTheDocument();
     expect(screen.getByText(STAGES.find((st) => st.id === "scale")!.summary)).toBeInTheDocument();
 
-    // At scale: the share, then Max's household, chart, what the models miss and the front door.
+    // At scale: the share, then Max's household, chart, what the models miss, the front door and the tool pilot.
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("2/6")).toBeInTheDocument();
+    expect(screen.getByText("2/7")).toBeInTheDocument();
     expect(screen.getByText(EXAMPLE_HOUSEHOLD.title)).toBeInTheDocument();
     // The summary shows on the first slide only.
     expect(screen.queryByText(STAGES.find((st) => st.id === "scale")!.summary)).not.toBeInTheDocument();
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("3/6")).toBeInTheDocument();
+    expect(screen.getByText("3/7")).toBeInTheDocument();
     expect(screen.getByText(WHERE_MODELS_BREAK.title)).toBeInTheDocument();
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("4/6")).toBeInTheDocument();
+    expect(screen.getByText("4/7")).toBeInTheDocument();
     for (const q of WHAT_MODELS_MISS.quotes) expect(screen.getByText(q.model)).toBeInTheDocument();
     // The Arizona review flag is gone: the example moved to Connecticut (d1919).
     expect(screen.queryByRole("note")).not.toBeInTheDocument();
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("5/6")).toBeInTheDocument();
+    expect(screen.getByText("5/7")).toBeInTheDocument();
     // The last slide turns the stage from the problem to the fix.
     expect(screen.getByRole("heading", { level: 1, name: FRONT_DOOR.heading })).toBeInTheDocument();
     expect(screen.getByText(FRONT_DOOR.title)).toBeInTheDocument();
@@ -308,43 +307,66 @@ describe("PresenterApp navigation", () => {
     expect(screen.getByRole("img", { name: /ask an AI model what the law says/i })).toBeInTheDocument();
     expect(screen.queryByText(/it has to get the rules right/)).not.toBeInTheDocument();
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("6/6")).toBeInTheDocument();
-    // The live chatbot, in compare mode with the demo's Fresno question filled in.
+    expect(screen.getByText("6/7")).toBeInTheDocument();
+    // PolicyBench's tool pilot: each model on its own and with the tool, the note's caveat and its source.
+    expect(screen.getByRole("heading", { level: 1, name: FRONT_DOOR.heading })).toBeInTheDocument();
+    expect(screen.getByText(TOOL_PILOT.title)).toBeInTheDocument();
+    for (const row of TOOL_PILOT.rows) {
+      expect(screen.getByText(row.model)).toBeInTheDocument();
+      expect(screen.getByText(`${share(row.hits.alone!, TOOL_PILOT.amounts).toFixed(1)}%`)).toBeInTheDocument();
+      expect(screen.getByText(`${share(row.hits.tool!, TOOL_PILOT.amounts).toFixed(1)}%`)).toBeInTheDocument();
+    }
+    expect(screen.getByText(TOOL_PILOT.measures)).toBeInTheDocument();
+    expect(screen.getByText(TOOL_PILOT.source)).toBeInTheDocument();
+    // The miss count is the bars' own: 6 + 2 + 1 of 561.
+    expect(screen.getByText(/^The 9 of 561 amounts still wrong with the tool came from how the model described/)).toBeInTheDocument();
+    // The benefit amounts on their own, for a room that runs benefits.
+    const benefits = screen.getByRole("table", { name: /Benefit amounts right, of 16, by model/ });
+    expect(within(benefits).getByRole("row", { name: /On its own/ })).toHaveTextContent("On its own670");
+    expect(within(benefits).getByRole("row", { name: /With the tool/ })).toHaveTextContent("With the tool161616");
+    expect(screen.getByText(TOOL_PILOT.benefits!.also)).toBeInTheDocument();
+    // The demo's own link stays with the demo, At scale's last slide.
+    expect(screen.queryByRole("link", { name: /Open demo in a new tab/ })).not.toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("7/7")).toBeInTheDocument();
+    // The live chatbot, in compare mode with the demo's question filled in.
     const demo = screen.getByTitle(/Live chatbot demo/);
-    expect(demo.getAttribute("src")).toMatch(/^https:\/\/axiom\.org\/gallery\/chatbot\?compare=1&q=I/);
+    expect(demo.getAttribute("src")).toMatch(/^https:\/\/axiom\.org\/gallery\/chatbot\?compare=1&q=Single%20mom/);
     expect(demo.getAttribute("src")).not.toMatch(/go=1/);
     expect(screen.getByRole("link", { name: /Open demo in a new tab/ })).toHaveAttribute("href", liveDemoUrl());
     expect(posts()).toEqual([{ stage: "scale" }]);
 
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     await onStage("foundation");
-    expect(screen.getByText("1/3")).toBeInTheDocument();
+    expect(screen.getByText("1/4")).toBeInTheDocument();
 
     // Back from a stage's first slide lands on the last slide of the stage before.
     fireEvent.keyDown(document.body, { key: "ArrowLeft" });
-    await waitFor(() => expect(screen.getByText("6/6")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("7/7")).toBeInTheDocument());
     expect(screen.getByRole("heading", { level: 1, name: FRONT_DOOR.heading })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Previous slide" }));
-    expect(screen.getByText("5/6")).toBeInTheDocument();
+    expect(screen.getByText("6/7")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Previous slide" }));
-    expect(screen.getByText("4/6")).toBeInTheDocument();
+    expect(screen.getByText("5/7")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Previous slide" }));
+    expect(screen.getByText("4/7")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1, name: STAGES.find((st) => st.id === "scale")!.title })).toBeInTheDocument();
     for (let i = 0; i < 3; i++) fireEvent.keyDown(document.body, { key: "ArrowLeft" });
-    expect(screen.getByText("1/6")).toBeInTheDocument();
+    expect(screen.getByText("1/7")).toBeInTheDocument();
     fireEvent.keyDown(document.body, { key: "ArrowLeft" });
     await onStage("reveal");
     // Back onto the reveal lands on its last slide.
-    expect(screen.getByText("3/3")).toBeInTheDocument();
+    expect(screen.getByText("2/2")).toBeInTheDocument();
     expect(posts()).toEqual([{ stage: "scale" }, { stage: "foundation" }, { stage: "scale" }, { stage: "reveal" }]);
   });
 
-  it("shows no review flag on At scale 4/6, even with ?review", async () => {
+  it("shows no review flag on At scale 4/7, even with ?review", async () => {
     window.history.pushState({}, "", "/aspen/present?review");
     try {
       setup({ stage: "scale" });
       await onStage("scale");
       for (let i = 0; i < 3; i++) fireEvent.keyDown(document.body, { key: "ArrowRight" });
-      expect(screen.getByText("4/6")).toBeInTheDocument();
+      expect(screen.getByText("4/7")).toBeInTheDocument();
       expect(screen.queryByRole("note")).not.toBeInTheDocument();
     } finally {
       window.history.pushState({}, "", "/");
@@ -396,7 +418,14 @@ describe("PresenterApp stages", () => {
             label: "How did the AI do?",
             low: "Not at all",
             high: "Fully",
-            categories: [{ id: "amount", label: "Got the amount right", average: 2, count }],
+            categories: [{ id: "amount", label: "Got the amount right", average: 4, count: 9 }],
+          },
+          {
+            question: "experience",
+            label: "How is AI performing overall in your agency?",
+            low: "Not well",
+            high: "Very well",
+            categories: [{ id: "staff", label: "For your staff", average: 2, count }],
           },
         ],
       },
@@ -406,6 +435,8 @@ describe("PresenterApp stages", () => {
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     await waitFor(() => expect(screen.getByText(/rated AI overall/)).toHaveTextContent("3 people have rated AI overall"));
     expect(screen.getByText("2.0")).toBeInTheDocument();
+    // Old ratings of the retired grid never show or count.
+    expect(screen.queryByText("Got the amount right")).not.toBeInTheDocument();
     cleanup();
     setup({ stage: "reveal", summary: scale(1) });
     await onStage("reveal");
@@ -428,11 +459,60 @@ describe("PresenterApp stages", () => {
     setup({ stage: "reveal", summary: harmful });
     await onStage("reveal");
     await waitFor(() => expect(screen.getByText("answers looked right").previousSibling).toHaveTextContent("0 of 1"));
-    expect(screen.getByText("looked wrong, yet people would act on them").previousSibling).toHaveTextContent("1");
-    expect(screen.getByText("would stop a resident from applying. 1 of them qualifies.").previousSibling).toHaveTextContent("1");
+    expect(screen.getByText("looked wrong or unsure, yet a resident would act on them").previousSibling).toHaveTextContent("1");
+    const stop = screen.getByText("would stop a resident from applying");
+    expect(stop.previousSibling).toHaveTextContent("1");
+    expect(stop.nextSibling).toHaveTextContent("1 of them qualifies.");
     expect(screen.getByText("What would a resident do next?")).toBeInTheDocument();
-    expect(screen.getByText("To discuss")).toBeInTheDocument();
-    // The agency question has its own slide, so the list leaves it out.
+    // Phones stay quiet in What we saw, so the answers to talk about are on the screen.
+    expect(screen.getByText("Answers worth discussing")).toBeInTheDocument();
+    expect(screen.getByText("Looked wrong, yet acted on")).toBeInTheDocument();
+    expect(screen.getByText("About $0.")).toBeInTheDocument();
+    expect(screen.queryByText("To discuss")).not.toBeInTheDocument();
+  });
+
+  it("shows the two answers most worth discussing, with what people said, and the questions before any", async () => {
+    const at = (m: number) => `2026-10-26T18:0${m}:00Z`;
+    // Not checked against the rules, so each reason comes from the rating alone.
+    const base = { ...DATA.prompts[0], post_check_verdict: null };
+    const answers = summarizeRun({
+      ...DATA,
+      prompts: [
+        { ...base, id: "q1", conversation_id: "q1", created_at: at(1), verdict: "unsure", rating_note: "Not sure about the asset test", answer: "Maybe $50." },
+        { ...base, id: "q2", conversation_id: "q2", created_at: at(2), verdict: "wrong", resident_action: "not-apply", went_wrong: ["Wrong amount", "Said I don't qualify"], answer: "You don't qualify." },
+        { ...base, id: "q3", conversation_id: "q3", created_at: at(3), verdict: "right", answer: "About $24." },
+        { ...base, id: "q4", conversation_id: "q4", created_at: at(4), verdict: "wrong", rating_note: "Ignored BBCE", answer: "Over the limit." },
+      ],
+    });
+    setup({ stage: "reveal", summary: answers });
+    await onStage("reveal");
+    const panel = (await screen.findByText("Answers worth discussing")).parentElement!;
+    const items = within(panel).getAllByRole("listitem");
+    // At most two, most harmful first: a convincing wrong answer, then a wrong one with a note.
+    expect(items).toHaveLength(2);
+    expect(items[0]).toHaveTextContent("Looked wrong, yet acted on · Retiree in Phoenix");
+    expect(items[0]).toHaveTextContent("Wrong amount · Said I don't qualify");
+    expect(items[0]).toHaveTextContent("The AI: You don't qualify.");
+    expect(items[1]).toHaveTextContent("Looked wrong");
+    expect(within(items[1]).getByText("Ignored BBCE").tagName).toBe("Q");
+    expect(screen.queryByText("About $24.")).not.toBeInTheDocument();
+    cleanup();
+
+    // "Not sure" and acted on says so, rather than calling the answer wrong.
+    setup({
+      stage: "reveal",
+      summary: summarizeRun({ ...DATA, prompts: [{ ...base, verdict: "unsure", resident_action: "apply", answer: "Maybe $50." }] }),
+    });
+    await onStage("reveal");
+    const unsure = within((await screen.findByText("Answers worth discussing")).parentElement!).getAllByRole("listitem");
+    expect(unsure[0]).toHaveTextContent("Not sure, yet acted on · Retiree in Phoenix");
+    expect(screen.queryByText(/Looked wrong, yet/)).not.toBeInTheDocument();
+    cleanup();
+
+    // Rated, but nothing flagged: the spoken questions instead, without the agency one (it has its own slide).
+    setup({ stage: "reveal", summary: summarizeRun({ ...DATA, prompts: [{ ...base, verdict: "right" }] }) });
+    await onStage("reveal");
+    expect(await screen.findByText("To discuss")).toBeInTheDocument();
     for (const q of DISCUSSION_QUESTIONS) {
       if (q.id === "experience") expect(screen.queryByText(q.label)).not.toBeInTheDocument();
       else expect(screen.getByText(q.label)).toBeInTheDocument();
@@ -440,18 +520,14 @@ describe("PresenterApp stages", () => {
   });
 
   it("counts an amount from rules that don't test eligibility apart from households that qualify", () => {
-    expect(notApplyLabel({ wouldNotApplyEligible: 0, wouldNotApplyIfEligible: 0 })).toBe("would stop a resident from applying");
-    expect(notApplyLabel({ wouldNotApplyEligible: 2, wouldNotApplyIfEligible: 0 })).toBe(
-      "would stop a resident from applying. 2 of them qualify.",
+    expect(notApplyNote({ wouldNotApplyEligible: 0, wouldNotApplyIfEligible: 0 })).toBeNull();
+    expect(notApplyNote({ wouldNotApplyEligible: 2, wouldNotApplyIfEligible: 0 })).toBe("2 of them qualify.");
+    expect(notApplyNote({ wouldNotApplyEligible: 1, wouldNotApplyIfEligible: 0 })).toBe("1 of them qualifies.");
+    expect(notApplyNote({ wouldNotApplyEligible: 0, wouldNotApplyIfEligible: 1 })).toBe(
+      "For 1 of them, the rules give an amount but don't test eligibility yet.",
     );
-    expect(notApplyLabel({ wouldNotApplyEligible: 1, wouldNotApplyIfEligible: 0 })).toBe(
-      "would stop a resident from applying. 1 of them qualifies.",
-    );
-    expect(notApplyLabel({ wouldNotApplyEligible: 0, wouldNotApplyIfEligible: 1 })).toBe(
-      "would stop a resident from applying. For 1 of them, the rules give an amount but don't test eligibility yet.",
-    );
-    expect(notApplyLabel({ wouldNotApplyEligible: 2, wouldNotApplyIfEligible: 3 })).toBe(
-      "would stop a resident from applying. 2 of them qualify. For 3 more, the rules give an amount but don't test eligibility yet.",
+    expect(notApplyNote({ wouldNotApplyEligible: 2, wouldNotApplyIfEligible: 3 })).toBe(
+      "2 of them qualify. For 3 more, the rules give an amount but don't test eligibility yet.",
     );
   });
 
@@ -468,9 +544,8 @@ describe("PresenterApp stages", () => {
     });
     setup({ stage: "reveal", summary: harmful });
     await onStage("reveal");
-    await waitFor(() => expect(screen.getByText(
-      "would stop a resident from applying. For 1 of them, the rules give an amount but don't test eligibility yet.",
-    ).previousSibling).toHaveTextContent("1"));
+    await waitFor(() => expect(screen.getByText("would stop a resident from applying").previousSibling).toHaveTextContent("1"));
+    expect(screen.getByText("For 1 of them, the rules give an amount but don't test eligibility yet.")).toBeInTheDocument();
     expect(screen.queryByText(/of them qualif/)).not.toBeInTheDocument();
   });
 
@@ -478,14 +553,14 @@ describe("PresenterApp stages", () => {
     setup({ stage: "scale" });
     await onStage("scale");
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("2/6")).toBeInTheDocument();
+    expect(screen.getByText("2/7")).toBeInTheDocument();
     // The big number and the one tile that matched it.
     expect(screen.getAllByText("$288")).toHaveLength(2);
     // The panel label says "SNAP for 2026", so the big number doesn't repeat the year (Pavel's review).
     expect(screen.queryByText("in 2026")).not.toBeInTheDocument();
-    expect(screen.getByText(/\$24 a month all year under FY2026 standards\./)).toBeInTheDocument();
+    expect(screen.getByText(/\$24 a month under the benchmark's July 2026 rules \(FY2026 standards\)\./)).toBeInTheDocument();
     expect(screen.getByText("PolicyEngine's reference in PolicyBench")).toBeInTheDocument();
-    expect(screen.getByText(/The minimum benefit rose to \$25 on October 1, 2026\./)).toBeInTheDocument();
+    expect(screen.getByText(/The minimum rose to \$25 on October 1, so 2026 comes to \$291 under current law\./)).toBeInTheDocument();
     expect(screen.getByText("from 42 of 49 AI models · 1 matched exactly")).toBeInTheDocument();
     // One tile per model: 42 at $0, the one right answer, four at FY2025's $23 a month, and one that didn't parse.
     const tiles = within(screen.getByRole("group", { name: /^50 models: 42 said \$0, 1 said \$288, 6 gave other amounts, 1 gave no answer$/ })).getAllByRole("listitem");
@@ -505,12 +580,12 @@ describe("PresenterApp stages", () => {
 
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("4/6")).toBeInTheDocument();
+    expect(screen.getByText("4/7")).toBeInTheDocument();
     expect(screen.getByText("$288")).toBeInTheDocument();
     expect(screen.getByText("in 2026")).toBeInTheDocument();
-    expect(screen.getByText(/\$24 a month all year under FY2026 standards\./)).toBeInTheDocument();
+    expect(screen.getByText(/\$24 a month under the benchmark's July 2026 rules \(FY2026 standards\)\./)).toBeInTheDocument();
     expect(screen.getByText("PolicyEngine's reference in PolicyBench")).toBeInTheDocument();
-    expect(screen.getByText(/The minimum benefit rose to \$25 on October 1, 2026\./)).toBeInTheDocument();
+    expect(screen.getByText(/The minimum rose to \$25 on October 1, so 2026 comes to \$291 under current law\./)).toBeInTheDocument();
     // Connecticut's limit and its missing asset test, and the minimum as a floor, not the amount.
     expect(screen.getByText(/gross income up to 200% of the poverty line and sets no asset limit/)).toBeInTheDocument();
     expect(screen.getByText(/Covered households skip SNAP's net income and asset tests, so the \$48,000 doesn't count\./)).toBeInTheDocument();
@@ -523,6 +598,7 @@ describe("PresenterApp stages", () => {
     setup({ stage: "reveal" });
     await onStage("reveal");
     await waitFor(() => expect(screen.getByText("would stop a resident from applying").previousSibling).toHaveTextContent("0"));
+    expect(screen.getByText("would stop a resident from applying").nextSibling).toBeNull();
   });
 
   it("waits for ratings on the reveal", async () => {
@@ -546,7 +622,10 @@ describe("PresenterApp stages", () => {
     });
     await onStage("foundation");
     expect(screen.getByText("One open, validated set of rules")).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText(/In this room/)).toHaveTextContent("In this room, 5 of 6 can't fully check"));
+    // About whether a resident, screener or AI can check, as the question asked; not about the people in the room.
+    await waitFor(() =>
+      expect(screen.getByText(/In this room/)).toHaveTextContent("In this room, 5 of 6 say a resident, screener or AI can't fully check"),
+    );
     for (const trait of [
       "Every value is built to cite the provision it comes from",
       "Every change carries its effective date",
@@ -562,7 +641,23 @@ describe("PresenterApp stages", () => {
     expect(screen.getByText(SAME_RULES.governments.label)).toBeInTheDocument();
     for (const use of SAME_RULES.governments.uses) expect(screen.getByText(use)).toBeInTheDocument();
     for (const a of SAME_RULES.audiences) expect(screen.getByText(a.label)).toBeInTheDocument();
+    // The encoding pipeline comes before how it gets built.
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("3/4")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: ENCODING_PIPELINE.heading })).toBeInTheDocument();
+    expect(screen.getByText(ENCODING_PIPELINE.lead)).toBeInTheDocument();
+    for (const step of ENCODING_PIPELINE.steps) {
+      expect(screen.getByText(step.name)).toBeInTheDocument();
+      expect(screen.getByText(step.caption)).toBeInTheDocument();
+      if (step.foot) expect(screen.getByText(step.foot)).toBeInTheDocument();
+    }
+    for (const source of ENCODING_PIPELINE.sources) expect(screen.getByText(source)).toBeInTheDocument();
+    // Only the required checks carry a tick; the AI judge is advisory.
+    expect(screen.getByText("✓ deterministic")).toBeInTheDocument();
+    expect(screen.getByText("AI judge, advisory")).toBeInTheDocument();
+    for (const surface of ENCODING_PIPELINE.surfaces) expect(screen.getByText(surface.name)).toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("4/4")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1, name: BUILD_HEADING })).toBeInTheDocument();
     for (const tier of GOLDEN_A) expect(screen.getByText(tier.name)).toBeInTheDocument();
     expect(screen.queryByText("Bronze A")).not.toBeInTheDocument();
@@ -616,6 +711,38 @@ describe("PresenterApp stages", () => {
     expect(dialog).toHaveTextContent("Also raised: Training time for staff");
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("sizes the idea cards to the number of groups, and fits at most six", async () => {
+    const withIdeas = (n: number) =>
+      summarizeRun({
+        ...DATA,
+        events: Array.from({ length: n }, (_, i) => ({
+          run_id: "r1",
+          kind: "breakout",
+          payload: { useCase: "see-edit", note: `Idea ${i + 1}` },
+        })),
+      });
+    for (const [n, rows, clamp] of [
+      [1, 1, "line-clamp-3"],
+      [2, 1, "line-clamp-3"],
+      [3, 2, "line-clamp-3"],
+      [4, 2, "line-clamp-3"],
+      [5, 3, "line-clamp-2"],
+      [6, 3, "line-clamp-2"],
+      [8, 3, "line-clamp-2"],
+    ] as const) {
+      cleanup();
+      setup({ stage: "groups", summary: withIdeas(n) });
+      await onStage("groups");
+      fireEvent.keyDown(document.body, { key: "ArrowRight" });
+      // Newest first, so the latest idea leads.
+      const first = await screen.findByText(`Idea ${n}`);
+      const list = first.closest("ul")!;
+      expect(list.style.gridTemplateRows).toBe(`repeat(${rows}, minmax(0, 1fr))`);
+      expect(within(list).getAllByRole("listitem")).toHaveLength(Math.min(n, 6));
+      expect(first.className).toContain(clamp);
+    }
   });
 
   it("waits for the groups' ideas", async () => {
@@ -683,8 +810,7 @@ describe("PresenterApp stages", () => {
     await onStage("reveal");
     expect(screen.queryByRole("button", { name: "Show agency comments" })).not.toBeInTheDocument();
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("3/3")).toBeInTheDocument();
+    expect(screen.getByText("2/2")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("How is AI performing overall in your agency?")).toBeInTheDocument());
     expect(screen.queryByText("Helps staff, confuses residents")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Show agency comments" }));

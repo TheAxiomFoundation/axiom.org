@@ -19,7 +19,7 @@ import {
 } from "@/lib/aspen/content";
 import type { ChatSource } from "@/lib/aspen/openai";
 import { AnswerText } from "./answer-text";
-import { RatingCard } from "./answer-feedback";
+import { RatingCard, readRatingDraft } from "./answer-feedback";
 import { CHAT_KEY, newId, participantId, readStored, sendEvent, writeStored } from "./client";
 import { Disclosure } from "./disclosure";
 import { BUTTON, BUTTON_QUIET, Chip, FIELD, STEP_NUMBER } from "./ui";
@@ -47,6 +47,8 @@ export interface Turn {
   content: string;
   promptId?: string;
   status?: "streaming" | "done" | "error";
+  /** A refusal asking again can't change, such as a conversation that is long enough: it offers Start over instead. */
+  final?: boolean;
   statusText?: string;
   model?: string;
   backend?: string;
@@ -114,15 +116,12 @@ export async function readNdjson(
 export function ChatWindow({
   stage,
   onRateOverall,
-  overallShared = false,
   onStatus,
   onNewQuestion,
 }: {
   stage: string;
-  /** Leads to the overall rating, below the chat, once the answer is rated. */
+  /** Leads to the two questions about the agency, below the chat, once the answer is rated. */
   onRateOverall?: () => void;
-  /** The overall ratings are in, so nothing points to them any more. */
-  overallShared?: boolean;
   onStatus?: (status: ChatStatus) => void;
   /** Called when the participant starts a new question. */
   onNewQuestion?: () => void;
@@ -140,6 +139,16 @@ export function ChatWindow({
   const [rated, setRated] = useState<Set<string>>(new Set());
   // After the first answer the follow-up box stays closed, so rating comes next.
   const [followUp, setFollowUp] = useState(false);
+  // A picked household asks its question as written; details, question type and edits open on request.
+  const [editing, setEditing] = useState(false);
+  // "Change the question" goes away when pressed; focus moves to the details it opens, not to the page.
+  const detailsLegend = useRef<HTMLLegendElement>(null);
+  const focusDetails = useRef(false);
+  useEffect(() => {
+    if (!editing || !focusDetails.current) return;
+    focusDetails.current = false;
+    detailsLegend.current?.focus({ preventScroll: true });
+  }, [editing]);
   const threadEnd = useRef<HTMLDivElement>(null);
   const draftBox = useRef<HTMLTextAreaElement>(null);
   const ratingBox = useRef<HTMLElement>(null);
@@ -165,7 +174,8 @@ export function ChatWindow({
           t.status === "streaming" ? { ...t, status: "error", content: "Interrupted. Ask again." } : t,
         ),
       );
-      setRated(new Set(saved.rated ?? []));
+      // A card whose latest save never confirmed reopens with it, even if an earlier save finished the card.
+      setRated(new Set((saved.rated ?? []).filter((id) => !readRatingDraft(id)?.unsaved)));
     }
     setHydrated(true);
   }, []);
@@ -180,7 +190,8 @@ export function ChatWindow({
       draft,
       template,
       conversationId,
-      turns: turns.filter((t) => t.status !== "streaming"),
+      // An answer still on its way is kept as a placeholder, so a reload or another tab says it was cut off.
+      turns: turns.map((t) => (t.status === "streaming" ? { key: t.key, role: t.role, content: "", status: t.status, promptId: t.promptId } : t)),
       rated: [...rated],
     } satisfies SavedChat);
   }, [hydrated, perspective, householdId, questionIds, twists, draft, template, conversationId, turns, rated]);
@@ -202,14 +213,16 @@ export function ChatWindow({
     el.style.height = "auto";
     if (el.scrollHeight > 0) el.style.height = `${el.scrollHeight + 2}px`;
     if (window.scrollY !== y) window.scrollTo({ top: y, behavior: "instant" });
-  }, [draft]);
+  }, [draft, editing]);
 
   const started = turns.length > 0;
   const household = findHousehold(householdId);
-  // Steps number in the order they show: details and questions appear once a household is picked.
+  // Steps number in the order they show: details, questions and the editable question open under "Change the question".
   const step = household
-    ? { askAs: 1, household: 2, details: 3, question: 4, draft: 5 }
+    ? { askAs: 1, household: 2, details: 3, question: 4, draft: editing ? 5 : 3 }
     : { askAs: 1, household: 2, details: null, question: null, draft: 3 };
+  // A household's question shows as written until the participant opens it to change it.
+  const preview = !started && Boolean(household) && !editing;
 
   function choose(p: PerspectiveId, h: string | null, q: QuestionId[], t: string[]) {
     const found = findHousehold(h);
@@ -253,6 +266,7 @@ export function ChatWindow({
   /** A new question starts blank: no household, details or text. Who you ask as stays. */
   function startOver() {
     setFollowUp(false);
+    setEditing(false);
     setTurns([]);
     setConversationId(newId());
     setHouseholdId(null);
@@ -263,18 +277,18 @@ export function ChatWindow({
     onNewQuestion?.();
   }
 
-  async function send() {
-    const text = draft.trim();
+  /** Asks `text` after the turns in `base`: the box's question after the whole conversation, or a question asked again. */
+  async function send(text = draft.trim(), base = turns) {
     if (!text || sending) return;
-    const history = turns
+    const history = base
       .filter((t) => t.status !== "error" && t.status !== "streaming")
       .map((t) => ({ role: t.role, content: t.content }));
     const messages = [...history, { role: "user" as const, content: text }];
-    const turnIndex = turns.filter((t) => t.role === "user").length;
+    const turnIndex = base.filter((t) => t.role === "user").length;
     const userKey = newId();
     const answerKey = newId();
-    setTurns((prev) => [
-      ...prev,
+    setTurns([
+      ...base,
       { key: userKey, role: "user", content: text },
       { key: answerKey, role: "assistant", content: "", status: "streaming", statusText: "Thinking" },
     ]);
@@ -306,7 +320,8 @@ export function ChatWindow({
       });
       if (!response.ok || !response.body) {
         const data = (await response.json().catch(() => ({}))) as { error?: string };
-        update({ status: "error", content: data.error ?? "The chatbot didn't answer. Try again." });
+        // 400 is the route turning the question down as sent; anything else (a limit, a lapsed sign-in, an outage) can pass.
+        update({ status: "error", content: data.error ?? "The chatbot didn't answer. Try again.", ...(response.status === 400 ? { final: true } : {}) });
         return;
       }
       await readNdjson(response.body, (line) => {
@@ -441,9 +456,9 @@ export function ChatWindow({
                 </button>
               </div>
             </fieldset>
-            {household && (
+            {household && editing && (
               <fieldset className="m-0 border-0 border-t border-[var(--color-rule)] p-0 pt-4">
-                <legend className={`${STEP} float-left w-full`}>
+                <legend ref={detailsLegend} tabIndex={-1} className={`${STEP} float-left w-full outline-none`}>
                   <span className={STEP_NUMBER}>{step.details}</span>Add details <span className={STEP_NOTE}>(optional)</span>
                 </legend>
                 <div role="group" aria-label="Details" className="clear-left flex flex-col gap-3">
@@ -474,7 +489,7 @@ export function ChatWindow({
                 </div>
               </fieldset>
             )}
-            {household && (
+            {household && editing && (
               <fieldset className="m-0 border-0 border-t border-[var(--color-rule)] p-0 pt-4">
                 <legend className={`${STEP} float-left w-full`}>
                   <span className={STEP_NUMBER}>{step.question}</span>What do you want to know?{" "}
@@ -495,7 +510,7 @@ export function ChatWindow({
 
         {started && (
           <div className="flex flex-col gap-4 px-4 py-4" aria-live="polite">
-            {turns.map((turn) =>
+            {turns.map((turn, index) =>
               turn.role === "user" ? (
                 <div
                   key={turn.key}
@@ -506,7 +521,20 @@ export function ChatWindow({
               ) : (
                 <div key={turn.key} className="flex flex-col gap-3">
                   {turn.status === "error" ? (
-                    <p className="m-0 font-body text-[0.92rem] text-[var(--color-error)]">{turn.content}</p>
+                    <>
+                      <p className="m-0 break-words font-body text-[0.92rem] text-[var(--color-error)]">{turn.content}</p>
+                      {/* The newest answer failed: one tap asks the same question again, in place of it, or starts over when asking again can't help. */}
+                      {index === turns.length - 1 && turns[index - 1]?.role === "user" && (
+                        <button
+                          type="button"
+                          className={`${BUTTON_QUIET} self-start`}
+                          disabled={sending}
+                          onClick={() => (turn.final ? startOver() : void send(turns[index - 1].content, turns.slice(0, index - 1)))}
+                        >
+                          {turn.final ? "Start over" : "Ask again"}
+                        </button>
+                      )}
+                    </>
                   ) : (
                     <>
                       {turn.content ? (
@@ -528,6 +556,7 @@ export function ChatWindow({
                                 <a
                                   key={s.url}
                                   href={s.url}
+                                  title={s.title || hostname(s.url)}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="max-w-full truncate rounded-full border border-[var(--color-rule)] px-2.5 py-0.5 font-body text-[0.8rem] text-[var(--color-ink-secondary)] no-underline hover:border-[var(--color-accent)]"
@@ -580,36 +609,60 @@ export function ChatWindow({
           </div>
         ) : (
           <div className={`flex flex-col gap-3 px-4 pb-4 ${started ? "border-t border-[var(--color-rule)] pt-3" : "mt-5 border-t border-[var(--color-rule)] pt-4"}`}>
-            {started ? (
-              <label htmlFor="aspen-draft" className="sr-only">
-                Your question
-              </label>
-            ) : (
-              <div className={`${STEP} mb-0`}>
-                <span className={STEP_NUMBER}>{step.draft}</span>
-                <label htmlFor="aspen-draft">Your question</label>{" "}
-                <span className={STEP_NOTE}>(edit it if you like)</span>
+            {preview ? (
+              <div role="group" aria-labelledby="aspen-question-preview" className="flex flex-col gap-2">
+                <div id="aspen-question-preview" className={`${STEP} mb-0`}>
+                  <span className={STEP_NUMBER}>{step.draft}</span>
+                  The question
+                </div>
+                <p className="m-0 whitespace-pre-wrap rounded-lg bg-[var(--color-paper)] px-3.5 py-3 font-body text-[1rem] leading-relaxed text-[var(--color-ink)]">
+                  {draft}
+                </p>
+                <button
+                  type="button"
+                  className="aspen-link self-start font-body text-[1rem] font-medium"
+                  onClick={() => {
+                    focusDetails.current = true;
+                    setEditing(true);
+                  }}
+                >
+                  Change the question
+                </button>
               </div>
+            ) : (
+              <>
+                {started ? (
+                  <label htmlFor="aspen-draft" className="sr-only">
+                    Your question
+                  </label>
+                ) : (
+                  <div className={`${STEP} mb-0`}>
+                    <span className={STEP_NUMBER}>{step.draft}</span>
+                    <label htmlFor="aspen-draft">Your question</label>{" "}
+                    <span className={STEP_NOTE}>{household ? "(edit it if you like)" : "(any benefit, any state)"}</span>
+                  </div>
+                )}
+                <textarea
+                  ref={draftBox}
+                  id="aspen-draft"
+                  rows={started ? 2 : 4}
+                  value={draft}
+                  maxLength={2000}
+                  autoFocus={started}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void send();
+                  }}
+                  placeholder={started ? "Ask a follow-up" : "Pick a household above, or type your own question"}
+                  className={`${FIELD} resize-none bg-[var(--color-paper)] leading-relaxed`}
+                />
+              </>
             )}
-            <textarea
-              ref={draftBox}
-              id="aspen-draft"
-              rows={started ? 2 : 4}
-              value={draft}
-              maxLength={2000}
-              autoFocus={started}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void send();
-              }}
-              placeholder={started ? "Ask a follow-up" : "Pick a household above, or type your own question"}
-              className={`${FIELD} resize-none bg-[var(--color-paper)] leading-relaxed`}
-            />
             <button
               type="button"
               className={`${BUTTON} w-full py-3`}
               disabled={!draft.trim() || sending}
-              onClick={send}
+              onClick={() => void send()}
             >
               {sending ? "Asking…" : started ? "Send" : "Ask the AI"}
             </button>
@@ -629,9 +682,9 @@ export function ChatWindow({
                 <span aria-hidden className="mr-1.5 text-[var(--color-success)]">✓</span>
                 Your rating is saved. Thank you.
               </p>
-              {onRateOverall && !overallShared && (
+              {onRateOverall && (
                 <button type="button" onClick={onRateOverall} className={`${BUTTON_QUIET} w-full justify-between py-3 text-left text-[1rem]`}>
-                  Next: how did AI do overall?
+                  Next: two more, about your agency
                   <span aria-hidden className="text-[var(--color-accent)]">↓</span>
                 </button>
               )}
@@ -662,9 +715,9 @@ export function ChatWindow({
             How it works
           </span>
           <ol className="m-0 flex list-decimal flex-col gap-2 pl-5 font-body text-[0.9rem] leading-snug text-[var(--color-ink-secondary)]">
-            <li>Pick a household, add details if you like, and ask.</li>
+            <li>Pick a household, or write your own question, and ask.</li>
             <li>Rate the answer you get.</li>
-            <li>Then rate how AI did overall, right below.</li>
+            <li>Then answer two more, about your agency, right below.</li>
           </ol>
         </aside>
       )}

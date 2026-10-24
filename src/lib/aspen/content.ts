@@ -74,7 +74,7 @@ export const STAGES: readonly Stage[] = [
     title: "Ask the AI",
     agenda: "Ask the AI a benefits question, then rate it.",
     summary: "Ask as a resident or caseworker. Rate the answer. Then tell us more about AI use in your agency.",
-    phoneSummary: "Build a prompt. Use the preselected options and see how they change the prompt below. Or write your own.",
+    phoneSummary: "Pick who you're asking as and a household, then ask. Or write your own question.",
   },
   {
     id: "reveal",
@@ -82,7 +82,7 @@ export const STAGES: readonly Stage[] = [
     title: "What we saw",
     agenda: "The room's results, then discussion.",
     summary: "Could a resident act on these answers?",
-    // The phone opens with what you contributed; the question is part 1's heading there.
+    // The phone shows the look-up card under the heading, so no line of its own.
     phoneSummary: "",
   },
   {
@@ -122,6 +122,21 @@ export const STAGES: readonly Stage[] = [
     summary: "Thank you for joining us. Enjoy dinner.",
   },
 ];
+
+/**
+ * TV moments (the run-through, Oct 23): while the room looks at the screen
+ * together, a phone shows one line and one number, and comes back for the vote.
+ */
+export const LOOK_UP = {
+  heading: "Look up at the screen",
+  reveal: { label: "answers in this room looked right", empty: "The room's results are on the screen." },
+  scale: { label: "of AI answers told a household that qualifies for SNAP it would get $0" },
+  foundation: {
+    label: "in this room say a resident, screener or AI can't fully check an answer against their state's rules today",
+    empty: "What one open set of rules would do is on the screen.",
+  },
+  later: "Your phone comes back for the vote.",
+} as const;
 
 export function stageIndex(id: string | null | undefined): number {
   return STAGE_IDS.indexOf(id as StageId);
@@ -187,7 +202,7 @@ export function isUsState(value: unknown): value is (typeof US_STATES)[number] {
  * The household chips. Participants ask the AI about them; the chat runs no
  * rules check. All but the Connecticut couple are in states whose SNAP the
  * gallery chatbot's Axiom rules cover; finbot has no Connecticut SNAP, so the
- * live demo on At scale 6/6 stays on its Fresno question. The retiree in
+ * live demo on At scale 7/7 asks its own question (LIVE_DEMO). The retiree in
  * Phoenix leads: the convening is in Phoenix. The Connecticut couple is At
  * scale's example household (PolicyBench scenario_027), so participants can
  * ask the AI about it before the room sees how 50 models did. The first person and
@@ -725,7 +740,7 @@ export const POLICYBENCH = {
     modelsSaidZero: 42,
     /**
      * gpt-6-astra matched the $288 reference exactly. Four more said $276 (FY2025's $23
-     * minimum), which At scale 3/6's within-10% rule would also count; one said $388 and
+     * minimum), which At scale 3/7's within-10% rule would also count; one said $388 and
      * one $5,160. The slides say "matched exactly" so the two counts don't collide.
      */
     modelsExact: 1,
@@ -745,11 +760,19 @@ export const POLICYBENCH = {
      * memo of August 21, 2026): the minimum allotment for households of one
      * or two in the 48 states and DC is $25 and the two-person maximum is
      * $562 (https://www.fna.usda.gov/snap/allotment/cola). Under them the
-     * couple's $2,536 is still below 200% of poverty ($3,607), and 30% of
-     * its net income (about $633) is above the maximum, so it gets the
-     * minimum.
+     * couple's $2,536 is still below 200% of poverty ($3,607). Its net
+     * income is about $2,300 ($2,536 less the $217 standard deduction and
+     * $19 of medical costs above $35 a month), and 30% of that, about $690,
+     * is above the maximum, so it gets the minimum.
      */
     fromOctober: { monthly: 25, standards: "FY2027", effective: "October 1, 2026" },
+    /**
+     * Calendar 2026 under current law: nine months at FY2026's $24 and three
+     * at FY2027's $25. PolicyBench holds FY2026 amounts through December
+     * under its July 2026 law cutoff, which is why its reference is $288
+     * (the PolicyBench session, Oct 23).
+     */
+    currentLaw: { annual: 291 },
   },
 } as const;
 
@@ -830,20 +853,112 @@ export const FRONT_DOOR = {
   axiom: { label: "With Axiom", source: "Encoded law", sourceDetail: "open, cited, executable", result: "The rule", detail: "with its citation" },
 } as const;
 
+// ---------------------------------------------------------------------------
+// The same models with a rules engine as a tool (PolicyBench's tool pilot).
+// From the October 20, 2026 note on policybench.org: 100 US households, run
+// October 14–15; the no-tool arm is each model's October 14 board row.
+// Recomputed Oct 23 with the note's own scripts/tool_pilot_note.py functions
+// (references, is_amount, hit, board and tool predictions) on
+// notes/data/tool_pilot_20261015.csv: 187 dollar amounts per model whose
+// reference isn't $0 (1/0 eligibility outputs excluded), a hit within $1.
+// 171 are taxes and tax credits and 16 are benefits. The note's headline
+// ("above 99%") is a different score, household-weighted over all 1,935
+// outputs, so the slide doesn't quote it.
+// ---------------------------------------------------------------------------
+
+export type ToolPilotArmId = "alone" | "web" | "tool" | "both";
+
+export interface ToolPilot {
+  title: string;
+  /** Dollar amounts scored per model; every count below is how many of them were right. */
+  amounts: number;
+  note: string;
+  arms: readonly { id: ToolPilotArmId; label: string }[];
+  rows: readonly { model: string; hits: Readonly<Partial<Record<ToolPilotArmId, number>>> }[];
+  /** The benefit amounts among them, by model, for a room that runs benefits. */
+  benefits?: {
+    title: string;
+    amounts: number;
+    rows: readonly { model: string; short: string; alone: number; tool: number }[];
+    /** What the tool got wrong on benefits outside these amounts. */
+    also: string;
+  };
+  measures: string;
+  /** Why the amounts still wrong with the tool were wrong; the count comes from the rows. */
+  missesCause: string;
+  source: string;
+}
+
+/** A share of `of`, as a percentage to one decimal. */
+export function share(hits: number, of: number): number {
+  return Math.round((1000 * hits) / of) / 10;
+}
+
+/** The amounts still wrong with the tool, across every model, and how many were scored. */
+export function toolPilotMisses(p: ToolPilot): { misses: number; scored: number } {
+  const withTool = p.rows.filter((r) => typeof r.hits.tool === "number");
+  return {
+    misses: withTool.reduce((sum, r) => sum + (p.amounts - (r.hits.tool as number)), 0),
+    scored: withTool.length * p.amounts,
+  };
+}
+
 /**
- * At scale 6/6: the live chatbot demo (TheAxiomFoundation/finbot-snap-demo,
+ * At scale 6/7: what changes when a model can call a rules engine. Each arm is
+ * one bar per model; a later run (more arms, such as web search, or other
+ * models) only changes `amounts`, `arms` and `rows`.
+ */
+export const TOOL_PILOT: ToolPilot = {
+  title: "The same models, given a rules engine as a tool",
+  amounts: 187,
+  note: "Dollar amounts that aren't $0, within $1 of PolicyBench's reference: 187 per model across 100 US households, 171 of them taxes and tax credits and 16 benefits",
+  arms: [
+    { id: "alone", label: "On its own" },
+    { id: "tool", label: "With a tool that runs PolicyEngine" },
+  ],
+  rows: [
+    { model: "GPT-6 Sol", hits: { alone: 126, tool: 181 } },
+    { model: "Claude Opus 5.5", hits: { alone: 131, tool: 185 } },
+    { model: "Gemini 4 Argon", hits: { alone: 87, tool: 186 } },
+  ],
+  benefits: {
+    title: "The 16 benefit amounts: 13 SNAP, 2 SSI, 1 TANF",
+    amounts: 16,
+    rows: [
+      { model: "GPT-6 Sol", short: "Sol", alone: 6, tool: 16 },
+      { model: "Claude Opus 5.5", short: "Opus", alone: 7, tool: 16 },
+      { model: "Gemini 4 Argon", short: "Argon", alone: 0, tool: 16 },
+    ],
+    also: "With the tool, GPT-6 Sol also gave SNAP to 2 households the reference says get none.",
+  },
+  /** The note's own caveat: the tool runs the engine behind the reference, so the scores are agreement with it. */
+  measures:
+    "The tool runs the engine behind PolicyBench's reference answers. So this shows whether a model can describe a household to a rules engine, not whether the engine is right.",
+  missesCause: "came from how the model described the household or read back the answer, not from the calculation.",
+  source: "PolicyBench note, October 20, 2026 · runs October 14–15 · no-tool answers from the October 14 board · counts from the note's data",
+};
+
+/**
+ * At scale 7/7: the live chatbot demo (TheAxiomFoundation/finbot-snap-demo,
  * served at axiom.org/gallery/chatbot). `compare=1` puts plain AI beside AI
- * with the Axiom rules engine, and `q` prefills the demo's own Fresno example.
- * Inside a frame the demo never sends on its own, so the presenter presses
- * Send. The model is OpenAI's GPT-6 Luna (finbot's default; production sets no
- * FINBOT_MODEL, checked Oct 23, 2026); the demo's copy
- * says what it does and doesn't promise, so the slide stays plain too.
+ * with the Axiom rules engine, and `q` prefills the question. Inside a frame
+ * the demo never sends on its own, so the presenter presses Send. The model
+ * is OpenAI's GPT-6 Luna (finbot's default; production sets no FINBOT_MODEL,
+ * checked Oct 23, 2026); the demo's copy says what it does and doesn't
+ * promise, so the slide stays plain too.
+ *
+ * The question is the top pick from Pavel's error ledger (#aspen, Oct 23,
+ * 2026). Alabama's TANF State Plan, effective October 1, 2024, sets $344 a
+ * month for a family of three (Attachment E); Georgia pays $280. Plain AI
+ * cites Alabama's older $215, so it says Georgia. On the live chatbot on
+ * Oct 23, 2026, plain AI said Georgia 10 times out of 10, and AI with the
+ * engine said Alabama, $344 against $280, 10 times out of 10. The earlier
+ * Fresno CalFresh question showed no contrast: both sides gave about $250.
  */
 export const LIVE_DEMO = {
   title: "The same AI model, on its own and with the Axiom rules engine",
   base: "https://axiom.org/gallery/chatbot",
-  question:
-    "I'm a single mom in Fresno, California with two kids (8 and 5). I make $3,400 a month before taxes, pay $1,500 rent, and pay about $120 a month for utilities, including heat. Can we get CalFresh, and how much would we get each month?",
+  question: "Single mom with two kids: does Alabama or Georgia pay more TANF?",
 } as const;
 
 export function liveDemoUrl(): string {
@@ -852,7 +967,7 @@ export function liveDemoUrl(): string {
 
 /** The same rules for every system: what one shared set of rules gives each group. */
 export const SAME_RULES = {
-  /** Shared foundation 2/3's heading. */
+  /** Shared foundation 2/4's heading. */
   heading: "What does one open set of rules enable?",
   /** The room is state benefits leaders, so governments get the big box and the most uses. */
   governments: {
@@ -881,14 +996,14 @@ export function percent(part: number, whole: number): number {
 // The fix
 // ---------------------------------------------------------------------------
 
-/** What makes the one set of rules checkable: the dark box on Shared foundation 1/3 and on phones. */
+/** What makes the one set of rules checkable: the dark box on Shared foundation 1/4. */
 export const FOUNDATION_TRAITS = [
   "Every value is built to cite the provision it comes from",
   "Every change carries its effective date",
   "Every release is versioned, so you can see what changed",
 ] as const;
 
-/** Under the boxes on Shared foundation 1/3, emphasized as in the main deck's value proposition. */
+/** Under the boxes on Shared foundation 1/4, emphasized as in the main deck's value proposition. */
 export const ONE_SET_STATEMENT = {
   text: "Every system that helps people discover and enroll in economic security programs runs on the same rules,",
   accent: "reducing cost, duplication and error at once.",
@@ -903,7 +1018,40 @@ export const ONE_SET_OF_RULES = [
   { label: "Research", detail: "Evaluators and analysts run the same rules." },
 ] as const;
 
-/** Shared foundation 3/3's heading. */
+/**
+ * Shared foundation 3/4: the encoding pipeline, before "How do we build it?".
+ * Copied from the InnovateUS deck (axiom-slides, public/decks/innovateus-2026-10,
+ * slide 12; axiom.org/slides/innovateus-2026-10#12), wording unchanged. Each
+ * step's small illustration lives with the slide; its text lives here.
+ */
+export const ENCODING_PIPELINE = {
+  heading: "The encoding pipeline",
+  lead:
+    "We take the law from its official sources, encode it rule by rule, and apply each rule only after its required checks pass. " +
+    "An AI judge flags issues for review. Every value keeps the citation it came from. " +
+    "One artifact then serves every surface, from a chatbot to a government rules engine.",
+  steps: [
+    { name: "Intake", caption: "Hundreds of official sources", foot: "Goal: keep every version" },
+    { name: "Corpus", caption: "The whole law, word for word", foot: null },
+    { name: "Encoding loop", caption: "Drafted, checked, redrafted", foot: "↺ Applied only when required checks pass" },
+    { name: "RuleSpec", caption: "One rule, fully cited", foot: null },
+    { name: "Graph", caption: "The spec becomes a node", foot: "Typed · cited · executable" },
+    { name: "Compile and serve", caption: "One artifact, every surface", foot: null },
+  ],
+  sources: ["eCFR", "USLM", "state codes ×47", "policy manuals"],
+  checks: [
+    { label: "deterministic", required: true },
+    { label: "comparison models, where available", required: true },
+    { label: "AI judge, advisory", required: false },
+  ],
+  surfaces: [
+    { name: "Chatbot", who: "AI labs" },
+    { name: "Rules engine", who: "government" },
+    { name: "API/MCP", who: "builders" },
+  ],
+} as const;
+
+/** Shared foundation 4/4's heading. */
 export const BUILD_HEADING = "How do we build one open set of rules?";
 
 /**

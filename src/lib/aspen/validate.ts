@@ -43,6 +43,16 @@ export function cleanChoices(value: unknown, allowed: readonly string[]): string
   return [...picked];
 }
 
+/**
+ * A save stamp from the page (client.ts nextRev): whole milliseconds since
+ * 1970 that only go up on one device, so the server can tell a later tap from
+ * an earlier one whatever order their requests arrive in. Null when absent or
+ * not a time a Date can hold.
+ */
+export function cleanRev(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 && value <= 8.64e15 ? value : null;
+}
+
 /** One value from a list, or null. */
 export function cleanChoice<T extends string>(
   value: unknown,
