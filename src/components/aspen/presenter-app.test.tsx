@@ -24,7 +24,7 @@ import {
 } from "@/lib/aspen/content";
 import { EMPTY_SUMMARY, summarizeRun, type RunSummary } from "@/lib/aspen/results";
 import type { Control, RunData } from "@/lib/aspen/types";
-import { notApplyNote, PresenterApp } from "./presenter-app";
+import { notApplyNote, PIPELINE_GRAPH_LABEL, PresenterApp } from "./presenter-app";
 
 // The app reads FREE_PLAN_PILOT at load. These tests step through At scale without the free-plan slide, whatever
 // --write puts in content.ts; presenter-free-plan.test.tsx steps through it with the slide.
@@ -658,6 +658,13 @@ describe("PresenterApp stages", () => {
       expect(screen.getByText(step.caption)).toBeInTheDocument();
       if (step.foot) expect(screen.getByText(step.foot)).toBeInTheDocument();
     }
+    // The steps run left to right in the deck's order.
+    const order = ["Intake", "Corpus", "Encoding loop", "RuleSpec", "Graph", "Compile and serve"];
+    expect(ENCODING_PIPELINE.steps.map((s) => s.name)).toEqual(order);
+    const names = order.map((name) => screen.getByText(name));
+    for (let i = 1; i < names.length; i++) expect(names[i - 1].compareDocumentPosition(names[i]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // The graph is read out, not skipped.
+    expect(screen.getByRole("img", { name: PIPELINE_GRAPH_LABEL })).toBeInTheDocument();
     for (const source of ENCODING_PIPELINE.sources) expect(screen.getByText(source)).toBeInTheDocument();
     // Only the required checks carry a tick; the AI judge is advisory.
     expect(screen.getByText("✓ deterministic")).toBeInTheDocument();

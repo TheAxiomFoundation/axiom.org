@@ -1668,6 +1668,9 @@ function LawSquares() {
   );
 }
 
+/** What the pipeline's graph shows, for screen readers. */
+export const PIPELINE_GRAPH_LABEL = "snap_allotment reads tfp and income and feeds benefit; fpl and elig are the rest of the graph";
+
 /**
  * The spec becoming a node: snap_allotment reads tfp and income and feeds the
  * benefit; the faint nodes are the rest of the graph. Sized so its labels stay
@@ -1686,7 +1689,7 @@ function PipelineGraph() {
     <line key={`${x1}-${y1}-${x2}-${y2}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke={faint ? "var(--color-rule-strong)" : "var(--color-accent)"} strokeWidth={1.2} />
   );
   return (
-    <svg aria-hidden viewBox="0 0 170 140" className="block h-auto w-full">
+    <svg role="img" aria-label={PIPELINE_GRAPH_LABEL} viewBox="0 0 170 140" className="block h-auto w-full">
       {line(26, 30, 40, 62)}
       {line(85, 30, 66, 62)}
       {line(85, 30, 136, 62, true)}
