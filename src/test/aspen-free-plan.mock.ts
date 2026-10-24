@@ -57,8 +57,8 @@ export const MOCK_FREE_PLAN_PILOT: FreePlanPilot = {
   caveat:
     "MOCK caveat: invented counts for a layout check. Read each model's change, not gaps between models.",
   footnotes: [
-    "MOCK footnote: the models on free plans, named and sourced.",
     "MOCK footnote: web search is each provider's own search tool.",
+    "MOCK footnote: the tool runs the engine behind the reference answers.",
   ],
   source: "MOCK source line · not a PolicyBench result",
 };

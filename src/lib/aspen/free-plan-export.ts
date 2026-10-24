@@ -237,11 +237,12 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
   }
 
   const free = ordered.filter((m) => m.freePlan !== null);
+  // The rows name each free-plan model and the caveat says they were called
+  // through their APIs, so the footnotes don't repeat either.
   const footnotes = [
-    ...(free.length ? [`The models on free plans: ${list(free.map((m) => m.model))}, called through each provider's API.`] : []),
     "Web search is each provider's own search tool, told not to search PolicyBench.",
     `The tool runs PolicyEngine (${exp.engine}), the engine behind the reference answers, so this shows whether a model can use it, not whether it's right.`,
-    ...[...toldOther].map(([stated, models]) => `Its instructions to ${list(models)} named ${stated}; every calculation ran on ${exp.engine}.`),
+    ...[...toldOther].map(([stated, models]) => `Its instructions to ${list(models)} named ${stated} instead.`),
   ];
 
   const pilot: FreePlanPilot = {

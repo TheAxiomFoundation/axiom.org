@@ -67,7 +67,8 @@ describe("FreePlanSlide", () => {
     expect(d.textContent).toBe("Mock model D");
 
     expect(screen.getByText(p.caveat)).toBeInTheDocument();
-    for (const note of p.footnotes) expect(screen.getByText(note)).toBeInTheDocument();
+    // The footnotes run in as one paragraph, so a short one shares a line.
+    expect(screen.getByText(p.footnotes.join(" "))).toBeInTheDocument();
     expect(screen.getByText(p.source)).toBeInTheDocument();
   });
 
@@ -78,17 +79,20 @@ describe("FreePlanSlide", () => {
     expect(widths).toHaveLength(MOCK_FREE_PLAN_PILOT.rows.length * MOCK_FREE_PLAN_PILOT.arms.length);
   });
 
-  it("leaves a setting's cell empty when a model has no count for it, and gives up to four models more room", () => {
+  it("leaves a setting's cell empty when a model has no count for it, and gives up to three models more room", () => {
     const p = MOCK_FREE_PLAN_PILOT;
     const rows = p.rows.slice(0, 2).map((r, i) => (i === 0 ? { ...r, counts: { ...r.counts, web: undefined } } : r));
     render(<FreePlanSlide pilot={{ ...p, rows }} />);
     const a = screen.getByRole("row", { name: /Mock model A/ });
     const cells = within(a).getAllByRole("cell");
     expect(cells[1].textContent).toBe("");
-    expect(cells[0]).toHaveClass("py-[14px]");
-    cleanup();
-    render(<FreePlanSlide pilot={p} />);
-    expect(within(screen.getByRole("row", { name: /Mock model A/ })).getAllByRole("cell")[0]).toHaveClass("py-[5px]");
+    expect(cells[0]).toHaveClass("py-[12px]");
+    // With PolicyBench's caveat and footnotes at full length, roomy rows fit 1600×900 only up to three.
+    for (const [n, cell] of [[3, "py-[12px]"], [4, "py-[2px]"], [6, "py-[2px]"]] as const) {
+      cleanup();
+      render(<FreePlanSlide pilot={{ ...p, rows: p.rows.slice(0, n) }} />);
+      expect(within(screen.getByRole("row", { name: /Mock model A/ })).getAllByRole("cell")[0]).toHaveClass(cell);
+    }
   });
 });
 

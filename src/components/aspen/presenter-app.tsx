@@ -1268,20 +1268,22 @@ function BenefitsPanel({ benefits: b }: { benefits: NonNullable<ToolPilot["benef
  * gray when the interval includes zero. Shows only when FREE_PLAN_PILOT is set.
  */
 export function FreePlanSlide({ pilot: p }: { pilot: FreePlanPilot }) {
-  // Up to four models get room; five or six take a tighter type scale to fit 1600×900.
-  const compact = p.rows.length > 4;
+  // Up to three models get room; four to six take a tighter type scale. With
+  // PolicyBench's caveat and footnotes at full length, roomy rows fit 1600×900
+  // only up to three.
+  const compact = p.rows.length > 3;
   const z = compact
-    ? { cell: "py-[5px]", model: "text-[22px] leading-tight", plan: "text-[15px] leading-tight", value: "text-[24px]", small: "text-[15px]", bar: "mt-[6px] h-[6px]", caveat: "text-[18px]", note: "text-[15px]" }
-    : { cell: "py-[14px]", model: "text-[24px] leading-snug", plan: "text-[17px] leading-snug", value: "text-[26px]", small: "text-[16px]", bar: "mt-[8px] h-[8px]", caveat: "text-[20px]", note: "text-[17px]" };
+    ? { cell: "py-[2px]", model: "text-[22px] leading-tight", plan: "text-[15px] leading-tight", value: "text-[24px]", small: "text-[15px]", bar: "mt-[6px] h-[6px]", caveat: "text-[18px]", note: "text-[15px]" }
+    : { cell: "py-[12px]", model: "text-[24px] leading-snug", plan: "text-[17px] leading-snug", value: "text-[26px]", small: "text-[16px]", bar: "mt-[8px] h-[8px]", caveat: "text-[20px]", note: "text-[17px]" };
   return (
-    <div className="flex h-full flex-col gap-[12px]">
+    <div className={`flex h-full flex-col ${compact ? "gap-[10px]" : "gap-[12px]"}`}>
       <div className="flex items-start justify-between gap-[24px]">
         <p className="m-0 font-display text-[40px] font-light leading-tight text-[var(--color-ink)]">{p.title}</p>
         <span className="mt-[6px] shrink-0 rounded-full border-2 border-[var(--color-error)] px-[16px] py-[4px] font-body text-[20px] font-medium text-[var(--color-error)]">
           {p.label}
         </span>
       </div>
-      <p className="m-0 font-body text-[20px] text-[var(--color-ink-secondary)]">{p.note}</p>
+      <p className="m-0 font-body text-[20px] leading-snug text-[var(--color-ink-secondary)]">{p.note}</p>
       <table className="w-full table-fixed border-collapse">
         <caption className="sr-only">Share of amounts right, by model and setting, and each model&apos;s change from no tools to the tool</caption>
         <colgroup>
@@ -1362,11 +1364,8 @@ export function FreePlanSlide({ pilot: p }: { pilot: FreePlanPilot }) {
       </table>
       <div className="flex flex-col gap-[4px]">
         <p className={`m-0 font-body leading-snug text-[var(--color-ink)] ${z.caveat}`}>{p.caveat}</p>
-        {p.footnotes.map((note) => (
-          <p key={note} className={`m-0 font-body leading-snug text-[var(--color-ink-muted)] ${z.note}`}>
-            {note}
-          </p>
-        ))}
+        {/* One run-in paragraph, so a short footnote shares a line. */}
+        <p className={`m-0 font-body leading-snug text-[var(--color-ink-muted)] ${z.note}`}>{p.footnotes.join(" ")}</p>
       </div>
       <BenchFooter source={p.source} />
     </div>

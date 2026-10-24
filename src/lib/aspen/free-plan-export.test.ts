@@ -43,27 +43,21 @@ describe("freePlanFromExport", () => {
     expect(pilot.label).toBe("Preliminary internal pilot");
     expect(pilot.note).toBe("Dollar amounts that aren't $0, within $1 of PolicyBench's reference: 48 per model in 20 households sampled from PolicyEngine's microdata");
     expect(pilot.caveat).toBe(exp.caveat);
+    // The rows name the free-plan models and the caveat says they were called through their APIs.
     expect(pilot.footnotes).toEqual([
-      "The models on free plans: Mock model A and Mock model B, called through each provider's API.",
       "Web search is each provider's own search tool, told not to search PolicyBench.",
       "The tool runs PolicyEngine (policyengine-us 0.0.0-mock), the engine behind the reference answers, so this shows whether a model can use it, not whether it's right.",
     ]);
     expect(pilot.source).toBe("PolicyBench preliminary internal pilot, not a PolicyBench result · runs October 23–24, 2026");
   });
 
-  it("titles a slide without free-plan models as the same models, with no free-plan footnote, and takes a title and label", () => {
+  it("titles a slide without free-plan models as the same models, and takes a title and label", () => {
     const { pilot } = freePlanFromExport(exp, { models: ["mock-d", "mock-c"] });
     expect(pilot.rows.map((r) => r.model)).toEqual(["Mock model D", "Mock model C"]);
     expect(pilot.title).toBe("The same models, with web search and with the tool");
     expect(pilot.footnotes[0]).toBe("Web search is each provider's own search tool, told not to search PolicyBench.");
     const named = freePlanFromExport(exp, { models: ["mock-a"], title: "T", label: "L" }).pilot;
     expect([named.title, named.label]).toEqual(["T", "L"]);
-    expect(named.footnotes[0]).toBe("The models on free plans: Mock model A, called through each provider's API.");
-    const three = freePlanFromExport(
-      { ...exp, models: [...exp.models, { ...exp.models[1], id: "mock-e", model: "Mock model E" }] },
-      { models: ["mock-a", "mock-b", "mock-e"] },
-    ).pilot;
-    expect(three.footnotes[0]).toBe("The models on free plans: Mock model A, Mock model B and Mock model E, called through each provider's API.");
   });
 
   it("refuses a model that isn't in the export, or one chosen twice", () => {
@@ -114,9 +108,8 @@ describe("freePlanFromExport", () => {
     const tool = pilot.footnotes.indexOf(
       "The tool runs PolicyEngine (policyengine-us 0.0.0-mock), the engine behind the reference answers, so this shows whether a model can use it, not whether it's right.",
     );
-    expect(pilot.footnotes.slice(tool + 1)).toEqual([
-      "Its instructions to Mock model C and Mock model D named policyengine-us 0.0.0-older; every calculation ran on policyengine-us 0.0.0-mock.",
-    ]);
+    // Right after the tool's line, which names the engine that ran.
+    expect(pilot.footnotes.slice(tool + 1)).toEqual(["Its instructions to Mock model C and Mock model D named policyengine-us 0.0.0-older instead."]);
     expect(warnings).toContain(
       "Mock model C and Mock model D: the tool's instructions named policyengine-us 0.0.0-older, but every calculation ran on policyengine-us 0.0.0-mock; the slide says so",
     );
@@ -124,6 +117,12 @@ describe("freePlanFromExport", () => {
     const free = freePlanFromExport(mixed, { models: ["mock-a", "mock-b"] });
     expect(free.pilot.footnotes.some((f) => f.startsWith("Its instructions"))).toBe(false);
     expect(free.warnings.some((w) => w.includes("instructions named"))).toBe(false);
+    // Three models read as a list.
+    const three = freePlanFromExport(
+      { ...mixed, models: [...mixed.models, { ...older(exp.models.find((m) => m.id === "mock-d")!), id: "mock-e", model: "Mock model E" }] },
+      { models: ["mock-c", "mock-d", "mock-e"] },
+    ).pilot;
+    expect(three.footnotes.at(-1)).toBe("Its instructions to Mock model C, Mock model D and Mock model E named policyengine-us 0.0.0-older instead.");
   });
 
   it("warns when an older export doesn't say which engine version each tool was told, and refuses a tool told none", () => {
