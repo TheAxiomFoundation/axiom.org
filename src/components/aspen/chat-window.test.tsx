@@ -583,7 +583,7 @@ describe("ChatWindow asking", () => {
           ]),
         ),
     });
-    const { container } = render(<ChatWindow stage="try" rulesUnlocked={false} />);
+    const { container } = render(<ChatWindow stage="try" />);
     pickRetiree();
     fireEvent.click(screen.getByRole("button", { name: "Ask the AI" }));
     await screen.findByText("Answer");
