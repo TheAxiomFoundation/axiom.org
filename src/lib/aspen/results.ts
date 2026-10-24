@@ -391,30 +391,40 @@ function spotlightReason(p: PromptRow): Spotlight["reason"] | null {
 }
 
 /**
- * Each conversation's first question, once: the one asked last. "Ask again"
- * after a failed or cut-off first answer saves the question again in the same
- * conversation, and someone who asked once counts once. A tie in time keeps
- * the later row.
+ * One row per question asked. "Ask again" saves the same question again at
+ * the same turn of the same conversation, and an answer cut off on one tab
+ * can still finish on the server, so one question can leave several rows.
+ * The row kept is one the participant rated, else one they checked against
+ * the rules, else one answered, else the last created (the later row on a
+ * tie): the room's counts are of questions, not attempts, and a retry's
+ * rating always counts. Different questions at one turn stay apart.
  */
-export function firstQuestions(prompts: PromptRow[]): PromptRow[] {
-  const latest = new Map<string, PromptRow>();
+export function questionsAsked(prompts: PromptRow[]): PromptRow[] {
+  const checked = (p: PromptRow) => Boolean(p.post_check_verdict || p.rules_requested_at || p.rules_program || typeof p.rules_amount === "number");
+  const weight = (p: PromptRow) => (p.verdict ? 3 : checked(p) ? 2 : p.answer ? 1 : 0);
+  const kept = new Map<string, PromptRow>();
   for (const p of prompts) {
-    if (p.turn !== 0) continue;
-    const seen = latest.get(p.conversation_id);
-    if (!seen || (p.created_at ?? "") >= (seen.created_at ?? "")) latest.set(p.conversation_id, p);
+    const key = JSON.stringify([p.conversation_id, p.turn, p.prompt]);
+    const seen = kept.get(key);
+    const better =
+      !seen ||
+      weight(p) > weight(seen) ||
+      (weight(p) === weight(seen) && (p.created_at ?? "") >= (seen.created_at ?? ""));
+    if (better) kept.set(key, p);
   }
-  return [...latest.values()];
+  return [...kept.values()];
 }
 
 const REASON_RANK: Record<Spotlight["reason"], number> = { convincing: 0, "checked-wrong": 1, wrong: 2, unsure: 3 };
 
 export function summarizeRun(data: RunData): RunSummary {
-  const { participants, prompts, events, pledges } = data;
+  const { participants, events, pledges } = data;
+  const prompts = questionsAsked(data.prompts);
   const answered = prompts.filter((p) => p.answer);
   const rated = prompts.filter((p) => p.verdict);
   const checked = prompts.filter((p) => p.rules_program || typeof p.rules_amount === "number");
-  // First questions only, one per conversation: follow-ups repeat the household and perspective.
-  const firstTurns = firstQuestions(prompts);
+  // First questions only: follow-ups repeat the household and perspective.
+  const firstTurns = prompts.filter((p) => p.turn === 0);
 
   // Answers save as they're tapped: each person's last discussion answer per question, survey answer and vote count.
   const discussion = latestPerParticipant(

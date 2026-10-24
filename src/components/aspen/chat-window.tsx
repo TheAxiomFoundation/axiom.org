@@ -47,6 +47,8 @@ export interface Turn {
   content: string;
   promptId?: string;
   status?: "streaming" | "done" | "error";
+  /** A refusal asking again can't change, such as a conversation that is long enough: it offers Start over instead. */
+  final?: boolean;
   statusText?: string;
   model?: string;
   backend?: string;
@@ -318,7 +320,8 @@ export function ChatWindow({
       });
       if (!response.ok || !response.body) {
         const data = (await response.json().catch(() => ({}))) as { error?: string };
-        update({ status: "error", content: data.error ?? "The chatbot didn't answer. Try again." });
+        // 400 is the route turning the question down as sent; anything else (a limit, a lapsed sign-in, an outage) can pass.
+        update({ status: "error", content: data.error ?? "The chatbot didn't answer. Try again.", ...(response.status === 400 ? { final: true } : {}) });
         return;
       }
       await readNdjson(response.body, (line) => {
@@ -520,15 +523,15 @@ export function ChatWindow({
                   {turn.status === "error" ? (
                     <>
                       <p className="m-0 break-words font-body text-[0.92rem] text-[var(--color-error)]">{turn.content}</p>
-                      {/* The newest answer failed: one tap asks the same question again, in place of it. */}
+                      {/* The newest answer failed: one tap asks the same question again, in place of it, or starts over when asking again can't help. */}
                       {index === turns.length - 1 && turns[index - 1]?.role === "user" && (
                         <button
                           type="button"
                           className={`${BUTTON_QUIET} self-start`}
                           disabled={sending}
-                          onClick={() => void send(turns[index - 1].content, turns.slice(0, index - 1))}
+                          onClick={() => (turn.final ? startOver() : void send(turns[index - 1].content, turns.slice(0, index - 1)))}
                         >
-                          Ask again
+                          {turn.final ? "Start over" : "Ask again"}
                         </button>
                       )}
                     </>
