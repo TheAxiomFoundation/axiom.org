@@ -616,7 +616,7 @@ describe('questionsAsked and answersGiven', () => {
     expect(summarizeRun({ ...DATA, prompts: [one, other] }).prompts).toBe(2)
   })
 
-  it('keeps one attempt per question, counts every question answered and every one rated, and a rating never lowers a count', () => {
+  it('keeps one attempt per question, counts every question answered or rated and every one rated, and a rating never lowers a count', () => {
     const times = ['2026-10-26T18:00:00Z', '2026-10-26T18:00:05Z', '2026-10-26T18:01:00Z', undefined]
     const rows = fc.array(
       fc.record({
@@ -633,8 +633,18 @@ describe('questionsAsked and answersGiven', () => {
       { maxLength: 14 },
     )
     const key = (p: PromptRow) => JSON.stringify([p.conversation_id, p.turn, p.prompt])
-    const checked = (p: PromptRow) => Boolean(p.post_check_verdict || p.rules_program || typeof p.rules_amount === 'number')
-    const weight = (p: PromptRow) => (p.verdict ? 4 : 0) + (checked(p) ? 2 : 0) + (p.answer ? 1 : 0)
+    // What an attempt shows, in order of preference: a rating, a verdict after the rules check, the check, an answer.
+    const shows = (p: PromptRow) => [
+      Boolean(p.verdict),
+      Boolean(p.post_check_verdict),
+      Boolean(p.rules_program || typeof p.rules_amount === 'number'),
+      Boolean(p.answer),
+    ]
+    const before = (a: PromptRow, b: PromptRow) => {
+      const [x, y] = [shows(a), shows(b)]
+      const i = x.findIndex((v, j) => v !== y[j])
+      return i >= 0 && !x[i] && y[i]
+    }
     fc.assert(
       fc.property(rows, fc.nat(), (specs, pick) => {
         const prompts: PromptRow[] = specs.map((r, i) => ({
@@ -651,10 +661,10 @@ describe('questionsAsked and answersGiven', () => {
         for (const p of kept) {
           expect(prompts).toContain(p)
           const group = prompts.filter((q) => key(q) === key(p))
-          const top = Math.max(...group.map(weight))
-          expect(weight(p)).toBe(top)
+          // Nothing in its question shows more, and of those that show as much it is the latest.
+          expect(group.some((q) => before(p, q))).toBe(false)
           const latest = group
-            .filter((q) => weight(q) === top)
+            .filter((q) => !before(q, p))
             .reduce((m, q) => ((q.created_at ?? '') > m ? (q.created_at ?? '') : m), '')
           expect(p.created_at ?? '').toBe(latest)
         }
@@ -664,18 +674,59 @@ describe('questionsAsked and answersGiven', () => {
         expect(new Set(answers.map(key))).toEqual(new Set(prompts.filter((p) => p.answer).map(key)))
 
         const summary = summarizeRun({ ...DATA, prompts })
-        expect(summary.prompts).toBe(new Set(prompts.filter((p) => p.answer).map(key)).size)
+        // Asked: every question whose answer saved or that was rated (the phone had its answer). Rated never exceeds it.
+        expect(summary.prompts).toBe(new Set(prompts.filter((p) => p.answer || p.verdict).map(key)).size)
         expect(summary.rated).toBe(new Set(prompts.filter((p) => p.verdict).map(key)).size)
-        // Rating any one attempt leaves the questions answered as they were and never lowers the ratings.
+        expect(summary.rated).toBeLessThanOrEqual(summary.prompts)
+        // The spotlight only shows attempts the totals count.
+        for (const item of summary.spotlight) expect(kept.map((p) => p.id)).toContain(item.id)
+        // Rating any one attempt never lowers either count.
         if (prompts.length) {
           const i = pick % prompts.length
           const rerated = prompts.map((p, j) => (j === i ? { ...p, verdict: 'wrong' } : p))
           const next = summarizeRun({ ...DATA, prompts: rerated })
-          expect(next.prompts).toBe(summary.prompts)
+          expect(next.prompts).toBeGreaterThanOrEqual(summary.prompts)
           expect(next.rated).toBeGreaterThanOrEqual(summary.rated)
         }
       }),
     )
+  })
+
+  it('keeps the attempt with a verdict after the rules check over a later one only checked', () => {
+    const shared = { answer: 'A', verdict: 'right', rules_program: 'Arizona SNAP', rules_amount: 24 }
+    const postChecked = { ...row('post', 'x', 0, '2026-10-26T18:00:00Z'), ...shared, post_check_verdict: 'wrong' }
+    const later = { ...row('later', 'x', 0, '2026-10-26T18:00:30Z'), ...shared }
+    expect(questionsAsked([postChecked, later]).map((p) => p.id)).toEqual(['post'])
+    expect(summarizeRun({ ...DATA, prompts: [postChecked, later] }).postCheck.find((c) => c.id === 'wrong')?.count).toBe(1)
+  })
+
+  it('keeps a rated attempt over one that shows everything but a rating', () => {
+    const rated = { ...row('rated', 'x', 0, '2026-10-26T18:00:00Z'), answer: 'A', verdict: 'wrong' }
+    const unrated = {
+      ...row('unrated', 'x', 0, '2026-10-26T18:00:30Z'),
+      answer: 'B',
+      rules_program: 'Arizona SNAP',
+      rules_amount: 24,
+      post_check_verdict: 'wrong',
+    }
+    expect(questionsAsked([rated, unrated]).map((p) => p.id)).toEqual(['rated'])
+  })
+
+  it('spotlights only the attempt the totals count, and leaves the question out when that attempt has no saved answer', () => {
+    // An older answer rated wrong, then a retry whose answer didn't save, rated right and checked.
+    const older = { ...row('older', 'x', 0, '2026-10-26T18:00:00Z'), answer: 'Wrong amount', verdict: 'wrong', resident_action: 'apply' }
+    const retry = { ...row('retry', 'x', 0, '2026-10-26T18:00:30Z'), verdict: 'right', rules_amount: 24 }
+    const summary = summarizeRun({ ...DATA, prompts: [older, retry] })
+    expect(summary.verdicts.filter((v) => v.count > 0).map((v) => [v.id, v.count])).toEqual([['right', 1]])
+    expect(summary.spotlight).toEqual([])
+  })
+
+  it("counts a rated question as asked even when its answer didn't save, so ratings never outnumber questions", () => {
+    const unsaved = { ...row('unsaved', 'x', 0, '2026-10-26T18:00:00Z'), verdict: 'wrong' }
+    const summary = summarizeRun({ ...DATA, prompts: [unsaved] })
+    expect(summary).toMatchObject({ prompts: 1, rated: 1 })
+    // With no answer to show, it isn't spotlighted.
+    expect(summary.spotlight).toEqual([])
   })
 
   it('breaks a tie with the later row', () => {

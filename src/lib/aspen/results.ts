@@ -390,10 +390,14 @@ function spotlightReason(p: PromptRow): Spotlight["reason"] | null {
   return null;
 }
 
-/** How much an attempt at a question shows: its rating, then a check against the rules, then an answer. */
+/**
+ * How much an attempt at a question shows, each part outranking all those
+ * after it: its rating, its verdict after the rules check, the rules check,
+ * then an answer.
+ */
 function attemptWeight(p: PromptRow): number {
-  const checked = Boolean(p.post_check_verdict || p.rules_program || typeof p.rules_amount === "number");
-  return (p.verdict ? 4 : 0) + (checked ? 2 : 0) + (p.answer ? 1 : 0);
+  const checked = Boolean(p.rules_program || typeof p.rules_amount === "number");
+  return (p.verdict ? 8 : 0) + (p.post_check_verdict ? 4 : 0) + (checked ? 2 : 0) + (p.answer ? 1 : 0);
 }
 
 /** The attempt that shows the most, else the last created (the later row on a tie). */
@@ -406,6 +410,11 @@ function bestAttempt(attempts: PromptRow[]): PromptRow | undefined {
   return best;
 }
 
+/** Which question an attempt is at: the same text at the same turn of the same conversation. */
+function questionKey(p: PromptRow): string {
+  return JSON.stringify([p.conversation_id, p.turn, p.prompt]);
+}
+
 /**
  * Each question's attempts. "Ask again" saves the same question again at the
  * same turn of the same conversation, and an answer cut off on one tab can
@@ -415,7 +424,7 @@ function bestAttempt(attempts: PromptRow[]): PromptRow | undefined {
 function attemptsByQuestion(prompts: PromptRow[]): PromptRow[][] {
   const groups = new Map<string, PromptRow[]>();
   for (const p of prompts) {
-    const key = JSON.stringify([p.conversation_id, p.turn, p.prompt]);
+    const key = questionKey(p);
     const group = groups.get(key);
     if (group) group.push(p);
     else groups.set(key, [p]);
@@ -425,9 +434,8 @@ function attemptsByQuestion(prompts: PromptRow[]): PromptRow[][] {
 
 /**
  * One row per question asked, so the room's counts are of questions, not
- * attempts: the attempt that shows the most (a rating, then a check against
- * the rules, then an answer), else the last created. A retry's rating
- * always counts.
+ * attempts: the attempt that shows the most (attemptWeight), else the last
+ * created. A retry's rating always counts.
  */
 export function questionsAsked(prompts: PromptRow[]): PromptRow[] {
   return attemptsByQuestion(prompts).flatMap((attempts) => bestAttempt(attempts) ?? []);
@@ -448,6 +456,9 @@ export function summarizeRun(data: RunData): RunSummary {
   const { participants, events, pledges } = data;
   const prompts = questionsAsked(data.prompts);
   const answered = answersGiven(data.prompts);
+  // A question asked counts once the phone had its answer: the answer saved, or it was rated
+  // (a rating whose answer didn't save still means the phone showed one). So never fewer than rated.
+  const asked = new Set([...answered, ...prompts.filter((p) => p.verdict)].map(questionKey)).size;
   const rated = prompts.filter((p) => p.verdict);
   const checked = prompts.filter((p) => p.rules_program || typeof p.rules_amount === "number");
   // First questions only: follow-ups repeat the household and perspective.
@@ -491,7 +502,9 @@ export function summarizeRun(data: RunData): RunSummary {
     .map(toFeedItem);
 
   const twistLabel = new Map<string, string>(TWISTS.map((t) => [t.id, t.label]));
-  const spotlight: Spotlight[] = answered
+  // From the attempt the ratings count, so the spotlight never shows a verdict the totals don't.
+  const spotlight: Spotlight[] = prompts
+    .filter((p) => p.answer)
     .flatMap((p) => {
       const reason = spotlightReason(p);
       return reason ? [{ p, reason }] : [];
@@ -530,7 +543,7 @@ export function summarizeRun(data: RunData): RunSummary {
 
   return {
     participants: participants.length,
-    prompts: answered.length,
+    prompts: asked,
     rated: rated.length,
     checked: checked.length,
     // What people asked as, from their first questions (the welcome pick is optional).
