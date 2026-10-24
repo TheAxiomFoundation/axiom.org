@@ -373,6 +373,14 @@ describe('the free-plan pilot', () => {
     expect(freePlanProblems(withRow(1, { counts: { alone: none, web: none, tool: one, both: one }, toolVsAlone: { points: -0.01, lo: -1, hi: 1 } }))).toEqual([
       "Mock model B: change -0.01 is on the other side of zero from the counts' 0.01",
     ])
+    // So small that its product with the counts' change underflows to zero.
+    expect(freePlanProblems(withRow(1, { counts: { alone: none, web: none, tool: one, both: one }, toolVsAlone: { points: -Number.MIN_VALUE, lo: -1, hi: 1 } }))).toEqual([
+      "Mock model B: change -5e-324 is on the other side of zero from the counts' 0.01",
+    ])
+    // Zero, of either sign, is on neither side.
+    for (const points of [0, -0]) {
+      expect(freePlanProblems(withRow(1, { counts: { alone: none, web: none, tool: one, both: one }, toolVsAlone: { points, lo: -1, hi: 1 } }))).toEqual([])
+    }
     const huge = { k: 1e308, n: 1e308 }
     expect(freePlanProblems(withRow(1, { counts: { alone: huge, web: huge, tool: huge, both: huge }, toolVsAlone: { points: 0, lo: 0, hi: 0 } }))).toEqual(
       ["alone", "web", "tool", "both"].map((id) => `Mock model B ${id}: 1e+308 of 1e+308 isn't a count`),

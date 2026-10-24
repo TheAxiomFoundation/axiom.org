@@ -81,10 +81,23 @@ export interface WebSearchAudit {
   answersPublished: boolean | null;
   /** Why it's left as it is, for the presenter. */
   answersPublishedNote?: string;
-  /** false when PolicyBench's scan of the channels in matchingScope found no copy of these households' answers. */
+  /**
+   * false when PolicyBench's scan found no copy of these households' answers.
+   * It's also true when a release asset changed after the answers were made,
+   * though the scan reads only their dates, not their contents.
+   */
   matchingAnswersFound?: boolean | null;
-  /** The channels the scan read, which the footnote names. */
+  /** The channels the scan read; it has to name the repository the footnote names. */
   matchingScope?: string;
+  /** The scan's own record. The footnote rests on it, not only on matchingAnswersFound. */
+  publicationCheck?: {
+    /** Versions of files in the repository that the scan read. */
+    fileVersions?: number;
+    /** Those holding a household's answers, by its id or two of its distinctive amounts. */
+    matches?: unknown[];
+    /** The set's households found in the repository's scenario files. */
+    householdsMatched?: Record<string, unknown>;
+  };
   /** What the scan read and found, for the presenter. */
   matchingBasis?: string;
   /** By export id, each web setting's searches. */
@@ -112,8 +125,8 @@ export interface WebSearchArm {
   resultsVisible?: boolean;
 }
 
-/** The channels the search footnote says PolicyBench's scan read; the audit's matchingScope has to name both. */
-export const SCANNED_CHANNELS = ["public PolicyEngine/policybench repository", "release assets"] as const;
+/** The repository the search footnote says PolicyBench's scan read; the audit's matchingScope has to name it. */
+export const SCANNED_REPOSITORY = "PolicyEngine/policybench";
 
 export interface ExportOptions {
   /** Export ids, in the order to show them; free-plan models move to the front. */
@@ -308,7 +321,9 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
     warnings.push(`${list(models)}: the tool's instructions named ${stated}, but every calculation ran on ${exp.engine}; the slide says so`);
   }
 
-  // Who searched for PolicyBench anyway, in either web setting. The slide says so, and that PolicyBench's scan found no copy of the answers.
+  // Who searched for PolicyBench anyway, in either web setting. The slide says so, and that a scan of
+  // PolicyBench's repository found no copy of the answers; it doesn't claim the release assets, whose dates
+  // alone the scan checks (the presenter output gives them).
   const searched: { model: string; households: number; of: number }[] = [];
   const blind: string[] = [];
   if (!opts.webAudit) {
@@ -336,7 +351,8 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
         if (a.githubHfQueries !== undefined || a.githubHfHouseholds !== undefined) {
           const [q, hh] = [a.githubHfQueries, a.githubHfHouseholds];
           const gh = Array.isArray(hh) ? new Set(hh) : null;
-          if (!Number.isSafeInteger(q) || !gh || gh.size !== hh!.length || gh.size > a.households || q! < gh.size || (q! > 0) !== (gh.size > 0)) {
+          // A query is in one class at most, so these come out of the queries that don't name PolicyBench.
+          if (!Number.isSafeInteger(q) || !gh || gh.size !== hh!.length || gh.size > a.households || q! < gh.size || q! > a.queries - a.policyBenchQueries || (q! > 0) !== (gh.size > 0)) {
             throw new Error(`${m.model} ${id}: the web-search audit's GitHub and Hugging Face queries don't add up`);
           }
           for (const h of gh) githubHf.add(h);
@@ -354,14 +370,20 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
     if (blind.length) warnings.push(`${list(blind)}: the search tool returns no result URLs, so what ${blind.length > 1 ? "they" : "it"} read can't be audited; the slide doesn't say so`);
     if (searched.length) {
       const audit = opts.webAudit;
-      if (audit.answersPublished === true || audit.matchingAnswersFound === true) {
-        throw new Error(`${list(searched.map((s) => s.model))} searched for PolicyBench, and the web-search audit found these households' answers published`);
-      }
+      const who = `${list(searched.map((s) => s.model))} searched for PolicyBench`;
+      if (audit.answersPublished === true) throw new Error(`${who}, and the web-search audit says these households' answers are published`);
       if (audit.answersPublished !== null || audit.matchingAnswersFound !== false) {
-        throw new Error(`${list(searched.map((s) => s.model))} searched for PolicyBench, and the web-search audit doesn't say its scan found no copy of these households' answers`);
+        const flagged = audit.matchingAnswersFound === true ? "; it flags a possible copy" : "";
+        throw new Error(`${who}, and the web-search audit doesn't say its scan found no copy of these households' answers${flagged}`);
       }
-      const missing = SCANNED_CHANNELS.filter((c) => !audit.matchingScope?.includes(c));
-      if (missing.length) throw new Error(`the web-search audit's scan doesn't say it read the ${missing.join(" or the ")} the footnote names`);
+      const check = audit.publicationCheck;
+      const read = Number.isSafeInteger(check?.fileVersions) && check!.fileVersions! > 0;
+      if (!read || !audit.matchingScope?.includes(SCANNED_REPOSITORY)) {
+        throw new Error(`the web-search audit doesn't show its scan read the ${SCANNED_REPOSITORY} repository the footnote names`);
+      }
+      const hm = check!.householdsMatched;
+      const none = Array.isArray(check!.matches) && !check!.matches.length && typeof hm === "object" && hm !== null && !Array.isArray(hm) && !Object.keys(hm).length;
+      if (!none) throw new Error(`${who}, and the web-search audit's scan lists a match, or no list of them`);
     }
     for (const s of searched) {
       warnings.push(`${s.model} searched for PolicyBench in ${s.households} of ${s.of} households, though told not to; the slide says so`);
@@ -375,7 +397,7 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
     "Web search is each provider's own search tool, told not to search PolicyBench.",
     ...(searched.length
       ? [
-          `${list(searched.map((s, i) => `${s.model}${i ? "" : " searched for it anyway"} in ${s.households} of ${s.of}${i ? "" : " households"}`))}; a scan of PolicyBench's public repository and release data found no copy of these households' answers.`,
+          `${list(searched.map((s, i) => `${s.model}${i ? "" : " searched for it anyway"} in ${s.households} of ${s.of}${i ? "" : " households"}`))}; a scan of PolicyBench's public repository found no copy of these households' answers.`,
         ]
       : []),
     `The tool runs PolicyEngine (${exp.engine}), the engine behind the reference answers, so this shows whether a model can use it, not whether it's right.`,

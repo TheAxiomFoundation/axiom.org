@@ -167,7 +167,7 @@ describe("freePlanFromExport", () => {
     const b = withSearches("mock-b", "both", { queries: 30, policyBenchQueries: 2, policyBenchHouseholds: ["mt_04"] }, withSearches("mock-b", "web", { policyBenchQueries: 5, policyBenchHouseholds: ["mt_01", "mt_04", "mt_09"] }));
     const one = freePlanFromExport(exp, { models: ALL, webAudit: b });
     // Right after the web line, which says they were told not to.
-    expect(one.pilot.footnotes.slice(0, 2)).toEqual([web, "Mock model B searched for it anyway in 3 of 20 households; a scan of PolicyBench's public repository and release data found no copy of these households' answers."]);
+    expect(one.pilot.footnotes.slice(0, 2)).toEqual([web, "Mock model B searched for it anyway in 3 of 20 households; a scan of PolicyBench's public repository found no copy of these households' answers."]);
     expect(one.warnings).toContain("Mock model B searched for PolicyBench in 3 of 20 households, though told not to; the slide says so");
     // Not on the slide, not in the footnote.
     const without = freePlanFromExport(exp, { models: ["mock-a", "mock-c"], webAudit: b });
@@ -176,7 +176,7 @@ describe("freePlanFromExport", () => {
     // Two read as a list, the first with the full wording.
     const two = freePlanFromExport(exp, { models: ALL, webAudit: withSearches("mock-c", "web", { policyBenchQueries: 1, policyBenchHouseholds: ["mt_02"] }, b) }).pilot;
     expect(two.footnotes[1]).toBe(
-      "Mock model B searched for it anyway in 3 of 20 households and Mock model C in 1 of 20; a scan of PolicyBench's public repository and release data found no copy of these households' answers.",
+      "Mock model B searched for it anyway in 3 of 20 households and Mock model C in 1 of 20; a scan of PolicyBench's public repository found no copy of these households' answers.",
     );
   });
 
@@ -213,17 +213,28 @@ describe("freePlanFromExport", () => {
     );
     const searched = withSearches("mock-b", "web", { policyBenchQueries: 1, policyBenchHouseholds: ["mt_01"] });
     expect(() => freePlanFromExport(exp, { models: ["mock-b"], webAudit: searched })).not.toThrow();
-    const found = "Mock model B searched for PolicyBench, and the web-search audit found these households' answers published";
     const unsaid = "Mock model B searched for PolicyBench, and the web-search audit doesn't say its scan found no copy of these households' answers";
+    const unread = "the web-search audit doesn't show its scan read the PolicyEngine/policybench repository the footnote names";
+    const listed = "Mock model B searched for PolicyBench, and the web-search audit's scan lists a match, or no list of them";
+    const check = searched.publicationCheck!;
     for (const [change, says] of [
-      [{ answersPublished: true }, found],
-      [{ matchingAnswersFound: true }, found],
+      [{ answersPublished: true }, "Mock model B searched for PolicyBench, and the web-search audit says these households' answers are published"],
+      // Also set when a release asset changed after the answers were made, so the message says possible.
+      [{ matchingAnswersFound: true }, `${unsaid}; it flags a possible copy`],
       // No scan can show there's no copy anywhere, so the older audit's false is no longer enough.
       [{ answersPublished: false }, unsaid],
       [{ matchingAnswersFound: null }, unsaid],
       [{ matchingAnswersFound: undefined }, unsaid],
-      [{ matchingScope: "every file version in the public PolicyEngine/policybench repository" }, "the web-search audit's scan doesn't say it read the release assets the footnote names"],
-      [{ matchingScope: undefined }, "the web-search audit's scan doesn't say it read the public PolicyEngine/policybench repository or the release assets the footnote names"],
+      [{ matchingScope: "every file version in a public repository" }, unread],
+      [{ matchingScope: undefined }, unread],
+      [{ publicationCheck: undefined }, unread],
+      [{ publicationCheck: { ...check, fileVersions: 0 } }, unread],
+      [{ publicationCheck: { ...check, fileVersions: 1.5 } }, unread],
+      // The summary flag says nothing was found, but the scan's own record lists a match.
+      [{ publicationCheck: { ...check, matches: [{ path: "data.json", idsNamed: ["mt_01"] }] } }, listed],
+      [{ publicationCheck: { ...check, householdsMatched: { mt_01: ["scenarios.csv"] } } }, listed],
+      [{ publicationCheck: { ...check, matches: undefined } }, listed],
+      [{ publicationCheck: { ...check, householdsMatched: [] as unknown as Record<string, unknown> } }, listed],
     ] satisfies [Partial<WebSearchAudit>, string][]) {
       expect(() => freePlanFromExport(exp, { models: ["mock-b"], webAudit: { ...searched, ...change } })).toThrow(says);
       // Nobody on the slide searched, so there's nothing to rule out.
@@ -253,6 +264,9 @@ describe("freePlanFromExport", () => {
       { githubHfQueries: 1.5, githubHfHouseholds: ["mt_01"] },
       { githubHfQueries: 1, githubHfHouseholds: "mt_01" as unknown as string[] },
       { githubHfQueries: 30, githubHfHouseholds: Array.from({ length: 21 }, (_, i) => `mt_${i}`) },
+      // More than the queries that don't name PolicyBench, since a query is in one class at most.
+      { queries: 40, githubHfQueries: 41, githubHfHouseholds: ["mt_01"] },
+      { queries: 1, policyBenchQueries: 1, policyBenchHouseholds: ["mt_01"], githubHfQueries: 1, githubHfHouseholds: ["mt_01"] },
     ] as Partial<WebSearchArm>[]) {
       expect(() => freePlanFromExport(exp, { models: ["mock-a"], webAudit: withSearches("mock-a", "web", change) })).toThrow(
         "Mock model A web: the web-search audit's GitHub and Hugging Face queries don't add up",
@@ -296,7 +310,7 @@ describe("freePlanFromExport", () => {
             .filter((x) => x.k > 0);
           // Only a scan that found no copy, with nothing claiming more, clears a model that searched.
           if (expected.length && !(answersPublished === null && matchingAnswersFound === false)) {
-            expect(() => freePlanFromExport(exp, { models: chosen, webAudit })).toThrow(/found these households' answers published|doesn't say its scan found no copy/);
+            expect(() => freePlanFromExport(exp, { models: chosen, webAudit })).toThrow(/answers are published|doesn't say its scan found no copy/);
             return;
           }
           const { pilot, warnings } = freePlanFromExport(exp, { models: chosen, webAudit });

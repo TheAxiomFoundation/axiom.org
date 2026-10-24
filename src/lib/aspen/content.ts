@@ -1092,8 +1092,9 @@ export function freePlanProblems(p: FreePlanPilot): string[] {
       const fromCounts = (100 * (tool.k - alone.k)) / tool.n;
       if (Math.abs(fromCounts - points) > 0.05 + 1e-9) {
         problems.push(`${r.model}: change ${points} but the counts give ${fromCounts.toFixed(1)}`);
-      } else if (points * fromCounts < 0) {
+      } else if (Math.sign(points) * Math.sign(fromCounts) < 0) {
         // Within rounding of the counts but on the other side of zero, which the slide would print.
+        // It compares signs, since the product underflows to zero for the smallest changes.
         problems.push(`${r.model}: change ${points} is on the other side of zero from the counts' ${fromCounts.toFixed(2)}`);
       } else if (inside(points) && !inside(fromCounts)) {
         // The color goes by the interval, so the counts' own change has to be inside it too.
