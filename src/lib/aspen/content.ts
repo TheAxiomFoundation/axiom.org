@@ -553,13 +553,6 @@ export const SOURCE_OF_TRUTH = {
 } as const;
 export type SourceOfTruthId = (typeof SOURCE_OF_TRUTH.options)[number]["id"];
 
-export const POST_CHECK = [
-  { id: "match", label: "It matched" },
-  { id: "close", label: "Close" },
-  { id: "wrong", label: "It was wrong" },
-] as const;
-export type PostCheckId = (typeof POST_CHECK)[number]["id"];
-
 // ---------------------------------------------------------------------------
 // Discussion (What we saw) and small groups
 // ---------------------------------------------------------------------------

@@ -1,3 +1,4 @@
+import fc from 'fast-check'
 import {
   DEFAULT_CONTROL,
   _resetControlCache,
@@ -8,12 +9,12 @@ import {
   readControl,
   safely,
   writeControl,
+  projectRunPrompt,
   RUN_PROMPT_SELECT,
   type AspenStore,
 } from './store'
-import { azSavingsStream } from '@/test/rules-az-savings'
+import { AZ_SAVED_CHECK, productionShape } from '@/test/saved-rules-check'
 import { summarizeRun } from './results'
-import { parseDataStream, summarizeRules } from './rules'
 import type { PromptRow } from './types'
 
 const P = '6f1c2d3e-4a5b-4c6d-8e9f-0a1b2c3d4e5f'
@@ -167,10 +168,10 @@ function postgrestSelect(row: Record<string, unknown>, select: string): Record<s
 }
 
 describe('both stores load a run the same way', () => {
-  const az = summarizeRules(parseDataStream(azSavingsStream())).computations
+  const az = AZ_SAVED_CHECK
   const ny = [{ ...az[0], program: 'us-ny-snap', displayName: 'New York SNAP', disclosures: [], eligibilityTested: true }]
-  // Saved before checks carried a verdict: its program decides.
-  const older = az.map(({ eligibilityTested: _dropped, ...rest }) => rest)
+  // Saved before checks carried a verdict, as every row in production was: its program decides.
+  const older = az.map(productionShape)
   const prompt = (n: number, extra: Partial<PromptRow>): PromptRow => ({
     id: `00000000-0000-4000-8000-00000000000${n}`,
     run_id: 'phoenix',
@@ -231,6 +232,67 @@ describe('both stores load a run the same way', () => {
     // The bug this guards: in production an Arizona $24 counted as a household that qualifies.
     expect(room(supabase).viability).toMatchObject({ wouldNotApply: 4, wouldNotApplyEligible: 1, wouldNotApplyIfEligible: 2 })
     expect(room(supabase).feed.filter((f) => f.rulesIfEligible).map((f) => f.prompt)).toEqual(['Question 3', 'Question 1'])
+  })
+
+  it('selects every field the room summary reads', () => {
+    // The summary of a run as the select returns it equals the summary of the whole rows, so dropping
+    // a column the results still read (or a saved check's JSON path) fails here, not quietly in production.
+    const nullable = <T>(arb: fc.Arbitrary<T>) => fc.option(arb, { nil: null, freq: 2 })
+    const computation = fc.record(
+      {
+        program: fc.constantFrom<unknown>('us-az-snap', 'us-ny-snap', 7, null),
+        displayName: fc.constantFrom('Arizona SNAP', 'New York SNAP'),
+        eligibilityTested: fc.constantFrom<unknown>(true, false, null, 'false'),
+      },
+      { requiredKeys: [] },
+    )
+    const fields = {
+      id: fc.uuid(),
+      run_id: fc.constant('phoenix'),
+      participant_id: fc.constantFrom(P, Q),
+      conversation_id: fc.constantFrom('c1', 'c2'),
+      turn: fc.integer({ min: 0, max: 1 }),
+      created_at: fc.constantFrom('2026-10-16T19:00:00.000Z', '2026-10-16T19:01:00.000Z'),
+      prompt: fc.constantFrom('q1', 'q2'),
+      perspective: nullable(fc.constantFrom('resident', 'caseworker', 'stranger')),
+      household_id: nullable(fc.constantFrom('ct-couple', 'az-retiree', 'gone')),
+      twists: nullable(fc.array(fc.constantFrom('gig', 'savings'), { maxLength: 2 })),
+      answer: nullable(fc.constantFrom('$0', 'You may get $24.')),
+      verdict: nullable(fc.constantFrom('right', 'wrong', 'unsure')),
+      would_act: nullable(fc.constantFrom('yes', 'maybe', 'no')),
+      resident_action: nullable(fc.constantFrom('apply', 'not-apply', 'call', 'unsure')),
+      went_well: nullable(fc.array(fc.constantFrom('Plain and clear', 'Gave a number'), { maxLength: 2 })),
+      went_wrong: nullable(fc.array(fc.constantFrom('Wrong amount', 'Missed a program'), { maxLength: 2 })),
+      rating_note: nullable(fc.constantFrom('Check the asset test')),
+      rules_program: nullable(fc.constantFrom('Arizona SNAP', 'New York SNAP')),
+      rules_period: nullable(fc.constant('2026-10')),
+      rules_amount: nullable(fc.constantFrom(0, 24, 300)),
+      rules_outputs: nullable(fc.array(computation, { maxLength: 2 })),
+      rules_answer: nullable(fc.constant('Long prose the results never read.')),
+      post_check_verdict: nullable(fc.constantFrom('match', 'close', 'wrong')),
+    }
+    const keys = ['id', 'run_id', 'participant_id', 'conversation_id', 'turn', 'prompt'] as const
+    const row = fc.record(fields, { requiredKeys: [...keys] })
+    // A rated answer the resident wouldn't apply on, with an amount and a saved check: the only rows
+    // whose eligibility reading moves a count, and too rare among the rows above to rely on.
+    const notApplyChecked = fc.record(
+      {
+        ...fields,
+        verdict: fc.constantFrom('right', 'wrong', 'unsure'),
+        resident_action: fc.constant('not-apply'),
+        rules_amount: fc.constantFrom(24, 300),
+        rules_outputs: fc.array(computation, { minLength: 1, maxLength: 2 }),
+      },
+      { requiredKeys: [...keys, 'verdict', 'resident_action', 'rules_amount', 'rules_outputs'] },
+    )
+    const room = (prompts: PromptRow[]) => summarizeRun({ participants: [], prompts, events: [], pledges: [] })
+    fc.assert(
+      fc.property(fc.array(fc.oneof(row, notApplyChecked), { maxLength: 8 }), (rows) => {
+        const prompts = rows as PromptRow[]
+        expect(room(prompts.map(projectRunPrompt))).toEqual(room(prompts))
+      }),
+      { numRuns: 300 },
+    )
   })
 })
 

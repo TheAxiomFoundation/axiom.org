@@ -67,8 +67,6 @@ const RUN_PROMPT_COLUMNS = [
   "went_well",
   "went_wrong",
   "rating_note",
-  "rules_program",
-  "rules_period",
   "rules_amount",
   "post_check_verdict",
 ] as const satisfies readonly (keyof PromptRow)[];

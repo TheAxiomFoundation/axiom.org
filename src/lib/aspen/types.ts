@@ -47,6 +47,7 @@ export interface PromptRow {
   went_well?: string[] | null;
   went_wrong?: string[] | null;
   rating_note?: string | null;
+  /** The rules check's columns: phones saved them until October 16, 2026 (results.ts SavedCheck); nothing writes them now. */
   rules_requested_at?: string | null;
   rules_answer?: string | null;
   rules_program?: string | null;

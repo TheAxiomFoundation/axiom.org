@@ -363,7 +363,7 @@ export function ChatWindow({
   // On a phone the grid has one column. It must be minmax(0, 1fr), not the
   // implicit auto track: an auto track grows to its widest unbreakable line,
   // and a long web-search source title (one line, truncated) pushed the
-  // answer, the rating card and the rules check past a 375px screen.
+  // answer and the rating card past a 375px screen.
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-6 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] lg:gap-8">
       <div
