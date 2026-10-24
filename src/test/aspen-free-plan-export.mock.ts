@@ -69,7 +69,14 @@ export const MOCK_WEB_SEARCH_AUDIT: WebSearchAudit = {
   matchingAnswersFound: false,
   matchingScope: "MOCK: every file version in the public PolicyEngine/policybench repository, and its release assets",
   matchingBasis: "MOCK: no mock household's answers were found",
-  publicationCheck: { fileVersions: 100, readAs: { text: 90, gzip: 5, pdf: 3 }, matches: [], householdsMatched: {} },
+  publicationCheck: {
+    fileVersions: 100,
+    readAs: { text: 90, gzip: 5, pdf: 3 },
+    matches: [],
+    householdsMatched: {},
+    referencesGeneratedAtUtc: "2026-10-03T12:00:00Z",
+    newestReleaseAssetUpdate: "2026-09-30T08:00:00Z",
+  },
   models: Object.fromEntries(
     MOCK_POLICYBENCH_EXPORT.models.map((m, i) => {
       const block = i % 2 ? null : ["mock.example"];

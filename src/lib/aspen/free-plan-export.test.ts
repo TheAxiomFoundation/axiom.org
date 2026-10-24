@@ -10,6 +10,7 @@ import {
   noisePoints,
   runDateRange,
   sizeGroups,
+  utcDay,
   writePilotInto,
   type ExportModel,
   type PolicyBenchExport,
@@ -161,13 +162,13 @@ describe("freePlanFromExport", () => {
     expect(pilot.footnotes).toEqual(freePlanFromExport(exp, { models: ALL, webAudit: audit }).pilot.footnotes);
   });
 
-  it("says which models on the slide searched for PolicyBench anyway, in how many households, and that PolicyBench's scan found no copy of the answers", () => {
+  it("says which models on the slide searched for PolicyBench anyway, in how many households, and that PolicyBench's scan found no match for the answers", () => {
     const web = "Web search is each provider's own search tool, told not to search PolicyBench.";
     // B searched in three households across its two web settings, one of them in both.
     const b = withSearches("mock-b", "both", { queries: 30, policyBenchQueries: 2, policyBenchHouseholds: ["mt_04"] }, withSearches("mock-b", "web", { policyBenchQueries: 5, policyBenchHouseholds: ["mt_01", "mt_04", "mt_09"] }));
     const one = freePlanFromExport(exp, { models: ALL, webAudit: b });
     // Right after the web line, which says they were told not to.
-    expect(one.pilot.footnotes.slice(0, 2)).toEqual([web, "Mock model B searched for it anyway in 3 of 20 households; a scan of PolicyBench's public repository found no copy of these households' answers."]);
+    expect(one.pilot.footnotes.slice(0, 2)).toEqual([web, "Mock model B searched for it anyway in 3 of 20 households; a scan of PolicyBench's public repository found no match for these households' answers."]);
     expect(one.warnings).toContain("Mock model B searched for PolicyBench in 3 of 20 households, though told not to; the slide says so");
     // Not on the slide, not in the footnote.
     const without = freePlanFromExport(exp, { models: ["mock-a", "mock-c"], webAudit: b });
@@ -176,11 +177,11 @@ describe("freePlanFromExport", () => {
     // Two read as a list, the first with the full wording.
     const two = freePlanFromExport(exp, { models: ALL, webAudit: withSearches("mock-c", "web", { policyBenchQueries: 1, policyBenchHouseholds: ["mt_02"] }, b) }).pilot;
     expect(two.footnotes[1]).toBe(
-      "Mock model B searched for it anyway in 3 of 20 households and Mock model C in 1 of 20; a scan of PolicyBench's public repository found no copy of these households' answers.",
+      "Mock model B searched for it anyway in 3 of 20 households and Mock model C in 1 of 20; a scan of PolicyBench's public repository found no match for these households' answers.",
     );
   });
 
-  it("refuses a web-search audit that doesn't cover a model on the slide, doesn't add up, or doesn't say its scan found no copy of the answers", () => {
+  it("refuses a web-search audit that doesn't cover a model on the slide, doesn't add up, or doesn't say its scan found no match for the answers", () => {
     const { "mock-a": _, ...rest } = audit.models;
     expect(() => freePlanFromExport(exp, { models: ["mock-a"], webAudit: { ...audit, models: rest } })).toThrow("Mock model A: no web searches in the web-search audit");
     expect(() => freePlanFromExport(exp, { models: ["mock-a"], webAudit: { ...audit, models: { ...audit.models, "mock-a": { web: audit.models["mock-a"].web } } } })).toThrow(
@@ -213,14 +214,14 @@ describe("freePlanFromExport", () => {
     );
     const searched = withSearches("mock-b", "web", { policyBenchQueries: 1, policyBenchHouseholds: ["mt_01"] });
     expect(() => freePlanFromExport(exp, { models: ["mock-b"], webAudit: searched })).not.toThrow();
-    const unsaid = "Mock model B searched for PolicyBench, and the web-search audit doesn't say its scan found no copy of these households' answers";
+    const unsaid = "Mock model B searched for PolicyBench, and the web-search audit doesn't say its scan found no match for these households' answers";
     const unread = "the web-search audit doesn't show its scan read the PolicyEngine/policybench repository the footnote names";
     const listed = "Mock model B searched for PolicyBench, and the web-search audit's scan lists a match, or no list of them";
     const check = searched.publicationCheck!;
     for (const [change, says] of [
       [{ answersPublished: true }, "Mock model B searched for PolicyBench, and the web-search audit says these households' answers are published"],
       // Also set when a release asset changed after the answers were made, so the message says possible.
-      [{ matchingAnswersFound: true }, `${unsaid}; it flags a possible copy`],
+      [{ matchingAnswersFound: true }, `${unsaid}; it flags a possible match`],
       // No scan can show there's no copy anywhere, so the older audit's false is no longer enough.
       [{ answersPublished: false }, unsaid],
       [{ matchingAnswersFound: null }, unsaid],
@@ -282,6 +283,45 @@ describe("freePlanFromExport", () => {
     }
   });
 
+  it("tells the presenter, not the slide, the release assets' dates, since the scan checks those instead of reading them", () => {
+    const searched = withSearches("mock-b", "web", { policyBenchQueries: 1, policyBenchHouseholds: ["mt_01"] });
+    const check = searched.publicationCheck!;
+    const warned = (change: Partial<typeof check>) => freePlanFromExport(exp, { models: ["mock-b"], webAudit: { ...searched, publicationCheck: { ...check, ...change } } }).warnings;
+    const dated = (newest: string, order: string) =>
+      `PolicyBench's release assets are checked by date, not read: the newest was updated ${newest}, ${order} the references were generated October 3, 2026; the slide doesn't say so`;
+    expect(warned({})).toContain(dated("September 30, 2026", "before"));
+    // A second earlier is before; the same instant isn't.
+    expect(warned({ newestReleaseAssetUpdate: "2026-10-03T11:59:59Z" })).toContain(dated("October 3, 2026", "before"));
+    expect(warned({ newestReleaseAssetUpdate: "2026-10-03T12:00:00.000Z" })).toContain(dated("October 3, 2026", "not before"));
+    expect(warned({ newestReleaseAssetUpdate: "2026-10-04T00:00:00Z" })).toContain(dated("October 4, 2026", "not before"));
+    expect(warned({ newestReleaseAssetUpdate: null })).toContain("the web-search audit lists no PolicyBench release assets; the references were generated October 3, 2026");
+    const undated = "the web-search audit doesn't give the dates of the references and PolicyBench's release assets; the slide doesn't say so";
+    for (const change of [
+      { newestReleaseAssetUpdate: undefined },
+      { referencesGeneratedAtUtc: undefined },
+      { referencesGeneratedAtUtc: undefined, newestReleaseAssetUpdate: null },
+      { newestReleaseAssetUpdate: "2026-09-30" },
+      { newestReleaseAssetUpdate: "2026-02-30T08:00:00Z" },
+      { referencesGeneratedAtUtc: "2026-10-03T24:00:00Z" },
+      { referencesGeneratedAtUtc: "2026-10-03T12:00:00+00:00" },
+      { newestReleaseAssetUpdate: 1 as unknown as string },
+    ]) {
+      const w = warned(change);
+      expect(w).toContain(undated);
+      expect(w.some((x) => x.includes("checked by date") || x.includes("lists no"))).toBe(false);
+    }
+    // Not on the slide, and not said when nobody on it searched.
+    expect(freePlanFromExport(exp, { models: ["mock-b"], webAudit: searched }).pilot.footnotes.join(" ")).not.toMatch(/release|October|September/);
+    expect(freePlanFromExport(exp, { models: ["mock-a"], webAudit: searched }).warnings.some((w) => w.includes("release assets"))).toBe(false);
+  });
+
+  it("reads a UTC timestamp's day only when the timestamp is one", () => {
+    expect(utcDay("2026-10-14T08:23:00Z")).toEqual({ at: Date.UTC(2026, 9, 14, 8, 23), text: "October 14, 2026" });
+    expect(utcDay("2026-12-31T23:59:59.999Z")?.text).toBe("December 31, 2026");
+    expect(utcDay("2028-02-29T00:00:00Z")?.text).toBe("February 29, 2028");
+    for (const s of ["2027-02-29T00:00:00Z", "2026-13-01T00:00:00Z", "2026-10-14T08:60:00Z", "2026-10-14 08:23:00Z", "2026-10-14T08:23:00", "", null, 0]) expect(utcDay(s)).toBeNull();
+  });
+
   it("for any audit, names exactly the models on the slide that searched for PolicyBench, each with its households across both web settings", () => {
     const ids = exp.models.map((m) => m.id);
     const households = fc.uniqueArray(fc.constantFrom("h1", "h2", "h3", "h4", "h5"), { maxLength: 5 });
@@ -316,9 +356,9 @@ describe("freePlanFromExport", () => {
           const expected = order
             .map((id) => ({ model: name(id).model, k: new Set([...byModel[id].web.hh, ...byModel[id].both.hh]).size }))
             .filter((x) => x.k > 0);
-          // Only a scan that found no copy, with nothing claiming more, clears a model that searched.
+          // Only a scan that found no match, with nothing claiming more, clears a model that searched.
           if (expected.length && !(answersPublished === null && matchingAnswersFound === false)) {
-            expect(() => freePlanFromExport(exp, { models: chosen, webAudit })).toThrow(/answers are published|doesn't say its scan found no copy/);
+            expect(() => freePlanFromExport(exp, { models: chosen, webAudit })).toThrow(/answers are published|doesn't say its scan found no match/);
             return;
           }
           const { pilot, warnings } = freePlanFromExport(exp, { models: chosen, webAudit });

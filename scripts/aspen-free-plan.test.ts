@@ -124,6 +124,17 @@ describe("run", () => {
       expect(readFileSync(content, "utf8")).toContain(`// Web-search audit web-search-audit.json, sha256 ${auditSha}, generated 2026-10-24T06:00:00Z at 0000000mock.\n`);
     });
 
+    it("gives the presenter the release assets' dates, not the slide, when a model on it searched for PolicyBench", () => {
+      const auditSha = writeAudit((a) => ({ ...a, models: { ...a.models, "mock-a": { ...a.models["mock-a"], web: { ...a.models["mock-a"].web!, policyBenchQueries: 1, policyBenchHouseholds: ["mt_01"] } } } }));
+      const lines: string[] = [];
+      run([file, "--sha256", sha, "--models", "mock-a", "--web-audit", auditFile, "--web-audit-sha256", auditSha], { contentPath: content, log: (l) => lines.push(l) });
+      expect(lines).toContain("  Mock model A searched for it anyway in 1 of 20 households; a scan of PolicyBench's public repository found no match for these households' answers.");
+      expect(lines.slice(lines.indexOf("Warnings:") + 1)).toContain(
+        "  PolicyBench's release assets are checked by date, not read: the newest was updated September 30, 2026, before the references were generated October 3, 2026; the slide doesn't say so",
+      );
+      expect(readFileSync(content, "utf8")).toBe(before);
+    });
+
     it("refuses an audit whose sha256 isn't the one sent, or one of another export", () => {
       writeAudit();
       expect(() => run([file, "--sha256", sha, "--models", "mock-a", "--web-audit", auditFile, "--web-audit-sha256", SHA], { contentPath: content, log: () => {} })).toThrow(

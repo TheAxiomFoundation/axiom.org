@@ -82,7 +82,7 @@ export interface WebSearchAudit {
   /** Why it's left as it is, for the presenter. */
   answersPublishedNote?: string;
   /**
-   * false when PolicyBench's scan found no copy of these households' answers.
+   * false when PolicyBench's scan found no match for these households' answers.
    * It's also true when a release asset changed after the answers were made,
    * though the scan reads only their dates, not their contents.
    */
@@ -99,6 +99,10 @@ export interface WebSearchAudit {
     matches?: unknown[];
     /** The set's households found in the repository's scenario files. */
     householdsMatched?: Record<string, unknown>;
+    /** When the reference answers were generated, in UTC. */
+    referencesGeneratedAtUtc?: string;
+    /** The newest release asset's last update (GitHub's time), or null when there are none. The scan reads their dates, not their contents. */
+    newestReleaseAssetUpdate?: string | null;
   };
   /** What the scan read and found, for the presenter. */
   matchingBasis?: string;
@@ -163,6 +167,16 @@ export function runDateRange(dates: readonly string[]): string {
   }
   const day = first.d === last.d ? `${first.d}` : `${first.d}–${last.d}`;
   return `${MONTHS[first.m - 1]} ${day}, ${first.y}`;
+}
+
+/** A UTC timestamp (YYYY-MM-DDTHH:MM:SSZ) and its day, as "October 14, 2026"; null if it isn't one. */
+export function utcDay(s: unknown): { at: number; text: string } | null {
+  if (typeof s !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/.test(s)) return null;
+  const at = Date.parse(s);
+  // Parsers roll over or refuse a day or hour that doesn't exist; either way it doesn't print back the same.
+  if (!Number.isFinite(at) || new Date(at).toISOString().slice(0, 19) !== s.slice(0, 19)) return null;
+  const d = new Date(at);
+  return { at, text: `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}` };
 }
 
 /** A model's change from no tools to the tool, in points: its own counts' difference on the same amounts. */
@@ -324,7 +338,7 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
   }
 
   // Who searched for PolicyBench anyway, in either web setting. The slide says so, and that a scan of
-  // PolicyBench's repository found no copy of the answers; it doesn't claim the release assets, whose dates
+  // PolicyBench's repository found no match for the answers; it doesn't claim the release assets, whose dates
   // alone the scan checks (the presenter output gives them).
   const searched: { model: string; households: number; of: number }[] = [];
   const blind: string[] = [];
@@ -375,8 +389,8 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
       const who = `${list(searched.map((s) => s.model))} searched for PolicyBench`;
       if (audit.answersPublished === true) throw new Error(`${who}, and the web-search audit says these households' answers are published`);
       if (audit.answersPublished !== null || audit.matchingAnswersFound !== false) {
-        const flagged = audit.matchingAnswersFound === true ? "; it flags a possible copy" : "";
-        throw new Error(`${who}, and the web-search audit doesn't say its scan found no copy of these households' answers${flagged}`);
+        const flagged = audit.matchingAnswersFound === true ? "; it flags a possible match" : "";
+        throw new Error(`${who}, and the web-search audit doesn't say its scan found no match for these households' answers${flagged}`);
       }
       const check = audit.publicationCheck;
       // It has to have read some of the files it found, not only listed them.
@@ -393,6 +407,17 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
       const hm = check!.householdsMatched;
       const none = Array.isArray(check!.matches) && !check!.matches.length && typeof hm === "object" && hm !== null && !Array.isArray(hm) && !Object.keys(hm).length;
       if (!none) throw new Error(`${who}, and the web-search audit's scan lists a match, or no list of them`);
+      // For the presenter: the footnote names only the repository, since the release assets are checked by date.
+      const refs = utcDay(check!.referencesGeneratedAtUtc);
+      const newest = utcDay(check!.newestReleaseAssetUpdate);
+      if (!refs || (check!.newestReleaseAssetUpdate !== null && !newest)) {
+        warnings.push("the web-search audit doesn't give the dates of the references and PolicyBench's release assets; the slide doesn't say so");
+      } else if (!newest) {
+        warnings.push(`the web-search audit lists no PolicyBench release assets; the references were generated ${refs.text}`);
+      } else {
+        const order = newest.at < refs.at ? "before" : "not before";
+        warnings.push(`PolicyBench's release assets are checked by date, not read: the newest was updated ${newest.text}, ${order} the references were generated ${refs.text}; the slide doesn't say so`);
+      }
     }
     for (const s of searched) {
       warnings.push(`${s.model} searched for PolicyBench in ${s.households} of ${s.of} households, though told not to; the slide says so`);
@@ -406,7 +431,7 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
     "Web search is each provider's own search tool, told not to search PolicyBench.",
     ...(searched.length
       ? [
-          `${list(searched.map((s, i) => `${s.model}${i ? "" : " searched for it anyway"} in ${s.households} of ${s.of}${i ? "" : " households"}`))}; a scan of PolicyBench's public repository found no copy of these households' answers.`,
+          `${list(searched.map((s, i) => `${s.model}${i ? "" : " searched for it anyway"} in ${s.households} of ${s.of}${i ? "" : " households"}`))}; a scan of PolicyBench's public repository found no match for these households' answers.`,
         ]
       : []),
     `The tool runs PolicyEngine (${exp.engine}), the engine behind the reference answers, so this shows whether a model can use it, not whether it's right.`,
