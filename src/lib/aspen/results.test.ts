@@ -2,6 +2,7 @@ import fc from 'fast-check'
 import {
   EMPTY_SUMMARY,
   actedOn,
+  answersGiven,
   breakdownOf,
   latestPerParticipant,
   countBy,
@@ -553,7 +554,7 @@ describe('latestPerParticipant', () => {
   })
 })
 
-describe('questionsAsked', () => {
+describe('questionsAsked and answersGiven', () => {
   const row = (id: string, conversation_id: string, turn: number, created_at?: string, prompt = 'q'): PromptRow =>
     ({ ...base, id, conversation_id, turn, prompt, ...(created_at ? { created_at } : {}) })
 
@@ -579,6 +580,35 @@ describe('questionsAsked', () => {
     expect(summary.breakdown.find((r) => r.id === 'ct-couple')).toMatchObject({ asked: 1, rated: 1, wrong: 1 })
   })
 
+  it("never takes a question off the count when a retry whose answer didn't save is rated", () => {
+    // The cut-off first attempt finished on the server; the retry's answer reached the phone but not the store.
+    const original = { ...row('original', 'x', 0, '2026-10-26T18:00:00Z'), household_id: 'ct-couple', answer: 'Original' }
+    const retry = { ...row('retry', 'x', 0, '2026-10-26T18:00:09Z'), household_id: 'ct-couple' }
+    const before = summarizeRun({ ...DATA, prompts: [original, retry] })
+    const after = summarizeRun({ ...DATA, prompts: [original, { ...retry, verdict: 'wrong', resident_action: 'apply' }] })
+    expect([before.prompts, before.rated, before.feed.length]).toEqual([1, 0, 1])
+    expect([after.prompts, after.rated, after.feed.length]).toEqual([1, 1, 1])
+    // The feed shows the answer that saved, without a rating that was given to another one.
+    expect(after.feed[0]).toMatchObject({ id: 'original', verdict: null })
+    expect(after.breakdown.find((r) => r.id === 'ct-couple')).toMatchObject({ asked: 1, rated: 1, wrong: 1 })
+  })
+
+  it('keeps the rated attempt that was also checked against the rules over a later one that was only rated', () => {
+    const checked = {
+      ...row('checked', 'x', 0, '2026-10-26T18:00:00Z'),
+      answer: 'A',
+      verdict: 'right',
+      rules_program: 'Arizona SNAP',
+      rules_amount: 24,
+      post_check_verdict: 'wrong',
+    }
+    const later = { ...row('later', 'x', 0, '2026-10-26T18:00:30Z'), answer: 'B', verdict: 'right' }
+    expect(questionsAsked([checked, later]).map((p) => p.id)).toEqual(['checked'])
+    const summary = summarizeRun({ ...DATA, prompts: [checked, later] })
+    expect(summary.checked).toBe(1)
+    expect(summary.postCheck.find((c) => c.id === 'wrong')?.count).toBe(1)
+  })
+
   it('keeps different questions at the same turn apart', () => {
     const one = { ...row('one', 'x', 1, '2026-10-26T18:00:00Z', 'How much?'), answer: 'A' }
     const other = { ...row('other', 'x', 1, '2026-10-26T18:00:05Z', 'Who qualifies?'), answer: 'B' }
@@ -586,7 +616,7 @@ describe('questionsAsked', () => {
     expect(summarizeRun({ ...DATA, prompts: [one, other] }).prompts).toBe(2)
   })
 
-  it('keeps one row per question, the one acted on most, then the latest, and drops no question', () => {
+  it('keeps one attempt per question, counts every question answered and every one rated, and a rating never lowers a count', () => {
     const times = ['2026-10-26T18:00:00Z', '2026-10-26T18:00:05Z', '2026-10-26T18:01:00Z', undefined]
     const rows = fc.array(
       fc.record({
@@ -595,20 +625,25 @@ describe('questionsAsked', () => {
         prompt: fc.constantFrom('q', 'r'),
         at: fc.constantFrom(...times),
         answer: fc.boolean(),
-        verdict: fc.constantFrom(undefined, 'wrong'),
-        checked: fc.boolean(),
+        // A rating can sit on an attempt whose answer didn't save.
+        verdict: fc.constantFrom(undefined, 'wrong', 'right'),
+        // Checks only through the fields the run's select returns (store.ts RUN_PROMPT_COLUMNS).
+        check: fc.constantFrom(undefined, 'program', 'amount', 'post'),
       }),
       { maxLength: 14 },
     )
     const key = (p: PromptRow) => JSON.stringify([p.conversation_id, p.turn, p.prompt])
-    const weight = (p: PromptRow) => (p.verdict ? 3 : p.rules_requested_at ? 2 : p.answer ? 1 : 0)
+    const checked = (p: PromptRow) => Boolean(p.post_check_verdict || p.rules_program || typeof p.rules_amount === 'number')
+    const weight = (p: PromptRow) => (p.verdict ? 4 : 0) + (checked(p) ? 2 : 0) + (p.answer ? 1 : 0)
     fc.assert(
-      fc.property(rows, (specs) => {
-        const prompts = specs.map((r, i) => ({
+      fc.property(rows, fc.nat(), (specs, pick) => {
+        const prompts: PromptRow[] = specs.map((r, i) => ({
           ...row(String(i), r.conversation, r.turn, r.at, r.prompt),
           ...(r.answer ? { answer: 'a' } : {}),
-          ...(r.verdict ? { answer: 'a', verdict: r.verdict } : {}),
-          ...(r.checked ? { answer: 'a', rules_requested_at: '2026-10-26T18:02:00Z' } : {}),
+          ...(r.verdict ? { verdict: r.verdict } : {}),
+          ...(r.check === 'program' ? { rules_program: 'Arizona SNAP' } : {}),
+          ...(r.check === 'amount' ? { rules_amount: 0 } : {}),
+          ...(r.check === 'post' ? { post_check_verdict: 'wrong' } : {}),
         }))
         const kept = questionsAsked(prompts)
         expect(new Set(kept.map(key)).size).toBe(kept.length)
@@ -622,9 +657,23 @@ describe('questionsAsked', () => {
             .filter((q) => weight(q) === top)
             .reduce((m, q) => ((q.created_at ?? '') > m ? (q.created_at ?? '') : m), '')
           expect(p.created_at ?? '').toBe(latest)
-          if (group.some((q) => q.verdict)) expect(p.verdict).toBeTruthy()
         }
         expect(questionsAsked(kept)).toEqual(kept)
+        const answers = answersGiven(prompts)
+        expect(answers.every((p) => p.answer && prompts.includes(p))).toBe(true)
+        expect(new Set(answers.map(key))).toEqual(new Set(prompts.filter((p) => p.answer).map(key)))
+
+        const summary = summarizeRun({ ...DATA, prompts })
+        expect(summary.prompts).toBe(new Set(prompts.filter((p) => p.answer).map(key)).size)
+        expect(summary.rated).toBe(new Set(prompts.filter((p) => p.verdict).map(key)).size)
+        // Rating any one attempt leaves the questions answered as they were and never lowers the ratings.
+        if (prompts.length) {
+          const i = pick % prompts.length
+          const rerated = prompts.map((p, j) => (j === i ? { ...p, verdict: 'wrong' } : p))
+          const next = summarizeRun({ ...DATA, prompts: rerated })
+          expect(next.prompts).toBe(summary.prompts)
+          expect(next.rated).toBeGreaterThanOrEqual(summary.rated)
+        }
       }),
     )
   })
