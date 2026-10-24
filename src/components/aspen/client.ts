@@ -129,19 +129,28 @@ export function nextRev(now = Date.now()): number {
  * taken over stops writing and offers to take it back (useTabHold).
  */
 export function holdTab() {
-  holding = true;
   try {
     window.localStorage.setItem(TAB_KEY, JSON.stringify(TAB));
+    holding = true;
   } catch {
-    // Without storage there is nothing to share between tabs.
+    // Storage this tab can't write can't be shared either: it carries on as if it were the only tab.
+    holding = false;
   }
 }
 
-/** Whether this page held the device's answers and another tab has since taken them. */
+/**
+ * Whether this page held the device's answers and another tab has since
+ * taken them. When nothing holds them (storage was cleared), this page takes
+ * them again, so two tabs never both carry on writing.
+ */
 export function heldElsewhere(): boolean {
   if (!holding) return false;
   const holder = readStored<unknown>(TAB_KEY);
-  return typeof holder === "string" && holder !== TAB;
+  if (typeof holder !== "string") {
+    holdTab();
+    return false;
+  }
+  return holder !== TAB;
 }
 
 /**

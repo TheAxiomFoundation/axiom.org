@@ -3,6 +3,7 @@ import {
   EMPTY_SUMMARY,
   actedOn,
   breakdownOf,
+  firstQuestions,
   latestPerParticipant,
   countBy,
   plainText,
@@ -57,6 +58,7 @@ const DATA: RunData = {
     },
     {
       ...base,
+      conversation_id: 'c-c',
       id: 'c',
       turn: 0,
       created_at: '2026-10-26T18:02:00Z',
@@ -68,6 +70,7 @@ const DATA: RunData = {
     },
     {
       ...base,
+      conversation_id: 'c-d',
       id: 'd',
       turn: 0,
       perspective: 'stranger',
@@ -546,6 +549,51 @@ describe('latestPerParticipant', () => {
     // Two tabs that stamped alike: the one that reached the server last.
     const twin = { id: 5, participant_id: 'p1', q: 'experience', created_at: at('07'), payload: { rev: tapped('05') } }
     expect(latestPerParticipant([...answers, twin], byQ).map((e) => e.id)).toEqual([5])
+  })
+})
+
+describe('firstQuestions', () => {
+  const row = (id: string, conversation_id: string, turn: number, created_at?: string): PromptRow =>
+    ({ ...base, id, conversation_id, turn, prompt: 'q', ...(created_at ? { created_at } : {}) })
+
+  it('counts a first question asked again once, as last asked', () => {
+    const failed = { ...row('failed', 'x', 0, '2026-10-26T18:00:00Z'), household_id: 'ct-couple', error: 'timeout' }
+    const again = { ...row('again', 'x', 0, '2026-10-26T18:00:09Z'), household_id: 'ct-couple', answer: 'An answer', verdict: 'wrong' }
+    const followUp = row('follow', 'x', 1, '2026-10-26T18:01:00Z')
+    expect(firstQuestions([failed, again, followUp]).map((p) => p.id)).toEqual(['again'])
+    const summary = summarizeRun({ ...DATA, prompts: [failed, again, followUp] })
+    expect(summary.households.find((h) => h.id === 'ct-couple')?.count).toBe(1)
+    expect(summary.breakdown.find((r) => r.id === 'ct-couple')).toMatchObject({ asked: 1, rated: 1, wrong: 1 })
+  })
+
+  it('keeps one first question per conversation, the latest of its first questions, and drops no conversation', () => {
+    const times = ['2026-10-26T18:00:00Z', '2026-10-26T18:00:05Z', '2026-10-26T18:01:00Z', undefined]
+    const rows = fc.array(
+      fc.record({ conversation: fc.constantFrom('x', 'y', 'z'), turn: fc.constantFrom(0, 0, 1, 2), at: fc.constantFrom(...times) }),
+      { maxLength: 12 },
+    )
+    fc.assert(
+      fc.property(rows, (specs) => {
+        const prompts = specs.map((r, i) => row(String(i), r.conversation, r.turn, r.at))
+        const kept = firstQuestions(prompts)
+        const firsts = prompts.filter((p) => p.turn === 0)
+        expect(new Set(kept.map((p) => p.conversation_id)).size).toBe(kept.length)
+        expect(new Set(kept.map((p) => p.conversation_id))).toEqual(new Set(firsts.map((p) => p.conversation_id)))
+        for (const p of kept) {
+          expect(prompts).toContain(p)
+          expect(p.turn).toBe(0)
+          const latest = firsts
+            .filter((q) => q.conversation_id === p.conversation_id)
+            .reduce((m, q) => ((q.created_at ?? '') > m ? (q.created_at ?? '') : m), '')
+          expect(p.created_at ?? '').toBe(latest)
+        }
+      }),
+    )
+  })
+
+  it('breaks a tie in time with the later row', () => {
+    const at = '2026-10-26T18:00:00Z'
+    expect(firstQuestions([row('1', 'x', 0, at), row('2', 'x', 0, at)]).map((p) => p.id)).toEqual(['2'])
   })
 })
 

@@ -547,9 +547,26 @@ describe("holdTab", () => {
     localStorage.setItem(TAB_KEY, JSON.stringify("third-tab"));
     act(() => void window.dispatchEvent(new Event("focus")));
     expect(result.current.elsewhere).toBe(true);
-    // Storage cleared everywhere: nobody holds it, so this tab carries on.
+    // Storage cleared everywhere: nobody holds it, so this tab takes it again,
+    // and a tab that takes it after that stops this one, as before.
     localStorage.clear();
     act(() => void window.dispatchEvent(new StorageEvent("storage", { key: null })));
+    expect(result.current.elsewhere).toBe(false);
+    expect(localStorage.getItem(TAB_KEY)).toBe(mine);
+    localStorage.setItem(TAB_KEY, JSON.stringify("fourth-tab"));
+    act(() => void window.dispatchEvent(new StorageEvent("storage", { key: TAB_KEY })));
+    expect(result.current.elsewhere).toBe(true);
+  });
+
+  it("carries on as the only tab when it can't write the hold, rather than stopping", () => {
+    // An earlier visit left its hold, and now the phone refuses writes (a full quota).
+    localStorage.setItem(TAB_KEY, JSON.stringify("tab-from-an-earlier-visit"));
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("QuotaExceededError");
+    });
+    const { result } = renderHook(() => useTabHold());
+    expect(heldElsewhere()).toBe(false);
+    act(() => void window.dispatchEvent(new Event("focus")));
     expect(result.current.elsewhere).toBe(false);
   });
 });

@@ -188,7 +188,8 @@ export function ChatWindow({
       draft,
       template,
       conversationId,
-      turns: turns.filter((t) => t.status !== "streaming"),
+      // An answer still on its way is kept as a placeholder, so a reload or another tab says it was cut off.
+      turns: turns.map((t) => (t.status === "streaming" ? { key: t.key, role: t.role, content: "", status: t.status, promptId: t.promptId } : t)),
       rated: [...rated],
     } satisfies SavedChat);
   }, [hydrated, perspective, householdId, questionIds, twists, draft, template, conversationId, turns, rated]);
@@ -274,18 +275,18 @@ export function ChatWindow({
     onNewQuestion?.();
   }
 
-  async function send() {
-    const text = draft.trim();
+  /** Asks `text` after the turns in `base`: the box's question after the whole conversation, or a question asked again. */
+  async function send(text = draft.trim(), base = turns) {
     if (!text || sending) return;
-    const history = turns
+    const history = base
       .filter((t) => t.status !== "error" && t.status !== "streaming")
       .map((t) => ({ role: t.role, content: t.content }));
     const messages = [...history, { role: "user" as const, content: text }];
-    const turnIndex = turns.filter((t) => t.role === "user").length;
+    const turnIndex = base.filter((t) => t.role === "user").length;
     const userKey = newId();
     const answerKey = newId();
-    setTurns((prev) => [
-      ...prev,
+    setTurns([
+      ...base,
       { key: userKey, role: "user", content: text },
       { key: answerKey, role: "assistant", content: "", status: "streaming", statusText: "Thinking" },
     ]);
@@ -506,7 +507,7 @@ export function ChatWindow({
 
         {started && (
           <div className="flex flex-col gap-4 px-4 py-4" aria-live="polite">
-            {turns.map((turn) =>
+            {turns.map((turn, index) =>
               turn.role === "user" ? (
                 <div
                   key={turn.key}
@@ -517,7 +518,20 @@ export function ChatWindow({
               ) : (
                 <div key={turn.key} className="flex flex-col gap-3">
                   {turn.status === "error" ? (
-                    <p className="m-0 break-words font-body text-[0.92rem] text-[var(--color-error)]">{turn.content}</p>
+                    <>
+                      <p className="m-0 break-words font-body text-[0.92rem] text-[var(--color-error)]">{turn.content}</p>
+                      {/* The newest answer failed: one tap asks the same question again, in place of it. */}
+                      {index === turns.length - 1 && turns[index - 1]?.role === "user" && (
+                        <button
+                          type="button"
+                          className={`${BUTTON_QUIET} self-start`}
+                          disabled={sending}
+                          onClick={() => void send(turns[index - 1].content, turns.slice(0, index - 1))}
+                        >
+                          Ask again
+                        </button>
+                      )}
+                    </>
                   ) : (
                     <>
                       {turn.content ? (
@@ -645,7 +659,7 @@ export function ChatWindow({
               type="button"
               className={`${BUTTON} w-full py-3`}
               disabled={!draft.trim() || sending}
-              onClick={send}
+              onClick={() => void send()}
             >
               {sending ? "Asking…" : started ? "Send" : "Ask the AI"}
             </button>
