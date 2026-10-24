@@ -26,6 +26,13 @@ import { EMPTY_SUMMARY, summarizeRun, type RunSummary } from "@/lib/aspen/result
 import type { Control, RunData } from "@/lib/aspen/types";
 import { notApplyNote, PresenterApp } from "./presenter-app";
 
+// The app reads FREE_PLAN_PILOT at load. These tests step through At scale without the free-plan slide, whatever
+// --write puts in content.ts; presenter-free-plan.test.tsx steps through it with the slide.
+vi.mock("@/lib/aspen/content", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/aspen/content")>()),
+  FREE_PLAN_PILOT: null,
+}));
+
 const DATA: RunData = {
   participants: [{ id: "a", run_id: "r1", perspective: "resident", state: "Arizona" }],
   prompts: [

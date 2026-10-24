@@ -633,6 +633,10 @@ describe("writePilotInto", () => {
 
   it("finds the one block in content.ts, so --write has somewhere to go", () => {
     const content = readFileSync("src/lib/aspen/content.ts", "utf8");
-    expect(writePilotInto(content, null, [])).toBe(content);
+    // Whatever the block holds now, emptying it leaves the rest of the file as it was.
+    const emptied = writePilotInto(content, null, []);
+    const outside = (s: string) => [s.slice(0, s.indexOf("// BEGIN FREE_PLAN_PILOT")), s.slice(s.indexOf("// END FREE_PLAN_PILOT"))];
+    expect(outside(emptied)).toEqual(outside(content));
+    expect(writePilotInto(emptied, null, [])).toBe(emptied);
   });
 });
