@@ -1029,7 +1029,8 @@ export function freePlanProblems(p: FreePlanPilot): string[] {
         problems.push(`${r.model}: no count for ${id}`);
         continue;
       }
-      if (!Number.isInteger(c.k) || !Number.isInteger(c.n) || c.n < 1 || c.k < 0 || c.k > c.n) {
+      // Safe integers keep 100 × k finite, so every share prints as a whole percent.
+      if (!Number.isSafeInteger(c.k) || !Number.isSafeInteger(c.n) || c.n < 1 || c.k < 0 || c.k > c.n) {
         problems.push(`${r.model} ${id}: ${c.k} of ${c.n} isn't a count`);
       }
       ns.add(c.n);
@@ -1037,6 +1038,9 @@ export function freePlanProblems(p: FreePlanPilot): string[] {
     // A failed or missing answer counts as a miss, so every setting scores the same amounts.
     if (ns.size > 1) problems.push(`${r.model}: settings score different numbers of amounts (${[...ns].join(", ")})`);
     const { points, lo, hi } = r.toolVsAlone;
+    if (![points, lo, hi].every(Number.isFinite)) problems.push(`${r.model}: change ${points} with interval ${lo} to ${hi} isn't finite`);
+    // A change between two shares can't pass 100 points either way, nor can its interval.
+    else if (lo < -100 || hi > 100) problems.push(`${r.model}: its interval ${lo} to ${hi} goes past 100 points`);
     if (!(lo <= hi)) problems.push(`${r.model}: its interval ${lo} to ${hi} runs backward`);
     // The export writes the interval's ends to one decimal while the change is the counts' own, exact, so the
     // change may sit up to 0.05 past an end written that way. Finer ends get no allowance: a change of 0 can

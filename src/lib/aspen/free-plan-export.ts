@@ -290,7 +290,7 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
       for (const id of WEB_ARMS) {
         const a = audited?.[id];
         if (!a) throw new Error(`${m.model}: no ${id} searches in the web-search audit`);
-        if (![a.households, a.queries, a.policyBenchQueries].every((c) => Number.isInteger(c) && c >= 0) || !Array.isArray(a.policyBenchHouseholds)) {
+        if (![a.households, a.queries, a.policyBenchQueries].every((c) => Number.isSafeInteger(c) && c >= 0) || !Array.isArray(a.policyBenchHouseholds)) {
           throw new Error(`${m.model} ${id}: the web-search audit's counts aren't whole numbers with a list of households`);
         }
         const named = new Set(a.policyBenchHouseholds);

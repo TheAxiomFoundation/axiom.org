@@ -426,7 +426,8 @@ describe("freePlanFromExport", () => {
             group: free ? "free-plan" : "other",
             freePlan: free ? "Mock Free" : null,
             arms: { alone: arm(alone), web: arm(web), tool: arm(tool), both: arm(both) },
-            vsAlone: { tool: { points: oneDecimal(points), lo: oneDecimal(points - spread), hi: oneDecimal(points + spread) } },
+            // A bootstrap of a difference of two shares stays within 100 points either way.
+            vsAlone: { tool: { points: oneDecimal(points), lo: oneDecimal(Math.max(-100, points - spread)), hi: oneDecimal(Math.min(100, points + spread)) } },
           };
         });
         const consistent = { ...exp, models, sizes: undefined, caveat: caveatText(sizeGroups(models)) };

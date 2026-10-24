@@ -346,6 +346,39 @@ describe('the free-plan pilot', () => {
     expect(freePlanProblems(withRow(1, { counts: noChange, toolVsAlone: { points: 0, lo: 0.1, hi: 1 } }))).toEqual([
       'Mock model B: 0 is outside its interval 0.1 to 1',
     ])
+    expect(freePlanProblems(withRow(1, { counts: noChange, toolVsAlone: { points: 0, lo: -Infinity, hi: Infinity } }))).toEqual([
+      "Mock model B: change 0 with interval -Infinity to Infinity isn't finite",
+    ])
+    expect(freePlanProblems(withRow(1, { counts: noChange, toolVsAlone: { points: 0, lo: -1e308, hi: 1 } }))).toEqual([
+      'Mock model B: its interval -1e+308 to 1 goes past 100 points',
+    ])
+    const huge = { k: 1e308, n: 1e308 }
+    expect(freePlanProblems(withRow(1, { counts: { alone: huge, web: huge, tool: huge, both: huge }, toolVsAlone: { points: 0, lo: 0, hi: 0 } }))).toEqual(
+      ["alone", "web", "tool", "both"].map((id) => `Mock model B ${id}: 1e+308 of 1e+308 isn't a count`),
+    )
+  })
+
+  it('passes only rows the slide can print: whole shares from 0 to 100, and finite changes and intervals', () => {
+    const m = MOCK_FREE_PLAN_PILOT
+    const size = fc.oneof(fc.integer({ min: 1, max: 2000 }), fc.constantFrom(2 ** 53 - 1, 2 ** 53, 1e308, Infinity, NaN))
+    const share = fc.double({ min: 0, max: 1, noNaN: true })
+    const odd = fc.option(fc.constantFrom(Infinity, -Infinity, NaN, 1e308, -1e308))
+    fc.assert(
+      fc.property(size, share, share, fc.double({ min: 0, max: 30, noNaN: true }), odd, odd, (n, fa, ft, gap, oddLo, oddHi) => {
+        const [alone, tool] = [Math.floor(fa * n), Math.floor(ft * n)]
+        const points = (100 * (tool - alone)) / n
+        const toolVsAlone = { points, lo: oddLo ?? points - gap, hi: oddHi ?? points + gap }
+        const c = (k: number) => ({ k, n })
+        const row = { ...m.rows[1], counts: { alone: c(alone), web: c(alone), tool: c(tool), both: c(tool) }, toolVsAlone }
+        if (freePlanProblems({ ...m, rows: m.rows.map((r, j) => (j === 1 ? row : r)) }).length) return
+        for (const k of [alone, tool]) {
+          const s = wholeShare({ k, n })
+          expect(Number.isInteger(s) && s >= 0 && s <= 100).toBe(true)
+        }
+        for (const x of [points, toolVsAlone.lo, toolVsAlone.hi]) expect(formatPoints(x)).toMatch(/^(0|[+\u2212][0-9.e-]+)$/)
+      }),
+      { numRuns: 1000 },
+    )
   })
 
   it('never passes a change the slide would show as leaving out zero unless the change itself is on that side of zero', () => {
