@@ -390,29 +390,56 @@ function spotlightReason(p: PromptRow): Spotlight["reason"] | null {
   return null;
 }
 
+/** How much an attempt at a question shows: its rating, then a check against the rules, then an answer. */
+function attemptWeight(p: PromptRow): number {
+  const checked = Boolean(p.post_check_verdict || p.rules_program || typeof p.rules_amount === "number");
+  return (p.verdict ? 4 : 0) + (checked ? 2 : 0) + (p.answer ? 1 : 0);
+}
+
+/** The attempt that shows the most, else the last created (the later row on a tie). */
+function bestAttempt(attempts: PromptRow[]): PromptRow | undefined {
+  let best: PromptRow | undefined;
+  for (const p of attempts) {
+    const [w, bw] = [attemptWeight(p), best ? attemptWeight(best) : -1];
+    if (w > bw || (w === bw && (p.created_at ?? "") >= (best?.created_at ?? ""))) best = p;
+  }
+  return best;
+}
+
 /**
- * One row per question asked. "Ask again" saves the same question again at
- * the same turn of the same conversation, and an answer cut off on one tab
- * can still finish on the server, so one question can leave several rows.
- * The row kept is one the participant rated, else one they checked against
- * the rules, else one answered, else the last created (the later row on a
- * tie): the room's counts are of questions, not attempts, and a retry's
- * rating always counts. Different questions at one turn stay apart.
+ * Each question's attempts. "Ask again" saves the same question again at the
+ * same turn of the same conversation, and an answer cut off on one tab can
+ * still finish on the server, so one question can leave several rows.
+ * Different questions at one turn stay apart.
  */
-export function questionsAsked(prompts: PromptRow[]): PromptRow[] {
-  const checked = (p: PromptRow) => Boolean(p.post_check_verdict || p.rules_requested_at || p.rules_program || typeof p.rules_amount === "number");
-  const weight = (p: PromptRow) => (p.verdict ? 3 : checked(p) ? 2 : p.answer ? 1 : 0);
-  const kept = new Map<string, PromptRow>();
+function attemptsByQuestion(prompts: PromptRow[]): PromptRow[][] {
+  const groups = new Map<string, PromptRow[]>();
   for (const p of prompts) {
     const key = JSON.stringify([p.conversation_id, p.turn, p.prompt]);
-    const seen = kept.get(key);
-    const better =
-      !seen ||
-      weight(p) > weight(seen) ||
-      (weight(p) === weight(seen) && (p.created_at ?? "") >= (seen.created_at ?? ""));
-    if (better) kept.set(key, p);
+    const group = groups.get(key);
+    if (group) group.push(p);
+    else groups.set(key, [p]);
   }
-  return [...kept.values()];
+  return [...groups.values()];
+}
+
+/**
+ * One row per question asked, so the room's counts are of questions, not
+ * attempts: the attempt that shows the most (a rating, then a check against
+ * the rules, then an answer), else the last created. A retry's rating
+ * always counts.
+ */
+export function questionsAsked(prompts: PromptRow[]): PromptRow[] {
+  return attemptsByQuestion(prompts).flatMap((attempts) => bestAttempt(attempts) ?? []);
+}
+
+/**
+ * One answer per question that got one: of the attempts whose answer saved,
+ * the one that shows the most. A rating on an attempt whose answer didn't
+ * save still counts as a rating, but never takes the question's answer away.
+ */
+export function answersGiven(prompts: PromptRow[]): PromptRow[] {
+  return attemptsByQuestion(prompts).flatMap((attempts) => bestAttempt(attempts.filter((p) => p.answer)) ?? []);
 }
 
 const REASON_RANK: Record<Spotlight["reason"], number> = { convincing: 0, "checked-wrong": 1, wrong: 2, unsure: 3 };
@@ -420,7 +447,7 @@ const REASON_RANK: Record<Spotlight["reason"], number> = { convincing: 0, "check
 export function summarizeRun(data: RunData): RunSummary {
   const { participants, events, pledges } = data;
   const prompts = questionsAsked(data.prompts);
-  const answered = prompts.filter((p) => p.answer);
+  const answered = answersGiven(data.prompts);
   const rated = prompts.filter((p) => p.verdict);
   const checked = prompts.filter((p) => p.rules_program || typeof p.rules_amount === "number");
   // First questions only: follow-ups repeat the household and perspective.

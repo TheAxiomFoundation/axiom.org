@@ -19,7 +19,7 @@ import { POST as rules } from './rules/route'
 import { POST as event } from './event/route'
 import { POST as pledge } from './pledge/route'
 import { GET as results } from './results/route'
-import { _resetControlCache, _resetMemoryStore } from '@/lib/aspen/store'
+import { _resetControlCache, _resetMemoryStore, getStore } from '@/lib/aspen/store'
 import { _resetRateLimits } from '@/lib/aspen/limit'
 
 const P = '6f1c2d3e-4a5b-4c6d-8e9f-0a1b2c3d4e5f'
@@ -289,6 +289,29 @@ describe('aspen API routes', () => {
     expect(await (await comment('Newest comment', Date.now() + 1_000)).json()).toEqual({ ok: true, saved: true })
     expect((await room()).discussion.notes).toContainEqual({ question: 'experience', text: 'Newest comment' })
     expect(JSON.stringify(await room())).not.toContain('Old page comment')
+  })
+
+  it("counts a question asked again once, and a rating on a retry whose answer didn't save never takes it off the count", async () => {
+    await signIn(post({ password: 'stage' }))
+    const question = { participantId: P, conversationId: C, turn: 0, messages: [{ role: 'user', content: 'Can I get SNAP?' }] }
+    const room = async () => (await (await results(new Request('https://axiom.org/api/aspen/results'))).json()).summary
+    // The first attempt was cut off on the phone, but finished on the server.
+    expect((await readLines(await ask(post(question)))).map((l) => l.type)).toEqual(['meta', 'delta', 'done'])
+    // "Ask again": the answer reaches the phone, but saving it fails.
+    const store = getStore()!
+    vi.spyOn(store, 'updatePrompt').mockImplementationOnce(async () => {
+      throw new Error('store down')
+    })
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const again = await readLines(await ask(post(question)))
+    expect(again.map((l) => l.type)).toEqual(['meta', 'delta', 'done'])
+    expect(await room()).toMatchObject({ prompts: 1, rated: 0 })
+    // The phone rates the retry it shows.
+    const rated = await rate(post({ participantId: P, promptId: String(again[0].promptId), verdict: 'wrong', residentAction: 'apply', rev: Date.now() }))
+    expect(await rated.json()).toEqual({ ok: true, saved: true })
+    const after = await room()
+    expect(after).toMatchObject({ prompts: 1, rated: 1 })
+    expect(after.households.find((h: { id: string }) => h.id === 'own')?.count).toBe(1)
   })
 
   it('rejects bad questions and records failed answers', async () => {
