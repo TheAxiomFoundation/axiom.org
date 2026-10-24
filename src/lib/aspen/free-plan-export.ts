@@ -65,11 +65,44 @@ export interface ExportArm extends PilotCount {
   hi: number;
 }
 
+/**
+ * PolicyBench's audit of the searches in the export's web settings
+ * (web_search_audit.py), a separate file checked against the export it audits.
+ */
+export interface WebSearchAudit {
+  /** The export it audits; the script checks this against the export's own sha256. */
+  export: { file?: string; sha256: string };
+  /** false once PolicyBench has checked that no answer for these households is published. */
+  answersPublished: boolean | null;
+  /** How that was checked, for the presenter. */
+  answersPublishedBasis?: string;
+  /** By export id, each web setting's searches. */
+  models: Record<string, Partial<Record<WebArmId, WebSearchArm>>>;
+  source?: { scriptCommit?: string; generatedAtUtc?: string };
+}
+
+/** The settings with web search. */
+export const WEB_ARMS = ["web", "both"] as const;
+export type WebArmId = (typeof WEB_ARMS)[number];
+
+export interface WebSearchArm {
+  households: number;
+  queries: number;
+  /** Queries naming PolicyBench, which the models were told not to search for. */
+  policyBenchQueries: number;
+  /** The households in which those queries were sent. */
+  policyBenchHouseholds: string[];
+  /** The sites the search tool blocked; null when it takes no list. */
+  domainBlock: string[] | null;
+}
+
 export interface ExportOptions {
   /** Export ids, in the order to show them; free-plan models move to the front. */
   models: readonly string[];
   title?: string;
   label?: string;
+  /** Without it, the slide can't say whether a model searched for PolicyBench, and the converter warns. */
+  webAudit?: WebSearchAudit;
 }
 
 export const EXPORT_ARMS: FreePlanPilot["arms"] = [
@@ -97,6 +130,11 @@ export function runDateRange(dates: readonly string[]): string {
   }
   const day = first.d === last.d ? `${first.d}` : `${first.d}–${last.d}`;
   return `${MONTHS[first.m - 1]} ${day}, ${first.y}`;
+}
+
+/** A model's change from no tools to the tool, in points: its own counts' difference on the same amounts. */
+function changeFromCounts(m: ExportModel): number {
+  return (100 * (m.arms.tool!.k - m.arms.alone!.k)) / m.arms.tool!.n;
 }
 
 /** "A", "A and B", "A, B and C". */
@@ -186,6 +224,11 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
     }
     const tool = m.vsAlone.tool;
     if (!tool) throw new Error(`${m.model}: no change from no tools to the tool`);
+    // The slide shows the counts' own difference, so the export's change, to its one decimal, must be it.
+    const [alone, withTool] = [m.arms.alone, m.arms.tool];
+    if (alone && withTool && alone.n === withTool.n && Math.abs(tool.points - changeFromCounts(m)) > 0.05 + 1e-9) {
+      throw new Error(`${m.model}: change ${tool.points}, but its counts give ${changeFromCounts(m).toFixed(2)}`);
+    }
     for (const arm of EXPORT_ARMS) {
       const c = m.arms[arm.id];
       if (!c) throw new Error(`${m.model}: no count for ${arm.id}`);
@@ -236,11 +279,46 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
     warnings.push(`${list(models)}: the tool's instructions named ${stated}, but every calculation ran on ${exp.engine}; the slide says so`);
   }
 
+  // Who searched for PolicyBench anyway, in either web setting. The slide says so, and that no answer could be found.
+  const searched: { model: string; households: number; of: number }[] = [];
+  if (!opts.webAudit) {
+    warnings.push("no web-search audit given, so the slide doesn't say whether a model searched for PolicyBench; pass --web-audit");
+  } else {
+    for (const m of ordered) {
+      const audited = opts.webAudit.models[m.id];
+      const households = new Set<string>();
+      for (const id of WEB_ARMS) {
+        const a = audited?.[id];
+        if (!a) throw new Error(`${m.model}: no ${id} searches in the web-search audit`);
+        const named = new Set(a.policyBenchHouseholds);
+        if (a.households !== m.households || named.size !== a.policyBenchHouseholds.length || named.size > a.households) {
+          throw new Error(`${m.model} ${id}: the web-search audit's households don't match the export's ${m.households}`);
+        }
+        if (a.policyBenchQueries < named.size || a.policyBenchQueries > a.queries || (a.policyBenchQueries > 0) !== (named.size > 0)) {
+          throw new Error(`${m.model} ${id}: ${a.policyBenchQueries} PolicyBench queries of ${a.queries} in ${named.size} households don't add up`);
+        }
+        for (const h of named) households.add(h);
+      }
+      if (households.size) searched.push({ model: m.model, households: households.size, of: m.households });
+    }
+    if (searched.length && opts.webAudit.answersPublished !== false) {
+      throw new Error(`${list(searched.map((s) => s.model))} searched for PolicyBench, and the web-search audit doesn't rule out published answers for these households`);
+    }
+    for (const s of searched) {
+      warnings.push(`${s.model} searched for PolicyBench in ${s.households} of ${s.of} households, though told not to; the slide says so`);
+    }
+  }
+
   const free = ordered.filter((m) => m.freePlan !== null);
   // The rows name each free-plan model and the caveat says they were called
   // through their APIs, so the footnotes don't repeat either.
   const footnotes = [
     "Web search is each provider's own search tool, told not to search PolicyBench.",
+    ...(searched.length
+      ? [
+          `${list(searched.map((s, i) => `${s.model}${i ? "" : " searched for it anyway"} in ${s.households} of ${s.of}${i ? "" : " households"}`))}; PolicyBench has published no answers for these households.`,
+        ]
+      : []),
     `The tool runs PolicyEngine (${exp.engine}), the engine behind the reference answers, so this shows whether a model can use it, not whether it's right.`,
     ...[...toldOther].map(([stated, models]) => `Its instructions to ${list(models)} named ${stated} instead.`),
   ];
@@ -254,7 +332,8 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
       model: m.model,
       freePlan: m.freePlan ? `On ${m.freePlan}` : null,
       counts: Object.fromEntries(EXPORT_ARMS.map((a) => [a.id, { k: m.arms[a.id]!.k, n: m.arms[a.id]!.n }])),
-      toolVsAlone: { points: m.vsAlone.tool!.points, lo: m.vsAlone.tool!.lo, hi: m.vsAlone.tool!.hi },
+      // The change from the counts, exact; its interval from PolicyBench's household bootstrap.
+      toolVsAlone: { points: changeFromCounts(m), lo: m.vsAlone.tool!.lo, hi: m.vsAlone.tool!.hi },
     })),
     // The chosen models in the export's order, as PolicyBench lists them.
     caveat: caveatText(sizeGroups(exp.models.filter((m) => opts.models.includes(m.id)))),

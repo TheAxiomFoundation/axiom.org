@@ -1273,8 +1273,8 @@ export function FreePlanSlide({ pilot: p }: { pilot: FreePlanPilot }) {
   // only up to three.
   const compact = p.rows.length > 3;
   const z = compact
-    ? { cell: "py-[2px]", model: "text-[22px] leading-tight", plan: "text-[15px] leading-tight", value: "text-[24px]", small: "text-[15px]", bar: "mt-[6px] h-[6px]", caveat: "text-[18px]", note: "text-[15px]" }
-    : { cell: "py-[12px]", model: "text-[24px] leading-snug", plan: "text-[17px] leading-snug", value: "text-[26px]", small: "text-[16px]", bar: "mt-[8px] h-[8px]", caveat: "text-[20px]", note: "text-[17px]" };
+    ? { cell: "py-[1px]", model: "text-[22px] leading-tight", plan: "text-[15px] leading-tight", value: "text-[24px]", small: "text-[15px]", bar: "mt-[4px] h-[6px]", caveat: "text-[17px]", note: "text-[15px]", head: "text-[16px]" }
+    : { cell: "py-[10px]", model: "text-[24px] leading-snug", plan: "text-[17px] leading-snug", value: "text-[26px]", small: "text-[16px]", bar: "mt-[8px] h-[8px]", caveat: "text-[20px]", note: "text-[17px]", head: "text-[18px]" };
   return (
     <div className={`flex h-full flex-col ${compact ? "gap-[10px]" : "gap-[12px]"}`}>
       <div className="flex items-start justify-between gap-[24px]">
@@ -1294,7 +1294,7 @@ export function FreePlanSlide({ pilot: p }: { pilot: FreePlanPilot }) {
           <col className="w-[20%]" />
         </colgroup>
         <thead>
-          <tr className="border-b border-[var(--color-rule)] text-left align-bottom font-body text-[18px] leading-snug text-[var(--color-ink-secondary)]">
+          <tr className={`border-b border-[var(--color-rule)] text-left align-bottom font-body leading-snug text-[var(--color-ink-secondary)] ${z.head}`}>
             <th scope="col" className="pb-[8px] font-normal">
               <span className="sr-only">Model</span>
             </th>
@@ -1307,7 +1307,7 @@ export function FreePlanSlide({ pilot: p }: { pilot: FreePlanPilot }) {
               </th>
             ))}
             <th scope="col" className="pb-[8px] pl-[12px] font-normal">
-              No tools to tool, in points
+              No tools to tool, in points, with its 95% interval
             </th>
           </tr>
         </thead>

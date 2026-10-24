@@ -37,7 +37,7 @@ describe("FreePlanSlide", () => {
     expect(screen.getByText("MOCK DATA, not results")).toBeInTheDocument();
     const table = screen.getByRole("table", { name: /Share of amounts right, by model and setting/ });
     for (const arm of p.arms) expect(within(table).getByRole("columnheader", { name: arm.label })).toBeInTheDocument();
-    expect(within(table).getByRole("columnheader", { name: "No tools to tool, in points" })).toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: "No tools to tool, in points, with its 95% interval" })).toBeInTheDocument();
 
     const a = within(table).getByRole("row", { name: /Mock model A/ });
     expect(a).toHaveTextContent("On mock plan A");
@@ -86,9 +86,9 @@ describe("FreePlanSlide", () => {
     const a = screen.getByRole("row", { name: /Mock model A/ });
     const cells = within(a).getAllByRole("cell");
     expect(cells[1].textContent).toBe("");
-    expect(cells[0]).toHaveClass("py-[12px]");
+    expect(cells[0]).toHaveClass("py-[10px]");
     // With PolicyBench's caveat and footnotes at full length, roomy rows fit 1600×900 only up to three.
-    for (const [n, cell] of [[3, "py-[12px]"], [4, "py-[2px]"], [6, "py-[2px]"]] as const) {
+    for (const [n, cell] of [[3, "py-[10px]"], [4, "py-[1px]"], [6, "py-[1px]"]] as const) {
       cleanup();
       render(<FreePlanSlide pilot={{ ...p, rows: p.rows.slice(0, n) }} />);
       expect(within(screen.getByRole("row", { name: /Mock model A/ })).getAllByRole("cell")[0]).toHaveClass(cell);

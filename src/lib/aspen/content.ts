@@ -990,11 +990,17 @@ export function distinguishable(c: PilotChange): boolean {
   return c.lo > 0 || c.hi < 0;
 }
 
-/** Whole points with a sign, "+28" or "−14" (a true minus sign), and "0" for no change. */
+/**
+ * Whole points with a sign, "+28" or "−14" (a true minus sign), and "0" only
+ * for no change. A value that rounds to 0 but isn't 0 keeps one significant
+ * digit ("+0.1", "−0.04"), so an interval that leaves out zero never shows an
+ * end of 0.
+ */
 export function formatPoints(points: number): string {
+  if (points === 0) return "0";
   const whole = Math.round(points);
-  if (whole === 0) return "0";
-  return whole > 0 ? `+${whole}` : `\u2212${-whole}`;
+  const text = whole === 0 ? Math.abs(points).toPrecision(1) : String(Math.abs(whole));
+  return points > 0 ? `+${text}` : `\u2212${text}`;
 }
 
 /**
@@ -1032,12 +1038,12 @@ export function freePlanProblems(p: FreePlanPilot): string[] {
     if (ns.size > 1) problems.push(`${r.model}: settings score different numbers of amounts (${[...ns].join(", ")})`);
     const { points, lo, hi } = r.toolVsAlone;
     if (!(lo <= points && points <= hi)) problems.push(`${r.model}: ${points} is outside its interval ${lo} to ${hi}`);
-    // The paired change on the same amounts is the counts' own difference, to rounding.
+    // The paired change on the same amounts is the counts' own difference, to the export's one decimal.
     const alone = r.counts.alone;
     const tool = r.counts.tool;
     if (alone && tool && alone.n === tool.n) {
       const fromCounts = (100 * (tool.k - alone.k)) / tool.n;
-      if (Math.abs(fromCounts - points) > 0.5) {
+      if (Math.abs(fromCounts - points) > 0.05 + 1e-9) {
         problems.push(`${r.model}: change ${points} but the counts give ${fromCounts.toFixed(1)}`);
       }
     }

@@ -1,4 +1,4 @@
-import type { ExportArm, ExportModel, PolicyBenchExport } from "@/lib/aspen/free-plan-export";
+import type { ExportArm, ExportModel, PolicyBenchExport, WebSearchArm, WebSearchAudit } from "@/lib/aspen/free-plan-export";
 import type { PilotChange } from "@/lib/aspen/content";
 
 /**
@@ -52,4 +52,25 @@ export const MOCK_POLICYBENCH_EXPORT: PolicyBenchExport = {
     mockModel("b", "Mock Chat Free", { alone: 18, web: 21, tool: 24, both: 27 }, 16.5),
   ],
   source: { scriptCommit: "0000000mock", scriptTreeDirty: false, generatedAtUtc: "2026-10-24T03:30:00Z" },
+};
+
+const searches = (domainBlock: string[] | null): WebSearchArm => ({ households: 20, queries: 40, policyBenchQueries: 0, policyBenchHouseholds: [], domainBlock });
+
+/**
+ * MOCK DATA for tests only: an invented web-search audit of
+ * MOCK_POLICYBENCH_EXPORT in the shape PolicyBench's web_search_audit.py
+ * writes. No mock model searched for PolicyBench. Tests that read it through
+ * the script set export.sha256 to the mock export file's own.
+ */
+export const MOCK_WEB_SEARCH_AUDIT: WebSearchAudit = {
+  export: { file: "free-plan-mock.json", sha256: "0".repeat(64) },
+  answersPublished: false,
+  answersPublishedBasis: "MOCK: no mock household's answers are published",
+  models: Object.fromEntries(
+    MOCK_POLICYBENCH_EXPORT.models.map((m, i) => {
+      const block = i % 2 ? null : ["mock.example"];
+      return [m.id, { web: searches(block), both: searches(block) }];
+    }),
+  ),
+  source: { scriptCommit: "0000000mock", generatedAtUtc: "2026-10-24T06:00:00Z" },
 };

@@ -323,6 +323,11 @@ describe('the free-plan pilot', () => {
       'Mock model B: 50 is outside its interval 9 to 44',
       'Mock model B: change 50 but the counts give 27.1',
     ])
+    // The counts give 27.08: the export's one decimal, 27.1, passes; 27.2 would show the same whole number but isn't the counts'.
+    expect(freePlanProblems(withRow(1, { toolVsAlone: { points: 27.1, lo: 9, hi: 44 } }))).toEqual([])
+    expect(freePlanProblems(withRow(1, { toolVsAlone: { points: 27.2, lo: 9, hi: 44 } }))).toEqual([
+      'Mock model B: change 27.2 but the counts give 27.1',
+    ])
   })
 
   it('shows a count as a whole percent within 0 to 100 that never falls as the count grows', () => {
@@ -339,19 +344,32 @@ describe('the free-plan pilot', () => {
     )
   })
 
-  it('writes points with their sign and reads back to the rounded value', () => {
+  it('writes points whole with their sign, "0" only for no change, and one significant digit where whole would read as 0', () => {
     fc.assert(
       fc.property(fc.double({ min: -100, max: 100, noNaN: true }), (x) => {
         const text = formatPoints(x)
-        const whole = Math.round(x)
-        expect(Number(text.replace('\u2212', '-'))).toBe(whole === 0 ? 0 : whole)
-        if (whole > 0) expect(text.startsWith('+')).toBe(true)
-        if (whole < 0) expect(text.startsWith('\u2212')).toBe(true)
-        if (whole === 0) expect(text).toBe('0')
+        if (x === 0) {
+          expect(text).toBe('0')
+          return
+        }
+        expect(text.startsWith(x > 0 ? '+' : '\u2212')).toBe(true)
+        const back = Number(text.replace('\u2212', '-'))
+        if (Math.round(x) !== 0) expect(back).toBe(Math.round(x))
+        else {
+          // One significant digit: never zero, and off by at most half the value.
+          expect(back).not.toBe(0)
+          expect(Math.abs(back - x)).toBeLessThanOrEqual(Math.abs(x) / 2)
+        }
       }),
     )
-    expect(formatPoints(-0.4)).toBe('0')
+    expect(formatPoints(5e-324)).toBe('+5e-324')
+    expect(formatPoints(0.099)).toBe('+0.1')
     expect(formatPoints(7.8)).toBe('+8')
+    expect(formatPoints(-0.4)).toBe('\u22120.4')
+    expect(formatPoints(0.1)).toBe('+0.1')
+    expect(formatPoints(0.04)).toBe('+0.04')
+    expect(formatPoints(-0.5)).toBe('\u22120.5')
+    expect(formatPoints(0)).toBe('0')
   })
 
   it('calls a change distinguishable exactly when its interval leaves out zero', () => {

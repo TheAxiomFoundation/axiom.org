@@ -1,7 +1,7 @@
 import fc from "fast-check";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { MOCK_POLICYBENCH_EXPORT } from "@/test/aspen-free-plan-export.mock";
+import { MOCK_POLICYBENCH_EXPORT, MOCK_WEB_SEARCH_AUDIT } from "@/test/aspen-free-plan-export.mock";
 import { freePlanProblems, wholeShare, type FreePlanPilot } from "./content";
 import {
   EXPORT_ARMS,
@@ -13,10 +13,18 @@ import {
   writePilotInto,
   type ExportModel,
   type PolicyBenchExport,
+  type WebSearchArm,
+  type WebSearchAudit,
 } from "./free-plan-export";
 
 const ALL = ["mock-c", "mock-a", "mock-d", "mock-b"];
 const exp = MOCK_POLICYBENCH_EXPORT;
+const audit = MOCK_WEB_SEARCH_AUDIT;
+
+/** The audit with one model's web setting changed. */
+function withSearches(id: string, arm: "web" | "both", change: Partial<WebSearchArm>, from: WebSearchAudit = audit): WebSearchAudit {
+  return { ...from, models: { ...from.models, [id]: { ...from.models[id], [arm]: { ...from.models[id][arm]!, ...change } } } };
+}
 
 /** The export with one model changed. */
 function withModel(id: string, change: (m: ExportModel) => ExportModel): PolicyBenchExport {
@@ -86,19 +94,145 @@ describe("freePlanFromExport", () => {
     ).toThrow("Mock model A web: 0% isn't 0 of 0");
   });
 
+  it("shows each change as its counts' own difference, and refuses an export whose change, to one decimal, isn't it", () => {
+    // A's counts give 58.33; the export's one decimal passes, and the slide keeps the exact difference.
+    const rounded = withModel("mock-a", (m) => ({ ...m, vsAlone: { ...m.vsAlone, tool: { ...m.vsAlone.tool!, points: 58.3 } } }));
+    expect(freePlanFromExport(rounded, { models: ["mock-a"] }).pilot.rows[0].toolVsAlone.points).toBe((100 * 28) / 48);
+    for (const points of [58.8, 50]) {
+      const off = withModel("mock-a", (m) => ({ ...m, vsAlone: { ...m.vsAlone, tool: { ...m.vsAlone.tool!, points } } }));
+      expect(() => freePlanFromExport(off, { models: ["mock-a"] })).toThrow(`Mock model A: change ${points}, but its counts give 58.33`);
+    }
+  });
+
   it("refuses data the slide's own checks reject, and says which", () => {
-    const off = withModel("mock-a", (m) => ({ ...m, vsAlone: { ...m.vsAlone, tool: { points: 50, lo: 40, hi: 70 } } }));
+    const off = withModel("mock-a", (m) => ({ ...m, vsAlone: { ...m.vsAlone, tool: { points: (100 * 28) / 48, lo: 60, hi: 70 } } }));
     expect(() => freePlanFromExport(off, { models: ["mock-a"] })).toThrow(
-      "the export fails the slide's checks:\n- Mock model A: change 50 but the counts give 58.3",
+      `the export fails the slide's checks:\n- Mock model A: ${(100 * 28) / 48} is outside its interval 60 to 70`,
     );
     const seven = { ...exp, models: Array.from({ length: 7 }, (_, i) => ({ ...exp.models[0], id: `m${i}`, model: `Mock model ${i}` })) };
     expect(() => freePlanFromExport(seven, { models: seven.models.map((m) => m.id) })).toThrow("7 rows; the slide fits 1 to 6");
   });
 
-  it("always warns how few benefit amounts there are, and only that when the export is clean", () => {
-    expect(freePlanFromExport(exp, { models: ALL }).warnings).toEqual(["benefit amounts: at most 3 per model, too few to say anything about benefits"]);
+  it("always warns how few benefit amounts there are, and only that when the export is clean and its searches audited", () => {
+    expect(freePlanFromExport(exp, { models: ALL, webAudit: audit }).warnings).toEqual(["benefit amounts: at most 3 per model, too few to say anything about benefits"]);
     const none = withModel("mock-a", (m) => ({ ...m, benefits: {} }));
-    expect(freePlanFromExport(none, { models: ["mock-a"] }).warnings).toEqual(["benefit amounts: none in these households, so this says nothing about benefits"]);
+    expect(freePlanFromExport(none, { models: ["mock-a"], webAudit: audit }).warnings).toEqual([
+      "benefit amounts: none in these households, so this says nothing about benefits",
+    ]);
+  });
+
+  it("warns when no web-search audit is given, since the slide can't then say whether a model searched for PolicyBench", () => {
+    const { pilot, warnings } = freePlanFromExport(exp, { models: ALL });
+    expect(warnings).toContain("no web-search audit given, so the slide doesn't say whether a model searched for PolicyBench; pass --web-audit");
+    expect(pilot.footnotes).toEqual(freePlanFromExport(exp, { models: ALL, webAudit: audit }).pilot.footnotes);
+  });
+
+  it("says which models on the slide searched for PolicyBench anyway, in how many households, and that no answers are published", () => {
+    const web = "Web search is each provider's own search tool, told not to search PolicyBench.";
+    // B searched in three households across its two web settings, one of them in both.
+    const b = withSearches("mock-b", "both", { queries: 30, policyBenchQueries: 2, policyBenchHouseholds: ["mt_04"] }, withSearches("mock-b", "web", { policyBenchQueries: 5, policyBenchHouseholds: ["mt_01", "mt_04", "mt_09"] }));
+    const one = freePlanFromExport(exp, { models: ALL, webAudit: b });
+    // Right after the web line, which says they were told not to.
+    expect(one.pilot.footnotes.slice(0, 2)).toEqual([web, "Mock model B searched for it anyway in 3 of 20 households; PolicyBench has published no answers for these households."]);
+    expect(one.warnings).toContain("Mock model B searched for PolicyBench in 3 of 20 households, though told not to; the slide says so");
+    // Not on the slide, not in the footnote.
+    const without = freePlanFromExport(exp, { models: ["mock-a", "mock-c"], webAudit: b });
+    expect(without.pilot.footnotes[1]).toMatch(/^The tool runs/);
+    expect(without.warnings.some((w) => w.includes("searched for PolicyBench"))).toBe(false);
+    // Two read as a list, the first with the full wording.
+    const two = freePlanFromExport(exp, { models: ALL, webAudit: withSearches("mock-c", "web", { policyBenchQueries: 1, policyBenchHouseholds: ["mt_02"] }, b) }).pilot;
+    expect(two.footnotes[1]).toBe(
+      "Mock model B searched for it anyway in 3 of 20 households and Mock model C in 1 of 20; PolicyBench has published no answers for these households.",
+    );
+  });
+
+  it("refuses a web-search audit that doesn't cover a model on the slide, doesn't add up, or doesn't rule out published answers", () => {
+    const { "mock-a": _, ...rest } = audit.models;
+    expect(() => freePlanFromExport(exp, { models: ["mock-a"], webAudit: { ...audit, models: rest } })).toThrow("Mock model A: no web searches in the web-search audit");
+    expect(() => freePlanFromExport(exp, { models: ["mock-a"], webAudit: { ...audit, models: { ...audit.models, "mock-a": { web: audit.models["mock-a"].web } } } })).toThrow(
+      "Mock model A: no both searches in the web-search audit",
+    );
+    expect(() => freePlanFromExport(exp, { models: ["mock-a"], webAudit: withSearches("mock-a", "web", { households: 10 }) })).toThrow(
+      "Mock model A web: the web-search audit's households don't match the export's 20",
+    );
+    expect(() => freePlanFromExport(exp, { models: ["mock-a"], webAudit: withSearches("mock-a", "web", { policyBenchQueries: 2, policyBenchHouseholds: ["mt_01", "mt_01"] }) })).toThrow(
+      "Mock model A web: the web-search audit's households don't match the export's 20",
+    );
+    for (const [change, says] of [
+      [{ policyBenchQueries: 0, policyBenchHouseholds: ["mt_01"] }, "0 PolicyBench queries of 40 in 1 households"],
+      [{ policyBenchQueries: 2, policyBenchHouseholds: [] }, "2 PolicyBench queries of 40 in 0 households"],
+      [{ policyBenchQueries: 1, policyBenchHouseholds: ["mt_01", "mt_02"] }, "1 PolicyBench queries of 40 in 2 households"],
+      [{ queries: 3, policyBenchQueries: 4, policyBenchHouseholds: ["mt_01"] }, "4 PolicyBench queries of 3 in 1 households"],
+    ] satisfies [Partial<WebSearchArm>, string][]) {
+      expect(() => freePlanFromExport(exp, { models: ["mock-a"], webAudit: withSearches("mock-a", "web", change) })).toThrow(`Mock model A web: ${says} don't add up`);
+    }
+    const searched = withSearches("mock-b", "web", { policyBenchQueries: 1, policyBenchHouseholds: ["mt_01"] });
+    for (const answersPublished of [null, true]) {
+      expect(() => freePlanFromExport(exp, { models: ["mock-b"], webAudit: { ...searched, answersPublished } })).toThrow(
+        "Mock model B searched for PolicyBench, and the web-search audit doesn't rule out published answers for these households",
+      );
+      // Nobody on the slide searched, so published answers or not, there's nothing to rule out.
+      expect(() => freePlanFromExport(exp, { models: ["mock-a"], webAudit: { ...searched, answersPublished } })).not.toThrow();
+    }
+  });
+
+  it("for any audit, names exactly the models on the slide that searched for PolicyBench, each with its households across both web settings", () => {
+    const ids = exp.models.map((m) => m.id);
+    const households = fc.uniqueArray(fc.constantFrom("h1", "h2", "h3", "h4", "h5"), { maxLength: 5 });
+    const arm = households.chain((hh) => fc.record({ hh: fc.constant(hh), extra: fc.nat(3) }));
+    fc.assert(
+      fc.property(
+        fc.record(Object.fromEntries(ids.map((id) => [id, fc.record({ web: arm, both: arm })]))),
+        fc.shuffledSubarray(ids, { minLength: 1 }),
+        fc.constantFrom<boolean | null>(false, null, true),
+        (byModel, chosen, answersPublished) => {
+          const webAudit: WebSearchAudit = {
+            ...audit,
+            answersPublished,
+            models: Object.fromEntries(
+              ids.map((id) => [
+                id,
+                Object.fromEntries(
+                  (["web", "both"] as const).map((a) => {
+                    const { hh, extra } = byModel[id][a];
+                    const policyBenchQueries = hh.length ? hh.length + extra : 0;
+                    return [a, { households: 20, queries: policyBenchQueries + 10, policyBenchQueries, policyBenchHouseholds: hh, domainBlock: null }];
+                  }),
+                ),
+              ]),
+            ),
+          };
+          // The oracle: the slide's order (free-plan models first, each group as chosen), and each model's distinct households.
+          const name = (id: string) => exp.models.find((m) => m.id === id)!;
+          const order = [...chosen.filter((id) => name(id).group === "free-plan"), ...chosen.filter((id) => name(id).group !== "free-plan")];
+          const expected = order
+            .map((id) => ({ model: name(id).model, k: new Set([...byModel[id].web.hh, ...byModel[id].both.hh]).size }))
+            .filter((x) => x.k > 0);
+          if (expected.length && answersPublished !== false) {
+            expect(() => freePlanFromExport(exp, { models: chosen, webAudit })).toThrow("doesn't rule out published answers");
+            return;
+          }
+          const { pilot, warnings } = freePlanFromExport(exp, { models: chosen, webAudit });
+          const said = pilot.footnotes.filter((f) => f.includes("searched for it anyway"));
+          expect(warnings.filter((w) => w.includes("searched for PolicyBench in"))).toEqual(
+            expected.map((x) => `${x.model} searched for PolicyBench in ${x.k} of 20 households, though told not to; the slide says so`),
+          );
+          if (!expected.length) {
+            expect(said).toEqual([]);
+            return;
+          }
+          expect(said).toHaveLength(1);
+          expect(pilot.footnotes.indexOf(said[0])).toBe(1);
+          // Each model on the slide is named exactly when it searched, with its own count.
+          for (const id of chosen) {
+            const hit = expected.find((x) => x.model === name(id).model);
+            expect(said[0].includes(`${name(id).model}${hit ? "" : " "}`)).toBe(Boolean(hit));
+            if (hit) expect(said[0]).toMatch(new RegExp(`${name(id).model}( searched for it anyway)? in ${hit.k} of 20`));
+          }
+        },
+      ),
+      { numRuns: 300 },
+    );
   });
 
   it("says when a model's tool was told another engine version than the one every calculation ran on, and only for those models", () => {
@@ -140,7 +274,7 @@ describe("freePlanFromExport", () => {
       ...withModel("mock-a", (m) => ({ ...m, missing: { alone: 0, web: 2, tool: 0, both: 1 }, partialBatches: [{ batch: 3 }] })),
       source: { ...exp.source, scriptTreeDirty: true },
     };
-    expect(freePlanFromExport(messy, { models: ["mock-a", "mock-c"] }).warnings).toEqual([
+    expect(freePlanFromExport(messy, { models: ["mock-a", "mock-c"], webAudit: audit }).warnings).toEqual([
       "Mock model A: answers counted as misses because none came back (2 web, 1 both)",
       "Mock model A: 1 household batch(es) left out because a setting hadn't reached them",
       "benefit amounts: at most 3 per model, too few to say anything about benefits",

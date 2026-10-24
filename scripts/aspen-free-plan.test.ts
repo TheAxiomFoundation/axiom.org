@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { MOCK_POLICYBENCH_EXPORT } from "../src/test/aspen-free-plan-export.mock";
+import { MOCK_POLICYBENCH_EXPORT, MOCK_WEB_SEARCH_AUDIT } from "../src/test/aspen-free-plan-export.mock";
 import { parseArgs, run } from "./aspen-free-plan";
 
 const SHA = "a".repeat(64);
@@ -12,6 +12,17 @@ describe("parseArgs", () => {
   it("reads the export, its sha256, the models and --write in any order", () => {
     expect(parseArgs(["x.json", "--sha256", SHA, "--models", "a, b,,c"])).toEqual({ file: "x.json", sha256: SHA, models: ["a", "b", "c"], write: false });
     expect(parseArgs(["--write", "--models", "a", "--sha256", SHA, "x.json"]).write).toBe(true);
+  });
+
+  it("reads a web-search audit with its sha256", () => {
+    const sha2 = "b".repeat(64);
+    expect(parseArgs(["x.json", "--sha256", SHA, "--models", "a", "--web-audit", "w.json", "--web-audit-sha256", sha2]).webAudit).toEqual({ file: "w.json", sha256: sha2 });
+    expect(parseArgs(["x.json", "--sha256", SHA, "--models", "a"]).webAudit).toBeUndefined();
+    expect(() => parseArgs(["x.json", "--sha256", SHA, "--models", "a", "--web-audit", "w.json"])).toThrow("--web-audit and --web-audit-sha256 go together");
+    expect(() => parseArgs(["x.json", "--sha256", SHA, "--models", "a", "--web-audit-sha256", sha2])).toThrow("--web-audit and --web-audit-sha256 go together");
+    expect(() => parseArgs(["x.json", "--sha256", SHA, "--models", "a", "--web-audit", "w.json", "--web-audit-sha256", "XYZ"])).toThrow(
+      "--web-audit-sha256 XYZ isn't a sha256",
+    );
   });
 
   it("refuses missing arguments, a second export, an unknown flag and a bad sha256", () => {
@@ -56,11 +67,15 @@ describe("run", () => {
       "  Mock model A (On Mock Free): alone 10/48, web 15/48, tool 38/48, both 39/48; tool vs alone 58.3 [43.333333333333336, 73.33333333333334]",
       "  Mock model C: alone 30/48, web 33/48, tool 44/48, both 45/48; tool vs alone 29.2 [14.166666666666668, 44.16666666666667]",
       `Caveat, for these models: ${MOCK_POLICYBENCH_EXPORT.caveat}`,
+      "Footnotes, run in after the caveat:",
+      "  Web search is each provider's own search tool, told not to search PolicyBench.",
+      "  The tool runs PolicyEngine (policyengine-us 0.0.0-mock), the engine behind the reference answers, so this shows whether a model can use it, not whether it's right.",
       "Free-plan basis, for the presenter:",
       "  Mock model C: MOCK: a comparison model",
       "  Mock model A: MOCK: the default on Mock Free",
       "Warnings:",
       "  benefit amounts: at most 3 per model, too few to say anything about benefits",
+      "  no web-search audit given, so the slide doesn't say whether a model searched for PolicyBench; pass --web-audit",
       "Not written; pass --write to put this in content.ts.",
     ]);
     expect(readFileSync(content, "utf8")).toBe(before);
@@ -85,6 +100,40 @@ describe("run", () => {
     const lines: string[] = [];
     run([file, "--sha256", digest, "--models", "mock-a"], { contentPath: content, log: (l) => lines.push(l) });
     expect(lines).toContain("PolicyBench's tool line: MOCK: the tool line");
+  });
+
+  describe("with a web-search audit", () => {
+    let auditFile: string;
+    /** Writes the audit, of the mock export unless told otherwise, and returns its sha256. */
+    const writeAudit = (change: (a: typeof MOCK_WEB_SEARCH_AUDIT) => unknown = (a) => a) => {
+      const bytes = JSON.stringify(change({ ...MOCK_WEB_SEARCH_AUDIT, export: { file: "free-plan-mock.json", sha256: sha } }));
+      writeFileSync(auditFile, bytes);
+      return createHash("sha256").update(bytes).digest("hex");
+    };
+    beforeEach(() => {
+      auditFile = join(dir, "web-search-audit.json");
+    });
+
+    it("checks it, prints its basis for the presenter, and records it with --write", () => {
+      const auditSha = writeAudit();
+      const lines: string[] = [];
+      run([file, "--sha256", sha, "--models", "mock-a", "--web-audit", auditFile, "--web-audit-sha256", auditSha, "--write"], { contentPath: content, log: (l) => lines.push(l) });
+      expect(lines).toContain("Published answers, per the web-search audit: MOCK: no mock household's answers are published");
+      expect(lines.some((l) => l.includes("no web-search audit given"))).toBe(false);
+      expect(readFileSync(content, "utf8")).toContain(`// Web-search audit web-search-audit.json, sha256 ${auditSha}, generated 2026-10-24T06:00:00Z at 0000000mock.\n`);
+    });
+
+    it("refuses an audit whose sha256 isn't the one sent, or one of another export", () => {
+      writeAudit();
+      expect(() => run([file, "--sha256", sha, "--models", "mock-a", "--web-audit", auditFile, "--web-audit-sha256", SHA], { contentPath: content, log: () => {} })).toThrow(
+        /^web-search-audit\.json has sha256 [0-9a-f]{64}, not a{64}$/,
+      );
+      const other = writeAudit((a) => ({ ...a, export: { sha256: "c".repeat(64) } }));
+      expect(() => run([file, "--sha256", sha, "--models", "mock-a", "--web-audit", auditFile, "--web-audit-sha256", other], { contentPath: content, log: () => {} })).toThrow(
+        `web-search-audit.json audits export ${"c".repeat(64)}, not free-plan-mock.json (${sha})`,
+      );
+      expect(readFileSync(content, "utf8")).toBe(before);
+    });
   });
 
   it("says when the export doesn't record where it came from", () => {
