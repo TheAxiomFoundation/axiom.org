@@ -166,6 +166,17 @@ describe("freePlanFromExport", () => {
     ] satisfies [Partial<WebSearchArm>, string][]) {
       expect(() => freePlanFromExport(exp, { models: ["mock-a"], webAudit: withSearches("mock-a", "web", change) })).toThrow(`Mock model A web: ${says} don't add up`);
     }
+    for (const change of [{ queries: 40.5 }, { policyBenchQueries: -1 }, { households: undefined }, { policyBenchHouseholds: undefined }] as Partial<WebSearchArm>[]) {
+      expect(() => freePlanFromExport(exp, { models: ["mock-a"], webAudit: withSearches("mock-a", "web", change) })).toThrow(
+        "Mock model A web: the web-search audit's counts aren't whole numbers with a list of households",
+      );
+    }
+    // Each setting names 12 of the 20 households, but not the same ones: 24 in all can't be.
+    const hh = (from: number) => Array.from({ length: 12 }, (_, i) => `mt_${from + i}`);
+    const disjoint = withSearches("mock-a", "both", { policyBenchQueries: 12, policyBenchHouseholds: hh(100) }, withSearches("mock-a", "web", { policyBenchQueries: 12, policyBenchHouseholds: hh(200) }));
+    expect(() => freePlanFromExport(exp, { models: ["mock-a"], webAudit: { ...disjoint, answersPublished: false } })).toThrow(
+      "Mock model A: the web-search audit names 24 households across its web settings, more than the export's 20",
+    );
     const searched = withSearches("mock-b", "web", { policyBenchQueries: 1, policyBenchHouseholds: ["mt_01"] });
     for (const answersPublished of [null, true]) {
       expect(() => freePlanFromExport(exp, { models: ["mock-b"], webAudit: { ...searched, answersPublished } })).toThrow(
@@ -405,7 +416,9 @@ describe("freePlanFromExport", () => {
       fc.property(fc.array(model, { minLength: 1, maxLength: 6 }), (specs) => {
         const models: ExportModel[] = specs.map(([n, alone, web, tool, both, spread, free], i) => {
           const arm = (k: number) => ({ k, n, pct: (100 * k) / n, lo: 0, hi: 100 });
+          // As the export writes them: the change and its interval's ends to one decimal, so an interval can collapse onto a rounded change.
           const points = (100 * (tool - alone)) / n;
+          const oneDecimal = (x: number) => Math.round(x * 10) / 10;
           return {
             ...exp.models[0],
             id: `m${i}`,
@@ -413,7 +426,7 @@ describe("freePlanFromExport", () => {
             group: free ? "free-plan" : "other",
             freePlan: free ? "Mock Free" : null,
             arms: { alone: arm(alone), web: arm(web), tool: arm(tool), both: arm(both) },
-            vsAlone: { tool: { points, lo: points - spread, hi: points + spread } },
+            vsAlone: { tool: { points: oneDecimal(points), lo: oneDecimal(points - spread), hi: oneDecimal(points + spread) } },
           };
         });
         const consistent = { ...exp, models, sizes: undefined, caveat: caveatText(sizeGroups(models)) };

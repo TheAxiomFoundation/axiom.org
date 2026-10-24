@@ -290,6 +290,9 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
       for (const id of WEB_ARMS) {
         const a = audited?.[id];
         if (!a) throw new Error(`${m.model}: no ${id} searches in the web-search audit`);
+        if (![a.households, a.queries, a.policyBenchQueries].every((c) => Number.isInteger(c) && c >= 0) || !Array.isArray(a.policyBenchHouseholds)) {
+          throw new Error(`${m.model} ${id}: the web-search audit's counts aren't whole numbers with a list of households`);
+        }
         const named = new Set(a.policyBenchHouseholds);
         if (a.households !== m.households || named.size !== a.policyBenchHouseholds.length || named.size > a.households) {
           throw new Error(`${m.model} ${id}: the web-search audit's households don't match the export's ${m.households}`);
@@ -298,6 +301,9 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
           throw new Error(`${m.model} ${id}: ${a.policyBenchQueries} PolicyBench queries of ${a.queries} in ${named.size} households don't add up`);
         }
         for (const h of named) households.add(h);
+      }
+      if (households.size > m.households) {
+        throw new Error(`${m.model}: the web-search audit names ${households.size} households across its web settings, more than the export's ${m.households}`);
       }
       if (households.size) searched.push({ model: m.model, households: households.size, of: m.households });
     }

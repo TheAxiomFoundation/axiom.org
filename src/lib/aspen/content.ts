@@ -1037,7 +1037,8 @@ export function freePlanProblems(p: FreePlanPilot): string[] {
     // A failed or missing answer counts as a miss, so every setting scores the same amounts.
     if (ns.size > 1) problems.push(`${r.model}: settings score different numbers of amounts (${[...ns].join(", ")})`);
     const { points, lo, hi } = r.toolVsAlone;
-    if (!(lo <= points && points <= hi)) problems.push(`${r.model}: ${points} is outside its interval ${lo} to ${hi}`);
+    // The interval's ends are the export's, to one decimal; the change is the counts' own, exact.
+    if (!(lo - 0.05 - 1e-9 <= points && points <= hi + 0.05 + 1e-9)) problems.push(`${r.model}: ${points} is outside its interval ${lo} to ${hi}`);
     // The paired change on the same amounts is the counts' own difference, to the export's one decimal.
     const alone = r.counts.alone;
     const tool = r.counts.tool;

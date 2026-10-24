@@ -328,6 +328,12 @@ describe('the free-plan pilot', () => {
     expect(freePlanProblems(withRow(1, { toolVsAlone: { points: 27.2, lo: 9, hi: 44 } }))).toEqual([
       'Mock model B: change 27.2 but the counts give 27.1',
     ])
+    // The interval's ends are the export's one decimal: the exact change may sit just past one, but not a tenth past.
+    const exact = (100 * 13) / 48
+    expect(freePlanProblems(withRow(1, { toolVsAlone: { points: exact, lo: 27.1, hi: 27.1 } }))).toEqual([])
+    expect(freePlanProblems(withRow(1, { toolVsAlone: { points: exact, lo: 27.2, hi: 30 } }))).toEqual([
+      `Mock model B: ${exact} is outside its interval 27.2 to 30`,
+    ])
   })
 
   it('shows a count as a whole percent within 0 to 100 that never falls as the count grows', () => {
