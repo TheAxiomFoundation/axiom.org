@@ -28,6 +28,7 @@ import {
   LIVE_DEMO,
   liveDemoUrl,
   FREE_PLAN_PILOT,
+  freePlanProblems,
   distinguishable,
   formatPoints,
   wholeShare,
@@ -283,51 +284,6 @@ describe('aspen content', () => {
     expect(url.searchParams.has('go')).toBe(false)
   })
 })
-
-/**
- * What any free-plan pilot must satisfy before it goes on the screen. They run
- * against FREE_PLAN_PILOT once it's set, and against the mock now.
- */
-function freePlanProblems(p: FreePlanPilot): string[] {
-  const problems: string[] = []
-  const armIds = p.arms.map((a) => a.id)
-  if (new Set(armIds).size !== armIds.length) problems.push('an arm is listed twice')
-  if (!armIds.includes('alone') || !armIds.includes('tool')) problems.push('the change needs both no tools and the tool')
-  if (!p.label.trim()) problems.push('no label: the room has to read these as preliminary')
-  // The models on free plans come first, so the slide reads them first.
-  const firstComparison = p.rows.findIndex((r) => r.freePlan === null)
-  if (firstComparison >= 0 && p.rows.slice(firstComparison).some((r) => r.freePlan !== null)) {
-    problems.push('a free-plan model comes after a comparison model')
-  }
-  if (new Set(p.rows.map((r) => r.model)).size !== p.rows.length) problems.push('a model is listed twice')
-  if (p.rows.length < 1 || p.rows.length > 6) problems.push(`${p.rows.length} rows; the slide fits 1 to 6`)
-  for (const r of p.rows) {
-    const ns = new Set<number>()
-    for (const id of armIds) {
-      const c = r.counts[id]
-      if (!c) {
-        problems.push(`${r.model}: no count for ${id}`)
-        continue
-      }
-      if (!Number.isInteger(c.k) || !Number.isInteger(c.n) || c.n < 1 || c.k < 0 || c.k > c.n) {
-        problems.push(`${r.model} ${id}: ${c.k} of ${c.n} isn't a count`)
-      }
-      ns.add(c.n)
-    }
-    // A failed or missing answer counts as a miss, so every setting scores the same amounts.
-    if (ns.size > 1) problems.push(`${r.model}: settings score different numbers of amounts (${[...ns].join(', ')})`)
-    const { points, lo, hi } = r.toolVsAlone
-    if (!(lo <= points && points <= hi)) problems.push(`${r.model}: ${points} is outside its interval ${lo} to ${hi}`)
-    // The paired change on the same amounts is the counts' own difference (to rounding).
-    const alone = r.counts.alone
-    const tool = r.counts.tool
-    if (alone && tool && alone.n === tool.n) {
-      const fromCounts = (100 * (tool.k - alone.k)) / tool.n
-      if (Math.abs(fromCounts - points) > 0.5) problems.push(`${r.model}: change ${points} but the counts give ${fromCounts.toFixed(1)}`)
-    }
-  }
-  return problems
-}
 
 describe('the free-plan pilot', () => {
   it('passes every check, if it is set', () => {
