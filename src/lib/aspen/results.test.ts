@@ -499,14 +499,16 @@ describe('latestPerParticipant', () => {
   })
 
   type S = E & { payload: { rev?: number } }
-  // Stamps unique across the run, as one device's nextRev makes them; any of them may land at any time.
+  const T0 = Date.parse('2026-10-26T18:00:00Z')
+  // Stamps from the phone's clock, in the same minutes as the server's times: ties included, as two tabs can stamp alike.
   const stamped = fc
-    .array(fc.record({ participant_id: fc.constantFrom('p1', 'p2'), q: fc.constantFrom('experience', 'source-of-truth'), stamp: fc.option(fc.integer({ min: 0, max: 20 }), { nil: null }), created_at: event.map((e) => e.created_at) }), { maxLength: 30 })
-    .map((es) =>
-      es.map(({ stamp, ...e }, id) => ({ ...e, id, payload: stamp === null ? {} : { rev: 1_792_000_000_000 + stamp * 100 + id } }) as S),
-    )
+    .array(fc.record({ participant_id: fc.constantFrom('p1', 'p2'), q: fc.constantFrom('experience', 'source-of-truth'), stamp: fc.option(fc.integer({ min: 0, max: 40 }), { nil: null }), created_at: event.map((e) => e.created_at) }), { maxLength: 30 })
+    .map((es) => es.map(({ stamp, ...e }, id) => ({ ...e, id, payload: stamp === null ? {} : { rev: T0 + stamp * 30_000 } }) as S))
+  // When each answer was given, written out apart from the code: its stamp, else when it reached the server.
+  const given = (e: S) => e.payload.rev ?? Date.parse(e.created_at)
+  const later = (a: S, b: S) => given(a) - given(b) || a.created_at.localeCompare(b.created_at)
 
-  it("counts a person's highest-stamped answer, whenever each one landed, and a stamped one over any without", () => {
+  it("counts the answer each person gave last, by its stamp or, sent without one, by the server's time", () => {
     fc.assert(
       fc.property(stamped, fc.integer(), (es, seed) => {
         const out = latestPerParticipant(es, byQ)
@@ -514,31 +516,36 @@ describe('latestPerParticipant', () => {
         for (const e of es) groups.set(`${e.participant_id}|${e.q}`, [...(groups.get(`${e.participant_id}|${e.q}`) ?? []), e])
         expect(out).toHaveLength(groups.size)
         for (const e of out) {
-          const group = groups.get(`${e.participant_id}|${e.q}`)!
-          const revs = group.map((g) => g.payload.rev).filter((r): r is number => r !== undefined)
-          if (revs.length) expect(e.payload.rev).toBe(Math.max(...revs))
-          else expect(e.created_at).toBe(group.map((g) => g.created_at).sort().at(-1))
+          const last = [...groups.get(`${e.participant_id}|${e.q}`)!].sort(later).at(-1)!
+          // The one given last, or one exactly tied with it.
+          expect(later(e, last)).toBe(0)
         }
-        // With stamps all different, arrival order changes nothing among stamped answers.
+        // So the order the events come in changes nothing, but which of two exact ties counts.
         const shuffled = [...es].sort((a, b) => ((a.id * 7919 + seed) % 31) - ((b.id * 7919 + seed) % 31))
-        const pick = (xs: S[]) => xs.filter((e) => e.payload.rev !== undefined).map((e) => e.id).sort()
-        expect(pick(latestPerParticipant(shuffled, byQ))).toEqual(pick(out))
+        for (const e of latestPerParticipant(shuffled, byQ)) {
+          expect(later(e, out.find((o) => o.participant_id === e.participant_id && o.q === e.q)!)).toBe(0)
+        }
       }),
     )
   })
 
-  it('keeps an earlier tap that landed last from counting over a later one', () => {
-    const out = latestPerParticipant(
-      [
-        { id: 1, participant_id: 'p1', q: 'experience', created_at: '2026-10-26T18:00:00Z', payload: { rev: 200 } },
-        // The slow first save, written after the second.
-        { id: 2, participant_id: 'p1', q: 'experience', created_at: '2026-10-26T18:00:10Z', payload: { rev: 100 } },
-        // From a page that sent no stamp: earlier, whatever its time.
-        { id: 3, participant_id: 'p1', q: 'experience', created_at: '2026-10-26T18:00:20Z', payload: {} },
-      ],
-      byQ,
-    )
-    expect(out.map((e) => e.id)).toEqual([1])
+  it('keeps an earlier tap that landed last from counting over a later one, and counts a later answer sent without a stamp', () => {
+    const at = (s: string) => `2026-10-26T18:00:${s}Z`
+    const tapped = (s: string) => Date.parse(at(s))
+    const answers = [
+      { id: 1, participant_id: 'p1', q: 'experience', created_at: at('06'), payload: { rev: tapped('05') } },
+      // The slow first save, written after the second.
+      { id: 2, participant_id: 'p1', q: 'experience', created_at: at('10'), payload: { rev: tapped('01') } },
+      // From a page too old to stamp, reaching the server before the tap that counts.
+      { id: 3, participant_id: 'p1', q: 'experience', created_at: at('03'), payload: {} },
+    ]
+    expect(latestPerParticipant(answers, byQ).map((e) => e.id)).toEqual([1])
+    // The same old page answering after it: that answer counts.
+    const oldPageAgain = { id: 4, participant_id: 'p1', q: 'experience', created_at: at('20'), payload: {} }
+    expect(latestPerParticipant([...answers, oldPageAgain], byQ).map((e) => e.id)).toEqual([4])
+    // Two tabs that stamped alike: the one that reached the server last.
+    const twin = { id: 5, participant_id: 'p1', q: 'experience', created_at: at('07'), payload: { rev: tapped('05') } }
+    expect(latestPerParticipant([...answers, twin], byQ).map((e) => e.id)).toEqual([5])
   })
 })
 

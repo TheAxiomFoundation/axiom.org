@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OverallRating, ScaleRow } from "./overall-rating";
 
@@ -101,7 +101,9 @@ describe("OverallRating", () => {
     expect(screen.queryByRole("button", { name: "Save comment" })).not.toBeInTheDocument();
     fireEvent.change(box(), { target: { value: "  Helps staff find policy; residents get wrong amounts  " } });
     fireEvent.click(screen.getByRole("button", { name: "Save comment" }));
-    expect(screen.getByRole("button", { name: "Comment saved" })).toBeDisabled();
+    // Not "saved" until the store says so.
+    expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "Comment saved" })).toBeDisabled();
     await waitFor(() => expect(bodies(fetchMock)).toHaveLength(1));
     expect(bodies(fetchMock)[0]).toEqual({
       participantId: "p-1",
@@ -133,10 +135,12 @@ describe("OverallRating", () => {
     // Clearing the box offers to remove it, rather than hiding the button.
     fireEvent.change(box(), { target: { value: "  " } });
     fireEvent.click(screen.getByRole("button", { name: "Remove comment" }));
+    // Not "removed" until the store says so.
+    expect(screen.getByRole("button", { name: "Removing…" })).toBeDisabled();
     await waitFor(() => expect(bodies(fetchMock)).toHaveLength(2));
     expect(bodies(fetchMock)[1].payload).toEqual({ question: "experience", ratings: {}, topics: [], note: "" });
     // Nothing left to save or show as saved.
-    expect(screen.queryByRole("button", { name: /comment/ })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("button", { name: /comment|Removing/ })).not.toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "For you: 3 of 5" }));
     await waitFor(() => expect(bodies(fetchMock)).toHaveLength(3));
     expect(bodies(fetchMock)[2].payload.note).toBe("");
@@ -169,6 +173,47 @@ describe("OverallRating", () => {
     await waitFor(() => expect(screen.queryByText("That didn't save. Tap it again.")).not.toBeInTheDocument());
     expect(screen.queryByRole("button", { name: /comment/ })).not.toBeInTheDocument();
     expect(JSON.parse(localStorage.getItem("aspen.overall.v2")!)).toMatchObject({ comment: "", removing: false, unsaved: { discussion: false } });
+  });
+
+  it("keeps another tab's newer answer unconfirmed when this tab's older save lands", async () => {
+    // Two tabs on one phone share its stored answers, and each sends its own saves.
+    const resolvers: ((r: Response) => void)[] = [];
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((r) => resolvers.push(r))));
+    const tabA = render(<OverallRating stage="try" />);
+    const tabB = render(<OverallRating stage="try" />);
+    fireEvent.click(within(tabA.container).getByRole("button", { name: "No" }));
+    fireEvent.click(within(tabB.container).getByRole("button", { name: "Yes" }));
+    await waitFor(() => expect(resolvers).toHaveLength(2));
+    // B's fails, then A's older one lands.
+    await act(async () => resolvers[1]({ ok: false, status: 500, json: async () => ({}) } as unknown as Response));
+    await act(async () => resolvers[0]({ ok: true, status: 200, json: async () => ({ ok: true, saved: true }) } as unknown as Response));
+    expect(JSON.parse(localStorage.getItem("aspen.overall.v2")!)).toMatchObject({ truth: "yes", unsaved: { survey: true } });
+    tabA.unmount();
+    tabB.unmount();
+    render(<OverallRating stage="try" />);
+    expect(await screen.findByText("That didn't save. Tap it again.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Yes" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("keeps another tab's comment removal pending when this tab's older agency save lands", async () => {
+    localStorage.setItem("aspen.overall.v2", JSON.stringify({ comment: "Too slow" }));
+    const resolvers: ((r: Response) => void)[] = [];
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((r) => resolvers.push(r))));
+    const tabA = render(<OverallRating stage="try" />);
+    const tabB = render(<OverallRating stage="try" />);
+    fireEvent.click(within(tabA.container).getByRole("button", { name: "For you: 4 of 5" }));
+    fireEvent.change(within(tabB.container).getByRole("textbox"), { target: { value: "" } });
+    fireEvent.click(within(tabB.container).getByRole("button", { name: "Remove comment" }));
+    await waitFor(() => expect(resolvers).toHaveLength(2));
+    // B's removal fails, then A's older save, still carrying the comment, lands.
+    await act(async () => resolvers[1]({ ok: false, status: 500, json: async () => ({}) } as unknown as Response));
+    await act(async () => resolvers[0]({ ok: true, status: 200, json: async () => ({ ok: true, saved: true }) } as unknown as Response));
+    expect(JSON.parse(localStorage.getItem("aspen.overall.v2")!)).toMatchObject({ comment: "", removing: true, unsaved: { discussion: true } });
+    tabA.unmount();
+    tabB.unmount();
+    render(<OverallRating stage="try" />);
+    expect(await screen.findByText("That didn't save. Tap it again.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove comment" })).toBeEnabled();
   });
 
   it("lets only the latest send of a kind decide whether it saved", async () => {

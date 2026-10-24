@@ -24,7 +24,10 @@ export async function POST(request: Request) {
   }
 
   const postCheck = cleanChoice(body?.postCheck, ids(POST_CHECK));
-  // The page stamps each rating at the tap; a stamped rating saves only over an older one.
+  // The page stamps each rating at the tap; a stamped rating saves only over an older one. A page
+  // too old to stamp saves on arrival at the server's time, as before: it reads only the HTTP
+  // status, so a refused rating would look saved to it. Its stamp then holds off a phone tap
+  // stamped before it, which the phone shows as not saved, until the phone's clock passes it.
   const rev = cleanRev(body?.rev);
   const ratedAt = new Date(rev ?? Date.now()).toISOString();
   const patch = postCheck

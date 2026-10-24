@@ -5,7 +5,7 @@ import { POST_CHECK, RESIDENT_ACTIONS, VERDICTS, WENT_WELL, WENT_WRONG } from "@
 import { eligibilityNote, otherDisclosures, standardsMismatch, standardsUsed, testsEligibility } from "@/lib/aspen/coverage";
 import type { RulesAnswer, RulesComputation, RulesOutput } from "@/lib/aspen/rules";
 import { AnswerText } from "./answer-text";
-import { RATING_KEY, formatValue, nextRev, participantId, postJson, readStored, saveJson, writeStored } from "./client";
+import { RATING_KEY, formatValue, nextRev, participantId, postJson, readStored, saveJson, saveMark, writeStored } from "./client";
 import { BUTTON, BUTTON_QUIET, Chip, Eyebrow, FIELD, QUESTION, StepFrame } from "./ui";
 
 function toggle(list: string[], value: string): string[] {
@@ -29,6 +29,8 @@ interface RatingDraft {
   step: number;
   /** The latest save isn't confirmed, so a reloaded card still asks for the tap again. */
   unsaved?: boolean;
+  /** That save's saveMark: another tab on the phone may have saved this card since, and only its own answer may mark it saved. */
+  pending?: string;
 }
 
 const strings = (value: unknown): string[] => (Array.isArray(value) ? value.filter((v) => typeof v === "string") : []);
@@ -37,7 +39,7 @@ const stringOrNull = (value: unknown): string | null => (typeof value === "strin
 /** This prompt's saved draft, if the phone has a readable one. */
 export function readRatingDraft(promptId: string): RatingDraft | null {
   const all = readStored<Record<string, unknown>>(RATING_KEY);
-  const raw = all && typeof all === "object" ? (all[promptId] as Partial<{ rating: Record<string, unknown>; step: unknown; unsaved: unknown }>) : null;
+  const raw = all && typeof all === "object" ? (all[promptId] as Partial<{ rating: Record<string, unknown>; step: unknown; unsaved: unknown; pending: unknown }>) : null;
   if (!raw || typeof raw !== "object" || !raw.rating || typeof raw.rating !== "object") return null;
   const r = raw.rating;
   return {
@@ -50,6 +52,7 @@ export function readRatingDraft(promptId: string): RatingDraft | null {
     },
     step: raw.step === 1 && typeof r.verdict === "string" ? 1 : 0,
     unsaved: raw.unsaved === true,
+    ...(typeof raw.pending === "string" ? { pending: raw.pending } : {}),
   };
 }
 
@@ -77,10 +80,9 @@ export function RatingCard({ promptId, onRated }: { promptId: string; onRated?: 
   const moved = useRef(false);
   // Saves go one after another, and each carries its tap's stamp, so a slow earlier tap never replaces a later one.
   const queue = useRef<Promise<unknown>>(Promise.resolve());
-  // The latest save's stamp, and whether it's unconfirmed: what the draft keeps for a reload.
-  const latest = useRef(0);
+  // This tab's latest save, and whether it's unconfirmed: what the draft keeps for a reload.
+  const latest = useRef("");
   const unsaved = useRef(false);
-  const draft = useRef<RatingDraft>({ rating: EMPTY_RATING, step: 0 });
 
   // A reloaded tab (a locked phone often drops it) reopens the card where it was,
   // so the next tap doesn't save an empty rating over the one already saved,
@@ -88,7 +90,7 @@ export function RatingCard({ promptId, onRated }: { promptId: string; onRated?: 
   useEffect(() => {
     const restored = readRatingDraft(promptId);
     if (!restored) return;
-    draft.current = restored;
+    latest.current = restored.pending ?? "";
     unsaved.current = restored.unsaved === true;
     setRating(restored.rating);
     setStep(restored.step);
@@ -104,8 +106,7 @@ export function RatingCard({ promptId, onRated }: { promptId: string; onRated?: 
   function keep(nextRating: Rating, nextStep: number) {
     setRating(nextRating);
     setStep(nextStep);
-    draft.current = { rating: nextRating, step: nextStep, unsaved: unsaved.current };
-    writeRatingDraft(promptId, draft.current);
+    writeRatingDraft(promptId, { rating: nextRating, step: nextStep, unsaved: unsaved.current, ...(latest.current ? { pending: latest.current } : {}) });
   }
 
   function go(next: number) {
@@ -116,12 +117,16 @@ export function RatingCard({ promptId, onRated }: { promptId: string; onRated?: 
   /** Saves the whole rating with `patch` applied; the server needs a verdict first. */
   function save(patch: Partial<Rating>, then?: () => void) {
     const next = { ...rating, ...patch };
-    if (next.verdict) unsaved.current = true;
-    keep(next, step);
-    if (!next.verdict) return;
-    sent.current = next;
+    if (!next.verdict) {
+      keep(next, step);
+      return;
+    }
     const rev = nextRev();
-    latest.current = rev;
+    const mark = saveMark(rev);
+    latest.current = mark;
+    unsaved.current = true;
+    keep(next, step);
+    sent.current = next;
     queue.current = queue.current.then(async () => {
       const ok = await saveJson("/api/aspen/rate", {
         participantId: participantId(),
@@ -133,12 +138,13 @@ export function RatingCard({ promptId, onRated }: { promptId: string; onRated?: 
         note: next.note,
         rev,
       });
-      if (ok) then?.();
-      if (latest.current !== rev) return; // A later tap is on its way and decides.
+      if (latest.current !== mark) return; // A later tap is on its way and decides, and moves on if it saves.
       setFailed(!ok);
       unsaved.current = !ok;
-      draft.current = { ...draft.current, unsaved: !ok };
-      writeRatingDraft(promptId, draft.current);
+      // Another tab may have saved this card since: then the phone keeps that tab's answer, not this one.
+      const stored = readRatingDraft(promptId);
+      if (stored?.pending === mark) writeRatingDraft(promptId, { ...stored, unsaved: !ok });
+      if (ok) then?.();
     });
   }
 

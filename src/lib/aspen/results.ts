@@ -292,22 +292,31 @@ function revOf(e: { payload?: Record<string, unknown> }): number | null {
   return typeof rev === "number" && Number.isFinite(rev) ? rev : null;
 }
 
-/** Whether `e` comes at or after `prev`: by save stamp when both have one, a stamped one after one without, else by time. */
+/**
+ * When an answer was given, in milliseconds: its save stamp (the tap's time
+ * on the phone), or, from a page too old to stamp, when it reached the server.
+ */
+function givenAt(e: { payload?: Record<string, unknown>; created_at?: string }): number {
+  const at = Date.parse(e.created_at ?? "");
+  return revOf(e) ?? (Number.isNaN(at) ? -Infinity : at);
+}
+
+/** Whether `e` comes at or after `prev`: by when each was given, then by when each reached the server. */
 function atOrAfter(e: { payload?: Record<string, unknown>; created_at?: string }, prev: typeof e): boolean {
-  const a = revOf(e);
-  const b = revOf(prev);
-  if (a !== null && b !== null && a !== b) return a > b;
-  if ((a === null) !== (b === null)) return a !== null;
+  const a = givenAt(e);
+  const b = givenAt(prev);
+  if (a !== b) return a > b;
   return (e.created_at ?? "") >= (prev.created_at ?? "");
 }
 
 /**
  * Each person's latest event per key: answers save on every tap, so someone
  * who changes their mind counts once, with their last choice. The last
- * choice is the one with the highest save stamp, so a slow save that lands
- * after a newer one doesn't count over it; events from a page that sent no
- * stamp (before stamps, so earlier) go by time. Events saved without a
- * participant each count on their own.
+ * choice is the one given last: by its save stamp, so a slow save that lands
+ * after a newer one doesn't count over it, or, from a page that sent no
+ * stamp, by when it reached the server. The two clocks agree as closely as
+ * the phone's clock is set. Events saved without a participant each count on
+ * their own.
  */
 export function latestPerParticipant<T extends { participant_id?: string | null; created_at?: string; payload?: Record<string, unknown> }>(
   events: T[],
