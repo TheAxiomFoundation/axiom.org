@@ -57,6 +57,7 @@ export function run(argv: readonly string[], { contentPath = CONTENT, log = cons
     log(`  ${r.model}${r.freePlan ? ` (${r.freePlan})` : ""}: ${shares}; tool vs alone ${r.toolVsAlone.points.toFixed(1)} [${r.toolVsAlone.lo}, ${r.toolVsAlone.hi}]`);
   }
   log(`Caveat, for these models: ${pilot.caveat}`);
+  if (exp.tool) log(`PolicyBench's tool line: ${exp.tool}`);
   log("Free-plan basis, for the presenter:");
   for (const id of args.models) {
     const m = exp.models.find((x) => x.id === id)!;

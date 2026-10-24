@@ -107,6 +107,35 @@ describe("freePlanFromExport", () => {
     expect(freePlanFromExport(none, { models: ["mock-a"] }).warnings).toEqual(["benefit amounts: none in these households, so this says nothing about benefits"]);
   });
 
+  it("says when a model's tool was told another engine version than the one every calculation ran on, and only for those models", () => {
+    const older = (m: ExportModel) => ({ ...m, toolStatedEngine: "policyengine-us 0.0.0-older" })
+    const mixed = { ...withModel("mock-c", older), models: withModel("mock-c", older).models.map((m) => (m.id === "mock-d" ? older(m) : m)) };
+    const { pilot, warnings } = freePlanFromExport(mixed, { models: ALL });
+    const tool = pilot.footnotes.indexOf(
+      "The tool runs PolicyEngine (policyengine-us 0.0.0-mock), the engine behind the reference answers, so this shows whether a model can use it, not whether it's right.",
+    );
+    expect(pilot.footnotes.slice(tool + 1)).toEqual([
+      "Its instructions to Mock model C and Mock model D named policyengine-us 0.0.0-older; every calculation ran on policyengine-us 0.0.0-mock.",
+    ]);
+    expect(warnings).toContain(
+      "Mock model C and Mock model D: the tool's instructions named policyengine-us 0.0.0-older, but every calculation ran on policyengine-us 0.0.0-mock; the slide says so",
+    );
+    // The free-plan models alone were told the engine that ran: nothing to say.
+    const free = freePlanFromExport(mixed, { models: ["mock-a", "mock-b"] });
+    expect(free.pilot.footnotes.some((f) => f.startsWith("Its instructions"))).toBe(false);
+    expect(free.warnings.some((w) => w.includes("instructions named"))).toBe(false);
+  });
+
+  it("warns when an older export doesn't say which engine version each tool was told, and refuses a tool told none", () => {
+    const unsaid = { ...exp, models: exp.models.map(({ toolStatedEngine: _, ...m }) => m) };
+    const { pilot, warnings } = freePlanFromExport(unsaid, { models: ["mock-a"] });
+    expect(warnings).toContain("the export doesn't say which engine version each model's tool was told; check its tool line before showing");
+    expect(pilot.footnotes.some((f) => f.startsWith("Its instructions"))).toBe(false);
+    expect(() => freePlanFromExport(withModel("mock-a", (m) => ({ ...m, toolStatedEngine: null })), { models: ["mock-a"] })).toThrow(
+      "Mock model A: a tool arm, but no engine named to it",
+    );
+  });
+
   it("warns about answers that never came back, batches left out and a dirty export tree", () => {
     const messy = {
       ...withModel("mock-a", (m) => ({ ...m, missing: { alone: 0, web: 2, tool: 0, both: 1 }, partialBatches: [{ batch: 3 }] })),

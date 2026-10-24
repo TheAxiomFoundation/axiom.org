@@ -21,6 +21,8 @@ export interface PolicyBenchExport {
   /** The models by household size, free-plan models' size first. Exports from before October 24 have none. */
   sizes?: ExportSize[];
   models: ExportModel[];
+  /** PolicyBench's own line on the tool, for the presenter; the slide doesn't show it. */
+  tool?: string;
   source?: { scriptCommit?: string; scriptTreeDirty?: boolean; generatedAtUtc?: string };
 }
 
@@ -48,6 +50,13 @@ export interface ExportModel {
   missing: Partial<Record<ToolPilotArmId, number>>;
   vsAlone: Partial<Record<Exclude<ToolPilotArmId, "alone">, PilotChange>>;
   benefits: Partial<Record<ToolPilotArmId, PilotCount>>;
+  /**
+   * The engine its calculator's notice and description named, e.g.
+   * "policyengine-us 2.60.4"; null with no calculator. It can differ from the
+   * engine every calculation ran on (the export's `engine`). Exports from
+   * before October 24 have none.
+   */
+  toolStatedEngine?: string | null;
 }
 
 export interface ExportArm extends PilotCount {
@@ -183,6 +192,7 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
       // The slide shows k of n; the export's own percent must say the same.
       if (!(c.n > 0) || Math.abs(c.pct - (100 * c.k) / c.n) > 0.05 + 1e-9) throw new Error(`${m.model} ${arm.id}: ${c.pct}% isn't ${c.k} of ${c.n}`);
     }
+    if (m.toolStatedEngine === null) throw new Error(`${m.model}: a tool arm, but no engine named to it`);
     const missed = EXPORT_ARMS.filter((a) => (m.missing[a.id] ?? 0) > 0).map((a) => `${m.missing[a.id]} ${a.id}`);
     if (missed.length) warnings.push(`${m.model}: answers counted as misses because none came back (${missed.join(", ")})`);
     if (m.partialBatches.length) warnings.push(`${m.model}: ${m.partialBatches.length} household batch(es) left out because a setting hadn't reached them`);
@@ -214,11 +224,24 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
       : "benefit amounts: none in these households, so this says nothing about benefits",
   );
 
+  // A calculator told one engine version that ran on another computes the same; the slide says so for those models.
+  const toldOther = new Map<string, string[]>();
+  for (const m of ordered) {
+    if (m.toolStatedEngine && m.toolStatedEngine !== exp.engine) toldOther.set(m.toolStatedEngine, [...(toldOther.get(m.toolStatedEngine) ?? []), m.model]);
+  }
+  if (ordered.some((m) => m.toolStatedEngine === undefined)) {
+    warnings.push("the export doesn't say which engine version each model's tool was told; check its tool line before showing");
+  }
+  for (const [stated, models] of toldOther) {
+    warnings.push(`${list(models)}: the tool's instructions named ${stated}, but every calculation ran on ${exp.engine}; the slide says so`);
+  }
+
   const free = ordered.filter((m) => m.freePlan !== null);
   const footnotes = [
     ...(free.length ? [`The models on free plans: ${list(free.map((m) => m.model))}, called through each provider's API.`] : []),
     "Web search is each provider's own search tool, told not to search PolicyBench.",
     `The tool runs PolicyEngine (${exp.engine}), the engine behind the reference answers, so this shows whether a model can use it, not whether it's right.`,
+    ...[...toldOther].map(([stated, models]) => `Its instructions to ${list(models)} named ${stated}; every calculation ran on ${exp.engine}.`),
   ];
 
   const pilot: FreePlanPilot = {

@@ -34,6 +34,7 @@ function mockModel(id: string, freePlan: string | null, k: { alone: number; web:
     missing: { alone: 0, web: 0, tool: 0, both: 0 },
     vsAlone: { web: change(k.alone, k.web), tool: change(k.alone, k.tool, toolSpread, toolSpread), both: change(k.alone, k.both) },
     benefits: { alone: { k: 1, n: 3 }, web: { k: 1, n: 3 }, tool: { k: 3, n: 3 }, both: { k: 3, n: 3 } },
+    toolStatedEngine: "policyengine-us 0.0.0-mock",
   };
 }
 

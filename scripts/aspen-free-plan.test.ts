@@ -78,6 +78,15 @@ describe("run", () => {
     expect(written.endsWith("// END FREE_PLAN_PILOT\ntail\n")).toBe(true);
   });
 
+  it("prints PolicyBench's tool line for the presenter when the export has one", () => {
+    const bytes = JSON.stringify({ ...MOCK_POLICYBENCH_EXPORT, tool: "MOCK: the tool line" });
+    writeFileSync(file, bytes);
+    const digest = createHash("sha256").update(bytes).digest("hex");
+    const lines: string[] = [];
+    run([file, "--sha256", digest, "--models", "mock-a"], { contentPath: content, log: (l) => lines.push(l) });
+    expect(lines).toContain("PolicyBench's tool line: MOCK: the tool line");
+  });
+
   it("says when the export doesn't record where it came from", () => {
     const bytes = JSON.stringify({ ...MOCK_POLICYBENCH_EXPORT, source: undefined });
     writeFileSync(file, bytes);
