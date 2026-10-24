@@ -22,11 +22,15 @@ const RETIRED_KEYS = ["aspen.overall.v1"];
 const REV_KEY = "aspen.rev";
 /** The participant's text size: kept on the phone, never sent anywhere. */
 export const TEXT_SIZE_KEY = "aspen.textSize.v1";
+/** The tab on this device that keeps its answers (holdTab). */
+export const TAB_KEY = "aspen.tab";
 
 let fallbackId: string | null = null;
 let lastRev = 0;
-// This page load's own name, for saveMark.
+// This page load's own name, for saveMark and holdTab.
 const TAB = Math.random().toString(36).slice(2);
+// Whether this page has taken the device's answers (holdTab); the presenter's page never does.
+let holding = false;
 
 function newId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -66,6 +70,8 @@ export function readStored<T>(key: string, session = false): T | null {
 }
 
 export function writeStored(key: string, value: unknown, session = false) {
+  // A tab another one has taken over leaves the answers to it; stamps still only go up.
+  if (!session && key !== REV_KEY && heldElsewhere()) return;
   try {
     (session ? window.sessionStorage : window.localStorage).setItem(key, JSON.stringify(value));
   } catch {
@@ -81,6 +87,7 @@ export function writeStored(key: string, value: unknown, session = false) {
  * and keeps what it has. Returns true when it dropped anything.
  */
 export function enterRun(runId: string): boolean {
+  if (heldElsewhere()) return false;
   const previous = readStored<string>(RUN_KEY);
   if (previous === runId) return false;
   writeStored(RUN_KEY, runId);
@@ -112,6 +119,62 @@ export function nextRev(now = Date.now()): number {
   lastRev = Math.max(Math.floor(now), floor + 1);
   writeStored(REV_KEY, lastRev);
   return lastRev;
+}
+
+/**
+ * Makes this tab the one that keeps the device's answers. Every tab writes
+ * its whole conversation, ratings and answers as it changes them, so two
+ * tabs writing at once would overwrite each other's newer answers. The
+ * participant's page holds the device when it opens; a tab another one has
+ * taken over stops writing and offers to take it back (useTabHold).
+ */
+export function holdTab() {
+  holding = true;
+  try {
+    window.localStorage.setItem(TAB_KEY, JSON.stringify(TAB));
+  } catch {
+    // Without storage there is nothing to share between tabs.
+  }
+}
+
+/** Whether this page held the device's answers and another tab has since taken them. */
+export function heldElsewhere(): boolean {
+  if (!holding) return false;
+  const holder = readStored<unknown>(TAB_KEY);
+  return typeof holder === "string" && holder !== TAB;
+}
+
+/**
+ * Holds the device's answers while the participant's page is open, and says
+ * when another tab takes them: on the storage event, and again whenever this
+ * tab comes back into view, as a phone may not wake a background tab for the
+ * event. Taking them back reloads the page, so it starts from what the other
+ * tab saved.
+ */
+export function useTabHold(): { elsewhere: boolean; takeBack: () => void } {
+  const [elsewhere, setElsewhere] = useState(false);
+  useEffect(() => {
+    holdTab();
+    const check = () => setElsewhere(heldElsewhere());
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === TAB_KEY || e.key === null) check();
+    };
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("focus", check);
+    document.addEventListener("visibilitychange", check);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("focus", check);
+      document.removeEventListener("visibilitychange", check);
+    };
+  }, []);
+  return {
+    elsewhere,
+    takeBack: () => {
+      holdTab();
+      window.location.reload();
+    },
+  };
 }
 
 /**

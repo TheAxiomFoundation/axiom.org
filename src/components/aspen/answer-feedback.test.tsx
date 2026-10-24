@@ -15,7 +15,7 @@ import {
   rulesCaveats,
   shownValue,
 } from "./answer-feedback";
-import { RATING_KEY, SAVE_TIMEOUT_MS, formatValue } from "./client";
+import { RATING_KEY, SAVE_TIMEOUT_MS, TAB_KEY, formatValue, holdTab } from "./client";
 
 function jsonResponse(data: unknown, ok = true) {
   return { ok, status: ok ? 200 : 500, json: async () => data } as unknown as Response;
@@ -445,6 +445,23 @@ describe("RatingCard", () => {
     fireEvent.change(await within(tabB.container).findByLabelText(/Anything the room should know/), { target: { value: "Check BBCE" } });
     await act(async () => resolvers[0](jsonResponse({ ok: true, saved: true })));
     expect(readRatingDraft("p1")).toMatchObject({ rating: { verdict: "wrong", note: "Check BBCE" }, unsaved: false });
+  });
+
+  it("writes nothing once another tab has taken over, so it never overwrites that tab's newer failed answer", async () => {
+    holdTab();
+    const resolvers: ((r: Response) => void)[] = [];
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((r) => resolvers.push(r))));
+    render(<RatingCard promptId="p1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Looks wrong" }));
+    await waitFor(() => expect(resolvers).toHaveLength(1));
+    // Another tab takes over, and its Looks right fails.
+    const theirs = { rating: { verdict: "right", residentAction: null, wentWell: [], wentWrong: [], note: "" }, step: 0, unsaved: true, pending: "9:other-tab" };
+    localStorage.setItem(TAB_KEY, JSON.stringify("other-tab"));
+    localStorage.setItem(RATING_KEY, JSON.stringify({ p1: theirs }));
+    // This tab's older save lands, and then this tab moves on with Next.
+    await act(async () => resolvers[0](jsonResponse({ ok: true, saved: true })));
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(readRatingDraft("p1")).toEqual(theirs);
   });
 
   it("keeps each answer's card apart, and ignores a draft it can't read", () => {

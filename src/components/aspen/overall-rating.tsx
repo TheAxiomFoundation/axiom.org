@@ -151,8 +151,8 @@ export function OverallRating({ stage }: { stage: string }) {
 
   const savedComment = answers.comment ?? "";
   const commentChanged = comment.trim() !== savedComment;
-  // A failed agency save may have carried the comment, so it can be sent again.
-  const commentPending = commentChanged || failed.discussion === true;
+  // A failed agency save may have carried the comment, so it can be sent again, unless that's already on its way.
+  const commentPending = commentChanged || (failed.discussion === true && !sending.discussion);
   const anyFailed = Object.values(failed).some(Boolean);
   const done =
     Boolean(answers.truth) && (AGENCY?.categories.every((c) => answers.agency?.[c.id] !== undefined) ?? false);
