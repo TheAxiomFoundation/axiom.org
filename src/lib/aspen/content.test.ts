@@ -334,6 +334,42 @@ describe('the free-plan pilot', () => {
     expect(freePlanProblems(withRow(1, { toolVsAlone: { points: exact, lo: 27.2, hi: 30 } }))).toEqual([
       `Mock model B: ${exact} is outside its interval 27.2 to 30`,
     ])
+    expect(freePlanProblems(withRow(1, { toolVsAlone: { points: exact, lo: 27.1, hi: 27 } }))).toEqual([
+      'Mock model B: its interval 27.1 to 27 runs backward',
+      `Mock model B: ${exact} is outside its interval 27.1 to 27`,
+    ])
+    // Ends finer than one decimal get no allowance, so no change shows as leaving out zero when it is zero.
+    const noChange = { ...m.rows[1].counts, tool: m.rows[1].counts.alone }
+    expect(freePlanProblems(withRow(1, { counts: noChange, toolVsAlone: { points: 0, lo: 0.04, hi: 1 } }))).toEqual([
+      'Mock model B: 0 is outside its interval 0.04 to 1',
+    ])
+    expect(freePlanProblems(withRow(1, { counts: noChange, toolVsAlone: { points: 0, lo: 0.1, hi: 1 } }))).toEqual([
+      'Mock model B: 0 is outside its interval 0.1 to 1',
+    ])
+  })
+
+  it('never passes a change the slide would show as leaving out zero unless the change itself is on that side of zero', () => {
+    const m = MOCK_FREE_PLAN_PILOT
+    const tenth = (x: number) => Math.round(x * 10) / 10
+    const gap = fc.oneof(fc.double({ min: -0.2, max: 0.2, noNaN: true }), fc.double({ min: -0.2, max: 30, noNaN: true }))
+    const counts = fc
+      .integer({ min: 1, max: 2000 })
+      .chain((n) => fc.tuple(fc.constant(n), fc.integer({ min: 0, max: n }), fc.integer({ min: -2, max: 2 }), fc.integer({ min: 0, max: n })))
+    fc.assert(
+      fc.property(counts, fc.boolean(), gap, gap, fc.boolean(), fc.boolean(), ([n, alone, step, far], near, below, above, roundLo, roundHi) => {
+        // The tool's count is often within two of no tools', so the change is often 0 or nearly.
+        const tool = near ? Math.min(n, Math.max(0, alone + step)) : far
+        const points = (100 * (tool - alone)) / n
+        const toolVsAlone = { points, lo: roundLo ? tenth(points - below) : points - below, hi: roundHi ? tenth(points + above) : points + above }
+        const c = (k: number) => ({ k, n })
+        const row = { ...m.rows[1], counts: { alone: c(alone), web: c(alone), tool: c(tool), both: c(tool) }, toolVsAlone }
+        if (freePlanProblems({ ...m, rows: m.rows.map((r, j) => (j === 1 ? row : r)) }).length) return
+        if (!distinguishable(toolVsAlone)) return
+        expect(points).not.toBe(0)
+        expect(Math.sign(points)).toBe(toolVsAlone.lo > 0 ? 1 : -1)
+      }),
+      { numRuns: 2000 },
+    )
   })
 
   it('shows a count as a whole percent within 0 to 100 that never falls as the count grows', () => {

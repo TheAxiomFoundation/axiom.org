@@ -1037,8 +1037,13 @@ export function freePlanProblems(p: FreePlanPilot): string[] {
     // A failed or missing answer counts as a miss, so every setting scores the same amounts.
     if (ns.size > 1) problems.push(`${r.model}: settings score different numbers of amounts (${[...ns].join(", ")})`);
     const { points, lo, hi } = r.toolVsAlone;
-    // The interval's ends are the export's, to one decimal; the change is the counts' own, exact.
-    if (!(lo - 0.05 - 1e-9 <= points && points <= hi + 0.05 + 1e-9)) problems.push(`${r.model}: ${points} is outside its interval ${lo} to ${hi}`);
+    if (!(lo <= hi)) problems.push(`${r.model}: its interval ${lo} to ${hi} runs backward`);
+    // The export writes the interval's ends to one decimal while the change is the counts' own, exact, so the
+    // change may sit up to 0.05 past an end written that way. Finer ends get no allowance: a change of 0 can
+    // then never sit outside its interval, where the slide would show it as leaving out zero.
+    const tenths = (x: number) => Number(x.toFixed(1)) === x;
+    const allowance = tenths(lo) && tenths(hi) ? 0.05 + 1e-9 : 0;
+    if (!(lo - allowance <= points && points <= hi + allowance)) problems.push(`${r.model}: ${points} is outside its interval ${lo} to ${hi}`);
     // The paired change on the same amounts is the counts' own difference, to the export's one decimal.
     const alone = r.counts.alone;
     const tool = r.counts.tool;
