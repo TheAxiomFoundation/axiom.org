@@ -312,6 +312,11 @@ describe("freePlanFromExport", () => {
     expect(() => freePlanFromExport(withModel("mock-a", (m) => ({ ...m, toolStatedEngine: null })), { models: ["mock-a"] })).toThrow(
       "Mock model A: a tool arm, but no engine named to it",
     );
+    expect(() => freePlanFromExport(withModel("mock-a", (m) => ({ ...m, toolStatedEngine: " " })), { models: ["mock-a"] })).toThrow(
+      "Mock model A: an empty engine named to its tool",
+    );
+    // The tool footnote names the engine, so an export without one can't say what the tool runs.
+    for (const engine of ["", " "]) expect(() => freePlanFromExport({ ...exp, engine }, { models: ["mock-a"] })).toThrow("the export names no engine");
   });
 
   it("warns about answers that never came back, batches left out and a dirty export tree", () => {
@@ -495,6 +500,7 @@ describe("runDateRange", () => {
     expect(() => runDateRange(["2026-10-23 UTC"])).toThrow("run date 2026-10-23 UTC isn't YYYY-MM-DD");
     for (const d of ["2026-13-99", "2026-00-10", "2026-02-29", "2026-04-31"]) expect(() => runDateRange([d])).toThrow(`run date ${d} isn't a date`);
     expect(runDateRange(["2028-02-29"])).toBe("February 29, 2028");
+    expect(runDateRange(["0099-01-01"])).toBe("January 1, 99");
   });
 });
 

@@ -980,17 +980,24 @@ export interface FreePlanPilot {
   source: string;
 }
 
-/** The free-plan slide's settings, in its column order, as its heading names them. */
-export const FREE_PLAN_ARMS: FreePlanPilot["arms"] = [
+const ARMS_IN_ORDER: FreePlanPilot["arms"] = [
   { id: "alone", label: "On its own" },
   { id: "web", label: "With web search" },
   { id: "tool", label: "With the PolicyEngine tool" },
   { id: "both", label: "With both" },
 ];
+/**
+ * The free-plan slide's settings, in its column order, as its heading names
+ * them. Frozen: a converted pilot shares it, so changing its headings in
+ * place would change what the check expects too.
+ */
+export const FREE_PLAN_ARMS: FreePlanPilot["arms"] = Object.freeze(ARMS_IN_ORDER.map((a) => Object.freeze({ ...a })));
 
 /** A count as a whole percent: at about 50 amounts, a decimal would claim precision the run doesn't have. */
 export function wholeShare(c: PilotCount): number {
-  return Math.round((100 * c.k) / c.n);
+  // Rounded half up in whole numbers, (200k + n) / 2n, so it's exact for any safe-integer count.
+  const [k, n] = [BigInt(c.k), BigInt(c.n)];
+  return Number((BigInt(200) * k + n) / (BigInt(2) * n));
 }
 
 /** Whether a change's interval leaves out zero, so it reads as a change at this size. */
@@ -1085,6 +1092,9 @@ export function freePlanProblems(p: FreePlanPilot): string[] {
       const fromCounts = (100 * (tool.k - alone.k)) / tool.n;
       if (Math.abs(fromCounts - points) > 0.05 + 1e-9) {
         problems.push(`${r.model}: change ${points} but the counts give ${fromCounts.toFixed(1)}`);
+      } else if (points * fromCounts < 0) {
+        // Within rounding of the counts but on the other side of zero, which the slide would print.
+        problems.push(`${r.model}: change ${points} is on the other side of zero from the counts' ${fromCounts.toFixed(2)}`);
       } else if (inside(points) && !inside(fromCounts)) {
         // The color goes by the interval, so the counts' own change has to be inside it too.
         problems.push(`${r.model}: the counts' change ${fromCounts.toFixed(2)} is outside its interval ${lo} to ${hi}`);

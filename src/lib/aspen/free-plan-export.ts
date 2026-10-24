@@ -118,7 +118,8 @@ export function runDateRange(dates: readonly string[]): string {
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
     if (!m) throw new Error(`run date ${d} isn't YYYY-MM-DD`);
     const [y, mo, day] = [Number(m[1]), Number(m[2]), Number(m[3])];
-    const t = new Date(Date.UTC(y, mo - 1, day));
+    const t = new Date(0);
+    t.setUTCFullYear(y, mo - 1, day);
     if (t.getUTCFullYear() !== y || t.getUTCMonth() !== mo - 1 || t.getUTCDate() !== day) throw new Error(`run date ${d} isn't a date`);
     return { y, m: mo, d: day };
   });
@@ -210,6 +211,8 @@ export function caveatText(groups: readonly (ExportSize & { names: string[] })[]
  */
 export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions): { pilot: FreePlanPilot; warnings: string[] } {
   const warnings: string[] = [];
+  // The tool footnote names it.
+  if (typeof exp.engine !== "string" || !exp.engine.trim()) throw new Error("the export names no engine");
   const byId = new Map(exp.models.map((m) => [m.id, m]));
   const unknown = opts.models.filter((id) => !byId.has(id));
   if (unknown.length) throw new Error(`not in the export: ${unknown.join(", ")}`);
@@ -243,6 +246,7 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
       if (!(c.n > 0) || Math.abs(c.pct - (100 * c.k) / c.n) > 0.05 + 1e-9) throw new Error(`${m.model} ${arm.id}: ${c.pct}% isn't ${c.k} of ${c.n}`);
     }
     if (m.toolStatedEngine === null) throw new Error(`${m.model}: a tool arm, but no engine named to it`);
+    if (typeof m.toolStatedEngine === "string" && !m.toolStatedEngine.trim()) throw new Error(`${m.model}: an empty engine named to its tool`);
     const missed = EXPORT_ARMS.filter((a) => (m.missing[a.id] ?? 0) > 0).map((a) => `${m.missing[a.id]} ${a.id}`);
     if (missed.length) warnings.push(`${m.model}: answers counted as misses because none came back (${missed.join(", ")})`);
     if (m.partialBatches.length) warnings.push(`${m.model}: ${m.partialBatches.length} household batch(es) left out because a setting hadn't reached them`);

@@ -31,6 +31,7 @@ import {
   freePlanProblems,
   distinguishable,
   formatPoints,
+  FREE_PLAN_ARMS,
   shownChange,
   wholeShare,
   type FreePlanPilot,
@@ -367,6 +368,11 @@ describe('the free-plan pilot', () => {
     ])
     expect(freePlanProblems(withRow(1, { model: ' ' }))).toEqual(['a model has no name'])
     expect(freePlanProblems(withRow(1, { freePlan: ' ' }))).toEqual(['Mock model B: an empty free-plan line'])
+    // Within rounding of counts that give +0.01, but printed on the other side of zero.
+    const [none, one] = [{ k: 0, n: 10000 }, { k: 1, n: 10000 }]
+    expect(freePlanProblems(withRow(1, { counts: { alone: none, web: none, tool: one, both: one }, toolVsAlone: { points: -0.01, lo: -1, hi: 1 } }))).toEqual([
+      "Mock model B: change -0.01 is on the other side of zero from the counts' 0.01",
+    ])
     const huge = { k: 1e308, n: 1e308 }
     expect(freePlanProblems(withRow(1, { counts: { alone: huge, web: huge, tool: huge, both: huge }, toolVsAlone: { points: 0, lo: 0, hi: 0 } }))).toEqual(
       ["alone", "web", "tool", "both"].map((id) => `Mock model B ${id}: 1e+308 of 1e+308 isn't a count`),
@@ -407,9 +413,10 @@ describe('the free-plan pilot', () => {
     const printed = (x: number) => Number(formatPoints(x).replace('\u2212', '-'))
     const gap = fc.oneof(fc.double({ min: -0.2, max: 0.2, noNaN: true }), fc.double({ min: -0.2, max: 30, noNaN: true }))
     const counts = fc
-      .integer({ min: 1, max: 2000 })
+      .integer({ min: 1, max: 20000 })
       .chain((n) => fc.tuple(fc.constant(n), fc.integer({ min: 0, max: n }), fc.integer({ min: -2, max: 2 }), fc.integer({ min: 0, max: n })))
     const how = fc.constantFrom('exact', 'export', 'by hand')
+    // Up to 20,000 amounts, so a change can be smaller than the 0.05 a hand-written one may be off by.
     const off = fc.double({ min: -0.05, max: 0.05, noNaN: true })
     let passed = 0
     let apart = 0
@@ -427,6 +434,8 @@ describe('the free-plan pilot', () => {
         passed++
         const [shown, lo, hi] = [printed(shownChange(toolVsAlone)), printed(toolVsAlone.lo), printed(toolVsAlone.hi)]
         expect(lo <= shown && shown <= hi).toBe(true)
+        // Whatever the interval, the printed change is never on the other side of zero from the counts.
+        expect(shown * exact).toBeGreaterThanOrEqual(0)
         if (!distinguishable(toolVsAlone)) return
         apart++
         const side = toolVsAlone.lo > 0 ? 1 : -1
@@ -467,9 +476,38 @@ describe('the free-plan pilot', () => {
         expect(value).toBeGreaterThanOrEqual(0)
         expect(value).toBeLessThanOrEqual(100)
         expect(Math.abs(value - (100 * k) / n)).toBeLessThanOrEqual(0.5)
+        // Exactly halfway, as 1 of 8 is, it rounds up.
+        if ((200 * k) % n === 0 && ((200 * k) / n) % 2 === 1) expect(value).toBe(((200 * k) / n + 1) / 2)
         if (k < n) expect(wholeShare({ k: k + 1, n })).toBeGreaterThanOrEqual(value)
       }),
     )
+    expect([wholeShare({ k: 1, n: 8 }), wholeShare({ k: 3, n: 8 }), wholeShare({ k: 1, n: 200 })]).toEqual([13, 38, 1])
+  })
+
+  it('rounds a share exactly for any safe-integer count, however large', () => {
+    const abs = (x: bigint) => (x < BigInt(0) ? -x : x)
+    fc.assert(
+      fc.property(fc.integer({ min: 1, max: Number.MAX_SAFE_INTEGER }), fc.double({ min: 0, max: 1, noNaN: true }), (n, f) => {
+        const k = Math.min(n, Math.floor(f * n))
+        const s = wholeShare({ k, n })
+        // In whole numbers: the share s is within half a point of 100k/n, so |200k - 2sn| <= n, and a tie rounds up.
+        const [K, N, S] = [BigInt(k), BigInt(n), BigInt(s)]
+        const twice = BigInt(200) * K - BigInt(2) * S * N
+        expect(abs(twice) <= N).toBe(true)
+        if (abs(twice) === N) expect(twice < BigInt(0)).toBe(true)
+      }),
+      { numRuns: 2000 },
+    )
+    // Floating point rounds this one up to 11; its exact share is just under 10.5.
+    expect(wholeShare({ k: 945755921747804, n: 9007199254740991 })).toBe(10)
+  })
+
+  it("keeps the settings' headings fixed, so a converted pilot can't change what the check expects", () => {
+    expect(Object.isFrozen(FREE_PLAN_ARMS)).toBe(true)
+    expect(FREE_PLAN_ARMS.every((a) => Object.isFrozen(a))).toBe(true)
+    expect(() => {
+      ;(FREE_PLAN_ARMS[0] as { label: string }).label = 'With the PolicyEngine tool'
+    }).toThrow(TypeError)
   })
 
   it('writes points whole with their sign, "0" only for no change, and one significant digit where whole would read as 0', () => {
