@@ -101,6 +101,67 @@ function isInternalAxiomPath(pathname: string): boolean {
   return pathname === "/axiom" || pathname.startsWith("/axiom/");
 }
 
+/**
+ * Pages served with a strict script policy, by the path Next renders
+ * (after any rewrite) and the page module that renders it. The policy
+ * names a fresh nonce per request; Next reads it from the request's
+ * CSP header and puts it on every script it emits, so a script injected
+ * into the page has no nonce and doesn't run. Only pages rendered per
+ * request can carry one: a prerendered page's scripts have no nonce,
+ * and the policy would block them all. So every module here must be
+ * force-dynamic, which proxy.test.ts checks.
+ *
+ * The statute readers echo the request path and render corpus text;
+ * Aspen's pages hold the session cookies.
+ */
+export const CSP_PAGES: ReadonlyArray<{ path: RegExp; module: string }> = [
+  { path: /^\/axiom\/v2\/.+/, module: "app/axiom/v2/[...segments]/page.tsx" },
+  { path: /^\/aspen\/?$/, module: "app/aspen/page.tsx" },
+  { path: /^\/aspen\/present\/?$/, module: "app/aspen/present/page.tsx" },
+  { path: /^\/aspen\/sign-in\/?$/, module: "app/aspen/sign-in/page.tsx" },
+];
+
+/**
+ * Google's strict CSP. Browsers that understand nonces ignore
+ * 'unsafe-inline' and https: (CSP 2+) and host lists under
+ * 'strict-dynamic' (CSP 3), which lets nonced scripts load the chunks
+ * and the analytics they add. The fallbacks only keep pre-CSP-2
+ * browsers working. `next dev` evaluates code, so dev allows eval.
+ */
+export function scriptPolicy(nonce: string): string {
+  const scripts = [
+    `'nonce-${nonce}'`,
+    "'strict-dynamic'",
+    ...(process.env.NODE_ENV === "development" ? ["'unsafe-eval'"] : []),
+    "'unsafe-inline'",
+    "https:",
+  ];
+  return [
+    `script-src ${scripts.join(" ")}`,
+    "object-src 'none'",
+    "base-uri 'self'",
+  ].join("; ");
+}
+
+/**
+ * The response for a page rendered at `renderedPath`. A CSP page gets a
+ * new nonce, set on the request (for Next) and the response (for the
+ * browser); any other path is served as it was.
+ */
+function servePage(
+  request: NextRequest,
+  renderedPath: string,
+  respond: (init?: { request: { headers: Headers } }) => NextResponse
+): NextResponse {
+  if (!CSP_PAGES.some((page) => page.path.test(renderedPath))) return respond();
+  const policy = scriptPolicy(btoa(crypto.randomUUID()));
+  const headers = new Headers(request.headers);
+  headers.set("content-security-policy", policy);
+  const response = respond({ request: { headers } });
+  response.headers.set("Content-Security-Policy", policy);
+  return response;
+}
+
 export function proxy(request: NextRequest) {
   const host = cleanHost(request);
   const { pathname } = request.nextUrl;
@@ -198,7 +259,9 @@ export function proxy(request: NextRequest) {
   if (APP_ROOT_PREFIX_RE.test(pathname)) {
     const target = request.nextUrl.clone();
     target.pathname = appPagePath(pathname);
-    return NextResponse.rewrite(target);
+    return servePage(request, target.pathname, (init) =>
+      NextResponse.rewrite(target, init)
+    );
   }
 
   // The app's bare public routes (the encoded-rules index and search)
@@ -209,7 +272,7 @@ export function proxy(request: NextRequest) {
     return NextResponse.rewrite(target);
   }
 
-  return NextResponse.next();
+  return servePage(request, pathname, (init) => NextResponse.next(init));
 }
 
 export const config = {

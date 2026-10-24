@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { proxy } from "./proxy";
+import { CSP_PAGES, proxy, scriptPolicy } from "./proxy";
 
 function request(url: string, host: string): NextRequest {
   return new NextRequest(url, { headers: { host } });
@@ -361,4 +363,86 @@ describe("proxy", () => {
 
     expect(response.headers.get("x-middleware-next")).toBe("1");
   });
+});
+
+describe("script policy", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  const site = (path: string) =>
+    proxy(request(`https://axiom.org${path}`, "axiom.org"));
+  const nonceOf = (policy: string | null) =>
+    /'nonce-([^']+)'/.exec(policy ?? "")?.[1];
+
+  it("serves the readers and Aspen with a nonce policy, on the response and to Next", () => {
+    for (const path of [
+      "/us/statute/26/32",
+      "/us/statute/26/32/%3C%2Fscript%3E",
+      "/us-co/regulation/10-ccr-2506-1",
+      "/uk/legislation/ukpga",
+      "/aspen",
+      "/aspen/present",
+      "/aspen/sign-in",
+    ]) {
+      const response = site(path);
+      const policy = response.headers.get("content-security-policy");
+      expect(policy, path).toMatch(/^script-src 'nonce-[A-Za-z0-9+/=]+' 'strict-dynamic'/);
+      // NextResponse carries request-header overrides as x-middleware-request-*.
+      expect(
+        response.headers.get("x-middleware-request-content-security-policy"),
+        path
+      ).toBe(policy);
+    }
+  });
+
+  it("names a fresh nonce on every request", () => {
+    const nonces = new Set(
+      Array.from({ length: 50 }, () =>
+        nonceOf(site("/us/statute/26/32").headers.get("content-security-policy"))
+      )
+    );
+    expect(nonces.size).toBe(50);
+    for (const nonce of nonces) expect(atob(nonce!)).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("leaves prerendered and other pages without one", () => {
+    for (const path of [
+      "/",
+      "/about",
+      "/blog",
+      "/app",
+      "/encoded/us",
+      "/search?q=credit",
+      "/ca/statute/example/1",
+      "/ops",
+      "/api/aspen/results",
+    ]) {
+      expect(site(path).headers.get("content-security-policy"), path).toBeNull();
+    }
+  });
+
+  it("blocks plugins and base rewrites, and allows eval only under next dev", () => {
+    const policy = scriptPolicy("n0nce");
+    expect(policy).toBe(
+      "script-src 'nonce-n0nce' 'strict-dynamic' 'unsafe-inline' https:; object-src 'none'; base-uri 'self'"
+    );
+    vi.stubEnv("NODE_ENV", "development");
+    expect(scriptPolicy("n0nce")).toContain("'strict-dynamic' 'unsafe-eval'");
+  });
+
+  // A prerendered page's scripts carry no nonce, so the policy would
+  // block them all: every covered page must render per request.
+  it.each(CSP_PAGES.map((page) => [page.module, page.path] as const))(
+    "%s is force-dynamic and is the page its pattern serves",
+    (module, path) => {
+      const source = readFileSync(join(process.cwd(), "src", module), "utf8");
+      expect(source).toMatch(/^export const dynamic = "force-dynamic";$/m);
+      const route = `/${module}`
+        .replace(/^\/app/, "")
+        .replace(/\/page\.tsx$/, "")
+        .replace(/\[\.\.\.[^\]]+\]/g, "us/statute/26/32");
+      expect(path.test(route), route).toBe(true);
+    }
+  );
 });
