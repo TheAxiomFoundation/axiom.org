@@ -27,8 +27,17 @@ import {
   toolPilotMisses,
   LIVE_DEMO,
   liveDemoUrl,
+  FREE_PLAN_PILOT,
+  freePlanProblems,
+  distinguishable,
+  formatPoints,
+  FREE_PLAN_ARMS,
+  shownChange,
+  wholeShare,
+  type FreePlanPilot,
 } from './content'
 import { federalFiscalYear } from './coverage'
+import { MOCK_FREE_PLAN_PILOT } from '@/test/aspen-free-plan.mock'
 
 describe('aspen content', () => {
   it('lists every stage once, in run-of-show order, without clock times', () => {
@@ -275,5 +284,274 @@ describe('aspen content', () => {
     expect(url.searchParams.get('q')).toBe(LIVE_DEMO.question)
     // The frame never sends on its own; the presenter presses Send.
     expect(url.searchParams.has('go')).toBe(false)
+  })
+})
+
+describe('the free-plan pilot', () => {
+  it('passes every check, if it is set', () => {
+    if (FREE_PLAN_PILOT) expect(freePlanProblems(FREE_PLAN_PILOT)).toEqual([])
+    // Until it's cleared to show, the slide is off and no numbers are in this public repo.
+    else expect(FREE_PLAN_PILOT).toBeNull()
+  })
+
+  it('checks the mock the same way, and catches what would put a wrong number on the screen', () => {
+    expect(freePlanProblems(MOCK_FREE_PLAN_PILOT)).toEqual([])
+    const m = MOCK_FREE_PLAN_PILOT
+    const withRow = (i: number, row: Partial<FreePlanPilot['rows'][number]>): FreePlanPilot => ({
+      ...m,
+      rows: m.rows.map((r, j) => (j === i ? { ...r, ...row } : r)),
+    })
+    expect(freePlanProblems({ ...m, label: ' ' })).toEqual(['no label: the room has to read these as preliminary'])
+    expect(freePlanProblems({ ...m, arms: m.arms.filter((a) => a.id !== 'alone') })).toContain(
+      'the change needs both no tools and the tool',
+    )
+    expect(freePlanProblems({ ...m, arms: [...m.arms, m.arms[0]] })).toContain('an arm is listed twice')
+    expect(freePlanProblems({ ...m, rows: [m.rows[3], ...m.rows.slice(0, 3), ...m.rows.slice(4)] })).toContain(
+      'a free-plan model comes after a comparison model',
+    )
+    expect(freePlanProblems({ ...m, rows: [...m.rows, m.rows[0]] })).toEqual(
+      expect.arrayContaining(['a model is listed twice', '7 rows; the slide fits 1 to 6']),
+    )
+    expect(freePlanProblems(withRow(0, { counts: { ...m.rows[0].counts, web: undefined } }))).toEqual([
+      'Mock model A: no count for web',
+    ])
+    expect(freePlanProblems(withRow(0, { counts: { ...m.rows[0].counts, web: { k: 49, n: 48 } } }))).toEqual([
+      "Mock model A web: 49 of 48 isn't a count",
+    ])
+    expect(freePlanProblems(withRow(0, { counts: { ...m.rows[0].counts, both: { k: 41, n: 47 } } }))).toEqual([
+      'Mock model A: settings score different numbers of amounts (48, 47)',
+    ])
+    expect(freePlanProblems(withRow(1, { toolVsAlone: { points: 50, lo: 9, hi: 44 } }))).toEqual([
+      'Mock model B: 50 is outside its interval 9 to 44',
+      'Mock model B: change 50 but the counts give 27.1',
+    ])
+    // The counts give 27.08: the export's one decimal, 27.1, passes; 27.2 would show the same whole number but isn't the counts'.
+    expect(freePlanProblems(withRow(1, { toolVsAlone: { points: 27.1, lo: 9, hi: 44 } }))).toEqual([])
+    expect(freePlanProblems(withRow(1, { toolVsAlone: { points: 27.2, lo: 9, hi: 44 } }))).toEqual([
+      'Mock model B: change 27.2 but the counts give 27.1',
+    ])
+    // The interval's ends are the export's one decimal: the exact change may sit just past one, but not a tenth past.
+    const exact = (100 * 13) / 48
+    expect(freePlanProblems(withRow(1, { toolVsAlone: { points: exact, lo: 27.1, hi: 27.1 } }))).toEqual([])
+    expect(freePlanProblems(withRow(1, { toolVsAlone: { points: exact, lo: 27.2, hi: 30 } }))).toEqual([
+      `Mock model B: ${exact} is outside its interval 27.2 to 30`,
+    ])
+    expect(freePlanProblems(withRow(1, { toolVsAlone: { points: exact, lo: 27.1, hi: 27 } }))).toEqual([
+      'Mock model B: its interval 27.1 to 27 runs backward',
+      `Mock model B: ${exact} is outside its interval 27.1 to 27`,
+    ])
+    // Ends finer than one decimal get no allowance, so no change shows as leaving out zero when it is zero.
+    const noChange = { ...m.rows[1].counts, tool: m.rows[1].counts.alone }
+    expect(freePlanProblems(withRow(1, { counts: noChange, toolVsAlone: { points: 0, lo: 0.04, hi: 1 } }))).toEqual([
+      'Mock model B: 0 is outside its interval 0.04 to 1',
+    ])
+    expect(freePlanProblems(withRow(1, { counts: noChange, toolVsAlone: { points: 0, lo: 0.1, hi: 1 } }))).toEqual([
+      'Mock model B: 0 is outside its interval 0.1 to 1',
+    ])
+    expect(freePlanProblems(withRow(1, { counts: noChange, toolVsAlone: { points: 0, lo: -Infinity, hi: Infinity } }))).toEqual([
+      "Mock model B: change 0 with interval -Infinity to Infinity isn't finite",
+    ])
+    expect(freePlanProblems(withRow(1, { counts: noChange, toolVsAlone: { points: 0, lo: -1e308, hi: 1 } }))).toEqual([
+      'Mock model B: its interval -1e+308 to 1 goes past 100 points',
+    ])
+    // Hand-written: counts that give no change, a change within rounding of them, and an interval that leaves out zero.
+    const even = { k: 1, n: 2 }
+    expect(freePlanProblems(withRow(1, { counts: { alone: even, web: even, tool: even, both: even }, toolVsAlone: { points: 0.05, lo: 0.1, hi: 0.1 } }))).toEqual([
+      "Mock model B: the counts' change 0.00 is outside its interval 0.1 to 0.1",
+    ])
+    expect(freePlanProblems({ ...m, title: '', note: ' ', caveat: '', source: '' })).toEqual(['no title', 'no note', 'no caveat', 'no source'])
+    expect(freePlanProblems({ ...m, footnotes: [] })).toEqual(['no footnotes, or an empty one'])
+    expect(freePlanProblems({ ...m, footnotes: [...m.footnotes, ' '] })).toEqual(['no footnotes, or an empty one'])
+    const swapped = m.arms.map((a) => (a.id === 'alone' ? { ...a, label: 'With the PolicyEngine tool' } : a.id === 'tool' ? { ...a, label: 'On its own' } : a))
+    expect(freePlanProblems({ ...m, arms: swapped })).toEqual([
+      `the settings aren't "On its own", "With web search", "With the PolicyEngine tool", "With both", in that order`,
+    ])
+    expect(freePlanProblems(withRow(1, { model: ' ' }))).toEqual(['a model has no name'])
+    expect(freePlanProblems(withRow(1, { freePlan: ' ' }))).toEqual(['Mock model B: an empty free-plan line'])
+    // Within rounding of counts that give +0.01, but printed on the other side of zero.
+    const [none, one] = [{ k: 0, n: 10000 }, { k: 1, n: 10000 }]
+    expect(freePlanProblems(withRow(1, { counts: { alone: none, web: none, tool: one, both: one }, toolVsAlone: { points: -0.01, lo: -1, hi: 1 } }))).toEqual([
+      "Mock model B: change -0.01 is on the other side of zero from the counts' 0.01",
+    ])
+    // So small that its product with the counts' change underflows to zero.
+    expect(freePlanProblems(withRow(1, { counts: { alone: none, web: none, tool: one, both: one }, toolVsAlone: { points: -Number.MIN_VALUE, lo: -1, hi: 1 } }))).toEqual([
+      "Mock model B: change -5e-324 is on the other side of zero from the counts' 0.01",
+    ])
+    // Zero, of either sign, is on neither side.
+    for (const points of [0, -0]) {
+      expect(freePlanProblems(withRow(1, { counts: { alone: none, web: none, tool: one, both: one }, toolVsAlone: { points, lo: -1, hi: 1 } }))).toEqual([])
+    }
+    const huge = { k: 1e308, n: 1e308 }
+    expect(freePlanProblems(withRow(1, { counts: { alone: huge, web: huge, tool: huge, both: huge }, toolVsAlone: { points: 0, lo: 0, hi: 0 } }))).toEqual(
+      ["alone", "web", "tool", "both"].map((id) => `Mock model B ${id}: 1e+308 of 1e+308 isn't a count`),
+    )
+  })
+
+  it('passes only rows the slide can print: whole shares from 0 to 100, and finite changes and intervals', () => {
+    const m = MOCK_FREE_PLAN_PILOT
+    const size = fc.oneof(fc.integer({ min: 1, max: 2000 }), fc.constantFrom(2 ** 53 - 1, 2 ** 53, 1e308, Infinity, NaN))
+    const share = fc.double({ min: 0, max: 1, noNaN: true })
+    // Mostly ordinary ends, sometimes one the slide couldn't print.
+    const odd = fc.oneof({ weight: 4, arbitrary: fc.constant(null) }, { weight: 1, arbitrary: fc.constantFrom(Infinity, -Infinity, NaN, 1e308, -1e308) })
+    let passed = 0
+    fc.assert(
+      fc.property(size, share, share, fc.double({ min: 0, max: 30, noNaN: true }), odd, odd, (n, fa, ft, gap, oddLo, oddHi) => {
+        const [alone, tool] = [Math.floor(fa * n), Math.floor(ft * n)]
+        const points = (100 * (tool - alone)) / n
+        const toolVsAlone = { points, lo: oddLo ?? points - gap, hi: oddHi ?? points + gap }
+        const c = (k: number) => ({ k, n })
+        const row = { ...m.rows[1], counts: { alone: c(alone), web: c(alone), tool: c(tool), both: c(tool) }, toolVsAlone }
+        if (freePlanProblems({ ...m, rows: m.rows.map((r, j) => (j === 1 ? row : r)) }).length) return
+        passed++
+        for (const k of [alone, tool]) {
+          const s = wholeShare({ k, n })
+          expect(Number.isInteger(s) && s >= 0 && s <= 100).toBe(true)
+        }
+        for (const x of [points, toolVsAlone.lo, toolVsAlone.hi]) expect(formatPoints(x)).toMatch(/^(0|[+\u2212][0-9.e-]+)$/)
+      }),
+      { numRuns: 1000 },
+    )
+    // Not vacuous: ordinary rows pass.
+    expect(passed).toBeGreaterThan(200)
+  })
+
+  it('prints every change it passes inside its printed interval, and as leaving out zero only when the counts do', () => {
+    const m = MOCK_FREE_PLAN_PILOT
+    const tenth = (x: number) => Math.round(x * 10) / 10
+    const printed = (x: number) => Number(formatPoints(x).replace('\u2212', '-'))
+    const gap = fc.oneof(fc.double({ min: -0.2, max: 0.2, noNaN: true }), fc.double({ min: -0.2, max: 30, noNaN: true }))
+    const counts = fc
+      .integer({ min: 1, max: 20000 })
+      .chain((n) => fc.tuple(fc.constant(n), fc.integer({ min: 0, max: n }), fc.integer({ min: -2, max: 2 }), fc.integer({ min: 0, max: n })))
+    const how = fc.constantFrom('exact', 'export', 'by hand')
+    // Up to 20,000 amounts, so a change can be smaller than the 0.05 a hand-written one may be off by.
+    const off = fc.double({ min: -0.05, max: 0.05, noNaN: true })
+    let passed = 0
+    let apart = 0
+    fc.assert(
+      fc.property(counts, fc.boolean(), gap, gap, fc.boolean(), fc.boolean(), how, off, ([n, alone, step, far], near, below, above, roundLo, roundHi, written, by) => {
+        // The tool's count is often within two of no tools', so the change is often 0 or nearly.
+        const tool = near ? Math.min(n, Math.max(0, alone + step)) : far
+        const exact = (100 * (tool - alone)) / n
+        // The change as the converter writes it, as the export rounds it, or a hand-written one a little off.
+        const points = written === 'exact' ? exact : written === 'export' ? tenth(exact) : exact + by
+        const toolVsAlone = { points, lo: roundLo ? tenth(exact - below) : exact - below, hi: roundHi ? tenth(exact + above) : exact + above }
+        const c = (k: number) => ({ k, n })
+        const row = { ...m.rows[1], counts: { alone: c(alone), web: c(alone), tool: c(tool), both: c(tool) }, toolVsAlone }
+        if (freePlanProblems({ ...m, rows: m.rows.map((r, j) => (j === 1 ? row : r)) }).length) return
+        passed++
+        const [shown, lo, hi] = [printed(shownChange(toolVsAlone)), printed(toolVsAlone.lo), printed(toolVsAlone.hi)]
+        expect(lo <= shown && shown <= hi).toBe(true)
+        // Whatever the interval, the printed change is never on the other side of zero from the counts.
+        expect(shown * exact).toBeGreaterThanOrEqual(0)
+        if (!distinguishable(toolVsAlone)) return
+        apart++
+        const side = toolVsAlone.lo > 0 ? 1 : -1
+        expect(Math.sign(exact)).toBe(side)
+        expect(Math.sign(shown)).toBe(side)
+      }),
+      { numRuns: 2000 },
+    )
+    // Not vacuous: many pass, and many of those leave out zero.
+    expect(passed).toBeGreaterThan(400)
+    expect(apart).toBeGreaterThan(100)
+  })
+
+  it('prints points in order: a larger change never prints smaller', () => {
+    const printed = (x: number) => Number(formatPoints(x).replace('\u2212', '-'))
+    const point = fc.oneof(fc.double({ min: -100, max: 100, noNaN: true }), fc.double({ min: -1, max: 1, noNaN: true }))
+    fc.assert(
+      fc.property(point, point, (a, b) => {
+        const [x, y] = a <= b ? [a, b] : [b, a]
+        expect(printed(x)).toBeLessThanOrEqual(printed(y))
+      }),
+      { numRuns: 2000 },
+    )
+  })
+
+  it('shows the change at the end of its interval when the exact change sits just past a rounded end', () => {
+    expect(shownChange({ points: (100 * 100) / 801, lo: 12.5, hi: 12.5 })).toBe(12.5)
+    expect(shownChange({ points: -12.53, lo: -12.5, hi: 3 })).toBe(-12.5)
+    expect(shownChange({ points: 7.2, lo: 1, hi: 9 })).toBe(7.2)
+  })
+
+  it('shows a count as a whole percent within 0 to 100 that never falls as the count grows', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 1, max: 2000 }), fc.integer({ min: 0, max: 2000 }), (n, raw) => {
+        const k = raw % (n + 1)
+        const value = wholeShare({ k, n })
+        expect(Number.isInteger(value)).toBe(true)
+        expect(value).toBeGreaterThanOrEqual(0)
+        expect(value).toBeLessThanOrEqual(100)
+        expect(Math.abs(value - (100 * k) / n)).toBeLessThanOrEqual(0.5)
+        // Exactly halfway, as 1 of 8 is, it rounds up.
+        if ((200 * k) % n === 0 && ((200 * k) / n) % 2 === 1) expect(value).toBe(((200 * k) / n + 1) / 2)
+        if (k < n) expect(wholeShare({ k: k + 1, n })).toBeGreaterThanOrEqual(value)
+      }),
+    )
+    expect([wholeShare({ k: 1, n: 8 }), wholeShare({ k: 3, n: 8 }), wholeShare({ k: 1, n: 200 })]).toEqual([13, 38, 1])
+  })
+
+  it('rounds a share exactly for any safe-integer count, however large', () => {
+    const abs = (x: bigint) => (x < BigInt(0) ? -x : x)
+    fc.assert(
+      fc.property(fc.integer({ min: 1, max: Number.MAX_SAFE_INTEGER }), fc.double({ min: 0, max: 1, noNaN: true }), (n, f) => {
+        const k = Math.min(n, Math.floor(f * n))
+        const s = wholeShare({ k, n })
+        // In whole numbers: the share s is within half a point of 100k/n, so |200k - 2sn| <= n, and a tie rounds up.
+        const [K, N, S] = [BigInt(k), BigInt(n), BigInt(s)]
+        const twice = BigInt(200) * K - BigInt(2) * S * N
+        expect(abs(twice) <= N).toBe(true)
+        if (abs(twice) === N) expect(twice < BigInt(0)).toBe(true)
+      }),
+      { numRuns: 2000 },
+    )
+    // Floating point rounds this one up to 11; its exact share is just under 10.5.
+    expect(wholeShare({ k: 945755921747804, n: 9007199254740991 })).toBe(10)
+  })
+
+  it("keeps the settings' headings fixed, so a converted pilot can't change what the check expects", () => {
+    expect(Object.isFrozen(FREE_PLAN_ARMS)).toBe(true)
+    expect(FREE_PLAN_ARMS.every((a) => Object.isFrozen(a))).toBe(true)
+    expect(() => {
+      ;(FREE_PLAN_ARMS[0] as { label: string }).label = 'With the PolicyEngine tool'
+    }).toThrow(TypeError)
+  })
+
+  it('writes points whole with their sign, "0" only for no change, and one significant digit where whole would read as 0', () => {
+    fc.assert(
+      fc.property(fc.double({ min: -100, max: 100, noNaN: true }), (x) => {
+        const text = formatPoints(x)
+        if (x === 0) {
+          expect(text).toBe('0')
+          return
+        }
+        expect(text.startsWith(x > 0 ? '+' : '\u2212')).toBe(true)
+        const back = Number(text.replace('\u2212', '-'))
+        if (Math.round(x) !== 0) expect(back).toBe(Math.round(x))
+        else {
+          // One significant digit: never zero, and off by at most half the value.
+          expect(back).not.toBe(0)
+          expect(Math.abs(back - x)).toBeLessThanOrEqual(Math.abs(x) / 2)
+        }
+      }),
+    )
+    expect(formatPoints(5e-324)).toBe('+5e-324')
+    expect(formatPoints(0.099)).toBe('+0.1')
+    expect(formatPoints(7.8)).toBe('+8')
+    expect(formatPoints(-0.4)).toBe('\u22120.4')
+    expect(formatPoints(0.1)).toBe('+0.1')
+    expect(formatPoints(0.04)).toBe('+0.04')
+    expect(formatPoints(-0.5)).toBe('\u22120.5')
+    expect(formatPoints(0)).toBe('0')
+  })
+
+  it('calls a change distinguishable exactly when its interval leaves out zero', () => {
+    fc.assert(
+      fc.property(fc.double({ min: -100, max: 100, noNaN: true }), fc.double({ min: 0, max: 100, noNaN: true }), (lo, width) => {
+        const hi = lo + width
+        expect(distinguishable({ points: (lo + hi) / 2, lo, hi })).toBe(!(lo <= 0 && 0 <= hi))
+      }),
+    )
   })
 })
