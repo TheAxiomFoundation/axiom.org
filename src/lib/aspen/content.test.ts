@@ -27,8 +27,14 @@ import {
   toolPilotMisses,
   LIVE_DEMO,
   liveDemoUrl,
+  FREE_PLAN_PILOT,
+  distinguishable,
+  formatPoints,
+  wholeShare,
+  type FreePlanPilot,
 } from './content'
 import { federalFiscalYear } from './coverage'
+import { MOCK_FREE_PLAN_PILOT } from '@/test/aspen-free-plan.mock'
 
 describe('aspen content', () => {
   it('lists every stage once, in run-of-show order, without clock times', () => {
@@ -275,5 +281,129 @@ describe('aspen content', () => {
     expect(url.searchParams.get('q')).toBe(LIVE_DEMO.question)
     // The frame never sends on its own; the presenter presses Send.
     expect(url.searchParams.has('go')).toBe(false)
+  })
+})
+
+/**
+ * What any free-plan pilot must satisfy before it goes on the screen. They run
+ * against FREE_PLAN_PILOT once it's set, and against the mock now.
+ */
+function freePlanProblems(p: FreePlanPilot): string[] {
+  const problems: string[] = []
+  const armIds = p.arms.map((a) => a.id)
+  if (new Set(armIds).size !== armIds.length) problems.push('an arm is listed twice')
+  if (!armIds.includes('alone') || !armIds.includes('tool')) problems.push('the change needs both no tools and the tool')
+  if (!p.label.trim()) problems.push('no label: the room has to read these as preliminary')
+  // The models on free plans come first, so the slide reads them first.
+  const firstComparison = p.rows.findIndex((r) => r.freePlan === null)
+  if (firstComparison >= 0 && p.rows.slice(firstComparison).some((r) => r.freePlan !== null)) {
+    problems.push('a free-plan model comes after a comparison model')
+  }
+  if (new Set(p.rows.map((r) => r.model)).size !== p.rows.length) problems.push('a model is listed twice')
+  if (p.rows.length < 1 || p.rows.length > 6) problems.push(`${p.rows.length} rows; the slide fits 1 to 6`)
+  for (const r of p.rows) {
+    const ns = new Set<number>()
+    for (const id of armIds) {
+      const c = r.counts[id]
+      if (!c) {
+        problems.push(`${r.model}: no count for ${id}`)
+        continue
+      }
+      if (!Number.isInteger(c.k) || !Number.isInteger(c.n) || c.n < 1 || c.k < 0 || c.k > c.n) {
+        problems.push(`${r.model} ${id}: ${c.k} of ${c.n} isn't a count`)
+      }
+      ns.add(c.n)
+    }
+    // A failed or missing answer counts as a miss, so every setting scores the same amounts.
+    if (ns.size > 1) problems.push(`${r.model}: settings score different numbers of amounts (${[...ns].join(', ')})`)
+    const { points, lo, hi } = r.toolVsAlone
+    if (!(lo <= points && points <= hi)) problems.push(`${r.model}: ${points} is outside its interval ${lo} to ${hi}`)
+    // The paired change on the same amounts is the counts' own difference (to rounding).
+    const alone = r.counts.alone
+    const tool = r.counts.tool
+    if (alone && tool && alone.n === tool.n) {
+      const fromCounts = (100 * (tool.k - alone.k)) / tool.n
+      if (Math.abs(fromCounts - points) > 0.5) problems.push(`${r.model}: change ${points} but the counts give ${fromCounts.toFixed(1)}`)
+    }
+  }
+  return problems
+}
+
+describe('the free-plan pilot', () => {
+  it('passes every check, if it is set', () => {
+    if (FREE_PLAN_PILOT) expect(freePlanProblems(FREE_PLAN_PILOT)).toEqual([])
+    // Until it's cleared to show, the slide is off and no numbers are in this public repo.
+    else expect(FREE_PLAN_PILOT).toBeNull()
+  })
+
+  it('checks the mock the same way, and catches what would put a wrong number on the screen', () => {
+    expect(freePlanProblems(MOCK_FREE_PLAN_PILOT)).toEqual([])
+    const m = MOCK_FREE_PLAN_PILOT
+    const withRow = (i: number, row: Partial<FreePlanPilot['rows'][number]>): FreePlanPilot => ({
+      ...m,
+      rows: m.rows.map((r, j) => (j === i ? { ...r, ...row } : r)),
+    })
+    expect(freePlanProblems({ ...m, label: ' ' })).toEqual(['no label: the room has to read these as preliminary'])
+    expect(freePlanProblems({ ...m, arms: m.arms.filter((a) => a.id !== 'alone') })).toContain(
+      'the change needs both no tools and the tool',
+    )
+    expect(freePlanProblems({ ...m, arms: [...m.arms, m.arms[0]] })).toContain('an arm is listed twice')
+    expect(freePlanProblems({ ...m, rows: [m.rows[3], ...m.rows.slice(0, 3), ...m.rows.slice(4)] })).toContain(
+      'a free-plan model comes after a comparison model',
+    )
+    expect(freePlanProblems({ ...m, rows: [...m.rows, m.rows[0]] })).toEqual(
+      expect.arrayContaining(['a model is listed twice', '7 rows; the slide fits 1 to 6']),
+    )
+    expect(freePlanProblems(withRow(0, { counts: { ...m.rows[0].counts, web: undefined } }))).toEqual([
+      'Mock model A: no count for web',
+    ])
+    expect(freePlanProblems(withRow(0, { counts: { ...m.rows[0].counts, web: { k: 49, n: 48 } } }))).toEqual([
+      "Mock model A web: 49 of 48 isn't a count",
+    ])
+    expect(freePlanProblems(withRow(0, { counts: { ...m.rows[0].counts, both: { k: 41, n: 47 } } }))).toEqual([
+      'Mock model A: settings score different numbers of amounts (48, 47)',
+    ])
+    expect(freePlanProblems(withRow(1, { toolVsAlone: { points: 50, lo: 9, hi: 44 } }))).toEqual([
+      'Mock model B: 50 is outside its interval 9 to 44',
+      'Mock model B: change 50 but the counts give 27.1',
+    ])
+  })
+
+  it('shows a count as a whole percent within 0 to 100 that never falls as the count grows', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 1, max: 2000 }), fc.integer({ min: 0, max: 2000 }), (n, raw) => {
+        const k = raw % (n + 1)
+        const value = wholeShare({ k, n })
+        expect(Number.isInteger(value)).toBe(true)
+        expect(value).toBeGreaterThanOrEqual(0)
+        expect(value).toBeLessThanOrEqual(100)
+        expect(Math.abs(value - (100 * k) / n)).toBeLessThanOrEqual(0.5)
+        if (k < n) expect(wholeShare({ k: k + 1, n })).toBeGreaterThanOrEqual(value)
+      }),
+    )
+  })
+
+  it('writes points with their sign and reads back to the rounded value', () => {
+    fc.assert(
+      fc.property(fc.double({ min: -100, max: 100, noNaN: true }), (x) => {
+        const text = formatPoints(x)
+        const whole = Math.round(x)
+        expect(Number(text.replace('\u2212', '-'))).toBe(whole === 0 ? 0 : whole)
+        if (whole > 0) expect(text.startsWith('+')).toBe(true)
+        if (whole < 0) expect(text.startsWith('\u2212')).toBe(true)
+        if (whole === 0) expect(text).toBe('0')
+      }),
+    )
+    expect(formatPoints(-0.4)).toBe('0')
+    expect(formatPoints(7.8)).toBe('+8')
+  })
+
+  it('calls a change distinguishable exactly when its interval leaves out zero', () => {
+    fc.assert(
+      fc.property(fc.double({ min: -100, max: 100, noNaN: true }), fc.double({ min: 0, max: 100, noNaN: true }), (lo, width) => {
+        const hi = lo + width
+        expect(distinguishable({ points: (lo + hi) / 2, lo, hi })).toBe(!(lo <= 0 && 0 <= hi))
+      }),
+    )
   })
 })

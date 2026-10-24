@@ -904,9 +904,9 @@ export function toolPilotMisses(p: ToolPilot): { misses: number; scored: number 
 }
 
 /**
- * At scale 6/7: what changes when a model can call a rules engine. Each arm is
- * one bar per model; a later run (more arms, such as web search, or other
- * models) only changes `amounts`, `arms` and `rows`.
+ * At scale 6: what changes when a model can call a rules engine. Each arm is
+ * one bar per model. A run on other households (the free-plan pilot) gets its
+ * own slide (FREE_PLAN_PILOT), because its amounts aren't these.
  */
 export const TOOL_PILOT: ToolPilot = {
   title: "The same models, given a rules engine as a tool",
@@ -937,6 +937,74 @@ export const TOOL_PILOT: ToolPilot = {
   missesCause: "came from how the model described the household or read back the answer, not from the calculation.",
   source: "PolicyBench note, October 20, 2026 · runs October 14–15 · no-tool answers from the October 14 board · counts from the note's data",
 };
+
+/** One model's count in one setting: k of n dollar amounts right. */
+export interface PilotCount {
+  k: number;
+  n: number;
+}
+
+/** A model's paired change from no tools, in percentage points, with its 95% interval. */
+export interface PilotChange {
+  points: number;
+  lo: number;
+  hi: number;
+}
+
+/**
+ * A pilot on its own households, in every setting: on its own, with web
+ * search, with the tool, and with both. Each model's change from no tools to
+ * the tool is the reading; gaps between models aren't, since at about 50
+ * amounts a model one setting's interval is roughly 10 to 15 points each way.
+ */
+export interface FreePlanPilot {
+  title: string;
+  /** Shown beside the title, so the room reads the numbers as preliminary. */
+  label: string;
+  note: string;
+  arms: readonly { id: ToolPilotArmId; label: string }[];
+  /** The models on free plans first, then any shown for comparison. */
+  rows: readonly {
+    model: string;
+    /**
+     * How the model relates to a free plan, as the slide says it ("On Claude's
+     * free plan"). Only as much as the provider's own page states. Null for a
+     * comparison model.
+     */
+    freePlan: string | null;
+    counts: Readonly<Partial<Record<ToolPilotArmId, PilotCount>>>;
+    toolVsAlone: PilotChange;
+  }[];
+  caveat: string;
+  footnotes: readonly string[];
+  source: string;
+}
+
+/** A count as a whole percent: at about 50 amounts, a decimal would claim precision the run doesn't have. */
+export function wholeShare(c: PilotCount): number {
+  return Math.round((100 * c.k) / c.n);
+}
+
+/** Whether a change's interval leaves out zero, so it reads as a change at this size. */
+export function distinguishable(c: PilotChange): boolean {
+  return c.lo > 0 || c.hi < 0;
+}
+
+/** Whole points with a sign, "+28" or "−14" (a true minus sign), and "0" for no change. */
+export function formatPoints(points: number): string {
+  const whole = Math.round(points);
+  if (whole === 0) return "0";
+  return whole > 0 ? `+${whole}` : `\u2212${-whole}`;
+}
+
+/**
+ * At scale, after the tool pilot: the models on free plans, with web search
+ * and with a tool that runs PolicyEngine, from PolicyBench's preliminary
+ * internal pilot. Null until its final tables are cleared to show, and the
+ * slide shows only when it's set. This repo is public, so the numbers go in
+ * only then.
+ */
+export const FREE_PLAN_PILOT: FreePlanPilot | null = null;
 
 /**
  * At scale 7/7: the live chatbot demo (TheAxiomFoundation/finbot-snap-demo,
