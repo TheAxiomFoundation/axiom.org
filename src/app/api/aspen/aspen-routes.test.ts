@@ -172,7 +172,7 @@ describe('aspen API routes', () => {
     expect((await event(post({ participantId: P, kind: 'discussion', payload: { question: 'nope', note: '' } }))).status).toBe(400)
     // An empty answer to a known question is someone taking back their comment: it saves.
     const cleared = await event(post({ participantId: P, kind: 'discussion', payload: { question: 'experience', ratings: {}, topics: [], note: '' } }))
-    expect(cleared.status).toBe(200)
+    expect(await cleared.json()).toEqual({ ok: true, saved: true })
     expect((await event(post({ participantId: P, kind: 'hack', payload: {} }))).status).toBe(400)
     expect((await event(post({ participantId: P, kind: 'stage_view', payload: { stage: 'nope' } }))).status).toBe(400)
 
@@ -232,6 +232,43 @@ describe('aspen API routes', () => {
     await signIn(post({ password: 'stage' }))
     const presenter = await (await results(new Request('https://axiom.org/api/aspen/results'))).json()
     expect(presenter.summary.discussion.notes).toContainEqual({ question: 'experience', text: 'Our chatbot misread the asset test' })
+  })
+
+  it('orders saves by their stamps, so a slow earlier save never replaces a later one', async () => {
+    await signIn(post({ password: 'stage' }))
+    const asked = await readLines(
+      await ask(post({ participantId: P, conversationId: C, turn: 0, messages: [{ role: 'user', content: 'Can I get SNAP?' }] })),
+    )
+    const promptId = String(asked[0].promptId)
+    const rateAt = async (rev: unknown, verdict: string) => (await rate(post({ participantId: P, promptId, verdict, rev }))).json()
+    const room = async () => (await (await results(new Request('https://axiom.org/api/aspen/results'))).json()).summary
+
+    expect(await rateAt(1_792_000_002_000, 'wrong')).toEqual({ ok: true, saved: true })
+    // The tap before it, landing after: not saved, and the later rating stands.
+    expect(await rateAt(1_792_000_001_000, 'right')).toEqual({ ok: true, saved: false })
+    expect((await room()).feed[0].verdict).toBe('wrong')
+    expect(await rateAt(1_792_000_003_000, 'unsure')).toEqual({ ok: true, saved: true })
+    expect((await room()).feed[0].verdict).toBe('unsure')
+    // A page that sends no stamp, or a bad one, saves as it always did.
+    expect(await rateAt(undefined, 'right')).toEqual({ ok: true, saved: true })
+    expect(await rateAt('soon', 'wrong')).toEqual({ ok: true, saved: true })
+    expect((await room()).feed[0].verdict).toBe('wrong')
+
+    // The same for answers that save as events: the later stamp counts, whichever landed last.
+    const comment = (note: unknown, rev: number, ratings: unknown = { residents: 2 }) =>
+      event(post({ participantId: P, kind: 'discussion', payload: { question: 'experience', ratings, topics: [], note, rev } }))
+    expect(await (await comment('Later comment', 1_792_000_002_000)).json()).toEqual({ ok: true, saved: true })
+    expect(await (await comment('Earlier comment', 1_792_000_001_000)).json()).toEqual({ ok: true, saved: true })
+    expect((await room()).discussion.notes).toContainEqual({ question: 'experience', text: 'Later comment' })
+    expect(JSON.stringify(await room())).not.toContain('Earlier comment')
+
+    // A malformed answer never clears it: a known question with nothing that survives cleaning is refused.
+    expect((await comment(123, 1_792_000_003_000, { residents: 99 })).status).toBe(400)
+    expect((await comment('', 1_792_000_003_000, { residents: 99 })).status).toBe(400)
+    expect((await room()).discussion.notes).toContainEqual({ question: 'experience', text: 'Later comment' })
+    // An explicit empty answer takes it back.
+    expect(await (await comment('', 1_792_000_004_000, {})).json()).toEqual({ ok: true, saved: true })
+    expect(JSON.stringify(await room())).not.toContain('Later comment')
   })
 
   it('rejects bad questions and records failed answers', async () => {

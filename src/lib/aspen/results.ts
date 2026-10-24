@@ -286,12 +286,30 @@ export function actedOn(p: Pick<PromptRow, "would_act" | "resident_action">): bo
   return p.resident_action === "apply" || p.resident_action === "not-apply";
 }
 
+/** An event's save stamp (client.ts nextRev), when the page sent one. */
+function revOf(e: { payload?: Record<string, unknown> }): number | null {
+  const rev = e.payload?.rev;
+  return typeof rev === "number" && Number.isFinite(rev) ? rev : null;
+}
+
+/** Whether `e` comes at or after `prev`: by save stamp when both have one, a stamped one after one without, else by time. */
+function atOrAfter(e: { payload?: Record<string, unknown>; created_at?: string }, prev: typeof e): boolean {
+  const a = revOf(e);
+  const b = revOf(prev);
+  if (a !== null && b !== null && a !== b) return a > b;
+  if ((a === null) !== (b === null)) return a !== null;
+  return (e.created_at ?? "") >= (prev.created_at ?? "");
+}
+
 /**
  * Each person's latest event per key: answers save on every tap, so someone
- * who changes their mind counts once, with their last choice. Events saved
- * without a participant each count on their own.
+ * who changes their mind counts once, with their last choice. The last
+ * choice is the one with the highest save stamp, so a slow save that lands
+ * after a newer one doesn't count over it; events from a page that sent no
+ * stamp (before stamps, so earlier) go by time. Events saved without a
+ * participant each count on their own.
  */
-export function latestPerParticipant<T extends { participant_id?: string | null; created_at?: string }>(
+export function latestPerParticipant<T extends { participant_id?: string | null; created_at?: string; payload?: Record<string, unknown> }>(
   events: T[],
   key: (e: T) => string,
 ): T[] {
@@ -304,7 +322,7 @@ export function latestPerParticipant<T extends { participant_id?: string | null;
     }
     const k = `${e.participant_id}\u0000${key(e)}`;
     const prev = latest.get(k);
-    if (!prev || (e.created_at ?? "") >= (prev.created_at ?? "")) latest.set(k, e);
+    if (!prev || atOrAfter(e, prev)) latest.set(k, e);
   }
   return [...loose, ...latest.values()].sort((a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? ""));
 }

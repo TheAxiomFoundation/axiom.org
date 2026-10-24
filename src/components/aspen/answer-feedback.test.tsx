@@ -124,7 +124,7 @@ describe("outputLabel", () => {
 });
 
 describe("RatingCard", () => {
-  const ok = () => vi.fn().mockResolvedValue(jsonResponse({ ok: true }));
+  const ok = () => vi.fn().mockResolvedValue(jsonResponse({ ok: true, saved: true }));
 
   it("asks two things: how it looks, with optional tags and a note, then what a resident would do", async () => {
     vi.stubGlobal("fetch", ok());
@@ -186,6 +186,7 @@ describe("RatingCard", () => {
       wentWell: [],
       wentWrong: [],
       note: "",
+      rev: expect.any(Number),
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Wrong amount" }));
@@ -216,7 +217,11 @@ describe("RatingCard", () => {
       wentWell: ["Gave a number"],
       wentWrong: ["Wrong amount"],
       note: "Missed BBCE",
+      rev: expect.any(Number),
     });
+    // Each save's stamp is above the one before, so the server can order them whatever order they arrive in.
+    const revs = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body as string).rev as number);
+    expect(revs.every((r, i) => i === 0 || r > revs[i - 1])).toBe(true);
     // The retired question is never sent, so a new rating can't carry an old answer.
     expect(fetchMock.mock.calls.every((c) => !("wouldAct" in JSON.parse(c[1].body as string)))).toBe(true);
   });
@@ -245,21 +250,21 @@ describe("RatingCard", () => {
     // The second waits for the first, so a slow first save can't land last and undo a tag.
     await act(async () => {});
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    await act(async () => resolvers[0](jsonResponse({ ok: true })));
+    await act(async () => resolvers[0](jsonResponse({ ok: true, saved: true })));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    await act(async () => resolvers[1](jsonResponse({ ok: true })));
+    await act(async () => resolvers[1](jsonResponse({ ok: true, saved: true })));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     expect(bodyOf(fetchMock, 1).wentWrong).toEqual(["Wrong amount"]);
     expect(bodyOf(fetchMock, 2).wentWrong).toEqual(["Wrong amount", "Too vague"]);
-    await act(async () => resolvers[2](jsonResponse({ ok: true })));
+    await act(async () => resolvers[2](jsonResponse({ ok: true, saved: true })));
   });
 
   it("says when a save fails, keeps the choice, and saves on the next tap", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse({ ok: true }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, saved: true }))
       .mockResolvedValueOnce(jsonResponse({ error: "no" }, false))
-      .mockResolvedValue(jsonResponse({ ok: true }));
+      .mockResolvedValue(jsonResponse({ ok: true, saved: true }));
     vi.stubGlobal("fetch", fetchMock);
     const onRated = vi.fn();
     render(<RatingCard promptId="p1" onRated={onRated} />);
@@ -297,7 +302,7 @@ describe("RatingCard", () => {
       // A request that stalls until it is aborted.
       const stall = (_url: string, init: RequestInit) =>
         new Promise<Response>((_, reject) => init.signal?.addEventListener("abort", () => reject(new Error("aborted"))));
-      const fetchMock = vi.fn().mockImplementationOnce(stall).mockImplementationOnce(stall).mockResolvedValue(jsonResponse({ ok: true }));
+      const fetchMock = vi.fn().mockImplementationOnce(stall).mockImplementationOnce(stall).mockResolvedValue(jsonResponse({ ok: true, saved: true }));
       vi.stubGlobal("fetch", fetchMock);
       render(<RatingCard promptId="p1" />);
       fireEvent.click(screen.getByRole("button", { name: "Looks wrong" }));
@@ -348,11 +353,46 @@ describe("RatingCard", () => {
     expect(screen.getByRole("textbox")).toHaveValue("Ignored BBCE");
   });
 
+  it("reopens a card whose last save never confirmed saying so, and the next tap saves it and moves on", async () => {
+    localStorage.setItem(
+      RATING_KEY,
+      JSON.stringify({ p1: { rating: { verdict: "wrong", residentAction: "apply", wentWell: [], wentWrong: [], note: "" }, step: 1, unsaved: true } }),
+    );
+    const fetchMock = ok();
+    vi.stubGlobal("fetch", fetchMock);
+    const onRated = vi.fn();
+    render(<RatingCard promptId="p1" onRated={onRated} />);
+    expect(await screen.findByText("That didn't save. Tap it again.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Apply" })).toHaveAttribute("aria-pressed", "true");
+    expect(onRated).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(onRated).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText("That didn't save. Tap it again.")).not.toBeInTheDocument();
+    expect(readRatingDraft("p1")?.unsaved).toBe(false);
+  });
+
+  it("marks the draft unsaved while a save is on its way, and saved once the latest one lands", async () => {
+    const resolvers: ((r: Response) => void)[] = [];
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((r) => resolvers.push(r))));
+    render(<RatingCard promptId="p1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Looks wrong" }));
+    fireEvent.click(screen.getByRole("button", { name: "Wrong amount" }));
+    expect(readRatingDraft("p1")?.unsaved).toBe(true);
+    await waitFor(() => expect(resolvers).toHaveLength(1));
+    // The first lands but the second is still on its way: still unsaved.
+    await act(async () => resolvers[0](jsonResponse({ ok: true, saved: true })));
+    await waitFor(() => expect(resolvers).toHaveLength(2));
+    expect(readRatingDraft("p1")?.unsaved).toBe(true);
+    await act(async () => resolvers[1](jsonResponse({ ok: true, saved: true })));
+    await waitFor(() => expect(readRatingDraft("p1")?.unsaved).toBe(false));
+    expect(readRatingDraft("p1")?.rating.wentWrong).toEqual(["Wrong amount"]);
+  });
+
   it("keeps each answer's card apart, and ignores a draft it can't read", () => {
     localStorage.setItem(
       RATING_KEY,
       JSON.stringify({
-        p1: { rating: { verdict: "right", residentAction: null, wentWell: ["Clear"], wentWrong: [], note: "Good" }, step: 0 },
+        p1: { rating: { verdict: "right", residentAction: null, wentWell: ["Clear"], wentWrong: [], note: "Good" }, step: 0, unsaved: true },
         p2: { rating: "garbage", step: 1 },
         p3: { rating: { verdict: 7, wentWell: "Clear", note: 3 }, step: 1 },
       }),
@@ -360,12 +400,14 @@ describe("RatingCard", () => {
     expect(readRatingDraft("p1")).toEqual({
       rating: { verdict: "right", residentAction: null, wentWell: ["Clear"], wentWrong: [], note: "Good" },
       step: 0,
+      unsaved: true,
     });
     expect(readRatingDraft("p2")).toBeNull();
     // Wrong types become empty, and a draft without a verdict reopens on the first step.
     expect(readRatingDraft("p3")).toEqual({
       rating: { verdict: null, residentAction: null, wentWell: [], wentWrong: [], note: "" },
       step: 0,
+      unsaved: false,
     });
     expect(readRatingDraft("p4")).toBeNull();
   });

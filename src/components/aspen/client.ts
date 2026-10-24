@@ -18,10 +18,13 @@ export const VOTE_KEY = "aspen.vote.v1";
 export const RATING_KEY = "aspen.rating.v1";
 /** Keys from earlier versions of the page, dropped with the rest at a new run. */
 const RETIRED_KEYS = ["aspen.overall.v1"];
+/** The last save stamp this device used (nextRev). Never dropped, so stamps keep going up across runs. */
+const REV_KEY = "aspen.rev";
 /** The participant's text size: kept on the phone, never sent anywhere. */
 export const TEXT_SIZE_KEY = "aspen.textSize.v1";
 
 let fallbackId: string | null = null;
+let lastRev = 0;
 
 function newId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -93,6 +96,22 @@ export function enterRun(runId: string): boolean {
   return dropped;
 }
 
+/**
+ * A stamp for one save, taken at the tap: its time in milliseconds, but
+ * always above the last stamp this device used (in any tab), so taps carry
+ * stamps in the order they were made even if the clock steps back. The rate
+ * route keeps a rating only over an older stamp, and the results count each
+ * person's highest-stamped answer, so a slow save that lands after a newer
+ * one never replaces it.
+ */
+export function nextRev(now = Date.now()): number {
+  const stored = readStored<unknown>(REV_KEY);
+  const floor = Math.max(lastRev, typeof stored === "number" && Number.isSafeInteger(stored) ? stored : 0);
+  lastRev = Math.max(Math.floor(now), floor + 1);
+  writeStored(REV_KEY, lastRev);
+  return lastRev;
+}
+
 export async function postJson<T = Record<string, unknown>>(
   url: string,
   body: unknown,
@@ -110,9 +129,10 @@ export async function postJson<T = Record<string, unknown>>(
 export const SAVE_TIMEOUT_MS = 10_000;
 
 /**
- * Posts one save and says whether the store kept it. A timeout, a dropped
- * connection, an error status and a store failure (the routes answer
- * `saved: false`) all count as not saved. It never throws.
+ * Posts one save and says whether the store kept it: only the route's own
+ * `saved: true` counts. A timeout (while waiting or while reading the
+ * answer), a dropped connection, an error status, an unreadable answer and a
+ * store failure (`saved: false`) all count as not saved. It never throws.
  */
 export async function saveJson(url: string, body: unknown, timeoutMs = SAVE_TIMEOUT_MS): Promise<boolean> {
   const controller = new AbortController();
@@ -124,8 +144,9 @@ export async function saveJson(url: string, body: unknown, timeoutMs = SAVE_TIME
       body: JSON.stringify(body),
       signal: controller.signal,
     });
-    const data = (await response.json().catch(() => ({}))) as { saved?: unknown };
-    return response.ok && data.saved !== false;
+    // A body the timeout cuts off throws here, so it counts as not saved.
+    const data = (await response.json()) as { saved?: unknown } | null;
+    return response.ok && data?.saved === true;
   } catch {
     return false;
   } finally {

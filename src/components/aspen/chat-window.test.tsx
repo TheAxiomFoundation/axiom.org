@@ -45,7 +45,7 @@ function routeFetch(routes: Record<string, Handler | Handler[]>) {
   const mock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = String(input).split("?")[0];
     const route = queues.get(path);
-    if (!route) return jsonResponse({ ok: true });
+    if (!route) return jsonResponse({ ok: true, saved: true });
     const handler = Array.isArray(route) ? route.shift() : route;
     if (!handler) throw new Error(`no more responses for ${path}`);
     return handler(init);
@@ -134,7 +134,7 @@ describe("ChatWindow composing", () => {
   it("points to Rate it once the answer is rated", async () => {
     routeFetch({
       "/api/aspen/ask": () => streamResponse(streamOf([{ type: "meta", promptId: "p-r" }, { type: "delta", text: "Ok" }, { type: "done" }])),
-      "/api/aspen/rate": () => jsonResponse({ ok: true }),
+      "/api/aspen/rate": () => jsonResponse({ ok: true, saved: true }),
     });
     const onRateOverall = vi.fn();
     render(<ChatWindow stage="try" onRateOverall={onRateOverall} />);
@@ -322,7 +322,7 @@ describe("ChatWindow asking", () => {
     const second = controlledStream();
     const fetchMock = routeFetch({
       "/api/aspen/ask": [() => streamResponse(first.stream), () => streamResponse(second.stream)],
-      "/api/aspen/rate": () => jsonResponse({ ok: true }),
+      "/api/aspen/rate": () => jsonResponse({ ok: true, saved: true }),
     });
     render(<ChatWindow stage="try" />);
     pickRetiree();

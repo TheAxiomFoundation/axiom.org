@@ -2,7 +2,7 @@ import { POST_CHECK, RESIDENT_ACTIONS, VERDICTS, WENT_WELL, WENT_WRONG, WOULD_AC
 import { apiAccess, json, readBody } from "@/lib/aspen/http";
 import { isRateLimited } from "@/lib/aspen/limit";
 import { getStore } from "@/lib/aspen/store";
-import { cleanChoice, cleanChoices, clipText, isUuid } from "@/lib/aspen/validate";
+import { cleanChoice, cleanChoices, cleanRev, clipText, isUuid } from "@/lib/aspen/validate";
 
 export const dynamic = "force-dynamic";
 
@@ -24,10 +24,13 @@ export async function POST(request: Request) {
   }
 
   const postCheck = cleanChoice(body?.postCheck, ids(POST_CHECK));
+  // The page stamps each rating at the tap; a stamped rating saves only over an older one.
+  const rev = cleanRev(body?.rev);
+  const ratedAt = new Date(rev ?? Date.now()).toISOString();
   const patch = postCheck
     ? { post_check_verdict: postCheck }
     : {
-        rated_at: new Date().toISOString(),
+        rated_at: ratedAt,
         verdict: cleanChoice(body?.verdict, ids(VERDICTS)),
         would_act: cleanChoice(body?.wouldAct, ids(WOULD_ACT)),
         resident_action: cleanChoice(body?.residentAction, ids(RESIDENT_ACTIONS)),
@@ -42,7 +45,7 @@ export async function POST(request: Request) {
   const store = getStore();
   if (!store) return json({ ok: true, saved: false });
   try {
-    const saved = await store.updatePrompt(promptId, participantId, patch);
+    const saved = await store.updatePrompt(promptId, participantId, patch, !postCheck && rev ? ratedAt : undefined);
     return json({ ok: true, saved });
   } catch (error) {
     console.error("[aspen] rating save failed:", error);

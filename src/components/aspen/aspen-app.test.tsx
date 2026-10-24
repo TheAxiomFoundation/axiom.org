@@ -68,7 +68,7 @@ beforeEach(() => {
     const url = String(input);
     if (url === "/api/aspen/state") return jsonResponse(control);
     if (url.startsWith("/api/aspen/results")) return jsonResponse({ runId: control.runId, live: true, summary });
-    return jsonResponse({ ok: true });
+    return jsonResponse({ ok: true, saved: true });
   });
   vi.stubGlobal("fetch", fetchMock);
   vi.stubGlobal("scrollTo", vi.fn());
@@ -149,7 +149,7 @@ describe("AspenApp following the presenter", () => {
       const url = String(input);
       if (url === "/api/aspen/state") return jsonResponse(control);
       if (url.startsWith("/api/aspen/results")) return new Promise<Response>(() => {});
-      return jsonResponse({ ok: true });
+      return jsonResponse({ ok: true, saved: true });
     });
     render(<AspenApp />);
     await onView("reveal");
@@ -408,7 +408,7 @@ describe("AspenApp without a live presenter", () => {
     await waitFor(() =>
       expect(events()).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ kind: "survey", stage: "try", payload: { question: "source-of-truth", answer: "partly" } }),
+          expect.objectContaining({ kind: "survey", stage: "try", payload: { question: "source-of-truth", answer: "partly", rev: expect.any(Number) } }),
           expect.objectContaining({
             kind: "discussion",
             stage: "try",
