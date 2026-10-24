@@ -390,6 +390,22 @@ function spotlightReason(p: PromptRow): Spotlight["reason"] | null {
   return null;
 }
 
+/**
+ * Each conversation's first question, once: the one asked last. "Ask again"
+ * after a failed or cut-off first answer saves the question again in the same
+ * conversation, and someone who asked once counts once. A tie in time keeps
+ * the later row.
+ */
+export function firstQuestions(prompts: PromptRow[]): PromptRow[] {
+  const latest = new Map<string, PromptRow>();
+  for (const p of prompts) {
+    if (p.turn !== 0) continue;
+    const seen = latest.get(p.conversation_id);
+    if (!seen || (p.created_at ?? "") >= (seen.created_at ?? "")) latest.set(p.conversation_id, p);
+  }
+  return [...latest.values()];
+}
+
 const REASON_RANK: Record<Spotlight["reason"], number> = { convincing: 0, "checked-wrong": 1, wrong: 2, unsure: 3 };
 
 export function summarizeRun(data: RunData): RunSummary {
@@ -397,8 +413,8 @@ export function summarizeRun(data: RunData): RunSummary {
   const answered = prompts.filter((p) => p.answer);
   const rated = prompts.filter((p) => p.verdict);
   const checked = prompts.filter((p) => p.rules_program || typeof p.rules_amount === "number");
-  // First turns only: follow-ups repeat the household and perspective.
-  const firstTurns = prompts.filter((p) => p.turn === 0);
+  // First questions only, one per conversation: follow-ups repeat the household and perspective.
+  const firstTurns = firstQuestions(prompts);
 
   // Answers save as they're tapped: each person's last discussion answer per question, survey answer and vote count.
   const discussion = latestPerParticipant(

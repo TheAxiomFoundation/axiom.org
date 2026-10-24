@@ -140,7 +140,7 @@ describe("OverallRating", () => {
     await waitFor(() => expect(bodies(fetchMock)).toHaveLength(2));
     expect(bodies(fetchMock)[1].payload).toEqual({ question: "experience", ratings: {}, topics: [], note: "" });
     // Nothing left to save or show as saved.
-    await waitFor(() => expect(screen.queryByRole("button", { name: /comment|Removing/ })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole("button", { name: /comment|removing/i })).not.toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "For you: 3 of 5" }));
     await waitFor(() => expect(bodies(fetchMock)).toHaveLength(3));
     expect(bodies(fetchMock)[2].payload.note).toBe("");
@@ -240,7 +240,7 @@ describe("OverallRating", () => {
     expect(screen.getByRole("button", { name: "Save comment" })).toBeEnabled();
     fireEvent.change(box(), { target: { value: "" } });
     await act(async () => retried(ok));
-    await waitFor(() => expect(screen.queryByRole("button", { name: /comment|Removing/ })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole("button", { name: /comment|removing/i })).not.toBeInTheDocument());
   });
 
   it("lets only the latest send of a kind decide whether it saved", async () => {

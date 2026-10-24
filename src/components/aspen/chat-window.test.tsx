@@ -525,6 +525,8 @@ describe("ChatWindow asking", () => {
     fireEvent.change(draftBox(), { target: { value: "Retry" } });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await screen.findByText("Hi");
+    // Only the newest answer offers to ask again; this one has been followed up.
+    expect(screen.queryByRole("button", { name: "Ask again" })).not.toBeInTheDocument();
     expect(calls(fetchMock, "/api/aspen/ask")[1].messages).toEqual([
       { role: "user", content: question },
       { role: "user", content: "Retry" },
@@ -537,6 +539,56 @@ describe("ChatWindow asking", () => {
     pickRetiree();
     fireEvent.click(screen.getByRole("button", { name: "Ask the AI" }));
     expect(await screen.findByText("The connection dropped. Try again.")).toBeInTheDocument();
+  });
+
+  it("asks the same question again, in place of a failed answer, with one tap", async () => {
+    const fetchMock = routeFetch({
+      "/api/aspen/ask": [
+        () => Promise.reject(new Error("offline")),
+        () => streamResponse(streamOf([{ type: "meta", promptId: "p" }, { type: "delta", text: "Hi" }, { type: "done" }])),
+      ],
+    });
+    render(<ChatWindow stage="try" />);
+    pickRetiree();
+    const question = shownQuestion();
+    fireEvent.click(screen.getByRole("button", { name: "Ask the AI" }));
+    expect(await screen.findByText("The connection dropped. Try again.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Ask again" }));
+    await screen.findByText("Hi");
+    const [first, again] = calls(fetchMock, "/api/aspen/ask");
+    expect(again.messages).toEqual([{ role: "user", content: question }]);
+    expect(again).toMatchObject({ turn: 0, conversationId: first.conversationId, meta: first.meta });
+    // The failed answer is replaced, not left above the new one.
+    expect(screen.queryByText("The connection dropped. Try again.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ask again" })).not.toBeInTheDocument();
+    await waitFor(() => expect(saved().turns.map((t) => t.status ?? t.role)).toEqual(["user", "done"]));
+  });
+
+  it("keeps an answer still on its way, so a reload says it was cut off and can ask it again", async () => {
+    const slow = controlledStream();
+    const fetchMock = routeFetch({
+      "/api/aspen/ask": [
+        () => streamResponse(slow.stream),
+        () => streamResponse(streamOf([{ type: "meta", promptId: "p2" }, { type: "delta", text: "Second try" }, { type: "done" }])),
+      ],
+    });
+    const first = render(<ChatWindow stage="try" />);
+    pickRetiree();
+    const question = shownQuestion();
+    fireEvent.click(screen.getByRole("button", { name: "Ask the AI" }));
+    await act(async () => slow.push({ type: "meta", promptId: "p1" }, { type: "delta", text: "Partial" }));
+    await screen.findByText("Partial");
+    await waitFor(() =>
+      expect(saved().turns[1]).toEqual({ key: expect.any(String), role: "assistant", content: "", status: "streaming", promptId: "p1" }),
+    );
+    // The tab reloads, or another tab opens, before the answer finishes.
+    first.unmount();
+    render(<ChatWindow stage="try" />);
+    expect(await screen.findByText("Interrupted. Ask again.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Ask again" }));
+    await screen.findByText("Second try");
+    expect(calls(fetchMock, "/api/aspen/ask")[1].messages).toEqual([{ role: "user", content: question }]);
+    slow.close();
   });
 
   it("finishes a stream that ends without a done line", async () => {
@@ -564,8 +616,9 @@ describe("ChatWindow asking", () => {
 
     fireEvent.change(draftBox(), { target: { value: "Again" } });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
-    await waitFor(() => expect(saved().turns).toHaveLength(4));
-    expect(saved().turns[3]).toMatchObject({ status: "error", content: "The AI didn't answer. Try again." });
+    // The answer is saved as on its way at first, then as failed.
+    await waitFor(() => expect(saved().turns[3]).toMatchObject({ status: "error", content: "The AI didn't answer. Try again." }));
+    expect(saved().turns).toHaveLength(4);
   });
 
   it("shows at most six sources", async () => {
