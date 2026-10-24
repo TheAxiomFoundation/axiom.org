@@ -230,6 +230,14 @@ describe("freePlanFromExport", () => {
       [{ publicationCheck: undefined }, unread],
       [{ publicationCheck: { ...check, fileVersions: 0 } }, unread],
       [{ publicationCheck: { ...check, fileVersions: 1.5 } }, unread],
+      // More than it read, so only the whole-number check refuses it.
+      [{ publicationCheck: { ...check, fileVersions: 100.5 } }, unread],
+      // It found files but read none of them, as with a repository of images.
+      [{ publicationCheck: { ...check, readAs: { text: 0, gzip: 0, pdf: 0 } } }, unread],
+      [{ publicationCheck: { ...check, readAs: undefined } }, unread],
+      [{ publicationCheck: { ...check, readAs: {} } }, unread],
+      [{ publicationCheck: { ...check, readAs: { text: 0.5, gzip: 0, pdf: 0 } } }, unread],
+      [{ publicationCheck: { ...check, readAs: { text: 101, gzip: 0, pdf: 0 } } }, unread],
       // The summary flag says nothing was found, but the scan's own record lists a match.
       [{ publicationCheck: { ...check, matches: [{ path: "data.json", idsNamed: ["mt_01"] }] } }, listed],
       [{ publicationCheck: { ...check, householdsMatched: { mt_01: ["scenarios.csv"] } } }, listed],

@@ -91,8 +91,10 @@ export interface WebSearchAudit {
   matchingScope?: string;
   /** The scan's own record. The footnote rests on it, not only on matchingAnswersFound. */
   publicationCheck?: {
-    /** Versions of files in the repository that the scan read. */
+    /** Versions of files in the repository the scan found, read or not. */
     fileVersions?: number;
+    /** Those it read, by how: as text, gunzipped, or PDFs through pdftotext. */
+    readAs?: Record<string, number>;
     /** Those holding a household's answers, by its id or two of its distinctive amounts. */
     matches?: unknown[];
     /** The set's households found in the repository's scenario files. */
@@ -377,7 +379,14 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
         throw new Error(`${who}, and the web-search audit doesn't say its scan found no copy of these households' answers${flagged}`);
       }
       const check = audit.publicationCheck;
-      const read = Number.isSafeInteger(check?.fileVersions) && check!.fileVersions! > 0;
+      // It has to have read some of the files it found, not only listed them.
+      const ways = Object.values(check?.readAs ?? {});
+      const readCount = ways.reduce((s, n) => s + n, 0);
+      const read =
+        Number.isSafeInteger(check?.fileVersions) &&
+        ways.every((n) => Number.isSafeInteger(n) && n >= 0) &&
+        readCount > 0 &&
+        readCount <= check!.fileVersions!;
       if (!read || !audit.matchingScope?.includes(SCANNED_REPOSITORY)) {
         throw new Error(`the web-search audit doesn't show its scan read the ${SCANNED_REPOSITORY} repository the footnote names`);
       }
