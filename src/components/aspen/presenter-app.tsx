@@ -1,13 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
+  BookText,
   ChartColumn,
   Check,
   ClipboardCheck,
+  Database,
+  Download,
+  FileCode,
   GraduationCap,
   Landmark,
+  Layers,
+  Network,
+  Package,
+  RefreshCw,
   SlidersHorizontal,
   Sparkles,
   User,
@@ -26,6 +34,7 @@ import {
   FOUNDATION_TRAITS,
   EXAMPLE_HOUSEHOLD,
   BUILD_HEADING,
+  ENCODING_PIPELINE,
   FRONT_DOOR,
   LIVE_DEMO,
   liveDemoUrl,
@@ -81,11 +90,11 @@ function reasonLabel(item: { reason: string; verdict: string | null }): string {
 /** A slide that turns its stage's argument gets its own heading. */
 const SLIDE_TITLES: Partial<Record<StageId, Record<number, string>>> = {
   scale: { 4: FRONT_DOOR.heading, 5: FRONT_DOOR.heading, 6: FRONT_DOOR.heading },
-  foundation: { 1: SAME_RULES.heading, 2: BUILD_HEADING },
+  foundation: { 1: SAME_RULES.heading, 2: ENCODING_PIPELINE.heading, 3: BUILD_HEADING },
 };
 
 /** Stages shown as more than one slide; the arrows step through them before moving the room. */
-const SLIDES: Partial<Record<StageId, number>> = { reveal: 2, scale: 7, foundation: 3, groups: 2, next: 2 };
+const SLIDES: Partial<Record<StageId, number>> = { reveal: 2, scale: 7, foundation: 4, groups: 2, next: 2 };
 const slideCount = (id: StageId) => SLIDES[id] ?? 1;
 
 /** The largest scale at which the 16:9 canvas fits the window. */
@@ -243,7 +252,8 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
                       }
                     />
                   ))}
-                {/* Slides 2 to 5 of At scale, and 2 of Shared foundation, come from Max's Nava deck; 6 is the tool pilot and 7 the live chatbot. */}
+                {/* Slides 2 to 5 of At scale, and 2 of Shared foundation, come from Max's Nava deck; 6 is the tool pilot and 7 the live chatbot.
+                    Shared foundation 3 is the encoding pipeline from the InnovateUS deck. */}
                 {stage === "scale" &&
                   [
                     <ScaleShareSlide key="share" />,
@@ -255,9 +265,12 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
                     <LiveDemoSlide key="live-demo" />,
                   ][sub]}
                 {stage === "foundation" &&
-                  [<FoundationSlide key="foundation" summary={summary} />, <SameRulesSlide key="same-rules" />, <TiersSlide key="tiers" />][
-                    sub
-                  ]}
+                  [
+                    <FoundationSlide key="foundation" summary={summary} />,
+                    <SameRulesSlide key="same-rules" />,
+                    <PipelineSlide key="pipeline" />,
+                    <TiersSlide key="tiers" />,
+                  ][sub]}
                 {stage === "groups" &&
                   (sub === 0 ? <VoteSlide votes={summary.votes} /> : <GroupsSlide summary={summary} />)}
                 {stage === "next" &&
@@ -1491,8 +1504,253 @@ function FoundationSlide({ summary }: { summary: RunSummary }) {
   );
 }
 
+/** An icon for each step of the encoding pipeline, as on the InnovateUS slide. */
+const PIPELINE_ICONS: Record<(typeof ENCODING_PIPELINE.steps)[number]["name"], LucideIcon> = {
+  Intake: Download,
+  Corpus: BookText,
+  "Encoding loop": RefreshCw,
+  RuleSpec: FileCode,
+  Graph: Network,
+  "Compile and serve": Layers,
+};
+
+/** The small mono labels and code inside the pipeline's cards. */
+const PIPE_LABEL = "font-mono text-[12px] font-medium uppercase tracking-[0.12em] text-[var(--color-ink-muted)]";
+const PIPE_MONO = "font-mono text-[13px] leading-[1.45] text-[var(--color-ink)] [overflow-wrap:anywhere]";
+const PIPE_QUOTE = "font-body text-[15px] italic leading-snug text-[var(--color-accent)]";
+
+function PipeDown() {
+  return (
+    <span aria-hidden className="text-center font-body text-[18px] leading-none text-[var(--color-ink-muted)]">
+      ↓
+    </span>
+  );
+}
+
+/** A row of blank squares: the rest of the law around the one provision shown. */
+function LawSquares() {
+  return (
+    <div aria-hidden className="grid grid-cols-6 gap-[5px]">
+      {Array.from({ length: 12 }, (_, i) => (
+        <i key={i} className="block aspect-square rounded-[3px] border border-[var(--color-rule-strong)]" />
+      ))}
+    </div>
+  );
+}
+
 /**
- * Shared foundation, slide 3: how a shared foundation gets built, from public
+ * The spec becoming a node: snap_allotment reads tfp and income and feeds the
+ * benefit; the faint nodes are the rest of the graph. Sized so its labels stay
+ * legible at slide scale.
+ */
+function PipelineGraph() {
+  const box = (x: number, y: number, w: number, label: string, faint = false) => (
+    <g key={label}>
+      <rect x={x} y={y} width={w} height={22} rx={4} fill="var(--color-paper-elevated)" stroke={faint ? "var(--color-rule-strong)" : "var(--color-accent)"} strokeWidth={1.3} />
+      <text x={x + w / 2} y={y + 15} textAnchor="middle" className="font-mono" fontSize={11.5} fill={faint ? "var(--color-ink-muted)" : "var(--color-ink)"}>
+        {label}
+      </text>
+    </g>
+  );
+  const line = (x1: number, y1: number, x2: number, y2: number, faint = false) => (
+    <line key={`${x1}-${y1}-${x2}-${y2}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke={faint ? "var(--color-rule-strong)" : "var(--color-accent)"} strokeWidth={1.2} />
+  );
+  return (
+    <svg aria-hidden viewBox="0 0 170 140" className="block h-auto w-full">
+      {line(26, 30, 40, 62)}
+      {line(85, 30, 66, 62)}
+      {line(85, 30, 136, 62, true)}
+      {line(146, 30, 146, 62, true)}
+      {line(56, 84, 76, 116)}
+      {line(141, 84, 98, 116, true)}
+      {box(6, 8, 40, "tfp")}
+      {box(56, 8, 58, "income")}
+      {box(126, 8, 40, "fpl", true)}
+      {box(4, 62, 108, "snap_allotment")}
+      {box(120, 62, 46, "elig", true)}
+      {box(52, 116, 66, "benefit")}
+    </svg>
+  );
+}
+
+/** What each step of the pipeline looks like, as on the InnovateUS slide. */
+function PipelineViz({ name }: { name: (typeof ENCODING_PIPELINE.steps)[number]["name"] }) {
+  const p = ENCODING_PIPELINE;
+  switch (name) {
+    case "Intake":
+      return (
+        <>
+          <span className={PIPE_LABEL}>Scraping pipelines</span>
+          <ul className="m-0 flex list-none flex-col gap-[6px] p-0">
+            {p.sources.map((source) => (
+              <li key={source} className={`${PIPE_MONO} rounded-full border border-[var(--color-rule-strong)] bg-[var(--color-paper-elevated)] px-[8px] py-[2px] text-center`}>
+                {source}
+              </li>
+            ))}
+          </ul>
+          <PipeDown />
+          <div className="flex items-center gap-[10px]">
+            <Database aria-hidden size={30} strokeWidth={1.4} className="shrink-0 text-[var(--color-rule-strong)]" />
+            <span className={PIPE_LABEL}>Database</span>
+          </div>
+        </>
+      );
+    case "Corpus":
+      return (
+        <>
+          <LawSquares />
+          <div className="flex flex-col gap-[4px] rounded-[8px] border-[1.5px] border-[var(--color-accent)] bg-[var(--color-paper-elevated)] px-[10px] py-[8px]">
+            <span className={PIPE_MONO}>
+              us:statutes/
+              <wbr />
+              7/2017/a
+            </span>
+            <span className="font-body text-[16px] font-semibold leading-snug text-[var(--color-ink)]">§ 2017 · Value of allotment</span>
+            <span className={PIPE_QUOTE}>“…30 per centum…”</span>
+          </div>
+          <LawSquares />
+        </>
+      );
+    case "Encoding loop":
+      return (
+        <div className="relative flex flex-col gap-[8px] pr-[24px]">
+          <div
+            className="mr-[8px] rounded-[8px] border border-[var(--color-rule-strong)] bg-[var(--color-paper-elevated)] px-[10px] py-[8px]"
+            style={{
+              borderTop: "3px solid var(--color-accent)",
+              boxShadow:
+                "4px 4px 0 -1px var(--color-paper-elevated), 4px 4px 0 0 var(--color-rule-strong), 8px 8px 0 -1px var(--color-paper-elevated), 8px 8px 0 0 var(--color-rule-strong)",
+            }}
+          >
+            <span className={`${PIPE_LABEL} mb-[4px] block`}>Encoders</span>
+            <span className={`${PIPE_QUOTE} block`}>“30 per centum”</span>
+            <span className={`${PIPE_MONO} block`}>
+              <b>→ 0.30</b> <span className="text-[var(--color-ink-muted)]">rev 43</span>
+            </span>
+          </div>
+          <PipeDown />
+          <span className={PIPE_LABEL}>Validators</span>
+          <ul className="m-0 flex list-none flex-col gap-[5px] p-0">
+            {p.checks.map((check) => (
+              <li
+                key={check.label}
+                className="rounded-[12px] border border-[var(--color-success)] bg-[rgba(22,101,52,0.07)] px-[10px] py-[2px] font-mono text-[12px] leading-snug text-[var(--color-success)]"
+              >
+                {check.required ? `✓ ${check.label}` : check.label}
+              </li>
+            ))}
+          </ul>
+          {/* The loop back: a draft that fails a required check goes round again. */}
+          <span
+            aria-hidden
+            className="absolute bottom-[14px] right-[2px] top-[26px] w-[14px] rounded-r-[10px] border-[1.5px] border-l-0 border-dashed border-[var(--color-accent)]"
+          />
+        </div>
+      );
+    case "RuleSpec":
+      return (
+        <>
+          <span className={`${PIPE_MONO} text-[var(--color-ink-muted)]`}>¶ rulespec-us</span>
+          <span className={`${PIPE_MONO} font-semibold`}>snap_allotment</span>
+          <div className={`${PIPE_MONO} rounded-[8px] border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-[10px] py-[8px] leading-[1.6]`}>
+            <div className="text-[var(--color-ink-muted)]">imports:</div>
+            <div className="pl-[12px]">
+              us:statutes/
+              <wbr />
+              7/2017/a
+            </div>
+            <div>
+              <span className="text-[var(--color-ink-muted)]">entity:</span> Household
+            </div>
+            <div className="text-[var(--color-ink-muted)]">formula:</div>
+            <div className="pl-[12px]">
+              max(0, tfp − <b className="text-[var(--color-accent)]">0.30</b> × net)
+            </div>
+            <div className="text-[var(--color-accent)]">0.30 ← “30 per centum”</div>
+          </div>
+        </>
+      );
+    case "Graph":
+      return <PipelineGraph />;
+    case "Compile and serve":
+      return (
+        <>
+          <div className="overflow-hidden rounded-[10px] border-[1.5px] border-[var(--color-accent)] bg-[var(--color-paper-elevated)]">
+            <div className="flex items-center gap-[8px] border-b border-[var(--color-rule)] bg-[var(--color-accent-light)] px-[10px] py-[5px] text-[var(--color-accent)]">
+              <Package aria-hidden size={18} strokeWidth={1.8} className="shrink-0" />
+              <span className="font-mono text-[12px] font-medium uppercase tracking-[0.12em]">Program artifact</span>
+            </div>
+            <div className="px-[10px] py-[8px]">
+              <div className={`${PIPE_MONO} font-semibold`}>SNAP · US · 2026</div>
+              <div className="font-mono text-[13px] text-[var(--color-success)]">✓ compiled</div>
+            </div>
+          </div>
+          <PipeDown />
+          <ul className="m-0 flex list-none flex-col gap-[6px] p-0">
+            {p.surfaces.map((surface) => (
+              <li
+                key={surface.name}
+                className="flex flex-col rounded-[6px] border border-[var(--color-rule-strong)] bg-[var(--color-paper-elevated)] px-[10px] py-[5px]"
+                style={{ borderTop: "2px solid var(--color-accent)" }}
+              >
+                <span className="font-body text-[16px] font-semibold leading-tight text-[var(--color-ink)]">{surface.name}</span>
+                <span className="font-mono text-[12px] text-[var(--color-ink-muted)]">{surface.who}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      );
+  }
+}
+
+/**
+ * Shared foundation, slide 3: the encoding pipeline, from the InnovateUS deck
+ * (slide 12). Cards share the row's grid (subgrid), so icons, names, captions,
+ * illustrations and footnotes line up across all six.
+ */
+function PipelineSlide() {
+  const p = ENCODING_PIPELINE;
+  return (
+    <div className="flex h-full flex-col gap-[22px]">
+      <p className="m-0 font-body text-[21px] leading-snug text-[var(--color-ink-secondary)]">{p.lead}</p>
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1.2fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1.12fr)] grid-rows-[auto_auto_auto_1fr_auto] gap-x-[6px]">
+        {p.steps.map((step, i) => {
+          const Icon = PIPELINE_ICONS[step.name];
+          return (
+            <Fragment key={step.name}>
+              {i > 0 && (
+                <span aria-hidden className="row-span-5 self-center font-body text-[20px] text-[var(--color-ink-muted)]">
+                  →
+                </span>
+              )}
+              <div
+                className="row-span-5 grid min-w-0 grid-rows-subgrid gap-y-[7px] rounded-[12px] border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-[14px] pb-[14px] pt-[12px] shadow-[0_1px_3px_rgba(28,25,23,0.06)]"
+                style={{ borderTop: "5px solid var(--color-accent)" }}
+              >
+                <span className="flex h-[40px] w-[40px] items-center justify-center rounded-full bg-[var(--color-accent-light)] text-[var(--color-accent)]">
+                  <Icon aria-hidden size={22} strokeWidth={1.75} />
+                </span>
+                <span className="font-body text-[22px] font-semibold leading-tight text-[var(--color-ink)]">{step.name}</span>
+                <span className="font-body text-[16px] leading-snug text-[var(--color-ink-secondary)]">{step.caption}</span>
+                <div className={`flex min-h-0 flex-col gap-[6px] border-t border-[var(--color-rule)] pt-[10px] ${step.foot ? "" : "row-span-2"}`}>
+                  <PipelineViz name={step.name} />
+                </div>
+                {step.foot && (
+                  <span className="border-t border-[var(--color-rule)] pt-[8px] font-body text-[14px] italic leading-snug text-[var(--color-ink-secondary)]">
+                    {step.foot}
+                  </span>
+                )}
+              </div>
+            </Fragment>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Shared foundation, slide 4: how a shared foundation gets built, from public
  * documents to Gold A. Cards share the grid's rows (subgrid), so medallions,
  * names, what a state gets and "It takes" line up across all three.
  */
