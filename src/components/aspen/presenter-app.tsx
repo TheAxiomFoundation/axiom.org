@@ -36,6 +36,7 @@ import {
   FREE_PLAN_PILOT,
   distinguishable,
   formatPoints,
+  shownChange,
   share,
   toolPilotMisses,
   wholeShare,
@@ -1349,7 +1350,7 @@ export function FreePlanSlide({ pilot: p }: { pilot: FreePlanPilot }) {
                     <span
                       className={`block font-mono leading-none tabular-nums ${z.value} ${sure ? "text-[var(--color-ink)]" : "text-[var(--color-ink-muted)]"}`}
                     >
-                      {formatPoints(c.points)}
+                      {formatPoints(shownChange(c))}
                     </span>
                     <span className={`block font-body text-[var(--color-ink-muted)] ${z.small} ${compact ? "" : "mt-[6px]"}`}>
                       {formatPoints(c.lo)} to {formatPoints(c.hi)}

@@ -1,4 +1,5 @@
 import {
+  FREE_PLAN_ARMS,
   freePlanProblems,
   type FreePlanPilot,
   type PilotChange,
@@ -105,12 +106,7 @@ export interface ExportOptions {
   webAudit?: WebSearchAudit;
 }
 
-export const EXPORT_ARMS: FreePlanPilot["arms"] = [
-  { id: "alone", label: "On its own" },
-  { id: "web", label: "With web search" },
-  { id: "tool", label: "With the PolicyEngine tool" },
-  { id: "both", label: "With both" },
-];
+export const EXPORT_ARMS: FreePlanPilot["arms"] = FREE_PLAN_ARMS;
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
@@ -121,7 +117,10 @@ export function runDateRange(dates: readonly string[]): string {
   const parts = sorted.map((d) => {
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
     if (!m) throw new Error(`run date ${d} isn't YYYY-MM-DD`);
-    return { y: Number(m[1]), m: Number(m[2]), d: Number(m[3]) };
+    const [y, mo, day] = [Number(m[1]), Number(m[2]), Number(m[3])];
+    const t = new Date(Date.UTC(y, mo - 1, day));
+    if (t.getUTCFullYear() !== y || t.getUTCMonth() !== mo - 1 || t.getUTCDate() !== day) throw new Error(`run date ${d} isn't a date`);
+    return { y, m: mo, d: day };
   });
   const first = parts[0];
   const last = parts[parts.length - 1];
@@ -219,8 +218,16 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
   // Free-plan models first, each group in the order chosen.
   const ordered = [...chosen.filter((m) => m.group === "free-plan"), ...chosen.filter((m) => m.group !== "free-plan")];
   for (const m of ordered) {
-    if ((m.group === "free-plan") !== (m.freePlan !== null)) {
+    // A free-plan model says which plan; any other says none.
+    if (m.group === "free-plan" ? !(typeof m.freePlan === "string" && m.freePlan.trim()) : m.freePlan !== null) {
       throw new Error(`${m.model}: group ${m.group} but freePlan ${JSON.stringify(m.freePlan)}`);
+    }
+    if (!Number.isSafeInteger(m.households) || m.households < 1) throw new Error(`${m.model}: ${m.households} households isn't a count`);
+    // Every change of a chosen model, not just the tool's, feeds the caveat's noise width.
+    for (const [id, c] of Object.entries(m.vsAlone)) {
+      if (c && !([c.points, c.lo, c.hi].every(Number.isFinite) && -100 <= c.lo && c.lo <= c.hi && c.hi <= 100)) {
+        throw new Error(`${m.model} ${id}: change ${c.points} with interval ${c.lo} to ${c.hi} isn't a change in points`);
+      }
     }
     const tool = m.vsAlone.tool;
     if (!tool) throw new Error(`${m.model}: no change from no tools to the tool`);

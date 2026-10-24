@@ -2,7 +2,7 @@ import fc from "fast-check";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { MOCK_POLICYBENCH_EXPORT, MOCK_WEB_SEARCH_AUDIT } from "@/test/aspen-free-plan-export.mock";
-import { freePlanProblems, wholeShare, type FreePlanPilot } from "./content";
+import { formatPoints, freePlanProblems, shownChange, wholeShare, type FreePlanPilot } from "./content";
 import {
   EXPORT_ARMS,
   caveatText,
@@ -80,6 +80,23 @@ describe("freePlanFromExport", () => {
     expect(() => freePlanFromExport(withModel("mock-c", (m) => ({ ...m, freePlan: "X" })), { models: ["mock-c"] })).toThrow(
       'Mock model C: group other but freePlan "X"',
     );
+    expect(() => freePlanFromExport(withModel("mock-a", (m) => ({ ...m, freePlan: " " })), { models: ["mock-a"] })).toThrow(
+      'Mock model A: group free-plan but freePlan " "',
+    );
+    expect(() => freePlanFromExport(withModel("mock-c", (m) => ({ ...m, freePlan: "" })), { models: ["mock-c"] })).toThrow(
+      'Mock model C: group other but freePlan ""',
+    );
+    for (const households of [-1, 0, 0.5]) {
+      expect(() => freePlanFromExport(withModel("mock-a", (m) => ({ ...m, households })), { models: ["mock-a"] })).toThrow(
+        `Mock model A: ${households} households isn't a count`,
+      );
+    }
+    // Any of a chosen model's changes, since each feeds the caveat's noise width.
+    for (const [lo, hi] of [[-1e308, 10], [0, 1e308], [5, 1], [NaN, 1]]) {
+      expect(() => freePlanFromExport(withModel("mock-a", (m) => ({ ...m, vsAlone: { ...m.vsAlone, web: { points: 1, lo, hi } } })), { models: ["mock-a"] })).toThrow(
+        `Mock model A web: change 1 with interval ${lo} to ${hi} isn't a change in points`,
+      );
+    }
     expect(() => freePlanFromExport(withModel("mock-a", (m) => ({ ...m, vsAlone: { web: m.vsAlone.web } })), { models: ["mock-a"] })).toThrow(
       "Mock model A: no change from no tools to the tool",
     );
@@ -102,6 +119,23 @@ describe("freePlanFromExport", () => {
       const off = withModel("mock-a", (m) => ({ ...m, vsAlone: { ...m.vsAlone, tool: { ...m.vsAlone.tool!, points } } }));
       expect(() => freePlanFromExport(off, { models: ["mock-a"] })).toThrow(`Mock model A: change ${points}, but its counts give 58.33`);
     }
+  });
+
+  it("makes the change exact even where that sits just past the export's rounded interval, and the slide prints it at that end", () => {
+    // aspen_export.py's own output for a synthetic run review 5 made: 100 households, one tool success
+    // in each and none without tools, eight amounts in all but one, which has nine. It rounds the change
+    // and both ends to 12.5; the counts give 12.48, which alone would print as +12 beside +13 to +13.
+    const c = (k: number) => ({ k, n: 801, pct: Math.round((1000 * k) / 801) / 10, lo: 0, hi: 100 });
+    const one: ExportModel = {
+      ...exp.models.find((m) => m.id === "mock-a")!,
+      households: 100,
+      arms: { alone: c(0), web: c(0), tool: c(100), both: c(100) },
+      vsAlone: { web: { points: 0, lo: 0, hi: 0 }, tool: { points: 12.5, lo: 12.5, hi: 12.5 }, both: { points: 12.5, lo: 12.5, hi: 12.5 } },
+    };
+    const run = { ...exp, models: [one], sizes: undefined, caveat: caveatText(sizeGroups([one])) };
+    const change = freePlanFromExport(run, { models: [one.id] }).pilot.rows[0].toolVsAlone;
+    expect(change).toEqual({ points: (100 * 100) / 801, lo: 12.5, hi: 12.5 });
+    expect([shownChange(change), change.lo, change.hi].map(formatPoints)).toEqual(["+13", "+13", "+13"]);
   });
 
   it("refuses data the slide's own checks reject, and says which", () => {
@@ -459,6 +493,8 @@ describe("runDateRange", () => {
   it("refuses no dates and a date that isn't YYYY-MM-DD", () => {
     expect(() => runDateRange([])).toThrow("no run dates");
     expect(() => runDateRange(["2026-10-23 UTC"])).toThrow("run date 2026-10-23 UTC isn't YYYY-MM-DD");
+    for (const d of ["2026-13-99", "2026-00-10", "2026-02-29", "2026-04-31"]) expect(() => runDateRange([d])).toThrow(`run date ${d} isn't a date`);
+    expect(runDateRange(["2028-02-29"])).toBe("February 29, 2028");
   });
 });
 

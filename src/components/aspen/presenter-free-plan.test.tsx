@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { FRONT_DOOR, TOOL_PILOT } from "@/lib/aspen/content";
+import { FRONT_DOOR, TOOL_PILOT, freePlanProblems } from "@/lib/aspen/content";
 import { EMPTY_SUMMARY } from "@/lib/aspen/results";
 import type { Control } from "@/lib/aspen/types";
 import { MOCK_FREE_PLAN_PILOT } from "@/test/aspen-free-plan.mock";
@@ -29,6 +29,20 @@ describe("scaleSlides", () => {
 });
 
 describe("FreePlanSlide", () => {
+  it("prints the change inside its interval when the exact change sits just past a rounded end", () => {
+    // As the converter makes PolicyBench's synthetic 0 of 801 to 100 of 801, rounded to 12.5 all three ways: the exact change is 12.48.
+    const c = (k: number) => ({ k, n: 801 });
+    const pilot = {
+      ...MOCK_FREE_PLAN_PILOT,
+      rows: [{ ...MOCK_FREE_PLAN_PILOT.rows[0], counts: { alone: c(0), web: c(0), tool: c(100), both: c(100) }, toolVsAlone: { points: (100 * 100) / 801, lo: 12.5, hi: 12.5 } }],
+    };
+    expect(freePlanProblems(pilot)).toEqual([]);
+    render(<FreePlanSlide pilot={pilot} />);
+    expect(screen.getByText("+13")).toBeInTheDocument();
+    expect(screen.getByText("+13 to +13")).toBeInTheDocument();
+    expect(screen.queryByText("+12")).toBeNull();
+  });
+
   it("shows each model's share in every setting as a whole percent with its count, and its change from no tools", () => {
     render(<FreePlanSlide pilot={MOCK_FREE_PLAN_PILOT} />);
     const p = MOCK_FREE_PLAN_PILOT;

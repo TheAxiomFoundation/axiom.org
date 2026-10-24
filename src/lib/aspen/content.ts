@@ -980,6 +980,14 @@ export interface FreePlanPilot {
   source: string;
 }
 
+/** The free-plan slide's settings, in its column order, as its heading names them. */
+export const FREE_PLAN_ARMS: FreePlanPilot["arms"] = [
+  { id: "alone", label: "On its own" },
+  { id: "web", label: "With web search" },
+  { id: "tool", label: "With the PolicyEngine tool" },
+  { id: "both", label: "With both" },
+];
+
 /** A count as a whole percent: at about 50 amounts, a decimal would claim precision the run doesn't have. */
 export function wholeShare(c: PilotCount): number {
   return Math.round((100 * c.k) / c.n);
@@ -988,6 +996,16 @@ export function wholeShare(c: PilotCount): number {
 /** Whether a change's interval leaves out zero, so it reads as a change at this size. */
 export function distinguishable(c: PilotChange): boolean {
   return c.lo > 0 || c.hi < 0;
+}
+
+/**
+ * The change as the slide prints it: inside its interval. The interval's ends
+ * are PolicyBench's, rounded to one decimal, while the change is the counts'
+ * own, so it can sit up to 0.05 points past an end. The slide then shows that
+ * end, so the printed change is never outside the printed interval.
+ */
+export function shownChange(c: PilotChange): number {
+  return Math.min(c.hi, Math.max(c.lo, c.points));
 }
 
 /**
@@ -1014,6 +1032,15 @@ export function freePlanProblems(p: FreePlanPilot): string[] {
   if (new Set(armIds).size !== armIds.length) problems.push("an arm is listed twice");
   if (!armIds.includes("alone") || !armIds.includes("tool")) problems.push("the change needs both no tools and the tool");
   if (!p.label.trim()) problems.push("no label: the room has to read these as preliminary");
+  for (const [name, text] of [["title", p.title], ["note", p.note], ["caveat", p.caveat], ["source", p.source]] as const) {
+    if (!text.trim()) problems.push(`no ${name}`);
+  }
+  // The tool footnote says what the tool runs, which the room needs to read the change.
+  if (!p.footnotes.length || p.footnotes.some((f) => !f.trim())) problems.push("no footnotes, or an empty one");
+  // Each column's heading has to name its setting: the colors and the change both go by id.
+  if (p.arms.length !== FREE_PLAN_ARMS.length || p.arms.some((a, i) => a.id !== FREE_PLAN_ARMS[i].id || a.label !== FREE_PLAN_ARMS[i].label)) {
+    problems.push(`the settings aren't ${FREE_PLAN_ARMS.map((a) => `"${a.label}"`).join(", ")}, in that order`);
+  }
   // The models on free plans come first, so the slide reads them first.
   const firstComparison = p.rows.findIndex((r) => r.freePlan === null);
   if (firstComparison >= 0 && p.rows.slice(firstComparison).some((r) => r.freePlan !== null)) {
@@ -1022,6 +1049,8 @@ export function freePlanProblems(p: FreePlanPilot): string[] {
   if (new Set(p.rows.map((r) => r.model)).size !== p.rows.length) problems.push("a model is listed twice");
   if (p.rows.length < 1 || p.rows.length > 6) problems.push(`${p.rows.length} rows; the slide fits 1 to 6`);
   for (const r of p.rows) {
+    if (!r.model.trim()) problems.push("a model has no name");
+    if (r.freePlan !== null && !r.freePlan.trim()) problems.push(`${r.model}: an empty free-plan line`);
     const ns = new Set<number>();
     for (const id of armIds) {
       const c = r.counts[id];
@@ -1047,7 +1076,8 @@ export function freePlanProblems(p: FreePlanPilot): string[] {
     // then never sit outside its interval, where the slide would show it as leaving out zero.
     const tenths = (x: number) => Number(x.toFixed(1)) === x;
     const allowance = tenths(lo) && tenths(hi) ? 0.05 + 1e-9 : 0;
-    if (!(lo - allowance <= points && points <= hi + allowance)) problems.push(`${r.model}: ${points} is outside its interval ${lo} to ${hi}`);
+    const inside = (x: number) => lo - allowance <= x && x <= hi + allowance;
+    if (!inside(points)) problems.push(`${r.model}: ${points} is outside its interval ${lo} to ${hi}`);
     // The paired change on the same amounts is the counts' own difference, to the export's one decimal.
     const alone = r.counts.alone;
     const tool = r.counts.tool;
@@ -1055,6 +1085,9 @@ export function freePlanProblems(p: FreePlanPilot): string[] {
       const fromCounts = (100 * (tool.k - alone.k)) / tool.n;
       if (Math.abs(fromCounts - points) > 0.05 + 1e-9) {
         problems.push(`${r.model}: change ${points} but the counts give ${fromCounts.toFixed(1)}`);
+      } else if (inside(points) && !inside(fromCounts)) {
+        // The color goes by the interval, so the counts' own change has to be inside it too.
+        problems.push(`${r.model}: the counts' change ${fromCounts.toFixed(2)} is outside its interval ${lo} to ${hi}`);
       }
     }
   }
