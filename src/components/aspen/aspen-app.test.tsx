@@ -512,3 +512,24 @@ describe("AspenApp after a new run", () => {
     expect(localStorage.getItem("aspen.run")).toBe(JSON.stringify("phoenix"));
   });
 });
+
+describe("AspenApp in two tabs", () => {
+  it("stops a tab another one has taken over, and takes it back with a reload", async () => {
+    const reload = vi.fn();
+    vi.stubGlobal("location", { ...window.location, reload });
+    render(<AspenApp />);
+    await onView("welcome");
+    const mine = localStorage.getItem("aspen.tab");
+    expect(mine).not.toBeNull();
+
+    localStorage.setItem("aspen.tab", JSON.stringify("other-tab"));
+    act(() => void window.dispatchEvent(new StorageEvent("storage", { key: "aspen.tab" })));
+    expect(await screen.findByRole("heading", { name: "This page is open in another tab" })).toBeInTheDocument();
+    // Nothing behind it can be tapped.
+    expect(screen.queryByRole("button", { name: "Back to the start" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Use this tab" }));
+    expect(localStorage.getItem("aspen.tab")).toBe(mine);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+});

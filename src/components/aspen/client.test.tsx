@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, renderHook, screen, waitFor } from "@testing-library/react";
 import fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -6,9 +6,12 @@ import {
   OVERALL_KEY,
   RATING_KEY,
   SAVE_TIMEOUT_MS,
+  TAB_KEY,
   VOTE_KEY,
   enterRun,
   formatValue,
+  heldElsewhere,
+  holdTab,
   newId,
   nextRev,
   participantId,
@@ -19,6 +22,7 @@ import {
   useControl,
   usePoll,
   useResults,
+  useTabHold,
   writeStored,
 } from "./client";
 
@@ -481,5 +485,71 @@ describe("nextRev", () => {
     enterRun("phoenix");
     expect(localStorage.getItem("aspen.rev")).not.toBeNull();
     expect(nextRev(1)).toBeGreaterThan(before);
+  });
+});
+
+describe("holdTab", () => {
+  it("leaves the device's answers to a tab that took them over, but keeps its own tab's state and its stamps going up", () => {
+    // Before this page holds the device (the presenter's page never does), another tab's hold changes nothing.
+    localStorage.setItem(TAB_KEY, JSON.stringify("other-tab"));
+    expect(heldElsewhere()).toBe(false);
+    writeStored(OVERALL_KEY, { truth: "yes" });
+    expect(readStored(OVERALL_KEY)).toEqual({ truth: "yes" });
+
+    holdTab();
+    expect(heldElsewhere()).toBe(false);
+    writeStored(OVERALL_KEY, { truth: "no" });
+    expect(readStored(OVERALL_KEY)).toEqual({ truth: "no" });
+
+    // Another tab takes over: this one writes no answers and drops nothing at a new run.
+    localStorage.setItem(TAB_KEY, JSON.stringify("other-tab"));
+    expect(heldElsewhere()).toBe(true);
+    writeStored(OVERALL_KEY, { truth: "unsure" });
+    expect(readStored(OVERALL_KEY)).toEqual({ truth: "no" });
+    localStorage.setItem("aspen.run", JSON.stringify("rehearsal"));
+    expect(enterRun("phoenix")).toBe(false);
+    expect(readStored(OVERALL_KEY)).toEqual({ truth: "no" });
+    expect(readStored("aspen.run")).toBe("rehearsal");
+    // This tab's own state still saves, and its stamps still go up.
+    writeStored("aspen.view", { view: "try" }, true);
+    expect(readStored("aspen.view", true)).toEqual({ view: "try" });
+    const rev = nextRev(1);
+    expect(JSON.parse(localStorage.getItem("aspen.rev")!)).toBe(rev);
+
+    // Taking it back lets it write again.
+    holdTab();
+    writeStored(OVERALL_KEY, { truth: "unsure" });
+    expect(readStored(OVERALL_KEY)).toEqual({ truth: "unsure" });
+  });
+
+  it("says when another tab takes over, from the storage event or on coming back into view, and takes it back with a reload", () => {
+    const reload = vi.fn();
+    vi.stubGlobal("location", { ...window.location, reload });
+    const { result } = renderHook(() => useTabHold());
+    const mine = localStorage.getItem(TAB_KEY);
+    expect(mine).not.toBeNull();
+    expect(result.current.elsewhere).toBe(false);
+
+    localStorage.setItem(TAB_KEY, JSON.stringify("other-tab"));
+    // Another key changing says nothing about the hold.
+    act(() => void window.dispatchEvent(new StorageEvent("storage", { key: CHAT_KEY })));
+    expect(result.current.elsewhere).toBe(false);
+    act(() => void window.dispatchEvent(new StorageEvent("storage", { key: TAB_KEY })));
+    expect(result.current.elsewhere).toBe(true);
+
+    act(() => result.current.takeBack());
+    expect(localStorage.getItem(TAB_KEY)).toBe(mine);
+    expect(reload).toHaveBeenCalledTimes(1);
+    act(() => void document.dispatchEvent(new Event("visibilitychange")));
+    expect(result.current.elsewhere).toBe(false);
+
+    // A phone may not wake a background tab for the storage event: coming back into view checks too.
+    localStorage.setItem(TAB_KEY, JSON.stringify("third-tab"));
+    act(() => void window.dispatchEvent(new Event("focus")));
+    expect(result.current.elsewhere).toBe(true);
+    // Storage cleared everywhere: nobody holds it, so this tab carries on.
+    localStorage.clear();
+    act(() => void window.dispatchEvent(new StorageEvent("storage", { key: null })));
+    expect(result.current.elsewhere).toBe(false);
   });
 });

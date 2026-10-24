@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { EVENT, LOOK_UP, POLICYBENCH, STAGES, isStageId, percent, stageIndex, type StageId } from "@/lib/aspen/content";
 import { ChatWindow, type ChatStatus } from "./chat-window";
 import { OverallRating } from "./overall-rating";
-import { enterRun, participantId, readStored, sendEvent, useControl, useResults, writeStored } from "./client";
+import { enterRun, participantId, readStored, sendEvent, useControl, useResults, useTabHold, writeStored } from "./client";
 import { Agenda, LookUp, NextStepsForm, SmallGroups, ThankYouContent, WelcomeLanding } from "./stages";
-import { StageHeading } from "./ui";
+import { BUTTON, StageHeading } from "./ui";
 import { BrandLogo } from "./brand-logo";
 import { TextSizeButton } from "./text-size";
 
@@ -31,6 +31,8 @@ function historyStage(state: unknown): StageId | null {
  */
 export function AspenApp() {
   const { data: control } = useControl();
+  // One tab at a time keeps the phone's answers, so two tabs never overwrite each other's.
+  const { elsewhere, takeBack } = useTabHold();
   const [view, setView] = useState<StageId>("welcome");
   const [follow, setFollow] = useState(true);
   // False until the stored stage is read, so the first render never overwrites it.
@@ -152,6 +154,22 @@ export function AspenApp() {
   const frame = "max-w-[1120px] sm:px-6";
   // Only nudge a participant who fell behind the room; one who went ahead is left alone.
   const behind = live !== null && stageIndex(live) > index;
+
+  if (elsewhere) {
+    return (
+      <div data-aspen-page className="relative z-1 flex min-h-screen items-center justify-center bg-[var(--color-paper)] px-4">
+        <div className="flex max-w-sm flex-col gap-4">
+          <h1 className="m-0 font-display text-[1.6rem] font-light leading-tight text-[var(--color-ink)]">This page is open in another tab</h1>
+          <p className="m-0 font-body text-[1rem] text-[var(--color-ink-secondary)]">
+            Only one tab keeps your answers, so they never overwrite each other. Go back to the other tab, or use this one instead.
+          </p>
+          <button type="button" className={`${BUTTON} w-full py-3`} onClick={takeBack}>
+            Use this tab
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div ref={top} data-aspen-page className={`relative z-1 min-h-screen bg-[var(--color-paper)] ${view === "welcome" ? "" : "pb-24"}`}>

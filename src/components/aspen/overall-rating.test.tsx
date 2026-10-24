@@ -216,6 +216,33 @@ describe("OverallRating", () => {
     expect(screen.getByRole("button", { name: "Remove comment" })).toBeEnabled();
   });
 
+  it("says Removing while a retried removal is on its way, not Remove comment", async () => {
+    const ok = { ok: true, status: 200, json: async () => ({ ok: true, saved: true }) } as unknown as Response;
+    const fail = { ok: false, status: 500, json: async () => ({}) } as unknown as Response;
+    let retried: (r: Response) => void = () => {};
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(ok)
+      .mockResolvedValueOnce(fail)
+      .mockImplementationOnce(() => new Promise<Response>((r) => (retried = r)));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<OverallRating stage="try" />);
+    fireEvent.change(box(), { target: { value: "Residents get wrong amounts" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save comment" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    fireEvent.change(box(), { target: { value: "" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Remove comment" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Remove comment" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(screen.getByRole("button", { name: "Removing…" })).toBeDisabled();
+    // Typing during the retry offers to save the new text.
+    fireEvent.change(box(), { target: { value: "New text" } });
+    expect(screen.getByRole("button", { name: "Save comment" })).toBeEnabled();
+    fireEvent.change(box(), { target: { value: "" } });
+    await act(async () => retried(ok));
+    await waitFor(() => expect(screen.queryByRole("button", { name: /comment|Removing/ })).not.toBeInTheDocument());
+  });
+
   it("lets only the latest send of a kind decide whether it saved", async () => {
     const resolvers: ((r: Response) => void)[] = [];
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((r) => resolvers.push(r))));

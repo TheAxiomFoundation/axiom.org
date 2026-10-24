@@ -19,7 +19,7 @@ import {
 } from "@/lib/aspen/content";
 import type { ChatSource } from "@/lib/aspen/openai";
 import { AnswerText } from "./answer-text";
-import { RatingCard } from "./answer-feedback";
+import { RatingCard, readRatingDraft } from "./answer-feedback";
 import { CHAT_KEY, newId, participantId, readStored, sendEvent, writeStored } from "./client";
 import { Disclosure } from "./disclosure";
 import { BUTTON, BUTTON_QUIET, Chip, FIELD, STEP_NUMBER } from "./ui";
@@ -172,7 +172,8 @@ export function ChatWindow({
           t.status === "streaming" ? { ...t, status: "error", content: "Interrupted. Ask again." } : t,
         ),
       );
-      setRated(new Set(saved.rated ?? []));
+      // A card whose latest save never confirmed reopens with it, even if an earlier save finished the card.
+      setRated(new Set((saved.rated ?? []).filter((id) => !readRatingDraft(id)?.unsaved)));
     }
     setHydrated(true);
   }, []);

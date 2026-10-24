@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HOUSEHOLDS, composePrompt, findHousehold } from "@/lib/aspen/content";
 import { CHAT_KEY, ChatWindow, hostname, readNdjson, type SavedChat, type Turn } from "./chat-window";
+import { RATING_KEY, TAB_KEY, holdTab } from "./client";
 
 type Handler = (init?: RequestInit) => Promise<Response> | Response;
 
@@ -692,6 +693,47 @@ describe("ChatWindow saved conversation", () => {
     expect(screen.queryByText(/Later in the session, you'll check this answer/)).not.toBeInTheDocument();
     await waitFor(() => expect(saved().turns[3]).toMatchObject({ status: "error", content: "Interrupted. Ask again." }));
     expect(saved()).toMatchObject({ conversationId: "c-1", template: "the template", rated: ["p1"] });
+  });
+
+  it("reopens a rated card whose latest save never confirmed, saying so", async () => {
+    store({ perspective: "resident", householdId: "az-retiree", questionIds: ["amount"], conversationId: "c-12", turns: turns.slice(0, 2), rated: ["p1"] });
+    localStorage.setItem(
+      RATING_KEY,
+      JSON.stringify({ p1: { rating: { verdict: "wrong", residentAction: "not-apply", wentWell: [], wentWrong: [], note: "" }, step: 1, unsaved: true } }),
+    );
+    routeFetch({});
+    render(<ChatWindow stage="try" />);
+    expect(await screen.findByText("That didn't save. Tap it again.")).toBeInTheDocument();
+    expect(screen.queryByText("Your rating is saved. Thank you.")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Not apply" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("doesn't mark the card rated once another tab has taken over, so that tab's failed answer still shows", async () => {
+    holdTab();
+    store({ perspective: "resident", householdId: "az-retiree", questionIds: ["amount"], conversationId: "c-13", turns: turns.slice(0, 2), rated: [] });
+    localStorage.setItem(
+      RATING_KEY,
+      JSON.stringify({ p1: { rating: { verdict: "wrong", residentAction: null, wentWell: [], wentWrong: [], note: "" }, step: 1 } }),
+    );
+    const resolvers: ((r: Response) => void)[] = [];
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((r) => resolvers.push(r))));
+    const tabA = render(<ChatWindow stage="try" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(resolvers).toHaveLength(1));
+    // Another tab takes over and its Not apply fails; then this tab's Apply lands.
+    localStorage.setItem(TAB_KEY, JSON.stringify("other-tab"));
+    const theirs = { rating: { verdict: "wrong", residentAction: "not-apply", wentWell: [], wentWrong: [], note: "" }, step: 1, unsaved: true, pending: "9:other-tab" };
+    localStorage.setItem(RATING_KEY, JSON.stringify({ p1: theirs }));
+    await act(async () => resolvers[0](jsonResponse({ ok: true, saved: true })));
+    expect(saved().rated).toEqual([]);
+    expect(JSON.parse(localStorage.getItem(RATING_KEY)!).p1).toEqual(theirs);
+
+    // That tab reloads: its failed answer is there to tap again.
+    tabA.unmount();
+    holdTab();
+    render(<ChatWindow stage="try" />);
+    expect(await screen.findByText("That didn't save. Tap it again.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Not apply" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("starts blank with 'New question', keeping who you ask as", async () => {
