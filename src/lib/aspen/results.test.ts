@@ -104,7 +104,7 @@ describe('aspen results', () => {
 
   it('summarizes a run for the reveal', () => {
     const s = summarizeRun(DATA)
-    expect(s).toMatchObject({ participants: 3, prompts: 3, rated: 2, checked: 1 })
+    expect(s).toMatchObject({ participants: 3, prompts: 3, rated: 2 })
     // What people asked as comes from their first questions, not the optional welcome pick.
     expect(s.perspectives.map((c) => [c.id, c.count])).toEqual([
       ['resident', 1],
@@ -116,7 +116,6 @@ describe('aspen results', () => {
     expect(s.states).toEqual([{ id: 'Arizona', label: 'Arizona', count: 2 }])
     expect(s.verdicts.map((c) => c.count)).toEqual([0, 1, 1])
     expect(s.wentWrong[0].count).toBe(1)
-    expect(s.postCheck.find((c) => c.id === 'wrong')?.count).toBe(1)
   })
 
   it('builds an anonymous feed, newest first', () => {
@@ -217,7 +216,7 @@ describe('aspen results', () => {
     }
   })
 
-  it('reads a saved check the way the panel showed it', () => {
+  it('reads a saved check the way the panel showed it when the check ran', () => {
     // The verdict saved with the check wins over today's list.
     expect(rulesIfEligible({ rules_eligibility_tested: false, rules_program_id: 'us-ny-snap' })).toBe(true)
     expect(rulesIfEligible({ rules_eligibility_tested: true, rules_program_id: 'us-az-snap' })).toBe(false)

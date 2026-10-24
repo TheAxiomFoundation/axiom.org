@@ -22,7 +22,6 @@ import {
   stageIndex,
   MINIMUM_BENEFIT,
 } from './content'
-import { federalFiscalYear } from './coverage'
 
 describe('aspen content', () => {
   it('lists every stage once, in run-of-show order, without clock times', () => {
@@ -163,9 +162,6 @@ describe('aspen content', () => {
     // USDA's FY2027 minimum for households of one or two in the 48 states and DC.
     expect(ex.reference).toEqual({ monthly: 24, annual: 288, standards: 'FY2026' })
     expect(ex.fromOctober).toEqual({ monthly: 25, standards: 'FY2027', effective: 'October 1, 2026' })
-    // October 2026 is the first month of FY2027.
-    expect(federalFiscalYear('2026-10')).toBe(2027)
-    expect(federalFiscalYear('2026-09')).toBe(2026)
     const why = findHousehold('ct-couple')!.why
     expect(why).toContain('$24 a month under FY2026 standards')
     expect(why).toContain("PolicyBench's reference")

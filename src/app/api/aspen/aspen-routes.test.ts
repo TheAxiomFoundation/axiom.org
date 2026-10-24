@@ -1,6 +1,6 @@
 // The Aspen API routes end to end on the in-process memory store: sign in,
-// ask (streamed), rate, check against the rules, discuss, pledge, and read
-// the room's results. External calls (OpenAI, the rules chatbot) are faked.
+// ask (streamed), rate, discuss, pledge, and read the room's results.
+// External calls (OpenAI, the chatbot) are faked.
 
 const jar = new Map<string, string>()
 vi.mock('next/headers', () => ({
@@ -15,12 +15,12 @@ import { POST as signIn, DELETE as signOut } from './sign-in/route'
 import { GET as getState, POST as setState } from './state/route'
 import { POST as ask } from './ask/route'
 import { POST as rate } from './rate/route'
-import { POST as rules } from './rules/route'
 import { POST as event } from './event/route'
 import { POST as pledge } from './pledge/route'
 import { GET as results } from './results/route'
-import { _resetControlCache, _resetMemoryStore } from '@/lib/aspen/store'
+import { _resetControlCache, _resetMemoryStore, getStore } from '@/lib/aspen/store'
 import { _resetRateLimits } from '@/lib/aspen/limit'
+import { AZ_SAVED_CHECK, productionShape } from '@/test/saved-rules-check'
 
 const P = '6f1c2d3e-4a5b-4c6d-8e9f-0a1b2c3d4e5f'
 const C = '7f1c2d3e-4a5b-4c6d-8e9f-0a1b2c3d4e5f'
@@ -31,37 +31,6 @@ const post = (body: unknown) =>
     headers: { 'content-type': 'application/json', 'x-forwarded-for': '10.0.0.1' },
     body: JSON.stringify(body),
   })
-
-const RULES_STREAM = [
-  `9:${JSON.stringify({ toolCallId: 'c1', toolName: 'compute', args: {} })}`,
-  `a:${JSON.stringify({
-    toolCallId: 'c1',
-    result: {
-      program: 'us-az-snap',
-      display_name: 'Arizona SNAP',
-      period: '2026-10',
-      primary_output: 'snap_benefit',
-      outputs: [
-        { name: 'snap_benefit', label: 'Snap benefit', value: 24, unit: 'USD', semantics: 'scalar', published_output: true, legal_id: 'us:x#snap_benefit' },
-        { name: 'snap_eligible', label: 'Snap eligible', value: 'holds', unit: null, semantics: 'judgment', published_output: true },
-        {
-          name: 'snap_maximum_allotment',
-          value: 298,
-          unit: 'USD',
-          published_output: false,
-          legal_id: 'us:policies/usda/snap/fy-2026-cola/maximum-allotments#snap_maximum_allotment',
-        },
-      ],
-      applied: {
-        disclosures: [
-          "Axiom's Arizona SNAP encoding doesn't test eligibility yet: every household shows as eligible, so read the amount as \"if eligible\".",
-          'SNAP figures use FY2026 standards; FY2027 standards took effect October 1, 2026 and are not encoded yet.',
-        ],
-      },
-    },
-  })}`,
-  `0:${JSON.stringify('Estimated Arizona SNAP: $24/month.')}`,
-].join('\n')
 
 async function readLines(response: Response) {
   const text = await response.text()
@@ -83,7 +52,6 @@ describe('aspen API routes', () => {
       'fetch',
       vi.fn(async (url: string) => {
         if (String(url).endsWith('/api/raw')) return Response.json({ text: 'You may not qualify: about $0.' })
-        if (String(url).endsWith('/api/chat')) return new Response(RULES_STREAM)
         throw new Error(`unexpected fetch ${url}`)
       }),
     )
@@ -114,7 +82,7 @@ describe('aspen API routes', () => {
     expect((await signIn(post({ password: 'room' }))).status).toBe(429)
   })
 
-  it('runs the evening: ask, rate, check, discuss, pledge, results', async () => {
+  it('runs the evening: ask, rate, discuss, pledge, results', async () => {
     await signIn(post({ password: 'stage' }))
     expect(await (await setState(post({ runId: 'phoenix', stage: 'try' }))).json()).toMatchObject({
       runId: 'phoenix',
@@ -151,13 +119,18 @@ describe('aspen API routes', () => {
     ).toEqual({ ok: true, saved: true })
     expect(await (await rate(post({ participantId: C, promptId, verdict: 'right' }))).json()).toEqual({ ok: true, saved: false })
 
-    const checked = await (
-      await rules(post({ participantId: P, promptId, messages: [{ role: 'user', content: 'Can I get SNAP?' }] }))
-    ).json()
-    expect(checked).toMatchObject({ amount: 24, program: 'Arizona SNAP', period: '2026-10' })
-    expect(checked.computations[0]).toMatchObject({ program: 'us-az-snap', standardsYears: [2026] })
-    expect(checked.computations[0].disclosures).toHaveLength(2)
-    await rate(post({ participantId: P, promptId, postCheck: 'wrong' }))
+    // The verdict after a rules check went with the check: a rating that is only that is refused now.
+    expect((await rate(post({ participantId: P, promptId, postCheck: 'wrong' }))).status).toBe(400)
+    // A run from before October 16 holds rules checks; nothing writes one now, so save it as the route did.
+    expect(
+      await getStore()!.updatePrompt(promptId, P, {
+        rules_program: 'Arizona SNAP',
+        rules_period: '2026-10',
+        rules_amount: 24,
+        rules_outputs: AZ_SAVED_CHECK.map(productionShape),
+        post_check_verdict: 'wrong',
+      }),
+    ).toBe(true)
 
     await event(post({ participantId: P, kind: 'discussion', payload: { question: 'misunderstood', topics: ['Asset tests'], note: 'BBCE' } }))
     await event(post({ participantId: P, kind: "discussion", payload: { question: "performance", ratings: { amount: 2, clarity: 9, bogus: 3 } } }))
@@ -180,14 +153,17 @@ describe('aspen API routes', () => {
 
     const room = await (await results(new Request('https://axiom.org/api/aspen/results'))).json()
     expect(room.runId).toBe('phoenix')
-    expect(room.summary).toMatchObject({ participants: 1, prompts: 1, rated: 1, checked: 1 })
+    expect(room.summary).toMatchObject({ participants: 1, prompts: 1, rated: 1 })
+    expect(room.summary).not.toHaveProperty('checked')
+    expect(room.summary).not.toHaveProperty('postCheck')
     expect(room.summary.feed[0]).toMatchObject({
       household: 'Couple, with savings',
       verdict: 'wrong',
       rulesAmount: 24,
       rulesIfEligible: true,
-      postCheck: 'wrong',
     })
+    // The saved verdict after the check still picks the answer out for discussion.
+    expect(room.summary.spotlight[0]).toMatchObject({ reason: 'checked-wrong', rulesAmount: 24, rulesIfEligible: true })
     expect(room.summary.discussion.notes).toContainEqual({ question: 'misunderstood', text: 'BBCE' })
     // Pledges give counts only: no states, names or emails reach the results.
     expect(room.summary.pledges).toEqual({ people: 1, accurateAi: 1, stateSystems: 0 })
@@ -242,8 +218,6 @@ describe('aspen API routes', () => {
       await ask(post({ participantId: P, conversationId: C, turn: 0, messages: [{ role: 'user', content: 'x' }] })),
     )
     expect(lines.map((l) => l.type)).toEqual(['meta', 'error'])
-    const failed = await rules(post({ participantId: P, promptId: C, messages: [{ role: 'user', content: 'x' }] }))
-    expect(failed.status).toBe(502)
   })
 
   it('works without any store', async () => {
