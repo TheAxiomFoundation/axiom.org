@@ -569,4 +569,29 @@ describe("holdTab", () => {
     act(() => void window.dispatchEvent(new Event("focus")));
     expect(result.current.elsewhere).toBe(false);
   });
+
+  it("takes the hold once storage works again, so it stops writing when another tab takes over after that", () => {
+    // Another tab holds the device, and this one opens while the phone refuses writes.
+    localStorage.setItem(TAB_KEY, JSON.stringify("other-tab"));
+    const refuse = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("QuotaExceededError");
+    });
+    renderHook(() => useTabHold());
+    expect(heldElsewhere()).toBe(false);
+    expect(localStorage.getItem(TAB_KEY)).toBe(JSON.stringify("other-tab"));
+
+    // Storage works again: this tab's next write takes the hold before it writes.
+    refuse.mockRestore();
+    writeStored(OVERALL_KEY, { truth: "yes" });
+    const mine = localStorage.getItem(TAB_KEY);
+    expect(mine).not.toBe(JSON.stringify("other-tab"));
+    expect(JSON.parse(mine!)).toEqual(expect.any(String));
+    expect(readStored(OVERALL_KEY)).toEqual({ truth: "yes" });
+
+    // From then on it is one tab of two again: when the other takes over, this one writes nothing.
+    localStorage.setItem(TAB_KEY, JSON.stringify("other-tab"));
+    expect(heldElsewhere()).toBe(true);
+    writeStored(OVERALL_KEY, { truth: "no" });
+    expect(readStored(OVERALL_KEY)).toEqual({ truth: "yes" });
+  });
 });

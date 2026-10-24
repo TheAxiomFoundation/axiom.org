@@ -495,6 +495,8 @@ describe("ChatWindow asking", () => {
     pickRetiree();
     fireEvent.click(screen.getByRole("button", { name: "Ask the AI" }));
     expect(await screen.findByText("Slow down: too many questions.")).toBeInTheDocument();
+    // A limit passes with time, so it can be asked again.
+    expect(screen.getByRole("button", { name: "Ask again" })).toBeEnabled();
 
     openFollowUp();
 
@@ -507,6 +509,32 @@ describe("ChatWindow asking", () => {
     fireEvent.change(draftBox(), { target: { value: "Third try" } });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(screen.getAllByText("The chatbot didn't answer. Try again.")).toHaveLength(2));
+  });
+
+  it("offers Start over, not Ask again, when the route turns the question down as sent, through a reload", async () => {
+    const fetchMock = routeFetch({
+      "/api/aspen/ask": () => jsonResponse({ error: "That conversation is long enough. Start a new one." }, false, 400),
+    });
+    const first = render(<ChatWindow stage="try" />);
+    pickRetiree();
+    fireEvent.click(screen.getByRole("button", { name: "Ask the AI" }));
+    expect(await screen.findByText("That conversation is long enough. Start a new one.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ask again" })).not.toBeInTheDocument();
+    await waitFor(() => expect(saved().turns[1]).toMatchObject({ status: "error", final: true }));
+
+    first.unmount();
+    render(<ChatWindow stage="try" />);
+    await screen.findByText("That conversation is long enough. Start a new one.");
+    expect(screen.queryByRole("button", { name: "Ask again" })).not.toBeInTheDocument();
+    // The header's Start over, then the one in place of Ask again: either starts a new conversation.
+    const startOvers = screen.getAllByRole("button", { name: "Start over" });
+    expect(startOvers).toHaveLength(2);
+    const before = saved().conversationId;
+    fireEvent.click(startOvers[1]);
+    await waitFor(() => expect(saved().turns).toEqual([]));
+    expect(saved().conversationId).not.toBe(before);
+    expect(screen.queryByText("That conversation is long enough. Start a new one.")).not.toBeInTheDocument();
+    expect(calls(fetchMock, "/api/aspen/ask")).toHaveLength(1);
   });
 
   it("leaves failed turns out of the history it sends", async () => {

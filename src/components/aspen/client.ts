@@ -29,7 +29,9 @@ let fallbackId: string | null = null;
 let lastRev = 0;
 // This page load's own name, for saveMark and holdTab.
 const TAB = Math.random().toString(36).slice(2);
-// Whether this page has taken the device's answers (holdTab); the presenter's page never does.
+// Whether this page means to keep the device's answers (holdTab); the presenter's page never does.
+let claimed = false;
+// Whether its claim is written, so other tabs can see it.
 let holding = false;
 
 function newId(): string {
@@ -129,6 +131,7 @@ export function nextRev(now = Date.now()): number {
  * taken over stops writing and offers to take it back (useTabHold).
  */
 export function holdTab() {
+  claimed = true;
   try {
     window.localStorage.setItem(TAB_KEY, JSON.stringify(TAB));
     holding = true;
@@ -141,10 +144,16 @@ export function holdTab() {
 /**
  * Whether this page held the device's answers and another tab has since
  * taken them. When nothing holds them (storage was cleared), this page takes
- * them again, so two tabs never both carry on writing.
+ * them again, so two tabs never both carry on writing. A claim storage
+ * refused is tried again each time, so once storage works this page holds,
+ * as it would have when it opened.
  */
 export function heldElsewhere(): boolean {
-  if (!holding) return false;
+  if (!claimed) return false;
+  if (!holding) {
+    holdTab();
+    return false;
+  }
   const holder = readStored<unknown>(TAB_KEY);
   if (typeof holder !== "string") {
     holdTab();

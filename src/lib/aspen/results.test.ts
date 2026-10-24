@@ -3,10 +3,10 @@ import {
   EMPTY_SUMMARY,
   actedOn,
   breakdownOf,
-  firstQuestions,
   latestPerParticipant,
   countBy,
   plainText,
+  questionsAsked,
   ifEligibleSentence,
   rank,
   rulesIfEligible,
@@ -239,6 +239,7 @@ describe('aspen results', () => {
     const p = (id: string, program: string | null, rules_amount: number) => ({
       ...base,
       id,
+      conversation_id: id,
       turn: 0,
       prompt: 'q',
       verdict: 'wrong',
@@ -372,12 +373,12 @@ describe('aspen results', () => {
     const { spotlight, voices } = summarizeRun({
       ...DATA,
       prompts: [
-        { ...base, id: 'w', turn: 0, created_at: '1', prompt: 'q', answer: 'a', verdict: 'wrong', would_act: 'no' },
-        { ...base, id: 'c', turn: 0, created_at: '2', prompt: 'q', answer: 'a', verdict: 'wrong', would_act: 'yes', rating_note: 'Scary', twists: ['gig', 'mystery'] },
-        { ...base, id: 'k', turn: 0, created_at: '3', prompt: 'q', answer: 'a', verdict: 'right', would_act: 'yes', post_check_verdict: 'wrong' },
-        { ...base, id: 'u', turn: 0, created_at: '4', prompt: 'q', answer: 'a', verdict: 'unsure', would_act: 'no' },
-        { ...base, id: 'r', turn: 0, created_at: '5', prompt: 'q', answer: 'a', verdict: 'right', would_act: 'yes', rating_note: 'Spot on' },
-        { ...base, id: 'w2', turn: 0, created_at: '6', prompt: 'q', answer: 'a', verdict: 'wrong', would_act: 'no' },
+        { ...base, id: 'w', conversation_id: 'w', turn: 0, created_at: '1', prompt: 'q', answer: 'a', verdict: 'wrong', would_act: 'no' },
+        { ...base, id: 'c', conversation_id: 'c', turn: 0, created_at: '2', prompt: 'q', answer: 'a', verdict: 'wrong', would_act: 'yes', rating_note: 'Scary', twists: ['gig', 'mystery'] },
+        { ...base, id: 'k', conversation_id: 'k', turn: 0, created_at: '3', prompt: 'q', answer: 'a', verdict: 'right', would_act: 'yes', post_check_verdict: 'wrong' },
+        { ...base, id: 'u', conversation_id: 'u', turn: 0, created_at: '4', prompt: 'q', answer: 'a', verdict: 'unsure', would_act: 'no' },
+        { ...base, id: 'r', conversation_id: 'r', turn: 0, created_at: '5', prompt: 'q', answer: 'a', verdict: 'right', would_act: 'yes', rating_note: 'Spot on' },
+        { ...base, id: 'w2', conversation_id: 'w2', turn: 0, created_at: '6', prompt: 'q', answer: 'a', verdict: 'wrong', would_act: 'no' },
       ],
     })
     expect(spotlight.map((s) => [s.id, s.reason])).toEqual([
@@ -552,48 +553,85 @@ describe('latestPerParticipant', () => {
   })
 })
 
-describe('firstQuestions', () => {
-  const row = (id: string, conversation_id: string, turn: number, created_at?: string): PromptRow =>
-    ({ ...base, id, conversation_id, turn, prompt: 'q', ...(created_at ? { created_at } : {}) })
+describe('questionsAsked', () => {
+  const row = (id: string, conversation_id: string, turn: number, created_at?: string, prompt = 'q'): PromptRow =>
+    ({ ...base, id, conversation_id, turn, prompt, ...(created_at ? { created_at } : {}) })
 
-  it('counts a first question asked again once, as last asked', () => {
+  it('counts a question asked again once, with the attempt that was answered and rated', () => {
     const failed = { ...row('failed', 'x', 0, '2026-10-26T18:00:00Z'), household_id: 'ct-couple', error: 'timeout' }
     const again = { ...row('again', 'x', 0, '2026-10-26T18:00:09Z'), household_id: 'ct-couple', answer: 'An answer', verdict: 'wrong' }
     const followUp = row('follow', 'x', 1, '2026-10-26T18:01:00Z')
-    expect(firstQuestions([failed, again, followUp]).map((p) => p.id)).toEqual(['again'])
+    expect(questionsAsked([failed, again, followUp]).map((p) => p.id)).toEqual(['again', 'follow'])
     const summary = summarizeRun({ ...DATA, prompts: [failed, again, followUp] })
     expect(summary.households.find((h) => h.id === 'ct-couple')?.count).toBe(1)
     expect(summary.breakdown.find((r) => r.id === 'ct-couple')).toMatchObject({ asked: 1, rated: 1, wrong: 1 })
   })
 
-  it('keeps one first question per conversation, the latest of its first questions, and drops no conversation', () => {
+  it('counts an answer cut off on one tab that still finished once, with the rating from the retry, even when it was saved after', () => {
+    // The first attempt stalled before it was saved, so the retry's row is the older one.
+    const retry = { ...row('retry', 'x', 0, '2026-10-26T18:00:09Z'), household_id: 'ct-couple', answer: 'Retry', verdict: 'wrong' }
+    const original = { ...row('original', 'x', 0, '2026-10-26T18:00:20Z'), household_id: 'ct-couple', answer: 'Original' }
+    const summary = summarizeRun({ ...DATA, prompts: [retry, original] })
+    expect(summary.prompts).toBe(1)
+    expect(summary.rated).toBe(1)
+    expect(summary.feed.map((f) => f.id)).toEqual(['retry'])
+    expect(summary.households.find((h) => h.id === 'ct-couple')?.count).toBe(1)
+    expect(summary.breakdown.find((r) => r.id === 'ct-couple')).toMatchObject({ asked: 1, rated: 1, wrong: 1 })
+  })
+
+  it('keeps different questions at the same turn apart', () => {
+    const one = { ...row('one', 'x', 1, '2026-10-26T18:00:00Z', 'How much?'), answer: 'A' }
+    const other = { ...row('other', 'x', 1, '2026-10-26T18:00:05Z', 'Who qualifies?'), answer: 'B' }
+    expect(questionsAsked([one, other]).map((p) => p.id)).toEqual(['one', 'other'])
+    expect(summarizeRun({ ...DATA, prompts: [one, other] }).prompts).toBe(2)
+  })
+
+  it('keeps one row per question, the one acted on most, then the latest, and drops no question', () => {
     const times = ['2026-10-26T18:00:00Z', '2026-10-26T18:00:05Z', '2026-10-26T18:01:00Z', undefined]
     const rows = fc.array(
-      fc.record({ conversation: fc.constantFrom('x', 'y', 'z'), turn: fc.constantFrom(0, 0, 1, 2), at: fc.constantFrom(...times) }),
-      { maxLength: 12 },
+      fc.record({
+        conversation: fc.constantFrom('x', 'y'),
+        turn: fc.constantFrom(0, 1),
+        prompt: fc.constantFrom('q', 'r'),
+        at: fc.constantFrom(...times),
+        answer: fc.boolean(),
+        verdict: fc.constantFrom(undefined, 'wrong'),
+        checked: fc.boolean(),
+      }),
+      { maxLength: 14 },
     )
+    const key = (p: PromptRow) => JSON.stringify([p.conversation_id, p.turn, p.prompt])
+    const weight = (p: PromptRow) => (p.verdict ? 3 : p.rules_requested_at ? 2 : p.answer ? 1 : 0)
     fc.assert(
       fc.property(rows, (specs) => {
-        const prompts = specs.map((r, i) => row(String(i), r.conversation, r.turn, r.at))
-        const kept = firstQuestions(prompts)
-        const firsts = prompts.filter((p) => p.turn === 0)
-        expect(new Set(kept.map((p) => p.conversation_id)).size).toBe(kept.length)
-        expect(new Set(kept.map((p) => p.conversation_id))).toEqual(new Set(firsts.map((p) => p.conversation_id)))
+        const prompts = specs.map((r, i) => ({
+          ...row(String(i), r.conversation, r.turn, r.at, r.prompt),
+          ...(r.answer ? { answer: 'a' } : {}),
+          ...(r.verdict ? { answer: 'a', verdict: r.verdict } : {}),
+          ...(r.checked ? { answer: 'a', rules_requested_at: '2026-10-26T18:02:00Z' } : {}),
+        }))
+        const kept = questionsAsked(prompts)
+        expect(new Set(kept.map(key)).size).toBe(kept.length)
+        expect(new Set(kept.map(key))).toEqual(new Set(prompts.map(key)))
         for (const p of kept) {
           expect(prompts).toContain(p)
-          expect(p.turn).toBe(0)
-          const latest = firsts
-            .filter((q) => q.conversation_id === p.conversation_id)
+          const group = prompts.filter((q) => key(q) === key(p))
+          const top = Math.max(...group.map(weight))
+          expect(weight(p)).toBe(top)
+          const latest = group
+            .filter((q) => weight(q) === top)
             .reduce((m, q) => ((q.created_at ?? '') > m ? (q.created_at ?? '') : m), '')
           expect(p.created_at ?? '').toBe(latest)
+          if (group.some((q) => q.verdict)) expect(p.verdict).toBeTruthy()
         }
+        expect(questionsAsked(kept)).toEqual(kept)
       }),
     )
   })
 
-  it('breaks a tie in time with the later row', () => {
+  it('breaks a tie with the later row', () => {
     const at = '2026-10-26T18:00:00Z'
-    expect(firstQuestions([row('1', 'x', 0, at), row('2', 'x', 0, at)]).map((p) => p.id)).toEqual(['2'])
+    expect(questionsAsked([row('1', 'x', 0, at), row('2', 'x', 0, at)]).map((p) => p.id)).toEqual(['2'])
   })
 })
 
@@ -700,7 +738,7 @@ describe('summarizeRun with answers saved as they are tapped', () => {
   it('puts an answer that looked wrong ahead of one nobody was sure of, when a resident would act on both', () => {
     const at = (m: number) => `2026-10-26T18:0${m}:00Z`
     const row = (id: string, m: number, verdict: string, extra: Partial<PromptRow> = {}) =>
-      ({ ...base, id, turn: 0, created_at: at(m), prompt: 'q', answer: 'a', verdict, resident_action: 'apply', ...extra }) as PromptRow
+      ({ ...base, id, conversation_id: id, turn: 0, created_at: at(m), prompt: 'q', answer: 'a', verdict, resident_action: 'apply', ...extra }) as PromptRow
     const s = summarizeRun({
       ...DATA,
       prompts: [

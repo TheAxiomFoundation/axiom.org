@@ -477,10 +477,10 @@ describe("PresenterApp stages", () => {
     const answers = summarizeRun({
       ...DATA,
       prompts: [
-        { ...base, id: "q1", created_at: at(1), verdict: "unsure", rating_note: "Not sure about the asset test", answer: "Maybe $50." },
-        { ...base, id: "q2", created_at: at(2), verdict: "wrong", resident_action: "not-apply", went_wrong: ["Wrong amount", "Said I don't qualify"], answer: "You don't qualify." },
-        { ...base, id: "q3", created_at: at(3), verdict: "right", answer: "About $24." },
-        { ...base, id: "q4", created_at: at(4), verdict: "wrong", rating_note: "Ignored BBCE", answer: "Over the limit." },
+        { ...base, id: "q1", conversation_id: "q1", created_at: at(1), verdict: "unsure", rating_note: "Not sure about the asset test", answer: "Maybe $50." },
+        { ...base, id: "q2", conversation_id: "q2", created_at: at(2), verdict: "wrong", resident_action: "not-apply", went_wrong: ["Wrong amount", "Said I don't qualify"], answer: "You don't qualify." },
+        { ...base, id: "q3", conversation_id: "q3", created_at: at(3), verdict: "right", answer: "About $24." },
+        { ...base, id: "q4", conversation_id: "q4", created_at: at(4), verdict: "wrong", rating_note: "Ignored BBCE", answer: "Over the limit." },
       ],
     });
     setup({ stage: "reveal", summary: answers });
