@@ -1145,7 +1145,7 @@ export function liveDemoUrl(): string {
 
 /** The same rules for every system: what one shared set of rules gives each group. */
 export const SAME_RULES = {
-  /** Shared foundation 2/3's heading. */
+  /** Shared foundation 2/4's heading. */
   heading: "What does one open set of rules enable?",
   /** The room is state benefits leaders, so governments get the big box and the most uses. */
   governments: {
@@ -1174,14 +1174,14 @@ export function percent(part: number, whole: number): number {
 // The fix
 // ---------------------------------------------------------------------------
 
-/** What makes the one set of rules checkable: the dark box on Shared foundation 1/3. */
+/** What makes the one set of rules checkable: the dark box on Shared foundation 1/4. */
 export const FOUNDATION_TRAITS = [
   "Every value is built to cite the provision it comes from",
   "Every change carries its effective date",
   "Every release is versioned, so you can see what changed",
 ] as const;
 
-/** Under the boxes on Shared foundation 1/3, emphasized as in the main deck's value proposition. */
+/** Under the boxes on Shared foundation 1/4, emphasized as in the main deck's value proposition. */
 export const ONE_SET_STATEMENT = {
   text: "Every system that helps people discover and enroll in economic security programs runs on the same rules,",
   accent: "reducing cost, duplication and error at once.",
@@ -1196,7 +1196,40 @@ export const ONE_SET_OF_RULES = [
   { label: "Research", detail: "Evaluators and analysts run the same rules." },
 ] as const;
 
-/** Shared foundation 3/3's heading. */
+/**
+ * Shared foundation 3/4: the encoding pipeline, before "How do we build it?".
+ * Copied from the InnovateUS deck (axiom-slides, public/decks/innovateus-2026-10,
+ * slide 12; axiom.org/slides/innovateus-2026-10#12), wording unchanged. Each
+ * step's small illustration lives with the slide; its text lives here.
+ */
+export const ENCODING_PIPELINE = {
+  heading: "The encoding pipeline",
+  lead:
+    "We take the law from its official sources, encode it rule by rule, and apply each rule only after its required checks pass. " +
+    "An AI judge flags issues for review. Every value keeps the citation it came from. " +
+    "One artifact then serves every surface, from a chatbot to a government rules engine.",
+  steps: [
+    { name: "Intake", caption: "Hundreds of official sources", foot: "Goal: keep every version" },
+    { name: "Corpus", caption: "The whole law, word for word", foot: null },
+    { name: "Encoding loop", caption: "Drafted, checked, redrafted", foot: "↺ Applied only when required checks pass" },
+    { name: "RuleSpec", caption: "One rule, fully cited", foot: null },
+    { name: "Graph", caption: "The spec becomes a node", foot: "Typed · cited · executable" },
+    { name: "Compile and serve", caption: "One artifact, every surface", foot: null },
+  ],
+  sources: ["eCFR", "USLM", "state codes ×47", "policy manuals"],
+  checks: [
+    { label: "deterministic", required: true },
+    { label: "comparison models, where available", required: true },
+    { label: "AI judge, advisory", required: false },
+  ],
+  surfaces: [
+    { name: "Chatbot", who: "AI labs" },
+    { name: "Rules engine", who: "government" },
+    { name: "API/MCP", who: "builders" },
+  ],
+} as const;
+
+/** Shared foundation 4/4's heading. */
 export const BUILD_HEADING = "How do we build one open set of rules?";
 
 /**

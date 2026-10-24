@@ -8,6 +8,7 @@ import {
   GOLDEN_A,
   EXAMPLE_HOUSEHOLD,
   BUILD_HEADING,
+  ENCODING_PIPELINE,
   FRONT_DOOR,
   liveDemoUrl,
   NEXT_STEPS,
@@ -337,7 +338,7 @@ describe("PresenterApp navigation", () => {
 
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     await onStage("foundation");
-    expect(screen.getByText("1/3")).toBeInTheDocument();
+    expect(screen.getByText("1/4")).toBeInTheDocument();
 
     // Back from a stage's first slide lands on the last slide of the stage before.
     fireEvent.keyDown(document.body, { key: "ArrowLeft" });
@@ -640,7 +641,23 @@ describe("PresenterApp stages", () => {
     expect(screen.getByText(SAME_RULES.governments.label)).toBeInTheDocument();
     for (const use of SAME_RULES.governments.uses) expect(screen.getByText(use)).toBeInTheDocument();
     for (const a of SAME_RULES.audiences) expect(screen.getByText(a.label)).toBeInTheDocument();
+    // The encoding pipeline comes before how it gets built.
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("3/4")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: ENCODING_PIPELINE.heading })).toBeInTheDocument();
+    expect(screen.getByText(ENCODING_PIPELINE.lead)).toBeInTheDocument();
+    for (const step of ENCODING_PIPELINE.steps) {
+      expect(screen.getByText(step.name)).toBeInTheDocument();
+      expect(screen.getByText(step.caption)).toBeInTheDocument();
+      if (step.foot) expect(screen.getByText(step.foot)).toBeInTheDocument();
+    }
+    for (const source of ENCODING_PIPELINE.sources) expect(screen.getByText(source)).toBeInTheDocument();
+    // Only the required checks carry a tick; the AI judge is advisory.
+    expect(screen.getByText("✓ deterministic")).toBeInTheDocument();
+    expect(screen.getByText("AI judge, advisory")).toBeInTheDocument();
+    for (const surface of ENCODING_PIPELINE.surfaces) expect(screen.getByText(surface.name)).toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("4/4")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1, name: BUILD_HEADING })).toBeInTheDocument();
     for (const tier of GOLDEN_A) expect(screen.getByText(tier.name)).toBeInTheDocument();
     expect(screen.queryByText("Bronze A")).not.toBeInTheDocument();
