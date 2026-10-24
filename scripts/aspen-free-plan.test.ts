@@ -114,11 +114,12 @@ describe("run", () => {
       auditFile = join(dir, "web-search-audit.json");
     });
 
-    it("checks it, prints its basis for the presenter, and records it with --write", () => {
+    it("checks it, prints its scan for the presenter, and records it with --write", () => {
       const auditSha = writeAudit();
       const lines: string[] = [];
       run([file, "--sha256", sha, "--models", "mock-a", "--web-audit", auditFile, "--web-audit-sha256", auditSha, "--write"], { contentPath: content, log: (l) => lines.push(l) });
-      expect(lines).toContain("Published answers, per the web-search audit: MOCK: no mock household's answers are published");
+      expect(lines).toContain("PolicyBench's scan for these households' answers: MOCK: no mock household's answers were found");
+      expect(lines).toContain("Why the audit doesn't rule out a copy elsewhere: MOCK: a scan can't show there's no copy anywhere");
       expect(lines.some((l) => l.includes("no web-search audit given"))).toBe(false);
       expect(readFileSync(content, "utf8")).toContain(`// Web-search audit web-search-audit.json, sha256 ${auditSha}, generated 2026-10-24T06:00:00Z at 0000000mock.\n`);
     });

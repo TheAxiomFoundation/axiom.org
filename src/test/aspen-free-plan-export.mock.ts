@@ -64,8 +64,11 @@ const searches = (domainBlock: string[] | null): WebSearchArm => ({ households: 
  */
 export const MOCK_WEB_SEARCH_AUDIT: WebSearchAudit = {
   export: { file: "free-plan-mock.json", sha256: "0".repeat(64) },
-  answersPublished: false,
-  answersPublishedBasis: "MOCK: no mock household's answers are published",
+  answersPublished: null,
+  answersPublishedNote: "MOCK: a scan can't show there's no copy anywhere",
+  matchingAnswersFound: false,
+  matchingScope: "MOCK: every file version in the public PolicyEngine/policybench repository, and its release assets",
+  matchingBasis: "MOCK: no mock household's answers were found",
   models: Object.fromEntries(
     MOCK_POLICYBENCH_EXPORT.models.map((m, i) => {
       const block = i % 2 ? null : ["mock.example"];

@@ -78,7 +78,8 @@ export function run(argv: readonly string[], { contentPath = CONTENT, log = cons
   log("Footnotes, run in after the caveat:");
   for (const f of pilot.footnotes) log(`  ${f}`);
   if (exp.tool) log(`PolicyBench's tool line: ${exp.tool}`);
-  if (webAudit?.answersPublishedBasis) log(`Published answers, per the web-search audit: ${webAudit.answersPublishedBasis}`);
+  if (webAudit?.matchingBasis) log(`PolicyBench's scan for these households' answers: ${webAudit.matchingBasis}`);
+  if (webAudit?.answersPublishedNote) log(`Why the audit doesn't rule out a copy elsewhere: ${webAudit.answersPublishedNote}`);
   log("Free-plan basis, for the presenter:");
   for (const id of args.models) {
     const m = exp.models.find((x) => x.id === id)!;
