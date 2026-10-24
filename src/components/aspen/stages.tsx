@@ -6,25 +6,16 @@ import {
   EVENT,
   GROUP_QUESTIONS,
   GROUP_RAISED,
-  BUILD_HEADING,
-  FOUNDATION_TRAITS,
-  GOLDEN_A,
   NEXT_STEPS,
-  ONE_SET_OF_RULES,
-  ONE_SET_STATEMENT,
+  LOOK_UP,
   POLICYBENCH,
   STAGES,
   USE_CASES,
-  US_STATES,
-  percent,
   type StageId,
 } from "@/lib/aspen/content";
-import type { Count } from "@/lib/aspen/results";
-import { SourceOfTruthCard } from "./results-board";
-import { OVERALL_KEY, VOTE_KEY, participantId, postJson, readStored, sendEvent, writeStored } from "./client";
+import { VOTE_KEY, participantId, postJson, readStored, sendEvent, writeStored } from "./client";
 import { Disclosure } from "./disclosure";
-import { TierMedal } from "./tier-medal";
-import { BUTTON, BlockHeading, Card, FIELD, Part } from "./ui";
+import { BUTTON, Card, FIELD, Part } from "./ui";
 
 const OPTION_BOX =
   "rounded-lg border px-4 py-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]";
@@ -158,255 +149,31 @@ export function WelcomeLanding({ onStart }: { onStart: () => void }) {
   );
 }
 
-/** What the participant asked in Try it, as the thread needs it on later stages. */
-export interface ThreadQuestion {
-  householdId: string | null;
-  householdLabel: string | null;
-  perspective: string | null;
-  asked: boolean;
-  rated: boolean;
-}
-
 /**
- * The participant's own question, carried through the session: a short
- * line on the stages after Try it that ties the stage back to it.
+ * A TV moment on a phone (the run-through, Oct 23): while the room looks at
+ * the screen together, the phone shows one line and, when there is one, one
+ * number to carry, then says when it is needed again.
  */
-export function YourThread({
-  stage,
-  thread,
-  onOpen,
-}: {
-  stage: StageId;
-  thread: ThreadQuestion | null;
-  onOpen: () => void;
-}) {
-  // What we saw has its own "What you contributed" summary instead.
-  if (!["scale", "foundation"].includes(stage)) return null;
-  const asked = thread?.asked ?? false;
-  const about = thread?.householdLabel ? `“${thread.householdLabel}”` : "your own question";
-  let line: string;
-  let action: string | null = null;
-  if (!asked) {
-    line = "You haven't asked the AI yet.";
-    action = "Ask the AI";
-  } else if (stage === "scale") {
-    line =
-      thread?.householdId === "ct-couple"
-        ? `You asked about the Connecticut household below: ${POLICYBENCH.example.modelsSaidZero} of the ${POLICYBENCH.example.modelsAnswered} models that answered said it gets $0.`
-        : `You asked about ${about}. Here's how AI does at scale.`;
-  } else {
-    // The rules check lives in the chatbot demo now, so the foundation just recalls the question.
-    line = `You asked about ${about}.`;
-  }
+export function LookUp({ stat, label }: { stat: string | null; label: string }) {
   return (
-    <div className="mb-10 rounded-xl border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] p-4 sm:p-5">
-      <span className="mb-1.5 block font-body text-[1.08rem] font-semibold text-[var(--color-ink)]">Your question</span>
-      <p className="m-0 font-body text-[1.08rem] leading-snug text-[var(--color-ink)]">
-        {line}
-        {action && (
-          <>
-            {" "}
-            <button type="button" className="aspen-link whitespace-nowrap font-medium" onClick={onOpen}>
-              {action} →
-            </button>
-          </>
-        )}
+    <section aria-label={LOOK_UP.heading} className="flex flex-col gap-4 rounded-xl border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] p-6">
+      <p className="m-0 flex items-center gap-2.5 font-body text-[1.3rem] font-semibold text-[var(--color-ink)]">
+        <svg aria-hidden viewBox="0 0 24 24" className="h-6 w-6 shrink-0 text-[var(--color-accent)]">
+          <rect x="2.5" y="4" width="19" height="12.5" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.6" />
+          <path d="M8.5 20h7M12 16.5V20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+        {LOOK_UP.heading}
       </p>
-    </div>
-  );
-}
-
-/**
- * The top of What we saw on a phone: what this person put in, each with a
- * check when done or a way to do it now. The room's results follow.
- */
-export function YourContribution({ thread, onOpen }: { thread: ThreadQuestion | null; onOpen: () => void }) {
-  const [shared, setShared] = useState(false);
-  useEffect(() => {
-    setShared(Boolean(readStored<boolean>(OVERALL_KEY)));
-  }, []);
-  const asked = thread?.asked ?? false;
-  const rated = thread?.rated ?? false;
-  const about = thread?.householdLabel ? `“${thread.householdLabel}”` : "your own question";
-  const rows: { done: boolean; text: string; action: string | null }[] = [
-    { done: asked, text: asked ? `You asked about ${about}.` : "You haven't asked the AI yet.", action: asked ? null : "Ask the AI" },
-    {
-      done: rated,
-      text: rated ? "You rated the answer." : "You haven't rated an answer yet.",
-      action: asked && !rated ? "Rate my answer" : null,
-    },
-    {
-      done: shared,
-      text: shared ? "You shared how AI did overall." : "You haven't shared how AI did overall.",
-      action: shared ? null : "Share it",
-    },
-  ];
-  return (
-    <section aria-labelledby="aspen-you" className="mb-10 rounded-xl border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] p-4 sm:p-5">
-      <h2 id="aspen-you" className="m-0 mb-3 font-body text-[1.4rem] font-semibold text-[var(--color-ink)]">
-        What you contributed
-      </h2>
-      <ul className="m-0 flex list-none flex-col gap-3 p-0">
-        {rows.map((r) => (
-          <li key={r.text} className="flex items-start gap-3 font-body text-[1.08rem] leading-snug text-[var(--color-ink)]">
-            <span aria-hidden className={`w-5 shrink-0 text-center ${r.done ? "text-[var(--color-success)]" : "text-[var(--color-rule-strong)]"}`}>
-              {r.done ? "✓" : "○"}
-            </span>
-            <span>
-              {r.text}
-              {r.action && (
-                <>
-                  {" "}
-                  <button type="button" className="aspen-link whitespace-nowrap font-medium" onClick={onOpen}>
-                    {r.action} →
-                  </button>
-                </>
-              )}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// At scale: PolicyBench
-// ---------------------------------------------------------------------------
-
-/** At scale, on a phone: the one number, then the example household most models got wrong. */
-export function PolicyBenchContent() {
-  const zeroShare = percent(POLICYBENCH.saidZero, POLICYBENCH.eligibleAnswers);
-  const ex = POLICYBENCH.example;
-  return (
-    <div className="flex flex-col gap-8">
-      <BlockHeading>Across {POLICYBENCH.models} AI models</BlockHeading>
-      <Part n={1} title="Households that qualify, told $0">
-        <Card className="flex flex-col gap-2 border-l-4 border-l-[var(--color-error)] p-5">
-          <span className="font-display text-[3.6rem] font-light leading-none tabular-nums text-[var(--color-error)]">
-            {zeroShare}%
-          </span>
-          <p className="m-0 font-body text-[1.15rem] leading-snug text-[var(--color-ink)]">
-            of AI answers told a household that qualifies for SNAP it would get <strong>$0</strong>.
-          </p>
-          <p className="m-0 font-body text-[1.02rem] text-[var(--color-ink)]">
-            {POLICYBENCH.saidZero} of {POLICYBENCH.eligibleAnswers} answers, from {POLICYBENCH.models} models.
-          </p>
-        </Card>
-      </Part>
-      <Part n={2} title={`One ${ex.state} household`}>
-        <Card className="flex flex-col gap-3 p-5">
-          <p className="m-0 font-body text-[1.08rem] leading-relaxed text-[var(--color-ink)]">{ex.description}</p>
-          <p className="m-0 font-body text-[1.08rem] font-semibold leading-relaxed text-[var(--color-error)]">
-            {ex.modelsSaidZero} of the {ex.modelsAnswered} AI models that answered said $0. {ex.modelsExact} matched exactly.
-          </p>
-          <p className="m-0 font-body text-[1.08rem] leading-relaxed">
-            <strong className="text-[var(--color-accent)]">
-              PolicyEngine&apos;s reference in PolicyBench, under {ex.reference.standards} standards: ${ex.reference.monthly} a month.
-            </strong>{" "}
-            The minimum benefit rose to ${ex.fromOctober.monthly} on {ex.fromOctober.effective}.
-          </p>
-        </Card>
-      </Part>
-      <p className="m-0 font-body text-[0.95rem] text-[var(--color-ink)]">
-        PolicyBench, {POLICYBENCH.snapshot}. Models answered without tools.{" "}
-        <a className="aspen-link" href={POLICYBENCH.url} target="_blank" rel="noopener noreferrer">
-          policybench.org
-        </a>
-      </p>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// A shared foundation
-// ---------------------------------------------------------------------------
-
-/**
- * Shared foundation on a phone, in What we saw's shape: a block heading for
- * the idea, then numbered parts (what you can check, what it powers, how it
- * gets built), with the room's own answer first once people have given one.
- */
-export function FoundationContent({ sourceOfTruth }: { sourceOfTruth?: Count[] }) {
-  const asked = sourceOfTruth?.some((c) => c.count > 0) ?? false;
-  let n = 0;
-  return (
-    <div className="flex flex-col gap-8">
-      <BlockHeading>One open, validated set of rules</BlockHeading>
-      {asked && sourceOfTruth && (
-        <Part n={++n} title="Checking answers in this room">
-          <SourceOfTruthCard counts={sourceOfTruth} />
-        </Part>
-      )}
-      <Part n={++n} title="What you can check">
-        <ul className="m-0 flex list-none flex-col gap-3 rounded-xl bg-[var(--color-ink)] p-5 font-body text-[1.08rem] leading-snug text-white">
-          {FOUNDATION_TRAITS.map((trait) => (
-            <li key={trait} className="flex gap-2.5">
-              {/* A plain bullet, not a check: these describe how the rules are built, not work that is finished. */}
-              <span aria-hidden className="mt-[0.55em] h-[7px] w-[7px] shrink-0 rounded-full bg-[#e8a25c]" />
-              {trait}
-            </li>
-          ))}
-        </ul>
-      </Part>
-      <Part n={++n} title="What it powers">
-        <ul className="m-0 grid list-none grid-cols-2 gap-2 p-0 lg:grid-cols-3">
-          {ONE_SET_OF_RULES.map((use) => (
-            <li
-              key={use.label}
-              className="rounded-lg border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-3.5 py-3 font-body text-[1.08rem] font-medium leading-snug text-[var(--color-ink)]"
-            >
-              {use.label}
-            </li>
-          ))}
-        </ul>
-        <p className="m-0 max-w-[680px] font-body text-[1.15rem] font-medium leading-snug text-[var(--color-ink)]">
-          {ONE_SET_STATEMENT.text} <span className="text-[var(--color-accent)]">{ONE_SET_STATEMENT.accent}</span>
+      {stat !== null ? (
+        <p className="m-0 flex flex-col gap-1">
+          <span className="font-display text-[3.4rem] font-light leading-none tabular-nums text-[var(--color-accent)]">{stat}</span>
+          <span className="font-body text-[1.12rem] leading-snug text-[var(--color-ink)]">{label}</span>
         </p>
-      </Part>
-      <Part n={++n} title={BUILD_HEADING}>
-        <GoldenContent />
-      </Part>
-    </div>
-  );
-}
-
-/**
- * The three steps, as rows a phone can scan: the medallion, the tier and its
- * name show; a tap opens what the state gets and what it takes. Native
- * <details>, so keyboards and screen readers get it for free.
- */
-export function GoldenContent() {
-  const cards: Record<string, string> = { "Silver A": "bg-[#eef0f2]", "Gold A": "border-[#b7862b] bg-[#f6eed8]" };
-  return (
-    <div className="flex flex-col gap-3">
-      {GOLDEN_A.map((tier) => (
-        <details key={tier.tier} className={`group rounded-lg border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] ${cards[tier.tier] ?? ""}`}>
-          <summary className="flex cursor-pointer list-none items-center gap-3 p-4 [&::-webkit-details-marker]:hidden">
-            <TierMedal medal={tier.medal} size={40} />
-            <span className="min-w-0 flex-1">
-              <span className="block font-body text-[0.95rem] font-medium text-[var(--color-ink-muted)]">{tier.tier}</span>
-              <span className="block font-body text-[1.12rem] font-semibold leading-snug text-[var(--color-ink)]">{tier.name}</span>
-            </span>
-            <svg aria-hidden viewBox="0 0 12 12" className="h-4 w-4 shrink-0 text-[var(--color-ink-muted)] transition-transform group-open:rotate-180">
-              <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-          </summary>
-          <div className="flex flex-col gap-2 px-4 pb-4">
-            <p className="m-0 font-body text-[1.05rem] leading-relaxed text-[var(--color-ink)]">{tier.gets}</p>
-            {"goal" in tier && <p className="m-0 font-body text-[1.05rem] leading-relaxed text-[var(--color-ink)]">{tier.goal}</p>}
-            {"programs" in tier && (
-              <p className="m-0 font-body text-[1.02rem] leading-relaxed text-[var(--color-ink-secondary)]">
-                {(tier.programs as readonly string[]).join(" · ")}
-              </p>
-            )}
-            <p className="m-0 font-body text-[1.02rem] leading-relaxed text-[var(--color-ink-secondary)]">
-              <span className="font-semibold text-[var(--color-ink)]">It takes:</span> {tier.takes}
-            </p>
-          </div>
-        </details>
-      ))}
-    </div>
+      ) : (
+        <p className="m-0 font-body text-[1.12rem] leading-snug text-[var(--color-ink)]">{label}</p>
+      )}
+      <p className="m-0 font-body text-[1rem] text-[var(--color-ink-muted)]">{LOOK_UP.later}</p>
+    </section>
   );
 }
 
@@ -568,9 +335,6 @@ export function GroupsCard({ stage }: { stage: string }) {
 // ---------------------------------------------------------------------------
 
 export function NextStepsForm() {
-  const [name, setName] = useState("");
-  const [title, setTitle] = useState("");
-  const [state, setState] = useState("");
   const [email, setEmail] = useState("");
   const [accurateAi, setAccurateAi] = useState(false);
   const [stateSystems, setStateSystems] = useState(false);
@@ -583,9 +347,6 @@ export function NextStepsForm() {
     setStatus("saving");
     const response = await postJson<{ error?: string }>("/api/aspen/pledge", {
       participantId: participantId(),
-      name,
-      title,
-      state,
       email,
       accurateAi,
       stateSystems,
@@ -636,24 +397,8 @@ export function NextStepsForm() {
         </div>
       </Part>
       <Part n={2} title="How we reach you" as="h2">
+        {/* Just an email: Aspen's roster already gives each leader's name, title and state. */}
         <div className="grid gap-4 sm:grid-cols-2">
-          <label className={label}>
-            Name
-            <input className={FIELD} value={name} maxLength={120} onChange={(e) => setName(e.target.value)} autoComplete="name" />
-          </label>
-          <label className={label}>
-            Title
-            <input className={FIELD} value={title} maxLength={160} onChange={(e) => setTitle(e.target.value)} autoComplete="organization-title" />
-          </label>
-          <label className={label}>
-            State
-            <select className={FIELD} value={state} onChange={(e) => setState(e.target.value)}>
-              <option value="">Pick a state</option>
-              {US_STATES.map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </select>
-          </label>
           <label className={label}>
             Email
             <input
