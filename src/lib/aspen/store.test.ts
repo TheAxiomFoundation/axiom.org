@@ -246,37 +246,48 @@ describe('both stores load a run the same way', () => {
       },
       { requiredKeys: [] },
     )
-    const row = fc.record(
+    const fields = {
+      id: fc.uuid(),
+      run_id: fc.constant('phoenix'),
+      participant_id: fc.constantFrom(P, Q),
+      conversation_id: fc.constantFrom('c1', 'c2'),
+      turn: fc.integer({ min: 0, max: 1 }),
+      created_at: fc.constantFrom('2026-10-16T19:00:00.000Z', '2026-10-16T19:01:00.000Z'),
+      prompt: fc.constantFrom('q1', 'q2'),
+      perspective: nullable(fc.constantFrom('resident', 'caseworker', 'stranger')),
+      household_id: nullable(fc.constantFrom('ct-couple', 'az-retiree', 'gone')),
+      twists: nullable(fc.array(fc.constantFrom('gig', 'savings'), { maxLength: 2 })),
+      answer: nullable(fc.constantFrom('$0', 'You may get $24.')),
+      verdict: nullable(fc.constantFrom('right', 'wrong', 'unsure')),
+      would_act: nullable(fc.constantFrom('yes', 'maybe', 'no')),
+      resident_action: nullable(fc.constantFrom('apply', 'not-apply', 'call', 'unsure')),
+      went_well: nullable(fc.array(fc.constantFrom('Plain and clear', 'Gave a number'), { maxLength: 2 })),
+      went_wrong: nullable(fc.array(fc.constantFrom('Wrong amount', 'Missed a program'), { maxLength: 2 })),
+      rating_note: nullable(fc.constantFrom('Check the asset test')),
+      rules_program: nullable(fc.constantFrom('Arizona SNAP', 'New York SNAP')),
+      rules_period: nullable(fc.constant('2026-10')),
+      rules_amount: nullable(fc.constantFrom(0, 24, 300)),
+      rules_outputs: nullable(fc.array(computation, { maxLength: 2 })),
+      rules_answer: nullable(fc.constant('Long prose the results never read.')),
+      post_check_verdict: nullable(fc.constantFrom('match', 'close', 'wrong')),
+    }
+    const keys = ['id', 'run_id', 'participant_id', 'conversation_id', 'turn', 'prompt'] as const
+    const row = fc.record(fields, { requiredKeys: [...keys] })
+    // A rated answer the resident wouldn't apply on, with an amount and a saved check: the only rows
+    // whose eligibility reading moves a count, and too rare among the rows above to rely on.
+    const notApplyChecked = fc.record(
       {
-        id: fc.uuid(),
-        run_id: fc.constant('phoenix'),
-        participant_id: fc.constantFrom(P, Q),
-        conversation_id: fc.constantFrom('c1', 'c2'),
-        turn: fc.integer({ min: 0, max: 1 }),
-        created_at: fc.constantFrom('2026-10-16T19:00:00.000Z', '2026-10-16T19:01:00.000Z'),
-        prompt: fc.constantFrom('q1', 'q2'),
-        perspective: nullable(fc.constantFrom('resident', 'caseworker', 'stranger')),
-        household_id: nullable(fc.constantFrom('ct-couple', 'az-retiree', 'gone')),
-        twists: nullable(fc.array(fc.constantFrom('gig', 'savings'), { maxLength: 2 })),
-        answer: nullable(fc.constantFrom('$0', 'You may get $24.')),
-        verdict: nullable(fc.constantFrom('right', 'wrong', 'unsure')),
-        would_act: nullable(fc.constantFrom('yes', 'maybe', 'no')),
-        resident_action: nullable(fc.constantFrom('apply', 'not-apply', 'call', 'unsure')),
-        went_well: nullable(fc.array(fc.constantFrom('Plain and clear', 'Gave a number'), { maxLength: 2 })),
-        went_wrong: nullable(fc.array(fc.constantFrom('Wrong amount', 'Missed a program'), { maxLength: 2 })),
-        rating_note: nullable(fc.constantFrom('Check the asset test')),
-        rules_program: nullable(fc.constantFrom('Arizona SNAP', 'New York SNAP')),
-        rules_period: nullable(fc.constant('2026-10')),
-        rules_amount: nullable(fc.constantFrom(0, 24, 300)),
-        rules_outputs: nullable(fc.array(computation, { maxLength: 2 })),
-        rules_answer: nullable(fc.constant('Long prose the results never read.')),
-        post_check_verdict: nullable(fc.constantFrom('match', 'close', 'wrong')),
+        ...fields,
+        verdict: fc.constantFrom('right', 'wrong', 'unsure'),
+        resident_action: fc.constant('not-apply'),
+        rules_amount: fc.constantFrom(24, 300),
+        rules_outputs: fc.array(computation, { minLength: 1, maxLength: 2 }),
       },
-      { requiredKeys: ['id', 'run_id', 'participant_id', 'conversation_id', 'turn', 'prompt'] },
+      { requiredKeys: [...keys, 'verdict', 'resident_action', 'rules_amount', 'rules_outputs'] },
     )
     const room = (prompts: PromptRow[]) => summarizeRun({ participants: [], prompts, events: [], pledges: [] })
     fc.assert(
-      fc.property(fc.array(row, { maxLength: 8 }), (rows) => {
+      fc.property(fc.array(fc.oneof(row, notApplyChecked), { maxLength: 8 }), (rows) => {
         const prompts = rows as PromptRow[]
         expect(room(prompts.map(projectRunPrompt))).toEqual(room(prompts))
       }),
