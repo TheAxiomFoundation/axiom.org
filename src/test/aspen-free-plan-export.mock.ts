@@ -15,7 +15,7 @@ function change(fromK: number, toK: number, below = 15, above = 15): PilotChange
   return { points, lo: points - below, hi: points + above };
 }
 
-function mockModel(id: string, freePlan: string | null, k: { alone: number; web: number; tool: number; both: number }, toolSpread = 15): ExportModel {
+function mockModel(id: string, freePlan: string | null, k: { alone: number; web: number; tool: number; both: number }): ExportModel {
   return {
     model: `Mock model ${id.toUpperCase()}`,
     id: `mock-${id}`,
@@ -32,7 +32,8 @@ function mockModel(id: string, freePlan: string | null, k: { alone: number; web:
       both: arm(k.both, 40, 95),
     },
     missing: { alone: 0, web: 0, tool: 0, both: 0 },
-    vsAlone: { web: change(k.alone, k.web), tool: change(k.alone, k.tool, toolSpread, toolSpread), both: change(k.alone, k.both) },
+    vsAlone: { web: change(k.alone, k.web), tool: change(k.alone, k.tool), both: change(k.alone, k.both) },
+    vsWeb: { both: change(k.web, k.both) },
     benefits: { alone: { k: 1, n: 3 }, web: { k: 1, n: 3 }, tool: { k: 3, n: 3 }, both: { k: 3, n: 3 } },
     toolStatedEngine: "policyengine-us 0.0.0-mock",
   };
@@ -48,8 +49,8 @@ export const MOCK_POLICYBENCH_EXPORT: PolicyBenchExport = {
     mockModel("c", null, { alone: 30, web: 33, tool: 44, both: 45 }),
     mockModel("a", "Mock Free", { alone: 10, web: 15, tool: 38, both: 39 }),
     mockModel("d", null, { alone: 25, web: 29, tool: 41, both: 42 }),
-    // B's change from no tools to the tool, 12.5 points, has an interval that includes zero: -4 to 29.
-    mockModel("b", "Mock Chat Free", { alone: 18, web: 21, tool: 24, both: 27 }, 16.5),
+    // B's change from adding the tool to web search, 12.5 points, has an interval that includes zero: -2.5 to 27.5.
+    mockModel("b", "Mock Chat Free", { alone: 18, web: 21, tool: 24, both: 27 }),
   ],
   source: { scriptCommit: "0000000mock", scriptTreeDirty: false, generatedAtUtc: "2026-10-24T03:30:00Z" },
 };

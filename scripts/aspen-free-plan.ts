@@ -72,7 +72,7 @@ export function run(argv: readonly string[], { contentPath = CONTENT, log = cons
   log(pilot.title);
   for (const r of pilot.rows) {
     const shares = pilot.arms.map((a) => `${a.id} ${r.counts[a.id]!.k}/${r.counts[a.id]!.n}`).join(", ");
-    log(`  ${r.model}${r.freePlan ? ` (${r.freePlan})` : ""}: ${shares}; tool vs alone ${r.toolVsAlone.points.toFixed(1)} [${r.toolVsAlone.lo}, ${r.toolVsAlone.hi}]`);
+    log(`  ${r.model}${r.freePlan ? ` (${r.freePlan})` : ""}: ${shares}; adding the tool ${r.bothVsWeb.points.toFixed(1)} [${r.bothVsWeb.lo}, ${r.bothVsWeb.hi}]`);
   }
   log(`Caveat, for these models: ${pilot.caveat}`);
   log("Footnotes, run in after the caveat:");

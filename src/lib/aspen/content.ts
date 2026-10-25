@@ -944,7 +944,7 @@ export interface PilotCount {
   n: number;
 }
 
-/** A model's paired change from no tools, in percentage points, with its 95% interval. */
+/** A model's paired change between two settings, in percentage points, with its 95% interval. */
 export interface PilotChange {
   points: number;
   lo: number;
@@ -952,10 +952,11 @@ export interface PilotChange {
 }
 
 /**
- * A pilot on its own households, in every setting: on its own, with web
- * search, with the tool, and with both. Each model's change from no tools to
- * the tool is the reading; gaps between models aren't, since at about 50
- * amounts a model one setting's interval is roughly 10 to 15 points each way.
+ * A pilot on its own households, in two settings: with web search, as the
+ * free chat apps search, and with web search and the tool. Each model's change
+ * from adding the tool is the reading; gaps between models aren't, since at
+ * about 50 amounts a model one setting's interval is roughly 10 to 15 points
+ * each way.
  */
 export interface FreePlanPilot {
   title: string;
@@ -973,7 +974,8 @@ export interface FreePlanPilot {
      */
     freePlan: string | null;
     counts: Readonly<Partial<Record<ToolPilotArmId, PilotCount>>>;
-    toolVsAlone: PilotChange;
+    /** Its change from web search to web search and the tool. */
+    bothVsWeb: PilotChange;
   }[];
   caveat: string;
   footnotes: readonly string[];
@@ -981,10 +983,8 @@ export interface FreePlanPilot {
 }
 
 const ARMS_IN_ORDER: FreePlanPilot["arms"] = [
-  { id: "alone", label: "On its own" },
   { id: "web", label: "With web search" },
-  { id: "tool", label: "With the PolicyEngine tool" },
-  { id: "both", label: "With both" },
+  { id: "both", label: "With web search and the PolicyEngine tool" },
 ];
 /**
  * The free-plan slide's settings, in its column order, as its heading names
@@ -1037,7 +1037,7 @@ export function freePlanProblems(p: FreePlanPilot): string[] {
   const problems: string[] = [];
   const armIds = p.arms.map((a) => a.id);
   if (new Set(armIds).size !== armIds.length) problems.push("an arm is listed twice");
-  if (!armIds.includes("alone") || !armIds.includes("tool")) problems.push("the change needs both no tools and the tool");
+  if (!armIds.includes("web") || !armIds.includes("both")) problems.push("the change needs web search, and web search with the tool");
   if (!p.label.trim()) problems.push("no label: the room has to read these as preliminary");
   for (const [name, text] of [["title", p.title], ["note", p.note], ["caveat", p.caveat], ["source", p.source]] as const) {
     if (!text.trim()) problems.push(`no ${name}`);
@@ -1073,7 +1073,7 @@ export function freePlanProblems(p: FreePlanPilot): string[] {
     }
     // A failed or missing answer counts as a miss, so every setting scores the same amounts.
     if (ns.size > 1) problems.push(`${r.model}: settings score different numbers of amounts (${[...ns].join(", ")})`);
-    const { points, lo, hi } = r.toolVsAlone;
+    const { points, lo, hi } = r.bothVsWeb;
     if (![points, lo, hi].every(Number.isFinite)) problems.push(`${r.model}: change ${points} with interval ${lo} to ${hi} isn't finite`);
     // A change between two shares can't pass 100 points either way, nor can its interval.
     else if (lo < -100 || hi > 100) problems.push(`${r.model}: its interval ${lo} to ${hi} goes past 100 points`);
@@ -1086,10 +1086,10 @@ export function freePlanProblems(p: FreePlanPilot): string[] {
     const inside = (x: number) => lo - allowance <= x && x <= hi + allowance;
     if (!inside(points)) problems.push(`${r.model}: ${points} is outside its interval ${lo} to ${hi}`);
     // The paired change on the same amounts is the counts' own difference, to the export's one decimal.
-    const alone = r.counts.alone;
-    const tool = r.counts.tool;
-    if (alone && tool && alone.n === tool.n) {
-      const fromCounts = (100 * (tool.k - alone.k)) / tool.n;
+    const web = r.counts.web;
+    const both = r.counts.both;
+    if (web && both && web.n === both.n) {
+      const fromCounts = (100 * (both.k - web.k)) / both.n;
       if (Math.abs(fromCounts - points) > 0.05 + 1e-9) {
         problems.push(`${r.model}: change ${points} but the counts give ${fromCounts.toFixed(1)}`);
       } else if (Math.sign(points) * Math.sign(fromCounts) < 0) {
@@ -1106,9 +1106,9 @@ export function freePlanProblems(p: FreePlanPilot): string[] {
 }
 
 /**
- * At scale, after the tool pilot: the models on free plans, with web search
- * and with a tool that runs PolicyEngine, from PolicyBench's preliminary
- * internal pilot. Null until its final tables are cleared to show, and the
+ * At scale, after the tool pilot: the models on free plans, with web search,
+ * and with web search and a tool that runs PolicyEngine, from PolicyBench's
+ * preliminary internal pilot. Null until its final tables are cleared to show, and the
  * slide shows only when it's set. This repo is public, so the numbers go in
  * only then.
  */

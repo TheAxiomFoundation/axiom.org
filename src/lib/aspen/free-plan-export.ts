@@ -19,6 +19,8 @@ export interface PolicyBenchExport {
   caveat: string;
   /** The free-plan models' noise width, in points. */
   noisePoints?: number;
+  /** The same, from the changes from web search. Exports from before October 25 have none. */
+  noisePointsVsWeb?: number;
   /** The models by household size, free-plan models' size first. Exports from before October 24 have none. */
   sizes?: ExportSize[];
   models: ExportModel[];
@@ -33,6 +35,8 @@ export interface ExportSize {
   n: number;
   models: string[];
   noisePoints: number;
+  /** From the changes from web search; exports from before October 25 have none. */
+  noisePointsVsWeb?: number;
 }
 
 export interface ExportModel {
@@ -50,6 +54,11 @@ export interface ExportModel {
   arms: Partial<Record<ToolPilotArmId, ExportArm>>;
   missing: Partial<Record<ToolPilotArmId, number>>;
   vsAlone: Partial<Record<Exclude<ToolPilotArmId, "alone">, PilotChange>>;
+  /**
+   * Its paired change from web search to web search and the tool, computed as
+   * vsAlone's are. The slide shows it. Exports from before October 25 have none.
+   */
+  vsWeb?: Partial<Record<"both", PilotChange>>;
   benefits: Partial<Record<ToolPilotArmId, PilotCount>>;
   /**
    * The engine its calculator's notice and description named, e.g.
@@ -179,9 +188,9 @@ export function utcDay(s: unknown): { at: number; text: string } | null {
   return { at, text: `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}` };
 }
 
-/** A model's change from no tools to the tool, in points: its own counts' difference on the same amounts. */
+/** A model's change from web search to web search and the tool, in points: its own counts' difference on the same amounts. */
 function changeFromCounts(m: ExportModel): number {
-  return (100 * (m.arms.tool!.k - m.arms.alone!.k)) / m.arms.tool!.n;
+  return (100 * (m.arms.both!.k - m.arms.web!.k)) / m.arms.both!.n;
 }
 
 /** "A", "A and B", "A, B and C". */
@@ -189,15 +198,24 @@ function list(names: readonly string[]): string {
   return names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
+/** Which of a model's paired changes a noise width is taken from. */
+export type Changes = (m: ExportModel) => readonly (PilotChange | undefined)[];
+/** Every change from no tools, as PolicyBench's own caveat takes its width. */
+export const VS_ALONE: Changes = (m) => Object.values(m.vsAlone);
+/** The changes from web search, of which the slide shows web search and the tool. */
+export const VS_WEB: Changes = (m) => Object.values(m.vsWeb ?? {});
+
 /**
  * PolicyBench's noise width for some models (aspen_export.py noise_points):
  * the median half-width of the free-plan models' paired intervals, or every
  * model's when the free-plan models have none, rounded up to a multiple of 5.
+ * PolicyBench takes it from the changes from no tools; `changes` can take it
+ * from others by the same rule.
  */
-export function noisePoints(models: readonly ExportModel[]): number {
+export function noisePoints(models: readonly ExportModel[], changes: Changes = VS_ALONE): number {
   const halvesOf = (ms: readonly ExportModel[]) =>
     ms
-      .flatMap((m) => Object.values(m.vsAlone))
+      .flatMap(changes)
       .filter((c): c is PilotChange => Boolean(c))
       .map((c) => (c.hi - c.lo) / 2);
   const free = halvesOf(models.filter((m) => m.group === "free-plan"));
@@ -211,9 +229,9 @@ export function noisePoints(models: readonly ExportModel[]): number {
 /**
  * Models grouped by household size, as aspen_export.py size_groups does: the
  * free-plan models' size first, then larger sizes first; models in the
- * export's order; each size with its own noise width.
+ * export's order; each size with its own noise width, from `changes`.
  */
-export function sizeGroups(models: readonly ExportModel[]): (ExportSize & { names: string[] })[] {
+export function sizeGroups(models: readonly ExportModel[], changes: Changes = VS_ALONE): (ExportSize & { names: string[] })[] {
   const groups = new Map<string, ExportModel[]>();
   for (const m of models) {
     const ns = [...new Set(Object.values(m.arms).flatMap((c) => (c ? [c.n] : [])))];
@@ -225,7 +243,7 @@ export function sizeGroups(models: readonly ExportModel[]): (ExportSize & { name
   return [...groups.entries()]
     .map(([key, ms]) => ({ ms, households: Number(key.split("|")[0]), n: Number(key.split("|")[1]) }))
     .sort((a, b) => rank(a.ms) - rank(b.ms) || b.households - a.households || b.n - a.n)
-    .map(({ ms, households, n }) => ({ households, n, models: ms.map((m) => m.id), noisePoints: noisePoints(ms), names: ms.map((m) => m.model) }));
+    .map(({ ms, households, n }) => ({ households, n, models: ms.map((m) => m.id), noisePoints: noisePoints(ms, changes), names: ms.map((m) => m.model) }));
 }
 
 /** PolicyBench's caveat for these sizes, word for word as aspen_export.py caveat_text writes it. */
@@ -254,7 +272,9 @@ export function caveatText(groups: readonly (ExportSize & { names: string[] })[]
  * The caveat names the households, amounts and noise width of the models on
  * the slide, so it's rebuilt for them with PolicyBench's own wording and
  * rule. That rebuild is checked first against the export: for all its models
- * it must give the export's sizes and caveat exactly.
+ * it must give the export's sizes and caveat exactly. The slide's noise width
+ * then comes from the change it shows, web search to web search and the
+ * tool, rather than the changes from no tools that PolicyBench's caveat uses.
  */
 export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions): { pilot: FreePlanPilot; warnings: string[] } {
   const warnings: string[] = [];
@@ -273,18 +293,20 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
       throw new Error(`${m.model}: group ${m.group} but freePlan ${JSON.stringify(m.freePlan)}`);
     }
     if (!Number.isSafeInteger(m.households) || m.households < 1) throw new Error(`${m.model}: ${m.households} households isn't a count`);
-    // Every change of a chosen model, not just the tool's, feeds the caveat's noise width.
-    for (const [id, c] of Object.entries(m.vsAlone)) {
+    // Every change of a chosen model, not just the one shown: the changes from no tools feed the check of
+    // PolicyBench's caveat, and the one shown feeds the slide's noise width.
+    const changes: [string, PilotChange | undefined][] = [...Object.entries(m.vsAlone), ["both vs web", m.vsWeb?.both]];
+    for (const [id, c] of changes) {
       if (c && !([c.points, c.lo, c.hi].every(Number.isFinite) && -100 <= c.lo && c.lo <= c.hi && c.hi <= 100)) {
         throw new Error(`${m.model} ${id}: change ${c.points} with interval ${c.lo} to ${c.hi} isn't a change in points`);
       }
     }
-    const tool = m.vsAlone.tool;
-    if (!tool) throw new Error(`${m.model}: no change from no tools to the tool`);
+    const shown = m.vsWeb?.both;
+    if (!shown) throw new Error(`${m.model}: no change from web search to web search and the tool`);
     // The slide shows the counts' own difference, so the export's change, to its one decimal, must be it.
-    const [alone, withTool] = [m.arms.alone, m.arms.tool];
-    if (alone && withTool && alone.n === withTool.n && Math.abs(tool.points - changeFromCounts(m)) > 0.05 + 1e-9) {
-      throw new Error(`${m.model}: change ${tool.points}, but its counts give ${changeFromCounts(m).toFixed(2)}`);
+    const [web, both] = [m.arms.web, m.arms.both];
+    if (web && both && web.n === both.n && Math.abs(shown.points - changeFromCounts(m)) > 0.05 + 1e-9) {
+      throw new Error(`${m.model}: change ${shown.points}, but its counts give ${changeFromCounts(m).toFixed(2)}`);
     }
     for (const arm of EXPORT_ARMS) {
       const c = m.arms[arm.id];
@@ -308,7 +330,16 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
   if (caveatText(allGroups) !== exp.caveat) {
     throw new Error(`the export's caveat isn't PolicyBench's wording for its models, so it can't be rebuilt for a subset:\n  export:  ${exp.caveat}\n  rebuilt: ${caveatText(allGroups)}`);
   }
-  const sizes = [...new Set(ordered.map((m) => `${m.arms.alone!.n}|${m.households}`))];
+  // Where PolicyBench gives the noise width of the change shown, the rebuild has to give it too. The sizes are
+  // in the rebuild's order by now, and grouping doesn't depend on which changes set the width.
+  const shownWidths = sizeGroups(exp.models, VS_WEB).map((g) => g.noisePoints);
+  if (exp.sizes?.some((s) => s.noisePointsVsWeb !== undefined) && exp.sizes.some((s, i) => s.noisePointsVsWeb !== shownWidths[i])) {
+    throw new Error(`the export's noise widths from web search, ${JSON.stringify(exp.sizes.map((s) => s.noisePointsVsWeb))}, aren't PolicyBench's rule's for its models, ${JSON.stringify(shownWidths)}`);
+  }
+  if (exp.noisePointsVsWeb !== undefined && exp.noisePointsVsWeb !== noisePoints(exp.models, VS_WEB)) {
+    throw new Error(`the export's noise width from web search, ${exp.noisePointsVsWeb}, isn't PolicyBench's rule's for its models, ${noisePoints(exp.models, VS_WEB)}`);
+  }
+  const sizes = [...new Set(ordered.map((m) => `${m.arms.web!.n}|${m.households}`))];
   const [n, households] = sizes[0].split("|").map(Number);
   let note: string;
   if (sizes.length === 1) {
@@ -318,7 +349,7 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
     warnings.push(`the chosen models ran on different households (${sizes.map((s) => s.replace("|", " amounts in ") + " households").join("; ")}); the caveat says which, so read each count against its own total`);
   }
 
-  const benefitAmounts = Math.max(0, ...ordered.map((m) => m.benefits.alone?.n ?? 0));
+  const benefitAmounts = Math.max(0, ...ordered.map((m) => m.benefits.web?.n ?? 0));
   warnings.push(
     benefitAmounts
       ? `benefit amounts: at most ${benefitAmounts} per model, too few to say anything about benefits`
@@ -439,7 +470,7 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
   ];
 
   const pilot: FreePlanPilot = {
-    title: opts.title ?? (free.length ? "The models on free plans, with web search and with the tool" : "The same models, with web search and with the tool"),
+    title: opts.title ?? (free.length ? "The models on free plans, with web search and with the tool added" : "The same models, with web search and with the tool added"),
     label: opts.label ?? "Preliminary internal pilot",
     note,
     arms: EXPORT_ARMS,
@@ -448,10 +479,10 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
       freePlan: m.freePlan ? `On ${m.freePlan}` : null,
       counts: Object.fromEntries(EXPORT_ARMS.map((a) => [a.id, { k: m.arms[a.id]!.k, n: m.arms[a.id]!.n }])),
       // The change from the counts, exact; its interval from PolicyBench's household bootstrap.
-      toolVsAlone: { points: changeFromCounts(m), lo: m.vsAlone.tool!.lo, hi: m.vsAlone.tool!.hi },
+      bothVsWeb: { points: changeFromCounts(m), lo: m.vsWeb!.both!.lo, hi: m.vsWeb!.both!.hi },
     })),
-    // The chosen models in the export's order, as PolicyBench lists them.
-    caveat: caveatText(sizeGroups(exp.models.filter((m) => opts.models.includes(m.id)))),
+    // The chosen models in the export's order, as PolicyBench lists them, with the noise of the change shown.
+    caveat: caveatText(sizeGroups(exp.models.filter((m) => opts.models.includes(m.id)), VS_WEB)),
     footnotes,
     source: `PolicyBench preliminary internal pilot, not a PolicyBench result · runs ${runDateRange(ordered.flatMap((m) => m.runDates))}`,
   };

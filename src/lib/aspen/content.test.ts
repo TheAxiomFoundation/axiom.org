@@ -302,8 +302,8 @@ describe('the free-plan pilot', () => {
       rows: m.rows.map((r, j) => (j === i ? { ...r, ...row } : r)),
     })
     expect(freePlanProblems({ ...m, label: ' ' })).toEqual(['no label: the room has to read these as preliminary'])
-    expect(freePlanProblems({ ...m, arms: m.arms.filter((a) => a.id !== 'alone') })).toContain(
-      'the change needs both no tools and the tool',
+    expect(freePlanProblems({ ...m, arms: m.arms.filter((a) => a.id !== 'web') })).toContain(
+      'the change needs web search, and web search with the tool',
     )
     expect(freePlanProblems({ ...m, arms: [...m.arms, m.arms[0]] })).toContain('an arm is listed twice')
     expect(freePlanProblems({ ...m, rows: [m.rows[3], ...m.rows.slice(0, 3), ...m.rows.slice(4)] })).toContain(
@@ -317,73 +317,74 @@ describe('the free-plan pilot', () => {
     ])
     expect(freePlanProblems(withRow(0, { counts: { ...m.rows[0].counts, web: { k: 49, n: 48 } } }))).toEqual([
       "Mock model A web: 49 of 48 isn't a count",
+      'Mock model A: change 43.8 but the counts give -16.7',
     ])
     expect(freePlanProblems(withRow(0, { counts: { ...m.rows[0].counts, both: { k: 41, n: 47 } } }))).toEqual([
       'Mock model A: settings score different numbers of amounts (48, 47)',
     ])
-    expect(freePlanProblems(withRow(1, { toolVsAlone: { points: 50, lo: 9, hi: 44 } }))).toEqual([
-      'Mock model B: 50 is outside its interval 9 to 44',
-      'Mock model B: change 50 but the counts give 27.1',
+    expect(freePlanProblems(withRow(1, { bothVsWeb: { points: 50, lo: 6, hi: 40 } }))).toEqual([
+      'Mock model B: 50 is outside its interval 6 to 40',
+      'Mock model B: change 50 but the counts give 22.9',
     ])
-    // The counts give 27.08: the export's one decimal, 27.1, passes; 27.2 would show the same whole number but isn't the counts'.
-    expect(freePlanProblems(withRow(1, { toolVsAlone: { points: 27.1, lo: 9, hi: 44 } }))).toEqual([])
-    expect(freePlanProblems(withRow(1, { toolVsAlone: { points: 27.2, lo: 9, hi: 44 } }))).toEqual([
-      'Mock model B: change 27.2 but the counts give 27.1',
+    // The counts give 22.92: the export's one decimal, 22.9, passes; 23 would show the same whole number but isn't the counts'.
+    expect(freePlanProblems(withRow(1, { bothVsWeb: { points: 22.9, lo: 6, hi: 40 } }))).toEqual([])
+    expect(freePlanProblems(withRow(1, { bothVsWeb: { points: 23, lo: 6, hi: 40 } }))).toEqual([
+      'Mock model B: change 23 but the counts give 22.9',
     ])
     // The interval's ends are the export's one decimal: the exact change may sit just past one, but not a tenth past.
-    const exact = (100 * 13) / 48
-    expect(freePlanProblems(withRow(1, { toolVsAlone: { points: exact, lo: 27.1, hi: 27.1 } }))).toEqual([])
-    expect(freePlanProblems(withRow(1, { toolVsAlone: { points: exact, lo: 27.2, hi: 30 } }))).toEqual([
-      `Mock model B: ${exact} is outside its interval 27.2 to 30`,
+    const exact = (100 * 11) / 48
+    expect(freePlanProblems(withRow(1, { bothVsWeb: { points: exact, lo: 22.9, hi: 22.9 } }))).toEqual([])
+    expect(freePlanProblems(withRow(1, { bothVsWeb: { points: exact, lo: 23, hi: 30 } }))).toEqual([
+      `Mock model B: ${exact} is outside its interval 23 to 30`,
     ])
-    expect(freePlanProblems(withRow(1, { toolVsAlone: { points: exact, lo: 27.1, hi: 27 } }))).toEqual([
-      'Mock model B: its interval 27.1 to 27 runs backward',
-      `Mock model B: ${exact} is outside its interval 27.1 to 27`,
+    expect(freePlanProblems(withRow(1, { bothVsWeb: { points: exact, lo: 22.9, hi: 22.8 } }))).toEqual([
+      'Mock model B: its interval 22.9 to 22.8 runs backward',
+      `Mock model B: ${exact} is outside its interval 22.9 to 22.8`,
     ])
     // Ends finer than one decimal get no allowance, so no change shows as leaving out zero when it is zero.
-    const noChange = { ...m.rows[1].counts, tool: m.rows[1].counts.alone }
-    expect(freePlanProblems(withRow(1, { counts: noChange, toolVsAlone: { points: 0, lo: 0.04, hi: 1 } }))).toEqual([
+    const noChange = { ...m.rows[1].counts, both: m.rows[1].counts.web }
+    expect(freePlanProblems(withRow(1, { counts: noChange, bothVsWeb: { points: 0, lo: 0.04, hi: 1 } }))).toEqual([
       'Mock model B: 0 is outside its interval 0.04 to 1',
     ])
-    expect(freePlanProblems(withRow(1, { counts: noChange, toolVsAlone: { points: 0, lo: 0.1, hi: 1 } }))).toEqual([
+    expect(freePlanProblems(withRow(1, { counts: noChange, bothVsWeb: { points: 0, lo: 0.1, hi: 1 } }))).toEqual([
       'Mock model B: 0 is outside its interval 0.1 to 1',
     ])
-    expect(freePlanProblems(withRow(1, { counts: noChange, toolVsAlone: { points: 0, lo: -Infinity, hi: Infinity } }))).toEqual([
+    expect(freePlanProblems(withRow(1, { counts: noChange, bothVsWeb: { points: 0, lo: -Infinity, hi: Infinity } }))).toEqual([
       "Mock model B: change 0 with interval -Infinity to Infinity isn't finite",
     ])
-    expect(freePlanProblems(withRow(1, { counts: noChange, toolVsAlone: { points: 0, lo: -1e308, hi: 1 } }))).toEqual([
+    expect(freePlanProblems(withRow(1, { counts: noChange, bothVsWeb: { points: 0, lo: -1e308, hi: 1 } }))).toEqual([
       'Mock model B: its interval -1e+308 to 1 goes past 100 points',
     ])
     // Hand-written: counts that give no change, a change within rounding of them, and an interval that leaves out zero.
     const even = { k: 1, n: 2 }
-    expect(freePlanProblems(withRow(1, { counts: { alone: even, web: even, tool: even, both: even }, toolVsAlone: { points: 0.05, lo: 0.1, hi: 0.1 } }))).toEqual([
+    expect(freePlanProblems(withRow(1, { counts: { web: even, both: even }, bothVsWeb: { points: 0.05, lo: 0.1, hi: 0.1 } }))).toEqual([
       "Mock model B: the counts' change 0.00 is outside its interval 0.1 to 0.1",
     ])
     expect(freePlanProblems({ ...m, title: '', note: ' ', caveat: '', source: '' })).toEqual(['no title', 'no note', 'no caveat', 'no source'])
     expect(freePlanProblems({ ...m, footnotes: [] })).toEqual(['no footnotes, or an empty one'])
     expect(freePlanProblems({ ...m, footnotes: [...m.footnotes, ' '] })).toEqual(['no footnotes, or an empty one'])
-    const swapped = m.arms.map((a) => (a.id === 'alone' ? { ...a, label: 'With the PolicyEngine tool' } : a.id === 'tool' ? { ...a, label: 'On its own' } : a))
+    const swapped = m.arms.map((a) => ({ ...a, label: m.arms.find((b) => b.id !== a.id)!.label }))
     expect(freePlanProblems({ ...m, arms: swapped })).toEqual([
-      `the settings aren't "On its own", "With web search", "With the PolicyEngine tool", "With both", in that order`,
+      `the settings aren't "With web search", "With web search and the PolicyEngine tool", in that order`,
     ])
     expect(freePlanProblems(withRow(1, { model: ' ' }))).toEqual(['a model has no name'])
     expect(freePlanProblems(withRow(1, { freePlan: ' ' }))).toEqual(['Mock model B: an empty free-plan line'])
     // Within rounding of counts that give +0.01, but printed on the other side of zero.
     const [none, one] = [{ k: 0, n: 10000 }, { k: 1, n: 10000 }]
-    expect(freePlanProblems(withRow(1, { counts: { alone: none, web: none, tool: one, both: one }, toolVsAlone: { points: -0.01, lo: -1, hi: 1 } }))).toEqual([
+    expect(freePlanProblems(withRow(1, { counts: { web: none, both: one }, bothVsWeb: { points: -0.01, lo: -1, hi: 1 } }))).toEqual([
       "Mock model B: change -0.01 is on the other side of zero from the counts' 0.01",
     ])
     // So small that its product with the counts' change underflows to zero.
-    expect(freePlanProblems(withRow(1, { counts: { alone: none, web: none, tool: one, both: one }, toolVsAlone: { points: -Number.MIN_VALUE, lo: -1, hi: 1 } }))).toEqual([
+    expect(freePlanProblems(withRow(1, { counts: { web: none, both: one }, bothVsWeb: { points: -Number.MIN_VALUE, lo: -1, hi: 1 } }))).toEqual([
       "Mock model B: change -5e-324 is on the other side of zero from the counts' 0.01",
     ])
     // Zero, of either sign, is on neither side.
     for (const points of [0, -0]) {
-      expect(freePlanProblems(withRow(1, { counts: { alone: none, web: none, tool: one, both: one }, toolVsAlone: { points, lo: -1, hi: 1 } }))).toEqual([])
+      expect(freePlanProblems(withRow(1, { counts: { web: none, both: one }, bothVsWeb: { points, lo: -1, hi: 1 } }))).toEqual([])
     }
     const huge = { k: 1e308, n: 1e308 }
-    expect(freePlanProblems(withRow(1, { counts: { alone: huge, web: huge, tool: huge, both: huge }, toolVsAlone: { points: 0, lo: 0, hi: 0 } }))).toEqual(
-      ["alone", "web", "tool", "both"].map((id) => `Mock model B ${id}: 1e+308 of 1e+308 isn't a count`),
+    expect(freePlanProblems(withRow(1, { counts: { web: huge, both: huge }, bothVsWeb: { points: 0, lo: 0, hi: 0 } }))).toEqual(
+      ["web", "both"].map((id) => `Mock model B ${id}: 1e+308 of 1e+308 isn't a count`),
     )
   })
 
@@ -395,19 +396,19 @@ describe('the free-plan pilot', () => {
     const odd = fc.oneof({ weight: 4, arbitrary: fc.constant(null) }, { weight: 1, arbitrary: fc.constantFrom(Infinity, -Infinity, NaN, 1e308, -1e308) })
     let passed = 0
     fc.assert(
-      fc.property(size, share, share, fc.double({ min: 0, max: 30, noNaN: true }), odd, odd, (n, fa, ft, gap, oddLo, oddHi) => {
-        const [alone, tool] = [Math.floor(fa * n), Math.floor(ft * n)]
-        const points = (100 * (tool - alone)) / n
-        const toolVsAlone = { points, lo: oddLo ?? points - gap, hi: oddHi ?? points + gap }
+      fc.property(size, share, share, fc.double({ min: 0, max: 30, noNaN: true }), odd, odd, (n, fw, fb, gap, oddLo, oddHi) => {
+        const [web, both] = [Math.floor(fw * n), Math.floor(fb * n)]
+        const points = (100 * (both - web)) / n
+        const bothVsWeb = { points, lo: oddLo ?? points - gap, hi: oddHi ?? points + gap }
         const c = (k: number) => ({ k, n })
-        const row = { ...m.rows[1], counts: { alone: c(alone), web: c(alone), tool: c(tool), both: c(tool) }, toolVsAlone }
+        const row = { ...m.rows[1], counts: { web: c(web), both: c(both) }, bothVsWeb }
         if (freePlanProblems({ ...m, rows: m.rows.map((r, j) => (j === 1 ? row : r)) }).length) return
         passed++
-        for (const k of [alone, tool]) {
+        for (const k of [web, both]) {
           const s = wholeShare({ k, n })
           expect(Number.isInteger(s) && s >= 0 && s <= 100).toBe(true)
         }
-        for (const x of [points, toolVsAlone.lo, toolVsAlone.hi]) expect(formatPoints(x)).toMatch(/^(0|[+\u2212][0-9.e-]+)$/)
+        for (const x of [points, bothVsWeb.lo, bothVsWeb.hi]) expect(formatPoints(x)).toMatch(/^(0|[+\u2212][0-9.e-]+)$/)
       }),
       { numRuns: 1000 },
     )
@@ -429,24 +430,24 @@ describe('the free-plan pilot', () => {
     let passed = 0
     let apart = 0
     fc.assert(
-      fc.property(counts, fc.boolean(), gap, gap, fc.boolean(), fc.boolean(), how, off, ([n, alone, step, far], near, below, above, roundLo, roundHi, written, by) => {
-        // The tool's count is often within two of no tools', so the change is often 0 or nearly.
-        const tool = near ? Math.min(n, Math.max(0, alone + step)) : far
-        const exact = (100 * (tool - alone)) / n
+      fc.property(counts, fc.boolean(), gap, gap, fc.boolean(), fc.boolean(), how, off, ([n, web, step, far], near, below, above, roundLo, roundHi, written, by) => {
+        // The count with the tool added is often within two of web search's, so the change is often 0 or nearly.
+        const both = near ? Math.min(n, Math.max(0, web + step)) : far
+        const exact = (100 * (both - web)) / n
         // The change as the converter writes it, as the export rounds it, or a hand-written one a little off.
         const points = written === 'exact' ? exact : written === 'export' ? tenth(exact) : exact + by
-        const toolVsAlone = { points, lo: roundLo ? tenth(exact - below) : exact - below, hi: roundHi ? tenth(exact + above) : exact + above }
+        const bothVsWeb = { points, lo: roundLo ? tenth(exact - below) : exact - below, hi: roundHi ? tenth(exact + above) : exact + above }
         const c = (k: number) => ({ k, n })
-        const row = { ...m.rows[1], counts: { alone: c(alone), web: c(alone), tool: c(tool), both: c(tool) }, toolVsAlone }
+        const row = { ...m.rows[1], counts: { web: c(web), both: c(both) }, bothVsWeb }
         if (freePlanProblems({ ...m, rows: m.rows.map((r, j) => (j === 1 ? row : r)) }).length) return
         passed++
-        const [shown, lo, hi] = [printed(shownChange(toolVsAlone)), printed(toolVsAlone.lo), printed(toolVsAlone.hi)]
+        const [shown, lo, hi] = [printed(shownChange(bothVsWeb)), printed(bothVsWeb.lo), printed(bothVsWeb.hi)]
         expect(lo <= shown && shown <= hi).toBe(true)
         // Whatever the interval, the printed change is never on the other side of zero from the counts.
         expect(shown * exact).toBeGreaterThanOrEqual(0)
-        if (!distinguishable(toolVsAlone)) return
+        if (!distinguishable(bothVsWeb)) return
         apart++
-        const side = toolVsAlone.lo > 0 ? 1 : -1
+        const side = bothVsWeb.lo > 0 ? 1 : -1
         expect(Math.sign(exact)).toBe(side)
         expect(Math.sign(shown)).toBe(side)
       }),

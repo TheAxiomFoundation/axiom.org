@@ -1276,10 +1276,11 @@ function BenefitsPanel({ benefits: b }: { benefits: NonNullable<ToolPilot["benef
 }
 
 /**
- * At scale, after the tool pilot: the models on free plans, in every setting.
- * Each row reads across, from on its own to with the tool; the last column is
- * that model's change from no tools to the tool, with its 95% interval, in
- * gray when the interval includes zero. Shows only when FREE_PLAN_PILOT is set.
+ * At scale, after the tool pilot: the models on free plans, with web search,
+ * as the free chat apps search, and with web search and the tool. Each row
+ * reads across; the last column is that model's change from adding the tool,
+ * with its 95% interval, in gray when the interval includes zero. Shows only
+ * when FREE_PLAN_PILOT is set.
  */
 export function FreePlanSlide({ pilot: p }: { pilot: FreePlanPilot }) {
   // Up to three models get room; four to six take a tighter type scale. With
@@ -1299,7 +1300,7 @@ export function FreePlanSlide({ pilot: p }: { pilot: FreePlanPilot }) {
       </div>
       <p className="m-0 font-body text-[20px] leading-snug text-[var(--color-ink-secondary)]">{p.note}</p>
       <table className="w-full table-fixed border-collapse">
-        <caption className="sr-only">Share of amounts right, by model and setting, and each model&apos;s change from no tools to the tool</caption>
+        <caption className="sr-only">Share of amounts right, by model and setting, and each model&apos;s change from adding the tool to web search</caption>
         <colgroup>
           <col className="w-[24%]" />
           {p.arms.map((arm) => (
@@ -1321,13 +1322,13 @@ export function FreePlanSlide({ pilot: p }: { pilot: FreePlanPilot }) {
               </th>
             ))}
             <th scope="col" className="pb-[8px] pl-[12px] font-normal">
-              No tools to tool, in points, with its 95% interval
+              Adding the tool, in points, with its 95% interval
             </th>
           </tr>
         </thead>
         <tbody>
           {p.rows.map((row) => {
-            const c = row.toolVsAlone;
+            const c = row.bothVsWeb;
             const sure = distinguishable(c);
             return (
               <tr key={row.model} className="border-b border-[var(--color-rule-subtle)] align-middle">

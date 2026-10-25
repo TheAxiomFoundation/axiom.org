@@ -5,6 +5,7 @@ import { MOCK_POLICYBENCH_EXPORT, MOCK_WEB_SEARCH_AUDIT } from "@/test/aspen-fre
 import { formatPoints, freePlanProblems, shownChange, wholeShare, type FreePlanPilot } from "./content";
 import {
   EXPORT_ARMS,
+  VS_WEB,
   caveatText,
   freePlanFromExport,
   noisePoints,
@@ -38,17 +39,17 @@ describe("freePlanFromExport", () => {
     expect(pilot.rows.map((r) => r.model)).toEqual(["Mock model A", "Mock model B", "Mock model C", "Mock model D"]);
     expect(pilot.rows.map((r) => r.freePlan)).toEqual(["On Mock Free", "On Mock Chat Free", null, null]);
     const a = pilot.rows[0];
-    expect(a.counts).toEqual({ alone: { k: 10, n: 48 }, web: { k: 15, n: 48 }, tool: { k: 38, n: 48 }, both: { k: 39, n: 48 } });
-    expect(a.toolVsAlone).toEqual({ points: (100 * 28) / 48, lo: (100 * 28) / 48 - 15, hi: (100 * 28) / 48 + 15 });
+    expect(a.counts).toEqual({ web: { k: 15, n: 48 }, both: { k: 39, n: 48 } });
+    expect(a.bothVsWeb).toEqual({ points: 50, lo: 35, hi: 65 });
     // The bootstrap percent and interval stay in the export; the slide shows k of n.
-    expect(Object.keys(a.counts.alone!)).toEqual(["k", "n"]);
+    expect(Object.keys(a.counts.web!)).toEqual(["k", "n"]);
     expect(pilot.arms).toBe(EXPORT_ARMS);
     expect(freePlanProblems(pilot)).toEqual([]);
   });
 
   it("says what is counted, where it comes from and that it's preliminary", () => {
     const { pilot } = freePlanFromExport(exp, { models: ALL });
-    expect(pilot.title).toBe("The models on free plans, with web search and with the tool");
+    expect(pilot.title).toBe("The models on free plans, with web search and with the tool added");
     expect(pilot.label).toBe("Preliminary internal pilot");
     expect(pilot.note).toBe("Dollar amounts that aren't $0, within $1 of PolicyBench's reference: 48 per model in 20 households sampled from PolicyEngine's microdata");
     expect(pilot.caveat).toBe(exp.caveat);
@@ -63,7 +64,7 @@ describe("freePlanFromExport", () => {
   it("titles a slide without free-plan models as the same models, and takes a title and label", () => {
     const { pilot } = freePlanFromExport(exp, { models: ["mock-d", "mock-c"] });
     expect(pilot.rows.map((r) => r.model)).toEqual(["Mock model D", "Mock model C"]);
-    expect(pilot.title).toBe("The same models, with web search and with the tool");
+    expect(pilot.title).toBe("The same models, with web search and with the tool added");
     expect(pilot.footnotes[0]).toBe("Web search is each provider's own search tool, told not to search PolicyBench.");
     const named = freePlanFromExport(exp, { models: ["mock-a"], title: "T", label: "L" }).pilot;
     expect([named.title, named.label]).toEqual(["T", "L"]);
@@ -92,15 +93,23 @@ describe("freePlanFromExport", () => {
         `Mock model A: ${households} households isn't a count`,
       );
     }
-    // Any of a chosen model's changes, since each feeds the caveat's noise width.
+    // Any of a chosen model's changes: those from no tools feed the check of PolicyBench's caveat, and the one shown the slide's noise width.
     for (const [lo, hi] of [[-1e308, 10], [0, 1e308], [5, 1], [NaN, 1]]) {
       expect(() => freePlanFromExport(withModel("mock-a", (m) => ({ ...m, vsAlone: { ...m.vsAlone, web: { points: 1, lo, hi } } })), { models: ["mock-a"] })).toThrow(
         `Mock model A web: change 1 with interval ${lo} to ${hi} isn't a change in points`,
       );
+      expect(() => freePlanFromExport(withModel("mock-a", (m) => ({ ...m, vsWeb: { both: { points: 1, lo, hi } } })), { models: ["mock-a"] })).toThrow(
+        `Mock model A both vs web: change 1 with interval ${lo} to ${hi} isn't a change in points`,
+      );
     }
-    expect(() => freePlanFromExport(withModel("mock-a", (m) => ({ ...m, vsAlone: { web: m.vsAlone.web } })), { models: ["mock-a"] })).toThrow(
-      "Mock model A: no change from no tools to the tool",
-    );
+    // An export from before October 25 has no change from web search, so it can't fill this slide.
+    for (const vsWeb of [undefined, {}]) {
+      expect(() => freePlanFromExport(withModel("mock-a", (m) => ({ ...m, vsWeb })), { models: ["mock-a"] })).toThrow(
+        "Mock model A: no change from web search to web search and the tool",
+      );
+    }
+    // The changes from no tools aren't shown, so the slide doesn't need the tool's.
+    expect(() => freePlanFromExport(withModel("mock-a", (m) => ({ ...m, vsAlone: { web: m.vsAlone.web } })), { models: ["mock-a"] })).not.toThrow();
     expect(() => freePlanFromExport(withModel("mock-a", (m) => ({ ...m, arms: { ...m.arms, both: undefined } })), { models: ["mock-a"] })).toThrow(
       "Mock model A: no count for both",
     );
@@ -113,37 +122,37 @@ describe("freePlanFromExport", () => {
   });
 
   it("shows each change as its counts' own difference, and refuses an export whose change, to one decimal, isn't it", () => {
-    // A's counts give 58.33; the export's one decimal passes, and the slide keeps the exact difference.
-    const rounded = withModel("mock-a", (m) => ({ ...m, vsAlone: { ...m.vsAlone, tool: { ...m.vsAlone.tool!, points: 58.3 } } }));
-    expect(freePlanFromExport(rounded, { models: ["mock-a"] }).pilot.rows[0].toolVsAlone.points).toBe((100 * 28) / 48);
-    for (const points of [58.8, 50]) {
-      const off = withModel("mock-a", (m) => ({ ...m, vsAlone: { ...m.vsAlone, tool: { ...m.vsAlone.tool!, points } } }));
-      expect(() => freePlanFromExport(off, { models: ["mock-a"] })).toThrow(`Mock model A: change ${points}, but its counts give 58.33`);
+    // D's counts give 27.08; the export's one decimal passes, and the slide keeps the exact difference.
+    const rounded = withModel("mock-d", (m) => ({ ...m, vsWeb: { both: { ...m.vsWeb!.both!, points: 27.1 } } }));
+    expect(freePlanFromExport(rounded, { models: ["mock-d"] }).pilot.rows[0].bothVsWeb.points).toBe((100 * 13) / 48);
+    for (const points of [27.6, 20]) {
+      const off = withModel("mock-d", (m) => ({ ...m, vsWeb: { both: { ...m.vsWeb!.both!, points } } }));
+      expect(() => freePlanFromExport(off, { models: ["mock-d"] })).toThrow(`Mock model D: change ${points}, but its counts give 27.08`);
     }
   });
 
   it("makes the change exact even where that sits just past the export's rounded interval, and the slide prints it at that end", () => {
     // aspen_export.py's own output for a synthetic run review 5 made: 100 households, one tool success
-    // in each and none without tools, eight amounts in all but one, which has nine. It rounds the change
+    // in each and none without the tool, eight amounts in all but one, which has nine. It rounds the change
     // and both ends to 12.5; the counts give 12.48, which alone would print as +12 beside +13 to +13.
     const c = (k: number) => ({ k, n: 801, pct: Math.round((1000 * k) / 801) / 10, lo: 0, hi: 100 });
+    const tenth = { points: 12.5, lo: 12.5, hi: 12.5 };
     const one: ExportModel = {
       ...exp.models.find((m) => m.id === "mock-a")!,
       households: 100,
       arms: { alone: c(0), web: c(0), tool: c(100), both: c(100) },
-      vsAlone: { web: { points: 0, lo: 0, hi: 0 }, tool: { points: 12.5, lo: 12.5, hi: 12.5 }, both: { points: 12.5, lo: 12.5, hi: 12.5 } },
+      vsAlone: { web: { points: 0, lo: 0, hi: 0 }, tool: tenth, both: tenth },
+      vsWeb: { both: tenth },
     };
     const run = { ...exp, models: [one], sizes: undefined, caveat: caveatText(sizeGroups([one])) };
-    const change = freePlanFromExport(run, { models: [one.id] }).pilot.rows[0].toolVsAlone;
+    const change = freePlanFromExport(run, { models: [one.id] }).pilot.rows[0].bothVsWeb;
     expect(change).toEqual({ points: (100 * 100) / 801, lo: 12.5, hi: 12.5 });
     expect([shownChange(change), change.lo, change.hi].map(formatPoints)).toEqual(["+13", "+13", "+13"]);
   });
 
   it("refuses data the slide's own checks reject, and says which", () => {
-    const off = withModel("mock-a", (m) => ({ ...m, vsAlone: { ...m.vsAlone, tool: { points: (100 * 28) / 48, lo: 60, hi: 70 } } }));
-    expect(() => freePlanFromExport(off, { models: ["mock-a"] })).toThrow(
-      `the export fails the slide's checks:\n- Mock model A: ${(100 * 28) / 48} is outside its interval 60 to 70`,
-    );
+    const off = withModel("mock-a", (m) => ({ ...m, vsWeb: { both: { points: 50, lo: 60, hi: 70 } } }));
+    expect(() => freePlanFromExport(off, { models: ["mock-a"] })).toThrow("the export fails the slide's checks:\n- Mock model A: 50 is outside its interval 60 to 70");
     const seven = { ...exp, models: Array.from({ length: 7 }, (_, i) => ({ ...exp.models[0], id: `m${i}`, model: `Mock model ${i}` })) };
     expect(() => freePlanFromExport(seven, { models: seven.models.map((m) => m.id) })).toThrow("7 rows; the slide fits 1 to 6");
   });
@@ -447,9 +456,10 @@ describe("freePlanFromExport", () => {
     households: 10,
     arms: { alone: arm24(k[0]), web: arm24(k[1]), tool: arm24(k[2]), both: arm24(k[3]) },
     vsAlone: { web: change24(k[0], k[1], spread), tool: change24(k[0], k[2], spread), both: change24(k[0], k[3], spread) },
+    vsWeb: { both: change24(k[1], k[3], spread) },
   });
   // PolicyBench's two-size wording, written out by hand: the free-plan size first, each size's noise from its own models
-  // (A and B: half-widths of 15 and 16.5, median 15; C and D: 22 and 31, median 26.5, rounded up to 30).
+  // (A and B: half-widths of 15; C and D: 22 and 31, median 26.5, rounded up to 30), alike from no tools and from web search.
   const TWO_SIZES: PolicyBenchExport = {
     ...exp,
     households: 20,
@@ -473,7 +483,7 @@ describe("freePlanFromExport", () => {
     expect(warnings).toContain(
       "the chosen models ran on different households (48 amounts in 20 households; 24 amounts in 10 households); the caveat says which, so read each count against its own total",
     );
-    expect(pilot.rows[2].counts.alone).toEqual({ k: 15, n: 24 });
+    expect(pilot.rows[2].counts.web).toEqual({ k: 16, n: 24 });
   });
 
   it("rebuilds the caveat for the models on the slide, in PolicyBench's wording, with each size's noise from those models", () => {
@@ -491,6 +501,36 @@ describe("freePlanFromExport", () => {
     expect(freePlanFromExport(TWO_SIZES, { models: ["mock-c", "mock-d"] }).pilot.caveat).toBe(
       "Preliminary internal pilot: 10 households sampled from PolicyEngine's microdata, 24 nonzero dollar amounts per model and setting. The models were called through their APIs with our prompt, not used in the free chat apps, and a change of less than about 30 points between settings is within noise at this size.",
     );
+  });
+
+  it("takes the slide's noise width from the change it shows, and checks PolicyBench's caveat by PolicyBench's own", () => {
+    // A and B's changes from adding the tool are wider than their changes from no tools: half-widths 22 and 24, median 23, rounded up to 25.
+    const half = { "mock-a": 22, "mock-b": 24 } as Record<string, number>;
+    const wider = {
+      ...exp,
+      models: exp.models.map((m) => (half[m.id] ? { ...m, vsWeb: { both: { points: m.vsWeb!.both!.points, lo: m.vsWeb!.both!.points - half[m.id], hi: m.vsWeb!.both!.points + half[m.id] } } } : m)),
+    };
+    const free = wider.models.filter((m) => m.group === "free-plan");
+    expect([noisePoints(free), noisePoints(free, VS_WEB)]).toEqual([15, 25]);
+    // The export's caveat, at 15, still passes the check against PolicyBench's rule; the slide says 25.
+    expect(freePlanFromExport(wider, { models: ALL }).pilot.caveat).toBe(exp.caveat.replace("about 15 points", "about 25 points"));
+    // Where PolicyBench states the width from web search, overall or by size, it has to be the rule's.
+    expect(() => freePlanFromExport({ ...wider, noisePointsVsWeb: 25 }, { models: ALL })).not.toThrow();
+    expect(() => freePlanFromExport({ ...wider, noisePointsVsWeb: 15 }, { models: ALL })).toThrow(
+      "the export's noise width from web search, 15, isn't PolicyBench's rule's for its models, 25",
+    );
+  });
+
+  it("refuses an export whose noise widths from web search, by size, aren't PolicyBench's rule's", () => {
+    const sizes = TWO_SIZES.sizes!;
+    const stated = (a?: number, b?: number) => ({ ...TWO_SIZES, sizes: [{ ...sizes[0], noisePointsVsWeb: a }, { ...sizes[1], noisePointsVsWeb: b }] });
+    expect(() => freePlanFromExport(stated(15, 30), { models: ALL })).not.toThrow();
+    expect(() => freePlanFromExport(stated(), { models: ALL })).not.toThrow();
+    for (const [a, b] of [[15, 25], [20, 30], [15, undefined]]) {
+      expect(() => freePlanFromExport(stated(a, b), { models: ALL })).toThrow(
+        `the export's noise widths from web search, ${JSON.stringify([a, b])}, aren't PolicyBench's rule's for its models, [15,30]`,
+      );
+    }
   });
 
   it("refuses an export whose sizes or caveat aren't what PolicyBench's rule gives for its models", () => {
@@ -523,6 +563,11 @@ describe("freePlanFromExport", () => {
     expect(noisePoints([withHalves([])])).toBe(0);
     // A free-plan model with no intervals falls back to every model's, as PolicyBench's does (found by the differential check).
     expect(noisePoints([withHalves([]), withHalves([12, 12], "other")])).toBe(15);
+    // The slide's width comes from the change it shows, by the same rule.
+    const shown = (h: number, group: "free-plan" | "other" = "free-plan"): ExportModel => ({ ...withHalves([1, 1, 1], group), vsWeb: { both: { points: 0, lo: -h, hi: h } } });
+    expect([noisePoints([shown(22), shown(24)]), noisePoints([shown(22), shown(24)], VS_WEB)]).toEqual([5, 25]);
+    expect(noisePoints([shown(7), shown(40, "other")], VS_WEB)).toBe(10);
+    expect(noisePoints([{ ...shown(7), vsWeb: undefined }], VS_WEB)).toBe(0);
     fc.assert(
       fc.property(fc.array(fc.double({ min: 0, max: 60, noNaN: true }), { minLength: 1, maxLength: 9 }), (halves) => {
         const w = noisePoints([withHalves(halves.slice(0, 3)), withHalves(halves.slice(3, 6)), withHalves(halves.slice(6))].filter((m) => Object.keys(m.vsAlone).length));
@@ -554,14 +599,19 @@ describe("freePlanFromExport", () => {
     const count = (n: number) => fc.integer({ min: 0, max: n });
     const model = fc
       .integer({ min: 1, max: 400 })
-      .chain((n) => fc.tuple(fc.constant(n), count(n), count(n), count(n), count(n), fc.double({ min: 0, max: 30, noNaN: true }), fc.boolean()));
+      .chain((n) =>
+        fc.tuple(fc.constant(n), count(n), count(n), count(n), count(n), fc.double({ min: 0, max: 30, noNaN: true }), fc.double({ min: 0, max: 30, noNaN: true }), fc.boolean()),
+      );
     fc.assert(
       fc.property(fc.array(model, { minLength: 1, maxLength: 6 }), (specs) => {
-        const models: ExportModel[] = specs.map(([n, alone, web, tool, both, spread, free], i) => {
+        const models: ExportModel[] = specs.map(([n, alone, web, tool, both, spread, shownSpread, free], i) => {
           const arm = (k: number) => ({ k, n, pct: (100 * k) / n, lo: 0, hi: 100 });
           // As the export writes them: the change and its interval's ends to one decimal, so an interval can collapse onto a rounded change.
-          const points = (100 * (tool - alone)) / n;
           const oneDecimal = (x: number) => Math.round(x * 10) / 10;
+          const exported = (from: number, to: number, s: number) => {
+            const points = (100 * (to - from)) / n;
+            return { points: oneDecimal(points), lo: oneDecimal(Math.max(-100, points - s)), hi: oneDecimal(Math.min(100, points + s)) };
+          };
           return {
             ...exp.models[0],
             id: `m${i}`,
@@ -570,13 +620,15 @@ describe("freePlanFromExport", () => {
             freePlan: free ? "Mock Free" : null,
             arms: { alone: arm(alone), web: arm(web), tool: arm(tool), both: arm(both) },
             // A bootstrap of a difference of two shares stays within 100 points either way.
-            vsAlone: { tool: { points: oneDecimal(points), lo: oneDecimal(Math.max(-100, points - spread)), hi: oneDecimal(Math.min(100, points + spread)) } },
+            vsAlone: { tool: exported(alone, tool, spread) },
+            vsWeb: { both: exported(web, both, shownSpread) },
           };
         });
         const consistent = { ...exp, models, sizes: undefined, caveat: caveatText(sizeGroups(models)) };
         const { pilot } = freePlanFromExport(consistent, { models: models.map((m) => m.id) });
         expect(freePlanProblems(pilot)).toEqual([]);
-        expect(pilot.caveat).toBe(consistent.caveat);
+        // PolicyBench's wording, with the noise of the change the slide shows.
+        expect(pilot.caveat).toBe(caveatText(sizeGroups(models, VS_WEB)));
         // A slide of the first model alone describes only its size.
         const one = freePlanFromExport(consistent, { models: [models[0].id] }).pilot;
         expect(one.caveat).toMatch(new RegExp(`^Preliminary internal pilot: 20 households sampled from PolicyEngine's microdata, ${models[0].arms.alone!.n} nonzero`));

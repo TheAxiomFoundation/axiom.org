@@ -34,7 +34,7 @@ describe("FreePlanSlide", () => {
     const c = (k: number) => ({ k, n: 801 });
     const pilot = {
       ...MOCK_FREE_PLAN_PILOT,
-      rows: [{ ...MOCK_FREE_PLAN_PILOT.rows[0], counts: { alone: c(0), web: c(0), tool: c(100), both: c(100) }, toolVsAlone: { points: (100 * 100) / 801, lo: 12.5, hi: 12.5 } }],
+      rows: [{ ...MOCK_FREE_PLAN_PILOT.rows[0], counts: { web: c(0), both: c(100) }, bothVsWeb: { points: (100 * 100) / 801, lo: 12.5, hi: 12.5 } }],
     };
     expect(freePlanProblems(pilot)).toEqual([]);
     render(<FreePlanSlide pilot={pilot} />);
@@ -43,7 +43,7 @@ describe("FreePlanSlide", () => {
     expect(screen.queryByText("+12")).toBeNull();
   });
 
-  it("shows each model's share in every setting as a whole percent with its count, and its change from no tools", () => {
+  it("shows each model's share in both settings as a whole percent with its count, and its change from adding the tool", () => {
     render(<FreePlanSlide pilot={MOCK_FREE_PLAN_PILOT} />);
     const p = MOCK_FREE_PLAN_PILOT;
     expect(screen.getByText(p.title)).toBeInTheDocument();
@@ -51,30 +51,19 @@ describe("FreePlanSlide", () => {
     expect(screen.getByText("MOCK DATA, not results")).toBeInTheDocument();
     const table = screen.getByRole("table", { name: /Share of amounts right, by model and setting/ });
     for (const arm of p.arms) expect(within(table).getByRole("columnheader", { name: arm.label })).toBeInTheDocument();
-    expect(within(table).getByRole("columnheader", { name: "No tools to tool, in points, with its 95% interval" })).toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: "Adding the tool, in points, with its 95% interval" })).toBeInTheDocument();
+    expect(p.arms.map((a) => a.label)).toEqual(["With web search", "With web search and the PolicyEngine tool"]);
 
     const a = within(table).getByRole("row", { name: /Mock model A/ });
     expect(a).toHaveTextContent("On mock plan A");
-    // 12, 20, 40 and 41 of 48: 25, 41.7, 83.3 and 85.4%, shown whole.
-    expect(within(a).getAllByRole("cell").map((c) => c.textContent)).toEqual([
-      "25%12 of 48",
-      "42%20 of 48",
-      "83%40 of 48",
-      "85%41 of 48",
-      "+58+41 to +73",
-    ]);
+    // 20 and 41 of 48: 41.7 and 85.4%, shown whole; the change, 43.8, shown whole too.
+    expect(within(a).getAllByRole("cell").map((c) => c.textContent)).toEqual(["42%20 of 48", "85%41 of 48", "+44+27 to +59"]);
 
-    // 12 of 47 is 25.5%, shown as 26; the change's interval includes zero, and the slide says so in words.
+    // 13 of 47 is 27.7%, shown as 28; the change's interval includes zero, and the slide says so in words.
     const c = within(table).getByRole("row", { name: /Mock model C/ });
-    expect(within(c).getAllByRole("cell").map((cell) => cell.textContent)).toEqual([
-      "19%9 of 47",
-      "28%13 of 47",
-      "26%12 of 47",
-      "34%16 of 47",
-      "+6−11 to +25, includes 0",
-    ]);
+    expect(within(c).getAllByRole("cell").map((cell) => cell.textContent)).toEqual(["28%13 of 47", "34%16 of 47", "+6−11 to +25, includes 0"]);
     expect(within(c).getByText("+6")).toHaveClass("text-[var(--color-ink-muted)]");
-    expect(within(a).getByText("+58")).toHaveClass("text-[var(--color-ink)]");
+    expect(within(a).getByText("+44")).toHaveClass("text-[var(--color-ink)]");
 
     // A comparison model has no free-plan line.
     const d = within(table).getByRole("rowheader", { name: "Mock model D" });
@@ -89,7 +78,7 @@ describe("FreePlanSlide", () => {
   it("draws each bar at its whole-percent share", () => {
     const { container } = render(<FreePlanSlide pilot={MOCK_FREE_PLAN_PILOT} />);
     const widths = [...container.querySelectorAll<HTMLElement>("td span[aria-hidden] > span")].map((s) => s.style.width);
-    expect(widths.slice(0, 4)).toEqual(["25%", "42%", "83%", "85%"]);
+    expect(widths.slice(0, 2)).toEqual(["42%", "85%"]);
     expect(widths).toHaveLength(MOCK_FREE_PLAN_PILOT.rows.length * MOCK_FREE_PLAN_PILOT.arms.length);
   });
 
@@ -99,7 +88,7 @@ describe("FreePlanSlide", () => {
     render(<FreePlanSlide pilot={{ ...p, rows }} />);
     const a = screen.getByRole("row", { name: /Mock model A/ });
     const cells = within(a).getAllByRole("cell");
-    expect(cells[1].textContent).toBe("");
+    expect(cells[0].textContent).toBe("");
     expect(cells[0]).toHaveClass("py-[10px]");
     // With PolicyBench's caveat and footnotes at full length, roomy rows fit 1600×900 only up to three.
     for (const [n, cell] of [[3, "py-[10px]"], [4, "py-[1px]"], [6, "py-[1px]"]] as const) {
