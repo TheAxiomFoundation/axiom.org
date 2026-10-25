@@ -152,10 +152,12 @@ export function standardsMismatch(
  * - the eligibility sentence, when the panel shows its eligibility note
  *   (testsEligibility false, saved verdict included);
  * - either whole standards template (legacy "SNAP figures use ..." or
- *   the program-named annual-update sentence), for a monthly period, when the panel's
- *   standards line names that same year (standardsMismatch, "not encoded
- *   yet" included), or the year it names is the month's own fiscal year,
- *   so its "not encoded" part is about a later year than this period.
+ *   the program-named annual-update sentence), for a monthly period, when the
+ *   year it says was used is one the panel reports as used, and either the
+ *   panel's standards line names it (standardsMismatch, "not encoded yet"
+ *   included) or it is the month's own fiscal year, so its "not encoded" part
+ *   is about a later year than this period. A sentence naming a year the
+ *   panel doesn't report stays: it disagrees with the panel (GPT-6.1 Sol, Oct 23).
  * Anything else, including either sentence with more added, stays as the
  * chatbot wrote it.
  */
@@ -175,7 +177,7 @@ export function otherDisclosures(computation: {
     const disclosure = standardsDisclosure(text, computation.displayName);
     if (!disclosure || due === null) return false;
     const year = disclosure.used;
-    return year === due || (lineShown && used.includes(year));
+    return used.includes(year) && (year === due || lineShown);
   };
   return (computation.disclosures ?? []).filter(
     (text) => !(noted && isWholeEligibilitySentence(text, computation.displayName)) && !stated(text),

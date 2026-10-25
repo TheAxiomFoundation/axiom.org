@@ -1,3 +1,4 @@
+import fc from 'fast-check'
 import {
   EXAMPLE_HOUSEHOLD,
   RATING_SCALES,
@@ -21,6 +22,11 @@ import {
   percent,
   stageIndex,
   MINIMUM_BENEFIT,
+  TOOL_PILOT,
+  share,
+  toolPilotMisses,
+  LIVE_DEMO,
+  liveDemoUrl,
 } from './content'
 import { federalFiscalYear } from './coverage'
 
@@ -183,6 +189,9 @@ describe('aspen content', () => {
     expect(MINIMUM_BENEFIT).toEqual({ fy2026: 24, fy2027: 25, effective: 'October 1, 2026' })
     expect(POLICYBENCH.example.reference.monthly).toBe(MINIMUM_BENEFIT.fy2026)
     expect(POLICYBENCH.example.fromOctober.monthly).toBe(MINIMUM_BENEFIT.fy2027)
+    // PolicyBench's $288 is twelve months at FY2026's minimum; current law is nine at $24, then three at $25.
+    expect(POLICYBENCH.example.reference.annual).toBe(12 * MINIMUM_BENEFIT.fy2026)
+    expect(POLICYBENCH.example.currentLaw.annual).toBe(9 * MINIMUM_BENEFIT.fy2026 + 3 * MINIMUM_BENEFIT.fy2027)
   })
 
   it("keeps the example's tiles in step with its counts (PolicyBench scenario_027)", () => {
@@ -197,5 +206,74 @@ describe('aspen content', () => {
     expect(answers.at(-2)).toBe(EXAMPLE_HOUSEHOLD.reference)
     expect(findHousehold('ct-couple')?.plural).toBe(true)
     expect(findHousehold('ct-couple')?.firstPerson).not.toContain('disability. My')
+  })
+
+  it("gives every tool-pilot model a count for every arm, as the October 20 note's data gives them", () => {
+    for (const row of TOOL_PILOT.rows) {
+      for (const arm of TOOL_PILOT.arms) {
+        const hits = row.hits[arm.id]
+        expect(Number.isInteger(hits)).toBe(true)
+        expect(hits).toBeGreaterThanOrEqual(0)
+        expect(hits).toBeLessThanOrEqual(TOOL_PILOT.amounts)
+      }
+    }
+    // Recomputed Oct 23 with the note's own functions: hits of 187 amounts, and the shares the slide prints.
+    expect(TOOL_PILOT.amounts).toBe(187)
+    expect(TOOL_PILOT.rows.map((r) => [r.model, r.hits.alone, r.hits.tool])).toEqual([
+      ['GPT-6 Sol', 126, 181],
+      ['Claude Opus 5.5', 131, 185],
+      ['Gemini 4 Argon', 87, 186],
+    ])
+    expect(TOOL_PILOT.rows.map((r) => [share(r.hits.alone!, 187), share(r.hits.tool!, 187)])).toEqual([
+      [67.4, 96.8],
+      [70.1, 98.9],
+      [46.5, 99.5],
+    ])
+    // The miss count comes from the same rows as the bars: 6 + 2 + 1 of 3 × 187.
+    expect(toolPilotMisses(TOOL_PILOT)).toEqual({ misses: 9, scored: 561 })
+    // The note line's numbers add up: 171 taxes and tax credits and 16 benefits make 187.
+    const b = TOOL_PILOT.benefits!
+    expect(TOOL_PILOT.note).toContain('187 per model across 100 US households, 171 of them taxes and tax credits and 16 benefits')
+    expect(171 + b.amounts).toBe(TOOL_PILOT.amounts)
+    expect(b.title).toBe('The 16 benefit amounts: 13 SNAP, 2 SSI, 1 TANF')
+    expect(13 + 2 + 1).toBe(b.amounts)
+    // Same models, same order; the tool never does worse, and never more than every amount.
+    expect(b.rows.map((r) => r.model)).toEqual(TOOL_PILOT.rows.map((r) => r.model))
+    expect(b.rows.map((r) => [r.alone, r.tool])).toEqual([
+      [6, 16],
+      [7, 16],
+      [0, 16],
+    ])
+    for (const r of b.rows) expect(r.alone).toBeLessThanOrEqual(r.tool)
+    // The headline ("above 99%") is a different, weighted score; the slide doesn't quote it.
+    expect(TOOL_PILOT.source).not.toMatch(/99%/)
+    // The note's own caveat travels with the numbers.
+    expect(TOOL_PILOT.measures).toMatch(/not whether the engine is right/)
+  })
+
+  it('turns a count into a one-decimal share that never leaves 0 to 100 and grows with the count', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 1, max: 5000 }), fc.integer({ min: 0, max: 5000 }), (of, k) => {
+        const hits = k % (of + 1)
+        const value = share(hits, of)
+        expect(value).toBeGreaterThanOrEqual(0)
+        expect(value).toBeLessThanOrEqual(100)
+        expect(Math.round(value * 10) / 10).toBe(value)
+        expect(Math.abs(value - (100 * hits) / of)).toBeLessThanOrEqual(0.05 + 1e-9)
+        if (hits < of) expect(share(hits + 1, of)).toBeGreaterThanOrEqual(value)
+      }),
+    )
+    expect(share(0, 187)).toBe(0)
+    expect(share(187, 187)).toBe(100)
+  })
+
+  it('opens the live demo in compare mode with its question intact', () => {
+    const url = new URL(liveDemoUrl())
+    expect(url.origin + url.pathname).toBe(LIVE_DEMO.base)
+    expect(url.searchParams.get('compare')).toBe('1')
+    // Round trip: the frame asks exactly the question the run-of-show scripts.
+    expect(url.searchParams.get('q')).toBe(LIVE_DEMO.question)
+    // The frame never sends on its own; the presenter presses Send.
+    expect(url.searchParams.has('go')).toBe(false)
   })
 })

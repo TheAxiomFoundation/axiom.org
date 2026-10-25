@@ -1,13 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
+  BookText,
   ChartColumn,
   Check,
   ClipboardCheck,
+  Database,
+  Download,
+  FileCode,
   GraduationCap,
   Landmark,
+  Layers,
+  Network,
+  Package,
+  RefreshCw,
   SlidersHorizontal,
   Sparkles,
   User,
@@ -26,12 +34,18 @@ import {
   FOUNDATION_TRAITS,
   EXAMPLE_HOUSEHOLD,
   BUILD_HEADING,
+  ENCODING_PIPELINE,
   FRONT_DOOR,
   LIVE_DEMO,
   liveDemoUrl,
   POLICYBENCH,
   SAME_RULES,
   SILVER_ASK,
+  TOOL_PILOT,
+  share,
+  toolPilotMisses,
+  type ToolPilot,
+  type ToolPilotArmId,
   WHAT_MODELS_MISS,
   WHERE_MODELS_BREAK,
   STAGES,
@@ -43,10 +57,10 @@ import {
 import type { Control } from "@/lib/aspen/types";
 import { EMPTY_SUMMARY, ifEligibleSentence, type Count, type RunSummary, type ScaleSummary } from "@/lib/aspen/results";
 import { postJson, useControl, useResults } from "./client";
-import { BAD, GOOD, MAYBE } from "./results-board";
 import { BUTTON_QUIET, FIELD } from "./ui";
 import { BrandLogo } from "./brand-logo";
 import { JoinQr } from "./join-qr";
+import { JourneySlide } from "./journey-slide";
 import { TIERS, TierMedal } from "./tier-medal";
 
 /** The slide canvas: drawn at 1600×900 and scaled to fit the screen, so every stage fits 16:9. */
@@ -56,14 +70,38 @@ const SLIDE_H = 900;
 /** Aspen headings read in sentence case, not the site's uppercase display style. */
 const SENTENCE = { textTransform: "none", letterSpacing: "-0.01em" } as const;
 
-/** A slide that turns its stage's argument gets its own heading. */
-const SLIDE_TITLES: Partial<Record<StageId, Record<number, string>>> = {
-  scale: { 4: FRONT_DOOR.heading, 5: FRONT_DOOR.heading },
-  foundation: { 1: SAME_RULES.heading, 2: BUILD_HEADING },
+/** Bar colours for a good, bad or in-between answer. */
+const GOOD = "var(--color-success)";
+const BAD = "var(--color-error)";
+const MAYBE = "var(--color-rule-strong)";
+
+/** Why an answer is worth discussing. */
+const REASON_LABEL: Record<string, string> = {
+  "checked-wrong": "Wrong against the rules",
+  wrong: "Looked wrong",
+  unsure: "Not sure",
 };
 
+/** Why an answer is worth discussing, in the rater's own terms: an answer acted on says how it looked. */
+function reasonLabel(item: { reason: string; verdict: string | null }): string {
+  if (item.reason === "convincing") return item.verdict === "unsure" ? "Not sure, yet acted on" : "Looked wrong, yet acted on";
+  return REASON_LABEL[item.reason] ?? item.reason;
+}
+
+/** The journey covers its slide, heading too; this names it for a screen reader. */
+const JOURNEY_HEADING = "From the law as written to running code";
+
+/** A slide that turns its stage's argument gets its own heading. */
+const SLIDE_TITLES: Partial<Record<StageId, Record<number, string>>> = {
+  scale: { 4: FRONT_DOOR.heading, 5: FRONT_DOOR.heading, 6: FRONT_DOOR.heading },
+  foundation: { 1: SAME_RULES.heading, 2: ENCODING_PIPELINE.heading, 3: JOURNEY_HEADING, 4: BUILD_HEADING },
+};
+
+/** Shared foundation's slides, in order; the journey takes Space for itself. */
+const FOUNDATION_SLIDES = ["foundation", "same-rules", "pipeline", "journey", "tiers"] as const;
+
 /** Stages shown as more than one slide; the arrows step through them before moving the room. */
-const SLIDES: Partial<Record<StageId, number>> = { reveal: 3, scale: 6, foundation: 3, groups: 2, next: 2 };
+const SLIDES: Partial<Record<StageId, number>> = { reveal: 2, scale: 7, foundation: FOUNDATION_SLIDES.length, groups: 2, next: 2 };
 const slideCount = (id: StageId) => SLIDES[id] ?? 1;
 
 /** The largest scale at which the 16:9 canvas fits the window. */
@@ -159,11 +197,22 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
     [index, stage, sub, move],
   );
 
+  const onJourney = stage === "foundation" && FOUNDATION_SLIDES[sub] === "journey";
+  // The journey's chunk (three.js and its scenes) loads while the stage's first slides are up.
+  useEffect(() => {
+    if (stage === "foundation") void import("@/components/landing/journey-lamplight/director").catch(() => {});
+  }, [stage]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setRunOpen(false);
       const target = e.target as HTMLElement | null;
-      if (target && ["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(target.tagName)) return;
+      if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+      // A clicked button keeps the focus, and Space and Enter press it; the
+      // arrows and a clicker's page keys still move the slides.
+      if (target?.tagName === "BUTTON" && (e.key === " " || e.key === "Enter")) return;
+      // On the journey, Space pauses it instead.
+      if (e.key === " " && onJourney) return;
       if (["ArrowRight", "PageDown", " "].includes(e.key)) {
         e.preventDefault();
         step(1);
@@ -174,7 +223,7 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [step]);
+  }, [step, onJourney]);
 
   const current = STAGES[index];
   const fade = `transition-opacity duration-500 focus-within:opacity-100 ${idle ? "opacity-0" : "opacity-100"}`;
@@ -211,17 +260,18 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
                   (sub === 0 ? (
                     <RevealSlide summary={summary} />
                   ) : (
+                    // The agency rating; the 5x5 "How did the AI do?" grid left the phones on Oct 23, so its slide went too.
                     <RatingSlide
                       summary={summary}
-                      question={sub === 1 ? "performance" : "experience"}
                       comments={
-                        sub === 2 && showComments
+                        showComments
                           ? summary.discussion.notes.filter((n) => n.question === "experience").map((n) => n.text)
                           : null
                       }
                     />
                   ))}
-                {/* Slides 2 to 5 of At scale, and 2 of Shared foundation, come from Max's Nava deck; 6 is the live chatbot. */}
+                {/* Slides 2 to 5 of At scale, and 2 of Shared foundation, come from Max's Nava deck; 6 is the tool pilot and 7 the live chatbot.
+                    Shared foundation 3 is the encoding pipeline from the InnovateUS deck. */}
                 {stage === "scale" &&
                   [
                     <ScaleShareSlide key="share" />,
@@ -229,12 +279,18 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
                     <BreakSlide key="break" />,
                     <MissSlide key="miss" />,
                     <FrontDoorSlide key="front-door" />,
+                    <ToolSlide key="tool" />,
                     <LiveDemoSlide key="live-demo" />,
                   ][sub]}
+                {/* Shared foundation 4 plays the homepage's encoding journey after the pipeline it shows. */}
                 {stage === "foundation" &&
-                  [<FoundationSlide key="foundation" summary={summary} />, <SameRulesSlide key="same-rules" />, <TiersSlide key="tiers" />][
-                    sub
-                  ]}
+                  [
+                    <FoundationSlide key="foundation" summary={summary} />,
+                    <SameRulesSlide key="same-rules" />,
+                    <PipelineSlide key="pipeline" />,
+                    <JourneySlide key="journey" />,
+                    <TiersSlide key="tiers" />,
+                  ][sub]}
                 {stage === "groups" &&
                   (sub === 0 ? <VoteSlide votes={summary.votes} /> : <GroupsSlide summary={summary} />)}
                 {stage === "next" &&
@@ -245,6 +301,9 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
           </div>
         </div>
       </div>
+
+      {/* Over the slide and under the controls: a slide that can't draw inside the scaled canvas places itself here. */}
+      <div data-aspen-overlay />
 
       <div
         className={`absolute inset-x-0 top-0 flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-rule)] bg-[var(--color-paper)]/95 px-6 py-2.5 ${fade}`}
@@ -334,8 +393,9 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
         {error && <p className="m-0 w-full font-body text-[0.85rem] text-[var(--color-error)]">{error}</p>}
       </div>
 
-      {/* The only control at the bottom: a small toggle on the slides that hide something until asked. */}
-      {((stage === "reveal" && sub === 2) || (stage === "scale" && sub === 5)) && (
+      {/* The only control at the bottom: a small toggle on the slides that hide something until asked.
+          The live demo is At scale's last slide. */}
+      {((stage === "reveal" && sub === slideCount("reveal") - 1) || (stage === "scale" && sub === slideCount("scale") - 1)) && (
         <div
           className={`absolute bottom-3 right-3 rounded-full border border-[var(--color-rule)] bg-[var(--color-paper)]/95 px-1.5 py-1 ${fade}`}
         >
@@ -448,6 +508,7 @@ function BigStat({
   tone = "ink",
   size = 96,
   unit,
+  note,
 }: {
   value: ReactNode;
   label: string;
@@ -455,6 +516,8 @@ function BigStat({
   size?: number;
   /** A short unit beside the number, e.g. "in 2026", so an annual total doesn't read as monthly. */
   unit?: string;
+  /** A caveat on the count, smaller than the label so a long one doesn't push the slide off the screen. */
+  note?: string | null;
 }) {
   const color = { ink: "var(--color-ink)", bad: "var(--color-error)", accent: "var(--color-accent)" }[tone];
   const number = (
@@ -472,7 +535,8 @@ function BigStat({
       ) : (
         number
       )}
-      <span className="mt-[8px] block font-body text-[24px] text-[var(--color-ink-secondary)]">{label}</span>
+      <span className="mt-[8px] block font-body text-[24px] leading-snug text-[var(--color-ink-secondary)]">{label}</span>
+      {note && <span className="mt-[6px] block font-body text-[19px] leading-snug text-[var(--color-ink-muted)]">{note}</span>}
     </div>
   );
 }
@@ -480,7 +544,11 @@ function BigStat({
 /** Text inside a box on the big screen: one size on every slide. */
 const BOX_TEXT = "font-body text-[24px] leading-snug text-[var(--color-ink)]";
 
-/** A split bar at slide size: one track, then a legend with counts. */
+/**
+ * A split bar at slide size: one track, then a legend with counts. The legend
+ * is a step smaller than box text so four parts with two-digit counts stay on
+ * one line in half the slide.
+ */
 function BigSplit({ parts }: { parts: { label: string; count: number; color: string }[] }) {
   const total = parts.reduce((sum, p) => sum + p.count, 0);
   return (
@@ -496,10 +564,10 @@ function BigSplit({ parts }: { parts: { label: string; count: number; color: str
           ) : null,
         )}
       </div>
-      <div className="flex flex-wrap gap-x-[22px] gap-y-[6px]">
+      <div className="flex flex-wrap gap-x-[18px] gap-y-[4px]">
         {parts.map((p) => (
-          <span key={p.label} className={`flex items-center gap-[10px] ${BOX_TEXT}`}>
-            <span aria-hidden className="h-[14px] w-[14px] rounded-full" style={{ background: p.color }} />
+          <span key={p.label} className="flex items-center gap-[8px] font-body text-[20px] leading-snug text-[var(--color-ink)]">
+            <span aria-hidden className="h-[12px] w-[12px] rounded-full" style={{ background: p.color }} />
             {p.label} <span className="font-mono tabular-nums">{p.count}</span>
           </span>
         ))}
@@ -621,20 +689,18 @@ function TrySlide({ summary, joinPassword }: { summary: RunSummary; joinPassword
 }
 
 /**
- * What we saw, slides 2 and 3: one rating question each. Slide 2 is how the
- * AI did on the answers; slide 3 is how AI is performing in their agencies.
+ * What we saw, slide 2: how AI is doing in their agencies, the room's 1–5
+ * ratings, with the comments once the presenter shows them.
  */
 function RatingSlide({
   summary,
-  question,
   comments = null,
 }: {
   summary: RunSummary;
-  question: "performance" | "experience";
   /** Agency comments, once the presenter shows them; null keeps them hidden. */
   comments?: string[] | null;
 }) {
-  const scale = summary.discussion.scales.find((sc) => sc.question === question);
+  const scale = summary.discussion.scales.find((sc) => sc.question === "experience");
   const ratings = scale ? Math.max(0, ...scale.categories.map((c) => c.count)) : 0;
   return (
     <div className="flex h-full flex-col gap-[24px]">
@@ -664,17 +730,18 @@ function RatingSlide({
 }
 
 /**
- * "would stop a resident from applying. 2 of them qualify." An amount from
- * rules that don't test eligibility counts apart (ifEligibleSentence).
+ * The note under "would stop a resident from applying": "2 of them qualify."
+ * An amount from rules that don't test eligibility counts apart
+ * (ifEligibleSentence). Null when there's nothing to add.
  */
-export function notApplyLabel(v: Pick<RunSummary["viability"], "wouldNotApplyEligible" | "wouldNotApplyIfEligible">): string {
+export function notApplyNote(v: Pick<RunSummary["viability"], "wouldNotApplyEligible" | "wouldNotApplyIfEligible">): string | null {
   const parts: string[] = [];
   if (v.wouldNotApplyEligible > 0) {
     parts.push(`${v.wouldNotApplyEligible} of them ${v.wouldNotApplyEligible === 1 ? "qualifies" : "qualify"}.`);
   }
   const ifEligible = ifEligibleSentence(v, "of them");
   if (ifEligible) parts.push(ifEligible);
-  return parts.length ? `would stop a resident from applying. ${parts.join(" ")}` : "would stop a resident from applying";
+  return parts.length ? parts.join(" ") : null;
 }
 
 function RevealSlide({ summary }: { summary: RunSummary }) {
@@ -683,30 +750,33 @@ function RevealSlide({ summary }: { summary: RunSummary }) {
     return <p className="m-0 font-body text-[30px] text-[var(--color-ink-muted)]">Results appear here as people rate their answers.</p>;
   }
   return (
-    <div className="flex h-full flex-col gap-[14px]">
-      <div className="grid grid-cols-3 gap-[24px]">
-        <Panel className="py-[20px]">
-          <BigStat size={76} value={`${v.right} of ${v.rated}`} label="answers looked right" />
+    // Sized to fit 1600×900 with the longest labels, two-digit counts and two long spotlight notes.
+    <div className="flex h-full flex-col gap-[12px]">
+      {/* The third stat carries the eligibility note, so it gets the most room. */}
+      <div className="grid grid-cols-[0.85fr_1fr_1.25fr] gap-[24px]">
+        <Panel className="py-[14px]">
+          <BigStat size={64} value={`${v.right} of ${v.rated}`} label="answers looked right" />
         </Panel>
-        <Panel className={`py-[20px] ${v.convincing > 0 ? "border-l-[8px] border-l-[var(--color-error)]" : ""}`}>
+        <Panel className={`py-[14px] ${v.convincing > 0 ? "border-l-[8px] border-l-[var(--color-error)]" : ""}`}>
           <BigStat
-            size={76}
+            size={64}
             value={v.convincing}
-            label="looked wrong, yet people would act on them"
+            label="looked wrong or unsure, yet a resident would act on them"
             tone={v.convincing > 0 ? "bad" : "ink"}
           />
         </Panel>
-        <Panel className={`py-[20px] ${v.wouldNotApply > 0 ? "border-l-[8px] border-l-[var(--color-error)]" : ""}`}>
+        <Panel className={`py-[14px] ${v.wouldNotApply > 0 ? "border-l-[8px] border-l-[var(--color-error)]" : ""}`}>
           <BigStat
-            size={76}
+            size={64}
             value={v.wouldNotApply}
-            label={notApplyLabel(v)}
+            label="would stop a resident from applying"
+            note={notApplyNote(v)}
             tone={v.wouldNotApply > 0 ? "bad" : "ink"}
           />
         </Panel>
       </div>
       <div className="grid grid-cols-2 gap-[24px]">
-        <Panel className="py-[20px]">
+        <Panel className="py-[16px]">
           <Prompt>Did the answer look right?</Prompt>
           <BigSplit
             parts={[
@@ -716,7 +786,7 @@ function RevealSlide({ summary }: { summary: RunSummary }) {
             ]}
           />
         </Panel>
-        <Panel className="py-[20px]">
+        <Panel className="py-[16px]">
           <Prompt>What would a resident do next?</Prompt>
           <BigSplit
             parts={v.residentActions.map((a) => ({
@@ -727,16 +797,59 @@ function RevealSlide({ summary }: { summary: RunSummary }) {
           />
         </Panel>
       </div>
+      <WorthDiscussing summary={summary} />
+    </div>
+  );
+}
+
+/**
+ * The answers Max reads out in What we saw, on the screen now that phones
+ * stay quiet there: the two most worth discussing, with what the person
+ * said about each. Before anyone flags one, the spoken questions show instead.
+ */
+function WorthDiscussing({ summary }: { summary: RunSummary }) {
+  const items = summary.spotlight.slice(0, 2);
+  if (!items.length) {
+    return (
       <Panel className="mt-auto py-[20px]">
         <Label>To discuss</Label>
         <ol className={`m-0 grid grid-cols-2 gap-[32px] pl-[28px] ${BOX_TEXT}`}>
-          {/* The agency question has its own slide (3/3). */}
+          {/* The agency question has its own slide (2/2). */}
           {DISCUSSION_QUESTIONS.filter((q) => q.id !== "experience").map((q) => (
             <li key={q.id}>{q.label}</li>
           ))}
         </ol>
       </Panel>
-    </div>
+    );
+  }
+  return (
+    <Panel className="mt-auto py-[16px]">
+      <Label>Answers worth discussing</Label>
+      <ul className="m-0 grid list-none grid-cols-2 gap-[32px] p-0">
+        {items.map((item) => (
+          <li key={item.id} className="flex min-w-0 flex-col gap-[6px]">
+            <span className="font-body text-[19px] font-medium text-[var(--color-ink-muted)]">
+              <span className={item.reason === "unsure" ? "" : "text-[var(--color-error)]"}>{reasonLabel(item)}</span>
+              {" · "}
+              {item.household ?? "Own question"}
+            </span>
+            {item.note ? (
+              <q className="line-clamp-2 font-body text-[22px] leading-snug text-[var(--color-ink)]">{item.note}</q>
+            ) : (
+              item.wentWrong.length > 0 && (
+                <span className="font-body text-[22px] leading-snug text-[var(--color-ink)]">{item.wentWrong.join(" · ")}</span>
+              )
+            )}
+            {item.answer && (
+              <p className="m-0 line-clamp-1 font-body text-[18px] leading-snug text-[var(--color-ink-secondary)]">
+                <span className="font-medium text-[var(--color-ink-muted)]">The AI: </span>
+                {item.answer}
+              </p>
+            )}
+          </li>
+        ))}
+      </ul>
+    </Panel>
   );
 }
 
@@ -775,8 +888,8 @@ function StandardsNote() {
   const ex = POLICYBENCH.example;
   return (
     <p className="m-0 font-body text-[18px] leading-snug text-[var(--color-ink-secondary)]">
-      ${ex.reference.monthly} a month all year under {ex.reference.standards} standards.{" "}
-      The minimum benefit rose to ${ex.fromOctober.monthly} on {ex.fromOctober.effective}.
+      ${ex.reference.monthly} a month under the benchmark&apos;s July 2026 rules ({ex.reference.standards} standards).{" "}
+      The minimum rose to ${ex.fromOctober.monthly} on October 1, so 2026 comes to ${ex.currentLaw.annual} under current law.
     </p>
   );
 }
@@ -1022,7 +1135,7 @@ function FrontDoorDiagram() {
   );
 }
 
-/** At scale, slide 6 (Max's Nava deck): AI is becoming the front door to the law. */
+/** At scale, slide 5 (Max's Nava deck): AI is becoming the front door to the law. */
 function FrontDoorSlide() {
   const f = FRONT_DOOR;
   return (
@@ -1036,7 +1149,138 @@ function FrontDoorSlide() {
 }
 
 /**
- * At scale, slide 6: the live chatbot, plain AI beside AI with the Axiom rules
+ * The tool pilot's bar colours, by arm: the model on its own recedes in the
+ * same gray as the "Where models still break" chart, and the tool carries the
+ * accent. Every bar is labelled with its value, so color never carries it alone.
+ */
+const ARM_COLORS: Record<ToolPilotArmId, string> = {
+  alone: "#bdb6ae",
+  web: "#8e9aaa",
+  tool: "var(--color-accent)",
+  both: "var(--color-accent-hover)",
+};
+/** Arms that run the engine, whose numbers read in full ink. */
+const ENGINE_ARMS: ReadonlySet<ToolPilotArmId> = new Set(["tool", "both"]);
+
+/**
+ * At scale, slide 6: PolicyBench's tool pilot. The same models in each arm
+ * (on their own, and with a tool that runs a rules engine) beside the benefit
+ * amounts on their own, then the note's caveat that the tool runs the engine
+ * behind the reference, across the full width so it fits at 1600×900.
+ */
+function ToolSlide() {
+  const t = TOOL_PILOT;
+  const { misses, scored } = toolPilotMisses(t);
+  const bar = t.arms.length > 2 ? 20 : 26;
+  return (
+    <div className="flex h-full flex-col gap-[12px]">
+      <div className="flex items-end justify-between gap-[24px]">
+        <p className="m-0 font-display text-[40px] font-light leading-tight text-[var(--color-ink)]">{t.title}</p>
+        <span className="flex shrink-0 flex-wrap justify-end gap-x-[24px] gap-y-[4px] font-body text-[20px] text-[var(--color-ink-secondary)]">
+          {t.arms.map((arm) => (
+            <span key={arm.id} className="flex items-center gap-[8px]">
+              <span aria-hidden className="h-[14px] w-[14px] rounded-[3px]" style={{ background: ARM_COLORS[arm.id] }} /> {arm.label}
+            </span>
+          ))}
+        </span>
+      </div>
+      <p className="m-0 font-body text-[20px] text-[var(--color-ink-secondary)]">{t.note}</p>
+      <div
+        className={`grid min-h-0 items-start gap-[40px] pt-[8px] ${t.benefits ? "grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)]" : "grid-cols-1"}`}
+      >
+        <ul className={`m-0 flex list-none flex-col p-0 ${t.arms.length > 2 ? "gap-[20px]" : "gap-[28px]"}`}>
+          {t.rows.map((row) => (
+            <li key={row.model} className="grid grid-cols-[220px_minmax(0,1fr)] items-center gap-[24px]">
+              <span className={BOX_TEXT}>{row.model}</span>
+              <span className="flex flex-col gap-[8px]">
+                {t.arms.map((arm) => {
+                  const hits = row.hits[arm.id];
+                  if (typeof hits !== "number") return null;
+                  const value = share(hits, t.amounts);
+                  return (
+                    <span key={arm.id} className="flex items-center gap-[14px]">
+                      <span className="rounded-[4px]" style={{ height: bar, width: `${value * 0.78}%`, background: ARM_COLORS[arm.id] }} />
+                      <span
+                        className={`whitespace-nowrap font-mono text-[22px] leading-none tabular-nums ${ENGINE_ARMS.has(arm.id) ? "text-[var(--color-ink)]" : "text-[var(--color-ink-muted)]"}`}
+                      >
+                        <span className="sr-only">{arm.label}: </span>
+                        {value.toFixed(1)}%
+                      </span>
+                    </span>
+                  );
+                })}
+              </span>
+            </li>
+          ))}
+        </ul>
+        {t.benefits && <BenefitsPanel benefits={t.benefits} />}
+      </div>
+      <Panel className="flex flex-col gap-[8px] py-[18px]">
+        <Label className="mb-0">What this measures</Label>
+        <p className="m-0 font-body text-[22px] leading-snug text-[var(--color-ink)]">
+          {t.measures}{" "}
+          <span className="text-[var(--color-ink-secondary)]">
+            The {misses} of {scored} amounts still wrong with the tool {t.missesCause}
+          </span>
+        </p>
+      </Panel>
+      <BenchFooter source={t.source} />
+    </div>
+  );
+}
+
+/** The benefit amounts alone, as a small table: the part of the pilot this room runs. */
+function BenefitsPanel({ benefits: b }: { benefits: NonNullable<ToolPilot["benefits"]> }) {
+  const cell = "px-[10px] py-[2px] text-right font-mono text-[22px] tabular-nums";
+  return (
+    <Panel className="flex flex-col gap-[10px] py-[16px]">
+      <Label className="mb-0">{b.title}</Label>
+      <table className="w-full border-collapse font-body text-[21px] leading-snug text-[var(--color-ink)]">
+        <caption className="sr-only">Benefit amounts right, of {b.amounts}, by model</caption>
+        <thead>
+          <tr className="text-[var(--color-ink-muted)]">
+            <th scope="col" className="py-[2px] text-left font-normal">
+              <span className="sr-only">Arm</span>
+            </th>
+            {b.rows.map((r) => (
+              <th key={r.model} scope="col" className={`${cell} font-body font-normal`}>
+                <abbr title={r.model} className="no-underline">
+                  {r.short}
+                </abbr>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row" className="py-[2px] text-left font-normal text-[var(--color-ink-secondary)]">
+              On its own
+            </th>
+            {b.rows.map((r) => (
+              <td key={r.model} className={`${cell} text-[var(--color-ink-muted)]`}>
+                {r.alone}
+              </td>
+            ))}
+          </tr>
+          <tr>
+            <th scope="row" className="py-[2px] text-left font-normal text-[var(--color-ink-secondary)]">
+              With the tool
+            </th>
+            {b.rows.map((r) => (
+              <td key={r.model} className={`${cell} font-medium`}>
+                {r.tool}
+              </td>
+            ))}
+          </tr>
+        </tbody>
+      </table>
+      <p className="m-0 font-body text-[19px] leading-snug text-[var(--color-ink-secondary)]">{b.also}</p>
+    </Panel>
+  );
+}
+
+/**
+ * At scale, slide 7: the live chatbot, plain AI beside AI with the Axiom rules
  * engine. A cross-origin frame inside the slide's scaled canvas paints blank,
  * so the slide holds a slot and the frame sits over it, fixed to the slot's
  * on-screen box; the demo also shows at its own size rather than scaled.
@@ -1276,15 +1520,263 @@ function FoundationSlide({ summary }: { summary: RunSummary }) {
         <p className="m-0 mt-auto border-l-[4px] border-[var(--color-accent)] pl-[24px] font-body text-[26px] text-[var(--color-ink)]">
           In this room, <strong className="font-medium tabular-nums">{cannot}</strong> of{" "}
           <strong className="font-medium tabular-nums">{answered}</strong>{" "}
-          can&apos;t fully check an answer against their state&apos;s rules today.
+          say a resident, screener or AI can&apos;t fully check an answer against their state&apos;s rules today.
         </p>
       )}
     </div>
   );
 }
 
+/** An icon for each step of the encoding pipeline, as on the InnovateUS slide. */
+const PIPELINE_ICONS: Record<(typeof ENCODING_PIPELINE.steps)[number]["name"], LucideIcon> = {
+  Intake: Download,
+  Corpus: BookText,
+  "Encoding loop": RefreshCw,
+  RuleSpec: FileCode,
+  Graph: Network,
+  "Compile and serve": Layers,
+};
+
+/** The small mono labels and code inside the pipeline's cards. */
+const PIPE_LABEL = "font-mono text-[12px] font-medium uppercase tracking-[0.12em] text-[var(--color-ink-muted)]";
+const PIPE_MONO = "font-mono text-[13px] leading-[1.45] text-[var(--color-ink)] [overflow-wrap:anywhere]";
+const PIPE_QUOTE = "font-body text-[15px] italic leading-snug text-[var(--color-accent)]";
+
+function PipeDown() {
+  return (
+    <span aria-hidden className="text-center font-body text-[18px] leading-none text-[var(--color-ink-muted)]">
+      ↓
+    </span>
+  );
+}
+
+/** A row of blank squares: the rest of the law around the one provision shown. */
+function LawSquares() {
+  return (
+    <div aria-hidden className="grid grid-cols-6 gap-[5px]">
+      {Array.from({ length: 12 }, (_, i) => (
+        <i key={i} className="block aspect-square rounded-[3px] border border-[var(--color-rule-strong)]" />
+      ))}
+    </div>
+  );
+}
+
+/** What the pipeline's graph shows, for screen readers. */
+export const PIPELINE_GRAPH_LABEL = "snap_allotment reads tfp and income and feeds benefit; fpl and elig are the rest of the graph";
+
 /**
- * Shared foundation, slide 3: how a shared foundation gets built, from public
+ * The spec becoming a node: snap_allotment reads tfp and income and feeds the
+ * benefit; the faint nodes are the rest of the graph. Sized so its labels stay
+ * legible at slide scale.
+ */
+function PipelineGraph() {
+  const box = (x: number, y: number, w: number, label: string, faint = false) => (
+    <g key={label}>
+      <rect x={x} y={y} width={w} height={22} rx={4} fill="var(--color-paper-elevated)" stroke={faint ? "var(--color-rule-strong)" : "var(--color-accent)"} strokeWidth={1.3} />
+      <text x={x + w / 2} y={y + 15} textAnchor="middle" className="font-mono" fontSize={11.5} fill={faint ? "var(--color-ink-muted)" : "var(--color-ink)"}>
+        {label}
+      </text>
+    </g>
+  );
+  const line = (x1: number, y1: number, x2: number, y2: number, faint = false) => (
+    <line key={`${x1}-${y1}-${x2}-${y2}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke={faint ? "var(--color-rule-strong)" : "var(--color-accent)"} strokeWidth={1.2} />
+  );
+  return (
+    <svg role="img" aria-label={PIPELINE_GRAPH_LABEL} viewBox="0 0 170 140" className="block h-auto w-full">
+      {line(26, 30, 40, 62)}
+      {line(85, 30, 66, 62)}
+      {line(85, 30, 136, 62, true)}
+      {line(146, 30, 146, 62, true)}
+      {line(56, 84, 76, 116)}
+      {line(141, 84, 98, 116, true)}
+      {box(6, 8, 40, "tfp")}
+      {box(56, 8, 58, "income")}
+      {box(126, 8, 40, "fpl", true)}
+      {box(4, 62, 108, "snap_allotment")}
+      {box(120, 62, 46, "elig", true)}
+      {box(52, 116, 66, "benefit")}
+    </svg>
+  );
+}
+
+/** What each step of the pipeline looks like, as on the InnovateUS slide. */
+function PipelineViz({ name }: { name: (typeof ENCODING_PIPELINE.steps)[number]["name"] }) {
+  const p = ENCODING_PIPELINE;
+  switch (name) {
+    case "Intake":
+      return (
+        <>
+          <span className={PIPE_LABEL}>Scraping pipelines</span>
+          <ul className="m-0 flex list-none flex-col gap-[6px] p-0">
+            {p.sources.map((source) => (
+              <li key={source} className={`${PIPE_MONO} rounded-full border border-[var(--color-rule-strong)] bg-[var(--color-paper-elevated)] px-[8px] py-[2px] text-center`}>
+                {source}
+              </li>
+            ))}
+          </ul>
+          <PipeDown />
+          <div className="flex items-center gap-[10px]">
+            <Database aria-hidden size={30} strokeWidth={1.4} className="shrink-0 text-[var(--color-rule-strong)]" />
+            <span className={PIPE_LABEL}>Database</span>
+          </div>
+        </>
+      );
+    case "Corpus":
+      return (
+        <>
+          <LawSquares />
+          <div className="flex flex-col gap-[4px] rounded-[8px] border-[1.5px] border-[var(--color-accent)] bg-[var(--color-paper-elevated)] px-[10px] py-[8px]">
+            <span className={PIPE_MONO}>
+              us:statutes/
+              <wbr />
+              7/2017/a
+            </span>
+            <span className="font-body text-[16px] font-semibold leading-snug text-[var(--color-ink)]">§ 2017 · Value of allotment</span>
+            <span className={PIPE_QUOTE}>“…30 per centum…”</span>
+          </div>
+          <LawSquares />
+        </>
+      );
+    case "Encoding loop":
+      return (
+        <div className="relative flex flex-col gap-[8px] pr-[24px]">
+          <div
+            className="mr-[8px] rounded-[8px] border border-[var(--color-rule-strong)] bg-[var(--color-paper-elevated)] px-[10px] py-[8px]"
+            style={{
+              borderTop: "3px solid var(--color-accent)",
+              boxShadow:
+                "4px 4px 0 -1px var(--color-paper-elevated), 4px 4px 0 0 var(--color-rule-strong), 8px 8px 0 -1px var(--color-paper-elevated), 8px 8px 0 0 var(--color-rule-strong)",
+            }}
+          >
+            <span className={`${PIPE_LABEL} mb-[4px] block`}>Encoders</span>
+            <span className={`${PIPE_QUOTE} block`}>“30 per centum”</span>
+            <span className={`${PIPE_MONO} block`}>
+              <b>→ 0.30</b> <span className="text-[var(--color-ink-muted)]">rev 43</span>
+            </span>
+          </div>
+          <PipeDown />
+          <span className={PIPE_LABEL}>Validators</span>
+          <ul className="m-0 flex list-none flex-col gap-[5px] p-0">
+            {p.checks.map((check) => (
+              <li
+                key={check.label}
+                className="rounded-[12px] border border-[var(--color-success)] bg-[rgba(22,101,52,0.07)] px-[10px] py-[2px] font-mono text-[12px] leading-snug text-[var(--color-success)]"
+              >
+                {check.required ? `✓ ${check.label}` : check.label}
+              </li>
+            ))}
+          </ul>
+          {/* The loop back: a draft that fails a required check goes round again. */}
+          <span
+            aria-hidden
+            className="absolute bottom-[14px] right-[2px] top-[26px] w-[14px] rounded-r-[10px] border-[1.5px] border-l-0 border-dashed border-[var(--color-accent)]"
+          />
+        </div>
+      );
+    case "RuleSpec":
+      return (
+        <>
+          <span className={`${PIPE_MONO} text-[var(--color-ink-muted)]`}>¶ rulespec-us</span>
+          <span className={`${PIPE_MONO} font-semibold`}>snap_allotment</span>
+          <div className={`${PIPE_MONO} rounded-[8px] border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-[10px] py-[8px] leading-[1.6]`}>
+            <div className="text-[var(--color-ink-muted)]">imports:</div>
+            <div className="pl-[12px]">
+              us:statutes/
+              <wbr />
+              7/2017/a
+            </div>
+            <div>
+              <span className="text-[var(--color-ink-muted)]">entity:</span> Household
+            </div>
+            <div className="text-[var(--color-ink-muted)]">formula:</div>
+            <div className="pl-[12px]">
+              max(0, tfp − <b className="text-[var(--color-accent)]">0.30</b> × net)
+            </div>
+            <div className="text-[var(--color-accent)]">0.30 ← “30 per centum”</div>
+          </div>
+        </>
+      );
+    case "Graph":
+      return <PipelineGraph />;
+    case "Compile and serve":
+      return (
+        <>
+          <div className="overflow-hidden rounded-[10px] border-[1.5px] border-[var(--color-accent)] bg-[var(--color-paper-elevated)]">
+            <div className="flex items-center gap-[8px] border-b border-[var(--color-rule)] bg-[var(--color-accent-light)] px-[10px] py-[5px] text-[var(--color-accent)]">
+              <Package aria-hidden size={18} strokeWidth={1.8} className="shrink-0" />
+              <span className="font-mono text-[12px] font-medium uppercase tracking-[0.12em]">Program artifact</span>
+            </div>
+            <div className="px-[10px] py-[8px]">
+              <div className={`${PIPE_MONO} font-semibold`}>SNAP · US · 2026</div>
+              <div className="font-mono text-[13px] text-[var(--color-success)]">✓ compiled</div>
+            </div>
+          </div>
+          <PipeDown />
+          <ul className="m-0 flex list-none flex-col gap-[6px] p-0">
+            {p.surfaces.map((surface) => (
+              <li
+                key={surface.name}
+                className="flex flex-col rounded-[6px] border border-[var(--color-rule-strong)] bg-[var(--color-paper-elevated)] px-[10px] py-[5px]"
+                style={{ borderTop: "2px solid var(--color-accent)" }}
+              >
+                <span className="font-body text-[16px] font-semibold leading-tight text-[var(--color-ink)]">{surface.name}</span>
+                <span className="font-mono text-[12px] text-[var(--color-ink-muted)]">{surface.who}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      );
+  }
+}
+
+/**
+ * Shared foundation, slide 3: the encoding pipeline, from the InnovateUS deck
+ * (slide 12). Cards share the row's grid (subgrid), so icons, names, captions,
+ * illustrations and footnotes line up across all six.
+ */
+function PipelineSlide() {
+  const p = ENCODING_PIPELINE;
+  return (
+    <div className="flex h-full flex-col gap-[22px]">
+      <p className="m-0 font-body text-[21px] leading-snug text-[var(--color-ink-secondary)]">{p.lead}</p>
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1.2fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1.12fr)] grid-rows-[auto_auto_auto_1fr_auto] gap-x-[6px]">
+        {p.steps.map((step, i) => {
+          const Icon = PIPELINE_ICONS[step.name];
+          return (
+            <Fragment key={step.name}>
+              {i > 0 && (
+                <span aria-hidden className="row-span-5 self-center font-body text-[20px] text-[var(--color-ink-muted)]">
+                  →
+                </span>
+              )}
+              <div
+                className="row-span-5 grid min-w-0 grid-rows-subgrid gap-y-[7px] rounded-[12px] border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-[14px] pb-[14px] pt-[12px] shadow-[0_1px_3px_rgba(28,25,23,0.06)]"
+                style={{ borderTop: "5px solid var(--color-accent)" }}
+              >
+                <span className="flex h-[40px] w-[40px] items-center justify-center rounded-full bg-[var(--color-accent-light)] text-[var(--color-accent)]">
+                  <Icon aria-hidden size={22} strokeWidth={1.75} />
+                </span>
+                <span className="font-body text-[22px] font-semibold leading-tight text-[var(--color-ink)]">{step.name}</span>
+                <span className="font-body text-[16px] leading-snug text-[var(--color-ink-secondary)]">{step.caption}</span>
+                <div className={`flex min-h-0 flex-col gap-[6px] border-t border-[var(--color-rule)] pt-[10px] ${step.foot ? "" : "row-span-2"}`}>
+                  <PipelineViz name={step.name} />
+                </div>
+                {step.foot && (
+                  <span className="border-t border-[var(--color-rule)] pt-[8px] font-body text-[14px] italic leading-snug text-[var(--color-ink-secondary)]">
+                    {step.foot}
+                  </span>
+                )}
+              </div>
+            </Fragment>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Shared foundation, slide 4: how a shared foundation gets built, from public
  * documents to Gold A. Cards share the grid's rows (subgrid), so medallions,
  * names, what a state gets and "It takes" line up across all three.
  */
@@ -1377,6 +1869,9 @@ function GroupsSlide({ summary }: { summary: RunSummary }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
   const useCaseLabel = (n: GroupNote) => USE_CASES.find((u) => u.id === n.useCase)?.label ?? "Group idea";
+  // Rows only for the groups there are: with four or fewer, each card gets half the space and its lines can wrap.
+  const rows = Math.min(3, Math.max(1, Math.ceil(ideas.length / 2)));
+  const roomy = rows <= 2;
   return (
     <div className="relative flex h-full flex-col gap-[18px]">
       <ol className="m-0 grid list-none grid-cols-3 gap-[16px] p-0">
@@ -1391,7 +1886,10 @@ function GroupsSlide({ summary }: { summary: RunSummary }) {
       {ideas.length === 0 ? (
         <p className="m-0 font-body text-[26px] text-[var(--color-ink-muted)]">Ideas appear here as groups share them.</p>
       ) : (
-        <ul className="m-0 grid min-h-0 flex-1 list-none grid-cols-2 grid-rows-3 gap-[14px] p-0">
+        <ul
+          className="m-0 grid min-h-0 flex-1 list-none grid-cols-2 gap-[14px] p-0"
+          style={{ gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))` }}
+        >
           {ideas.map((n, i) => {
             const [first, ...rest] = groupLines(n);
             return (
@@ -1406,12 +1904,15 @@ function GroupsSlide({ summary }: { summary: RunSummary }) {
                     {useCaseLabel(n)}
                   </span>
                   {first ? (
-                    <span className="line-clamp-2 text-[21px] leading-snug">{first.text}</span>
+                    <span className={`${roomy ? "line-clamp-3" : "line-clamp-2"} text-[21px] leading-snug`}>{first.text}</span>
                   ) : (
-                    n.raised && <span className="line-clamp-2 text-[21px] leading-snug">{n.raised}</span>
+                    n.raised && <span className={`${roomy ? "line-clamp-3" : "line-clamp-2"} text-[21px] leading-snug`}>{n.raised}</span>
                   )}
                   {rest.map((l) => (
-                    <span key={l.q.id} className="mt-[2px] line-clamp-1 text-[17px] text-[var(--color-ink-secondary)]">
+                    <span
+                      key={l.q.id}
+                      className={`mt-[2px] ${roomy ? "line-clamp-3" : "line-clamp-1"} text-[17px] text-[var(--color-ink-secondary)]`}
+                    >
                       <span className="font-medium text-[var(--color-ink)]">{l.q.short}:</span> {l.text}
                     </span>
                   ))}

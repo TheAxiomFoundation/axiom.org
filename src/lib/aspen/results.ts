@@ -53,7 +53,11 @@ export interface Viability {
   wouldAct: number;
   maybe: number;
   wouldNot: number;
-  /** Looked wrong or unsure, yet the person would (or might) act on it: the risky ones. */
+  /**
+   * Looked wrong or unsure, yet it would be acted on: a resident would apply,
+   * or not apply, on it without checking (or, in ratings saved before that
+   * question replaced "Would you act on it?", the person would or might act on it).
+   */
   convincing: number;
   /** What people think a resident would do next with the answer. */
   residentActions: Count[];
@@ -216,6 +220,16 @@ function payloadList(payload: Record<string, unknown>, key: string): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
 }
 
+/** Whether a discussion event says anything: a rating, a topic or a note. */
+function hasAnswer(e: { payload: Record<string, unknown> }): boolean {
+  const ratings = e.payload.ratings;
+  return (
+    Boolean(payloadString(e.payload, "note")) ||
+    payloadList(e.payload, "topics").length > 0 ||
+    (Boolean(ratings) && typeof ratings === "object" && Object.keys(ratings as object).length > 0)
+  );
+}
+
 const SPOTLIGHT_SIZE = 4;
 const VOICES_SIZE = 12;
 
@@ -261,9 +275,69 @@ export function ifEligibleSentence(
   return `For ${v.wouldNotApplyIfEligible} ${who}, the rules give an amount but don't test eligibility yet.`;
 }
 
+/**
+ * Whether an answer would be acted on without checking: a resident would apply,
+ * or not apply, on it. A rating saved while the card still asked "Would you act
+ * on it?" counts by that answer alone, as it did then, so earlier runs read the
+ * same as before.
+ */
+export function actedOn(p: Pick<PromptRow, "would_act" | "resident_action">): boolean {
+  if (p.would_act) return p.would_act === "yes" || p.would_act === "maybe";
+  return p.resident_action === "apply" || p.resident_action === "not-apply";
+}
+
+/** An event's save stamp (client.ts nextRev), when the page sent one. */
+function revOf(e: { payload?: Record<string, unknown> }): number | null {
+  const rev = e.payload?.rev;
+  return typeof rev === "number" && Number.isFinite(rev) ? rev : null;
+}
+
+/**
+ * When an answer was given, in milliseconds: its save stamp (the tap's time
+ * on the phone), or, from a page too old to stamp, when it reached the server.
+ */
+function givenAt(e: { payload?: Record<string, unknown>; created_at?: string }): number {
+  const at = Date.parse(e.created_at ?? "");
+  return revOf(e) ?? (Number.isNaN(at) ? -Infinity : at);
+}
+
+/** Whether `e` comes at or after `prev`: by when each was given, then by when each reached the server. */
+function atOrAfter(e: { payload?: Record<string, unknown>; created_at?: string }, prev: typeof e): boolean {
+  const a = givenAt(e);
+  const b = givenAt(prev);
+  if (a !== b) return a > b;
+  return (e.created_at ?? "") >= (prev.created_at ?? "");
+}
+
+/**
+ * Each person's latest event per key: answers save on every tap, so someone
+ * who changes their mind counts once, with their last choice. The last
+ * choice is the one given last: by its save stamp, so a slow save that lands
+ * after a newer one doesn't count over it, or, from a page that sent no
+ * stamp, by when it reached the server. The two clocks agree as closely as
+ * the phone's clock is set. Events saved without a participant each count on
+ * their own.
+ */
+export function latestPerParticipant<T extends { participant_id?: string | null; created_at?: string; payload?: Record<string, unknown> }>(
+  events: T[],
+  key: (e: T) => string,
+): T[] {
+  const loose: T[] = [];
+  const latest = new Map<string, T>();
+  for (const e of events) {
+    if (!e.participant_id) {
+      loose.push(e);
+      continue;
+    }
+    const k = `${e.participant_id}\u0000${key(e)}`;
+    const prev = latest.get(k);
+    if (!prev || atOrAfter(e, prev)) latest.set(k, e);
+  }
+  return [...loose, ...latest.values()].sort((a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? ""));
+}
+
 export function viabilityOf(rated: PromptRow[]): Viability {
   const count = (pred: (p: PromptRow) => boolean) => rated.filter(pred).length;
-  const acts = (p: PromptRow) => p.would_act === "yes" || p.would_act === "maybe";
   const notApplyWithAmount = (p: PromptRow) =>
     p.resident_action === "not-apply" && typeof p.rules_amount === "number" && p.rules_amount > 0;
   return {
@@ -274,7 +348,7 @@ export function viabilityOf(rated: PromptRow[]): Viability {
     wouldAct: count((p) => p.would_act === "yes"),
     maybe: count((p) => p.would_act === "maybe"),
     wouldNot: count((p) => p.would_act === "no"),
-    convincing: count((p) => (p.verdict === "wrong" || p.verdict === "unsure") && acts(p)),
+    convincing: count((p) => (p.verdict === "wrong" || p.verdict === "unsure") && actedOn(p)),
     residentActions: countBy(
       rated.map((p) => p.resident_action),
       RESIDENT_ACTIONS,
@@ -309,27 +383,101 @@ export function breakdownOf(firstTurns: PromptRow[]): BreakdownRow[] {
 }
 
 function spotlightReason(p: PromptRow): Spotlight["reason"] | null {
-  const acts = p.would_act === "yes" || p.would_act === "maybe";
-  if ((p.verdict === "wrong" || p.verdict === "unsure") && acts) return "convincing";
+  if ((p.verdict === "wrong" || p.verdict === "unsure") && actedOn(p)) return "convincing";
   if (p.post_check_verdict === "wrong") return "checked-wrong";
   if (p.verdict === "wrong") return "wrong";
   if (p.verdict === "unsure") return "unsure";
   return null;
 }
 
+/**
+ * How much an attempt at a question shows, each part outranking all those
+ * after it: its rating, its verdict after the rules check, the rules check,
+ * then an answer.
+ */
+function attemptWeight(p: PromptRow): number {
+  const checked = Boolean(p.rules_program || typeof p.rules_amount === "number");
+  return (p.verdict ? 8 : 0) + (p.post_check_verdict ? 4 : 0) + (checked ? 2 : 0) + (p.answer ? 1 : 0);
+}
+
+/** The attempt that shows the most, else the last created (the later row on a tie). */
+function bestAttempt(attempts: PromptRow[]): PromptRow | undefined {
+  let best: PromptRow | undefined;
+  for (const p of attempts) {
+    const [w, bw] = [attemptWeight(p), best ? attemptWeight(best) : -1];
+    if (w > bw || (w === bw && (p.created_at ?? "") >= (best?.created_at ?? ""))) best = p;
+  }
+  return best;
+}
+
+/** Which question an attempt is at: the same text at the same turn of the same conversation. */
+function questionKey(p: PromptRow): string {
+  return JSON.stringify([p.conversation_id, p.turn, p.prompt]);
+}
+
+/**
+ * Each question's attempts. "Ask again" saves the same question again at the
+ * same turn of the same conversation, and an answer cut off on one tab can
+ * still finish on the server, so one question can leave several rows.
+ * Different questions at one turn stay apart.
+ */
+function attemptsByQuestion(prompts: PromptRow[]): PromptRow[][] {
+  const groups = new Map<string, PromptRow[]>();
+  for (const p of prompts) {
+    const key = questionKey(p);
+    const group = groups.get(key);
+    if (group) group.push(p);
+    else groups.set(key, [p]);
+  }
+  return [...groups.values()];
+}
+
+/**
+ * One row per question asked, so the room's counts are of questions, not
+ * attempts: the attempt that shows the most (attemptWeight), else the last
+ * created. A retry's rating always counts.
+ */
+export function questionsAsked(prompts: PromptRow[]): PromptRow[] {
+  return attemptsByQuestion(prompts).flatMap((attempts) => bestAttempt(attempts) ?? []);
+}
+
+/**
+ * One answer per question that got one: of the attempts whose answer saved,
+ * the one that shows the most. A rating on an attempt whose answer didn't
+ * save still counts as a rating, but never takes the question's answer away.
+ */
+export function answersGiven(prompts: PromptRow[]): PromptRow[] {
+  return attemptsByQuestion(prompts).flatMap((attempts) => bestAttempt(attempts.filter((p) => p.answer)) ?? []);
+}
+
 const REASON_RANK: Record<Spotlight["reason"], number> = { convincing: 0, "checked-wrong": 1, wrong: 2, unsure: 3 };
 
 export function summarizeRun(data: RunData): RunSummary {
-  const { participants, prompts, events, pledges } = data;
-  const answered = prompts.filter((p) => p.answer);
+  const { participants, events, pledges } = data;
+  const prompts = questionsAsked(data.prompts);
+  const answered = answersGiven(data.prompts);
+  // A question asked counts once the phone had its answer: the answer saved, or it was rated
+  // (a rating whose answer didn't save still means the phone showed one). So never fewer than rated.
+  const asked = new Set([...answered, ...prompts.filter((p) => p.verdict)].map(questionKey)).size;
   const rated = prompts.filter((p) => p.verdict);
   const checked = prompts.filter((p) => p.rules_program || typeof p.rules_amount === "number");
-  // First turns only: follow-ups repeat the household and perspective.
+  // First questions only: follow-ups repeat the household and perspective.
   const firstTurns = prompts.filter((p) => p.turn === 0);
 
-  const discussion = events.filter((e) => e.kind === "discussion");
+  // Answers save as they're tapped: each person's last discussion answer per question, survey answer and vote count.
+  const discussion = latestPerParticipant(
+    events.filter((e) => e.kind === "discussion"),
+    (e) => payloadString(e.payload, "question") ?? "",
+  );
+  const surveys = latestPerParticipant(
+    events.filter((e) => e.kind === "survey"),
+    (e) => payloadString(e.payload, "question") ?? "",
+  );
   const breakouts = events.filter((e) => e.kind === "breakout");
-  const votes = events.filter((e) => e.kind === "vote");
+  const votes = latestPerParticipant(
+    events.filter((e) => e.kind === "vote"),
+    () => "vote",
+  );
 
   const householdLabel = new Map(HOUSEHOLDS.map((h) => [h.id, h.label]));
   const perspectiveLabel = new Map<string, string>(PERSPECTIVES.map((p) => [p.id, p.label]));
@@ -354,7 +502,9 @@ export function summarizeRun(data: RunData): RunSummary {
     .map(toFeedItem);
 
   const twistLabel = new Map<string, string>(TWISTS.map((t) => [t.id, t.label]));
-  const spotlight: Spotlight[] = answered
+  // From the attempt the ratings count, so the spotlight never shows a verdict the totals don't.
+  const spotlight: Spotlight[] = prompts
+    .filter((p) => p.answer)
     .flatMap((p) => {
       const reason = spotlightReason(p);
       return reason ? [{ p, reason }] : [];
@@ -362,6 +512,8 @@ export function summarizeRun(data: RunData): RunSummary {
     .sort(
       (a, b) =>
         REASON_RANK[a.reason] - REASON_RANK[b.reason] ||
+        // Among answers acted on, one that looked wrong comes before one nobody was sure of.
+        Number(b.p.verdict === "wrong") - Number(a.p.verdict === "wrong") ||
         Number(Boolean(b.p.rating_note)) - Number(Boolean(a.p.rating_note)) ||
         (b.p.created_at ?? "").localeCompare(a.p.created_at ?? ""),
     )
@@ -391,7 +543,7 @@ export function summarizeRun(data: RunData): RunSummary {
 
   return {
     participants: participants.length,
-    prompts: answered.length,
+    prompts: asked,
     rated: rated.length,
     checked: checked.length,
     // What people asked as, from their first questions (the welcome pick is optional).
@@ -420,15 +572,16 @@ export function summarizeRun(data: RunData): RunSummary {
     feed,
     viability: viabilityOf(rated),
     sourceOfTruth: countBy(
-      events.filter((e) => e.kind === "survey" && e.payload.question === SOURCE_OF_TRUTH.id).map((e) => payloadString(e.payload, "answer")),
+      surveys.filter((e) => e.payload.question === SOURCE_OF_TRUTH.id).map((e) => payloadString(e.payload, "answer")),
       SOURCE_OF_TRUTH.options,
     ),
     breakdown: breakdownOf(firstTurns),
     spotlight,
     voices,
     discussion: {
+      // A cleared answer (no ratings, topics or note) is someone taking theirs back, so it doesn't count.
       questions: countBy(
-        discussion.map((e) => payloadString(e.payload, "question")),
+        discussion.filter(hasAnswer).map((e) => payloadString(e.payload, "question")),
         DISCUSSION_QUESTIONS,
       ),
       topics: countBy(
