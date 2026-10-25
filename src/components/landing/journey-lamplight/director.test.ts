@@ -15,6 +15,7 @@ const kit = vi.hoisted(() => {
     made: [] as number[],
     textures: new Map<number, number>(), // how many MOCK textures a scene carries
     latency: new Map<number, { ready: number; compile: number }>(), // ms a scene's assets and compiles take
+    gates: new Map<string, Promise<void>>(), // a compile, by its logged name, waits on this
     calls: [] as string[],
     late: [] as string[],
     pipelines: 0,
@@ -43,6 +44,7 @@ vi.mock("../style-frames/kit", async () => {
         initTexture: (t: { userData: { scene: number } }) => log(`initTexture ${t.userData.scene}`),
         compileAsync: async (sc: { userData: { mock: string; index: number } }) => {
           log(`compileAsync ${sc.userData.mock}`);
+          await kit.gates.get(`compileAsync ${sc.userData.mock}`);
           await wait(kit.latency.get(sc.userData.index)?.compile ?? 0);
         },
         render: () => log("render"),
@@ -123,6 +125,7 @@ beforeEach(() => {
   kit.made.length = 0;
   kit.textures.clear();
   kit.latency.clear();
+  kit.gates.clear();
   kit.calls.length = 0;
   kit.late.length = 0;
   kit.pipelines = 0;
@@ -188,9 +191,10 @@ function watch(canvas: HTMLCanvasElement) {
   const on = vi.spyOn(canvas, "addEventListener");
   const off = vi.spyOn(canvas, "removeEventListener");
   return () => {
-    expect(setInterval).toHaveBeenCalled();
+    // the glint's interval, and the pointer's three listeners
+    expect(setInterval).toHaveBeenCalledTimes(1);
     for (const { value } of setInterval.mock.results) expect(clearInterval).toHaveBeenCalledWith(value);
-    expect(on).toHaveBeenCalled();
+    expect(on.mock.calls.map(([type]) => type).sort()).toEqual(["click", "pointerleave", "pointermove"]);
     for (const [type, fn] of on.mock.calls) expect(off).toHaveBeenCalledWith(type, fn);
     expect(frames.size).toBe(0);
     expect(kit.calls.filter((c) => c === "dispose")).toHaveLength(1);
@@ -257,18 +261,39 @@ describe("the journey's director lets go of what it set up", () => {
     released();
   });
 
-  it("when the first scene can't be built, as its start rejects", async () => {
-    kit.hold.add(0);
+  // how the first scene fails: each arms the failure, and returns what sets it off
+  const FAILED_STARTS: Array<[string, () => () => void]> = [
+    [
+      "can't load its assets",
+      () => {
+        kit.hold.add(0);
+        return () => kit.held.get(0)!.reject(new Error("MOCK: scene 0 failed to load"));
+      },
+    ],
+    [
+      "can't compile its shaders",
+      () => {
+        let reject!: (e: Error) => void;
+        kit.gates.set("compileAsync 0 scene", new Promise((_, r) => (reject = r)));
+        return () => {
+          expect(kit.calls).toContain("compileAsync 0 scene");
+          reject(new Error("MOCK: scene 0 failed to compile"));
+        };
+      },
+    ],
+  ];
+  it.each(FAILED_STARTS)("when the first scene %s, as its start rejects", async (_, arm) => {
     const { canvas, overlays } = stage();
     const released = watch(canvas);
+    const fail = arm();
     const started = make({ canvas, overlays });
     await settle(10);
-    expect(kit.held.has(0)).toBe(true);
     // the reader's pointer crosses the canvas while the first scene builds: a frame is queued
     canvas.dispatchEvent(new MouseEvent("pointermove"));
     expect(frames.size).toBe(1);
-    kit.held.get(0)!.reject(new Error("MOCK: scene 0 failed"));
-    await expect(started).rejects.toThrow("MOCK: scene 0 failed");
+    fail();
+    await expect(started).rejects.toThrow(/^MOCK: scene 0 failed/);
+    expect(kit.calls.filter((c) => c.startsWith("pipeline.render"))).toEqual([]);
     released();
     expect(unhandled).not.toHaveBeenCalled();
   });
