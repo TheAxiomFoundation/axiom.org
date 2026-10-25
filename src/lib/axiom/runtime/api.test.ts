@@ -503,21 +503,35 @@ describe("runtime api client", () => {
     expect(await getCertifiedLedger()).toBeNull();
   });
 
+  it("defaults to the canonical hosted API when no base override is set", () => {
+    // Nothing pinned this before, which is how the default kept the retired
+    // axiom-api-eta.vercel.app hostname after the cutover. Every other case
+    // here stubs AXIOM_RUNTIME_API_BASE, so none of them sees DEFAULT_BASE.
+    vi.stubEnv("AXIOM_RUNTIME_API_KEY", "test-key");
+    // Unset, not empty: apiBase() falls back with `??`, so an empty string
+    // is an override to "" rather than an absent one.
+    vi.stubEnv("AXIOM_RUNTIME_API_BASE", undefined);
+
+    expect(upstreamUrl("/runtime/packages")).toBe(
+      "https://api.axiom.org/v1/runtime/packages"
+    );
+  });
+
   it("never lets a request-built path resolve outside itself or into admin", async () => {
     vi.stubEnv("AXIOM_RUNTIME_API_KEY", "test-key");
-    vi.stubEnv("AXIOM_RUNTIME_API_BASE", "https://axiom-api-eta.vercel.app/v1");
+    vi.stubEnv("AXIOM_RUNTIME_API_BASE", "https://api.axiom.org/v1");
     const fetchMock = vi.fn().mockResolvedValue(okEnvelope({}));
     vi.stubGlobal("fetch", fetchMock);
 
     // What the site legitimately asks for resolves unchanged.
     expect(upstreamUrl("/runtime/packages/us-co/co-snap/graph")).toBe(
-      "https://axiom-api-eta.vercel.app/v1/runtime/packages/us-co/co-snap/graph"
+      "https://api.axiom.org/v1/runtime/packages/us-co/co-snap/graph"
     );
     expect(upstreamUrl("/nodes/us%3Astatutes/26/24%23ctc")).toBe(
-      "https://axiom-api-eta.vercel.app/v1/nodes/us%3Astatutes/26/24%23ctc"
+      "https://api.axiom.org/v1/nodes/us%3Astatutes/26/24%23ctc"
     );
     expect(upstreamUrl("/graph/compose?focus=us%3Astatutes%2F26%2F24")).toBe(
-      "https://axiom-api-eta.vercel.app/v1/graph/compose?focus=us%3Astatutes%2F26%2F24"
+      "https://api.axiom.org/v1/graph/compose?focus=us%3Astatutes%2F26%2F24"
     );
 
     // What an attacker can spell through the proxy routes does not.
@@ -552,7 +566,7 @@ describe("runtime api client", () => {
     // Seeded property check: whatever segments a caller builds a path from,
     // an accepted path resolves to exactly the requested /v1 path and never
     // to the admin surface, as the API will route it (decoded).
-    vi.stubEnv("AXIOM_RUNTIME_API_BASE", "https://axiom-api-eta.vercel.app/v1");
+    vi.stubEnv("AXIOM_RUNTIME_API_BASE", "https://api.axiom.org/v1");
     let state = 20260929;
     const random = () => {
       // mulberry32: integer arithmetic, no float-precision short cycle
@@ -587,7 +601,7 @@ describe("runtime api client", () => {
       accepted += 1;
       const resolved = new URL(url);
       const context = `run=${run} path=${JSON.stringify(path)} -> ${url}`;
-      expect(resolved.origin, context).toBe("https://axiom-api-eta.vercel.app");
+      expect(resolved.origin, context).toBe("https://api.axiom.org");
       expect(resolved.pathname, context).toBe(`/v1${path.split(/[?#]/, 1)[0]}`);
       const routed = decodeURI(resolved.pathname);
       expect(/^\/v1\/admin(\/|$)/i.test(routed), context).toBe(false);
@@ -600,7 +614,7 @@ describe("runtime api client", () => {
 
   it("refuses redirects on keyed requests, so the key goes nowhere unchecked", async () => {
     vi.stubEnv("AXIOM_RUNTIME_API_KEY", "test-key");
-    vi.stubEnv("AXIOM_RUNTIME_API_BASE", "https://axiom-api-eta.vercel.app/v1");
+    vi.stubEnv("AXIOM_RUNTIME_API_BASE", "https://api.axiom.org/v1");
     const fetchMock = vi.fn().mockResolvedValue(okEnvelope({ packages: [] }));
     vi.stubGlobal("fetch", fetchMock);
     await listRuntimePackages();
