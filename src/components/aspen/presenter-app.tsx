@@ -1276,11 +1276,11 @@ function BenefitsPanel({ benefits: b }: { benefits: NonNullable<ToolPilot["benef
 }
 
 /**
- * At scale, after the tool pilot: the models on free plans, with web search,
- * as the free chat apps search, and with web search and the tool. Each row
- * reads across; the last column is that model's change from adding the tool,
- * with its 95% interval, in gray when the interval includes zero. Shows only
- * when FREE_PLAN_PILOT is set.
+ * At scale, after the tool pilot: the models on free plans, with web search
+ * available, as in the free chat apps, and with the tool available too. Each
+ * row reads across; the last column is that model's change from adding the
+ * tool, with its 95% interval, in gray when the interval includes zero. Shows
+ * only when FREE_PLAN_PILOT is set.
  */
 export function FreePlanSlide({ pilot: p }: { pilot: FreePlanPilot }) {
   // Up to three models get room; four to six take a tighter type scale. With

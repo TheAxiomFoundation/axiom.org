@@ -52,7 +52,7 @@ describe("FreePlanSlide", () => {
     const table = screen.getByRole("table", { name: /Share of amounts right, by model and setting/ });
     for (const arm of p.arms) expect(within(table).getByRole("columnheader", { name: arm.label })).toBeInTheDocument();
     expect(within(table).getByRole("columnheader", { name: "Adding the tool, in points, with its 95% interval" })).toBeInTheDocument();
-    expect(p.arms.map((a) => a.label)).toEqual(["With web search", "With web search and the PolicyEngine tool"]);
+    expect(p.arms.map((a) => a.label)).toEqual(["Web search available", "Web search and the PolicyEngine tool available"]);
 
     const a = within(table).getByRole("row", { name: /Mock model A/ });
     expect(a).toHaveTextContent("On mock plan A");

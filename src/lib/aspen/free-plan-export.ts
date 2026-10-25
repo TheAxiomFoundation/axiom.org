@@ -58,7 +58,7 @@ export interface ExportModel {
    * Its paired change from web search to web search and the tool, computed as
    * vsAlone's are. The slide shows it. Exports from before October 25 have none.
    */
-  vsWeb?: Partial<Record<"both", PilotChange>>;
+  vsWeb?: Partial<Record<"both", ExportChange>>;
   benefits: Partial<Record<ToolPilotArmId, PilotCount>>;
   /**
    * The engine its calculator's notice and description named, e.g.
@@ -67,6 +67,17 @@ export interface ExportModel {
    * before October 24 have none.
    */
   toolStatedEngine?: string | null;
+}
+
+/**
+ * A paired change as the export writes it: the change and its interval's ends
+ * to one decimal. The slide prints the ends in whole points, so an end rounded
+ * to x.5 first can print one off, and an end of 0 hides which side of zero it
+ * was on. Where PolicyBench also gives the ends unrounded, the slide uses those.
+ */
+export interface ExportChange extends PilotChange {
+  loExact?: number;
+  hiExact?: number;
 }
 
 export interface ExportArm extends PilotCount {
@@ -193,9 +204,37 @@ function changeFromCounts(m: ExportModel): number {
   return (100 * (m.arms.both!.k - m.arms.web!.k)) / m.arms.both!.n;
 }
 
+/**
+ * The change the slide shows: the counts' own difference, exact, with PolicyBench's interval, unrounded where
+ * the export gives it. A degenerate interval's unrounded ends can miss the counts' difference in the last bits;
+ * they go out to it, so the change is inside its interval.
+ */
+function slideChange(m: ExportModel): PilotChange {
+  const c = m.vsWeb!.both!;
+  const points = changeFromCounts(m);
+  if (c.loExact === undefined || c.hiExact === undefined) return { points, lo: c.lo, hi: c.hi };
+  const out = (end: number, past: boolean) => (past && Math.abs(end - points) <= 1e-9 ? points : end);
+  return { points, lo: out(c.loExact, points < c.loExact), hi: out(c.hiExact, points > c.hiExact) };
+}
+
 /** "A", "A and B", "A, B and C". */
 function list(names: readonly string[]): string {
   return names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+/** 1234 as "1,234". */
+function thousands(n: number): string {
+  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+/**
+ * Each model's web search queries in the two settings, from the web-search
+ * audit. Offered the tool as well, a model can answer without searching, so
+ * the second column isn't web search and the tool for every model.
+ */
+function searchCounts(qs: readonly { model: string; web: number; both: number }[]): string {
+  const lead = qs.every((q) => q.both < q.web) ? "Web search queries fell with the tool available" : "Web search queries, without the tool and with it available";
+  return `${lead}: ${list(qs.map((q) => `${q.model} from ${thousands(q.web)} to ${thousands(q.both)}`))}.`;
 }
 
 /** Which of a model's paired changes a noise width is taken from. */
@@ -308,6 +347,25 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
     if (web && both && web.n === both.n && Math.abs(shown.points - changeFromCounts(m)) > 0.05 + 1e-9) {
       throw new Error(`${m.model}: change ${shown.points}, but its counts give ${changeFromCounts(m).toFixed(2)}`);
     }
+    // The interval's ends unrounded, where PolicyBench gives them: each has to round to the export's own end.
+    if (shown.loExact !== undefined || shown.hiExact !== undefined) {
+      const [lo, hi] = [shown.loExact, shown.hiExact];
+      const near = (x: unknown, end: number) => typeof x === "number" && Number.isFinite(x) && Math.abs(x - end) <= 0.05 + 1e-9;
+      if (!near(lo, shown.lo) || !near(hi, shown.hi) || !(lo! <= hi!) || lo! < -100 || hi! > 100) {
+        throw new Error(`${m.model}: unrounded interval ${lo} to ${hi} isn't the export's ${shown.lo} to ${shown.hi} before rounding`);
+      }
+    } else {
+      // Without them, an end of x.5 is rounded twice by the time the slide prints it, and an end of 0 could have been on either side of zero.
+      const half = [shown.lo, shown.hi].filter((e) => Math.abs(e % 1) === 0.5);
+      if (half.length) {
+        warnings.push(
+          `${m.model}: its interval's ${list(half.map(String))} ${half.length > 1 ? "were" : "was"} rounded to one decimal before the slide rounds to whole points, so ${half.length > 1 ? "each" : "it"} may print one off; ask PolicyBench for loExact and hiExact`,
+        );
+      }
+      if (shown.lo === 0 || shown.hi === 0) {
+        warnings.push(`${m.model}: its interval has an end of 0 to one decimal, so the slide can't tell whether it leaves out zero and says it includes 0; ask PolicyBench for loExact and hiExact`);
+      }
+    }
     for (const arm of EXPORT_ARMS) {
       const c = m.arms[arm.id];
       if (!c) throw new Error(`${m.model}: no count for ${arm.id}`);
@@ -372,6 +430,7 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
   // PolicyBench's repository found no match for the answers; it doesn't claim the release assets, whose dates
   // alone the scan checks (the presenter output gives them).
   const searched: { model: string; households: number; of: number }[] = [];
+  const queries: { model: string; web: number; both: number }[] = [];
   const blind: string[] = [];
   if (!opts.webAudit) {
     warnings.push("no web-search audit given, so the slide doesn't say whether a model searched for PolicyBench; pass --web-audit");
@@ -410,6 +469,7 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
         throw new Error(`${m.model}: the web-search audit names ${households.size} households across its web settings, more than the export's ${m.households}`);
       }
       if (households.size) searched.push({ model: m.model, households: households.size, of: m.households });
+      queries.push({ model: m.model, web: audited!.web!.queries, both: audited!.both!.queries });
       // For the presenter, not the slide: neither shows a model reading PolicyBench's answers.
       if (githubHf.size) warnings.push(`${m.model} searched GitHub or Hugging Face, not naming PolicyBench, in ${githubHf.size} of ${m.households} households; the slide doesn't say so`);
       if (unseen) blind.push(m.model);
@@ -457,7 +517,8 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
 
   const free = ordered.filter((m) => m.freePlan !== null);
   // The rows name each free-plan model and the caveat says they were called
-  // through their APIs, so the footnotes don't repeat either.
+  // through their APIs, so the footnotes don't repeat either. The search
+  // counts follow the PolicyBench line, whose "it" is the web line's.
   const footnotes = [
     "Web search is each provider's own search tool, told not to search PolicyBench.",
     ...(searched.length
@@ -465,12 +526,13 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
           `${list(searched.map((s, i) => `${s.model}${i ? "" : " searched for it anyway"} in ${s.households} of ${s.of}${i ? "" : " households"}`))}; a scan of PolicyBench's public repository found no match for these households' answers.`,
         ]
       : []),
+    ...(queries.length ? [searchCounts(queries)] : []),
     `The tool runs PolicyEngine (${exp.engine}), the engine behind the reference answers, so this shows whether a model can use it, not whether it's right.`,
     ...[...toldOther].map(([stated, models]) => `Its instructions to ${list(models)} named ${stated} instead.`),
   ];
 
   const pilot: FreePlanPilot = {
-    title: opts.title ?? (free.length ? "The models on free plans, with web search and with the tool added" : "The same models, with web search and with the tool added"),
+    title: opts.title ?? (free.length ? "The models on free plans, with and without the PolicyEngine tool" : "The same models, with and without the PolicyEngine tool"),
     label: opts.label ?? "Preliminary internal pilot",
     note,
     arms: EXPORT_ARMS,
@@ -479,7 +541,7 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
       freePlan: m.freePlan ? `On ${m.freePlan}` : null,
       counts: Object.fromEntries(EXPORT_ARMS.map((a) => [a.id, { k: m.arms[a.id]!.k, n: m.arms[a.id]!.n }])),
       // The change from the counts, exact; its interval from PolicyBench's household bootstrap.
-      bothVsWeb: { points: changeFromCounts(m), lo: m.vsWeb!.both!.lo, hi: m.vsWeb!.both!.hi },
+      bothVsWeb: slideChange(m),
     })),
     // The chosen models in the export's order, as PolicyBench lists them, with the noise of the change shown.
     caveat: caveatText(sizeGroups(exp.models.filter((m) => opts.models.includes(m.id)), VS_WEB)),

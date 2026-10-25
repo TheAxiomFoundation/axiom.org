@@ -2,7 +2,7 @@ import fc from "fast-check";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { MOCK_POLICYBENCH_EXPORT, MOCK_WEB_SEARCH_AUDIT } from "@/test/aspen-free-plan-export.mock";
-import { formatPoints, freePlanProblems, shownChange, wholeShare, type FreePlanPilot } from "./content";
+import { distinguishable, formatPoints, freePlanProblems, shownChange, wholeShare, type FreePlanPilot } from "./content";
 import {
   EXPORT_ARMS,
   VS_WEB,
@@ -49,7 +49,7 @@ describe("freePlanFromExport", () => {
 
   it("says what is counted, where it comes from and that it's preliminary", () => {
     const { pilot } = freePlanFromExport(exp, { models: ALL });
-    expect(pilot.title).toBe("The models on free plans, with web search and with the tool added");
+    expect(pilot.title).toBe("The models on free plans, with and without the PolicyEngine tool");
     expect(pilot.label).toBe("Preliminary internal pilot");
     expect(pilot.note).toBe("Dollar amounts that aren't $0, within $1 of PolicyBench's reference: 48 per model in 20 households sampled from PolicyEngine's microdata");
     expect(pilot.caveat).toBe(exp.caveat);
@@ -64,7 +64,7 @@ describe("freePlanFromExport", () => {
   it("titles a slide without free-plan models as the same models, and takes a title and label", () => {
     const { pilot } = freePlanFromExport(exp, { models: ["mock-d", "mock-c"] });
     expect(pilot.rows.map((r) => r.model)).toEqual(["Mock model D", "Mock model C"]);
-    expect(pilot.title).toBe("The same models, with web search and with the tool added");
+    expect(pilot.title).toBe("The same models, with and without the PolicyEngine tool");
     expect(pilot.footnotes[0]).toBe("Web search is each provider's own search tool, told not to search PolicyBench.");
     const named = freePlanFromExport(exp, { models: ["mock-a"], title: "T", label: "L" }).pilot;
     expect([named.title, named.label]).toEqual(["T", "L"]);
@@ -150,6 +150,77 @@ describe("freePlanFromExport", () => {
     expect([shownChange(change), change.lo, change.hi].map(formatPoints)).toEqual(["+13", "+13", "+13"]);
   });
 
+  it("uses PolicyBench's unrounded interval ends where it gives them, so no end on the slide is rounded twice", () => {
+    // B's ends, -2.5 and 27.5 to one decimal, print as −2 and +28; unrounded, as −3 and +27.
+    const rounded = freePlanFromExport(exp, { models: ["mock-b"] });
+    expect([rounded.pilot.rows[0].bothVsWeb.lo, rounded.pilot.rows[0].bothVsWeb.hi].map(formatPoints)).toEqual(["−2", "+28"]);
+    expect(rounded.warnings).toContain(
+      "Mock model B: its interval's -2.5 and 27.5 were rounded to one decimal before the slide rounds to whole points, so each may print one off; ask PolicyBench for loExact and hiExact",
+    );
+    const exact = withModel("mock-b", (m) => ({ ...m, vsWeb: { both: { ...m.vsWeb!.both!, loExact: -2.54, hiExact: 27.46 } } }));
+    const { pilot, warnings } = freePlanFromExport(exact, { models: ["mock-b"] });
+    expect(pilot.rows[0].bothVsWeb).toEqual({ points: 12.5, lo: -2.54, hi: 27.46 });
+    expect([pilot.rows[0].bothVsWeb.lo, pilot.rows[0].bothVsWeb.hi].map(formatPoints)).toEqual(["−3", "+27"]);
+    expect(warnings.some((w) => w.includes("loExact"))).toBe(false);
+    // PolicyBench takes its noise width from the rounded ends, and so does the slide.
+    expect(pilot.caveat).toBe(rounded.pilot.caveat);
+  });
+
+  it("knows which side of zero an end of 0 was on where PolicyBench says, and otherwise says the interval includes 0 and warns", () => {
+    const at = (loExact?: number) =>
+      withModel("mock-a", (m) => ({ ...m, vsWeb: { both: { points: 50, lo: 0, hi: 65, ...(loExact === undefined ? {} : { loExact, hiExact: 65 }) } } }));
+    const unsure = freePlanFromExport(at(), { models: ["mock-a"] });
+    expect(distinguishable(unsure.pilot.rows[0].bothVsWeb)).toBe(false);
+    expect(unsure.warnings).toContain(
+      "Mock model A: its interval has an end of 0 to one decimal, so the slide can't tell whether it leaves out zero and says it includes 0; ask PolicyBench for loExact and hiExact",
+    );
+    for (const [loExact, leavesOut, printed] of [[0.03, true, "+0.03"], [-0.03, false, "−0.03"], [0, false, "0"]] as const) {
+      const { pilot, warnings } = freePlanFromExport(at(loExact), { models: ["mock-a"] });
+      expect(distinguishable(pilot.rows[0].bothVsWeb)).toBe(leavesOut);
+      expect(formatPoints(pilot.rows[0].bothVsWeb.lo)).toBe(printed);
+      expect(warnings.some((w) => w.includes("loExact"))).toBe(false);
+    }
+  });
+
+  it("refuses unrounded ends that don't round to the export's, come one without the other, run backward or pass 100 points", () => {
+    const at = (both: object) => withModel("mock-b", (m) => ({ ...m, vsWeb: { both: { ...m.vsWeb!.both!, ...both } } }));
+    for (const [both, lo, hi] of [
+      [{ loExact: -2.54 }, -2.54, undefined],
+      [{ hiExact: 27.46 }, undefined, 27.46],
+      [{ loExact: -2.6, hiExact: 27.46 }, -2.6, 27.46],
+      [{ loExact: -2.54, hiExact: 27.4 }, -2.54, 27.4],
+      [{ loExact: NaN, hiExact: 27.46 }, NaN, 27.46],
+      [{ loExact: -2.54, hiExact: Infinity }, -2.54, Infinity],
+      [{ loExact: "-2.54", hiExact: 27.46 }, -2.54, 27.46],
+    ] as const) {
+      expect(() => freePlanFromExport(at(both), { models: ["mock-b"] })).toThrow(`Mock model B: unrounded interval ${lo} to ${hi} isn't the export's -2.5 to 27.5 before rounding`);
+    }
+    const flat = withModel("mock-a", (m) => ({ ...m, vsWeb: { both: { points: 50, lo: 50, hi: 50, loExact: 50.04, hiExact: 49.96 } } }));
+    expect(() => freePlanFromExport(flat, { models: ["mock-a"] })).toThrow("Mock model A: unrounded interval 50.04 to 49.96 isn't the export's 50 to 50 before rounding");
+    const edge = withModel("mock-a", (m) => ({ ...m, vsWeb: { both: { points: 50, lo: 0, hi: 100, loExact: 0, hiExact: 100.04 } } }));
+    expect(() => freePlanFromExport(edge, { models: ["mock-a"] })).toThrow("Mock model A: unrounded interval 0 to 100.04 isn't the export's 0 to 100 before rounding");
+  });
+
+  it("moves a degenerate interval's unrounded ends out to the change only where they miss it in the last bits", () => {
+    // Review 5's run, where every resample gives the counts' change, which the bootstrap can write a few bits off.
+    const c = (k: number) => ({ k, n: 801, pct: Math.round((1000 * k) / 801) / 10, lo: 0, hi: 100 });
+    const points = (100 * 100) / 801;
+    const tenth = { points: 12.5, lo: 12.5, hi: 12.5 };
+    const one = (loExact: number, hiExact: number): ExportModel => ({
+      ...exp.models.find((m) => m.id === "mock-a")!,
+      households: 100,
+      arms: { alone: c(0), web: c(0), tool: c(100), both: c(100) },
+      vsAlone: { web: { points: 0, lo: 0, hi: 0 }, tool: tenth, both: tenth },
+      vsWeb: { both: { ...tenth, loExact, hiExact } },
+    });
+    const slide = (m: ExportModel) => freePlanFromExport({ ...exp, models: [m], sizes: undefined, caveat: caveatText(sizeGroups([m])) }, { models: [m.id] }).pilot.rows[0].bothVsWeb;
+    expect(slide(one(points + 1e-12, points + 1e-12))).toEqual({ points, lo: points, hi: points + 1e-12 });
+    expect(slide(one(points - 1e-12, points - 1e-12))).toEqual({ points, lo: points - 1e-12, hi: points });
+    expect(slide(one(points, points))).toEqual({ points, lo: points, hi: points });
+    // Further off, the change is outside its interval, and the slide's checks say so.
+    expect(() => slide(one(points + 0.01, points + 0.01))).toThrow("is outside its interval");
+  });
+
   it("refuses data the slide's own checks reject, and says which", () => {
     const off = withModel("mock-a", (m) => ({ ...m, vsWeb: { both: { points: 50, lo: 60, hi: 70 } } }));
     expect(() => freePlanFromExport(off, { models: ["mock-a"] })).toThrow("the export fails the slide's checks:\n- Mock model A: 50 is outside its interval 60 to 70");
@@ -157,8 +228,10 @@ describe("freePlanFromExport", () => {
     expect(() => freePlanFromExport(seven, { models: seven.models.map((m) => m.id) })).toThrow("7 rows; the slide fits 1 to 6");
   });
 
-  it("always warns how few benefit amounts there are, and only that when the export is clean and its searches audited", () => {
-    expect(freePlanFromExport(exp, { models: ALL, webAudit: audit }).warnings).toEqual(["benefit amounts: at most 3 per model, too few to say anything about benefits"]);
+  it("always warns how few benefit amounts there are, and only that when the export is clean, its ends unrounded and its searches audited", () => {
+    // B's interval, -2.5 to 27.5, is the one with ends at a half; unrounded, it's clean.
+    const clean = withModel("mock-b", (m) => ({ ...m, vsWeb: { both: { ...m.vsWeb!.both!, loExact: -2.54, hiExact: 27.46 } } }));
+    expect(freePlanFromExport(clean, { models: ALL, webAudit: audit }).warnings).toEqual(["benefit amounts: at most 3 per model, too few to say anything about benefits"]);
     const none = withModel("mock-a", (m) => ({ ...m, benefits: {} }));
     expect(freePlanFromExport(none, { models: ["mock-a"], webAudit: audit }).warnings).toEqual([
       "benefit amounts: none in these households, so this says nothing about benefits",
@@ -168,7 +241,10 @@ describe("freePlanFromExport", () => {
   it("warns when no web-search audit is given, since the slide can't then say whether a model searched for PolicyBench", () => {
     const { pilot, warnings } = freePlanFromExport(exp, { models: ALL });
     expect(warnings).toContain("no web-search audit given, so the slide doesn't say whether a model searched for PolicyBench; pass --web-audit");
-    expect(pilot.footnotes).toEqual(freePlanFromExport(exp, { models: ALL, webAudit: audit }).pilot.footnotes);
+    // Nor how often each one searched.
+    const audited = freePlanFromExport(exp, { models: ALL, webAudit: audit }).pilot.footnotes;
+    expect(audited).toHaveLength(pilot.footnotes.length + 1);
+    expect(pilot.footnotes).toEqual(audited.filter((f) => !f.startsWith("Web search queries")));
   });
 
   it("says which models on the slide searched for PolicyBench anyway, in how many households, and that PolicyBench's scan found no match for the answers", () => {
@@ -181,13 +257,36 @@ describe("freePlanFromExport", () => {
     expect(one.warnings).toContain("Mock model B searched for PolicyBench in 3 of 20 households, though told not to; the slide says so");
     // Not on the slide, not in the footnote.
     const without = freePlanFromExport(exp, { models: ["mock-a", "mock-c"], webAudit: b });
-    expect(without.pilot.footnotes[1]).toMatch(/^The tool runs/);
+    expect(without.pilot.footnotes[1]).toMatch(/^Web search queries/);
     expect(without.warnings.some((w) => w.includes("searched for PolicyBench"))).toBe(false);
     // Two read as a list, the first with the full wording.
     const two = freePlanFromExport(exp, { models: ALL, webAudit: withSearches("mock-c", "web", { policyBenchQueries: 1, policyBenchHouseholds: ["mt_02"] }, b) }).pilot;
     expect(two.footnotes[1]).toBe(
       "Mock model B searched for it anyway in 3 of 20 households and Mock model C in 1 of 20; a scan of PolicyBench's public repository found no match for these households' answers.",
     );
+  });
+
+  it("gives each model's web search queries in both settings, in the slide's order, and says they fell only when each one's did", () => {
+    const tool = "The tool runs PolicyEngine (policyengine-us 0.0.0-mock), the engine behind the reference answers, so this shows whether a model can use it, not whether it's right.";
+    // Each mock model searched 40 times in each setting.
+    expect(freePlanFromExport(exp, { models: ALL, webAudit: audit }).pilot.footnotes.slice(1)).toEqual([
+      "Web search queries, without the tool and with it available: Mock model A from 40 to 40, Mock model B from 40 to 40, Mock model C from 40 to 40 and Mock model D from 40 to 40.",
+      tool,
+    ]);
+    const fell = withSearches("mock-a", "both", { queries: 12 }, withSearches("mock-a", "web", { queries: 232 }, withSearches("mock-b", "web", { queries: 1439 }, withSearches("mock-b", "both", { queries: 0 }))));
+    expect(freePlanFromExport(exp, { models: ["mock-b", "mock-a"], webAudit: fell }).pilot.footnotes[1]).toBe(
+      "Web search queries fell with the tool available: Mock model B from 1,439 to 0 and Mock model A from 232 to 12.",
+    );
+    // With one that didn't fall, the lead claims no direction. The free-plan model comes first, as in the rows.
+    expect(freePlanFromExport(exp, { models: ["mock-c", "mock-a"], webAudit: fell }).pilot.footnotes[1]).toBe(
+      "Web search queries, without the tool and with it available: Mock model A from 232 to 12 and Mock model C from 40 to 40.",
+    );
+    // After the PolicyBench line, whose "it" is the web line's.
+    const searchedToo = withSearches("mock-b", "web", { policyBenchQueries: 2, policyBenchHouseholds: ["mt_01"] }, fell);
+    const notes = freePlanFromExport(exp, { models: ["mock-a", "mock-b"], webAudit: searchedToo }).pilot.footnotes;
+    const starts = ["Web search is", "Mock model B searched for it anyway", "Web search queries", "The tool runs"];
+    expect(notes).toHaveLength(starts.length);
+    notes.forEach((f, i) => expect(f.startsWith(starts[i])).toBe(true));
   });
 
   it("refuses a web-search audit that doesn't cover a model on the slide, doesn't add up, or doesn't say its scan found no match for the answers", () => {
@@ -387,6 +486,34 @@ describe("freePlanFromExport", () => {
             expect(said[0].includes(`${name(id).model}${hit ? "" : " "}`)).toBe(Boolean(hit));
             if (hit) expect(said[0]).toMatch(new RegExp(`${name(id).model}( searched for it anyway)? in ${hit.k} of 20`));
           }
+        },
+      ),
+      { numRuns: 300 },
+    );
+  });
+
+  it("for any audit, gives each model on the slide its own two query counts, in the slide's order, and says they fell exactly when each one's did", () => {
+    const ids = exp.models.map((m) => m.id);
+    const model = (id: string) => exp.models.find((m) => m.id === id)!;
+    fc.assert(
+      fc.property(
+        fc.record(Object.fromEntries(ids.map((id) => [id, fc.record({ web: fc.nat(20_000), both: fc.nat(20_000) })]))),
+        fc.shuffledSubarray(ids, { minLength: 1 }),
+        (byModel, chosen) => {
+          const webAudit: WebSearchAudit = {
+            ...audit,
+            models: Object.fromEntries(ids.map((id) => [id, Object.fromEntries((["web", "both"] as const).map((a) => [a, { ...audit.models[id][a]!, queries: byModel[id][a] }]))])),
+          };
+          const { pilot } = freePlanFromExport(exp, { models: chosen, webAudit });
+          const said = pilot.footnotes.filter((f) => f.startsWith("Web search queries"));
+          expect(said).toHaveLength(1);
+          // The oracle: the rows' order, and the counts as en-US writes them.
+          const order = pilot.rows.map((r) => exp.models.find((m) => m.model === r.model)!.id);
+          expect(order.slice().sort()).toEqual(chosen.slice().sort());
+          const parts = order.map((id) => `${model(id).model} from ${byModel[id].web.toLocaleString("en-US")} to ${byModel[id].both.toLocaleString("en-US")}`);
+          const listed = parts.length <= 2 ? parts.join(" and ") : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`;
+          const fell = order.every((id) => byModel[id].both < byModel[id].web);
+          expect(said[0]).toBe(`${fell ? "Web search queries fell with the tool available" : "Web search queries, without the tool and with it available"}: ${listed}.`);
         },
       ),
       { numRuns: 300 },
@@ -600,17 +727,19 @@ describe("freePlanFromExport", () => {
     const model = fc
       .integer({ min: 1, max: 400 })
       .chain((n) =>
-        fc.tuple(fc.constant(n), count(n), count(n), count(n), count(n), fc.double({ min: 0, max: 30, noNaN: true }), fc.double({ min: 0, max: 30, noNaN: true }), fc.boolean()),
+        fc.tuple(fc.constant(n), count(n), count(n), count(n), count(n), fc.double({ min: 0, max: 30, noNaN: true }), fc.double({ min: 0, max: 30, noNaN: true }), fc.boolean(), fc.boolean()),
       );
     fc.assert(
       fc.property(fc.array(model, { minLength: 1, maxLength: 6 }), (specs) => {
-        const models: ExportModel[] = specs.map(([n, alone, web, tool, both, spread, shownSpread, free], i) => {
+        const models: ExportModel[] = specs.map(([n, alone, web, tool, both, spread, shownSpread, free, exact], i) => {
           const arm = (k: number) => ({ k, n, pct: (100 * k) / n, lo: 0, hi: 100 });
-          // As the export writes them: the change and its interval's ends to one decimal, so an interval can collapse onto a rounded change.
+          // As the export writes them: the change and its interval's ends to one decimal, so an interval can collapse onto a
+          // rounded change; and, for some, the ends unrounded too.
           const oneDecimal = (x: number) => Math.round(x * 10) / 10;
-          const exported = (from: number, to: number, s: number) => {
+          const exported = (from: number, to: number, s: number, unrounded = false) => {
             const points = (100 * (to - from)) / n;
-            return { points: oneDecimal(points), lo: oneDecimal(Math.max(-100, points - s)), hi: oneDecimal(Math.min(100, points + s)) };
+            const [lo, hi] = [Math.max(-100, points - s), Math.min(100, points + s)];
+            return { points: oneDecimal(points), lo: oneDecimal(lo), hi: oneDecimal(hi), ...(unrounded ? { loExact: lo, hiExact: hi } : {}) };
           };
           return {
             ...exp.models[0],
@@ -621,7 +750,7 @@ describe("freePlanFromExport", () => {
             arms: { alone: arm(alone), web: arm(web), tool: arm(tool), both: arm(both) },
             // A bootstrap of a difference of two shares stays within 100 points either way.
             vsAlone: { tool: exported(alone, tool, spread) },
-            vsWeb: { both: exported(web, both, shownSpread) },
+            vsWeb: { both: exported(web, both, shownSpread, exact) },
           };
         });
         const consistent = { ...exp, models, sizes: undefined, caveat: caveatText(sizeGroups(models)) };
@@ -635,6 +764,9 @@ describe("freePlanFromExport", () => {
         for (const r of pilot.rows) {
           const m = models.find((x) => x.model === r.model)!;
           for (const a of EXPORT_ARMS) expect(Math.abs(wholeShare(r.counts[a.id]!) - m.arms[a.id]!.pct)).toBeLessThanOrEqual(0.5 + 1e-9);
+          // The interval's ends as PolicyBench gives them, unrounded where it can.
+          const c = m.vsWeb!.both!;
+          expect([r.bothVsWeb.lo, r.bothVsWeb.hi]).toEqual(c.loExact === undefined ? [c.lo, c.hi] : [c.loExact, c.hiExact]);
         }
         const firstOther = pilot.rows.findIndex((r) => r.freePlan === null);
         if (firstOther >= 0) expect(pilot.rows.slice(firstOther).every((r) => r.freePlan === null)).toBe(true);

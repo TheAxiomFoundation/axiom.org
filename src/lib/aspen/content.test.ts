@@ -365,7 +365,7 @@ describe('the free-plan pilot', () => {
     expect(freePlanProblems({ ...m, footnotes: [...m.footnotes, ' '] })).toEqual(['no footnotes, or an empty one'])
     const swapped = m.arms.map((a) => ({ ...a, label: m.arms.find((b) => b.id !== a.id)!.label }))
     expect(freePlanProblems({ ...m, arms: swapped })).toEqual([
-      `the settings aren't "With web search", "With web search and the PolicyEngine tool", in that order`,
+      `the settings aren't "Web search available", "Web search and the PolicyEngine tool available", in that order`,
     ])
     expect(freePlanProblems(withRow(1, { model: ' ' }))).toEqual(['a model has no name'])
     expect(freePlanProblems(withRow(1, { freePlan: ' ' }))).toEqual(['Mock model B: an empty free-plan line'])

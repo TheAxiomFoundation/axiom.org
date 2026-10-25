@@ -952,11 +952,11 @@ export interface PilotChange {
 }
 
 /**
- * A pilot on its own households, in two settings: with web search, as the
- * free chat apps search, and with web search and the tool. Each model's change
- * from adding the tool is the reading; gaps between models aren't, since at
- * about 50 amounts a model one setting's interval is roughly 10 to 15 points
- * each way.
+ * A pilot on its own households, in two settings: with web search available,
+ * as in the free chat apps, and with web search and the tool available. Each
+ * model's change from adding the tool is the reading; gaps between models
+ * aren't, since at about 50 amounts a model one setting's interval is roughly
+ * 10 to 15 points each way.
  */
 export interface FreePlanPilot {
   title: string;
@@ -983,8 +983,8 @@ export interface FreePlanPilot {
 }
 
 const ARMS_IN_ORDER: FreePlanPilot["arms"] = [
-  { id: "web", label: "With web search" },
-  { id: "both", label: "With web search and the PolicyEngine tool" },
+  { id: "web", label: "Web search available" },
+  { id: "both", label: "Web search and the PolicyEngine tool available" },
 ];
 /**
  * The free-plan slide's settings, in its column order, as its heading names

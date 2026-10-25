@@ -63,7 +63,7 @@ describe("run", () => {
     const lines: string[] = [];
     run([file, "--sha256", sha, "--models", "mock-c,mock-a"], { contentPath: content, log: (l) => lines.push(l) });
     expect(lines).toEqual([
-      "The models on free plans, with web search and with the tool added",
+      "The models on free plans, with and without the PolicyEngine tool",
       "  Mock model A (On Mock Free): web 15/48, both 39/48; adding the tool 50.0 [35, 65]",
       "  Mock model C: web 33/48, both 45/48; adding the tool 25.0 [10, 40]",
       `Caveat, for these models: ${MOCK_POLICYBENCH_EXPORT.caveat}`,

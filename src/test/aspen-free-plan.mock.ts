@@ -7,12 +7,12 @@ import type { FreePlanPilot } from "@/lib/aspen/content";
  * says MOCK so a screenshot of it can't pass for the real slide.
  */
 export const MOCK_FREE_PLAN_PILOT: FreePlanPilot = {
-  title: "The models on free plans, with web search and with the tool added",
+  title: "The models on free plans, with and without the PolicyEngine tool",
   label: "MOCK DATA, not results",
   note: "Dollar amounts that aren't $0, within $1 of the reference: about 50 per model in mock households",
   arms: [
-    { id: "web", label: "With web search" },
-    { id: "both", label: "With web search and the PolicyEngine tool" },
+    { id: "web", label: "Web search available" },
+    { id: "both", label: "Web search and the PolicyEngine tool available" },
   ],
   rows: [
     {
