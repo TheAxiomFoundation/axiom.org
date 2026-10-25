@@ -207,7 +207,10 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setRunOpen(false);
       const target = e.target as HTMLElement | null;
-      if (target && ["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(target.tagName)) return;
+      if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+      // A clicked button keeps the focus, and Space and Enter press it; the
+      // arrows and a clicker's page keys still move the slides.
+      if (target?.tagName === "BUTTON" && (e.key === " " || e.key === "Enter")) return;
       // On the journey, Space pauses it instead.
       if (e.key === " " && onJourney) return;
       if (["ArrowRight", "PageDown", " "].includes(e.key)) {

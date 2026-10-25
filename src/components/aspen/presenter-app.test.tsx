@@ -214,10 +214,27 @@ describe("PresenterApp navigation", () => {
     expect(fireEvent.keyDown(document.body, { key: "a" })).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "New run" }));
     fireEvent.keyDown(screen.getByRole("textbox", { name: "New run name" }), { key: "ArrowRight" });
-    fireEvent.keyDown(screen.getByRole("button", { name: "Next slide" }), { key: "ArrowRight" });
     fireEvent.keyDown(document.body, { key: "ArrowLeft" });
     fireEvent.click(screen.getByRole("button", { name: "Previous slide" }));
     expect(posts()).toEqual([]);
+  });
+
+  it("still moves with the arrows and a clicker's page keys after a button was clicked", async () => {
+    const { posts } = setup();
+    await screen.findByText("Run r1");
+    const next = screen.getByRole("button", { name: "Next slide" });
+
+    // Space and Enter press the focused button, once, as the browser does; the slides don't also move.
+    expect(fireEvent.keyDown(next, { key: " " })).toBe(true);
+    expect(fireEvent.keyDown(next, { key: "Enter" })).toBe(true);
+    expect(posts()).toEqual([]);
+    fireEvent.keyDown(next, { key: "ArrowRight" });
+    await onStage("try");
+    fireEvent.keyDown(next, { key: "PageUp" });
+    await onStage("welcome");
+    fireEvent.keyDown(within(screen.getByRole("navigation", { name: "Stages" })).getByRole("button", { name: "Thank you" }), { key: "PageDown" });
+    await onStage("try");
+    expect(posts()).toEqual([{ stage: "try" }, { stage: "welcome" }, { stage: "try" }]);
   });
 
   it("moves with the buttons and the stage menu", async () => {
