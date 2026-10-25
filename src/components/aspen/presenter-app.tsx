@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   BookText,
@@ -42,8 +42,14 @@ import {
   SAME_RULES,
   SILVER_ASK,
   TOOL_PILOT,
+  FREE_PLAN_PILOT,
+  distinguishable,
+  formatPoints,
+  shownChange,
   share,
   toolPilotMisses,
+  wholeShare,
+  type FreePlanPilot,
   type ToolPilot,
   type ToolPilotArmId,
   WHAT_MODELS_MISS,
@@ -87,14 +93,25 @@ function reasonLabel(item: { reason: string; verdict: string | null }): string {
   return REASON_LABEL[item.reason] ?? item.reason;
 }
 
-/** A slide that turns its stage's argument gets its own heading. */
+/**
+ * At scale's slides, in order. The free-plan pilot comes after the tool pilot
+ * only once its numbers are set; the live demo is always last.
+ */
+export function scaleSlides(freePlan: FreePlanPilot | null): string[] {
+  return ["share", "household", "break", "miss", "front-door", "tool", ...(freePlan ? ["free-plan"] : []), "live-demo"];
+}
+const SCALE_SLIDES = scaleSlides(FREE_PLAN_PILOT);
+
+/** A slide that turns its stage's argument gets its own heading: At scale from the front door on. */
 const SLIDE_TITLES: Partial<Record<StageId, Record<number, string>>> = {
-  scale: { 4: FRONT_DOOR.heading, 5: FRONT_DOOR.heading, 6: FRONT_DOOR.heading },
+  scale: Object.fromEntries(
+    SCALE_SLIDES.map((_, i) => i).filter((i) => i >= SCALE_SLIDES.indexOf("front-door")).map((i) => [i, FRONT_DOOR.heading]),
+  ),
   foundation: { 1: SAME_RULES.heading, 2: ENCODING_PIPELINE.heading, 3: BUILD_HEADING },
 };
 
 /** Stages shown as more than one slide; the arrows step through them before moving the room. */
-const SLIDES: Partial<Record<StageId, number>> = { reveal: 2, scale: 7, foundation: 4, groups: 2, next: 2 };
+const SLIDES: Partial<Record<StageId, number>> = { reveal: 2, scale: SCALE_SLIDES.length, foundation: 4, groups: 2, next: 2 };
 const slideCount = (id: StageId) => SLIDES[id] ?? 1;
 
 /** The largest scale at which the 16:9 canvas fits the window. */
@@ -252,18 +269,20 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
                       }
                     />
                   ))}
-                {/* Slides 2 to 5 of At scale, and 2 of Shared foundation, come from Max's Nava deck; 6 is the tool pilot and 7 the live chatbot.
-                    Shared foundation 3 is the encoding pipeline from the InnovateUS deck. */}
+                {/* Slides 2 to 5 of At scale, and 2 of Shared foundation, come from Max's Nava deck; then the tool
+                    pilot, the free-plan pilot once it has numbers, and the live chatbot. Shared foundation 3 is
+                    the encoding pipeline from the InnovateUS deck. */}
                 {stage === "scale" &&
-                  [
-                    <ScaleShareSlide key="share" />,
-                    <HouseholdSlide key="household" />,
-                    <BreakSlide key="break" />,
-                    <MissSlide key="miss" />,
-                    <FrontDoorSlide key="front-door" />,
-                    <ToolSlide key="tool" />,
-                    <LiveDemoSlide key="live-demo" />,
-                  ][sub]}
+                  {
+                    share: <ScaleShareSlide key="share" />,
+                    household: <HouseholdSlide key="household" />,
+                    break: <BreakSlide key="break" />,
+                    miss: <MissSlide key="miss" />,
+                    "front-door": <FrontDoorSlide key="front-door" />,
+                    tool: <ToolSlide key="tool" />,
+                    "free-plan": FREE_PLAN_PILOT && <FreePlanSlide key="free-plan" pilot={FREE_PLAN_PILOT} />,
+                    "live-demo": <LiveDemoSlide key="live-demo" />,
+                  }[SCALE_SLIDES[sub]]}
                 {stage === "foundation" &&
                   [
                     <FoundationSlide key="foundation" summary={summary} />,
@@ -1256,8 +1275,147 @@ function BenefitsPanel({ benefits: b }: { benefits: NonNullable<ToolPilot["benef
   );
 }
 
+const COMPACT = { cell: "py-[1px]", model: "text-[22px] leading-tight", plan: "text-[15px] leading-tight", value: "text-[24px]", small: "text-[15px]", bar: "mt-[4px] h-[6px]", caveat: "text-[17px]", note: "text-[15px]", head: "text-[16px]" };
+/** The free-plan slide's type scales: room for up to three models, compact for more, and tight for the longest text. */
+const FREE_PLAN_DENSITY = {
+  roomy: { cell: "py-[10px]", model: "text-[24px] leading-snug", plan: "text-[17px] leading-snug", value: "text-[26px]", small: "text-[16px]", bar: "mt-[8px] h-[8px]", caveat: "text-[20px]", note: "text-[17px]", head: "text-[18px]" },
+  compact: COMPACT,
+  tight: { ...COMPACT, caveat: "text-[15px]", note: "text-[14px]" },
+};
+type FreePlanDensity = keyof typeof FREE_PLAN_DENSITY;
+/** The next scale to try when the slide doesn't fit; tight is the last. */
+const FREE_PLAN_TIGHTER: Record<FreePlanDensity, FreePlanDensity> = { roomy: "compact", compact: "tight", tight: "tight" };
+
 /**
- * At scale, slide 7: the live chatbot, plain AI beside AI with the Axiom rules
+ * At scale, after the tool pilot: the models on free plans, with web search
+ * available, as in the free chat apps, and with the tool available too. Each
+ * row reads across; the last column is that model's change from adding the
+ * tool, with its 95% interval, in gray when the interval includes zero. Shows
+ * only when FREE_PLAN_PILOT is set.
+ */
+export function FreePlanSlide({ pilot: p }: { pilot: FreePlanPilot }) {
+  // Up to three models start with room, four to six with a tighter type
+  // scale. Before the slide paints, it checks that its column holds it all,
+  // and while it doesn't, takes the next tighter scale: PolicyBench's caveat
+  // and footnotes run longer for some models and sizes than for others.
+  const [density, setDensity] = useState<FreePlanDensity>(p.rows.length > 3 ? "compact" : "roomy");
+  const column = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    // The scale after the one measured, not after whatever is current: a check run twice (as React's
+    // strict mode runs effects) must not skip one.
+    const fit = () => {
+      const el = column.current;
+      if (el && el.scrollHeight > el.clientHeight) setDensity(FREE_PLAN_TIGHTER[density]);
+    };
+    fit();
+    // Text laid out before the slide's fonts arrive measures differently.
+    let live = true;
+    void document.fonts?.ready.then(() => live && fit());
+    return () => {
+      live = false;
+    };
+  }, [density]);
+  const compact = density !== "roomy";
+  const z = FREE_PLAN_DENSITY[density];
+  return (
+    <div ref={column} data-density={density} className={`flex h-full flex-col ${compact ? "gap-[10px]" : "gap-[12px]"}`}>
+      <div className="flex items-start justify-between gap-[24px]">
+        <p className="m-0 font-display text-[40px] font-light leading-tight text-[var(--color-ink)]">{p.title}</p>
+        <span className="mt-[6px] shrink-0 rounded-full border-2 border-[var(--color-error)] px-[16px] py-[4px] font-body text-[20px] font-medium text-[var(--color-error)]">
+          {p.label}
+        </span>
+      </div>
+      <p className="m-0 font-body text-[20px] leading-snug text-[var(--color-ink-secondary)]">{p.note}</p>
+      <table className="w-full table-fixed border-collapse">
+        <caption className="sr-only">Share of amounts right, by model and setting, and each model&apos;s change from adding the tool to web search</caption>
+        <colgroup>
+          <col className="w-[24%]" />
+          {p.arms.map((arm) => (
+            <col key={arm.id} />
+          ))}
+          <col className="w-[20%]" />
+        </colgroup>
+        <thead>
+          <tr className={`border-b border-[var(--color-rule)] text-left align-bottom font-body leading-snug text-[var(--color-ink-secondary)] ${z.head}`}>
+            <th scope="col" className="pb-[8px] font-normal">
+              <span className="sr-only">Model</span>
+            </th>
+            {p.arms.map((arm) => (
+              <th key={arm.id} scope="col" className="px-[12px] pb-[8px] font-normal">
+                <span className="flex items-center gap-[8px]">
+                  <span aria-hidden className="h-[14px] w-[14px] shrink-0 rounded-[3px]" style={{ background: ARM_COLORS[arm.id] }} />
+                  {arm.label}
+                </span>
+              </th>
+            ))}
+            <th scope="col" className="pb-[8px] pl-[12px] font-normal">
+              Adding the tool, in points, with its 95% interval
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {p.rows.map((row) => {
+            const c = row.bothVsWeb;
+            const sure = distinguishable(c);
+            return (
+              <tr key={row.model} className="border-b border-[var(--color-rule-subtle)] align-middle">
+                <th scope="row" className={`${z.cell} pr-[12px] text-left font-normal`}>
+                  <span className={`block font-body text-[var(--color-ink)] ${z.model}`}>{row.model}</span>
+                  {row.freePlan && <span className={`block font-body text-[var(--color-ink-muted)] ${z.plan}`}>{row.freePlan}</span>}
+                </th>
+                {p.arms.map((arm) => {
+                  const count = row.counts[arm.id];
+                  if (!count) return <td key={arm.id} className={z.cell} />;
+                  const value = wholeShare(count);
+                  return (
+                    <td key={arm.id} className={`${z.cell} px-[12px]`}>
+                      <span className="flex items-baseline gap-[8px]">
+                        <span
+                          className={`font-mono leading-none tabular-nums ${z.value} ${ENGINE_ARMS.has(arm.id) ? "text-[var(--color-ink)]" : "text-[var(--color-ink-secondary)]"}`}
+                        >
+                          {value}%
+                        </span>
+                        <span className={`whitespace-nowrap font-body text-[var(--color-ink-muted)] ${z.small}`}>
+                          {count.k} of {count.n}
+                        </span>
+                      </span>
+                      <span aria-hidden className={`block overflow-hidden rounded-full bg-[var(--color-rule-subtle)] ${z.bar}`}>
+                        <span className="block h-full rounded-full" style={{ width: `${value}%`, background: ARM_COLORS[arm.id] }} />
+                      </span>
+                    </td>
+                  );
+                })}
+                <td className={`${z.cell} pl-[12px]`}>
+                  {/* Compact rows put the interval beside the change, so a row is one line of numbers. */}
+                  <span className={compact ? "flex items-baseline gap-[10px]" : "block"}>
+                    <span
+                      className={`block font-mono leading-none tabular-nums ${z.value} ${sure ? "text-[var(--color-ink)]" : "text-[var(--color-ink-muted)]"}`}
+                    >
+                      {formatPoints(shownChange(c))}
+                    </span>
+                    <span className={`block font-body text-[var(--color-ink-muted)] ${z.small} ${compact ? "" : "mt-[6px]"}`}>
+                      {formatPoints(c.lo)} to {formatPoints(c.hi)}
+                      {sure ? "" : ", includes 0"}
+                    </span>
+                  </span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <div className="flex flex-col gap-[4px]">
+        <p className={`m-0 font-body leading-snug text-[var(--color-ink)] ${z.caveat}`}>{p.caveat}</p>
+        {/* One run-in paragraph, so a short footnote shares a line. */}
+        <p className={`m-0 font-body leading-snug text-[var(--color-ink-muted)] ${z.note}`}>{p.footnotes.join(" ")}</p>
+      </div>
+      <BenchFooter source={p.source} />
+    </div>
+  );
+}
+
+/**
+ * At scale, the last slide: the live chatbot, plain AI beside AI with the Axiom rules
  * engine. A cross-origin frame inside the slide's scaled canvas paints blank,
  * so the slide holds a slot and the frame sits over it, fixed to the slot's
  * on-screen box; the demo also shows at its own size rather than scaled.

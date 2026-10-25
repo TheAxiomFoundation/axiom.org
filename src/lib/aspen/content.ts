@@ -202,7 +202,7 @@ export function isUsState(value: unknown): value is (typeof US_STATES)[number] {
  * The household chips. Participants ask the AI about them; the chat runs no
  * rules check. All but the Connecticut couple are in states whose SNAP the
  * gallery chatbot's Axiom rules cover; finbot has no Connecticut SNAP, so the
- * live demo on At scale 7/7 asks its own question (LIVE_DEMO). The retiree in
+ * live demo, At scale's last slide, asks its own question (LIVE_DEMO). The retiree in
  * Phoenix leads: the convening is in Phoenix. The Connecticut couple is At
  * scale's example household (PolicyBench scenario_027), so participants can
  * ask the AI about it before the room sees how 50 models did. The first person and
@@ -904,9 +904,9 @@ export function toolPilotMisses(p: ToolPilot): { misses: number; scored: number 
 }
 
 /**
- * At scale 6/7: what changes when a model can call a rules engine. Each arm is
- * one bar per model; a later run (more arms, such as web search, or other
- * models) only changes `amounts`, `arms` and `rows`.
+ * At scale 6: what changes when a model can call a rules engine. Each arm is
+ * one bar per model. A run on other households (the free-plan pilot) gets its
+ * own slide (FREE_PLAN_PILOT), because its amounts aren't these.
  */
 export const TOOL_PILOT: ToolPilot = {
   title: "The same models, given a rules engine as a tool",
@@ -938,8 +938,186 @@ export const TOOL_PILOT: ToolPilot = {
   source: "PolicyBench note, October 20, 2026 · runs October 14–15 · no-tool answers from the October 14 board · counts from the note's data",
 };
 
+/** One model's count in one setting: k of n dollar amounts right. */
+export interface PilotCount {
+  k: number;
+  n: number;
+}
+
+/** A model's paired change between two settings, in percentage points, with its 95% interval. */
+export interface PilotChange {
+  points: number;
+  lo: number;
+  hi: number;
+}
+
 /**
- * At scale 7/7: the live chatbot demo (TheAxiomFoundation/finbot-snap-demo,
+ * A pilot on its own households, in two settings: with web search available,
+ * as in the free chat apps, and with web search and the tool available. Each
+ * model's change from adding the tool is the reading; gaps between models
+ * aren't, since at about 50 amounts a model one setting's interval is roughly
+ * 10 to 15 points each way.
+ */
+export interface FreePlanPilot {
+  title: string;
+  /** Shown beside the title, so the room reads the numbers as preliminary. */
+  label: string;
+  note: string;
+  arms: readonly { id: ToolPilotArmId; label: string }[];
+  /** The models on free plans first, then any shown for comparison. */
+  rows: readonly {
+    model: string;
+    /**
+     * How the model relates to a free plan, as the slide says it ("On Claude's
+     * free plan"). Only as much as the provider's own page states. Null for a
+     * comparison model.
+     */
+    freePlan: string | null;
+    counts: Readonly<Partial<Record<ToolPilotArmId, PilotCount>>>;
+    /** Its change from web search to web search and the tool. */
+    bothVsWeb: PilotChange;
+  }[];
+  caveat: string;
+  footnotes: readonly string[];
+  source: string;
+}
+
+const ARMS_IN_ORDER: FreePlanPilot["arms"] = [
+  { id: "web", label: "Web search available" },
+  { id: "both", label: "Web search and the PolicyEngine tool available" },
+];
+/**
+ * The free-plan slide's settings, in its column order, as its heading names
+ * them. Frozen: a converted pilot shares it, so changing its headings in
+ * place would change what the check expects too.
+ */
+export const FREE_PLAN_ARMS: FreePlanPilot["arms"] = Object.freeze(ARMS_IN_ORDER.map((a) => Object.freeze({ ...a })));
+
+/** A count as a whole percent: at about 50 amounts, a decimal would claim precision the run doesn't have. */
+export function wholeShare(c: PilotCount): number {
+  // Rounded half up in whole numbers, (200k + n) / 2n, so it's exact for any safe-integer count.
+  const [k, n] = [BigInt(c.k), BigInt(c.n)];
+  return Number((BigInt(200) * k + n) / (BigInt(2) * n));
+}
+
+/** Whether a change's interval leaves out zero, so it reads as a change at this size. */
+export function distinguishable(c: PilotChange): boolean {
+  return c.lo > 0 || c.hi < 0;
+}
+
+/**
+ * The change as the slide prints it: inside its interval. The interval's ends
+ * are PolicyBench's, rounded to one decimal, while the change is the counts'
+ * own, so it can sit up to 0.05 points past an end. The slide then shows that
+ * end, so the printed change is never outside the printed interval.
+ */
+export function shownChange(c: PilotChange): number {
+  return Math.min(c.hi, Math.max(c.lo, c.points));
+}
+
+/**
+ * Whole points with a sign, "+28" or "−14" (a true minus sign), and "0" only
+ * for no change. A value that rounds to 0 but isn't 0 keeps one significant
+ * digit ("+0.1", "−0.04"), so an interval that leaves out zero never shows an
+ * end of 0.
+ */
+export function formatPoints(points: number): string {
+  if (points === 0) return "0";
+  const whole = Math.round(points);
+  const text = whole === 0 ? Math.abs(points).toPrecision(1) : String(Math.abs(whole));
+  return points > 0 ? `+${text}` : `\u2212${text}`;
+}
+
+/**
+ * What any free-plan pilot must satisfy before it goes on the screen. The
+ * tests run these on FREE_PLAN_PILOT, and scripts/aspen-free-plan.ts refuses
+ * an export that fails any.
+ */
+export function freePlanProblems(p: FreePlanPilot): string[] {
+  const problems: string[] = [];
+  const armIds = p.arms.map((a) => a.id);
+  if (new Set(armIds).size !== armIds.length) problems.push("an arm is listed twice");
+  if (!armIds.includes("web") || !armIds.includes("both")) problems.push("the change needs web search, and web search with the tool");
+  if (!p.label.trim()) problems.push("no label: the room has to read these as preliminary");
+  for (const [name, text] of [["title", p.title], ["note", p.note], ["caveat", p.caveat], ["source", p.source]] as const) {
+    if (!text.trim()) problems.push(`no ${name}`);
+  }
+  // The tool footnote says what the tool runs, which the room needs to read the change.
+  if (!p.footnotes.length || p.footnotes.some((f) => !f.trim())) problems.push("no footnotes, or an empty one");
+  // Each column's heading has to name its setting: the colors and the change both go by id.
+  if (p.arms.length !== FREE_PLAN_ARMS.length || p.arms.some((a, i) => a.id !== FREE_PLAN_ARMS[i].id || a.label !== FREE_PLAN_ARMS[i].label)) {
+    problems.push(`the settings aren't ${FREE_PLAN_ARMS.map((a) => `"${a.label}"`).join(", ")}, in that order`);
+  }
+  // The models on free plans come first, so the slide reads them first.
+  const firstComparison = p.rows.findIndex((r) => r.freePlan === null);
+  if (firstComparison >= 0 && p.rows.slice(firstComparison).some((r) => r.freePlan !== null)) {
+    problems.push("a free-plan model comes after a comparison model");
+  }
+  if (new Set(p.rows.map((r) => r.model)).size !== p.rows.length) problems.push("a model is listed twice");
+  if (p.rows.length < 1 || p.rows.length > 6) problems.push(`${p.rows.length} rows; the slide fits 1 to 6`);
+  for (const r of p.rows) {
+    if (!r.model.trim()) problems.push("a model has no name");
+    if (r.freePlan !== null && !r.freePlan.trim()) problems.push(`${r.model}: an empty free-plan line`);
+    const ns = new Set<number>();
+    for (const id of armIds) {
+      const c = r.counts[id];
+      if (!c) {
+        problems.push(`${r.model}: no count for ${id}`);
+        continue;
+      }
+      // Safe integers keep 100 × k finite, so every share prints as a whole percent.
+      if (!Number.isSafeInteger(c.k) || !Number.isSafeInteger(c.n) || c.n < 1 || c.k < 0 || c.k > c.n) {
+        problems.push(`${r.model} ${id}: ${c.k} of ${c.n} isn't a count`);
+      }
+      ns.add(c.n);
+    }
+    // A failed or missing answer counts as a miss, so every setting scores the same amounts.
+    if (ns.size > 1) problems.push(`${r.model}: settings score different numbers of amounts (${[...ns].join(", ")})`);
+    const { points, lo, hi } = r.bothVsWeb;
+    if (![points, lo, hi].every(Number.isFinite)) problems.push(`${r.model}: change ${points} with interval ${lo} to ${hi} isn't finite`);
+    // A change between two shares can't pass 100 points either way, nor can its interval.
+    else if (lo < -100 || hi > 100) problems.push(`${r.model}: its interval ${lo} to ${hi} goes past 100 points`);
+    if (!(lo <= hi)) problems.push(`${r.model}: its interval ${lo} to ${hi} runs backward`);
+    // The export writes the interval's ends to one decimal while the change is the counts' own, exact, so the
+    // change may sit up to 0.05 past an end written that way. Finer ends get no allowance: a change of 0 can
+    // then never sit outside its interval, where the slide would show it as leaving out zero.
+    const tenths = (x: number) => Number(x.toFixed(1)) === x;
+    const allowance = tenths(lo) && tenths(hi) ? 0.05 + 1e-9 : 0;
+    const inside = (x: number) => lo - allowance <= x && x <= hi + allowance;
+    if (!inside(points)) problems.push(`${r.model}: ${points} is outside its interval ${lo} to ${hi}`);
+    // The paired change on the same amounts is the counts' own difference, to the export's one decimal.
+    const web = r.counts.web;
+    const both = r.counts.both;
+    if (web && both && web.n === both.n) {
+      const fromCounts = (100 * (both.k - web.k)) / both.n;
+      if (Math.abs(fromCounts - points) > 0.05 + 1e-9) {
+        problems.push(`${r.model}: change ${points} but the counts give ${fromCounts.toFixed(1)}`);
+      } else if (Math.sign(points) * Math.sign(fromCounts) < 0) {
+        // Within rounding of the counts but on the other side of zero, which the slide would print.
+        // It compares signs, since the product underflows to zero for the smallest changes.
+        problems.push(`${r.model}: change ${points} is on the other side of zero from the counts' ${fromCounts.toFixed(2)}`);
+      } else if (inside(points) && !inside(fromCounts)) {
+        // The color goes by the interval, so the counts' own change has to be inside it too.
+        problems.push(`${r.model}: the counts' change ${fromCounts.toFixed(2)} is outside its interval ${lo} to ${hi}`);
+      }
+    }
+  }
+  return problems;
+}
+
+/**
+ * At scale, after the tool pilot: the models on free plans, with web search,
+ * and with web search and a tool that runs PolicyEngine, from PolicyBench's
+ * preliminary internal pilot. Null until its final tables are cleared to show, and the
+ * slide shows only when it's set. This repo is public, so the numbers go in
+ * only then.
+ */
+// BEGIN FREE_PLAN_PILOT: scripts/aspen-free-plan.ts --write replaces this block.
+export const FREE_PLAN_PILOT: FreePlanPilot | null = null;
+// END FREE_PLAN_PILOT
+
+/**
+ * At scale's last slide: the live chatbot demo (TheAxiomFoundation/finbot-snap-demo,
  * served at axiom.org/gallery/chatbot). `compare=1` puts plain AI beside AI
  * with the Axiom rules engine, and `q` prefills the question. Inside a frame
  * the demo never sends on its own, so the presenter presses Send. The model
