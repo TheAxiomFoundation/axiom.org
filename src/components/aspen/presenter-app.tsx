@@ -60,6 +60,7 @@ import { postJson, useControl, useResults } from "./client";
 import { BUTTON_QUIET, FIELD } from "./ui";
 import { BrandLogo } from "./brand-logo";
 import { JoinQr } from "./join-qr";
+import { JourneySlide } from "./journey-slide";
 import { TIERS, TierMedal } from "./tier-medal";
 
 /** The slide canvas: drawn at 1600×900 and scaled to fit the screen, so every stage fits 16:9. */
@@ -87,14 +88,20 @@ function reasonLabel(item: { reason: string; verdict: string | null }): string {
   return REASON_LABEL[item.reason] ?? item.reason;
 }
 
+/** The journey covers its slide, heading too; this names it for a screen reader. */
+const JOURNEY_HEADING = "From the law as written to running code";
+
 /** A slide that turns its stage's argument gets its own heading. */
 const SLIDE_TITLES: Partial<Record<StageId, Record<number, string>>> = {
   scale: { 4: FRONT_DOOR.heading, 5: FRONT_DOOR.heading, 6: FRONT_DOOR.heading },
-  foundation: { 1: SAME_RULES.heading, 2: ENCODING_PIPELINE.heading, 3: BUILD_HEADING },
+  foundation: { 1: SAME_RULES.heading, 2: ENCODING_PIPELINE.heading, 3: JOURNEY_HEADING, 4: BUILD_HEADING },
 };
 
+/** Shared foundation's slides, in order; the journey takes Space for itself. */
+const FOUNDATION_SLIDES = ["foundation", "same-rules", "pipeline", "journey", "tiers"] as const;
+
 /** Stages shown as more than one slide; the arrows step through them before moving the room. */
-const SLIDES: Partial<Record<StageId, number>> = { reveal: 2, scale: 7, foundation: 4, groups: 2, next: 2 };
+const SLIDES: Partial<Record<StageId, number>> = { reveal: 2, scale: 7, foundation: FOUNDATION_SLIDES.length, groups: 2, next: 2 };
 const slideCount = (id: StageId) => SLIDES[id] ?? 1;
 
 /** The largest scale at which the 16:9 canvas fits the window. */
@@ -190,11 +197,22 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
     [index, stage, sub, move],
   );
 
+  const onJourney = stage === "foundation" && FOUNDATION_SLIDES[sub] === "journey";
+  // The journey's chunk (three.js and its scenes) loads while the stage's first slides are up.
+  useEffect(() => {
+    if (stage === "foundation") void import("@/components/landing/journey-lamplight/director").catch(() => {});
+  }, [stage]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setRunOpen(false);
       const target = e.target as HTMLElement | null;
-      if (target && ["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(target.tagName)) return;
+      if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+      // A clicked button keeps the focus, and Space and Enter press it; the
+      // arrows and a clicker's page keys still move the slides.
+      if (target?.tagName === "BUTTON" && (e.key === " " || e.key === "Enter")) return;
+      // On the journey, Space pauses it instead.
+      if (e.key === " " && onJourney) return;
       if (["ArrowRight", "PageDown", " "].includes(e.key)) {
         e.preventDefault();
         step(1);
@@ -205,7 +223,7 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [step]);
+  }, [step, onJourney]);
 
   const current = STAGES[index];
   const fade = `transition-opacity duration-500 focus-within:opacity-100 ${idle ? "opacity-0" : "opacity-100"}`;
@@ -264,11 +282,13 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
                     <ToolSlide key="tool" />,
                     <LiveDemoSlide key="live-demo" />,
                   ][sub]}
+                {/* Shared foundation 4 plays the homepage's encoding journey after the pipeline it shows. */}
                 {stage === "foundation" &&
                   [
                     <FoundationSlide key="foundation" summary={summary} />,
                     <SameRulesSlide key="same-rules" />,
                     <PipelineSlide key="pipeline" />,
+                    <JourneySlide key="journey" />,
                     <TiersSlide key="tiers" />,
                   ][sub]}
                 {stage === "groups" &&
@@ -281,6 +301,9 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
           </div>
         </div>
       </div>
+
+      {/* Over the slide and under the controls: a slide that can't draw inside the scaled canvas places itself here. */}
+      <div data-aspen-overlay />
 
       <div
         className={`absolute inset-x-0 top-0 flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-rule)] bg-[var(--color-paper)]/95 px-6 py-2.5 ${fade}`}

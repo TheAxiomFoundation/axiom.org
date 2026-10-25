@@ -24,6 +24,7 @@ import {
 } from "@/lib/aspen/content";
 import { EMPTY_SUMMARY, summarizeRun, type RunSummary } from "@/lib/aspen/results";
 import type { Control, RunData } from "@/lib/aspen/types";
+import { CAPTIONS, STORY_LABEL } from "@/components/landing/journey-lamplight/captions";
 import { notApplyNote, PIPELINE_GRAPH_LABEL, PresenterApp } from "./presenter-app";
 
 const DATA: RunData = {
@@ -213,10 +214,27 @@ describe("PresenterApp navigation", () => {
     expect(fireEvent.keyDown(document.body, { key: "a" })).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "New run" }));
     fireEvent.keyDown(screen.getByRole("textbox", { name: "New run name" }), { key: "ArrowRight" });
-    fireEvent.keyDown(screen.getByRole("button", { name: "Next slide" }), { key: "ArrowRight" });
     fireEvent.keyDown(document.body, { key: "ArrowLeft" });
     fireEvent.click(screen.getByRole("button", { name: "Previous slide" }));
     expect(posts()).toEqual([]);
+  });
+
+  it("still moves with the arrows and a clicker's page keys after a button was clicked", async () => {
+    const { posts } = setup();
+    await screen.findByText("Run r1");
+    const next = screen.getByRole("button", { name: "Next slide" });
+
+    // Space and Enter press the focused button, once, as the browser does; the slides don't also move.
+    expect(fireEvent.keyDown(next, { key: " " })).toBe(true);
+    expect(fireEvent.keyDown(next, { key: "Enter" })).toBe(true);
+    expect(posts()).toEqual([]);
+    fireEvent.keyDown(next, { key: "ArrowRight" });
+    await onStage("try");
+    fireEvent.keyDown(next, { key: "PageUp" });
+    await onStage("welcome");
+    fireEvent.keyDown(within(screen.getByRole("navigation", { name: "Stages" })).getByRole("button", { name: "Thank you" }), { key: "PageDown" });
+    await onStage("try");
+    expect(posts()).toEqual([{ stage: "try" }, { stage: "welcome" }, { stage: "try" }]);
   });
 
   it("moves with the buttons and the stage menu", async () => {
@@ -338,7 +356,7 @@ describe("PresenterApp navigation", () => {
 
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     await onStage("foundation");
-    expect(screen.getByText("1/4")).toBeInTheDocument();
+    expect(screen.getByText("1/5")).toBeInTheDocument();
 
     // Back from a stage's first slide lands on the last slide of the stage before.
     fireEvent.keyDown(document.body, { key: "ArrowLeft" });
@@ -643,7 +661,7 @@ describe("PresenterApp stages", () => {
     for (const a of SAME_RULES.audiences) expect(screen.getByText(a.label)).toBeInTheDocument();
     // The encoding pipeline comes before how it gets built.
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("3/4")).toBeInTheDocument();
+    expect(screen.getByText("3/5")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1, name: ENCODING_PIPELINE.heading })).toBeInTheDocument();
     expect(screen.getByText(ENCODING_PIPELINE.lead)).toBeInTheDocument();
     for (const step of ENCODING_PIPELINE.steps) {
@@ -663,8 +681,20 @@ describe("PresenterApp stages", () => {
     expect(screen.getByText("✓ deterministic")).toBeInTheDocument();
     expect(screen.getByText("AI judge, advisory")).toBeInTheDocument();
     for (const surface of ENCODING_PIPELINE.surfaces) expect(screen.getByText(surface.name)).toBeInTheDocument();
+    // Then the homepage's journey plays over the slide; Space pauses it instead of moving on.
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("4/4")).toBeInTheDocument();
+    expect(screen.getByText("4/5")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "From the law as written to running code" })).toBeInTheDocument();
+    const stage = document.querySelector("[data-aspen-overlay] .jl-stage");
+    expect(stage).not.toBeNull();
+    expect(within(stage as HTMLElement).getByRole("img", { name: STORY_LABEL })).toBeInTheDocument();
+    for (const c of CAPTIONS) expect(within(stage as HTMLElement).getByText(c.title)).toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: " " });
+    expect(screen.getByText("4/5")).toBeInTheDocument();
+    expect(screen.getByText("Paused: Space plays on")).toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("5/5")).toBeInTheDocument();
+    expect(document.querySelector(".jl-stage")).toBeNull();
     expect(screen.getByRole("heading", { level: 1, name: BUILD_HEADING })).toBeInTheDocument();
     for (const tier of GOLDEN_A) expect(screen.getByText(tier.name)).toBeInTheDocument();
     expect(screen.queryByText("Bronze A")).not.toBeInTheDocument();
