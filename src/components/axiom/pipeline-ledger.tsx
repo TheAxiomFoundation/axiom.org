@@ -179,8 +179,11 @@ export function PipelineLedger({
             {newestDocuments(ledger, shown).map((jurisdiction) => (
               <TableBody key={jurisdiction.code}>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead colSpan={6} scope="rowgroup" className={styles.jurisdictionBand}>
-                    {jurisdiction.name}
+                  <TableHead colSpan={6} scope="rowgroup" className={styles.jurisdictionBand} aria-label={jurisdiction.name}>
+                    <span className={styles.jurisdictionName}>{jurisdiction.name}</span>
+                    <span className={styles.jurisdictionCount}>
+                      {jurisdiction.documents.length} {jurisdiction.documents.length === 1 ? "document" : "documents"}
+                    </span>
                   </TableHead>
                 </TableRow>
                 {jurisdiction.documents.map((document) => (
@@ -229,15 +232,13 @@ function DocumentSections({
     <>
       <TableRow className="border-b border-[var(--color-rule)] hover:bg-transparent">
         <TableCell colSpan={6} className={styles.documentBand}>
+          {/* The citation path stays out of sight; hover the title for it. */}
           <span
             className="text-sm font-semibold text-[var(--color-ink)]"
-            title={document.titled ? undefined : "Document identifier; source title not yet indexed"}
+            title={document.titled ? document.path || undefined : "Document identifier; source title not yet indexed"}
           >
             {document.title}
           </span>
-          {document.path && document.path !== document.title && (
-            <span className="ml-2 font-mono text-[11px] text-[var(--color-ink-muted)]">{document.path}</span>
-          )}
         </TableCell>
       </TableRow>
       {document.sections.map((section) => {

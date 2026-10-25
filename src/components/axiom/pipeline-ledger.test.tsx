@@ -220,7 +220,9 @@ describe("PipelineLedger", () => {
     render(<PipelineLedger scope={null} scopeName={null} referenceMs={NOW} />);
     await screen.findByRole("table");
     expect(screen.getByText("Updated 12m ago.")).toHaveAttribute("title", "2026-09-30T11:48:00Z");
-    expect(screen.getByText("INTERNAL REVENUE CODE").parentElement).toHaveTextContent("INTERNAL REVENUE CODEus/statute/26");
+    // The document path is in the title's tooltip, not in the band.
+    expect(screen.getByText("INTERNAL REVENUE CODE")).toHaveAttribute("title", "us/statute/26");
+    expect(screen.queryByText("us/statute/26")).not.toBeInTheDocument();
     const legend = screen.getByRole("button", { name: "What Status means" });
     fireEvent.click(legend);
     expect(screen.getByRole("note")).toHaveTextContent(/Done: tests pass\..*Going: .*Stopped: /);
