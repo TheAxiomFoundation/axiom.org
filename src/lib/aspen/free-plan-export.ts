@@ -154,6 +154,27 @@ export interface WebSearchArm {
 /** The repository the search footnote says PolicyBench's scan read; the audit's matchingScope has to name it. */
 export const SCANNED_REPOSITORY = "PolicyEngine/policybench";
 
+/**
+ * PolicyBench's AI judge on the export's reference amounts
+ * (judge-outcomes-*.json in the pilot's review folder), a separate file
+ * checked against the export it judges. Only the fields the slide reads, or
+ * checks, are typed.
+ */
+export interface JudgeOutcomes {
+  /** The households whose flagged amounts the judge read. */
+  households: number;
+  /** The export it judges; the script checks this against the export's own sha256. */
+  tables: { path?: string; sha256: string };
+  summary: {
+    /** Batches the judge hasn't finished. */
+    pending: unknown[];
+    /** Verdicts a person has since adjudicated. */
+    adjudicated?: number;
+    /** The scored amounts a verdict disputes, or splits on, of all the amounts scored in those households. */
+    disputedOrSplitInMetric: { cells: string[]; of: number };
+  };
+}
+
 export interface ExportOptions {
   /** Export ids, in the order to show them; free-plan models move to the front. */
   models: readonly string[];
@@ -161,6 +182,8 @@ export interface ExportOptions {
   label?: string;
   /** Without it, the slide can't say whether a model searched for PolicyBench, and the converter warns. */
   webAudit?: WebSearchAudit;
+  /** Without it, the slide can't say whether any reference amounts are disputed, and the converter warns. */
+  judge?: JudgeOutcomes;
 }
 
 export const EXPORT_ARMS: FreePlanPilot["arms"] = FREE_PLAN_ARMS;
@@ -285,20 +308,44 @@ export function sizeGroups(models: readonly ExportModel[], changes: Changes = VS
     .map(({ ms, households, n }) => ({ households, n, models: ms.map((m) => m.id), noisePoints: noisePoints(ms, changes), names: ms.map((m) => m.model) }));
 }
 
-/** PolicyBench's caveat for these sizes, word for word as aspen_export.py caveat_text writes it. */
-export function caveatText(groups: readonly (ExportSize & { names: string[] })[]): string {
-  const tail = "The models were called through their APIs with our prompt, not used in the free chat apps, and a change of less than about ";
+type SizeGroup = ExportSize & { names: string[] };
+/** How a caveat ends: the noise width of the first size, at `at`, and the others'. */
+type NoiseClause = (first: SizeGroup, at: string, rest: readonly SizeGroup[]) => string;
+
+function caveatWith(groups: readonly SizeGroup[], noise: NoiseClause): string {
+  const tail = "The models were called through their APIs with our prompt, not used in the free chat apps, and ";
   if (!groups.length) throw new Error("no models");
   const [first, ...rest] = groups;
   if (!rest.length) {
-    return `Preliminary internal pilot: ${first.households} households sampled from PolicyEngine's microdata, ${first.n} nonzero dollar amounts per model and setting. ${tail}${first.noisePoints} points between settings is within noise at this size.`;
+    return `Preliminary internal pilot: ${first.households} households sampled from PolicyEngine's microdata, ${first.n} nonzero dollar amounts per model and setting. ${tail}${noise(first, "this size", rest)}.`;
   }
   const sizes = [
     `${first.households} households, with ${first.n} nonzero dollar amounts per model and setting, for ${list(first.names)}`,
     ...rest.map((g) => `${g.households} households, with ${g.n}, for ${list(g.names)}`),
   ];
-  const widths = rest.map((g) => `about ${g.noisePoints} at ${g.households}`).join(", ");
-  return `Preliminary internal pilot on households sampled from PolicyEngine's microdata: ${sizes.join("; ")}. ${tail}${first.noisePoints} points between settings is within noise at ${first.households} households (${widths}).`;
+  return `Preliminary internal pilot on households sampled from PolicyEngine's microdata: ${sizes.join("; ")}. ${tail}${noise(first, `${first.households} households`, rest)}.`;
+}
+
+/** PolicyBench's caveat for these sizes, word for word as aspen_export.py caveat_text writes it. */
+export function caveatText(groups: readonly SizeGroup[]): string {
+  return caveatWith(groups, (first, at, rest) => {
+    const others = rest.length ? ` (${rest.map((g) => `about ${g.noisePoints} at ${g.households}`).join(", ")})` : "";
+    return `a change of less than about ${first.noisePoints} points between settings is within noise at ${at}${others}`;
+  });
+}
+
+/**
+ * The slide's caveat: PolicyBench's, except that it gives the noise width as
+ * a typical interval. The width is the intervals' median half-width, rounded
+ * up to 5, so it isn't a line below which every change is noise: some
+ * smaller changes have intervals that leave out zero. The slide shows each
+ * change's own interval.
+ */
+export function slideCaveat(groups: readonly SizeGroup[]): string {
+  return caveatWith(groups, (first, at, rest) => {
+    const others = rest.length ? ` (${rest.map((g) => `±${g.noisePoints} at ${g.households}`).join(", ")})` : "";
+    return `a typical 95% interval for a change between settings spans about ±${first.noisePoints} points at ${at}${others}`;
+  });
 }
 
 /**
@@ -313,7 +360,8 @@ export function caveatText(groups: readonly (ExportSize & { names: string[] })[]
  * rule. That rebuild is checked first against the export: for all its models
  * it must give the export's sizes and caveat exactly. The slide's noise width
  * then comes from the change it shows, web search to web search and the
- * tool, rather than the changes from no tools that PolicyBench's caveat uses.
+ * tool, rather than the changes from no tools that PolicyBench's caveat uses,
+ * and the slide words it as a typical interval (slideCaveat).
  */
 export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions): { pilot: FreePlanPilot; warnings: string[] } {
   const warnings: string[] = [];
@@ -515,10 +563,40 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
     }
   }
 
+  // What PolicyBench's AI judge made of the reference amounts. Every amount is still scored, and the slide says
+  // how many the judge disputes.
+  let judged: string | null = null;
+  if (!opts.judge) {
+    warnings.push("no judge outcomes given, so the slide doesn't say whether any reference amounts are disputed; pass --judge");
+  } else {
+    const { households: h, summary } = opts.judge;
+    const d = summary?.disputedOrSplitInMetric;
+    if (!Number.isSafeInteger(h) || h < 1) throw new Error(`the judge outcomes' ${h} households isn't a count`);
+    if (!Array.isArray(summary?.pending) || summary.pending.length) {
+      throw new Error(`the judge hasn't finished: ${Array.isArray(summary?.pending) ? summary.pending.length : "an unknown number of"} batches pending`);
+    }
+    if (summary.adjudicated === undefined) throw new Error("the judge outcomes don't say how many verdicts are adjudicated (summary.adjudicated)");
+    if (summary.adjudicated !== 0) {
+      throw new Error(`the judge outcomes say ${summary.adjudicated} verdicts are adjudicated; the footnote says none is, so the slide needs the adjudicated scores first`);
+    }
+    if (!d || !Number.isSafeInteger(d.of) || d.of < 1 || !Array.isArray(d.cells) || d.cells.some((c) => typeof c !== "string") || new Set(d.cells).size !== d.cells.length || d.cells.length > d.of) {
+      throw new Error("the judge outcomes' disputed amounts aren't distinct amounts out of a count");
+    }
+    // The footnote counts the judged households' amounts, so every model on the slide must have scored them.
+    const fewer = ordered.filter((m) => m.households < h);
+    if (fewer.length) throw new Error(`${list(fewer.map((m) => m.model))} ran on fewer households than the judge read (${h}), so its count isn't theirs`);
+    for (const m of ordered) {
+      if (m.households === h && m.arms.web!.n !== d.of) throw new Error(`${m.model}: ${m.arms.web!.n} amounts in ${h} households, but the judge outcomes count ${d.of}`);
+    }
+    const of = ordered.every((m) => m.households === h) ? `these ${d.of} reference amounts` : `the ${d.of} reference amounts in ${h} of these households`;
+    judged = d.cells.length ? `An AI judge disputes ${d.cells.length} of ${of}; none is adjudicated yet, so all are still scored.` : `An AI judge disputes none of ${of}.`;
+  }
+
   const free = ordered.filter((m) => m.freePlan !== null);
   // The rows name each free-plan model and the caveat says they were called
   // through their APIs, so the footnotes don't repeat either. The search
-  // counts follow the PolicyBench line, whose "it" is the web line's.
+  // counts follow the PolicyBench line, whose "it" is the web line's; the
+  // judge's line follows the tool's, which brings in the reference answers.
   const footnotes = [
     "Web search is each provider's own search tool, told not to search PolicyBench.",
     ...(searched.length
@@ -529,10 +607,11 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
     ...(queries.length ? [searchCounts(queries)] : []),
     `The tool runs PolicyEngine (${exp.engine}), the engine behind the reference answers, so this shows whether a model can use it, not whether it's right.`,
     ...[...toldOther].map(([stated, models]) => `Its instructions to ${list(models)} named ${stated} instead.`),
+    ...(judged ? [judged] : []),
   ];
 
   const pilot: FreePlanPilot = {
-    title: opts.title ?? (free.length ? "The models on free plans, with and without the PolicyEngine tool" : "The same models, with and without the PolicyEngine tool"),
+    title: opts.title ?? (free.length ? "The models on free plans, with and without the tool" : "The same models, with and without the tool"),
     label: opts.label ?? "Preliminary internal pilot",
     note,
     arms: EXPORT_ARMS,
@@ -544,7 +623,7 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
       bothVsWeb: slideChange(m),
     })),
     // The chosen models in the export's order, as PolicyBench lists them, with the noise of the change shown.
-    caveat: caveatText(sizeGroups(exp.models.filter((m) => opts.models.includes(m.id)), VS_WEB)),
+    caveat: slideCaveat(sizeGroups(exp.models.filter((m) => opts.models.includes(m.id)), VS_WEB)),
     footnotes,
     source: `PolicyBench preliminary internal pilot, not a PolicyBench result · runs ${runDateRange(ordered.flatMap((m) => m.runDates))}`,
   };

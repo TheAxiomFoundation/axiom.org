@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   BookText,
@@ -1275,6 +1275,17 @@ function BenefitsPanel({ benefits: b }: { benefits: NonNullable<ToolPilot["benef
   );
 }
 
+const COMPACT = { cell: "py-[1px]", model: "text-[22px] leading-tight", plan: "text-[15px] leading-tight", value: "text-[24px]", small: "text-[15px]", bar: "mt-[4px] h-[6px]", caveat: "text-[17px]", note: "text-[15px]", head: "text-[16px]" };
+/** The free-plan slide's type scales: room for up to three models, compact for more, and tight for the longest text. */
+const FREE_PLAN_DENSITY = {
+  roomy: { cell: "py-[10px]", model: "text-[24px] leading-snug", plan: "text-[17px] leading-snug", value: "text-[26px]", small: "text-[16px]", bar: "mt-[8px] h-[8px]", caveat: "text-[20px]", note: "text-[17px]", head: "text-[18px]" },
+  compact: COMPACT,
+  tight: { ...COMPACT, caveat: "text-[15px]", note: "text-[14px]" },
+};
+type FreePlanDensity = keyof typeof FREE_PLAN_DENSITY;
+/** The next scale to try when the slide doesn't fit; tight is the last. */
+const FREE_PLAN_TIGHTER: Record<FreePlanDensity, FreePlanDensity> = { roomy: "compact", compact: "tight", tight: "tight" };
+
 /**
  * At scale, after the tool pilot: the models on free plans, with web search
  * available, as in the free chat apps, and with the tool available too. Each
@@ -1283,15 +1294,31 @@ function BenefitsPanel({ benefits: b }: { benefits: NonNullable<ToolPilot["benef
  * only when FREE_PLAN_PILOT is set.
  */
 export function FreePlanSlide({ pilot: p }: { pilot: FreePlanPilot }) {
-  // Up to three models get room; four to six take a tighter type scale. With
-  // PolicyBench's caveat and footnotes at full length, roomy rows fit 1600×900
-  // only up to three.
-  const compact = p.rows.length > 3;
-  const z = compact
-    ? { cell: "py-[1px]", model: "text-[22px] leading-tight", plan: "text-[15px] leading-tight", value: "text-[24px]", small: "text-[15px]", bar: "mt-[4px] h-[6px]", caveat: "text-[17px]", note: "text-[15px]", head: "text-[16px]" }
-    : { cell: "py-[10px]", model: "text-[24px] leading-snug", plan: "text-[17px] leading-snug", value: "text-[26px]", small: "text-[16px]", bar: "mt-[8px] h-[8px]", caveat: "text-[20px]", note: "text-[17px]", head: "text-[18px]" };
+  // Up to three models start with room, four to six with a tighter type
+  // scale. Before the slide paints, it checks that its column holds it all,
+  // and while it doesn't, takes the next tighter scale: PolicyBench's caveat
+  // and footnotes run longer for some models and sizes than for others.
+  const [density, setDensity] = useState<FreePlanDensity>(p.rows.length > 3 ? "compact" : "roomy");
+  const column = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    // The scale after the one measured, not after whatever is current: a check run twice (as React's
+    // strict mode runs effects) must not skip one.
+    const fit = () => {
+      const el = column.current;
+      if (el && el.scrollHeight > el.clientHeight) setDensity(FREE_PLAN_TIGHTER[density]);
+    };
+    fit();
+    // Text laid out before the slide's fonts arrive measures differently.
+    let live = true;
+    void document.fonts?.ready.then(() => live && fit());
+    return () => {
+      live = false;
+    };
+  }, [density]);
+  const compact = density !== "roomy";
+  const z = FREE_PLAN_DENSITY[density];
   return (
-    <div className={`flex h-full flex-col ${compact ? "gap-[10px]" : "gap-[12px]"}`}>
+    <div ref={column} data-density={density} className={`flex h-full flex-col ${compact ? "gap-[10px]" : "gap-[12px]"}`}>
       <div className="flex items-start justify-between gap-[24px]">
         <p className="m-0 font-display text-[40px] font-light leading-tight text-[var(--color-ink)]">{p.title}</p>
         <span className="mt-[6px] shrink-0 rounded-full border-2 border-[var(--color-error)] px-[16px] py-[4px] font-body text-[20px] font-medium text-[var(--color-error)]">

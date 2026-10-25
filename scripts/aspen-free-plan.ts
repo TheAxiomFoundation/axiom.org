@@ -2,15 +2,16 @@ import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { freePlanFromExport, writePilotInto, type PolicyBenchExport, type WebSearchAudit } from "../src/lib/aspen/free-plan-export";
+import { freePlanFromExport, writePilotInto, type JudgeOutcomes, type PolicyBenchExport, type WebSearchAudit } from "../src/lib/aspen/free-plan-export";
 
 // Turns PolicyBench's free-plan export into the Aspen free-plan slide's data:
 //
 //   bun scripts/aspen-free-plan.ts <export.json> --sha256 <hex> --models id,id,...
-//     [--web-audit <audit.json> --web-audit-sha256 <hex>] [--write]
+//     [--web-audit <audit.json> --web-audit-sha256 <hex>]
+//     [--judge <judge-outcomes.json> --judge-sha256 <hex>] [--write]
 //
 // It checks each file against the sha256 PolicyBench sent, and the web-search
-// audit against the export it audits. It prints the slide's rows, its caveat
+// audit and the judge outcomes against the export they cover. It prints the slide's rows, its caveat
 // (rebuilt for the chosen models), what the presenter should know and each
 // model's free-plan basis, and with --write puts the data in
 // src/lib/aspen/content.ts. This repo is public: write only once the numbers
@@ -24,15 +25,19 @@ export interface Args {
   models: string[];
   write: boolean;
   webAudit?: { file: string; sha256: string };
+  judge?: { file: string; sha256: string };
 }
 
 export function parseArgs(argv: readonly string[]): Args {
-  const usage = "usage: aspen-free-plan.ts <export.json> --sha256 <hex> --models id,id,... [--web-audit <audit.json> --web-audit-sha256 <hex>] [--write]";
+  const usage =
+    "usage: aspen-free-plan.ts <export.json> --sha256 <hex> --models id,id,... [--web-audit <audit.json> --web-audit-sha256 <hex>] [--judge <judge-outcomes.json> --judge-sha256 <hex>] [--write]";
   let file: string | undefined;
   let sha256: string | undefined;
   let models: string[] | undefined;
   let auditFile: string | undefined;
   let auditSha256: string | undefined;
+  let judgeFile: string | undefined;
+  let judgeSha256: string | undefined;
   let write = false;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -40,6 +45,8 @@ export function parseArgs(argv: readonly string[]): Args {
     else if (a === "--sha256") sha256 = argv[++i];
     else if (a === "--web-audit") auditFile = argv[++i];
     else if (a === "--web-audit-sha256") auditSha256 = argv[++i];
+    else if (a === "--judge") judgeFile = argv[++i];
+    else if (a === "--judge-sha256") judgeSha256 = argv[++i];
     else if (a === "--models") models = argv[++i]?.split(",").map((m) => m.trim()).filter(Boolean);
     else if (a.startsWith("--")) throw new Error(`unknown flag ${a}\n${usage}`);
     else if (file) throw new Error(`one export at a time\n${usage}`);
@@ -49,7 +56,16 @@ export function parseArgs(argv: readonly string[]): Args {
   if (!/^[0-9a-f]{64}$/.test(sha256)) throw new Error(`--sha256 ${sha256} isn't a sha256`);
   if (!auditFile !== !auditSha256) throw new Error(`--web-audit and --web-audit-sha256 go together\n${usage}`);
   if (auditSha256 && !/^[0-9a-f]{64}$/.test(auditSha256)) throw new Error(`--web-audit-sha256 ${auditSha256} isn't a sha256`);
-  return { file, sha256, models, write, ...(auditFile && auditSha256 ? { webAudit: { file: auditFile, sha256: auditSha256 } } : {}) };
+  if (!judgeFile !== !judgeSha256) throw new Error(`--judge and --judge-sha256 go together\n${usage}`);
+  if (judgeSha256 && !/^[0-9a-f]{64}$/.test(judgeSha256)) throw new Error(`--judge-sha256 ${judgeSha256} isn't a sha256`);
+  return {
+    file,
+    sha256,
+    models,
+    write,
+    ...(auditFile && auditSha256 ? { webAudit: { file: auditFile, sha256: auditSha256 } } : {}),
+    ...(judgeFile && judgeSha256 ? { judge: { file: judgeFile, sha256: judgeSha256 } } : {}),
+  };
 }
 
 export function run(argv: readonly string[], { contentPath = CONTENT, log = console.log }: { contentPath?: string; log?: (line: string) => void } = {}): void {
@@ -67,7 +83,16 @@ export function run(argv: readonly string[], { contentPath = CONTENT, log = cons
     webAudit = JSON.parse(auditBytes.toString("utf8")) as WebSearchAudit;
     if (webAudit.export?.sha256 !== actual) throw new Error(`${basename(args.webAudit.file)} audits export ${webAudit.export?.sha256}, not ${basename(args.file)} (${actual})`);
   }
-  const { pilot, warnings } = freePlanFromExport(exp, { models: args.models, webAudit });
+  let judge: JudgeOutcomes | undefined;
+  let judgeActual: string | undefined;
+  if (args.judge) {
+    const judgeBytes = readFileSync(args.judge.file);
+    judgeActual = createHash("sha256").update(judgeBytes).digest("hex");
+    if (judgeActual !== args.judge.sha256) throw new Error(`${basename(args.judge.file)} has sha256 ${judgeActual}, not ${args.judge.sha256}`);
+    judge = JSON.parse(judgeBytes.toString("utf8")) as JudgeOutcomes;
+    if (judge.tables?.sha256 !== actual) throw new Error(`${basename(args.judge.file)} judges export ${judge.tables?.sha256}, not ${basename(args.file)} (${actual})`);
+  }
+  const { pilot, warnings } = freePlanFromExport(exp, { models: args.models, webAudit, judge });
 
   log(pilot.title);
   for (const r of pilot.rows) {
@@ -97,6 +122,7 @@ export function run(argv: readonly string[], { contentPath = CONTENT, log = cons
     `PolicyBench free-plan pilot export ${basename(args.file)}, sha256 ${actual}.`,
     `Generated ${exp.source?.generatedAtUtc ?? "at an unrecorded time"} by aspen_export.py at ${exp.source?.scriptCommit ?? "an unrecorded commit"}; models ${args.models.join(", ")}.`,
     ...(args.webAudit ? [`Web-search audit ${basename(args.webAudit.file)}, sha256 ${auditActual}, generated ${webAudit?.source?.generatedAtUtc ?? "at an unrecorded time"} at ${webAudit?.source?.scriptCommit ?? "an unrecorded commit"}.`] : []),
+    ...(args.judge ? [`Judge outcomes ${basename(args.judge.file)}, sha256 ${judgeActual}.`] : []),
   ];
   writeFileSync(contentPath, writePilotInto(readFileSync(contentPath, "utf8"), pilot, header));
   log(`Wrote ${pilot.rows.length} models into ${basename(contentPath)}.`);

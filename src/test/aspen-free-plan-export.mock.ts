@@ -1,4 +1,4 @@
-import type { ExportArm, ExportModel, PolicyBenchExport, WebSearchArm, WebSearchAudit } from "@/lib/aspen/free-plan-export";
+import type { ExportArm, ExportModel, JudgeOutcomes, PolicyBenchExport, WebSearchArm, WebSearchAudit } from "@/lib/aspen/free-plan-export";
 import type { PilotChange } from "@/lib/aspen/content";
 
 /**
@@ -85,4 +85,21 @@ export const MOCK_WEB_SEARCH_AUDIT: WebSearchAudit = {
     }),
   ),
   source: { scriptCommit: "0000000mock", generatedAtUtc: "2026-10-24T06:00:00Z" },
+};
+
+/**
+ * MOCK DATA for tests only: invented AI-judge outcomes for
+ * MOCK_POLICYBENCH_EXPORT, in the shape of PolicyBench's judge-outcomes file
+ * plus summary.adjudicated, which the slide needs. The judge disputes three
+ * of the 48 mock amounts. Tests that read it through the script set
+ * tables.sha256 to the mock export file's own.
+ */
+export const MOCK_JUDGE_OUTCOMES: JudgeOutcomes = {
+  households: 20,
+  tables: { path: "free-plan-mock.json", sha256: "0".repeat(64) },
+  summary: {
+    pending: [],
+    adjudicated: 0,
+    disputedOrSplitInMetric: { cells: ["mt_01 snap", "mt_04 federal_refundable_credits", "mt_07 state_income_tax"], of: 48 },
+  },
 };

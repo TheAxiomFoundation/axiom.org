@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FRONT_DOOR, TOOL_PILOT, freePlanProblems } from "@/lib/aspen/content";
 import { EMPTY_SUMMARY } from "@/lib/aspen/results";
@@ -96,6 +97,59 @@ describe("FreePlanSlide", () => {
       render(<FreePlanSlide pilot={{ ...p, rows: p.rows.slice(0, n) }} />);
       expect(within(screen.getByRole("row", { name: /Mock model A/ })).getAllByRole("cell")[0]).toHaveClass(cell);
     }
+  });
+});
+
+describe("FreePlanSlide's fit", () => {
+  const SCALES = ["roomy", "compact", "tight"];
+  /** jsdom lays nothing out, so the column says it overflows at any scale roomier than `fits`. */
+  function fitsFrom(fits: string | null) {
+    vi.spyOn(Element.prototype, "clientHeight", "get").mockReturnValue(900);
+    vi.spyOn(Element.prototype, "scrollHeight", "get").mockImplementation(function (this: Element) {
+      const d = (this as HTMLElement).dataset?.density;
+      if (!d) return 0;
+      return fits !== null && SCALES.indexOf(d) >= SCALES.indexOf(fits) ? 900 : 901;
+    });
+  }
+  const column = () => document.querySelector<HTMLElement>("[data-density]")!;
+  const caveat = () => screen.getByText(MOCK_FREE_PLAN_PILOT.caveat);
+  const three = { ...MOCK_FREE_PLAN_PILOT, rows: MOCK_FREE_PLAN_PILOT.rows.slice(0, 3) };
+
+  it("keeps the roomy scale for up to three models when it fits", () => {
+    fitsFrom("roomy");
+    render(<FreePlanSlide pilot={three} />);
+    expect(column().dataset.density).toBe("roomy");
+    expect(caveat()).toHaveClass("text-[20px]");
+  });
+
+  it("takes the next tighter scale, before it paints, while its column doesn't hold it all, and stops at tight", () => {
+    fitsFrom("compact");
+    render(<FreePlanSlide pilot={three} />);
+    expect(column().dataset.density).toBe("compact");
+    expect(caveat()).toHaveClass("text-[17px]");
+    expect(within(screen.getByRole("row", { name: /Mock model A/ })).getAllByRole("cell")[0]).toHaveClass("py-[1px]");
+    cleanup();
+    fitsFrom(null);
+    render(<FreePlanSlide pilot={MOCK_FREE_PLAN_PILOT} />);
+    expect(column().dataset.density).toBe("tight");
+    expect(caveat()).toHaveClass("text-[15px]");
+    expect(screen.getByText(MOCK_FREE_PLAN_PILOT.footnotes.join(" "))).toHaveClass("text-[14px]");
+  });
+
+  it("steps one scale at a time even when its check runs twice, as React's strict mode runs it", () => {
+    fitsFrom("compact");
+    render(
+      <StrictMode>
+        <FreePlanSlide pilot={three} />
+      </StrictMode>,
+    );
+    expect(column().dataset.density).toBe("compact");
+  });
+
+  it("starts four or more models compact, and never goes back to a roomier scale", () => {
+    fitsFrom("roomy");
+    render(<FreePlanSlide pilot={MOCK_FREE_PLAN_PILOT} />);
+    expect(column().dataset.density).toBe("compact");
   });
 });
 

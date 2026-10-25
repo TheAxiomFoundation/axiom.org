@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { MOCK_POLICYBENCH_EXPORT, MOCK_WEB_SEARCH_AUDIT } from "../src/test/aspen-free-plan-export.mock";
+import { MOCK_JUDGE_OUTCOMES, MOCK_POLICYBENCH_EXPORT, MOCK_WEB_SEARCH_AUDIT } from "../src/test/aspen-free-plan-export.mock";
 import { parseArgs, run } from "./aspen-free-plan";
 
 const SHA = "a".repeat(64);
@@ -23,6 +23,15 @@ describe("parseArgs", () => {
     expect(() => parseArgs(["x.json", "--sha256", SHA, "--models", "a", "--web-audit", "w.json", "--web-audit-sha256", "XYZ"])).toThrow(
       "--web-audit-sha256 XYZ isn't a sha256",
     );
+  });
+
+  it("reads judge outcomes with their sha256", () => {
+    const sha2 = "b".repeat(64);
+    expect(parseArgs(["x.json", "--sha256", SHA, "--models", "a", "--judge", "j.json", "--judge-sha256", sha2]).judge).toEqual({ file: "j.json", sha256: sha2 });
+    expect(parseArgs(["x.json", "--sha256", SHA, "--models", "a"]).judge).toBeUndefined();
+    expect(() => parseArgs(["x.json", "--sha256", SHA, "--models", "a", "--judge", "j.json"])).toThrow("--judge and --judge-sha256 go together");
+    expect(() => parseArgs(["x.json", "--sha256", SHA, "--models", "a", "--judge-sha256", sha2])).toThrow("--judge and --judge-sha256 go together");
+    expect(() => parseArgs(["x.json", "--sha256", SHA, "--models", "a", "--judge", "j.json", "--judge-sha256", "XYZ"])).toThrow("--judge-sha256 XYZ isn't a sha256");
   });
 
   it("refuses missing arguments, a second export, an unknown flag and a bad sha256", () => {
@@ -63,10 +72,10 @@ describe("run", () => {
     const lines: string[] = [];
     run([file, "--sha256", sha, "--models", "mock-c,mock-a"], { contentPath: content, log: (l) => lines.push(l) });
     expect(lines).toEqual([
-      "The models on free plans, with and without the PolicyEngine tool",
+      "The models on free plans, with and without the tool",
       "  Mock model A (On Mock Free): web 15/48, both 39/48; adding the tool 50.0 [35, 65]",
       "  Mock model C: web 33/48, both 45/48; adding the tool 25.0 [10, 40]",
-      `Caveat, for these models: ${MOCK_POLICYBENCH_EXPORT.caveat}`,
+      `Caveat, for these models: ${MOCK_POLICYBENCH_EXPORT.caveat.replace("a change of less than about 15 points between settings is within noise at this size", "a typical 95% interval for a change between settings spans about ±15 points at this size")}`,
       "Footnotes, run in after the caveat:",
       "  Web search is each provider's own search tool, told not to search PolicyBench.",
       "  The tool runs PolicyEngine (policyengine-us 0.0.0-mock), the engine behind the reference answers, so this shows whether a model can use it, not whether it's right.",
@@ -76,6 +85,7 @@ describe("run", () => {
       "Warnings:",
       "  benefit amounts: at most 3 per model, too few to say anything about benefits",
       "  no web-search audit given, so the slide doesn't say whether a model searched for PolicyBench; pass --web-audit",
+      "  no judge outcomes given, so the slide doesn't say whether any reference amounts are disputed; pass --judge",
       "Not written; pass --write to put this in content.ts.",
     ]);
     expect(readFileSync(content, "utf8")).toBe(before);
@@ -143,6 +153,44 @@ describe("run", () => {
       const other = writeAudit((a) => ({ ...a, export: { sha256: "c".repeat(64) } }));
       expect(() => run([file, "--sha256", sha, "--models", "mock-a", "--web-audit", auditFile, "--web-audit-sha256", other], { contentPath: content, log: () => {} })).toThrow(
         `web-search-audit.json audits export ${"c".repeat(64)}, not free-plan-mock.json (${sha})`,
+      );
+      expect(readFileSync(content, "utf8")).toBe(before);
+    });
+  });
+
+  describe("with judge outcomes", () => {
+    let judgeFile: string;
+    /** Writes the judge outcomes, of the mock export unless told otherwise, and returns their sha256. */
+    const writeJudge = (change: (j: typeof MOCK_JUDGE_OUTCOMES) => unknown = (j) => j) => {
+      const bytes = JSON.stringify(change({ ...MOCK_JUDGE_OUTCOMES, tables: { path: "free-plan-mock.json", sha256: sha } }));
+      writeFileSync(judgeFile, bytes);
+      return createHash("sha256").update(bytes).digest("hex");
+    };
+    beforeEach(() => {
+      judgeFile = join(dir, "judge-outcomes.json");
+    });
+
+    it("checks them, prints the judge's line and records them with --write", () => {
+      const judgeSha = writeJudge();
+      const lines: string[] = [];
+      run([file, "--sha256", sha, "--models", "mock-a", "--judge", judgeFile, "--judge-sha256", judgeSha, "--write"], { contentPath: content, log: (l) => lines.push(l) });
+      expect(lines).toContain("  An AI judge disputes 3 of these 48 reference amounts; none is adjudicated yet, so all are still scored.");
+      expect(lines.some((l) => l.includes("no judge outcomes given"))).toBe(false);
+      expect(readFileSync(content, "utf8")).toContain(`// Judge outcomes judge-outcomes.json, sha256 ${judgeSha}.\n`);
+    });
+
+    it("refuses outcomes whose sha256 isn't the one sent, or ones of another export", () => {
+      writeJudge();
+      expect(() => run([file, "--sha256", sha, "--models", "mock-a", "--judge", judgeFile, "--judge-sha256", SHA], { contentPath: content, log: () => {} })).toThrow(
+        /^judge-outcomes\.json has sha256 [0-9a-f]{64}, not a{64}$/,
+      );
+      const other = writeJudge((j) => ({ ...j, tables: { sha256: "c".repeat(64) } }));
+      expect(() => run([file, "--sha256", sha, "--models", "mock-a", "--judge", judgeFile, "--judge-sha256", other], { contentPath: content, log: () => {} })).toThrow(
+        `judge-outcomes.json judges export ${"c".repeat(64)}, not free-plan-mock.json (${sha})`,
+      );
+      const bare = writeJudge((j) => ({ ...j, tables: undefined }));
+      expect(() => run([file, "--sha256", sha, "--models", "mock-a", "--judge", judgeFile, "--judge-sha256", bare], { contentPath: content, log: () => {} })).toThrow(
+        `judge-outcomes.json judges export undefined, not free-plan-mock.json (${sha})`,
       );
       expect(readFileSync(content, "utf8")).toBe(before);
     });

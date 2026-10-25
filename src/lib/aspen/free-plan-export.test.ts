@@ -1,7 +1,7 @@
 import fc from "fast-check";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { MOCK_POLICYBENCH_EXPORT, MOCK_WEB_SEARCH_AUDIT } from "@/test/aspen-free-plan-export.mock";
+import { MOCK_JUDGE_OUTCOMES, MOCK_POLICYBENCH_EXPORT, MOCK_WEB_SEARCH_AUDIT } from "@/test/aspen-free-plan-export.mock";
 import { distinguishable, formatPoints, freePlanProblems, shownChange, wholeShare, type FreePlanPilot } from "./content";
 import {
   EXPORT_ARMS,
@@ -11,9 +11,11 @@ import {
   noisePoints,
   runDateRange,
   sizeGroups,
+  slideCaveat,
   utcDay,
   writePilotInto,
   type ExportModel,
+  type JudgeOutcomes,
   type PolicyBenchExport,
   type WebSearchArm,
   type WebSearchAudit,
@@ -22,6 +24,7 @@ import {
 const ALL = ["mock-c", "mock-a", "mock-d", "mock-b"];
 const exp = MOCK_POLICYBENCH_EXPORT;
 const audit = MOCK_WEB_SEARCH_AUDIT;
+const judge = MOCK_JUDGE_OUTCOMES;
 
 /** The audit with one model's web setting changed. */
 function withSearches(id: string, arm: "web" | "both", change: Partial<WebSearchArm>, from: WebSearchAudit = audit): WebSearchAudit {
@@ -49,10 +52,11 @@ describe("freePlanFromExport", () => {
 
   it("says what is counted, where it comes from and that it's preliminary", () => {
     const { pilot } = freePlanFromExport(exp, { models: ALL });
-    expect(pilot.title).toBe("The models on free plans, with and without the PolicyEngine tool");
+    expect(pilot.title).toBe("The models on free plans, with and without the tool");
     expect(pilot.label).toBe("Preliminary internal pilot");
     expect(pilot.note).toBe("Dollar amounts that aren't $0, within $1 of PolicyBench's reference: 48 per model in 20 households sampled from PolicyEngine's microdata");
-    expect(pilot.caveat).toBe(exp.caveat);
+    // PolicyBench's caveat, with the noise as a typical interval.
+    expect(pilot.caveat).toBe(exp.caveat.replace("a change of less than about 15 points between settings is within noise at this size", "a typical 95% interval for a change between settings spans about ±15 points at this size"));
     // The rows name the free-plan models and the caveat says they were called through their APIs.
     expect(pilot.footnotes).toEqual([
       "Web search is each provider's own search tool, told not to search PolicyBench.",
@@ -64,7 +68,7 @@ describe("freePlanFromExport", () => {
   it("titles a slide without free-plan models as the same models, and takes a title and label", () => {
     const { pilot } = freePlanFromExport(exp, { models: ["mock-d", "mock-c"] });
     expect(pilot.rows.map((r) => r.model)).toEqual(["Mock model D", "Mock model C"]);
-    expect(pilot.title).toBe("The same models, with and without the PolicyEngine tool");
+    expect(pilot.title).toBe("The same models, with and without the tool");
     expect(pilot.footnotes[0]).toBe("Web search is each provider's own search tool, told not to search PolicyBench.");
     const named = freePlanFromExport(exp, { models: ["mock-a"], title: "T", label: "L" }).pilot;
     expect([named.title, named.label]).toEqual(["T", "L"]);
@@ -228,12 +232,12 @@ describe("freePlanFromExport", () => {
     expect(() => freePlanFromExport(seven, { models: seven.models.map((m) => m.id) })).toThrow("7 rows; the slide fits 1 to 6");
   });
 
-  it("always warns how few benefit amounts there are, and only that when the export is clean, its ends unrounded and its searches audited", () => {
+  it("always warns how few benefit amounts there are, and only that when the export is clean, its ends unrounded, its searches audited and its references judged", () => {
     // B's interval, -2.5 to 27.5, is the one with ends at a half; unrounded, it's clean.
     const clean = withModel("mock-b", (m) => ({ ...m, vsWeb: { both: { ...m.vsWeb!.both!, loExact: -2.54, hiExact: 27.46 } } }));
-    expect(freePlanFromExport(clean, { models: ALL, webAudit: audit }).warnings).toEqual(["benefit amounts: at most 3 per model, too few to say anything about benefits"]);
+    expect(freePlanFromExport(clean, { models: ALL, webAudit: audit, judge }).warnings).toEqual(["benefit amounts: at most 3 per model, too few to say anything about benefits"]);
     const none = withModel("mock-a", (m) => ({ ...m, benefits: {} }));
-    expect(freePlanFromExport(none, { models: ["mock-a"], webAudit: audit }).warnings).toEqual([
+    expect(freePlanFromExport(none, { models: ["mock-a"], webAudit: audit, judge }).warnings).toEqual([
       "benefit amounts: none in these households, so this says nothing about benefits",
     ]);
   });
@@ -245,6 +249,62 @@ describe("freePlanFromExport", () => {
     const audited = freePlanFromExport(exp, { models: ALL, webAudit: audit }).pilot.footnotes;
     expect(audited).toHaveLength(pilot.footnotes.length + 1);
     expect(pilot.footnotes).toEqual(audited.filter((f) => !f.startsWith("Web search queries")));
+  });
+
+  it("says how many reference amounts PolicyBench's AI judge disputes, after the tool's line, and that all are still scored", () => {
+    const { pilot, warnings } = freePlanFromExport(exp, { models: ALL, webAudit: audit, judge });
+    expect(pilot.footnotes.at(-1)).toBe("An AI judge disputes 3 of these 48 reference amounts; none is adjudicated yet, so all are still scored.");
+    expect(pilot.footnotes.findIndex((f) => f.startsWith("The tool runs PolicyEngine"))).toBeLessThan(pilot.footnotes.length - 1);
+    expect(warnings.some((w) => w.includes("judge"))).toBe(false);
+    // Without the judge, the rest is the same, and the presenter is told.
+    const without = freePlanFromExport(exp, { models: ALL, webAudit: audit });
+    expect(without.pilot.footnotes).toEqual(pilot.footnotes.slice(0, -1));
+    expect(without.warnings).toContain("no judge outcomes given, so the slide doesn't say whether any reference amounts are disputed; pass --judge");
+    const none: JudgeOutcomes = { ...judge, summary: { ...judge.summary, disputedOrSplitInMetric: { cells: [], of: 48 } } };
+    expect(freePlanFromExport(exp, { models: ALL, judge: none }).pilot.footnotes.at(-1)).toBe("An AI judge disputes none of these 48 reference amounts.");
+  });
+
+  it("says which households the judge read when the slide's models ran on more", () => {
+    const models = exp.models.map((m) => (m.id === "mock-a" ? m : { ...m, households: 100 }));
+    const more = { ...exp, models, sizes: undefined, caveat: caveatText(sizeGroups(models)) };
+    expect(freePlanFromExport(more, { models: ALL, judge }).pilot.footnotes.at(-1)).toBe(
+      "An AI judge disputes 3 of the 48 reference amounts in 20 of these households; none is adjudicated yet, so all are still scored.",
+    );
+    // On 100 households alone, no model's count can be checked against the judge's: its sha256 binds it to the export.
+    expect(freePlanFromExport(more, { models: ["mock-b"], judge }).pilot.footnotes.at(-1)).toMatch(/in 20 of these households/);
+  });
+
+  it("refuses judge outcomes that aren't final, are adjudicated, don't add up, or don't cover every model on the slide", () => {
+    const refuse = (j: unknown, says: string, models: readonly string[] = ALL, from: PolicyBenchExport = exp) =>
+      expect(() => freePlanFromExport(from, { models, judge: j as JudgeOutcomes })).toThrow(says);
+    const summary = (change: object) => ({ ...judge, summary: { ...judge.summary, ...change } });
+    const disputed = (cells: unknown, of: unknown) => summary({ disputedOrSplitInMetric: { cells, of } });
+    refuse(summary({ pending: [{ batch: "b03" }] }), "the judge hasn't finished: 1 batches pending");
+    refuse(summary({ pending: undefined }), "the judge hasn't finished: an unknown number of batches pending");
+    refuse(summary({ adjudicated: undefined }), "the judge outcomes don't say how many verdicts are adjudicated (summary.adjudicated)");
+    refuse(summary({ adjudicated: 2 }), "the judge outcomes say 2 verdicts are adjudicated; the footnote says none is, so the slide needs the adjudicated scores first");
+    for (const [cells, of] of [[["x", "x"], 48], [["x", "y"], 1], [["x"], 0], [["x"], 2.5], ["x", 48], [[1], 48]] as const) {
+      refuse(disputed(cells, of), "the judge outcomes' disputed amounts aren't distinct amounts out of a count");
+    }
+    refuse({ ...judge, households: 0 }, "the judge outcomes' 0 households isn't a count");
+    refuse(disputed(["x"], 50), "Mock model A: 48 amounts in 20 households, but the judge outcomes count 50");
+    const models = exp.models.map((m) => (m.id === "mock-c" || m.id === "mock-d" ? { ...m, households: 10 } : m));
+    const fewer = { ...exp, models, sizes: undefined, caveat: caveatText(sizeGroups(models)) };
+    refuse(judge, "Mock model C and Mock model D ran on fewer households than the judge read (20), so its count isn't theirs", ALL, fewer);
+    expect(() => freePlanFromExport(fewer, { models: ["mock-a", "mock-b"], judge })).not.toThrow();
+  });
+
+  it("for any judge outcomes that add up, gives exactly one judge line, last, with its count", () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 0, max: 48 }), fc.boolean(), (d, webAudit) => {
+        const j: JudgeOutcomes = { ...judge, summary: { ...judge.summary, disputedOrSplitInMetric: { cells: Array.from({ length: d }, (_, i) => `mt_${i} x`), of: 48 } } };
+        const { pilot } = freePlanFromExport(exp, { models: ALL, judge: j, ...(webAudit ? { webAudit: audit } : {}) });
+        const lines = pilot.footnotes.filter((f) => f.includes("AI judge"));
+        expect(lines).toEqual([pilot.footnotes.at(-1)]);
+        expect(lines[0]).toBe(d ? `An AI judge disputes ${d} of these 48 reference amounts; none is adjudicated yet, so all are still scored.` : "An AI judge disputes none of these 48 reference amounts.");
+        expect(freePlanProblems(pilot)).toEqual([]);
+      }),
+    );
   });
 
   it("says which models on the slide searched for PolicyBench anyway, in how many households, and that PolicyBench's scan found no match for the answers", () => {
@@ -564,7 +624,7 @@ describe("freePlanFromExport", () => {
       ...withModel("mock-a", (m) => ({ ...m, missing: { alone: 0, web: 2, tool: 0, both: 1 }, partialBatches: [{ batch: 3 }] })),
       source: { ...exp.source, scriptTreeDirty: true },
     };
-    expect(freePlanFromExport(messy, { models: ["mock-a", "mock-c"], webAudit: audit }).warnings).toEqual([
+    expect(freePlanFromExport(messy, { models: ["mock-a", "mock-c"], webAudit: audit, judge }).warnings).toEqual([
       "Mock model A: answers counted as misses because none came back (2 web, 1 both)",
       "Mock model A: 1 household batch(es) left out because a setting hadn't reached them",
       "benefit amounts: at most 3 per model, too few to say anything about benefits",
@@ -601,9 +661,14 @@ describe("freePlanFromExport", () => {
       "Preliminary internal pilot on households sampled from PolicyEngine's microdata: 20 households, with 48 nonzero dollar amounts per model and setting, for Mock model A and Mock model B; 10 households, with 24, for Mock model C and Mock model D. The models were called through their APIs with our prompt, not used in the free chat apps, and a change of less than about 15 points between settings is within noise at 20 households (about 30 at 10).",
   };
 
-  it("keeps PolicyBench's caveat for all its models, and drops the single size from the note when they ran on different households", () => {
+  it("keeps PolicyBench's caveat for all its models but the noise, which it gives as a typical interval, and drops the single size from the note when they ran on different households", () => {
     const { pilot, warnings } = freePlanFromExport(TWO_SIZES, { models: ALL });
-    expect(pilot.caveat).toBe(TWO_SIZES.caveat);
+    expect(pilot.caveat).toBe(
+      TWO_SIZES.caveat.replace(
+        "a change of less than about 15 points between settings is within noise at 20 households (about 30 at 10)",
+        "a typical 95% interval for a change between settings spans about ±15 points at 20 households (±30 at 10)",
+      ),
+    );
     expect(pilot.note).toBe(
       "Dollar amounts that aren't $0, within $1 of PolicyBench's reference, in households sampled from PolicyEngine's microdata. Each count shows its own total",
     );
@@ -613,20 +678,36 @@ describe("freePlanFromExport", () => {
     expect(pilot.rows[2].counts.web).toEqual({ k: 16, n: 24 });
   });
 
-  it("rebuilds the caveat for the models on the slide, in PolicyBench's wording, with each size's noise from those models", () => {
+  it("rebuilds the caveat for the models on the slide, in PolicyBench's wording but for the noise, with each size's noise from those models", () => {
     // The free-plan models alone: one size, so PolicyBench's one-size sentence.
     const free = freePlanFromExport(TWO_SIZES, { models: ["mock-b", "mock-a"] }).pilot;
     expect(free.caveat).toBe(
-      "Preliminary internal pilot: 20 households sampled from PolicyEngine's microdata, 48 nonzero dollar amounts per model and setting. The models were called through their APIs with our prompt, not used in the free chat apps, and a change of less than about 15 points between settings is within noise at this size.",
+      "Preliminary internal pilot: 20 households sampled from PolicyEngine's microdata, 48 nonzero dollar amounts per model and setting. The models were called through their APIs with our prompt, not used in the free chat apps, and a typical 95% interval for a change between settings spans about ±15 points at this size.",
     );
     expect(free.note).toBe("Dollar amounts that aren't $0, within $1 of PolicyBench's reference: 48 per model in 20 households sampled from PolicyEngine's microdata");
     // One model of each size: C's noise is its own (half-width 22, rounded up to 25), not the 30 C and D give together.
     expect(freePlanFromExport(TWO_SIZES, { models: ["mock-c", "mock-a"] }).pilot.caveat).toBe(
-      "Preliminary internal pilot on households sampled from PolicyEngine's microdata: 20 households, with 48 nonzero dollar amounts per model and setting, for Mock model A; 10 households, with 24, for Mock model C. The models were called through their APIs with our prompt, not used in the free chat apps, and a change of less than about 15 points between settings is within noise at 20 households (about 25 at 10).",
+      "Preliminary internal pilot on households sampled from PolicyEngine's microdata: 20 households, with 48 nonzero dollar amounts per model and setting, for Mock model A; 10 households, with 24, for Mock model C. The models were called through their APIs with our prompt, not used in the free chat apps, and a typical 95% interval for a change between settings spans about ±15 points at 20 households (±25 at 10).",
     );
     // No free-plan model: every shown model's intervals set the width.
     expect(freePlanFromExport(TWO_SIZES, { models: ["mock-c", "mock-d"] }).pilot.caveat).toBe(
-      "Preliminary internal pilot: 10 households sampled from PolicyEngine's microdata, 24 nonzero dollar amounts per model and setting. The models were called through their APIs with our prompt, not used in the free chat apps, and a change of less than about 30 points between settings is within noise at this size.",
+      "Preliminary internal pilot: 10 households sampled from PolicyEngine's microdata, 24 nonzero dollar amounts per model and setting. The models were called through their APIs with our prompt, not used in the free chat apps, and a typical 95% interval for a change between settings spans about ±30 points at this size.",
+    );
+  });
+
+  it("words PolicyBench's caveat as the slide does for any sizes, changing only the noise and never calling a change noise", () => {
+    const size = fc.record({ households: fc.integer({ min: 1, max: 500 }), n: fc.integer({ min: 1, max: 2000 }), noisePoints: fc.integer({ min: 0, max: 20 }).map((x) => 5 * x) });
+    fc.assert(
+      fc.property(fc.array(size, { minLength: 1, maxLength: 4 }), (sizes) => {
+        const groups = sizes.map((g, i) => ({ ...g, models: [`m${i}`], names: [`Mock model ${i}`] }));
+        const [pb, slide] = [caveatText(groups), slideCaveat(groups)];
+        const cut = (c: string) => c.slice(0, c.indexOf("free chat apps, and ") + "free chat apps, and ".length);
+        expect(cut(slide)).toBe(cut(pb));
+        const [first, ...rest] = groups;
+        const at = rest.length ? `${first.households} households (${rest.map((g) => `±${g.noisePoints} at ${g.households}`).join(", ")})` : "this size";
+        expect(slide.slice(cut(slide).length)).toBe(`a typical 95% interval for a change between settings spans about ±${first.noisePoints} points at ${at}.`);
+        expect(slide).not.toMatch(/noise/);
+      }),
     );
   });
 
@@ -640,7 +721,9 @@ describe("freePlanFromExport", () => {
     const free = wider.models.filter((m) => m.group === "free-plan");
     expect([noisePoints(free), noisePoints(free, VS_WEB)]).toEqual([15, 25]);
     // The export's caveat, at 15, still passes the check against PolicyBench's rule; the slide says 25.
-    expect(freePlanFromExport(wider, { models: ALL }).pilot.caveat).toBe(exp.caveat.replace("about 15 points", "about 25 points"));
+    expect(freePlanFromExport(wider, { models: ALL }).pilot.caveat).toBe(
+      exp.caveat.replace("a change of less than about 15 points between settings is within noise at this size", "a typical 95% interval for a change between settings spans about ±25 points at this size"),
+    );
     // Where PolicyBench states the width from web search, overall or by size, it has to be the rule's.
     expect(() => freePlanFromExport({ ...wider, noisePointsVsWeb: 25 }, { models: ALL })).not.toThrow();
     expect(() => freePlanFromExport({ ...wider, noisePointsVsWeb: 15 }, { models: ALL })).toThrow(
@@ -756,8 +839,8 @@ describe("freePlanFromExport", () => {
         const consistent = { ...exp, models, sizes: undefined, caveat: caveatText(sizeGroups(models)) };
         const { pilot } = freePlanFromExport(consistent, { models: models.map((m) => m.id) });
         expect(freePlanProblems(pilot)).toEqual([]);
-        // PolicyBench's wording, with the noise of the change the slide shows.
-        expect(pilot.caveat).toBe(caveatText(sizeGroups(models, VS_WEB)));
+        // PolicyBench's wording, but for the noise, which is that of the change the slide shows.
+        expect(pilot.caveat).toBe(slideCaveat(sizeGroups(models, VS_WEB)));
         // A slide of the first model alone describes only its size.
         const one = freePlanFromExport(consistent, { models: [models[0].id] }).pilot;
         expect(one.caveat).toMatch(new RegExp(`^Preliminary internal pilot: 20 households sampled from PolicyEngine's microdata, ${models[0].arms.alone!.n} nonzero`));
