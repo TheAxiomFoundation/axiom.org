@@ -41,3 +41,7 @@ export const CAPTIONS: Array<{ kicker: string; title: string }> = [
   { kicker: `7 / 8 · All the law · ${snapshotMonth()} snapshot`, title: `The same structure, at scale (${snapshotMonth()} snapshot).` },
   { kicker: "8 / 8 · Every system", title: "One set of rules powers every kind of tool, built by anyone." },
 ];
+
+// the whole story in words, for the canvas that draws it
+export const STORY_LABEL =
+  "From a law book to running code: Title 7 comes off the shelf, its pages become data, section 2017(a) is encoded and checked, each value cites its words, the rules form a graph that computes $182 for test case 1, the registry comes into view, and one source powers every kind of tool.";
