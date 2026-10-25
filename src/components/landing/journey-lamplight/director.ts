@@ -112,6 +112,9 @@ export async function createDirector(opts: {
   width: number;
   height: number;
   onFirstFrame?: () => void;
+  // a scene that fails to build after the first: the first's failure rejects
+  // createDirector instead. Without it, the story holds on the last scene drawn.
+  onError?: (error: unknown) => void;
   paper?: boolean; // draw the scenes for the light page (see THEME)
 }): Promise<Director> {
   THEME.paper = !!opts.paper;
@@ -179,6 +182,13 @@ export async function createDirector(opts: {
         beats[i] = b;
         return b;
       })();
+      // every caller lets a failure go, so it's reported here, once; scene 0's
+      // instead rejects createDirector, for its caller to handle
+      pending[i].catch((e) => {
+        if (dead || i === 0) return;
+        if (opts.onError) opts.onError(e);
+        else console.error("journey: a scene could not be built", e);
+      });
     }
     return pending[i];
   };
@@ -234,7 +244,8 @@ export async function createDirector(opts: {
   const buildAll = async () => {
     for (let i = 0; i < N && !dead; i++) {
       await new Promise<void>((r) => idle(() => r()));
-      await build(i);
+      // a scene that fails is reported by build; the rest still build
+      await build(i)?.catch(() => undefined);
     }
   };
   const idle = (fn: () => void) => {
@@ -243,7 +254,7 @@ export async function createDirector(opts: {
     else setTimeout(fn, 60);
   };
   const prefetch = (from: number) => {
-    for (let k = from; k <= from + 1 && k < N; k++) if (!pending[k]) idle(() => void build(k));
+    for (let k = from; k <= from + 1 && k < N; k++) if (!pending[k]) idle(() => void build(k)?.catch(() => undefined));
   };
 
   let target = 0;
@@ -307,13 +318,13 @@ export async function createDirector(opts: {
     const j = sceneAt(P);
     const b = beats[j];
     if (!b) {
-      void build(j)?.then(() => schedule());
+      void build(j)?.then(() => schedule(), () => undefined);
       return;
     }
     // the cut from j-1 into j, while P < j
     const k = j > 0 && P < START[j] ? (P - (START[j] - OVERLAP)) / OVERLAP : 1;
     const a = k < 1 ? beats[j - 1] : null;
-    if (k < 1 && !a) void build(j - 1)?.then(() => schedule());
+    if (k < 1 && !a) void build(j - 1)?.then(() => schedule(), () => undefined);
     // the images swap in the dark middle of the pan
     // a scene with its own way out hands over slowly, behind what matches
     const mix = a ? (a.cutOut ? sstep(0.35, 0.95, k) : sstep(0.38, 0.62, k)) : 1;

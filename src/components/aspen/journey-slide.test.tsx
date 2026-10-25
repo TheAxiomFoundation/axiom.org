@@ -1,8 +1,8 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CAPTIONS, STORY_LABEL } from "@/components/landing/journey-lamplight/captions";
-import { captionOpacity, PLAY_MS, storyAtTime } from "@/components/landing/journey-lamplight/clock";
-import { HOLD_MS, JourneySlide } from "./journey-slide";
+import { captionOpacity, PLAY_MS, STORY_END_MS, storyAtTime } from "@/components/landing/journey-lamplight/clock";
+import { HOLD_MS, JourneySlide, MAX_STEP_MS } from "./journey-slide";
 
 // A stand-in for the homepage's WebGL director: jsdom has no WebGL.
 const director = vi.hoisted(() => ({
@@ -157,6 +157,59 @@ describe("the journey slide, without WebGL 2", () => {
   });
 });
 
+describe("the journey slide's clock, frame by frame", () => {
+  /** Frames the test hands out itself, at the times it chooses. */
+  let frames: Map<number, FrameRequestCallback>;
+  beforeEach(() => {
+    frames = new Map();
+    let id = 0;
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => (frames.set(++id, cb), id));
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => void frames.delete(id));
+  });
+  const frame = (now: number) =>
+    act(() => {
+      const due = [...frames.values()];
+      frames.clear();
+      due.forEach((cb) => cb(now));
+    });
+
+  it("moves the story on by a quarter second at most for a frame that comes late", () => {
+    show();
+    let t = 0;
+    for (; t <= HOLD_MS + 1_000; t += 16) frame(t);
+    const at = bar();
+    expect(at).toBeGreaterThan(0);
+    // A minute away (a hidden tab, a stalled machine) comes back where it was, plus one step.
+    frame(t + 60_000);
+    expect(bar() - at).toBeCloseTo((100 * MAX_STEP_MS) / STORY_END_MS, 1);
+  });
+
+  it("stops its clock when the slide goes", () => {
+    const { unmount } = show();
+    frame(0);
+    frame(16);
+    expect(frames.size).toBe(1);
+    unmount();
+    expect(frames.size).toBe(0);
+  });
+});
+
+describe("the run-of-show's cue sheet", () => {
+  /** The first whole millisecond, after the hold, at which caption j is half up. */
+  function halfUp(j: number): number {
+    for (let t = 0; t <= PLAY_MS; t++) if (captionOpacity(storyAtTime(t), j) > 0.5) return t;
+    throw new Error(`caption ${j} never comes up`);
+  }
+  const clock = (ms: number) => `${Math.floor(ms / 60_000)}:${String(Math.floor((ms % 60_000) / 1_000)).padStart(2, "0")}`;
+
+  it("gives the times its table prints, from when the slide comes up", () => {
+    // The run-of-show's table for Shared foundation 4/5; it changes with these.
+    expect(CAPTIONS.map((_, j) => (j === 0 ? "0:00" : clock(HOLD_MS + halfUp(j))))).toEqual(["0:00", "0:13", "0:43", "0:58", "1:21", "1:37", "1:56", "2:16"]);
+    // The story's length pins the homepage's pacing, which a cue a second off wouldn't show.
+    expect(STORY_END_MS).toBeCloseTo(145_357.187, 2);
+  });
+});
+
 describe("the journey slide, with WebGL 2", () => {
   beforeEach(() => {
     // The test setup answers yes to reduced motion; here motion is allowed.
@@ -197,6 +250,45 @@ describe("the journey slide, with WebGL 2", () => {
 
     unmount();
     expect(director.made.dispose).toHaveBeenCalled();
+  });
+
+  it("starts the canvas over at its first frame with Home, rather than easing back through the story", async () => {
+    let first: () => void = () => {};
+    director.create.mockImplementation(async (opts: { onFirstFrame: () => void }) => {
+      first = opts.onFirstFrame;
+      return director.made;
+    });
+    vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame"] });
+    show();
+    await waitFor(() => expect(director.made.jump).toHaveBeenCalledWith(0));
+    act(() => first());
+    play(HOLD_MS + 30_000);
+    expect(director.made.setProgress.mock.calls.at(-1)![0]).toBeGreaterThan(1);
+    director.made.jump.mockClear();
+
+    fireEvent.keyDown(window, { key: "Home" });
+    expect(director.made.jump).toHaveBeenCalledExactlyOnceWith(0);
+    play(20);
+    expect(bar()).toBe(0);
+  });
+
+  it("falls back to the stills when a later scene can't be built", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    let opts!: { onFirstFrame: () => void; onError: (e: unknown) => void };
+    director.create.mockImplementation(async (o: typeof opts) => {
+      opts = o;
+      return director.made;
+    });
+    show();
+    await waitFor(() => expect(director.made.jump).toHaveBeenCalled());
+    act(() => opts.onFirstFrame());
+    expect(stage()!.dataset.journey).toBe("canvas");
+
+    act(() => opts.onError(new Error("MOCK: scene 3 failed")));
+    expect(stage()!.dataset.journey).toBe("stills");
+    expect(director.made.dispose).toHaveBeenCalled();
+    expect(stage()!.querySelectorAll("img")).toHaveLength(CAPTIONS.length);
+    expect(error).toHaveBeenCalledWith("journey slide: a scene could not be built", expect.any(Error));
   });
 
   it("falls back to the stills when the scenes can't be built", async () => {

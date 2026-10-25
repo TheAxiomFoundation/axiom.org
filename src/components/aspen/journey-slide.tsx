@@ -11,7 +11,7 @@ import "@/components/landing/journey-lamplight/journey-lamplight.css";
 /** The first frame holds this long before the camera moves. */
 export const HOLD_MS = 1500;
 /** A frame that comes this late (a hidden tab, a stall) moves the story on by no more than this. */
-const MAX_STEP_MS = 250;
+export const MAX_STEP_MS = 250;
 /** The canvas has this long to draw before the stills take over. */
 const DRAW_TIMEOUT_MS = 8000;
 
@@ -134,6 +134,8 @@ export function JourneySlide() {
       } else if (e.key === "Home") {
         e.preventDefault();
         played.current = 0;
+        // Straight to the first frame: eased, the camera would travel back through the story.
+        director.current?.jump(0);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -162,6 +164,11 @@ export function JourneySlide() {
           onFirstFrame: () => {
             readyRef.current = true;
             setDrawn(true);
+          },
+          // A later scene that can't be built would hold the story on the last one drawn.
+          onError: (e) => {
+            console.error("journey slide: a scene could not be built", e);
+            if (!dead) setMode("stills");
           },
         });
         if (dead) return made.dispose();
