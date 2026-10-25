@@ -251,24 +251,31 @@ describe("freePlanFromExport", () => {
     expect(pilot.footnotes).toEqual(audited.filter((f) => !f.startsWith("Web search queries")));
   });
 
-  it("says how many reference amounts PolicyBench's AI judge disputes, after the tool's line, and that all are still scored", () => {
+  it("says how many reference amounts PolicyBench's AI judge disputes or is split on, after the tool's line, and that all are still scored", () => {
     const { pilot, warnings } = freePlanFromExport(exp, { models: ALL, webAudit: audit, judge });
-    expect(pilot.footnotes.at(-1)).toBe("An AI judge disputes 3 of these 48 reference amounts; none is adjudicated yet, so all are still scored.");
+    expect(pilot.footnotes.at(-1)).toBe("An AI judge disputes or is split on 3 of these 48 reference amounts; none is adjudicated yet, so all are still scored.");
     expect(pilot.footnotes.findIndex((f) => f.startsWith("The tool runs PolicyEngine"))).toBeLessThan(pilot.footnotes.length - 1);
     expect(warnings.some((w) => w.includes("judge"))).toBe(false);
     // Without the judge, the rest is the same, and the presenter is told.
     const without = freePlanFromExport(exp, { models: ALL, webAudit: audit });
     expect(without.pilot.footnotes).toEqual(pilot.footnotes.slice(0, -1));
     expect(without.warnings).toContain("no judge outcomes given, so the slide doesn't say whether any reference amounts are disputed; pass --judge");
-    const none: JudgeOutcomes = { ...judge, summary: { ...judge.summary, disputedOrSplitInMetric: { cells: [], of: 48 } } };
-    expect(freePlanFromExport(exp, { models: ALL, judge: none }).pilot.footnotes.at(-1)).toBe("An AI judge disputes none of these 48 reference amounts.");
+    // The verb is the judge's: it disputes, is split on, or both.
+    const judging = (cells: string[], disputed: number, split: number): JudgeOutcomes => ({
+      ...judge,
+      summary: { ...judge.summary, disputedOrSplitInMetric: { cells, of: 48, byStatus: { disputed, split } } },
+    });
+    const line = (j: JudgeOutcomes) => freePlanFromExport(exp, { models: ALL, judge: j }).pilot.footnotes.at(-1);
+    expect(line(judging(["x", "y"], 2, 0))).toBe("An AI judge disputes 2 of these 48 reference amounts; none is adjudicated yet, so all are still scored.");
+    expect(line(judging(["x"], 0, 1))).toBe("An AI judge is split on 1 of these 48 reference amounts; none is adjudicated yet, so all are still scored.");
+    expect(line(judging([], 0, 0))).toBe("An AI judge disputes none of these 48 reference amounts.");
   });
 
   it("says which households the judge read when the slide's models ran on more", () => {
     const models = exp.models.map((m) => (m.id === "mock-a" ? m : { ...m, households: 100 }));
     const more = { ...exp, models, sizes: undefined, caveat: caveatText(sizeGroups(models)) };
     expect(freePlanFromExport(more, { models: ALL, judge }).pilot.footnotes.at(-1)).toBe(
-      "An AI judge disputes 3 of the 48 reference amounts in 20 of these households; none is adjudicated yet, so all are still scored.",
+      "An AI judge disputes or is split on 3 of the 48 reference amounts in 20 of these households; none is adjudicated yet, so all are still scored.",
     );
     // On 100 households alone, no model's count can be checked against the judge's: its sha256 binds it to the export.
     expect(freePlanFromExport(more, { models: ["mock-b"], judge }).pilot.footnotes.at(-1)).toMatch(/in 20 of these households/);
@@ -278,7 +285,8 @@ describe("freePlanFromExport", () => {
     const refuse = (j: unknown, says: string, models: readonly string[] = ALL, from: PolicyBenchExport = exp) =>
       expect(() => freePlanFromExport(from, { models, judge: j as JudgeOutcomes })).toThrow(says);
     const summary = (change: object) => ({ ...judge, summary: { ...judge.summary, ...change } });
-    const disputed = (cells: unknown, of: unknown) => summary({ disputedOrSplitInMetric: { cells, of } });
+    const disputed = (cells: unknown, of: unknown, byStatus: unknown = { disputed: Array.isArray(cells) ? cells.length : 0, split: 0 }) =>
+      summary({ disputedOrSplitInMetric: { cells, of, byStatus } });
     refuse(summary({ pending: [{ batch: "b03" }] }), "the judge hasn't finished: 1 batches pending");
     refuse(summary({ pending: undefined }), "the judge hasn't finished: an unknown number of batches pending");
     refuse(summary({ adjudicated: undefined }), "the judge outcomes don't say how many verdicts are adjudicated (summary.adjudicated)");
@@ -286,6 +294,12 @@ describe("freePlanFromExport", () => {
     for (const [cells, of] of [[["x", "x"], 48], [["x", "y"], 1], [["x"], 0], [["x"], 2.5], ["x", 48], [[1], 48]] as const) {
       refuse(disputed(cells, of), "the judge outcomes' disputed amounts aren't distinct amounts out of a count");
     }
+    const byStatus = "the judge outcomes don't say how many of those amounts the judge disputes and how many it's split on (disputedOrSplitInMetric.byStatus), or those don't add up to them";
+    refuse(summary({ disputedOrSplitInMetric: { cells: ["x", "y"], of: 48 } }), byStatus);
+    for (const counts of [null, {}, { disputed: 1 }, { disputed: 1, split: 0 }, { disputed: 2, split: 1 }, { disputed: 3, split: -1 }, { disputed: 1.5, split: 0.5 }, { disputed: "2", split: 0 }]) {
+      refuse(disputed(["x", "y"], 48, counts), byStatus);
+    }
+    expect(() => freePlanFromExport(exp, { models: ALL, judge: disputed(["x", "y"], 48, { disputed: 1, split: 1 }) as JudgeOutcomes })).not.toThrow();
     refuse({ ...judge, households: 0 }, "the judge outcomes' 0 households isn't a count");
     refuse(disputed(["x"], 50), "Mock model A: 48 amounts in 20 households, but the judge outcomes count 50");
     const models = exp.models.map((m) => (m.id === "mock-c" || m.id === "mock-d" ? { ...m, households: 10 } : m));
@@ -294,14 +308,18 @@ describe("freePlanFromExport", () => {
     expect(() => freePlanFromExport(fewer, { models: ["mock-a", "mock-b"], judge })).not.toThrow();
   });
 
-  it("for any judge outcomes that add up, gives exactly one judge line, last, with its count", () => {
+  it("for any judge outcomes that add up, gives exactly one judge line, last, with its count and the judge's verb", () => {
+    const counts = fc.integer({ min: 0, max: 48 }).chain((disputed) => fc.tuple(fc.constant(disputed), fc.integer({ min: 0, max: 48 - disputed })));
     fc.assert(
-      fc.property(fc.integer({ min: 0, max: 48 }), fc.boolean(), (d, webAudit) => {
-        const j: JudgeOutcomes = { ...judge, summary: { ...judge.summary, disputedOrSplitInMetric: { cells: Array.from({ length: d }, (_, i) => `mt_${i} x`), of: 48 } } };
+      fc.property(counts, fc.boolean(), ([disputed, split], webAudit) => {
+        const d = disputed + split;
+        const cells = Array.from({ length: d }, (_, i) => `mt_${i} x`);
+        const j: JudgeOutcomes = { ...judge, summary: { ...judge.summary, disputedOrSplitInMetric: { cells, of: 48, byStatus: { disputed, split } } } };
+        const verb = disputed && split ? "disputes or is split on" : split ? "is split on" : "disputes";
         const { pilot } = freePlanFromExport(exp, { models: ALL, judge: j, ...(webAudit ? { webAudit: audit } : {}) });
         const lines = pilot.footnotes.filter((f) => f.includes("AI judge"));
         expect(lines).toEqual([pilot.footnotes.at(-1)]);
-        expect(lines[0]).toBe(d ? `An AI judge disputes ${d} of these 48 reference amounts; none is adjudicated yet, so all are still scored.` : "An AI judge disputes none of these 48 reference amounts.");
+        expect(lines[0]).toBe(d ? `An AI judge ${verb} ${d} of these 48 reference amounts; none is adjudicated yet, so all are still scored.` : "An AI judge disputes none of these 48 reference amounts.");
         expect(freePlanProblems(pilot)).toEqual([]);
       }),
     );

@@ -90,9 +90,9 @@ export const MOCK_WEB_SEARCH_AUDIT: WebSearchAudit = {
 /**
  * MOCK DATA for tests only: invented AI-judge outcomes for
  * MOCK_POLICYBENCH_EXPORT, in the shape of PolicyBench's judge-outcomes file
- * plus summary.adjudicated, which the slide needs. The judge disputes three
- * of the 48 mock amounts. Tests that read it through the script set
- * tables.sha256 to the mock export file's own.
+ * plus summary.adjudicated, which the slide needs. The judge disputes two
+ * of the 48 mock amounts and is split on a third. Tests that read it through
+ * the script set tables.sha256 to the mock export file's own.
  */
 export const MOCK_JUDGE_OUTCOMES: JudgeOutcomes = {
   households: 20,
@@ -100,6 +100,6 @@ export const MOCK_JUDGE_OUTCOMES: JudgeOutcomes = {
   summary: {
     pending: [],
     adjudicated: 0,
-    disputedOrSplitInMetric: { cells: ["mt_01 snap", "mt_04 federal_refundable_credits", "mt_07 state_income_tax"], of: 48 },
+    disputedOrSplitInMetric: { cells: ["mt_01 snap", "mt_04 federal_refundable_credits", "mt_07 state_income_tax"], of: 48, byStatus: { disputed: 2, split: 1 } },
   },
 };

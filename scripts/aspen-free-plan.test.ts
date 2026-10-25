@@ -174,7 +174,7 @@ describe("run", () => {
       const judgeSha = writeJudge();
       const lines: string[] = [];
       run([file, "--sha256", sha, "--models", "mock-a", "--judge", judgeFile, "--judge-sha256", judgeSha, "--write"], { contentPath: content, log: (l) => lines.push(l) });
-      expect(lines).toContain("  An AI judge disputes 3 of these 48 reference amounts; none is adjudicated yet, so all are still scored.");
+      expect(lines).toContain("  An AI judge disputes or is split on 3 of these 48 reference amounts; none is adjudicated yet, so all are still scored.");
       expect(lines.some((l) => l.includes("no judge outcomes given"))).toBe(false);
       expect(readFileSync(content, "utf8")).toContain(`// Judge outcomes judge-outcomes.json, sha256 ${judgeSha}.\n`);
     });

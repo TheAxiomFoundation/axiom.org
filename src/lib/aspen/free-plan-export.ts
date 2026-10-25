@@ -170,8 +170,13 @@ export interface JudgeOutcomes {
     pending: unknown[];
     /** Verdicts a person has since adjudicated. */
     adjudicated?: number;
-    /** The scored amounts a verdict disputes, or splits on, of all the amounts scored in those households. */
-    disputedOrSplitInMetric: { cells: string[]; of: number };
+    /**
+     * The scored amounts the judge disputes, or is split on, of all the amounts
+     * scored in those households; byStatus says how many of each. In the
+     * file's own statuses, a split amount has a disputing verdict beside one
+     * that holds or is within tolerance.
+     */
+    disputedOrSplitInMetric: { cells: string[]; of: number; byStatus: { disputed: number; split: number } };
   };
 }
 
@@ -564,7 +569,7 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
   }
 
   // What PolicyBench's AI judge made of the reference amounts. Every amount is still scored, and the slide says
-  // how many the judge disputes.
+  // how many the judge disputes or is split on.
   let judged: string | null = null;
   if (!opts.judge) {
     warnings.push("no judge outcomes given, so the slide doesn't say whether any reference amounts are disputed; pass --judge");
@@ -582,6 +587,11 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
     if (!d || !Number.isSafeInteger(d.of) || d.of < 1 || !Array.isArray(d.cells) || d.cells.some((c) => typeof c !== "string") || new Set(d.cells).size !== d.cells.length || d.cells.length > d.of) {
       throw new Error("the judge outcomes' disputed amounts aren't distinct amounts out of a count");
     }
+    // The footnote's verb is the judge's: it disputes some, and is split on others.
+    const { disputed, split } = d.byStatus ?? {};
+    if (![disputed, split].every((c) => Number.isSafeInteger(c) && c! >= 0) || disputed! + split! !== d.cells.length) {
+      throw new Error("the judge outcomes don't say how many of those amounts the judge disputes and how many it's split on (disputedOrSplitInMetric.byStatus), or those don't add up to them");
+    }
     // The footnote counts the judged households' amounts, so every model on the slide must have scored them.
     const fewer = ordered.filter((m) => m.households < h);
     if (fewer.length) throw new Error(`${list(fewer.map((m) => m.model))} ran on fewer households than the judge read (${h}), so its count isn't theirs`);
@@ -589,7 +599,8 @@ export function freePlanFromExport(exp: PolicyBenchExport, opts: ExportOptions):
       if (m.households === h && m.arms.web!.n !== d.of) throw new Error(`${m.model}: ${m.arms.web!.n} amounts in ${h} households, but the judge outcomes count ${d.of}`);
     }
     const of = ordered.every((m) => m.households === h) ? `these ${d.of} reference amounts` : `the ${d.of} reference amounts in ${h} of these households`;
-    judged = d.cells.length ? `An AI judge disputes ${d.cells.length} of ${of}; none is adjudicated yet, so all are still scored.` : `An AI judge disputes none of ${of}.`;
+    const verb = disputed && split ? "disputes or is split on" : split ? "is split on" : "disputes";
+    judged = d.cells.length ? `An AI judge ${verb} ${d.cells.length} of ${of}; none is adjudicated yet, so all are still scored.` : `An AI judge disputes none of ${of}.`;
   }
 
   const free = ordered.filter((m) => m.freePlan !== null);
