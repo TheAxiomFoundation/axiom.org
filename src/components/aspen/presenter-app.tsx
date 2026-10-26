@@ -16,6 +16,7 @@ import {
   Network,
   Package,
   RefreshCw,
+  Signpost,
   SlidersHorizontal,
   Sparkles,
   User,
@@ -29,6 +30,7 @@ import {
   EVENT,
   GOLDEN_A,
   NEXT_STEPS,
+  ONE_SET_GROUPS,
   ONE_SET_OF_RULES,
   ONE_SET_STATEMENT,
   FOUNDATION_TRAITS,
@@ -91,17 +93,18 @@ const JOURNEY_HEADING = "From the law as written to running code";
 /**
  * Shared foundation's slides, in order; the journey takes Space for itself (Oct 26):
  * - the question on its own, then again with the room's answer building in below it;
- * - one open set of rules feeding every tool, and the statement that every system runs on it;
+ * - one open set of rules feeding AI tools, then government tools, then navigation tools, built one
+ *   group per slide, and on the last the statement that every system runs on it;
  * - the journey, which shows how the rules get built and what they power;
  * - what the rules enable for a government, and a prompt for the room's own ideas.
  * The tiers moved to Next steps, after the room says what it would build. The one-set, same-rules
  * and pipeline slides stay below, off the deck, in case they come back.
  */
-const FOUNDATION_SLIDES = ["question", "question-room", "rules", "journey", "enable"] as const;
+const FOUNDATION_SLIDES = ["question", "question-room", "rules-ai", "rules-government", "rules-navigation", "journey", "enable"] as const;
 type FoundationSlideId = (typeof FOUNDATION_SLIDES)[number];
 
 /** Slides that set their own heading, with no title bar above them. */
-const OWN_HEADING: readonly FoundationSlideId[] = ["question", "question-room", "rules"];
+const OWN_HEADING: readonly FoundationSlideId[] = ["question", "question-room", "rules-ai", "rules-government", "rules-navigation"];
 
 /** A slide that turns its stage's argument gets its own heading. */
 const SLIDE_TITLES: Partial<Record<StageId, Record<number, string>>> = {
@@ -297,7 +300,9 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
                   {
                     question: <QuestionSlide key="question" summary={summary} room={false} />,
                     "question-room": <QuestionSlide key="question-room" summary={summary} room />,
-                    rules: <RulesSlide key="rules" />,
+                    "rules-ai": <RulesSlide key="rules-ai" shown={1} />,
+                    "rules-government": <RulesSlide key="rules-government" shown={2} />,
+                    "rules-navigation": <RulesSlide key="rules-navigation" shown={3} />,
                     journey: <JourneySlide key="journey" />,
                     enable: <EnableSlide key="enable" />,
                   }[FOUNDATION_SLIDES[sub]]}
@@ -1613,6 +1618,31 @@ const USE_ICONS: Record<(typeof ONE_SET_OF_RULES)[number]["label"], LucideIcon> 
   Research: ChartColumn,
 };
 
+/** One open set of rules: an open box, not a black one, with a warm tint and a rust outline (Oct 26). */
+function OneSetBox() {
+  return (
+    <div className="flex flex-col justify-center gap-[12px] rounded-[14px] border-2 border-[var(--color-accent)] bg-[var(--color-accent-light)] px-[36px] py-[28px] text-[var(--color-ink)]">
+      <span className="text-balance font-display text-[40px] font-light leading-tight">One open set of rules</span>
+      <ul className="m-0 flex list-none flex-col gap-[10px] p-0 font-body text-[22px] leading-snug text-[var(--color-ink)]">
+        {FOUNDATION_TRAITS.map((trait) => (
+          <li key={trait} className="flex gap-[12px]">
+            {/* A plain bullet, not a check: these describe how the rules are built, not work that is finished. */}
+            <span aria-hidden className="mt-[12px] h-[8px] w-[8px] shrink-0 rounded-full bg-[var(--color-accent)]" />
+            {trait}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** An icon for each group the build adds. */
+const GROUP_ICONS: Record<(typeof ONE_SET_GROUPS)[number]["id"], LucideIcon> = {
+  ai: Sparkles,
+  government: Landmark,
+  navigation: Signpost,
+};
+
 /**
  * One open set of rules, and the tools it feeds: the dark box, an arrow, and the six uses. Shared by
  * the title slide before the journey and the slide after it.
@@ -1620,19 +1650,7 @@ const USE_ICONS: Record<(typeof ONE_SET_OF_RULES)[number]["label"], LucideIcon> 
 function OneSetDiagram() {
   return (
     <div className="grid grid-cols-[440px_auto_1fr] items-stretch gap-[28px]">
-      {/* An open box, not a black one: a warm tint and a rust outline (Oct 26). */}
-      <div className="flex flex-col justify-center gap-[12px] rounded-[14px] border-2 border-[var(--color-accent)] bg-[var(--color-accent-light)] px-[36px] py-[28px] text-[var(--color-ink)]">
-        <span className="text-balance font-display text-[40px] font-light leading-tight">One open set of rules</span>
-        <ul className="m-0 flex list-none flex-col gap-[10px] p-0 font-body text-[22px] leading-snug text-[var(--color-ink)]">
-          {FOUNDATION_TRAITS.map((trait) => (
-            <li key={trait} className="flex gap-[12px]">
-              {/* A plain bullet, not a check: these describe how the rules are built, not work that is finished. */}
-              <span aria-hidden className="mt-[12px] h-[8px] w-[8px] shrink-0 rounded-full bg-[var(--color-accent)]" />
-              {trait}
-            </li>
-          ))}
-        </ul>
-      </div>
+      <OneSetBox />
       <span aria-hidden className="self-center font-display text-[64px] text-[var(--color-accent)]">
         →
       </span>
@@ -1678,13 +1696,47 @@ function QuestionSlide({ summary, room }: { summary: RunSummary; room: boolean }
   );
 }
 
-/** Shared foundation 3/6: one open set of rules feeding every tool, and every system running on it. */
-function RulesSlide() {
+/**
+ * Shared foundation 3/7 to 5/7: one open set of rules, then what it powers, one group per slide (AI
+ * tools, government tools, navigation tools). The groups keep their places, so each slide plays as a
+ * build on the one before; the newest group rises in. The statement lands with the last group.
+ */
+function RulesSlide({ shown }: { shown: number }) {
+  const last = shown === ONE_SET_GROUPS.length;
   return (
-    <div className="flex h-full flex-col justify-center gap-[48px]">
+    <div className="flex h-full flex-col justify-center gap-[44px]">
       <h2 className="sr-only">One open set of rules, under every tool</h2>
-      <OneSetDiagram />
-      <p className="m-0 max-w-[1350px] font-body text-[38px] font-medium leading-snug tracking-[-0.01em] text-[var(--color-ink)]">
+      <div className="grid grid-cols-[440px_auto_1fr] items-stretch gap-[28px]">
+        <OneSetBox />
+        <span aria-hidden className="self-center font-display text-[64px] text-[var(--color-accent)]">
+          →
+        </span>
+        <ul className="m-0 grid list-none grid-rows-3 gap-[16px] p-0">
+          {ONE_SET_GROUPS.map((group, i) => {
+            if (i >= shown) return <li key={group.id} aria-hidden className="h-[126px]" />;
+            const Icon = GROUP_ICONS[group.id];
+            return (
+              <li
+                key={group.id}
+                className={`flex h-[126px] items-center gap-[22px] rounded-[12px] border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-[30px] ${
+                  i === shown - 1 ? "aspen-build" : ""
+                }`}
+              >
+                <Icon aria-hidden size={40} strokeWidth={1.75} className="shrink-0 text-[var(--color-accent)]" />
+                <span className="flex flex-col gap-[4px]">
+                  <span className="font-body text-[32px] font-medium leading-tight text-[var(--color-ink)]">{group.label}</span>
+                  <span className="font-body text-[21px] leading-snug text-[var(--color-ink-secondary)]">{group.detail}</span>
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+      {/* The statement keeps its place on every build, so the diagram never moves; it shows on the last. */}
+      <p
+        aria-hidden={!last}
+        className={`m-0 max-w-[1350px] font-body text-[38px] font-medium leading-snug tracking-[-0.01em] text-[var(--color-ink)] ${last ? "aspen-build" : "invisible"}`}
+      >
         {ONE_SET_STATEMENT.text} <span className="text-[var(--color-accent)]">{ONE_SET_STATEMENT.accent}</span>
       </p>
     </div>
