@@ -656,8 +656,8 @@ export const DISCUSSION_TOPICS = [
 export const USE_CASES = [
   {
     id: "see-edit",
-    label: "See and edit the rules",
-    detail: "Staff read the rules in plain language and change them.",
+    label: "See and trace the rules",
+    detail: "Staff read the rules in plain language and trace each one to the law.",
   },
   {
     id: "project",

@@ -5,10 +5,7 @@ import {
   GROUP_QUESTIONS,
   DISCUSSION_QUESTIONS,
   EVENT,
-  GOLDEN_A,
   EXAMPLE_HOUSEHOLD,
-  BUILD_HEADING,
-  ENCODING_PIPELINE,
   FRONT_DOOR,
   liveDemoUrl,
   NEXT_STEPS,
@@ -25,7 +22,7 @@ import {
 import { EMPTY_SUMMARY, summarizeRun, type RunSummary } from "@/lib/aspen/results";
 import type { Control, RunData } from "@/lib/aspen/types";
 import { CAPTIONS, STORY_LABEL } from "@/components/landing/journey-lamplight/captions";
-import { notApplyNote, PIPELINE_GRAPH_LABEL, PresenterApp } from "./presenter-app";
+import { notApplyNote, PresenterApp } from "./presenter-app";
 
 const DATA: RunData = {
   participants: [{ id: "a", run_id: "r1", perspective: "resident", state: "Arizona" }],
@@ -357,7 +354,7 @@ describe("PresenterApp navigation", () => {
 
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     await onStage("foundation");
-    expect(screen.getByText("1/5")).toBeInTheDocument();
+    expect(screen.getByText("1/2")).toBeInTheDocument();
 
     // Back from a stage's first slide lands on the last slide of the stage before.
     fireEvent.keyDown(document.body, { key: "ArrowLeft" });
@@ -631,7 +628,7 @@ describe("PresenterApp stages", () => {
     expect(screen.queryByText("To discuss")).not.toBeInTheDocument();
   });
 
-  it("shows the room's own answer on the shared foundation, then what it takes", async () => {
+  it("opens the shared foundation with the room's own answer, then plays the journey", async () => {
     setup({
       stage: "foundation",
       summary: {
@@ -644,72 +641,33 @@ describe("PresenterApp stages", () => {
       },
     });
     await onStage("foundation");
-    expect(screen.getByText("One open, validated set of rules")).toBeInTheDocument();
+    // A title slide, then the journey, which shows how the rules get built and what they power (the dry run, Oct 25).
+    expect(screen.getByText("1/2")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: STAGES.find((st) => st.id === "foundation")!.title })).toBeInTheDocument();
     // About whether a resident, screener or AI can check, as the question asked; not about the people in the room.
     await waitFor(() =>
       expect(screen.getByText(/In this room/)).toHaveTextContent("In this room, 5 of 6 say a resident, screener or AI can't fully check"),
     );
-    for (const trait of [
-      "Every value is built to cite the provision it comes from",
-      "Every change carries its effective date",
-      "Every release is versioned, so you can see what changed",
-    ]) {
-      expect(screen.getByText(trait)).toBeInTheDocument();
-    }
-    expect(screen.queryByText("One source of truth")).not.toBeInTheDocument();
-    expect(screen.queryByText(/SNAP benefit math already checks out/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Next: how we build it, from the law as written to running code, and what it can power\./)).toBeInTheDocument();
+    // The slides the journey now covers are off the deck.
+    expect(screen.queryByText("One open, validated set of rules")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 1, name: SAME_RULES.heading })).not.toBeInTheDocument();
 
+    // The homepage's journey plays over the slide; Space pauses it instead of moving on.
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByRole("heading", { level: 1, name: SAME_RULES.heading })).toBeInTheDocument();
-    expect(screen.getByText(SAME_RULES.governments.label)).toBeInTheDocument();
-    for (const use of SAME_RULES.governments.uses) expect(screen.getByText(use)).toBeInTheDocument();
-    for (const a of SAME_RULES.audiences) expect(screen.getByText(a.label)).toBeInTheDocument();
-    // The encoding pipeline comes before how it gets built.
-    fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("3/5")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 1, name: ENCODING_PIPELINE.heading })).toBeInTheDocument();
-    expect(screen.getByText(ENCODING_PIPELINE.lead)).toBeInTheDocument();
-    for (const step of ENCODING_PIPELINE.steps) {
-      expect(screen.getByText(step.name)).toBeInTheDocument();
-      expect(screen.getByText(step.caption)).toBeInTheDocument();
-      if (step.foot) expect(screen.getByText(step.foot)).toBeInTheDocument();
-    }
-    // The steps run left to right in the deck's order.
-    const order = ["Intake", "Corpus", "Encoding loop", "RuleSpec", "Graph", "Compile and serve"];
-    expect(ENCODING_PIPELINE.steps.map((s) => s.name)).toEqual(order);
-    const names = order.map((name) => screen.getByText(name));
-    for (let i = 1; i < names.length; i++) expect(names[i - 1].compareDocumentPosition(names[i]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    // The graph is read out, not skipped.
-    expect(screen.getByRole("img", { name: PIPELINE_GRAPH_LABEL })).toBeInTheDocument();
-    for (const source of ENCODING_PIPELINE.sources) expect(screen.getByText(source)).toBeInTheDocument();
-    // Only the required checks carry a tick; the AI judge is advisory.
-    expect(screen.getByText("✓ deterministic")).toBeInTheDocument();
-    expect(screen.getByText("AI judge, advisory")).toBeInTheDocument();
-    for (const surface of ENCODING_PIPELINE.surfaces) expect(screen.getByText(surface.name)).toBeInTheDocument();
-    // Then the homepage's journey plays over the slide; Space pauses it instead of moving on.
-    fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("4/5")).toBeInTheDocument();
+    expect(screen.getByText("2/2")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1, name: "From the law as written to running code" })).toBeInTheDocument();
     const stage = document.querySelector("[data-aspen-overlay] .jl-stage");
     expect(stage).not.toBeNull();
     expect(within(stage as HTMLElement).getByRole("img", { name: STORY_LABEL })).toBeInTheDocument();
     for (const c of CAPTIONS) expect(within(stage as HTMLElement).getByText(c.title)).toBeInTheDocument();
     fireEvent.keyDown(document.body, { key: " " });
-    expect(screen.getByText("4/5")).toBeInTheDocument();
+    expect(screen.getByText("2/2")).toBeInTheDocument();
     expect(screen.getByText("Paused: Space plays on")).toBeInTheDocument();
+    // The journey is the stage's last slide: the next moves the room on.
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("5/5")).toBeInTheDocument();
+    await onStage("groups");
     expect(document.querySelector(".jl-stage")).toBeNull();
-    expect(screen.getByRole("heading", { level: 1, name: BUILD_HEADING })).toBeInTheDocument();
-    for (const tier of GOLDEN_A) expect(screen.getByText(tier.name)).toBeInTheDocument();
-    expect(screen.queryByText("Bronze A")).not.toBeInTheDocument();
-    expect(screen.getByText("Rules from public documents")).toBeInTheDocument();
-    // The programs to encode carry plain bullets, not checks that read as done.
-    expect(screen.getByText("Medicaid").closest("li")!.querySelector("svg")).toBeNull();
-    // Silver and Gold A read as in the core deck.
-    expect(screen.getByText("Government validation")).toBeInTheDocument();
-    expect(screen.getByText("Government system runs on Axiom")).toBeInTheDocument();
-    expect(screen.getByText(/This is the ultimate goal: all systems can run off the same rules/)).toBeInTheDocument();
   });
 
   it("leaves out the room's answer on the shared foundation when nobody gave one", async () => {
@@ -742,7 +700,7 @@ describe("PresenterApp stages", () => {
     expect(screen.getByText("2/2")).toBeInTheDocument();
     expect(screen.getByText(BREAKOUT_PROMPT)).toBeInTheDocument();
     expect(await screen.findByText("Show staff the rules")).toBeInTheDocument();
-    expect(screen.getByText("See and edit the rules")).toBeInTheDocument();
+    expect(screen.getByText("See and trace the rules")).toBeInTheDocument();
     expect(screen.getAllByText("Group idea").length).toBeGreaterThan(0);
     for (const q of GROUP_QUESTIONS) expect(screen.getByText(q.label)).toBeInTheDocument();
     // A group that only raised something still gets a card.

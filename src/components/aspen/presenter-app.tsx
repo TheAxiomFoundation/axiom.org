@@ -94,11 +94,15 @@ const JOURNEY_HEADING = "From the law as written to running code";
 /** A slide that turns its stage's argument gets its own heading. */
 const SLIDE_TITLES: Partial<Record<StageId, Record<number, string>>> = {
   scale: { 4: FRONT_DOOR.heading, 5: FRONT_DOOR.heading, 6: FRONT_DOOR.heading },
-  foundation: { 1: SAME_RULES.heading, 2: ENCODING_PIPELINE.heading, 3: JOURNEY_HEADING, 4: BUILD_HEADING },
+  foundation: { 1: JOURNEY_HEADING },
 };
 
-/** Shared foundation's slides, in order; the journey takes Space for itself. */
-const FOUNDATION_SLIDES = ["foundation", "same-rules", "pipeline", "journey", "tiers"] as const;
+/**
+ * Shared foundation's slides, in order; the journey takes Space for itself. A title slide, then the
+ * journey, which shows how the rules get built and what they power (the dry run, Oct 25). The
+ * same-rules, pipeline and tiers slides stay below, off the deck, in case they come back.
+ */
+const FOUNDATION_SLIDES = ["foundation", "journey"] as const;
 
 /** Stages shown as more than one slide; the arrows step through them before moving the room. */
 const SLIDES: Partial<Record<StageId, number>> = { reveal: 2, scale: 7, foundation: FOUNDATION_SLIDES.length, groups: 2, next: 2 };
@@ -281,10 +285,7 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
                 {stage === "foundation" &&
                   [
                     <FoundationSlide key="foundation" summary={summary} />,
-                    <SameRulesSlide key="same-rules" />,
-                    <PipelineSlide key="pipeline" />,
                     <JourneySlide key="journey" />,
-                    <TiersSlide key="tiers" />,
                   ][sub]}
                 {stage === "groups" &&
                   (sub === 0 ? <VoteSlide votes={summary.votes} /> : <GroupsSlide summary={summary} />)}
@@ -1467,8 +1468,35 @@ const USE_ICONS: Record<(typeof ONE_SET_OF_RULES)[number]["label"], LucideIcon> 
   Research: ChartColumn,
 };
 
-/** Shared foundation, slide 1: one set of rules under every tool. */
+/**
+ * Shared foundation, slide 1: the title that sets up the journey, with the room's own answer (the dry
+ * run, Oct 25). Before anyone answers, the statement and the cue carry it alone.
+ */
 function FoundationSlide({ summary }: { summary: RunSummary }) {
+  const answered = summary.sourceOfTruth.reduce((sum, c) => sum + c.count, 0);
+  const cannot = summary.sourceOfTruth.filter((c) => c.id !== "yes").reduce((sum, c) => sum + c.count, 0);
+  return (
+    <div className="flex h-full flex-col justify-center gap-[48px] pb-[40px]">
+      {answered > 0 && (
+        <p className="m-0 max-w-[1300px] border-l-[6px] border-[var(--color-accent)] pl-[32px] font-body text-[40px] leading-snug text-[var(--color-ink)]">
+          In this room, <strong className="font-medium tabular-nums text-[var(--color-accent)]">{cannot}</strong> of{" "}
+          <strong className="font-medium tabular-nums">{answered}</strong>{" "}
+          say a resident, screener or AI can&apos;t fully check an answer against their state&apos;s rules today.
+        </p>
+      )}
+      <p className="m-0 max-w-[1300px] font-body text-[34px] font-medium leading-snug tracking-[-0.01em] text-[var(--color-ink)]">
+        {ONE_SET_STATEMENT.text} <span className="text-[var(--color-accent)]">{ONE_SET_STATEMENT.accent}</span>
+      </p>
+      <p className="m-0 font-body text-[28px] text-[var(--color-ink-secondary)]">{FOUNDATION_CUE}</p>
+    </div>
+  );
+}
+
+/** What the journey after the title slide shows, said on the slide so the room knows what's coming. */
+const FOUNDATION_CUE = "Next: how we build it, from the law as written to running code, and what it can power.";
+
+/** The earlier Shared foundation 1/5: one set of rules under every tool. Off the deck since the dry run, Oct 25. */
+function OneSetSlide({ summary }: { summary: RunSummary }) {
   const answered = summary.sourceOfTruth.reduce((sum, c) => sum + c.count, 0);
   const cannot = summary.sourceOfTruth.filter((c) => c.id !== "yes").reduce((sum, c) => sum + c.count, 0);
   return (

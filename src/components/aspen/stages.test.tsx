@@ -120,7 +120,7 @@ describe("VoteCard", () => {
     const { unmount } = render(<VoteCard stage="vote" />);
     const vote = screen.getByRole("button", { name: "Vote" });
     expect(vote).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: /See and edit the rules/ }));
+    fireEvent.click(screen.getByRole("button", { name: /See and trace the rules/ }));
     const project = screen.getByRole("button", { name: /Project policy changes/ });
     fireEvent.click(project);
     expect(project).toHaveAttribute("aria-pressed", "true");
