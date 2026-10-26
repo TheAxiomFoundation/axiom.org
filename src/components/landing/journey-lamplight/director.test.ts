@@ -1,6 +1,6 @@
 import fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SPANS, TOTAL } from "./captions";
+import { SCENE_START, SPANS, TOTAL } from "./captions";
 import { createDirector, type Director } from "./director";
 
 // MOCK rendering kit and scenes: jsdom has no WebGL. Each scene is empty, and
@@ -408,6 +408,63 @@ describe("the journey's director", () => {
       ...Array(4).fill("pipeline.render 4 scene"),
     ]);
     d.dispose();
+  });
+
+  it("keeps its background builds' place among the scenes it fetches ahead of the reader", async () => {
+    // both wait for idle moments, in one queue, in the order they ask. The
+    // background builds move on from scene 0, and a few microtasks later a draw
+    // of scene 3, built out of turn, asks for scene 4: at each depth, the next
+    // idle moment builds the scene it did before compiles were counted
+    takeTime();
+    kit.parallel = true;
+    const next: number[] = [];
+    for (let depth = 0; depth < 6; depth++) {
+      kit.made.length = 0;
+      idles.length = 0;
+      const d = await make();
+      d.jump(SCENE_START[3]);
+      await settle();
+      expect(kit.made).toEqual([0, 3]);
+      idles.shift()?.(); // the background builds' turn for scene 0, built at the start
+      let wait = depth;
+      const draw = () => (wait-- ? queueMicrotask(draw) : d.jump(SCENE_START[3]));
+      queueMicrotask(draw);
+      await settle();
+      expect(idles).toHaveLength(2);
+      idles.shift()?.();
+      await settle();
+      next.push(kit.made[2]);
+      d.dispose();
+    }
+    // recorded from the director before compiles were counted (0944c0aa)
+    expect(next).toEqual([4, 4, 1, 1, 1, 1]);
+  });
+
+  it("draws a scene as soon as its warm-up is done", async () => {
+    // a draw of scene 1 comes a few microtasks after its build begins: at each
+    // depth, it draws the scene, or only asks for it, as it did before compiles
+    // were counted
+    takeTime();
+    kit.parallel = true;
+    const drew: boolean[] = [];
+    for (let depth = 0; depth < 9; depth++) {
+      const d = await make();
+      d.jump(SCENE_START[1]); // not built yet: its build begins
+      let wait = depth;
+      let calls: string[] = [];
+      const draw = () => {
+        if (wait--) return queueMicrotask(draw);
+        const from = kit.calls.length;
+        d.jump(SCENE_START[1]);
+        calls = kit.calls.slice(from);
+      };
+      queueMicrotask(draw);
+      await settle();
+      drew.push(calls.includes("render"));
+      d.dispose();
+    }
+    // recorded from the director before compiles were counted (0944c0aa)
+    expect(drew).toEqual([false, false, false, false, true, true, true, true, true]);
   });
 
   it("logs a later scene's failure where nothing listens for it", async () => {
