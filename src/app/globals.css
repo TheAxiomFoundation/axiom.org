@@ -1009,6 +1009,16 @@ body:has(.graph-viewer-root) > footer {
   letter-spacing: -0.01em;
 }
 
+/* The site's heading gradient is sized to the window. The presenter scales its
+   1600×900 slide to fit, so the gradient repeated inside a title and restarted
+   mid-word ("b" in ink, "enefits" in rust; the dry run, Oct 25). Slides set
+   headings in solid ink. */
+[data-aspen-presenter] :is(.heading-page, .heading-section, .heading-sub) {
+  background: none;
+  -webkit-text-fill-color: currentColor;
+  color: var(--color-ink);
+}
+
 /* The site's selection puts near-black ink on a faint amber wash, which
    blacks out white text on the /aspen dark boxes (and the presenter's
    Encoded law box). Text set in white there reads as white on the same solid

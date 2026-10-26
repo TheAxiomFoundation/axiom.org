@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { HOUSEHOLDS, composePrompt, findHousehold } from "@/lib/aspen/content";
-import { CHAT_KEY, ChatWindow, hostname, readNdjson, type SavedChat, type Turn } from "./chat-window";
+import { HOUSEHOLDS, QUESTIONS, composePrompt, findHousehold } from "@/lib/aspen/content";
+import { CHAT_KEY, ChatWindow, hostname, labelsOf, readNdjson, type SavedChat, type Turn } from "./chat-window";
 import { RATING_KEY, TAB_KEY, holdTab } from "./client";
 
 type Handler = (init?: RequestInit) => Promise<Response> | Response;
@@ -71,7 +71,9 @@ const shownQuestion = () => {
   const preview = screen.queryByRole("group", { name: /The question$/ });
   return preview ? (preview.querySelector("p")?.textContent ?? "") : draftBox().value;
 };
-const changeQuestion = () => fireEvent.click(screen.getByRole("button", { name: "Change the question" }));
+const editQuestion = () => fireEvent.click(screen.getByRole("button", { name: "Edit the question" }));
+const openDetails = () => fireEvent.click(screen.getByRole("button", { name: /Add details/ }));
+const openQuestions = () => fireEvent.click(screen.getByRole("button", { name: /What do you want to know\?/ }));
 const pickRetiree = () => fireEvent.click(screen.getByRole("button", { name: /Retiree in Phoenix/ }));
 const openFollowUp = () => fireEvent.click(screen.getByRole("button", { name: "Ask a follow-up" }));
 
@@ -151,24 +153,69 @@ describe("ChatWindow composing", () => {
   it("shows each step as a bold, numbered heading, starting with who you ask as", () => {
     routeFetch({});
     render(<ChatWindow stage="try" />);
-    const steps = () => [...document.querySelectorAll("legend, div.font-semibold")].map((el) => el.textContent?.replace(/\s+/g, " ").trim());
+    // A step that opens on a tap is a button: its number, then its heading (not what's picked in it).
+    const steps = () =>
+      [...document.querySelectorAll("legend, div.font-semibold, button[aria-controls^='aspen-step-']")].map((el) =>
+        (el.matches("button") ? `${el.firstElementChild?.textContent}${el.children[1]?.firstElementChild?.textContent}` : el.textContent)
+          ?.replace(/\s+/g, " ")
+          .trim(),
+      );
     expect(steps()).toEqual(["1Ask as", "2Pick a household", "3Your question (any benefit, any state)"]);
-    // A picked household shows its question as written; changing it opens the rest (the run-through, Oct 22).
+    // A picked household shows its question as written, with its details and questions closed (the dry run, Oct 25).
     pickRetiree();
-    expect(steps()).toEqual(["1Ask as", "2Pick a household", "3The question"]);
-    expect(screen.getByRole("group", { name: /The question$/ })).toBeInTheDocument();
-    expect(screen.queryByLabelText("Your question")).not.toBeInTheDocument();
-    changeQuestion();
-    expect(screen.queryByRole("group", { name: /The question$/ })).not.toBeInTheDocument();
-    // The button is gone, so focus moves to the details it opened rather than falling to the page.
-    expect(document.activeElement?.textContent?.replace(/\s+/g, " ").trim()).toBe("3Add details (optional)");
     expect(steps()).toEqual([
       "1Ask as",
       "2Pick a household",
       "3Add details (optional)",
       "4What do you want to know? (pick one or more)",
-      "5Your question (edit it if you like)",
+      "5The question",
     ]);
+    expect(screen.getByRole("group", { name: /The question$/ })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Your question")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Details" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Question" })).not.toBeInTheDocument();
+    editQuestion();
+    expect(screen.queryByRole("group", { name: /The question$/ })).not.toBeInTheDocument();
+    // The button is gone, so focus moves to the box it opened rather than falling to the page.
+    expect(document.activeElement).toBe(draftBox());
+    expect(steps().at(-1)).toBe("5Your question (edit it if you like)");
+  });
+
+  it("opens a household's details and questions one at a time, showing what's picked while closed", () => {
+    routeFetch({});
+    render(<ChatWindow stage="try" />);
+    pickRetiree();
+    const details = screen.getByRole("button", { name: /Add details/ });
+    const questions = screen.getByRole("button", { name: /What do you want to know\?/ });
+    expect(details).toHaveAttribute("aria-expanded", "false");
+    expect(details).toHaveTextContent("None added");
+    expect(questions).toHaveTextContent("How much?");
+
+    openDetails();
+    expect(details).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("group", { name: "Details" })).toBeInTheDocument();
+    // Open, a step shows its choices instead of the summary.
+    expect(details).not.toHaveTextContent("None added");
+    fireEvent.click(screen.getByRole("button", { name: "+ Savings" }));
+
+    // Opening the questions closes the details, which now list what was added.
+    openQuestions();
+    expect(questions).toHaveAttribute("aria-expanded", "true");
+    expect(details).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("group", { name: "Details" })).not.toBeInTheDocument();
+    expect(details).toHaveTextContent("Savings");
+    fireEvent.click(screen.getByRole("button", { name: "Eligible?" }));
+    expect(shownQuestion()).toBe(composePrompt("resident", RETIREE, ["amount", "eligible"], ["savings"]));
+
+    // Tapping an open step closes it.
+    openQuestions();
+    expect(screen.queryByRole("group", { name: "Question" })).not.toBeInTheDocument();
+    expect(questions).toHaveTextContent("How much?, Eligible?");
+  });
+
+  it("lists picked items by their labels, in the list's order", () => {
+    expect(labelsOf(QUESTIONS, ["more", "amount", "bogus"])).toBe("How much?, What else?");
+    expect(labelsOf(QUESTIONS, [])).toBe("");
   });
 
   it("starts empty with no household picked, asking as a resident", () => {
@@ -212,7 +259,7 @@ describe("ChatWindow composing", () => {
     fireEvent.click(screen.getByRole("button", { name: "A caseworker" }));
     expect(shownQuestion()).toMatch(/^I'm a caseworker in Arizona/);
     fireEvent.click(screen.getByRole("button", { name: "A resident" }));
-    changeQuestion();
+    editQuestion();
     expect(draftBox().value).toBe(composePrompt("resident", RETIREE, "amount"));
     // The demo disclaimer: OpenAI has no part in the page.
     expect(screen.getByText(/OpenAI does not sponsor or endorse this page/)).toBeInTheDocument();
@@ -237,6 +284,7 @@ describe("ChatWindow composing", () => {
     expect(draftBox().value).toMatch(/How much will we get from the Child Tax Credit for 2026\?$/);
 
     // Questions add up: tapping "Eligible?" asks both, in display order.
+    openQuestions();
     fireEvent.click(screen.getByRole("button", { name: "Eligible?" }));
     expect(draftBox().value).toMatch(
       /How much will we get from the Child Tax Credit for 2026\? Do we qualify for the Child Tax Credit\?$/,
@@ -263,40 +311,43 @@ describe("ChatWindow composing", () => {
   it("adds details to the household in the right voice, and drops ones a new household contradicts", () => {
     const fetchMock = routeFetch({});
     render(<ChatWindow stage="try" />);
-    expect(screen.queryByRole("group", { name: "Details" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Add details/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Working parent of two/ }));
     expect(screen.queryByRole("group", { name: "Details" })).not.toBeInTheDocument();
-    changeQuestion();
-    const details = within(screen.getByRole("group", { name: "Details" }));
+    openDetails();
+    const details = () => within(screen.getByRole("group", { name: "Details" }));
     // Details come in two rows, under the numbered steps.
-    expect(details.getByText("Income and costs")).toBeInTheDocument();
-    expect(details.getByText("People in the home")).toBeInTheDocument();
-    expect(screen.getByText("What do you want to know?", { exact: false })).toHaveTextContent(
+    expect(details().getByText("Income and costs")).toBeInTheDocument();
+    expect(details().getByText("People in the home")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /What do you want to know\?/ })).toHaveTextContent(
       "4What do you want to know? (pick one or more)",
     );
     // This household already pays for heat, so "Pays utilities" is not offered.
-    expect(details.queryByRole("button", { name: /Pays utilities/ })).not.toBeInTheDocument();
+    expect(details().queryByRole("button", { name: /Pays utilities/ })).not.toBeInTheDocument();
 
-    fireEvent.click(details.getByRole("button", { name: "+ Gig income" }));
-    fireEvent.click(details.getByRole("button", { name: "+ College student" }));
-    expect(details.getByRole("button", { name: "✓ Gig income" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(details().getByRole("button", { name: "+ Gig income" }));
+    fireEvent.click(details().getByRole("button", { name: "+ College student" }));
+    expect(details().getByRole("button", { name: "✓ Gig income" })).toHaveAttribute("aria-pressed", "true");
+    openQuestions();
+    expect(screen.getByRole("button", { name: /Add details/ })).toHaveTextContent("Gig income, College student");
     fireEvent.click(screen.getByRole("button", { name: "Earn more?" }));
     const ny = findHousehold("ny-parent")!;
-    expect(draftBox().value).toBe(composePrompt("resident", ny, ["amount", "cliff"], ["gig", "student"]));
+    expect(shownQuestion()).toBe(composePrompt("resident", ny, ["amount", "cliff"], ["gig", "student"]));
     expect(calls(fetchMock, "/api/aspen/event").at(-1)).toMatchObject({
       kind: "chip",
       payload: { householdId: "ny-parent", questionIds: ["amount", "cliff"], twists: ["gig", "student"] },
     });
 
     // Tapping a detail again removes it.
-    fireEvent.click(details.getByRole("button", { name: "✓ College student" }));
-    expect(draftBox().value).toBe(composePrompt("resident", ny, ["amount", "cliff"], ["gig"]));
+    openDetails();
+    fireEvent.click(details().getByRole("button", { name: "✓ College student" }));
+    expect(shownQuestion()).toBe(composePrompt("resident", ny, ["amount", "cliff"], ["gig"]));
 
     // A retiree cannot be a student; the gig income carries over.
-    fireEvent.click(details.getByRole("button", { name: "+ College student" }));
+    fireEvent.click(details().getByRole("button", { name: "+ College student" }));
     fireEvent.click(screen.getByRole("button", { name: /Retiree in Phoenix/ }));
-    expect(draftBox().value).toBe(composePrompt("resident", RETIREE, ["amount", "cliff"], ["gig"]));
-    expect(within(screen.getByRole("group", { name: "Details" })).queryByRole("button", { name: /College student/ })).not.toBeInTheDocument();
+    expect(shownQuestion()).toBe(composePrompt("resident", RETIREE, ["amount", "cliff"], ["gig"]));
+    expect(details().queryByRole("button", { name: /College student/ })).not.toBeInTheDocument();
   });
 
   it("clears the draft and hides the question chips for the participant's own question", () => {
@@ -318,6 +369,30 @@ describe("ChatWindow composing", () => {
 });
 
 describe("ChatWindow asking", () => {
+  it("moves a question just sent to the top of the screen, once, so its answer reads from the start", async () => {
+    // Chrome on Android otherwise anchored the page as the composer closed, and landed on "Ask a follow-up" (the dry run, Oct 25).
+    const original = Element.prototype.scrollIntoView;
+    const scrolls: { el: Element; arg: unknown }[] = [];
+    Element.prototype.scrollIntoView = function (this: Element, arg?: boolean | ScrollIntoViewOptions) {
+      scrolls.push({ el: this, arg });
+    };
+    try {
+      routeFetch({
+        "/api/aspen/ask": () => streamResponse(streamOf([{ type: "meta", promptId: "p-s" }, { type: "delta", text: "Ok" }, { type: "done" }])),
+      });
+      render(<ChatWindow stage="try" />);
+      pickRetiree();
+      fireEvent.click(screen.getByRole("button", { name: "Ask the AI" }));
+      await screen.findByText("Ok");
+      const question = screen.getByText(composePrompt("resident", RETIREE, "amount"));
+      expect(scrolls.filter((s) => s.el === question)).toEqual([{ el: question, arg: { block: "start" } }]);
+      // Nothing scrolls past it to the end of the thread once the answer is in.
+      expect(scrolls.filter((s) => s.el !== question && (question.compareDocumentPosition(s.el) & Node.DOCUMENT_POSITION_FOLLOWING))).toEqual([]);
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
   it("streams an answer with sources and puts the rating card below the chat box", async () => {
     const first = controlledStream();
     const second = controlledStream();
@@ -709,7 +784,7 @@ describe("ChatWindow asking", () => {
     });
     render(<ChatWindow stage="try" />);
     pickRetiree();
-    changeQuestion();
+    openDetails();
     fireEvent.click(screen.getByRole("button", { name: "+ Savings" }));
     fireEvent.click(screen.getByRole("button", { name: "Ask the AI" }));
     await screen.findByText("Ok");
@@ -956,7 +1031,8 @@ describe("ChatWindow saved conversation", () => {
     });
     routeFetch({});
     render(<ChatWindow stage="try" />);
-    changeQuestion();
+    await waitFor(() => expect(screen.getByRole("button", { name: /What do you want to know\?/ })).toHaveTextContent("How much?, Eligible?"));
+    openQuestions();
     await waitFor(() => expect(screen.getByRole("button", { name: "✓ How much?" })).toHaveAttribute("aria-pressed", "true"));
     expect(screen.getByRole("button", { name: "✓ Eligible?" })).toHaveAttribute("aria-pressed", "true");
     await waitFor(() => expect(saved().questionIds).toEqual(["amount", "eligible"]));
