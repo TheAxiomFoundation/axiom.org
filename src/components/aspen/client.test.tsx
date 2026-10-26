@@ -495,6 +495,27 @@ describe("usePoll", () => {
     }
   });
 
+  it("hands each good value to onData as it arrives, before the next render, and none from a url it left", async () => {
+    const answers: Record<string, (r: Response) => void> = {};
+    vi.stubGlobal("fetch", vi.fn((url: string) => new Promise<Response>((resolve) => (answers[url] = resolve))));
+    const seen: { n: number; rendered: string | null }[] = [];
+    function Probe({ url }: { url: string }) {
+      const { data } = usePoll<{ n: number }>(url, 1000, undefined, (value) =>
+        seen.push({ n: value.n, rendered: screen.getByTestId("data").textContent }),
+      );
+      return <span data-testid="data">{data ? String(data.n) : "none"}</span>;
+    }
+    const { rerender } = render(<Probe url="/api/a" />);
+    rerender(<Probe url="/api/b" />);
+    // Without a timeout nothing aborts the old url's request; its answer still comes, and is dropped.
+    await act(async () => {
+      answers["/api/a"](jsonResponse({ n: 1 }));
+      answers["/api/b"](jsonResponse({ n: 2 }));
+    });
+    expect(seen).toEqual([{ n: 2, rendered: "none" }]);
+    expect(screen.getByTestId("data")).toHaveTextContent("2");
+  });
+
   it("aborts the request for the old url when the url changes", async () => {
     vi.useFakeTimers();
     const requests: { url: string; signal: AbortSignal }[] = [];

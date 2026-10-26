@@ -485,6 +485,144 @@ describe('store selection and control cache', () => {
     expect(await readControl(broken, true)).toEqual(DEFAULT_CONTROL)
   })
 
+  /** PostgREST over one control row: each PATCH applies when it arrives, only over an older row; `hold` keeps answers back. */
+  function heldDatabase(initial: { run_id: string; stage: string; updated_at: string }) {
+    let row = { ...initial }
+    const held: (() => void)[] = []
+    const database = (async (_url: RequestInfo | URL, init: RequestInit = {}) => {
+      let rows: unknown[] = [row]
+      if (init.method === 'PATCH') {
+        const patch = JSON.parse(String(init.body))
+        const applies = row.updated_at < patch.updated_at
+        if (applies) row = { ...row, ...patch }
+        rows = applies ? [row] : []
+      }
+      const answer = new Response(JSON.stringify(rows))
+      return db.hold ? new Promise<Response>((resolve) => held.push(() => resolve(answer))) : answer
+    }) as unknown as typeof fetch
+    const db = { hold: false, held, row: () => row, store: createSupabaseStore({ url: 'https://db.example', key: 'service' }, database) }
+    return db
+  }
+
+  it('keeps the newest row in the cache when an older read or write answers after a newer one', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      vi.setSystemTime(new Date('2026-10-27T00:30:01.000Z'))
+      const db = heldDatabase({ run_id: 'rehearsal', stage: 'try', updated_at: '2026-10-27T00:30:00.000Z' })
+      // A phone's read goes out before Start run and answers after it, with the row from before.
+      db.hold = true
+      const oldRead = readControl(db.store)
+      db.hold = false
+      expect(await writeControl(db.store, { runId: 'aspen', stage: 'welcome' })).toMatchObject({ runId: 'aspen' })
+      vi.setSystemTime(new Date('2026-10-27T00:30:02.000Z'))
+      db.held.shift()!()
+      // That phone gets the newest row this instance knows, and so does every phone after it.
+      expect(await oldRead).toMatchObject({ runId: 'aspen', stage: 'welcome' })
+      expect(await readControl(db.store)).toMatchObject({ runId: 'aspen', stage: 'welcome' })
+
+      // A move's answer comes back after a later move's: that move gets its own answer, and the cache keeps the later.
+      vi.setSystemTime(new Date('2026-10-27T00:30:03.000Z'))
+      db.hold = true
+      const firstPost = writeControl(db.store, { stage: 'try' })
+      db.hold = false
+      vi.setSystemTime(new Date('2026-10-27T00:30:04.000Z'))
+      expect(await writeControl(db.store, { stage: 'reveal' })).toMatchObject({ stage: 'reveal' })
+      db.held.shift()!()
+      expect(await firstPost).toMatchObject({ stage: 'try' })
+      expect(await readControl(db.store)).toMatchObject({ stage: 'reveal' })
+      expect(db.row()).toMatchObject({ run_id: 'aspen', stage: 'reveal' })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('ages a cached row from when it was asked for, so a slow read is not served for two seconds after it answers', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      vi.setSystemTime(new Date('2026-10-27T00:30:01.000Z'))
+      const db = heldDatabase({ run_id: 'aspen', stage: 'try', updated_at: '2026-10-27T00:30:00.000Z' })
+      const spy = vi.spyOn(db.store, 'getControl')
+      db.hold = true
+      const slow = readControl(db.store)
+      db.hold = false
+      vi.setSystemTime(new Date('2026-10-27T00:30:04.000Z'))
+      db.held.shift()!()
+      expect(await slow).toMatchObject({ stage: 'try' })
+      // The row it read is from 00:30:01, past the cache's two seconds: the next read asks the store again.
+      await readControl(db.store)
+      expect(spy).toHaveBeenCalledTimes(2)
+      await readControl(db.store)
+      expect(spy).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('answers each read with the newest row this instance has had, whatever order the store answers in', async () => {
+    const command = fc.oneof(
+      { weight: 2, arbitrary: fc.constant({ kind: 'read' as const }) },
+      { weight: 2, arbitrary: fc.record({ kind: fc.constant('write' as const), stage: fc.constantFrom('try', 'reveal', 'scale'), run: fc.boolean() }) },
+      { weight: 3, arbitrary: fc.record({ kind: fc.constant('answer' as const), pick: fc.nat() }) },
+      { weight: 1, arbitrary: fc.record({ kind: fc.constant('wait' as const), ms: fc.integer({ min: 0, max: 1500 }) }) },
+    )
+    vi.useFakeTimers({ toFake: ['Date'] })
+    // Lets every answer the test released reach the cache.
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
+    try {
+      await fc.assert(
+        fc.asyncProperty(fc.array(command, { minLength: 1, maxLength: 20 }), fc.array(fc.nat(), { minLength: 20, maxLength: 20 }), async (commands, last) => {
+          _resetControlCache()
+          vi.setSystemTime(new Date('2026-10-27T00:30:00.000Z'))
+          const db = heldDatabase({ run_id: 'r0', stage: 'welcome', updated_at: '2026-10-27T00:29:00.000Z' })
+          db.hold = true
+          const stamp = (c: { updatedAt: string | null }) => c.updatedAt ?? ''
+          // The newest row the store has answered with so far, and each read's answer with the newest when it came.
+          let newest = ''
+          const got: { answer: string; newest: string }[] = []
+          const database = db.store
+          const getControl = database.getControl.bind(database)
+          const setControl = database.setControl.bind(database)
+          database.getControl = async () => {
+            const row = await getControl()
+            if (stamp(row) > newest) newest = stamp(row)
+            return row
+          }
+          database.setControl = async (patch) => {
+            const row = await setControl(patch)
+            if (stamp(row) > newest) newest = stamp(row)
+            return row
+          }
+          let writes = 0
+          const release = async (pick: number) => {
+            if (db.held.length === 0) return
+            db.held.splice(pick % db.held.length, 1)[0]()
+            await settle()
+          }
+          for (const c of commands) {
+            if (c.kind === 'read') {
+              void readControl(database).then((row) => got.push({ answer: stamp(row), newest }))
+              await settle()
+            } else if (c.kind === 'write') {
+              writes += 1
+              vi.setSystemTime(Date.now() + 1)
+              void writeControl(database, { stage: c.stage, ...(c.run ? { runId: `r${writes}` } : {}) })
+              await settle()
+            } else if (c.kind === 'answer') await release(c.pick)
+            else vi.setSystemTime(Date.now() + c.ms)
+          }
+          for (let i = 0; db.held.length > 0; i += 1) await release(last[i % last.length])
+          for (const { answer, newest } of got) expect(answer).toBe(newest)
+          // Once every answer is in, a read gets the store's row.
+          db.hold = false
+          expect(stamp(await readControl(database))).toBe(db.row().updated_at)
+        }),
+        { numRuns: 300 },
+      )
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('runs writes safely', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
     expect(await safely('ok', async () => 3)).toBe(3)

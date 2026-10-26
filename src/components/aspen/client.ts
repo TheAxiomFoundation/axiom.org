@@ -305,13 +305,21 @@ export const CONTROL_TIMEOUT_MS = 8_000;
  * Polls a JSON endpoint while `enabled`; keeps the last good value. With
  * `timeoutMs`, a request that neither answers nor fails in time is aborted,
  * counts as failed, and the next poll runs on schedule; leaving the page, or
- * a new url, aborts the request in flight and its timer at once.
+ * a new url, aborts the request in flight and its timer at once. `onData`
+ * gets each good value as it arrives, before the next render.
  */
-export function usePoll<T>(url: string | null, intervalMs: number, timeoutMs?: number): { data: T | null; failed: boolean } {
+export function usePoll<T>(
+  url: string | null,
+  intervalMs: number,
+  timeoutMs?: number,
+  onData?: (data: T) => void,
+): { data: T | null; failed: boolean } {
   const [data, setData] = useState<T | null>(null);
   const [failed, setFailed] = useState(false);
   const urlRef = useRef(url);
   urlRef.current = url;
+  const onDataRef = useRef(onData);
+  onDataRef.current = onData;
 
   useEffect(() => {
     if (!url) return;
@@ -329,6 +337,7 @@ export function usePoll<T>(url: string | null, intervalMs: number, timeoutMs?: n
         // A body the timeout cuts off throws here, so it counts as failed.
         const next = (await response.json()) as T;
         if (!cancelled && urlRef.current === url) {
+          onDataRef.current?.(next);
           setData(next);
           setFailed(false);
         }
@@ -354,8 +363,8 @@ export function usePoll<T>(url: string | null, intervalMs: number, timeoutMs?: n
   return { data, failed };
 }
 
-export function useControl(intervalMs = 4000) {
-  return usePoll<Control>("/api/aspen/state", intervalMs, CONTROL_TIMEOUT_MS);
+export function useControl(intervalMs = 4000, onData?: (control: Control) => void) {
+  return usePoll<Control>("/api/aspen/state", intervalMs, CONTROL_TIMEOUT_MS, onData);
 }
 
 export interface ResultsPayload {

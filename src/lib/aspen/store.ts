@@ -7,6 +7,7 @@ import type {
   PublicPledge,
   RunData,
 } from "./types";
+import { newerControl } from "./control";
 
 /**
  * Storage for the Aspen convening page. Production writes to the
@@ -175,10 +176,11 @@ export function createSupabaseStore(
       if (patch.stage) body.stage = patch.stage;
       // Only over an older row, checked in the same update: two moves whose writes land out of order
       // leave the row on the later one, so the row always holds the newest stamp, which is how the TV
-      // orders rows (presenter-app's newerControl; the review of #376). A write a later one already
+      // orders rows (control.ts newerControl; the review of #376). A write a later one already
       // beat changes nothing and answers with the row as it is. That holds for the whole write: a run
       // switch that a later stage-only move beat to the row keeps the old run, so the presenter sends
-      // no move across a run switch (presenter-app's move).
+      // no move across a run switch, and sends a run switch beaten that way once more (presenter-app's
+      // move).
       const rows = await request<ControlRow[]>(
         `aspen_control?id=eq.live&updated_at=lt.${encodeURIComponent(updatedAt)}&select=run_id,stage,updated_at`,
         { method: "PATCH", body, prefer: "return=representation" },
@@ -263,7 +265,7 @@ export function createMemoryStore(state: MemoryState = freshMemory()): AspenStor
     },
     async setControl(patch) {
       // Each write is stamped after the one before, even when the clock steps back, so the TV takes
-      // the newest write for the newest row (presenter-app's newerControl), as the phones do.
+      // the newest write for the newest row (control.ts newerControl), as the phones do.
       const last = Date.parse(state.control.updatedAt ?? "") || 0;
       state.control = {
         ...state.control,
@@ -341,32 +343,47 @@ let controlCache: { at: number; value: Control } | null = null;
 const CONTROL_TTL_MS = 2000;
 
 /**
+ * Keeps the newer of the cached row and one the store answered with
+ * (newerControl), aged from when it was asked for. So a read that started
+ * before a write and answers after it never puts the older row back over the
+ * write's, which would send the phones polling this instance back to the old
+ * run and drop what they saved in the new one (the review of #376). Returns
+ * the row kept.
+ */
+function remember(asked: number, value: Control): Control {
+  const kept = newerControl(controlCache?.value ?? null, value);
+  if (kept === value) controlCache = { at: asked, value };
+  return kept;
+}
+
+/**
  * The active run and stage, cached for two seconds per instance so a
- * room of phones polling does not each hit the database. A store error
- * (e.g. the migration has not run yet) falls back to the default run.
+ * room of phones polling does not each hit the database: the newest row
+ * this instance has read or written. A store error (e.g. the migration
+ * has not run yet) falls back to the default run.
  */
 export async function readControl(store: AspenStore | null, fresh = false): Promise<Control> {
   if (!store) return { ...DEFAULT_CONTROL };
-  if (!fresh && controlCache && Date.now() - controlCache.at < CONTROL_TTL_MS) {
+  const asked = Date.now();
+  if (!fresh && controlCache && asked - controlCache.at < CONTROL_TTL_MS) {
     return controlCache.value;
   }
   try {
-    const value = await store.getControl();
-    controlCache = { at: Date.now(), value };
-    return value;
+    return remember(asked, await store.getControl());
   } catch (error) {
     console.error("[aspen] control read failed:", error);
     return { ...DEFAULT_CONTROL };
   }
 }
 
-/** Writes the control row and refreshes this instance's cache. */
+/** Writes the control row, answers with the store's answer, and keeps it in this instance's cache if it is the newest. */
 export async function writeControl(
   store: AspenStore,
   patch: { runId?: string; stage?: string },
 ): Promise<Control> {
+  const asked = Date.now();
   const value = await store.setControl(patch);
-  controlCache = { at: Date.now(), value };
+  remember(asked, value);
   return value;
 }
 
