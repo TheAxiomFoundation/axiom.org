@@ -141,8 +141,8 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
   // Agency comments stay hidden until the presenter chooses to show them.
   const [showComments, setShowComments] = useState(false);
   // Which slide of a multi-slide stage is up; any other stage starts at its first slide. `back` is the
-  // slide the arrows (or a new run) left for another stage, so a move the store refuses puts the TV
-  // back on it. A stage button leaves `slide` as it was, so it needs none.
+  // slide the arrows (or a new run) left for another stage, until that move settles: one the store
+  // refuses puts the TV back on it. A stage button leaves `slide` as it was, so it needs none.
   const [slide, setSlide] = useState<SlideAt & { back?: SlideAt }>({ stage: "welcome", sub: 0 });
   // The controls fade out when the mouse rests, so the room sees only the slide.
   const [idle, setIdle] = useState(false);
@@ -179,8 +179,7 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
 
   const stage = (stageIndex(control?.stage) >= 0 ? control?.stage : "welcome") as StageId;
   const index = stageIndex(stage);
-  const at = slide.stage === stage ? slide.sub : slide.back?.stage === stage ? slide.back.sub : 0;
-  const sub = Math.min(at, slideCount(stage) - 1);
+  const sub = slide.stage === stage ? Math.min(slide.sub, slideCount(stage) - 1) : 0;
   const { data: results } = useResults(true, 4000, control?.runId);
   const summary: RunSummary = results?.summary ?? EMPTY_SUMMARY;
 
@@ -206,8 +205,16 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
       setError(response?.data.error ?? "The stage did not change. Check the connection.");
     }
     // The last move to settle puts the TV on what the store holds: this move's row when it saved, an
-    // earlier move's, or the row from before them all.
-    if (moving.current === 0) setControl(stored.current);
+    // earlier move's, or the row from before them all. When that is the stage the arrows left, it is
+    // the slide they left too; either way the slide forgets `back`, so a stage reached later starts at
+    // its first slide again.
+    if (moving.current === 0) {
+      const landed = stored.current;
+      setControl(landed);
+      setSlide((s) =>
+        s.back && landed && landed.stage === s.back.stage && landed.stage !== s.stage ? s.back : { stage: s.stage, sub: s.sub },
+      );
+    }
   }, []);
 
   const step = useCallback(

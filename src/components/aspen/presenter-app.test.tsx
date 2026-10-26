@@ -331,6 +331,23 @@ describe("PresenterApp navigation", () => {
     expect(posts()).toEqual([{ stage: "scale" }, { stage: "scale" }, { stage: "reveal" }]);
   });
 
+  it("starts the stage it left at its first slide when it comes back later, once the move away saved", async () => {
+    const { posts } = setup({ stage: "reveal" });
+    await onStage("reveal");
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("2/2")).toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    await onStage("scale");
+    await waitFor(() => expect(posts()).toEqual([{ stage: "scale" }]));
+    await act(async () => {});
+    expect(screen.getByText("1/7")).toBeInTheDocument();
+    // Back by its button: the room's results first, as for any other stage, not the slide it left.
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Stages" })).getByRole("button", { name: "What we saw" }));
+    await onStage("reveal");
+    await act(async () => {});
+    expect(screen.getByText("1/2")).toBeInTheDocument();
+  });
+
   it("goes back to the stage before a new run the store refused", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     const { server } = setup({ stage: "reveal" });
