@@ -140,12 +140,13 @@ describe("VoteCard", () => {
     expect(screen.queryByRole("button", { name: "Vote" })).not.toBeInTheDocument();
   });
 
-  it("offers all five choices, testing cases against the rules among them", async () => {
+  it("offers the four choices, one per group, testing cases against the rules among them", async () => {
     const fetchMock = stubFetch();
     render(<VoteCard stage="vote" />);
     const choices = within(screen.getByRole("group", { name: "Pick one" })).getAllByRole("button");
     expect(choices.map((b) => b.querySelector("span")?.textContent)).toEqual(USE_CASES.map((u) => u.label));
-    expect(choices).toHaveLength(5);
+    expect(choices).toHaveLength(4);
+    expect(screen.queryByRole("button", { name: /Create application interfaces/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Test cases against the rules/ }));
     fireEvent.click(screen.getByRole("button", { name: "Vote" }));
     expect(screen.getByText(/You voted:/)).toHaveTextContent("Test cases against the rules");
@@ -162,17 +163,33 @@ describe("VoteCard", () => {
     expect(screen.getByRole("button", { name: "Vote" })).toBeDisabled();
   });
 
-  it("lets an odd last choice take the whole row in two columns, so it never sits alone in half of one", () => {
-    render(<VoteCard stage="vote" />);
-    const group = screen.getByRole("group", { name: "Pick one" });
+  // Every row of two is full: only the last of an odd number of choices spans both columns.
+  function spans(group: HTMLElement) {
     // One column on a phone, two from 640px.
     expect(group.className).toMatch(/(^| )grid( |$)/);
     expect(group.className).toContain("sm:grid-cols-2");
-    const choices = within(group).getAllByRole("button");
-    const spans = choices.map((b) => b.className.split(" ").includes("sm:col-span-2"));
-    // Every row of two is full: only the last of an odd number spans both columns.
-    expect(spans).toEqual(choices.map((_, i) => i === choices.length - 1 && choices.length % 2 === 1));
-    expect(spans.at(-1)).toBe(true);
+    return within(group).getAllByRole("button").map((b) => b.className.split(" ").includes("sm:col-span-2"));
+  }
+
+  it("lets an odd last choice take the whole row in two columns, so it never sits alone in half of one", async () => {
+    // Four choices today (one per group), so every row is full and none spans.
+    render(<VoteCard stage="vote" />);
+    expect(spans(screen.getByRole("group", { name: "Pick one" }))).toEqual(USE_CASES.map(() => false));
+    cleanup();
+    // The same card with three choices: the third takes the whole row.
+    vi.resetModules();
+    vi.doMock("@/lib/aspen/content", async (original) => {
+      const content = await original<typeof import("@/lib/aspen/content")>();
+      return { ...content, USE_CASES: content.USE_CASES.slice(0, 3) };
+    });
+    try {
+      const { VoteCard: ThreeChoices } = await import("./stages");
+      render(<ThreeChoices stage="vote" />);
+      expect(spans(screen.getByRole("group", { name: "Pick one" }))).toEqual([false, false, true]);
+    } finally {
+      vi.doUnmock("@/lib/aspen/content");
+      vi.resetModules();
+    }
   });
 });
 

@@ -654,7 +654,11 @@ export const DISCUSSION_TOPICS = [
   "Reporting and renewals",
 ] as const;
 
-/** The uses people vote on before the small groups, from the session plan. */
+/**
+ * The uses people vote on before the small groups, from the session plan. Four, one per group:
+ * there are notetakers for four groups (Ariel, Oct 26). "Create application interfaces" was cut
+ * as the closest to "Build caseworker flows" (Max, Oct 26).
+ */
 export const USE_CASES = [
   {
     id: "see-edit",
@@ -670,11 +674,6 @@ export const USE_CASES = [
     id: "flows",
     label: "Build caseworker flows",
     detail: "Ask only the questions each case needs.",
-  },
-  {
-    id: "apply",
-    label: "Create application interfaces",
-    detail: "New ways to apply, on the same rules as the eligibility system.",
   },
   {
     id: "test",

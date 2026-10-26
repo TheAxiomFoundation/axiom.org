@@ -5,7 +5,7 @@ import { EMPTY_SUMMARY, type RunSummary } from "@/lib/aspen/results";
 import type { Control } from "@/lib/aspen/types";
 import { AspenApp } from "./aspen-app";
 import { CHAT_KEY, type SavedChat } from "./chat-window";
-import { PLEDGE_KEY, VOTE_KEY, currentRun } from "./client";
+import { OVERALL_KEY, PLEDGE_KEY, VOTE_KEY, currentRun } from "./client";
 
 function jsonResponse(data: unknown, ok = true) {
   return { ok, status: ok ? 200 : 500, json: async () => data } as unknown as Response;
@@ -671,7 +671,29 @@ describe("AspenApp without a live presenter", () => {
     // Starting over never hides them (Ariel, Oct 23), and the earlier rated answer still opens Next.
     await waitFor(() => expect(screen.getByRole("group", { name: "Households" })).toBeInTheDocument());
     expect(screen.getByRole("heading", { name: "Two more, about your agency" })).toBeInTheDocument();
+    // Not yet answered, so they stay open to answer.
+    expect(screen.getByRole("button", { name: "Partly" })).toBeInTheDocument();
     expect(nextTo("reveal")).toBeEnabled();
+  });
+
+  it("folds the answered agency questions to one line after Start over, and opens them on a tap", async () => {
+    storeChat(RATED_CHAT);
+    localStorage.setItem(OVERALL_KEY, JSON.stringify({ truth: "partly", agency: { residents: 2, staff: 2, you: 3 } }));
+    render(<AspenApp />);
+    await roomAnswered();
+    fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
+    await onView("try");
+    // Under the rated answer they show as answered.
+    expect(await screen.findByRole("button", { name: "Partly" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getAllByRole("button", { name: /^Start over/ })[0]);
+    // A new question isn't followed by every question at once (Max, Oct 26); Next stays open.
+    await waitFor(() => expect(screen.getByText(/Your answers are saved\./)).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "Partly" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Two more, about your agency" })).toBeInTheDocument();
+    expect(nextTo("reveal")).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Change them" }));
+    expect(screen.getByRole("button", { name: "Partly" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "For you: 3 of 5" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("asks the two agency questions right under the chat, once the answer is rated", async () => {
