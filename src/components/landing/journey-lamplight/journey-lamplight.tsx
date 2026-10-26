@@ -251,8 +251,8 @@ function ScrollJourney() {
       };
       hooks.__jlSeek = (P) => window.scrollTo(0, st.start + (scrollAt(P) / END_S) * (st.end - st.start));
       hooks.__jlReady = async () => {
-        while (!director) await new Promise((r) => setTimeout(r, 50));
-        return director.prepareAll();
+        while (!director && !dead) await new Promise((r) => setTimeout(r, 50));
+        return director?.prepareAll();
       };
       (window as unknown as { __jlTotal?: number }).__jlTotal = STORY;
       // for recordings at the reader's pace: scroll beats ↔ story time
