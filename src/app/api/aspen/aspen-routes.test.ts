@@ -125,10 +125,13 @@ describe('aspen API routes', () => {
 
     // Nobody is asked who they are any more: the profile event is gone.
     expect((await event(post({ participantId: P, kind: 'profile', payload: { state: 'Arizona' } }))).status).toBe(400)
-    // The fifth choice, added on the day, is accepted like the other four; a changed vote replaces it.
+    // Test cases, added on the day, is accepted like the others; a changed vote replaces it.
     expect((await event(post({ participantId: P, kind: 'vote', stage: 'vote', payload: { useCase: 'test' } }))).status).toBe(200)
     await event(post({ participantId: P, kind: 'vote', stage: 'vote', payload: { useCase: 'project' } }))
     expect((await event(post({ participantId: P, kind: 'vote', payload: { useCase: 'bogus' } }))).status).toBe(400)
+    // The cut choice (Oct 26) is refused, from a phone still on the old page, for a vote or a group's pick.
+    expect((await event(post({ participantId: P, kind: 'vote', payload: { useCase: 'apply' } }))).status).toBe(400)
+    expect((await event(post({ participantId: P, kind: 'breakout', payload: { useCase: 'apply' } }))).status).toBe(400)
 
     const asked = await ask(
       post({
