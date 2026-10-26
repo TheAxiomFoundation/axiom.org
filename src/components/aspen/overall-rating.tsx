@@ -61,6 +61,11 @@ function remember(patch: Partial<OverallAnswers>) {
 
 const AGENCY = RATING_SCALES.experience;
 
+/** Both questions answered: the first, and all three of the agency's scales. */
+function answeredAll(a: OverallAnswers): boolean {
+  return Boolean(a.truth) && (AGENCY?.categories.every((c) => a.agency?.[c.id] !== undefined) ?? false);
+}
+
 /**
  * One short screen after the participant rates their answer: whether anyone
  * can check an answer against the state's rules today (it feeds Shared
@@ -70,7 +75,17 @@ const AGENCY = RATING_SCALES.experience;
  * answer), so nothing waits for a last button and nothing is lost when the
  * room moves on.
  */
-export function OverallRating({ stage }: { stage: string }) {
+export function OverallRating({
+  stage,
+  fold = false,
+  restarts = 0,
+}: {
+  stage: string;
+  /** A new question is under way as the phone loads: answers already given start folded (see `settled`). */
+  fold?: boolean;
+  /** Counts Start overs: each folds answers already given. A follow-up's answer doesn't. */
+  restarts?: number;
+}) {
   const [answers, setAnswers] = useState<OverallAnswers>({});
   const [comment, setComment] = useState("");
   // By kind: the truth answer (survey) and the agency rating (discussion) save as separate events,
@@ -83,6 +98,14 @@ export function OverallRating({ stage }: { stage: string }) {
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   // By kind, this tab's latest send: only it decides whether the kind is saved.
   const latest = useRef<Record<string, string>>({});
+  // Once both are answered, a new question (Start over, or a reload during one) folds them to one line,
+  // so the next question isn't followed by every question at once (Max, Oct 26); a tap opens them again.
+  // They fold only when the new question starts, never as the last one is answered or a follow-up's answer
+  // lands, so the comment still opens and nothing folds under a finger.
+  // Questions not yet answered stay open, so starting over never hides them (Ariel, Oct 23).
+  const [settled, setSettled] = useState(false);
+  const [unfolded, setUnfolded] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     const stored = readStored<OverallAnswers>(OVERALL_KEY);
@@ -93,7 +116,9 @@ export function OverallRating({ stage }: { stage: string }) {
       // A save that never confirmed before the reload still asks for the tap again.
       if (unsaved && typeof unsaved === "object") setFailed(Object.fromEntries(Object.entries(unsaved).filter(([, v]) => v === true)));
       setRemoving(wasRemoving === true);
+      if (fold && answeredAll(rest)) setSettled(true);
     }
+    setLoaded(true);
   }, []);
 
   function keep(next: OverallAnswers) {
@@ -155,12 +180,33 @@ export function OverallRating({ stage }: { stage: string }) {
   const commentPending = commentChanged || (failed.discussion === true && !sending.discussion);
   const anyFailed = Object.values(failed).some(Boolean);
   const rated = AGENCY?.categories.every((c) => answers.agency?.[c.id] !== undefined) ?? false;
-  const done = Boolean(answers.truth) && rated;
+  const done = answeredAll(answers);
+  const doneNow = useRef(done);
+  doneNow.current = done;
+  useEffect(() => {
+    if (!restarts) return;
+    setUnfolded(false);
+    if (doneNow.current) setSettled(true);
+  }, [restarts]);
   // One question at a time (Michaela, Oct 26): the agency scales open once the first question is answered,
   // and the comment once all three are rated. Anything answered before, on this phone, keeps its question open.
   const hasComment = Boolean(savedComment) || comment !== "" || removing;
   const showAgency = Boolean(answers.truth) || Object.keys(answers.agency ?? {}).length > 0 || hasComment;
   const showComment = rated || hasComment;
+
+  // Until the phone's answers are read, a folded section shows nothing rather than flash the first question.
+  if (fold && !loaded) return null;
+  if (settled && done && !unfolded && !anyFailed && !commentPending) {
+    return (
+      <p className="m-0 font-body text-[1rem] text-[var(--color-ink)]">
+        <span aria-hidden className="mr-1.5 text-[var(--color-success)]">✓</span>
+        Your answers are saved.{" "}
+        <button type="button" className="aspen-link font-medium" onClick={() => setUnfolded(true)}>
+          Change them
+        </button>
+      </p>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
