@@ -148,7 +148,7 @@ function outcomeOf(attempt: PipelineAttempt): Outcome {
     outcome: "failed",
     outcomeLabel: ENCODE_GATE_LABELS[encodeGate(attempt)],
     cancelStage: null,
-    cause: clip(attempt.encoder_error ? errorMessage(attempt.encoder_error) : group),
+    cause: clip(attempt.encoder_error ? errorMessage(attempt.encoder_error) : group, ERROR_MAX),
     causeGroup: clip(group),
   };
 }
@@ -183,8 +183,10 @@ export function ownRecord(attempt: PipelineAttempt): PipelineAttempt {
 
 /** Long causes and check errors are cut here; the run and the PR hold the rest. */
 const TEXT_MAX = 180;
-const clip = (text: string | null) =>
-  text && text.length > TEXT_MAX ? `${text.slice(0, TEXT_MAX - 1)}…` : text;
+/** An encoder error is kept longer: the run's timeline shows it whole. */
+const ERROR_MAX = 1000;
+const clip = (text: string | null, max = TEXT_MAX) =>
+  text && text.length > max ? `${text.slice(0, max - 1)}…` : text;
 
 const ms = (from: string | null | undefined, to: string | null | undefined) =>
   from && to ? Math.max(0, Date.parse(to) - Date.parse(from)) : null;

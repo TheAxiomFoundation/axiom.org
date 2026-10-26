@@ -756,13 +756,33 @@
 }
 
 .trackStopped {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.trackStopped p {
   margin: 0;
   font-size: 12px;
+  font-weight: 600;
   color: var(--destructive, #991b1b);
+}
+
+/* The error as the run wrote it, whole: wrapped, and scrolled past a few lines. */
+.trackStopped pre {
+  max-height: 14em;
+  margin: 0;
+  padding: 8px 10px;
+  overflow: auto;
+  border: 1px solid var(--color-rule);
+  border-left: 2px solid var(--destructive, #991b1b);
+  border-radius: 4px;
+  background: var(--color-paper);
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--color-ink);
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 

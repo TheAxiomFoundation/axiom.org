@@ -2149,7 +2149,7 @@ const ANSI_RE = /\x1b\[[0-9;]*m/g;
 /** Actions' own closing lines, which say a step failed but not why. */
 const GENERIC_ERROR_RE =
   /^(Process completed with exit code \d+|The operation was canceled|The job was not acquired|The runner has received a shutdown signal)/i;
-const CHECK_ERROR_MAX_CHARS = 400;
+const CHECK_ERROR_MAX_CHARS = 1000;
 /** "pkg.module.SomeError: message", the last line of a Python traceback. */
 const EXCEPTION_RE = /^[A-Za-z_][\w.]*(?:Error|Exception|Exit)\b[^:\s]*: \S/;
 /** A failing step's own output, up to this many lines, is quoted whole; longer output by its end. */

@@ -1007,7 +1007,7 @@ describe("PR check errors", () => {
     );
     const long = log("##[endgroup]", "one", "two", "three", "four", "five: the cause", "##[error]Process completed with exit code 2.");
     expect(checkErrorFromLog(long)).toBe("four five: the cause");
-    expect(checkErrorFromLog(log("##[endgroup]", "x".repeat(500), "##[error]Process completed with exit code 1."))).toHaveLength(400);
+    expect(checkErrorFromLog(log("##[endgroup]", "x".repeat(1500), "##[error]Process completed with exit code 1."))).toHaveLength(1000);
   });
 
   it("names a cancelled job, a step that printed nothing, and a log with no failure", () => {
