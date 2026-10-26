@@ -112,6 +112,12 @@ const slideCount = (id: StageId) => SLIDES[id] ?? 1;
 /** A slide of a stage: which stage, and which of its slides (from 0). */
 type SlideAt = { stage: StageId; sub: number };
 
+/**
+ * A move, as it leaves the slide on screen: that slide; the run the move names, once it is sent (null
+ * before, and for good if it never is); and the run it starts, if it is a run switch.
+ */
+type Leaving = { sub: number; run: string | null; starts?: string };
+
 /** Whether a move's answer is a control row; an answer that isn't says nothing about the store. */
 function isControl(data: unknown): data is Control {
   const c = data as Partial<Control> | null;
@@ -138,6 +144,10 @@ function useFit(): number {
 export function PresenterApp({ joinPassword }: { joinPassword: string | null }) {
   const [control, setControl] = useState<Control | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // A run the presenter started that didn't start. It stays on screen through the moves that waited for
+  // it, until the room is on that run, a run switch saves, or the presenter moves the room after it
+  // (the review of #376).
+  const [failedRun, setFailedRun] = useState<string | null>(null);
   const [runDraft, setRunDraft] = useState("");
   // The new-run form stays folded away until the presenter opens it.
   const [runOpen, setRunOpen] = useState(false);
@@ -172,26 +182,47 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
   // the store didn't take leaves the TV where the phones are, not on a stage they never got (the review
   // of #370).
   const stored = useRef<Control | null>(null);
-  // Each move's request while in flight, and the newest run switch among them, if any, with the run it
-  // starts (see move). Meanwhile
-  // the TV shows the newest move's stage, `ahead`, whatever the polls say, and even before its first
-  // read of the room.
+  // Each move's request while in flight, and the newest run switch among them, if any (see move).
+  // Meanwhile the TV shows the newest move's stage, `ahead`, whatever the polls say, and even before its
+  // first read of the room.
   const requests = useRef(new Set<Promise<unknown>>());
-  const switching = useRef<{ request: Promise<unknown>; run: string } | null>(null);
+  const switching = useRef<{ request: Promise<unknown> } | null>(null);
   const [ahead, setAhead] = useState<StageId | null>(null);
+  // The TV's first live read of the room, which moves wait for (see move).
+  const [read] = useState(() => {
+    let resolve = () => {};
+    const promise = new Promise<void>((r) => (resolve = r));
+    return { promise, resolve };
+  });
   // The slide on screen (kept by a layout effect below), and, while moves are in flight, the slide the
-  // TV last showed on each stage they left, with the run it showed it in: when they settle the room on
-  // one of those in the same run, it goes back there. That is the run on screen, or, while a run switch
-  // is in flight, also the run it starts, since the moves after it reach the store in whichever run it
-  // leaves the room on (the review of #376).
+  // TV last showed on each stage they left, with the run the move that left it named once it was sent:
+  // when they settle the room on one of those in that run, it goes back there (the reviews of #376).
+  // And the newest move, with that run and the run it starts, if it is a run switch.
   const onScreen = useRef<SlideAt>({ stage: "welcome", sub: 0 });
-  const left = useRef(new Map<string, { run: string | null; next: string | null; sub: number }>());
+  const left = useRef(new Map<string, Leaving>());
+  const newest = useRef<Leaving | null>(null);
 
+  // Keeps the newer of the TV's newest row and one the store just answered with, from a poll or a move.
+  const take = useCallback(
+    (row: Control) => {
+      const room = newerControl(stored.current, row);
+      stored.current = room;
+      setControl(room);
+      if (room.live) read.resolve();
+      setFailedRun((run) => (run === room.runId ? null : run));
+    },
+    [read],
+  );
   // Each poll's row reaches `stored` as it arrives, not in an effect after the next render, so a move
-  // that settles in the same moment counts it (the review of #376).
+  // that settles in the same moment counts it (the review of #376). Another screen's run switch, read
+  // while no move is in flight, opens the room's stage at its first slide: the slide on screen was the
+  // run it left's (the review of #376).
   useControl(3000, (row) => {
-    stored.current = newerControl(stored.current, row);
-    setControl(stored.current);
+    const was = stored.current;
+    take(row);
+    if (was && stored.current && was.runId !== stored.current.runId && requests.current.size === 0) {
+      setSlide({ stage: stageIndex(stored.current.stage) >= 0 ? (stored.current.stage as StageId) : "welcome", sub: 0 });
+    }
   });
 
   const stage = (ahead ?? (stageIndex(control?.stage) >= 0 ? control?.stage : "welcome")) as StageId;
@@ -204,7 +235,9 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
     if (slide.stage !== stage) setSlide({ stage, sub });
   });
   const { data: results } = useResults(true, 4000, control?.runId);
-  const summary: RunSummary = results?.summary ?? EMPTY_SUMMARY;
+  // Only the run on screen's results: until a new run's first answer, the old run's stay off the TV
+  // (the review of #376).
+  const summary: RunSummary = results && results.runId === control?.runId ? results.summary : EMPTY_SUMMARY;
 
   /**
    * Moves the room. The TV shows the new stage at once; the store's answer then confirms it. A move
@@ -224,66 +257,83 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
    * move after it once it has. The store keeps the newest write whole (store.ts setControl), so a
    * stage move stamped after a run switch whose write landed first would keep the old run, and the
    * room's new results would mix with the rehearsal's (the review of #376). Other moves still go at
-   * once, each to the store as it arrives. And each move names the run the TV made it in, once it has
-   * read one, so a move it gave up on that reaches the store after a run switch it then let through
-   * changes nothing there (store.ts setControl).
+   * once, each to the store as it arrives. And each move names the run the TV made it in, the newest
+   * row's when it is sent, so a move it gave up on that reaches the store after a run switch it then let
+   * through changes nothing there (store.ts setControl). A move made before the TV's first live read of
+   * the room waits for it, since until then it has no run to name (a failed store read answers with the
+   * default run, not live): one sent without a run could cross a run switch, and one naming the default
+   * run would be refused (the reviews of #376). With no live read in the move's timeout, it fails like a
+   * move that times out.
    */
   const move = useCallback(async (patch: { stage?: StageId; runId?: string }) => {
-    left.current.set(onScreen.current.stage, {
-      run: stored.current?.runId ?? null,
-      next: switching.current?.run ?? null,
-      sub: onScreen.current.sub,
-    });
+    const leaving: Leaving = { run: null, sub: onScreen.current.sub, starts: patch.runId };
+    left.current.set(onScreen.current.stage, leaving);
+    newest.current = leaving;
     if (patch.stage) setAhead(patch.stage);
+    // A move the presenter makes once no run switch is in flight has seen how the last one went.
+    if (!patch.runId && !switching.current) setFailedRun(null);
     // The run the move is made in, once it is sent: the store takes it only while the room is still in it.
     let from: string | null = null;
     const send = async () => {
-      from = stored.current?.runId ?? null;
-      const post = () =>
-        postJson<Control & { error?: string }>("/api/aspen/state", from ? { ...patch, inRun: from } : patch, CONTROL_TIMEOUT_MS);
+      if (!stored.current?.live) {
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, CONTROL_TIMEOUT_MS);
+          void read.promise.then(() => {
+            clearTimeout(timer);
+            resolve();
+          });
+        });
+      }
+      if (!stored.current?.live) throw new Error("The TV has not read the room yet.");
+      const run = stored.current.runId;
+      from = run;
+      leaving.run = run;
+      const post = () => postJson<Control & { error?: string }>("/api/aspen/state", { ...patch, inRun: run }, CONTROL_TIMEOUT_MS);
       const first = await post();
       if (!patch.runId || !first.ok || !isControl(first.data) || first.data.runId === patch.runId) return first;
-      stored.current = newerControl(stored.current, first.data);
-      setControl(stored.current);
-      return from !== null && first.data.runId === from ? post() : first;
+      take(first.data);
+      return first.data.runId === run ? post() : first;
     };
     const before = patch.runId ? (requests.current.size > 0 ? Promise.all(requests.current) : null) : (switching.current?.request ?? null);
     const request = (before ? before.then(send) : send()).catch(() => null);
     requests.current.add(request);
-    if (patch.runId) switching.current = { request, run: patch.runId };
+    if (patch.runId) switching.current = { request };
     const response = await request;
     requests.current.delete(request);
     if (switching.current?.request === request) switching.current = null;
     if (response?.ok && isControl(response.data)) {
-      stored.current = newerControl(stored.current, response.data);
-      setControl(stored.current);
-      const room = stored.current.runId;
-      // A run switch that didn't start, or a move the store refused because the room had left the run it
-      // was made in (a run the TV hadn't heard of yet), says so.
+      take(response.data);
+      // A move the store refused because the room had left the run it was made in (a run the TV hadn't
+      // heard of yet) says so.
       setError(
-        patch.runId && response.data.runId !== patch.runId && room !== patch.runId
-          ? `Run ${patch.runId} did not start: the room is on run ${room}.`
-          : !patch.runId && from !== null && response.data.runId !== from
-            ? `The room is on run ${room} now, so the stage did not change.`
-            : null,
+        !patch.runId && from !== null && response.data.runId !== from
+          ? `The room is on run ${stored.current?.runId} now, so the stage did not change.`
+          : null,
       );
     } else {
       setError(response?.data.error ?? "The stage did not change. Check the connection.");
     }
+    // A run switch that didn't start says so, naming the run on screen, until it is no longer so.
+    if (patch.runId) setFailedRun(stored.current?.runId === patch.runId ? null : patch.runId);
     // The last move to settle puts the TV on what the store holds: this move's row when it saved, an
-    // earlier move's, or the row from before them all. On the stage on screen, the slide stays. On
-    // another, it is the slide the TV last showed there in the same run (or before it had read one, or
-    // after the run switch that put the room in this run), or else the stage's first: a new run's stage
-    // starts at its first slide (the reviews of #376).
+    // earlier move's, or the row from before them all. On the stage on screen, the slide stays, if the
+    // newest move named the room's run or started it; otherwise another screen moved the room to another
+    // run, and the stage starts at its first slide. On another stage, it is the slide the TV last showed
+    // there, if the move that left it named the room's run (or was never sent), or else the stage's
+    // first: a new run's stage starts at its first slide (the reviews of #376).
     if (requests.current.size === 0) {
       const landed = stored.current;
       const last = landed ? left.current.get(landed.stage) : undefined;
-      const back = last && (last.run === null || last.run === landed?.runId || last.next === landed?.runId) ? last.sub : undefined;
+      const back = last && (last.run === null || last.run === landed?.runId) ? last.sub : undefined;
+      const latest = newest.current;
+      const mine = !latest || latest.run === null || latest.run === landed?.runId || latest.starts === landed?.runId;
       left.current.clear();
+      newest.current = null;
       setAhead(null);
       if (landed && landed.stage !== onScreen.current.stage) setSlide({ stage: landed.stage as StageId, sub: back ?? 0 });
+      else if (landed && !mine) setSlide({ stage: landed.stage as StageId, sub: 0 });
     }
-  }, []);
+  }, [read, take]);
 
   const step = useCallback(
     (delta: number) => {
@@ -500,6 +550,11 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
             →
           </button>
         </span>
+        {failedRun && control?.runId !== failedRun && (
+          <p className="m-0 w-full font-body text-[0.85rem] text-[var(--color-error)]">
+            Run {failedRun} did not start: the room is on run {control?.runId ?? "…"}.
+          </p>
+        )}
         {error && <p className="m-0 w-full font-body text-[0.85rem] text-[var(--color-error)]">{error}</p>}
       </div>
 

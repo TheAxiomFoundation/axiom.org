@@ -366,11 +366,20 @@ function remember(asked: number, value: Control): Control {
   return kept;
 }
 
+// This instance's read of the store in flight, if any: its store, when it was asked for, and its answer.
+let controlRead: { store: AspenStore; asked: number; value: Promise<Control> } | null = null;
+
 /**
  * The active run and stage, cached for two seconds per instance so a
  * room of phones polling does not each hit the database: the newest row
  * this instance has read or written. A store error (e.g. the migration
  * has not run yet) falls back to the default run.
+ *
+ * A read asked for while this instance's last read of the store is still
+ * in flight, under two seconds after that one was asked for, takes its
+ * answer: a row no older than the cache could serve. So a slow store,
+ * whose answers would age out of the cache as they arrive, still gets one
+ * read at a time from each instance, not one per phone (the review of #376).
  */
 export async function readControl(store: AspenStore | null, fresh = false): Promise<Control> {
   if (!store) return { ...DEFAULT_CONTROL };
@@ -378,12 +387,23 @@ export async function readControl(store: AspenStore | null, fresh = false): Prom
   if (!fresh && controlCache && asked - controlCache.at < CONTROL_TTL_MS) {
     return controlCache.value;
   }
-  try {
-    return remember(asked, await store.getControl());
-  } catch (error) {
-    console.error("[aspen] control read failed:", error);
-    return { ...DEFAULT_CONTROL };
+  if (!fresh && controlRead?.store === store && asked - controlRead.asked < CONTROL_TTL_MS) {
+    return controlRead.value;
   }
+  const value = (async () => {
+    try {
+      return remember(asked, await store.getControl());
+    } catch (error) {
+      console.error("[aspen] control read failed:", error);
+      return { ...DEFAULT_CONTROL };
+    }
+  })();
+  const read = { store, asked, value };
+  controlRead = read;
+  void value.finally(() => {
+    if (controlRead === read) controlRead = null;
+  });
+  return value;
 }
 
 /** Writes the control row, answers with the store's answer, and keeps it in this instance's cache if it is the newest. */
@@ -399,6 +419,7 @@ export async function writeControl(
 
 export function _resetControlCache() {
   controlCache = null;
+  controlRead = null;
 }
 
 /** Runs a write and logs instead of throwing: a failed save never breaks the room's session. */

@@ -625,6 +625,36 @@ describe('store selection and control cache', () => {
     }
   })
 
+  it('answers a read asked while another is in flight from that one, if it was asked for under two seconds before', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      vi.setSystemTime(new Date('2026-10-27T00:30:01.000Z'))
+      const db = heldDatabase({ run_id: 'aspen', stage: 'try', updated_at: '2026-10-27T00:30:00.000Z' })
+      const spy = vi.spyOn(db.store, 'getControl')
+      // The store is slow: each read takes seconds, longer than the cache keeps a row.
+      db.hold = true
+      const first = readControl(db.store)
+      vi.setSystemTime(new Date('2026-10-27T00:30:02.999Z'))
+      const joined = readControl(db.store)
+      expect(spy).toHaveBeenCalledTimes(1)
+      // Two seconds after the read in flight was asked for, a read goes to the store itself.
+      vi.setSystemTime(new Date('2026-10-27T00:30:03.000Z'))
+      const own = readControl(db.store)
+      expect(spy).toHaveBeenCalledTimes(2)
+      vi.setSystemTime(new Date('2026-10-27T00:30:05.000Z'))
+      for (const answer of db.held.splice(0)) answer()
+      expect(await first).toMatchObject({ stage: 'try' })
+      expect(await joined).toMatchObject({ stage: 'try' })
+      expect(await own).toMatchObject({ stage: 'try' })
+      // With nothing in flight and the rows aged out, the next read goes to the store again.
+      db.hold = false
+      await readControl(db.store)
+      expect(spy).toHaveBeenCalledTimes(3)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('answers each read with the newest row this instance has had, whatever order the store answers in', async () => {
     const command = fc.oneof(
       { weight: 2, arbitrary: fc.constant({ kind: 'read' as const }) },

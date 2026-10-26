@@ -1,11 +1,11 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { EVENT, LOOK_UP, STAGES, type StageId } from "@/lib/aspen/content";
+import { EVENT, LOOK_UP, STAGES, USE_CASES, type StageId } from "@/lib/aspen/content";
 import { EMPTY_SUMMARY, type RunSummary } from "@/lib/aspen/results";
 import type { Control } from "@/lib/aspen/types";
 import { AspenApp } from "./aspen-app";
 import { CHAT_KEY, type SavedChat } from "./chat-window";
-import { PLEDGE_KEY } from "./client";
+import { PLEDGE_KEY, VOTE_KEY, currentRun } from "./client";
 
 function jsonResponse(data: unknown, ok = true) {
   return { ok, status: ok ? 200 : 500, json: async () => data } as unknown as Response;
@@ -802,6 +802,74 @@ describe("AspenApp after a new run", () => {
     expect(await screen.findByText("The answer for the couple")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Your verdict" })).toBeInTheDocument();
     expect(localStorage.getItem("aspen.run")).toBe(JSON.stringify("phoenix"));
+  });
+
+  it("keeps this run's vote when a reload's first poll reaches a server instance still holding the run before", async () => {
+    vi.useFakeTimers();
+    const flush = () =>
+      act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+    try {
+      const start = Date.parse("2026-10-27T01:00:00.000Z");
+      vi.setSystemTime(start);
+      // Two server instances, each with its own two-second cache of the room (store.ts readControl).
+      vi.resetModules();
+      const instanceA = await import("@/lib/aspen/store");
+      vi.resetModules();
+      const instanceB = await import("@/lib/aspen/store");
+      // One database: an update applies only over an older row, in the run it names.
+      let row = { run_id: "rehearsal", stage: "welcome", updated_at: "2026-10-27T00:59:59.000Z" };
+      const database = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const query = new URL(String(input)).searchParams;
+        if (init?.method === "PATCH") {
+          const before = query.get("updated_at")!.replace(/^lt\./, "");
+          const inRun = query.get("run_id");
+          if (!(Date.parse(row.updated_at) < Date.parse(before) && (inRun === null || inRun === `eq.${row.run_id}`))) {
+            return new Response(JSON.stringify([]));
+          }
+          row = { ...row, ...JSON.parse(String(init.body)) };
+        }
+        return new Response(JSON.stringify([{ ...row }]));
+      }) as typeof fetch;
+      const store = instanceA.createSupabaseStore({ url: "https://db.example", key: "service" }, database);
+      // B reads the rehearsal's row, and serves it until 01:00:02.
+      await instanceB.readControl(store);
+      vi.setSystemTime(start + 100);
+      await instanceA.writeControl(store, { runId: "event", stage: "welcome", inRun: "rehearsal" });
+      vi.setSystemTime(start + 200);
+      await instanceA.writeControl(store, { stage: "groups", inRun: "event" });
+      let serving = instanceA;
+      fetchMock.mockImplementation(async (input: RequestInfo | URL) =>
+        String(input) === "/api/aspen/state" ? jsonResponse(await serving.readControl(store)) : jsonResponse({ ok: true, saved: true }),
+      );
+
+      // A phone joins the event, opens Small groups with the room, and votes.
+      const first = render(<AspenApp />);
+      await flush();
+      expect(currentRun()).toBe("event");
+      fireEvent.click(within(screen.getByRole("group", { name: "Pick one" })).getByRole("button", { name: new RegExp(`^${USE_CASES[0].label}`) }));
+      fireEvent.click(screen.getByRole("button", { name: "Vote" }));
+      await flush();
+      expect(localStorage.getItem(VOTE_KEY)).toBe(JSON.stringify(USE_CASES[0].id));
+      first.unmount();
+
+      // It reloads, and its first poll reaches B, whose cache still holds the rehearsal.
+      vi.setSystemTime(start + 500);
+      serving = instanceB;
+      render(<AspenApp />);
+      await flush();
+      expect(currentRun()).toBe("event");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4000);
+      });
+      expect(currentRun()).toBe("event");
+      expect(localStorage.getItem(VOTE_KEY)).toBe(JSON.stringify(USE_CASES[0].id));
+      expect(screen.getByText("You voted:")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+      vi.resetModules();
+    }
   });
 });
 

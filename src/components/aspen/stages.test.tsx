@@ -405,7 +405,8 @@ describe("NextStepsForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     expect(await screen.findByRole("button", { name: "Sending…" })).toBeDisabled();
     if (saved) localStorage.setItem(CHAT_KEY, "{}");
-    expect(enterRun("r2")).toBe(saved);
+    // A move to another run, whether or not it had anything to drop.
+    expect(enterRun("r2")).toBe(true);
     await act(async () => resolve(jsonResponse({ ok: true })));
     // The form is the new run's to send: no thank-you, no mark, nothing to let the phone leave it.
     expect(await screen.findByRole("button", { name: "Send" })).toBeEnabled();
@@ -427,9 +428,44 @@ describe("NextStepsForm", () => {
     // The room starts r2, which drops the phone's chat (and remounts the page's form), then goes back to r1.
     localStorage.setItem(CHAT_KEY, "{}");
     expect(enterRun("r2")).toBe(true);
-    expect(enterRun("r1")).toBe(false);
+    expect(enterRun("r1")).toBe(true);
     await act(async () => resolve(jsonResponse({ ok: true })));
     expect(await screen.findByRole("button", { name: "Send" })).toBeEnabled();
+    expect(onSent).not.toHaveBeenCalled();
+    expect(localStorage.getItem(PLEDGE_KEY)).toBeNull();
+  });
+
+  it("doesn't count a send made before the phone had a run, answered after it adopted one and moved to another", async () => {
+    let resolve: (r: Response) => void = () => {};
+    stubFetch(() => new Promise<Response>((r) => (resolve = r)));
+    const onSent = vi.fn();
+    render(<NextStepsForm onSent={onSent} />);
+    fill();
+    fireEvent.click(screen.getByRole("checkbox", { name: /State systems/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByRole("button", { name: "Sending…" })).toBeDisabled();
+    // The send belongs to the first run the phone adopts, not to the one after it, though nothing was saved.
+    expect(enterRun("r1")).toBe(false);
+    expect(enterRun("r2")).toBe(true);
+    await act(async () => resolve(jsonResponse({ ok: true })));
+    expect(await screen.findByRole("button", { name: "Send" })).toBeEnabled();
+    expect(onSent).not.toHaveBeenCalled();
+    expect(localStorage.getItem(PLEDGE_KEY)).toBeNull();
+  });
+
+  it("sends nothing from a tap on the old run's form that lands before the page remounts it", async () => {
+    enterRun("rehearsal");
+    const fetchMock = stubFetch(() => Promise.resolve(jsonResponse({ ok: true })));
+    const onSent = vi.fn();
+    render(<NextStepsForm onSent={onSent} />);
+    fill();
+    fireEvent.click(screen.getByRole("checkbox", { name: /State systems/ }));
+    // The page's run effect moves the device to the live run; the remount it queues hasn't come yet.
+    expect(enterRun("live")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await act(async () => {});
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
     expect(onSent).not.toHaveBeenCalled();
     expect(localStorage.getItem(PLEDGE_KEY)).toBeNull();
   });
@@ -452,11 +488,12 @@ describe("NextStepsForm", () => {
 
   /**
    * For any order of sends, their answers (ok or not), run switches (dropping what the phone saved, or
-   * nothing) and reloads, on a phone that starts in a run or in none yet, it is marked as sent (the stored mark, the page's `pledged` and the
-   * form's thank-you) exactly when a send made in the run it is in now was answered ok while it was
-   * still there, with no run switch that dropped answers in between. Adopting a first run is not a
-   * switch: a send made before it counts in the run adopted. The page here does what
-   * aspen-app does: a switch that drops answers remounts the form and clears `pledged`.
+   * nothing) and reloads, on a phone that starts in a run or in none yet, it is marked as sent (the
+   * stored mark, the page's `pledged` and the form's thank-you) exactly when a send made in the run it
+   * is in now was answered ok while it was still there, with no run switch in between, whether or not
+   * the switch dropped anything. Adopting a first run is not a switch: a send made before it counts in
+   * the run adopted. The page here does what aspen-app does: a switch remounts the form and clears
+   * `pledged`.
    */
   it("marks the phone as sent only for a send answered ok in the run it was made in, in any order", async () => {
     const command = fc.oneof(
@@ -475,14 +512,13 @@ describe("NextStepsForm", () => {
         localStorage.clear();
         localStorage.setItem("aspen.participant", "p-1");
         if (inRun) enterRun("r1");
-        // The model: the run the phone is in (null before it has one), how many switches have dropped
-        // answers, whether it saved anything else a switch would drop, and whether this run's form is sent.
+        // The model: the run the phone is in (null before it has one), how many times it has moved from
+        // one run to another, and whether this run's form is sent.
         let run: string | null = inRun ? "r1" : null;
         let generation = 0;
-        let chatSaved = false;
         let sent = false;
-        const held: { resolve: (r: Response) => void; run: string | null; generation: number }[] = [];
-        stubFetch(() => new Promise<Response>((resolve) => held.push({ resolve, run, generation })));
+        const held: { resolve: (r: Response) => void; generation: number }[] = [];
+        stubFetch(() => new Promise<Response>((resolve) => held.push({ resolve, generation })));
         let pledged = false;
         let epoch = 0;
         const form = () => <NextStepsForm key={epoch} onSent={() => (pledged = true)} />;
@@ -499,19 +535,17 @@ describe("NextStepsForm", () => {
           } else if (c.kind === "answer") {
             if (held.length === 0) continue;
             const [send] = held.splice(c.pick % held.length, 1);
-            if (c.ok && (send.run === null || send.run === run) && send.generation === generation) sent = true;
+            if (c.ok && send.generation === generation) sent = true;
             send.resolve(jsonResponse(c.ok ? { ok: true } : { error: "No." }, c.ok));
           } else if (c.kind === "run") {
-            if (c.saved) {
-              localStorage.setItem(CHAT_KEY, "{}");
-              chatSaved = true;
-            }
-            // A first run is adopted, dropping nothing; a different one drops whatever the phone saved.
-            const drops = run !== null && c.run !== run && (sent || chatSaved);
-            expect(enterRun(c.run)).toBe(drops);
-            if (drops) {
+            if (c.saved) localStorage.setItem(CHAT_KEY, "{}");
+            // A first run is adopted, dropping nothing; a different one is a move, and drops whatever the
+            // phone saved.
+            const moves = run !== null && c.run !== run;
+            expect(enterRun(c.run)).toBe(moves);
+            if (moves) {
+              expect(localStorage.getItem(CHAT_KEY)).toBeNull();
               generation += 1;
-              chatSaved = false;
               epoch += 1;
               pledged = false;
               page.rerender(form());
