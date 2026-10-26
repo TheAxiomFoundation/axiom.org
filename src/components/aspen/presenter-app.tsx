@@ -189,9 +189,10 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
   const switching = useRef<Promise<unknown> | null>(null);
   const [ahead, setAhead] = useState<StageId | null>(null);
   // The slide on screen (kept by a layout effect below), and, while moves are in flight, the slide the
-  // TV last showed on each stage they left: when they settle the room on one of those, it goes back there.
+  // TV last showed on each stage they left, with the run it showed it in: when they settle the room on
+  // one of those in the same run, it goes back there.
   const onScreen = useRef<SlideAt>({ stage: "welcome", sub: 0 });
-  const left = useRef(new Map<string, number>());
+  const left = useRef(new Map<string, { run: string | null; sub: number }>());
 
   useEffect(() => {
     if (!polled) return;
@@ -226,7 +227,7 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
    * once, each to the store as it arrives.
    */
   const move = useCallback(async (patch: { stage?: StageId; runId?: string }) => {
-    left.current.set(onScreen.current.stage, onScreen.current.sub);
+    left.current.set(onScreen.current.stage, { run: stored.current?.runId ?? null, sub: onScreen.current.sub });
     if (patch.stage) setAhead(patch.stage);
     const send = () => postJson<Control & { error?: string }>("/api/aspen/state", patch, CONTROL_TIMEOUT_MS);
     const before = patch.runId ? (requests.current.size > 0 ? Promise.all(requests.current) : null) : switching.current;
@@ -244,10 +245,12 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
     }
     // The last move to settle puts the TV on what the store holds: this move's row when it saved, an
     // earlier move's, or the row from before them all. On the stage on screen, the slide stays. On
-    // another, it is the slide the TV last showed there, or else the stage's first.
+    // another, it is the slide the TV last showed there in the same run (or before it had read one), or
+    // else the stage's first: a new run's stage starts at its first slide (the review of #376).
     if (requests.current.size === 0) {
       const landed = stored.current;
-      const back = landed ? left.current.get(landed.stage) : undefined;
+      const last = landed ? left.current.get(landed.stage) : undefined;
+      const back = last && (last.run === null || last.run === landed?.runId) ? last.sub : undefined;
       left.current.clear();
       setAhead(null);
       setControl(landed);

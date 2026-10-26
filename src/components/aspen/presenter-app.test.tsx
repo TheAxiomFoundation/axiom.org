@@ -491,6 +491,104 @@ describe("PresenterApp navigation", () => {
     await onStage("scale");
   });
 
+  it("keeps the new run when a stage is clicked while Start run's write is held, against the Supabase store", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-10-27T01:00:00.000Z"));
+      // PostgREST, holding each write until the test lands it, and applying it only when its filter matches.
+      let row = { run_id: "r1", stage: "reveal", updated_at: "2026-10-27T01:00:00.000Z" };
+      const writes: (() => void)[] = [];
+      const database = (async (url: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method !== "PATCH") return new Response(JSON.stringify([row]));
+        const patch = JSON.parse(String(init.body));
+        const before = new URL(String(url)).searchParams.get("updated_at")!.replace(/^lt\./, "");
+        return new Promise<Response>((resolve) =>
+          writes.push(() => {
+            const applies = Date.parse(row.updated_at) < Date.parse(before);
+            if (applies) row = { ...row, ...patch };
+            resolve(new Response(JSON.stringify(applies ? [row] : [])));
+          }),
+        );
+      }) as typeof fetch;
+      const store = createSupabaseStore({ url: "https://db.example", key: "service" }, database);
+      vi.spyOn(window, "confirm").mockReturnValue(true);
+      const { server, posts } = setup({ get: async () => jsonResponse(await store.getControl()) });
+      server.post = async (body) => jsonResponse(await store.setControl(body));
+      const flush = () =>
+        act(async () => {
+          await vi.advanceTimersByTimeAsync(0);
+        });
+      await flush();
+      expect(screen.getByText("Run r1")).toBeInTheDocument();
+      vi.setSystemTime(new Date("2026-10-27T01:00:01.000Z"));
+      fireEvent.click(screen.getByRole("button", { name: "New run" }));
+      fireEvent.change(screen.getByRole("textbox", { name: "New run name" }), { target: { value: "r2" } });
+      fireEvent.click(screen.getByRole("button", { name: "Start run" }));
+      vi.setSystemTime(new Date("2026-10-27T01:00:02.000Z"));
+      fireEvent.click(within(screen.getByRole("navigation", { name: "Stages" })).getByRole("button", { name: "Try it" }));
+      await flush();
+      // Try it waits for Start run, so its write can't reach the row first.
+      expect(writes).toHaveLength(1);
+      expect(posts()).toEqual([{ runId: "r2", stage: "welcome" }]);
+      vi.setSystemTime(new Date("2026-10-27T01:00:03.000Z"));
+      await act(async () => {
+        writes[0]();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(writes).toHaveLength(2);
+      await act(async () => {
+        writes[1]();
+        await vi.advanceTimersByTimeAsync(9000);
+      });
+      expect(row).toMatchObject({ run_id: "r2", stage: "try" });
+      expect(screen.getByText("Run r2")).toBeInTheDocument();
+      expect(screen.getByRole("navigation", { name: "Stages" }).querySelector('[aria-current="step"]')).toHaveTextContent("Try it");
+      expect(screen.queryByText(/The stage did not change/)).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("opens a new run's stage at its first slide, not at the slide it showed there in the old run", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.spyOn(window, "confirm").mockReturnValue(true);
+      const { server } = setup({ stage: "reveal" });
+      server.control = { ...server.control, updatedAt: "2026-10-27T01:00:00Z" };
+      const flush = () =>
+        act(async () => {
+          await vi.advanceTimersByTimeAsync(0);
+        });
+      await flush();
+      fireEvent.keyDown(document.body, { key: "ArrowRight" });
+      expect(screen.getByText("2/2")).toBeInTheDocument();
+      // Start run saves, but its answer is slow; meanwhile another screen moves the new run to What we saw.
+      let answer: (r: Response) => void = () => {};
+      server.post = (body) => {
+        server.control = { ...server.control, ...body, updatedAt: "2026-10-27T01:00:01Z" };
+        return new Promise<Response>((resolve) => (answer = resolve));
+      };
+      fireEvent.click(screen.getByRole("button", { name: "New run" }));
+      fireEvent.change(screen.getByRole("textbox", { name: "New run name" }), { target: { value: "r2" } });
+      fireEvent.click(screen.getByRole("button", { name: "Start run" }));
+      await flush();
+      const saved = { ...server.control };
+      server.control = { ...server.control, stage: "reveal", updatedAt: "2026-10-27T01:00:02Z" };
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+      await act(async () => {
+        answer(jsonResponse(saved));
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getByText("Run r2")).toBeInTheDocument();
+      expect(screen.getByRole("navigation", { name: "Stages" }).querySelector('[aria-current="step"]')).toHaveTextContent("What we saw");
+      expect(screen.getByText("1/2")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("shows the stage the phones read after the clock steps back, with the memory store", async () => {
     vi.useFakeTimers();
     try {
@@ -1784,8 +1882,8 @@ describe("PresenterApp moves, for any order of outcomes", () => {
    *    stage no write saved (or Welcome, with no run, if the store has answered with none);
    * 3. one poll later, it shows what the store holds, which is what the phones show;
    * 4. when the last move settles, the TV keeps its slide if the store's stage is the one on screen;
-   *    otherwise it shows the slide it last showed on that stage as the moves left it, or else the
-   *    stage's first;
+   *    otherwise it shows the slide it last showed on that stage as the moves left it, if it showed it in
+   *    the run the store ends on (or before it had read any run), or else the stage's first;
    * 5. a stage button shows its stage from the first slide (its own stage's button changes nothing),
    *    and so does a poll that brings another stage while no move is in flight; a poll that leaves the
    *    stage leaves the slide;
@@ -1835,8 +1933,9 @@ describe("PresenterApp moves, for any order of outcomes", () => {
           let runs = 0;
           const crossed: string[] = [];
           let newestMove: StageId | null = null;
-          // While moves are in flight, the slide the TV last showed on each stage they left.
-          const left = new Map<string | undefined, string | null>();
+          // While moves are in flight, the slide the TV last showed on each stage they left, and the run it
+          // showed it in: the run of the newest row the store had answered with, if any.
+          const left = new Map<string | undefined, { run: string | null; slide: string | null }>();
           vi.stubGlobal(
             "fetch",
             vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -1886,6 +1985,8 @@ describe("PresenterApp moves, for any order of outcomes", () => {
             // The newest row the store has answered with, or none yet.
             const newestAnswered = (): Control | undefined =>
               answered.length === 0 ? undefined : answered.reduce((a, b) => ((b.updatedAt ?? "") >= (a.updatedAt ?? "") ? b : a));
+            const leave = (at: { stage: StageId | undefined; slide: string | null }) =>
+              left.set(at.stage, { run: newestAnswered()?.runId ?? null, slide: at.slide });
             const check = () => {
               expect(crossed).toEqual([]);
               if (inFlight() > 0) expect(shown()).toBe(newestMove);
@@ -1912,10 +2013,12 @@ describe("PresenterApp moves, for any order of outcomes", () => {
               else move.reject(new Error(how));
               await flush();
               if (inFlight() === 0) {
-                const landed = newestAnswered()?.stage ?? "welcome";
+                const row = newestAnswered();
+                const landed = row?.stage ?? "welcome";
+                const last = left.get(landed);
                 const now = view();
                 if (landed === onScreen.stage) expect(now.slide).toBe(onScreen.slide);
-                else if (left.has(landed)) expect(now.slide).toBe(left.get(landed));
+                else if (last && (last.run === null || last.run === row?.runId)) expect(now.slide).toBe(last.slide);
                 else expect(now.slide ?? "1/").toMatch(/^1\//);
                 left.clear();
               }
@@ -1923,7 +2026,7 @@ describe("PresenterApp moves, for any order of outcomes", () => {
             for (const c of commands) {
               if (c.kind === "move") {
                 const before = view();
-                left.set(before.stage, before.slide);
+                leave(before);
                 newestMove = TARGETS[c.to].id;
                 made += 1;
                 fireEvent.click(within(screen.getByRole("navigation", { name: "Stages" })).getByRole("button", { name: TARGETS[c.to].label }));
@@ -1938,7 +2041,7 @@ describe("PresenterApp moves, for any order of outcomes", () => {
                 // Past the first or last stage the arrows do nothing; into Shared foundation, the journey loads.
                 if (crosses && (!next || next.id === "foundation")) continue;
                 if (crosses) {
-                  left.set(before.stage, before.slide);
+                  leave(before);
                   newestMove = next.id;
                   made += 1;
                 }
@@ -1947,7 +2050,7 @@ describe("PresenterApp moves, for any order of outcomes", () => {
                 if (!crosses) expect(view()).toEqual({ stage: before.stage, slide: `${k + c.delta}/${n}` });
               } else if (c.kind === "run") {
                 const before = view();
-                left.set(before.stage, before.slide);
+                leave(before);
                 newestMove = "welcome";
                 made += 1;
                 runs += 1;
@@ -2003,5 +2106,6 @@ describe("PresenterApp moves, for any order of outcomes", () => {
     } finally {
       vi.useRealTimers();
     }
-  }, 120_000);
+    // About 15 s on a quiet machine; on a shared, loaded host it has taken over 120 s (the reviews of #376).
+  }, 600_000);
 });
