@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GROUP_PHONE_INTRO, DISCLOSURE, EVENT, GROUP_QUESTIONS, LOOK_UP, STAGES, USE_CASES } from "@/lib/aspen/content";
+import { PLEDGE_KEY } from "./client";
 import { Agenda, Disclosure, GroupsCard, LookUp, NextStepsForm, SmallGroups, ThankYouContent, VoteCard, WelcomeLanding } from "./stages";
 
 function jsonResponse(data: unknown, ok = true) {
@@ -322,6 +323,7 @@ describe("NextStepsForm", () => {
     resolve(jsonResponse({ ok: true }));
     expect(await screen.findByText("Thank you.")).toBeInTheDocument();
     expect(onSent).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem(PLEDGE_KEY)).toBe("true");
     expect(screen.getByText(new RegExp(EVENT.contactEmail))).toBeInTheDocument();
     expect(bodies(fetchMock, "/api/aspen/pledge")[0]).toEqual({
       participantId: "p-1",
@@ -342,6 +344,19 @@ describe("NextStepsForm", () => {
     expect(await screen.findByText("Enter a valid email.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
     expect(onSent).not.toHaveBeenCalled();
+    expect(localStorage.getItem(PLEDGE_KEY)).toBeNull();
+  });
+
+  it("shows the thank-you, not a blank form, in a tab reloaded after sending", async () => {
+    // iOS reloads a tab left in the background; a blank form there invites a second send.
+    const fetchMock = stubFetch();
+    localStorage.setItem(PLEDGE_KEY, "true");
+    const onSent = vi.fn();
+    render(<NextStepsForm onSent={onSent} />);
+    expect(await screen.findByText("Thank you.")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Email" })).not.toBeInTheDocument();
+    expect(onSent).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("falls back to a generic error when the request fails", async () => {

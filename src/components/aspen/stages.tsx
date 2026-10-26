@@ -13,7 +13,7 @@ import {
   USE_CASES,
   type StageId,
 } from "@/lib/aspen/content";
-import { VOTE_KEY, participantId, postJson, readStored, sendEvent, writeStored } from "./client";
+import { PLEDGE_KEY, VOTE_KEY, participantId, postJson, readStored, sendEvent, writeStored } from "./client";
 import { Disclosure } from "./disclosure";
 import { BUTTON, BUTTON_QUIET, Card, FIELD, Part } from "./ui";
 
@@ -381,6 +381,15 @@ export function NextStepsForm({ onSent }: { onSent?: () => void } = {}) {
   const [status, setStatus] = useState<"idle" | "saving" | "done" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
 
+  // A tab reloaded after sending (iOS reloads one left in the background) shows the thank-you again.
+  useEffect(() => {
+    if (readStored<boolean>(PLEDGE_KEY) === true) {
+      setStatus("done");
+      onSent?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setStatus("saving");
@@ -392,6 +401,7 @@ export function NextStepsForm({ onSent }: { onSent?: () => void } = {}) {
       note,
     }).catch(() => null);
     if (response?.ok) {
+      writeStored(PLEDGE_KEY, true);
       setStatus("done");
       onSent?.();
       return;
