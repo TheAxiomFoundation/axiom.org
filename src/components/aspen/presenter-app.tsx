@@ -185,6 +185,9 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
   const sub = slide.stage === stage ? Math.min(slide.sub, slideCount(stage) - 1) : 0;
   useLayoutEffect(() => {
     onScreen.current = { stage, sub };
+    // The slide follows the stage on screen, so a stage the TV comes back to later, by its button or
+    // another screen's move, starts at its first slide rather than one it showed before.
+    if (slide.stage !== stage) setSlide({ stage, sub });
   });
   const { data: results } = useResults(true, 4000, control?.runId);
   const summary: RunSummary = results?.summary ?? EMPTY_SUMMARY;

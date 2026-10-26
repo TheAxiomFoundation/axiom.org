@@ -11,6 +11,7 @@ import {
   RUN_PROMPT_SELECT,
   type AspenStore,
 } from './store'
+import fc from 'fast-check'
 import { azSavingsStream } from '@/test/rules-az-savings'
 import { summarizeRun } from './results'
 import { parseDataStream, summarizeRules } from './rules'
@@ -132,6 +133,67 @@ describe('supabase store', () => {
       // And a write in the same millisecond as the row's is no newer, so it changes nothing either.
       vi.setSystemTime(new Date('2026-10-27T00:30:02.000Z'))
       expect(await store.setControl({ stage: 'groups' })).toMatchObject({ stage: 'scale' })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps the newest write, and answers each with a row no older than it, in any order the writes land', async () => {
+    const start = Date.parse('2026-10-27T00:30:00.000Z')
+    // Each move's stamp in milliseconds after the row's (0 ties it, and moves can tie each other), and
+    // the order their writes reach the store in.
+    const moves = fc
+      .array(fc.record({ ms: fc.integer({ min: 0, max: 20 }), stage: fc.constantFrom('try', 'scale', 'groups', 'next') }), {
+        minLength: 1,
+        maxLength: 6,
+      })
+      .chain((list) =>
+        fc.tuple(fc.constant(list), fc.shuffledSubarray([...list.keys()], { minLength: list.length, maxLength: list.length })),
+      )
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      await fc.assert(
+        fc.asyncProperty(moves, async ([list, order]) => {
+          let row = { run_id: 'r1', stage: 'welcome', updated_at: new Date(start).toISOString() }
+          const rows = [row]
+          // PostgREST, holding each write until the test lands it, and applying it only when the filter matches.
+          const held: { url: string; body: { stage: string; updated_at: string }; resolve: (r: Response) => void }[] = []
+          const fn = (async (url: string | URL | Request, init: RequestInit = {}) => {
+            if (init.method !== 'PATCH') return new Response(JSON.stringify([row]))
+            return new Promise<Response>((resolve) => held.push({ url: String(url), body: JSON.parse(String(init.body)), resolve }))
+          }) as unknown as typeof fetch
+          const store = createSupabaseStore(config, fn)
+          const stamps = list.map((move) => new Date(start + move.ms).toISOString())
+          const answers = list.map((move, i) => {
+            vi.setSystemTime(Date.parse(stamps[i]))
+            return store.setControl({ stage: move.stage })
+          })
+          while (held.length < list.length) await new Promise((r) => setTimeout(r, 0))
+          for (const i of order) {
+            const { url, body, resolve } = held[i]
+            expect(body.updated_at).toBe(stamps[i])
+            expect(new URL(url).searchParams.get('updated_at')).toBe(`lt.${stamps[i]}`)
+            const before = row.updated_at
+            const applies = row.updated_at < body.updated_at
+            if (applies) {
+              row = { ...row, ...body }
+              rows.push(row)
+            }
+            expect(row.updated_at >= before).toBe(true)
+            resolve(new Response(JSON.stringify(applies ? [row] : [])))
+            // Let a write that changed nothing read the row before the next write lands.
+            await new Promise((r) => setTimeout(r, 0))
+          }
+          const newest = [rows[0].updated_at, ...stamps].reduce((a, b) => (b > a ? b : a))
+          const winner = newest === rows[0].updated_at ? 'welcome' : list[order.find((i) => stamps[i] === newest)!].stage
+          expect(row).toMatchObject({ stage: winner, updated_at: newest })
+          const answered = await Promise.all(answers)
+          answered.forEach((answer, i) => {
+            expect(answer.updatedAt! >= stamps[i]).toBe(true)
+            expect(rows).toContainEqual({ run_id: answer.runId, stage: answer.stage, updated_at: answer.updatedAt })
+          })
+        }),
+      )
     } finally {
       vi.useRealTimers()
     }
