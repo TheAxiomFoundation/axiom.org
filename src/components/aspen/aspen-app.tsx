@@ -40,6 +40,9 @@ export function AspenApp() {
   const [tryStatus, setTryStatus] = useState<ChatStatus>({ asked: false, rated: false, current: false });
   const overall = useRef<HTMLElement>(null);
   const live = control?.live && stageIndex(control.stage) >= 0 ? (control.stage as StageId) : null;
+  // Phones never go past the presenter: a later stage opens when the room gets there (the dry run, Oct 25).
+  // Without a live presenter (no control row), every stage stays open.
+  const limit = live ? stageIndex(live) : STAGES.length - 1;
   const top = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -63,8 +66,11 @@ export function AspenApp() {
     const onPop = (event: PopStateEvent) => {
       const stage = historyStage(event.state);
       if (!stage) return;
-      setView(stage);
-      setFollow(live === null || stage === live);
+      // Forward never carries a phone past the room.
+      const to = live && stageIndex(stage) > stageIndex(live) ? live : stage;
+      if (to !== stage) window.history.replaceState({ aspenStage: to }, "");
+      setView(to);
+      setFollow(live === null || to === live);
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -81,6 +87,15 @@ export function AspenApp() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, live, follow]);
+
+  // A phone past the room (one opened before phones waited, or the room stepped back) returns to it.
+  useEffect(() => {
+    if (!hydrated || !live || stageIndex(view) <= stageIndex(live)) return;
+    setView(live);
+    setFollow(true);
+    window.history.replaceState({ aspenStage: live }, "");
+    window.scrollTo?.({ top: 0, behavior: "instant" });
+  }, [hydrated, live, view]);
 
   // Once the room catches up with a participant who went ahead, follow it again.
   useEffect(() => {
@@ -136,6 +151,7 @@ export function AspenApp() {
   }, [menuOpen]);
 
   function go(stage: StageId) {
+    if (stageIndex(stage) > limit) return;
     if (stage !== view) window.history.pushState({ aspenStage: stage }, "");
     setView(stage);
     setFollow(live === null || stage === live);
@@ -148,8 +164,9 @@ export function AspenApp() {
   const index = stageIndex(view);
   const nextStage = STAGES[index + 1];
   const prevStage = index > 0 ? STAGES[index - 1] : null;
-  // Try it ends with a rated answer: the Next link waits for one.
+  // Try it ends with a rated answer: the Next link waits for one. Past that, it waits for the room.
   const mustRate = view === "try" && !tryStatus.rated;
+  const waitsForRoom = Boolean(nextStage) && stageIndex(nextStage.id) > limit;
   // One wide frame for every stage; text inside keeps its own reading width.
   const frame = "max-w-[1120px] sm:px-6";
   // Only nudge a participant who fell behind the room; one who went ahead is left alone.
@@ -228,7 +245,7 @@ export function AspenApp() {
                 <span className="block px-2 pb-1 pt-1 font-body font-medium text-[0.82rem] text-[var(--color-ink-muted)]">
                   Agenda
                 </span>
-                <Agenda live={live} current={view} onPick={go} compact />
+                <Agenda live={live} current={view} onPick={go} compact limit={limit} />
               </nav>
             )}
           </div>
@@ -255,7 +272,7 @@ export function AspenApp() {
 
       <div className={`mx-auto px-4 ${frame} ${view === "welcome" ? "" : "pt-8"}`}>
         {view === "welcome" ? (
-          <WelcomeLanding onStart={() => go("try")} />
+          <WelcomeLanding onStart={() => go("try")} waiting={stageIndex("try") > limit} />
         ) : (
           <>
             {prevStage && (
@@ -316,13 +333,13 @@ export function AspenApp() {
           <button
             type="button"
             onClick={() => go(nextStage.id)}
-            disabled={mustRate}
+            disabled={mustRate || waitsForRoom}
             className="group mt-12 flex w-full items-center justify-between gap-4 rounded-xl bg-[var(--color-go)] px-5 py-4 text-left text-white shadow-[0_2px_8px_rgba(28,25,23,0.18)] transition-colors hover:bg-[var(--color-go-hover)] disabled:cursor-not-allowed disabled:border-2 disabled:border-dashed disabled:border-[var(--color-rule-strong)] disabled:bg-[var(--color-paper)] disabled:text-[var(--color-ink)] disabled:shadow-none"
           >
             {/* A filled button, not a link: on a phone it is the one thing to do once the stage is done. */}
             <span className="min-w-0">
               <span className="block font-body text-[0.9rem] font-medium text-white/85 group-disabled:text-[var(--color-ink)]">
-                Next
+                {!mustRate && waitsForRoom ? "Up next, when the room gets there" : "Next"}
               </span>
               <span className="block font-body text-[1.15rem] font-semibold leading-snug">
                 {mustRate ? "Rate your answer to continue" : nextStage.title}

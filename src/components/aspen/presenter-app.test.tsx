@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import fc from "fast-check";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   BREAKOUT_PROMPT,
@@ -12,8 +13,7 @@ import {
   RATING_SCALES,
   SAME_RULES,
   WHAT_MODELS_MISS,
-  TOOL_PILOT,
-  share,
+  ENGINE_PILOT,
   WHERE_MODELS_BREAK,
   SILVER_ASK,
   STAGES,
@@ -22,7 +22,7 @@ import {
 import { EMPTY_SUMMARY, summarizeRun, type RunSummary } from "@/lib/aspen/results";
 import type { Control, RunData } from "@/lib/aspen/types";
 import { CAPTIONS, STORY_LABEL } from "@/components/landing/journey-lamplight/captions";
-import { notApplyNote, PresenterApp } from "./presenter-app";
+import { notApplyNote, pageRange, PresenterApp, rotationPage } from "./presenter-app";
 
 const DATA: RunData = {
   participants: [{ id: "a", run_id: "r1", perspective: "resident", state: "Arizona" }],
@@ -324,23 +324,22 @@ describe("PresenterApp navigation", () => {
     expect(screen.queryByText(/it has to get the rules right/)).not.toBeInTheDocument();
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     expect(screen.getByText("6/7")).toBeInTheDocument();
-    // PolicyBench's tool pilot: each model on its own and with the tool, the note's caveat and its source.
+    // PolicyBench's pilot: each model with web search, and with our rules engine too; the change in accuracy and in cost (the dry run, Oct 25).
     expect(screen.getByRole("heading", { level: 1, name: FRONT_DOOR.heading })).toBeInTheDocument();
-    expect(screen.getByText(TOOL_PILOT.title)).toBeInTheDocument();
-    for (const row of TOOL_PILOT.rows) {
-      expect(screen.getByText(row.model)).toBeInTheDocument();
-      expect(screen.getByText(`${share(row.hits.alone!, TOOL_PILOT.amounts).toFixed(1)}%`)).toBeInTheDocument();
-      expect(screen.getByText(`${share(row.hits.tool!, TOOL_PILOT.amounts).toFixed(1)}%`)).toBeInTheDocument();
-    }
-    expect(screen.getByText(TOOL_PILOT.measures)).toBeInTheDocument();
-    expect(screen.getByText(TOOL_PILOT.source)).toBeInTheDocument();
-    // The miss count is the bars' own: 6 + 2 + 1 of 561.
-    expect(screen.getByText(/^The 9 of 561 amounts still wrong with the tool came from how the model described/)).toBeInTheDocument();
-    // The benefit amounts on their own, for a room that runs benefits.
-    const benefits = screen.getByRole("table", { name: /Benefit amounts right, of 16, by model/ });
-    expect(within(benefits).getByRole("row", { name: /On its own/ })).toHaveTextContent("On its own670");
-    expect(within(benefits).getByRole("row", { name: /With the tool/ })).toHaveTextContent("With the tool161616");
-    expect(screen.getByText(TOOL_PILOT.benefits!.also)).toBeInTheDocument();
+    expect(screen.getByText(ENGINE_PILOT.title)).toBeInTheDocument();
+    const pilot = screen.getByRole("table", { name: new RegExp(`^${ENGINE_PILOT.title}`) });
+    const rows = within(pilot).getAllByRole("row").slice(1);
+    // One cell each: the model, both shares, the change with its interval, and the cost change with both costs.
+    expect(rows.map((r) => [...r.querySelectorAll("th, td")].map((c) => c.textContent))).toEqual([
+      ["GPT-6 Luna", "Web search: 55%Web search and our rules engine: 77%", "+22 points95%: +14 to +29", "\u221286%$0.056 to $0.008"],
+      ["Claude Sonnet 5.5", "Web search: 59%Web search and our rules engine: 97%", "+38 points95%: +31 to +44", "\u221230%$0.112 to $0.078"],
+      ["Gemini 3.5 Flash-Lite", "Web search: 23%Web search and our rules engine: 55%", "+32 points95%: +25 to +39", "\u221291%$0.343 to $0.031"],
+    ]);
+    expect(screen.getByText(ENGINE_PILOT.measures)).toBeInTheDocument();
+    expect(screen.getByText(ENGINE_PILOT.source)).toBeInTheDocument();
+    // The October 14–15 tool pilot is gone, and so is PolicyEngine's name.
+    expect(screen.queryByText(/amounts still wrong with the tool/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/PolicyEngine/)).not.toBeInTheDocument();
     // The demo's own link stays with the demo, At scale's last slide.
     expect(screen.queryByRole("link", { name: /Open demo in a new tab/ })).not.toBeInTheDocument();
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
@@ -374,6 +373,30 @@ describe("PresenterApp navigation", () => {
     // Back onto the reveal lands on its last slide.
     expect(screen.getByText("2/2")).toBeInTheDocument();
     expect(posts()).toEqual([{ stage: "scale" }, { stage: "foundation" }, { stage: "scale" }, { stage: "reveal" }]);
+  });
+
+  it("fills the window with the live demo on Full screen, keeping the same frame, until Exit or Escape", async () => {
+    setup({ stage: "scale" });
+    await onStage("scale");
+    for (let i = 0; i < 6; i++) fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("7/7")).toBeInTheDocument();
+    const frame = screen.getByTitle(/Live chatbot demo/);
+    expect(frame.className).toContain("z-30");
+    expect(screen.queryByRole("button", { name: "Exit full screen" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Full screen" }));
+    // The same frame, so the conversation in it carries over; it covers the window, with a way back above it.
+    expect(screen.getByTitle(/Live chatbot demo/)).toBe(frame);
+    expect(frame.className).toContain("z-50");
+    expect(frame.style.width).toBe("100vw");
+    fireEvent.click(screen.getByRole("button", { name: "Exit full screen" }));
+    expect(frame.className).toContain("z-30");
+    expect(screen.queryByRole("button", { name: "Exit full screen" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Full screen" }));
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(frame.className).toContain("z-30");
+    expect(screen.getByTitle(/Live chatbot demo/)).toBe(frame);
   });
 
   it("shows no review flag on What the models miss (At scale 3/7), even with ?review", async () => {
@@ -819,6 +842,61 @@ describe("PresenterApp stages", () => {
     expect(screen.queryByText("Helps staff, confuses residents")).not.toBeInTheDocument();
   });
 
+  it("turns the answers worth discussing two at a time, and agency comments four at a time, so each gets its turn", async () => {
+    const at = (m: number) => `2026-10-26T18:0${m}:00Z`;
+    const base = { ...DATA.prompts[0], post_check_verdict: null };
+    const many = summarizeRun({
+      ...DATA,
+      prompts: [
+        { ...base, id: "q1", conversation_id: "q1", created_at: at(1), verdict: "wrong", rating_note: "First note", answer: "One." },
+        { ...base, id: "q2", conversation_id: "q2", created_at: at(2), verdict: "wrong", rating_note: "Second note", answer: "Two." },
+        { ...base, id: "q3", conversation_id: "q3", created_at: at(3), verdict: "wrong", rating_note: "Third note", answer: "Three." },
+      ],
+      events: [
+        ...DATA.events,
+        ...Array.from({ length: 6 }, (_, i) => ({
+          run_id: "r1",
+          kind: "discussion",
+          payload: { question: "experience", ratings: { staff: 3 }, note: `Agency comment ${i + 1}` },
+        })),
+      ],
+    });
+    const answers = () => within(screen.getByText("Answers worth discussing").parentElement!).getAllByRole("listitem");
+    const turn = () =>
+      act(() => {
+        vi.advanceTimersByTime(12_000);
+      });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      setup({ stage: "reveal", summary: many });
+      await onStage("reveal");
+      await waitFor(() => expect(answers()).toHaveLength(2));
+      const first = answers().map((li) => li.textContent);
+      expect(screen.getByText("Answers worth discussing")).toHaveTextContent("Answers worth discussing · 1\u20132 of 3");
+      turn();
+      expect(answers()).toHaveLength(1);
+      expect(screen.getByText("Answers worth discussing")).toHaveTextContent("3 of 3");
+      expect(first).not.toContain(answers()[0].textContent);
+      turn();
+      expect(answers().map((li) => li.textContent)).toEqual(first);
+
+      fireEvent.keyDown(document.body, { key: "ArrowRight" });
+      expect(screen.getByText("2/2")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Show agency comments" }));
+      // Newest first, four on screen, then the rest, then back round.
+      const shown = () => [6, 5, 4, 3, 2, 1].filter((n) => screen.queryByText(`Agency comment ${n}`));
+      expect(shown()).toEqual([6, 5, 4, 3]);
+      expect(screen.getByText("Comments 1\u20134 of 6")).toBeInTheDocument();
+      turn();
+      expect(shown()).toEqual([2, 1]);
+      expect(screen.getByText("Comments 5\u20136 of 6")).toBeInTheDocument();
+      turn();
+      expect(shown()).toEqual([6, 5, 4, 3]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("thanks the room at dinner, without numbers", async () => {
     setup({ stage: "dinner" });
     await onStage("dinner");
@@ -831,6 +909,31 @@ describe("PresenterApp stages", () => {
     setup({ stage: "intermission" as StageId });
     await screen.findByText("Run r1");
     await onStage("welcome");
+  });
+});
+
+describe("rotating pages", () => {
+  it("visits every item exactly once per cycle, and stays put while everything fits", () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 0, max: 60 }), fc.integer({ min: 1, max: 8 }), fc.integer({ min: 0, max: 500 }), (count, size, start) => {
+        const pages = Math.max(1, Math.ceil(count / size));
+        const seen: number[] = [];
+        for (let t = start; t < start + pages; t++) {
+          const page = rotationPage(t, count, size);
+          expect(page).toBeGreaterThanOrEqual(0);
+          expect(page).toBeLessThan(pages);
+          for (let i = page * size; i < Math.min(count, (page + 1) * size); i++) seen.push(i);
+        }
+        expect(seen.sort((a, b) => a - b)).toEqual(Array.from({ length: count }, (_, i) => i));
+        if (count <= size) expect(rotationPage(start, count, size)).toBe(0);
+      }),
+    );
+  });
+
+  it("names the items a page shows", () => {
+    expect(pageRange(0, 4, 9)).toBe("1\u20134 of 9");
+    expect(pageRange(2, 4, 9)).toBe("9 of 9");
+    expect(pageRange(1, 2, 4)).toBe("3\u20134 of 4");
   });
 });
 

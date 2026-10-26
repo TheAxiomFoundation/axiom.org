@@ -41,11 +41,8 @@ import {
   POLICYBENCH,
   SAME_RULES,
   SILVER_ASK,
-  TOOL_PILOT,
-  share,
-  toolPilotMisses,
-  type ToolPilot,
-  type ToolPilotArmId,
+  ENGINE_PILOT,
+  percentChange,
   WHAT_MODELS_MISS,
   WHERE_MODELS_BREAK,
   STAGES,
@@ -679,6 +676,40 @@ function TrySlide({ summary, joinPassword }: { summary: RunSummary; joinPassword
  * What we saw, slide 2: how AI is doing in their agencies, the room's 1–5
  * ratings, with the comments once the presenter shows them.
  */
+/** Agency comments on screen at once, and answers worth discussing. */
+const COMMENTS_SHOWN = 4;
+const ANSWERS_SHOWN = 2;
+
+/** How long each page of rotating comments stays up. */
+const ROTATE_MS = 12_000;
+
+/**
+ * Which page of `count` items, `size` at a time, shows at `tick`: it cycles
+ * through every page, and stays on the first while everything fits on one.
+ */
+export function rotationPage(tick: number, count: number, size: number): number {
+  const pages = Math.max(1, Math.ceil(count / size));
+  return ((tick % pages) + pages) % pages;
+}
+
+/** A counter that goes up every `ms` while `active`, to turn pages of comments. */
+function useTick(active: boolean, ms = ROTATE_MS): number {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    const id = window.setInterval(() => setTick((t) => t + 1), ms);
+    return () => window.clearInterval(id);
+  }, [active, ms]);
+  return tick;
+}
+
+/** "1–4 of 9", or "9 of 9" for a last page of one: which of the items a page shows. */
+export function pageRange(page: number, size: number, count: number): string {
+  const first = page * size + 1;
+  const last = Math.min(count, (page + 1) * size);
+  return first === last ? `${last} of ${count}` : `${first}\u2013${last} of ${count}`;
+}
+
 function RatingSlide({
   summary,
   comments = null,
@@ -689,6 +720,8 @@ function RatingSlide({
 }) {
   const scale = summary.discussion.scales.find((sc) => sc.question === "experience");
   const ratings = scale ? Math.max(0, ...scale.categories.map((c) => c.count)) : 0;
+  const tick = useTick(Boolean(comments && comments.length > COMMENTS_SHOWN));
+  const commentPage = rotationPage(tick, comments?.length ?? 0, COMMENTS_SHOWN);
   return (
     <div className="flex h-full flex-col gap-[24px]">
       <span className="font-body text-[26px] text-[var(--color-ink-secondary)]">
@@ -700,17 +733,25 @@ function RatingSlide({
         (comments.length === 0 ? (
           <p className="m-0 font-body text-[24px] text-[var(--color-ink-muted)]">No comments yet.</p>
         ) : (
-          // Four at most, two per row, each clamped to two lines, so the slide still fits 16:9.
-          <ul className="m-0 grid list-none grid-cols-2 gap-[14px] p-0">
-            {comments.slice(0, 4).map((text, i) => (
-              <li
-                key={`${i}-${text}`}
-                className={`rounded-[14px] border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-[24px] py-[16px] ${BOX_TEXT}`}
-              >
-                <span className="line-clamp-2">{text}</span>
-              </li>
-            ))}
-          </ul>
+          <>
+            {/* Four at a time, two per row, each clamped to two lines, so the slide still fits 16:9. With more,
+                the four turn every few seconds, so every comment gets its turn (the dry run, Oct 25). */}
+            <ul className="m-0 grid list-none grid-cols-2 gap-[14px] p-0">
+              {comments.slice(commentPage * COMMENTS_SHOWN, (commentPage + 1) * COMMENTS_SHOWN).map((text, i) => (
+                <li
+                  key={`${commentPage}-${i}-${text}`}
+                  className={`rounded-[14px] border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-[24px] py-[16px] ${BOX_TEXT}`}
+                >
+                  <span className="line-clamp-2">{text}</span>
+                </li>
+              ))}
+            </ul>
+            {comments.length > COMMENTS_SHOWN && (
+              <span className="font-body text-[18px] tabular-nums text-[var(--color-ink-muted)]">
+                Comments {pageRange(commentPage, COMMENTS_SHOWN, comments.length)}
+              </span>
+            )}
+          </>
         ))}
     </div>
   );
@@ -791,11 +832,15 @@ function RevealSlide({ summary }: { summary: RunSummary }) {
 
 /**
  * The answers Max reads out in What we saw, on the screen now that phones
- * stay quiet there: the two most worth discussing, with what the person
- * said about each. Before anyone flags one, the spoken questions show instead.
+ * stay quiet there: the most worth discussing, two at a time, with what the
+ * person said about each. Before anyone flags one, the spoken questions show instead.
  */
 function WorthDiscussing({ summary }: { summary: RunSummary }) {
-  const items = summary.spotlight.slice(0, 2);
+  // Two at a time; with more, they turn every few seconds (the dry run, Oct 25).
+  const all = summary.spotlight;
+  const tick = useTick(all.length > ANSWERS_SHOWN);
+  const page = rotationPage(tick, all.length, ANSWERS_SHOWN);
+  const items = all.slice(page * ANSWERS_SHOWN, (page + 1) * ANSWERS_SHOWN);
   if (!items.length) {
     return (
       <Panel className="mt-auto py-[20px]">
@@ -811,7 +856,9 @@ function WorthDiscussing({ summary }: { summary: RunSummary }) {
   }
   return (
     <Panel className="mt-auto py-[16px]">
-      <Label>Answers worth discussing</Label>
+      <Label>
+        Answers worth discussing{all.length > ANSWERS_SHOWN && <span className="normal-case tracking-normal">{` · ${pageRange(page, ANSWERS_SHOWN, all.length)}`}</span>}
+      </Label>
       <ul className="m-0 grid list-none grid-cols-2 gap-[32px] p-0">
         {items.map((item) => (
           <li key={item.id} className="flex min-w-0 flex-col gap-[6px]">
@@ -1140,134 +1187,103 @@ function FrontDoorSlide() {
   );
 }
 
-/**
- * The tool pilot's bar colours, by arm: the model on its own recedes in the
- * same gray as the "Where models still break" chart, and the tool carries the
- * accent. Every bar is labelled with its value, so color never carries it alone.
- */
-const ARM_COLORS: Record<ToolPilotArmId, string> = {
-  alone: "#bdb6ae",
-  web: "#8e9aaa",
-  tool: "var(--color-accent)",
-  both: "var(--color-accent-hover)",
-};
-/** Arms that run the engine, whose numbers read in full ink. */
-const ENGINE_ARMS: ReadonlySet<ToolPilotArmId> = new Set(["tool", "both"]);
+/** The pilot's bars: web search alone recedes in the "Where models still break" gray; our rules engine carries the accent. */
+const PILOT_COLORS = { web: "#bdb6ae", both: "var(--color-accent)" } as const;
+
+/** A whole percent of the pilot's amounts, as the slide shows it. */
+const pilotPct = (k: number) => Math.round((100 * k) / ENGINE_PILOT.amounts);
+/** A signed whole number of points, with a true minus sign. */
+const signed = (n: number) => `${n < 0 ? "\u2212" : "+"}${Math.abs(Math.round(n))}`;
+/** Dollars per household to the tenth of a cent. */
+const perHousehold = (d: number) => `$${d.toFixed(3)}`;
 
 /**
- * At scale, slide 6: PolicyBench's tool pilot. The same models in each arm
- * (on their own, and with a tool that runs a rules engine) beside the benefit
- * amounts on their own, then the note's caveat that the tool runs the engine
- * behind the reference, across the full width so it fits at 1600×900.
+ * At scale, slide 6: PolicyBench's preliminary internal pilot. Each model with web search alone and with
+ * web search and our rules engine, the change in accuracy and the change in cost (Max, the dry run, Oct 25).
  */
 function ToolSlide() {
-  const t = TOOL_PILOT;
-  const { misses, scored } = toolPilotMisses(t);
-  const bar = t.arms.length > 2 ? 20 : 26;
+  const t = ENGINE_PILOT;
+  const head = "pb-[10px] text-left align-bottom font-body text-[20px] font-normal text-[var(--color-ink-muted)]";
   return (
-    <div className="flex h-full flex-col gap-[12px]">
+    <div className="flex h-full flex-col gap-[14px]">
       <div className="flex items-end justify-between gap-[24px]">
         <p className="m-0 font-display text-[40px] font-light leading-tight text-[var(--color-ink)]">{t.title}</p>
-        <span className="flex shrink-0 flex-wrap justify-end gap-x-[24px] gap-y-[4px] font-body text-[20px] text-[var(--color-ink-secondary)]">
-          {t.arms.map((arm) => (
-            <span key={arm.id} className="flex items-center gap-[8px]">
-              <span aria-hidden className="h-[14px] w-[14px] rounded-[3px]" style={{ background: ARM_COLORS[arm.id] }} /> {arm.label}
+        <span className="flex shrink-0 gap-[24px] font-body text-[20px] text-[var(--color-ink-secondary)]">
+          {(["web", "both"] as const).map((arm) => (
+            <span key={arm} className="flex items-center gap-[8px]">
+              <span aria-hidden className="h-[14px] w-[14px] rounded-[3px]" style={{ background: PILOT_COLORS[arm] }} /> {t.arms[arm]}
             </span>
           ))}
         </span>
       </div>
       <p className="m-0 font-body text-[20px] text-[var(--color-ink-secondary)]">{t.note}</p>
-      <div
-        className={`grid min-h-0 items-start gap-[40px] pt-[8px] ${t.benefits ? "grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)]" : "grid-cols-1"}`}
-      >
-        <ul className={`m-0 flex list-none flex-col p-0 ${t.arms.length > 2 ? "gap-[20px]" : "gap-[28px]"}`}>
-          {t.rows.map((row) => (
-            <li key={row.model} className="grid grid-cols-[220px_minmax(0,1fr)] items-center gap-[24px]">
-              <span className={BOX_TEXT}>{row.model}</span>
-              <span className="flex flex-col gap-[8px]">
-                {t.arms.map((arm) => {
-                  const hits = row.hits[arm.id];
-                  if (typeof hits !== "number") return null;
-                  const value = share(hits, t.amounts);
-                  return (
-                    <span key={arm.id} className="flex items-center gap-[14px]">
-                      <span className="rounded-[4px]" style={{ height: bar, width: `${value * 0.78}%`, background: ARM_COLORS[arm.id] }} />
-                      <span
-                        className={`whitespace-nowrap font-mono text-[22px] leading-none tabular-nums ${ENGINE_ARMS.has(arm.id) ? "text-[var(--color-ink)]" : "text-[var(--color-ink-muted)]"}`}
-                      >
-                        <span className="sr-only">{arm.label}: </span>
-                        {value.toFixed(1)}%
-                      </span>
-                    </span>
-                  );
-                })}
-              </span>
-            </li>
-          ))}
-        </ul>
-        {t.benefits && <BenefitsPanel benefits={t.benefits} />}
-      </div>
-      <Panel className="flex flex-col gap-[8px] py-[18px]">
-        <Label className="mb-0">What this measures</Label>
-        <p className="m-0 font-body text-[22px] leading-snug text-[var(--color-ink)]">
-          {t.measures}{" "}
-          <span className="text-[var(--color-ink-secondary)]">
-            The {misses} of {scored} amounts still wrong with the tool {t.missesCause}
-          </span>
-        </p>
-      </Panel>
-      <BenchFooter source={t.source} />
-    </div>
-  );
-}
-
-/** The benefit amounts alone, as a small table: the part of the pilot this room runs. */
-function BenefitsPanel({ benefits: b }: { benefits: NonNullable<ToolPilot["benefits"]> }) {
-  const cell = "px-[10px] py-[2px] text-right font-mono text-[22px] tabular-nums";
-  return (
-    <Panel className="flex flex-col gap-[10px] py-[16px]">
-      <Label className="mb-0">{b.title}</Label>
-      <table className="w-full border-collapse font-body text-[21px] leading-snug text-[var(--color-ink)]">
-        <caption className="sr-only">Benefit amounts right, of {b.amounts}, by model</caption>
+      <table className="w-full border-collapse">
+        <caption className="sr-only">
+          {t.title}: share of nonzero dollar amounts right, the change in points with its 95% interval, and the change in cost per household
+        </caption>
         <thead>
-          <tr className="text-[var(--color-ink-muted)]">
-            <th scope="col" className="py-[2px] text-left font-normal">
-              <span className="sr-only">Arm</span>
+          <tr>
+            <th scope="col" className={`${head} w-[300px]`}>
+              <span className="sr-only">Model</span>
             </th>
-            {b.rows.map((r) => (
-              <th key={r.model} scope="col" className={`${cell} font-body font-normal`}>
-                <abbr title={r.model} className="no-underline">
-                  {r.short}
-                </abbr>
-              </th>
-            ))}
+            <th scope="col" className={head}>
+              Amounts right
+            </th>
+            <th scope="col" className={`${head} w-[250px]`}>
+              Accuracy
+            </th>
+            <th scope="col" className={`${head} w-[250px]`}>
+              Cost per household
+            </th>
           </tr>
         </thead>
         <tbody>
-          <tr>
-            <th scope="row" className="py-[2px] text-left font-normal text-[var(--color-ink-secondary)]">
-              On its own
-            </th>
-            {b.rows.map((r) => (
-              <td key={r.model} className={`${cell} text-[var(--color-ink-muted)]`}>
-                {r.alone}
+          {t.rows.map((r) => (
+            <tr key={r.model} className="border-t border-[var(--color-rule)]">
+              <th scope="row" className={`py-[16px] pr-[24px] text-left font-normal ${BOX_TEXT}`}>
+                {r.model}
+              </th>
+              <td className="py-[16px] pr-[32px]">
+                <span className="flex flex-col gap-[8px]">
+                  {(["web", "both"] as const).map((arm) => (
+                    <span key={arm} className="flex items-center gap-[14px]">
+                      <span className="h-[22px] rounded-[4px]" style={{ width: `${pilotPct(r[arm]) * 0.8}%`, background: PILOT_COLORS[arm] }} />
+                      <span
+                        className={`whitespace-nowrap font-mono text-[22px] leading-none tabular-nums ${arm === "both" ? "text-[var(--color-ink)]" : "text-[var(--color-ink-muted)]"}`}
+                      >
+                        <span className="sr-only">{t.arms[arm]}: </span>
+                        {pilotPct(r[arm])}%
+                      </span>
+                    </span>
+                  ))}
+                </span>
               </td>
-            ))}
-          </tr>
-          <tr>
-            <th scope="row" className="py-[2px] text-left font-normal text-[var(--color-ink-secondary)]">
-              With the tool
-            </th>
-            {b.rows.map((r) => (
-              <td key={r.model} className={`${cell} font-medium`}>
-                {r.tool}
+              <td className="py-[16px]">
+                <span className="block font-display text-[48px] font-light leading-none tabular-nums text-[var(--color-accent)]">
+                  {signed(r.change.points)} <span className="font-body text-[22px] text-[var(--color-ink-secondary)]">points</span>
+                </span>
+                <span className="mt-[6px] block font-body text-[18px] text-[var(--color-ink-muted)]">
+                  95%: {signed(r.change.lo)} to {signed(r.change.hi)}
+                </span>
               </td>
-            ))}
-          </tr>
+              <td className="py-[16px]">
+                <span className="block font-display text-[48px] font-light leading-none tabular-nums text-[var(--color-ink)]">
+                  {signed(percentChange(r.cost.web, r.cost.both))}%
+                </span>
+                <span className="mt-[6px] block font-body text-[18px] tabular-nums text-[var(--color-ink-muted)]">
+                  {perHousehold(r.cost.web)} to {perHousehold(r.cost.both)}
+                </span>
+              </td>
+            </tr>
+          ))}
         </tbody>
       </table>
-      <p className="m-0 font-body text-[19px] leading-snug text-[var(--color-ink-secondary)]">{b.also}</p>
-    </Panel>
+      <Panel className="mt-auto flex flex-col gap-[8px] py-[18px]">
+        <Label className="mb-0">What this measures</Label>
+        <p className="m-0 font-body text-[22px] leading-snug text-[var(--color-ink)]">{t.measures}</p>
+      </Panel>
+      <BenchFooter source={t.source} />
+    </div>
   );
 }
 
@@ -1280,6 +1296,16 @@ function BenefitsPanel({ benefits: b }: { benefits: NonNullable<ToolPilot["benef
 function LiveDemoSlide() {
   const slot = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+  // Full screen fills the window with the same frame, so the conversation in it carries over (the dry run, Oct 25).
+  const [full, setFull] = useState(false);
+  useEffect(() => {
+    if (!full) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFull(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [full]);
   useEffect(() => {
     const el = slot.current;
     if (!el) return;
@@ -1305,16 +1331,32 @@ function LiveDemoSlide() {
   }, []);
   return (
     <div className="flex h-full flex-col gap-[16px]">
-      <p className="m-0 font-display text-[36px] font-light leading-tight text-[var(--color-ink)]">{LIVE_DEMO.title}</p>
+      <div className="flex items-end justify-between gap-[24px]">
+        <p className="m-0 font-display text-[36px] font-light leading-tight text-[var(--color-ink)]">{LIVE_DEMO.title}</p>
+        <button type="button" className={`${BUTTON_QUIET} shrink-0 px-[20px] py-[10px] text-[20px]`} onClick={() => setFull(true)}>
+          Full screen
+        </button>
+      </div>
       <div ref={slot} className="min-h-0 flex-1 rounded-[14px] border border-[var(--color-rule)] bg-white" />
       {box &&
         createPortal(
-          <iframe
-            title="Live chatbot demo: plain AI beside AI with the Axiom rules engine"
-            src={liveDemoUrl()}
-            className="fixed z-30 border-0 bg-white"
-            style={{ left: box.left, top: box.top, width: box.width, height: box.height }}
-          />,
+          <>
+            <iframe
+              title="Live chatbot demo: plain AI beside AI with the Axiom rules engine"
+              src={liveDemoUrl()}
+              className={`fixed border-0 bg-white ${full ? "z-50" : "z-30"}`}
+              style={full ? { inset: 0, width: "100vw", height: "100dvh" } : { left: box.left, top: box.top, width: box.width, height: box.height }}
+            />
+            {full && (
+              <button
+                type="button"
+                className={`${BUTTON_QUIET} fixed bottom-3 right-3 z-[60] shadow-[0_2px_8px_rgba(28,25,23,0.18)]`}
+                onClick={() => setFull(false)}
+              >
+                Exit full screen
+              </button>
+            )}
+          </>,
           document.body,
         )}
     </div>
