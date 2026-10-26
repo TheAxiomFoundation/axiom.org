@@ -469,7 +469,7 @@ describe("PresenterApp navigation", () => {
     expect(screen.getByText("Run r2")).toBeInTheDocument();
   });
 
-  it("sends a move after a Start run that failed, once it has", async () => {
+  it("sends a move after a Start run that failed, once it has, and the moves after that at once", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     const { server, posts } = setup({ stage: "reveal" });
     await onStage("reveal");
@@ -485,6 +485,10 @@ describe("PresenterApp navigation", () => {
     expect(posts()).toEqual([{ runId: "r2", stage: "welcome" }, { stage: "try" }]);
     await onStage("try");
     expect(screen.getByText("Run r1")).toBeInTheDocument();
+    // With Start run settled, nothing holds a move back.
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Stages" })).getByRole("button", { name: "At scale" }));
+    expect(posts()).toEqual([{ runId: "r2", stage: "welcome" }, { stage: "try" }, { stage: "scale" }]);
+    await onStage("scale");
   });
 
   it("shows the stage the phones read after the clock steps back, with the memory store", async () => {

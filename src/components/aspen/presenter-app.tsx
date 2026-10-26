@@ -183,8 +183,8 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
   // on a stage they never got (the review of #370).
   const stored = useRef<Control | null>(null);
   // Each move's request while in flight, and the run switch among them, if any (see move). Meanwhile
-  // the TV shows the newest move's stage, `ahead`, even before its first read of the room, and a poll
-  // only updates `stored`: one that started before a move must not undo it.
+  // the TV shows the newest move's stage, `ahead`, whatever the polls say, and even before its first
+  // read of the room.
   const requests = useRef(new Set<Promise<unknown>>());
   const switching = useRef<Promise<unknown> | null>(null);
   const [ahead, setAhead] = useState<StageId | null>(null);
@@ -196,7 +196,7 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
   useEffect(() => {
     if (!polled) return;
     stored.current = newerControl(stored.current, polled);
-    if (requests.current.size === 0) setControl(stored.current);
+    setControl(stored.current);
   }, [polled]);
 
   const stage = (ahead ?? (stageIndex(control?.stage) >= 0 ? control?.stage : "welcome")) as StageId;
