@@ -107,6 +107,36 @@ describe('supabase store', () => {
     expect(patch.updated_at).toBeTruthy()
   })
 
+  it('writes the control row only over an older one, so two moves landing out of order leave the later', async () => {
+    // PostgREST's side of the stamp check: the PATCH changes the row only when the filter matches.
+    let row = { run_id: 'r1', stage: 'welcome', updated_at: '2026-10-27T00:30:00.000Z' }
+    const { fn, calls } = fakeFetch((url, init) => {
+      if (init.method !== 'PATCH') return { body: [row] }
+      const patch = JSON.parse(String(init.body))
+      expect(new URL(url).searchParams.get('updated_at')).toBe(`lt.${patch.updated_at}`)
+      if (!(row.updated_at < patch.updated_at)) return { body: [] }
+      row = { ...row, ...patch }
+      return { body: [row] }
+    })
+    const store = createSupabaseStore(config, fn)
+    vi.useFakeTimers()
+    try {
+      // The later move's write lands first...
+      vi.setSystemTime(new Date('2026-10-27T00:30:02.000Z'))
+      expect(await store.setControl({ stage: 'scale' })).toMatchObject({ stage: 'scale', updatedAt: '2026-10-27T00:30:02.000Z' })
+      // ...then the earlier one's, stamped before it: it changes nothing and answers with the row as it is.
+      vi.setSystemTime(new Date('2026-10-27T00:30:01.000Z'))
+      expect(await store.setControl({ stage: 'try' })).toMatchObject({ stage: 'scale', updatedAt: '2026-10-27T00:30:02.000Z' })
+      expect(row.stage).toBe('scale')
+      expect(calls.map((c) => c.init.method ?? 'GET')).toEqual(['PATCH', 'PATCH', 'GET'])
+      // And a write in the same millisecond as the row's is no newer, so it changes nothing either.
+      vi.setSystemTime(new Date('2026-10-27T00:30:02.000Z'))
+      expect(await store.setControl({ stage: 'groups' })).toMatchObject({ stage: 'scale' })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('falls back to the default control when the row is missing', async () => {
     const { fn } = fakeFetch(() => ({ body: [] }))
     expect(await createSupabaseStore(config, fn).getControl()).toEqual(DEFAULT_CONTROL)

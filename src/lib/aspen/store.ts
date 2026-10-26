@@ -160,23 +160,28 @@ export function createSupabaseStore(
 
   const runFilter = (runId: string) => `run_id=eq.${encodeURIComponent(runId)}`;
 
+  async function getControl(): Promise<Control> {
+    const rows = await request<ControlRow[]>("aspen_control?id=eq.live&select=run_id,stage,updated_at");
+    return toControl(rows[0]);
+  }
+
   return {
     kind: "supabase",
-    async getControl() {
-      const rows = await request<ControlRow[]>(
-        "aspen_control?id=eq.live&select=run_id,stage,updated_at",
-      );
-      return toControl(rows[0]);
-    },
+    getControl,
     async setControl(patch) {
-      const body: Record<string, string> = { updated_at: new Date().toISOString() };
+      const updatedAt = new Date().toISOString();
+      const body: Record<string, string> = { updated_at: updatedAt };
       if (patch.runId) body.run_id = patch.runId;
       if (patch.stage) body.stage = patch.stage;
+      // Only over an older row, checked in the same update: two moves whose writes land out of order
+      // leave the row on the later one, so the row always holds the newest stamp, which is how the TV
+      // orders rows (presenter-app's newerControl; the review of #376). A write a later one already
+      // beat changes nothing and answers with the row as it is.
       const rows = await request<ControlRow[]>(
-        "aspen_control?id=eq.live&select=run_id,stage,updated_at",
+        `aspen_control?id=eq.live&updated_at=lt.${encodeURIComponent(updatedAt)}&select=run_id,stage,updated_at`,
         { method: "PATCH", body, prefer: "return=representation" },
       );
-      return toControl(rows[0]);
+      return rows[0] ? toControl(rows[0]) : getControl();
     },
     async upsertParticipant(row) {
       await request("aspen_participants?on_conflict=id", {

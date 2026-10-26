@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode, type SyntheticEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type SyntheticEvent } from "react";
 import { createPortal } from "react-dom";
 import {
   ChartColumn,
@@ -100,7 +100,8 @@ type SlideAt = { stage: StageId; sub: number };
  * A live row is newer than a not-live one, since a failed store read falls back to the default
  * run, not live, and must not flip a live room's TV to Welcome (the review of #368). Then the
  * later `updatedAt`; a row without one is the store's first, before any move. A tie goes to the
- * answer. So whatever order polls and moves' answers land in, the TV ends on the newest row.
+ * answer. So whatever order polls and moves' answers land in, the TV ends on the newest row, and
+ * the store keeps the newest write (store.ts setControl), so that is the row the phones get.
  */
 export function newerControl(current: Control | null, incoming: Control): Control {
   if (!current) return incoming;
@@ -140,10 +141,8 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
   const [runOpen, setRunOpen] = useState(false);
   // Agency comments stay hidden until the presenter chooses to show them.
   const [showComments, setShowComments] = useState(false);
-  // Which slide of a multi-slide stage is up; any other stage starts at its first slide. `back` is the
-  // slide the arrows (or a new run) left for another stage, until that move settles: one the store
-  // refuses puts the TV back on it. A stage button leaves `slide` as it was, so it needs none.
-  const [slide, setSlide] = useState<SlideAt & { back?: SlideAt }>({ stage: "welcome", sub: 0 });
+  // Which slide of a multi-slide stage is up; any other stage starts at its first slide.
+  const [slide, setSlide] = useState<SlideAt>({ stage: "welcome", sub: 0 });
   // The controls fade out when the mouse rests, so the room sees only the slide.
   const [idle, setIdle] = useState(false);
   const fit = useFit();
@@ -170,6 +169,10 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
   // Moves in flight. Meanwhile the TV shows the newest move's stage, and a poll only updates `stored`:
   // one that started before a move must not undo it.
   const moving = useRef(0);
+  // The slide on screen (kept by a layout effect below), and, while moves are in flight, the slide the
+  // TV last showed on each stage they left: when they settle the room on one of those, it goes back there.
+  const onScreen = useRef<SlideAt>({ stage: "welcome", sub: 0 });
+  const left = useRef(new Map<string, number>());
 
   useEffect(() => {
     if (!polled) return;
@@ -180,6 +183,9 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
   const stage = (stageIndex(control?.stage) >= 0 ? control?.stage : "welcome") as StageId;
   const index = stageIndex(stage);
   const sub = slide.stage === stage ? Math.min(slide.sub, slideCount(stage) - 1) : 0;
+  useLayoutEffect(() => {
+    onScreen.current = { stage, sub };
+  });
   const { data: results } = useResults(true, 4000, control?.runId);
   const summary: RunSummary = results?.summary ?? EMPTY_SUMMARY;
 
@@ -192,6 +198,7 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
    * store, the next poll carries its newer row and the TV follows.
    */
   const move = useCallback(async (patch: { stage?: StageId; runId?: string }) => {
+    left.current.set(onScreen.current.stage, onScreen.current.sub);
     if (patch.stage) setControl((c) => (c ? { ...c, stage: patch.stage as string } : c));
     moving.current += 1;
     const response = await postJson<Control & { error?: string }>("/api/aspen/state", patch, CONTROL_TIMEOUT_MS).catch(
@@ -205,15 +212,14 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
       setError(response?.data.error ?? "The stage did not change. Check the connection.");
     }
     // The last move to settle puts the TV on what the store holds: this move's row when it saved, an
-    // earlier move's, or the row from before them all. When that is the stage the arrows left, it is
-    // the slide they left too; either way the slide forgets `back`, so a stage reached later starts at
-    // its first slide again.
+    // earlier move's, or the row from before them all. On the stage on screen, the slide stays. On
+    // another, it is the slide the TV last showed there, or else the stage's first.
     if (moving.current === 0) {
       const landed = stored.current;
+      const back = landed ? left.current.get(landed.stage) : undefined;
+      left.current.clear();
       setControl(landed);
-      setSlide((s) =>
-        s.back && landed && landed.stage === s.back.stage && landed.stage !== s.stage ? s.back : { stage: s.stage, sub: s.sub },
-      );
+      if (landed && landed.stage !== onScreen.current.stage) setSlide({ stage: landed.stage as StageId, sub: back ?? 0 });
     }
   }, []);
 
@@ -221,13 +227,13 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
     (delta: number) => {
       const target = sub + delta;
       if (target >= 0 && target < slideCount(stage)) {
-        setSlide((s) => ({ stage, sub: target, back: s.stage === stage ? s.back : undefined }));
+        setSlide({ stage, sub: target });
         return;
       }
       const next = STAGES[Math.min(STAGES.length - 1, Math.max(0, index + delta))];
       if (next.id === stage) return;
       // Stepping back lands on the last slide of the stage before.
-      setSlide({ stage: next.id, sub: delta < 0 ? slideCount(next.id) - 1 : 0, back: { stage, sub } });
+      setSlide({ stage: next.id, sub: delta < 0 ? slideCount(next.id) - 1 : 0 });
       void move({ stage: next.id });
     },
     [index, stage, sub, move],
@@ -363,7 +369,7 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
                 disabled={!runDraft}
                 onClick={() => {
                   if (window.confirm(`Start run "${runDraft}" and move everyone to Welcome?`)) {
-                    setSlide({ stage: "welcome", sub: 0, back: { stage, sub } });
+                    setSlide({ stage: "welcome", sub: 0 });
                     void move({ runId: runDraft, stage: "welcome" });
                     setRunDraft("");
                     setRunOpen(false);
