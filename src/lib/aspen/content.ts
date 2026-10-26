@@ -952,7 +952,7 @@ export function liveDemoUrl(): string {
 
 /** The same rules for every system: what one shared set of rules gives each group. */
 export const SAME_RULES = {
-  /** Shared foundation 2/4's heading. */
+  /** The heading of a former Shared foundation slide, off the deck since the dry run (Oct 25). */
   heading: "What does one open set of rules enable?",
   /** The room is state benefits leaders, so governments get the big box and the most uses. */
   governments: {
@@ -1004,7 +1004,7 @@ export const ONE_SET_OF_RULES = [
 ] as const;
 
 /**
- * Shared foundation 3/4: the encoding pipeline, before "How do we build it?".
+ * The encoding pipeline, a former Shared foundation slide (off the deck since the dry run, Oct 25; the journey covers it).
  * Copied from the InnovateUS deck (axiom-slides, public/decks/innovateus-2026-10,
  * slide 12; axiom.org/slides/innovateus-2026-10#12), wording unchanged. Each
  * step's small illustration lives with the slide; its text lives here.

@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode, type SyntheticEvent } from "react";
 import { createPortal } from "react-dom";
 import {
   BookText,
@@ -157,9 +157,11 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
 
   useEffect(() => {
     if (!polled || moving.current > 0) return;
-    // Drop a poll older than the change this screen already saved.
+    // Drop a poll older than the change this screen already saved, and a failed store read (the
+    // default run, not live) once the room is live: it would flip the TV to Welcome and reload the
+    // live demo for one poll (the review of #368).
     setControl((c) =>
-      c?.updatedAt && polled.updatedAt && polled.updatedAt < c.updatedAt ? c : polled,
+      (c?.live && !polled.live) || (c?.updatedAt && polled.updatedAt && polled.updatedAt < c.updatedAt) ? c : polled,
     );
   }, [polled]);
 
@@ -265,9 +267,8 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
                       }
                     />
                   ))}
-                {/* Slides 2 to 5 of At scale, and 2 of Shared foundation, come from Max's Nava deck; 6 is the tool pilot and 7 the live chatbot.
-                    What the models miss follows the household it explains (the dry run, Oct 25).
-                    Shared foundation 3 is the encoding pipeline from the InnovateUS deck. */}
+                {/* Slides 2 to 5 of At scale come from Max's Nava deck; 6 is PolicyBench's pilot with our rules engine
+                    and 7 the live chatbot. What the models miss follows the household it explains (the dry run, Oct 25). */}
                 {stage === "scale" &&
                   [
                     <ScaleShareSlide key="share" />,
@@ -278,7 +279,7 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
                     <ToolSlide key="tool" />,
                     <LiveDemoSlide key="live-demo" />,
                   ][sub]}
-                {/* Shared foundation 4 plays the homepage's encoding journey after the pipeline it shows. */}
+                {/* Shared foundation: a title slide, then the homepage's encoding journey (the dry run, Oct 25). */}
                 {stage === "foundation" &&
                   [
                     <FoundationSlide key="foundation" summary={summary} />,
@@ -672,10 +673,6 @@ function TrySlide({ summary, joinPassword }: { summary: RunSummary; joinPassword
   );
 }
 
-/**
- * What we saw, slide 2: how AI is doing in their agencies, the room's 1–5
- * ratings, with the comments once the presenter shows them.
- */
 /** Agency comments on screen at once, and answers worth discussing. */
 const COMMENTS_SHOWN = 4;
 const ANSWERS_SHOWN = 2;
@@ -684,23 +681,31 @@ const ANSWERS_SHOWN = 2;
 const ROTATE_MS = 12_000;
 
 /**
- * Which page of `count` items, `size` at a time, shows at `tick`: it cycles
- * through every page, and stays on the first while everything fits on one.
+ * The page after `page` of `count` items, `size` at a time: it cycles through
+ * every page, and stays on the first while everything fits on one. A page past
+ * the end (the list shrank) counts as the last.
  */
-export function rotationPage(tick: number, count: number, size: number): number {
+export function nextPage(page: number, count: number, size: number): number {
   const pages = Math.max(1, Math.ceil(count / size));
-  return ((tick % pages) + pages) % pages;
+  return (Math.min(Math.max(page, 0), pages - 1) + 1) % pages;
 }
 
-/** A counter that goes up every `ms` while `active`, to turn pages of comments. */
-function useTick(active: boolean, ms = ROTATE_MS): number {
-  const [tick, setTick] = useState(0);
+/**
+ * Which page of `count` items shows: it turns every `ms` while there is more
+ * than one. The page is kept, not computed from a clock, so a new item never
+ * jumps it mid-turn (the review of #368); it starts at the first on mount.
+ */
+function useRotation(count: number, size: number, ms = ROTATE_MS): number {
+  const [page, setPage] = useState(0);
+  const countRef = useRef(count);
+  countRef.current = count;
+  const turning = count > size;
   useEffect(() => {
-    if (!active) return;
-    const id = window.setInterval(() => setTick((t) => t + 1), ms);
+    if (!turning) return;
+    const id = window.setInterval(() => setPage((p) => nextPage(p, countRef.current, size)), ms);
     return () => window.clearInterval(id);
-  }, [active, ms]);
-  return tick;
+  }, [turning, size, ms]);
+  return Math.min(page, Math.max(1, Math.ceil(count / size)) - 1);
 }
 
 /** "1–4 of 9", or "9 of 9" for a last page of one: which of the items a page shows. */
@@ -710,6 +715,38 @@ export function pageRange(page: number, size: number, count: number): string {
   return first === last ? `${last} of ${count}` : `${first}\u2013${last} of ${count}`;
 }
 
+/**
+ * Agency comments on What we saw 2/2, four at a time, two per row, each clamped to two lines, so the
+ * slide still fits 16:9. With more, the four turn every few seconds, so every comment gets its turn
+ * (the dry run, Oct 25). It mounts when the presenter shows them, so it always opens on the first four.
+ */
+function AgencyComments({ comments }: { comments: string[] }) {
+  const page = useRotation(comments.length, COMMENTS_SHOWN);
+  return (
+    <>
+      <ul className="m-0 grid list-none grid-cols-2 gap-[14px] p-0">
+        {comments.slice(page * COMMENTS_SHOWN, (page + 1) * COMMENTS_SHOWN).map((text, i) => (
+          <li
+            key={`${page}-${i}-${text}`}
+            className={`rounded-[14px] border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-[24px] py-[16px] ${BOX_TEXT}`}
+          >
+            <span className="line-clamp-2">{text}</span>
+          </li>
+        ))}
+      </ul>
+      {comments.length > COMMENTS_SHOWN && (
+        <span className="font-body text-[18px] tabular-nums text-[var(--color-ink-muted)]">
+          Comments {pageRange(page, COMMENTS_SHOWN, comments.length)}
+        </span>
+      )}
+    </>
+  );
+}
+
+/**
+ * What we saw, slide 2: how AI is doing in their agencies, the room's 1–5
+ * ratings, with the comments once the presenter shows them.
+ */
 function RatingSlide({
   summary,
   comments = null,
@@ -720,8 +757,6 @@ function RatingSlide({
 }) {
   const scale = summary.discussion.scales.find((sc) => sc.question === "experience");
   const ratings = scale ? Math.max(0, ...scale.categories.map((c) => c.count)) : 0;
-  const tick = useTick(Boolean(comments && comments.length > COMMENTS_SHOWN));
-  const commentPage = rotationPage(tick, comments?.length ?? 0, COMMENTS_SHOWN);
   return (
     <div className="flex h-full flex-col gap-[24px]">
       <span className="font-body text-[26px] text-[var(--color-ink-secondary)]">
@@ -733,25 +768,7 @@ function RatingSlide({
         (comments.length === 0 ? (
           <p className="m-0 font-body text-[24px] text-[var(--color-ink-muted)]">No comments yet.</p>
         ) : (
-          <>
-            {/* Four at a time, two per row, each clamped to two lines, so the slide still fits 16:9. With more,
-                the four turn every few seconds, so every comment gets its turn (the dry run, Oct 25). */}
-            <ul className="m-0 grid list-none grid-cols-2 gap-[14px] p-0">
-              {comments.slice(commentPage * COMMENTS_SHOWN, (commentPage + 1) * COMMENTS_SHOWN).map((text, i) => (
-                <li
-                  key={`${commentPage}-${i}-${text}`}
-                  className={`rounded-[14px] border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-[24px] py-[16px] ${BOX_TEXT}`}
-                >
-                  <span className="line-clamp-2">{text}</span>
-                </li>
-              ))}
-            </ul>
-            {comments.length > COMMENTS_SHOWN && (
-              <span className="font-body text-[18px] tabular-nums text-[var(--color-ink-muted)]">
-                Comments {pageRange(commentPage, COMMENTS_SHOWN, comments.length)}
-              </span>
-            )}
-          </>
+          <AgencyComments comments={comments} />
         ))}
     </div>
   );
@@ -838,8 +855,7 @@ function RevealSlide({ summary }: { summary: RunSummary }) {
 function WorthDiscussing({ summary }: { summary: RunSummary }) {
   // Two at a time; with more, they turn every few seconds (the dry run, Oct 25).
   const all = summary.spotlight;
-  const tick = useTick(all.length > ANSWERS_SHOWN);
-  const page = rotationPage(tick, all.length, ANSWERS_SHOWN);
+  const page = useRotation(all.length, ANSWERS_SHOWN);
   const items = all.slice(page * ANSWERS_SHOWN, (page + 1) * ANSWERS_SHOWN);
   if (!items.length) {
     return (
@@ -1288,6 +1304,19 @@ function ToolSlide() {
 }
 
 /**
+ * Whether a key pressed inside the live demo goes on to the deck: Escape and a clicker's page keys
+ * always, and the left and right arrows unless the presenter is typing in the demo. Space stays with
+ * the demo, where it scrolls the answer or presses a button.
+ */
+export function forwardsFromFrame(e: Pick<KeyboardEvent, "key" | "target" | "altKey" | "ctrlKey" | "metaKey">): boolean {
+  if (e.altKey || e.ctrlKey || e.metaKey) return false;
+  if (["Escape", "PageDown", "PageUp"].includes(e.key)) return true;
+  if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return false;
+  const target = e.target as { tagName?: string; isContentEditable?: boolean } | null;
+  return !["INPUT", "TEXTAREA", "SELECT"].includes(target?.tagName ?? "") && target?.isContentEditable !== true;
+}
+
+/**
  * At scale, slide 7: the live chatbot, plain AI beside AI with the Axiom rules
  * engine. A cross-origin frame inside the slide's scaled canvas paints blank,
  * so the slide holds a slot and the frame sits over it, fixed to the slot's
@@ -1306,6 +1335,34 @@ function LiveDemoSlide() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [full]);
+  // Once the presenter clicks into the demo, its keys go to the frame's own window, so Escape and the
+  // clicker would stop working (the review of #368). The demo is served from axiom.org, so the deck can
+  // listen there too and pass them on; from another origin, reading the frame throws and nothing changes.
+  const unlisten = useRef<(() => void) | null>(null);
+  const onFrameLoad = useCallback((event: SyntheticEvent<HTMLIFrameElement>) => {
+    unlisten.current?.();
+    unlisten.current = null;
+    try {
+      const win = event.currentTarget.contentWindow;
+      if (!win) return;
+      const onKey = (e: KeyboardEvent) => {
+        if (!forwardsFromFrame(e)) return;
+        e.preventDefault();
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: e.key, cancelable: true }));
+      };
+      win.addEventListener("keydown", onKey);
+      unlisten.current = () => {
+        try {
+          win.removeEventListener("keydown", onKey);
+        } catch {
+          // The frame navigated to another origin.
+        }
+      };
+    } catch {
+      // Another origin: the deck can't see the frame's keys.
+    }
+  }, []);
+  useEffect(() => () => unlisten.current?.(), []);
   useEffect(() => {
     const el = slot.current;
     if (!el) return;
@@ -1344,6 +1401,7 @@ function LiveDemoSlide() {
             <iframe
               title="Live chatbot demo: plain AI beside AI with the Axiom rules engine"
               src={liveDemoUrl()}
+              onLoad={onFrameLoad}
               className={`fixed border-0 bg-white ${full ? "z-50" : "z-30"}`}
               style={full ? { inset: 0, width: "100vw", height: "100dvh" } : { left: box.left, top: box.top, width: box.width, height: box.height }}
             />

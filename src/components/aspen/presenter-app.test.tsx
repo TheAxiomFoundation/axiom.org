@@ -22,7 +22,7 @@ import {
 import { EMPTY_SUMMARY, summarizeRun, type RunSummary } from "@/lib/aspen/results";
 import type { Control, RunData } from "@/lib/aspen/types";
 import { CAPTIONS, STORY_LABEL } from "@/components/landing/journey-lamplight/captions";
-import { notApplyNote, pageRange, PresenterApp, rotationPage } from "./presenter-app";
+import { forwardsFromFrame, nextPage, notApplyNote, pageRange, PresenterApp } from "./presenter-app";
 
 const DATA: RunData = {
   participants: [{ id: "a", run_id: "r1", perspective: "resident", state: "Arizona" }],
@@ -398,6 +398,51 @@ describe("PresenterApp navigation", () => {
     expect(frame.className).toContain("z-30");
     expect(screen.getByTitle(/Live chatbot demo/)).toBe(frame);
   });
+
+  it("hears Escape and the clicker inside the live demo, once the presenter has clicked into it", async () => {
+    setup({ stage: "scale" });
+    await onStage("scale");
+    for (let i = 0; i < 6; i++) fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    const frame = screen.getByTitle(/Live chatbot demo/) as HTMLIFrameElement;
+    // The demo is served from axiom.org, so the deck can listen in its window.
+    fireEvent.load(frame);
+    const inner = frame.contentWindow as Window & typeof globalThis;
+    const press = (key: string) => {
+      const event = new inner.KeyboardEvent("keydown", { key, cancelable: true });
+      act(() => {
+        inner.dispatchEvent(event);
+      });
+      return event;
+    };
+    fireEvent.click(screen.getByRole("button", { name: "Full screen" }));
+    expect(frame.className).toContain("z-50");
+    press("Escape");
+    expect(frame.className).toContain("z-30");
+    // Space stays with the demo (it scrolls the answer); the clicker's page key moves the deck on.
+    expect(press(" ").defaultPrevented).toBe(false);
+    expect(screen.getByText("7/7")).toBeInTheDocument();
+    expect(press("PageDown").defaultPrevented).toBe(true);
+    await onStage("foundation");
+  });
+
+  it("keeps the slide, and the live demo, when a poll falls back to the default run", async () => {
+    const { server, fetchMock } = setup({ stage: "scale" });
+    await onStage("scale");
+    for (let i = 0; i < 6; i++) fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    const frame = screen.getByTitle(/Live chatbot demo/);
+    const polls = () => fetchMock.mock.calls.filter(([url, init]) => url === "/api/aspen/state" && !init?.method).length;
+    // A failed store read answers with the default run, not live.
+    server.control = { runId: "rehearsal", stage: "welcome", live: false, updatedAt: null };
+    const seen = polls();
+    await waitFor(() => expect(polls()).toBeGreaterThan(seen + 1), { timeout: 12_000 });
+    expect(screen.getByText("7/7")).toBeInTheDocument();
+    expect(screen.getByTitle(/Live chatbot demo/)).toBe(frame);
+    expect(screen.queryByText("Run rehearsal")).not.toBeInTheDocument();
+    // When the store answers again, the room's own moves come through.
+    server.control = { runId: "r1", stage: "foundation", live: true, updatedAt: "2026-10-26T01:00:00Z" };
+    await waitFor(() => expect(screen.getByText("1/2")).toBeInTheDocument(), { timeout: 12_000 });
+    await onStage("foundation");
+  }, 30_000);
 
   it("shows no review flag on What the models miss (At scale 3/7), even with ?review", async () => {
     window.history.pushState({}, "", "/aspen/present?review");
@@ -892,6 +937,11 @@ describe("PresenterApp stages", () => {
       expect(screen.getByText("Comments 5\u20136 of 6")).toBeInTheDocument();
       turn();
       expect(shown()).toEqual([6, 5, 4, 3]);
+      turn();
+      // Hidden and shown again, they start over at the first four.
+      fireEvent.click(screen.getByRole("button", { name: "Hide agency comments" }));
+      fireEvent.click(screen.getByRole("button", { name: "Show agency comments" }));
+      expect(shown()).toEqual([6, 5, 4, 3]);
     } finally {
       vi.useRealTimers();
     }
@@ -913,21 +963,49 @@ describe("PresenterApp stages", () => {
 });
 
 describe("rotating pages", () => {
-  it("visits every item exactly once per cycle, and stays put while everything fits", () => {
+  it("visits every item exactly once per cycle, from any page, and stays put while everything fits", () => {
     fc.assert(
-      fc.property(fc.integer({ min: 0, max: 60 }), fc.integer({ min: 1, max: 8 }), fc.integer({ min: 0, max: 500 }), (count, size, start) => {
+      fc.property(fc.integer({ min: 0, max: 60 }), fc.integer({ min: 1, max: 8 }), fc.nat(), (count, size, n) => {
         const pages = Math.max(1, Math.ceil(count / size));
+        const start = n % pages;
         const seen: number[] = [];
-        for (let t = start; t < start + pages; t++) {
-          const page = rotationPage(t, count, size);
+        let page = start;
+        for (let t = 0; t < pages; t++) {
           expect(page).toBeGreaterThanOrEqual(0);
           expect(page).toBeLessThan(pages);
           for (let i = page * size; i < Math.min(count, (page + 1) * size); i++) seen.push(i);
+          page = nextPage(page, count, size);
         }
+        // Back where it started, having shown each item once.
+        expect(page).toBe(start);
         expect(seen.sort((a, b) => a - b)).toEqual(Array.from({ length: count }, (_, i) => i));
-        if (count <= size) expect(rotationPage(start, count, size)).toBe(0);
+        if (count <= size) expect(nextPage(start, count, size)).toBe(0);
       }),
     );
+  });
+
+  it("counts a page past the end, after the list shrank, as the last", () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 1, max: 60 }), fc.integer({ min: 1, max: 8 }), fc.nat(50), (count, size, extra) => {
+        const pages = Math.ceil(count / size);
+        expect(nextPage(pages - 1 + extra, count, size)).toBe(nextPage(pages - 1, count, size));
+      }),
+    );
+  });
+
+  it("passes on only Escape, a clicker's page keys, and the arrows when not typing, from the live demo", () => {
+    const key = (k: string, tagName?: string, mods: Partial<KeyboardEvent> = {}) =>
+      ({ key: k, target: tagName ? { tagName } : null, altKey: false, ctrlKey: false, metaKey: false, ...mods }) as unknown as KeyboardEvent;
+    expect(forwardsFromFrame(key("Escape", "TEXTAREA"))).toBe(true);
+    expect(forwardsFromFrame(key("PageDown", "TEXTAREA"))).toBe(true);
+    expect(forwardsFromFrame(key("PageUp"))).toBe(true);
+    expect(forwardsFromFrame(key("ArrowRight", "BODY"))).toBe(true);
+    expect(forwardsFromFrame(key("ArrowLeft", "TEXTAREA"))).toBe(false);
+    expect(forwardsFromFrame(key("ArrowRight", "INPUT"))).toBe(false);
+    expect(forwardsFromFrame(key(" ", "BODY"))).toBe(false);
+    expect(forwardsFromFrame(key("Enter", "BUTTON"))).toBe(false);
+    expect(forwardsFromFrame(key("ArrowDown"))).toBe(false);
+    expect(forwardsFromFrame(key("PageDown", undefined, { metaKey: true }))).toBe(false);
   });
 
   it("names the items a page shows", () => {

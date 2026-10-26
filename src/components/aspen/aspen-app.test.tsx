@@ -30,7 +30,16 @@ function nav() {
   return within(screen.getByRole("navigation", { name: "Session" }));
 }
 
+/** Waits for the phone's first poll of the room to land: until then only Welcome is open. */
+async function roomAnswered() {
+  await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url) === "/api/aspen/state")).toBe(true));
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
 async function onView(id: StageId) {
+  await roomAnswered();
   const index = STAGES.findIndex((s) => s.id === id);
   const stage = STAGES[index];
   await waitFor(() => expect(menu()).toHaveTextContent(`${stage.label}${index + 1} of ${STAGES.length}`));
@@ -245,11 +254,44 @@ describe("AspenApp following the presenter", () => {
     render(<AspenApp />);
     await onView("reveal");
     expect(JSON.parse(sessionStorage.getItem("aspen.view") ?? "null")).toEqual({ view: "reveal", follow: true });
-    // A history entry past the room lands on the room's stage instead.
+    // A history entry past the room lands on the room's stage instead, without ever opening it.
+    const views = () => events().filter((e) => e.kind === "stage_view");
+    const before = views().length;
     act(() => {
       window.dispatchEvent(new PopStateEvent("popstate", { state: { aspenStage: "next" } }));
     });
     await onView("reveal");
+    expect(views().slice(before).map((e) => e.payload.stage)).not.toContain("next");
+    expect(JSON.parse(sessionStorage.getItem("aspen.view") ?? "null")).toEqual({ view: "reveal", follow: true });
+  });
+
+  it("keeps a phone that just joined on Welcome until its first poll of the room lands", async () => {
+    let answer: (response: Response) => void = () => {};
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/aspen/state") return new Promise<Response>((resolve) => (answer = resolve));
+      if (url.startsWith("/api/aspen/results")) return jsonResponse({ runId: control.runId, live: true, summary });
+      return jsonResponse({ ok: true, saved: true });
+    });
+    control = { ...control, live: false };
+    render(<AspenApp />);
+    // Before the room answers, nothing past Welcome opens, even though no presenter turns out to be live.
+    expect(screen.getByRole("button", { name: /Start: ask the AI/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /Start: ask the AI/ }));
+    expect(screen.getByRole("heading", { level: 1, name: EVENT.title })).toBeInTheDocument();
+    await act(async () => answer(jsonResponse(control)));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Start: ask the AI/ })).toBeEnabled());
+  });
+
+  it("opens every stage when the phone can't reach the room", async () => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/aspen/state") throw new Error("offline");
+      if (url.startsWith("/api/aspen/results")) return jsonResponse({ runId: control.runId, live: true, summary });
+      return jsonResponse({ ok: true, saved: true });
+    });
+    render(<AspenApp />);
+    await waitFor(() => expect(screen.getByRole("button", { name: /Start: ask the AI/ })).toBeEnabled());
   });
 
   it("waits on the welcome page until the session starts, and opens every stage without a live presenter", async () => {
