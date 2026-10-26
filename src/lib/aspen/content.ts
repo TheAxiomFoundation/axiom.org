@@ -949,10 +949,11 @@ export const ENGINE_PILOT: EnginePilot = {
  * the wrong month. AI with the engine said $662 10 times out of 10. The $662
  * is the engine's ut_fep_payment_standard_amount, which carries no "not
  * fully encoded" flag in any of the 34 tool results across 30 engine replies
- * (three wordings). The engine does flag Utah's eligibility checks, and every
- * reply lists them and says eligibility isn't established. Asked "in October
- * 2026" instead of "this month", plain AI qualified the October amount 10
- * times out of 10, and called the date future in 5.
+ * (three wordings). The engine does flag Utah's eligibility checks: all 30
+ * replies list them, and every reply to this question says eligibility isn't
+ * established. Asked "in October 2026" instead of "this month", plain AI
+ * qualified the October amount 10 times out of 10, and called the date
+ * future in 5.
  *
  * It replaced "Single mom with two kids: does Alabama or Georgia pay more
  * TANF?" after the Oct 25 dry run: both of those outputs were flagged "not
