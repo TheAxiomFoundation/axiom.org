@@ -154,8 +154,13 @@ export function OverallRating({ stage }: { stage: string }) {
   // A failed agency save may have carried the comment, so it can be sent again, unless that's already on its way.
   const commentPending = commentChanged || (failed.discussion === true && !sending.discussion);
   const anyFailed = Object.values(failed).some(Boolean);
-  const done =
-    Boolean(answers.truth) && (AGENCY?.categories.every((c) => answers.agency?.[c.id] !== undefined) ?? false);
+  const rated = AGENCY?.categories.every((c) => answers.agency?.[c.id] !== undefined) ?? false;
+  const done = Boolean(answers.truth) && rated;
+  // One question at a time (Michaela, Oct 26): the agency scales open once the first question is answered,
+  // and the comment once all three are rated. Anything answered before, on this phone, keeps its question open.
+  const hasComment = Boolean(savedComment) || comment !== "" || removing;
+  const showAgency = Boolean(answers.truth) || Object.keys(answers.agency ?? {}).length > 0 || hasComment;
+  const showComment = rated || hasComment;
 
   return (
     <div className="flex flex-col gap-6">
@@ -179,7 +184,7 @@ export function OverallRating({ stage }: { stage: string }) {
           ))}
         </div>
       </fieldset>
-      {AGENCY && (
+      {AGENCY && showAgency && (
         <fieldset className="m-0 flex flex-col gap-3 border-0 border-t border-[var(--color-rule)] p-0 pt-5">
           <legend className={`${QUESTION} float-left mb-0 w-full`}>{AGENCY.title}</legend>
           <p className="clear-left m-0 font-body text-[0.95rem] text-[var(--color-ink-muted)]">
@@ -188,40 +193,42 @@ export function OverallRating({ stage }: { stage: string }) {
           {AGENCY.categories.map((c) => (
             <ScaleRow key={c.id} label={c.label} value={answers.agency?.[c.id]} onChange={(score) => rate(c.id, score)} />
           ))}
-          <div className="flex flex-col gap-1.5 font-body text-[1rem] text-[var(--color-ink)]">
-            <label htmlFor="agency-comment">
-              {AGENCY_COMMENT.prompt} <span className="text-[var(--color-ink-muted)]">(optional)</span>
-            </label>
-            <textarea
-              id="agency-comment"
-              rows={2}
-              maxLength={500}
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              className={FIELD}
-              aria-describedby="agency-comment-hint"
-            />
-            <span id="agency-comment-hint" className="text-[0.9rem] text-[var(--color-ink-muted)]">
-              {AGENCY_COMMENT.hint}
-            </span>
-            {/* A removal that didn't save keeps its button, so it can be tapped again. */}
-            {/* A comment waiting to save is the screen's main button, so it reads as one (the dry run, Oct 25). */}
-            {(commentChanged || savedComment || removing) && (
-              <button type="button" className={`${commentPending ? BUTTON : BUTTON_QUIET} self-start`} disabled={!commentPending} onClick={saveComment}>
-                {commentPending
-                  ? comment.trim()
-                    ? "Save comment"
-                    : "Remove comment"
-                  : sending.discussion
-                    ? savedComment
-                      ? "Saving…"
-                      : "Removing…"
-                    : savedComment
-                      ? "Comment saved"
-                      : "Comment removed"}
-              </button>
-            )}
-          </div>
+          {showComment && (
+            <div className="flex flex-col gap-1.5 font-body text-[1rem] text-[var(--color-ink)]">
+              <label htmlFor="agency-comment">
+                {AGENCY_COMMENT.prompt} <span className="text-[var(--color-ink-muted)]">(optional)</span>
+              </label>
+              <textarea
+                id="agency-comment"
+                rows={2}
+                maxLength={500}
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                className={FIELD}
+                aria-describedby="agency-comment-hint"
+              />
+              <span id="agency-comment-hint" className="text-[0.9rem] text-[var(--color-ink-muted)]">
+                {AGENCY_COMMENT.hint}
+              </span>
+              {/* A removal that didn't save keeps its button, so it can be tapped again. */}
+              {/* A comment waiting to save is the screen's main button, so it reads as one (the dry run, Oct 25). */}
+              {(commentChanged || savedComment || removing) && (
+                <button type="button" className={`${commentPending ? BUTTON : BUTTON_QUIET} self-start`} disabled={!commentPending} onClick={saveComment}>
+                  {commentPending
+                    ? comment.trim()
+                      ? "Save comment"
+                      : "Remove comment"
+                    : sending.discussion
+                      ? savedComment
+                        ? "Saving…"
+                        : "Removing…"
+                      : savedComment
+                        ? "Comment saved"
+                        : "Comment removed"}
+                </button>
+              )}
+            </div>
+          )}
         </fieldset>
       )}
       <p role="status" className="m-0 font-body text-[0.95rem] text-[var(--color-ink-muted)]">

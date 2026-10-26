@@ -266,7 +266,8 @@ export function AspenApp() {
             className="flex w-full items-center justify-center gap-2 bg-[var(--color-go)] px-4 py-2 font-body text-[0.9rem] font-medium text-white hover:bg-[var(--color-go-hover)]"
           >
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
-            The room has moved on to {STAGES[stageIndex(live)].label}
+            {/* Where the room is, not how far this phone got (Michaela, Oct 26). */}
+            Jump to where the room is: {STAGES[stageIndex(live)].label}
             <span aria-hidden>→</span>
           </button>
         )}
