@@ -969,6 +969,36 @@ export function liveDemoUrl(): string {
   return `${LIVE_DEMO.base}?compare=1&q=${encodeURIComponent(LIVE_DEMO.question)}`;
 }
 
+/** The same rules for every system: what one shared set of rules gives each group. */
+export const SAME_RULES = {
+  /** Shared foundation 5/5's heading: after the journey, what the rules let a government do (Oct 26). */
+  heading: "What does one set of open rules enable for governments?",
+  /** Under the governments boxes, leading into Small groups. */
+  prompt: "What other ideas do you have?",
+  /**
+   * The room is state benefits leaders, so governments are the whole slide, one box per use. The last
+   * use says in words what the cross-reference graph drew: TANF confers SNAP eligibility, SSI opens
+   * Medicaid, SNAP directly certifies school meals and confers WIC eligibility.
+   */
+  governments: {
+    label: "For governments",
+    uses: [
+      "Determinations that cite the law they apply, so caseworkers and residents can see the reasons",
+      "Caseworker guidance and training built on the same rules",
+      "Payment accuracy checks before benefits go out",
+      "A policy change tested before it takes effect",
+      "Screeners and AI tools that give your agency's answer",
+      "Programs linked as the law links them: TANF to SNAP, SSI to Medicaid, SNAP to school meals and WIC",
+    ],
+  },
+  audiences: [
+    { label: "For individuals", text: "Information to plan for their futures and receive assistance on any channel they use." },
+    { label: "For AI systems", text: "One source of record, so models stop estimating benefits amounts and start citing them." },
+    { label: "For builders", text: "Tools that guide people through benefits and taxes, built on rules they don't have to re-encode." },
+    { label: "For researchers", text: "A computational model of the rules, for estimating what a policy does and reproducing the analysis." },
+  ],
+} as const;
+
 export function percent(part: number, whole: number): number {
   return whole > 0 ? Math.round((100 * part) / whole) : 0;
 }
@@ -977,7 +1007,7 @@ export function percent(part: number, whole: number): number {
 // The fix
 // ---------------------------------------------------------------------------
 
-/** What makes the one set of rules checkable: the dark box on Shared foundation 3/4. */
+/** What makes the one set of rules checkable: the open box on Shared foundation 3/5, the rules slide. */
 export const FOUNDATION_TRAITS = [
   "Every value is built to cite the provision it comes from",
   "Every change carries its effective date",
@@ -985,8 +1015,8 @@ export const FOUNDATION_TRAITS = [
 ] as const;
 
 /**
- * The statement on Shared foundation 1/4, the title slide, and again under the boxes on 3/4,
- * emphasized as in the main deck's value proposition.
+ * The statement under the one set of rules on Shared foundation 3/5, the rules slide, emphasized as
+ * in the main deck's value proposition.
  */
 export const ONE_SET_STATEMENT = {
   text: "Every system that helps people discover and enroll in economic security programs runs on the same rules,",
@@ -1002,7 +1032,7 @@ export const ONE_SET_OF_RULES = [
   { label: "Research", detail: "Evaluators and analysts run the same rules." },
 ] as const;
 
-/** Shared foundation 4/4's heading. */
+/** Next steps 1/2's heading, over the tiers (Oct 26). */
 export const BUILD_HEADING = "How do we build one open set of rules?";
 
 /**

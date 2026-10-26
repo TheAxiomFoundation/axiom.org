@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   GROUP_PHONE_INTRO,
   EVENT,
@@ -15,7 +15,7 @@ import {
 } from "@/lib/aspen/content";
 import { VOTE_KEY, participantId, postJson, readStored, sendEvent, writeStored } from "./client";
 import { Disclosure } from "./disclosure";
-import { BUTTON, Card, FIELD, Part } from "./ui";
+import { BUTTON, BUTTON_QUIET, Card, FIELD, Part } from "./ui";
 
 const OPTION_BOX =
   "rounded-lg border px-4 py-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]";
@@ -257,21 +257,34 @@ export function SmallGroups({ stage }: { stage: string }) {
   );
 }
 
+/** This phone's own vote, if it's one of the choices: the group's pick to start with. */
+function votedUseCase(): string | null {
+  const voted = readStored<string>(VOTE_KEY);
+  return voted && USE_CASES.some((u) => u.id === voted) ? voted : null;
+}
+
 /**
  * Small groups: the group's pick (this phone's own vote to start with), then
  * the three questions, one box each, and an optional box for what else came
  * up (barriers, workforce, questions). The report-back card on the big screen
- * shows the same three.
+ * shows the same three. One person per group fills it in, so it opens on a
+ * tap and the other phones stay short (Michaela, Oct 26).
  */
 export function GroupsCard({ stage }: { stage: string }) {
   const [useCase, setUseCase] = useState<string | null>(null);
   useEffect(() => {
-    const voted = readStored<string>(VOTE_KEY);
-    if (voted && USE_CASES.some((u) => u.id === voted)) setUseCase(voted);
+    setUseCase(votedUseCase());
   }, []);
   const [answers, setAnswers] = useState<Record<(typeof GROUP_QUESTIONS)[number]["id"], string>>({ note: "", who: "", trust: "" });
   const [raised, setRaised] = useState("");
   const [shared, setShared] = useState(0);
+  const [filling, setFilling] = useState(false);
+  // The button goes away when pressed; focus moves to the form it opened, not to the page. The form,
+  // not its menu: focusing a menu can open the phone's picker.
+  const form = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (filling) form.current?.focus();
+  }, [filling]);
   const anything = [...Object.values(answers), raised].some((v) => v.trim());
 
   return (
@@ -279,65 +292,82 @@ export function GroupsCard({ stage }: { stage: string }) {
       <p className="m-0 border-l-2 border-[var(--color-accent)] pl-4 font-body text-[1.08rem] leading-relaxed text-[var(--color-ink)]">
         {GROUP_PHONE_INTRO}
       </p>
-      <label className="flex flex-col gap-2 font-body text-[1.08rem] font-semibold text-[var(--color-ink)]">
-        Your group&apos;s pick
-        <select value={useCase ?? ""} onChange={(e) => setUseCase(e.target.value || null)} className={FIELD}>
-          <option value="">Not decided</option>
-          {USE_CASES.map((u) => (
-            <option key={u.id} value={u.id}>
-              {u.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      {GROUP_QUESTIONS.map((q, i) => (
-        <label key={q.id} className="flex flex-col gap-2 font-body text-[1.08rem] text-[var(--color-ink)]">
-          <span className="font-semibold">
-            {i + 1}. {q.label}
-          </span>
-          <textarea
-            rows={q.id === "note" ? 3 : 2}
-            maxLength={2000}
-            value={answers[q.id]}
-            onChange={(e) => setAnswers((a) => ({ ...a, [q.id]: e.target.value }))}
-            className={FIELD}
-            placeholder={q.placeholder}
-          />
-        </label>
-      ))}
-      <label className="flex flex-col gap-2 font-body text-[1.08rem] text-[var(--color-ink)]">
-        <span className="font-semibold">
-          {GROUP_RAISED.label} <span className="font-normal text-[var(--color-ink-muted)]">(optional)</span>
-        </span>
-        <textarea
-          rows={2}
-          maxLength={2000}
-          value={raised}
-          onChange={(e) => setRaised(e.target.value)}
-          className={FIELD}
-          placeholder={GROUP_RAISED.placeholder}
-        />
-      </label>
-      <div className="flex flex-wrap items-center gap-3">
+      {!filling ? (
         <button
           type="button"
-          className={`${BUTTON} py-3`}
-          disabled={!anything}
+          className={`${BUTTON_QUIET} w-full justify-between py-3 text-left text-[1rem] sm:w-auto sm:self-start`}
           onClick={() => {
-            sendEvent("breakout", { useCase, ...answers, raised }, stage);
-            setShared((n) => n + 1);
-            setAnswers({ note: "", who: "", trust: "" });
-            setRaised("");
+            // A vote cast on this screen since it opened counts too.
+            if (!useCase) setUseCase(votedUseCase());
+            setFilling(true);
           }}
         >
-          Share with the room
+          Fill it in for my group
+          <span aria-hidden className="text-[var(--color-accent)]">↓</span>
         </button>
-        {shared > 0 && (
-          <span className="font-body text-[1.05rem] font-medium text-[var(--color-success)]">
-            Shared. It&apos;s on the big screen.
-          </span>
-        )}
-      </div>
+      ) : (
+        <div ref={form} tabIndex={-1} aria-label="Your group" role="group" className="flex flex-col gap-5 outline-none">
+          <label className="flex flex-col gap-2 font-body text-[1.08rem] font-semibold text-[var(--color-ink)]">
+            Your group&apos;s pick
+            <select value={useCase ?? ""} onChange={(e) => setUseCase(e.target.value || null)} className={FIELD}>
+              <option value="">Not decided</option>
+              {USE_CASES.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {GROUP_QUESTIONS.map((q, i) => (
+            <label key={q.id} className="flex flex-col gap-2 font-body text-[1.08rem] text-[var(--color-ink)]">
+              <span className="font-semibold">
+                {i + 1}. {q.label}
+              </span>
+              <textarea
+                rows={q.id === "note" ? 3 : 2}
+                maxLength={2000}
+                value={answers[q.id]}
+                onChange={(e) => setAnswers((a) => ({ ...a, [q.id]: e.target.value }))}
+                className={FIELD}
+                placeholder={q.placeholder}
+              />
+            </label>
+          ))}
+          <label className="flex flex-col gap-2 font-body text-[1.08rem] text-[var(--color-ink)]">
+            <span className="font-semibold">
+              {GROUP_RAISED.label} <span className="font-normal text-[var(--color-ink-muted)]">(optional)</span>
+            </span>
+            <textarea
+              rows={2}
+              maxLength={2000}
+              value={raised}
+              onChange={(e) => setRaised(e.target.value)}
+              className={FIELD}
+              placeholder={GROUP_RAISED.placeholder}
+            />
+          </label>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              className={`${BUTTON} py-3`}
+              disabled={!anything}
+              onClick={() => {
+                sendEvent("breakout", { useCase, ...answers, raised }, stage);
+                setShared((n) => n + 1);
+                setAnswers({ note: "", who: "", trust: "" });
+                setRaised("");
+              }}
+            >
+              Share with the room
+            </button>
+            {shared > 0 && (
+              <span className="font-body text-[1.05rem] font-medium text-[var(--color-success)]">
+                Shared. It&apos;s on the big screen.
+              </span>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

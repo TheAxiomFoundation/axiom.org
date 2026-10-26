@@ -182,15 +182,42 @@ describe("SmallGroups", () => {
     const talk = screen.getByRole("heading", { level: 2, name: "Talk it through" });
     expect(vote.compareDocumentPosition(talk) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByRole("button", { name: "Vote" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Share with the room" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Fill it in for my group" })).toBeInTheDocument();
+  });
+
+  it("starts the group's pick from a vote cast on the same screen", () => {
+    stubFetch();
+    render(<SmallGroups stage="groups" />);
+    fireEvent.click(screen.getByRole("button", { name: /Test cases against the rules/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Vote" }));
+    fireEvent.click(screen.getByRole("button", { name: "Fill it in for my group" }));
+    expect(screen.getByRole("combobox", { name: "Your group's pick" })).toHaveValue("test");
   });
 });
 
 describe("GroupsCard", () => {
+  /** One person per group fills it in, so the form opens on a tap. */
+  const openForm = () => fireEvent.click(screen.getByRole("button", { name: "Fill it in for my group" }));
+
+  it("keeps the form closed until someone fills it in for the group", () => {
+    stubFetch();
+    render(<GroupsCard stage="groups" />);
+    expect(screen.getByText(GROUP_PHONE_INTRO)).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Your group's pick" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Share with the room" })).not.toBeInTheDocument();
+    openForm();
+    expect(screen.queryByRole("button", { name: "Fill it in for my group" })).not.toBeInTheDocument();
+    // The button is gone, so focus moves to the form it opened rather than falling to the page.
+    const form = screen.getByRole("group", { name: "Your group" });
+    expect(document.activeElement).toBe(form);
+    expect(form).toContainElement(screen.getByRole("combobox", { name: "Your group's pick" }));
+    expect(form).toContainElement(screen.getByRole("button", { name: "Share with the room" }));
+  });
+
   it("shares the group's best idea with the room, more than once", async () => {
     const fetchMock = stubFetch();
     render(<GroupsCard stage="groups" />);
-    expect(screen.getByText(GROUP_PHONE_INTRO)).toBeInTheDocument();
+    openForm();
     const share = screen.getByRole("button", { name: "Share with the room" });
     expect(share).toBeDisabled();
 
@@ -223,12 +250,14 @@ describe("GroupsCard", () => {
     stubFetch();
     localStorage.setItem("aspen.vote.v1", JSON.stringify("flows"));
     render(<GroupsCard stage="groups" />);
+    openForm();
     expect(screen.getByRole("combobox", { name: "Your group's pick" })).toHaveValue("flows");
   });
 
   it("asks the three questions, one box each, and shares all three", async () => {
     const fetchMock = stubFetch();
     render(<GroupsCard stage="groups" />);
+    openForm();
     for (const q of GROUP_QUESTIONS) expect(screen.getByRole("textbox", { name: new RegExp(q.label.replace(/[?,]/g, ".")) })).toBeInTheDocument();
     fireEvent.change(screen.getByRole("textbox", { name: /Who would use it/ }), { target: { value: "Caseworkers on intake" } });
     fireEvent.change(screen.getByRole("textbox", { name: /trust it/ }), { target: { value: "Our policy unit signs off" } });
@@ -248,6 +277,7 @@ describe("GroupsCard", () => {
   it("keeps what else the group raised, with or without an idea", async () => {
     const fetchMock = stubFetch();
     render(<GroupsCard stage="groups" />);
+    openForm();
     const share = screen.getByRole("button", { name: "Share with the room" });
     const raised = screen.getByRole("textbox", { name: /Anything else your group raised\?/ });
     expect(raised).toHaveAttribute("placeholder", "Barriers, what your workforce would need, open questions");

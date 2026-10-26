@@ -1065,7 +1065,7 @@ html[data-aspen-text="larger"] {
 }
 
 /* Go: dark green for the buttons that move someone to the next step of the
-   session (Next, and "The room has moved on"), so it never looks like the
+   session (Next, and "Jump to where the room is"), so it never looks like the
    buttons inside a step. White on it reads at 7.1:1, and 9.6:1 on hover. */
 :is([data-aspen-page], [data-aspen-presenter]) {
   --color-go: #166534;
@@ -1074,6 +1074,27 @@ html[data-aspen-text="larger"] {
 [data-aspen-page] ::placeholder {
   color: #57534e;
   opacity: 1;
+}
+
+/* A build on the Aspen TV: a line that rises in under what is already on
+   the slide (Shared foundation 2/6). */
+@keyframes aspen-build {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+[data-aspen-presenter] .aspen-build {
+  animation: aspen-build 700ms ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-aspen-presenter] .aspen-build {
+    animation: none;
+  }
 }
 
 /* /aspen scrolls without animation: a new screen opens at its top at once,
