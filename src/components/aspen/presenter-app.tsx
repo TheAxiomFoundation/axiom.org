@@ -1546,27 +1546,23 @@ function PolicyGraph() {
 }
 
 /**
- * Shared foundation 5/6: what one open set of rules lets a government do, as the room's own focus:
- * one open box per use, with no dark boxes (Oct 26). The other audiences are off this slide; the
- * prompt hands over to Small groups.
+ * Shared foundation 5/6: what one set of open rules lets a government do, as the room's own focus:
+ * one open box per use, with no dark boxes and no ticks (Oct 26). The other audiences are off this
+ * slide; the prompt hands over to Small groups.
  */
 function EnableSlide() {
   const r = SAME_RULES;
   return (
-    <div className="flex h-full flex-col gap-[24px]">
-      <div className="flex items-center gap-[18px]">
-        <Landmark aria-hidden size={50} strokeWidth={1.6} className="shrink-0 text-[var(--color-accent)]" />
-        <span className="font-display text-[52px] font-light leading-none text-[var(--color-ink)]">{r.governments.label}</span>
-      </div>
+    <div className="flex h-full flex-col gap-[28px]">
+      {/* The heading names governments, so the boxes need no label or ticks (Oct 26). */}
       <ul className="m-0 grid min-h-0 flex-1 list-none grid-cols-3 grid-rows-2 gap-[18px] p-0">
         {r.governments.uses.map((use) => (
           <li
             key={use}
-            className="flex flex-col gap-[14px] rounded-[14px] border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-[28px] py-[24px]"
+            className="rounded-[14px] border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-[30px] py-[28px] font-body text-[28px] font-medium leading-snug text-[var(--color-ink)]"
             style={{ borderTop: "5px solid var(--color-accent)" }}
           >
-            <Check aria-hidden size={30} strokeWidth={2.25} className="shrink-0 text-[var(--color-accent)]" />
-            <span className="font-body text-[26px] font-medium leading-snug text-[var(--color-ink)]">{use}</span>
+            {use}
           </li>
         ))}
       </ul>

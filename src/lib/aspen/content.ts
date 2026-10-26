@@ -972,7 +972,7 @@ export function liveDemoUrl(): string {
 /** The same rules for every system: what one shared set of rules gives each group. */
 export const SAME_RULES = {
   /** Shared foundation 5/6's heading: after the journey, what the rules let a government do (Oct 26). */
-  heading: "What does one open set of rules enable?",
+  heading: "What does one set of open rules enable for governments?",
   /** Under the governments boxes, leading into Small groups. */
   prompt: "What other ideas do you have?",
   /**

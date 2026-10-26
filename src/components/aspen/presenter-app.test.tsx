@@ -771,9 +771,10 @@ describe("PresenterApp stages", () => {
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     expect(screen.getByText("5/6")).toBeInTheDocument();
     expect(document.querySelector(".jl-stage")).toBeNull();
-    expect(screen.getByRole("heading", { level: 1, name: SAME_RULES.heading })).toBeInTheDocument();
-    expect(screen.getByText(SAME_RULES.governments.label)).toBeInTheDocument();
-    for (const use of SAME_RULES.governments.uses) expect(screen.getByText(use)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "What does one set of open rules enable for governments?" })).toBeInTheDocument();
+    // The heading names governments, so the boxes carry no label and no ticks.
+    expect(screen.queryByText(SAME_RULES.governments.label)).not.toBeInTheDocument();
+    for (const use of SAME_RULES.governments.uses) expect(screen.getByText(use).querySelector("svg")).toBeNull();
     for (const a of SAME_RULES.audiences) expect(screen.queryByText(a.label)).not.toBeInTheDocument();
     // The cross-references read as words, in boxes; no graph and no dark box (Oct 26).
     expect(screen.queryByText("How the rules cross-reference")).not.toBeInTheDocument();
