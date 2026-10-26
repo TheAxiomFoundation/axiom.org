@@ -9,6 +9,7 @@ import {
   SAVE_TIMEOUT_MS,
   TAB_KEY,
   VOTE_KEY,
+  currentRun,
   enterRun,
   formatValue,
   heldElsewhere,
@@ -18,6 +19,7 @@ import {
   participantId,
   postJson,
   readStored,
+  runSwitches,
   saveJson,
   sendEvent,
   useControl,
@@ -158,6 +160,48 @@ describe("enterRun", () => {
     });
     expect(enterRun("phoenix")).toBe(false);
   });
+
+  it("names the device's run, or none", () => {
+    expect(currentRun()).toBeNull();
+    enterRun("phoenix");
+    expect(currentRun()).toBe("phoenix");
+    localStorage.setItem("aspen.run", JSON.stringify(7));
+    expect(currentRun()).toBeNull();
+  });
+
+  it("counts a run switch exactly when it drops answers, so what showed them knows it is from the old run", () => {
+    // Invariants, for any sequence of runs entered and answers saved: the count goes up by one when
+    // enterRun reports a drop and is otherwise unchanged; the device's run is the last one entered;
+    // and what is saved on it after a switch was saved after that switch.
+    fc.assert(
+      fc.property(
+        fc.array(fc.oneof(fc.constantFrom("rehearsal", "phoenix", "tucson").map((run) => ({ run })), fc.constant({ save: true })), {
+          maxLength: 20,
+        }),
+        (steps) => {
+          localStorage.clear();
+          let entered: string | null = null;
+          for (const step of steps) {
+            const before = runSwitches();
+            if ("save" in step) {
+              writeStored(CHAT_KEY, { runId: currentRun() });
+              expect(runSwitches()).toBe(before);
+              continue;
+            }
+            const saved = localStorage.getItem(CHAT_KEY) !== null;
+            const dropped = enterRun(step.run);
+            expect(runSwitches()).toBe(before + (dropped ? 1 : 0));
+            // A move from one run to another drops what was saved; adopting a first run, or staying, drops nothing.
+            expect(dropped).toBe(saved && entered !== null && entered !== step.run);
+            entered = step.run;
+            expect(currentRun()).toBe(entered);
+            const chat = readStored<{ runId: string | null }>(CHAT_KEY);
+            if (chat) expect([null, entered]).toContain(chat.runId);
+          }
+        },
+      ),
+    );
+  });
 });
 
 describe("postJson", () => {
@@ -179,6 +223,79 @@ describe("postJson", () => {
       vi.fn().mockResolvedValue({ ok: false, status: 502, json: () => Promise.reject(new Error("html")) }),
     );
     expect(await postJson("/api/x", {})).toEqual({ ok: false, status: 502, data: {} });
+  });
+
+  it("with a timeout, aborts a request that stalls and rejects, as a dropped connection does", async () => {
+    vi.useFakeTimers();
+    try {
+      let signal: AbortSignal | undefined;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((_url: string, init: RequestInit) => {
+          signal = init.signal ?? undefined;
+          // Like fetch, it only ends when it is aborted.
+          return new Promise<Response>((_, reject) => init.signal?.addEventListener("abort", () => reject(new Error("aborted"))));
+        }),
+      );
+      const result = postJson("/x", {}, 5000);
+      const settled = vi.fn();
+      result.then(settled, settled);
+      await vi.advanceTimersByTimeAsync(4999);
+      expect(signal?.aborted).toBe(false);
+      expect(settled).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(signal?.aborted).toBe(true);
+      await expect(result).rejects.toThrow("aborted");
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("with a timeout, rejects when the timeout cuts off the answer's body, rather than reading it as empty", async () => {
+    vi.useFakeTimers();
+    try {
+      // The headers come back at once; the body stalls until the request is aborted.
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_url: string, init: RequestInit) => ({
+          ok: true,
+          status: 200,
+          json: () =>
+            new Promise((resolve, reject) => {
+              setTimeout(() => resolve({ stage: "try" }), 10_000);
+              init.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+            }),
+        })),
+      );
+      const result = postJson("/x", {}, 5000);
+      result.catch(() => undefined);
+      await vi.advanceTimersByTimeAsync(5000);
+      await expect(result).rejects.toThrow("aborted");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("with a timeout, answers in time as without one, and never aborts the request afterwards", async () => {
+    vi.useFakeTimers();
+    try {
+      let signal: AbortSignal | undefined;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_url: string, init: RequestInit) => {
+          signal = init.signal ?? undefined;
+          return jsonResponse({ stage: "try" });
+        }),
+      );
+      expect(await postJson("/x", { a: 1 }, 5000)).toEqual({ ok: true, status: 200, data: { stage: "try" } });
+      // Its timer is gone: a full timeout later the request was never aborted.
+      expect(vi.getTimerCount()).toBe(0);
+      await vi.advanceTimersByTimeAsync(5001);
+      expect(signal?.aborted).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -337,11 +454,71 @@ describe("usePoll", () => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
       expect(screen.getByTestId("data")).toHaveTextContent("4");
       expect(screen.getByTestId("failed")).toHaveTextContent("ok");
-      // A poll that answers in time is never aborted later.
+      // A poll that answers in time is never aborted later: a whole timeout past it, its timer is gone.
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(900);
+        await vi.advanceTimersByTimeAsync(5000 + 1);
       });
+      expect(fetchMock.mock.calls.length).toBeGreaterThan(2);
       expect(signals[1]?.aborted).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("aborts the request in flight, and clears its timer, when the page leaves", async () => {
+    vi.useFakeTimers();
+    const signals: AbortSignal[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_url: string, init: RequestInit) => {
+        signals.push(init.signal!);
+        return new Promise<Response>((_, reject) => init.signal?.addEventListener("abort", () => reject(new Error("aborted"))));
+      }),
+    );
+    try {
+      const { unmount } = render(<PollProbe url="/api/poll" interval={1000} timeout={5000} />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      expect(signals).toHaveLength(1);
+      expect(signals[0].aborted).toBe(false);
+      unmount();
+      expect(signals[0].aborted).toBe(true);
+      expect(vi.getTimerCount()).toBe(0);
+      // Nothing runs after it: no new request, and no state update on the unmounted probe.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_000);
+      });
+      expect(signals).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("aborts the request for the old url when the url changes", async () => {
+    vi.useFakeTimers();
+    const requests: { url: string; signal: AbortSignal }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init: RequestInit) => {
+        requests.push({ url, signal: init.signal! });
+        return new Promise<Response>((_, reject) => init.signal?.addEventListener("abort", () => reject(new Error("aborted"))));
+      }),
+    );
+    try {
+      const { rerender, unmount } = render(<PollProbe url="/api/a" interval={1000} timeout={5000} />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      rerender(<PollProbe url="/api/b" interval={1000} timeout={5000} />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      expect(requests.map((r) => [r.url, r.signal.aborted])).toEqual([
+        ["/api/a", true],
+        ["/api/b", false],
+      ]);
+      unmount();
     } finally {
       vi.useRealTimers();
     }

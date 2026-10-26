@@ -159,6 +159,19 @@ describe("VoteCard", () => {
     render(<VoteCard stage="vote" />);
     expect(screen.getByRole("button", { name: "Vote" })).toBeDisabled();
   });
+
+  it("lets an odd last choice take the whole row in two columns, so it never sits alone in half of one", () => {
+    render(<VoteCard stage="vote" />);
+    const group = screen.getByRole("group", { name: "Pick one" });
+    // One column on a phone, two from 640px.
+    expect(group.className).toMatch(/(^| )grid( |$)/);
+    expect(group.className).toContain("sm:grid-cols-2");
+    const choices = within(group).getAllByRole("button");
+    const spans = choices.map((b) => b.className.split(" ").includes("sm:col-span-2"));
+    // Every row of two is full: only the last of an odd number spans both columns.
+    expect(spans).toEqual(choices.map((_, i) => i === choices.length - 1 && choices.length % 2 === 1));
+    expect(spans.at(-1)).toBe(true);
+  });
 });
 
 describe("SmallGroups", () => {

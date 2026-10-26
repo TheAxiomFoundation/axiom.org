@@ -33,6 +33,8 @@ const TAB = Math.random().toString(36).slice(2);
 let claimed = false;
 // Whether its claim is written, so other tabs can see it.
 let holding = false;
+// How many times enterRun has moved this page to another run and dropped the old run's answers (runSwitches).
+let switches = 0;
 
 function newId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -104,7 +106,26 @@ export function enterRun(runId: string): boolean {
       // Blocked storage holds nothing to drop.
     }
   }
+  if (dropped) switches += 1;
   return dropped;
+}
+
+/** The run this device's saved answers belong to (what enterRun last recorded), or null before it has seen a live one. */
+export function currentRun(): string | null {
+  const run = readStored<unknown>(RUN_KEY);
+  return typeof run === "string" ? run : null;
+}
+
+/**
+ * A count that goes up each time enterRun drops the answers saved under an
+ * old run, which is when the page remounts what showed them (aspen-app's
+ * runEpoch). Something that opened under one count and sees another is from
+ * the old run, even before the remount reaches it. Adopting a run, on a
+ * device that had none, drops nothing and leaves the count alone: what such
+ * a device saved belongs to the run it adopts.
+ */
+export function runSwitches(): number {
+  return switches;
 }
 
 /**
@@ -205,17 +226,35 @@ export function saveMark(rev: number): string {
   return `${rev}:${TAB}`;
 }
 
+/**
+ * Posts JSON and returns the status and the answer's body ({} when the body
+ * is not JSON). With `timeoutMs`, a request that neither answers nor fails in
+ * time is aborted and rejects, as a dropped connection does, whether it
+ * stalls waiting for the answer or while reading it.
+ */
 export async function postJson<T = Record<string, unknown>>(
   url: string,
   body: unknown,
+  timeoutMs?: number,
 ): Promise<{ ok: boolean; status: number; data: T }> {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = (await response.json().catch(() => ({}))) as T;
-  return { ok: response.ok, status: response.status, data };
+  const controller = timeoutMs ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      ...(controller ? { signal: controller.signal } : {}),
+    });
+    const data = (await response.json().catch((error: unknown) => {
+      // A body the timeout cuts off is a failed request, not an empty answer.
+      if (controller?.signal.aborted) throw error;
+      return {};
+    })) as T;
+    return { ok: response.ok, status: response.status, data };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** How long a save may take before it counts as failed, so one stalled request never holds up the taps after it. */
@@ -255,16 +294,18 @@ export function sendEvent(kind: string, payload: Record<string, unknown>, stage?
 }
 
 /**
- * How long a poll of the room may take before it counts as failed. A request
- * that stalls on venue Wi-Fi then never holds a phone that just joined on
- * Welcome, or stops a phone following the room (the review of #370).
+ * How long a poll of the room, or the presenter's move of it, may take before
+ * it counts as failed. A request that stalls on venue Wi-Fi then never holds a
+ * phone that just joined on Welcome, stops a phone following the room, or
+ * keeps the TV from syncing while a move hangs (the reviews of #370).
  */
 export const CONTROL_TIMEOUT_MS = 8_000;
 
 /**
  * Polls a JSON endpoint while `enabled`; keeps the last good value. With
  * `timeoutMs`, a request that neither answers nor fails in time is aborted,
- * counts as failed, and the next poll runs on schedule.
+ * counts as failed, and the next poll runs on schedule; leaving the page, or
+ * a new url, aborts the request in flight and its timer at once.
  */
 export function usePoll<T>(url: string | null, intervalMs: number, timeoutMs?: number): { data: T | null; failed: boolean } {
   const [data, setData] = useState<T | null>(null);
@@ -276,9 +317,12 @@ export function usePoll<T>(url: string | null, intervalMs: number, timeoutMs?: n
     if (!url) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    // The request in flight, when it can be aborted, and its timeout.
+    let inFlight: { controller: AbortController; abort?: ReturnType<typeof setTimeout> } | null = null;
     const tick = async () => {
       const controller = timeoutMs ? new AbortController() : null;
       const abort = controller ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
+      inFlight = controller ? { controller, abort } : null;
       try {
         const response = await fetch(url, controller ? { cache: "no-store", signal: controller.signal } : { cache: "no-store" });
         if (!response.ok) throw new Error(String(response.status));
@@ -292,6 +336,7 @@ export function usePoll<T>(url: string | null, intervalMs: number, timeoutMs?: n
         if (!cancelled) setFailed(true);
       } finally {
         clearTimeout(abort);
+        inFlight = null;
       }
       if (!cancelled) timer = setTimeout(tick, document.hidden ? intervalMs * 3 : intervalMs);
     };
@@ -299,6 +344,10 @@ export function usePoll<T>(url: string | null, intervalMs: number, timeoutMs?: n
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
+      if (inFlight) {
+        clearTimeout(inFlight.abort);
+        inFlight.controller.abort();
+      }
     };
   }, [url, intervalMs, timeoutMs]);
 

@@ -14,18 +14,17 @@ import {
   liveDemoUrl,
   NEXT_STEPS,
   RATING_SCALES,
-  SAME_RULES,
   WHAT_MODELS_MISS,
   ENGINE_PILOT,
   WHERE_MODELS_BREAK,
-  SILVER_ASK,
   STAGES,
   type StageId,
 } from "@/lib/aspen/content";
 import { EMPTY_SUMMARY, summarizeRun, type RunSummary } from "@/lib/aspen/results";
 import type { Control, RunData } from "@/lib/aspen/types";
 import { CAPTIONS, STORY_LABEL } from "@/components/landing/journey-lamplight/captions";
-import { forwardsFromFrame, nextPage, notApplyNote, pageRange, PresenterApp } from "./presenter-app";
+import { CONTROL_TIMEOUT_MS } from "./client";
+import { forwardsFromFrame, newerControl, nextPage, notApplyNote, pageRange, PresenterApp } from "./presenter-app";
 
 const DATA: RunData = {
   participants: [{ id: "a", run_id: "r1", perspective: "resident", state: "Arizona" }],
@@ -64,15 +63,16 @@ const DATA: RunData = {
 
 const SUMMARY = summarizeRun(DATA);
 
+// Like fetch, each read parses a fresh copy: a poll of a row that hasn't changed is still a new object.
 function jsonResponse(data: unknown, ok = true) {
-  return { ok, status: ok ? 200 : 401, json: async () => data } as unknown as Response;
+  return { ok, status: ok ? 200 : 401, json: async () => JSON.parse(JSON.stringify(data)) } as unknown as Response;
 }
 
 interface Server {
   control: Control;
   summary: RunSummary;
   /** Overrides the POST /api/aspen/state answer. */
-  post?: (body: Partial<Control>) => Promise<Response>;
+  post?: (body: Partial<Control>, init?: RequestInit) => Promise<Response>;
   /** Overrides the GET /api/aspen/state answer. */
   get?: () => Promise<Response>;
 }
@@ -92,7 +92,7 @@ function setup(
     }
     if (url === "/api/aspen/state" && init?.method === "POST") {
       const body = JSON.parse(String(init.body)) as Partial<Control>;
-      if (server.post) return server.post(body);
+      if (server.post) return server.post(body, init);
       server.control = { ...server.control, ...body };
       return jsonResponse(server.control);
     }
@@ -258,28 +258,180 @@ describe("PresenterApp navigation", () => {
     expect(posts()).toEqual([{ stage: "try" }]);
   });
 
-  it("shows an error banner when the stage does not change", async () => {
-    const { server } = setup();
+  it("shows an error banner when the stage does not change, and puts the TV back on the stage the phones have", async () => {
+    const { server, posts } = setup();
     await screen.findByText("Run r1");
+    const generic = "The stage did not change. Check the connection.";
 
     server.post = async () => jsonResponse({ error: "Presenter sign-in expired." }, false);
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     expect(await screen.findByText("Presenter sign-in expired.")).toBeInTheDocument();
+    // The store kept Welcome, so the TV is back on it: it never stays on a stage the phones didn't get.
+    await onStage("welcome");
 
     server.post = async () => {
       throw new Error("offline");
     };
     fireEvent.click(screen.getByRole("button", { name: "Next slide" }));
-    expect(await screen.findByText("The stage did not change. Check the connection.")).toBeInTheDocument();
+    expect(await screen.findByText(generic)).toBeInTheDocument();
+    await onStage("welcome");
+
+    server.post = undefined;
+    fireEvent.click(screen.getByRole("button", { name: "Next slide" }));
+    await waitFor(() => expect(screen.queryByText(/The stage did not change/)).not.toBeInTheDocument());
+    await onStage("try");
 
     server.post = async () => jsonResponse({}, false);
     fireEvent.click(screen.getByRole("button", { name: "Previous slide" }));
-    expect(await screen.findByText("The stage did not change. Check the connection.")).toBeInTheDocument();
+    expect(await screen.findByText(generic)).toBeInTheDocument();
+    await onStage("try");
 
+    // An answer that isn't a control row says nothing about the store, so it doesn't count as saved either.
     server.post = undefined;
     fireEvent.click(within(screen.getByRole("navigation", { name: "Stages" })).getByRole("button", { name: "At scale" }));
     await onStage("scale");
     expect(screen.queryByText(/The stage did not change/)).not.toBeInTheDocument();
+    server.post = async () => jsonResponse({ saved: true });
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Stages" })).getByRole("button", { name: "Small groups" }));
+    expect(await screen.findByText(generic)).toBeInTheDocument();
+    await onStage("scale");
+    expect(posts().map((p) => p.stage)).toEqual(["try", "try", "try", "welcome", "scale", "groups"]);
+  });
+
+  it("puts the TV back on the slide it left when a move to the next stage fails, so the next press tries again", async () => {
+    const { server, posts } = setup({ stage: "reveal" });
+    await onStage("reveal");
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("2/2")).toBeInTheDocument();
+
+    let refuse: () => void = () => {};
+    server.post = () => new Promise<Response>((resolve) => (refuse = () => resolve(jsonResponse({ error: "Presenter sign-in expired." }, false))));
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    // At once, the TV shows the move, and the arrows step through the new stage's slides...
+    await onStage("scale");
+    expect(screen.getByText("1/7")).toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("2/7")).toBeInTheDocument();
+    // ...and when the store refuses it, the slide it left: the reveal's last, not its first.
+    await act(async () => refuse());
+    expect(await screen.findByText("Presenter sign-in expired.")).toBeInTheDocument();
+    await onStage("reveal");
+    expect(screen.getByText("2/2")).toBeInTheDocument();
+
+    server.post = undefined;
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    await onStage("scale");
+    expect(screen.getByText("1/7")).toBeInTheDocument();
+    // Back from the stage's first slide, refused, lands where it was too.
+    server.post = async () => jsonResponse({ error: "No." }, false);
+    fireEvent.keyDown(document.body, { key: "ArrowLeft" });
+    expect(await screen.findByText("No.")).toBeInTheDocument();
+    await onStage("scale");
+    expect(screen.getByText("1/7")).toBeInTheDocument();
+    expect(posts()).toEqual([{ stage: "scale" }, { stage: "scale" }, { stage: "reveal" }]);
+  });
+
+  it("goes back to the stage before a new run the store refused", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const { server } = setup({ stage: "reveal" });
+    await onStage("reveal");
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("2/2")).toBeInTheDocument();
+    server.post = async () => jsonResponse({ error: "Send a stage or a runId." }, false);
+    fireEvent.click(screen.getByRole("button", { name: "New run" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "New run name" }), { target: { value: "phoenix" } });
+    fireEvent.click(screen.getByRole("button", { name: "Start run" }));
+    expect(await screen.findByText("Send a stage or a runId.")).toBeInTheDocument();
+    await onStage("reveal");
+    expect(screen.getByText("2/2")).toBeInTheDocument();
+    expect(screen.getByText("Run r1")).toBeInTheDocument();
+  });
+
+  it("while two moves are in flight, shows the newer; once both settle, the newest row the store answered with", async () => {
+    const { server } = setup();
+    await screen.findByText("Run r1");
+    const nav = () => within(screen.getByRole("navigation", { name: "Stages" }));
+    let pending: { body: Partial<Control>; resolve: (r: Response) => void; reject: (e: Error) => void }[] = [];
+    server.post = (body) => new Promise<Response>((resolve, reject) => pending.push({ body, resolve, reject }));
+    const control = (stage: StageId, second: number): Control => ({ runId: "r1", stage, live: true, updatedAt: `2026-10-27T00:31:0${second}Z` });
+    const row = (stage: StageId, second: number) => jsonResponse(control(stage, second));
+
+    // The first saves while the second is still in flight: the TV stays on the second, the newest move.
+    // (The room's polls, meanwhile, read what the store will hold once both land.)
+    server.control = control("try", 1);
+    fireEvent.click(nav().getByRole("button", { name: "Try it" }));
+    fireEvent.click(nav().getByRole("button", { name: "At scale" }));
+    await onStage("scale");
+    await act(async () => pending[0].resolve(row("try", 1)));
+    await onStage("scale");
+    // The second fails: the TV shows what the store holds, the first move's row.
+    await act(async () => pending[1].reject(new Error("offline")));
+    await onStage("try");
+    expect(screen.getByText("The stage did not change. Check the connection.")).toBeInTheDocument();
+
+    // Both save, but the older move's write reached the store last (a later stamp): that is what the
+    // phones get, so the TV ends there too.
+    pending = [];
+    server.control = control("reveal", 3);
+    fireEvent.click(nav().getByRole("button", { name: "What we saw" }));
+    fireEvent.click(nav().getByRole("button", { name: "Small groups" }));
+    await onStage("groups");
+    await act(async () => pending[1].resolve(row("groups", 2)));
+    await onStage("groups");
+    expect(screen.queryByText(/The stage did not change/)).not.toBeInTheDocument();
+    await act(async () => pending[0].resolve(row("reveal", 3)));
+    await onStage("reveal");
+
+    // And when the newer move's write is the later one, the TV keeps it, whichever answer lands last.
+    pending = [];
+    server.control = control("dinner", 5);
+    fireEvent.click(nav().getByRole("button", { name: "Next steps" }));
+    fireEvent.click(nav().getByRole("button", { name: "Thank you" }));
+    await act(async () => pending[1].resolve(row("dinner", 5)));
+    await act(async () => pending[0].resolve(row("next", 4)));
+    await onStage("dinner");
+  });
+
+  it("gives up on a move that hangs, puts the TV back, and lets the room's polls through again", async () => {
+    vi.useFakeTimers();
+    try {
+      const { server } = setup();
+      const shown = () =>
+        screen.getByRole("navigation", { name: "Stages" }).querySelector('[aria-current="step"]')?.textContent;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getByText("Run r1")).toBeInTheDocument();
+      let signal: AbortSignal | undefined;
+      server.post = (_body, init) =>
+        new Promise<Response>((_, reject) => {
+          // Like fetch on a stalled connection: it ends only when aborted.
+          signal = init?.signal ?? undefined;
+          init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+        });
+      fireEvent.keyDown(document.body, { key: "ArrowRight" });
+      expect(shown()).toBe("Try it");
+      // Polls keep coming while the move hangs; the store still says Welcome, but the move holds the TV.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(CONTROL_TIMEOUT_MS - 1);
+      });
+      expect(shown()).toBe("Try it");
+      expect(signal?.aborted).toBe(false);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(signal?.aborted).toBe(true);
+      expect(shown()).toBe("Welcome");
+      expect(screen.getByText("The stage did not change. Check the connection.")).toBeInTheDocument();
+      // The TV follows the room again: another screen moved it.
+      server.control = { runId: "r1", stage: "reveal", live: true, updatedAt: "2026-10-27T00:40:00Z" };
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+      expect(shown()).toBe("What we saw");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("steps through the slides of a stage before it moves the room", async () => {
@@ -722,7 +874,6 @@ describe("PresenterApp stages", () => {
     expect(screen.getByText(/Next: how we build it, from the law as written to running code, and what it can power\./)).toBeInTheDocument();
     // The one set of rules waits until after the journey.
     expect(screen.queryByText("One open set of rules")).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { level: 1, name: SAME_RULES.heading })).not.toBeInTheDocument();
 
     // The homepage's journey plays over the slide; Space pauses it instead of moving on.
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
@@ -836,12 +987,11 @@ describe("PresenterApp stages", () => {
     expect(screen.getByText("Ideas appear here as groups share them.")).toBeInTheDocument();
   });
 
-  it("shows next steps as one slide, the ask and the form, without the Silver A ask (Oct 26)", async () => {
+  it("shows next steps as one slide, the ask and the form (Oct 26)", async () => {
     const { posts } = setup({ stage: "next" });
     await onStage("next");
     expect(screen.getByText(NEXT_STEPS.ask)).toBeInTheDocument();
     for (const o of NEXT_STEPS.options) expect(screen.getByText(o.label)).toBeInTheDocument();
-    expect(screen.queryByText(SILVER_ASK.title)).not.toBeInTheDocument();
     expect(screen.queryByText("Tell us if your state wants to go further.")).not.toBeInTheDocument();
     expect(screen.queryByText("1/2")).not.toBeInTheDocument();
     expect(posts()).toEqual([]);
@@ -1113,4 +1263,171 @@ describe("PresenterApp new run", () => {
     fireEvent.keyDown(document.body, { key: "Escape" });
     expect(screen.queryByRole("textbox", { name: "New run name" })).not.toBeInTheDocument();
   });
+});
+
+describe("newerControl", () => {
+  const stamp = fc.option(
+    fc.integer({ min: 0, max: 59 }).map((n) => `2026-10-27T00:${String(n).padStart(2, "0")}:00Z`),
+    { nil: null },
+  );
+  const row = fc.record({
+    runId: fc.constantFrom("rehearsal", "phoenix"),
+    stage: fc.constantFrom(...STAGES.map((s) => s.id)),
+    live: fc.boolean(),
+    updatedAt: stamp,
+  });
+  /** The order newerControl keeps: live over not live, then the later stamp, a missing one first. */
+  const rank = (c: Control) => `${c.live ? 1 : 0}|${c.updatedAt ?? ""}`;
+
+  it("keeps one of the two: the answer unless the held row is newer, and the answer on a tie", () => {
+    fc.assert(
+      fc.property(fc.option(row, { nil: null }), row, (held, answer) => {
+        const kept = newerControl(held, answer);
+        expect([held, answer]).toContain(kept);
+        if (!held) expect(kept).toBe(answer);
+        else expect(kept).toBe(rank(answer) < rank(held) ? held : answer);
+        // A live room never takes a not-live answer (a failed store read), and never goes back in time.
+        if (held?.live) expect(kept.live).toBe(true);
+        if (held?.live && answer.live && held.updatedAt && answer.updatedAt) {
+          expect(kept.updatedAt).toBe(held.updatedAt > answer.updatedAt ? held.updatedAt : answer.updatedAt);
+        }
+        expect(newerControl(kept, kept)).toBe(kept);
+      }),
+    );
+  });
+
+  it("ends on the same, newest row whatever order the store's answers land in", () => {
+    fc.assert(
+      fc.property(
+        fc
+          .uniqueArray(row, { selector: rank, minLength: 1, maxLength: 8 })
+          .chain((rows) => fc.tuple(fc.constant(rows), fc.shuffledSubarray(rows, { minLength: rows.length, maxLength: rows.length }))),
+        ([rows, shuffled]) => {
+          const fold = (list: Control[]) => list.reduce<Control | null>((held, c) => newerControl(held, c), null);
+          const newest = [...rows].sort((a, b) => (rank(a) < rank(b) ? -1 : 1)).at(-1);
+          expect(fold(rows)).toBe(newest);
+          expect(fold(shuffled)).toBe(newest);
+        },
+      ),
+    );
+  });
+});
+
+describe("PresenterApp moves, for any order of outcomes", () => {
+  // The stages a test moves between; Shared foundation loads the journey's three.js chunk, so it sits out.
+  const TARGETS = STAGES.filter((s) => s.id !== "foundation");
+  type Outcome = "saved" | "refused" | "dropped" | "lost";
+  const outcome = fc.constantFrom<Outcome>("saved", "refused", "dropped", "lost");
+  const command = fc.oneof(
+    fc.record({ kind: fc.constant("move" as const), to: fc.integer({ min: 0, max: TARGETS.length - 1 }) }),
+    fc.record({ kind: fc.constant("settle" as const), pick: fc.nat(), outcome }),
+    fc.record({ kind: fc.constant("poll" as const) }),
+  );
+
+  /**
+   * Invariants, for any sequence of moves, polls of the room, and any order and mix of outcomes (saved;
+   * refused; dropped before the store; saved but its answer lost; timed out, after three polls):
+   * 1. while any move is in flight, the TV shows the newest move's stage, whatever the polls say;
+   * 2. once none is, it shows the newest row the store answered with, never a stage no write saved;
+   * 3. one poll later, it shows what the store holds, which is what the phones show.
+   */
+  it("shows the newest move in flight, then the store's newest answer, then the store", async () => {
+    vi.useFakeTimers();
+    const flush = () =>
+      act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+    const shown = () =>
+      STAGES.find(
+        (s) => s.label === screen.getByRole("navigation", { name: "Stages" }).querySelector('[aria-current="step"]')?.textContent,
+      )?.id;
+    try {
+      await fc.assert(
+        fc.asyncProperty(fc.array(command, { minLength: 1, maxLength: 10 }), fc.array(outcome, { minLength: 10, maxLength: 10 }), async (commands, finals) => {
+          let clock = 0;
+          const at = () => `2026-10-27T01:00:${String(clock).padStart(2, "0")}Z`;
+          // The store, and every row it answered the TV with (polls and saved moves).
+          let store: Control = { runId: "r1", stage: "welcome", live: true, updatedAt: at() };
+          const answered: Control[] = [store];
+          const pending: { stage: StageId; resolve: (r: Response) => void; reject: (e: Error) => void }[] = [];
+          let newestMove: StageId | null = null;
+          vi.stubGlobal(
+            "fetch",
+            vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+              const url = String(input);
+              if (url.startsWith("/api/aspen/results")) return jsonResponse({ runId: "r1", live: true, summary: EMPTY_SUMMARY });
+              if (init?.method === "POST") {
+                const { stage } = JSON.parse(String(init.body)) as { stage: StageId };
+                return new Promise<Response>((resolve, reject) => {
+                  const move = { stage, resolve, reject };
+                  pending.push(move);
+                  // Like fetch, a move the timeout aborts fails, and never reaches the store.
+                  init.signal?.addEventListener("abort", () => {
+                    if (pending.includes(move)) pending.splice(pending.indexOf(move), 1);
+                    reject(new Error("aborted"));
+                  });
+                });
+              }
+              answered.push(store);
+              return jsonResponse(store);
+            }),
+          );
+          const view = render(<PresenterApp joinPassword={null} />);
+          try {
+            await flush();
+            expect(shown()).toBe("welcome");
+            const check = () => {
+              if (pending.length > 0) expect(shown()).toBe(newestMove);
+              else {
+                const newest = answered.reduce((a, b) => ((b.updatedAt ?? "") >= (a.updatedAt ?? "") ? b : a));
+                expect(shown()).toBe(newest.stage);
+              }
+            };
+            const settle = async (index: number, how: Outcome) => {
+              const [move] = pending.splice(index, 1);
+              if (how === "saved" || how === "lost") {
+                clock += 1;
+                store = { ...store, stage: move.stage, updatedAt: at() };
+              }
+              if (how === "saved") {
+                answered.push(store);
+                move.resolve(jsonResponse(store));
+              } else if (how === "refused") move.resolve(jsonResponse({ error: "No." }, false));
+              else move.reject(new Error(how));
+              await flush();
+            };
+            for (const c of commands) {
+              if (c.kind === "move") {
+                newestMove = TARGETS[c.to].id;
+                fireEvent.click(within(screen.getByRole("navigation", { name: "Stages" })).getByRole("button", { name: TARGETS[c.to].label }));
+                await flush();
+              } else if (c.kind === "poll") {
+                await act(async () => {
+                  await vi.advanceTimersByTimeAsync(3000);
+                });
+              } else if (pending.length > 0) {
+                await settle(c.pick % pending.length, c.outcome);
+              }
+              check();
+            }
+            for (const how of finals) {
+              if (pending.length === 0) break;
+              await settle(0, how);
+              check();
+            }
+            // The next poll brings the store's row, so the TV agrees with the phones.
+            await act(async () => {
+              await vi.advanceTimersByTimeAsync(3000);
+            });
+            expect(shown()).toBe(store.stage);
+          } finally {
+            view.unmount();
+          }
+        }),
+        { numRuns: 40 },
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 60_000);
 });

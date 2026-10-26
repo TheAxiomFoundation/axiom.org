@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HOUSEHOLDS, QUESTIONS, composePrompt, findHousehold } from "@/lib/aspen/content";
 import { CHAT_KEY, ChatWindow, hostname, labelsOf, readNdjson, type SavedChat, type Turn } from "./chat-window";
-import { RATING_KEY, TAB_KEY, holdTab } from "./client";
+import { RATING_KEY, TAB_KEY, enterRun, holdTab } from "./client";
 
 type Handler = (init?: RequestInit) => Promise<Response> | Response;
 
@@ -849,6 +849,67 @@ describe("ChatWindow saved conversation", () => {
     expect(screen.queryByText(/Later in the session, you'll check this answer/)).not.toBeInTheDocument();
     await waitFor(() => expect(saved().turns[3]).toMatchObject({ status: "error", content: "Interrupted. Ask again." }));
     expect(saved()).toMatchObject({ conversationId: "c-1", template: "the template", rated: ["p1"] });
+  });
+
+  it("never writes the old run's conversation back from a tap that lands before the new run's remount (the review of #370)", async () => {
+    // The device is in the rehearsal, with a conversation saved under it.
+    localStorage.setItem("aspen.run", JSON.stringify("rehearsal"));
+    store({ perspective: "resident", householdId: null, questionIds: ["amount"], draft: "", template: null, conversationId: "c-old", turns: turns.slice(0, 2), rated: [], runId: "rehearsal" });
+    routeFetch({});
+    const old = render(<ChatWindow stage="try" />);
+    expect(await screen.findByText("Answer one")).toBeInTheDocument();
+    // The presenter starts the real run. aspen-app's effect drops the old run's answers; the remount
+    // that clears the chat (runEpoch) is still to come.
+    expect(enterRun("phoenix")).toBe(true);
+    expect(localStorage.getItem(CHAT_KEY)).toBeNull();
+    // A tap and a keystroke in the old chat render first, and its save effect runs.
+    openFollowUp();
+    fireEvent.change(draftBox(), { target: { value: "one more" } });
+    expect(draftBox().value).toBe("one more");
+    expect(localStorage.getItem(CHAT_KEY)).toBeNull();
+    // Then the remount: the new run's chat starts clean, and stays clean.
+    old.unmount();
+    render(<ChatWindow stage="try" />);
+    await waitFor(() => expect(saved()).toMatchObject({ runId: "phoenix", turns: [], draft: "" }));
+    expect(screen.queryByText("Answer one")).not.toBeInTheDocument();
+    expect(saved().conversationId).not.toBe("c-old");
+  });
+
+  it("ignores a conversation saved under another run, and keeps one saved before the device had a run", async () => {
+    routeFetch({});
+    // Saved under the rehearsal, read in the real run (another writer got it there): ignored.
+    localStorage.setItem("aspen.run", JSON.stringify("phoenix"));
+    store({ perspective: "resident", householdId: null, questionIds: ["amount"], draft: "old", template: null, conversationId: "c-old", turns: turns.slice(0, 2), rated: [], runId: "rehearsal" });
+    const first = render(<ChatWindow stage="try" />);
+    await waitFor(() => expect(saved()).toMatchObject({ runId: "phoenix", turns: [] }));
+    expect(screen.queryByText("Answer one")).not.toBeInTheDocument();
+    expect(saved().conversationId).not.toBe("c-old");
+    first.unmount();
+
+    // Saved before the device saw a run (null), or by the page before chats named their run (no runId):
+    // the device adopted the run since, keeping what it had (enterRun), so the chat comes back, under it.
+    for (const runId of [null, undefined]) {
+      store({ perspective: "resident", householdId: null, questionIds: ["amount"], draft: "", template: null, conversationId: "c-mine", turns: turns.slice(0, 2), rated: [], runId });
+      const view = render(<ChatWindow stage="try" />);
+      expect(await screen.findByText("Answer one")).toBeInTheDocument();
+      await waitFor(() => expect(saved()).toMatchObject({ runId: "phoenix", conversationId: "c-mine" }));
+      view.unmount();
+    }
+  });
+
+  it("keeps saving, under the run it adopts, a chat that opened before the device had a run", async () => {
+    routeFetch({});
+    render(<ChatWindow stage="try" />);
+    fireEvent.change(draftBox(), { target: { value: "first" } });
+    await waitFor(() => expect(saved()).toMatchObject({ runId: null, draft: "first" }));
+    // The first live poll: the device adopts the run and drops nothing, so nothing remounts.
+    expect(enterRun("phoenix")).toBe(false);
+    fireEvent.change(draftBox(), { target: { value: "second" } });
+    await waitFor(() => expect(saved()).toMatchObject({ runId: "phoenix", draft: "second" }));
+    // A later run drops it; from then on this chat, from the old run, writes nothing.
+    expect(enterRun("tucson")).toBe(true);
+    fireEvent.change(draftBox(), { target: { value: "third" } });
+    expect(localStorage.getItem(CHAT_KEY)).toBeNull();
   });
 
   it("reopens a rated card whose latest save never confirmed, saying so", async () => {

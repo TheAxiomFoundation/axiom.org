@@ -210,14 +210,17 @@ export function VoteCard({ stage }: { stage: string }) {
   }
   return (
     <div className="flex flex-col gap-4">
+      {/* Two columns from 640px: an odd last option takes the whole row rather than sit alone in half of it. */}
       <div role="group" aria-label="Pick one" className="grid gap-2.5 sm:grid-cols-2">
-        {USE_CASES.map((u) => (
+        {USE_CASES.map((u, i) => (
           <button
             key={u.id}
             type="button"
             aria-pressed={choice === u.id}
             onClick={() => setChoice(u.id)}
-            className={`${OPTION} ${choice === u.id ? OPTION_ON : OPTION_OFF}`}
+            className={`${OPTION} ${choice === u.id ? OPTION_ON : OPTION_OFF} ${
+              i === USE_CASES.length - 1 && USE_CASES.length % 2 === 1 ? "sm:col-span-2" : ""
+            }`}
           >
             <span className="block font-body text-[1.12rem] font-semibold text-[var(--color-ink)]">{u.label}</span>
             <span className="block font-body text-[1.02rem] leading-snug text-[var(--color-ink-muted)]">{u.detail}</span>
