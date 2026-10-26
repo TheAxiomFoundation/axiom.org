@@ -93,11 +93,11 @@ const JOURNEY_HEADING = "From the law as written to running code";
  * - the question on its own, then again with the room's answer building in below it;
  * - one open set of rules feeding every tool, and the statement that every system runs on it;
  * - the journey, which shows how the rules get built and what they power;
- * - the one set of rules again, because the journey's last scenes are hard to read on the TV;
+ * - what the rules enable for a government, and a prompt for the room's own ideas;
  * - the tiers, from screener parity to Gold A.
- * The same-rules and pipeline slides stay below, off the deck, in case they come back.
+ * The one-set, same-rules and pipeline slides stay below, off the deck, in case they come back.
  */
-const FOUNDATION_SLIDES = ["question", "question-room", "rules", "journey", "one-set", "tiers"] as const;
+const FOUNDATION_SLIDES = ["question", "question-room", "rules", "journey", "enable", "tiers"] as const;
 type FoundationSlideId = (typeof FOUNDATION_SLIDES)[number];
 
 /** Slides that set their own heading, with no title bar above them. */
@@ -106,7 +106,11 @@ const OWN_HEADING: readonly FoundationSlideId[] = ["question", "question-room", 
 /** A slide that turns its stage's argument gets its own heading. */
 const SLIDE_TITLES: Partial<Record<StageId, Record<number, string>>> = {
   scale: { 4: FRONT_DOOR.heading, 5: FRONT_DOOR.heading, 6: FRONT_DOOR.heading },
-  foundation: { [FOUNDATION_SLIDES.indexOf("journey")]: JOURNEY_HEADING, [FOUNDATION_SLIDES.indexOf("tiers")]: BUILD_HEADING },
+  foundation: {
+    [FOUNDATION_SLIDES.indexOf("journey")]: JOURNEY_HEADING,
+    [FOUNDATION_SLIDES.indexOf("enable")]: SAME_RULES.heading,
+    [FOUNDATION_SLIDES.indexOf("tiers")]: BUILD_HEADING,
+  },
 };
 
 /** Stages shown as more than one slide; the arrows step through them before moving the room. */
@@ -287,14 +291,14 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
                     <ToolSlide key="tool" />,
                     <LiveDemoSlide key="live-demo" />,
                   ][sub]}
-                {/* Shared foundation: the question, the room's answer, the one set of rules, the journey, the rules again, the tiers. */}
+                {/* Shared foundation: the question, the room's answer, the one set of rules, the journey, what it enables, the tiers. */}
                 {stage === "foundation" &&
                   {
                     question: <QuestionSlide key="question" summary={summary} room={false} />,
                     "question-room": <QuestionSlide key="question-room" summary={summary} room />,
                     rules: <RulesSlide key="rules" />,
                     journey: <JourneySlide key="journey" />,
-                    "one-set": <OneSetSlide key="one-set" summary={summary} />,
+                    enable: <EnableSlide key="enable" />,
                     tiers: <TiersSlide key="tiers" />,
                   }[FOUNDATION_SLIDES[sub]]}
                 {stage === "groups" &&
@@ -1541,6 +1545,40 @@ function PolicyGraph() {
   );
 }
 
+/**
+ * Shared foundation 5/6: what one open set of rules lets a government do, as the room's own focus.
+ * The other audiences are off this slide (Oct 26); the prompt hands over to Small groups.
+ */
+function EnableSlide() {
+  const r = SAME_RULES;
+  return (
+    <div className="flex h-full flex-col gap-[26px]">
+      <div className="grid min-h-0 flex-1 grid-cols-[1fr_640px] gap-[24px]">
+        <div className="flex flex-col justify-center rounded-[16px] bg-[var(--color-ink)] px-[40px] py-[36px] text-white">
+          <div className="mb-[26px] flex items-center gap-[18px]">
+            <Landmark aria-hidden size={46} strokeWidth={1.6} className="shrink-0 text-[#e8a25c]" />
+            <span className="font-display text-[48px] font-light leading-none">{r.governments.label}</span>
+          </div>
+          <ul className="m-0 flex list-none flex-col gap-[18px] p-0 font-body text-[27px] leading-snug text-white">
+            {r.governments.uses.map((use) => (
+              <li key={use} className="flex gap-[14px]">
+                <Check aria-hidden size={28} strokeWidth={2.25} className="mt-[4px] shrink-0 text-[#e8a25c]" />
+                {use}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <Panel className="flex flex-col justify-center">
+          <PolicyGraph />
+        </Panel>
+      </div>
+      <p className="m-0 border-l-[6px] border-[var(--color-accent)] pl-[28px] font-display text-[42px] font-light leading-tight text-[var(--color-ink)]">
+        {r.prompt}
+      </p>
+    </div>
+  );
+}
+
 /** Shared foundation, slide 2 (from Max's Nava deck): what a shared foundation enables, governments first. */
 function SameRulesSlide() {
   const r = SAME_RULES;
@@ -1658,8 +1696,8 @@ function RulesSlide() {
 }
 
 /**
- * Shared foundation 5/6: one set of rules under every tool. It follows the journey so the room can
- * read what the rules power, which the journey's last scenes show too small for the TV (Oct 26).
+ * One set of rules under every tool, once Shared foundation 3/4 after the journey. Off the deck since
+ * Oct 26: the rules slide before the journey shows the same diagram.
  */
 function OneSetSlide({ summary }: { summary: RunSummary }) {
   const answered = summary.sourceOfTruth.reduce((sum, c) => sum + c.count, 0);

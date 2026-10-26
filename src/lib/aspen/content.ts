@@ -971,8 +971,10 @@ export function liveDemoUrl(): string {
 
 /** The same rules for every system: what one shared set of rules gives each group. */
 export const SAME_RULES = {
-  /** The heading of a former Shared foundation slide, off the deck since the dry run (Oct 25). */
+  /** Shared foundation 5/6's heading: after the journey, what the rules let a government do (Oct 26). */
   heading: "What does one open set of rules enable?",
+  /** Under the governments box, leading into Small groups. */
+  prompt: "What other ideas do you have?",
   /** The room is state benefits leaders, so governments get the big box and the most uses. */
   governments: {
     label: "For governments",

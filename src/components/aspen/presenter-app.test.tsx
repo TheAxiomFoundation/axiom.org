@@ -764,12 +764,16 @@ describe("PresenterApp stages", () => {
     expect(screen.getByText("4/6")).toBeInTheDocument();
     expect(screen.getByText("Paused: Space plays on")).toBeInTheDocument();
 
-    // After the journey, the one set of rules, readable on the TV: the journey's last scenes are small (Oct 26).
+    // After the journey, what the rules enable: governments alone, then a prompt into Small groups (Oct 26).
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     expect(screen.getByText("5/6")).toBeInTheDocument();
     expect(document.querySelector(".jl-stage")).toBeNull();
-    expect(screen.getByText("One open set of rules")).toBeInTheDocument();
-    for (const use of ONE_SET_OF_RULES) expect(screen.getByText(use.label)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: SAME_RULES.heading })).toBeInTheDocument();
+    expect(screen.getByText(SAME_RULES.governments.label)).toBeInTheDocument();
+    for (const use of SAME_RULES.governments.uses) expect(screen.getByText(use)).toBeInTheDocument();
+    for (const a of SAME_RULES.audiences) expect(screen.queryByText(a.label)).not.toBeInTheDocument();
+    expect(screen.getByText("How the rules cross-reference")).toBeInTheDocument();
+    expect(screen.getByText(SAME_RULES.prompt)).toBeInTheDocument();
 
     // Then the tiers, from screener parity to Gold A.
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
