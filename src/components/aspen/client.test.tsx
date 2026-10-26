@@ -3,6 +3,7 @@ import fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CHAT_KEY,
+  CONTROL_TIMEOUT_MS,
   OVERALL_KEY,
   RATING_KEY,
   SAVE_TIMEOUT_MS,
@@ -233,8 +234,8 @@ describe("formatValue", () => {
   });
 });
 
-function PollProbe({ url, interval }: { url: string | null; interval: number }) {
-  const { data, failed } = usePoll<{ n: number }>(url, interval);
+function PollProbe({ url, interval, timeout }: { url: string | null; interval: number; timeout?: number }) {
+  const { data, failed } = usePoll<{ n: number }>(url, interval, timeout);
   return (
     <p>
       <span data-testid="data">{data ? String(data.n) : "none"}</span>
@@ -303,6 +304,49 @@ describe("usePoll", () => {
     }
   });
 
+  it("counts a poll that hangs past the timeout as failed, and polls again on schedule", async () => {
+    vi.useFakeTimers();
+    const signals: (AbortSignal | undefined)[] = [];
+    const fetchMock = vi
+      .fn((_url: string, init: RequestInit) => {
+        signals.push(init.signal ?? undefined);
+        return Promise.resolve(jsonResponse({ n: 4 }));
+      })
+      // The first request stalls: like fetch, it only ends when it is aborted.
+      .mockImplementationOnce((_url: string, init: RequestInit) => {
+        signals.push(init.signal ?? undefined);
+        return new Promise<Response>((_, reject) => init.signal?.addEventListener("abort", () => reject(new Error("aborted"))));
+      });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      render(<PollProbe url="/api/poll" interval={1000} timeout={5000} />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4999);
+      });
+      expect(screen.getByTestId("failed")).toHaveTextContent("ok");
+      expect(signals[0]?.aborted).toBe(false);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(signals[0]?.aborted).toBe(true);
+      expect(screen.getByTestId("failed")).toHaveTextContent("failed");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(screen.getByTestId("data")).toHaveTextContent("4");
+      expect(screen.getByTestId("failed")).toHaveTextContent("ok");
+      // A poll that answers in time is never aborted later.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(900);
+      });
+      expect(signals[1]?.aborted).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("drops a response that lands after unmount", async () => {
     let resolve: (value: Response) => void = () => {};
     let reject: (reason: Error) => void = () => {};
@@ -342,6 +386,9 @@ describe("useControl / useResults", () => {
     render(<ControlProbe />);
     await waitFor(() => expect(screen.getByTestId("stage")).toHaveTextContent("try"));
     expect(fetchMock.mock.calls[0][0]).toBe("/api/aspen/state");
+    // The room's poll gives up on a stalled request; the results poll never does (a whole run can load slowly).
+    expect(fetchMock.mock.calls[0][1]).toEqual({ cache: "no-store", signal: expect.any(AbortSignal) });
+    expect(CONTROL_TIMEOUT_MS).toBeGreaterThan(4000);
   });
 
   it("polls results only when enabled, with an encoded run id", async () => {
@@ -360,6 +407,7 @@ describe("useControl / useResults", () => {
     render(<ResultsProbe enabled />);
     await waitFor(() => expect(screen.getByTestId("run")).toHaveTextContent("default"));
     expect(fetchMock.mock.calls[0][0]).toBe("/api/aspen/results");
+    expect(fetchMock.mock.calls[0][1]).toEqual({ cache: "no-store" });
   });
 });
 
