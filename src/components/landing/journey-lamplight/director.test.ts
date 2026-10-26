@@ -343,10 +343,10 @@ describe("the journey's director", () => {
   });
 
   it("keeps each scene's warm-up in step with its compiles, when scenes build together", async () => {
-    // three settles a compile at once when it can ask the driver whether the compile
-    // is done. Scene 2's assets come a moment after scene 1's: each build's steps
-    // interleave exactly as they did before compiles were counted, with nothing
-    // waiting an extra turn behind another scene's work
+    // three settles a compile within the call when it can ask the driver whether
+    // the compile is done, and it is. Scene 2's assets come a moment after scene
+    // 1's: each build's steps interleave exactly as they did before compiles were
+    // counted, with nothing waiting an extra turn behind another scene's work
     takeTime();
     kit.parallel = true;
     kit.ticks.set(2, 1);
@@ -361,6 +361,51 @@ describe("the journey's director", () => {
       ...Array(4).fill("pipeline.render 1 scene"),
       "compileAsync 2 fx",
       ...Array(4).fill("pipeline.render 2 scene"),
+    ]);
+    d.dispose();
+  });
+
+  it("keeps every step of scenes that build together in its old place, with the failures' reports and prepareAll's", async () => {
+    // as above, across whole builds: texture uploads, assets that come late or
+    // fail, a compile that fails, the failures' reports and prepareAll's rejection
+    // each keep their place among the other scenes' steps. The clock stands
+    // still, so no upload yields
+    takeTime();
+    vi.spyOn(performance, "now").mockReturnValue(0);
+    kit.parallel = true;
+    kit.textures.set(1, 2);
+    kit.textures.set(2, 1);
+    kit.ticks.set(2, 1);
+    kit.ticks.set(4, 2);
+    kit.fail.add(3);
+    kit.throws.add("compileAsync 5 scene");
+    const d = await make({ onError: (e) => kit.calls.push(`onError ${(e as Error).message}`) });
+    kit.calls.length = 0;
+    await d.prepareAll().then(
+      () => kit.calls.push("prepareAll resolved"),
+      (e: Error) => kit.calls.push(`prepareAll rejected ${e.message}`),
+    );
+    await vi.waitFor(() => expect(kit.made).toHaveLength(SPANS.length));
+    await settle();
+    const order = kit.calls.filter((c) => / [1-5]( scene| fx)?$|^(onError|prepareAll) /.test(c));
+    // the order the director made before compiles were counted (0944c0aa)
+    expect(order).toEqual([
+      "initTexture 1",
+      "initTexture 1",
+      "compileAsync 1 scene",
+      "compileAsync 5 scene",
+      "compileAsync 1 fx",
+      "initTexture 2",
+      "compileAsync 2 scene",
+      "onError MOCK: scene 3 failed",
+      ...Array(4).fill("pipeline.render 1 scene"),
+      "compileAsync 2 fx",
+      "prepareAll rejected MOCK: scene 3 failed",
+      "compileAsync 4 scene",
+      "onError MOCK: scene 5 failed to set up its shaders",
+      ...Array(4).fill("pipeline.render 2 scene"),
+      "compileAsync 4 fx",
+      ...Array(4).fill("pipeline.render 4 scene"),
     ]);
     d.dispose();
   });
@@ -507,6 +552,18 @@ describe("the journey's director, once disposed", () => {
       open();
     };
   };
+  // the same, but the compile then fails. three's own can't fail this late, but
+  // the renderer is let go all the same
+  const midCompileFails = (call: string) => (d: Director) => {
+    let fail!: (e: Error) => void;
+    kit.gates.set(call, new Promise<void>((_, r) => (fail = r)));
+    return async () => {
+      await vi.waitFor(() => expect(kit.calls).toContain(call));
+      d.dispose();
+      expect(kit.calls).not.toContain("dispose");
+      fail(new Error(`MOCK: ${call} failed`));
+    };
+  };
   // where in a scene's build the director is disposed, and what lets the build go on
   const MID_BUILD: Array<[string, (d: Director) => (() => Promise<void> | void) | void]> = [
     [
@@ -546,6 +603,7 @@ describe("the journey's director, once disposed", () => {
     ],
     ["as its meshes compile", midCompile("compileAsync 1 scene")],
     ["as its particles compile", midCompile("compileAsync 1 fx")],
+    ["as its meshes compile, which then fails", midCompileFails("compileAsync 1 scene")],
   ];
   it.each(MID_BUILD)("stops a build in flight %s, before it touches the renderer again", async (_, arm) => {
     takeTime();
