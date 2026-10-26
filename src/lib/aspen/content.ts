@@ -942,21 +942,24 @@ export const ENGINE_PILOT: EnginePilot = {
  * The question names the household, the amount, the month and the program.
  * Utah's Family Employment Program pays at most $662 a month for a household
  * of three (DWS Eligibility Manual, Table 1, FEP maximum assistance; DWS's
- * "Do I qualify?" page lists the same $662). Plain AI cites the older $498.
- * On the live chatbot on Oct 25, 2026, plain AI said $498 10 times out of
- * 10, and AI with the engine said $662 10 times out of 10. The $662 is the
- * engine's ut_fep_payment_standard_amount, which carries no "not fully
- * encoded" flag. The engine does flag Utah's eligibility checks, and the
- * reply says so. "This month" names the month without a date: asked "in
- * October 2026", plain AI hedged that the date is in the future 9 times out
- * of 10.
+ * "Do I qualify?" page lists the same $662). Plain AI cites $498, Utah's
+ * maximum in July 2013 (CRS report R43634). On the live chatbot on Oct 25,
+ * 2026, plain AI said about $498 10 times out of 10, though 7 of those
+ * replies added that it couldn't confirm the current rate, 6 of them naming
+ * the wrong month. AI with the engine said $662 10 times out of 10. The $662
+ * is the engine's ut_fep_payment_standard_amount, which carries no "not
+ * fully encoded" flag in any of the 34 tool results across 30 engine replies
+ * (three wordings). The engine does flag Utah's eligibility checks, and every
+ * reply lists them and says eligibility isn't established. Asked "in October
+ * 2026" instead of "this month", plain AI qualified the October amount 10
+ * times out of 10, and called the date future in 5.
  *
  * It replaced "Single mom with two kids: does Alabama or Georgia pay more
  * TANF?" after the Oct 25 dry run: both of those outputs were flagged "not
  * fully encoded", and the question didn't say whether it meant the maximum
- * or an average. Refugee SNAP eligibility had no flags, but plain AI caught
- * the 2025 change in 2 of 10 runs and hedged in a third, and the engine's
- * answers hedged too.
+ * or an average. Refugee SNAP eligibility had no "not fully encoded" flags,
+ * but plain AI caught the 2025 change in 2 of 10 runs and hedged in a third,
+ * and the engine's answers hedged too.
  */
 export const LIVE_DEMO = {
   title: "The same AI model, on its own and with the Axiom rules engine",
