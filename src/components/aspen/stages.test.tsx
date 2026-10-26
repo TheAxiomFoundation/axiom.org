@@ -308,7 +308,8 @@ describe("NextStepsForm", () => {
   it("sends the pledge and thanks the participant", async () => {
     let resolve: (r: Response) => void = () => {};
     const fetchMock = stubFetch(() => new Promise<Response>((r) => (resolve = r)));
-    render(<NextStepsForm />);
+    const onSent = vi.fn();
+    render(<NextStepsForm onSent={onSent} />);
     // Just an email and a note: Aspen's roster already has each leader's name, title and state.
     expect(screen.getAllByRole("textbox").map((el) => el.getAttribute("type") ?? "textarea")).toEqual(["email", "textarea"]);
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
@@ -317,8 +318,10 @@ describe("NextStepsForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
     expect(await screen.findByRole("button", { name: "Sending…" })).toBeDisabled();
+    expect(onSent).not.toHaveBeenCalled();
     resolve(jsonResponse({ ok: true }));
     expect(await screen.findByText("Thank you.")).toBeInTheDocument();
+    expect(onSent).toHaveBeenCalledTimes(1);
     expect(screen.getByText(new RegExp(EVENT.contactEmail))).toBeInTheDocument();
     expect(bodies(fetchMock, "/api/aspen/pledge")[0]).toEqual({
       participantId: "p-1",
@@ -331,12 +334,14 @@ describe("NextStepsForm", () => {
 
   it("shows the server's error message", async () => {
     stubFetch(async () => jsonResponse({ error: "Enter a valid email." }, false));
-    render(<NextStepsForm />);
+    const onSent = vi.fn();
+    render(<NextStepsForm onSent={onSent} />);
     fill();
     fireEvent.click(screen.getByRole("checkbox", { name: /State systems/ }));
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     expect(await screen.findByText("Enter a valid email.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+    expect(onSent).not.toHaveBeenCalled();
   });
 
   it("falls back to a generic error when the request fails", async () => {

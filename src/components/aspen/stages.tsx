@@ -373,7 +373,7 @@ export function GroupsCard({ stage }: { stage: string }) {
 // Next steps
 // ---------------------------------------------------------------------------
 
-export function NextStepsForm() {
+export function NextStepsForm({ onSent }: { onSent?: () => void } = {}) {
   const [email, setEmail] = useState("");
   const [accurateAi, setAccurateAi] = useState(false);
   const [stateSystems, setStateSystems] = useState(false);
@@ -393,6 +393,7 @@ export function NextStepsForm() {
     }).catch(() => null);
     if (response?.ok) {
       setStatus("done");
+      onSent?.();
       return;
     }
     setError(response?.data.error ?? "That didn't send. Try again.");
