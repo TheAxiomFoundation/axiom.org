@@ -1,6 +1,6 @@
 import fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SCENE_START, SPANS, TOTAL } from "./captions";
+import { OVERLAP, SCENE_START, SPANS, TOTAL } from "./captions";
 import { createDirector, type Director } from "./director";
 
 // MOCK rendering kit and scenes: jsdom has no WebGL. Each scene is empty, and
@@ -16,6 +16,7 @@ const kit = vi.hoisted(() => {
     textures: new Map<number, number>(), // how many MOCK textures a scene carries
     latency: new Map<number, { ready: number; compile: number }>(), // ms a scene's assets and compiles take
     ticks: new Map<number, number>(), // microtasks a scene's assets come late by
+    noAssets: new Set<number>(), // a scene with no assets to wait for: its beat has no ready, as most real ones don't
     gates: new Map<string, Promise<void>>(), // a compile, by its logged name, waits on this
     throws: new Set<string>(), // a compile, by its logged name, throws as it's called
     parallel: false, // three can ask the driver whether a compile is done (KHR_parallel_shader_compile)
@@ -118,9 +119,11 @@ vi.mock("../style-frames/kit", async () => {
       for (let k = 0; k < (kit.ticks.get(i) ?? 0); k++) late = late.then(() => {});
       const ready = kit.hold.has(i)
         ? new Promise<void>((resolve, reject) => kit.held.set(i, { resolve, reject }))
-        : late.then(() => {
-            if (kit.fail.has(i)) throw new Error(`MOCK: scene ${i} failed`);
-          });
+        : kit.noAssets.has(i)
+          ? undefined
+          : late.then(() => {
+              if (kit.fail.has(i)) throw new Error(`MOCK: scene ${i} failed`);
+            });
       const scene = new THREE.Scene();
       Object.assign(scene.userData, { mock: `${i} scene`, index: i });
       const fx = new THREE.Scene();
@@ -162,6 +165,7 @@ beforeEach(() => {
   kit.textures.clear();
   kit.latency.clear();
   kit.ticks.clear();
+  kit.noAssets.clear();
   kit.gates.clear();
   kit.throws.clear();
   kit.parallel = false;
@@ -275,6 +279,37 @@ function watch(canvas: HTMLCanvasElement) {
     expect(host.isConnected).toBe(true);
     expect(canvas.parentElement).toBe(host);
   };
+}
+
+/**
+ * Logs each step a caller can see, with its microtask count from the start of
+ * the task it came in: each renderer and pipeline call, each request for a
+ * frame or an idle moment, and what the test stamps. The clock stands still.
+ */
+function stepLog() {
+  takeTime();
+  vi.spyOn(performance, "now").mockReturnValue(0);
+  let tick = 0;
+  const log: string[] = [];
+  const stamp = (what: string) => void log.push(`${tick} ${what}`);
+  kit.during = stamp;
+  let id = 0;
+  vi.stubGlobal("requestIdleCallback", (cb: () => void) => (stamp("requestIdleCallback"), idles.push(cb)));
+  vi.stubGlobal("requestAnimationFrame", (cb: (t: number) => void) => (stamp("requestAnimationFrame"), frames.set(++id, cb), id));
+  /** Runs fn as a task of its own: a ticker counts its microtasks from 0. Then lets it settle. */
+  const task = async (what: string, fn: () => unknown) => {
+    log.push(`-- ${what}`);
+    tick = 0;
+    let n = 0;
+    const count = () => {
+      tick++;
+      if (++n < 100) queueMicrotask(count);
+    };
+    queueMicrotask(count);
+    fn();
+    await settle();
+  };
+  return { log, stamp, task };
 }
 
 describe("the journey's director", () => {
@@ -467,6 +502,99 @@ describe("the journey's director", () => {
     expect(drew).toEqual([false, false, false, false, true, true, true, true, true]);
   });
 
+  it("takes every step a caller can see in the microtask it did before", async () => {
+    // each promise the director settles, and each report, is logged with the
+    // rest (see stepLog). Scenes 1 to 5 have no assets to wait for, as most real
+    // scenes don't
+    const { log, stamp, task } = stepLog();
+    kit.parallel = true;
+    for (let i = 1; i < SPANS.length; i++) kit.noAssets.add(i);
+    const frame = (t: number) => () => {
+      const due = [...frames.values()];
+      frames.clear();
+      due.forEach((f) => f(t));
+    };
+    let d!: Director;
+    await task("start", () =>
+      make({ onError: (e) => stamp(`onError ${(e as Error).message}`) }).then((x) => {
+        d = x;
+        stamp("started");
+      }),
+    );
+    await task("frame", frame(1000)); // draws scene 0, and fetches scene 1 ahead
+    await task("idle", () => idles.shift()?.()); // the background builds move on from scene 0
+    await task("idle", () => idles.shift()?.()); // builds scene 1, fetched ahead
+    await task("idle", () => idles.shift()?.()); // the background builds move on from scene 1
+    await task("jump", () => d.jump(SCENE_START[3])); // to scene 3, not built yet
+    await task("frame", frame(1100));
+    await task("jump", () => d.jump(SCENE_START[3] - OVERLAP / 2)); // into the cut from scene 2, not built yet
+    await task("frame", frame(1200));
+    await task("prepareAll", () => d.prepareAll().then(() => stamp("prepareAll resolved")));
+    await task("dispose", () => d.dispose());
+    // recorded from the director before compiles were counted (0944c0aa)
+    expect(log).toEqual([
+      "-- start",
+      "1 setPixelRatio 1",
+      "1 setSize 800x450",
+      ...Array(2).fill("1 pipeline 800x450"),
+      "3 compileAsync 0 scene",
+      "4 compileAsync 0 fx",
+      ...Array(4).fill("5 pipeline.render 0 scene"),
+      "7 requestAnimationFrame",
+      "7 requestIdleCallback",
+      "8 started",
+      "-- frame",
+      "0 pipeline.render 0 scene",
+      "0 setRenderTarget",
+      "0 render",
+      "0 requestIdleCallback",
+      "-- idle",
+      "3 requestIdleCallback",
+      "-- idle",
+      "1 compileAsync 1 scene",
+      "2 compileAsync 1 fx",
+      ...Array(4).fill("3 pipeline.render 1 scene"),
+      "-- idle",
+      "3 requestIdleCallback",
+      "-- jump",
+      "1 compileAsync 3 scene",
+      "2 compileAsync 3 fx",
+      ...Array(4).fill("3 pipeline.render 3 scene"),
+      "5 requestAnimationFrame",
+      "-- frame",
+      "0 pipeline.render 3 scene",
+      "0 setRenderTarget",
+      "0 render",
+      "0 requestIdleCallback",
+      "-- jump",
+      "0 pipeline.render 3 scene",
+      "0 setRenderTarget",
+      "0 render",
+      "0 requestIdleCallback",
+      "1 compileAsync 2 scene",
+      "2 compileAsync 2 fx",
+      ...Array(4).fill("3 pipeline.render 2 scene"),
+      "5 requestAnimationFrame",
+      "-- frame",
+      "0 pipeline.render 3 scene",
+      "0 pipeline.render 2 scene",
+      "0 setRenderTarget",
+      "0 render",
+      "0 requestIdleCallback",
+      "-- prepareAll",
+      "1 compileAsync 4 scene",
+      "1 compileAsync 5 scene",
+      "2 compileAsync 4 fx",
+      "2 compileAsync 5 fx",
+      ...Array(4).fill("3 pipeline.render 4 scene"),
+      ...Array(4).fill("3 pipeline.render 5 scene"),
+      "6 prepareAll resolved",
+      "-- dispose",
+      ...Array(2).fill("0 composer.dispose"),
+      "0 dispose",
+    ]);
+  });
+
   it("logs a later scene's failure where nothing listens for it", async () => {
     kit.fail.add(3);
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -567,6 +695,23 @@ describe("the journey's director lets go of what it set up", () => {
     expect(kit.calls.filter((c) => c.startsWith("pipeline.render"))).toEqual([]);
     released();
     expect(unhandled).not.toHaveBeenCalled();
+  });
+
+  it("when its start fails, in the microtask #366's director did", async () => {
+    // each step a caller can see (see stepLog). Before #366 the director let go
+    // of nothing here, so the log is the one #366's director made (79f2304e)
+    const steps = stepLog();
+    kit.fail.add(0);
+    await steps.task("start", () => make().catch((e: Error) => steps.stamp(`start rejected ${e.message}`)));
+    expect(steps.log).toEqual([
+      "-- start",
+      "1 setPixelRatio 1",
+      "1 setSize 800x450",
+      ...Array(2).fill("1 pipeline 800x450"),
+      ...Array(2).fill("4 composer.dispose"),
+      "4 dispose",
+      "5 start rejected MOCK: scene 0 failed",
+    ]);
   });
 });
 
