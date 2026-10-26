@@ -254,8 +254,19 @@ export function sendEvent(kind: string, payload: Record<string, unknown>, stage?
   );
 }
 
-/** Polls a JSON endpoint while `enabled`; keeps the last good value. */
-export function usePoll<T>(url: string | null, intervalMs: number): { data: T | null; failed: boolean } {
+/**
+ * How long a poll of the room may take before it counts as failed. A request
+ * that stalls on venue Wi-Fi then never holds a phone that just joined on
+ * Welcome, or stops a phone following the room (the review of #370).
+ */
+export const CONTROL_TIMEOUT_MS = 8_000;
+
+/**
+ * Polls a JSON endpoint while `enabled`; keeps the last good value. With
+ * `timeoutMs`, a request that neither answers nor fails in time is aborted,
+ * counts as failed, and the next poll runs on schedule.
+ */
+export function usePoll<T>(url: string | null, intervalMs: number, timeoutMs?: number): { data: T | null; failed: boolean } {
   const [data, setData] = useState<T | null>(null);
   const [failed, setFailed] = useState(false);
   const urlRef = useRef(url);
@@ -266,9 +277,12 @@ export function usePoll<T>(url: string | null, intervalMs: number): { data: T | 
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const tick = async () => {
+      const controller = timeoutMs ? new AbortController() : null;
+      const abort = controller ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
       try {
-        const response = await fetch(url, { cache: "no-store" });
+        const response = await fetch(url, controller ? { cache: "no-store", signal: controller.signal } : { cache: "no-store" });
         if (!response.ok) throw new Error(String(response.status));
+        // A body the timeout cuts off throws here, so it counts as failed.
         const next = (await response.json()) as T;
         if (!cancelled && urlRef.current === url) {
           setData(next);
@@ -276,6 +290,8 @@ export function usePoll<T>(url: string | null, intervalMs: number): { data: T | 
         }
       } catch {
         if (!cancelled) setFailed(true);
+      } finally {
+        clearTimeout(abort);
       }
       if (!cancelled) timer = setTimeout(tick, document.hidden ? intervalMs * 3 : intervalMs);
     };
@@ -284,13 +300,13 @@ export function usePoll<T>(url: string | null, intervalMs: number): { data: T | 
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [url, intervalMs]);
+  }, [url, intervalMs, timeoutMs]);
 
   return { data, failed };
 }
 
 export function useControl(intervalMs = 4000) {
-  return usePoll<Control>("/api/aspen/state", intervalMs);
+  return usePoll<Control>("/api/aspen/state", intervalMs, CONTROL_TIMEOUT_MS);
 }
 
 export interface ResultsPayload {

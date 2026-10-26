@@ -437,7 +437,7 @@ describe("PresenterApp navigation", () => {
     await waitFor(() => expect(polls()).toBeGreaterThan(seen + 1), { timeout: 12_000 });
     expect(screen.getByText("7/7")).toBeInTheDocument();
     expect(screen.getByTitle(/Live chatbot demo/)).toBe(frame);
-    expect(screen.queryByText("Run rehearsal")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Run rehearsal/)).not.toBeInTheDocument();
     // When the store answers again, the room's own moves come through.
     server.control = { runId: "r1", stage: "foundation", live: true, updatedAt: "2026-10-26T01:00:00Z" };
     await waitFor(() => expect(screen.getByText("1/2")).toBeInTheDocument(), { timeout: 12_000 });
