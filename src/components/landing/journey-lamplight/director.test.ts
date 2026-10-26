@@ -23,6 +23,7 @@ const kit = vi.hoisted(() => {
     late: [] as string[],
     pipelines: 0,
     polling: 0, // compiles still polling, of every director so far
+    round: 0, // the test now running: a compile left polling by an earlier one stops
     // runs inside each call, so a test can dispose in the middle of a build
     during: null as ((call: string) => void) | null,
     log(gone: boolean, call: string) {
@@ -43,7 +44,7 @@ vi.mock("../style-frames/kit", async () => {
       let gone = false;
       const log = (call: string) => kit.log(gone, call);
       return {
-        setPixelRatio: () => log("setPixelRatio"),
+        setPixelRatio: (r: number) => log(`setPixelRatio ${r}`),
         setSize: (w: number, h: number) => log(`setSize ${w}x${h}`),
         initTexture: (t: { userData: { scene: number } }) => log(`initTexture ${t.userData.scene}`),
         // as three's does: it compiles at once, then polls its programs until they're
@@ -65,8 +66,10 @@ vi.mock("../style-frames/kit", async () => {
                 (e: Error) => (ready = e),
               );
           kit.polling++;
+          const round = kit.round;
           return new Promise<void>((resolve, reject) => {
             const poll = () => {
+              if (round !== kit.round) return;
               if (ready === false && !gone) return void setTimeout(poll, 10);
               kit.polling--;
               if (gone) log(`compile poll ${sc.userData.mock}`);
@@ -169,16 +172,23 @@ beforeEach(() => {
   process.on("unhandledRejection", unhandled);
 });
 afterEach(async () => {
-  // a director disposed while it compiles lets go of its renderer later: not in the next test
-  await vi.waitFor(() => expect(kit.polling).toBe(0));
-  await settle(1);
-  process.off("unhandledRejection", unhandled);
-  unhandled.mockReset();
-  vi.restoreAllMocks();
-  vi.unstubAllGlobals();
-  idles.length = 0;
-  frames.clear();
-  document.body.replaceChildren();
+  try {
+    // a director disposed while it compiles lets go of its renderer later: not in the next test
+    await vi.waitFor(() => expect(kit.polling).toBe(0));
+    await settle(1);
+  } finally {
+    // a test that fails while it holds a compile leaves that compile polling: it
+    // stops here, so the failure stays with that test
+    kit.round++;
+    kit.polling = 0;
+    process.off("unhandledRejection", unhandled);
+    unhandled.mockReset();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    idles.length = 0;
+    frames.clear();
+    document.body.replaceChildren();
+  }
 });
 
 function stage() {
@@ -270,9 +280,16 @@ function watch(canvas: HTMLCanvasElement) {
 describe("the journey's director", () => {
   it("sizes its renderer and pipelines to its stage, and tells its caller of its first frame, once", async () => {
     takeTime();
+    // a screen denser than Retina: the director renders at twice the stage's size, no more
+    vi.stubGlobal("devicePixelRatio", 3);
     const onFirstFrame = vi.fn();
     const d = await make({ onFirstFrame });
-    expect(kit.calls.filter((c) => /^(setSize|pipeline) /.test(c))).toEqual(["setSize 800x450", "pipeline 800x450", "pipeline 800x450"]);
+    expect(kit.calls.filter((c) => /^(setPixelRatio|setSize|pipeline) /.test(c))).toEqual([
+      "setPixelRatio 2",
+      "setSize 800x450",
+      "pipeline 1600x900",
+      "pipeline 1600x900",
+    ]);
     expect(onFirstFrame).not.toHaveBeenCalled();
     await runFrame(1000);
     expect(kit.calls).toContain("render");
@@ -515,6 +532,18 @@ describe("the journey's director, once disposed", () => {
         });
       },
     ],
+    [
+      "while it yields between two of its texture uploads",
+      (d) => {
+        kit.textures.set(1, 2);
+        // as above, but the director is disposed while the build waits for its next slice
+        at("initTexture 1", () => {
+          queueMicrotask(() => d.dispose());
+          const t = performance.now();
+          while (performance.now() - t < 10);
+        });
+      },
+    ],
     ["as its meshes compile", midCompile("compileAsync 1 scene")],
     ["as its particles compile", midCompile("compileAsync 1 fx")],
   ];
@@ -558,15 +587,18 @@ describe("the journey's director, once disposed", () => {
     expect(unhandled).not.toHaveBeenCalled();
   });
 
-  it("draws nothing", async () => {
+  it("draws nothing, and builds no scene it's asked to draw", async () => {
     takeTime();
     const d = await make();
     d.jump(0.5);
     expect(kit.calls).toContain("render");
     d.dispose();
     d.jump(1);
+    d.jump(TOTAL); // the last scene, not built yet
     d.setProgress(2);
     await runFrame(1000);
+    await runIdle();
+    expect(kit.made).toEqual([0]);
     expect(kit.late).toEqual([]);
   });
 
