@@ -1077,7 +1077,7 @@ html[data-aspen-text="larger"] {
 }
 
 /* A build on the Aspen TV: a line that rises in under what is already on
-   the slide (Shared foundation 2/5). */
+   the slide (Shared foundation 2/7, and each group on 3/7 to 5/7). */
 @keyframes aspen-build {
   from {
     opacity: 0;

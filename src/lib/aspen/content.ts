@@ -971,7 +971,7 @@ export function liveDemoUrl(): string {
 
 /** The same rules for every system: what one shared set of rules gives each group. */
 export const SAME_RULES = {
-  /** Shared foundation 5/5's heading: after the journey, what the rules let a government do (Oct 26). */
+  /** Shared foundation 7/7's heading: after the journey, what the rules let a government do (Oct 26). */
   heading: "What does one set of open rules enable for governments?",
   /** Under the governments boxes, leading into Small groups. */
   prompt: "What other ideas do you have?",
@@ -1007,7 +1007,7 @@ export function percent(part: number, whole: number): number {
 // The fix
 // ---------------------------------------------------------------------------
 
-/** What makes the one set of rules checkable: the open box on Shared foundation 3/5, the rules slide. */
+/** What makes the one set of rules checkable: the open box on Shared foundation 3/7 to 5/7, the rules slides. */
 export const FOUNDATION_TRAITS = [
   "Every value is built to cite the provision it comes from",
   "Every change carries its effective date",
@@ -1015,13 +1015,27 @@ export const FOUNDATION_TRAITS = [
 ] as const;
 
 /**
- * The statement under the one set of rules on Shared foundation 3/5, the rules slide, emphasized as
- * in the main deck's value proposition.
+ * The statement under the one set of rules, shown with the last group on Shared foundation 5/7 (it
+ * holds its place, unseen, on 3/7 and 4/7), emphasized as in the main deck's value proposition.
  */
 export const ONE_SET_STATEMENT = {
   text: "Every system that helps people discover and enroll in economic security programs runs on the same rules,",
   accent: "reducing cost, duplication and error at once.",
 } as const;
+
+/**
+ * Shared foundation 3/7 to 5/7: what one open set of rules powers, built one group at a time, so the
+ * room hears not only AI tools but government and navigation tools too (Oct 26).
+ */
+export const ONE_SET_GROUPS = [
+  { id: "ai", label: "AI tools", detail: "The chatbots and assistants residents and staff already ask" },
+  {
+    id: "government",
+    label: "Government tools",
+    detail: "Eligibility systems, caseworker guidance and training, and policy changes tested before they land",
+  },
+  { id: "navigation", label: "Navigation tools", detail: "Community screeners and navigators that say what to apply for" },
+] as const;
 
 export const ONE_SET_OF_RULES = [
   { label: "AI tools", detail: "The chatbots residents and staff already ask." },
