@@ -309,13 +309,14 @@ export function AspenApp() {
             onStatus={setTryStatus}
           />
           {/* Both ratings happen here: the answer first, then two questions about the agency, right below.
-              They stay open once any answer is rated, so starting over never hides them (Ariel, Oct 23). */}
+              They stay once any answer is rated, so starting over never hides them (Ariel, Oct 23); answered,
+              they fold to one line while a new question is under way (Max, Oct 26). */}
           {tryStatus.rated && (
             <section ref={overall} aria-labelledby="aspen-overall" className="mt-12 scroll-mt-20 border-t-2 border-[var(--color-accent)] pt-6">
               <h2 id="aspen-overall" className="m-0 mb-5 font-body text-[1.4rem] font-semibold text-[var(--color-ink)]">
                 Two more, about your agency
               </h2>
-              <OverallRating key={runEpoch} stage="try" />
+              <OverallRating key={runEpoch} stage="try" fold={!tryStatus.current} />
             </section>
           )}
         </div>

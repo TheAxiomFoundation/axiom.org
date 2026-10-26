@@ -51,6 +51,61 @@ const TRUTH = { truth: "partly" };
 const RATED = { truth: "partly", agency: { residents: 1, staff: 2, you: 3 } };
 
 describe("OverallRating", () => {
+  it("folds answers given before a new question to one line, and opens them again on a tap", async () => {
+    stubFetch();
+    answered(RATED);
+    render(<OverallRating stage="try" fold />);
+    // After Start over, answered questions don't all show again under the new one (Max, Oct 26).
+    await waitFor(() => expect(screen.getByText(/Your answers are saved\./)).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "Partly" })).not.toBeInTheDocument();
+    expect(screen.queryByText("How is AI performing overall in your agency?")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Change them" }));
+    expect(screen.getByRole("button", { name: "Partly" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "For you: 3 of 5" })).toHaveAttribute("aria-pressed", "true");
+    expect(box()).toBeInTheDocument();
+  });
+
+  it("keeps questions not yet answered open through a new question, and never folds as the last is answered", async () => {
+    stubFetch();
+    answered(TRUTH);
+    render(<OverallRating stage="try" fold />);
+    // Starting over never hides what's left to answer (Ariel, Oct 23).
+    expect(await screen.findByRole("button", { name: "For residents: 2 of 5" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "For residents: 2 of 5" }));
+    fireEvent.click(screen.getByRole("button", { name: "For your staff: 2 of 5" }));
+    fireEvent.click(screen.getByRole("button", { name: "For you: 2 of 5" }));
+    // All answered under the participant's finger: the comment opens, nothing folds.
+    expect(box()).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Change them" })).not.toBeInTheDocument();
+  });
+
+  it("folds once a new question starts after they're answered, and stays folded when its answer is rated", async () => {
+    stubFetch();
+    const { rerender } = render(<OverallRating stage="try" />);
+    fireEvent.click(screen.getByRole("button", { name: "Yes" }));
+    for (const c of ["For residents", "For your staff", "For you"]) fireEvent.click(screen.getByRole("button", { name: `${c}: 4 of 5` }));
+    expect(box()).toBeInTheDocument();
+    // Start over: a new question is under way.
+    rerender(<OverallRating stage="try" fold />);
+    expect(screen.getByText(/Your answers are saved\./)).toBeInTheDocument();
+    // Its answer rated: still one line, until a tap opens it.
+    rerender(<OverallRating stage="try" />);
+    expect(screen.getByRole("button", { name: "Change them" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Change them" }));
+    expect(screen.getByRole("button", { name: "Yes" })).toHaveAttribute("aria-pressed", "true");
+    // The next new question folds them again.
+    rerender(<OverallRating stage="try" fold />);
+    expect(screen.getByRole("button", { name: "Change them" })).toBeInTheDocument();
+  });
+
+  it("stays open without a new question, through a reload, as before", async () => {
+    stubFetch();
+    answered(RATED);
+    render(<OverallRating stage="try" />);
+    expect(await screen.findByRole("button", { name: "Partly" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("button", { name: "Change them" })).not.toBeInTheDocument();
+  });
+
   it("asks one question at a time, and saves each tap as the latest answer", async () => {
     const fetchMock = stubFetch();
     render(<OverallRating stage="try" />);
