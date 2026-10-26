@@ -803,6 +803,62 @@ describe("PresenterApp navigation", () => {
     await onStage("welcome");
   });
 
+  it("shows the row that beat Start run when its second try fails, without waiting for a poll", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const { server, posts } = setup({ stage: "reveal" });
+    await screen.findByText("Run r1");
+    // A stage-only write beats the first try; the second never reaches the store.
+    server.post = async () => {
+      if (posts().length === 1) return jsonResponse({ runId: "r1", stage: "scale", live: true, updatedAt: "2026-10-27T01:00:02Z" });
+      throw new Error("offline");
+    };
+    fireEvent.click(screen.getByRole("button", { name: "New run" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "New run name" }), { target: { value: "aspen" } });
+    fireEvent.click(screen.getByRole("button", { name: "Start run" }));
+    expect(await screen.findByText("The stage did not change. Check the connection.")).toBeInTheDocument();
+    expect(posts()).toEqual([{ runId: "aspen", stage: "welcome" }, { runId: "aspen", stage: "welcome" }]);
+    // The polls still read the row from before, which the first answer is newer than.
+    await onStage("scale");
+    expect(screen.getByText("Run r1")).toBeInTheDocument();
+  });
+
+  it("names the run on screen when Start run's answer comes after a poll of a newer run", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.spyOn(window, "confirm").mockReturnValue(true);
+      const { server, posts } = setup({ stage: "reveal" });
+      const flush = () =>
+        act(async () => {
+          await vi.advanceTimersByTimeAsync(0);
+        });
+      await flush();
+      expect(screen.getByText("Run r1")).toBeInTheDocument();
+      let answer: (r: Response) => void = () => {};
+      server.post = () => new Promise<Response>((resolve) => (answer = resolve));
+      fireEvent.click(screen.getByRole("button", { name: "New run" }));
+      fireEvent.change(screen.getByRole("textbox", { name: "New run name" }), { target: { value: "aspen" } });
+      fireEvent.click(screen.getByRole("button", { name: "Start run" }));
+      await flush();
+      expect(posts()).toEqual([{ runId: "aspen", stage: "welcome" }]);
+      // Another screen's run switch to x beat Start run, and a later one moved the room to y. A poll
+      // brings y before Start run's answer, the room as it was in x, arrives.
+      server.control = { runId: "y", stage: "welcome", live: true, updatedAt: "2026-10-27T01:00:05Z" };
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+      expect(screen.getByText("Run y")).toBeInTheDocument();
+      await act(async () => {
+        answer(jsonResponse({ runId: "x", stage: "welcome", live: true, updatedAt: "2026-10-27T01:00:02Z" }));
+      });
+      await flush();
+      expect(screen.getByText("Run aspen did not start: the room is on run y.")).toBeInTheDocument();
+      expect(posts()).toHaveLength(1);
+      expect(screen.getByText("Run y")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("counts a poll that arrives with the last moves' answers before they settle, and goes back to its slide", async () => {
     vi.useFakeTimers();
     try {
