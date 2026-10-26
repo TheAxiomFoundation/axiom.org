@@ -1,10 +1,13 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { devNull, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { certificateDownloadPath, getCertificateStatus } from "../src/lib/tariff-certificate";
 import {
-  buildArtifact, CORPUS_COMMIT, CORPUS_RELEASE, EXPECTED_LINE_COUNT, pinsAvailable, renderMembershipExplanation, resolveSourcePins, RULESPEC_COMMIT,
+  buildArtifact, CERTIFICATE_FILE, CORPUS_COMMIT, CORPUS_RELEASE, EXPECTED_LINE_COUNT, pinsAvailable, renderMembershipExplanation, resolveSourcePins, RULESPEC_COMMIT,
   SOURCE_PINS, unavailablePins, type SourcePins,
 } from "./build-tariff-schedule-data";
 
@@ -17,12 +20,24 @@ type Artifact = ReturnType<typeof buildArtifact>;
 // not CI. pinsAvailable() is the same check buildArtifact() fails closed on.
 const committed = JSON.parse(readFileSync("public/downloads/tariff-schedule.json", "utf8")) as Artifact;
 const regenerable = pinsAvailable(SOURCE_PINS);
+const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 
 describe("tariff schedule artifact", () => {
   it("contains the adjudicated rated-line count and pins its sources", () => {
     expect(committed.lines).toHaveLength(EXPECTED_LINE_COUNT);
     expect(committed.metadata.rulespecCommit).toBe(RULESPEC_COMMIT);
     expect(committed.metadata.certificateSha256).toMatch(/^[0-9a-f]{64}$/);
+  });
+  // Both downloads, the page's printed SHA-256 and its download link name one
+  // certificate: the vendored file. Re-vendoring without rebuilding fails here.
+  it("names the certificate the page serves in both downloads", () => {
+    const served = sha256(readFileSync(`public${certificateDownloadPath}`));
+    expect(getCertificateStatus().sha256).toBe(served);
+    expect(committed.metadata.certificateSha256).toBe(served);
+    const rows = readFileSync("public/downloads/tariff-schedule.csv", "utf8").trimEnd().split("\n");
+    expect(rows[0]).toMatch(/,"certificate_sha256","built_at"$/);
+    expect(rows).toHaveLength(EXPECTED_LINE_COUNT + 1);
+    expect([...new Set(rows.slice(1).map((row) => row.match(/,"([0-9a-f]{64})","[^"]*"$/)?.[1]))]).toEqual([served]);
   });
   it("preserves non-ad-valorem statutory text", () => {
     const line = committed.lines.find((item) => item.generalDisposition === "specific");
@@ -157,6 +172,14 @@ describe("tariff schedule source pins", () => {
     const inside = { ...sources, rulespec: { ...sources.rulespec, path: join(sources.rulespec.path, "us") } };
     expect(pinsAvailable(inside)).toBe(true);
     expectBuiltFrom(inside);
+  });
+
+  it("records the SHA-256 of the certificate it is given, by default the vendored file", () => {
+    const sources = miniatureSources();
+    expect(buildArtifact(sources).metadata.certificateSha256).toBe(sha256(readFileSync(CERTIFICATE_FILE)));
+    fc.assert(fc.property(fc.uint8Array({ maxLength: 256 }), (bytes) => {
+      expect(buildArtifact(sources, bytes).metadata.certificateSha256).toBe(sha256(bytes));
+    }), { numRuns: 8 });
   });
 
   it("reads each pin's own checkout when the caller exports GIT_DIR", () => {
