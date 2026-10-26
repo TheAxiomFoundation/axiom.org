@@ -234,6 +234,8 @@ describe("ChatWindow composing", () => {
     expect(screen.queryByRole("button", { name: /Pick a household/ })).not.toBeInTheDocument();
     pickRetiree();
     const step = screen.getByRole("button", { name: /Pick a household/ });
+    // The tapped tile is gone, so focus moves to the step's line rather than falling to the page.
+    expect(document.activeElement).toBe(step);
     expect(step).toHaveAttribute("aria-expanded", "false");
     expect(step).toHaveTextContent("Retiree in Phoenix, Arizona");
     expect(screen.queryByRole("group", { name: "Households" })).not.toBeInTheDocument();
@@ -253,6 +255,29 @@ describe("ChatWindow composing", () => {
     pickHousehold(/Working parent of two/);
     expect(screen.getByRole("button", { name: /Pick a household/ })).toHaveTextContent(`Working parent of two, ${findHousehold("ny-parent")!.state}`);
     expect(screen.queryByRole("group", { name: "Households" })).not.toBeInTheDocument();
+  });
+
+  it("keeps an edited question when the picked household is tapped again, and only closes the list", () => {
+    const fetchMock = routeFetch({});
+    render(<ChatWindow stage="try" />);
+    pickRetiree();
+    editQuestion();
+    fireEvent.change(draftBox(), { target: { value: "My own words" } });
+    const sent = calls(fetchMock, "/api/aspen/event").length;
+    // Opening the list to check, then tapping the highlighted tile to close it, changes nothing.
+    pickRetiree();
+    expect(screen.queryByRole("group", { name: "Households" })).not.toBeInTheDocument();
+    expect(draftBox().value).toBe("My own words");
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: /Pick a household/ }));
+    expect(calls(fetchMock, "/api/aspen/event")).toHaveLength(sent);
+
+    // The blank question again keeps its text, and its box takes focus.
+    pickBlank();
+    fireEvent.change(draftBox(), { target: { value: "Can I get WIC?" } });
+    draftBox().blur();
+    pickBlank();
+    expect(draftBox().value).toBe("Can I get WIC?");
+    expect(document.activeElement).toBe(draftBox());
   });
 
   it("lists picked items by their labels, in the list's order", () => {
@@ -1062,6 +1087,8 @@ describe("ChatWindow saved conversation", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /Pick a household/ })).toHaveTextContent("A blank question"));
     expect(screen.getByRole("button", { name: "A resident" })).toHaveAttribute("aria-pressed", "true");
     expect(draftBox().value).toBe("");
+    // Restored, not picked: the box doesn't take focus, so no keyboard pops up on load.
+    expect(document.activeElement).not.toBe(draftBox());
     await waitFor(() => expect(saved()).toMatchObject({ draft: "", template: null, rated: [], perspective: "resident" }));
   });
 

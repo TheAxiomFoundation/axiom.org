@@ -254,6 +254,12 @@ export function SmallGroups({ stage }: { stage: string }) {
   );
 }
 
+/** This phone's own vote, if it's one of the choices: the group's pick to start with. */
+function votedUseCase(): string | null {
+  const voted = readStored<string>(VOTE_KEY);
+  return voted && USE_CASES.some((u) => u.id === voted) ? voted : null;
+}
+
 /**
  * Small groups: the group's pick (this phone's own vote to start with), then
  * the three questions, one box each, and an optional box for what else came
@@ -264,8 +270,7 @@ export function SmallGroups({ stage }: { stage: string }) {
 export function GroupsCard({ stage }: { stage: string }) {
   const [useCase, setUseCase] = useState<string | null>(null);
   useEffect(() => {
-    const voted = readStored<string>(VOTE_KEY);
-    if (voted && USE_CASES.some((u) => u.id === voted)) setUseCase(voted);
+    setUseCase(votedUseCase());
   }, []);
   const [answers, setAnswers] = useState<Record<(typeof GROUP_QUESTIONS)[number]["id"], string>>({ note: "", who: "", trust: "" });
   const [raised, setRaised] = useState("");
@@ -288,7 +293,11 @@ export function GroupsCard({ stage }: { stage: string }) {
         <button
           type="button"
           className={`${BUTTON_QUIET} w-full justify-between py-3 text-left text-[1rem] sm:w-auto sm:self-start`}
-          onClick={() => setFilling(true)}
+          onClick={() => {
+            // A vote cast on this screen since it opened counts too.
+            if (!useCase) setUseCase(votedUseCase());
+            setFilling(true);
+          }}
         >
           Fill it in for my group
           <span aria-hidden className="text-[var(--color-accent)]">↓</span>

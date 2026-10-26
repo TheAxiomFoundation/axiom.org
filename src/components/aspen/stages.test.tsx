@@ -171,6 +171,15 @@ describe("SmallGroups", () => {
     expect(screen.getByRole("button", { name: "Vote" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Fill it in for my group" })).toBeInTheDocument();
   });
+
+  it("starts the group's pick from a vote cast on the same screen", () => {
+    stubFetch();
+    render(<SmallGroups stage="groups" />);
+    fireEvent.click(screen.getByRole("button", { name: /Test cases against the rules/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Vote" }));
+    fireEvent.click(screen.getByRole("button", { name: "Fill it in for my group" }));
+    expect(screen.getByRole("combobox", { name: "Your group's pick" })).toHaveValue("test");
+  });
 });
 
 describe("GroupsCard", () => {
