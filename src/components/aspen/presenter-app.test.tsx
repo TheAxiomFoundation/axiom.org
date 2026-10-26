@@ -722,6 +722,9 @@ describe("PresenterApp stages", () => {
     expect(screen.getByText("1/7")).toBeInTheDocument();
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
     expect(screen.getByRole("heading", { level: 1, name: question })).toBeInTheDocument();
+    // "all" stands out in bold rust.
+    expect(within(screen.getByRole("heading", { level: 1 })).getByText("all").tagName).toBe("STRONG");
+    expect(within(screen.getByRole("heading", { level: 1 })).getByText("all")).toHaveClass("text-[var(--color-accent)]");
     expect(screen.queryByText(/In this room/)).not.toBeInTheDocument();
     expect(screen.queryByText("One open set of rules")).not.toBeInTheDocument();
     expect(screen.queryByText(/Next: how we build it/)).not.toBeInTheDocument();

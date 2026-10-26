@@ -1683,7 +1683,18 @@ function QuestionSlide({ summary, room }: { summary: RunSummary; room: boolean }
   return (
     <div className="flex h-full flex-col pt-[150px]">
       <h1 className="heading-page m-0 max-w-[1320px] text-balance" style={{ fontSize: 80, lineHeight: 1.06, ...SENTENCE }}>
-        {STAGES[stageIndex("foundation")].title}
+        {/* "all" in bold rust: the point is every tool, not one (Oct 26). */}
+        {STAGES[stageIndex("foundation")]
+          .title.split(/\b(all)\b/)
+          .map((part, i) =>
+            part === "all" ? (
+              <strong key={i} className="font-semibold text-[var(--color-accent)]">
+                all
+              </strong>
+            ) : (
+              part
+            ),
+          )}
       </h1>
       {room && answered > 0 && (
         <p className="aspen-build m-0 mt-[64px] max-w-[1250px] border-l-[6px] border-[var(--color-accent)] pl-[32px] font-body text-[40px] leading-snug text-[var(--color-ink)]">
