@@ -125,6 +125,8 @@ describe('aspen API routes', () => {
 
     // Nobody is asked who they are any more: the profile event is gone.
     expect((await event(post({ participantId: P, kind: 'profile', payload: { state: 'Arizona' } }))).status).toBe(400)
+    // The fifth choice, added on the day, is accepted like the other four; a changed vote replaces it.
+    expect((await event(post({ participantId: P, kind: 'vote', stage: 'vote', payload: { useCase: 'test' } }))).status).toBe(200)
     await event(post({ participantId: P, kind: 'vote', stage: 'vote', payload: { useCase: 'project' } }))
     expect((await event(post({ participantId: P, kind: 'vote', payload: { useCase: 'bogus' } }))).status).toBe(400)
 
@@ -201,6 +203,7 @@ describe('aspen API routes', () => {
     // Arizona's rules don't test eligibility, so the $24 is an amount if eligible, not a household that qualifies.
     expect(room.summary.viability).toMatchObject({ wouldNotApply: 1, wouldNotApplyEligible: 0, wouldNotApplyIfEligible: 1 })
     expect(room.summary.votes.find((c: { id: string }) => c.id === 'project').count).toBe(1)
+    expect(room.summary.votes.find((c: { id: string }) => c.id === 'test').count).toBe(0)
     expect(room.summary.breakouts.notes).toContainEqual({
       useCase: 'project',
       text: 'Model it',

@@ -721,7 +721,7 @@ describe("PresenterApp stages", () => {
     );
     expect(screen.getByText(/Next: how we build it, from the law as written to running code, and what it can power\./)).toBeInTheDocument();
     // The one set of rules waits until after the journey.
-    expect(screen.queryByText("One open, validated set of rules")).not.toBeInTheDocument();
+    expect(screen.queryByText("One open set of rules")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { level: 1, name: SAME_RULES.heading })).not.toBeInTheDocument();
 
     // The homepage's journey plays over the slide; Space pauses it instead of moving on.
@@ -740,7 +740,7 @@ describe("PresenterApp stages", () => {
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     expect(screen.getByText("3/4")).toBeInTheDocument();
     expect(document.querySelector(".jl-stage")).toBeNull();
-    expect(screen.getByText("One open, validated set of rules")).toBeInTheDocument();
+    expect(screen.getByText("One open set of rules")).toBeInTheDocument();
     for (const use of ONE_SET_OF_RULES) expect(screen.getByText(use.label)).toBeInTheDocument();
 
     // Then the tiers, from screener parity to Gold A.

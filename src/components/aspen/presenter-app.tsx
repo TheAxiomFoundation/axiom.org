@@ -1610,7 +1610,7 @@ function OneSetSlide({ summary }: { summary: RunSummary }) {
     <div className="flex h-full flex-col gap-[20px]">
       <div className="grid grid-cols-[440px_auto_1fr] items-stretch gap-[28px]">
         <div className="flex flex-col justify-center gap-[12px] rounded-[14px] bg-[var(--color-ink)] p-[36px] text-white">
-          <span className="font-display text-[40px] font-light leading-tight">One open, validated set of rules</span>
+          <span className="font-display text-[40px] font-light leading-tight">One open set of rules</span>
           <ul className="m-0 flex list-none flex-col gap-[10px] p-0 font-body text-[22px] leading-snug text-white/80">
             {FOUNDATION_TRAITS.map((trait) => (
               <li key={trait} className="flex gap-[12px]">

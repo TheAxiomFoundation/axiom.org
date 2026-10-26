@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { GROUP_PHONE_INTRO, DISCLOSURE, EVENT, GROUP_QUESTIONS, LOOK_UP, STAGES } from "@/lib/aspen/content";
+import { GROUP_PHONE_INTRO, DISCLOSURE, EVENT, GROUP_QUESTIONS, LOOK_UP, STAGES, USE_CASES } from "@/lib/aspen/content";
 import { Agenda, Disclosure, GroupsCard, LookUp, NextStepsForm, SmallGroups, ThankYouContent, VoteCard, WelcomeLanding } from "./stages";
 
 function jsonResponse(data: unknown, ok = true) {
@@ -136,6 +136,22 @@ describe("VoteCard", () => {
     render(<VoteCard stage="vote" />);
     expect(await screen.findByText(/You voted:/)).toHaveTextContent("Project policy changes");
     expect(screen.queryByRole("button", { name: "Vote" })).not.toBeInTheDocument();
+  });
+
+  it("offers all five choices, testing cases against the rules among them", async () => {
+    const fetchMock = stubFetch();
+    render(<VoteCard stage="vote" />);
+    const choices = within(screen.getByRole("group", { name: "Pick one" })).getAllByRole("button");
+    expect(choices.map((b) => b.querySelector("span")?.textContent)).toEqual(USE_CASES.map((u) => u.label));
+    expect(choices).toHaveLength(5);
+    fireEvent.click(screen.getByRole("button", { name: /Test cases against the rules/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Vote" }));
+    expect(screen.getByText(/You voted:/)).toHaveTextContent("Test cases against the rules");
+    await waitFor(() =>
+      expect(bodies(fetchMock, "/api/aspen/event")).toEqual([
+        { participantId: "p-1", kind: "vote", payload: { useCase: "test" }, stage: "vote" },
+      ]),
+    );
   });
 
   it("ignores a stored vote it does not know", () => {

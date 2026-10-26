@@ -676,6 +676,11 @@ export const USE_CASES = [
     label: "Create application interfaces",
     detail: "New ways to apply, on the same rules as the eligibility system.",
   },
+  {
+    id: "test",
+    label: "Test cases against the rules",
+    detail: "Run real or made-up households through the rules and check your system's answers.",
+  },
 ] as const;
 export type UseCaseId = (typeof USE_CASES)[number]["id"];
 
