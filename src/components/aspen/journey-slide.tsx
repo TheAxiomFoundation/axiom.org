@@ -309,8 +309,8 @@ export function JourneySlide({ control, atEnd = false }: { control?: RefObject<J
           >
             {mode === "canvas" ? (
               <>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
                 {/* Stepped back into, the stage waits on the last frame, not the first. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img className="jl-poster-bg" src={atEnd ? POSTER(CAPTIONS.length - 1) : STANDIN} alt="" aria-hidden />
                 <canvas ref={canvas} className={drawn ? "jl-canvas is-ready" : "jl-canvas"} role="img" aria-label={STORY_LABEL} />
                 {CAPTIONS.map((_, i) => (
