@@ -102,6 +102,10 @@ describe("the journey's stops", () => {
         expect(stepMs(0, near)).toBeLessThanOrEqual(stepMs(0, far));
       }),
     );
+    // Between the limits a longer way takes longer, not just as long.
+    expect(stepMs(0, 1.5)).toBeGreaterThan(STEP_MIN_MS);
+    expect(stepMs(0, 3.5)).toBeLessThan(STEP_MAX_MS);
+    expect(stepMs(0, 1.5)).toBeLessThan(stepMs(0, 3.5));
   });
 });
 
@@ -431,6 +435,8 @@ describe("the journey slide, with WebGL 2", () => {
     vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame"] });
     const { unmount, next } = show();
     expect(stage()!.dataset.journey).toBe("canvas");
+    // Until the first frame draws, the first still stands in.
+    expect(document.querySelector(".jl-poster-bg")).toHaveAttribute("src", "/journey/start.webp");
     expect(screen.getByRole("img", { name: STORY_LABEL }).tagName).toBe("CANVAS");
     await waitFor(() => expect(director.create).toHaveBeenCalledTimes(1));
     const opts = director.create.mock.calls[0][0];
@@ -519,6 +525,19 @@ describe("the journey slide, with WebGL 2", () => {
     fireEvent.pointerMove(canvas);
     expect(clicked).not.toHaveBeenCalled();
     expect(hovered).toHaveBeenCalled();
+    // The links sit in the stage's overlays: one reached by Tab and pressed with Enter goes nowhere either.
+    const link = document.createElement("a");
+    link.href = "/coverage";
+    document.querySelector(".jl-stage")!.lastElementChild!.appendChild(link);
+    expect(fireEvent.click(link)).toBe(false);
+  });
+
+  it("waits on the last still, not the first, when the presenter steps back into it", async () => {
+    director.create.mockResolvedValue(director.made);
+    show({ atEnd: true });
+    expect(document.querySelector(".jl-poster-bg")).toHaveAttribute("src", `/journey/posters/beat-${CAPTIONS.length}.jpg`);
+    await waitFor(() => expect(director.made.jump).toHaveBeenCalled());
+    expect(director.made.jump.mock.calls.at(-1)![0]).toBeCloseTo(TOTAL, 9);
   });
 
   it("falls back to the stills when a later scene can't be built", async () => {

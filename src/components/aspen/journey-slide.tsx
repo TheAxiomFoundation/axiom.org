@@ -225,11 +225,15 @@ export function JourneySlide({ control, atEnd = false }: { control?: RefObject<J
   const placed = box !== null && host !== null;
 
   // A click stops at the stage, before the canvas: its links would take the presenter's tab away.
-  // Hovering still shows where they go.
+  // Hovering still shows where they go. Cancelling it too keeps a link reached by Tab and Enter from
+  // following itself.
   useEffect(() => {
     const el = stage.current;
     if (!el) return;
-    const stop = (e: MouseEvent) => e.stopPropagation();
+    const stop = (e: MouseEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+    };
     el.addEventListener("click", stop, true);
     return () => el.removeEventListener("click", stop, true);
   }, [placed]);
@@ -306,7 +310,8 @@ export function JourneySlide({ control, atEnd = false }: { control?: RefObject<J
             {mode === "canvas" ? (
               <>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img className="jl-poster-bg" src={STANDIN} alt="" aria-hidden />
+                {/* Stepped back into, the stage waits on the last frame, not the first. */}
+                <img className="jl-poster-bg" src={atEnd ? POSTER(CAPTIONS.length - 1) : STANDIN} alt="" aria-hidden />
                 <canvas ref={canvas} className={drawn ? "jl-canvas is-ready" : "jl-canvas"} role="img" aria-label={STORY_LABEL} />
                 {CAPTIONS.map((_, i) => (
                   <div

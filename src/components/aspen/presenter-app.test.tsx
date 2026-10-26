@@ -810,6 +810,9 @@ describe("PresenterApp stages", () => {
     // A press before that glide lands lands it, still on the journey; the press after moves on.
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     expect(screen.getByText("6/7")).toBeInTheDocument();
+    // A held key steps once: its repeats don't run on through the slides and move the room.
+    expect(fireEvent.keyDown(document.body, { key: "ArrowRight", repeat: true })).toBe(false);
+    expect(screen.getByText("6/7")).toBeInTheDocument();
     // Captions are the presenter's own: the room doesn't move.
     expect(posts()).toEqual([]);
 

@@ -242,6 +242,8 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
       const back = ["ArrowLeft", "PageUp"].includes(e.key);
       if (!forward && !back) return;
       e.preventDefault();
+      // A held key steps once: its repeats would run through the journey and on, moving the room.
+      if (e.repeat) return;
       // On the journey the keys move its captions first, and the slides only past its first or last.
       if (onJourney && journey.current && (forward ? journey.current.next() : journey.current.back())) return;
       step(forward ? 1 : -1);
