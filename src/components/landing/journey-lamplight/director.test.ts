@@ -19,6 +19,7 @@ const kit = vi.hoisted(() => {
     calls: [] as string[],
     late: [] as string[],
     pipelines: 0,
+    polling: 0, // compiles still polling, of every director so far
     // runs inside each call, so a test can dispose in the middle of a build
     during: null as ((call: string) => void) | null,
     log(gone: boolean, call: string) {
@@ -40,12 +41,31 @@ vi.mock("../style-frames/kit", async () => {
       const log = (call: string) => kit.log(gone, call);
       return {
         setPixelRatio: () => log("setPixelRatio"),
-        setSize: () => log("setSize"),
+        setSize: (w: number, h: number) => log(`setSize ${w}x${h}`),
         initTexture: (t: { userData: { scene: number } }) => log(`initTexture ${t.userData.scene}`),
-        compileAsync: async (sc: { userData: { mock: string; index: number } }) => {
+        // as three's does: it compiles at once, then polls its programs every 10 ms
+        // until they're ready. A poll on a disposed renderer throws there, so the
+        // compile never settles; here that poll is logged as late, and stops.
+        compileAsync: (sc: { userData: { mock: string; index: number } }) => {
           log(`compileAsync ${sc.userData.mock}`);
-          await kit.gates.get(`compileAsync ${sc.userData.mock}`);
-          await wait(kit.latency.get(sc.userData.index)?.compile ?? 0);
+          let ready: boolean | Error = false;
+          Promise.resolve(kit.gates.get(`compileAsync ${sc.userData.mock}`))
+            .then(() => wait(kit.latency.get(sc.userData.index)?.compile ?? 0))
+            .then(
+              () => (ready = true),
+              (e: Error) => (ready = e),
+            );
+          kit.polling++;
+          return new Promise<void>((resolve, reject) => {
+            const poll = () => {
+              if (ready === false && !gone) return void setTimeout(poll, 10);
+              kit.polling--;
+              if (gone) log(`compile poll ${sc.userData.mock}`);
+              else if (ready === true) resolve();
+              else reject(ready);
+            };
+            setTimeout(poll, 10);
+          });
         },
         render: () => log("render"),
         setRenderTarget: () => log("setRenderTarget"),
@@ -65,8 +85,9 @@ vi.mock("../style-frames/kit", async () => {
           this.gone = true;
         },
       };
-      constructor() {
+      constructor(_: unknown, w: number, h: number) {
         kit.pipelines++;
+        kit.log(false, `pipeline ${w}x${h}`);
       }
       render(b: { scene: { userData: { mock: string } } }) {
         kit.log(this.gone, `pipeline.render ${b.scene.userData.mock}`);
@@ -132,7 +153,10 @@ beforeEach(() => {
   kit.during = null;
   process.on("unhandledRejection", unhandled);
 });
-afterEach(() => {
+afterEach(async () => {
+  // a director disposed while it compiles lets go of its renderer later: not in the next test
+  await vi.waitFor(() => expect(kit.polling).toBe(0));
+  await settle(1);
   process.off("unhandledRejection", unhandled);
   unhandled.mockReset();
   vi.restoreAllMocks();
@@ -150,9 +174,11 @@ function stage() {
   return { canvas, overlays: SPANS.map(() => document.createElement("div")) };
 }
 
-function make(opts: { onError?: (e: unknown) => void; canvas?: HTMLCanvasElement; overlays?: HTMLElement[] } = {}) {
+function make(
+  opts: { onError?: (e: unknown) => void; onFirstFrame?: () => void; canvas?: HTMLCanvasElement; overlays?: HTMLElement[] } = {},
+) {
   const where = opts.canvas ? { canvas: opts.canvas, overlays: opts.overlays! } : stage();
-  return createDirector({ ...where, width: 800, height: 450, paper: true, onError: opts.onError });
+  return createDirector({ ...where, width: 800, height: 450, paper: true, onError: opts.onError, onFirstFrame: opts.onFirstFrame });
 }
 
 /** Lets idle builds, timers and rejections run their course. */
@@ -170,6 +196,12 @@ const runFrame = async (t: number) => {
   frames.clear();
   due.forEach((f) => f(t));
   await settle(20);
+};
+/** Holds the compile logged as `call`; the function returned lets it finish. */
+const gate = (call: string) => {
+  let open!: () => void;
+  kit.gates.set(call, new Promise<void>((r) => (open = r)));
+  return () => open();
 };
 /** Runs fn inside the first renderer or pipeline call logged as `call`. */
 const at = (call: string, fn: () => void) => {
@@ -190,21 +222,51 @@ function watch(canvas: HTMLCanvasElement) {
   const clearInterval = vi.spyOn(window, "clearInterval");
   const on = vi.spyOn(canvas, "addEventListener");
   const off = vi.spyOn(canvas, "removeEventListener");
+  // a listener is removed by its type, its function and its capture flag
+  const capture = (o?: boolean | EventListenerOptions) => (typeof o === "boolean" ? o : !!o?.capture);
+  // every node the director adds to the page
+  const added: Node[] = [];
+  const page = new MutationObserver((rs) => rs.forEach((r) => added.push(...r.addedNodes)));
+  page.observe(document.body, { childList: true, subtree: true });
   return () => {
     // the glint's interval, and the pointer's three listeners
     expect(setInterval).toHaveBeenCalledTimes(1);
     for (const { value } of setInterval.mock.results) expect(clearInterval).toHaveBeenCalledWith(value);
     expect(on.mock.calls.map(([type]) => type).sort()).toEqual(["click", "pointerleave", "pointermove"]);
-    for (const [type, fn] of on.mock.calls) expect(off).toHaveBeenCalledWith(type, fn);
+    for (const [type, fn, o] of on.mock.calls) {
+      const gone = off.mock.calls.some(([t, f, p]) => t === type && f === fn && capture(p) === capture(o));
+      expect(gone, `the ${type} listener is removed`).toBe(true);
+    }
     expect(frames.size).toBe(0);
     expect(kit.calls.filter((c) => c === "dispose")).toHaveLength(1);
     expect(kit.pipelines).toBeGreaterThan(0);
     expect(kit.calls.filter((c) => c === "composer.dispose")).toHaveLength(kit.pipelines);
-    expect(canvas.parentElement!.querySelector(".jl-tip")).toBeNull();
+    // the tooltip, taken off the page
+    page.takeRecords().forEach((r) => added.push(...r.addedNodes));
+    page.disconnect();
+    expect(added).toHaveLength(1);
+    for (const n of added) expect(n.isConnected).toBe(false);
   };
 }
 
 describe("the journey's director", () => {
+  it("sizes its renderer and pipelines to its stage, and tells its caller of its first frame, once", async () => {
+    takeTime();
+    const onFirstFrame = vi.fn();
+    const d = await make({ onFirstFrame });
+    expect(kit.calls.filter((c) => /^(setSize|pipeline) /.test(c))).toEqual(["setSize 800x450", "pipeline 800x450", "pipeline 800x450"]);
+    expect(onFirstFrame).not.toHaveBeenCalled();
+    await runFrame(1000);
+    expect(kit.calls).toContain("render");
+    expect(onFirstFrame).toHaveBeenCalledTimes(1);
+    d.jump(1);
+    await runFrame(1100);
+    expect(onFirstFrame).toHaveBeenCalledTimes(1);
+    d.resize(640, 360);
+    expect(kit.calls.filter((c) => c.startsWith("setSize")).at(-1)).toBe("setSize 640x360");
+    d.dispose();
+  });
+
   it("reports a scene that fails after the first, once, builds the others, and leaves no rejection unhandled", async () => {
     kit.fail.add(2);
     const onError = vi.fn();
@@ -257,6 +319,15 @@ describe("the journey's director lets go of what it set up", () => {
     const { canvas, overlays } = stage();
     const released = watch(canvas);
     const d = await make({ canvas, overlays });
+    d.dispose();
+    released();
+  });
+
+  it("once, if disposed twice", async () => {
+    const { canvas, overlays } = stage();
+    const released = watch(canvas);
+    const d = await make({ canvas, overlays });
+    d.dispose();
     d.dispose();
     released();
   });
@@ -320,15 +391,26 @@ describe("the journey's director, once disposed", () => {
     await idleStep(); // scene 0, already built at the start
     await idleStep(); // scene 1
     expect(kit.made).toEqual([0, 1]);
-    expect(idles).toHaveLength(1); // waits to build scene 2
+    await vi.waitFor(() => expect(idles).toHaveLength(1)); // waits to build scene 2
     d.dispose();
     await runIdle();
     expect(kit.made).toEqual([0, 1]);
     expect(kit.late).toEqual([]);
   });
 
+  // three's compile polls the renderer until its programs are ready, so the
+  // renderer is let go only once the compile is done
+  const midCompile = (call: string) => (d: Director) => {
+    const open = gate(call);
+    return async () => {
+      await vi.waitFor(() => expect(kit.calls).toContain(call));
+      d.dispose();
+      expect(kit.calls).not.toContain("dispose");
+      open();
+    };
+  };
   // where in a scene's build the director is disposed, and what lets the build go on
-  const MID_BUILD: Array<[string, (d: Director) => (() => void) | void]> = [
+  const MID_BUILD: Array<[string, (d: Director) => (() => Promise<void> | void) | void]> = [
     [
       "while it waits for its assets",
       (d) => {
@@ -352,8 +434,8 @@ describe("the journey's director, once disposed", () => {
         });
       },
     ],
-    ["as its meshes compile", (d) => at("compileAsync 1 scene", () => d.dispose())],
-    ["as its particles compile", (d) => at("compileAsync 1 fx", () => d.dispose())],
+    ["as its meshes compile", midCompile("compileAsync 1 scene")],
+    ["as its particles compile", midCompile("compileAsync 1 fx")],
   ];
   it.each(MID_BUILD)("stops a build in flight %s, before it touches the renderer again", async (_, arm) => {
     takeTime();
@@ -362,12 +444,36 @@ describe("the journey's director, once disposed", () => {
     const release = arm(d);
     await idleStep(); // scene 0, already built at the start
     await idleStep(); // scene 1 starts
-    release?.();
+    await release?.();
+    await vi.waitFor(() => expect(kit.calls).toContain("dispose"));
     await settle();
-    expect(kit.calls).toContain("dispose");
+    expect(kit.calls.filter((c) => c === "dispose")).toHaveLength(1);
     expect(kit.made).toEqual([0, 1]);
     expect(kit.late).toEqual([]);
     expect(onError).not.toHaveBeenCalled();
+    expect(unhandled).not.toHaveBeenCalled();
+  });
+
+  it("lets go of its renderer only once the last compile in flight is done", async () => {
+    takeTime();
+    const d = await make();
+    const open = [gate("compileAsync 1 scene"), gate("compileAsync 2 scene")];
+    // what waits on the scenes hears that they won't come
+    const prepared = d.prepareAll().then(
+      () => "built",
+      (e: Error) => e.message,
+    );
+    await vi.waitFor(() => expect(kit.calls).toEqual(expect.arrayContaining(["compileAsync 1 scene", "compileAsync 2 scene"])));
+    d.dispose();
+    open[0]();
+    await settle();
+    expect(kit.calls).not.toContain("dispose");
+    open[1]();
+    await vi.waitFor(() => expect(kit.calls).toContain("dispose"));
+    expect(await prepared).toBe("journey: the director was disposed");
+    await settle();
+    expect(kit.calls.filter((c) => c === "dispose")).toHaveLength(1);
+    expect(kit.late).toEqual([]);
     expect(unhandled).not.toHaveBeenCalled();
   });
 
@@ -465,7 +571,10 @@ describe("the journey's director, once disposed", () => {
           // whatever is still queued gets its chance
           await runIdle();
           await run({ kind: "frame", ms: 16 });
+          // the renderer is let go once, when the last compile in flight is done
+          await vi.waitFor(() => expect(kit.calls).toContain("dispose"));
           await settle(20);
+          expect(kit.calls.filter((c) => c === "dispose")).toHaveLength(1);
           expect(kit.late).toEqual([]);
           expect(kit.made).toHaveLength(then!.made);
           expect(onError).toHaveBeenCalledTimes(then!.reported);

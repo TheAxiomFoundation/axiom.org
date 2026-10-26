@@ -198,6 +198,18 @@ export async function createDirector(opts: {
   const live = () => {
     if (dead) throw new Error("journey: the director was disposed");
   };
+  // compiles in flight. three polls a compile's programs until they're
+  // ready, and a renderer disposed under that poll throws from it, so a
+  // disposed director lets go of its renderer once the last one is done
+  let compiling = 0;
+  const compile = async (sc: THREE.Object3D, cam: THREE.Camera) => {
+    compiling++;
+    try {
+      await renderer.compileAsync(sc, cam);
+    } finally {
+      if (--compiling === 0 && dead) renderer.dispose();
+    }
+  };
   // a scene's first frame must not pay for its setup: upload its textures,
   // compile its shaders and run it once through the post chain, all before
   // the reader gets there
@@ -230,9 +242,9 @@ export async function createDirector(opts: {
     const hidden: THREE.Object3D[] = [];
     [b.scene, b.fx].forEach((sc) => sc.traverse((o) => !o.visible && hidden.push(o)));
     hidden.forEach((o) => (o.visible = true));
-    await renderer.compileAsync(b.scene, b.camera);
+    await compile(b.scene, b.camera);
     live();
-    await renderer.compileAsync(b.fx, b.camera);
+    await compile(b.fx, b.camera);
     live();
     // and draw it all once, in view or not, so every pass (shadows, depth,
     // colour) has its shaders and buffers before the reader gets there
@@ -486,6 +498,7 @@ export async function createDirector(opts: {
   // everything the director holds, let go by dispose(), or here by a start
   // that fails: its caller never gets a director to dispose
   const release = () => {
+    if (dead) return;
     dead = true;
     window.clearInterval(glintTimer);
     canvas.removeEventListener("pointermove", onMove);
@@ -495,7 +508,8 @@ export async function createDirector(opts: {
     if (raf) cancelAnimationFrame(raf);
     pa.composer.dispose();
     pb.composer.dispose();
-    renderer.dispose();
+    // a compile in flight lets go of it when it's done (see compile)
+    if (!compiling) renderer.dispose();
   };
   try {
     await build(0);
