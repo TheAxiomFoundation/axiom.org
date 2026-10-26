@@ -112,12 +112,12 @@ describe("OverallRating", () => {
     expect(screen.queryByRole("button", { name: "Change them" })).not.toBeInTheDocument();
     first.unmount();
 
-    // Only the first question's save failed: no comment waits to save, and it still asks for the tap again.
-    answered({ ...RATED, unsaved: { survey: true } });
+    // Only the first question's save failed; the comment is saved, so it isn't waiting to save. It still asks for the tap again.
+    answered({ ...RATED, comment: "Too slow", unsaved: { survey: true } });
     const second = render(<OverallRating stage="try" fold />);
     expect(await screen.findByText("That didn't save. Tap it again.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Partly" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.queryByRole("button", { name: "Save comment" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Comment saved" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Change them" })).not.toBeInTheDocument();
     second.unmount();
 
