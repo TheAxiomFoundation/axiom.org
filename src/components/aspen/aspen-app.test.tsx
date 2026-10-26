@@ -184,6 +184,7 @@ describe("AspenApp following the presenter", () => {
       ],
     };
     render(<AspenApp />);
+    await roomAnswered();
     fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
     await onView("reveal");
     expect(await screen.findByText("4 of 9")).toBeInTheDocument();
@@ -390,6 +391,7 @@ describe("AspenApp without a live presenter", () => {
       rated: ["p"],
     });
     render(<AspenApp />);
+    await roomAnswered();
     fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
     await onView("try");
     await waitFor(() => expect(nextTo("reveal")).toBeEnabled());
@@ -463,6 +465,7 @@ describe("AspenApp without a live presenter", () => {
   it("keeps the two agency questions open after Start over, and Next open", async () => {
     storeChat(RATED_CHAT);
     render(<AspenApp />);
+    await roomAnswered();
     fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
     await onView("try");
     expect(await screen.findByRole("heading", { name: "Two more, about your agency" })).toBeInTheDocument();
@@ -475,6 +478,7 @@ describe("AspenApp without a live presenter", () => {
 
   it("asks the two agency questions right under the chat, once the answer is rated", async () => {
     render(<AspenApp />);
+    await roomAnswered();
     fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
     await onView("try");
     // Nothing before the answer is rated.
@@ -485,6 +489,7 @@ describe("AspenApp without a live presenter", () => {
     const scrollIntoView = vi.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
     render(<AspenApp />);
+    await roomAnswered();
     fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
     await onView("try");
     expect(await screen.findByRole("heading", { name: "Two more, about your agency" })).toBeInTheDocument();
@@ -516,6 +521,7 @@ describe("AspenApp look-up moments", () => {
   it("shows the same card whether or not this phone asked, with no thread back to Try it", async () => {
     storeChat({ ...RATED_CHAT, householdId: "ct-couple", rated: [] });
     render(<AspenApp />);
+    await roomAnswered();
     fireEvent.click(nav().getByRole("button", { name: /At scale/ }));
     await onView("scale");
     expect(lookUp().getByText("42%")).toBeInTheDocument();
@@ -533,6 +539,7 @@ describe("AspenApp look-up moments", () => {
     for (const id of ["reveal", "scale", "foundation"] as const) {
       cleanup();
       render(<AspenApp />);
+      await roomAnswered();
       const label = STAGES.find((st) => st.id === id)!.label;
       fireEvent.click(nav().getByRole("button", { name: new RegExp(label) }));
       await onView(id);
