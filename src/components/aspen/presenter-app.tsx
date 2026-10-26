@@ -93,11 +93,11 @@ const JOURNEY_HEADING = "From the law as written to running code";
  * - the question on its own, then again with the room's answer building in below it;
  * - one open set of rules feeding every tool, and the statement that every system runs on it;
  * - the journey, which shows how the rules get built and what they power;
- * - what the rules enable for a government, and a prompt for the room's own ideas;
- * - the tiers, from screener parity to Gold A.
- * The one-set, same-rules and pipeline slides stay below, off the deck, in case they come back.
+ * - what the rules enable for a government, and a prompt for the room's own ideas.
+ * The tiers moved to Next steps, after the room says what it would build. The one-set, same-rules
+ * and pipeline slides stay below, off the deck, in case they come back.
  */
-const FOUNDATION_SLIDES = ["question", "question-room", "rules", "journey", "enable", "tiers"] as const;
+const FOUNDATION_SLIDES = ["question", "question-room", "rules", "journey", "enable"] as const;
 type FoundationSlideId = (typeof FOUNDATION_SLIDES)[number];
 
 /** Slides that set their own heading, with no title bar above them. */
@@ -109,12 +109,13 @@ const SLIDE_TITLES: Partial<Record<StageId, Record<number, string>>> = {
   foundation: {
     [FOUNDATION_SLIDES.indexOf("journey")]: JOURNEY_HEADING,
     [FOUNDATION_SLIDES.indexOf("enable")]: SAME_RULES.heading,
-    [FOUNDATION_SLIDES.indexOf("tiers")]: BUILD_HEADING,
   },
+  // Next steps opens on how the rules get built, after the room's own ideas in Small groups (Oct 26).
+  next: { 0: BUILD_HEADING },
 };
 
 /** Stages shown as more than one slide; the arrows step through them before moving the room. */
-const SLIDES: Partial<Record<StageId, number>> = { reveal: 2, scale: 7, foundation: FOUNDATION_SLIDES.length, groups: 2 };
+const SLIDES: Partial<Record<StageId, number>> = { reveal: 2, scale: 7, foundation: FOUNDATION_SLIDES.length, groups: 2, next: 2 };
 const slideCount = (id: StageId) => SLIDES[id] ?? 1;
 
 /** The largest scale at which the 16:9 canvas fits the window. */
@@ -291,7 +292,7 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
                     <ToolSlide key="tool" />,
                     <LiveDemoSlide key="live-demo" />,
                   ][sub]}
-                {/* Shared foundation: the question, the room's answer, the one set of rules, the journey, what it enables, the tiers. */}
+                {/* Shared foundation: the question, the room's answer, the one set of rules, the journey, what it enables. */}
                 {stage === "foundation" &&
                   {
                     question: <QuestionSlide key="question" summary={summary} room={false} />,
@@ -299,11 +300,11 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
                     rules: <RulesSlide key="rules" />,
                     journey: <JourneySlide key="journey" />,
                     enable: <EnableSlide key="enable" />,
-                    tiers: <TiersSlide key="tiers" />,
                   }[FOUNDATION_SLIDES[sub]]}
                 {stage === "groups" &&
                   (sub === 0 ? <VoteSlide votes={summary.votes} /> : <GroupsSlide summary={summary} />)}
-                {stage === "next" && <NextSlide />}
+                {/* Next steps: the tiers, from screener parity to Gold A, then the ask and the form. */}
+                {stage === "next" && (sub === 0 ? <TiersSlide /> : <NextSlide />)}
                 {stage === "dinner" && <ThankYouSlide />}
               </div>
             </div>
@@ -1963,7 +1964,7 @@ function PipelineSlide() {
 }
 
 /**
- * Shared foundation, slide 4: how a shared foundation gets built, from public
+ * Next steps 1/2: how a shared foundation gets built, from public
  * documents to Gold A. Cards share the grid's rows (subgrid), so medallions,
  * names, what a state gets and "It takes" line up across all three.
  */
