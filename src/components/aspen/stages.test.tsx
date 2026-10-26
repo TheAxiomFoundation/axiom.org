@@ -139,12 +139,13 @@ describe("VoteCard", () => {
     expect(screen.queryByRole("button", { name: "Vote" })).not.toBeInTheDocument();
   });
 
-  it("offers all five choices, testing cases against the rules among them", async () => {
+  it("offers the four choices, one per group, testing cases against the rules among them", async () => {
     const fetchMock = stubFetch();
     render(<VoteCard stage="vote" />);
     const choices = within(screen.getByRole("group", { name: "Pick one" })).getAllByRole("button");
     expect(choices.map((b) => b.querySelector("span")?.textContent)).toEqual(USE_CASES.map((u) => u.label));
-    expect(choices).toHaveLength(5);
+    expect(choices).toHaveLength(4);
+    expect(screen.queryByRole("button", { name: /Create application interfaces/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Test cases against the rules/ }));
     fireEvent.click(screen.getByRole("button", { name: "Vote" }));
     expect(screen.getByText(/You voted:/)).toHaveTextContent("Test cases against the rules");
