@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   DEMO_NOTE,
   HOUSEHOLDS,
@@ -62,6 +62,71 @@ const STEP = "mb-3 flex items-center gap-2.5 font-body text-[1.08rem] font-semib
 /** The quieter part of a step heading, such as "(optional)". */
 const STEP_NOTE = "font-normal text-[var(--color-ink-muted)]";
 export { CHAT_KEY };
+
+/** The labels of the picked items, in the list's order: what a closed step shows. */
+export function labelsOf(items: readonly { id: string; label: string }[], picked: readonly string[]): string {
+  return items
+    .filter((item) => picked.includes(item.id))
+    .map((item) => item.label)
+    .join(", ");
+}
+
+/**
+ * A step that opens on a tap: its numbered heading, then, while closed, what's picked in it.
+ * Phones see one step's choices at a time instead of every chip at once (the dry run, Oct 25).
+ */
+function OpenStep({
+  id,
+  number,
+  title,
+  note,
+  summary,
+  open,
+  onToggle,
+  children,
+}: {
+  id: string;
+  number: number | null;
+  title: string;
+  note: string;
+  summary: string;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  const panel = `aspen-step-${id}`;
+  return (
+    <div className="border-t border-[var(--color-rule)] pt-4">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={panel}
+        onClick={onToggle}
+        className="flex w-full items-start gap-2.5 rounded-lg text-left focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
+      >
+        <span className={STEP_NUMBER}>{number}</span>
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="font-body text-[1.08rem] font-semibold text-[var(--color-ink)]">
+            {title} <span className={STEP_NOTE}>{note}</span>
+          </span>
+          {!open && <span className="font-body text-[0.95rem] text-[var(--color-ink-secondary)]">{summary}</span>}
+        </span>
+        <svg
+          aria-hidden
+          viewBox="0 0 16 16"
+          className={`mt-1.5 h-4 w-4 flex-none text-[var(--color-ink-muted)] transition-transform ${open ? "rotate-180" : ""}`}
+        >
+          <path d="M3 6l5 5 5-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open && (
+        <div id={panel} className="mt-3">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export interface SavedChat {
   perspective: PerspectiveId;
@@ -139,18 +204,22 @@ export function ChatWindow({
   const [rated, setRated] = useState<Set<string>>(new Set());
   // After the first answer the follow-up box stays closed, so rating comes next.
   const [followUp, setFollowUp] = useState(false);
-  // A picked household asks its question as written; details, question type and edits open on request.
+  // A picked household asks its question as written. Its details and questions each open on a tap, one
+  // at a time, and show what's picked while closed (the dry run, Oct 25); the question opens for editing.
+  const [open, setOpen] = useState<"details" | "questions" | null>(null);
   const [editing, setEditing] = useState(false);
-  // "Change the question" goes away when pressed; focus moves to the details it opens, not to the page.
-  const detailsLegend = useRef<HTMLLegendElement>(null);
-  const focusDetails = useRef(false);
-  useEffect(() => {
-    if (!editing || !focusDetails.current) return;
-    focusDetails.current = false;
-    detailsLegend.current?.focus({ preventScroll: true });
-  }, [editing]);
-  const threadEnd = useRef<HTMLDivElement>(null);
   const draftBox = useRef<HTMLTextAreaElement>(null);
+  // "Edit the question" goes away when pressed; focus moves to the box it opens, not to the page.
+  const focusDraft = useRef(false);
+  useEffect(() => {
+    if (!editing || !focusDraft.current) return;
+    focusDraft.current = false;
+    draftBox.current?.focus();
+  }, [editing]);
+  // A question just sent moves to the top of the screen, so its answer reads from the start. Without
+  // this, Chrome on Android anchors the scroll as the composer above it closes, and lands on "Ask a
+  // follow-up" (the dry run, Oct 25).
+  const scrollTo = useRef<string | null>(null);
   const ratingBox = useRef<HTMLElement>(null);
   const chatCard = useRef<HTMLDivElement>(null);
   // False until the saved conversation is read, so the first render never overwrites it.
@@ -219,7 +288,7 @@ export function ChatWindow({
   const household = findHousehold(householdId);
   // Steps number in the order they show: details, questions and the editable question open under "Change the question".
   const step = household
-    ? { askAs: 1, household: 2, details: 3, question: 4, draft: editing ? 5 : 3 }
+    ? { askAs: 1, household: 2, details: 3, question: 4, draft: 5 }
     : { askAs: 1, household: 2, details: null, question: null, draft: 3 };
   // A household's question shows as written until the participant opens it to change it.
   const preview = !started && Boolean(household) && !editing;
@@ -267,6 +336,7 @@ export function ChatWindow({
   function startOver() {
     setFollowUp(false);
     setEditing(false);
+    setOpen(null);
     setTurns([]);
     setConversationId(newId());
     setHouseholdId(null);
@@ -292,6 +362,7 @@ export function ChatWindow({
       { key: userKey, role: "user", content: text },
       { key: answerKey, role: "assistant", content: "", status: "streaming", statusText: "Thinking" },
     ]);
+    scrollTo.current = userKey;
     setDraft("");
     setFollowUp(false);
     setSending(true);
@@ -349,7 +420,6 @@ export function ChatWindow({
       update({ status: "error", content: "The connection dropped. Try again." });
     } finally {
       setSending(false);
-      requestAnimationFrame(() => threadEnd.current?.scrollIntoView?.({ behavior: "smooth", block: "nearest" }));
     }
   }
 
@@ -456,12 +526,17 @@ export function ChatWindow({
                 </button>
               </div>
             </fieldset>
-            {household && editing && (
-              <fieldset className="m-0 border-0 border-t border-[var(--color-rule)] p-0 pt-4">
-                <legend ref={detailsLegend} tabIndex={-1} className={`${STEP} float-left w-full outline-none`}>
-                  <span className={STEP_NUMBER}>{step.details}</span>Add details <span className={STEP_NOTE}>(optional)</span>
-                </legend>
-                <div role="group" aria-label="Details" className="clear-left flex flex-col gap-3">
+            {household && (
+              <OpenStep
+                id="details"
+                number={step.details}
+                title="Add details"
+                note="(optional)"
+                summary={labelsOf(twistsFor(household), twists) || "None added"}
+                open={open === "details"}
+                onToggle={() => setOpen((o) => (o === "details" ? null : "details"))}
+              >
+                <div role="group" aria-label="Details" className="flex flex-col gap-3">
                   {TWIST_GROUPS.map((g) => {
                     const items = twistsFor(household).filter((t) => t.group === g.id);
                     if (!items.length) return null;
@@ -487,15 +562,19 @@ export function ChatWindow({
                     );
                   })}
                 </div>
-              </fieldset>
+              </OpenStep>
             )}
-            {household && editing && (
-              <fieldset className="m-0 border-0 border-t border-[var(--color-rule)] p-0 pt-4">
-                <legend className={`${STEP} float-left w-full`}>
-                  <span className={STEP_NUMBER}>{step.question}</span>What do you want to know?{" "}
-                  <span className={STEP_NOTE}>(pick one or more)</span>
-                </legend>
-                <div role="group" aria-label="Question" className="clear-left flex flex-wrap gap-2">
+            {household && (
+              <OpenStep
+                id="questions"
+                number={step.question}
+                title="What do you want to know?"
+                note="(pick one or more)"
+                summary={labelsOf(QUESTIONS, questionIds)}
+                open={open === "questions"}
+                onToggle={() => setOpen((o) => (o === "questions" ? null : "questions"))}
+              >
+                <div role="group" aria-label="Question" className="flex flex-wrap gap-2">
                   {QUESTIONS.map((q) => (
                     <Chip key={q.id} selected={questionIds.includes(q.id)} onClick={() => pick({ q: q.id })}>
                       {questionIds.includes(q.id) ? "✓ " : ""}
@@ -503,7 +582,7 @@ export function ChatWindow({
                     </Chip>
                   ))}
                 </div>
-              </fieldset>
+              </OpenStep>
             )}
           </div>
         )}
@@ -514,7 +593,12 @@ export function ChatWindow({
               turn.role === "user" ? (
                 <div
                   key={turn.key}
-                  className="ml-auto max-w-[90%] whitespace-pre-wrap break-words rounded-2xl rounded-br-sm bg-[var(--color-ink)] px-4 py-2.5 font-body text-[1rem] leading-relaxed text-white"
+                  ref={(el) => {
+                    if (!el || scrollTo.current !== turn.key) return;
+                    scrollTo.current = null;
+                    el.scrollIntoView?.({ block: "start" });
+                  }}
+                  className="ml-auto max-w-[90%] scroll-mt-24 whitespace-pre-wrap break-words rounded-2xl rounded-br-sm bg-[var(--color-ink)] px-4 py-2.5 font-body text-[1rem] leading-relaxed text-white"
                 >
                   {turn.content}
                 </div>
@@ -577,7 +661,6 @@ export function ChatWindow({
                 </div>
               ),
             )}
-            <div ref={threadEnd} />
           </div>
         )}
 
@@ -622,11 +705,11 @@ export function ChatWindow({
                   type="button"
                   className="aspen-link self-start font-body text-[1rem] font-medium"
                   onClick={() => {
-                    focusDetails.current = true;
+                    focusDraft.current = true;
                     setEditing(true);
                   }}
                 >
-                  Change the question
+                  Edit the question
                 </button>
               </div>
             ) : (

@@ -308,14 +308,15 @@ describe("PresenterApp navigation", () => {
     expect(screen.getByText(EXAMPLE_HOUSEHOLD.title)).toBeInTheDocument();
     // The summary shows on the first slide only.
     expect(screen.queryByText(STAGES.find((st) => st.id === "scale")!.summary)).not.toBeInTheDocument();
+    // What the models miss comes straight after the household it explains (the dry run, Oct 25).
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     expect(screen.getByText("3/7")).toBeInTheDocument();
-    expect(screen.getByText(WHERE_MODELS_BREAK.title)).toBeInTheDocument();
-    fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("4/7")).toBeInTheDocument();
     for (const q of WHAT_MODELS_MISS.quotes) expect(screen.getByText(q.model)).toBeInTheDocument();
     // The Arizona review flag is gone: the example moved to Connecticut (d1919).
     expect(screen.queryByRole("note")).not.toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("4/7")).toBeInTheDocument();
+    expect(screen.getByText(WHERE_MODELS_BREAK.title)).toBeInTheDocument();
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     expect(screen.getByText("5/7")).toBeInTheDocument();
     // The last slide turns the stage from the problem to the fix.
@@ -378,13 +379,14 @@ describe("PresenterApp navigation", () => {
     expect(posts()).toEqual([{ stage: "scale" }, { stage: "foundation" }, { stage: "scale" }, { stage: "reveal" }]);
   });
 
-  it("shows no review flag on At scale 4/7, even with ?review", async () => {
+  it("shows no review flag on What the models miss (At scale 3/7), even with ?review", async () => {
     window.history.pushState({}, "", "/aspen/present?review");
     try {
       setup({ stage: "scale" });
       await onStage("scale");
-      for (let i = 0; i < 3; i++) fireEvent.keyDown(document.body, { key: "ArrowRight" });
-      expect(screen.getByText("4/7")).toBeInTheDocument();
+      for (let i = 0; i < 2; i++) fireEvent.keyDown(document.body, { key: "ArrowRight" });
+      expect(screen.getByText("3/7")).toBeInTheDocument();
+      expect(screen.getByText(WHAT_MODELS_MISS.title)).toBeInTheDocument();
       expect(screen.queryByRole("note")).not.toBeInTheDocument();
     } finally {
       window.history.pushState({}, "", "/");
@@ -398,7 +400,8 @@ describe("PresenterApp stages", () => {
     await onStage(id);
     if (id !== "welcome" && id !== "dinner") {
       const index = STAGES.findIndex((s) => s.id === id);
-      expect(screen.getByText(`${String(index + 1).padStart(2, "0")} · ${STAGES[index].label}`)).toBeInTheDocument();
+      // No eyebrow over the heading (the dry run, Oct 25).
+      expect(screen.queryByText(`${String(index + 1).padStart(2, "0")} · ${STAGES[index].label}`)).not.toBeInTheDocument();
       if (STAGES[index].summary) expect(screen.getByText(STAGES[index].summary)).toBeInTheDocument();
     }
   });
@@ -453,6 +456,10 @@ describe("PresenterApp stages", () => {
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     await waitFor(() => expect(screen.getByText(/rated AI overall/)).toHaveTextContent("3 people have rated AI overall"));
     expect(screen.getByText("2.0")).toBeInTheDocument();
+    // The scale's ends sit under the ends of the bar, in the bar's column (the dry run, Oct 25).
+    const low = screen.getByText("1 · Not well");
+    expect(screen.getByText("Very well · 5").parentElement).toBe(low.parentElement);
+    expect(low.parentElement).toHaveClass("col-start-2");
     // Old ratings of the retired grid never show or count.
     expect(screen.queryByText("Got the amount right")).not.toBeInTheDocument();
     cleanup();
@@ -577,9 +584,12 @@ describe("PresenterApp stages", () => {
     // The panel label says "SNAP for 2026", so the big number doesn't repeat the year (Pavel's review).
     expect(screen.queryByText("in 2026")).not.toBeInTheDocument();
     expect(screen.getByText(/\$24 a month under the benchmark's July 2026 rules \(FY2026 standards\)\./)).toBeInTheDocument();
-    expect(screen.getByText("PolicyEngine's reference in PolicyBench")).toBeInTheDocument();
+    // "The true benefit", with an asterisk to the note on which rules (the dry run, Oct 25).
+    expect(screen.getByText("The true benefit*")).toBeInTheDocument();
+    expect(screen.getByText(/^\*The reference answer in PolicyBench, our benchmark: \$24 a month/)).toBeInTheDocument();
     expect(screen.getByText(/The minimum rose to \$25 on October 1, so 2026 comes to \$291 under current law\./)).toBeInTheDocument();
     expect(screen.getByText("from 42 of 49 AI models · 1 matched exactly")).toBeInTheDocument();
+    expect(screen.getByText("Each model's answer for the year, one per model")).toBeInTheDocument();
     // One tile per model: 42 at $0, the one right answer, four at FY2025's $23 a month, and one that didn't parse.
     const tiles = within(screen.getByRole("group", { name: /^50 models: 42 said \$0, 1 said \$288, 6 gave other amounts, 1 gave no answer$/ })).getAllByRole("listitem");
     expect(tiles).toHaveLength(50);
@@ -596,19 +606,14 @@ describe("PresenterApp stages", () => {
     expect(exact.className).toContain("font-semibold");
     expect(other.className).not.toContain("color-accent");
 
+    // What the models miss, next: the rule alone, with no amount, since the room knows BBCE (the dry run, Oct 25).
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("4/7")).toBeInTheDocument();
-    expect(screen.getByText("$288")).toBeInTheDocument();
-    expect(screen.getByText("in 2026")).toBeInTheDocument();
-    expect(screen.getByText(/\$24 a month under the benchmark's July 2026 rules \(FY2026 standards\)\./)).toBeInTheDocument();
-    expect(screen.getByText("PolicyEngine's reference in PolicyBench")).toBeInTheDocument();
-    expect(screen.getByText(/The minimum rose to \$25 on October 1, so 2026 comes to \$291 under current law\./)).toBeInTheDocument();
-    // Connecticut's limit and its missing asset test, and the minimum as a floor, not the amount.
-    expect(screen.getByText(/gross income up to 200% of the poverty line and sets no asset limit/)).toBeInTheDocument();
-    expect(screen.getByText(/Covered households skip SNAP's net income and asset tests, so the \$48,000 doesn't count\./)).toBeInTheDocument();
-    expect(screen.getByText(/Net income still sets the amount, and a household of one or two gets at least the minimum benefit\./)).toBeInTheDocument();
-    expect(screen.getByText(/USDA FNA BBCE chart, June 2026 · USDA SNAP FY2027 COLA memo, Aug 21, 2026 · PolicyBench, Oct 14, 2026/)).toBeInTheDocument();
+    expect(screen.getByText("3/7")).toBeInTheDocument();
+    expect(screen.getByText(WHAT_MODELS_MISS.rule)).toBeInTheDocument();
+    expect(screen.getByText(/so they skip the net income test both models used\. They qualify\.$/)).toBeInTheDocument();
+    expect(screen.queryByText(/\$288/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/a month under the benchmark's July 2026 rules/)).not.toBeInTheDocument();
+    expect(screen.getByText("7 CFR 273.2(j)(2) · USDA FNA BBCE chart, June 2026 · PolicyBench, Oct 14, 2026")).toBeInTheDocument();
     expect(screen.queryByText(/Arizona/)).not.toBeInTheDocument();
   });
 
@@ -827,8 +832,8 @@ describe("PresenterApp stages", () => {
   it("shows each PolicyBench slide's source, without the PolicyEngine disclosure", async () => {
     setup({ stage: "scale" });
     await onStage("scale");
-    // Slides 2 to 4 are Max's PolicyBench slides.
-    for (const source of [EXAMPLE_HOUSEHOLD.source, WHERE_MODELS_BREAK.source, WHAT_MODELS_MISS.sources]) {
+    // Slides 2 to 4 are Max's PolicyBench slides: the household, what the models miss on it, then where they break.
+    for (const source of [EXAMPLE_HOUSEHOLD.source, WHAT_MODELS_MISS.sources, WHERE_MODELS_BREAK.source]) {
       fireEvent.keyDown(document.body, { key: "ArrowRight" });
       expect(screen.getByText(source)).toBeInTheDocument();
       expect(screen.queryByText(/CEO of both/)).not.toBeInTheDocument();

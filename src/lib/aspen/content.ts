@@ -90,7 +90,7 @@ export const STAGES: readonly Stage[] = [
     label: "At scale",
     title: "AI gets it wrong at scale",
     agenda: "PolicyBench: 50 AI models on SNAP.",
-    summary: "We asked 50 AI models to calculate SNAP for households sampled from PolicyEngine's US microdata.",
+    summary: "We asked 50 AI models to calculate SNAP for households sampled from US microdata.",
   },
   {
     id: "foundation",
@@ -788,7 +788,7 @@ export const POLICYBENCH = {
 /** Where models still break: accuracy by program, for households owed money and households owed $0. */
 export const WHERE_MODELS_BREAK = {
   title: "Where models still break",
-  note: "Share of model answers within 10% of PolicyEngine's reference amount (within $1 for households owed $0)",
+  note: "Share of model answers within 10% of the reference amount (within $1 for households owed $0)",
   source:
     "policybench.org, October 14, 2026 · 50 models, no tools · income taxes before refundable credits · TANF (1 household) and SSI (2) omitted",
   rows: [
@@ -835,11 +835,9 @@ export const WHAT_MODELS_MISS = {
     },
   ],
   ruleLabel: "Broad-based categorical eligibility",
-  rule: "Connecticut's broad-based categorical eligibility covers households with gross income up to 200% of the poverty line and sets no asset limit. Covered households skip SNAP's net income and asset tests, so the $48,000 doesn't count. Net income still sets the amount, and a household of one or two gets at least the minimum benefit.",
-  amount: 288,
-  amountLabel: "PolicyEngine's reference in PolicyBench",
-  sources:
-    "7 CFR 273.2(j)(2) · USDA FNA BBCE chart, June 2026 · USDA SNAP FY2027 COLA memo, Aug 21, 2026 · PolicyBench, Oct 14, 2026",
+  /** The room knows BBCE, so the slide says only what it does here (the dry run, Oct 25). */
+  rule: "Connecticut covers gross income up to 200% of poverty, with no asset limit. This couple is under that line, so they skip the net income test both models used. They qualify.",
+  sources: "7 CFR 273.2(j)(2) · USDA FNA BBCE chart, June 2026 · PolicyBench, Oct 14, 2026",
 } as const;
 
 /** Why this matters for AI: the front door to the law. */
@@ -914,7 +912,7 @@ export const TOOL_PILOT: ToolPilot = {
   note: "Dollar amounts that aren't $0, within $1 of PolicyBench's reference: 187 per model across 100 US households, 171 of them taxes and tax credits and 16 benefits",
   arms: [
     { id: "alone", label: "On its own" },
-    { id: "tool", label: "With a tool that runs PolicyEngine" },
+    { id: "tool", label: "With our rules engine" },
   ],
   rows: [
     { model: "GPT-6 Sol", hits: { alone: 126, tool: 181 } },
@@ -933,7 +931,7 @@ export const TOOL_PILOT: ToolPilot = {
   },
   /** The note's own caveat: the tool runs the engine behind the reference, so the scores are agreement with it. */
   measures:
-    "The tool runs the engine behind PolicyBench's reference answers. So this shows whether a model can describe a household to a rules engine, not whether the engine is right.",
+    "Our rules engine also computes PolicyBench's reference answers. So this shows whether a model can describe a household to it, not whether the engine is right.",
   missesCause: "came from how the model described the household or read back the answer, not from the calculation.",
   source: "PolicyBench note, October 20, 2026 · runs October 14–15 · no-tool answers from the October 14 board · counts from the note's data",
 };

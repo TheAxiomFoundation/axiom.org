@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AGENCY_COMMENT, RATING_POINTS, RATING_SCALES, SOURCE_OF_TRUTH } from "@/lib/aspen/content";
 import { OVERALL_KEY, nextRev, participantId, readStored, saveJson, saveMark, writeStored } from "./client";
-import { BUTTON_QUIET, FIELD, QUESTION } from "./ui";
+import { BUTTON, BUTTON_QUIET, FIELD, QUESTION } from "./ui";
 
 /** One category on a 1–5 scale: five equal buttons; the ends are labelled once above the list. */
 export function ScaleRow({
@@ -205,8 +205,9 @@ export function OverallRating({ stage }: { stage: string }) {
               {AGENCY_COMMENT.hint}
             </span>
             {/* A removal that didn't save keeps its button, so it can be tapped again. */}
+            {/* A comment waiting to save is the screen's main button, so it reads as one (the dry run, Oct 25). */}
             {(commentChanged || savedComment || removing) && (
-              <button type="button" className={`${BUTTON_QUIET} self-start`} disabled={!commentPending} onClick={saveComment}>
+              <button type="button" className={`${commentPending ? BUTTON : BUTTON_QUIET} self-start`} disabled={!commentPending} onClick={saveComment}>
                 {commentPending
                   ? comment.trim()
                     ? "Save comment"

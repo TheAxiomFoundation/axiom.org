@@ -5,7 +5,6 @@ import {
   TWISTS,
   TWIST_GROUPS,
   TWIST_IDS,
-  WHAT_MODELS_MISS,
   twistsFor,
   HOUSEHOLDS,
   PERSPECTIVE_IDS,
@@ -178,10 +177,9 @@ describe('aspen content', () => {
     expect(why).toContain('$25 from October 1, 2026')
     // The rules check is gone from the chat, so no copy promises one.
     expect(why).not.toContain('rules check')
-    // Twelve months at the benchmark's FY2026 minimum, on both At scale slides.
+    // Twelve months at the benchmark's FY2026 minimum.
     expect(ex.reference.annual).toBe(12 * ex.reference.monthly)
     expect(EXAMPLE_HOUSEHOLD.reference).toBe(ex.reference.annual)
-    expect(WHAT_MODELS_MISS.amount).toBe(ex.reference.annual)
     expect(ex.modelsAsked).toBe(POLICYBENCH.models)
   })
 

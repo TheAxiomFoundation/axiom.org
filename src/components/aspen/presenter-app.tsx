@@ -245,13 +245,7 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
             </div>
             <div className="flex h-full flex-col px-[96px] pb-[64px] pt-[72px]">
               {stage !== "welcome" && stage !== "dinner" && (
-                <SlideHeader
-                  number={index + 1}
-                  label={current.label}
-                  title={SLIDE_TITLES[stage]?.[sub] ?? current.title}
-                  summary={sub === 0 ? current.summary : undefined}
-                  part={slideCount(stage) > 1 ? `${sub + 1}/${slideCount(stage)}` : undefined}
-                />
+                <SlideHeader title={SLIDE_TITLES[stage]?.[sub] ?? current.title} summary={sub === 0 ? current.summary : undefined} />
               )}
               <div className="min-h-0 flex-1">
                 {stage === "welcome" && <WelcomeSlide summary={summary} joinPassword={joinPassword} />}
@@ -271,13 +265,14 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
                     />
                   ))}
                 {/* Slides 2 to 5 of At scale, and 2 of Shared foundation, come from Max's Nava deck; 6 is the tool pilot and 7 the live chatbot.
+                    What the models miss follows the household it explains (the dry run, Oct 25).
                     Shared foundation 3 is the encoding pipeline from the InnovateUS deck. */}
                 {stage === "scale" &&
                   [
                     <ScaleShareSlide key="share" />,
                     <HouseholdSlide key="household" />,
-                    <BreakSlide key="break" />,
                     <MissSlide key="miss" />,
+                    <BreakSlide key="break" />,
                     <FrontDoorSlide key="front-door" />,
                     <ToolSlide key="tool" />,
                     <LiveDemoSlide key="live-demo" />,
@@ -386,6 +381,11 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
           <button type="button" className={BUTTON_QUIET} onClick={() => step(-1)} aria-label="Previous slide">
             ←
           </button>
+          {slideCount(stage) > 1 && (
+            <span aria-label="Slide" className="font-body text-[0.78rem] tabular-nums text-[var(--color-ink-muted)]">
+              {sub + 1}/{slideCount(stage)}
+            </span>
+          )}
           <button type="button" className={BUTTON_QUIET} onClick={() => step(1)} aria-label="Next slide">
             →
           </button>
@@ -419,27 +419,10 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
 // Slide parts. Sizes are in px: the canvas is always 1600×900.
 // ---------------------------------------------------------------------------
 
-function SlideHeader({
-  number,
-  label,
-  title,
-  summary,
-  part,
-}: {
-  number: number;
-  label: string;
-  title: string;
-  summary?: string;
-  part?: string;
-}) {
+/** A slide's heading, with no eyebrow above it (the dry run, Oct 25); the controls show which slide it is. */
+function SlideHeader({ title, summary }: { title: string; summary?: string }) {
   return (
     <header className="mb-[40px]">
-      <span className="mb-[18px] flex items-center gap-[14px] font-mono text-[17px] uppercase tracking-[0.18em] text-[var(--color-accent)]">
-        <span>
-          {String(number).padStart(2, "0")} · {label}
-        </span>
-        {part && <span className="text-[var(--color-ink-muted)]">{part}</span>}
-      </span>
       <h1 className="heading-page m-0" style={{ fontSize: 48, lineHeight: 1.1, ...SENTENCE }}>
         {title}
       </h1>
@@ -581,10 +564,6 @@ function ScalePanel({ scale }: { scale: ScaleSummary }) {
   return (
     <Panel className="flex flex-col gap-[16px] py-[24px]">
       <Prompt className="mb-0">{scale.label}</Prompt>
-      <div className="flex justify-between font-mono text-[15px] uppercase tracking-[0.14em] text-[var(--color-ink-muted)]">
-        <span>1 · {scale.low}</span>
-        <span>{scale.high} · 5</span>
-      </div>
       <ul className="m-0 flex list-none flex-col gap-[16px] p-0">
         {scale.categories.map((c) => (
           <li key={c.id} className="grid grid-cols-[440px_minmax(0,1fr)_120px] items-center gap-[24px]">
@@ -604,6 +583,13 @@ function ScalePanel({ scale }: { scale: ScaleSummary }) {
           </li>
         ))}
       </ul>
+      {/* The scale's ends, under the ends of the bars (the dry run, Oct 25). */}
+      <div className="-mt-[8px] grid grid-cols-[440px_minmax(0,1fr)_120px] gap-[24px] font-body text-[20px] text-[var(--color-ink-muted)]">
+        <span className="col-start-2 flex justify-between">
+          <span>1 · {scale.low}</span>
+          <span>{scale.high} · 5</span>
+        </span>
+      </div>
     </Panel>
   );
 }
@@ -884,26 +870,33 @@ function BenchFooter({ source }: { source: string }) {
 }
 
 /** The annual reference uses FY2026's monthly minimum in every month, October to December included. */
-function StandardsNote() {
+function StandardsNote({ mark = false }: { mark?: boolean }) {
   const ex = POLICYBENCH.example;
   return (
     <p className="m-0 font-body text-[18px] leading-snug text-[var(--color-ink-secondary)]">
-      ${ex.reference.monthly} a month under the benchmark&apos;s July 2026 rules ({ex.reference.standards} standards).{" "}
+      {mark && <>*{TRUE_BENEFIT_NOTE} </>}${ex.reference.monthly} a month under the benchmark&apos;s July 2026 rules ({ex.reference.standards} standards).{" "}
       The minimum rose to ${ex.fromOctober.monthly} on October 1, so 2026 comes to ${ex.currentLaw.annual} under current law.
     </p>
   );
 }
 
-/** One tile per model: $0 in red, other wrong amounts muted, the reference amount in the accent, no answer as a dash. */
+/**
+ * What "the true benefit" on At scale 2/7 is: PolicyBench's reference answer. Max asked for "true
+ * benefit" with an asterisk in the dry run (Oct 25), for no PolicyEngine on the screens, and for
+ * PolicyBench as our own benchmark; the note under it says which rules.
+ */
+const TRUE_BENEFIT_NOTE = "The reference answer in PolicyBench, our benchmark:";
+
+/** One tile per model: $0 in red, other wrong amounts muted, the reference amount in the accent, and "no answer" said in words (the dry run, Oct 25). */
 function answerTile(answer: number | null, reference: number) {
-  if (answer === null) return { text: "–", label: "no answer", tone: "border-[var(--color-rule)] text-[var(--color-ink-muted)]" };
+  if (answer === null) return { text: "no answer", label: "no answer", tone: "border-[var(--color-rule)] text-[var(--color-ink-muted)]" };
   if (answer === reference)
     return { text: `$${answer}`, label: `$${answer}, matches the reference`, tone: "border-[var(--color-accent)] bg-[var(--color-accent-light)] font-semibold text-[var(--color-accent)]" };
   if (answer <= 0) return { text: "$0", label: "$0", tone: "border-[var(--color-error)]/30 text-[var(--color-error)]" };
   return { text: `$${answer.toLocaleString("en-US")}`, label: `$${answer.toLocaleString("en-US")}`, tone: "border-[var(--color-rule)] text-[var(--color-ink-secondary)]" };
 }
 
-/** At scale, slide 2 (Max's Nava deck): accuracy by program, owed money against owed $0. */
+/** At scale, slide 4 (Max's Nava deck): accuracy by program, owed money against owed $0. */
 function BreakSlide() {
   const b = WHERE_MODELS_BREAK;
   return (
@@ -966,11 +959,12 @@ function HouseholdSlide() {
         <Panel className="flex flex-col gap-[18px]">
           <Label className="mb-0">{h.program}</Label>
           <div className="grid grid-cols-2 gap-[24px]">
-            <BigStat value={`$${h.reference}`} label="PolicyEngine's reference in PolicyBench" tone="accent" />
+            <BigStat value={`$${h.reference}`} label="The true benefit*" tone="accent" />
             <BigStat value="$0" label={`from ${ex.modelsSaidZero} of ${ex.modelsAnswered} AI models · ${ex.modelsExact} matched exactly`} tone="bad" />
           </div>
-          <StandardsNote />
+          <StandardsNote mark />
           {/* Every model's answer: the $0s as one block, then the others at full width so no amount is cut. */}
+          <Label className="mb-0">Each model&apos;s answer for the year, one per model</Label>
           <div
             role="group"
             aria-label={`${h.models} models: ${ex.modelsSaidZero} said $0, ${ex.modelsExact} said $${h.reference}, ${ex.modelsAnswered - ex.modelsSaidZero - ex.modelsExact} gave other amounts, ${h.models - ex.modelsAnswered} gave no answer`}
@@ -1005,7 +999,7 @@ function HouseholdSlide() {
   );
 }
 
-/** At scale, slide 5 (Max's Nava deck): how the top two models explain $0, beside the rule they skip. */
+/** At scale, slide 3 (Max's Nava deck): how the top two models explain $0 for the household on 2, beside the rule they skip. */
 function MissSlide() {
   const m = WHAT_MODELS_MISS;
   return (
@@ -1023,13 +1017,10 @@ function MissSlide() {
             </Panel>
           ))}
         </div>
+        {/* The rule alone: the room knows BBCE, and the amount isn't the point here (the dry run, Oct 25). */}
         <Panel className="flex flex-col border-l-[8px] border-l-[var(--color-accent)]">
           <Label>{m.ruleLabel}</Label>
-          <p className={`m-0 ${BOX_TEXT}`}>{m.rule}</p>
-          <div className="mt-auto pt-[8px]">
-            <BigStat value={`$${m.amount}`} unit="in 2026" label={m.amountLabel} tone="accent" size={80} />
-          </div>
-          <StandardsNote />
+          <p className="m-0 font-body text-[30px] leading-snug text-[var(--color-ink)]">{m.rule}</p>
         </Panel>
       </div>
       <BenchFooter source={m.sources} />
