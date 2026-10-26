@@ -13,7 +13,7 @@ import {
   USE_CASES,
   type StageId,
 } from "@/lib/aspen/content";
-import { PLEDGE_KEY, VOTE_KEY, participantId, postJson, readStored, sendEvent, writeStored } from "./client";
+import { PLEDGE_KEY, VOTE_KEY, currentRun, participantId, postJson, readStored, runSwitches, sendEvent, writeStored } from "./client";
 import { Disclosure } from "./disclosure";
 import { BUTTON, BUTTON_QUIET, Card, FIELD, Part } from "./ui";
 
@@ -396,6 +396,11 @@ export function NextStepsForm({ onSent }: { onSent?: () => void } = {}) {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setStatus("saving");
+    // The run this send belongs to (client.ts currentRun and runSwitches). An answer that comes back
+    // after the room moved to another run is the old run's: it doesn't mark the new run's form as sent,
+    // or let the phone leave it (the review of #376). Adopting a first run is not a move.
+    const run = currentRun();
+    const switches = runSwitches();
     const response = await postJson<{ error?: string }>("/api/aspen/pledge", {
       participantId: participantId(),
       email,
@@ -403,6 +408,10 @@ export function NextStepsForm({ onSent }: { onSent?: () => void } = {}) {
       stateSystems,
       note,
     }).catch(() => null);
+    if ((run !== null && currentRun() !== run) || runSwitches() !== switches) {
+      setStatus("idle");
+      return;
+    }
     if (response?.ok) {
       writeStored(PLEDGE_KEY, true);
       setStatus("done");

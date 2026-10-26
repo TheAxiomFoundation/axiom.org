@@ -380,6 +380,48 @@ describe("AspenApp following the presenter", () => {
     await onView("dinner");
   });
 
+  it("doesn't let a send from the old run, answered after a new run starts, count as the new run's", async () => {
+    // The review of #376: a rehearsal send whose answer came after Start run marked the live run's
+    // form as sent, so the phone left it for Thank you, and a reload showed the old thank-you.
+    control.stage = "next";
+    storeChat({ turns: [] });
+    const { rerender } = render(<AspenApp />);
+    await onView("next");
+    // The pledge's answer is held; the rest answers as beforeEach's does.
+    let answer: (r: Response) => void = () => {};
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/aspen/pledge") return new Promise<Response>((resolve) => (answer = resolve));
+      if (url === "/api/aspen/state") return jsonResponse(control);
+      if (url.startsWith("/api/aspen/results")) return jsonResponse({ runId: control.runId, live: true, summary });
+      return jsonResponse({ ok: true, saved: true });
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Email" }), { target: { value: "ada@az.gov" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /State systems/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByRole("button", { name: "Sending…" })).toBeDisabled();
+
+    // Start run: the phone drops the old run's chat and starts the new run at Welcome.
+    control = { ...control, runId: "live", stage: "welcome" };
+    rerender(<AspenApp />);
+    await waitFor(() => expect(localStorage.getItem("aspen.run")).toBe(JSON.stringify("live")), { timeout: 6000 });
+    await act(async () => answer(jsonResponse({ ok: true })));
+    expect(localStorage.getItem(PLEDGE_KEY)).toBeNull();
+
+    // The new run reaches Next steps: a blank form, and the phone keeps it when the room moves on.
+    control = { ...control, stage: "next" };
+    rerender(<AspenApp />);
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Email" })).toBeVisible(), { timeout: 6000 });
+    await onView("next");
+    expect(screen.getByRole("textbox", { name: "Email" })).toHaveValue("");
+    expect(screen.queryByText("Thank you.")).not.toBeInTheDocument();
+    control = { ...control, stage: "dinner" };
+    rerender(<AspenApp />);
+    expect(await screen.findByRole("button", { name: /Jump to where the room is: Thank you/ }, { timeout: 6000 })).toBeInTheDocument();
+    await onView("next");
+    expect(localStorage.getItem(PLEDGE_KEY)).toBeNull();
+  });
+
   it("keeps the form's thank-you up when a held phone sends", async () => {
     control.stage = "next";
     const { rerender } = render(<AspenApp />);

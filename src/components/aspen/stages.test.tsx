@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GROUP_PHONE_INTRO, DISCLOSURE, EVENT, GROUP_QUESTIONS, LOOK_UP, STAGES, USE_CASES } from "@/lib/aspen/content";
-import { PLEDGE_KEY } from "./client";
+import { CHAT_KEY, PLEDGE_KEY, enterRun } from "./client";
 import { Agenda, Disclosure, GroupsCard, LookUp, NextStepsForm, SmallGroups, ThankYouContent, VoteCard, WelcomeLanding } from "./stages";
 
 function jsonResponse(data: unknown, ok = true) {
@@ -389,6 +390,150 @@ describe("NextStepsForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     expect(await screen.findByText("That didn't send. Try again.")).toBeInTheDocument();
   });
+
+  it.each([
+    ["drops what the phone saved", true],
+    ["finds nothing saved to drop", false],
+  ])("doesn't count a send answered after the room moved to another run that %s", async (_label, saved) => {
+    enterRun("r1");
+    let resolve: (r: Response) => void = () => {};
+    stubFetch(() => new Promise<Response>((r) => (resolve = r)));
+    const onSent = vi.fn();
+    render(<NextStepsForm onSent={onSent} />);
+    fill();
+    fireEvent.click(screen.getByRole("checkbox", { name: /State systems/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByRole("button", { name: "Sending…" })).toBeDisabled();
+    if (saved) localStorage.setItem(CHAT_KEY, "{}");
+    expect(enterRun("r2")).toBe(saved);
+    await act(async () => resolve(jsonResponse({ ok: true })));
+    // The form is the new run's to send: no thank-you, no mark, nothing to let the phone leave it.
+    expect(await screen.findByRole("button", { name: "Send" })).toBeEnabled();
+    expect(screen.queryByText("Thank you.")).not.toBeInTheDocument();
+    expect(onSent).not.toHaveBeenCalled();
+    expect(localStorage.getItem(PLEDGE_KEY)).toBeNull();
+  });
+
+  it("doesn't count a send answered after the room left its run, dropping what the phone saved, and came back", async () => {
+    enterRun("r1");
+    let resolve: (r: Response) => void = () => {};
+    stubFetch(() => new Promise<Response>((r) => (resolve = r)));
+    const onSent = vi.fn();
+    render(<NextStepsForm onSent={onSent} />);
+    fill();
+    fireEvent.click(screen.getByRole("checkbox", { name: /State systems/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByRole("button", { name: "Sending…" })).toBeDisabled();
+    // The room starts r2, which drops the phone's chat (and remounts the page's form), then goes back to r1.
+    localStorage.setItem(CHAT_KEY, "{}");
+    expect(enterRun("r2")).toBe(true);
+    expect(enterRun("r1")).toBe(false);
+    await act(async () => resolve(jsonResponse({ ok: true })));
+    expect(await screen.findByRole("button", { name: "Send" })).toBeEnabled();
+    expect(onSent).not.toHaveBeenCalled();
+    expect(localStorage.getItem(PLEDGE_KEY)).toBeNull();
+  });
+
+  it("counts a send answered after the phone adopts the room's first run", async () => {
+    let resolve: (r: Response) => void = () => {};
+    stubFetch(() => new Promise<Response>((r) => (resolve = r)));
+    const onSent = vi.fn();
+    render(<NextStepsForm onSent={onSent} />);
+    fill();
+    fireEvent.click(screen.getByRole("checkbox", { name: /State systems/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByRole("button", { name: "Sending…" })).toBeDisabled();
+    expect(enterRun("r1")).toBe(false);
+    await act(async () => resolve(jsonResponse({ ok: true })));
+    expect(await screen.findByText("Thank you.")).toBeInTheDocument();
+    expect(onSent).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem(PLEDGE_KEY)).toBe("true");
+  });
+
+  /**
+   * For any order of sends, their answers (ok or not), run switches (dropping what the phone saved, or
+   * nothing) and reloads, on a phone that starts in a run or in none yet, it is marked as sent (the stored mark, the page's `pledged` and the
+   * form's thank-you) exactly when a send made in the run it is in now was answered ok while it was
+   * still there, with no run switch that dropped answers in between. Adopting a first run is not a
+   * switch: a send made before it counts in the run adopted. The page here does what
+   * aspen-app does: a switch that drops answers remounts the form and clears `pledged`.
+   */
+  it("marks the phone as sent only for a send answered ok in the run it was made in, in any order", async () => {
+    const command = fc.oneof(
+      { weight: 3, arbitrary: fc.constant({ kind: "send" as const }) },
+      { weight: 3, arbitrary: fc.record({ kind: fc.constant("answer" as const), pick: fc.nat(), ok: fc.boolean() }) },
+      { weight: 2, arbitrary: fc.record({ kind: fc.constant("run" as const), run: fc.constantFrom("r1", "r2", "r3"), saved: fc.boolean() }) },
+      { weight: 1, arbitrary: fc.constant({ kind: "reload" as const }) },
+    );
+    const flush = () =>
+      act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    await fc.assert(
+      fc.asyncProperty(fc.boolean(), fc.array(command, { minLength: 1, maxLength: 14 }), async (inRun, commands) => {
+        cleanup();
+        localStorage.clear();
+        localStorage.setItem("aspen.participant", "p-1");
+        if (inRun) enterRun("r1");
+        // The model: the run the phone is in (null before it has one), how many switches have dropped
+        // answers, whether it saved anything else a switch would drop, and whether this run's form is sent.
+        let run: string | null = inRun ? "r1" : null;
+        let generation = 0;
+        let chatSaved = false;
+        let sent = false;
+        const held: { resolve: (r: Response) => void; run: string | null; generation: number }[] = [];
+        stubFetch(() => new Promise<Response>((resolve) => held.push({ resolve, run, generation })));
+        let pledged = false;
+        let epoch = 0;
+        const form = () => <NextStepsForm key={epoch} onSent={() => (pledged = true)} />;
+        const page = render(form());
+        await flush();
+        for (const c of commands) {
+          if (c.kind === "send") {
+            const send = screen.queryByRole("button", { name: "Send" });
+            if (!send) continue;
+            fireEvent.change(screen.getByRole("textbox", { name: "Email" }), { target: { value: "ada@az.gov" } });
+            const topic = screen.getByRole("checkbox", { name: /State systems/ }) as HTMLInputElement;
+            if (!topic.checked) fireEvent.click(topic);
+            fireEvent.click(screen.getByRole("button", { name: "Send" }));
+          } else if (c.kind === "answer") {
+            if (held.length === 0) continue;
+            const [send] = held.splice(c.pick % held.length, 1);
+            if (c.ok && (send.run === null || send.run === run) && send.generation === generation) sent = true;
+            send.resolve(jsonResponse(c.ok ? { ok: true } : { error: "No." }, c.ok));
+          } else if (c.kind === "run") {
+            if (c.saved) {
+              localStorage.setItem(CHAT_KEY, "{}");
+              chatSaved = true;
+            }
+            // A first run is adopted, dropping nothing; a different one drops whatever the phone saved.
+            const drops = run !== null && c.run !== run && (sent || chatSaved);
+            expect(enterRun(c.run)).toBe(drops);
+            if (drops) {
+              generation += 1;
+              chatSaved = false;
+              epoch += 1;
+              pledged = false;
+              page.rerender(form());
+            }
+            if (run !== null && c.run !== run) sent = false;
+            run = c.run;
+          } else {
+            // A reload: the page and its requests in flight are gone, and the form reads the mark.
+            held.length = 0;
+            pledged = false;
+            epoch += 1;
+            page.rerender(form());
+          }
+          await flush();
+          expect(localStorage.getItem(PLEDGE_KEY)).toBe(sent ? "true" : null);
+          expect(pledged).toBe(sent);
+          expect(screen.queryByText("Thank you.") !== null).toBe(sent);
+        }
+      }),
+      { numRuns: 300 },
+    );
+  }, 300_000);
 });
 
 describe("ThankYouContent", () => {
