@@ -749,6 +749,9 @@ describe("PresenterApp stages", () => {
     for (const use of ONE_SET_OF_RULES) expect(screen.getByText(use.label)).toBeInTheDocument();
     expect(screen.getByText(/reducing cost, duplication and error at once/)).toBeInTheDocument();
     expect(screen.queryByText(/In this room/)).not.toBeInTheDocument();
+    // The one set of rules sits in an open box, never a dark one (Oct 26).
+    expect(document.querySelector('[data-testid="slide"] .bg-\\[var\\(--color-ink\\)\\]')).toBeNull();
+    expect(screen.getByText("One open set of rules").parentElement).toHaveClass("bg-[var(--color-accent-light)]");
     expect(screen.queryByText(/Next: how we build it/)).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { level: 1, name: SAME_RULES.heading })).not.toBeInTheDocument();
 
@@ -772,7 +775,10 @@ describe("PresenterApp stages", () => {
     expect(screen.getByText(SAME_RULES.governments.label)).toBeInTheDocument();
     for (const use of SAME_RULES.governments.uses) expect(screen.getByText(use)).toBeInTheDocument();
     for (const a of SAME_RULES.audiences) expect(screen.queryByText(a.label)).not.toBeInTheDocument();
-    expect(screen.getByText("How the rules cross-reference")).toBeInTheDocument();
+    // The cross-references read as words, in boxes; no graph and no dark box (Oct 26).
+    expect(screen.queryByText("How the rules cross-reference")).not.toBeInTheDocument();
+    expect(screen.getByText(/TANF to SNAP, SSI to Medicaid, SNAP to school meals and WIC/)).toBeInTheDocument();
+    expect(document.querySelector('[data-testid="slide"] .bg-\\[var\\(--color-ink\\)\\]')).toBeNull();
     expect(screen.getByText(SAME_RULES.prompt)).toBeInTheDocument();
 
     // Then the tiers, from screener parity to Gold A.

@@ -1546,32 +1546,30 @@ function PolicyGraph() {
 }
 
 /**
- * Shared foundation 5/6: what one open set of rules lets a government do, as the room's own focus.
- * The other audiences are off this slide (Oct 26); the prompt hands over to Small groups.
+ * Shared foundation 5/6: what one open set of rules lets a government do, as the room's own focus:
+ * one open box per use, with no dark boxes (Oct 26). The other audiences are off this slide; the
+ * prompt hands over to Small groups.
  */
 function EnableSlide() {
   const r = SAME_RULES;
   return (
-    <div className="flex h-full flex-col gap-[26px]">
-      <div className="grid min-h-0 flex-1 grid-cols-[1fr_640px] gap-[24px]">
-        <div className="flex flex-col justify-center rounded-[16px] bg-[var(--color-ink)] px-[40px] py-[36px] text-white">
-          <div className="mb-[26px] flex items-center gap-[18px]">
-            <Landmark aria-hidden size={46} strokeWidth={1.6} className="shrink-0 text-[#e8a25c]" />
-            <span className="font-display text-[48px] font-light leading-none">{r.governments.label}</span>
-          </div>
-          <ul className="m-0 flex list-none flex-col gap-[18px] p-0 font-body text-[27px] leading-snug text-white">
-            {r.governments.uses.map((use) => (
-              <li key={use} className="flex gap-[14px]">
-                <Check aria-hidden size={28} strokeWidth={2.25} className="mt-[4px] shrink-0 text-[#e8a25c]" />
-                {use}
-              </li>
-            ))}
-          </ul>
-        </div>
-        <Panel className="flex flex-col justify-center">
-          <PolicyGraph />
-        </Panel>
+    <div className="flex h-full flex-col gap-[24px]">
+      <div className="flex items-center gap-[18px]">
+        <Landmark aria-hidden size={50} strokeWidth={1.6} className="shrink-0 text-[var(--color-accent)]" />
+        <span className="font-display text-[52px] font-light leading-none text-[var(--color-ink)]">{r.governments.label}</span>
       </div>
+      <ul className="m-0 grid min-h-0 flex-1 list-none grid-cols-3 grid-rows-2 gap-[18px] p-0">
+        {r.governments.uses.map((use) => (
+          <li
+            key={use}
+            className="flex flex-col gap-[14px] rounded-[14px] border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-[28px] py-[24px]"
+            style={{ borderTop: "5px solid var(--color-accent)" }}
+          >
+            <Check aria-hidden size={30} strokeWidth={2.25} className="shrink-0 text-[var(--color-accent)]" />
+            <span className="font-body text-[26px] font-medium leading-snug text-[var(--color-ink)]">{use}</span>
+          </li>
+        ))}
+      </ul>
       <p className="m-0 border-l-[6px] border-[var(--color-accent)] pl-[28px] font-display text-[42px] font-light leading-tight text-[var(--color-ink)]">
         {r.prompt}
       </p>
@@ -1625,13 +1623,14 @@ const USE_ICONS: Record<(typeof ONE_SET_OF_RULES)[number]["label"], LucideIcon> 
 function OneSetDiagram() {
   return (
     <div className="grid grid-cols-[440px_auto_1fr] items-stretch gap-[28px]">
-      <div className="flex flex-col justify-center gap-[12px] rounded-[14px] bg-[var(--color-ink)] px-[36px] py-[28px] text-white">
+      {/* An open box, not a black one: a warm tint and a rust outline (Oct 26). */}
+      <div className="flex flex-col justify-center gap-[12px] rounded-[14px] border-2 border-[var(--color-accent)] bg-[var(--color-accent-light)] px-[36px] py-[28px] text-[var(--color-ink)]">
         <span className="text-balance font-display text-[40px] font-light leading-tight">One open set of rules</span>
-        <ul className="m-0 flex list-none flex-col gap-[10px] p-0 font-body text-[22px] leading-snug text-white/80">
+        <ul className="m-0 flex list-none flex-col gap-[10px] p-0 font-body text-[22px] leading-snug text-[var(--color-ink)]">
           {FOUNDATION_TRAITS.map((trait) => (
             <li key={trait} className="flex gap-[12px]">
               {/* A plain bullet, not a check: these describe how the rules are built, not work that is finished. */}
-              <span aria-hidden className="mt-[12px] h-[8px] w-[8px] shrink-0 rounded-full bg-[#e8a25c]" />
+              <span aria-hidden className="mt-[12px] h-[8px] w-[8px] shrink-0 rounded-full bg-[var(--color-accent)]" />
               {trait}
             </li>
           ))}
