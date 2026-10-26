@@ -182,9 +182,12 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
   // in flight the TV shows it, so a move the store didn't take leaves the TV where the phones are, not
   // on a stage they never got (the review of #370).
   const stored = useRef<Control | null>(null);
-  // Moves in flight. Meanwhile the TV shows the newest move's stage, and a poll only updates `stored`:
-  // one that started before a move must not undo it.
-  const moving = useRef(0);
+  // Each move's request while in flight, and the run switch among them, if any (see move). Meanwhile
+  // the TV shows the newest move's stage, `ahead`, even before its first read of the room, and a poll
+  // only updates `stored`: one that started before a move must not undo it.
+  const requests = useRef(new Set<Promise<unknown>>());
+  const switching = useRef<Promise<unknown> | null>(null);
+  const [ahead, setAhead] = useState<StageId | null>(null);
   // The slide on screen (kept by a layout effect below), and, while moves are in flight, the slide the
   // TV last showed on each stage they left: when they settle the room on one of those, it goes back there.
   const onScreen = useRef<SlideAt>({ stage: "welcome", sub: 0 });
@@ -193,10 +196,10 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
   useEffect(() => {
     if (!polled) return;
     stored.current = newerControl(stored.current, polled);
-    if (moving.current === 0) setControl(stored.current);
+    if (requests.current.size === 0) setControl(stored.current);
   }, [polled]);
 
-  const stage = (stageIndex(control?.stage) >= 0 ? control?.stage : "welcome") as StageId;
+  const stage = (ahead ?? (stageIndex(control?.stage) >= 0 ? control?.stage : "welcome")) as StageId;
   const index = stageIndex(stage);
   const sub = slide.stage === stage ? Math.min(slide.sub, slideCount(stage) - 1) : 0;
   useLayoutEffect(() => {
@@ -215,15 +218,24 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
    * the TV ahead of the phones for the whole retry, can't fix a refusal (a sign-in that expired, no
    * store), and could save an older move over a newer one. If a move that timed out did reach the
    * store, the next poll carries its newer row and the TV follows.
+   *
+   * No write crosses a run switch: Start run is sent once every move before it has settled, and a
+   * move after it once it has. The store keeps the newest write whole (store.ts setControl), so a
+   * stage move stamped after a run switch whose write landed first would keep the old run, and the
+   * room's new results would mix with the rehearsal's (the review of #376). Other moves still go at
+   * once, each to the store as it arrives.
    */
   const move = useCallback(async (patch: { stage?: StageId; runId?: string }) => {
     left.current.set(onScreen.current.stage, onScreen.current.sub);
-    if (patch.stage) setControl((c) => (c ? { ...c, stage: patch.stage as string } : c));
-    moving.current += 1;
-    const response = await postJson<Control & { error?: string }>("/api/aspen/state", patch, CONTROL_TIMEOUT_MS).catch(
-      () => null,
-    );
-    moving.current -= 1;
+    if (patch.stage) setAhead(patch.stage);
+    const send = () => postJson<Control & { error?: string }>("/api/aspen/state", patch, CONTROL_TIMEOUT_MS);
+    const before = patch.runId ? (requests.current.size > 0 ? Promise.all(requests.current) : null) : switching.current;
+    const request = (before ? before.then(send) : send()).catch(() => null);
+    requests.current.add(request);
+    if (patch.runId) switching.current = request;
+    const response = await request;
+    requests.current.delete(request);
+    if (switching.current === request) switching.current = null;
     if (response?.ok && isControl(response.data)) {
       stored.current = newerControl(stored.current, response.data);
       setError(null);
@@ -233,10 +245,11 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
     // The last move to settle puts the TV on what the store holds: this move's row when it saved, an
     // earlier move's, or the row from before them all. On the stage on screen, the slide stays. On
     // another, it is the slide the TV last showed there, or else the stage's first.
-    if (moving.current === 0) {
+    if (requests.current.size === 0) {
       const landed = stored.current;
       const back = landed ? left.current.get(landed.stage) : undefined;
       left.current.clear();
+      setAhead(null);
       setControl(landed);
       if (landed && landed.stage !== onScreen.current.stage) setSlide({ stage: landed.stage as StageId, sub: back ?? 0 });
     }

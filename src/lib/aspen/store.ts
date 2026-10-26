@@ -176,7 +176,9 @@ export function createSupabaseStore(
       // Only over an older row, checked in the same update: two moves whose writes land out of order
       // leave the row on the later one, so the row always holds the newest stamp, which is how the TV
       // orders rows (presenter-app's newerControl; the review of #376). A write a later one already
-      // beat changes nothing and answers with the row as it is.
+      // beat changes nothing and answers with the row as it is. That holds for the whole write: a run
+      // switch that a later stage-only move beat to the row keeps the old run, so the presenter sends
+      // no move across a run switch (presenter-app's move).
       const rows = await request<ControlRow[]>(
         `aspen_control?id=eq.live&updated_at=lt.${encodeURIComponent(updatedAt)}&select=run_id,stage,updated_at`,
         { method: "PATCH", body, prefer: "return=representation" },
@@ -260,11 +262,14 @@ export function createMemoryStore(state: MemoryState = freshMemory()): AspenStor
       return { ...state.control };
     },
     async setControl(patch) {
+      // Each write is stamped after the one before, even when the clock steps back, so the TV takes
+      // the newest write for the newest row (presenter-app's newerControl), as the phones do.
+      const last = Date.parse(state.control.updatedAt ?? "") || 0;
       state.control = {
         ...state.control,
         ...(patch.runId ? { runId: patch.runId } : {}),
         ...(patch.stage ? { stage: patch.stage } : {}),
-        updatedAt: now(),
+        updatedAt: new Date(Math.max(Date.now(), last + 1)).toISOString(),
       };
       return { ...state.control };
     },

@@ -76,6 +76,56 @@ describe('memory store', () => {
     expect(await store.updatePrompt(Q, P, { post_check_verdict: 'wrong' })).toBe(true)
     expect(await verdict()).toBe('wrong')
   })
+
+  it('stamps each control write after the one before, even when the clock steps back', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      const store = createMemoryStore()
+      vi.setSystemTime(new Date('2026-10-27T00:30:02.000Z'))
+      const first = await store.setControl({ stage: 'try' })
+      vi.setSystemTime(new Date('2026-10-27T00:30:01.000Z'))
+      expect(await store.setControl({ stage: 'scale' })).toMatchObject({ stage: 'scale', updatedAt: '2026-10-27T00:30:02.001Z' })
+      expect(first.updatedAt).toBe('2026-10-27T00:30:02.000Z')
+      // Once the clock is ahead again, the stamp is the clock's.
+      vi.setSystemTime(new Date('2026-10-27T00:30:05.000Z'))
+      expect(await store.setControl({ stage: 'groups' })).toMatchObject({ updatedAt: '2026-10-27T00:30:05.000Z' })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('stamps control writes in the order they come, whatever the clock does, and keeps each field from the last write that set it', async () => {
+    const write = fc.record({
+      // The clock's reading for this write, in milliseconds, free to go back or repeat.
+      clock: fc.integer({ min: 0, max: 50 }),
+      runId: fc.option(fc.constantFrom('r1', 'r2', 'r3'), { nil: undefined }),
+      stage: fc.option(fc.constantFrom('try', 'scale', 'groups'), { nil: undefined }),
+    })
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      await fc.assert(
+        fc.asyncProperty(fc.array(write, { minLength: 1, maxLength: 12 }), async (writes) => {
+          const start = Date.parse('2026-10-27T00:30:00.000Z')
+          const store = createMemoryStore()
+          let expected = await store.getControl()
+          let last = -Infinity
+          for (const w of writes) {
+            vi.setSystemTime(start + w.clock)
+            const row = await store.setControl({ runId: w.runId, stage: w.stage })
+            const stamp = Date.parse(row.updatedAt!)
+            expect(stamp).toBeGreaterThan(last)
+            expect(stamp).toBeGreaterThanOrEqual(start + w.clock)
+            last = stamp
+            expected = { ...expected, ...(w.runId ? { runId: w.runId } : {}), ...(w.stage ? { stage: w.stage } : {}) }
+            expect(row).toEqual({ ...expected, updatedAt: row.updatedAt })
+            expect(await store.getControl()).toEqual(row)
+          }
+        }),
+      )
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
 
 function fakeFetch(handler: (url: string, init: RequestInit) => { status?: number; body?: unknown }) {
@@ -133,6 +183,38 @@ describe('supabase store', () => {
       // And a write in the same millisecond as the row's is no newer, so it changes nothing either.
       vi.setSystemTime(new Date('2026-10-27T00:30:02.000Z'))
       expect(await store.setControl({ stage: 'groups' })).toMatchObject({ stage: 'scale' })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps the whole newest write: a run switch that a later stage-only write beat to the row keeps the old run', async () => {
+    // The store's contract the presenter works with (presenter-app's move): it sends no write across a
+    // run switch, because the store applies a write whole, or not at all.
+    let row = { run_id: 'r1', stage: 'scale', updated_at: '2026-10-27T00:30:00.000Z' }
+    const held: { body: Record<string, string>; resolve: (r: Response) => void }[] = []
+    const fn = (async (_url: string | URL | Request, init: RequestInit = {}) => {
+      if (init.method !== 'PATCH') return new Response(JSON.stringify([row]))
+      return new Promise<Response>((resolve) => held.push({ body: JSON.parse(String(init.body)), resolve }))
+    }) as unknown as typeof fetch
+    const store = createSupabaseStore(config, fn)
+    const land = (i: number) => {
+      const { body, resolve } = held[i]
+      const applies = row.updated_at < body.updated_at
+      if (applies) row = { ...row, ...body }
+      resolve(new Response(JSON.stringify(applies ? [row] : [])))
+    }
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      vi.setSystemTime(new Date('2026-10-27T00:30:01.000Z'))
+      const startRun = store.setControl({ runId: 'r2', stage: 'welcome' })
+      vi.setSystemTime(new Date('2026-10-27T00:30:02.000Z'))
+      const next = store.setControl({ stage: 'try' })
+      land(1)
+      await next
+      land(0)
+      expect(await startRun).toMatchObject({ runId: 'r1', stage: 'try' })
+      expect(row).toMatchObject({ run_id: 'r1', stage: 'try' })
     } finally {
       vi.useRealTimers()
     }
