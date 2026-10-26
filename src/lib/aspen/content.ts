@@ -112,7 +112,7 @@ export const STAGES: readonly Stage[] = [
     label: "Next steps",
     title: "Next steps",
     agenda: "A short form for states that want to go further.",
-    // The TV's Next steps is one slide, the ask and the form, with no line under the heading (Oct 26).
+    // The TV's Next steps is two slides, the tiers, then the ask and the form, with no line under the heading (Oct 26).
     summary: "",
     phoneSummary: "Tell us if your state wants to go further.",
   },
