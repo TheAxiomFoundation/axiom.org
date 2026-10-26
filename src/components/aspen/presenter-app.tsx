@@ -91,18 +91,20 @@ const JOURNEY_HEADING = "From the law as written to running code";
 /** A slide that turns its stage's argument gets its own heading. */
 const SLIDE_TITLES: Partial<Record<StageId, Record<number, string>>> = {
   scale: { 4: FRONT_DOOR.heading, 5: FRONT_DOOR.heading, 6: FRONT_DOOR.heading },
-  foundation: { 1: JOURNEY_HEADING },
+  foundation: { 1: JOURNEY_HEADING, 3: BUILD_HEADING },
 };
 
 /**
  * Shared foundation's slides, in order; the journey takes Space for itself. A title slide, then the
- * journey, which shows how the rules get built and what they power (the dry run, Oct 25). The
- * same-rules, pipeline and tiers slides stay below, off the deck, in case they come back.
+ * journey, which shows how the rules get built and what they power (the dry run, Oct 25). The one
+ * set of rules comes back after it, because the journey's last scenes are hard to read on the TV, and
+ * then the tiers, from screener parity to Gold A (Oct 26). The same-rules and pipeline slides stay
+ * below, off the deck, in case they come back.
  */
-const FOUNDATION_SLIDES = ["foundation", "journey"] as const;
+const FOUNDATION_SLIDES = ["foundation", "journey", "one-set", "tiers"] as const;
 
 /** Stages shown as more than one slide; the arrows step through them before moving the room. */
-const SLIDES: Partial<Record<StageId, number>> = { reveal: 2, scale: 7, foundation: FOUNDATION_SLIDES.length, groups: 2, next: 2 };
+const SLIDES: Partial<Record<StageId, number>> = { reveal: 2, scale: 7, foundation: FOUNDATION_SLIDES.length, groups: 2 };
 const slideCount = (id: StageId) => SLIDES[id] ?? 1;
 
 /** The largest scale at which the 16:9 canvas fits the window. */
@@ -279,16 +281,17 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
                     <ToolSlide key="tool" />,
                     <LiveDemoSlide key="live-demo" />,
                   ][sub]}
-                {/* Shared foundation: a title slide, then the homepage's encoding journey (the dry run, Oct 25). */}
+                {/* Shared foundation: a title slide, the homepage's encoding journey, the one set of rules, then the tiers. */}
                 {stage === "foundation" &&
-                  [
-                    <FoundationSlide key="foundation" summary={summary} />,
-                    <JourneySlide key="journey" />,
-                  ][sub]}
+                  {
+                    foundation: <FoundationSlide key="foundation" summary={summary} />,
+                    journey: <JourneySlide key="journey" />,
+                    "one-set": <OneSetSlide key="one-set" summary={summary} />,
+                    tiers: <TiersSlide key="tiers" />,
+                  }[FOUNDATION_SLIDES[sub]]}
                 {stage === "groups" &&
                   (sub === 0 ? <VoteSlide votes={summary.votes} /> : <GroupsSlide summary={summary} />)}
-                {stage === "next" &&
-                  (sub === 0 ? <AskSlide /> : <NextSlide />)}
+                {stage === "next" && <NextSlide />}
                 {stage === "dinner" && <ThankYouSlide />}
               </div>
             </div>
@@ -1596,7 +1599,10 @@ function FoundationSlide({ summary }: { summary: RunSummary }) {
 /** What the journey after the title slide shows, said on the slide so the room knows what's coming. */
 const FOUNDATION_CUE = "Next: how we build it, from the law as written to running code, and what it can power.";
 
-/** The earlier Shared foundation 1/5: one set of rules under every tool. Off the deck since the dry run, Oct 25. */
+/**
+ * Shared foundation 3/4: one set of rules under every tool. It follows the journey so the room can
+ * read what the rules power, which the journey's last scenes show too small for the TV (Oct 26).
+ */
 function OneSetSlide({ summary }: { summary: RunSummary }) {
   const answered = summary.sourceOfTruth.reduce((sum, c) => sum + c.count, 0);
   const cannot = summary.sourceOfTruth.filter((c) => c.id !== "yes").reduce((sum, c) => sum + c.count, 0);
@@ -2075,6 +2081,7 @@ function GroupsSlide({ summary }: { summary: RunSummary }) {
 }
 
 /** Next steps, slide 1: the ask. What Silver A takes from a state, and what it never asks for. */
+/** The Silver A ask, once Next steps 1/2. Off the deck since Oct 26; the tiers slide covers Silver A. */
 function AskSlide() {
   return (
     <div className="flex h-full flex-col gap-[28px]">
