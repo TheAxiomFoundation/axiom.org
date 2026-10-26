@@ -792,13 +792,22 @@ describe("PresenterApp stages", () => {
     expect(screen.getByText("5/7")).toBeInTheDocument();
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     expect(screen.getByText("6/7")).toBeInTheDocument();
+    // Space after a click on the Next button still takes one caption on: the button lets go of the focus.
+    const nextButton = screen.getByRole("button", { name: "Next slide" });
+    nextButton.focus();
+    expect(fireEvent.keyDown(nextButton, { key: " " })).toBe(false);
+    expect(screen.getByText("6/7")).toBeInTheDocument();
+    expect(nextButton).not.toHaveFocus();
     const keys = ["ArrowRight", "PageDown", " "];
-    for (let j = 1; j < CAPTIONS.length; j++) {
+    for (let j = 2; j < CAPTIONS.length; j++) {
       expect(fireEvent.keyDown(document.body, { key: keys[j % keys.length] })).toBe(false);
       expect(screen.getByText("6/7")).toBeInTheDocument();
     }
     // Back a caption stays on the journey, and on again returns to its last caption.
     fireEvent.keyDown(document.body, { key: "PageUp" });
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("6/7")).toBeInTheDocument();
+    // A press before that glide lands lands it, still on the journey; the press after moves on.
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     expect(screen.getByText("6/7")).toBeInTheDocument();
     // Captions are the presenter's own: the room doesn't move.
@@ -820,6 +829,12 @@ describe("PresenterApp stages", () => {
     expect(screen.getByText(SAME_RULES.prompt)).toBeInTheDocument();
     // The tiers wait for Next steps, after the room's own ideas.
     expect(screen.queryByRole("heading", { level: 1, name: BUILD_HEADING })).not.toBeInTheDocument();
+    // Back from here is the journey at its last frame, so the next key comes straight back.
+    fireEvent.keyDown(document.body, { key: "ArrowLeft" });
+    expect(screen.getByText("6/7")).toBeInTheDocument();
+    expect(document.querySelector("[data-aspen-overlay] .jl-stage")).not.toBeNull();
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("7/7")).toBeInTheDocument();
 
     // What it enables is the stage's last slide: the next moves the room on to Small groups.
     fireEvent.keyDown(document.body, { key: "ArrowRight" });

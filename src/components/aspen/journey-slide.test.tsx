@@ -1,5 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createRef } from "react";
+import { flushSync } from "react-dom";
+import { createRoot } from "react-dom/client";
 import fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { captionAt, CAPTIONS, STORY_LABEL, TOTAL } from "@/components/landing/journey-lamplight/captions";
@@ -35,12 +37,12 @@ const play = (ms: number) => act(() => vi.advanceTimersByTime(ms));
 const wheel = (beats: number, init: WheelEventInit = {}) =>
   fireEvent.wheel(window, { deltaY: beats * window.innerHeight * SCREENS_PER_SCROLL_BEAT, ...init });
 
-function show() {
+function show({ atEnd = false } = {}) {
   const control = createRef<JourneyControl | null>() as { current: JourneyControl | null };
   const view = render(
     <>
       <div style={{ position: "relative" }}>
-        <JourneySlide control={control} />
+        <JourneySlide control={control} atEnd={atEnd} />
       </div>
       <div data-aspen-overlay />
     </>,
@@ -92,7 +94,11 @@ describe("the journey's stops", () => {
         expect(ms).toBeGreaterThanOrEqual(STEP_MIN_MS);
         expect(ms).toBeLessThanOrEqual(STEP_MAX_MS);
         expect(stepMs(b, a)).toBe(ms);
-        const [near, far] = [Math.abs(a - b), S_STORY].sort((x, y) => x - y);
+      }),
+    );
+    fc.assert(
+      fc.property(fc.double({ min: 0, max: S_STORY, noNaN: true }), fc.double({ min: 0, max: S_STORY, noNaN: true }), (d1, d2) => {
+        const [near, far] = d1 <= d2 ? [d1, d2] : [d2, d1];
         expect(stepMs(0, near)).toBeLessThanOrEqual(stepMs(0, far));
       }),
     );
@@ -195,6 +201,48 @@ describe("the journey slide, without WebGL 2", () => {
     expect(bar()).toBeCloseTo(barAt(2), 1);
   });
 
+  it("lands the last glide at once on a press that comes before it does, and hands over the press after", () => {
+    const { next, back } = show();
+    for (let j = 1; j < CAPTIONS.length; j++) next();
+    play(STEP_MIN_MS / 2);
+    expect(bar()).toBeLessThan(100);
+    // An impatient press (or a clicker's double click) stays on the journey, and shows the end now.
+    expect(next()).toBe(true);
+    play(20);
+    expect(bar()).toBe(100);
+    expect(shownCaption()).toBe(CAPTIONS.length - 1);
+    expect(next()).toBe(false);
+    // The same going back: the press that lands the first caption is still the journey's.
+    for (let j = 1; j < CAPTIONS.length; j++) back();
+    play(STEP_MIN_MS / 2);
+    expect(back()).toBe(true);
+    play(20);
+    expect(bar()).toBe(0);
+    expect(shownCaption()).toBe(0);
+    expect(back()).toBe(false);
+  });
+
+  it("opens on the last frame when the presenter steps back into it", () => {
+    const { next, back } = show({ atEnd: true });
+    play(20);
+    expect(bar()).toBe(100);
+    expect(shownCaption()).toBe(CAPTIONS.length - 1);
+    expect(next()).toBe(false);
+    expect(back()).toBe(true);
+    play(STEP_MAX_MS + 50);
+    expect(shownCaption()).toBe(CAPTIONS.length - 2);
+  });
+
+  it("leaves a shared control to the slide that set it last", () => {
+    const control = { current: null as JourneyControl | null };
+    const first = render(<JourneySlide control={control} />);
+    render(<JourneySlide control={control} />);
+    const second = control.current;
+    expect(second).not.toBeNull();
+    first.unmount();
+    expect(control.current).toBe(second);
+  });
+
   it("jumps to the last frame with End and the first with Home", () => {
     show();
     expect(fireEvent.keyDown(window, { key: "End" })).toBe(false);
@@ -225,14 +273,38 @@ describe("the journey slide, without WebGL 2", () => {
     wheel(-1_000);
     play(20);
     expect(bar()).toBe(0);
-    // A wheel turn mid-glide takes over from the key.
+  });
+
+  it("lets a key's glide finish before the wheel moves it again, so a trackpad's coasting can't cut it short", () => {
+    const { next } = show();
     next();
     play(STEP_MIN_MS / 2);
-    const mid = bar();
-    wheel(-1_000);
+    // Still the journey's wheel (no page scroll), but it waits.
+    expect(wheel(-1_000)).toBe(false);
     play(STEP_MAX_MS);
+    expect(shownCaption()).toBe(1);
+    expect(bar()).toBeCloseTo(barAt(1), 1);
+    wheel(-1_000);
+    play(20);
     expect(bar()).toBe(0);
-    expect(mid).toBeGreaterThan(0);
+  });
+
+  it("treats a few pixels of drift after a step as still at its caption", () => {
+    const { next, back } = show();
+    next();
+    next();
+    play(2 * STEP_MAX_MS);
+    expect(shownCaption()).toBe(2);
+    fireEvent.wheel(window, { deltaY: 4 });
+    play(20);
+    expect(back()).toBe(true);
+    play(STEP_MAX_MS + 50);
+    expect(shownCaption()).toBe(1);
+    fireEvent.wheel(window, { deltaY: -4 });
+    play(20);
+    expect(next()).toBe(true);
+    play(STEP_MAX_MS + 50);
+    expect(shownCaption()).toBe(2);
   });
 
   it("leaves a pinch to the browser", () => {
@@ -255,6 +327,40 @@ describe("the journey slide, without WebGL 2", () => {
   it("falls back to the page body without the presenter's overlay", () => {
     render(<JourneySlide />);
     expect(stage()!.parentElement).toBe(document.body);
+  });
+});
+
+describe("the journey slide's first frame", () => {
+  it("brings up the first caption even when a frame comes before the stage renders", async () => {
+    // The stage renders a moment after the slide (it waits for the slide's box), and the
+    // browser can draw in between: the caption that frame couldn't reach must still come up.
+    const act = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
+    const was = act.IS_REACT_ACT_ENVIRONMENT;
+    act.IS_REACT_ACT_ENVIRONMENT = false;
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => (frames.push(cb), frames.length));
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+    const container = document.createElement("div");
+    const overlay = document.createElement("div");
+    overlay.setAttribute("data-aspen-overlay", "");
+    document.body.append(container, overlay);
+    const root = createRoot(container);
+    try {
+      flushSync(() => root.render(<JourneySlide />));
+      expect(document.querySelector(".jl-stage")).toBeNull();
+      frames.splice(0).forEach((cb) => cb(16));
+      await new Promise((r) => setTimeout(r, 50));
+      expect(document.querySelector(".jl-stage")).not.toBeNull();
+      frames.splice(0).forEach((cb) => cb(32));
+      expect(caps()[0]).toBe(1);
+      expect(caps().slice(1).every((o) => o === 0.001)).toBe(true);
+      expect(posters()).toEqual(CAPTIONS.map((_, i) => (i === 0 ? "1" : "0")));
+    } finally {
+      root.unmount();
+      container.remove();
+      overlay.remove();
+      act.IS_REACT_ACT_ENVIRONMENT = was;
+    }
   });
 });
 
@@ -398,6 +504,21 @@ describe("the journey slide, with WebGL 2", () => {
     play(20);
     expect(posters()).toEqual(CAPTIONS.map((_, i) => (i === 4 ? "1" : "0")));
     expect(shownCaption()).toBe(4);
+  });
+
+  it("keeps a click on the picture from following the homepage's links, but still lets them show on hover", async () => {
+    director.create.mockResolvedValue(director.made);
+    show();
+    await waitFor(() => expect(director.made.jump).toHaveBeenCalled());
+    const canvas = document.querySelector("canvas")!;
+    const clicked = vi.fn();
+    const hovered = vi.fn();
+    canvas.addEventListener("click", clicked);
+    canvas.addEventListener("pointermove", hovered);
+    fireEvent.click(canvas);
+    fireEvent.pointerMove(canvas);
+    expect(clicked).not.toHaveBeenCalled();
+    expect(hovered).toHaveBeenCalled();
   });
 
   it("falls back to the stills when a later scene can't be built", async () => {
