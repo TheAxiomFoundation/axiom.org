@@ -21,7 +21,13 @@ import { newerControl } from "./control";
 export interface AspenStore {
   kind: "supabase" | "memory";
   getControl(): Promise<Control>;
-  setControl(patch: { runId?: string; stage?: string }): Promise<Control>;
+  /**
+   * Moves the room to a stage, or starts a run, or both. With `inRun`, the run
+   * the move was made in, only while the room is still in that run: a move the
+   * presenter gave up on that reaches the store after a run switch changes
+   * nothing. Answers with the row as it is after.
+   */
+  setControl(patch: { runId?: string; stage?: string; inRun?: string }): Promise<Control>;
   upsertParticipant(row: ParticipantRow): Promise<void>;
   insertPrompt(row: PromptRow): Promise<void>;
   /**
@@ -180,9 +186,12 @@ export function createSupabaseStore(
       // beat changes nothing and answers with the row as it is. That holds for the whole write: a run
       // switch that a later stage-only move beat to the row keeps the old run, so the presenter sends
       // no move across a run switch, and sends a run switch beaten that way once more (presenter-app's
-      // move).
+      // move). With `inRun`, the same update also checks the row is still in that run, so a move that
+      // reaches the store after a run switch, though the presenter gave up on it before sending the
+      // switch, changes nothing (the review of #376).
+      const inRun = patch.inRun ? `&run_id=eq.${encodeURIComponent(patch.inRun)}` : "";
       const rows = await request<ControlRow[]>(
-        `aspen_control?id=eq.live&updated_at=lt.${encodeURIComponent(updatedAt)}&select=run_id,stage,updated_at`,
+        `aspen_control?id=eq.live&updated_at=lt.${encodeURIComponent(updatedAt)}${inRun}&select=run_id,stage,updated_at`,
         { method: "PATCH", body, prefer: "return=representation" },
       );
       return rows[0] ? toControl(rows[0]) : getControl();
@@ -264,6 +273,7 @@ export function createMemoryStore(state: MemoryState = freshMemory()): AspenStor
       return { ...state.control };
     },
     async setControl(patch) {
+      if (patch.inRun && patch.inRun !== state.control.runId) return { ...state.control };
       // Each write is stamped after the one before, even when the clock steps back, so the TV takes
       // the newest write for the newest row (control.ts newerControl), as the phones do.
       const last = Date.parse(state.control.updatedAt ?? "") || 0;
@@ -379,7 +389,7 @@ export async function readControl(store: AspenStore | null, fresh = false): Prom
 /** Writes the control row, answers with the store's answer, and keeps it in this instance's cache if it is the newest. */
 export async function writeControl(
   store: AspenStore,
-  patch: { runId?: string; stage?: string },
+  patch: { runId?: string; stage?: string; inRun?: string },
 ): Promise<Control> {
   const asked = Date.now();
   const value = await store.setControl(patch);

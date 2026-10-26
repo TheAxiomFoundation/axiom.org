@@ -122,6 +122,10 @@ describe('aspen API routes', () => {
       live: true,
     })
     expect((await setState(post({ stage: 'nowhere' }))).status).toBe(400)
+    // A move made in a run the room has since left changes nothing; one made in the room's run goes.
+    expect(await (await setState(post({ stage: 'reveal', inRun: 'rehearsal' }))).json()).toMatchObject({ runId: 'phoenix', stage: 'try' })
+    expect(await (await setState(post({ stage: 'reveal', inRun: 'phoenix' }))).json()).toMatchObject({ runId: 'phoenix', stage: 'reveal' })
+    expect(await (await setState(post({ stage: 'try', inRun: 'phoenix' }))).json()).toMatchObject({ runId: 'phoenix', stage: 'try' })
 
     // Nobody is asked who they are any more: the profile event is gone.
     expect((await event(post({ participantId: P, kind: 'profile', payload: { state: 'Arizona' } }))).status).toBe(400)

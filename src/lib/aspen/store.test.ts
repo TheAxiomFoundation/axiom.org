@@ -77,6 +77,16 @@ describe('memory store', () => {
     expect(await verdict()).toBe('wrong')
   })
 
+  it('takes a control write only while the room is still in the run it was made in', async () => {
+    const store = createMemoryStore()
+    await store.setControl({ runId: 'live', stage: 'welcome' })
+    const before = await store.getControl()
+    expect(await store.setControl({ stage: 'try', inRun: 'rehearsal' })).toEqual(before)
+    expect(await store.setControl({ runId: 'other', inRun: 'rehearsal' })).toEqual(before)
+    expect(await store.setControl({ stage: 'try', inRun: 'live' })).toMatchObject({ runId: 'live', stage: 'try' })
+    expect(await store.setControl({ runId: 'next', stage: 'welcome', inRun: 'live' })).toMatchObject({ runId: 'next', stage: 'welcome' })
+  })
+
   it('stamps each control write after the one before, even when the clock steps back', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     try {
@@ -183,6 +193,39 @@ describe('supabase store', () => {
       // And a write in the same millisecond as the row's is no newer, so it changes nothing either.
       vi.setSystemTime(new Date('2026-10-27T00:30:02.000Z'))
       expect(await store.setControl({ stage: 'groups' })).toMatchObject({ stage: 'scale' })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('takes a write only while the row is still in the run it was made in, checked in the same update', async () => {
+    // PostgREST's side: the PATCH changes the row only when both filters match.
+    let row = { run_id: 'live', stage: 'welcome', updated_at: '2026-10-27T00:30:00.000Z' }
+    const { fn, calls } = fakeFetch((url, init) => {
+      if (init.method !== 'PATCH') return { body: [row] }
+      const patch = JSON.parse(String(init.body))
+      const query = new URL(url).searchParams
+      const run = query.get('run_id')
+      if (!(row.updated_at < patch.updated_at) || (run !== null && run !== `eq.${row.run_id}`)) return { body: [] }
+      row = { ...row, ...patch }
+      return { body: [row] }
+    })
+    const store = createSupabaseStore(config, fn)
+    vi.useFakeTimers()
+    try {
+      // A move the presenter made in the rehearsal reaches the store after Start run: it changes nothing.
+      vi.setSystemTime(new Date('2026-10-27T00:30:01.000Z'))
+      expect(await store.setControl({ stage: 'try', inRun: 'rehearsal' })).toMatchObject({ runId: 'live', stage: 'welcome' })
+      expect(new URL(calls[0].url).searchParams.get('run_id')).toBe('eq.rehearsal')
+      expect(row.stage).toBe('welcome')
+      // One made in the live run goes; one that names no run is checked by its stamp alone.
+      vi.setSystemTime(new Date('2026-10-27T00:30:02.000Z'))
+      expect(await store.setControl({ stage: 'reveal', inRun: 'live' })).toMatchObject({ runId: 'live', stage: 'reveal' })
+      vi.setSystemTime(new Date('2026-10-27T00:30:03.000Z'))
+      expect(await store.setControl({ stage: 'scale' })).toMatchObject({ stage: 'scale' })
+      expect(new URL(calls.at(-1)!.url).searchParams.has('run_id')).toBe(false)
+      // The run is not written from it: `inRun` only checks.
+      expect(JSON.parse(String(calls.at(-1)!.init.body))).not.toHaveProperty('inRun')
     } finally {
       vi.useRealTimers()
     }

@@ -203,7 +203,7 @@ describe("the run-of-show's cue sheet", () => {
   const clock = (ms: number) => `${Math.floor(ms / 60_000)}:${String(Math.floor((ms % 60_000) / 1_000)).padStart(2, "0")}`;
 
   it("gives the times its table prints, from when the slide comes up", () => {
-    // The run-of-show's table for Shared foundation 2/2; it changes with these.
+    // The run-of-show's table for Shared foundation 6/7, the journey; it changes with these.
     expect(CAPTIONS.map((_, j) => (j === 0 ? "0:00" : clock(HOLD_MS + halfUp(j))))).toEqual(["0:00", "0:13", "0:43", "0:58", "1:21", "1:37", "1:56", "2:16"]);
     // The story's length pins the homepage's pacing, which a cue a second off wouldn't show.
     expect(STORY_END_MS).toBeCloseTo(145_357.187, 2);

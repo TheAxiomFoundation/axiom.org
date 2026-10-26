@@ -34,8 +34,9 @@ function canAnimate(): boolean {
 }
 
 /**
- * Shared foundation 2/2, after its title slide: the homepage's encoding journey,
- * played at a steady pace on its own WebGL canvas with its own captions.
+ * Shared foundation 6/7, after the question and the three rules slides: the
+ * homepage's encoding journey, played at a steady pace on its own WebGL canvas
+ * with its own captions.
  * It holds the first frame, plays the eight beats in about two and a half
  * minutes, and holds the last. Space pauses and resumes it, and Home starts
  * it over; the arrows still move between slides. Without WebGL 2, or with

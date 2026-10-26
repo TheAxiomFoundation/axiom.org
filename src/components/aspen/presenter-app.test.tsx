@@ -113,14 +113,16 @@ function setup(
     throw new Error(`unexpected ${url}`);
   });
   vi.stubGlobal("fetch", fetchMock);
-  const posts = () =>
+  // Each move's body, without the run it names (`inRun`), which its own tests check.
+  const bodies = () =>
     fetchMock.mock.calls
       .filter(([url, init]) => url === "/api/aspen/state" && init?.method === "POST")
-      .map(([, init]) => JSON.parse(String(init?.body)));
+      .map(([, init]) => JSON.parse(String(init?.body)) as Partial<Control> & { inRun?: string });
+  const posts = () => bodies().map(({ inRun: _inRun, ...body }) => body);
   const view = render(
     <PresenterApp joinPassword={options.joinPassword === undefined ? "phoenix-2026" : options.joinPassword} />,
   );
-  return { server, fetchMock, posts, ...view };
+  return { server, fetchMock, posts, bodies, ...view };
 }
 
 async function onStage(id: StageId) {
@@ -671,6 +673,101 @@ describe("PresenterApp navigation", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("keeps a move the TV gave up on out of the run Start run then started, against the Supabase store", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-10-27T01:00:00.000Z"));
+      let row = { run_id: "rehearsal", stage: "welcome", updated_at: "2026-10-27T01:00:00.000Z" };
+      const database = (async (url: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method !== "PATCH") return new Response(JSON.stringify([row]));
+        const patch = JSON.parse(String(init.body));
+        const query = new URL(String(url)).searchParams;
+        const before = query.get("updated_at")!.replace(/^lt\./, "");
+        const run = query.get("run_id");
+        const applies = Date.parse(row.updated_at) < Date.parse(before) && (run === null || run === `eq.${row.run_id}`);
+        if (applies) row = { ...row, ...patch };
+        return new Response(JSON.stringify(applies ? [row] : []));
+      }) as typeof fetch;
+      const store = createSupabaseStore({ url: "https://db.example", key: "service" }, database);
+      vi.spyOn(window, "confirm").mockReturnValue(true);
+      const { server, bodies } = setup({ get: async () => jsonResponse(await store.getControl()) });
+      // The route: a request whose handler stalls before it stamps the write, until the test lets it on.
+      const taken: (() => void)[] = [];
+      server.post = (body, init) =>
+        new Promise<Response>((resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+          taken.push(() => void store.setControl(body).then((value) => resolve(jsonResponse(value))));
+        });
+      const flush = () =>
+        act(async () => {
+          await vi.advanceTimersByTimeAsync(0);
+        });
+      await flush();
+      fireEvent.click(within(screen.getByRole("navigation", { name: "Stages" })).getByRole("button", { name: "Try it" }));
+      fireEvent.click(screen.getByRole("button", { name: "New run" }));
+      fireEvent.change(screen.getByRole("textbox", { name: "New run name" }), { target: { value: "live" } });
+      fireEvent.click(screen.getByRole("button", { name: "Start run" }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(CONTROL_TIMEOUT_MS);
+      });
+      // The TV gave up on Try it and sent Start run, which saves. Then Try it's handler wakes, a second
+      // later: its write is stamped after Start run's, but it was made in the rehearsal.
+      expect(bodies()).toEqual([
+        { stage: "try", inRun: "rehearsal" },
+        { runId: "live", stage: "welcome", inRun: "rehearsal" },
+      ]);
+      taken[1]();
+      await flush();
+      vi.setSystemTime(Date.now() + 1000);
+      taken[0]();
+      await flush();
+      expect(row).toMatchObject({ run_id: "live", stage: "welcome" });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+      expect(row).toMatchObject({ run_id: "live", stage: "welcome" });
+      expect(screen.getByText("Run live")).toBeInTheDocument();
+      expect(screen.getByRole("navigation", { name: "Stages" }).querySelector('[aria-current="step"]')).toHaveTextContent("Welcome");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("names the run each move is made in, once it has read one, and the new run once Start run has saved", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const { bodies } = setup();
+    const nav = () => within(screen.getByRole("navigation", { name: "Stages" }));
+    // Before its first read the TV knows no run, so the move names none.
+    fireEvent.click(nav().getByRole("button", { name: "Try it" }));
+    await screen.findByText("Run r1");
+    fireEvent.click(nav().getByRole("button", { name: "What we saw" }));
+    fireEvent.click(screen.getByRole("button", { name: "New run" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "New run name" }), { target: { value: "r2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Start run" }));
+    fireEvent.click(nav().getByRole("button", { name: "At scale" }));
+    await waitFor(() => expect(bodies()).toHaveLength(4));
+    expect(bodies()).toEqual([
+      { stage: "try" },
+      { stage: "reveal", inRun: "r1" },
+      { runId: "r2", stage: "welcome", inRun: "r1" },
+      { stage: "scale", inRun: "r2" },
+    ]);
+    await onStage("scale");
+    expect(screen.getByText("Run r2")).toBeInTheDocument();
+  });
+
+  it("says the stage did not change when the room had moved to a run the TV hadn't heard of yet", async () => {
+    const { server, bodies } = setup({ stage: "reveal" });
+    await screen.findByText("Run r1");
+    // Another screen started r2; the store refuses a move made in r1 and answers with its row.
+    server.post = async () => jsonResponse({ runId: "r2", stage: "welcome", live: true, updatedAt: "2026-10-27T01:00:02Z" });
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Stages" })).getByRole("button", { name: "At scale" }));
+    expect(await screen.findByText("The room is on run r2 now, so the stage did not change.")).toBeInTheDocument();
+    expect(bodies()).toEqual([{ stage: "scale", inRun: "r1" }]);
+    await onStage("welcome");
+    expect(screen.getByText("Run r2")).toBeInTheDocument();
   });
 
   it("says the run did not start when its second try is beaten too, and sends it no third time", async () => {
@@ -2138,7 +2235,7 @@ describe("PresenterApp moves, for any order of outcomes", () => {
    * coming later, after newer rows; refused; dropped before the store; saved but its answer lost; timed
    * out, after three polls, and then maybe reaching the store anyway, stamped when it was sent or later),
    * each write stamped when the server takes it and landing in any order, and the store keeping a write,
-   * whole, only over an older row (store.ts setControl):
+   * whole, only over an older row and only in the run it names (store.ts setControl):
    * 1. while any move is in flight, the TV shows the newest move's stage, whatever the polls say, and
    *    whether or not it has read the room yet;
    * 2. once none is, it shows the newest row the store answered with, never a stage no write saved (or
@@ -2151,9 +2248,10 @@ describe("PresenterApp moves, for any order of outcomes", () => {
    * 5. a stage button shows its stage from the first slide (its own stage's button changes nothing),
    *    and so does a poll that brings another stage while no move is in flight; a poll that leaves the
    *    stage leaves the slide;
-   * 6. no write the TV is waiting on crosses a run switch: Start run is sent only when no other move is
-   *    in flight, and no move is sent while it is, so a run switch the store refuses is one that another
-   *    screen's write, or a move the TV gave up on, beat;
+   * 6. no write crosses a run switch: Start run is sent only when no other move is in flight, and no
+   *    move is sent while it is; each move names the run the TV made it in, the newest row's, once it has
+   *    read one, so a move it gave up on can't land in a run started after it; and a run switch the store
+   *    refuses is one that another screen's write, or a move the TV gave up on, beat;
    * 7. the run on screen is always the newest row's the store answered with, moves in flight or not
    *    (none before the first answer);
    * 8. a run switch the store answers with a row still on the run it left is sent once more, and only
@@ -2203,8 +2301,10 @@ describe("PresenterApp moves, for any order of outcomes", () => {
             beaten: boolean;
             // A slow move's answer, once its write has landed: the row as it was then.
             answer?: Control;
-            // For a run switch, the run the TV showed when it sent it, and whether it is the second try (8).
+            // The run the TV showed when it sent the move, which the move names (6), and, for a run switch,
+            // whether it is the second try (8).
             from: string | null;
+            inRun?: string;
             retry: boolean;
             resolve: (r: Response) => void;
             reject: (e: Error) => void;
@@ -2220,6 +2320,10 @@ describe("PresenterApp moves, for any order of outcomes", () => {
           const inFlight = () => made - done;
           let runs = 0;
           const crossed: string[] = [];
+          // Moves that named another run than the one the TV showed when it sent them (6).
+          const misnamed: string[] = [];
+          // Whether the store takes a write: only over an older row, and only in the run it names.
+          const takes = (move: Sent, stamp: string) => (store.updatedAt ?? "") < stamp && (!move.inRun || move.inRun === store.runId);
           let newestMove: StageId | null = null;
           // While moves are in flight, the slide the TV last showed on each stage they left, and the run it
           // showed it in: the run of the newest row the store had answered with, if any, and the run a run
@@ -2232,15 +2336,16 @@ describe("PresenterApp moves, for any order of outcomes", () => {
               const url = String(input);
               if (url.startsWith("/api/aspen/results")) return jsonResponse({ runId: "r1", live: true, summary: EMPTY_SUMMARY });
               if (init?.method === "POST") {
-                const { stage, runId } = JSON.parse(String(init.body)) as { stage: StageId; runId?: string };
+                const { stage, runId, inRun } = JSON.parse(String(init.body)) as { stage: StageId; runId?: string; inRun?: string };
                 if (runId ? pending.length > 0 : pending.some((p) => p.runId)) crossed.push(runId ?? stage);
                 // The server stamps the write when it takes it; when the write lands is up to the test.
                 clock += 1;
                 const retry = retrying !== null && runId === retrying.runId;
                 if (retry) retrying = null;
+                const from = newestAnswered()?.runId ?? null;
+                if ((inRun ?? null) !== from) misnamed.push(`${runId ?? stage} in ${inRun}, not ${from}`);
                 return new Promise<Response>((resolve, reject) => {
-                  const from = newestAnswered()?.runId ?? null;
-                  const move: Sent = { stage, runId, stamp: at(), beaten: false, from, retry, resolve, reject };
+                  const move: Sent = { stage, runId, stamp: at(), beaten: false, from, inRun, retry, resolve, reject };
                   pending.push(move);
                   // Like fetch, a move the timeout aborts fails; the server may still take it (ghost).
                   init.signal?.addEventListener("abort", () => {
@@ -2281,6 +2386,7 @@ describe("PresenterApp moves, for any order of outcomes", () => {
               left.set(at.stage, { run: newestAnswered()?.runId ?? null, next: switchingTo, slide: at.slide });
             const check = () => {
               expect(crossed).toEqual([]);
+              expect(misnamed).toEqual([]);
               expect(screen.getByText(`Run ${newestAnswered()?.runId ?? "…"}`)).toBeInTheDocument();
               if (inFlight() > 0) expect(shown()).toBe(newestMove);
               else expect(shown()).toBe(newestAnswered()?.stage ?? "welcome");
@@ -2297,10 +2403,14 @@ describe("PresenterApp moves, for any order of outcomes", () => {
               } else {
                 // A write lands, whole, only over an older row; either way the store answers with its row.
                 if (how === "saved" || how === "slow" || how === "lost") {
-                  if ((store.updatedAt ?? "") < move.stamp) {
+                  if (takes(move, move.stamp)) {
                     store = { ...store, stage: move.stage, ...(move.runId ? { runId: move.runId } : {}), updatedAt: move.stamp };
                     held.push(store);
-                  } else if (move.runId) expect(move.beaten).toBe(true);
+                  } else if (move.runId) {
+                    // Refused: beaten by a write the TV wasn't waiting on, or the room left the run the switch
+                    // named for one the TV hadn't heard of (a switch of its own whose answer was lost).
+                    expect(move.beaten || (move.inRun !== undefined && move.inRun !== store.runId)).toBe(true);
+                  }
                 }
                 if (how === "slow") {
                   // Its answer comes at a later settle, still in flight until then.
@@ -2327,6 +2437,8 @@ describe("PresenterApp moves, for any order of outcomes", () => {
               if (again) expect(retrying).toBeNull();
               else if (missed && newestAnswered()!.runId !== move.runId) {
                 expect(screen.getByText(`Run ${move.runId} did not start: the room is on run ${newestAnswered()!.runId}.`)).toBeInTheDocument();
+              } else if (answer && !move.runId && move.inRun && answer.runId !== move.inRun) {
+                expect(screen.getByText(`The room is on run ${newestAnswered()!.runId} now, so the stage did not change.`)).toBeInTheDocument();
               }
               if (inFlight() === 0) {
                 const row = newestAnswered();
@@ -2381,10 +2493,11 @@ describe("PresenterApp moves, for any order of outcomes", () => {
                 const [ghost] = ghosts.splice(c.pick % ghosts.length, 1);
                 if (c.stalled) clock += 1;
                 const stamp = c.stalled ? at() : ghost.stamp;
-                if ((store.updatedAt ?? "") < stamp) {
+                if (takes(ghost, stamp)) {
+                  // A run switch beats every move in flight: they name the run it left.
+                  for (const p of pending) if (p.stamp < stamp || (ghost.runId && ghost.runId !== store.runId)) p.beaten = true;
                   store = { ...store, stage: ghost.stage, ...(ghost.runId ? { runId: ghost.runId } : {}), updatedAt: stamp };
                   held.push(store);
-                  for (const p of pending) if (p.stamp < stamp) p.beaten = true;
                 }
               } else if (c.kind === "other") {
                 clock += 1;

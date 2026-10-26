@@ -221,7 +221,9 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
    * move after it once it has. The store keeps the newest write whole (store.ts setControl), so a
    * stage move stamped after a run switch whose write landed first would keep the old run, and the
    * room's new results would mix with the rehearsal's (the review of #376). Other moves still go at
-   * once, each to the store as it arrives.
+   * once, each to the store as it arrives. And each move names the run the TV made it in, once it has
+   * read one, so a move it gave up on that reaches the store after a run switch it then let through
+   * changes nothing there (store.ts setControl).
    */
   const move = useCallback(async (patch: { stage?: StageId; runId?: string }) => {
     left.current.set(onScreen.current.stage, {
@@ -230,9 +232,12 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
       sub: onScreen.current.sub,
     });
     if (patch.stage) setAhead(patch.stage);
-    const post = () => postJson<Control & { error?: string }>("/api/aspen/state", patch, CONTROL_TIMEOUT_MS);
+    // The run the move is made in, once it is sent: the store takes it only while the room is still in it.
+    let from: string | null = null;
     const send = async () => {
-      const from = stored.current?.runId ?? null;
+      from = stored.current?.runId ?? null;
+      const post = () =>
+        postJson<Control & { error?: string }>("/api/aspen/state", from ? { ...patch, inRun: from } : patch, CONTROL_TIMEOUT_MS);
       const first = await post();
       if (!patch.runId || !first.ok || !isControl(first.data) || first.data.runId === patch.runId) return first;
       stored.current = newerControl(stored.current, first.data);
@@ -249,10 +254,15 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
     if (response?.ok && isControl(response.data)) {
       stored.current = newerControl(stored.current, response.data);
       setControl(stored.current);
+      const room = stored.current.runId;
+      // A run switch that didn't start, or a move the store refused because the room had left the run it
+      // was made in (a run the TV hadn't heard of yet), says so.
       setError(
-        patch.runId && response.data.runId !== patch.runId && stored.current.runId !== patch.runId
-          ? `Run ${patch.runId} did not start: the room is on run ${stored.current.runId}.`
-          : null,
+        patch.runId && response.data.runId !== patch.runId && room !== patch.runId
+          ? `Run ${patch.runId} did not start: the room is on run ${room}.`
+          : !patch.runId && from !== null && response.data.runId !== from
+            ? `The room is on run ${room} now, so the stage did not change.`
+            : null,
       );
     } else {
       setError(response?.data.error ?? "The stage did not change. Check the connection.");
