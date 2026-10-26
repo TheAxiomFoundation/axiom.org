@@ -38,11 +38,14 @@ export function Agenda({
   current,
   onPick,
   compact = false,
+  limit,
 }: {
   live?: StageId | null;
   current?: StageId;
   onPick?: (id: StageId) => void;
   compact?: boolean;
+  /** The last stage a participant may open; later ones wait for the room (the dry run, Oct 25). */
+  limit?: number;
 }) {
   const liveIndex = live ? STAGES.findIndex((s) => s.id === live) : -1;
   return (
@@ -56,6 +59,7 @@ export function Agenda({
         const isLive = i === liveIndex;
         const done = liveIndex > i;
         const here = current === stage.id;
+        const locked = limit !== undefined && i > limit;
         const row = (
           <>
             <span
@@ -102,10 +106,12 @@ export function Agenda({
               <button
                 type="button"
                 aria-current={here ? "step" : undefined}
+                disabled={locked}
                 onClick={() => onPick(stage.id)}
-                className={`${grid} rounded-md px-1.5 ${here && compact ? "bg-[var(--color-accent-light)]" : "hover:bg-[var(--color-rule-subtle)]/60"}`}
+                className={`${grid} rounded-md px-1.5 disabled:cursor-not-allowed disabled:opacity-45 ${here && compact ? "bg-[var(--color-accent-light)]" : "enabled:hover:bg-[var(--color-rule-subtle)]/60"}`}
               >
                 {row}
+                {locked && <span className="sr-only">, opens when the room gets there</span>}
               </button>
             ) : (
               <div className={grid}>{row}</div>
@@ -123,7 +129,7 @@ export { Disclosure };
  * The landing: what this is, and one button. Who you ask as (a resident or a
  * caseworker) is picked in the chat itself, so nothing here asks who you are.
  */
-export function WelcomeLanding({ onStart }: { onStart: () => void }) {
+export function WelcomeLanding({ onStart, waiting = false }: { onStart: () => void; waiting?: boolean }) {
   return (
     <div className="mx-auto flex min-h-[calc(100dvh-4.5rem)] max-w-[760px] flex-col items-center justify-center gap-8 py-6 text-center">
       <section className="flex flex-col items-center">
@@ -138,11 +144,14 @@ export function WelcomeLanding({ onStart }: { onStart: () => void }) {
       <div className="flex w-full max-w-[440px] flex-col gap-3">
         <button
           type="button"
-          className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-[var(--color-accent)] px-4 py-3.5 font-body text-[1.05rem] font-medium text-white transition-colors hover:bg-[var(--color-accent-hover)]"
+          disabled={waiting}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-[var(--color-accent)] px-4 py-3.5 font-body text-[1.05rem] font-medium text-white transition-colors enabled:hover:bg-[var(--color-accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
           onClick={onStart}
         >
           Start: ask the AI <span aria-hidden>→</span>
         </button>
+        {/* Phones wait for the presenter rather than run ahead (the dry run, Oct 25). */}
+        {waiting && <p className="m-0 font-body text-[0.98rem] text-[var(--color-ink-secondary)]">This opens when the session starts.</p>}
         <Disclosure onOpen={() => sendEvent("disclosure", { opened: true }, "welcome")} />
       </div>
     </div>

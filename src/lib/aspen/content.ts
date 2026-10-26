@@ -656,8 +656,8 @@ export const DISCUSSION_TOPICS = [
 export const USE_CASES = [
   {
     id: "see-edit",
-    label: "See and edit the rules",
-    detail: "Staff read the rules in plain language and change them.",
+    label: "See and trace the rules",
+    detail: "Staff read the rules in plain language and trace each one to the law.",
   },
   {
     id: "project",
@@ -852,38 +852,47 @@ export const FRONT_DOOR = {
 } as const;
 
 // ---------------------------------------------------------------------------
-// The same models with a rules engine as a tool (PolicyBench's tool pilot).
-// From the October 20, 2026 note on policybench.org: 100 US households, run
-// October 14–15; the no-tool arm is each model's October 14 board row.
-// Recomputed Oct 23 with the note's own scripts/tool_pilot_note.py functions
-// (references, is_amount, hit, board and tool predictions) on
-// notes/data/tool_pilot_20261015.csv: 187 dollar amounts per model whose
-// reference isn't $0 (1/0 eligibility outputs excluded), a hit within $1.
-// 171 are taxes and tax credits and 16 are benefits. The note's headline
-// ("above 99%") is a different score, household-weighted over all 1,935
-// outputs, so the slide doesn't quote it.
+// At scale 6/7: the same models, given our rules engine as a tool. PolicyBench's
+// preliminary internal pilot of October 23–25, 2026, the three models run on
+// 100 households (Max's call on d1943 in the dry run, Oct 25: replace the
+// October 14–15 tool pilot with this table, nonzero amounts within $1, the
+// accuracy change and the cost change as a percent). Hand-copied from the
+// final build, PolicyBench scripts dccf8bf:
+//   ~/reviews/policybench-v2-microcosm-2026-10/aspen/free-plan-pooled.json
+//     (sha256 5c40b635…): models[].arms.{web,both}.k of n = 276, and
+//     models[].vsWeb.both {points, lo, hi}, a 95% household bootstrap;
+//   paper/v2-preview/build/v2-preview.json (sha256 f06e95cf…):
+//     settings[].settings.{web,both}.costPerHousehold and vsWeb.costPct.
+// Cost is at API list prices, searches at $10 per 1,000 (OpenAI, Anthropic)
+// and $14 (Gemini) with no free allowance. The models ran through their APIs
+// with PolicyBench's prompt, not in chat apps. At 100 households a change of
+// under about 10 points is within noise. The references come from the same
+// engine the tool runs (policyengine-us 2.60.4), and an AI judge disputes
+// some of them, none adjudicated yet; that is why it is a pilot. Never call
+// it a published PolicyBench result. The screens say "our rules engine" and
+// leave PolicyEngine unnamed (Max, Oct 25).
 // ---------------------------------------------------------------------------
 
-export type ToolPilotArmId = "alone" | "web" | "tool" | "both";
+export interface EnginePilotRow {
+  model: string;
+  /** Nonzero dollar amounts within $1 of the reference, of the pilot's `amounts`. */
+  web: number;
+  both: number;
+  /** The change from web search alone, in points, with its 95% interval, as the export rounds them. */
+  change: { points: number; lo: number; hi: number };
+  /** Mean list-price cost per household, in dollars. */
+  cost: { web: number; both: number };
+}
 
-export interface ToolPilot {
+export interface EnginePilot {
   title: string;
-  /** Dollar amounts scored per model; every count below is how many of them were right. */
+  /** Households per model, and the nonzero dollar amounts they hold. */
+  households: number;
   amounts: number;
+  arms: { web: string; both: string };
   note: string;
-  arms: readonly { id: ToolPilotArmId; label: string }[];
-  rows: readonly { model: string; hits: Readonly<Partial<Record<ToolPilotArmId, number>>> }[];
-  /** The benefit amounts among them, by model, for a room that runs benefits. */
-  benefits?: {
-    title: string;
-    amounts: number;
-    rows: readonly { model: string; short: string; alone: number; tool: number }[];
-    /** What the tool got wrong on benefits outside these amounts. */
-    also: string;
-  };
+  rows: readonly EnginePilotRow[];
   measures: string;
-  /** Why the amounts still wrong with the tool were wrong; the count comes from the rows. */
-  missesCause: string;
   source: string;
 }
 
@@ -892,48 +901,26 @@ export function share(hits: number, of: number): number {
   return Math.round((1000 * hits) / of) / 10;
 }
 
-/** The amounts still wrong with the tool, across every model, and how many were scored. */
-export function toolPilotMisses(p: ToolPilot): { misses: number; scored: number } {
-  const withTool = p.rows.filter((r) => typeof r.hits.tool === "number");
-  return {
-    misses: withTool.reduce((sum, r) => sum + (p.amounts - (r.hits.tool as number)), 0),
-    scored: withTool.length * p.amounts,
-  };
+/** The change from `from` to `to`, as a whole percent: -86 for a cost that fell by 86%. */
+export function percentChange(from: number, to: number): number {
+  return Math.round(100 * (to / from - 1));
 }
 
-/**
- * At scale 6/7: what changes when a model can call a rules engine. Each arm is
- * one bar per model; a later run (more arms, such as web search, or other
- * models) only changes `amounts`, `arms` and `rows`.
- */
-export const TOOL_PILOT: ToolPilot = {
-  title: "The same models, given a rules engine as a tool",
-  amounts: 187,
-  note: "Dollar amounts that aren't $0, within $1 of PolicyBench's reference: 187 per model across 100 US households, 171 of them taxes and tax credits and 16 benefits",
-  arms: [
-    { id: "alone", label: "On its own" },
-    { id: "tool", label: "With our rules engine" },
-  ],
+export const ENGINE_PILOT: EnginePilot = {
+  title: "The same models, given our rules engine as a tool",
+  households: 100,
+  amounts: 276,
+  arms: { web: "Web search", both: "Web search and our rules engine" },
+  note: "Nonzero dollar amounts within $1 of the reference: 276 per model across 100 US households",
   rows: [
-    { model: "GPT-6 Sol", hits: { alone: 126, tool: 181 } },
-    { model: "Claude Opus 5.5", hits: { alone: 131, tool: 185 } },
-    { model: "Gemini 4 Argon", hits: { alone: 87, tool: 186 } },
+    { model: "GPT-6 Luna", web: 152, both: 212, change: { points: 21.7, lo: 13.9, hi: 29.3 }, cost: { web: 0.0558, both: 0.0078 } },
+    { model: "Claude Sonnet 5.5", web: 164, both: 268, change: { points: 37.7, lo: 31.3, hi: 44.1 }, cost: { web: 0.1122, both: 0.0781 } },
+    { model: "Gemini 3.5 Flash-Lite", web: 64, both: 151, change: { points: 31.5, lo: 24.6, hi: 38.5 }, cost: { web: 0.3431, both: 0.0313 } },
   ],
-  benefits: {
-    title: "The 16 benefit amounts: 13 SNAP, 2 SSI, 1 TANF",
-    amounts: 16,
-    rows: [
-      { model: "GPT-6 Sol", short: "Sol", alone: 6, tool: 16 },
-      { model: "Claude Opus 5.5", short: "Opus", alone: 7, tool: 16 },
-      { model: "Gemini 4 Argon", short: "Argon", alone: 0, tool: 16 },
-    ],
-    also: "With the tool, GPT-6 Sol also gave SNAP to 2 households the reference says get none.",
-  },
-  /** The note's own caveat: the tool runs the engine behind the reference, so the scores are agreement with it. */
   measures:
-    "Our rules engine also computes PolicyBench's reference answers. So this shows whether a model can describe a household to it, not whether the engine is right.",
-  missesCause: "came from how the model described the household or read back the answer, not from the calculation.",
-  source: "PolicyBench note, October 20, 2026 · runs October 14–15 · no-tool answers from the October 14 board · counts from the note's data",
+    "Our rules engine also computes PolicyBench's reference answers, so this shows whether a model can describe a household to it, not whether the engine is right. The models ran through their APIs with our prompt, not in chat apps.",
+  source:
+    "Preliminary internal pilot · PolicyBench, our benchmark · runs October 23–25, 2026 · 100 US households · intervals are 95% · cost per household at API list prices, searches included",
 };
 
 /**

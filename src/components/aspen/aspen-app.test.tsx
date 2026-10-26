@@ -38,8 +38,11 @@ async function onView(id: StageId) {
   expect(screen.getByRole("heading", { level: 1, name: title })).toBeInTheDocument();
 }
 
+/** The Next button to a stage, open or waiting for the room. */
 const nextTo = (id: StageId) =>
-  screen.getByRole("button", { name: new RegExp(`^Next${STAGES.find((s) => s.id === id)!.title.replace(/[?]/g, "\\?")}`) });
+  screen.getByRole("button", {
+    name: new RegExp(`^(Next|Up next, when the room gets there)${STAGES.find((s) => s.id === id)!.title.replace(/[?]/g, "\\?")}`),
+  });
 
 function storeChat(chat: Partial<SavedChat>) {
   localStorage.setItem(CHAT_KEY, JSON.stringify(chat));
@@ -109,8 +112,9 @@ describe("AspenApp following the presenter", () => {
   });
 
   it("opens and closes the session menu", async () => {
+    control.stage = "scale";
     render(<AspenApp />);
-    await onView("welcome");
+    await onView("scale");
     expect(menu()).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByRole("navigation", { name: "Session" })).not.toBeInTheDocument();
     fireEvent.click(menu());
@@ -119,8 +123,9 @@ describe("AspenApp following the presenter", () => {
     fireEvent.click(menu());
     expect(screen.queryByRole("navigation", { name: "Session" })).not.toBeInTheDocument();
     // Picking a stage closes the menu.
-    fireEvent.click(nav().getByRole("button", { name: /At scale/ }));
-    await onView("scale");
+    fireEvent.click(menu());
+    fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
+    await onView("try");
     expect(screen.queryByRole("navigation", { name: "Session" })).not.toBeInTheDocument();
   });
 
@@ -202,28 +207,68 @@ describe("AspenApp following the presenter", () => {
     expect(JSON.parse(sessionStorage.getItem("aspen.view") ?? "null")).toEqual({ view: "reveal", follow: true });
   });
 
-  it("leaves a participant who went ahead alone, and follows again once the room catches up", async () => {
+  it("keeps a participant from going past the room, and opens each stage as the room gets there", async () => {
+    // The dry run, Oct 25: phones never run ahead of the presenter.
     control.stage = "reveal";
     const { rerender } = render(<AspenApp />);
     await onView("reveal");
 
-    fireEvent.click(nav().getByRole("button", { name: /At scale/ }));
-    await onView("scale");
-    expect(screen.getByText("42%")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /The room has moved on/ })).not.toBeInTheDocument();
-    expect(JSON.parse(sessionStorage.getItem("aspen.view") ?? "null")).toEqual({ view: "scale", follow: false });
+    fireEvent.click(menu());
+    const later = nav().getByRole("button", { name: /At scale/ });
+    expect(later).toBeDisabled();
+    expect(later).toHaveAccessibleName(/opens when the room gets there/);
+    expect(nav().getByRole("button", { name: /Try it/ })).toBeEnabled();
+    fireEvent.click(later);
+    expect(screen.getByRole("navigation", { name: "Session" })).toBeInTheDocument();
+    await onView("reveal");
+    fireEvent.click(menu());
+    // The Next button names the stage but waits for the room.
+    const next = nextTo("scale");
+    expect(next).toBeDisabled();
+    expect(next).toHaveTextContent("Up next, when the room gets there");
 
-    // The presenter reaches the participant's stage: following resumes.
+    // The presenter moves on: the phone follows, and the next stage still waits.
     control = { ...control, stage: "scale" };
     rerender(<AspenApp />);
+    // The phone polls the room's stage every few seconds.
     await waitFor(
       () => expect(JSON.parse(sessionStorage.getItem("aspen.view") ?? "null")).toEqual({ view: "scale", follow: true }),
       { timeout: 6000 },
     );
+    await onView("scale");
+    expect(nextTo("foundation")).toBeDisabled();
+  });
+
+  it("brings a phone that was past the room back to it, and keeps Forward from going past it", async () => {
+    sessionStorage.setItem("aspen.view", JSON.stringify({ view: "groups", follow: false }));
+    control.stage = "reveal";
+    render(<AspenApp />);
+    await onView("reveal");
+    expect(JSON.parse(sessionStorage.getItem("aspen.view") ?? "null")).toEqual({ view: "reveal", follow: true });
+    // A history entry past the room lands on the room's stage instead.
+    act(() => {
+      window.dispatchEvent(new PopStateEvent("popstate", { state: { aspenStage: "next" } }));
+    });
+    await onView("reveal");
+  });
+
+  it("waits on the welcome page until the session starts, and opens every stage without a live presenter", async () => {
+    const { rerender } = render(<AspenApp />);
+    await onView("welcome");
+    expect(screen.getByRole("button", { name: /Start: ask the AI/ })).toBeDisabled();
+    expect(screen.getByText("This opens when the session starts.")).toBeInTheDocument();
+    // No live control row (a database error): nothing waits, so the page still works.
+    control = { ...control, live: false };
+    rerender(<AspenApp />);
+    await waitFor(() => expect(screen.getByRole("button", { name: /Start: ask the AI/ })).toBeEnabled(), { timeout: 6000 });
+    fireEvent.click(menu());
+    expect(nav().getByRole("button", { name: /Thank you/ })).toBeEnabled();
   });
 
   it("advances with the Next link", async () => {
-    control.stage = "reveal";
+    // Behind the room, Next moves on until it reaches the room's stage.
+    sessionStorage.setItem("aspen.view", JSON.stringify({ view: "reveal", follow: false }));
+    control.stage = "foundation";
     render(<AspenApp />);
     await onView("reveal");
     fireEvent.click(nextTo("scale"));
@@ -471,14 +516,13 @@ describe("AspenApp after a new run", () => {
     localStorage.setItem("aspen.overall.v2", JSON.stringify({ truth: "no" }));
     storeChat(asked);
     sessionStorage.setItem("aspen.view", JSON.stringify({ view: "scale", follow: false }));
+    control.stage = "try";
     render(<AspenApp />);
 
-    await onView("welcome");
+    // The new run starts this phone clean and puts it back with the room.
+    await onView("try");
     await waitFor(() => expect(localStorage.getItem("aspen.run")).toBe(JSON.stringify("phoenix")));
     expect(JSON.parse(localStorage.getItem(CHAT_KEY) ?? "{}").turns).toEqual([]);
-
-    fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
-    await onView("try");
     expect(screen.queryByText("The answer for the couple")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ask the AI" })).toBeDisabled();
 
@@ -489,9 +533,9 @@ describe("AspenApp after a new run", () => {
   it("keeps the chat while the run stays the same", async () => {
     localStorage.setItem("aspen.run", JSON.stringify("phoenix"));
     storeChat(asked);
+    control.stage = "try";
     render(<AspenApp />);
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === "/api/aspen/state")).toBe(true));
-    fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
     await onView("try");
     // The conversation is still there, waiting for its rating.
     expect(await screen.findByText("The answer for the couple")).toBeInTheDocument();
