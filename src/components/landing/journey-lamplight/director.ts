@@ -198,18 +198,8 @@ export async function createDirector(opts: {
   const live = () => {
     if (dead) throw new Error("journey: the director was disposed");
   };
-  // compiles in flight. three polls a compile's programs until they're
-  // ready, and a renderer disposed under that poll throws from it, so a
-  // disposed director lets go of its renderer once the last one is done
+  // compiles in flight (see warm)
   let compiling = 0;
-  const compile = async (sc: THREE.Object3D, cam: THREE.Camera) => {
-    compiling++;
-    try {
-      await renderer.compileAsync(sc, cam);
-    } finally {
-      if (--compiling === 0 && dead) renderer.dispose();
-    }
-  };
   // a scene's first frame must not pay for its setup: upload its textures,
   // compile its shaders and run it once through the post chain, all before
   // the reader gets there
@@ -242,10 +232,20 @@ export async function createDirector(opts: {
     const hidden: THREE.Object3D[] = [];
     [b.scene, b.fx].forEach((sc) => sc.traverse((o) => !o.visible && hidden.push(o)));
     hidden.forEach((o) => (o.visible = true));
-    await compile(b.scene, b.camera);
-    live();
-    await compile(b.fx, b.camera);
-    live();
+    // three polls a compile's programs until they're ready, and a renderer
+    // disposed under that poll throws from it, so a disposed director lets
+    // go of its renderer once the last compile in flight is done. Counted
+    // here, around the await itself: a wrapper's own promise would move this
+    // build's next steps behind other work in the same task
+    for (const sc of [b.scene, b.fx]) {
+      compiling++;
+      try {
+        await renderer.compileAsync(sc, b.camera);
+      } finally {
+        if (--compiling === 0 && dead) renderer.dispose();
+      }
+      live();
+    }
     // and draw it all once, in view or not, so every pass (shadows, depth,
     // colour) has its shaders and buffers before the reader gets there
     const culled: THREE.Object3D[] = [];
@@ -508,7 +508,7 @@ export async function createDirector(opts: {
     if (raf) cancelAnimationFrame(raf);
     pa.composer.dispose();
     pb.composer.dispose();
-    // a compile in flight lets go of it when it's done (see compile)
+    // a compile in flight lets go of it when it's done (see warm)
     if (!compiling) renderer.dispose();
   };
   try {

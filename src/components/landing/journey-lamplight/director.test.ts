@@ -15,7 +15,10 @@ const kit = vi.hoisted(() => {
     made: [] as number[],
     textures: new Map<number, number>(), // how many MOCK textures a scene carries
     latency: new Map<number, { ready: number; compile: number }>(), // ms a scene's assets and compiles take
+    ticks: new Map<number, number>(), // microtasks a scene's assets come late by
     gates: new Map<string, Promise<void>>(), // a compile, by its logged name, waits on this
+    throws: new Set<string>(), // a compile, by its logged name, throws as it's called
+    parallel: false, // three can ask the driver whether a compile is done (KHR_parallel_shader_compile)
     calls: [] as string[],
     late: [] as string[],
     pipelines: 0,
@@ -43,18 +46,24 @@ vi.mock("../style-frames/kit", async () => {
         setPixelRatio: () => log("setPixelRatio"),
         setSize: (w: number, h: number) => log(`setSize ${w}x${h}`),
         initTexture: (t: { userData: { scene: number } }) => log(`initTexture ${t.userData.scene}`),
-        // as three's does: it compiles at once, then polls its programs every 10 ms
-        // until they're ready. A poll on a disposed renderer throws there, so the
-        // compile never settles; here that poll is logged as late, and stops.
+        // as three's does: it compiles at once, then polls its programs until they're
+        // ready, at once if it can ask the driver and then every 10 ms. A poll on a
+        // disposed renderer throws there, so the compile never settles; here that
+        // poll is logged as late, and stops.
         compileAsync: (sc: { userData: { mock: string; index: number } }) => {
-          log(`compileAsync ${sc.userData.mock}`);
-          let ready: boolean | Error = false;
-          Promise.resolve(kit.gates.get(`compileAsync ${sc.userData.mock}`))
-            .then(() => wait(kit.latency.get(sc.userData.index)?.compile ?? 0))
-            .then(
-              () => (ready = true),
-              (e: Error) => (ready = e),
-            );
+          const name = `compileAsync ${sc.userData.mock}`;
+          log(name);
+          if (kit.throws.has(name)) throw new Error(`MOCK: scene ${sc.userData.index} failed to set up its shaders`);
+          const gate = kit.gates.get(name);
+          const ms = kit.latency.get(sc.userData.index)?.compile ?? 0;
+          let ready: boolean | Error = !gate && !ms;
+          if (!ready)
+            Promise.resolve(gate)
+              .then(() => wait(ms))
+              .then(
+                () => (ready = true),
+                (e: Error) => (ready = e),
+              );
           kit.polling++;
           return new Promise<void>((resolve, reject) => {
             const poll = () => {
@@ -64,7 +73,8 @@ vi.mock("../style-frames/kit", async () => {
               else if (ready === true) resolve();
               else reject(ready);
             };
-            setTimeout(poll, 10);
+            if (kit.parallel) poll();
+            else setTimeout(poll, 10);
           });
         },
         render: () => log("render"),
@@ -101,9 +111,11 @@ vi.mock("../style-frames/kit", async () => {
       kit.made.push(i);
       const camera = new THREE.PerspectiveCamera();
       Object.assign(camera.userData, { basePos: new THREE.Vector3(), baseQuat: new THREE.Quaternion(), baseFocus: 8 });
+      let late = wait(kit.latency.get(i)?.ready ?? 0);
+      for (let k = 0; k < (kit.ticks.get(i) ?? 0); k++) late = late.then(() => {});
       const ready = kit.hold.has(i)
         ? new Promise<void>((resolve, reject) => kit.held.set(i, { resolve, reject }))
-        : wait(kit.latency.get(i)?.ready ?? 0).then(() => {
+        : late.then(() => {
             if (kit.fail.has(i)) throw new Error(`MOCK: scene ${i} failed`);
           });
       const scene = new THREE.Scene();
@@ -146,7 +158,10 @@ beforeEach(() => {
   kit.made.length = 0;
   kit.textures.clear();
   kit.latency.clear();
+  kit.ticks.clear();
   kit.gates.clear();
+  kit.throws.clear();
+  kit.parallel = false;
   kit.calls.length = 0;
   kit.late.length = 0;
   kit.pipelines = 0;
@@ -222,6 +237,7 @@ function watch(canvas: HTMLCanvasElement) {
   const clearInterval = vi.spyOn(window, "clearInterval");
   const on = vi.spyOn(canvas, "addEventListener");
   const off = vi.spyOn(canvas, "removeEventListener");
+  const host = canvas.parentElement!;
   // a listener is removed by its type, its function and its capture flag
   const capture = (o?: boolean | EventListenerOptions) => (typeof o === "boolean" ? o : !!o?.capture);
   // every node the director adds to the page
@@ -241,11 +257,13 @@ function watch(canvas: HTMLCanvasElement) {
     expect(kit.calls.filter((c) => c === "dispose")).toHaveLength(1);
     expect(kit.pipelines).toBeGreaterThan(0);
     expect(kit.calls.filter((c) => c === "composer.dispose")).toHaveLength(kit.pipelines);
-    // the tooltip, taken off the page
+    // the tooltip, taken off the page, and only the tooltip: the stage stays
     page.takeRecords().forEach((r) => added.push(...r.addedNodes));
     page.disconnect();
     expect(added).toHaveLength(1);
     for (const n of added) expect(n.isConnected).toBe(false);
+    expect(host.isConnected).toBe(true);
+    expect(canvas.parentElement).toBe(host);
   };
 }
 
@@ -292,6 +310,44 @@ describe("the journey's director", () => {
     expect(unhandled).not.toHaveBeenCalled();
   });
 
+  it("reports a later scene whose shaders can't be set up, and still lets go of its renderer", async () => {
+    takeTime();
+    kit.throws.add("compileAsync 1 scene");
+    const onError = vi.fn();
+    const d = await make({ onError });
+    await idleStep(); // scene 0, already built at the start
+    await idleStep(); // scene 1, whose compile throws as it's called
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect((onError.mock.calls[0][0] as Error).message).toBe("MOCK: scene 1 failed to set up its shaders");
+    // nothing is left counted in flight, so dispose() lets go of the renderer at once
+    d.dispose();
+    expect(kit.calls.filter((c) => c === "dispose")).toHaveLength(1);
+    expect(unhandled).not.toHaveBeenCalled();
+  });
+
+  it("keeps each scene's warm-up in step with its compiles, when scenes build together", async () => {
+    // three settles a compile at once when it can ask the driver whether the compile
+    // is done. Scene 2's assets come a moment after scene 1's: each build's steps
+    // interleave exactly as they did before compiles were counted, with nothing
+    // waiting an extra turn behind another scene's work
+    takeTime();
+    kit.parallel = true;
+    kit.ticks.set(2, 1);
+    const d = await make();
+    kit.calls.length = 0;
+    await d.prepareAll();
+    const order = kit.calls.filter((c) => / [12] (scene|fx)$/.test(c));
+    expect(order).toEqual([
+      "compileAsync 1 scene",
+      "compileAsync 1 fx",
+      "compileAsync 2 scene",
+      ...Array(4).fill("pipeline.render 1 scene"),
+      "compileAsync 2 fx",
+      ...Array(4).fill("pipeline.render 2 scene"),
+    ]);
+    d.dispose();
+  });
+
   it("logs a later scene's failure where nothing listens for it", async () => {
     kit.fail.add(3);
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -332,6 +388,22 @@ describe("the journey's director lets go of what it set up", () => {
     released();
   });
 
+  it("once, if disposed twice while a scene compiles", async () => {
+    const { canvas, overlays } = stage();
+    const released = watch(canvas);
+    const open = gate("compileAsync 1 scene");
+    const d = await make({ canvas, overlays });
+    await idleStep(); // scene 0, already built at the start
+    await idleStep(); // scene 1 starts
+    await vi.waitFor(() => expect(kit.calls).toContain("compileAsync 1 scene"));
+    d.dispose();
+    d.dispose();
+    open();
+    await vi.waitFor(() => expect(kit.calls).toContain("dispose"));
+    await settle();
+    released();
+  });
+
   // how the first scene fails: each arms the failure, and returns what sets it off
   const FAILED_STARTS: Array<[string, () => () => void]> = [
     [
@@ -350,6 +422,15 @@ describe("the journey's director lets go of what it set up", () => {
           expect(kit.calls).toContain("compileAsync 0 scene");
           reject(new Error("MOCK: scene 0 failed to compile"));
         };
+      },
+    ],
+    [
+      "can't set up its shaders",
+      () => {
+        // its compile throws as it's called, so no compile is left counted in flight
+        kit.hold.add(0);
+        kit.throws.add("compileAsync 0 scene");
+        return () => kit.held.get(0)!.resolve();
       },
     ],
   ];
