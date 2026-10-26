@@ -110,6 +110,8 @@ describe('memory store', () => {
       clock: fc.integer({ min: 0, max: 50 }),
       runId: fc.option(fc.constantFrom('r1', 'r2', 'r3'), { nil: undefined }),
       stage: fc.option(fc.constantFrom('try', 'scale', 'groups'), { nil: undefined }),
+      // The run the write was made in, if it names one.
+      inRun: fc.option(fc.constantFrom(DEFAULT_CONTROL.runId, 'r1', 'r2', 'r3'), { nil: undefined }),
     })
     vi.useFakeTimers({ toFake: ['Date'] })
     try {
@@ -121,7 +123,14 @@ describe('memory store', () => {
           let last = -Infinity
           for (const w of writes) {
             vi.setSystemTime(start + w.clock)
-            const row = await store.setControl({ runId: w.runId, stage: w.stage })
+            const held = await store.getControl()
+            const row = await store.setControl({ runId: w.runId, stage: w.stage, inRun: w.inRun })
+            // A write made in another run than the room's changes nothing, its stamp included.
+            if (w.inRun !== undefined && w.inRun !== held.runId) {
+              expect(row).toEqual(held)
+              expect(await store.getControl()).toEqual(held)
+              continue
+            }
             const stamp = Date.parse(row.updatedAt!)
             expect(stamp).toBeGreaterThan(last)
             expect(stamp).toBeGreaterThanOrEqual(start + w.clock)
@@ -263,15 +272,20 @@ describe('supabase store', () => {
     }
   })
 
-  it('keeps the newest write, and answers each with a row no older than it, in any order the writes land', async () => {
+  it('keeps the newest write in the run it names, and answers each with a row no older than it or in another run, in any order the writes land', async () => {
     const start = Date.parse('2026-10-27T00:30:00.000Z')
-    // Each move's stamp in milliseconds after the row's (0 ties it, and moves can tie each other), and
-    // the order their writes reach the store in.
+    // Each move's stamp in milliseconds after the row's (0 ties it, and moves can tie each other), maybe a
+    // run switch, maybe the run it was made in, and the order their writes reach the store in.
     const moves = fc
-      .array(fc.record({ ms: fc.integer({ min: 0, max: 20 }), stage: fc.constantFrom('try', 'scale', 'groups', 'next') }), {
-        minLength: 1,
-        maxLength: 6,
-      })
+      .array(
+        fc.record({
+          ms: fc.integer({ min: 0, max: 20 }),
+          stage: fc.constantFrom('try', 'scale', 'groups', 'next'),
+          runId: fc.option(fc.constantFrom('r1', 'r2'), { nil: undefined }),
+          inRun: fc.option(fc.constantFrom('r1', 'r2'), { nil: undefined }),
+        }),
+        { minLength: 1, maxLength: 6 },
+      )
       .chain((list) =>
         fc.tuple(fc.constant(list), fc.shuffledSubarray([...list.keys()], { minLength: list.length, maxLength: list.length })),
       )
@@ -281,8 +295,8 @@ describe('supabase store', () => {
         fc.asyncProperty(moves, async ([list, order]) => {
           let row = { run_id: 'r1', stage: 'welcome', updated_at: new Date(start).toISOString() }
           const rows = [row]
-          // PostgREST, holding each write until the test lands it, and applying it only when the filter matches.
-          const held: { url: string; body: { stage: string; updated_at: string }; resolve: (r: Response) => void }[] = []
+          // PostgREST, holding each write until the test lands it, and applying it only when both filters match.
+          const held: { url: string; body: { run_id?: string; stage: string; updated_at: string }; resolve: (r: Response) => void }[] = []
           const fn = (async (url: string | URL | Request, init: RequestInit = {}) => {
             if (init.method !== 'PATCH') return new Response(JSON.stringify([row]))
             return new Promise<Response>((resolve) => held.push({ url: String(url), body: JSON.parse(String(init.body)), resolve }))
@@ -291,30 +305,40 @@ describe('supabase store', () => {
           const stamps = list.map((move) => new Date(start + move.ms).toISOString())
           const answers = list.map((move, i) => {
             vi.setSystemTime(Date.parse(stamps[i]))
-            return store.setControl({ stage: move.stage })
+            return store.setControl({ runId: move.runId, stage: move.stage, inRun: move.inRun })
           })
           while (held.length < list.length) await new Promise((r) => setTimeout(r, 0))
+          // The writes that changed the row, in the order they landed.
+          const landed: number[] = []
           for (const i of order) {
             const { url, body, resolve } = held[i]
-            expect(body.updated_at).toBe(stamps[i])
-            expect(new URL(url).searchParams.get('updated_at')).toBe(`lt.${stamps[i]}`)
-            const before = row.updated_at
-            const applies = row.updated_at < body.updated_at
+            const query = new URL(url).searchParams
+            expect(body).toEqual({ ...(list[i].runId ? { run_id: list[i].runId } : {}), stage: list[i].stage, updated_at: stamps[i] })
+            expect(query.get('updated_at')).toBe(`lt.${stamps[i]}`)
+            // The run check is in the same update as the stamp check, and only when the move names a run.
+            expect(query.get('run_id')).toBe(list[i].inRun ? `eq.${list[i].inRun}` : null)
+            const before = row
+            const applies = row.updated_at < body.updated_at && (!list[i].inRun || list[i].inRun === row.run_id)
             if (applies) {
               row = { ...row, ...body }
               rows.push(row)
+              landed.push(i)
             }
-            expect(row.updated_at >= before).toBe(true)
+            expect(row.updated_at >= before.updated_at).toBe(true)
             resolve(new Response(JSON.stringify(applies ? [row] : [])))
             // Let a write that changed nothing read the row before the next write lands.
             await new Promise((r) => setTimeout(r, 0))
           }
-          const newest = [rows[0].updated_at, ...stamps].reduce((a, b) => (b > a ? b : a))
-          const winner = newest === rows[0].updated_at ? 'welcome' : list[order.find((i) => stamps[i] === newest)!].stage
-          expect(row).toMatchObject({ stage: winner, updated_at: newest })
+          // The row holds each field from the last write that changed it and set that field.
+          expect(row).toEqual(landed.reduce((r, i) => ({ ...r, ...held[i].body }), rows[0]))
+          if (list.every((move) => !move.inRun)) {
+            const newest = [rows[0].updated_at, ...stamps].reduce((a, b) => (b > a ? b : a))
+            expect(row.updated_at).toBe(newest)
+          }
           const answered = await Promise.all(answers)
           answered.forEach((answer, i) => {
-            expect(answer.updatedAt! >= stamps[i]).toBe(true)
+            // A move answered with an older row was refused for its run: the row was in another one.
+            expect(answer.updatedAt! >= stamps[i] || (list[i].inRun !== undefined && answer.runId !== list[i].inRun)).toBe(true)
             expect(rows).toContainEqual({ run_id: answer.runId, stage: answer.stage, updated_at: answer.updatedAt })
           })
         }),
