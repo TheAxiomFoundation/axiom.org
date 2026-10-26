@@ -1020,6 +1020,20 @@ export const ONE_SET_STATEMENT = {
   accent: "reducing cost, duplication and error at once.",
 } as const;
 
+/**
+ * Shared foundation 3/7 to 5/7: what one open set of rules powers, built one group at a time, so the
+ * room hears not only AI tools but government and navigation tools too (Oct 26).
+ */
+export const ONE_SET_GROUPS = [
+  { id: "ai", label: "AI tools", detail: "The chatbots and assistants residents and staff already ask" },
+  {
+    id: "government",
+    label: "Government tools",
+    detail: "Eligibility systems, caseworker guidance and training, and policy changes tested before they land",
+  },
+  { id: "navigation", label: "Navigation tools", detail: "Community screeners and navigators that say what to apply for" },
+] as const;
+
 export const ONE_SET_OF_RULES = [
   { label: "AI tools", detail: "The chatbots residents and staff already ask." },
   { label: "Community screeners", detail: "Partner tools that say what to apply for." },
