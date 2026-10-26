@@ -940,7 +940,9 @@ export const ENGINE_PILOT: EnginePilot = {
  * 10, and AI with the engine said $662 10 times out of 10. The $662 is the
  * engine's ut_fep_payment_standard_amount, which carries no "not fully
  * encoded" flag. The engine does flag Utah's eligibility checks, and the
- * reply says so.
+ * reply says so. "This month" names the month without a date: asked "in
+ * October 2026", plain AI hedged that the date is in the future 9 times out
+ * of 10.
  *
  * It replaced "Single mom with two kids: does Alabama or Georgia pay more
  * TANF?" after the Oct 25 dry run: both of those outputs were flagged "not
@@ -953,7 +955,7 @@ export const LIVE_DEMO = {
   title: "The same AI model, on its own and with the Axiom rules engine",
   base: "https://axiom.org/gallery/chatbot",
   question:
-    "What's the maximum monthly TANF cash benefit in Utah for a single parent with two children and no income, in October 2026?",
+    "What's the maximum monthly TANF cash benefit in Utah this month for a single parent with two children and no income?",
 } as const;
 
 export function liveDemoUrl(): string {

@@ -294,6 +294,6 @@ describe('aspen content', () => {
     expect(LIVE_DEMO.question).toMatch(/TANF/)
     expect(LIVE_DEMO.question).toMatch(/Utah/)
     expect(LIVE_DEMO.question).toMatch(/single parent with two children and no income/)
-    expect(LIVE_DEMO.question).toMatch(/October 2026/)
+    expect(LIVE_DEMO.question).toMatch(/this month/)
   })
 })
