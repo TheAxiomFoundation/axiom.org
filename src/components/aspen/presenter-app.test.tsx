@@ -349,7 +349,7 @@ describe("PresenterApp navigation", () => {
     expect(screen.getByText("7/7")).toBeInTheDocument();
     // The live chatbot, in compare mode with the demo's question filled in.
     const demo = screen.getByTitle(/Live chatbot demo/);
-    expect(demo.getAttribute("src")).toMatch(/^https:\/\/axiom\.org\/gallery\/chatbot\?compare=1&q=Single%20mom/);
+    expect(demo.getAttribute("src")).toMatch(/^https:\/\/axiom\.org\/gallery\/chatbot\?compare=1&q=What's%20the%20maximum%20monthly%20TANF/);
     expect(demo.getAttribute("src")).not.toMatch(/go=1/);
     expect(screen.getByRole("link", { name: /Open demo in a new tab/ })).toHaveAttribute("href", liveDemoUrl());
     expect(posts()).toEqual([{ stage: "scale" }]);

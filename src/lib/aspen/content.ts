@@ -934,18 +934,30 @@ export const ENGINE_PILOT: EnginePilot = {
  * checked Oct 23, 2026); the demo's copy says what it does and doesn't
  * promise, so the slide stays plain too.
  *
- * The question is the top pick from Pavel's error ledger (#aspen, Oct 23,
- * 2026). Alabama's TANF State Plan, effective October 1, 2024, sets $344 a
- * month for a family of three (Attachment E); Georgia pays $280. Plain AI
- * cites Alabama's older $215, so it says Georgia. On the live chatbot on
- * Oct 23, 2026, plain AI said Georgia 10 times out of 10, and AI with the
- * engine said Alabama, $344 against $280, 10 times out of 10. The earlier
- * Fresno CalFresh question showed no contrast: both sides gave about $250.
+ * The question names the household, the amount, the month and the program.
+ * Utah's Family Employment Program pays at most $662 a month for a household
+ * of three (DWS Eligibility Manual, Table 1, FEP maximum assistance; DWS's
+ * "Do I qualify?" page lists the same $662). Plain AI cites the older $498.
+ * On the live chatbot on Oct 25, 2026, plain AI said $498 10 times out of
+ * 10, and AI with the engine said $662 10 times out of 10. The $662 is the
+ * engine's ut_fep_payment_standard_amount, which carries no "not fully
+ * encoded" flag. The engine does flag Utah's eligibility checks, and the
+ * reply says so. "This month" names the month without a date: asked "in
+ * October 2026", plain AI hedged that the date is in the future 9 times out
+ * of 10.
+ *
+ * It replaced "Single mom with two kids: does Alabama or Georgia pay more
+ * TANF?" after the Oct 25 dry run: both of those outputs were flagged "not
+ * fully encoded", and the question didn't say whether it meant the maximum
+ * or an average. Refugee SNAP eligibility had no flags, but plain AI caught
+ * the 2025 change in 2 of 10 runs and hedged in a third, and the engine's
+ * answers hedged too.
  */
 export const LIVE_DEMO = {
   title: "The same AI model, on its own and with the Axiom rules engine",
   base: "https://axiom.org/gallery/chatbot",
-  question: "Single mom with two kids: does Alabama or Georgia pay more TANF?",
+  question:
+    "What's the maximum monthly TANF cash benefit in Utah this month for a single parent with two children and no income?",
 } as const;
 
 export function liveDemoUrl(): string {

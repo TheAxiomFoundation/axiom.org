@@ -289,4 +289,13 @@ describe('aspen content', () => {
     // The frame never sends on its own; the presenter presses Send.
     expect(url.searchParams.has('go')).toBe(false)
   })
+
+  it('asks the live demo question about one household, one amount, one month and one program', () => {
+    // The Oct 25 dry run dropped a question that didn't say which amount it meant.
+    expect(LIVE_DEMO.question).toMatch(/maximum monthly/)
+    expect(LIVE_DEMO.question).toMatch(/TANF/)
+    expect(LIVE_DEMO.question).toMatch(/Utah/)
+    expect(LIVE_DEMO.question).toMatch(/single parent with two children and no income/)
+    expect(LIVE_DEMO.question).toMatch(/this month/)
+  })
 })
