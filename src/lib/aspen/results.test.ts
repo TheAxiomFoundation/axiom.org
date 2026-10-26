@@ -325,6 +325,7 @@ describe('aspen results', () => {
         { run_id: 'r', kind: 'vote', payload: { useCase: 'project' } },
         { run_id: 'r', kind: 'vote', payload: { useCase: 'project' } },
         { run_id: 'r', kind: 'vote', payload: { useCase: 'apply' } },
+        { run_id: 'r', kind: 'vote', payload: { useCase: 'test' } },
       ],
     })
     expect(votes.map((c) => [c.id, c.count])).toEqual([
@@ -332,6 +333,7 @@ describe('aspen results', () => {
       ['project', 2],
       ['flows', 0],
       ['apply', 1],
+      ['test', 1],
     ])
     // Votes are not group ideas.
     expect(breakouts.useCases.every((c) => c.count === 0)).toBe(true)
