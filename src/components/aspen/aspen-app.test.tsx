@@ -571,7 +571,8 @@ describe("AspenApp after a new run", () => {
     // The new run starts this phone clean and puts it back with the room.
     await onView("try");
     await waitFor(() => expect(localStorage.getItem("aspen.run")).toBe(JSON.stringify("phoenix")));
-    expect(JSON.parse(localStorage.getItem(CHAT_KEY) ?? "{}").turns).toEqual([]);
+    // The run is recorded as the old chat is dropped; the chat saves its empty conversation a render or two later.
+    await waitFor(() => expect(JSON.parse(localStorage.getItem(CHAT_KEY) ?? "{}").turns).toEqual([]));
     expect(screen.queryByText("The answer for the couple")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ask the AI" })).toBeDisabled();
 
