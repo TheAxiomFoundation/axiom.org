@@ -43,13 +43,20 @@ describe("ScaleRow", () => {
 
 const box = () => screen.getByLabelText(/Where has AI helped your agency, and where has it fallen short\?/);
 
+/** Answers this phone gave earlier: each question opens once the one before it is answered. */
+const answered = (saved: Record<string, unknown>) => localStorage.setItem("aspen.overall.v2", JSON.stringify(saved));
+/** The first question answered, so the agency scales are open. */
+const TRUTH = { truth: "partly" };
+/** All three rated too, so the comment box is open. */
+const RATED = { truth: "partly", agency: { residents: 1, staff: 2, you: 3 } };
+
 describe("OverallRating", () => {
-  it("asks both questions on one screen, and saves each tap as the latest answer", async () => {
+  it("asks one question at a time, and saves each tap as the latest answer", async () => {
     const fetchMock = stubFetch();
     render(<OverallRating stage="try" />);
     expect(screen.getByText(/check an answer against the state's official rules today\?/)).toBeInTheDocument();
-    expect(screen.getByText("How is AI performing overall in your agency?")).toBeInTheDocument();
-    expect(screen.getByText("1 = Not well · 5 = Very well")).toBeInTheDocument();
+    // The agency question opens once the first is answered, and its comment once all three are rated (Michaela, Oct 26).
+    expect(screen.queryByText("How is AI performing overall in your agency?")).not.toBeInTheDocument();
     // The 5x5 grid, the misread rules and the evening note are gone (the run-through, Oct 22).
     expect(screen.queryByText(/Got the amount right/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Asset tests" })).not.toBeInTheDocument();
@@ -59,9 +66,12 @@ describe("OverallRating", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Partly" }));
     expect(screen.getByRole("button", { name: "Partly" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("How is AI performing overall in your agency?")).toBeInTheDocument();
+    expect(screen.getByText("1 = Not well · 5 = Very well")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "For residents: 2 of 5" }));
     fireEvent.click(screen.getByRole("button", { name: "For your staff: 4 of 5" }));
     fireEvent.click(screen.getByRole("button", { name: "For residents: 3 of 5" }));
+    expect(screen.queryByLabelText(/Where has AI helped your agency/)).not.toBeInTheDocument();
     await waitFor(() => expect(bodies(fetchMock)).toHaveLength(4));
     expect(bodies(fetchMock)).toEqual([
       { participantId: "p-1", kind: "survey", payload: { question: "source-of-truth", answer: "partly" }, stage: "try" },
@@ -87,12 +97,14 @@ describe("OverallRating", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Each answer saves as you tap it.");
 
     fireEvent.click(screen.getByRole("button", { name: "For you: 4 of 5" }));
+    expect(box()).toHaveValue("");
     expect(screen.getByRole("status")).toHaveTextContent("Saved. You'll see the room's results on the screen.");
     await waitFor(() => expect(bodies(fetchMock)).toHaveLength(5));
     expect(bodies(fetchMock)[4].payload.ratings).toEqual({ residents: 3, staff: 4, you: 4 });
   });
 
   it("sends the comment with the agency ratings, and the ratings after it keep the comment", async () => {
+    answered(RATED);
     const fetchMock = stubFetch();
     render(<OverallRating stage="try" />);
     expect(screen.getByText(/Optional and anonymous/)).toBeInTheDocument();
@@ -108,7 +120,7 @@ describe("OverallRating", () => {
     expect(bodies(fetchMock)[0]).toEqual({
       participantId: "p-1",
       kind: "discussion",
-      payload: { question: "experience", ratings: {}, topics: [], note: "Helps staff find policy; residents get wrong amounts" },
+      payload: { question: "experience", ratings: { residents: 1, staff: 2, you: 3 }, topics: [], note: "Helps staff find policy; residents get wrong amounts" },
       stage: "try",
     });
 
@@ -116,7 +128,7 @@ describe("OverallRating", () => {
     await waitFor(() => expect(bodies(fetchMock)).toHaveLength(2));
     expect(bodies(fetchMock)[1].payload).toEqual({
       question: "experience",
-      ratings: { you: 5 },
+      ratings: { residents: 1, staff: 2, you: 5 },
       topics: [],
       note: "Helps staff find policy; residents get wrong amounts",
     });
@@ -127,6 +139,7 @@ describe("OverallRating", () => {
   });
 
   it("takes a saved comment back when the box is cleared, and the ratings after it stop carrying it", async () => {
+    answered(RATED);
     const fetchMock = stubFetch();
     render(<OverallRating stage="try" />);
     fireEvent.change(box(), { target: { value: "Residents get wrong amounts" } });
@@ -138,10 +151,10 @@ describe("OverallRating", () => {
     // Not "removed" until the store says so.
     expect(screen.getByRole("button", { name: "Removing…" })).toBeDisabled();
     await waitFor(() => expect(bodies(fetchMock)).toHaveLength(2));
-    expect(bodies(fetchMock)[1].payload).toEqual({ question: "experience", ratings: {}, topics: [], note: "" });
+    expect(bodies(fetchMock)[1].payload).toEqual({ question: "experience", ratings: { residents: 1, staff: 2, you: 3 }, topics: [], note: "" });
     // Nothing left to save or show as saved.
     await waitFor(() => expect(screen.queryByRole("button", { name: /comment|removing/i })).not.toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "For you: 3 of 5" }));
+    fireEvent.click(screen.getByRole("button", { name: "For you: 4 of 5" }));
     await waitFor(() => expect(bodies(fetchMock)).toHaveLength(3));
     expect(bodies(fetchMock)[2].payload.note).toBe("");
     // And a reload doesn't bring it back.
@@ -153,6 +166,7 @@ describe("OverallRating", () => {
     const fail = { ok: false, status: 500, json: async () => ({}) } as unknown as Response;
     const fetchMock = vi.fn().mockResolvedValueOnce(ok).mockResolvedValueOnce(fail).mockResolvedValue(ok);
     vi.stubGlobal("fetch", fetchMock);
+    answered(RATED);
     const first = render(<OverallRating stage="try" />);
     fireEvent.change(box(), { target: { value: "Residents get wrong amounts" } });
     fireEvent.click(screen.getByRole("button", { name: "Save comment" }));
@@ -169,7 +183,7 @@ describe("OverallRating", () => {
     expect(await screen.findByText("That didn't save. Tap it again.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Remove comment" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
-    expect(bodies(fetchMock as unknown as ReturnType<typeof stubFetch>)[2].payload).toEqual({ question: "experience", ratings: {}, topics: [], note: "" });
+    expect(bodies(fetchMock as unknown as ReturnType<typeof stubFetch>)[2].payload).toEqual({ question: "experience", ratings: { residents: 1, staff: 2, you: 3 }, topics: [], note: "" });
     await waitFor(() => expect(screen.queryByText("That didn't save. Tap it again.")).not.toBeInTheDocument());
     expect(screen.queryByRole("button", { name: /comment/ })).not.toBeInTheDocument();
     expect(JSON.parse(localStorage.getItem("aspen.overall.v2")!)).toMatchObject({ comment: "", removing: false, unsaved: { discussion: false } });
@@ -226,6 +240,7 @@ describe("OverallRating", () => {
       .mockResolvedValueOnce(fail)
       .mockImplementationOnce(() => new Promise<Response>((r) => (retried = r)));
     vi.stubGlobal("fetch", fetchMock);
+    answered(RATED);
     render(<OverallRating stage="try" />);
     fireEvent.change(box(), { target: { value: "Residents get wrong amounts" } });
     fireEvent.click(screen.getByRole("button", { name: "Save comment" }));
@@ -249,6 +264,7 @@ describe("OverallRating", () => {
     const answer = (ok: boolean) =>
       ({ ok, status: ok ? 200 : 500, json: async () => (ok ? { ok: true, saved: true } : {}) }) as unknown as Response;
     const stored = () => JSON.parse(localStorage.getItem("aspen.overall.v2")!).unsaved;
+    answered(TRUTH);
     render(<OverallRating stage="try" />);
     fireEvent.click(screen.getByRole("button", { name: "For residents: 2 of 5" }));
     fireEvent.click(screen.getByRole("button", { name: "For residents: 4 of 5" }));
@@ -274,6 +290,7 @@ describe("OverallRating", () => {
 
   it("doesn't offer Remove comment for a failed rating when there was never a comment", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 500, json: async () => ({}) } as unknown as Response));
+    answered(TRUTH);
     render(<OverallRating stage="try" />);
     fireEvent.click(screen.getByRole("button", { name: "For you: 3 of 5" }));
     expect(await screen.findByText("That didn't save. Tap it again.")).toBeInTheDocument();
@@ -324,6 +341,7 @@ describe("OverallRating", () => {
   it("offers the comment again after a failed agency save, which may have carried it", async () => {
     const fail = { ok: false, status: 500, json: async () => ({}) } as unknown as Response;
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(fail));
+    answered(RATED);
     render(<OverallRating stage="try" />);
     fireEvent.change(box(), { target: { value: "Staff like it" } });
     fireEvent.click(screen.getByRole("button", { name: "Save comment" }));
@@ -342,6 +360,7 @@ describe("OverallRating", () => {
     const fetchMock = vi.fn(() => new Promise<Response>((r) => resolvers.push(r)));
     vi.stubGlobal("fetch", fetchMock);
     const done = () => resolvers[resolvers.length - 1]({ ok: true, status: 200, json: async () => ({ ok: true, saved: true }) } as unknown as Response);
+    answered(TRUTH);
     render(<OverallRating stage="try" />);
     fireEvent.click(screen.getByRole("button", { name: "For residents: 2 of 5" }));
     fireEvent.click(screen.getByRole("button", { name: "For your staff: 4 of 5" }));
@@ -386,6 +405,28 @@ describe("OverallRating", () => {
     expect(box()).toHaveValue("Too slow");
     expect(screen.getByRole("button", { name: "Comment saved" })).toBeDisabled();
     expect(screen.getByRole("status")).toHaveTextContent("Saved.");
+  });
+
+  it("keeps a comment saved before any rating open after a reload, with the scales above it", async () => {
+    // Before one question at a time, a comment could be saved first; a reload must not hide it.
+    answered({ comment: "Too slow" });
+    stubFetch();
+    render(<OverallRating stage="try" />);
+    expect(await screen.findByRole("button", { name: "Comment saved" })).toBeDisabled();
+    expect(box()).toHaveValue("Too slow");
+    expect(screen.getByRole("button", { name: "For you: 3 of 5" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("opens the comment only once all three are rated, in any order", () => {
+    answered(TRUTH);
+    stubFetch();
+    render(<OverallRating stage="try" />);
+    for (const name of ["For you: 2 of 5", "For residents: 4 of 5"]) {
+      fireEvent.click(screen.getByRole("button", { name }));
+      expect(screen.queryByLabelText(/Where has AI helped your agency/)).not.toBeInTheDocument();
+    }
+    fireEvent.click(screen.getByRole("button", { name: "For your staff: 1 of 5" }));
+    expect(box()).toHaveValue("");
   });
 
   it("ignores answers saved by the old five-step flow", () => {

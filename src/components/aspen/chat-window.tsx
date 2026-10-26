@@ -206,7 +206,8 @@ export function ChatWindow({
   const [followUp, setFollowUp] = useState(false);
   // A picked household asks its question as written. Its details and questions each open on a tap, one
   // at a time, and show what's picked while closed (the dry run, Oct 25); the question opens for editing.
-  const [open, setOpen] = useState<"details" | "questions" | null>(null);
+  // Once picked, the household closes to one line too, and opens again to change it (Michaela, Oct 26).
+  const [open, setOpen] = useState<"household" | "details" | "questions" | null>(null);
   const [editing, setEditing] = useState(false);
   const draftBox = useRef<HTMLTextAreaElement>(null);
   // "Edit the question" goes away when pressed; focus moves to the box it opens, not to the page.
@@ -216,6 +217,12 @@ export function ChatWindow({
     focusDraft.current = false;
     draftBox.current?.focus();
   }, [editing]);
+  // A blank question opens its box ready to type in.
+  useEffect(() => {
+    if (householdId !== OWN || !focusDraft.current) return;
+    focusDraft.current = false;
+    draftBox.current?.focus();
+  }, [householdId]);
   // A question just sent moves to the top of the screen, so its answer reads from the start. Without
   // this, Chrome on Android anchors the scroll as the composer above it closes, and lands on "Ask a
   // follow-up" (the dry run, Oct 25).
@@ -292,6 +299,10 @@ export function ChatWindow({
     : { askAs: 1, household: 2, details: null, question: null, draft: 3 };
   // A household's question shows as written until the participant opens it to change it.
   const preview = !started && Boolean(household) && !editing;
+  // Before anything is picked there's nothing to ask: the box and the button wait for a household or a
+  // blank question, so the first screen is just who you ask as and what to ask about (Michaela, Oct 26).
+  // A question typed before this (a saved chat) keeps its box.
+  const composing = started || householdId !== null || draft.trim() !== "";
 
   function choose(p: PerspectiveId, h: string | null, q: QuestionId[], t: string[]) {
     const found = findHousehold(h);
@@ -329,6 +340,10 @@ export function ChatWindow({
         : [...twists, next.twist]
       : twists;
     choose(p, h, q, t);
+    if (next.h) {
+      setOpen(null);
+      if (next.h === OWN) focusDraft.current = true;
+    }
     sendEvent("chip", { perspective: p, householdId: h, questionIds: q, twists: t }, stage);
   }
 
@@ -445,6 +460,39 @@ export function ChatWindow({
         : "border-[var(--color-rule)] bg-[var(--color-paper)] hover:border-[var(--color-accent)]"
     }`;
 
+  // The households, and a blank question: open on the first pick, then behind the step's one line.
+  const householdGrid = (
+    <div role="group" aria-label="Households" className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+      {HOUSEHOLDS.map((h) => (
+        <button
+          key={h.id}
+          type="button"
+          aria-pressed={householdId === h.id}
+          onClick={() => pick({ h: h.id })}
+          className={tile(householdId === h.id)}
+        >
+          <span className="block font-body text-[0.98rem] font-medium leading-snug text-[var(--color-ink)]">
+            {h.label}
+          </span>
+          <span className="block font-body text-[0.84rem] text-[var(--color-ink-muted)]">{h.state}</span>
+        </button>
+      ))}
+      <button
+        type="button"
+        aria-pressed={householdId === OWN}
+        onClick={() => pick({ h: OWN })}
+        className={`${tile(householdId === OWN)} col-span-2 border-dashed sm:col-span-3`}
+      >
+        <span className="block font-body text-[0.98rem] font-medium text-[var(--color-ink)]">
+          Start from a blank question
+        </span>
+        <span className="block font-body text-[0.84rem] text-[var(--color-ink-muted)]">
+          Your own question: any benefit, any state
+        </span>
+      </button>
+    </div>
+  );
+
   // On a phone the grid has one column. It must be minmax(0, 1fr), not the
   // implicit auto track: an auto track grows to its widest unbreakable line,
   // and a long web-search source title (one line, truncated) pushed the
@@ -492,40 +540,26 @@ export function ChatWindow({
                 ))}
               </div>
             </fieldset>
-            <fieldset className="m-0 border-0 border-t border-[var(--color-rule)] p-0 pt-4">
-              <legend className={`${STEP} float-left w-full`}>
-                <span className={STEP_NUMBER}>{step.household}</span>Pick a household
-              </legend>
-              <div className="clear-left grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {HOUSEHOLDS.map((h) => (
-                  <button
-                    key={h.id}
-                    type="button"
-                    aria-pressed={householdId === h.id}
-                    onClick={() => pick({ h: h.id })}
-                    className={tile(householdId === h.id)}
-                  >
-                    <span className="block font-body text-[0.98rem] font-medium leading-snug text-[var(--color-ink)]">
-                      {h.label}
-                    </span>
-                    <span className="block font-body text-[0.84rem] text-[var(--color-ink-muted)]">{h.state}</span>
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  aria-pressed={householdId === OWN}
-                  onClick={() => pick({ h: OWN })}
-                  className={`${tile(householdId === OWN)} col-span-2 border-dashed sm:col-span-3`}
-                >
-                  <span className="block font-body text-[0.98rem] font-medium text-[var(--color-ink)]">
-                    Start from a blank question
-                  </span>
-                  <span className="block font-body text-[0.84rem] text-[var(--color-ink-muted)]">
-                    Your own question: any benefit, any state
-                  </span>
-                </button>
-              </div>
-            </fieldset>
+            {householdId === null ? (
+              <fieldset className="m-0 border-0 border-t border-[var(--color-rule)] p-0 pt-4">
+                <legend className={`${STEP} float-left w-full`}>
+                  <span className={STEP_NUMBER}>{step.household}</span>Pick a household
+                </legend>
+                <div className="clear-left">{householdGrid}</div>
+              </fieldset>
+            ) : (
+              <OpenStep
+                id="household"
+                number={step.household}
+                title="Pick a household"
+                note=""
+                summary={household ? `${household.label}, ${household.state}` : "A blank question"}
+                open={open === "household"}
+                onToggle={() => setOpen((o) => (o === "household" ? null : "household"))}
+              >
+                {householdGrid}
+              </OpenStep>
+            )}
             {household && (
               <OpenStep
                 id="details"
@@ -692,7 +726,7 @@ export function ChatWindow({
           </div>
         ) : (
           <div className={`flex flex-col gap-3 px-4 pb-4 ${started ? "border-t border-[var(--color-rule)] pt-3" : "mt-5 border-t border-[var(--color-rule)] pt-4"}`}>
-            {preview ? (
+            {!composing ? null : preview ? (
               <div role="group" aria-labelledby="aspen-question-preview" className="flex flex-col gap-2">
                 <div id="aspen-question-preview" className={`${STEP} mb-0`}>
                   <span className={STEP_NUMBER}>{step.draft}</span>
@@ -736,19 +770,21 @@ export function ChatWindow({
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void send();
                   }}
-                  placeholder={started ? "Ask a follow-up" : "Pick a household above, or type your own question"}
+                  placeholder={started ? "Ask a follow-up" : "Type your question"}
                   className={`${FIELD} resize-none bg-[var(--color-paper)] leading-relaxed`}
                 />
               </>
             )}
-            <button
-              type="button"
-              className={`${BUTTON} w-full py-3`}
-              disabled={!draft.trim() || sending}
-              onClick={() => void send()}
-            >
-              {sending ? "Asking…" : started ? "Send" : "Ask the AI"}
-            </button>
+            {composing && (
+              <button
+                type="button"
+                className={`${BUTTON} w-full py-3`}
+                disabled={!draft.trim() || sending}
+                onClick={() => void send()}
+              >
+                {sending ? "Asking…" : started ? "Send" : "Ask the AI"}
+              </button>
+            )}
             {!started && (
               <Disclosure lead={DEMO_NOTE} onOpen={() => sendEvent("disclosure", { opened: true }, stage)} />
             )}
