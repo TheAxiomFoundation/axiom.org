@@ -440,6 +440,28 @@ describe("PresenterApp navigation", () => {
     expect(screen.getByText("Run r1")).toBeInTheDocument();
   });
 
+  it("goes back to the slide it left before its first read, when the moves settle the room there", async () => {
+    const { server } = setup({ noPoll: true });
+    const pending: { body: Partial<Control>; resolve: (r: Response) => void }[] = [];
+    server.post = (body) => new Promise<Response>((resolve) => pending.push({ body, resolve }));
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("2/2")).toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Stages" })).getByRole("button", { name: "Welcome" }));
+    await onStage("welcome");
+    // Try it and What we saw save; Welcome doesn't. No poll has answered yet.
+    await act(async () => {
+      for (const [i, move] of pending.slice(0, 2).entries()) {
+        server.control = { ...server.control, ...move.body, updatedAt: `2026-10-27T01:00:0${i + 1}Z` };
+        move.resolve(jsonResponse(server.control));
+      }
+      pending[2].resolve(jsonResponse({ error: "No." }, false));
+    });
+    await onStage("reveal");
+    expect(screen.getByText("2/2")).toBeInTheDocument();
+  });
+
   it("sends Start run once the moves before it settle, and the moves after it once it has", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     const { server, posts } = setup({ stage: "reveal" });
