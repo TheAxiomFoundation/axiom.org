@@ -1218,6 +1218,7 @@ const perHousehold = (d: number) => `$${d.toFixed(3)}`;
  * web search and our rules engine, the change in accuracy and the change in cost (Max, the dry run, Oct 25).
  */
 function ToolSlide() {
+  // Rows and the panel are trimmed to fit 1600×900, with 10px to spare; it was 22px over (measured, the review of #368).
   const t = ENGINE_PILOT;
   const head = "pb-[10px] text-left align-bottom font-body text-[20px] font-normal text-[var(--color-ink-muted)]";
   return (
@@ -1256,11 +1257,11 @@ function ToolSlide() {
         <tbody>
           {t.rows.map((r) => (
             <tr key={r.model} className="border-t border-[var(--color-rule)]">
-              <th scope="row" className={`py-[16px] pr-[24px] text-left font-normal ${BOX_TEXT}`}>
+              <th scope="row" className={`py-[12px] pr-[24px] text-left font-normal ${BOX_TEXT}`}>
                 {r.model}
               </th>
-              <td className="py-[16px] pr-[32px]">
-                <span className="flex flex-col gap-[8px]">
+              <td className="py-[12px] pr-[32px]">
+                <span className="flex flex-col gap-[6px]">
                   {(["web", "both"] as const).map((arm) => (
                     <span key={arm} className="flex items-center gap-[14px]">
                       <span className="h-[22px] rounded-[4px]" style={{ width: `${pilotPct(r[arm]) * 0.8}%`, background: PILOT_COLORS[arm] }} />
@@ -1274,7 +1275,7 @@ function ToolSlide() {
                   ))}
                 </span>
               </td>
-              <td className="py-[16px]">
+              <td className="py-[12px]">
                 <span className="block font-display text-[48px] font-light leading-none tabular-nums text-[var(--color-accent)]">
                   {signed(r.change.points)} <span className="font-body text-[22px] text-[var(--color-ink-secondary)]">points</span>
                 </span>
@@ -1282,7 +1283,7 @@ function ToolSlide() {
                   95%: {signed(r.change.lo)} to {signed(r.change.hi)}
                 </span>
               </td>
-              <td className="py-[16px]">
+              <td className="py-[12px]">
                 <span className="block font-display text-[48px] font-light leading-none tabular-nums text-[var(--color-ink)]">
                   {signed(percentChange(r.cost.web, r.cost.both))}%
                 </span>
@@ -1294,7 +1295,7 @@ function ToolSlide() {
           ))}
         </tbody>
       </table>
-      <Panel className="mt-auto flex flex-col gap-[8px] py-[18px]">
+      <Panel className="mt-auto flex flex-col gap-[8px] py-[14px]">
         <Label className="mb-0">What this measures</Label>
         <p className="m-0 font-body text-[22px] leading-snug text-[var(--color-ink)]">{t.measures}</p>
       </Panel>
