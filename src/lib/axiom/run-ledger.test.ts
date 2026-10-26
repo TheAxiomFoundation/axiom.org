@@ -225,4 +225,14 @@ describe("sectionBrief", () => {
     expect(b.now).toBeNull();
     expect(b.marks[0]).toMatchObject({ tone: "done", url: "https://github.com/TheAxiomFoundation/rulespec-us/pull/42" });
   });
+
+  it("names a later failed run as a re-encode and keeps the merged encoding", () => {
+    const later = pipelineAttempt({ id: "later", dispatched_at: "2026-10-26T16:37:00Z", run_conclusion: "failure", run_url: "https://x/run/9" });
+    const [j] = runLedger(runRows([mergedAttempt({ tests_status: "pass" }), later]));
+    const b = sectionBrief(j.documents[0].sections[0]);
+    expect(b.encoded).toBe(true);
+    expect(b.now?.text).toMatch(/^Re-encode on 2026-10-26 · Failed/);
+    expect(b.now?.link?.url).toBe("https://x/run/9");
+    expect(b.now?.kept).toMatch(/^The encoding from \d{4}-\d{2}-\d{2} stays on main\.$/);
+  });
 });

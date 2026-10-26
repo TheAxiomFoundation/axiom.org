@@ -238,8 +238,12 @@ export interface SectionBrief {
   encoded: boolean;
   /** "Encoded · merged rulespec-us#1448 · tests pass", or "Not encoded yet · 11 runs since 2026-09-03, none merged". */
   headline: string;
-  /** What is happening now and the next step; null once the section is encoded and nothing is open. */
-  now: { text: string; link: { label: string; url: string } | null } | null;
+  /**
+   * What is happening now and the next step; null once the section is encoded
+   * and nothing is open. For an encoded section, a later run is a re-encode,
+   * and `kept` says that the merged encoding stays on main.
+   */
+  now: { text: string; link: { label: string; url: string } | null; kept?: string } | null;
   /** Failures more than one run hit, most first. */
   repeated: Array<{ label: string; cause: string | null; detail: string | null; count: number; url: string }>;
   marks: RunMark[];
@@ -303,5 +307,17 @@ export function sectionBrief(section: LedgerSection): SectionBrief {
     };
   });
 
-  return { encoded: !!done, headline, now: done && latest === done ? null : nextStep(latest), repeated, marks };
+  return { encoded: !!done, headline, now: done ? reencode(latest, done) : nextStep(latest), repeated, marks };
+}
+
+/** For an encoded section: a later run is a re-encode, and its outcome does not undo the merged encoding. */
+function reencode(latest: RunRow, done: RunRow): SectionBrief["now"] {
+  if (latest === done) return null;
+  const step = nextStep(latest);
+  if (!step) return null;
+  return {
+    text: `Re-encode on ${day(latest.at ?? latest.dispatchedAt)} · ${step.text}`,
+    link: step.link,
+    kept: `The encoding from ${day(done.at ?? done.dispatchedAt)} stays on main.`,
+  };
 }
