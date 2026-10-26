@@ -16,6 +16,8 @@ export const OVERALL_KEY = "aspen.overall.v2";
 export const VOTE_KEY = "aspen.vote.v1";
 /** Ratings in progress, by prompt id, so a reloaded tab reopens a card where it was. It belongs to one run. */
 export const RATING_KEY = "aspen.rating.v1";
+/** Whether this device sent the Next steps form, so a reloaded tab shows its thank-you, not a blank form to send twice. It belongs to one run. */
+export const PLEDGE_KEY = "aspen.pledge.v1";
 /** Keys from earlier versions of the page, dropped with the rest at a new run. */
 const RETIRED_KEYS = ["aspen.overall.v1"];
 /** The last save stamp this device used (nextRev). Never dropped, so stamps keep going up across runs. */
@@ -97,7 +99,7 @@ export function enterRun(runId: string): boolean {
   writeStored(RUN_KEY, runId);
   if (previous === null) return false;
   let dropped = false;
-  for (const key of [CHAT_KEY, OVERALL_KEY, VOTE_KEY, RATING_KEY, ...RETIRED_KEYS]) {
+  for (const key of [CHAT_KEY, OVERALL_KEY, VOTE_KEY, RATING_KEY, PLEDGE_KEY, ...RETIRED_KEYS]) {
     try {
       if (window.localStorage.getItem(key) === null) continue;
       window.localStorage.removeItem(key);
