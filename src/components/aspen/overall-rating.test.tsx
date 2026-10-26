@@ -79,23 +79,47 @@ describe("OverallRating", () => {
     expect(screen.queryByRole("button", { name: "Change them" })).not.toBeInTheDocument();
   });
 
-  it("folds once a new question starts after they're answered, and stays folded when its answer is rated", async () => {
+  it("folds on Start over after they're answered, not when a follow-up's answer lands, and stays folded once rated", async () => {
     stubFetch();
     const { rerender } = render(<OverallRating stage="try" />);
     fireEvent.click(screen.getByRole("button", { name: "Yes" }));
     for (const c of ["For residents", "For your staff", "For you"]) fireEvent.click(screen.getByRole("button", { name: `${c}: 4 of 5` }));
     expect(box()).toBeInTheDocument();
-    // Start over: a new question is under way.
+    // A follow-up's answer lands unrated while the comment box is open: nothing folds under the finger.
     rerender(<OverallRating stage="try" fold />);
+    expect(box()).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Change them" })).not.toBeInTheDocument();
+    // Start over: a new question.
+    rerender(<OverallRating stage="try" fold restarts={1} />);
     expect(screen.getByText(/Your answers are saved\./)).toBeInTheDocument();
     // Its answer rated: still one line, until a tap opens it.
-    rerender(<OverallRating stage="try" />);
+    rerender(<OverallRating stage="try" restarts={1} />);
     expect(screen.getByRole("button", { name: "Change them" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Change them" }));
     expect(screen.getByRole("button", { name: "Yes" })).toHaveAttribute("aria-pressed", "true");
-    // The next new question folds them again.
-    rerender(<OverallRating stage="try" fold />);
+    // The next Start over folds them again.
+    rerender(<OverallRating stage="try" fold restarts={2} />);
     expect(screen.getByRole("button", { name: "Change them" })).toBeInTheDocument();
+  });
+
+  it("stays open after Start over while a save failed or a comment waits to save", async () => {
+    // A tap that never confirmed, through a reload during a new question: it asks for the tap again.
+    stubFetch();
+    answered({ ...RATED, unsaved: { discussion: true } });
+    const first = render(<OverallRating stage="try" fold />);
+    expect(await screen.findByText("That didn't save. Tap it again.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "For you: 3 of 5" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("button", { name: "Change them" })).not.toBeInTheDocument();
+    first.unmount();
+
+    // A comment typed but not saved when the participant starts over.
+    answered(RATED);
+    const { rerender } = render(<OverallRating stage="try" />);
+    fireEvent.change(await screen.findByLabelText(/Where has AI helped your agency/), { target: { value: "Helps with forms" } });
+    rerender(<OverallRating stage="try" fold restarts={1} />);
+    expect(box()).toHaveValue("Helps with forms");
+    expect(screen.getByRole("button", { name: "Save comment" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Change them" })).not.toBeInTheDocument();
   });
 
   it("stays open without a new question, through a reload, as before", async () => {

@@ -78,10 +78,13 @@ function answeredAll(a: OverallAnswers): boolean {
 export function OverallRating({
   stage,
   fold = false,
+  restarts = 0,
 }: {
   stage: string;
-  /** A new question is under way: answers already given fold to one line (see `settled`). */
+  /** A new question is under way as the phone loads: answers already given start folded (see `settled`). */
   fold?: boolean;
+  /** Counts Start overs: each folds answers already given. A follow-up's answer doesn't. */
+  restarts?: number;
 }) {
   const [answers, setAnswers] = useState<OverallAnswers>({});
   const [comment, setComment] = useState("");
@@ -97,7 +100,8 @@ export function OverallRating({
   const latest = useRef<Record<string, string>>({});
   // Once both are answered, a new question (Start over, or a reload during one) folds them to one line,
   // so the next question isn't followed by every question at once (Max, Oct 26); a tap opens them again.
-  // They fold only when the new question starts, never as the last one is answered, so the comment still opens.
+  // They fold only when the new question starts, never as the last one is answered or a follow-up's answer
+  // lands, so the comment still opens and nothing folds under a finger.
   // Questions not yet answered stay open, so starting over never hides them (Ariel, Oct 23).
   const [settled, setSettled] = useState(false);
   const [unfolded, setUnfolded] = useState(false);
@@ -180,10 +184,10 @@ export function OverallRating({
   const doneNow = useRef(done);
   doneNow.current = done;
   useEffect(() => {
-    if (!fold) return;
+    if (!restarts) return;
     setUnfolded(false);
     if (doneNow.current) setSettled(true);
-  }, [fold]);
+  }, [restarts]);
   // One question at a time (Michaela, Oct 26): the agency scales open once the first question is answered,
   // and the comment once all three are rated. Anything answered before, on this phone, keeps its question open.
   const hasComment = Boolean(savedComment) || comment !== "" || removing;
