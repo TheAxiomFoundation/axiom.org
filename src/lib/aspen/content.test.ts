@@ -5,7 +5,6 @@ import {
   TWISTS,
   TWIST_GROUPS,
   TWIST_IDS,
-  WHAT_MODELS_MISS,
   twistsFor,
   HOUSEHOLDS,
   PERSPECTIVE_IDS,
@@ -22,9 +21,9 @@ import {
   percent,
   stageIndex,
   MINIMUM_BENEFIT,
-  TOOL_PILOT,
+  ENGINE_PILOT,
+  percentChange,
   share,
-  toolPilotMisses,
   LIVE_DEMO,
   liveDemoUrl,
 } from './content'
@@ -178,10 +177,9 @@ describe('aspen content', () => {
     expect(why).toContain('$25 from October 1, 2026')
     // The rules check is gone from the chat, so no copy promises one.
     expect(why).not.toContain('rules check')
-    // Twelve months at the benchmark's FY2026 minimum, on both At scale slides.
+    // Twelve months at the benchmark's FY2026 minimum.
     expect(ex.reference.annual).toBe(12 * ex.reference.monthly)
     expect(EXAMPLE_HOUSEHOLD.reference).toBe(ex.reference.annual)
-    expect(WHAT_MODELS_MISS.amount).toBe(ex.reference.annual)
     expect(ex.modelsAsked).toBe(POLICYBENCH.models)
   })
 
@@ -208,47 +206,60 @@ describe('aspen content', () => {
     expect(findHousehold('ct-couple')?.firstPerson).not.toContain('disability. My')
   })
 
-  it("gives every tool-pilot model a count for every arm, as the October 20 note's data gives them", () => {
-    for (const row of TOOL_PILOT.rows) {
-      for (const arm of TOOL_PILOT.arms) {
-        const hits = row.hits[arm.id]
-        expect(Number.isInteger(hits)).toBe(true)
-        expect(hits).toBeGreaterThanOrEqual(0)
-        expect(hits).toBeLessThanOrEqual(TOOL_PILOT.amounts)
+  it("keeps At scale 6/7 to PolicyBench's final pilot build, consistent with itself", () => {
+    const t = ENGINE_PILOT
+    // The final build (scripts dccf8bf): k of 276 with web search and with both, the change and its interval, list-price cost.
+    expect([t.households, t.amounts]).toEqual([100, 276])
+    expect(t.rows.map((r) => [r.model, r.web, r.both, r.change.points, r.change.lo, r.change.hi])).toEqual([
+      ['GPT-6 Luna', 152, 212, 21.7, 13.9, 29.3],
+      ['Claude Sonnet 5.5', 164, 268, 37.7, 31.3, 44.1],
+      ['Gemini 3.5 Flash-Lite', 64, 151, 31.5, 24.6, 38.5],
+    ])
+    expect(t.rows.map((r) => percentChange(r.cost.web, r.cost.both))).toEqual([-86, -30, -91])
+    for (const r of t.rows) {
+      for (const k of [r.web, r.both]) {
+        expect(Number.isInteger(k)).toBe(true)
+        expect(k).toBeGreaterThanOrEqual(0)
+        expect(k).toBeLessThanOrEqual(t.amounts)
       }
+      // The change is the two shares' difference, and its interval holds it.
+      expect(Math.abs(r.change.points - (share(r.both, t.amounts) - share(r.web, t.amounts)))).toBeLessThanOrEqual(0.1 + 1e-9)
+      expect(r.change.lo).toBeLessThanOrEqual(r.change.points)
+      expect(r.change.points).toBeLessThanOrEqual(r.change.hi)
+      // The whole-number shares the slide prints differ by the whole-number change it prints.
+      const pct = (k: number) => Math.round((100 * k) / t.amounts)
+      expect(pct(r.both) - pct(r.web)).toBe(Math.round(r.change.points))
+      expect(r.cost.web).toBeGreaterThan(0)
+      expect(r.cost.both).toBeGreaterThan(0)
     }
-    // Recomputed Oct 23 with the note's own functions: hits of 187 amounts, and the shares the slide prints.
-    expect(TOOL_PILOT.amounts).toBe(187)
-    expect(TOOL_PILOT.rows.map((r) => [r.model, r.hits.alone, r.hits.tool])).toEqual([
-      ['GPT-6 Sol', 126, 181],
-      ['Claude Opus 5.5', 131, 185],
-      ['Gemini 4 Argon', 87, 186],
-    ])
-    expect(TOOL_PILOT.rows.map((r) => [share(r.hits.alone!, 187), share(r.hits.tool!, 187)])).toEqual([
-      [67.4, 96.8],
-      [70.1, 98.9],
-      [46.5, 99.5],
-    ])
-    // The miss count comes from the same rows as the bars: 6 + 2 + 1 of 3 × 187.
-    expect(toolPilotMisses(TOOL_PILOT)).toEqual({ misses: 9, scored: 561 })
-    // The note line's numbers add up: 171 taxes and tax credits and 16 benefits make 187.
-    const b = TOOL_PILOT.benefits!
-    expect(TOOL_PILOT.note).toContain('187 per model across 100 US households, 171 of them taxes and tax credits and 16 benefits')
-    expect(171 + b.amounts).toBe(TOOL_PILOT.amounts)
-    expect(b.title).toBe('The 16 benefit amounts: 13 SNAP, 2 SSI, 1 TANF')
-    expect(13 + 2 + 1).toBe(b.amounts)
-    // Same models, same order; the tool never does worse, and never more than every amount.
-    expect(b.rows.map((r) => r.model)).toEqual(TOOL_PILOT.rows.map((r) => r.model))
-    expect(b.rows.map((r) => [r.alone, r.tool])).toEqual([
-      [6, 16],
-      [7, 16],
-      [0, 16],
-    ])
-    for (const r of b.rows) expect(r.alone).toBeLessThanOrEqual(r.tool)
-    // The headline ("above 99%") is a different, weighted score; the slide doesn't quote it.
-    expect(TOOL_PILOT.source).not.toMatch(/99%/)
-    // The note's own caveat travels with the numbers.
-    expect(TOOL_PILOT.measures).toMatch(/not whether the engine is right/)
+    // Labelled as the pilot it is, framed as our own benchmark, and with no PolicyEngine or free-plan names on screen.
+    expect(t.source).toMatch(/^Preliminary internal pilot · PolicyBench, our benchmark/)
+    expect(t.source).toContain('October 23–25, 2026')
+    expect(t.measures).toMatch(/not whether the engine is right/)
+    for (const text of [t.title, t.note, t.measures, t.source, t.arms.web, t.arms.both]) {
+      expect(text).not.toMatch(/PolicyEngine|ChatGPT|Free\b|free plan/i)
+    }
+    expect(t.arms.both).toBe('Web search and our rules engine')
+  })
+
+  it('turns two positive amounts into a whole-percent change that has the right sign and inverts', () => {
+    fc.assert(
+      fc.property(
+        fc.double({ min: 0.0001, max: 1000, noNaN: true }),
+        fc.double({ min: 0.0001, max: 1000, noNaN: true }),
+        (from, to) => {
+          const change = percentChange(from, to)
+          expect(Number.isInteger(change)).toBe(true)
+          expect(change).toBeGreaterThanOrEqual(-100)
+          if (to > from * 1.005) expect(change).toBeGreaterThanOrEqual(0)
+          if (to < from * 0.995) expect(change).toBeLessThanOrEqual(0)
+          expect(Math.abs(change - 100 * (to / from - 1))).toBeLessThanOrEqual(0.5 + 1e-9)
+        },
+      ),
+    )
+    expect(percentChange(4, 4)).toBe(0)
+    expect(percentChange(4, 2)).toBe(-50)
+    expect(percentChange(2, 4)).toBe(100)
   })
 
   it('turns a count into a one-decimal share that never leaves 0 to 100 and grows with the count', () => {

@@ -41,11 +41,8 @@ import {
   POLICYBENCH,
   SAME_RULES,
   SILVER_ASK,
-  TOOL_PILOT,
-  share,
-  toolPilotMisses,
-  type ToolPilot,
-  type ToolPilotArmId,
+  ENGINE_PILOT,
+  percentChange,
   WHAT_MODELS_MISS,
   WHERE_MODELS_BREAK,
   STAGES,
@@ -94,11 +91,15 @@ const JOURNEY_HEADING = "From the law as written to running code";
 /** A slide that turns its stage's argument gets its own heading. */
 const SLIDE_TITLES: Partial<Record<StageId, Record<number, string>>> = {
   scale: { 4: FRONT_DOOR.heading, 5: FRONT_DOOR.heading, 6: FRONT_DOOR.heading },
-  foundation: { 1: SAME_RULES.heading, 2: ENCODING_PIPELINE.heading, 3: JOURNEY_HEADING, 4: BUILD_HEADING },
+  foundation: { 1: JOURNEY_HEADING },
 };
 
-/** Shared foundation's slides, in order; the journey takes Space for itself. */
-const FOUNDATION_SLIDES = ["foundation", "same-rules", "pipeline", "journey", "tiers"] as const;
+/**
+ * Shared foundation's slides, in order; the journey takes Space for itself. A title slide, then the
+ * journey, which shows how the rules get built and what they power (the dry run, Oct 25). The
+ * same-rules, pipeline and tiers slides stay below, off the deck, in case they come back.
+ */
+const FOUNDATION_SLIDES = ["foundation", "journey"] as const;
 
 /** Stages shown as more than one slide; the arrows step through them before moving the room. */
 const SLIDES: Partial<Record<StageId, number>> = { reveal: 2, scale: 7, foundation: FOUNDATION_SLIDES.length, groups: 2, next: 2 };
@@ -245,13 +246,7 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
             </div>
             <div className="flex h-full flex-col px-[96px] pb-[64px] pt-[72px]">
               {stage !== "welcome" && stage !== "dinner" && (
-                <SlideHeader
-                  number={index + 1}
-                  label={current.label}
-                  title={SLIDE_TITLES[stage]?.[sub] ?? current.title}
-                  summary={sub === 0 ? current.summary : undefined}
-                  part={slideCount(stage) > 1 ? `${sub + 1}/${slideCount(stage)}` : undefined}
-                />
+                <SlideHeader title={SLIDE_TITLES[stage]?.[sub] ?? current.title} summary={sub === 0 ? current.summary : undefined} />
               )}
               <div className="min-h-0 flex-1">
                 {stage === "welcome" && <WelcomeSlide summary={summary} joinPassword={joinPassword} />}
@@ -271,13 +266,14 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
                     />
                   ))}
                 {/* Slides 2 to 5 of At scale, and 2 of Shared foundation, come from Max's Nava deck; 6 is the tool pilot and 7 the live chatbot.
+                    What the models miss follows the household it explains (the dry run, Oct 25).
                     Shared foundation 3 is the encoding pipeline from the InnovateUS deck. */}
                 {stage === "scale" &&
                   [
                     <ScaleShareSlide key="share" />,
                     <HouseholdSlide key="household" />,
-                    <BreakSlide key="break" />,
                     <MissSlide key="miss" />,
+                    <BreakSlide key="break" />,
                     <FrontDoorSlide key="front-door" />,
                     <ToolSlide key="tool" />,
                     <LiveDemoSlide key="live-demo" />,
@@ -286,10 +282,7 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
                 {stage === "foundation" &&
                   [
                     <FoundationSlide key="foundation" summary={summary} />,
-                    <SameRulesSlide key="same-rules" />,
-                    <PipelineSlide key="pipeline" />,
                     <JourneySlide key="journey" />,
-                    <TiersSlide key="tiers" />,
                   ][sub]}
                 {stage === "groups" &&
                   (sub === 0 ? <VoteSlide votes={summary.votes} /> : <GroupsSlide summary={summary} />)}
@@ -386,6 +379,11 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
           <button type="button" className={BUTTON_QUIET} onClick={() => step(-1)} aria-label="Previous slide">
             ←
           </button>
+          {slideCount(stage) > 1 && (
+            <span aria-label="Slide" className="font-body text-[0.78rem] tabular-nums text-[var(--color-ink-muted)]">
+              {sub + 1}/{slideCount(stage)}
+            </span>
+          )}
           <button type="button" className={BUTTON_QUIET} onClick={() => step(1)} aria-label="Next slide">
             →
           </button>
@@ -419,27 +417,10 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
 // Slide parts. Sizes are in px: the canvas is always 1600×900.
 // ---------------------------------------------------------------------------
 
-function SlideHeader({
-  number,
-  label,
-  title,
-  summary,
-  part,
-}: {
-  number: number;
-  label: string;
-  title: string;
-  summary?: string;
-  part?: string;
-}) {
+/** A slide's heading, with no eyebrow above it (the dry run, Oct 25); the controls show which slide it is. */
+function SlideHeader({ title, summary }: { title: string; summary?: string }) {
   return (
     <header className="mb-[40px]">
-      <span className="mb-[18px] flex items-center gap-[14px] font-mono text-[17px] uppercase tracking-[0.18em] text-[var(--color-accent)]">
-        <span>
-          {String(number).padStart(2, "0")} · {label}
-        </span>
-        {part && <span className="text-[var(--color-ink-muted)]">{part}</span>}
-      </span>
       <h1 className="heading-page m-0" style={{ fontSize: 48, lineHeight: 1.1, ...SENTENCE }}>
         {title}
       </h1>
@@ -581,10 +562,6 @@ function ScalePanel({ scale }: { scale: ScaleSummary }) {
   return (
     <Panel className="flex flex-col gap-[16px] py-[24px]">
       <Prompt className="mb-0">{scale.label}</Prompt>
-      <div className="flex justify-between font-mono text-[15px] uppercase tracking-[0.14em] text-[var(--color-ink-muted)]">
-        <span>1 · {scale.low}</span>
-        <span>{scale.high} · 5</span>
-      </div>
       <ul className="m-0 flex list-none flex-col gap-[16px] p-0">
         {scale.categories.map((c) => (
           <li key={c.id} className="grid grid-cols-[440px_minmax(0,1fr)_120px] items-center gap-[24px]">
@@ -604,6 +581,13 @@ function ScalePanel({ scale }: { scale: ScaleSummary }) {
           </li>
         ))}
       </ul>
+      {/* The scale's ends, under the ends of the bars (the dry run, Oct 25). */}
+      <div className="-mt-[8px] grid grid-cols-[440px_minmax(0,1fr)_120px] gap-[24px] font-body text-[20px] text-[var(--color-ink-muted)]">
+        <span className="col-start-2 flex justify-between">
+          <span>1 · {scale.low}</span>
+          <span>{scale.high} · 5</span>
+        </span>
+      </div>
     </Panel>
   );
 }
@@ -692,6 +676,40 @@ function TrySlide({ summary, joinPassword }: { summary: RunSummary; joinPassword
  * What we saw, slide 2: how AI is doing in their agencies, the room's 1–5
  * ratings, with the comments once the presenter shows them.
  */
+/** Agency comments on screen at once, and answers worth discussing. */
+const COMMENTS_SHOWN = 4;
+const ANSWERS_SHOWN = 2;
+
+/** How long each page of rotating comments stays up. */
+const ROTATE_MS = 12_000;
+
+/**
+ * Which page of `count` items, `size` at a time, shows at `tick`: it cycles
+ * through every page, and stays on the first while everything fits on one.
+ */
+export function rotationPage(tick: number, count: number, size: number): number {
+  const pages = Math.max(1, Math.ceil(count / size));
+  return ((tick % pages) + pages) % pages;
+}
+
+/** A counter that goes up every `ms` while `active`, to turn pages of comments. */
+function useTick(active: boolean, ms = ROTATE_MS): number {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    const id = window.setInterval(() => setTick((t) => t + 1), ms);
+    return () => window.clearInterval(id);
+  }, [active, ms]);
+  return tick;
+}
+
+/** "1–4 of 9", or "9 of 9" for a last page of one: which of the items a page shows. */
+export function pageRange(page: number, size: number, count: number): string {
+  const first = page * size + 1;
+  const last = Math.min(count, (page + 1) * size);
+  return first === last ? `${last} of ${count}` : `${first}\u2013${last} of ${count}`;
+}
+
 function RatingSlide({
   summary,
   comments = null,
@@ -702,6 +720,8 @@ function RatingSlide({
 }) {
   const scale = summary.discussion.scales.find((sc) => sc.question === "experience");
   const ratings = scale ? Math.max(0, ...scale.categories.map((c) => c.count)) : 0;
+  const tick = useTick(Boolean(comments && comments.length > COMMENTS_SHOWN));
+  const commentPage = rotationPage(tick, comments?.length ?? 0, COMMENTS_SHOWN);
   return (
     <div className="flex h-full flex-col gap-[24px]">
       <span className="font-body text-[26px] text-[var(--color-ink-secondary)]">
@@ -713,17 +733,25 @@ function RatingSlide({
         (comments.length === 0 ? (
           <p className="m-0 font-body text-[24px] text-[var(--color-ink-muted)]">No comments yet.</p>
         ) : (
-          // Four at most, two per row, each clamped to two lines, so the slide still fits 16:9.
-          <ul className="m-0 grid list-none grid-cols-2 gap-[14px] p-0">
-            {comments.slice(0, 4).map((text, i) => (
-              <li
-                key={`${i}-${text}`}
-                className={`rounded-[14px] border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-[24px] py-[16px] ${BOX_TEXT}`}
-              >
-                <span className="line-clamp-2">{text}</span>
-              </li>
-            ))}
-          </ul>
+          <>
+            {/* Four at a time, two per row, each clamped to two lines, so the slide still fits 16:9. With more,
+                the four turn every few seconds, so every comment gets its turn (the dry run, Oct 25). */}
+            <ul className="m-0 grid list-none grid-cols-2 gap-[14px] p-0">
+              {comments.slice(commentPage * COMMENTS_SHOWN, (commentPage + 1) * COMMENTS_SHOWN).map((text, i) => (
+                <li
+                  key={`${commentPage}-${i}-${text}`}
+                  className={`rounded-[14px] border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-[24px] py-[16px] ${BOX_TEXT}`}
+                >
+                  <span className="line-clamp-2">{text}</span>
+                </li>
+              ))}
+            </ul>
+            {comments.length > COMMENTS_SHOWN && (
+              <span className="font-body text-[18px] tabular-nums text-[var(--color-ink-muted)]">
+                Comments {pageRange(commentPage, COMMENTS_SHOWN, comments.length)}
+              </span>
+            )}
+          </>
         ))}
     </div>
   );
@@ -804,11 +832,15 @@ function RevealSlide({ summary }: { summary: RunSummary }) {
 
 /**
  * The answers Max reads out in What we saw, on the screen now that phones
- * stay quiet there: the two most worth discussing, with what the person
- * said about each. Before anyone flags one, the spoken questions show instead.
+ * stay quiet there: the most worth discussing, two at a time, with what the
+ * person said about each. Before anyone flags one, the spoken questions show instead.
  */
 function WorthDiscussing({ summary }: { summary: RunSummary }) {
-  const items = summary.spotlight.slice(0, 2);
+  // Two at a time; with more, they turn every few seconds (the dry run, Oct 25).
+  const all = summary.spotlight;
+  const tick = useTick(all.length > ANSWERS_SHOWN);
+  const page = rotationPage(tick, all.length, ANSWERS_SHOWN);
+  const items = all.slice(page * ANSWERS_SHOWN, (page + 1) * ANSWERS_SHOWN);
   if (!items.length) {
     return (
       <Panel className="mt-auto py-[20px]">
@@ -824,7 +856,9 @@ function WorthDiscussing({ summary }: { summary: RunSummary }) {
   }
   return (
     <Panel className="mt-auto py-[16px]">
-      <Label>Answers worth discussing</Label>
+      <Label>
+        Answers worth discussing{all.length > ANSWERS_SHOWN && <span className="normal-case tracking-normal">{` · ${pageRange(page, ANSWERS_SHOWN, all.length)}`}</span>}
+      </Label>
       <ul className="m-0 grid list-none grid-cols-2 gap-[32px] p-0">
         {items.map((item) => (
           <li key={item.id} className="flex min-w-0 flex-col gap-[6px]">
@@ -884,26 +918,33 @@ function BenchFooter({ source }: { source: string }) {
 }
 
 /** The annual reference uses FY2026's monthly minimum in every month, October to December included. */
-function StandardsNote() {
+function StandardsNote({ mark = false }: { mark?: boolean }) {
   const ex = POLICYBENCH.example;
   return (
     <p className="m-0 font-body text-[18px] leading-snug text-[var(--color-ink-secondary)]">
-      ${ex.reference.monthly} a month under the benchmark&apos;s July 2026 rules ({ex.reference.standards} standards).{" "}
+      {mark && <>*{TRUE_BENEFIT_NOTE} </>}${ex.reference.monthly} a month under the benchmark&apos;s July 2026 rules ({ex.reference.standards} standards).{" "}
       The minimum rose to ${ex.fromOctober.monthly} on October 1, so 2026 comes to ${ex.currentLaw.annual} under current law.
     </p>
   );
 }
 
-/** One tile per model: $0 in red, other wrong amounts muted, the reference amount in the accent, no answer as a dash. */
+/**
+ * What "the true benefit" on At scale 2/7 is: PolicyBench's reference answer. Max asked for "true
+ * benefit" with an asterisk in the dry run (Oct 25), for no PolicyEngine on the screens, and for
+ * PolicyBench as our own benchmark; the note under it says which rules.
+ */
+const TRUE_BENEFIT_NOTE = "The reference answer in PolicyBench, our benchmark:";
+
+/** One tile per model: $0 in red, other wrong amounts muted, the reference amount in the accent, and "no answer" said in words (the dry run, Oct 25). */
 function answerTile(answer: number | null, reference: number) {
-  if (answer === null) return { text: "–", label: "no answer", tone: "border-[var(--color-rule)] text-[var(--color-ink-muted)]" };
+  if (answer === null) return { text: "no answer", label: "no answer", tone: "border-[var(--color-rule)] text-[var(--color-ink-muted)]" };
   if (answer === reference)
     return { text: `$${answer}`, label: `$${answer}, matches the reference`, tone: "border-[var(--color-accent)] bg-[var(--color-accent-light)] font-semibold text-[var(--color-accent)]" };
   if (answer <= 0) return { text: "$0", label: "$0", tone: "border-[var(--color-error)]/30 text-[var(--color-error)]" };
   return { text: `$${answer.toLocaleString("en-US")}`, label: `$${answer.toLocaleString("en-US")}`, tone: "border-[var(--color-rule)] text-[var(--color-ink-secondary)]" };
 }
 
-/** At scale, slide 2 (Max's Nava deck): accuracy by program, owed money against owed $0. */
+/** At scale, slide 4 (Max's Nava deck): accuracy by program, owed money against owed $0. */
 function BreakSlide() {
   const b = WHERE_MODELS_BREAK;
   return (
@@ -966,11 +1007,12 @@ function HouseholdSlide() {
         <Panel className="flex flex-col gap-[18px]">
           <Label className="mb-0">{h.program}</Label>
           <div className="grid grid-cols-2 gap-[24px]">
-            <BigStat value={`$${h.reference}`} label="PolicyEngine's reference in PolicyBench" tone="accent" />
+            <BigStat value={`$${h.reference}`} label="The true benefit*" tone="accent" />
             <BigStat value="$0" label={`from ${ex.modelsSaidZero} of ${ex.modelsAnswered} AI models · ${ex.modelsExact} matched exactly`} tone="bad" />
           </div>
-          <StandardsNote />
+          <StandardsNote mark />
           {/* Every model's answer: the $0s as one block, then the others at full width so no amount is cut. */}
+          <Label className="mb-0">Each model&apos;s answer for the year, one per model</Label>
           <div
             role="group"
             aria-label={`${h.models} models: ${ex.modelsSaidZero} said $0, ${ex.modelsExact} said $${h.reference}, ${ex.modelsAnswered - ex.modelsSaidZero - ex.modelsExact} gave other amounts, ${h.models - ex.modelsAnswered} gave no answer`}
@@ -1005,7 +1047,7 @@ function HouseholdSlide() {
   );
 }
 
-/** At scale, slide 5 (Max's Nava deck): how the top two models explain $0, beside the rule they skip. */
+/** At scale, slide 3 (Max's Nava deck): how the top two models explain $0 for the household on 2, beside the rule they skip. */
 function MissSlide() {
   const m = WHAT_MODELS_MISS;
   return (
@@ -1023,13 +1065,10 @@ function MissSlide() {
             </Panel>
           ))}
         </div>
+        {/* The rule alone: the room knows BBCE, and the amount isn't the point here (the dry run, Oct 25). */}
         <Panel className="flex flex-col border-l-[8px] border-l-[var(--color-accent)]">
           <Label>{m.ruleLabel}</Label>
-          <p className={`m-0 ${BOX_TEXT}`}>{m.rule}</p>
-          <div className="mt-auto pt-[8px]">
-            <BigStat value={`$${m.amount}`} unit="in 2026" label={m.amountLabel} tone="accent" size={80} />
-          </div>
-          <StandardsNote />
+          <p className="m-0 font-body text-[30px] leading-snug text-[var(--color-ink)]">{m.rule}</p>
         </Panel>
       </div>
       <BenchFooter source={m.sources} />
@@ -1148,134 +1187,103 @@ function FrontDoorSlide() {
   );
 }
 
-/**
- * The tool pilot's bar colours, by arm: the model on its own recedes in the
- * same gray as the "Where models still break" chart, and the tool carries the
- * accent. Every bar is labelled with its value, so color never carries it alone.
- */
-const ARM_COLORS: Record<ToolPilotArmId, string> = {
-  alone: "#bdb6ae",
-  web: "#8e9aaa",
-  tool: "var(--color-accent)",
-  both: "var(--color-accent-hover)",
-};
-/** Arms that run the engine, whose numbers read in full ink. */
-const ENGINE_ARMS: ReadonlySet<ToolPilotArmId> = new Set(["tool", "both"]);
+/** The pilot's bars: web search alone recedes in the "Where models still break" gray; our rules engine carries the accent. */
+const PILOT_COLORS = { web: "#bdb6ae", both: "var(--color-accent)" } as const;
+
+/** A whole percent of the pilot's amounts, as the slide shows it. */
+const pilotPct = (k: number) => Math.round((100 * k) / ENGINE_PILOT.amounts);
+/** A signed whole number of points, with a true minus sign. */
+const signed = (n: number) => `${n < 0 ? "\u2212" : "+"}${Math.abs(Math.round(n))}`;
+/** Dollars per household to the tenth of a cent. */
+const perHousehold = (d: number) => `$${d.toFixed(3)}`;
 
 /**
- * At scale, slide 6: PolicyBench's tool pilot. The same models in each arm
- * (on their own, and with a tool that runs a rules engine) beside the benefit
- * amounts on their own, then the note's caveat that the tool runs the engine
- * behind the reference, across the full width so it fits at 1600×900.
+ * At scale, slide 6: PolicyBench's preliminary internal pilot. Each model with web search alone and with
+ * web search and our rules engine, the change in accuracy and the change in cost (Max, the dry run, Oct 25).
  */
 function ToolSlide() {
-  const t = TOOL_PILOT;
-  const { misses, scored } = toolPilotMisses(t);
-  const bar = t.arms.length > 2 ? 20 : 26;
+  const t = ENGINE_PILOT;
+  const head = "pb-[10px] text-left align-bottom font-body text-[20px] font-normal text-[var(--color-ink-muted)]";
   return (
-    <div className="flex h-full flex-col gap-[12px]">
+    <div className="flex h-full flex-col gap-[14px]">
       <div className="flex items-end justify-between gap-[24px]">
         <p className="m-0 font-display text-[40px] font-light leading-tight text-[var(--color-ink)]">{t.title}</p>
-        <span className="flex shrink-0 flex-wrap justify-end gap-x-[24px] gap-y-[4px] font-body text-[20px] text-[var(--color-ink-secondary)]">
-          {t.arms.map((arm) => (
-            <span key={arm.id} className="flex items-center gap-[8px]">
-              <span aria-hidden className="h-[14px] w-[14px] rounded-[3px]" style={{ background: ARM_COLORS[arm.id] }} /> {arm.label}
+        <span className="flex shrink-0 gap-[24px] font-body text-[20px] text-[var(--color-ink-secondary)]">
+          {(["web", "both"] as const).map((arm) => (
+            <span key={arm} className="flex items-center gap-[8px]">
+              <span aria-hidden className="h-[14px] w-[14px] rounded-[3px]" style={{ background: PILOT_COLORS[arm] }} /> {t.arms[arm]}
             </span>
           ))}
         </span>
       </div>
       <p className="m-0 font-body text-[20px] text-[var(--color-ink-secondary)]">{t.note}</p>
-      <div
-        className={`grid min-h-0 items-start gap-[40px] pt-[8px] ${t.benefits ? "grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)]" : "grid-cols-1"}`}
-      >
-        <ul className={`m-0 flex list-none flex-col p-0 ${t.arms.length > 2 ? "gap-[20px]" : "gap-[28px]"}`}>
-          {t.rows.map((row) => (
-            <li key={row.model} className="grid grid-cols-[220px_minmax(0,1fr)] items-center gap-[24px]">
-              <span className={BOX_TEXT}>{row.model}</span>
-              <span className="flex flex-col gap-[8px]">
-                {t.arms.map((arm) => {
-                  const hits = row.hits[arm.id];
-                  if (typeof hits !== "number") return null;
-                  const value = share(hits, t.amounts);
-                  return (
-                    <span key={arm.id} className="flex items-center gap-[14px]">
-                      <span className="rounded-[4px]" style={{ height: bar, width: `${value * 0.78}%`, background: ARM_COLORS[arm.id] }} />
-                      <span
-                        className={`whitespace-nowrap font-mono text-[22px] leading-none tabular-nums ${ENGINE_ARMS.has(arm.id) ? "text-[var(--color-ink)]" : "text-[var(--color-ink-muted)]"}`}
-                      >
-                        <span className="sr-only">{arm.label}: </span>
-                        {value.toFixed(1)}%
-                      </span>
-                    </span>
-                  );
-                })}
-              </span>
-            </li>
-          ))}
-        </ul>
-        {t.benefits && <BenefitsPanel benefits={t.benefits} />}
-      </div>
-      <Panel className="flex flex-col gap-[8px] py-[18px]">
-        <Label className="mb-0">What this measures</Label>
-        <p className="m-0 font-body text-[22px] leading-snug text-[var(--color-ink)]">
-          {t.measures}{" "}
-          <span className="text-[var(--color-ink-secondary)]">
-            The {misses} of {scored} amounts still wrong with the tool {t.missesCause}
-          </span>
-        </p>
-      </Panel>
-      <BenchFooter source={t.source} />
-    </div>
-  );
-}
-
-/** The benefit amounts alone, as a small table: the part of the pilot this room runs. */
-function BenefitsPanel({ benefits: b }: { benefits: NonNullable<ToolPilot["benefits"]> }) {
-  const cell = "px-[10px] py-[2px] text-right font-mono text-[22px] tabular-nums";
-  return (
-    <Panel className="flex flex-col gap-[10px] py-[16px]">
-      <Label className="mb-0">{b.title}</Label>
-      <table className="w-full border-collapse font-body text-[21px] leading-snug text-[var(--color-ink)]">
-        <caption className="sr-only">Benefit amounts right, of {b.amounts}, by model</caption>
+      <table className="w-full border-collapse">
+        <caption className="sr-only">
+          {t.title}: share of nonzero dollar amounts right, the change in points with its 95% interval, and the change in cost per household
+        </caption>
         <thead>
-          <tr className="text-[var(--color-ink-muted)]">
-            <th scope="col" className="py-[2px] text-left font-normal">
-              <span className="sr-only">Arm</span>
+          <tr>
+            <th scope="col" className={`${head} w-[300px]`}>
+              <span className="sr-only">Model</span>
             </th>
-            {b.rows.map((r) => (
-              <th key={r.model} scope="col" className={`${cell} font-body font-normal`}>
-                <abbr title={r.model} className="no-underline">
-                  {r.short}
-                </abbr>
-              </th>
-            ))}
+            <th scope="col" className={head}>
+              Amounts right
+            </th>
+            <th scope="col" className={`${head} w-[250px]`}>
+              Accuracy
+            </th>
+            <th scope="col" className={`${head} w-[250px]`}>
+              Cost per household
+            </th>
           </tr>
         </thead>
         <tbody>
-          <tr>
-            <th scope="row" className="py-[2px] text-left font-normal text-[var(--color-ink-secondary)]">
-              On its own
-            </th>
-            {b.rows.map((r) => (
-              <td key={r.model} className={`${cell} text-[var(--color-ink-muted)]`}>
-                {r.alone}
+          {t.rows.map((r) => (
+            <tr key={r.model} className="border-t border-[var(--color-rule)]">
+              <th scope="row" className={`py-[16px] pr-[24px] text-left font-normal ${BOX_TEXT}`}>
+                {r.model}
+              </th>
+              <td className="py-[16px] pr-[32px]">
+                <span className="flex flex-col gap-[8px]">
+                  {(["web", "both"] as const).map((arm) => (
+                    <span key={arm} className="flex items-center gap-[14px]">
+                      <span className="h-[22px] rounded-[4px]" style={{ width: `${pilotPct(r[arm]) * 0.8}%`, background: PILOT_COLORS[arm] }} />
+                      <span
+                        className={`whitespace-nowrap font-mono text-[22px] leading-none tabular-nums ${arm === "both" ? "text-[var(--color-ink)]" : "text-[var(--color-ink-muted)]"}`}
+                      >
+                        <span className="sr-only">{t.arms[arm]}: </span>
+                        {pilotPct(r[arm])}%
+                      </span>
+                    </span>
+                  ))}
+                </span>
               </td>
-            ))}
-          </tr>
-          <tr>
-            <th scope="row" className="py-[2px] text-left font-normal text-[var(--color-ink-secondary)]">
-              With the tool
-            </th>
-            {b.rows.map((r) => (
-              <td key={r.model} className={`${cell} font-medium`}>
-                {r.tool}
+              <td className="py-[16px]">
+                <span className="block font-display text-[48px] font-light leading-none tabular-nums text-[var(--color-accent)]">
+                  {signed(r.change.points)} <span className="font-body text-[22px] text-[var(--color-ink-secondary)]">points</span>
+                </span>
+                <span className="mt-[6px] block font-body text-[18px] text-[var(--color-ink-muted)]">
+                  95%: {signed(r.change.lo)} to {signed(r.change.hi)}
+                </span>
               </td>
-            ))}
-          </tr>
+              <td className="py-[16px]">
+                <span className="block font-display text-[48px] font-light leading-none tabular-nums text-[var(--color-ink)]">
+                  {signed(percentChange(r.cost.web, r.cost.both))}%
+                </span>
+                <span className="mt-[6px] block font-body text-[18px] tabular-nums text-[var(--color-ink-muted)]">
+                  {perHousehold(r.cost.web)} to {perHousehold(r.cost.both)}
+                </span>
+              </td>
+            </tr>
+          ))}
         </tbody>
       </table>
-      <p className="m-0 font-body text-[19px] leading-snug text-[var(--color-ink-secondary)]">{b.also}</p>
-    </Panel>
+      <Panel className="mt-auto flex flex-col gap-[8px] py-[18px]">
+        <Label className="mb-0">What this measures</Label>
+        <p className="m-0 font-body text-[22px] leading-snug text-[var(--color-ink)]">{t.measures}</p>
+      </Panel>
+      <BenchFooter source={t.source} />
+    </div>
   );
 }
 
@@ -1288,6 +1296,16 @@ function BenefitsPanel({ benefits: b }: { benefits: NonNullable<ToolPilot["benef
 function LiveDemoSlide() {
   const slot = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+  // Full screen fills the window with the same frame, so the conversation in it carries over (the dry run, Oct 25).
+  const [full, setFull] = useState(false);
+  useEffect(() => {
+    if (!full) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFull(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [full]);
   useEffect(() => {
     const el = slot.current;
     if (!el) return;
@@ -1313,16 +1331,32 @@ function LiveDemoSlide() {
   }, []);
   return (
     <div className="flex h-full flex-col gap-[16px]">
-      <p className="m-0 font-display text-[36px] font-light leading-tight text-[var(--color-ink)]">{LIVE_DEMO.title}</p>
+      <div className="flex items-end justify-between gap-[24px]">
+        <p className="m-0 font-display text-[36px] font-light leading-tight text-[var(--color-ink)]">{LIVE_DEMO.title}</p>
+        <button type="button" className={`${BUTTON_QUIET} shrink-0 px-[20px] py-[10px] text-[20px]`} onClick={() => setFull(true)}>
+          Full screen
+        </button>
+      </div>
       <div ref={slot} className="min-h-0 flex-1 rounded-[14px] border border-[var(--color-rule)] bg-white" />
       {box &&
         createPortal(
-          <iframe
-            title="Live chatbot demo: plain AI beside AI with the Axiom rules engine"
-            src={liveDemoUrl()}
-            className="fixed z-30 border-0 bg-white"
-            style={{ left: box.left, top: box.top, width: box.width, height: box.height }}
-          />,
+          <>
+            <iframe
+              title="Live chatbot demo: plain AI beside AI with the Axiom rules engine"
+              src={liveDemoUrl()}
+              className={`fixed border-0 bg-white ${full ? "z-50" : "z-30"}`}
+              style={full ? { inset: 0, width: "100vw", height: "100dvh" } : { left: box.left, top: box.top, width: box.width, height: box.height }}
+            />
+            {full && (
+              <button
+                type="button"
+                className={`${BUTTON_QUIET} fixed bottom-3 right-3 z-[60] shadow-[0_2px_8px_rgba(28,25,23,0.18)]`}
+                onClick={() => setFull(false)}
+              >
+                Exit full screen
+              </button>
+            )}
+          </>,
           document.body,
         )}
     </div>
@@ -1476,8 +1510,35 @@ const USE_ICONS: Record<(typeof ONE_SET_OF_RULES)[number]["label"], LucideIcon> 
   Research: ChartColumn,
 };
 
-/** Shared foundation, slide 1: one set of rules under every tool. */
+/**
+ * Shared foundation, slide 1: the title that sets up the journey, with the room's own answer (the dry
+ * run, Oct 25). Before anyone answers, the statement and the cue carry it alone.
+ */
 function FoundationSlide({ summary }: { summary: RunSummary }) {
+  const answered = summary.sourceOfTruth.reduce((sum, c) => sum + c.count, 0);
+  const cannot = summary.sourceOfTruth.filter((c) => c.id !== "yes").reduce((sum, c) => sum + c.count, 0);
+  return (
+    <div className="flex h-full flex-col justify-center gap-[48px] pb-[40px]">
+      {answered > 0 && (
+        <p className="m-0 max-w-[1300px] border-l-[6px] border-[var(--color-accent)] pl-[32px] font-body text-[40px] leading-snug text-[var(--color-ink)]">
+          In this room, <strong className="font-medium tabular-nums text-[var(--color-accent)]">{cannot}</strong> of{" "}
+          <strong className="font-medium tabular-nums">{answered}</strong>{" "}
+          say a resident, screener or AI can&apos;t fully check an answer against their state&apos;s rules today.
+        </p>
+      )}
+      <p className="m-0 max-w-[1300px] font-body text-[34px] font-medium leading-snug tracking-[-0.01em] text-[var(--color-ink)]">
+        {ONE_SET_STATEMENT.text} <span className="text-[var(--color-accent)]">{ONE_SET_STATEMENT.accent}</span>
+      </p>
+      <p className="m-0 font-body text-[28px] text-[var(--color-ink-secondary)]">{FOUNDATION_CUE}</p>
+    </div>
+  );
+}
+
+/** What the journey after the title slide shows, said on the slide so the room knows what's coming. */
+const FOUNDATION_CUE = "Next: how we build it, from the law as written to running code, and what it can power.";
+
+/** The earlier Shared foundation 1/5: one set of rules under every tool. Off the deck since the dry run, Oct 25. */
+function OneSetSlide({ summary }: { summary: RunSummary }) {
   const answered = summary.sourceOfTruth.reduce((sum, c) => sum + c.count, 0);
   const cannot = summary.sourceOfTruth.filter((c) => c.id !== "yes").reduce((sum, c) => sum + c.count, 0);
   return (
