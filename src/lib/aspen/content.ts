@@ -971,9 +971,15 @@ export function liveDemoUrl(): string {
 
 /** The same rules for every system: what one shared set of rules gives each group. */
 export const SAME_RULES = {
-  /** The heading of a former Shared foundation slide, off the deck since the dry run (Oct 25). */
-  heading: "What does one open set of rules enable?",
-  /** The room is state benefits leaders, so governments get the big box and the most uses. */
+  /** Shared foundation 5/6's heading: after the journey, what the rules let a government do (Oct 26). */
+  heading: "What does one set of open rules enable for governments?",
+  /** Under the governments boxes, leading into Small groups. */
+  prompt: "What other ideas do you have?",
+  /**
+   * The room is state benefits leaders, so governments are the whole slide, one box per use. The last
+   * use says in words what the cross-reference graph drew: TANF confers SNAP eligibility, SSI opens
+   * Medicaid, SNAP directly certifies school meals and confers WIC eligibility.
+   */
   governments: {
     label: "For governments",
     uses: [
@@ -982,6 +988,7 @@ export const SAME_RULES = {
       "Payment accuracy checks before benefits go out",
       "A policy change tested before it takes effect",
       "Screeners and AI tools that give your agency's answer",
+      "Programs linked as the law links them: TANF to SNAP, SSI to Medicaid, SNAP to school meals and WIC",
     ],
   },
   audiences: [

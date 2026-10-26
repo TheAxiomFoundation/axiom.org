@@ -1076,6 +1076,27 @@ html[data-aspen-text="larger"] {
   opacity: 1;
 }
 
+/* A build on the Aspen TV: a line that rises in under what is already on
+   the slide (Shared foundation 2/6). */
+@keyframes aspen-build {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+[data-aspen-presenter] .aspen-build {
+  animation: aspen-build 700ms ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-aspen-presenter] .aspen-build {
+    animation: none;
+  }
+}
+
 /* /aspen scrolls without animation: a new screen opens at its top at once,
    and the browser keeps a field in view while typing without gliding the
    page. The padding keeps the sticky header from covering a focused field. */
