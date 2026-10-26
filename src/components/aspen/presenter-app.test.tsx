@@ -1875,8 +1875,8 @@ describe("newerControl", () => {
 describe("PresenterApp moves, for any order of outcomes", () => {
   // The stages a test moves between; Shared foundation loads the journey's three.js chunk, so it sits out.
   const TARGETS = STAGES.filter((s) => s.id !== "foundation");
-  type Outcome = "saved" | "refused" | "dropped" | "lost";
-  const outcome = fc.constantFrom<Outcome>("saved", "refused", "dropped", "lost");
+  type Outcome = "saved" | "slow" | "refused" | "dropped" | "lost";
+  const outcome = fc.constantFrom<Outcome>("saved", "slow", "refused", "dropped", "lost");
   // Weighted toward the arrows and settling, which reach the slides a failed move must put back.
   const command = fc.oneof(
     { weight: 2, arbitrary: fc.record({ kind: fc.constant("move" as const), to: fc.integer({ min: 0, max: TARGETS.length - 1 }) }) },
@@ -1894,14 +1894,15 @@ describe("PresenterApp moves, for any order of outcomes", () => {
   /**
    * Invariants, for any sequence of stage buttons, arrows, Start runs, moves from another screen and
    * polls of the room (some reading a row the store held before), the first read landing at once or
-   * only after the moves have begun, and any order and mix of outcomes (saved; refused; dropped before
-   * the store; saved but its answer lost; timed out, after three polls), each write stamped when the
+   * only after the moves have begun, and any order and mix of outcomes (saved; saved with its answer
+   * coming later, after newer rows; refused; dropped before the store; saved but its answer lost; timed
+   * out, after three polls), each write stamped when the
    * server takes it and landing in any order, and the store keeping a write, whole, only over an older
    * row (store.ts setControl):
    * 1. while any move is in flight, the TV shows the newest move's stage, whatever the polls say, and
    *    whether or not it has read the room yet;
-   * 2. once none is, it shows the newest row the store answered with, its stage and its run, never a
-   *    stage no write saved (or Welcome, with no run, if the store has answered with none);
+   * 2. once none is, it shows the newest row the store answered with, never a stage no write saved (or
+   *    Welcome, if the store has answered with none);
    * 3. one poll later, it shows what the store holds, which is what the phones show;
    * 4. when the last move settles, the TV keeps its slide if the store's stage is the one on screen;
    *    otherwise it shows the slide it last showed on that stage as the moves left it, if it showed it in
@@ -1911,7 +1912,9 @@ describe("PresenterApp moves, for any order of outcomes", () => {
    *    stage leaves the slide;
    * 6. no write crosses a run switch: Start run is sent only when no other move is in flight, and no
    *    move is sent while it is, so a run switch the store refuses is one another screen's write beat,
-   *    never the TV's own move.
+   *    never the TV's own move;
+   * 7. the run on screen is always the newest row's the store answered with, moves in flight or not
+   *    (none before the first answer).
    */
   it("shows the newest move in flight, then the store's newest answer, then the store", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
@@ -1931,7 +1934,7 @@ describe("PresenterApp moves, for any order of outcomes", () => {
         fc.asyncProperty(
           fc.constantFrom(...TARGETS.map((s) => s.id)),
           fc.array(command, { minLength: 1, maxLength: 14 }),
-          fc.array(outcome, { minLength: 28, maxLength: 28 }),
+          fc.array(outcome, { minLength: 42, maxLength: 42 }),
           // Whether the TV's first read of the room lands only at the first poll, after the moves before it.
           fc.boolean(),
           async (first, commands, finals, late) => {
@@ -1946,7 +1949,16 @@ describe("PresenterApp moves, for any order of outcomes", () => {
           // The first read, while the test holds it.
           let firstRead: (() => void) | null = null;
           let reads = 0;
-          type Sent = { stage: StageId; runId?: string; stamp: string; beaten: boolean; resolve: (r: Response) => void; reject: (e: Error) => void };
+          type Sent = {
+            stage: StageId;
+            runId?: string;
+            stamp: string;
+            beaten: boolean;
+            // A slow move's answer, once its write has landed: the row as it was then.
+            answer?: Control;
+            resolve: (r: Response) => void;
+            reject: (e: Error) => void;
+          };
           const pending: Sent[] = [];
           // Moves the TV has made, and those settled: some wait to be sent (6).
           let made = 0;
@@ -2011,29 +2023,42 @@ describe("PresenterApp moves, for any order of outcomes", () => {
               left.set(at.stage, { run: newestAnswered()?.runId ?? null, slide: at.slide });
             const check = () => {
               expect(crossed).toEqual([]);
+              expect(screen.getByText(`Run ${newestAnswered()?.runId ?? "…"}`)).toBeInTheDocument();
               if (inFlight() > 0) expect(shown()).toBe(newestMove);
-              else {
-                expect(shown()).toBe(newestAnswered()?.stage ?? "welcome");
-                expect(screen.getByText(`Run ${newestAnswered()?.runId ?? "…"}`)).toBeInTheDocument();
-              }
+              else expect(shown()).toBe(newestAnswered()?.stage ?? "welcome");
             };
             const settle = async (index: number, how: Outcome) => {
               const onScreen = view();
               const [move] = pending.splice(index, 1);
-              done += 1;
-              // A write lands, whole, only over an older row; either way the store answers with its row.
-              if (how === "saved" || how === "lost") {
-                if ((store.updatedAt ?? "") < move.stamp) {
-                  store = { ...store, stage: move.stage, ...(move.runId ? { runId: move.runId } : {}), updatedAt: move.stamp };
-                  held.push(store);
-                } else if (move.runId) expect(move.beaten).toBe(true);
+              if (move.answer) {
+                // A slow move's answer arrives at last, with the row as it was when its write landed:
+                // polls and other answers may have brought newer rows since.
+                done += 1;
+                answered.push(move.answer);
+                move.resolve(jsonResponse(move.answer));
+                await flush();
+              } else {
+                // A write lands, whole, only over an older row; either way the store answers with its row.
+                if (how === "saved" || how === "slow" || how === "lost") {
+                  if ((store.updatedAt ?? "") < move.stamp) {
+                    store = { ...store, stage: move.stage, ...(move.runId ? { runId: move.runId } : {}), updatedAt: move.stamp };
+                    held.push(store);
+                  } else if (move.runId) expect(move.beaten).toBe(true);
+                }
+                if (how === "slow") {
+                  // Its answer comes at a later settle, still in flight until then.
+                  move.answer = store;
+                  pending.splice(index, 0, move);
+                  return;
+                }
+                done += 1;
+                if (how === "saved") {
+                  answered.push(store);
+                  move.resolve(jsonResponse(store));
+                } else if (how === "refused") move.resolve(jsonResponse({ error: "No." }, false));
+                else move.reject(new Error(how));
+                await flush();
               }
-              if (how === "saved") {
-                answered.push(store);
-                move.resolve(jsonResponse(store));
-              } else if (how === "refused") move.resolve(jsonResponse({ error: "No." }, false));
-              else move.reject(new Error(how));
-              await flush();
               if (inFlight() === 0) {
                 const row = newestAnswered();
                 const landed = row?.stage ?? "welcome";

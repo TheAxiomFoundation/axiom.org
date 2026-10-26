@@ -178,9 +178,10 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
     };
   }, []);
 
-  // The newest control the store has answered with, from a poll or a move (newerControl). With no move
-  // in flight the TV shows it, so a move the store didn't take leaves the TV where the phones are, not
-  // on a stage they never got (the review of #370).
+  // The newest control the store has answered with, from a poll or a move (newerControl); `control` is
+  // the same row, as state. The TV always shows its run, and with no move in flight its stage, so a move
+  // the store didn't take leaves the TV where the phones are, not on a stage they never got (the review
+  // of #370).
   const stored = useRef<Control | null>(null);
   // Each move's request while in flight, and the run switch among them, if any (see move). Meanwhile
   // the TV shows the newest move's stage, `ahead`, whatever the polls say, and even before its first
@@ -239,6 +240,7 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
     if (switching.current === request) switching.current = null;
     if (response?.ok && isControl(response.data)) {
       stored.current = newerControl(stored.current, response.data);
+      setControl(stored.current);
       setError(null);
     } else {
       setError(response?.data.error ?? "The stage did not change. Check the connection.");
@@ -253,7 +255,6 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
       const back = last && (last.run === null || last.run === landed?.runId) ? last.sub : undefined;
       left.current.clear();
       setAhead(null);
-      setControl(landed);
       if (landed && landed.stage !== onScreen.current.stage) setSlide({ stage: landed.stage as StageId, sub: back ?? 0 });
     }
   }, []);
