@@ -2,6 +2,9 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import fc from "fast-check";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  BUILD_HEADING,
+  GOLDEN_A,
+  ONE_SET_OF_RULES,
   BREAKOUT_PROMPT,
   GROUP_QUESTIONS,
   DISCUSSION_QUESTIONS,
@@ -353,7 +356,7 @@ describe("PresenterApp navigation", () => {
 
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     await onStage("foundation");
-    expect(screen.getByText("1/2")).toBeInTheDocument();
+    expect(screen.getByText("1/4")).toBeInTheDocument();
 
     // Back from a stage's first slide lands on the last slide of the stage before.
     fireEvent.keyDown(document.body, { key: "ArrowLeft" });
@@ -440,7 +443,7 @@ describe("PresenterApp navigation", () => {
     expect(screen.queryByText(/Run rehearsal/)).not.toBeInTheDocument();
     // When the store answers again, the room's own moves come through.
     server.control = { runId: "r1", stage: "foundation", live: true, updatedAt: "2026-10-26T01:00:00Z" };
-    await waitFor(() => expect(screen.getByText("1/2")).toBeInTheDocument(), { timeout: 12_000 });
+    await waitFor(() => expect(screen.getByText("1/4")).toBeInTheDocument(), { timeout: 12_000 });
     await onStage("foundation");
   }, 30_000);
 
@@ -710,32 +713,45 @@ describe("PresenterApp stages", () => {
     });
     await onStage("foundation");
     // A title slide, then the journey, which shows how the rules get built and what they power (the dry run, Oct 25).
-    expect(screen.getByText("1/2")).toBeInTheDocument();
+    expect(screen.getByText("1/4")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1, name: STAGES.find((st) => st.id === "foundation")!.title })).toBeInTheDocument();
     // About whether a resident, screener or AI can check, as the question asked; not about the people in the room.
     await waitFor(() =>
       expect(screen.getByText(/In this room/)).toHaveTextContent("In this room, 5 of 6 say a resident, screener or AI can't fully check"),
     );
     expect(screen.getByText(/Next: how we build it, from the law as written to running code, and what it can power\./)).toBeInTheDocument();
-    // The slides the journey now covers are off the deck.
+    // The one set of rules waits until after the journey.
     expect(screen.queryByText("One open, validated set of rules")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { level: 1, name: SAME_RULES.heading })).not.toBeInTheDocument();
 
     // The homepage's journey plays over the slide; Space pauses it instead of moving on.
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("2/2")).toBeInTheDocument();
+    expect(screen.getByText("2/4")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1, name: "From the law as written to running code" })).toBeInTheDocument();
     const stage = document.querySelector("[data-aspen-overlay] .jl-stage");
     expect(stage).not.toBeNull();
     expect(within(stage as HTMLElement).getByRole("img", { name: STORY_LABEL })).toBeInTheDocument();
     for (const c of CAPTIONS) expect(within(stage as HTMLElement).getByText(c.title)).toBeInTheDocument();
     fireEvent.keyDown(document.body, { key: " " });
-    expect(screen.getByText("2/2")).toBeInTheDocument();
+    expect(screen.getByText("2/4")).toBeInTheDocument();
     expect(screen.getByText("Paused: Space plays on")).toBeInTheDocument();
-    // The journey is the stage's last slide: the next moves the room on.
+
+    // After the journey, the one set of rules, readable on the TV: the journey's last scenes are small (Oct 26).
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("3/4")).toBeInTheDocument();
+    expect(document.querySelector(".jl-stage")).toBeNull();
+    expect(screen.getByText("One open, validated set of rules")).toBeInTheDocument();
+    for (const use of ONE_SET_OF_RULES) expect(screen.getByText(use.label)).toBeInTheDocument();
+
+    // Then the tiers, from screener parity to Gold A.
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("4/4")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: BUILD_HEADING })).toBeInTheDocument();
+    for (const tier of GOLDEN_A) expect(screen.getByText(tier.name)).toBeInTheDocument();
+
+    // The tiers are the stage's last slide: the next moves the room on.
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     await onStage("groups");
-    expect(document.querySelector(".jl-stage")).toBeNull();
   });
 
   it("leaves out the room's answer on the shared foundation when nobody gave one", async () => {
@@ -820,18 +836,14 @@ describe("PresenterApp stages", () => {
     expect(screen.getByText("Ideas appear here as groups share them.")).toBeInTheDocument();
   });
 
-  it("opens next steps on the ask: what Silver A takes, and what it never asks for", async () => {
+  it("shows next steps as one slide, the ask and the form, without the Silver A ask (Oct 26)", async () => {
     const { posts } = setup({ stage: "next" });
     await onStage("next");
-    expect(screen.getByText("1/2")).toBeInTheDocument();
-    expect(screen.getByText(SILVER_ASK.title)).toBeInTheDocument();
-    for (const t of SILVER_ASK.takes) expect(screen.getByText(t)).toBeInTheDocument();
-    for (const g of SILVER_ASK.guardrails) expect(screen.getByText(g)).toBeInTheDocument();
-    expect(screen.queryByText(NEXT_STEPS.ask)).not.toBeInTheDocument();
-
-    fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("2/2")).toBeInTheDocument();
     expect(screen.getByText(NEXT_STEPS.ask)).toBeInTheDocument();
+    for (const o of NEXT_STEPS.options) expect(screen.getByText(o.label)).toBeInTheDocument();
+    expect(screen.queryByText(SILVER_ASK.title)).not.toBeInTheDocument();
+    expect(screen.queryByText("Tell us if your state wants to go further.")).not.toBeInTheDocument();
+    expect(screen.queryByText("1/2")).not.toBeInTheDocument();
     expect(posts()).toEqual([]);
   });
 
@@ -844,7 +856,6 @@ describe("PresenterApp stages", () => {
   it("asks for next steps without putting counts on the screen", async () => {
     setup({ stage: "next" });
     await onStage("next");
-    fireEvent.keyDown(document.body, { key: "ArrowRight" });
     expect(screen.getByText(NEXT_STEPS.ask)).toBeInTheDocument();
     for (const o of NEXT_STEPS.options) expect(screen.getByText(o.label)).toBeInTheDocument();
     expect(screen.getByText(/Fill in the short form on your phone/)).toBeInTheDocument();

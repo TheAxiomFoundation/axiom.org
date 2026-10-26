@@ -33,10 +33,12 @@ describe('aspen content', () => {
   it('lists every stage once, in run-of-show order, without clock times', () => {
     expect(STAGES.map((s) => s.id)).toEqual([...STAGE_IDS])
     expect(STAGES.at(-1)?.label).toBe('Thank you')
+    // The phone keeps Next steps' line under its heading.
+    expect(STAGES.find((s) => s.id === 'next')?.phoneSummary).toBe('Tell us if your state wants to go further.')
     for (const stage of STAGES) {
       expect(stage).not.toHaveProperty('time')
-      // The shared foundation's heading stands on its own.
-      if (stage.id !== 'foundation') expect(stage.summary.length).toBeGreaterThan(20)
+      // The shared foundation's heading stands on its own, and so does the TV's Next steps (Oct 26).
+      if (stage.id !== 'foundation' && stage.id !== 'next') expect(stage.summary.length).toBeGreaterThan(20)
     }
   })
 
