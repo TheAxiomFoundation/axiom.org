@@ -30,7 +30,16 @@ function nav() {
   return within(screen.getByRole("navigation", { name: "Session" }));
 }
 
+/** Waits for the phone's first poll of the room to land: until then only Welcome is open. */
+async function roomAnswered() {
+  await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url) === "/api/aspen/state")).toBe(true));
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
 async function onView(id: StageId) {
+  await roomAnswered();
   const index = STAGES.findIndex((s) => s.id === id);
   const stage = STAGES[index];
   await waitFor(() => expect(menu()).toHaveTextContent(`${stage.label}${index + 1} of ${STAGES.length}`));
@@ -87,7 +96,7 @@ describe("AspenApp following the presenter", () => {
     render(<AspenApp />);
     await onView("reveal");
 
-    expect(screen.queryByRole("button", { name: /The room has moved on/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Jump to where the room is/ })).not.toBeInTheDocument();
     // The phone points at the TV; nobody has rated yet, so there's no number (the run-through, Oct 22).
     expect(lookUp().getByText(LOOK_UP.reveal.empty)).toBeInTheDocument();
     expect(lookUp().getByText(LOOK_UP.later)).toBeInTheDocument();
@@ -175,6 +184,7 @@ describe("AspenApp following the presenter", () => {
       ],
     };
     render(<AspenApp />);
+    await roomAnswered();
     fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
     await onView("reveal");
     expect(await screen.findByText("4 of 9")).toBeInTheDocument();
@@ -201,9 +211,9 @@ describe("AspenApp following the presenter", () => {
     await onView("welcome");
     expect(JSON.parse(sessionStorage.getItem("aspen.view") ?? "null")).toEqual({ view: "welcome", follow: false });
 
-    fireEvent.click(screen.getByRole("button", { name: /The room has moved on to What we saw/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Jump to where the room is: What we saw/ }));
     await onView("reveal");
-    expect(screen.queryByRole("button", { name: /The room has moved on/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Jump to where the room is/ })).not.toBeInTheDocument();
     expect(JSON.parse(sessionStorage.getItem("aspen.view") ?? "null")).toEqual({ view: "reveal", follow: true });
   });
 
@@ -245,11 +255,44 @@ describe("AspenApp following the presenter", () => {
     render(<AspenApp />);
     await onView("reveal");
     expect(JSON.parse(sessionStorage.getItem("aspen.view") ?? "null")).toEqual({ view: "reveal", follow: true });
-    // A history entry past the room lands on the room's stage instead.
+    // A history entry past the room lands on the room's stage instead, without ever opening it.
+    const views = () => events().filter((e) => e.kind === "stage_view");
+    const before = views().length;
     act(() => {
       window.dispatchEvent(new PopStateEvent("popstate", { state: { aspenStage: "next" } }));
     });
     await onView("reveal");
+    expect(views().slice(before).map((e) => e.payload.stage)).not.toContain("next");
+    expect(JSON.parse(sessionStorage.getItem("aspen.view") ?? "null")).toEqual({ view: "reveal", follow: true });
+  });
+
+  it("keeps a phone that just joined on Welcome until its first poll of the room lands", async () => {
+    let answer: (response: Response) => void = () => {};
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/aspen/state") return new Promise<Response>((resolve) => (answer = resolve));
+      if (url.startsWith("/api/aspen/results")) return jsonResponse({ runId: control.runId, live: true, summary });
+      return jsonResponse({ ok: true, saved: true });
+    });
+    control = { ...control, live: false };
+    render(<AspenApp />);
+    // Before the room answers, nothing past Welcome opens, even though no presenter turns out to be live.
+    expect(screen.getByRole("button", { name: /Start: ask the AI/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /Start: ask the AI/ }));
+    expect(screen.getByRole("heading", { level: 1, name: EVENT.title })).toBeInTheDocument();
+    await act(async () => answer(jsonResponse(control)));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Start: ask the AI/ })).toBeEnabled());
+  });
+
+  it("opens every stage when the phone can't reach the room", async () => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/aspen/state") throw new Error("offline");
+      if (url.startsWith("/api/aspen/results")) return jsonResponse({ runId: control.runId, live: true, summary });
+      return jsonResponse({ ok: true, saved: true });
+    });
+    render(<AspenApp />);
+    await waitFor(() => expect(screen.getByRole("button", { name: /Start: ask the AI/ })).toBeEnabled());
   });
 
   it("waits on the welcome page until the session starts, and opens every stage without a live presenter", async () => {
@@ -283,7 +326,7 @@ describe("AspenApp following the presenter", () => {
     control.stage = "reveal";
     render(<AspenApp />);
     await onView("welcome");
-    expect(await screen.findByRole("button", { name: /The room has moved on to What we saw/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Jump to where the room is: What we saw/ })).toBeInTheDocument();
     await onView("welcome");
   });
 
@@ -315,14 +358,16 @@ describe("AspenApp without a live presenter", () => {
     expect(screen.queryByText("Now")).not.toBeInTheDocument();
     expect(screen.getByText("Aspen Institute")).toBeInTheDocument();
     expect(screen.getByText(`${EVENT.place} · ${EVENT.shortDate}`)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /The room has moved on/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Jump to where the room is/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Start: ask the AI/ }));
     await onView("try");
     // Who you ask as is picked in the chat itself, a resident to start.
     expect(screen.getByRole("button", { name: "A resident" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: "Ask the AI" })).toBeInTheDocument();
+    // Then a household; the box and Ask the AI wait for one (Michaela, Oct 26).
+    expect(screen.getByRole("group", { name: "Households" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ask the AI" })).not.toBeInTheDocument();
     // Try it ends with a rated answer: Next waits for one.
     const next = screen.getByRole("button", { name: /^Next/ });
     expect(next).toBeDisabled();
@@ -348,6 +393,7 @@ describe("AspenApp without a live presenter", () => {
       rated: ["p"],
     });
     render(<AspenApp />);
+    await roomAnswered();
     fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
     await onView("try");
     await waitFor(() => expect(nextTo("reveal")).toBeEnabled());
@@ -399,7 +445,7 @@ describe("AspenApp without a live presenter", () => {
     await onView("groups");
     // The vote and the group's idea share one screen.
     expect(screen.getByRole("button", { name: "Vote" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Share with the room" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Fill it in for my group" })).toBeInTheDocument();
 
     fireEvent.click(nextTo("next"));
     await onView("next");
@@ -421,18 +467,20 @@ describe("AspenApp without a live presenter", () => {
   it("keeps the two agency questions open after Start over, and Next open", async () => {
     storeChat(RATED_CHAT);
     render(<AspenApp />);
+    await roomAnswered();
     fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
     await onView("try");
     expect(await screen.findByRole("heading", { name: "Two more, about your agency" })).toBeInTheDocument();
     fireEvent.click(screen.getAllByRole("button", { name: /^Start over/ })[0]);
     // Starting over never hides them (Ariel, Oct 23), and the earlier rated answer still opens Next.
-    await waitFor(() => expect(screen.getByRole("button", { name: "Ask the AI" })).toBeDisabled());
+    await waitFor(() => expect(screen.getByRole("group", { name: "Households" })).toBeInTheDocument());
     expect(screen.getByRole("heading", { name: "Two more, about your agency" })).toBeInTheDocument();
     expect(nextTo("reveal")).toBeEnabled();
   });
 
   it("asks the two agency questions right under the chat, once the answer is rated", async () => {
     render(<AspenApp />);
+    await roomAnswered();
     fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
     await onView("try");
     // Nothing before the answer is rated.
@@ -443,6 +491,7 @@ describe("AspenApp without a live presenter", () => {
     const scrollIntoView = vi.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
     render(<AspenApp />);
+    await roomAnswered();
     fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
     await onView("try");
     expect(await screen.findByRole("heading", { name: "Two more, about your agency" })).toBeInTheDocument();
@@ -474,6 +523,7 @@ describe("AspenApp look-up moments", () => {
   it("shows the same card whether or not this phone asked, with no thread back to Try it", async () => {
     storeChat({ ...RATED_CHAT, householdId: "ct-couple", rated: [] });
     render(<AspenApp />);
+    await roomAnswered();
     fireEvent.click(nav().getByRole("button", { name: /At scale/ }));
     await onView("scale");
     expect(lookUp().getByText("42%")).toBeInTheDocument();
@@ -491,6 +541,7 @@ describe("AspenApp look-up moments", () => {
     for (const id of ["reveal", "scale", "foundation"] as const) {
       cleanup();
       render(<AspenApp />);
+      await roomAnswered();
       const label = STAGES.find((st) => st.id === id)!.label;
       fireEvent.click(nav().getByRole("button", { name: new RegExp(label) }));
       await onView(id);
@@ -522,9 +573,10 @@ describe("AspenApp after a new run", () => {
     // The new run starts this phone clean and puts it back with the room.
     await onView("try");
     await waitFor(() => expect(localStorage.getItem("aspen.run")).toBe(JSON.stringify("phoenix")));
-    expect(JSON.parse(localStorage.getItem(CHAT_KEY) ?? "{}").turns).toEqual([]);
+    // The run is recorded as the old chat is dropped; the chat saves its empty conversation a render or two later.
+    await waitFor(() => expect(JSON.parse(localStorage.getItem(CHAT_KEY) ?? "{}").turns).toEqual([]));
     expect(screen.queryByText("The answer for the couple")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ask the AI" })).toBeDisabled();
+    expect(screen.getByRole("group", { name: "Households" })).toBeInTheDocument();
 
     // The overall answers are gone too, so they can be given again.
     expect(localStorage.getItem("aspen.overall.v2")).toBeNull();

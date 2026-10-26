@@ -30,7 +30,7 @@ function historyStage(state: unknown): StageId | null {
  * instead of leaving the page.
  */
 export function AspenApp() {
-  const { data: control } = useControl();
+  const { data: control, failed: controlFailed } = useControl();
   // One tab at a time keeps the phone's answers, so two tabs never overwrite each other's.
   const { elsewhere, takeBack } = useTabHold();
   const [view, setView] = useState<StageId>("welcome");
@@ -41,8 +41,10 @@ export function AspenApp() {
   const overall = useRef<HTMLElement>(null);
   const live = control?.live && stageIndex(control.stage) >= 0 ? (control.stage as StageId) : null;
   // Phones never go past the presenter: a later stage opens when the room gets there (the dry run, Oct 25).
-  // Without a live presenter (no control row), every stage stays open.
-  const limit = live ? stageIndex(live) : STAGES.length - 1;
+  // Until the first poll answers, only Welcome is open, so a phone that just joined can't start ahead of
+  // the room (the review of #368). Without a live presenter (no control row), or if the poll fails, every
+  // stage stays open.
+  const limit = live ? stageIndex(live) : control === null && !controlFailed ? 0 : STAGES.length - 1;
   const top = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -264,7 +266,8 @@ export function AspenApp() {
             className="flex w-full items-center justify-center gap-2 bg-[var(--color-go)] px-4 py-2 font-body text-[0.9rem] font-medium text-white hover:bg-[var(--color-go-hover)]"
           >
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
-            The room has moved on to {STAGES[stageIndex(live)].label}
+            {/* Where the room is, not how far this phone got (Michaela, Oct 26). */}
+            Jump to where the room is: {STAGES[stageIndex(live)].label}
             <span aria-hidden>→</span>
           </button>
         )}

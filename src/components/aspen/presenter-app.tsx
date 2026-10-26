@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode, type SyntheticEvent } from "react";
 import { createPortal } from "react-dom";
 import {
   BookText,
@@ -91,18 +91,20 @@ const JOURNEY_HEADING = "From the law as written to running code";
 /** A slide that turns its stage's argument gets its own heading. */
 const SLIDE_TITLES: Partial<Record<StageId, Record<number, string>>> = {
   scale: { 4: FRONT_DOOR.heading, 5: FRONT_DOOR.heading, 6: FRONT_DOOR.heading },
-  foundation: { 1: JOURNEY_HEADING },
+  foundation: { 1: JOURNEY_HEADING, 3: BUILD_HEADING },
 };
 
 /**
  * Shared foundation's slides, in order; the journey takes Space for itself. A title slide, then the
- * journey, which shows how the rules get built and what they power (the dry run, Oct 25). The
- * same-rules, pipeline and tiers slides stay below, off the deck, in case they come back.
+ * journey, which shows how the rules get built and what they power (the dry run, Oct 25). The one
+ * set of rules comes back after it, because the journey's last scenes are hard to read on the TV, and
+ * then the tiers, from screener parity to Gold A (Oct 26). The same-rules and pipeline slides stay
+ * below, off the deck, in case they come back.
  */
-const FOUNDATION_SLIDES = ["foundation", "journey"] as const;
+const FOUNDATION_SLIDES = ["foundation", "journey", "one-set", "tiers"] as const;
 
 /** Stages shown as more than one slide; the arrows step through them before moving the room. */
-const SLIDES: Partial<Record<StageId, number>> = { reveal: 2, scale: 7, foundation: FOUNDATION_SLIDES.length, groups: 2, next: 2 };
+const SLIDES: Partial<Record<StageId, number>> = { reveal: 2, scale: 7, foundation: FOUNDATION_SLIDES.length, groups: 2 };
 const slideCount = (id: StageId) => SLIDES[id] ?? 1;
 
 /** The largest scale at which the 16:9 canvas fits the window. */
@@ -157,9 +159,11 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
 
   useEffect(() => {
     if (!polled || moving.current > 0) return;
-    // Drop a poll older than the change this screen already saved.
+    // Drop a poll older than the change this screen already saved, and a failed store read (the
+    // default run, not live) once the room is live: it would flip the TV to Welcome and reload the
+    // live demo for one poll (the review of #368).
     setControl((c) =>
-      c?.updatedAt && polled.updatedAt && polled.updatedAt < c.updatedAt ? c : polled,
+      (c?.live && !polled.live) || (c?.updatedAt && polled.updatedAt && polled.updatedAt < c.updatedAt) ? c : polled,
     );
   }, [polled]);
 
@@ -265,9 +269,8 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
                       }
                     />
                   ))}
-                {/* Slides 2 to 5 of At scale, and 2 of Shared foundation, come from Max's Nava deck; 6 is the tool pilot and 7 the live chatbot.
-                    What the models miss follows the household it explains (the dry run, Oct 25).
-                    Shared foundation 3 is the encoding pipeline from the InnovateUS deck. */}
+                {/* Slides 2 to 5 of At scale come from Max's Nava deck; 6 is PolicyBench's pilot with our rules engine
+                    and 7 the live chatbot. What the models miss follows the household it explains (the dry run, Oct 25). */}
                 {stage === "scale" &&
                   [
                     <ScaleShareSlide key="share" />,
@@ -278,16 +281,17 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
                     <ToolSlide key="tool" />,
                     <LiveDemoSlide key="live-demo" />,
                   ][sub]}
-                {/* Shared foundation 4 plays the homepage's encoding journey after the pipeline it shows. */}
+                {/* Shared foundation: a title slide, the homepage's encoding journey, the one set of rules, then the tiers. */}
                 {stage === "foundation" &&
-                  [
-                    <FoundationSlide key="foundation" summary={summary} />,
-                    <JourneySlide key="journey" />,
-                  ][sub]}
+                  {
+                    foundation: <FoundationSlide key="foundation" summary={summary} />,
+                    journey: <JourneySlide key="journey" />,
+                    "one-set": <OneSetSlide key="one-set" summary={summary} />,
+                    tiers: <TiersSlide key="tiers" />,
+                  }[FOUNDATION_SLIDES[sub]]}
                 {stage === "groups" &&
                   (sub === 0 ? <VoteSlide votes={summary.votes} /> : <GroupsSlide summary={summary} />)}
-                {stage === "next" &&
-                  (sub === 0 ? <AskSlide /> : <NextSlide />)}
+                {stage === "next" && <NextSlide />}
                 {stage === "dinner" && <ThankYouSlide />}
               </div>
             </div>
@@ -672,10 +676,6 @@ function TrySlide({ summary, joinPassword }: { summary: RunSummary; joinPassword
   );
 }
 
-/**
- * What we saw, slide 2: how AI is doing in their agencies, the room's 1–5
- * ratings, with the comments once the presenter shows them.
- */
 /** Agency comments on screen at once, and answers worth discussing. */
 const COMMENTS_SHOWN = 4;
 const ANSWERS_SHOWN = 2;
@@ -684,23 +684,31 @@ const ANSWERS_SHOWN = 2;
 const ROTATE_MS = 12_000;
 
 /**
- * Which page of `count` items, `size` at a time, shows at `tick`: it cycles
- * through every page, and stays on the first while everything fits on one.
+ * The page after `page` of `count` items, `size` at a time: it cycles through
+ * every page, and stays on the first while everything fits on one. A page past
+ * the end (the list shrank) counts as the last.
  */
-export function rotationPage(tick: number, count: number, size: number): number {
+export function nextPage(page: number, count: number, size: number): number {
   const pages = Math.max(1, Math.ceil(count / size));
-  return ((tick % pages) + pages) % pages;
+  return (Math.min(Math.max(page, 0), pages - 1) + 1) % pages;
 }
 
-/** A counter that goes up every `ms` while `active`, to turn pages of comments. */
-function useTick(active: boolean, ms = ROTATE_MS): number {
-  const [tick, setTick] = useState(0);
+/**
+ * Which page of `count` items shows: it turns every `ms` while there is more
+ * than one. The page is kept, not computed from a clock, so a new item never
+ * jumps it mid-turn (the review of #368); it starts at the first on mount.
+ */
+function useRotation(count: number, size: number, ms = ROTATE_MS): number {
+  const [page, setPage] = useState(0);
+  const countRef = useRef(count);
+  countRef.current = count;
+  const turning = count > size;
   useEffect(() => {
-    if (!active) return;
-    const id = window.setInterval(() => setTick((t) => t + 1), ms);
+    if (!turning) return;
+    const id = window.setInterval(() => setPage((p) => nextPage(p, countRef.current, size)), ms);
     return () => window.clearInterval(id);
-  }, [active, ms]);
-  return tick;
+  }, [turning, size, ms]);
+  return Math.min(page, Math.max(1, Math.ceil(count / size)) - 1);
 }
 
 /** "1–4 of 9", or "9 of 9" for a last page of one: which of the items a page shows. */
@@ -710,6 +718,38 @@ export function pageRange(page: number, size: number, count: number): string {
   return first === last ? `${last} of ${count}` : `${first}\u2013${last} of ${count}`;
 }
 
+/**
+ * Agency comments on What we saw 2/2, four at a time, two per row, each clamped to two lines, so the
+ * slide still fits 16:9. With more, the four turn every few seconds, so every comment gets its turn
+ * (the dry run, Oct 25). It mounts when the presenter shows them, so it always opens on the first four.
+ */
+function AgencyComments({ comments }: { comments: string[] }) {
+  const page = useRotation(comments.length, COMMENTS_SHOWN);
+  return (
+    <>
+      <ul className="m-0 grid list-none grid-cols-2 gap-[14px] p-0">
+        {comments.slice(page * COMMENTS_SHOWN, (page + 1) * COMMENTS_SHOWN).map((text, i) => (
+          <li
+            key={`${page}-${i}-${text}`}
+            className={`rounded-[14px] border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-[24px] py-[16px] ${BOX_TEXT}`}
+          >
+            <span className="line-clamp-2">{text}</span>
+          </li>
+        ))}
+      </ul>
+      {comments.length > COMMENTS_SHOWN && (
+        <span className="font-body text-[18px] tabular-nums text-[var(--color-ink-muted)]">
+          Comments {pageRange(page, COMMENTS_SHOWN, comments.length)}
+        </span>
+      )}
+    </>
+  );
+}
+
+/**
+ * What we saw, slide 2: how AI is doing in their agencies, the room's 1–5
+ * ratings, with the comments once the presenter shows them.
+ */
 function RatingSlide({
   summary,
   comments = null,
@@ -720,8 +760,6 @@ function RatingSlide({
 }) {
   const scale = summary.discussion.scales.find((sc) => sc.question === "experience");
   const ratings = scale ? Math.max(0, ...scale.categories.map((c) => c.count)) : 0;
-  const tick = useTick(Boolean(comments && comments.length > COMMENTS_SHOWN));
-  const commentPage = rotationPage(tick, comments?.length ?? 0, COMMENTS_SHOWN);
   return (
     <div className="flex h-full flex-col gap-[24px]">
       <span className="font-body text-[26px] text-[var(--color-ink-secondary)]">
@@ -733,25 +771,7 @@ function RatingSlide({
         (comments.length === 0 ? (
           <p className="m-0 font-body text-[24px] text-[var(--color-ink-muted)]">No comments yet.</p>
         ) : (
-          <>
-            {/* Four at a time, two per row, each clamped to two lines, so the slide still fits 16:9. With more,
-                the four turn every few seconds, so every comment gets its turn (the dry run, Oct 25). */}
-            <ul className="m-0 grid list-none grid-cols-2 gap-[14px] p-0">
-              {comments.slice(commentPage * COMMENTS_SHOWN, (commentPage + 1) * COMMENTS_SHOWN).map((text, i) => (
-                <li
-                  key={`${commentPage}-${i}-${text}`}
-                  className={`rounded-[14px] border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-[24px] py-[16px] ${BOX_TEXT}`}
-                >
-                  <span className="line-clamp-2">{text}</span>
-                </li>
-              ))}
-            </ul>
-            {comments.length > COMMENTS_SHOWN && (
-              <span className="font-body text-[18px] tabular-nums text-[var(--color-ink-muted)]">
-                Comments {pageRange(commentPage, COMMENTS_SHOWN, comments.length)}
-              </span>
-            )}
-          </>
+          <AgencyComments comments={comments} />
         ))}
     </div>
   );
@@ -838,8 +858,7 @@ function RevealSlide({ summary }: { summary: RunSummary }) {
 function WorthDiscussing({ summary }: { summary: RunSummary }) {
   // Two at a time; with more, they turn every few seconds (the dry run, Oct 25).
   const all = summary.spotlight;
-  const tick = useTick(all.length > ANSWERS_SHOWN);
-  const page = rotationPage(tick, all.length, ANSWERS_SHOWN);
+  const page = useRotation(all.length, ANSWERS_SHOWN);
   const items = all.slice(page * ANSWERS_SHOWN, (page + 1) * ANSWERS_SHOWN);
   if (!items.length) {
     return (
@@ -1202,6 +1221,7 @@ const perHousehold = (d: number) => `$${d.toFixed(3)}`;
  * web search and our rules engine, the change in accuracy and the change in cost (Max, the dry run, Oct 25).
  */
 function ToolSlide() {
+  // Rows and the panel are trimmed to fit 1600×900, with 10px to spare; it was 22px over (measured, the review of #368).
   const t = ENGINE_PILOT;
   const head = "pb-[10px] text-left align-bottom font-body text-[20px] font-normal text-[var(--color-ink-muted)]";
   return (
@@ -1240,11 +1260,11 @@ function ToolSlide() {
         <tbody>
           {t.rows.map((r) => (
             <tr key={r.model} className="border-t border-[var(--color-rule)]">
-              <th scope="row" className={`py-[16px] pr-[24px] text-left font-normal ${BOX_TEXT}`}>
+              <th scope="row" className={`py-[12px] pr-[24px] text-left font-normal ${BOX_TEXT}`}>
                 {r.model}
               </th>
-              <td className="py-[16px] pr-[32px]">
-                <span className="flex flex-col gap-[8px]">
+              <td className="py-[12px] pr-[32px]">
+                <span className="flex flex-col gap-[6px]">
                   {(["web", "both"] as const).map((arm) => (
                     <span key={arm} className="flex items-center gap-[14px]">
                       <span className="h-[22px] rounded-[4px]" style={{ width: `${pilotPct(r[arm]) * 0.8}%`, background: PILOT_COLORS[arm] }} />
@@ -1258,7 +1278,7 @@ function ToolSlide() {
                   ))}
                 </span>
               </td>
-              <td className="py-[16px]">
+              <td className="py-[12px]">
                 <span className="block font-display text-[48px] font-light leading-none tabular-nums text-[var(--color-accent)]">
                   {signed(r.change.points)} <span className="font-body text-[22px] text-[var(--color-ink-secondary)]">points</span>
                 </span>
@@ -1266,7 +1286,7 @@ function ToolSlide() {
                   95%: {signed(r.change.lo)} to {signed(r.change.hi)}
                 </span>
               </td>
-              <td className="py-[16px]">
+              <td className="py-[12px]">
                 <span className="block font-display text-[48px] font-light leading-none tabular-nums text-[var(--color-ink)]">
                   {signed(percentChange(r.cost.web, r.cost.both))}%
                 </span>
@@ -1278,13 +1298,26 @@ function ToolSlide() {
           ))}
         </tbody>
       </table>
-      <Panel className="mt-auto flex flex-col gap-[8px] py-[18px]">
+      <Panel className="mt-auto flex flex-col gap-[8px] py-[14px]">
         <Label className="mb-0">What this measures</Label>
         <p className="m-0 font-body text-[22px] leading-snug text-[var(--color-ink)]">{t.measures}</p>
       </Panel>
       <BenchFooter source={t.source} />
     </div>
   );
+}
+
+/**
+ * Whether a key pressed inside the live demo goes on to the deck: Escape and a clicker's page keys
+ * always, and the left and right arrows unless the presenter is typing in the demo. Space stays with
+ * the demo, where it scrolls the answer or presses a button.
+ */
+export function forwardsFromFrame(e: Pick<KeyboardEvent, "key" | "target" | "altKey" | "ctrlKey" | "metaKey">): boolean {
+  if (e.altKey || e.ctrlKey || e.metaKey) return false;
+  if (["Escape", "PageDown", "PageUp"].includes(e.key)) return true;
+  if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return false;
+  const target = e.target as { tagName?: string; isContentEditable?: boolean } | null;
+  return !["INPUT", "TEXTAREA", "SELECT"].includes(target?.tagName ?? "") && target?.isContentEditable !== true;
 }
 
 /**
@@ -1306,6 +1339,34 @@ function LiveDemoSlide() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [full]);
+  // Once the presenter clicks into the demo, its keys go to the frame's own window, so Escape and the
+  // clicker would stop working (the review of #368). The demo is served from axiom.org, so the deck can
+  // listen there too and pass them on; from another origin, reading the frame throws and nothing changes.
+  const unlisten = useRef<(() => void) | null>(null);
+  const onFrameLoad = useCallback((event: SyntheticEvent<HTMLIFrameElement>) => {
+    unlisten.current?.();
+    unlisten.current = null;
+    try {
+      const win = event.currentTarget.contentWindow;
+      if (!win) return;
+      const onKey = (e: KeyboardEvent) => {
+        if (!forwardsFromFrame(e)) return;
+        e.preventDefault();
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: e.key, cancelable: true }));
+      };
+      win.addEventListener("keydown", onKey);
+      unlisten.current = () => {
+        try {
+          win.removeEventListener("keydown", onKey);
+        } catch {
+          // The frame navigated to another origin.
+        }
+      };
+    } catch {
+      // Another origin: the deck can't see the frame's keys.
+    }
+  }, []);
+  useEffect(() => () => unlisten.current?.(), []);
   useEffect(() => {
     const el = slot.current;
     if (!el) return;
@@ -1344,6 +1405,7 @@ function LiveDemoSlide() {
             <iframe
               title="Live chatbot demo: plain AI beside AI with the Axiom rules engine"
               src={liveDemoUrl()}
+              onLoad={onFrameLoad}
               className={`fixed border-0 bg-white ${full ? "z-50" : "z-30"}`}
               style={full ? { inset: 0, width: "100vw", height: "100dvh" } : { left: box.left, top: box.top, width: box.width, height: box.height }}
             />
@@ -1537,7 +1599,10 @@ function FoundationSlide({ summary }: { summary: RunSummary }) {
 /** What the journey after the title slide shows, said on the slide so the room knows what's coming. */
 const FOUNDATION_CUE = "Next: how we build it, from the law as written to running code, and what it can power.";
 
-/** The earlier Shared foundation 1/5: one set of rules under every tool. Off the deck since the dry run, Oct 25. */
+/**
+ * Shared foundation 3/4: one set of rules under every tool. It follows the journey so the room can
+ * read what the rules power, which the journey's last scenes show too small for the TV (Oct 26).
+ */
 function OneSetSlide({ summary }: { summary: RunSummary }) {
   const answered = summary.sourceOfTruth.reduce((sum, c) => sum + c.count, 0);
   const cannot = summary.sourceOfTruth.filter((c) => c.id !== "yes").reduce((sum, c) => sum + c.count, 0);
@@ -1545,7 +1610,7 @@ function OneSetSlide({ summary }: { summary: RunSummary }) {
     <div className="flex h-full flex-col gap-[20px]">
       <div className="grid grid-cols-[440px_auto_1fr] items-stretch gap-[28px]">
         <div className="flex flex-col justify-center gap-[12px] rounded-[14px] bg-[var(--color-ink)] p-[36px] text-white">
-          <span className="font-display text-[40px] font-light leading-tight">One open, validated set of rules</span>
+          <span className="text-balance font-display text-[40px] font-light leading-tight">One open set of rules</span>
           <ul className="m-0 flex list-none flex-col gap-[10px] p-0 font-body text-[22px] leading-snug text-white/80">
             {FOUNDATION_TRAITS.map((trait) => (
               <li key={trait} className="flex gap-[12px]">
@@ -2016,6 +2081,7 @@ function GroupsSlide({ summary }: { summary: RunSummary }) {
 }
 
 /** Next steps, slide 1: the ask. What Silver A takes from a state, and what it never asks for. */
+/** The Silver A ask, once Next steps 1/2. Off the deck since Oct 26; the tiers slide covers Silver A. */
 function AskSlide() {
   return (
     <div className="flex h-full flex-col gap-[28px]">
