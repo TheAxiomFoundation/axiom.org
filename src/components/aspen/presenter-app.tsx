@@ -16,6 +16,7 @@ import {
   Network,
   Package,
   RefreshCw,
+  Signpost,
   SlidersHorizontal,
   Sparkles,
   User,
@@ -29,6 +30,7 @@ import {
   EVENT,
   GOLDEN_A,
   NEXT_STEPS,
+  ONE_SET_GROUPS,
   ONE_SET_OF_RULES,
   ONE_SET_STATEMENT,
   FOUNDATION_TRAITS,
@@ -88,23 +90,35 @@ function reasonLabel(item: { reason: string; verdict: string | null }): string {
 /** The journey covers its slide, heading too; this names it for a screen reader. */
 const JOURNEY_HEADING = "From the law as written to running code";
 
+/**
+ * Shared foundation's slides, in order; the journey takes Space for itself (Oct 26):
+ * - the question on its own, then again with the room's answer building in below it;
+ * - one open set of rules feeding AI tools, then government tools, then navigation tools, built one
+ *   group per slide, and on the last the statement that every system runs on it;
+ * - the journey, which shows how the rules get built and what they power;
+ * - what the rules enable for a government, and a prompt for the room's own ideas.
+ * The tiers moved to Next steps, after the room says what it would build. The one-set, same-rules
+ * and pipeline slides stay below, off the deck, in case they come back.
+ */
+const FOUNDATION_SLIDES = ["question", "question-room", "rules-ai", "rules-government", "rules-navigation", "journey", "enable"] as const;
+type FoundationSlideId = (typeof FOUNDATION_SLIDES)[number];
+
+/** Slides that set their own heading, with no title bar above them. */
+const OWN_HEADING: readonly FoundationSlideId[] = ["question", "question-room", "rules-ai", "rules-government", "rules-navigation"];
+
 /** A slide that turns its stage's argument gets its own heading. */
 const SLIDE_TITLES: Partial<Record<StageId, Record<number, string>>> = {
   scale: { 4: FRONT_DOOR.heading, 5: FRONT_DOOR.heading, 6: FRONT_DOOR.heading },
-  foundation: { 1: JOURNEY_HEADING, 3: BUILD_HEADING },
+  foundation: {
+    [FOUNDATION_SLIDES.indexOf("journey")]: JOURNEY_HEADING,
+    [FOUNDATION_SLIDES.indexOf("enable")]: SAME_RULES.heading,
+  },
+  // Next steps opens on how the rules get built, after the room's own ideas in Small groups (Oct 26).
+  next: { 0: BUILD_HEADING },
 };
 
-/**
- * Shared foundation's slides, in order; the journey takes Space for itself. A title slide, then the
- * journey, which shows how the rules get built and what they power (the dry run, Oct 25). The one
- * set of rules comes back after it, because the journey's last scenes are hard to read on the TV, and
- * then the tiers, from screener parity to Gold A (Oct 26). The same-rules and pipeline slides stay
- * below, off the deck, in case they come back.
- */
-const FOUNDATION_SLIDES = ["foundation", "journey", "one-set", "tiers"] as const;
-
 /** Stages shown as more than one slide; the arrows step through them before moving the room. */
-const SLIDES: Partial<Record<StageId, number>> = { reveal: 2, scale: 7, foundation: FOUNDATION_SLIDES.length, groups: 2 };
+const SLIDES: Partial<Record<StageId, number>> = { reveal: 2, scale: 7, foundation: FOUNDATION_SLIDES.length, groups: 2, next: 2 };
 const slideCount = (id: StageId) => SLIDES[id] ?? 1;
 
 /** The largest scale at which the 16:9 canvas fits the window. */
@@ -249,7 +263,7 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
               />
             </div>
             <div className="flex h-full flex-col px-[96px] pb-[64px] pt-[72px]">
-              {stage !== "welcome" && stage !== "dinner" && (
+              {stage !== "welcome" && stage !== "dinner" && !(stage === "foundation" && OWN_HEADING.includes(FOUNDATION_SLIDES[sub])) && (
                 <SlideHeader title={SLIDE_TITLES[stage]?.[sub] ?? current.title} summary={sub === 0 ? current.summary : undefined} />
               )}
               <div className="min-h-0 flex-1">
@@ -281,17 +295,21 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
                     <ToolSlide key="tool" />,
                     <LiveDemoSlide key="live-demo" />,
                   ][sub]}
-                {/* Shared foundation: a title slide, the homepage's encoding journey, the one set of rules, then the tiers. */}
+                {/* Shared foundation: the question, the room's answer, the one set of rules, the journey, what it enables. */}
                 {stage === "foundation" &&
                   {
-                    foundation: <FoundationSlide key="foundation" summary={summary} />,
+                    question: <QuestionSlide key="question" summary={summary} room={false} />,
+                    "question-room": <QuestionSlide key="question-room" summary={summary} room />,
+                    "rules-ai": <RulesSlide key="rules-ai" shown={1} />,
+                    "rules-government": <RulesSlide key="rules-government" shown={2} />,
+                    "rules-navigation": <RulesSlide key="rules-navigation" shown={3} />,
                     journey: <JourneySlide key="journey" />,
-                    "one-set": <OneSetSlide key="one-set" summary={summary} />,
-                    tiers: <TiersSlide key="tiers" />,
+                    enable: <EnableSlide key="enable" />,
                   }[FOUNDATION_SLIDES[sub]]}
                 {stage === "groups" &&
                   (sub === 0 ? <VoteSlide votes={summary.votes} /> : <GroupsSlide summary={summary} />)}
-                {stage === "next" && <NextSlide />}
+                {/* Next steps: the tiers, from screener parity to Gold A, then the ask and the form. */}
+                {stage === "next" && (sub === 0 ? <TiersSlide /> : <NextSlide />)}
                 {stage === "dinner" && <ThankYouSlide />}
               </div>
             </div>
@@ -1533,6 +1551,34 @@ function PolicyGraph() {
   );
 }
 
+/**
+ * Shared foundation 5/6: what one set of open rules lets a government do, as the room's own focus:
+ * one open box per use, with no dark boxes and no ticks (Oct 26). The other audiences are off this
+ * slide; the prompt hands over to Small groups.
+ */
+function EnableSlide() {
+  const r = SAME_RULES;
+  return (
+    <div className="flex h-full flex-col gap-[28px]">
+      {/* The heading names governments, so the boxes need no label or ticks (Oct 26). */}
+      <ul className="m-0 grid min-h-0 flex-1 list-none grid-cols-3 grid-rows-2 gap-[18px] p-0">
+        {r.governments.uses.map((use) => (
+          <li
+            key={use}
+            className="rounded-[14px] border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-[30px] py-[28px] font-body text-[28px] font-medium leading-snug text-[var(--color-ink)]"
+            style={{ borderTop: "5px solid var(--color-accent)" }}
+          >
+            {use}
+          </li>
+        ))}
+      </ul>
+      <p className="m-0 border-l-[6px] border-[var(--color-accent)] pl-[28px] font-display text-[42px] font-light leading-tight text-[var(--color-ink)]">
+        {r.prompt}
+      </p>
+    </div>
+  );
+}
+
 /** Shared foundation, slide 2 (from Max's Nava deck): what a shared foundation enables, governments first. */
 function SameRulesSlide() {
   const r = SAME_RULES;
@@ -1572,73 +1618,152 @@ const USE_ICONS: Record<(typeof ONE_SET_OF_RULES)[number]["label"], LucideIcon> 
   Research: ChartColumn,
 };
 
+/** One open set of rules: an open box, not a black one, with a warm tint and a rust outline (Oct 26). */
+function OneSetBox() {
+  return (
+    <div className="flex flex-col justify-center gap-[12px] rounded-[14px] border-2 border-[var(--color-accent)] bg-[var(--color-accent-light)] px-[36px] py-[28px] text-[var(--color-ink)]">
+      <span className="text-balance font-display text-[40px] font-light leading-tight">One open set of rules</span>
+      <ul className="m-0 flex list-none flex-col gap-[10px] p-0 font-body text-[22px] leading-snug text-[var(--color-ink)]">
+        {FOUNDATION_TRAITS.map((trait) => (
+          <li key={trait} className="flex gap-[12px]">
+            {/* A plain bullet, not a check: these describe how the rules are built, not work that is finished. */}
+            <span aria-hidden className="mt-[12px] h-[8px] w-[8px] shrink-0 rounded-full bg-[var(--color-accent)]" />
+            {trait}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** An icon for each group the build adds. */
+const GROUP_ICONS: Record<(typeof ONE_SET_GROUPS)[number]["id"], LucideIcon> = {
+  ai: Sparkles,
+  government: Landmark,
+  navigation: Signpost,
+};
+
 /**
- * Shared foundation, slide 1: the title that sets up the journey, with the room's own answer (the dry
- * run, Oct 25). Before anyone answers, the statement and the cue carry it alone.
+ * One open set of rules, and the tools it feeds: the dark box, an arrow, and the six uses. Shared by
+ * the title slide before the journey and the slide after it.
  */
-function FoundationSlide({ summary }: { summary: RunSummary }) {
+function OneSetDiagram() {
+  return (
+    <div className="grid grid-cols-[440px_auto_1fr] items-stretch gap-[28px]">
+      <OneSetBox />
+      <span aria-hidden className="self-center font-display text-[64px] text-[var(--color-accent)]">
+        →
+      </span>
+      <ul className="m-0 grid list-none grid-cols-2 gap-[14px] p-0">
+        {ONE_SET_OF_RULES.map((use) => {
+          const Icon = USE_ICONS[use.label];
+          return (
+            <li
+              key={use.label}
+              className="flex items-center gap-[18px] rounded-[12px] border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-[28px] py-[22px] font-body text-[28px] font-medium text-[var(--color-ink)]"
+            >
+              <Icon aria-hidden size={34} strokeWidth={1.75} className="shrink-0 text-[var(--color-accent)]" />
+              {use.label}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * Shared foundation 1/6 and 2/6: the question on its own, then the room's answer building in below it.
+ * The question sits at the same place on both, so the second plays as a build on the first. Before
+ * anyone answers, 2/6 is the question alone.
+ */
+function QuestionSlide({ summary, room }: { summary: RunSummary; room: boolean }) {
   const answered = summary.sourceOfTruth.reduce((sum, c) => sum + c.count, 0);
   const cannot = summary.sourceOfTruth.filter((c) => c.id !== "yes").reduce((sum, c) => sum + c.count, 0);
   return (
-    <div className="flex h-full flex-col justify-center gap-[48px] pb-[40px]">
-      {answered > 0 && (
-        <p className="m-0 max-w-[1300px] border-l-[6px] border-[var(--color-accent)] pl-[32px] font-body text-[40px] leading-snug text-[var(--color-ink)]">
+    <div className="flex h-full flex-col pt-[150px]">
+      <h1 className="heading-page m-0 max-w-[1320px] text-balance" style={{ fontSize: 80, lineHeight: 1.06, ...SENTENCE }}>
+        {/* "all" in bold rust: the point is every tool, not one (Oct 26). */}
+        {STAGES[stageIndex("foundation")]
+          .title.split(/\b(all)\b/)
+          .map((part, i) =>
+            part === "all" ? (
+              <strong key={i} className="font-semibold text-[var(--color-accent)]">
+                all
+              </strong>
+            ) : (
+              part
+            ),
+          )}
+      </h1>
+      {room && answered > 0 && (
+        <p className="aspen-build m-0 mt-[64px] max-w-[1250px] border-l-[6px] border-[var(--color-accent)] pl-[32px] font-body text-[40px] leading-snug text-[var(--color-ink)]">
           In this room, <strong className="font-medium tabular-nums text-[var(--color-accent)]">{cannot}</strong> of{" "}
           <strong className="font-medium tabular-nums">{answered}</strong>{" "}
           say a resident, screener or AI can&apos;t fully check an answer against their state&apos;s rules today.
         </p>
       )}
-      <p className="m-0 max-w-[1300px] font-body text-[34px] font-medium leading-snug tracking-[-0.01em] text-[var(--color-ink)]">
-        {ONE_SET_STATEMENT.text} <span className="text-[var(--color-accent)]">{ONE_SET_STATEMENT.accent}</span>
-      </p>
-      <p className="m-0 font-body text-[28px] text-[var(--color-ink-secondary)]">{FOUNDATION_CUE}</p>
     </div>
   );
 }
 
-/** What the journey after the title slide shows, said on the slide so the room knows what's coming. */
-const FOUNDATION_CUE = "Next: how we build it, from the law as written to running code, and what it can power.";
+/**
+ * Shared foundation 3/7 to 5/7: one open set of rules, then what it powers, one group per slide (AI
+ * tools, government tools, navigation tools). The groups keep their places, so each slide plays as a
+ * build on the one before; the newest group rises in. The statement lands with the last group.
+ */
+function RulesSlide({ shown }: { shown: number }) {
+  const last = shown === ONE_SET_GROUPS.length;
+  return (
+    <div className="flex h-full flex-col justify-center gap-[44px]">
+      <h2 className="sr-only">One open set of rules, under every tool</h2>
+      <div className="grid grid-cols-[440px_auto_1fr] items-stretch gap-[28px]">
+        <OneSetBox />
+        <span aria-hidden className="self-center font-display text-[64px] text-[var(--color-accent)]">
+          →
+        </span>
+        <ul className="m-0 grid list-none grid-rows-3 gap-[16px] p-0">
+          {ONE_SET_GROUPS.map((group, i) => {
+            if (i >= shown) return <li key={group.id} aria-hidden className="h-[126px]" />;
+            const Icon = GROUP_ICONS[group.id];
+            return (
+              <li
+                key={group.id}
+                className={`flex h-[126px] items-center gap-[22px] rounded-[12px] border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-[30px] ${
+                  i === shown - 1 ? "aspen-build" : ""
+                }`}
+              >
+                <Icon aria-hidden size={40} strokeWidth={1.75} className="shrink-0 text-[var(--color-accent)]" />
+                <span className="flex flex-col gap-[4px]">
+                  <span className="font-body text-[32px] font-medium leading-tight text-[var(--color-ink)]">{group.label}</span>
+                  <span className="font-body text-[21px] leading-snug text-[var(--color-ink-secondary)]">{group.detail}</span>
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+      {/* The statement keeps its place on every build, so the diagram never moves; it shows on the last. */}
+      <p
+        aria-hidden={!last}
+        className={`m-0 max-w-[1350px] font-body text-[38px] font-medium leading-snug tracking-[-0.01em] text-[var(--color-ink)] ${last ? "aspen-build" : "invisible"}`}
+      >
+        {ONE_SET_STATEMENT.text} <span className="text-[var(--color-accent)]">{ONE_SET_STATEMENT.accent}</span>
+      </p>
+    </div>
+  );
+}
 
 /**
- * Shared foundation 3/4: one set of rules under every tool. It follows the journey so the room can
- * read what the rules power, which the journey's last scenes show too small for the TV (Oct 26).
+ * One set of rules under every tool, once Shared foundation 3/4 after the journey. Off the deck since
+ * Oct 26: the rules slide before the journey shows the same diagram.
  */
 function OneSetSlide({ summary }: { summary: RunSummary }) {
   const answered = summary.sourceOfTruth.reduce((sum, c) => sum + c.count, 0);
   const cannot = summary.sourceOfTruth.filter((c) => c.id !== "yes").reduce((sum, c) => sum + c.count, 0);
   return (
     <div className="flex h-full flex-col gap-[20px]">
-      <div className="grid grid-cols-[440px_auto_1fr] items-stretch gap-[28px]">
-        <div className="flex flex-col justify-center gap-[12px] rounded-[14px] bg-[var(--color-ink)] p-[36px] text-white">
-          <span className="text-balance font-display text-[40px] font-light leading-tight">One open set of rules</span>
-          <ul className="m-0 flex list-none flex-col gap-[10px] p-0 font-body text-[22px] leading-snug text-white/80">
-            {FOUNDATION_TRAITS.map((trait) => (
-              <li key={trait} className="flex gap-[12px]">
-                {/* A plain bullet, not a check: these describe how the rules are built, not work that is finished. */}
-                <span aria-hidden className="mt-[12px] h-[8px] w-[8px] shrink-0 rounded-full bg-[#e8a25c]" />
-                {trait}
-              </li>
-            ))}
-          </ul>
-        </div>
-        <span aria-hidden className="self-center font-display text-[64px] text-[var(--color-accent)]">
-          →
-        </span>
-        <ul className="m-0 grid list-none grid-cols-2 gap-[14px] p-0">
-          {ONE_SET_OF_RULES.map((use) => {
-            const Icon = USE_ICONS[use.label];
-            return (
-              <li
-                key={use.label}
-                className="flex items-center gap-[18px] rounded-[12px] border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-[28px] py-[22px] font-body text-[28px] font-medium text-[var(--color-ink)]"
-              >
-                <Icon aria-hidden size={34} strokeWidth={1.75} className="shrink-0 text-[var(--color-accent)]" />
-                {use.label}
-              </li>
-            );
-          })}
-        </ul>
-      </div>
+      <OneSetDiagram />
       <p className="m-0 max-w-[1300px] border-t border-[var(--color-rule)] pt-[20px] font-body text-[28px] font-medium leading-snug tracking-[-0.01em] text-[var(--color-ink)]">
         {ONE_SET_STATEMENT.text} <span className="text-[var(--color-accent)]">{ONE_SET_STATEMENT.accent}</span>
       </p>
@@ -1902,7 +2027,7 @@ function PipelineSlide() {
 }
 
 /**
- * Shared foundation, slide 4: how a shared foundation gets built, from public
+ * Next steps 1/2: how a shared foundation gets built, from public
  * documents to Gold A. Cards share the grid's rows (subgrid), so medallions,
  * names, what a state gets and "It takes" line up across all three.
  */

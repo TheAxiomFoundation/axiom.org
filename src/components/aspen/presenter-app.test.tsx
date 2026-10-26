@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   BUILD_HEADING,
   GOLDEN_A,
+  ONE_SET_GROUPS,
   ONE_SET_OF_RULES,
   BREAKOUT_PROMPT,
   GROUP_QUESTIONS,
@@ -114,7 +115,8 @@ function setup(
 
 async function onStage(id: StageId) {
   const stage = STAGES.find((s) => s.id === id)!;
-  const title = id === "welcome" ? EVENT.title : stage.title;
+  // Next steps opens on the tiers, under their own heading (Oct 26).
+  const title = id === "welcome" ? EVENT.title : id === "next" ? BUILD_HEADING : stage.title;
   await waitFor(() =>
     expect(screen.getByRole("navigation", { name: "Stages" }).querySelector('[aria-current="step"]')).toHaveTextContent(
       stage.label,
@@ -356,7 +358,7 @@ describe("PresenterApp navigation", () => {
 
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     await onStage("foundation");
-    expect(screen.getByText("1/4")).toBeInTheDocument();
+    expect(screen.getByText("1/7")).toBeInTheDocument();
 
     // Back from a stage's first slide lands on the last slide of the stage before.
     fireEvent.keyDown(document.body, { key: "ArrowLeft" });
@@ -443,7 +445,7 @@ describe("PresenterApp navigation", () => {
     expect(screen.queryByText(/Run rehearsal/)).not.toBeInTheDocument();
     // When the store answers again, the room's own moves come through.
     server.control = { runId: "r1", stage: "foundation", live: true, updatedAt: "2026-10-26T01:00:00Z" };
-    await waitFor(() => expect(screen.getByText("1/4")).toBeInTheDocument(), { timeout: 12_000 });
+    await waitFor(() => expect(screen.getByText("1/7")).toBeInTheDocument(), { timeout: 12_000 });
     await onStage("foundation");
   }, 30_000);
 
@@ -478,7 +480,10 @@ describe("PresenterApp stages", () => {
     setup({ stage: "foundation" });
     await onStage("foundation");
     expect(screen.queryByText(/Every tool rebuilds your rules on its own/)).not.toBeInTheDocument();
-    expect(screen.getByText(/reducing cost, duplication and error at once/)).toBeInTheDocument();
+    // The statement waits for the last build of the rules, 5/7, under the one set of rules.
+    expect(screen.queryByText(/reducing cost, duplication and error at once/)).not.toBeInTheDocument();
+    for (let i = 0; i < 4; i++) fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText(/reducing cost, duplication and error at once/)).not.toHaveClass("invisible");
   });
 
   it("shows the join details, the counts and the households people picked during Try it", async () => {
@@ -699,7 +704,7 @@ describe("PresenterApp stages", () => {
     expect(screen.queryByText("To discuss")).not.toBeInTheDocument();
   });
 
-  it("opens the shared foundation with the room's own answer, then plays the journey", async () => {
+  it("asks the shared foundation's question, builds in the room's answer, then shows the rules and plays the journey", async () => {
     setup({
       stage: "foundation",
       summary: {
@@ -712,44 +717,97 @@ describe("PresenterApp stages", () => {
       },
     });
     await onStage("foundation");
-    // A title slide, then the journey, which shows how the rules get built and what they power (the dry run, Oct 25).
-    expect(screen.getByText("1/4")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 1, name: STAGES.find((st) => st.id === "foundation")!.title })).toBeInTheDocument();
+    const question = STAGES.find((st) => st.id === "foundation")!.title;
+    // 1/7: the question on its own, as the slide's only heading (Oct 26).
+    expect(screen.getByText("1/7")).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole("heading", { level: 1, name: question })).toBeInTheDocument();
+    // "all" stands out in bold rust.
+    expect(within(screen.getByRole("heading", { level: 1 })).getByText("all").tagName).toBe("STRONG");
+    expect(within(screen.getByRole("heading", { level: 1 })).getByText("all")).toHaveClass("text-[var(--color-accent)]");
+    expect(screen.queryByText(/In this room/)).not.toBeInTheDocument();
+    expect(screen.queryByText("One open set of rules")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Next: how we build it/)).not.toBeInTheDocument();
+
+    // 2/7: the same question, with the room's answer building in below it.
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("2/7")).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole("heading", { level: 1, name: question })).toBeInTheDocument();
     // About whether a resident, screener or AI can check, as the question asked; not about the people in the room.
     await waitFor(() =>
       expect(screen.getByText(/In this room/)).toHaveTextContent("In this room, 5 of 6 say a resident, screener or AI can't fully check"),
     );
-    expect(screen.getByText(/Next: how we build it, from the law as written to running code, and what it can power\./)).toBeInTheDocument();
-    // The one set of rules waits until after the journey.
-    expect(screen.queryByText("One open set of rules")).not.toBeInTheDocument();
+    expect(screen.getByText(/In this room/)).toHaveClass("aspen-build");
+    // With the answers in, 1/7 still holds the question alone.
+    fireEvent.keyDown(document.body, { key: "ArrowLeft" });
+    expect(screen.getByText("1/7")).toBeInTheDocument();
+    expect(screen.queryByText(/In this room/)).not.toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText(/In this room/)).toBeInTheDocument();
+
+    // 3/7 to 5/7: one open set of rules, then what it powers, built one group at a time (Oct 26):
+    // not only AI tools, but government tools and navigation tools too.
+    const [ai, government, navigation] = ONE_SET_GROUPS;
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("3/7")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
+    expect(screen.getByText("One open set of rules")).toBeInTheDocument();
+    expect(screen.getByText(ai.label).closest("li")).toHaveClass("aspen-build");
+    expect(screen.queryByText(government.label)).not.toBeInTheDocument();
+    expect(screen.queryByText(navigation.label)).not.toBeInTheDocument();
+    // The statement holds its place, hidden, until the last build.
+    expect(screen.getByText(/reducing cost, duplication and error at once/).closest("p")).toHaveClass("invisible");
+    expect(screen.queryByText(/In this room/)).not.toBeInTheDocument();
+
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("4/7")).toBeInTheDocument();
+    expect(screen.getByText(ai.label).closest("li")).not.toHaveClass("aspen-build");
+    expect(screen.getByText(government.label).closest("li")).toHaveClass("aspen-build");
+    expect(screen.queryByText(navigation.label)).not.toBeInTheDocument();
+    expect(screen.getByText(/reducing cost, duplication and error at once/).closest("p")).toHaveClass("invisible");
+
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("5/7")).toBeInTheDocument();
+    for (const g of ONE_SET_GROUPS) expect(screen.getByText(g.detail)).toBeInTheDocument();
+    expect(screen.getByText(navigation.label).closest("li")).toHaveClass("aspen-build");
+    expect(screen.getByText(/reducing cost, duplication and error at once/).closest("p")).not.toHaveClass("invisible");
+    // The one set of rules sits in an open box, never a dark one (Oct 26).
+    expect(document.querySelector('[data-testid="slide"] .bg-\\[var\\(--color-ink\\)\\]')).toBeNull();
+    expect(screen.getByText("One open set of rules").parentElement).toHaveClass("bg-[var(--color-accent-light)]");
+    expect(screen.queryByText(/Next: how we build it/)).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { level: 1, name: SAME_RULES.heading })).not.toBeInTheDocument();
 
     // The homepage's journey plays over the slide; Space pauses it instead of moving on.
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("2/4")).toBeInTheDocument();
+    expect(screen.getByText("6/7")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1, name: "From the law as written to running code" })).toBeInTheDocument();
     const stage = document.querySelector("[data-aspen-overlay] .jl-stage");
     expect(stage).not.toBeNull();
     expect(within(stage as HTMLElement).getByRole("img", { name: STORY_LABEL })).toBeInTheDocument();
     for (const c of CAPTIONS) expect(within(stage as HTMLElement).getByText(c.title)).toBeInTheDocument();
     fireEvent.keyDown(document.body, { key: " " });
-    expect(screen.getByText("2/4")).toBeInTheDocument();
+    expect(screen.getByText("6/7")).toBeInTheDocument();
     expect(screen.getByText("Paused: Space plays on")).toBeInTheDocument();
 
-    // After the journey, the one set of rules, readable on the TV: the journey's last scenes are small (Oct 26).
+    // After the journey, what the rules enable: governments alone, then a prompt into Small groups (Oct 26).
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("3/4")).toBeInTheDocument();
+    expect(screen.getByText("7/7")).toBeInTheDocument();
     expect(document.querySelector(".jl-stage")).toBeNull();
-    expect(screen.getByText("One open set of rules")).toBeInTheDocument();
-    for (const use of ONE_SET_OF_RULES) expect(screen.getByText(use.label)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "What does one set of open rules enable for governments?" })).toBeInTheDocument();
+    // The heading names governments, so the boxes carry no label and no ticks.
+    expect(screen.queryByText(SAME_RULES.governments.label)).not.toBeInTheDocument();
+    for (const use of SAME_RULES.governments.uses) expect(screen.getByText(use).querySelector("svg")).toBeNull();
+    for (const a of SAME_RULES.audiences) expect(screen.queryByText(a.label)).not.toBeInTheDocument();
+    // The cross-references read as words, in boxes; no graph and no dark box (Oct 26).
+    expect(screen.queryByText("How the rules cross-reference")).not.toBeInTheDocument();
+    expect(screen.getByText(/TANF to SNAP, SSI to Medicaid, SNAP to school meals and WIC/)).toBeInTheDocument();
+    expect(document.querySelector('[data-testid="slide"] .bg-\\[var\\(--color-ink\\)\\]')).toBeNull();
+    expect(screen.getByText(SAME_RULES.prompt)).toBeInTheDocument();
+    // The tiers wait for Next steps, after the room's own ideas.
+    expect(screen.queryByRole("heading", { level: 1, name: BUILD_HEADING })).not.toBeInTheDocument();
 
-    // Then the tiers, from screener parity to Gold A.
-    fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    expect(screen.getByText("4/4")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 1, name: BUILD_HEADING })).toBeInTheDocument();
-    for (const tier of GOLDEN_A) expect(screen.getByText(tier.name)).toBeInTheDocument();
-
-    // The tiers are the stage's last slide: the next moves the room on.
+    // What it enables is the stage's last slide: the next moves the room on to Small groups.
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     await onStage("groups");
   });
@@ -757,6 +815,11 @@ describe("PresenterApp stages", () => {
   it("leaves out the room's answer on the shared foundation when nobody gave one", async () => {
     setup({ stage: "foundation", summary: EMPTY_SUMMARY });
     await onStage("foundation");
+    expect(screen.queryByText(/In this room/)).not.toBeInTheDocument();
+    // 2/7 is the question alone until anyone answers.
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("2/7")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: STAGES.find((st) => st.id === "foundation")!.title })).toBeInTheDocument();
     expect(screen.queryByText(/In this room/)).not.toBeInTheDocument();
   });
 
@@ -836,14 +899,23 @@ describe("PresenterApp stages", () => {
     expect(screen.getByText("Ideas appear here as groups share them.")).toBeInTheDocument();
   });
 
-  it("shows next steps as one slide, the ask and the form, without the Silver A ask (Oct 26)", async () => {
+  it("opens next steps on how the rules get built, then the ask and the form, without the Silver A ask (Oct 26)", async () => {
     const { posts } = setup({ stage: "next" });
     await onStage("next");
+    // 1/2: the tiers, from screener parity to Gold A, after the room's own ideas in Small groups.
+    expect(screen.getByText("1/2")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: BUILD_HEADING })).toBeInTheDocument();
+    for (const tier of GOLDEN_A) expect(screen.getByText(tier.name)).toBeInTheDocument();
+    expect(screen.getByText("Rules from public documents")).toBeInTheDocument();
+    expect(screen.queryByText(NEXT_STEPS.ask)).not.toBeInTheDocument();
+    expect(screen.queryByText("Tell us if your state wants to go further.")).not.toBeInTheDocument();
+
+    // 2/2: the ask and the form.
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("2/2")).toBeInTheDocument();
     expect(screen.getByText(NEXT_STEPS.ask)).toBeInTheDocument();
     for (const o of NEXT_STEPS.options) expect(screen.getByText(o.label)).toBeInTheDocument();
     expect(screen.queryByText(SILVER_ASK.title)).not.toBeInTheDocument();
-    expect(screen.queryByText("Tell us if your state wants to go further.")).not.toBeInTheDocument();
-    expect(screen.queryByText("1/2")).not.toBeInTheDocument();
     expect(posts()).toEqual([]);
   });
 
@@ -856,6 +928,7 @@ describe("PresenterApp stages", () => {
   it("asks for next steps without putting counts on the screen", async () => {
     setup({ stage: "next" });
     await onStage("next");
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
     expect(screen.getByText(NEXT_STEPS.ask)).toBeInTheDocument();
     for (const o of NEXT_STEPS.options) expect(screen.getByText(o.label)).toBeInTheDocument();
     expect(screen.getByText(/Fill in the short form on your phone/)).toBeInTheDocument();

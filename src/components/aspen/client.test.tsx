@@ -5,6 +5,7 @@ import {
   CHAT_KEY,
   CONTROL_TIMEOUT_MS,
   OVERALL_KEY,
+  PLEDGE_KEY,
   RATING_KEY,
   SAVE_TIMEOUT_MS,
   TAB_KEY,
@@ -131,6 +132,7 @@ describe("enterRun", () => {
     localStorage.setItem(OVERALL_KEY, "true");
     localStorage.setItem(VOTE_KEY, JSON.stringify("project"));
     localStorage.setItem(RATING_KEY, "{}");
+    localStorage.setItem(PLEDGE_KEY, "true");
     localStorage.setItem("aspen.overall.v1", "true");
     localStorage.setItem("aspen.participant", "p-1");
     expect(enterRun("phoenix")).toBe(true);
@@ -138,6 +140,7 @@ describe("enterRun", () => {
     expect(localStorage.getItem(OVERALL_KEY)).toBeNull();
     expect(localStorage.getItem(VOTE_KEY)).toBeNull();
     expect(localStorage.getItem(RATING_KEY)).toBeNull();
+    expect(localStorage.getItem(PLEDGE_KEY)).toBeNull();
     // A key from an earlier version of the page goes too.
     expect(localStorage.getItem("aspen.overall.v1")).toBeNull();
     expect(localStorage.getItem("aspen.participant")).toBe("p-1");

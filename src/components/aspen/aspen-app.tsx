@@ -38,6 +38,8 @@ export function AspenApp() {
   // False until the stored stage is read, so the first render never overwrites it.
   const [hydrated, setHydrated] = useState(false);
   const [tryStatus, setTryStatus] = useState<ChatStatus>({ asked: false, rated: false, current: false });
+  // Whether this phone sent the Next steps form in this run.
+  const [pledged, setPledged] = useState(false);
   const overall = useRef<HTMLElement>(null);
   const live = control?.live && stageIndex(control.stage) >= 0 ? (control.stage as StageId) : null;
   // Phones never go past the presenter: a later stage opens when the room gets there (the dry run, Oct 25).
@@ -79,9 +81,13 @@ export function AspenApp() {
   }, [live]);
 
   // Follow the presenter until the participant goes their own way. A move
-  // by the room replaces the history entry, so Back skips it.
+  // by the room replaces the history entry, so Back skips it. A phone that hasn't
+  // sent the Next steps form stays on it when the room moves to Thank you; the
+  // banner offers the jump (Pavel, Oct 26). Sending it doesn't move the phone either,
+  // so the form's own thank-you stays up.
   useEffect(() => {
-    if (hydrated && follow && live && live !== view) {
+    const keepsForm = view === "next" && live === "dinner" && !pledged;
+    if (hydrated && follow && live && live !== view && !keepsForm) {
       setView(live);
       window.history.replaceState({ aspenStage: live }, "");
       // A new screen opens at its top, straight away; a smooth scroll can stop short on a phone.
@@ -119,6 +125,7 @@ export function AspenApp() {
     if (enterRun(control.runId)) {
       setRunEpoch((n) => n + 1);
       setFollow(true);
+      setPledged(false);
     }
   }, [hydrated, control?.live, control?.runId]);
 
@@ -329,7 +336,10 @@ export function AspenApp() {
           />
         )}
         {view === "groups" && <SmallGroups key={runEpoch} stage={view} />}
-        {view === "next" && <NextStepsForm />}
+        {/* Mounted for the whole run, like Try it, so a move away and back keeps what was typed. */}
+        <div hidden={view !== "next"}>
+          <NextStepsForm key={runEpoch} onSent={() => setPledged(true)} />
+        </div>
         {view === "dinner" && <ThankYouContent onReturn={() => go("try")} />}
 
         {nextStage && view !== "welcome" && (
