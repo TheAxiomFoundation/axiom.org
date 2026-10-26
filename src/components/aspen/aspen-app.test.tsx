@@ -5,6 +5,7 @@ import { EMPTY_SUMMARY, type RunSummary } from "@/lib/aspen/results";
 import type { Control } from "@/lib/aspen/types";
 import { AspenApp } from "./aspen-app";
 import { CHAT_KEY, type SavedChat } from "./chat-window";
+import { PLEDGE_KEY } from "./client";
 
 function jsonResponse(data: unknown, ok = true) {
   return { ok, status: ok ? 200 : 500, json: async () => data } as unknown as Response;
@@ -335,7 +336,160 @@ describe("AspenApp following the presenter", () => {
     control.stage = "next";
     render(<AspenApp />);
     await onView("next");
-    expect(screen.getByText("I'd like to talk about")).toBeInTheDocument();
+    // The form is always in the page now, so only a role query (which skips hidden content) says it shows.
+    expect(screen.getByRole("group", { name: "I'd like to talk about" })).toBeInTheDocument();
+  });
+
+  it("keeps a phone on an unsent Next steps form when the room moves to Thank you (Pavel, Oct 26)", async () => {
+    control.stage = "next";
+    const { rerender } = render(<AspenApp />);
+    await onView("next");
+    const email = () => screen.getByRole("textbox", { name: "Email" });
+    fireEvent.change(email(), { target: { value: "ada@az.gov" } });
+
+    // The room moves on: once the poll lands, the banner offers the jump, and the form stays put.
+    control = { ...control, stage: "dinner" };
+    rerender(<AspenApp />);
+    expect(await screen.findByRole("button", { name: /Jump to where the room is: Thank you/ }, { timeout: 6000 })).toBeInTheDocument();
+    await onView("next");
+    expect(email()).toHaveValue("ada@az.gov");
+
+    // A trip to Thank you and back keeps what was typed.
+    fireEvent.click(screen.getByRole("button", { name: /Jump to where the room is: Thank you/ }));
+    await onView("dinner");
+    fireEvent.click(screen.getByRole("button", { name: "Back to Next steps" }));
+    await onView("next");
+    expect(email()).toHaveValue("ada@az.gov");
+  });
+
+  it("follows the room to Thank you once the Next steps form is sent", async () => {
+    control.stage = "next";
+    const { rerender } = render(<AspenApp />);
+    await onView("next");
+    fireEvent.change(screen.getByRole("textbox", { name: "Email" }), { target: { value: "ada@az.gov" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /State systems/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByText("Thank you.")).toBeInTheDocument();
+
+    control = { ...control, stage: "dinner" };
+    rerender(<AspenApp />);
+    await waitFor(
+      () => expect(JSON.parse(sessionStorage.getItem("aspen.view") ?? "null")).toEqual({ view: "dinner", follow: true }),
+      { timeout: 6000 },
+    );
+    await onView("dinner");
+  });
+
+  it("keeps the form's thank-you up when a held phone sends", async () => {
+    control.stage = "next";
+    const { rerender } = render(<AspenApp />);
+    await onView("next");
+    fireEvent.change(screen.getByRole("textbox", { name: "Email" }), { target: { value: "ada@az.gov" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /State systems/ }));
+    control = { ...control, stage: "dinner" };
+    rerender(<AspenApp />);
+    expect(await screen.findByRole("button", { name: /Jump to where the room is: Thank you/ }, { timeout: 6000 })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByText("Thank you.")).toBeInTheDocument();
+    // Another poll of the room lands, and the phone still shows its thank-you.
+    const polls = () => fetchMock.mock.calls.filter(([url]) => String(url) === "/api/aspen/state").length;
+    const sent = polls();
+    await waitFor(() => expect(polls()).toBeGreaterThan(sent), { timeout: 6000 });
+    await onView("next");
+    expect(screen.getByText("Thank you.")).toBeInTheDocument();
+  });
+
+  it("sends a reloaded phone that already sent the form on to Thank you with the room", async () => {
+    localStorage.setItem("aspen.run", JSON.stringify("phoenix"));
+    localStorage.setItem(PLEDGE_KEY, "true");
+    sessionStorage.setItem("aspen.view", JSON.stringify({ view: "next", follow: true }));
+    control.stage = "dinner";
+    render(<AspenApp />);
+    await onView("dinner");
+    // Back on Next steps, it shows the thank-you, not a blank form.
+    fireEvent.click(screen.getByRole("button", { name: "Back to Next steps" }));
+    await onView("next");
+    expect(screen.getByText("Thank you.")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Email" })).not.toBeInTheDocument();
+  });
+
+  it("starts a held form over when the presenter starts a new run", async () => {
+    control.stage = "next";
+    const { rerender } = render(<AspenApp />);
+    await onView("next");
+    fireEvent.change(screen.getByRole("textbox", { name: "Email" }), { target: { value: "ada@az.gov" } });
+    control = { ...control, stage: "dinner" };
+    rerender(<AspenApp />);
+    expect(await screen.findByRole("button", { name: /Jump to where the room is: Thank you/ }, { timeout: 6000 })).toBeInTheDocument();
+
+    // New run puts the room back at Welcome, and the phone goes with it.
+    control = { ...control, runId: "phoenix-2", stage: "welcome" };
+    rerender(<AspenApp />);
+    await waitFor(
+      () => expect(JSON.parse(sessionStorage.getItem("aspen.view") ?? "null")).toEqual({ view: "welcome", follow: true }),
+      { timeout: 6000 },
+    );
+    control = { ...control, stage: "next" };
+    rerender(<AspenApp />);
+    await waitFor(
+      () => expect(JSON.parse(sessionStorage.getItem("aspen.view") ?? "null")).toEqual({ view: "next", follow: true }),
+      { timeout: 6000 },
+    );
+    await onView("next");
+    expect(screen.getByRole("textbox", { name: "Email" })).toHaveValue("");
+  });
+
+  it("holds a phone that sent in the old run on the new run's form", async () => {
+    control.stage = "next";
+    const { rerender } = render(<AspenApp />);
+    await onView("next");
+    fireEvent.change(screen.getByRole("textbox", { name: "Email" }), { target: { value: "ada@az.gov" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /State systems/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByText("Thank you.")).toBeInTheDocument();
+
+    const moveRoom = async (next: Partial<Control>) => {
+      control = { ...control, ...next };
+      rerender(<AspenApp />);
+      await waitFor(
+        () => expect(JSON.parse(sessionStorage.getItem("aspen.view") ?? "null")).toEqual({ view: control.stage, follow: true }),
+        { timeout: 6000 },
+      );
+    };
+    await moveRoom({ runId: "phoenix-2", stage: "welcome" });
+    await moveRoom({ stage: "next" });
+    expect(screen.getByRole("textbox", { name: "Email" })).toHaveValue("");
+
+    // The rehearsal's send doesn't count in the new run: the blank form holds the phone.
+    control = { ...control, stage: "dinner" };
+    rerender(<AspenApp />);
+    expect(await screen.findByRole("button", { name: /Jump to where the room is: Thank you/ }, { timeout: 6000 })).toBeInTheDocument();
+    await onView("next");
+  });
+
+  it("still follows the room from Next steps to any stage but Thank you", async () => {
+    control.stage = "next";
+    const { rerender } = render(<AspenApp />);
+    await onView("next");
+    fireEvent.change(screen.getByRole("textbox", { name: "Email" }), { target: { value: "ada@az.gov" } });
+
+    // The presenter steps back: the phone goes with the room, and the form keeps its email for later.
+    control = { ...control, stage: "groups" };
+    rerender(<AspenApp />);
+    await waitFor(
+      () => expect(JSON.parse(sessionStorage.getItem("aspen.view") ?? "null")).toEqual({ view: "groups", follow: true }),
+      { timeout: 6000 },
+    );
+    await onView("groups");
+    control = { ...control, stage: "next" };
+    rerender(<AspenApp />);
+    await waitFor(
+      () => expect(JSON.parse(sessionStorage.getItem("aspen.view") ?? "null")).toEqual({ view: "next", follow: true }),
+      { timeout: 6000 },
+    );
+    await onView("next");
+    expect(screen.getByRole("textbox", { name: "Email" })).toHaveValue("ada@az.gov");
   });
 
   it("ignores a stored stage it does not know", async () => {
