@@ -59,7 +59,7 @@ import { postJson, useControl, useResults } from "./client";
 import { BUTTON_QUIET, FIELD } from "./ui";
 import { BrandLogo } from "./brand-logo";
 import { JoinQr } from "./join-qr";
-import { JourneySlide } from "./journey-slide";
+import { JourneySlide, type JourneyControl } from "./journey-slide";
 import { TIERS, TierMedal } from "./tier-medal";
 
 /** The slide canvas: drawn at 1600×900 and scaled to fit the screen, so every stage fits 16:9. */
@@ -91,7 +91,7 @@ function reasonLabel(item: { reason: string; verdict: string | null }): string {
 const JOURNEY_HEADING = "From the law as written to running code";
 
 /**
- * Shared foundation's slides, in order; the journey takes Space for itself (Oct 26):
+ * Shared foundation's slides, in order; on the journey the keys step through its captions first (Oct 26):
  * - the question on its own, then again with the room's answer building in below it;
  * - one open set of rules feeding AI tools, then government tools, then navigation tools, built one
  *   group per slide, and on the last the statement that every system runs on it;
@@ -147,6 +147,9 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
   const [runOpen, setRunOpen] = useState(false);
   // Agency comments stay hidden until the presenter chooses to show them.
   const [showComments, setShowComments] = useState(false);
+  // The journey's caption steps, while its slide is up; stepped back into, it opens on its last frame.
+  const journey = useRef<JourneyControl | null>(null);
+  const [steppedBack, setSteppedBack] = useState(false);
   // Which slide of a multi-slide stage is up; any other stage starts at its first slide.
   const [slide, setSlide] = useState<{ stage: StageId; sub: number }>({ stage: "welcome", sub: 0 });
   // The controls fade out when the mouse rests, so the room sees only the slide.
@@ -203,6 +206,7 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
   const step = useCallback(
     (delta: number) => {
       const target = sub + delta;
+      setSteppedBack(delta < 0);
       if (target >= 0 && target < slideCount(stage)) {
         setSlide({ stage, sub: target });
         return;
@@ -228,17 +232,21 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
       const target = e.target as HTMLElement | null;
       if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
       // A clicked button keeps the focus, and Space and Enter press it; the
-      // arrows and a clicker's page keys still move the slides.
-      if (target?.tagName === "BUTTON" && (e.key === " " || e.key === "Enter")) return;
-      // On the journey, Space pauses it instead.
-      if (e.key === " " && onJourney) return;
-      if (["ArrowRight", "PageDown", " "].includes(e.key)) {
-        e.preventDefault();
-        step(1);
-      } else if (["ArrowLeft", "PageUp"].includes(e.key)) {
-        e.preventDefault();
-        step(-1);
+      // arrows and a clicker's page keys still move the slides. On the journey
+      // Space is the journey's: the button lets go of the focus, so it isn't pressed.
+      if (target?.tagName === "BUTTON" && (e.key === " " || e.key === "Enter")) {
+        if (!(onJourney && e.key === " ")) return;
+        target.blur();
       }
+      const forward = ["ArrowRight", "PageDown", " "].includes(e.key);
+      const back = ["ArrowLeft", "PageUp"].includes(e.key);
+      if (!forward && !back) return;
+      e.preventDefault();
+      // A held key steps once: its repeats would run through the journey and on, moving the room.
+      if (e.repeat) return;
+      // On the journey the keys move its captions first, and the slides only past its first or last.
+      if (onJourney && journey.current && (forward ? journey.current.next() : journey.current.back())) return;
+      step(forward ? 1 : -1);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -303,7 +311,7 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
                     "rules-ai": <RulesSlide key="rules-ai" shown={1} />,
                     "rules-government": <RulesSlide key="rules-government" shown={2} />,
                     "rules-navigation": <RulesSlide key="rules-navigation" shown={3} />,
-                    journey: <JourneySlide key="journey" />,
+                    journey: <JourneySlide key="journey" control={journey} atEnd={steppedBack} />,
                     enable: <EnableSlide key="enable" />,
                   }[FOUNDATION_SLIDES[sub]]}
                 {stage === "groups" &&

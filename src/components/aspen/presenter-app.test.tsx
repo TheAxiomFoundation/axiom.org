@@ -704,8 +704,8 @@ describe("PresenterApp stages", () => {
     expect(screen.queryByText("To discuss")).not.toBeInTheDocument();
   });
 
-  it("asks the shared foundation's question, builds in the room's answer, then shows the rules and plays the journey", async () => {
-    setup({
+  it("asks the shared foundation's question, builds in the room's answer, then shows the rules and steps through the journey", async () => {
+    const { posts } = setup({
       stage: "foundation",
       summary: {
         ...EMPTY_SUMMARY,
@@ -778,7 +778,8 @@ describe("PresenterApp stages", () => {
     expect(screen.queryByText(/Next: how we build it/)).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { level: 1, name: SAME_RULES.heading })).not.toBeInTheDocument();
 
-    // The homepage's journey plays over the slide; Space pauses it instead of moving on.
+    // The homepage's journey sits over the slide, and the keys step through its captions before the
+    // slides (Max, Oct 26): the right arrow, the clicker's page key and Space each take one caption on.
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     expect(screen.getByText("6/7")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1, name: "From the law as written to running code" })).toBeInTheDocument();
@@ -786,11 +787,36 @@ describe("PresenterApp stages", () => {
     expect(stage).not.toBeNull();
     expect(within(stage as HTMLElement).getByRole("img", { name: STORY_LABEL })).toBeInTheDocument();
     for (const c of CAPTIONS) expect(within(stage as HTMLElement).getByText(c.title)).toBeInTheDocument();
-    fireEvent.keyDown(document.body, { key: " " });
+    // Back from its first caption is back a slide; on again, the journey starts at its first frame.
+    fireEvent.keyDown(document.body, { key: "ArrowLeft" });
+    expect(screen.getByText("5/7")).toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
     expect(screen.getByText("6/7")).toBeInTheDocument();
-    expect(screen.getByText("Paused: Space plays on")).toBeInTheDocument();
+    // Space after a click on the Next button still takes one caption on: the button lets go of the focus.
+    const nextButton = screen.getByRole("button", { name: "Next slide" });
+    nextButton.focus();
+    expect(fireEvent.keyDown(nextButton, { key: " " })).toBe(false);
+    expect(screen.getByText("6/7")).toBeInTheDocument();
+    expect(nextButton).not.toHaveFocus();
+    const keys = ["ArrowRight", "PageDown", " "];
+    for (let j = 2; j < CAPTIONS.length; j++) {
+      expect(fireEvent.keyDown(document.body, { key: keys[j % keys.length] })).toBe(false);
+      expect(screen.getByText("6/7")).toBeInTheDocument();
+    }
+    // Back a caption stays on the journey, and on again returns to its last caption.
+    fireEvent.keyDown(document.body, { key: "PageUp" });
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("6/7")).toBeInTheDocument();
+    // A press before that glide lands lands it, still on the journey; the press after moves on.
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("6/7")).toBeInTheDocument();
+    // A held key steps once: its repeats don't run on through the slides and move the room.
+    expect(fireEvent.keyDown(document.body, { key: "ArrowRight", repeat: true })).toBe(false);
+    expect(screen.getByText("6/7")).toBeInTheDocument();
+    // Captions are the presenter's own: the room doesn't move.
+    expect(posts()).toEqual([]);
 
-    // After the journey, what the rules enable: governments alone, then a prompt into Small groups (Oct 26).
+    // After its last caption, what the rules enable: governments alone, then a prompt into Small groups (Oct 26).
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
     expect(screen.getByText("7/7")).toBeInTheDocument();
     expect(document.querySelector(".jl-stage")).toBeNull();
@@ -806,6 +832,12 @@ describe("PresenterApp stages", () => {
     expect(screen.getByText(SAME_RULES.prompt)).toBeInTheDocument();
     // The tiers wait for Next steps, after the room's own ideas.
     expect(screen.queryByRole("heading", { level: 1, name: BUILD_HEADING })).not.toBeInTheDocument();
+    // Back from here is the journey at its last frame, so the next key comes straight back.
+    fireEvent.keyDown(document.body, { key: "ArrowLeft" });
+    expect(screen.getByText("6/7")).toBeInTheDocument();
+    expect(document.querySelector("[data-aspen-overlay] .jl-stage")).not.toBeNull();
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(screen.getByText("7/7")).toBeInTheDocument();
 
     // What it enables is the stage's last slide: the next moves the room on to Small groups.
     fireEvent.keyDown(document.body, { key: "ArrowRight" });
