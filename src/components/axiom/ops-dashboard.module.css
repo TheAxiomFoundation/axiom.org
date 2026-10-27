@@ -521,6 +521,11 @@
   min-width: 0;
 }
 
+/* The switch keeps its own width; a grid item would stretch it across the column. */
+.ledgerColumn > nav {
+  justify-self: start;
+}
+
 .supportCard [data-slot="card-header"] {
   border-color: var(--color-rule);
 }
