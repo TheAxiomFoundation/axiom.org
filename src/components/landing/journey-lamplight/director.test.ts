@@ -1,4 +1,5 @@
 import fc from "fast-check";
+import type { BufferGeometry, Camera, Mesh, Object3D, Scene, ShaderMaterial } from "three";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OVERLAP, SCENE_START, SPANS, TOTAL } from "./captions";
 import { createDirector, type Director } from "./director";
@@ -14,11 +15,17 @@ const kit = vi.hoisted(() => {
     hold: new Set<number>(),
     held: new Map<number, { resolve: () => void; reject: (e: Error) => void }>(),
     made: [] as number[],
+    beats: new Map<number, { camera: { userData: object }; invalidate?: () => void }>(), // each scene's beat as it's made
     textures: new Map<number, number>(), // how many MOCK textures a scene carries
     latency: new Map<number, { ready: number; compile: number }>(), // ms a scene's assets and compiles take
     ticks: new Map<number, number>(), // microtasks a scene's assets come late by
     noAssets: new Set<number>(), // a scene with no assets to wait for: its beat has no ready, as most real ones don't
-    links: new Set<number>(), // a scene with one MOCK link, square in front of its camera
+    // a scene with MOCK links in front of its camera: a page's and a site's side by
+    // side, and a note's behind the page's
+    links: new Set<number>(),
+    // a scene with code of its own, as real scenes have: an update, a way in and a
+    // way out, a depth of field, and a part it shows only later
+    code: new Set<number>(),
     gates: new Map<string, Promise<void>>(), // a compile, by its logged name, waits on this
     throws: new Set<string>(), // a compile, by its logged name, throws as it's called
     parallel: false, // three can ask the driver whether a compile is done (KHR_parallel_shader_compile)
@@ -29,9 +36,16 @@ const kit = vi.hoisted(() => {
     round: 0, // the test now running: a compile left polling by an earlier one stops
     // runs inside each call, so a test can dispose in the middle of a build
     during: null as ((call: string) => void) | null,
-    log(gone: boolean, call: string) {
+    // holds the MOCK compile's polls for the test to run (see stepLog)
+    later: null as ((poll: () => void) => void) | null,
+    // a call, and for the step logs what it draws or sets
+    log(gone: boolean, call: string, detail?: string) {
       kit.calls.push(call);
       if (gone) kit.late.push(call);
+      kit.during?.(detail ? `${call} ${detail}` : call);
+    },
+    // a call of the kit's helpers, or of a scene's own code: only the step logs see it
+    see(call: string) {
       kit.during?.(call);
     },
   };
@@ -40,12 +54,31 @@ const kit = vi.hoisted(() => {
 vi.mock("../style-frames/kit", async () => {
   const THREE = await import("three");
   const wait = (ms: number) => (ms ? new Promise<void>((r) => setTimeout(r, ms)) : Promise.resolve());
+  const THEME = { paper: false };
+  const n = (v: number) => +v.toFixed(3);
+  // what a render of a scene draws, as far as the director sets it: its camera's
+  // pose (each part away from its rest), its focus, and how many of its objects
+  // are shown and culled
+  const shot = (b: { camera: Camera; scene: Object3D; fx: Object3D; look: { dof?: { focus: number } } }) => {
+    const { position: p, quaternion: q } = b.camera;
+    const pose = Object.entries({ x: p.x, y: p.y, z: p.z, qx: q.x, qy: q.y, qz: q.z }).filter(([, v]) => Math.abs(v) >= 0.0005);
+    let shown = 0;
+    let culled = 0;
+    for (const sc of [b.scene, b.fx])
+      sc.traverse((o) => {
+        if (o.visible) shown++;
+        if (o.frustumCulled) culled++;
+      });
+    const focus = b.look.dof ? ` focus ${n(b.look.dof.focus)}` : "";
+    return `at ${pose.map(([k, v]) => `${k}${n(v)}`).join(" ") || "rest"}${focus} shows ${shown} culls ${culled}`;
+  };
   return {
-    THEME: { paper: false },
-    loadFonts: async () => {},
+    THEME,
+    loadFonts: async () => kit.see("loadFonts"),
     makeRenderer: () => {
+      kit.see("makeRenderer");
       let gone = false;
-      const log = (call: string) => kit.log(gone, call);
+      const log = (call: string, detail?: string) => kit.log(gone, call, detail);
       return {
         setPixelRatio: (r: number) => log(`setPixelRatio ${r}`),
         setSize: (w: number, h: number) => log(`setSize ${w}x${h}`),
@@ -53,10 +86,13 @@ vi.mock("../style-frames/kit", async () => {
         // as three's does: it compiles at once, then polls its programs until they're
         // ready, at once if it can ask the driver and then every 10 ms. A poll on a
         // disposed renderer throws there, so the compile never settles; here that
-        // poll is logged as late, and stops.
-        compileAsync: (sc: { userData: { mock: string; index: number } }) => {
+        // poll is logged as late, and stops. three's compile takes the lights from
+        // what's shown, so the step logs see how many objects are
+        compileAsync: (sc: Object3D & { userData: { mock: string; index: number } }) => {
           const name = `compileAsync ${sc.userData.mock}`;
-          log(name);
+          let shown = 0;
+          sc.traverseVisible(() => shown++);
+          log(name, `shows ${shown}`);
           if (kit.throws.has(name)) throw new Error(`MOCK: scene ${sc.userData.index} failed to set up its shaders`);
           const gate = kit.gates.get(name);
           const ms = kit.latency.get(sc.userData.index)?.compile ?? 0;
@@ -71,21 +107,26 @@ vi.mock("../style-frames/kit", async () => {
           kit.polling++;
           const round = kit.round;
           return new Promise<void>((resolve, reject) => {
+            const later = () => (kit.later ? kit.later(poll) : void setTimeout(poll, 10));
             const poll = () => {
               if (round !== kit.round) return;
-              if (ready === false && !gone) return void setTimeout(poll, 10);
+              if (ready === false && !gone) return later();
               kit.polling--;
               if (gone) log(`compile poll ${sc.userData.mock}`);
               else if (ready === true) resolve();
               else reject(ready);
             };
             if (kit.parallel) poll();
-            else setTimeout(poll, 10);
+            else later();
           });
         },
-        render: () => log("render"),
+        // the blend of the two scenes' images: whose images, how far mixed, and the dip
+        render: (scene: Scene) => {
+          const u = (scene.children[0] as Mesh<BufferGeometry, ShaderMaterial>).material.uniforms;
+          log("render", `${u.tA.value?.mock}${u.tB.value?.mock} mix ${n(u.uMix.value)} dip ${u.uDip.value}`);
+        },
         setRenderTarget: () => log("setRenderTarget"),
-        getContext: () => (log("getContext"), { finish() {} }),
+        getContext: () => (log("getContext"), { finish: () => kit.see("finish") }),
         dispose: () => {
           log("dispose");
           gone = true;
@@ -93,7 +134,7 @@ vi.mock("../style-frames/kit", async () => {
       };
     },
     Pipeline: class {
-      texture = null;
+      texture: { mock: string };
       gone = false;
       composer = {
         dispose: () => {
@@ -103,21 +144,24 @@ vi.mock("../style-frames/kit", async () => {
       };
       constructor(_: unknown, w: number, h: number) {
         kit.pipelines++;
+        // a director's two pipelines' images, a and b, in the order they're made
+        this.texture = { mock: kit.pipelines % 2 ? "a" : "b" };
         kit.log(false, `pipeline ${w}x${h}`);
       }
-      render(b: { scene: { userData: { mock: string } } }) {
-        kit.log(this.gone, `pipeline.render ${b.scene.userData.mock}`);
+      render(b: Parameters<typeof shot>[0] & { scene: { userData: { mock: string } } }) {
+        kit.log(this.gone, `pipeline.render ${b.scene.userData.mock}`, shot(b));
       }
-      setSize() {
-        kit.log(this.gone, "pipeline.setSize");
+      setSize(w: number, h: number) {
+        kit.log(this.gone, "pipeline.setSize", `${w}x${h}`);
       }
     },
     createBeat: (build: { index: number }) => {
       const i = build.index;
       kit.made.push(i);
+      kit.see(`createBeat ${i}${THEME.paper ? " for paper" : ""}`);
       if (kit.breaks.has(i)) throw new Error(`MOCK: scene ${i} broke as it was made`);
       const camera = new THREE.PerspectiveCamera();
-      Object.assign(camera.userData, { basePos: new THREE.Vector3(), baseQuat: new THREE.Quaternion(), baseFocus: 8 });
+      Object.assign(camera.userData, { basePos: new THREE.Vector3(), baseQuat: new THREE.Quaternion(), baseFocus: 8, index: i });
       let late = wait(kit.latency.get(i)?.ready ?? 0);
       for (let k = 0; k < (kit.ticks.get(i) ?? 0); k++) late = late.then(() => {});
       const ready = kit.hold.has(i)
@@ -131,20 +175,43 @@ vi.mock("../style-frames/kit", async () => {
       Object.assign(scene.userData, { mock: `${i} scene`, index: i });
       const fx = new THREE.Scene();
       Object.assign(fx.userData, { mock: `${i} fx`, index: i });
+      // every other texture is a shader's uniform, as the post effects' are
       for (let k = 0; k < (kit.textures.get(i) ?? 0); k++) {
         const map = new THREE.Texture();
         map.userData.scene = i;
-        scene.add(new THREE.Mesh(new THREE.PlaneGeometry(), new THREE.MeshBasicMaterial({ map })));
+        const material = k % 2 ? new THREE.ShaderMaterial({ uniforms: { map: { value: map } } }) : new THREE.MeshBasicMaterial({ map });
+        scene.add(new THREE.Mesh(new THREE.PlaneGeometry(), material));
       }
-      // the link's hit box faces the camera from 5 units ahead, so a pointer at the canvas's middle finds it
-      const links = kit.links.has(i)
-        ? [{ hit: new THREE.Mesh(new THREE.PlaneGeometry(10, 10).translate(0, 0, -5)), href: "#mock", text: "MOCK link", external: false, glow: 0, hover: false, focus: false }]
-        : [];
-      return { ready, camera, scene, fx, labels: [], links, look: {} };
+      const own = kit.code.has(i);
+      // the part shown only later, which the director's warm-up draws all the same
+      if (own) scene.add(Object.assign(new THREE.Mesh(), { visible: false }));
+      // each link's hit box faces the camera: a pointer a quarter of the way across the
+      // canvas, from either side, finds the page's or the site's 5 units ahead; behind
+      // the page's, 7 units ahead, is the note's
+      const link = (text: string, x: number, external: boolean, z = -5) => ({
+        hit: new THREE.Mesh(new THREE.PlaneGeometry(4, 4).translate(x, 0, z)),
+        href: `#${text.replace(" ", "-")}`,
+        text,
+        external,
+        glow: 0,
+        hover: false,
+        focus: false,
+      });
+      const links = kit.links.has(i) ? [link("MOCK page", -2.5, false), link("MOCK site", 2.5, true), link("MOCK note", -2.5, false, -7)] : [];
+      const code = own
+        ? {
+            update: (t: number) => kit.see(`update ${i} ${n(t)}`),
+            cutIn: (k: number) => kit.see(`cutIn ${i} ${n(k)}`),
+            cutOut: (k: number, next?: { camera: Camera }) => kit.see(`cutOut ${i} ${n(k)} to ${next?.camera.userData.index}`),
+          }
+        : {};
+      const beat = { ready, camera, scene, fx, labels: [], links, look: own ? { dof: { focus: 8, aperture: 0, maxblur: 0 } } : {}, ...code };
+      kit.beats.set(i, beat);
+      return beat;
     },
-    fitCamera() {},
-    placeLabels() {},
-    lightLink() {},
+    fitCamera: (camera: Camera, w: number, h: number) => kit.see(`fitCamera ${camera.userData.index} ${w}x${h}`),
+    placeLabels: (b: { camera: Camera }, w: number, h: number, t = 1) => kit.see(`placeLabels ${b.camera.userData.index} ${w}x${h} ${n(t)}`),
+    lightLink: (l: { text: string }, h: number) => kit.see(`lightLink ${l.text} ${n(h)}`),
   };
 });
 vi.mock("./beats", async () => {
@@ -170,11 +237,13 @@ beforeEach(() => {
   kit.hold.clear();
   kit.held.clear();
   kit.made.length = 0;
+  kit.beats.clear();
   kit.textures.clear();
   kit.latency.clear();
   kit.ticks.clear();
   kit.noAssets.clear();
   kit.links.clear();
+  kit.code.clear();
   kit.gates.clear();
   kit.throws.clear();
   kit.parallel = false;
@@ -182,6 +251,7 @@ beforeEach(() => {
   kit.late.length = 0;
   kit.pipelines = 0;
   kit.during = null;
+  kit.later = null;
   process.on("unhandledRejection", unhandled);
 });
 afterEach(async () => {
@@ -291,15 +361,27 @@ function watch(canvas: HTMLCanvasElement) {
 }
 
 /**
- * Logs each step a caller can see, with its microtask count from the start of
- * the task it came in: each renderer and pipeline call, each request for a
- * frame or an idle moment, and what the test stamps. The clock stands still
- * unless the test moves it (`clock.now`).
+ * Makes a stage, and logs each step a caller or the reader can see on it, with
+ * its microtask count from the start of the task it came in:
+ * - each renderer and pipeline call, with what each render draws, and each call
+ *   of the kit's helpers and of a scene's own code (see the MOCK kit);
+ * - each request for a frame or an idle moment, the director's timers, and the
+ *   glint's interval, which waits for the test to run it (`glint`);
+ * - the listeners on the canvas, the tooltip put on the page and taken off it, a
+ *   link opened in a new tab, and what's logged as an error;
+ * - the page as it changes: each label layer's opacity, visibility and inert, the
+ *   tooltip's class, text and place, the cursor, the location's hash, and the dev
+ *   globals; and what the test watches (`watch`). A change is logged at the next
+ *   step, or as its microtask ends;
+ * - and what the test stamps.
+ * The clock stands still unless the test moves it (`clock.now`); `frame` runs the
+ * frames queued at its time, and moves the clock there.
  *
- * With `timers`, the director's timers wait for the test, which runs each as a
- * task of its own (`fire`): an upload's yield (0 ms), an idle moment where there
- * is no requestIdleCallback (60 ms), and the MOCK compile's polls (10 ms, not
- * logged: three's, not the director's).
+ * With `timers`, the director's own timers (those director.ts sets itself) wait
+ * for the test, which runs each as a task of its own (`fire`): an upload's yield
+ * (0 ms), and an idle moment where there is no requestIdleCallback (60 ms). So do
+ * the MOCK compile's polls (10 ms, not logged: three's, not the director's). Any
+ * other timer, jsdom's own as a link is followed among them, runs as it would.
  */
 function stepLog({ timers = false, idleCallback = true } = {}) {
   takeTime();
@@ -307,21 +389,71 @@ function stepLog({ timers = false, idleCallback = true } = {}) {
   vi.spyOn(performance, "now").mockImplementation(() => clock.now);
   let tick = 0;
   const log: string[] = [];
-  const stamp = (what: string) => void log.push(`${tick} ${what}`);
+  const { canvas, overlays } = stage();
+  const box = canvas.parentElement!;
+  // the page before the director: an earlier test's director left the dev globals set
+  const dev = window as unknown as Record<string, unknown>;
+  delete dev.__jlBeats;
+  delete dev.__jlRenderer;
+  history.replaceState(null, "", location.pathname);
+  let tip: Element | undefined;
+  const watched: Array<[string, () => string]> = [];
+  const page = () => {
+    const state = new Map(overlays.map((o, q) => [`labels ${q}`, `${o.style.opacity || "-"} ${o.style.visibility || "-"}${o.hasAttribute("inert") ? " inert" : ""}`]));
+    state.set("cursor", canvas.style.cursor || "-");
+    tip ??= [...box.children].find((n) => n !== canvas);
+    if (tip instanceof HTMLElement) state.set("tip", `${tip.isConnected ? "" : "off the page: "}${tip.className} "${tip.textContent}" ${tip.style.transform || "-"}`);
+    state.set("location", location.hash || "-");
+    state.set("dev globals", "__jlBeats" in dev && "__jlRenderer" in dev ? "set" : "-");
+    for (const [name, get] of watched) state.set(name, get());
+    return state;
+  };
+  let shown = page();
+  const flush = () => {
+    const now = page();
+    for (const [k, v] of now) if (shown.get(k) !== v) log.push(`${tick} ${watched.some(([name]) => name === k) ? "" : "page "}${k}: ${v}`);
+    shown = now;
+  };
+  const stamp = (what: string) => {
+    flush();
+    log.push(`${tick} ${what}`);
+  };
   kit.during = stamp;
   let id = 0;
   vi.stubGlobal("requestIdleCallback", idleCallback ? (cb: () => void) => (stamp("requestIdleCallback"), idles.push(cb)) : undefined);
   vi.stubGlobal("requestAnimationFrame", (cb: (t: number) => void) => (stamp("requestAnimationFrame"), frames.set(++id, cb), id));
   vi.stubGlobal("cancelAnimationFrame", (n: number) => (stamp("cancelAnimationFrame"), frames.delete(n)));
+  const append = box.appendChild.bind(box);
+  vi.spyOn(box, "appendChild").mockImplementation(<T extends Node>(n: T) => (stamp(`appendChild ${(n as unknown as Element).className}`), append(n)));
+  const on = canvas.addEventListener.bind(canvas);
+  const off = canvas.removeEventListener.bind(canvas);
+  vi.spyOn(canvas, "addEventListener").mockImplementation((type: string, fn: EventListenerOrEventListenerObject, o?: boolean | AddEventListenerOptions) => (stamp(`addEventListener ${type}`), on(type, fn, o)));
+  vi.spyOn(canvas, "removeEventListener").mockImplementation((type: string, fn: EventListenerOrEventListenerObject, o?: boolean | EventListenerOptions) => (stamp(`removeEventListener ${type}`), off(type, fn, o)));
+  const remove = Element.prototype.remove;
+  vi.spyOn(Element.prototype, "remove").mockImplementation(function (this: Element) {
+    stamp(`remove ${this.className}`);
+    remove.call(this);
+  });
+  let glint: (() => void) | undefined;
+  vi.spyOn(window, "setInterval").mockImplementation(((fn: () => void, ms?: number) => (stamp(`setInterval ${ms}`), (glint = fn), 7)) as unknown as typeof window.setInterval);
+  vi.spyOn(window, "clearInterval").mockImplementation((n) => stamp(`clearInterval ${n}`));
+  vi.spyOn(window, "open").mockImplementation(((url?: string | URL) => (stamp(`open ${url}`), null)) as typeof window.open);
+  vi.spyOn(console, "error").mockImplementation((m: unknown) => stamp(`console.error ${m}`));
+  // the canvas fills the top of the window, which is in front
+  vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({ left: 0, top: 0, right: 800, bottom: 450, width: 800, height: 450, x: 0, y: 0, toJSON: () => ({}) });
+  vi.spyOn(document, "hidden", "get").mockReturnValue(false);
   const held: Array<{ ms: number; fn: () => void }> = [];
   if (timers) {
     const real = setTimeout;
     vi.stubGlobal("setTimeout", (fn: (...a: unknown[]) => void, ms = 0, ...a: unknown[]) => {
-      if (ms !== 0 && ms !== 10 && ms !== 60) return real(fn, ms, ...a);
-      if (ms !== 10) stamp(`setTimeout ${ms}`);
+      // the director's own: set by director.ts itself, not by a library it calls
+      const caller = new Error().stack?.split("\n")[2] ?? "";
+      if (!/journey-lamplight\/director\.ts:/.test(caller)) return real(fn, ms, ...a);
+      stamp(`setTimeout ${ms}`);
       held.push({ ms, fn: () => fn(...a) });
       return 0;
     });
+    kit.later = (poll) => void held.push({ ms: 10, fn: poll });
   }
   /** Runs the oldest timer held for `ms`. */
   const fire = (ms: number) => {
@@ -329,20 +461,35 @@ function stepLog({ timers = false, idleCallback = true } = {}) {
     expect(i, `a ${ms} ms timer is waiting`).toBeGreaterThanOrEqual(0);
     held.splice(i, 1)[0].fn();
   };
+  /** Runs the frames queued, at time t. */
+  const frame = (t: number) => () => {
+    clock.now = t;
+    const due = [...frames.values()];
+    frames.clear();
+    due.forEach((f) => f(t));
+  };
   /** Runs fn as a task of its own: a ticker counts its microtasks from 0. Then lets it settle. */
   const task = async (what: string, fn: () => unknown) => {
+    flush();
     log.push(`-- ${what}`);
     tick = 0;
     let n = 0;
     const count = () => {
+      flush();
       tick++;
       if (++n < 100) queueMicrotask(count);
     };
     queueMicrotask(count);
     fn();
     await settle();
+    flush();
   };
-  return { log, stamp, task, clock, fire };
+  /** Logs a value as it changes, with the page. */
+  const watch = (name: string, get: () => string) => {
+    watched.push([name, get]);
+    shown.set(name, get());
+  };
+  return { log, stamp, task, clock, fire, frame, glint: () => glint!(), watch, canvas, overlays };
 }
 
 describe("the journey's director", () => {
@@ -537,294 +684,985 @@ describe("the journey's director", () => {
 
   it("takes every step a caller can see in the microtask it did before", async () => {
     // each promise the director settles, and each report, is logged with the
-    // rest (see stepLog). Scenes 1 to 5 have no assets to wait for, as most real
-    // scenes don't
-    const { log, stamp, task } = stepLog();
+    // rest (see stepLog). Every scene has code of its own, as real scenes do;
+    // scenes 1 to 5 have no assets to wait for, as most real scenes don't. The
+    // screen has twice the stage's pixels
+    vi.stubGlobal("devicePixelRatio", 2);
+    const { log, stamp, task, frame, canvas, overlays } = stepLog();
     kit.parallel = true;
+    for (let i = 0; i < SPANS.length; i++) kit.code.add(i);
     for (let i = 1; i < SPANS.length; i++) kit.noAssets.add(i);
-    const frame = (t: number) => () => {
-      const due = [...frames.values()];
-      frames.clear();
-      due.forEach((f) => f(t));
-    };
     let d!: Director;
     await task("start", () =>
-      make({ onError: (e) => stamp(`onError ${(e as Error).message}`), onFirstFrame: () => stamp("onFirstFrame") }).then((x) => {
+      make({ canvas, overlays, onError: (e) => stamp(`onError ${(e as Error).message}`), onFirstFrame: () => stamp("onFirstFrame") }).then((x) => {
         d = x;
         stamp("started");
       }),
     );
-    await task("frame", frame(1000)); // draws scene 0, and fetches scene 1 ahead
+    // draws scene 0, and fetches scene 1 ahead; then, in the same task, a profile draws
+    // scene 0 a little way in, and at its start again: each shot puts the camera and
+    // the focus back for the next
+    await task("frame", () => {
+      frame(1000)();
+      stamp(`profiled ${d.profile([0.25, 0]).length}`);
+    });
     await task("idle", () => idles.shift()?.()); // the background builds move on from scene 0
     await task("idle", () => idles.shift()?.()); // builds scene 1, fetched ahead
     await task("idle", () => idles.shift()?.()); // the background builds move on from scene 1
+    // a small step on a GPU marked slow: it glides at the lower resolution, and comes
+    // back to full resolution a moment after it rests
+    vi.stubGlobal("__jlSlow", true);
+    await task("setProgress", () => d.setProgress(0.001));
+    for (const t of [1100, 1200, 1300, 1400, 1500]) await task("frame", frame(t));
+    await task("frame", frame(1800)); // at rest
+    vi.stubGlobal("__jlSlow", undefined);
     await task("jump", () => d.jump(SCENE_START[3])); // to scene 3, not built yet
-    await task("frame", frame(1100));
+    await task("frame", frame(1900));
     await task("jump", () => d.jump(SCENE_START[3] - OVERLAP / 2)); // into the cut from scene 2, not built yet
-    await task("frame", frame(1200));
+    await task("frame", frame(2000)); // scene 2 hands over to scene 3 its own way
     await task("prepareAll", () => d.prepareAll().then(() => stamp("prepareAll resolved")));
     await task("dispose", () => d.dispose());
     // recorded from the director before compiles were counted (0944c0aa)
-    expect(log).toEqual([
+    const STEPS = [
       "-- start",
-      "1 setPixelRatio 1",
+      "0 loadFonts",
+      "1 makeRenderer",
+      "1 setPixelRatio 2",
       "1 setSize 800x450",
-      ...Array(2).fill("1 pipeline 800x450"),
-      "3 compileAsync 0 scene",
-      "4 compileAsync 0 fx",
-      ...Array(4).fill("5 pipeline.render 0 scene"),
+      ...Array(2).fill("1 pipeline 1600x900"),
+      "1 page dev globals: set",
+      "1 appendChild jl-tip",
+      "1 page tip: jl-tip \"\" -",
+      "1 addEventListener pointermove",
+      "1 addEventListener pointerleave",
+      "1 addEventListener click",
+      "1 setInterval 4200",
+      "1 createBeat 0 for paper",
+      "3 fitCamera 0 800x450",
+      "3 compileAsync 0 scene shows 2",
+      "4 compileAsync 0 fx shows 1",
+      "5 pipeline.render 0 scene at rest focus 8 shows 3 culls 0",
+      "5 update 0 0",
+      "5 pipeline.render 0 scene at rest focus 8 shows 2 culls 3",
+      "5 update 0 0.5",
+      "5 pipeline.render 0 scene at rest focus 8 shows 2 culls 3",
+      "5 update 0 1",
+      "5 pipeline.render 0 scene at rest focus 8 shows 2 culls 3",
+      "5 update 0 0",
       "7 requestAnimationFrame",
       "7 requestIdleCallback",
       "8 started",
       "-- frame",
-      "0 pipeline.render 0 scene",
+      "0 update 0 0",
+      "0 fitCamera 0 800x450",
+      "0 pipeline.render 0 scene at rest focus 8 shows 2 culls 3",
       "0 setRenderTarget",
-      "0 render",
+      "0 render bb mix 1 dip 0.45",
+      "0 page labels 0: 1 visible",
+      "0 page labels 1: 0 hidden inert",
+      "0 page labels 2: 0 hidden inert",
+      "0 page labels 3: 0 hidden inert",
+      "0 page labels 4: 0 hidden inert",
+      "0 page labels 5: 0 hidden inert",
+      "0 placeLabels 0 800x450 0",
       "0 requestIdleCallback",
       "0 onFirstFrame",
+      "0 getContext",
+      "0 finish",
+      "0 update 0 0.048",
+      "0 fitCamera 0 800x450",
+      "0 pipeline.render 0 scene at z-0.028 focus 7.972 shows 2 culls 3",
+      "0 setRenderTarget",
+      "0 render bb mix 1 dip 0.45",
+      "0 placeLabels 0 800x450 0.048",
+      "0 requestIdleCallback",
+      ...Array(2).fill("0 finish"),
+      "0 update 0 0",
+      "0 fitCamera 0 800x450",
+      "0 pipeline.render 0 scene at rest focus 8 shows 2 culls 3",
+      "0 setRenderTarget",
+      "0 render bb mix 1 dip 0.45",
+      "0 placeLabels 0 800x450 0",
+      "0 requestIdleCallback",
+      "0 finish",
+      "0 profiled 2",
       "-- idle",
       "3 requestIdleCallback",
       "-- idle",
-      "1 compileAsync 1 scene",
-      "2 compileAsync 1 fx",
-      ...Array(4).fill("3 pipeline.render 1 scene"),
+      "0 createBeat 1 for paper",
+      "1 fitCamera 1 800x450",
+      "1 compileAsync 1 scene shows 2",
+      "2 compileAsync 1 fx shows 1",
+      "3 pipeline.render 1 scene at rest focus 8 shows 3 culls 0",
+      "3 update 1 0",
+      "3 pipeline.render 1 scene at rest focus 8 shows 2 culls 3",
+      "3 update 1 0.5",
+      "3 pipeline.render 1 scene at rest focus 8 shows 2 culls 3",
+      "3 update 1 1",
+      "3 pipeline.render 1 scene at rest focus 8 shows 2 culls 3",
+      "3 update 1 0",
       "-- idle",
-      "3 requestIdleCallback",
-      "-- jump",
-      "1 compileAsync 3 scene",
-      "2 compileAsync 3 fx",
-      ...Array(4).fill("3 pipeline.render 3 scene"),
-      "5 requestAnimationFrame",
-      "-- frame",
-      "0 pipeline.render 3 scene",
-      "0 setRenderTarget",
-      "0 render",
-      "0 requestIdleCallback",
-      "-- jump",
-      "0 pipeline.render 3 scene",
-      "0 setRenderTarget",
-      "0 render",
-      "0 requestIdleCallback",
-      "1 compileAsync 2 scene",
-      "2 compileAsync 2 fx",
-      ...Array(4).fill("3 pipeline.render 2 scene"),
-      "5 requestAnimationFrame",
-      "-- frame",
-      "0 pipeline.render 3 scene",
-      "0 pipeline.render 2 scene",
-      "0 setRenderTarget",
-      "0 render",
-      "0 requestIdleCallback",
-      "-- prepareAll",
-      "1 compileAsync 4 scene",
-      "1 compileAsync 5 scene",
-      "2 compileAsync 4 fx",
-      "2 compileAsync 5 fx",
-      ...Array(4).fill("3 pipeline.render 4 scene"),
-      ...Array(4).fill("3 pipeline.render 5 scene"),
-      "6 prepareAll resolved",
-      "-- dispose",
-      ...Array(2).fill("0 composer.dispose"),
-      "0 dispose",
-    ]);
-  });
-
-  it("takes every step of the reader's moves in the microtask it did before, where there's no requestIdleCallback", async () => {
-    // as above, in a browser without requestIdleCallback (Safari's): an idle moment
-    // is a 60 ms timer. Scene 1's textures upload in slices; scene 2 fails, and
-    // scene 3 breaks as it's made, with nothing listening for either. The reader
-    // points at a link, which glints; a scene asks to be drawn again; the story
-    // cuts away from the link, glides on a slow GPU, and is profiled, resized and
-    // let go with a frame queued
-    const { log, stamp, task, clock, fire } = stepLog({ timers: true, idleCallback: false });
-    kit.parallel = true;
-    kit.links.add(0);
-    kit.textures.set(1, 2);
-    kit.fail.add(2);
-    kit.breaks.add(3);
-    for (let i = 4; i < SPANS.length; i++) kit.noAssets.add(i);
-    // each upload takes 10 ms, past the 8 ms slice, so the build yields after it
-    kit.during = (c) => {
-      if (c.startsWith("initTexture")) clock.now += 10;
-      stamp(c);
-    };
-    const { canvas, overlays } = stage();
-    const box = canvas.parentElement!;
-    const append = box.appendChild.bind(box);
-    vi.spyOn(box, "appendChild").mockImplementation(<T extends Node>(n: T) => (stamp(`appendChild ${(n as unknown as Element).className}`), append(n)));
-    const on = canvas.addEventListener.bind(canvas);
-    const off = canvas.removeEventListener.bind(canvas);
-    vi.spyOn(canvas, "addEventListener").mockImplementation((type: string, fn: EventListenerOrEventListenerObject, o?: boolean | AddEventListenerOptions) => (stamp(`addEventListener ${type}`), on(type, fn, o)));
-    vi.spyOn(canvas, "removeEventListener").mockImplementation((type: string, fn: EventListenerOrEventListenerObject, o?: boolean | EventListenerOptions) => (stamp(`removeEventListener ${type}`), off(type, fn, o)));
-    const remove = Element.prototype.remove;
-    vi.spyOn(Element.prototype, "remove").mockImplementation(function (this: Element) {
-      stamp(`remove ${this.className}`);
-      remove.call(this);
-    });
-    vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({ left: 0, top: 0, right: 800, bottom: 450, width: 800, height: 450, x: 0, y: 0, toJSON: () => ({}) });
-    vi.spyOn(document, "hidden", "get").mockReturnValue(false);
-    let glint!: () => void;
-    vi.spyOn(window, "setInterval").mockImplementation(((fn: () => void) => ((glint = fn), 7)) as unknown as typeof window.setInterval);
-    vi.spyOn(window, "clearInterval").mockImplementation((n) => stamp(`clearInterval ${n}`));
-    vi.spyOn(console, "error").mockImplementation((m: unknown) => stamp(`console.error ${m}`));
-    const frame = (t: number) => () => {
-      const due = [...frames.values()];
-      frames.clear();
-      due.forEach((f) => f(t));
-    };
-    const point = () => canvas.dispatchEvent(new MouseEvent("pointermove", { clientX: 400, clientY: 225 }));
-    let d!: Director;
-    await task("start", () =>
-      make({ canvas, overlays, onFirstFrame: () => stamp("onFirstFrame") }).then((x) => {
-        d = x;
-        stamp("started");
-      }),
-    );
-    await task("frame", frame(1000)); // draws scene 0 and its link, and fetches scene 1 ahead
-    await task("idle", () => fire(60)); // the background builds move on from scene 0
-    await task("idle", () => fire(60)); // builds scene 1, fetched ahead: its first texture, then a yield
-    await task("upload yield", () => fire(0)); // its second texture, and a yield
-    await task("upload yield", () => fire(0)); // its compiles and warm-up
-    await task("idle", () => fire(60)); // the background builds move on from scene 1
-    await task("idle", () => fire(60)); // scene 2, which fails
-    await task("idle", () => fire(60)); // scene 3, which breaks
-    clock.now = 5000;
-    await task("pointer", point); // over the link: it lights up
-    await task("frame", frame(5100)); // and asks for another frame while it does
-    await task("frame", frame(5600));
-    await task("glint", () => glint());
-    await task("frame", frame(7000)); // past the glint
-    const beats = (window as unknown as { __jlBeats: Array<{ invalidate(): void } | null> }).__jlBeats;
-    await task("invalidate", () => beats[0]!.invalidate()); // scene 0 asks to be drawn again
-    await task("frame", frame(7100));
-    await task("jump", () => d.jump(SCENE_START[1] - OVERLAP / 2)); // into the cut to scene 1: the link goes dark
-    await task("frame", frame(7200));
-    await task("pointer", point); // nothing to point at in a cut
-    await task("frame", frame(7300));
-    await task("leave", () => canvas.dispatchEvent(new MouseEvent("pointerleave")));
-    await task("frame", frame(7400));
-    // a small step on a GPU that can't keep up: it glides at the lower resolution,
-    // and comes back to full resolution a moment after it rests
-    vi.stubGlobal("__jlSlow", true);
-    await task("setProgress", () => d.setProgress(SCENE_START[1] - OVERLAP / 2 + 0.001));
-    for (const t of [7500, 7600, 7700, 7800, 7900, 8200]) await task("frame", frame(t));
-    await task("profile", () => d.profile([SCENE_START[1]]));
-    await task("resize", () => d.resize(640, 360));
-    await task("dispose", () => d.dispose()); // the resize's frame still queued
-    // recorded from the director before compiles were counted (0944c0aa)
-    const drawn = (...scenes: number[]) => [...scenes.map((s) => `0 pipeline.render ${s} scene`), "0 setRenderTarget", "0 render"];
-    const STEPS = [
-      "-- start",
-      "1 setPixelRatio 1",
-      "1 setSize 800x450",
-      ...Array(2).fill("1 pipeline 800x450"),
-      "1 appendChild jl-tip",
-      "1 addEventListener pointermove",
-      "1 addEventListener pointerleave",
-      "1 addEventListener click",
-      "3 compileAsync 0 scene",
-      "4 compileAsync 0 fx",
-      ...Array(4).fill("5 pipeline.render 0 scene"),
-      "7 requestAnimationFrame",
-      "7 setTimeout 60",
-      "8 started",
-      "-- frame",
-      ...drawn(0),
-      "0 setTimeout 60",
-      "0 onFirstFrame",
-      "-- idle",
-      "3 setTimeout 60",
-      "-- idle",
-      "2 initTexture 1",
-      "2 setTimeout 0",
-      "-- upload yield",
-      "1 initTexture 1",
-      "1 setTimeout 0",
-      "-- upload yield",
-      "1 compileAsync 1 scene",
-      "2 compileAsync 1 fx",
-      ...Array(4).fill("3 pipeline.render 1 scene"),
-      "-- idle",
-      "3 setTimeout 60",
-      "-- idle",
-      "4 console.error journey: a scene could not be built",
-      "5 setTimeout 60",
-      "-- idle",
-      "2 console.error journey: a scene could not be built",
-      "3 setTimeout 60",
-      "-- pointer",
-      "0 requestAnimationFrame",
-      "-- frame",
-      ...drawn(0),
-      "0 requestAnimationFrame",
-      "-- frame",
-      ...drawn(0),
-      "-- glint",
-      "0 requestAnimationFrame",
-      "-- frame",
-      ...drawn(0),
-      "-- invalidate",
-      "0 requestAnimationFrame",
-      "-- frame",
-      ...drawn(0),
-      "-- jump",
-      "0 requestAnimationFrame",
-      ...drawn(1, 0),
-      "-- frame",
-      ...drawn(1, 0),
-      "-- pointer",
-      "0 requestAnimationFrame",
-      "-- frame",
-      ...drawn(1, 0),
-      "-- leave",
-      "0 requestAnimationFrame",
-      "-- frame",
-      ...drawn(1, 0),
       "-- setProgress",
       "0 requestAnimationFrame",
       "-- frame",
-      "0 setPixelRatio 1",
+      "0 setPixelRatio 1.6",
       "0 setSize 800x450",
-      ...Array(2).fill("0 pipeline.setSize"),
-      ...drawn(1, 0),
+      ...Array(2).fill("0 pipeline.setSize 1280x720"),
+      "0 update 0 0",
+      "0 fitCamera 0 800x450",
+      "0 pipeline.render 0 scene at rest focus 8 shows 2 culls 3",
+      "0 setRenderTarget",
+      "0 render bb mix 1 dip 0.45",
+      "0 placeLabels 0 800x450 0",
       "0 requestAnimationFrame",
       "-- frame",
-      ...drawn(1, 0),
+      "0 update 0 0",
+      "0 fitCamera 0 800x450",
+      "0 pipeline.render 0 scene at rest focus 8 shows 2 culls 3",
+      "0 setRenderTarget",
+      "0 render bb mix 1 dip 0.45",
+      "0 placeLabels 0 800x450 0",
       "0 requestAnimationFrame",
       "-- frame",
-      ...drawn(1, 0),
+      "0 update 0 0",
+      "0 fitCamera 0 800x450",
+      "0 pipeline.render 0 scene at rest focus 8 shows 2 culls 3",
+      "0 setRenderTarget",
+      "0 render bb mix 1 dip 0.45",
+      "0 placeLabels 0 800x450 0",
       "0 requestAnimationFrame",
       "-- frame",
-      ...drawn(1, 0),
+      "0 update 0 0",
+      "0 fitCamera 0 800x450",
+      "0 pipeline.render 0 scene at rest focus 8 shows 2 culls 3",
+      "0 setRenderTarget",
+      "0 render bb mix 1 dip 0.45",
+      "0 placeLabels 0 800x450 0",
       "0 requestAnimationFrame",
       "-- frame",
-      ...drawn(1, 0),
+      "0 update 0 0",
+      "0 fitCamera 0 800x450",
+      "0 pipeline.render 0 scene at rest focus 8 shows 2 culls 3",
+      "0 setRenderTarget",
+      "0 render bb mix 1 dip 0.45",
+      "0 placeLabels 0 800x450 0",
       "0 requestAnimationFrame",
       "-- frame",
-      "0 setPixelRatio 1",
+      "0 setPixelRatio 2",
       "0 setSize 800x450",
-      ...Array(2).fill("0 pipeline.setSize"),
-      ...drawn(1, 0),
-      "-- profile",
-      "0 getContext",
-      ...drawn(1),
-      "-- resize",
-      "0 setSize 640x360",
-      "0 setPixelRatio 1",
-      "0 setSize 640x360",
-      ...Array(2).fill("0 pipeline.setSize"),
-      "0 requestAnimationFrame",
+      ...Array(2).fill("0 pipeline.setSize 1600x900"),
+      "0 update 0 0",
+      "0 fitCamera 0 800x450",
+      "0 pipeline.render 0 scene at rest focus 8 shows 2 culls 3",
+      "0 setRenderTarget",
+      "0 render bb mix 1 dip 0.45",
+      "0 placeLabels 0 800x450 0",
+      "-- jump",
+      "0 createBeat 3 for paper",
+      "1 fitCamera 3 800x450",
+      "1 compileAsync 3 scene shows 2",
+      "2 compileAsync 3 fx shows 1",
+      "3 pipeline.render 3 scene at rest focus 8 shows 3 culls 0",
+      "3 update 3 0",
+      "3 pipeline.render 3 scene at rest focus 8 shows 2 culls 3",
+      "3 update 3 0.5",
+      "3 pipeline.render 3 scene at rest focus 8 shows 2 culls 3",
+      "3 update 3 1",
+      "3 pipeline.render 3 scene at rest focus 8 shows 2 culls 3",
+      "3 update 3 0",
+      "5 requestAnimationFrame",
+      "-- frame",
+      "0 update 3 0.5",
+      "0 fitCamera 3 800x450",
+      "0 pipeline.render 3 scene at z-0.242 focus 7.758 shows 2 culls 3",
+      "0 setRenderTarget",
+      "0 render bb mix 1 dip 0.45",
+      "0 page labels 0: 0 hidden inert",
+      "0 page labels 3: 1 visible",
+      "0 placeLabels 3 800x450 0.5",
+      "0 requestIdleCallback",
+      "-- jump",
+      "0 createBeat 2 for paper",
+      "0 update 3 0.25",
+      "0 fitCamera 3 800x450",
+      "0 pipeline.render 3 scene at z-0.121 focus 7.879 shows 2 culls 3",
+      "0 setRenderTarget",
+      "0 render bb mix 1 dip 0.45",
+      "0 placeLabels 3 800x450 0.25",
+      "0 requestIdleCallback",
+      "1 fitCamera 2 800x450",
+      "1 compileAsync 2 scene shows 2",
+      "2 compileAsync 2 fx shows 1",
+      "3 pipeline.render 2 scene at rest focus 8 shows 3 culls 0",
+      "3 update 2 0",
+      "3 pipeline.render 2 scene at rest focus 8 shows 2 culls 3",
+      "3 update 2 0.5",
+      "3 pipeline.render 2 scene at rest focus 8 shows 2 culls 3",
+      "3 update 2 1",
+      "3 pipeline.render 2 scene at rest focus 8 shows 2 culls 3",
+      "3 update 2 0",
+      "5 requestAnimationFrame",
+      "-- frame",
+      "0 update 3 0.25",
+      "0 fitCamera 3 800x450",
+      "0 cutIn 3 0.5",
+      "0 pipeline.render 3 scene at z-0.121 focus 7.879 shows 2 culls 3",
+      "0 update 2 1",
+      "0 fitCamera 2 800x450",
+      "0 cutOut 2 0.5 to 3",
+      "0 pipeline.render 2 scene at z-0.737 focus 7.263 shows 2 culls 3",
+      "0 setRenderTarget",
+      "0 render ab mix 0.156 dip 0",
+      "0 page labels 2: 0.8437499999999989 visible",
+      "0 page labels 3: 0.15625000000000114 visible inert",
+      "0 placeLabels 3 800x450 0.25",
+      "0 placeLabels 2 800x450 1",
+      "0 requestIdleCallback",
+      "-- prepareAll",
+      "0 createBeat 4 for paper",
+      "0 createBeat 5 for paper",
+      "1 fitCamera 4 800x450",
+      "1 compileAsync 4 scene shows 2",
+      "1 fitCamera 5 800x450",
+      "1 compileAsync 5 scene shows 2",
+      "2 compileAsync 4 fx shows 1",
+      "2 compileAsync 5 fx shows 1",
+      "3 pipeline.render 4 scene at rest focus 8 shows 3 culls 0",
+      "3 update 4 0",
+      "3 pipeline.render 4 scene at rest focus 8 shows 2 culls 3",
+      "3 update 4 0.5",
+      "3 pipeline.render 4 scene at rest focus 8 shows 2 culls 3",
+      "3 update 4 1",
+      "3 pipeline.render 4 scene at rest focus 8 shows 2 culls 3",
+      "3 update 4 0",
+      "3 pipeline.render 5 scene at rest focus 8 shows 3 culls 0",
+      "3 update 5 0",
+      "3 pipeline.render 5 scene at rest focus 8 shows 2 culls 3",
+      "3 update 5 0.5",
+      "3 pipeline.render 5 scene at rest focus 8 shows 2 culls 3",
+      "3 update 5 1",
+      "3 pipeline.render 5 scene at rest focus 8 shows 2 culls 3",
+      "3 update 5 0",
+      "6 prepareAll resolved",
       "-- dispose",
       "0 clearInterval 7",
       "0 removeEventListener pointermove",
       "0 removeEventListener pointerleave",
       "0 removeEventListener click",
       "0 remove jl-tip",
-      "0 cancelAnimationFrame",
+      "0 page tip: off the page: jl-tip \"\" -",
       ...Array(2).fill("0 composer.dispose"),
       "0 dispose",
     ];
     expect(log).toEqual(STEPS);
+  });
+
+  it("takes every step of the reader's moves in the microtask it did before, where there's no requestIdleCallback", async () => {
+    // as above, on a screen with twice the stage's pixels, in a browser without
+    // requestIdleCallback (Safari's): an idle moment is a 60 ms timer. These scenes
+    // have no code of their own. Scene 1 has three textures, one a shader's uniform,
+    // and its uploads pass the 8 ms slice once; scene 2 fails, and scene 3 breaks as
+    // it's made, with nothing listening for either. The build times are logged too
+    vi.stubGlobal("devicePixelRatio", 2);
+    const { log, stamp, task, clock, fire, frame, glint, watch, canvas, overlays } = stepLog({ timers: true, idleCallback: false });
+    kit.parallel = true;
+    kit.links.add(0);
+    kit.textures.set(1, 3);
+    kit.fail.add(2);
+    kit.breaks.add(3);
+    for (let i = 4; i < SPANS.length; i++) kit.noAssets.add(i);
+    // each upload takes 5 ms: a build's second runs past the 8 ms slice, so it yields,
+    // and its third starts a new slice. Making a scene takes 3 ms. As scene 1's first
+    // texture uploads, the scene asks to be drawn again, as it would if one of its
+    // links took focus then
+    let asked = false;
+    kit.during = (c) => {
+      if (c.startsWith("initTexture")) clock.now += 5;
+      if (c.startsWith("createBeat")) clock.now += 3;
+      if (c === "initTexture 1" && !asked) {
+        asked = true;
+        kit.beats.get(1)!.invalidate?.();
+      }
+      stamp(c);
+    };
+    // the page's link is a quarter of the way in from the left, the site's from the right
+    const point = (x: number, y = 225) => () => canvas.dispatchEvent(new MouseEvent("pointermove", { clientX: x, clientY: y }));
+    const click = (x: number, y = 225) => () => canvas.dispatchEvent(new MouseEvent("click", { clientX: x, clientY: y }));
+    const leave = () => canvas.dispatchEvent(new MouseEvent("pointerleave"));
+    let d!: Director;
+    await task("start", () =>
+      make({ canvas, overlays, onFirstFrame: () => stamp("onFirstFrame") }).then((x) => {
+        d = x;
+        watch("build times", () => x.buildTimes.join(" "));
+        stamp("started");
+      }),
+    );
+    await task("frame", frame(1000)); // draws scene 0 and its links, and fetches scene 1 ahead
+    await task("idle", () => fire(60)); // the background builds move on from scene 0
+    await task("idle", () => fire(60)); // builds scene 1, fetched ahead: two textures, then a yield
+    await task("upload yield", () => fire(0)); // its third texture, its compiles and its warm-up
+    await task("idle", () => fire(60)); // the background builds move on from scene 1
+    await task("idle", () => fire(60)); // scene 2, which fails
+    await task("idle", () => fire(60)); // scene 3, which breaks
+    clock.now = 5000;
+    await task("pointer", point(200)); // over the page's link, and the note's behind it: the page's lights, and the tooltip names it
+    await task("frame", frame(5100));
+    await task("pointer", point(220, 230)); // along the link: the tooltip follows
+    await task("frame", frame(5200));
+    await task("click", click(220, 230)); // follows the link
+    await task("pointer", point(600)); // over the site's link: it lights instead
+    await task("frame", frame(5300));
+    await task("click", click(600)); // opens the site in a new tab
+    // in one task, back over the page's link and on to the site's: the site's stays lit,
+    // and the page's goes dark again
+    await task("pointer, twice", () => {
+      point(200)();
+      point(600)();
+    });
+    await task("frame", frame(5350));
+    await task("leave", leave); // both links go dark
+    await task("frame", frame(5400));
+    await task("frame", frame(5900)); // at rest
+    await task("glint", glint); // the glint passes from link to link
+    for (const t of [6250, 6600, 6950, 7300]) await task("frame", frame(t));
+    await task("frame", frame(7900)); // past the glint: no more frames
+    const beats = (window as unknown as { __jlBeats: Array<{ invalidate(): void } | null> }).__jlBeats;
+    // scene 0 asks to be drawn again, and in the same task the pointer comes back over
+    // the page's link: the link's 500 ms of frames outlast the redraw's 400
+    await task("invalidate, then pointer", () => {
+      beats[0]!.invalidate();
+      point(200)();
+    });
+    await task("frame", frame(8000));
+    await task("frame", frame(8350)); // past the redraw's 400 ms, not the link's 500
+    await task("frame", frame(8450)); // past both: the last frame
+    // the other way round: the pointer leaves, and then scene 0 asks to be drawn again,
+    // so the redraw's 400 ms are the last word
+    await task("leave, then invalidate", () => {
+      leave();
+      beats[0]!.invalidate();
+    });
+    await task("frame", frame(8550));
+    await task("frame", frame(8900)); // past the redraw's 400 ms, not the pointer's 500: the last frame
+    await task("pointer", point(200)); // over the page's link again
+    // into the cut to scene 1, and the pointer moves in the same task: the link goes dark,
+    // and there's nothing to point at in a cut
+    await task("jump, then pointer", () => {
+      d.jump(SCENE_START[1] - OVERLAP / 2);
+      point(200)();
+    });
+    await task("frame", frame(9000));
+    await task("leave", leave);
+    await task("frame", frame(9100));
+    // a target, and then a jump elsewhere, in one task: the jump wins
+    await task("setProgress, then jump", () => {
+      d.setProgress(SCENE_START[1] - OVERLAP / 2 + 0.05);
+      d.jump(SCENE_START[1] - OVERLAP / 2);
+    });
+    await task("frame", frame(9200));
+    await task("frame", frame(9600)); // at rest
+    // a small step from rest, on frames 95 ms apart: a few frames in, the director finds
+    // the GPU can't keep up, glides on at the lower resolution, and comes back to full
+    // resolution a moment after it rests
+    await task("setProgress", () => d.setProgress(SCENE_START[1] - OVERLAP / 2 + 0.003));
+    for (let t = 9700; t <= 10460; t += 95) await task("frame", frame(t));
+    await task("frame", frame(10800));
+    // the middle of the cut into scene 1, both scenes tilted, and then scene 1 alone:
+    // each pose starts from the camera's rest
+    await task("profile", () => d.profile([SCENE_START[1] - OVERLAP / 2, SCENE_START[1]]));
+    await task("resize", () => d.resize(640, 360)); // at rest: the next frame draws the stage anew
+    await task("frame", frame(10850));
+    // in one task the stage resizes again, scene 1 asks to be drawn again, and a new
+    // target comes: the redraw starts the glide from where the scene was
+    await task("resize, invalidate, then setProgress", () => {
+      d.resize(800, 450);
+      beats[1]!.invalidate();
+      d.setProgress(SCENE_START[1] - OVERLAP / 2 + 0.05);
+    });
+    await task("frame", frame(10900));
+    await task("resize", () => d.resize(640, 360));
+    await task("dispose", () => d.dispose()); // the glide's next frame still queued
+    // recorded from the director before compiles were counted (0944c0aa)
+    const MOVES = [
+      "-- start",
+      "0 loadFonts",
+      "1 makeRenderer",
+      "1 setPixelRatio 2",
+      "1 setSize 800x450",
+      ...Array(2).fill("1 pipeline 1600x900"),
+      "1 page dev globals: set",
+      "1 appendChild jl-tip",
+      "1 page tip: jl-tip \"\" -",
+      "1 addEventListener pointermove",
+      "1 addEventListener pointerleave",
+      "1 addEventListener click",
+      "1 setInterval 4200",
+      "1 createBeat 0 for paper",
+      "3 fitCamera 0 800x450",
+      "3 compileAsync 0 scene shows 1",
+      "4 compileAsync 0 fx shows 1",
+      "5 pipeline.render 0 scene at rest shows 2 culls 0",
+      ...Array(3).fill("5 pipeline.render 0 scene at rest shows 2 culls 2"),
+      "7 requestAnimationFrame",
+      "7 setTimeout 60",
+      "8 started",
+      "-- frame",
+      "0 fitCamera 0 800x450",
+      "0 lightLink MOCK page 0",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 0 scene at rest shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render bb mix 1 dip 0.45",
+      "0 page labels 0: 1 visible",
+      "0 page labels 1: 0 hidden inert",
+      "0 page labels 2: 0 hidden inert",
+      "0 page labels 3: 0 hidden inert",
+      "0 page labels 4: 0 hidden inert",
+      "0 page labels 5: 0 hidden inert",
+      "0 placeLabels 0 800x450 0",
+      "0 setTimeout 60",
+      "0 onFirstFrame",
+      "-- idle",
+      "3 setTimeout 60",
+      "-- idle",
+      "0 createBeat 1 for paper",
+      "0 build times: 3 3 0 0 0 0",
+      "2 fitCamera 1 800x450",
+      "2 requestAnimationFrame",
+      ...Array(2).fill("2 initTexture 1"),
+      "2 setTimeout 0",
+      "-- upload yield",
+      "1 initTexture 1",
+      "1 compileAsync 1 scene shows 4",
+      "2 compileAsync 1 fx shows 1",
+      "3 pipeline.render 1 scene at rest shows 5 culls 0",
+      ...Array(3).fill("3 pipeline.render 1 scene at rest shows 5 culls 5"),
+      "-- idle",
+      "3 setTimeout 60",
+      "-- idle",
+      "1 createBeat 2 for paper",
+      "1 build times: 3 3 3 0 0 0",
+      "4 console.error journey: a scene could not be built",
+      "5 setTimeout 60",
+      "-- idle",
+      "1 createBeat 3 for paper",
+      "2 console.error journey: a scene could not be built",
+      "3 setTimeout 60",
+      "-- pointer",
+      "0 page cursor: pointer",
+      "0 page tip: jl-tip is-on \"MOCK page \u2192\" translate(218px, 239px)",
+      "-- frame",
+      "0 fitCamera 0 800x450",
+      "0 lightLink MOCK page 0.35",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 0 scene at rest shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render bb mix 1 dip 0.45",
+      "0 placeLabels 0 800x450 0",
+      "0 requestAnimationFrame",
+      "-- pointer",
+      "0 page tip: jl-tip is-on \"MOCK page \u2192\" translate(238px, 244px)",
+      "-- frame",
+      "0 fitCamera 0 800x450",
+      "0 lightLink MOCK page 0.577",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 0 scene at rest shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render bb mix 1 dip 0.45",
+      "0 placeLabels 0 800x450 0",
+      "0 requestAnimationFrame",
+      "-- click",
+      "0 page location: #MOCK-page",
+      "-- pointer",
+      "0 page tip: jl-tip is-on \"MOCK site \u2192\" translate(618px, 239px)",
+      "-- frame",
+      "0 fitCamera 0 800x450",
+      "0 lightLink MOCK page 0",
+      "0 lightLink MOCK site 0.35",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 0 scene at rest shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render bb mix 1 dip 0.45",
+      "0 placeLabels 0 800x450 0",
+      "0 requestAnimationFrame",
+      "-- click",
+      "0 open #MOCK-site",
+      "-- pointer, twice",
+      "-- frame",
+      "0 fitCamera 0 800x450",
+      "0 lightLink MOCK page 0",
+      "0 lightLink MOCK site 0.577",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 0 scene at rest shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render bb mix 1 dip 0.45",
+      "0 placeLabels 0 800x450 0",
+      "0 requestAnimationFrame",
+      "-- leave",
+      "0 page cursor: -",
+      "0 page tip: jl-tip \"\" translate(618px, 239px)",
+      "-- frame",
+      "0 fitCamera 0 800x450",
+      "0 lightLink MOCK page 0",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 0 scene at rest shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render bb mix 1 dip 0.45",
+      "0 placeLabels 0 800x450 0",
+      "0 requestAnimationFrame",
+      "-- frame",
+      "0 fitCamera 0 800x450",
+      "0 lightLink MOCK page 0",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 0 scene at rest shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render bb mix 1 dip 0.45",
+      "0 placeLabels 0 800x450 0",
+      "-- glint",
+      "0 requestAnimationFrame",
+      "-- frame",
+      "0 fitCamera 0 800x450",
+      "0 lightLink MOCK page 0.45",
+      "0 lightLink MOCK site 0.364",
+      "0 lightLink MOCK note 0.139",
+      "0 pipeline.render 0 scene at rest shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render bb mix 1 dip 0.45",
+      "0 placeLabels 0 800x450 0",
+      "0 requestAnimationFrame",
+      "-- frame",
+      "0 fitCamera 0 800x450",
+      "0 lightLink MOCK page 0",
+      "0 lightLink MOCK site 0.265",
+      "0 lightLink MOCK note 0.428",
+      "0 pipeline.render 0 scene at rest shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render bb mix 1 dip 0.45",
+      "0 placeLabels 0 800x450 0",
+      "0 requestAnimationFrame",
+      "-- frame",
+      "0 fitCamera 0 800x450",
+      "0 lightLink MOCK page 0",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 0 scene at rest shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render bb mix 1 dip 0.45",
+      "0 placeLabels 0 800x450 0",
+      "0 requestAnimationFrame",
+      "-- frame",
+      "0 fitCamera 0 800x450",
+      "0 lightLink MOCK page 0",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 0 scene at rest shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render bb mix 1 dip 0.45",
+      "0 placeLabels 0 800x450 0",
+      "0 requestAnimationFrame",
+      "-- frame",
+      "0 fitCamera 0 800x450",
+      "0 lightLink MOCK page 0",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 0 scene at rest shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render bb mix 1 dip 0.45",
+      "0 placeLabels 0 800x450 0",
+      "-- invalidate, then pointer",
+      "0 requestAnimationFrame",
+      "0 page cursor: pointer",
+      "0 page tip: jl-tip is-on \"MOCK page \u2192\" translate(218px, 239px)",
+      "-- frame",
+      "0 fitCamera 0 800x450",
+      "0 lightLink MOCK page 0.35",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 0 scene at rest shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render bb mix 1 dip 0.45",
+      "0 placeLabels 0 800x450 0",
+      "0 requestAnimationFrame",
+      "-- frame",
+      "0 fitCamera 0 800x450",
+      "0 lightLink MOCK page 0.577",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 0 scene at rest shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render bb mix 1 dip 0.45",
+      "0 placeLabels 0 800x450 0",
+      "0 requestAnimationFrame",
+      "-- frame",
+      "0 fitCamera 0 800x450",
+      "0 lightLink MOCK page 0.725",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 0 scene at rest shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render bb mix 1 dip 0.45",
+      "0 placeLabels 0 800x450 0",
+      "-- leave, then invalidate",
+      "0 page cursor: -",
+      "0 page tip: jl-tip \"\" translate(218px, 239px)",
+      "0 requestAnimationFrame",
+      "-- frame",
+      "0 fitCamera 0 800x450",
+      "0 lightLink MOCK page 0",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 0 scene at rest shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render bb mix 1 dip 0.45",
+      "0 placeLabels 0 800x450 0",
+      "0 requestAnimationFrame",
+      "-- frame",
+      "0 fitCamera 0 800x450",
+      "0 lightLink MOCK page 0",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 0 scene at rest shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render bb mix 1 dip 0.45",
+      "0 placeLabels 0 800x450 0",
+      "-- pointer",
+      "0 page cursor: pointer",
+      "0 page tip: jl-tip is-on \"MOCK page \u2192\" translate(218px, 239px)",
+      "0 requestAnimationFrame",
+      "-- jump, then pointer",
+      "0 fitCamera 1 800x450",
+      "0 lightLink MOCK page 0.35",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 page cursor: -",
+      "0 page tip: jl-tip \"\" translate(218px, 239px)",
+      "0 pipeline.render 1 scene at z0.084 qx0.353 shows 5 culls 5",
+      "0 fitCamera 0 800x450",
+      "0 pipeline.render 0 scene at z-0.787 qx0.327 shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render ab mix 0.5 dip 0.45",
+      "0 page labels 0: 0.5000000000000062 visible inert",
+      "0 page labels 1: 0.4999999999999938 visible inert",
+      "0 placeLabels 1 800x450 0.112",
+      "0 placeLabels 0 800x450 1",
+      "-- frame",
+      "0 fitCamera 1 800x450",
+      "0 lightLink MOCK page 0",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 1 scene at z0.084 qx0.353 shows 5 culls 5",
+      "0 fitCamera 0 800x450",
+      "0 pipeline.render 0 scene at z-0.787 qx0.327 shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render ab mix 0.5 dip 0.45",
+      "0 placeLabels 1 800x450 0.112",
+      "0 placeLabels 0 800x450 1",
+      "0 requestAnimationFrame",
+      "-- leave",
+      "-- frame",
+      "0 fitCamera 1 800x450",
+      "0 lightLink MOCK page 0",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 1 scene at z0.084 qx0.353 shows 5 culls 5",
+      "0 fitCamera 0 800x450",
+      "0 pipeline.render 0 scene at z-0.787 qx0.327 shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render ab mix 0.5 dip 0.45",
+      "0 placeLabels 1 800x450 0.112",
+      "0 placeLabels 0 800x450 1",
+      "0 requestAnimationFrame",
+      "-- setProgress, then jump",
+      "0 fitCamera 1 800x450",
+      "0 lightLink MOCK page 0",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 1 scene at z0.084 qx0.353 shows 5 culls 5",
+      "0 fitCamera 0 800x450",
+      "0 pipeline.render 0 scene at z-0.787 qx0.327 shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render ab mix 0.5 dip 0.45",
+      "0 placeLabels 1 800x450 0.112",
+      "0 placeLabels 0 800x450 1",
+      "-- frame",
+      "0 fitCamera 1 800x450",
+      "0 lightLink MOCK page 0",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 1 scene at z0.084 qx0.353 shows 5 culls 5",
+      "0 fitCamera 0 800x450",
+      "0 pipeline.render 0 scene at z-0.787 qx0.327 shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render ab mix 0.5 dip 0.45",
+      "0 placeLabels 1 800x450 0.112",
+      "0 placeLabels 0 800x450 1",
+      "0 requestAnimationFrame",
+      "-- frame",
+      "0 fitCamera 1 800x450",
+      "0 lightLink MOCK page 0",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 1 scene at z0.084 qx0.353 shows 5 culls 5",
+      "0 fitCamera 0 800x450",
+      "0 pipeline.render 0 scene at z-0.787 qx0.327 shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render ab mix 0.5 dip 0.45",
+      "0 placeLabels 1 800x450 0.112",
+      "0 placeLabels 0 800x450 1",
+      "-- setProgress",
+      "0 requestAnimationFrame",
+      "-- frame",
+      "0 fitCamera 1 800x450",
+      "0 lightLink MOCK page 0",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 1 scene at z0.083 qx0.353 shows 5 culls 5",
+      "0 fitCamera 0 800x450",
+      "0 pipeline.render 0 scene at z-0.787 qx0.327 shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render ab mix 0.502 dip 0.45",
+      "0 page labels 0: 0.4983691773315241 visible inert",
+      "0 page labels 1: 0.5016308226684759 visible inert",
+      "0 placeLabels 1 800x450 0.112",
+      "0 placeLabels 0 800x450 1",
+      "0 requestAnimationFrame",
+      "-- frame",
+      "0 fitCamera 1 800x450",
+      "0 lightLink MOCK page 0",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 1 scene at z0.083 qx0.353 shows 5 culls 5",
+      "0 fitCamera 0 800x450",
+      "0 pipeline.render 0 scene at z-0.788 qx0.328 shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render ab mix 0.51 dip 0.45",
+      "0 page labels 0: 0.49045684495002717 visible inert",
+      "0 page labels 1: 0.5095431550499728 visible inert",
+      "0 placeLabels 1 800x450 0.113",
+      "0 placeLabels 0 800x450 1",
+      "0 requestAnimationFrame",
+      "-- frame",
+      "0 fitCamera 1 800x450",
+      "0 lightLink MOCK page 0",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 1 scene at z0.082 qx0.352 shows 5 culls 5",
+      "0 fitCamera 0 800x450",
+      "0 pipeline.render 0 scene at z-0.788 qx0.328 shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render ab mix 0.516 dip 0.45",
+      "0 page labels 0: 0.4844746299228676 visible inert",
+      "0 page labels 1: 0.5155253700771324 visible inert",
+      "0 placeLabels 1 800x450 0.113",
+      "0 placeLabels 0 800x450 1",
+      "0 requestAnimationFrame",
+      "-- frame",
+      "0 fitCamera 1 800x450",
+      "0 lightLink MOCK page 0",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 1 scene at z0.081 qx0.352 shows 5 culls 5",
+      "0 fitCamera 0 800x450",
+      "0 pipeline.render 0 scene at z-0.789 qx0.329 shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render ab mix 0.52 dip 0.45",
+      "0 page labels 0: 0.47995198037605435 visible inert",
+      "0 page labels 1: 0.5200480196239456 visible inert",
+      "0 placeLabels 1 800x450 0.113",
+      "0 placeLabels 0 800x450 1",
+      "0 requestAnimationFrame",
+      "-- frame",
+      "0 setPixelRatio 1.6",
+      "0 setSize 800x450",
+      ...Array(2).fill("0 pipeline.setSize 1280x720"),
+      "0 fitCamera 1 800x450",
+      "0 lightLink MOCK page 0",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 1 scene at z0.081 qx0.351 shows 5 culls 5",
+      "0 fitCamera 0 800x450",
+      "0 pipeline.render 0 scene at z-0.789 qx0.329 shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render ab mix 0.523 dip 0.45",
+      "0 page labels 0: 0.47653277587275245 visible inert",
+      "0 page labels 1: 0.5234672241272476 visible inert",
+      "0 placeLabels 1 800x450 0.113",
+      "0 placeLabels 0 800x450 1",
+      "0 requestAnimationFrame",
+      "-- frame",
+      "0 fitCamera 1 800x450",
+      "0 lightLink MOCK page 0",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 1 scene at z0.081 qx0.351 shows 5 culls 5",
+      "0 fitCamera 0 800x450",
+      "0 pipeline.render 0 scene at z-0.789 qx0.329 shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render ab mix 0.526 dip 0.45",
+      "0 page labels 0: 0.47394771753958287 visible inert",
+      "0 page labels 1: 0.5260522824604171 visible inert",
+      "0 placeLabels 1 800x450 0.113",
+      "0 placeLabels 0 800x450 1",
+      "0 requestAnimationFrame",
+      "-- frame",
+      "0 fitCamera 1 800x450",
+      "0 lightLink MOCK page 0",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 1 scene at z0.081 qx0.351 shows 5 culls 5",
+      "0 fitCamera 0 800x450",
+      "0 pipeline.render 0 scene at z-0.79 qx0.329 shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render ab mix 0.528 dip 0.45",
+      "0 page labels 0: 0.47199323167360663 visible inert",
+      "0 page labels 1: 0.5280067683263934 visible inert",
+      "0 placeLabels 1 800x450 0.113",
+      "0 placeLabels 0 800x450 1",
+      "0 requestAnimationFrame",
+      "-- frame",
+      "0 fitCamera 1 800x450",
+      "0 lightLink MOCK page 0",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 1 scene at z0.08 qx0.351 shows 5 culls 5",
+      "0 fitCamera 0 800x450",
+      "0 pipeline.render 0 scene at z-0.79 qx0.329 shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render ab mix 0.529 dip 0.45",
+      "0 page labels 0: 0.4705154457966456 visible inert",
+      "0 page labels 1: 0.5294845542033544 visible inert",
+      "0 placeLabels 1 800x450 0.113",
+      "0 placeLabels 0 800x450 1",
+      "0 requestAnimationFrame",
+      "-- frame",
+      "0 fitCamera 1 800x450",
+      "0 lightLink MOCK page 0",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 1 scene at z0.08 qx0.351 shows 5 culls 5",
+      "0 fitCamera 0 800x450",
+      "0 pipeline.render 0 scene at z-0.79 qx0.329 shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render ab mix 0.531 dip 0.45",
+      "0 page labels 0: 0.46939805400701573 visible inert",
+      "0 page labels 1: 0.5306019459929843 visible inert",
+      "0 placeLabels 1 800x450 0.113",
+      "0 placeLabels 0 800x450 1",
+      "0 requestAnimationFrame",
+      "-- frame",
+      "0 setPixelRatio 2",
+      "0 setSize 800x450",
+      ...Array(2).fill("0 pipeline.setSize 1600x900"),
+      "0 fitCamera 1 800x450",
+      "0 lightLink MOCK page 0",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 1 scene at z0.08 qx0.35 shows 5 culls 5",
+      "0 fitCamera 0 800x450",
+      "0 pipeline.render 0 scene at z-0.79 qx0.33 shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render ab mix 0.534 dip 0.45",
+      "0 page labels 0: 0.4659325694966244 visible inert",
+      "0 page labels 1: 0.5340674305033756 visible inert",
+      "0 placeLabels 1 800x450 0.113",
+      "0 placeLabels 0 800x450 1",
+      "-- profile",
+      "0 getContext",
+      "0 finish",
+      "0 fitCamera 1 800x450",
+      "0 lightLink MOCK page 0",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 1 scene at z0.084 qx0.353 shows 5 culls 5",
+      "0 fitCamera 0 800x450",
+      "0 pipeline.render 0 scene at z-0.787 qx0.327 shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render ab mix 0.5 dip 0.45",
+      "0 page labels 0: 0.5000000000000062 visible inert",
+      "0 page labels 1: 0.4999999999999938 visible inert",
+      "0 placeLabels 1 800x450 0.112",
+      "0 placeLabels 0 800x450 1",
+      ...Array(2).fill("0 finish"),
+      "0 fitCamera 1 800x450",
+      "0 pipeline.render 1 scene at z-0.113 shows 5 culls 5",
+      "0 setRenderTarget",
+      "0 render bb mix 1 dip 0.45",
+      "0 page labels 0: 0 hidden inert",
+      "0 page labels 1: 1 visible",
+      "0 placeLabels 1 800x450 0.224",
+      "0 finish",
+      "-- resize",
+      "0 setSize 640x360",
+      "0 setPixelRatio 2",
+      "0 setSize 640x360",
+      ...Array(2).fill("0 pipeline.setSize 1280x720"),
+      "0 fitCamera 0 640x360",
+      "0 fitCamera 1 640x360",
+      "0 requestAnimationFrame",
+      "-- frame",
+      "0 fitCamera 1 640x360",
+      "0 lightLink MOCK page 0",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 1 scene at z0.08 qx0.35 shows 5 culls 5",
+      "0 fitCamera 0 640x360",
+      "0 pipeline.render 0 scene at z-0.79 qx0.33 shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render ab mix 0.534 dip 0.45",
+      "0 page labels 0: 0.4659325694966244 visible inert",
+      "0 page labels 1: 0.5340674305033756 visible inert",
+      "0 placeLabels 1 640x360 0.113",
+      "0 placeLabels 0 640x360 1",
+      "-- resize, invalidate, then setProgress",
+      "0 setSize 800x450",
+      "0 setPixelRatio 2",
+      "0 setSize 800x450",
+      ...Array(2).fill("0 pipeline.setSize 1600x900"),
+      "0 fitCamera 0 800x450",
+      "0 fitCamera 1 800x450",
+      "0 requestAnimationFrame",
+      "-- frame",
+      "0 setPixelRatio 1.6",
+      "0 setSize 800x450",
+      ...Array(2).fill("0 pipeline.setSize 1280x720"),
+      "0 fitCamera 1 800x450",
+      "0 lightLink MOCK page 0",
+      "0 lightLink MOCK site 0",
+      "0 lightLink MOCK note 0",
+      "0 pipeline.render 1 scene at z0.077 qx0.348 shows 5 culls 5",
+      "0 fitCamera 0 800x450",
+      "0 pipeline.render 0 scene at z-0.793 qx0.332 shows 2 culls 2",
+      "0 setRenderTarget",
+      "0 render ab mix 0.56 dip 0.45",
+      "0 page labels 0: 0.440485208488537 visible inert",
+      "0 page labels 1: 0.559514791511463 visible inert",
+      "0 placeLabels 1 800x450 0.114",
+      "0 placeLabels 0 800x450 1",
+      "0 requestAnimationFrame",
+      "-- resize",
+      "0 setSize 640x360",
+      "0 setPixelRatio 1.6",
+      "0 setSize 640x360",
+      ...Array(2).fill("0 pipeline.setSize 1024x576"),
+      "0 fitCamera 0 640x360",
+      "0 fitCamera 1 640x360",
+      "-- dispose",
+      "0 clearInterval 7",
+      "0 removeEventListener pointermove",
+      "0 removeEventListener pointerleave",
+      "0 removeEventListener click",
+      "0 remove jl-tip",
+      "0 page tip: off the page: jl-tip \"\" translate(218px, 239px)",
+      "0 cancelAnimationFrame",
+      ...Array(2).fill("0 composer.dispose"),
+      "0 dispose",
+    ];
+    expect(log).toEqual(MOVES);
   });
 
   it("logs a later scene's failure where nothing listens for it", async () => {
@@ -934,16 +1772,34 @@ describe("the journey's director lets go of what it set up", () => {
     // of nothing here, so the log is the one #366's director made (79f2304e)
     const steps = stepLog();
     kit.fail.add(0);
-    await steps.task("start", () => make().catch((e: Error) => steps.stamp(`start rejected ${e.message}`)));
-    expect(steps.log).toEqual([
+    const { canvas, overlays } = steps;
+    await steps.task("start", () => make({ canvas, overlays }).catch((e: Error) => steps.stamp(`start rejected ${e.message}`)));
+    const STEPS = [
       "-- start",
+      "0 loadFonts",
+      "1 makeRenderer",
       "1 setPixelRatio 1",
       "1 setSize 800x450",
       ...Array(2).fill("1 pipeline 800x450"),
+      "1 page dev globals: set",
+      "1 appendChild jl-tip",
+      "1 page tip: jl-tip \"\" -",
+      "1 addEventListener pointermove",
+      "1 addEventListener pointerleave",
+      "1 addEventListener click",
+      "1 setInterval 4200",
+      "1 createBeat 0 for paper",
+      "4 clearInterval 7",
+      "4 removeEventListener pointermove",
+      "4 removeEventListener pointerleave",
+      "4 removeEventListener click",
+      "4 remove jl-tip",
+      "4 page tip: off the page: jl-tip \"\" -",
       ...Array(2).fill("4 composer.dispose"),
       "4 dispose",
       "5 start rejected MOCK: scene 0 failed",
-    ]);
+    ];
+    expect(steps.log).toEqual(STEPS);
   });
 });
 
@@ -1079,31 +1935,61 @@ describe("the journey's director, once disposed", () => {
     expect(unhandled).not.toHaveBeenCalled();
   });
 
+  it("lets go of its renderer only once a compile that started just before is done", async () => {
+    takeTime();
+    kit.textures.set(1, 1);
+    const d = await make();
+    const open = gate("compileAsync 1 scene");
+    await idleStep(); // the background builds move on from scene 0
+    // scene 1's upload queues a dispose, which runs after its build has started the compile
+    kit.during = (c) => {
+      if (c === "initTexture 1") queueMicrotask(() => d.dispose());
+    };
+    await idleStep();
+    expect(kit.calls).toContain("compileAsync 1 scene");
+    await settle();
+    expect(kit.calls).not.toContain("dispose");
+    open();
+    await vi.waitFor(() => expect(kit.calls).toContain("dispose"));
+    await settle();
+    expect(kit.calls.filter((c) => c === "dispose")).toHaveLength(1);
+    expect(kit.late).toEqual([]);
+    expect(unhandled).not.toHaveBeenCalled();
+  });
+
   it("lets go of its renderer, and settles prepareAll, in the microtask #366's director did", async () => {
     // each step a caller can see (see stepLog), once disposed: a compile in flight
     // lets go of the renderer as it's done, and prepareAll settles at once. Before
     // #366 the director did neither, so the log is the one #366's director made (79f2304e)
-    const { log, stamp, task, fire } = stepLog({ timers: true });
+    const { log, stamp, task, fire, canvas, overlays } = stepLog({ timers: true });
     kit.parallel = true;
     const open = gate("compileAsync 1 scene");
     let d!: Director;
-    await task("start", () => make().then((x) => (d = x)));
+    await task("start", () => make({ canvas, overlays }).then((x) => (d = x)));
     await task("idle", () => idles.shift()?.()); // the background builds move on from scene 0
     await task("idle", () => idles.shift()?.()); // scene 1, whose compile three polls until it's done
     await task("dispose", () => d.dispose());
     await task("prepareAll", () => d.prepareAll().then(() => stamp("prepareAll resolved")));
     await task("compile done", open);
     await task("poll", () => fire(10)); // three's poll finds it done
-    expect(log.slice(log.indexOf("-- dispose"))).toEqual([
+    // the start's frame, never run, is let go too
+    const STEPS = [
       "-- dispose",
-      "0 cancelAnimationFrame", // the start's frame, never run
+      "0 clearInterval 7",
+      "0 removeEventListener pointermove",
+      "0 removeEventListener pointerleave",
+      "0 removeEventListener click",
+      "0 remove jl-tip",
+      "0 page tip: off the page: jl-tip \"\" -",
+      "0 cancelAnimationFrame",
       ...Array(2).fill("0 composer.dispose"),
       "-- prepareAll",
       "1 prepareAll resolved",
       "-- compile done",
       "-- poll",
       "1 dispose",
-    ]);
+    ];
+    expect(log.slice(log.indexOf("-- dispose"))).toEqual(STEPS);
   });
 
   it("draws nothing, and builds no scene it's asked to draw", async () => {
