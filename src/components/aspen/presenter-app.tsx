@@ -114,9 +114,9 @@ type SlideAt = { stage: StageId; sub: number };
 
 /**
  * A move, as it leaves the slide on screen: that slide, and the run the move names, once it is sent (null
- * before, and for good if it never is).
+ * before, and for good if it never is). Left from the journey, where the journey was too.
  */
-type Leaving = { sub: number; run: string | null };
+type Leaving = { sub: number; run: string | null; journey?: number };
 
 /** Whether a move's answer is a control row; an answer that isn't says nothing about the store. */
 function isControl(data: unknown): data is Control {
@@ -155,6 +155,8 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
   const [showComments, setShowComments] = useState(false);
   // The journey's caption steps, while its slide is up; stepped back into, it opens on its last frame.
   const journey = useRef<JourneyControl | null>(null);
+  // Where the journey opens when a failed move brings the TV back to it: for the render that mounts it.
+  const journeyFrom = useRef<number | undefined>(undefined);
   const [steppedBack, setSteppedBack] = useState(false);
   // Which slide of a multi-slide stage is up; any other stage starts at its first slide.
   const [slide, setSlide] = useState<SlideAt>({ stage: "welcome", sub: 0 });
@@ -230,6 +232,8 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
   const sub = slide.stage === stage ? Math.min(slide.sub, slideCount(stage) - 1) : 0;
   useLayoutEffect(() => {
     onScreen.current = { stage, sub };
+    // A journey brought back has opened where it was: any later one opens as usual.
+    journeyFrom.current = undefined;
     // The slide follows the stage on screen, so a stage the TV comes back to later, by its button or
     // another screen's move, starts at its first slide rather than one it showed before.
     if (slide.stage !== stage) setSlide({ stage, sub });
@@ -266,8 +270,13 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
    * move that times out.
    */
   const move = useCallback(async (patch: { stage?: StageId; runId?: string }) => {
-    const leaving: Leaving = { run: null, sub: onScreen.current.sub };
-    left.current.set(onScreen.current.stage, leaving);
+    const at = onScreen.current;
+    const leaving: Leaving = {
+      run: null,
+      sub: at.sub,
+      journey: at.stage === "foundation" && FOUNDATION_SLIDES[at.sub] === "journey" ? journey.current?.at() : undefined,
+    };
+    left.current.set(at.stage, leaving);
     newest.current = leaving;
     if (patch.stage) setAhead(patch.stage);
     // A move the presenter makes once no run switch is in flight has seen how the last one went.
@@ -330,7 +339,11 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
       left.current.clear();
       newest.current = null;
       setAhead(null);
-      if (landed && landed.stage !== onScreen.current.stage) setSlide({ stage: landed.stage as StageId, sub: back ?? 0 });
+      if (landed && landed.stage !== onScreen.current.stage) {
+        // Back on the journey, it opens where it was, not at its first caption (the review of #376).
+        journeyFrom.current = back !== undefined ? last?.journey : undefined;
+        setSlide({ stage: landed.stage as StageId, sub: back ?? 0 });
+      }
       else if (landed && !mine) setSlide({ stage: landed.stage as StageId, sub: 0 });
     }
   }, [read, take]);
@@ -443,7 +456,7 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
                     "rules-ai": <RulesSlide key="rules-ai" shown={1} />,
                     "rules-government": <RulesSlide key="rules-government" shown={2} />,
                     "rules-navigation": <RulesSlide key="rules-navigation" shown={3} />,
-                    journey: <JourneySlide key="journey" control={journey} atEnd={steppedBack} />,
+                    journey: <JourneySlide key="journey" control={journey} atEnd={steppedBack} from={journeyFrom.current} />,
                     enable: <EnableSlide key="enable" />,
                   }[FOUNDATION_SLIDES[sub]]}
                 {stage === "groups" &&

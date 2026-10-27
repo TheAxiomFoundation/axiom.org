@@ -398,6 +398,69 @@ describe("PresenterApp navigation", () => {
     expect(posts()).toEqual([{ stage: "scale" }, { stage: "scale" }, { stage: "reveal" }]);
   });
 
+  it("puts the journey back on the caption it showed when a move away from it fails, and opens it afresh after", async () => {
+    vi.useFakeTimers();
+    try {
+      const { server } = setup({ stage: "foundation" });
+      const flush = (ms = 0) =>
+        act(async () => {
+          await vi.advanceTimersByTimeAsync(ms);
+        });
+      const nav = () => within(screen.getByRole("navigation", { name: "Stages" }));
+      // The caption on screen, by its place in the story.
+      const shown = () =>
+        [...document.querySelectorAll<HTMLElement>(".jl-cap")].flatMap((caption, i) => (Number(caption.style.opacity) > 0.6 ? [i] : []));
+      const toJourney = async () => {
+        for (let i = 0; i < 5; i++) fireEvent.keyDown(document.body, { key: "ArrowRight" });
+        expect(screen.getByText("6/7")).toBeInTheDocument();
+        await flush(20);
+      };
+      await flush();
+      expect(screen.getByText("1/7")).toBeInTheDocument();
+      await toJourney();
+      expect(shown()).toEqual([0]);
+      // Two captions on, each glide played out.
+      for (let i = 0; i < 2; i++) {
+        fireEvent.keyDown(document.body, { key: "ArrowRight" });
+        await flush(6_100);
+      }
+      expect(shown()).toEqual([2]);
+      server.post = async () => jsonResponse({ error: "The stage did not save." }, false);
+      fireEvent.click(nav().getByRole("button", { name: "Try it" }));
+      await flush(20);
+      expect(screen.getByText("The stage did not save.")).toBeInTheDocument();
+      expect(screen.getByText("6/7")).toBeInTheDocument();
+      // The journey comes back on its first frame where it was, not at its first caption (the review of #376).
+      await flush(50);
+      expect(shown()).toEqual([2]);
+      // A move that fails partway through a step brings it back where the step was headed.
+      fireEvent.keyDown(document.body, { key: "ArrowRight" });
+      await flush(1_000);
+      // Under way: its caption not up yet.
+      expect(shown()).toEqual([2]);
+      fireEvent.click(nav().getByRole("button", { name: "Try it" }));
+      await flush(20);
+      expect(screen.getByText("6/7")).toBeInTheDocument();
+      await flush(50);
+      expect(shown()).toEqual([3]);
+      // And stays there through the polls after.
+      await flush(4_000);
+      expect(shown()).toEqual([3]);
+      // A move away that saves leaves nothing behind: back on the journey later, it starts from the top.
+      server.post = undefined;
+      fireEvent.click(nav().getByRole("button", { name: "Try it" }));
+      await flush(20);
+      expect(nav().getByRole("button", { current: "step" })).toHaveTextContent("Try it");
+      fireEvent.click(nav().getByRole("button", { name: "Shared foundation" }));
+      await flush(20);
+      expect(screen.getByText("1/7")).toBeInTheDocument();
+      await toJourney();
+      expect(shown()).toEqual([0]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("starts the stage it left at its first slide when it comes back later, once the move away saved", async () => {
     const { posts } = setup({ stage: "reveal" });
     await onStage("reveal");

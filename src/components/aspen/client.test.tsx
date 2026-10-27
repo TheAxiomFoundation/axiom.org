@@ -187,6 +187,31 @@ describe("enterRun", () => {
     expect(runSwitches()).toBe(before + 1);
   });
 
+  it("keeps the run in the page's memory when storage is blocked, so a move from one run to another counts", () => {
+    _resetRoom();
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    const before = runSwitches();
+    expect(enterRun("rehearsal")).toBe(false);
+    expect(currentRun()).toBe("rehearsal");
+    expect(enterRun("rehearsal")).toBe(false);
+    // The room moves on: the page starts the new run afresh (the review of #376), once.
+    expect(enterRun("event")).toBe(true);
+    expect(currentRun()).toBe("event");
+    expect(enterRun("event")).toBe(false);
+    expect(runSwitches()).toBe(before + 1);
+    // A reload forgets it, as it forgets the answers: the page adopts the room's run, no move.
+    _resetRoom();
+    expect(currentRun()).toBeNull();
+    expect(enterRun("event")).toBe(false);
+    expect(runSwitches()).toBe(before + 1);
+    _resetRoom();
+  });
+
   it("names the device's run, or none", () => {
     expect(currentRun()).toBeNull();
     enterRun("phoenix");
@@ -196,17 +221,30 @@ describe("enterRun", () => {
   });
 
   it("counts a run switch exactly when it moves the device to another run, so what the old run showed knows it", () => {
-    // Invariants, for any sequence of runs entered and answers saved: the count goes up by one when
-    // enterRun reports a move and is otherwise unchanged; a move is from one run to another, whether
-    // or not anything was saved, and drops what was; the device's run is the last one entered; and what
-    // is saved on it after a switch was saved after that switch.
+    // Invariants, for any sequence of runs entered and answers saved, with storage or with it blocked: the
+    // count goes up by one when enterRun reports a move and is otherwise unchanged; a move is from one run
+    // to another, whether or not anything was saved, and drops what was; the device's run is the last one
+    // entered; and what is saved on it after a switch was saved after that switch.
+    const getItem = Storage.prototype.getItem;
+    const peek = (key: string) => getItem.call(localStorage, key);
     fc.assert(
       fc.property(
         fc.array(fc.oneof(fc.constantFrom("rehearsal", "phoenix", "tucson").map((run) => ({ run })), fc.constant({ save: true })), {
           maxLength: 20,
         }),
-        (steps) => {
+        fc.boolean(),
+        (steps, blocked) => {
           localStorage.clear();
+          _resetRoom();
+          vi.restoreAllMocks();
+          if (blocked) {
+            vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+              throw new Error("blocked");
+            });
+            vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+              throw new Error("blocked");
+            });
+          }
           let entered: string | null = null;
           for (const step of steps) {
             const before = runSwitches();
@@ -215,13 +253,13 @@ describe("enterRun", () => {
               expect(runSwitches()).toBe(before);
               continue;
             }
-            const saved = localStorage.getItem(CHAT_KEY) !== null;
+            const saved = peek(CHAT_KEY) !== null;
             const moved = enterRun(step.run);
             expect(runSwitches()).toBe(before + (moved ? 1 : 0));
             // A move from one run to another drops what was saved; adopting a first run, or staying, is no move.
             expect(moved).toBe(entered !== null && entered !== step.run);
-            if (moved) expect(localStorage.getItem(CHAT_KEY)).toBeNull();
-            else expect(localStorage.getItem(CHAT_KEY) !== null).toBe(saved);
+            if (moved) expect(peek(CHAT_KEY)).toBeNull();
+            else expect(peek(CHAT_KEY) !== null).toBe(saved);
             entered = step.run;
             expect(currentRun()).toBe(entered);
             const chat = readStored<{ runId: string | null }>(CHAT_KEY);
@@ -649,6 +687,23 @@ describe("roomFrom", () => {
     updatedAt: second === null ? null : `2026-10-27T01:00:${String(second).padStart(2, "0")}.000Z`,
   });
   beforeEach(() => _resetRoom());
+  /** Storage as a phone may have it: working, blocked, or too full to take the room's row (reads still work). */
+  type StorageMode = "ok" | "blocked" | "full";
+  const storageIs = (mode: StorageMode) => {
+    vi.restoreAllMocks();
+    if (mode === "blocked") {
+      vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+        throw new Error("blocked");
+      });
+    }
+    if (mode !== "ok") {
+      const setItem = Storage.prototype.setItem;
+      vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, key: string, value: string) {
+        if (mode === "blocked" || key === "aspen.room") throw new DOMException("No room", "QuotaExceededError");
+        return setItem.call(this, key, value);
+      });
+    }
+  };
 
   it("follows the newest live row it read in the last minute over an older one, across a reload", () => {
     const event = row("event", "groups", 2);
@@ -667,11 +722,17 @@ describe("roomFrom", () => {
     expect(roomFrom(row("rehearsal", "welcome", 1), T0 + 100 + ROOM_HOLD_MS)).toEqual(row("rehearsal", "welcome", 1));
   });
 
-  it("holds nothing when the clock has gone back past the read, or what it saved is unreadable", () => {
+  it("holds the row through a clock corrected by under a minute either way, and nothing when what it saved is unreadable", () => {
     const event = row("event", "groups", 2);
     roomFrom(event, T0);
-    expect(roomFrom(row("rehearsal", "welcome", 1), T0 - 1)).toEqual(row("rehearsal", "welcome", 1));
+    // A phone whose clock ran a second fast, corrected on a reload, still holds the row (the review of #376).
+    expect(roomFrom(row("rehearsal", "welcome", 1), T0 - 1_000)).toEqual(event);
+    expect(roomFrom(row("rehearsal", "welcome", 1), T0 - ROOM_HOLD_MS + 1)).toEqual(event);
+    // A minute back is a minute: the older row is the room's again.
+    expect(roomFrom(row("rehearsal", "welcome", 1), T0 - ROOM_HOLD_MS)).toEqual(row("rehearsal", "welcome", 1));
     roomFrom(event, T0);
+    // A reload finds what it saved unreadable.
+    _resetRoom();
     localStorage.setItem("aspen.room", "{not json");
     expect(roomFrom(row("rehearsal", "welcome", 1), T0 + 1)).toEqual(row("rehearsal", "welcome", 1));
     localStorage.setItem("aspen.room", JSON.stringify({ row: { runId: "event" }, at: T0 }));
@@ -690,6 +751,110 @@ describe("roomFrom", () => {
     expect(roomFrom(row("rehearsal", "welcome", 1), T0 + 500)).toEqual(event);
   });
 
+  it("holds a row for as long either way on the device's clock, in storage or in memory", () => {
+    // Invariant: whether a newer live row the phone followed outranks an older one read later depends only
+    // on how far the clock is from when it followed it, under ROOM_HOLD_MS, not on which way it moved.
+    fc.assert(
+      fc.property(fc.integer({ min: -2 * ROOM_HOLD_MS, max: 2 * ROOM_HOLD_MS }), fc.constantFrom<StorageMode>("ok", "blocked", "full"), (shift, mode) => {
+        localStorage.clear();
+        _resetRoom();
+        storageIs(mode);
+        const event = row("event", "groups", 2);
+        const rehearsal = row("rehearsal", "welcome", 1);
+        roomFrom(event, T0);
+        expect(roomFrom(rehearsal, T0 + shift)).toEqual(Math.abs(shift) < ROOM_HOLD_MS ? event : rehearsal);
+      }),
+      { numRuns: 300 },
+    );
+  });
+
+  it("holds a newer row another tab of the phone followed over the older one this page did", () => {
+    const rehearsal = row("rehearsal", "welcome", 1);
+    const event = row("event", "groups", 2);
+    roomFrom(rehearsal, T0);
+    localStorage.setItem("aspen.room", JSON.stringify({ row: event, at: T0 + 50 }));
+    expect(roomFrom(rehearsal, T0 + 100)).toEqual(event);
+  });
+
+  it("holds its newer row over an older one storage still has when storage can't take the newer", () => {
+    const rehearsal = row("rehearsal", "welcome", 1);
+    const event = row("event", "groups", 2);
+    roomFrom(rehearsal, T0);
+    enterRun("rehearsal");
+    storageIs("full");
+    // Even if the older row stays in storage, as when it can't be taken out either.
+    vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
+      throw new Error("no");
+    });
+    expect(roomFrom(event, T0 + 100)).toEqual(event);
+    expect(enterRun("event")).toBe(true);
+    localStorage.setItem(VOTE_KEY, JSON.stringify("see-edit"));
+    // Another server instance still serves the rehearsal's row (the review of #376).
+    expect(roomFrom(rehearsal, T0 + 500)).toEqual(event);
+    enterRun(roomFrom(rehearsal, T0 + 600).runId);
+    expect(currentRun()).toBe("event");
+    expect(localStorage.getItem(VOTE_KEY)).toBe(JSON.stringify("see-edit"));
+  });
+
+  it("gives up the older row when storage is too full for the newer, and stores the newer once enterRun makes room", () => {
+    const rehearsal = row("rehearsal", "welcome", 1);
+    const event = row("event", "groups", 2);
+    roomFrom(rehearsal, T0);
+    enterRun("rehearsal");
+    localStorage.setItem(CHAT_KEY, JSON.stringify({ draft: "x".repeat(1000) }));
+    // Full until enterRun drops the rehearsal's chat.
+    let full = true;
+    const { setItem, removeItem } = Storage.prototype;
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, key: string, value: string) {
+      if (full && key === "aspen.room") throw new DOMException("No room", "QuotaExceededError");
+      return setItem.call(this, key, value);
+    });
+    vi.spyOn(Storage.prototype, "removeItem").mockImplementation(function (this: Storage, key: string) {
+      if (key === CHAT_KEY) full = false;
+      return removeItem.call(this, key);
+    });
+    expect(roomFrom(event, T0 + 100)).toEqual(event);
+    // The rehearsal's row would outlast a reload and hold the room the phone left: it goes.
+    expect(localStorage.getItem("aspen.room")).toBeNull();
+    expect(enterRun("event")).toBe(true);
+    expect(JSON.parse(localStorage.getItem("aspen.room")!)).toEqual({ row: event, at: T0 + 100 });
+    // So a reload, its memory gone, still holds the event's row over the rehearsal's.
+    _resetRoom();
+    expect(roomFrom(rehearsal, T0 + 500)).toEqual(event);
+  });
+
+  it("stores the newer row in the older one's space when storage is too full for both", () => {
+    const rehearsal = row("rehearsal", "welcome", 1);
+    const event = row("event", "groups", 2);
+    roomFrom(rehearsal, T0);
+    // Room for one row: the newer fits once the older is out.
+    const { getItem, setItem } = Storage.prototype;
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, key: string, value: string) {
+      if (key === "aspen.room" && getItem.call(this, key) !== null) throw new DOMException("No room", "QuotaExceededError");
+      return setItem.call(this, key, value);
+    });
+    expect(roomFrom(event, T0 + 100)).toEqual(event);
+    expect(JSON.parse(localStorage.getItem("aspen.room")!)).toEqual({ row: event, at: T0 + 100 });
+    _resetRoom();
+    expect(roomFrom(rehearsal, T0 + 500)).toEqual(event);
+  });
+
+  it("stores the room again only where storage holds none, never over another tab's", () => {
+    const rehearsal = row("rehearsal", "welcome", 1);
+    const event = row("event", "groups", 2);
+    roomFrom(rehearsal, T0);
+    enterRun("rehearsal");
+    localStorage.setItem(CHAT_KEY, "{}");
+    storageIs("full");
+    expect(roomFrom(event, T0 + 100)).toEqual(event);
+    // Another tab, with room, keeps a newer row before this one moves.
+    vi.restoreAllMocks();
+    const later = row("event", "try", 3);
+    localStorage.setItem("aspen.room", JSON.stringify({ row: later, at: T0 + 200 }));
+    expect(enterRun("event")).toBe(true);
+    expect(JSON.parse(localStorage.getItem("aspen.room")!)).toEqual({ row: later, at: T0 + 200 });
+  });
+
   it("never goes back to a row older than a live one it read in the last minute, and otherwise follows each read", () => {
     const read = fc.record({
       runId: fc.constantFrom("rehearsal", "event"),
@@ -702,28 +867,20 @@ describe("roomFrom", () => {
       reload: fc.boolean(),
     });
     fc.assert(
-      fc.property(fc.array(read, { minLength: 1, maxLength: 30 }), fc.boolean(), (reads, blocked) => {
+      fc.property(fc.array(read, { minLength: 1, maxLength: 30 }), fc.constantFrom<StorageMode>("ok", "blocked", "full"), (reads, mode) => {
         localStorage.clear();
         _resetRoom();
-        vi.restoreAllMocks();
-        if (blocked) {
-          vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
-            throw new Error("blocked");
-          });
-          vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-            throw new Error("blocked");
-          });
-        }
+        storageIs(mode);
         const stamp = (c: Control) => c.updatedAt ?? "";
         // Each live row the phone followed as read (not held), and when.
         const followed: { row: Control; at: number }[] = [];
         let now = T0;
         for (const r of reads) {
           now += r.after;
-          // Blocked storage keeps the row only in the page's memory, which a reload empties.
-          if (r.reload && blocked) {
+          // A reload empties the page's memory: storage that can't take the row keeps nothing past it.
+          if (r.reload) {
             _resetRoom();
-            followed.length = 0;
+            if (mode !== "ok") followed.length = 0;
           }
           const incoming = row(r.runId, r.stage, r.second, r.live);
           const out = roomFrom(incoming, now);

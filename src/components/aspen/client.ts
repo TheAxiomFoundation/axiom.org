@@ -38,6 +38,8 @@ let claimed = false;
 let holding = false;
 // How many times enterRun has moved this page from one run to another (runSwitches).
 let switches = 0;
+// The run enterRun last entered, for a page whose storage can't be read (blocked): recordedRun.
+let runInMemory: string | null = null;
 
 function newId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -94,13 +96,16 @@ export function writeStored(key: string, value: unknown, session = false) {
  * and keeps what it has. Returns true when it moved the device from one run
  * to another, whether or not it had anything to drop, so the page starts
  * the new run afresh (aspen-app's runEpoch); and when it dropped anything
- * though it couldn't record the new run (storage full), once.
+ * though it couldn't record the new run (storage full), once. A page whose
+ * storage is blocked keeps the run in memory (recordedRun), so each move
+ * counts there too.
  */
 export function enterRun(runId: string): boolean {
   if (heldElsewhere()) return false;
-  const previous = readStored<string>(RUN_KEY);
+  const previous = recordedRun();
   if (previous === runId) return false;
   writeStored(RUN_KEY, runId);
+  runInMemory = runId;
   if (previous === null) return false;
   let dropped = false;
   for (const key of [CHAT_KEY, OVERALL_KEY, VOTE_KEY, RATING_KEY, PLEDGE_KEY, ...RETIRED_KEYS]) {
@@ -112,17 +117,38 @@ export function enterRun(runId: string): boolean {
       // Blocked storage holds nothing to drop.
     }
   }
+  // Storage too full to keep the room's row (roomFrom) may have room now.
+  storeRoomAgain();
   // A move counts once the new run is recorded: a device that can't record it would otherwise move
   // again at every poll.
-  const moved = dropped || readStored<string>(RUN_KEY) === runId;
+  const moved = dropped || recordedRun() === runId;
   if (moved) switches += 1;
   return moved;
 }
 
+/**
+ * The run enterRun last recorded on this device: in storage, or, where storage can't be read
+ * (blocked), in this page's memory. Without it a phone with blocked storage would adopt every run
+ * afresh, never count a switch, and keep the old run's form and chat on screen (the review of #376).
+ */
+function recordedRun(): string | null {
+  let raw: string | null;
+  try {
+    raw = window.localStorage.getItem(RUN_KEY);
+  } catch {
+    return runInMemory;
+  }
+  try {
+    const run: unknown = raw ? JSON.parse(raw) : null;
+    return typeof run === "string" ? run : null;
+  } catch {
+    return null;
+  }
+}
+
 /** The run this device's saved answers belong to (what enterRun last recorded), or null before it has seen a live one. */
 export function currentRun(): string | null {
-  const run = readStored<unknown>(RUN_KEY);
-  return typeof run === "string" ? run : null;
+  return recordedRun();
 }
 
 /**
@@ -384,10 +410,12 @@ const ROOM_KEY = "aspen.room";
  * the row it read for two seconds (store.ts readControl), so a poll that reaches another instance can
  * get a row older than one the device already has, for at most that long plus a poll's timeout. Held
  * a minute, never for good: a row someone puts in the store by hand with an older stamp is followed a
- * minute after the newer one was last read.
+ * minute after the device followed the newer one. The minute counts either way on the device's clock,
+ * so a clock corrected by a second, on a reload say, still holds the row (the review of #376).
  */
 export const ROOM_HOLD_MS = 60_000;
-// The same, on a device whose storage is blocked or full.
+// The row this page followed last, and when: what a reload forgets, and all a page keeps when its
+// storage is blocked or full.
 let roomInMemory: { row: Control; at: number } | null = null;
 
 function isRow(value: unknown): value is Control {
@@ -410,30 +438,65 @@ function isRow(value: unknown): value is Control {
  */
 export function roomFrom(row: Control, now = Date.now()): Control {
   if (!row.live) return row;
-  let held = roomInMemory;
-  try {
-    const raw = window.localStorage.getItem(ROOM_KEY);
-    const saved = raw ? (JSON.parse(raw) as { row?: unknown; at?: unknown }) : null;
-    held = saved && isRow(saved.row) && typeof saved.at === "number" ? { row: saved.row, at: saved.at } : roomInMemory;
-  } catch {
-    // Blocked storage: the row this page read last, if any.
-  }
-  // A clock set back puts `now` before the stamp, and the row it held no longer counts.
-  if (held?.row.live && now >= held.at && now - held.at < ROOM_HOLD_MS && newerControl(held.row, row) === held.row) {
+  const stored = storedRoom();
+  // The newer of the two: storage can hold another tab's newer row, or an older one this page couldn't
+  // replace (the review of #376).
+  const held = stored && roomInMemory ? (newerControl(roomInMemory.row, stored.row) === stored.row ? stored : roomInMemory) : (stored ?? roomInMemory);
+  // A clock corrected back puts `now` before the stamp: under a minute, the row still holds.
+  if (held?.row.live && Math.abs(now - held.at) < ROOM_HOLD_MS && newerControl(held.row, row) === held.row) {
     return held.row;
   }
-  const read = { row, at: now };
-  try {
-    window.localStorage.setItem(ROOM_KEY, JSON.stringify(read));
-  } catch {
-    roomInMemory = read;
-  }
+  keepRoom({ row, at: now });
   return row;
 }
 
-/** Test hook: forgets the row a page with blocked storage keeps in memory, as a reload does. */
+/** The row the device's storage holds (this tab's or another's, before a reload or after), if it can be read. */
+function storedRoom(): { row: Control; at: number } | null {
+  try {
+    const raw = window.localStorage.getItem(ROOM_KEY);
+    const saved = raw ? (JSON.parse(raw) as { row?: unknown; at?: unknown }) : null;
+    return saved && isRow(saved.row) && typeof saved.at === "number" ? { row: saved.row, at: saved.at } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Keeps the row a phone follows, in this page's memory and in storage, which holds it across a reload.
+ * Storage too full to take it gives up the older row it held, which would outlast a reload and hold the
+ * room the phone has left, and tries again in its space; enterRun tries again once it has made room.
+ */
+function keepRoom(read: { row: Control; at: number }) {
+  roomInMemory = read;
+  const value = JSON.stringify(read);
+  try {
+    window.localStorage.setItem(ROOM_KEY, value);
+    return;
+  } catch {
+    // Full, or blocked.
+  }
+  try {
+    window.localStorage.removeItem(ROOM_KEY);
+    window.localStorage.setItem(ROOM_KEY, value);
+  } catch {
+    // The page's memory holds it.
+  }
+}
+
+/** Puts the row this page follows in storage, if storage holds none: once enterRun has made room. */
+function storeRoomAgain() {
+  if (!roomInMemory || storedRoom()) return;
+  try {
+    window.localStorage.setItem(ROOM_KEY, JSON.stringify(roomInMemory));
+  } catch {
+    // Still full, or blocked.
+  }
+}
+
+/** Test hook: forgets what a page keeps in memory (the room's row and, with blocked storage, its run), as a reload does. */
 export function _resetRoom() {
   roomInMemory = null;
+  runInMemory = null;
 }
 
 /** The room for a phone: the control polls (useControl), each through roomFrom. */
