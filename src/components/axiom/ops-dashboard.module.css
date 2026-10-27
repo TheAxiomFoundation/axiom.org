@@ -528,7 +528,8 @@
 /* A jurisdiction opens with a strong rule and a large name, so the
    country breaks stand apart from the lighter document rows under them. */
 .ledgerTable .jurisdictionBand {
-  padding: 32px 24px 12px;
+  padding: 22px 24px;
+  vertical-align: middle;
   background: var(--color-paper-elevated);
   border-top: 2px solid var(--color-ink);
   border-bottom: 1px solid var(--color-rule);
@@ -537,7 +538,6 @@
   font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1.2;
-  text-align: center;
 }
 
 .ledgerTable tbody:first-of-type .jurisdictionBand {
