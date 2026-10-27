@@ -169,7 +169,7 @@ const PR_RUN_RE =
 // A validator rule id: letters first, with at least one "-" or ":" segment
 // (complete-source-unit:structure), so an index like versions[0] never matches.
 const ERROR_RULE_RE = /\[([a-z][a-z0-9]*(?:[-:][a-z0-9]+)+)\]/i;
-const ERROR_MAX_CHARS = 500;
+const ERROR_MAX_CHARS = 1000;
 /** Clock slack between the Actions run and the encoder's own timestamps. */
 const ENCODER_WINDOW_SLACK_MS = 10 * 60 * 1000;
 
