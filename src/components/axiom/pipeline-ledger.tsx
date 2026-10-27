@@ -454,7 +454,7 @@ function RunTrack({ run, timeline, latest }: { run: RunRow; timeline: RunTimelin
         </ol>
       )}
 
-      {timeline.stopped && <Stopped text={timeline.stopped} />}
+      {timeline.stopped && <Stopped text={timeline.stopped} runUrl={run.runUrl} />}
 
       {timeline.after.length > 0 && (
         <ol className={styles.trackAfter} aria-label="After the PR">
@@ -477,7 +477,7 @@ function RunTrack({ run, timeline, latest }: { run: RunRow; timeline: RunTimelin
 }
 
 /** What stopped a run: the step in words, then the error itself, whole, as code. */
-function Stopped({ text }: { text: string }) {
+function Stopped({ text, runUrl }: { text: string; runUrl: string }) {
   const at = text.indexOf(": ");
   const step = at > 0 ? text.slice(0, at) : text;
   // A log that failed on several files lists them in one line; one per line reads better.
@@ -489,6 +489,12 @@ function Stopped({ text }: { text: string }) {
         <pre>
           <code>{error}</code>
         </pre>
+      )}
+      {/* The stored error was cut (older rows keep 400 characters); the run's log has all of it. */}
+      {error?.endsWith("…") && (
+        <a href={runUrl} target="_blank" rel="noreferrer">
+          Cut here. Read the full error in the run log ↗
+        </a>
       )}
     </div>
   );

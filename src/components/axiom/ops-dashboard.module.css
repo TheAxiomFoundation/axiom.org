@@ -756,6 +756,11 @@
   color: var(--destructive, #991b1b);
 }
 
+.trackStopped a {
+  font-size: 12px;
+  color: var(--color-accent);
+}
+
 /* The error as the run wrote it, whole: wrapped, and scrolled past a few lines. */
 .trackStopped pre {
   max-height: 14em;
