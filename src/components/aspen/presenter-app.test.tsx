@@ -1018,6 +1018,80 @@ describe("PresenterApp navigation", () => {
     await onStage("reveal");
   });
 
+  it("stops saying a run didn't start once the room is on that run, and doesn't say it again when the room moves on", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-10-27T01:00:00.000Z"));
+      const { server } = setup({ stage: "welcome" });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getByText("Run r1")).toBeInTheDocument();
+      // Another screen's run switch beats Start run "aspen".
+      server.post = async () => jsonResponse((server.control = { runId: "other", stage: "welcome", live: true, updatedAt: "2026-10-27T01:00:01Z" }));
+      fireEvent.click(screen.getByRole("button", { name: "New run" }));
+      fireEvent.change(screen.getByRole("textbox", { name: "New run name" }), { target: { value: "aspen" } });
+      fireEvent.click(screen.getByRole("button", { name: "Start run" }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getByText("Run aspen did not start: the room is on run other.")).toBeInTheDocument();
+      // Another screen starts aspen after all. The TV's next poll reads it, and the line goes.
+      server.control = { runId: "aspen", stage: "welcome", live: true, updatedAt: "2026-10-27T01:00:02Z" };
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+      expect(screen.getByText("Run aspen")).toBeInTheDocument();
+      expect(screen.queryByText(/did not start/)).not.toBeInTheDocument();
+      // Aspen did start, so when the room moves on to a third run, the TV doesn't say otherwise.
+      server.control = { runId: "third", stage: "welcome", live: true, updatedAt: "2026-10-27T01:00:05Z" };
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+      expect(screen.getByText("Run third")).toBeInTheDocument();
+      expect(screen.queryByText(/did not start/)).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the slide the presenter steps to while its move is in flight, when a poll brings another screen's run switch", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-10-27T01:00:00.000Z"));
+      const { server } = setup({ stage: "welcome" });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getByText("Run r1")).toBeInTheDocument();
+      // What we saw, held in flight; the presenter steps on to its second slide.
+      let settle: (r: Response) => void = () => {};
+      server.post = () => new Promise<Response>((resolve) => (settle = resolve));
+      fireEvent.click(within(screen.getByRole("navigation", { name: "Stages" })).getByRole("button", { name: "What we saw" }));
+      fireEvent.keyDown(document.body, { key: "ArrowRight" });
+      expect(screen.getByText("2/2")).toBeInTheDocument();
+      // Another screen starts r2, and the TV's next poll reads it while What we saw is in flight.
+      server.control = { runId: "r2", stage: "welcome", live: true, updatedAt: "2026-10-27T01:00:02Z" };
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+      expect(screen.getByText("Run r2")).toBeInTheDocument();
+      // The TV still shows the presenter's move, on the slide the presenter chose.
+      expect(screen.getByRole("heading", { level: 1, name: STAGES.find((s) => s.id === "reveal")!.title })).toBeInTheDocument();
+      expect(screen.getByText("2/2")).toBeInTheDocument();
+      // The store refuses What we saw, made in r1: the TV goes to the room's Welcome, in r2, and says why.
+      await act(async () => {
+        settle(jsonResponse(server.control));
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getByRole("heading", { level: 1, name: EVENT.title })).toBeInTheDocument();
+      expect(screen.getByText("The room is on run r2 now, so the stage did not change.")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("shows none of the run it left's results once Start run saves, while the new run's are on their way", async () => {
     vi.useFakeTimers();
     try {
@@ -2650,9 +2724,9 @@ describe("PresenterApp moves, for any order of outcomes", () => {
    *    Welcome, if the store has answered with none);
    * 3. one poll later, it shows what the store holds, which is what the phones show;
    * 4. when the last move settles, the TV keeps its slide if the store's stage is the one on screen and the
-   *    newest move named the store's run or started it, and otherwise shows that stage's first; on another
-   *    stage, it shows the slide it last showed there as the moves left it, if the move that left it named
-   *    the run the store ends on (or was never sent), or else the stage's first;
+   *    newest move named the store's run, and otherwise shows that stage's first; on another stage, it
+   *    shows the slide it last showed there as the moves left it, if the move that left it named the run
+   *    the store ends on (or was never sent), or else the stage's first;
    * 5. a stage button shows its stage from the first slide (its own stage's button changes nothing),
    *    and so does a poll that brings another stage or another run while no move is in flight; a poll that
    *    leaves both leaves the slide;
@@ -2736,10 +2810,9 @@ describe("PresenterApp moves, for any order of outcomes", () => {
           const takes = (move: Sent, stamp: string) => (store.updatedAt ?? "") < stamp && (!move.inRun || move.inRun === store.runId);
           let newestMove: StageId | null = null;
           // While moves are in flight, the slide the TV last showed on each stage they left, with the run the
-          // move that left it names, set when it is sent; the newest move, with that run and the run it
-          // starts, if it is a run switch (4); and the moves not sent yet, in the order they were made, which
-          // is the order they are sent in (6).
-          type Leaving = { run: string | null; starts?: string; slide: string | null };
+          // move that left it names, set when it is sent; the newest move, with that run (4); and the moves
+          // not sent yet, in the order they were made, which is the order they are sent in (6).
+          type Leaving = { run: string | null; slide: string | null };
           const left = new Map<string | undefined, Leaving>();
           let newestLeaving: Leaving | null = null;
           const unsent: Leaving[] = [];
@@ -2810,8 +2883,8 @@ describe("PresenterApp moves, for any order of outcomes", () => {
           try {
             await flush();
             expect(shown()).toBe(late ? "welcome" : first);
-            const leave = (at: { stage: StageId | undefined; slide: string | null }, starts?: string) => {
-              const leaving: Leaving = { run: null, starts, slide: at.slide };
+            const leave = (at: { stage: StageId | undefined; slide: string | null }) => {
+              const leaving: Leaving = { run: null, slide: at.slide };
               left.set(at.stage, leaving);
               newestLeaving = leaving;
               unsent.push(leaving);
@@ -2878,7 +2951,7 @@ describe("PresenterApp moves, for any order of outcomes", () => {
                 const landed = row?.stage ?? "welcome";
                 const last = left.get(landed);
                 const latest = newestLeaving as Leaving | null;
-                const mine = !latest || latest.run === null || latest.run === row?.runId || latest.starts === row?.runId;
+                const mine = !latest || latest.run === null || latest.run === row?.runId;
                 const now = view();
                 if (landed === onScreen.stage && mine) expect(now.slide).toBe(onScreen.slide);
                 else if (landed !== onScreen.stage && last && (last.run === null || last.run === row?.runId)) expect(now.slide).toBe(last.slide);
@@ -2917,7 +2990,7 @@ describe("PresenterApp moves, for any order of outcomes", () => {
               } else if (c.kind === "run") {
                 const before = view();
                 runs += 1;
-                leave(before, `run${runs}`);
+                leave(before);
                 newestMove = "welcome";
                 made += 1;
                 switching = `run${runs}`;

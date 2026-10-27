@@ -113,10 +113,10 @@ const slideCount = (id: StageId) => SLIDES[id] ?? 1;
 type SlideAt = { stage: StageId; sub: number };
 
 /**
- * A move, as it leaves the slide on screen: that slide; the run the move names, once it is sent (null
- * before, and for good if it never is); and the run it starts, if it is a run switch.
+ * A move, as it leaves the slide on screen: that slide, and the run the move names, once it is sent (null
+ * before, and for good if it never is).
  */
-type Leaving = { sub: number; run: string | null; starts?: string };
+type Leaving = { sub: number; run: string | null };
 
 /** Whether a move's answer is a control row; an answer that isn't says nothing about the store. */
 function isControl(data: unknown): data is Control {
@@ -197,7 +197,7 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
   // The slide on screen (kept by a layout effect below), and, while moves are in flight, the slide the
   // TV last showed on each stage they left, with the run the move that left it named once it was sent:
   // when they settle the room on one of those in that run, it goes back there (the reviews of #376).
-  // And the newest move, with that run and the run it starts, if it is a run switch.
+  // And the newest move, with that run.
   const onScreen = useRef<SlideAt>({ stage: "welcome", sub: 0 });
   const left = useRef(new Map<string, Leaving>());
   const newest = useRef<Leaving | null>(null);
@@ -266,7 +266,7 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
    * move that times out.
    */
   const move = useCallback(async (patch: { stage?: StageId; runId?: string }) => {
-    const leaving: Leaving = { run: null, sub: onScreen.current.sub, starts: patch.runId };
+    const leaving: Leaving = { run: null, sub: onScreen.current.sub };
     left.current.set(onScreen.current.stage, leaving);
     newest.current = leaving;
     if (patch.stage) setAhead(patch.stage);
@@ -316,17 +316,17 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
     // A run switch that didn't start says so, naming the run on screen, until it is no longer so.
     if (patch.runId) setFailedRun(stored.current?.runId === patch.runId ? null : patch.runId);
     // The last move to settle puts the TV on what the store holds: this move's row when it saved, an
-    // earlier move's, or the row from before them all. On the stage on screen, the slide stays, if the
-    // newest move named the room's run or started it; otherwise another screen moved the room to another
-    // run, and the stage starts at its first slide. On another stage, it is the slide the TV last showed
-    // there, if the move that left it named the room's run (or was never sent), or else the stage's
-    // first: a new run's stage starts at its first slide (the reviews of #376).
+    // earlier move's, or the row from before them all. On the stage on screen, the slide stays if the
+    // newest move named the room's run; otherwise the room is in another run, one another screen moved it
+    // to or the TV's own Start run started, and the stage starts at its first slide. On another stage, it
+    // is the slide the TV last showed there, if the move that left it named the room's run (or was never
+    // sent), or else the stage's first: a new run's stage starts at its first slide (the reviews of #376).
     if (requests.current.size === 0) {
       const landed = stored.current;
       const last = landed ? left.current.get(landed.stage) : undefined;
       const back = last && (last.run === null || last.run === landed?.runId) ? last.sub : undefined;
       const latest = newest.current;
-      const mine = !latest || latest.run === null || latest.run === landed?.runId || latest.starts === landed?.runId;
+      const mine = !latest || latest.run === null || latest.run === landed?.runId;
       left.current.clear();
       newest.current = null;
       setAhead(null);
@@ -550,7 +550,7 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
             →
           </button>
         </span>
-        {failedRun && control?.runId !== failedRun && (
+        {failedRun && (
           <p className="m-0 w-full font-body text-[0.85rem] text-[var(--color-error)]">
             Run {failedRun} did not start: the room is on run {control?.runId ?? "…"}.
           </p>

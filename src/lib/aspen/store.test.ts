@@ -650,6 +650,66 @@ describe('store selection and control cache', () => {
       db.hold = false
       await readControl(db.store)
       expect(spy).toHaveBeenCalledTimes(3)
+      // A fresh read skips the read in flight, as it skips the cache.
+      vi.setSystemTime(new Date('2026-10-27T00:30:08.000Z'))
+      db.hold = true
+      const inFlight = readControl(db.store)
+      const fresh = readControl(db.store, true)
+      expect(spy).toHaveBeenCalledTimes(5)
+      for (const answer of db.held.splice(0)) answer()
+      await Promise.all([inFlight, fresh])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('answers phones polling one instance with one read of a slow store, though each request builds its own store', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      vi.setSystemTime(new Date('2026-10-27T00:30:01.000Z'))
+      vi.stubEnv('ASPEN_STORE', '')
+      vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://db.example')
+      vi.stubEnv('AXIOM_OPS_SUPABASE_SERVICE_KEY', 'service')
+      const held: (() => void)[] = []
+      const database = vi.fn(
+        () =>
+          new Promise<Response>((resolve) =>
+            held.push(() => resolve(new Response(JSON.stringify([{ run_id: 'aspen', stage: 'try', updated_at: '2026-10-27T00:30:00.000Z' }])))),
+          ),
+      )
+      vi.stubGlobal('fetch', database)
+      // The state route reads `readControl(getStore())`, and getStore builds a store for each request.
+      expect(getStore()).not.toBe(getStore())
+      const first = readControl(getStore())
+      vi.setSystemTime(new Date('2026-10-27T00:30:02.500Z'))
+      const second = readControl(getStore())
+      expect(database).toHaveBeenCalledTimes(1)
+      for (const answer of held.splice(0)) answer()
+      expect(await first).toMatchObject({ runId: 'aspen', stage: 'try' })
+      expect(await second).toMatchObject({ runId: 'aspen', stage: 'try' })
+    } finally {
+      vi.useRealTimers()
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('shares a failed read only with the reads asked while it was in flight', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      vi.setSystemTime(new Date('2026-10-27T00:30:01.000Z'))
+      let down = true
+      const getControl = vi.fn(async () => {
+        if (down) throw new Error('down')
+        return { runId: 'aspen', stage: 'try', live: true, updatedAt: '2026-10-27T00:30:00.000Z' }
+      })
+      const store = { getControl } as unknown as AspenStore
+      expect(await readControl(store)).toEqual(DEFAULT_CONTROL)
+      // Once it has answered, a read under two seconds later asks the store again: an error is not kept.
+      down = false
+      vi.setSystemTime(new Date('2026-10-27T00:30:01.500Z'))
+      expect(await readControl(store)).toMatchObject({ runId: 'aspen', live: true })
+      expect(getControl).toHaveBeenCalledTimes(2)
     } finally {
       vi.useRealTimers()
     }

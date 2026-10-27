@@ -366,8 +366,9 @@ function remember(asked: number, value: Control): Control {
   return kept;
 }
 
-// This instance's read of the store in flight, if any: its store, when it was asked for, and its answer.
-let controlRead: { store: AspenStore; asked: number; value: Promise<Control> } | null = null;
+// This instance's read of the store in flight, if any: when it was asked for, and its answer. Like the
+// cache, it is the instance's, not a store object's: each request builds its own store (getStore).
+let controlRead: { asked: number; value: Promise<Control> } | null = null;
 
 /**
  * The active run and stage, cached for two seconds per instance so a
@@ -387,7 +388,7 @@ export async function readControl(store: AspenStore | null, fresh = false): Prom
   if (!fresh && controlCache && asked - controlCache.at < CONTROL_TTL_MS) {
     return controlCache.value;
   }
-  if (!fresh && controlRead?.store === store && asked - controlRead.asked < CONTROL_TTL_MS) {
+  if (!fresh && controlRead && asked - controlRead.asked < CONTROL_TTL_MS) {
     return controlRead.value;
   }
   const value = (async () => {
@@ -398,7 +399,7 @@ export async function readControl(store: AspenStore | null, fresh = false): Prom
       return { ...DEFAULT_CONTROL };
     }
   })();
-  const read = { store, asked, value };
+  const read = { asked, value };
   controlRead = read;
   void value.finally(() => {
     if (controlRead === read) controlRead = null;
