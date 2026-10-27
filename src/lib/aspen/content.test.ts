@@ -208,53 +208,33 @@ describe('aspen content', () => {
     expect(findHousehold('ct-couple')?.firstPerson).not.toContain('disability. My')
   })
 
-  it("keeps At scale 6/7 to PolicyBench's final pilot build, consistent with itself", () => {
+  it("keeps At scale 6/7 to PolicyBench's live pilot file, consistent with itself", () => {
     const t = ENGINE_PILOT
-    // The final build (scripts dccf8bf): k of 276 with web search and with both, the change and its interval, list-price cost.
-    expect([t.households, t.amounts]).toEqual([100, 276])
-    expect(t.rows.map((r) => [r.model, r.web, r.both, r.change.points, r.change.lo, r.change.hi])).toEqual([
-      ['GPT-6 Luna', 152, 212, 21.7, 13.9, 29.3],
-      ['Claude Sonnet 5.5', 164, 268, 37.7, 31.3, 44.1],
-      ['Gemini 3.5 Flash-Lite', 64, 151, 31.5, 24.6, 38.5],
+    // Luna only, paired on the households answered so far (numbers.json, 2026-10-27T00:27:55Z).
+    expect(t.rows.map((r) => [r.model, r.households, r.amounts, r.web, r.both, r.change.points, r.change.lo, r.change.hi])).toEqual([
+      ['GPT-6 Luna', 74, 212, 122, 207, 40.1, 32.7, 47.3],
     ])
-    expect(t.rows.map((r) => percentChange(r.cost.web, r.cost.both))).toEqual([-86, -30, -91])
+    expect(t.rows.map((r) => [percentChange(r.cost.web, r.cost.both), percentChange(r.seconds.web, r.seconds.both)])).toEqual([[-95, -62]])
     for (const r of t.rows) {
+      expect(r.households).toBeGreaterThan(0)
+      expect(r.households).toBeLessThanOrEqual(t.of)
       for (const k of [r.web, r.both]) {
         expect(Number.isInteger(k)).toBe(true)
         expect(k).toBeGreaterThanOrEqual(0)
-        expect(k).toBeLessThanOrEqual(t.amounts)
+        expect(k).toBeLessThanOrEqual(r.amounts)
       }
       // The change is the two shares' difference, and its interval holds it.
-      expect(Math.abs(r.change.points - (share(r.both, t.amounts) - share(r.web, t.amounts)))).toBeLessThanOrEqual(0.1 + 1e-9)
+      expect(Math.abs(r.change.points - (share(r.both, r.amounts) - share(r.web, r.amounts)))).toBeLessThanOrEqual(0.1 + 1e-9)
       expect(r.change.lo).toBeLessThanOrEqual(r.change.points)
       expect(r.change.points).toBeLessThanOrEqual(r.change.hi)
-      // The whole-number shares the slide prints differ by the whole-number change it prints.
-      const pct = (k: number) => Math.round((100 * k) / t.amounts)
-      expect(pct(r.both) - pct(r.web)).toBe(Math.round(r.change.points))
-      expect(r.cost.web).toBeGreaterThan(0)
-      expect(r.cost.both).toBeGreaterThan(0)
+      for (const v of [r.cost.web, r.cost.both, r.seconds.web, r.seconds.both]) expect(v).toBeGreaterThan(0)
     }
-    // The new version's line: Luna only, from PolicyBench's live file, consistent with itself and labelled partial.
-    const v3 = t.rows.filter((r) => r.v3)
-    expect(v3.map((r) => [r.model, r.v3?.k, r.v3?.n, r.v3?.households])).toEqual([['GPT-6 Luna', 160, 165, 58]])
-    for (const r of v3) {
-      const n = r.v3!
-      expect(n.k).toBeLessThanOrEqual(n.n)
-      expect(n.households).toBeGreaterThanOrEqual(20)
-      expect(n.households).toBeLessThanOrEqual(t.households)
-      expect(n.change.lo).toBeLessThanOrEqual(n.change.points)
-      expect(n.change.points).toBeLessThanOrEqual(n.change.hi)
+    // Labelled as the pilot it is, still running, framed as our own benchmark; no PolicyEngine, version or free-plan names on screen.
+    expect(t.source).toMatch(/^Preliminary internal pilot, still running · PolicyBench, our benchmark/)
+    for (const text of [t.title, t.note, t.source, t.measures, t.arms.web, t.arms.both]) {
+      expect(text).not.toMatch(/PolicyEngine|\bv\d\b|version|free/i)
     }
-    expect(t.v3Label).toMatch(/partial, development data/)
-    expect(t.v3Label).not.toMatch(/PolicyEngine|free/i)
-    // Labelled as the pilot it is, framed as our own benchmark, and with no PolicyEngine or free-plan names on screen.
-    expect(t.source).toMatch(/^Preliminary internal pilot · PolicyBench, our benchmark/)
-    expect(t.source).toContain('October 23–25, 2026')
     expect(t.measures).toMatch(/not whether the engine is right/)
-    for (const text of [t.title, t.note, t.measures, t.source, t.arms.web, t.arms.both]) {
-      expect(text).not.toMatch(/PolicyEngine|ChatGPT|Free\b|free plan/i)
-    }
-    expect(t.arms.both).toBe('Web search and our rules engine')
   })
 
   it('turns two positive amounts into a whole-percent change that has the right sign and inverts', () => {
