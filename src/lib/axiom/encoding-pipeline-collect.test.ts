@@ -164,8 +164,8 @@ describe("parsing", () => {
   it("truncates long errors and drops blank ones", () => {
     expect(truncateError("  ")).toBeNull();
     expect(truncateError(null)).toBeNull();
-    const long = truncateError("x".repeat(600))!;
-    expect(long).toHaveLength(500);
+    const long = truncateError("x".repeat(1200))!;
+    expect(long).toHaveLength(1000);
     expect(long.endsWith("…")).toBe(true);
   });
 
