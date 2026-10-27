@@ -210,11 +210,15 @@ describe('aspen content', () => {
 
   it("keeps At scale 6/7 to PolicyBench's live pilot file, consistent with itself", () => {
     const t = ENGINE_PILOT
-    // Luna only, paired on the households answered so far (numbers.json, 2026-10-27T00:31:35Z).
+    // Final on all 100 households for both (numbers.json, 2026-10-27T00:40:50Z); the web arms are the pilot's 152 and 64 of 276.
     expect(t.rows.map((r) => [r.model, r.households, r.amounts, r.web, r.both, r.change.points, r.change.lo, r.change.hi])).toEqual([
-      ['GPT-6 Luna', 86, 241, 134, 234, 41.49, 34.6, 48.0],
+      ['GPT-6 Luna', 100, 276, 152, 269, 42.39, 36.1, 48.8],
+      ['Gemini 3.5 Flash-Lite', 100, 276, 64, 243, 64.86, 58.4, 71.2],
     ])
-    expect(t.rows.map((r) => [percentChange(r.cost.web, r.cost.both), percentChange(r.seconds.web, r.seconds.both)])).toEqual([[-95, -62]])
+    expect(t.rows.map((r) => [percentChange(r.cost.web, r.cost.both), percentChange(r.seconds.web, r.seconds.both)])).toEqual([
+      [-94, -62],
+      [-95, -6],
+    ])
     for (const r of t.rows) {
       expect(r.households).toBeGreaterThan(0)
       expect(r.households).toBeLessThanOrEqual(t.of)
@@ -233,7 +237,7 @@ describe('aspen content', () => {
       expect(pct(r.both) - pct(r.web)).toBe(Math.round(r.change.points))
     }
     // Labelled as the pilot it is, still running, framed as our own benchmark; no PolicyEngine, version or free-plan names on screen.
-    expect(t.source).toMatch(/^Preliminary internal pilot, still running · PolicyBench, our benchmark/)
+    expect(t.source).toMatch(/^Preliminary internal pilot · PolicyBench, our benchmark · 100 US households/)
     for (const text of [t.title, t.note, t.source, t.measures, t.arms.web, t.arms.both]) {
       expect(text).not.toMatch(/PolicyEngine|\bv\d\b|version|free/i)
     }

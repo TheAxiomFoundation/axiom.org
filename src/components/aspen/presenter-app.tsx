@@ -1243,8 +1243,8 @@ const signed = (n: number) => `${n < 0 ? "\u2212" : "+"}${Math.abs(Math.round(n)
 const perHousehold = (d: number) => `$${d.toFixed(3)}`;
 
 /**
- * At scale, slide 6: PolicyBench's preliminary internal pilot, still running. GPT-6 Luna with web search
- * alone and with web search and our rules engine, on the households answered so far: the change in
+ * At scale, slide 6: PolicyBench's preliminary internal pilot. GPT-6 Luna and Gemini 3.5 Flash-Lite
+ * with web search alone and with web search and our rules engine, on 100 US households: the change in
  * accuracy, cost and time together (Max, Oct 26).
  */
 function ToolSlide() {
@@ -1295,7 +1295,7 @@ function ToolSlide() {
               <th scope="row" className={`py-[22px] pr-[24px] text-left align-top font-normal ${BOX_TEXT}`}>
                 {r.model}
                 <span className="mt-[8px] block font-body text-[18px] text-[var(--color-ink-muted)]">
-                  {r.households} of {t.of} households so far
+                  {r.households === t.of ? `${t.of} US households` : `${r.households} of ${t.of} households so far`}
                 </span>
               </th>
               <td className="py-[22px] pr-[32px] align-top">

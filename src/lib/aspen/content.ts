@@ -880,18 +880,22 @@ export const FRONT_DOOR = {
 //
 // Since Oct 26 (Max: "accuracy/cost/latency impacts all together on the
 // slide, even if just luna ... just web vs web+v3tool ... dont mention it's
-// v3, just say our rules engine like before"), the slide shows GPT-6 Luna
-// only: web search alone against web search and our rules engine, where the
-// rules engine is PolicyBench's calculator v3 (the web+pe3 arm, harness
-// 294e98fe), still running. Both arms are paired on the households v3 has
-// answered so far. Hand-copied from
+// v3, just say our rules engine like before"; "if flash-lite is sketchy we
+// can just drop it"), the slide shows web search alone against web search
+// and our rules engine, where the rules engine is PolicyBench's calculator v3
+// (the web+pe3 arm, harness 294e98fe). Hand-copied from
 //   ~/reviews/policybench-v2-microcosm-2026-10/v3-aspen-2026-10-26/live/numbers.json
-// at updatedAt 2026-10-27T00:31:35Z (loop.log has the same line): numbers.gpt-6-luna.{households,
-// nonzero.web, nonzero.v3, v3VsWeb (a paired household bootstrap),
-// cost.{web,v3} (the paper's costPerHousehold), latencySeconds.{web,v3}
-// (the paper's medianWallSeconds)}. The web runs are the paper's (Oct
-// 23–25, UTC); the rules-engine runs are Oct 26–27. Flash-Lite and Sonnet are
-// off the slide: Sonnet hasn't run and Flash-Lite has 20 households.
+// at updatedAt 2026-10-27T00:40:50Z, final for both models on all 100 of the
+// pilot's households: numbers.<model>.{households, nonzero.web, nonzero.v3,
+// v3VsWeb (a paired household bootstrap), cost.{web,v3} (the paper's
+// costPerHousehold), latencySeconds.{web,v3} (the paper's
+// medianWallSeconds)}. The web runs are the paper's (Oct 23–25, UTC); the
+// rules-engine runs are Oct 26–27. Each web arm reproduces the pilot's
+// (cost.paper100, latencySeconds.paper100). Luna sent 8 web searches in 100
+// households with the rules engine and Flash-Lite none; their list price is
+// in the cost. Flash-Lite, off the slide while its first households ran
+// easier than the full 100, is back now it has all 100. Sonnet started its
+// rules-engine run at 00:40Z and stays off.
 // ---------------------------------------------------------------------------
 
 export interface EnginePilotRow {
@@ -935,24 +939,35 @@ export const ENGINE_PILOT: EnginePilot = {
   title: "The same model, given our rules engine as a tool",
   of: 100,
   arms: { web: "Web search", both: "Web search and our rules engine" },
-  note: "Nonzero dollar amounts within $1 of the reference, on the households answered so far",
+  note: "Nonzero dollar amounts within $1 of the reference: 276 across 100 US households",
   rows: [
     {
       model: "GPT-6 Luna",
-      households: 86,
-      amounts: 241,
-      web: 134,
-      both: 234,
-      // The file's 41.5 is rounded; 100 × (234 − 134) / 241 = 41.49, so the slide's +41 matches 97% − 56%.
-      change: { points: 41.49, lo: 34.6, hi: 48.0 },
-      cost: { web: 0.056, both: 0.0028 },
-      seconds: { web: 78.641, both: 29.58 },
+      households: 100,
+      amounts: 276,
+      web: 152,
+      both: 269,
+      // The exact difference, 100 × (269 − 152) / 276 = 42.39 (the file rounds it to 42.4).
+      change: { points: 42.39, lo: 36.1, hi: 48.8 },
+      cost: { web: 0.0558, both: 0.0033 },
+      seconds: { web: 79.497, both: 30.11 },
+    },
+    {
+      model: "Gemini 3.5 Flash-Lite",
+      households: 100,
+      amounts: 276,
+      web: 64,
+      both: 243,
+      // The exact difference, 100 × (243 − 64) / 276 = 64.86 (the file rounds it to 64.9).
+      change: { points: 64.86, lo: 58.4, hi: 71.2 },
+      cost: { web: 0.3431, both: 0.0168 },
+      seconds: { web: 14.163, both: 13.276 },
     },
   ],
   measures:
-    "Our rules engine also computes PolicyBench's reference answers, so this shows whether a model can describe a household to it, not whether the engine is right. The model ran through its API with our prompt, not in a chat app.",
+    "Our rules engine also computes PolicyBench's reference answers, so this shows whether a model can describe a household to it, not whether the engine is right. Each model ran through its API with our prompt, not in a chat app.",
   source:
-    "Preliminary internal pilot, still running · PolicyBench, our benchmark · web search runs October 23–25, rules engine October 26–27, 2026 · intervals are 95% · cost per household at API list prices, searches included",
+    "Preliminary internal pilot · PolicyBench, our benchmark · 100 US households · web search runs October 23–25, rules engine October 26–27, 2026 · intervals are 95% · cost per household at API list prices, searches included",
 };
 
 /**
