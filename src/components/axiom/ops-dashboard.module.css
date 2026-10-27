@@ -537,6 +537,7 @@
   font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1.2;
+  text-align: center;
 }
 
 .ledgerTable tbody:first-of-type .jurisdictionBand {
