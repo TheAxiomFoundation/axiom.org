@@ -337,6 +337,8 @@ describe("PresenterApp navigation", () => {
     // One cell each: the model, both shares, the change with its interval, and the cost change with both costs.
     expect(rows.map((r) => [...r.querySelectorAll("th, td")].map((c) => c.textContent))).toEqual([
       ["GPT-6 Luna", "Web search: 55%Web search and our rules engine: 77%", "+22 points95%: +14 to +29", "\u221286%$0.056 to $0.008"],
+      // The new version, still running, on Luna's households so far (Max, Oct 26).
+      ["New version (partial, development data, October 26–27): 97% on its first 58 households, +38 points over web search alone (95%: +30 to +46)"],
       ["Claude Sonnet 5.5", "Web search: 59%Web search and our rules engine: 97%", "+38 points95%: +31 to +44", "\u221230%$0.112 to $0.078"],
       ["Gemini 3.5 Flash-Lite", "Web search: 23%Web search and our rules engine: 55%", "+32 points95%: +25 to +39", "\u221291%$0.343 to $0.031"],
     ]);

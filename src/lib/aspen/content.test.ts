@@ -234,6 +234,19 @@ describe('aspen content', () => {
       expect(r.cost.web).toBeGreaterThan(0)
       expect(r.cost.both).toBeGreaterThan(0)
     }
+    // The new version's line: Luna only, from PolicyBench's live file, consistent with itself and labelled partial.
+    const v3 = t.rows.filter((r) => r.v3)
+    expect(v3.map((r) => [r.model, r.v3?.k, r.v3?.n, r.v3?.households])).toEqual([['GPT-6 Luna', 160, 165, 58]])
+    for (const r of v3) {
+      const n = r.v3!
+      expect(n.k).toBeLessThanOrEqual(n.n)
+      expect(n.households).toBeGreaterThanOrEqual(20)
+      expect(n.households).toBeLessThanOrEqual(t.households)
+      expect(n.change.lo).toBeLessThanOrEqual(n.change.points)
+      expect(n.change.points).toBeLessThanOrEqual(n.change.hi)
+    }
+    expect(t.v3Label).toMatch(/partial, development data/)
+    expect(t.v3Label).not.toMatch(/PolicyEngine|free/i)
     // Labelled as the pilot it is, framed as our own benchmark, and with no PolicyEngine or free-plan names on screen.
     expect(t.source).toMatch(/^Preliminary internal pilot · PolicyBench, our benchmark/)
     expect(t.source).toContain('October 23–25, 2026')

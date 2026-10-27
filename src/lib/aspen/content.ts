@@ -877,6 +877,18 @@ export const FRONT_DOOR = {
 // some of them, none adjudicated yet; that is why it is a pilot. Never call
 // it a published PolicyBench result. The screens say "our rules engine" and
 // leave PolicyEngine unnamed (Max, Oct 25).
+//
+// The new version's line (Max, Oct 26: "i want the new ones, even if just
+// luna"): calculator v3, web search named in its notice (PolicyBench's
+// web+pe3 arm, harness 294e98fe), still running on Oct 26–27. Hand-copied
+// from ~/reviews/policybench-v2-microcosm-2026-10/v3-aspen-2026-10-26/live/
+// numbers.json at updatedAt 2026-10-27T00:24:14Z: numbers.<model>.nonzero.v3
+// {k, n} and v3VsWeb {points, lo, hi}, a paired household bootstrap on the
+// households answered so far. Luna only: its paired web and v1 on those
+// households (58.8%, 79.4%) sit within 4 points of the 100-household 55% and
+// 77%. Flash-Lite's first 20 ran easier (v1 63.5% against 54.7% on all 100),
+// so beside its 100-household bars a v3 bar would overstate the gain; Max
+// agreed to leave it off (Oct 26).
 // ---------------------------------------------------------------------------
 
 export interface EnginePilotRow {
@@ -888,6 +900,11 @@ export interface EnginePilotRow {
   change: { points: number; lo: number; hi: number };
   /** Mean list-price cost per household, in dollars. */
   cost: { web: number; both: number };
+  /**
+   * The new version of the tool, still running: nonzero amounts within $1 (k of n) on the households
+   * it has answered so far, and its change from web search alone on those same households.
+   */
+  v3?: { k: number; n: number; households: number; change: { points: number; lo: number; hi: number } };
 }
 
 export interface EnginePilot {
@@ -900,6 +917,8 @@ export interface EnginePilot {
   rows: readonly EnginePilotRow[];
   measures: string;
   source: string;
+  /** What the new version's line says it is. */
+  v3Label: string;
 }
 
 /** A share of `of`, as a percentage to one decimal. */
@@ -919,7 +938,14 @@ export const ENGINE_PILOT: EnginePilot = {
   arms: { web: "Web search", both: "Web search and our rules engine" },
   note: "Nonzero dollar amounts within $1 of the reference: 276 per model across 100 US households",
   rows: [
-    { model: "GPT-6 Luna", web: 152, both: 212, change: { points: 21.7, lo: 13.9, hi: 29.3 }, cost: { web: 0.0558, both: 0.0078 } },
+    {
+      model: "GPT-6 Luna",
+      web: 152,
+      both: 212,
+      change: { points: 21.7, lo: 13.9, hi: 29.3 },
+      cost: { web: 0.0558, both: 0.0078 },
+      v3: { k: 160, n: 165, households: 58, change: { points: 38.2, lo: 29.8, hi: 46.2 } },
+    },
     { model: "Claude Sonnet 5.5", web: 164, both: 268, change: { points: 37.7, lo: 31.3, hi: 44.1 }, cost: { web: 0.1122, both: 0.0781 } },
     { model: "Gemini 3.5 Flash-Lite", web: 64, both: 151, change: { points: 31.5, lo: 24.6, hi: 38.5 }, cost: { web: 0.3431, both: 0.0313 } },
   ],
@@ -927,6 +953,7 @@ export const ENGINE_PILOT: EnginePilot = {
     "Our rules engine also computes PolicyBench's reference answers, so this shows whether a model can describe a household to it, not whether the engine is right. The models ran through their APIs with our prompt, not in chat apps.",
   source:
     "Preliminary internal pilot · PolicyBench, our benchmark · runs October 23–25, 2026 · 100 US households · intervals are 95% · cost per household at API list prices, searches included",
+  v3Label: "New version (partial, development data, October 26–27)",
 };
 
 /**

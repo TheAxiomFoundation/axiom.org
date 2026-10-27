@@ -1233,7 +1233,7 @@ function FrontDoorSlide() {
 }
 
 /** The pilot's bars: web search alone recedes in the "Where models still break" gray; our rules engine carries the accent. */
-const PILOT_COLORS = { web: "#bdb6ae", both: "var(--color-accent)" } as const;
+const PILOT_COLORS = { web: "#bdb6ae", both: "var(--color-accent)", v3: "color-mix(in srgb, var(--color-accent) 60%, var(--color-ink))" } as const;
 
 /** A whole percent of the pilot's amounts, as the slide shows it. */
 const pilotPct = (k: number) => Math.round((100 * k) / ENGINE_PILOT.amounts);
@@ -1284,12 +1284,12 @@ function ToolSlide() {
           </tr>
         </thead>
         <tbody>
-          {t.rows.map((r) => (
+          {t.rows.flatMap((r) => [
             <tr key={r.model} className="border-t border-[var(--color-rule)]">
-              <th scope="row" className={`py-[12px] pr-[24px] text-left font-normal ${BOX_TEXT}`}>
+              <th scope="row" className={`py-[8px] pr-[24px] text-left font-normal ${BOX_TEXT}`}>
                 {r.model}
               </th>
-              <td className="py-[12px] pr-[32px]">
+              <td className="py-[8px] pr-[32px]">
                 <span className="flex flex-col gap-[6px]">
                   {(["web", "both"] as const).map((arm) => (
                     <span key={arm} className="flex items-center gap-[14px]">
@@ -1304,7 +1304,7 @@ function ToolSlide() {
                   ))}
                 </span>
               </td>
-              <td className="py-[12px]">
+              <td className="py-[8px]">
                 <span className="block font-display text-[48px] font-light leading-none tabular-nums text-[var(--color-accent)]">
                   {signed(r.change.points)} <span className="font-body text-[22px] text-[var(--color-ink-secondary)]">points</span>
                 </span>
@@ -1312,7 +1312,7 @@ function ToolSlide() {
                   95%: {signed(r.change.lo)} to {signed(r.change.hi)}
                 </span>
               </td>
-              <td className="py-[12px]">
+              <td className="py-[8px]">
                 <span className="block font-display text-[48px] font-light leading-none tabular-nums text-[var(--color-ink)]">
                   {signed(percentChange(r.cost.web, r.cost.both))}%
                 </span>
@@ -1320,8 +1320,25 @@ function ToolSlide() {
                   {perHousehold(r.cost.web)} to {perHousehold(r.cost.both)}
                 </span>
               </td>
-            </tr>
-          ))}
+            </tr>,
+            r.v3 && (
+              <tr key={`${r.model}-v3`}>
+                <td colSpan={4} className="pb-[4px]">
+                  <span className="block whitespace-nowrap font-body text-[20px] leading-tight text-[var(--color-ink)]">
+                    {t.v3Label}:{" "}
+                    <strong className="font-display text-[24px] font-normal leading-none tabular-nums text-[var(--color-accent)]">
+                      {Math.round((100 * r.v3.k) / r.v3.n)}%
+                    </strong>{" "}
+                    on its first {r.v3.households} households,{" "}
+                    <strong className="font-normal text-[var(--color-accent)]">{signed(r.v3.change.points)} points</strong> over web search alone{" "}
+                    <span className="text-[17px] text-[var(--color-ink-muted)]">
+                      (95%: {signed(r.v3.change.lo)} to {signed(r.v3.change.hi)})
+                    </span>
+                  </span>
+                </td>
+              </tr>
+            ),
+          ])}
         </tbody>
       </table>
       <Panel className="mt-auto flex flex-col gap-[8px] py-[14px]">
