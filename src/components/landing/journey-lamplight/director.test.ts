@@ -10,6 +10,7 @@ import { createDirector, type Director } from "./director";
 const kit = vi.hoisted(() => {
   const kit = {
     fail: new Set<number>(),
+    breaks: new Set<number>(), // a scene whose code throws as it's made, so its build rejects at once
     hold: new Set<number>(),
     held: new Map<number, { resolve: () => void; reject: (e: Error) => void }>(),
     made: [] as number[],
@@ -17,6 +18,7 @@ const kit = vi.hoisted(() => {
     latency: new Map<number, { ready: number; compile: number }>(), // ms a scene's assets and compiles take
     ticks: new Map<number, number>(), // microtasks a scene's assets come late by
     noAssets: new Set<number>(), // a scene with no assets to wait for: its beat has no ready, as most real ones don't
+    links: new Set<number>(), // a scene with one MOCK link, square in front of its camera
     gates: new Map<string, Promise<void>>(), // a compile, by its logged name, waits on this
     throws: new Set<string>(), // a compile, by its logged name, throws as it's called
     parallel: false, // three can ask the driver whether a compile is done (KHR_parallel_shader_compile)
@@ -113,6 +115,7 @@ vi.mock("../style-frames/kit", async () => {
     createBeat: (build: { index: number }) => {
       const i = build.index;
       kit.made.push(i);
+      if (kit.breaks.has(i)) throw new Error(`MOCK: scene ${i} broke as it was made`);
       const camera = new THREE.PerspectiveCamera();
       Object.assign(camera.userData, { basePos: new THREE.Vector3(), baseQuat: new THREE.Quaternion(), baseFocus: 8 });
       let late = wait(kit.latency.get(i)?.ready ?? 0);
@@ -133,7 +136,11 @@ vi.mock("../style-frames/kit", async () => {
         map.userData.scene = i;
         scene.add(new THREE.Mesh(new THREE.PlaneGeometry(), new THREE.MeshBasicMaterial({ map })));
       }
-      return { ready, camera, scene, fx, labels: [], links: [], look: {} };
+      // the link's hit box faces the camera from 5 units ahead, so a pointer at the canvas's middle finds it
+      const links = kit.links.has(i)
+        ? [{ hit: new THREE.Mesh(new THREE.PlaneGeometry(10, 10).translate(0, 0, -5)), href: "#mock", text: "MOCK link", external: false, glow: 0, hover: false, focus: false }]
+        : [];
+      return { ready, camera, scene, fx, labels: [], links, look: {} };
     },
     fitCamera() {},
     placeLabels() {},
@@ -159,6 +166,7 @@ function takeTime() {
 const unhandled = vi.fn();
 beforeEach(() => {
   kit.fail.clear();
+  kit.breaks.clear();
   kit.hold.clear();
   kit.held.clear();
   kit.made.length = 0;
@@ -166,6 +174,7 @@ beforeEach(() => {
   kit.latency.clear();
   kit.ticks.clear();
   kit.noAssets.clear();
+  kit.links.clear();
   kit.gates.clear();
   kit.throws.clear();
   kit.parallel = false;
@@ -284,18 +293,42 @@ function watch(canvas: HTMLCanvasElement) {
 /**
  * Logs each step a caller can see, with its microtask count from the start of
  * the task it came in: each renderer and pipeline call, each request for a
- * frame or an idle moment, and what the test stamps. The clock stands still.
+ * frame or an idle moment, and what the test stamps. The clock stands still
+ * unless the test moves it (`clock.now`).
+ *
+ * With `timers`, the director's timers wait for the test, which runs each as a
+ * task of its own (`fire`): an upload's yield (0 ms), an idle moment where there
+ * is no requestIdleCallback (60 ms), and the MOCK compile's polls (10 ms, not
+ * logged: three's, not the director's).
  */
-function stepLog() {
+function stepLog({ timers = false, idleCallback = true } = {}) {
   takeTime();
-  vi.spyOn(performance, "now").mockReturnValue(0);
+  const clock = { now: 0 };
+  vi.spyOn(performance, "now").mockImplementation(() => clock.now);
   let tick = 0;
   const log: string[] = [];
   const stamp = (what: string) => void log.push(`${tick} ${what}`);
   kit.during = stamp;
   let id = 0;
-  vi.stubGlobal("requestIdleCallback", (cb: () => void) => (stamp("requestIdleCallback"), idles.push(cb)));
+  vi.stubGlobal("requestIdleCallback", idleCallback ? (cb: () => void) => (stamp("requestIdleCallback"), idles.push(cb)) : undefined);
   vi.stubGlobal("requestAnimationFrame", (cb: (t: number) => void) => (stamp("requestAnimationFrame"), frames.set(++id, cb), id));
+  vi.stubGlobal("cancelAnimationFrame", (n: number) => (stamp("cancelAnimationFrame"), frames.delete(n)));
+  const held: Array<{ ms: number; fn: () => void }> = [];
+  if (timers) {
+    const real = setTimeout;
+    vi.stubGlobal("setTimeout", (fn: (...a: unknown[]) => void, ms = 0, ...a: unknown[]) => {
+      if (ms !== 0 && ms !== 10 && ms !== 60) return real(fn, ms, ...a);
+      if (ms !== 10) stamp(`setTimeout ${ms}`);
+      held.push({ ms, fn: () => fn(...a) });
+      return 0;
+    });
+  }
+  /** Runs the oldest timer held for `ms`. */
+  const fire = (ms: number) => {
+    const i = held.findIndex((t) => t.ms === ms);
+    expect(i, `a ${ms} ms timer is waiting`).toBeGreaterThanOrEqual(0);
+    held.splice(i, 1)[0].fn();
+  };
   /** Runs fn as a task of its own: a ticker counts its microtasks from 0. Then lets it settle. */
   const task = async (what: string, fn: () => unknown) => {
     log.push(`-- ${what}`);
@@ -309,7 +342,7 @@ function stepLog() {
     fn();
     await settle();
   };
-  return { log, stamp, task };
+  return { log, stamp, task, clock, fire };
 }
 
 describe("the journey's director", () => {
@@ -516,7 +549,7 @@ describe("the journey's director", () => {
     };
     let d!: Director;
     await task("start", () =>
-      make({ onError: (e) => stamp(`onError ${(e as Error).message}`) }).then((x) => {
+      make({ onError: (e) => stamp(`onError ${(e as Error).message}`), onFirstFrame: () => stamp("onFirstFrame") }).then((x) => {
         d = x;
         stamp("started");
       }),
@@ -548,6 +581,7 @@ describe("the journey's director", () => {
       "0 setRenderTarget",
       "0 render",
       "0 requestIdleCallback",
+      "0 onFirstFrame",
       "-- idle",
       "3 requestIdleCallback",
       "-- idle",
@@ -593,6 +627,204 @@ describe("the journey's director", () => {
       ...Array(2).fill("0 composer.dispose"),
       "0 dispose",
     ]);
+  });
+
+  it("takes every step of the reader's moves in the microtask it did before, where there's no requestIdleCallback", async () => {
+    // as above, in a browser without requestIdleCallback (Safari's): an idle moment
+    // is a 60 ms timer. Scene 1's textures upload in slices; scene 2 fails, and
+    // scene 3 breaks as it's made, with nothing listening for either. The reader
+    // points at a link, which glints; a scene asks to be drawn again; the story
+    // cuts away from the link, glides on a slow GPU, and is profiled, resized and
+    // let go with a frame queued
+    const { log, stamp, task, clock, fire } = stepLog({ timers: true, idleCallback: false });
+    kit.parallel = true;
+    kit.links.add(0);
+    kit.textures.set(1, 2);
+    kit.fail.add(2);
+    kit.breaks.add(3);
+    for (let i = 4; i < SPANS.length; i++) kit.noAssets.add(i);
+    // each upload takes 10 ms, past the 8 ms slice, so the build yields after it
+    kit.during = (c) => {
+      if (c.startsWith("initTexture")) clock.now += 10;
+      stamp(c);
+    };
+    const { canvas, overlays } = stage();
+    const box = canvas.parentElement!;
+    const append = box.appendChild.bind(box);
+    vi.spyOn(box, "appendChild").mockImplementation(<T extends Node>(n: T) => (stamp(`appendChild ${(n as unknown as Element).className}`), append(n)));
+    const on = canvas.addEventListener.bind(canvas);
+    const off = canvas.removeEventListener.bind(canvas);
+    vi.spyOn(canvas, "addEventListener").mockImplementation((type: string, fn: EventListenerOrEventListenerObject, o?: boolean | AddEventListenerOptions) => (stamp(`addEventListener ${type}`), on(type, fn, o)));
+    vi.spyOn(canvas, "removeEventListener").mockImplementation((type: string, fn: EventListenerOrEventListenerObject, o?: boolean | EventListenerOptions) => (stamp(`removeEventListener ${type}`), off(type, fn, o)));
+    const remove = Element.prototype.remove;
+    vi.spyOn(Element.prototype, "remove").mockImplementation(function (this: Element) {
+      stamp(`remove ${this.className}`);
+      remove.call(this);
+    });
+    vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({ left: 0, top: 0, right: 800, bottom: 450, width: 800, height: 450, x: 0, y: 0, toJSON: () => ({}) });
+    vi.spyOn(document, "hidden", "get").mockReturnValue(false);
+    let glint!: () => void;
+    vi.spyOn(window, "setInterval").mockImplementation(((fn: () => void) => ((glint = fn), 7)) as unknown as typeof window.setInterval);
+    vi.spyOn(window, "clearInterval").mockImplementation((n) => stamp(`clearInterval ${n}`));
+    vi.spyOn(console, "error").mockImplementation((m: unknown) => stamp(`console.error ${m}`));
+    const frame = (t: number) => () => {
+      const due = [...frames.values()];
+      frames.clear();
+      due.forEach((f) => f(t));
+    };
+    const point = () => canvas.dispatchEvent(new MouseEvent("pointermove", { clientX: 400, clientY: 225 }));
+    let d!: Director;
+    await task("start", () =>
+      make({ canvas, overlays, onFirstFrame: () => stamp("onFirstFrame") }).then((x) => {
+        d = x;
+        stamp("started");
+      }),
+    );
+    await task("frame", frame(1000)); // draws scene 0 and its link, and fetches scene 1 ahead
+    await task("idle", () => fire(60)); // the background builds move on from scene 0
+    await task("idle", () => fire(60)); // builds scene 1, fetched ahead: its first texture, then a yield
+    await task("upload yield", () => fire(0)); // its second texture, and a yield
+    await task("upload yield", () => fire(0)); // its compiles and warm-up
+    await task("idle", () => fire(60)); // the background builds move on from scene 1
+    await task("idle", () => fire(60)); // scene 2, which fails
+    await task("idle", () => fire(60)); // scene 3, which breaks
+    clock.now = 5000;
+    await task("pointer", point); // over the link: it lights up
+    await task("frame", frame(5100)); // and asks for another frame while it does
+    await task("frame", frame(5600));
+    await task("glint", () => glint());
+    await task("frame", frame(7000)); // past the glint
+    const beats = (window as unknown as { __jlBeats: Array<{ invalidate(): void } | null> }).__jlBeats;
+    await task("invalidate", () => beats[0]!.invalidate()); // scene 0 asks to be drawn again
+    await task("frame", frame(7100));
+    await task("jump", () => d.jump(SCENE_START[1] - OVERLAP / 2)); // into the cut to scene 1: the link goes dark
+    await task("frame", frame(7200));
+    await task("pointer", point); // nothing to point at in a cut
+    await task("frame", frame(7300));
+    await task("leave", () => canvas.dispatchEvent(new MouseEvent("pointerleave")));
+    await task("frame", frame(7400));
+    // a small step on a GPU that can't keep up: it glides at the lower resolution,
+    // and comes back to full resolution a moment after it rests
+    vi.stubGlobal("__jlSlow", true);
+    await task("setProgress", () => d.setProgress(SCENE_START[1] - OVERLAP / 2 + 0.001));
+    for (const t of [7500, 7600, 7700, 7800, 7900, 8200]) await task("frame", frame(t));
+    await task("profile", () => d.profile([SCENE_START[1]]));
+    await task("resize", () => d.resize(640, 360));
+    await task("dispose", () => d.dispose()); // the resize's frame still queued
+    // recorded from the director before compiles were counted (0944c0aa)
+    const drawn = (...scenes: number[]) => [...scenes.map((s) => `0 pipeline.render ${s} scene`), "0 setRenderTarget", "0 render"];
+    const STEPS = [
+      "-- start",
+      "1 setPixelRatio 1",
+      "1 setSize 800x450",
+      ...Array(2).fill("1 pipeline 800x450"),
+      "1 appendChild jl-tip",
+      "1 addEventListener pointermove",
+      "1 addEventListener pointerleave",
+      "1 addEventListener click",
+      "3 compileAsync 0 scene",
+      "4 compileAsync 0 fx",
+      ...Array(4).fill("5 pipeline.render 0 scene"),
+      "7 requestAnimationFrame",
+      "7 setTimeout 60",
+      "8 started",
+      "-- frame",
+      ...drawn(0),
+      "0 setTimeout 60",
+      "0 onFirstFrame",
+      "-- idle",
+      "3 setTimeout 60",
+      "-- idle",
+      "2 initTexture 1",
+      "2 setTimeout 0",
+      "-- upload yield",
+      "1 initTexture 1",
+      "1 setTimeout 0",
+      "-- upload yield",
+      "1 compileAsync 1 scene",
+      "2 compileAsync 1 fx",
+      ...Array(4).fill("3 pipeline.render 1 scene"),
+      "-- idle",
+      "3 setTimeout 60",
+      "-- idle",
+      "4 console.error journey: a scene could not be built",
+      "5 setTimeout 60",
+      "-- idle",
+      "2 console.error journey: a scene could not be built",
+      "3 setTimeout 60",
+      "-- pointer",
+      "0 requestAnimationFrame",
+      "-- frame",
+      ...drawn(0),
+      "0 requestAnimationFrame",
+      "-- frame",
+      ...drawn(0),
+      "-- glint",
+      "0 requestAnimationFrame",
+      "-- frame",
+      ...drawn(0),
+      "-- invalidate",
+      "0 requestAnimationFrame",
+      "-- frame",
+      ...drawn(0),
+      "-- jump",
+      "0 requestAnimationFrame",
+      ...drawn(1, 0),
+      "-- frame",
+      ...drawn(1, 0),
+      "-- pointer",
+      "0 requestAnimationFrame",
+      "-- frame",
+      ...drawn(1, 0),
+      "-- leave",
+      "0 requestAnimationFrame",
+      "-- frame",
+      ...drawn(1, 0),
+      "-- setProgress",
+      "0 requestAnimationFrame",
+      "-- frame",
+      "0 setPixelRatio 1",
+      "0 setSize 800x450",
+      ...Array(2).fill("0 pipeline.setSize"),
+      ...drawn(1, 0),
+      "0 requestAnimationFrame",
+      "-- frame",
+      ...drawn(1, 0),
+      "0 requestAnimationFrame",
+      "-- frame",
+      ...drawn(1, 0),
+      "0 requestAnimationFrame",
+      "-- frame",
+      ...drawn(1, 0),
+      "0 requestAnimationFrame",
+      "-- frame",
+      ...drawn(1, 0),
+      "0 requestAnimationFrame",
+      "-- frame",
+      "0 setPixelRatio 1",
+      "0 setSize 800x450",
+      ...Array(2).fill("0 pipeline.setSize"),
+      ...drawn(1, 0),
+      "-- profile",
+      "0 getContext",
+      ...drawn(1),
+      "-- resize",
+      "0 setSize 640x360",
+      "0 setPixelRatio 1",
+      "0 setSize 640x360",
+      ...Array(2).fill("0 pipeline.setSize"),
+      "0 requestAnimationFrame",
+      "-- dispose",
+      "0 clearInterval 7",
+      "0 removeEventListener pointermove",
+      "0 removeEventListener pointerleave",
+      "0 removeEventListener click",
+      "0 remove jl-tip",
+      "0 cancelAnimationFrame",
+      ...Array(2).fill("0 composer.dispose"),
+      "0 dispose",
+    ];
+    expect(log).toEqual(STEPS);
   });
 
   it("logs a later scene's failure where nothing listens for it", async () => {
@@ -845,6 +1077,33 @@ describe("the journey's director, once disposed", () => {
     expect(kit.calls.filter((c) => c === "dispose")).toHaveLength(1);
     expect(kit.late).toEqual([]);
     expect(unhandled).not.toHaveBeenCalled();
+  });
+
+  it("lets go of its renderer, and settles prepareAll, in the microtask #366's director did", async () => {
+    // each step a caller can see (see stepLog), once disposed: a compile in flight
+    // lets go of the renderer as it's done, and prepareAll settles at once. Before
+    // #366 the director did neither, so the log is the one #366's director made (79f2304e)
+    const { log, stamp, task, fire } = stepLog({ timers: true });
+    kit.parallel = true;
+    const open = gate("compileAsync 1 scene");
+    let d!: Director;
+    await task("start", () => make().then((x) => (d = x)));
+    await task("idle", () => idles.shift()?.()); // the background builds move on from scene 0
+    await task("idle", () => idles.shift()?.()); // scene 1, whose compile three polls until it's done
+    await task("dispose", () => d.dispose());
+    await task("prepareAll", () => d.prepareAll().then(() => stamp("prepareAll resolved")));
+    await task("compile done", open);
+    await task("poll", () => fire(10)); // three's poll finds it done
+    expect(log.slice(log.indexOf("-- dispose"))).toEqual([
+      "-- dispose",
+      "0 cancelAnimationFrame", // the start's frame, never run
+      ...Array(2).fill("0 composer.dispose"),
+      "-- prepareAll",
+      "1 prepareAll resolved",
+      "-- compile done",
+      "-- poll",
+      "1 dispose",
+    ]);
   });
 
   it("draws nothing, and builds no scene it's asked to draw", async () => {
