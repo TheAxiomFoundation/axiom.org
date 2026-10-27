@@ -15,7 +15,7 @@ const kit = vi.hoisted(() => {
     hold: new Set<number>(),
     held: new Map<number, { resolve: () => void; reject: (e: Error) => void }>(),
     made: [] as number[],
-    beats: new Map<number, { camera: { userData: object }; invalidate?: () => void }>(), // each scene's beat as it's made
+    beats: new Map<number, { camera: { userData: { span?: number } }; invalidate?: () => void }>(), // each scene's beat as it's made
     textures: new Map<number, number>(), // how many MOCK textures a scene carries
     latency: new Map<number, { ready: number; compile: number }>(), // ms a scene's assets and compiles take
     ticks: new Map<number, number>(), // microtasks a scene's assets come late by
@@ -54,7 +54,19 @@ const kit = vi.hoisted(() => {
 vi.mock("../style-frames/kit", async () => {
   const THREE = await import("three");
   const wait = (ms: number) => (ms ? new Promise<void>((r) => setTimeout(r, ms)) : Promise.resolve());
-  const THEME = { paper: false };
+  // the theme the scenes are drawn for, which every director shares: each read and
+  // write of it is a step the logs see, since a second director can come in between
+  let paper = false;
+  const THEME = {
+    get paper() {
+      kit.see(`THEME.paper read: ${paper}`);
+      return paper;
+    },
+    set paper(v: boolean) {
+      kit.see(`THEME.paper = ${v}`);
+      paper = v;
+    },
+  };
   const n = (v: number) => +v.toFixed(3);
   // what a render of a scene draws, as far as the director sets it: its camera's
   // pose (each part away from its rest), its focus, and how many of its objects
@@ -158,7 +170,7 @@ vi.mock("../style-frames/kit", async () => {
     createBeat: (build: { index: number }) => {
       const i = build.index;
       kit.made.push(i);
-      kit.see(`createBeat ${i}${THEME.paper ? " for paper" : ""}`);
+      kit.see(`createBeat ${i}${paper ? " for paper" : ""}`);
       if (kit.breaks.has(i)) throw new Error(`MOCK: scene ${i} broke as it was made`);
       const camera = new THREE.PerspectiveCamera();
       Object.assign(camera.userData, { basePos: new THREE.Vector3(), baseQuat: new THREE.Quaternion(), baseFocus: 8, index: i });
@@ -369,10 +381,12 @@ function watch(canvas: HTMLCanvasElement) {
  *   glint's interval, which waits for the test to run it (`glint`);
  * - the listeners on the canvas, the tooltip put on the page and taken off it, a
  *   link opened in a new tab, and what's logged as an error;
+ * - each read and write of the theme, which every director shares (see the MOCK kit);
  * - the page as it changes: each label layer's opacity, visibility and inert, the
  *   tooltip's class, text and place, the cursor, the location's hash, and the dev
- *   globals; and what the test watches (`watch`). A change is logged at the next
- *   step, or as its microtask ends;
+ *   globals; each scene's camera span, which the scene's own code can read; and
+ *   what the test watches (`watch`). A change is logged at the next step, or as
+ *   its microtask ends;
  * - and what the test stamps.
  * The clock stands still unless the test moves it (`clock.now`); `frame` runs the
  * frames queued at its time, and moves the clock there.
@@ -397,7 +411,12 @@ function stepLog({ timers = false, idleCallback = true } = {}) {
   delete dev.__jlRenderer;
   history.replaceState(null, "", location.pathname);
   let tip: Element | undefined;
-  const watched: Array<[string, () => string]> = [];
+  const spans = () =>
+    [...kit.beats]
+      .sort(([a], [b]) => a - b)
+      .map(([i, b]) => `${i} ${b.camera.userData.span ?? "-"}`)
+      .join(", ") || "-";
+  const watched: Array<[string, () => string]> = [["camera spans", spans]];
   const page = () => {
     const state = new Map(overlays.map((o, q) => [`labels ${q}`, `${o.style.opacity || "-"} ${o.style.visibility || "-"}${o.hasAttribute("inert") ? " inert" : ""}`]));
     state.set("cursor", canvas.style.cursor || "-");
@@ -491,6 +510,9 @@ function stepLog({ timers = false, idleCallback = true } = {}) {
   };
   return { log, stamp, task, clock, fire, frame, glint: () => glint!(), watch, canvas, overlays };
 }
+
+/** What a profile hands back, for the step logs. */
+const times = (ps: Array<{ p: number; ms: number }>) => ps.map(({ p, ms }) => `${+p.toFixed(3)} in ${ms} ms`).join(", ");
 
 describe("the journey's director", () => {
   it("sizes its renderer and pipelines to its stage, and tells its caller of its first frame, once", async () => {
@@ -701,10 +723,10 @@ describe("the journey's director", () => {
     );
     // draws scene 0, and fetches scene 1 ahead; then, in the same task, a profile draws
     // scene 0 a little way in, and at its start again: each shot puts the camera and
-    // the focus back for the next
+    // the focus back for the next. The clock stands still, so each takes 0 ms
     await task("frame", () => {
       frame(1000)();
-      stamp(`profiled ${d.profile([0.25, 0]).length}`);
+      stamp(`profiled ${times(d.profile([0.25, 0]))}`);
     });
     await task("idle", () => idles.shift()?.()); // the background builds move on from scene 0
     await task("idle", () => idles.shift()?.()); // builds scene 1, fetched ahead
@@ -725,11 +747,13 @@ describe("the journey's director", () => {
     // recorded from the director before compiles were counted (0944c0aa)
     const STEPS = [
       "-- start",
+      "0 THEME.paper = true",
       "0 loadFonts",
       "1 makeRenderer",
       "1 setPixelRatio 2",
       "1 setSize 800x450",
       ...Array(2).fill("1 pipeline 1600x900"),
+      "1 THEME.paper read: true",
       "1 page dev globals: set",
       "1 appendChild jl-tip",
       "1 page tip: jl-tip \"\" -",
@@ -738,6 +762,8 @@ describe("the journey's director", () => {
       "1 addEventListener click",
       "1 setInterval 4200",
       "1 createBeat 0 for paper",
+      "1 camera spans: 0 -",
+      "3 camera spans: 0 6.05",
       "3 fitCamera 0 800x450",
       "3 compileAsync 0 scene shows 2",
       "4 compileAsync 0 fx shows 1",
@@ -785,11 +811,13 @@ describe("the journey's director", () => {
       "0 placeLabels 0 800x450 0",
       "0 requestIdleCallback",
       "0 finish",
-      "0 profiled 2",
+      "0 profiled 0.25 in 0 ms, 0 in 0 ms",
       "-- idle",
       "3 requestIdleCallback",
       "-- idle",
       "0 createBeat 1 for paper",
+      "0 camera spans: 0 6.05, 1 -",
+      "1 camera spans: 0 6.05, 1 3",
       "1 fitCamera 1 800x450",
       "1 compileAsync 1 scene shows 2",
       "2 compileAsync 1 fx shows 1",
@@ -859,6 +887,8 @@ describe("the journey's director", () => {
       "0 placeLabels 0 800x450 0",
       "-- jump",
       "0 createBeat 3 for paper",
+      "0 camera spans: 0 6.05, 1 3, 3 -",
+      "1 camera spans: 0 6.05, 1 3, 3 1.4",
       "1 fitCamera 3 800x450",
       "1 compileAsync 3 scene shows 2",
       "2 compileAsync 3 fx shows 1",
@@ -883,6 +913,7 @@ describe("the journey's director", () => {
       "0 requestIdleCallback",
       "-- jump",
       "0 createBeat 2 for paper",
+      "0 camera spans: 0 6.05, 1 3, 2 -, 3 1.4",
       "0 update 3 0.25",
       "0 fitCamera 3 800x450",
       "0 pipeline.render 3 scene at z-0.121 focus 7.879 shows 2 culls 3",
@@ -890,6 +921,7 @@ describe("the journey's director", () => {
       "0 render bb mix 1 dip 0.45",
       "0 placeLabels 3 800x450 0.25",
       "0 requestIdleCallback",
+      "1 camera spans: 0 6.05, 1 3, 2 1.4, 3 1.4",
       "1 fitCamera 2 800x450",
       "1 compileAsync 2 scene shows 2",
       "2 compileAsync 2 fx shows 1",
@@ -920,9 +952,13 @@ describe("the journey's director", () => {
       "0 requestIdleCallback",
       "-- prepareAll",
       "0 createBeat 4 for paper",
+      "0 camera spans: 0 6.05, 1 3, 2 1.4, 3 1.4, 4 -",
       "0 createBeat 5 for paper",
+      "0 camera spans: 0 6.05, 1 3, 2 1.4, 3 1.4, 4 -, 5 -",
+      "1 camera spans: 0 6.05, 1 3, 2 1.4, 3 1.4, 4 1.4, 5 -",
       "1 fitCamera 4 800x450",
       "1 compileAsync 4 scene shows 2",
+      "1 camera spans: 0 6.05, 1 3, 2 1.4, 3 1.4, 4 1.4, 5 1.3",
       "1 fitCamera 5 800x450",
       "1 compileAsync 5 scene shows 2",
       "2 compileAsync 4 fx shows 1",
@@ -1069,7 +1105,7 @@ describe("the journey's director", () => {
     await task("frame", frame(10800));
     // the middle of the cut into scene 1, both scenes tilted, and then scene 1 alone:
     // each pose starts from the camera's rest
-    await task("profile", () => d.profile([SCENE_START[1] - OVERLAP / 2, SCENE_START[1]]));
+    await task("profile", () => stamp(`profiled ${times(d.profile([SCENE_START[1] - OVERLAP / 2, SCENE_START[1]]))}`));
     await task("resize", () => d.resize(640, 360)); // at rest: the next frame draws the stage anew
     await task("frame", frame(10850));
     // in one task the stage resizes again, scene 1 asks to be drawn again, and a new
@@ -1085,11 +1121,13 @@ describe("the journey's director", () => {
     // recorded from the director before compiles were counted (0944c0aa)
     const MOVES = [
       "-- start",
+      "0 THEME.paper = true",
       "0 loadFonts",
       "1 makeRenderer",
       "1 setPixelRatio 2",
       "1 setSize 800x450",
       ...Array(2).fill("1 pipeline 1600x900"),
+      "1 THEME.paper read: true",
       "1 page dev globals: set",
       "1 appendChild jl-tip",
       "1 page tip: jl-tip \"\" -",
@@ -1098,6 +1136,8 @@ describe("the journey's director", () => {
       "1 addEventListener click",
       "1 setInterval 4200",
       "1 createBeat 0 for paper",
+      "1 camera spans: 0 -",
+      "3 camera spans: 0 6.05",
       "3 fitCamera 0 800x450",
       "3 compileAsync 0 scene shows 1",
       "4 compileAsync 0 fx shows 1",
@@ -1127,7 +1167,9 @@ describe("the journey's director", () => {
       "3 setTimeout 60",
       "-- idle",
       "0 createBeat 1 for paper",
+      "0 camera spans: 0 6.05, 1 -",
       "0 build times: 3 3 0 0 0 0",
+      "2 camera spans: 0 6.05, 1 3",
       "2 fitCamera 1 800x450",
       "2 requestAnimationFrame",
       ...Array(2).fill("2 initTexture 1"),
@@ -1142,6 +1184,7 @@ describe("the journey's director", () => {
       "3 setTimeout 60",
       "-- idle",
       "1 createBeat 2 for paper",
+      "1 camera spans: 0 6.05, 1 3, 2 -",
       "1 build times: 3 3 3 0 0 0",
       "4 console.error journey: a scene could not be built",
       "5 setTimeout 60",
@@ -1596,6 +1639,7 @@ describe("the journey's director", () => {
       "0 page labels 1: 1 visible",
       "0 placeLabels 1 800x450 0.224",
       "0 finish",
+      "0 profiled 5.775 in 0 ms, 6.05 in 0 ms",
       "-- resize",
       "0 setSize 640x360",
       "0 setPixelRatio 2",
@@ -1776,11 +1820,13 @@ describe("the journey's director lets go of what it set up", () => {
     await steps.task("start", () => make({ canvas, overlays }).catch((e: Error) => steps.stamp(`start rejected ${e.message}`)));
     const STEPS = [
       "-- start",
+      "0 THEME.paper = true",
       "0 loadFonts",
       "1 makeRenderer",
       "1 setPixelRatio 1",
       "1 setSize 800x450",
       ...Array(2).fill("1 pipeline 800x450"),
+      "1 THEME.paper read: true",
       "1 page dev globals: set",
       "1 appendChild jl-tip",
       "1 page tip: jl-tip \"\" -",
@@ -1789,6 +1835,7 @@ describe("the journey's director lets go of what it set up", () => {
       "1 addEventListener click",
       "1 setInterval 4200",
       "1 createBeat 0 for paper",
+      "1 camera spans: 0 -",
       "4 clearInterval 7",
       "4 removeEventListener pointermove",
       "4 removeEventListener pointerleave",
