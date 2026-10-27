@@ -165,6 +165,10 @@ describe("runLedger document names", () => {
 describe("causeHeadline", () => {
   it("names a failure in a few words, without where it came from", () => {
     expect(causeHeadline("complete-source-unit:structure")).toBe("Completeness rule: structure");
+    // A test runner's FAILED line leads with the file; the exception names the cause.
+    expect(
+      causeHeadline("FAILED data/corpus/provisions/us/regulation/x.jsonl: ContentStoreError: cannot obtain data/x.jsonl: no source holds it")
+    ).toBe("Content store error");
     expect(causeHeadline("ci: Ungrounded generated numeric literal: N does not appear as a substantive numeric value in the source text.")).toBe(
       "Ungrounded generated numeric literal"
     );
@@ -226,13 +230,12 @@ describe("sectionBrief", () => {
     expect(b.marks[0]).toMatchObject({ tone: "done", url: "https://github.com/TheAxiomFoundation/rulespec-us/pull/42" });
   });
 
-  it("names a later failed run as a re-encode and keeps the merged encoding", () => {
+  it("names a later failed run as a re-encode", () => {
     const later = pipelineAttempt({ id: "later", dispatched_at: "2026-10-26T16:37:00Z", run_conclusion: "failure", run_url: "https://x/run/9" });
     const [j] = runLedger(runRows([mergedAttempt({ tests_status: "pass" }), later]));
     const b = sectionBrief(j.documents[0].sections[0]);
     expect(b.encoded).toBe(true);
-    expect(b.now?.text).toMatch(/^Re-encode on 2026-10-26 · Failed/);
+    expect(b.now?.text).toMatch(/^Re-encode on Oct 26 — failed/);
     expect(b.now?.link?.url).toBe("https://x/run/9");
-    expect(b.now?.kept).toMatch(/^The encoding from \d{4}-\d{2}-\d{2} stays on main\.$/);
   });
 });

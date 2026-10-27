@@ -339,7 +339,6 @@ function SectionRuns({ section, referenceMs }: { section: LedgerSection; referen
               {brief.now.link.label}
             </a>
           )}
-          {brief.now.kept && <span className={styles.ledgerKept}>{brief.now.kept}</span>}
         </p>
       )}
       {brief.repeated.length > 0 && (

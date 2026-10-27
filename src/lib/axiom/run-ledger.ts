@@ -240,16 +240,18 @@ export interface SectionBrief {
   headline: string;
   /**
    * What is happening now and the next step; null once the section is encoded
-   * and nothing is open. For an encoded section, a later run is a re-encode,
-   * and `kept` says that the merged encoding stays on main.
+   * and nothing is open. For an encoded section, a later run is a re-encode.
    */
-  now: { text: string; link: { label: string; url: string } | null; kept?: string } | null;
+  now: { text: string; link: { label: string; url: string } | null } | null;
   /** Failures more than one run hit, most first. */
   repeated: Array<{ label: string; cause: string | null; detail: string | null; count: number; url: string }>;
   marks: RunMark[];
 }
 
 const day = (iso: string) => iso.slice(0, 10);
+/** "Oct 26", in UTC. */
+const shortDay = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+const lower = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
 
 /** The next step for a section, from its latest run: approve it, open the failure, or open the PR. */
 function nextStep(latest: RunRow): SectionBrief["now"] {
@@ -315,9 +317,6 @@ function reencode(latest: RunRow, done: RunRow): SectionBrief["now"] {
   if (latest === done) return null;
   const step = nextStep(latest);
   if (!step) return null;
-  return {
-    text: `Re-encode on ${day(latest.at ?? latest.dispatchedAt)} · ${step.text}`,
-    link: step.link,
-    kept: `The encoding from ${day(done.at ?? done.dispatchedAt)} stays on main.`,
-  };
+  // The headline already says the section is encoded; this line only says what the later run did.
+  return { text: `Re-encode on ${shortDay(latest.at ?? latest.dispatchedAt)} — ${lower(step.text)}`, link: step.link };
 }

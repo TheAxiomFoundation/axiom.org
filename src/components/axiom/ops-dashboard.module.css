@@ -327,13 +327,6 @@
   white-space: nowrap;
 }
 
-/* Under a failed re-encode: the merged encoding is still there. */
-.ledgerKept {
-  grid-column: 2 / span 2;
-  font-size: 12px;
-  color: var(--color-ink-muted);
-}
-
 .ledgerRepeats {
   display: grid;
   gap: 4px;
@@ -386,8 +379,7 @@
   .ledgerNow {
     grid-template-columns: minmax(0, 1fr);
   }
-  .ledgerRepeats,
-  .ledgerKept {
+  .ledgerRepeats {
     grid-column: auto;
   }
 }

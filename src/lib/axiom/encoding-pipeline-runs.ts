@@ -1151,6 +1151,8 @@ const COMPLETENESS_RULE_RE = /^\[?complete-source-unit:([a-z0-9-]+)\]?\s*/i;
 function causeBody(cause: string): string {
   // A raw encoder message leads with its file ("statutes/42/402/q.yaml: ci: …").
   let text = cause.trim().replace(/^[\w./-]+\.ya?ml:\s*/i, "");
+  // A test runner's line leads with the test that failed ("FAILED data/…/x.jsonl: ContentStoreError: …").
+  text = text.replace(/^FAILED \S+?:\s+/, "");
   while (CAUSE_SOURCE_RE.test(text)) text = text.replace(CAUSE_SOURCE_RE, "");
   return text;
 }
@@ -1175,8 +1177,8 @@ export function causeText(cause: string): string {
  */
 /** A command-line tool's error: "jq: error: syntax error, unexpected …". */
 const TOOL_ERROR_RE = /^([a-z][\w-]{1,20}):\s*error:\s*([\s\S]+)$/i;
-/** An exception raised under its module path: "axiom_encode.corpus_resolver.CorpusLayoutError: …". */
-const MODULE_EXCEPTION_RE = /^(?:[a-z_][\w]*\.)+([A-Z]\w*?)(Error|Exception):\s*/;
+/** An exception, under its module path or not: "axiom_encode.corpus_resolver.CorpusLayoutError: …", "ContentStoreError: …". */
+const MODULE_EXCEPTION_RE = /^(?:[a-z_][\w]*\.)*([A-Z]\w*?)(Error|Exception):\s*/;
 
 /** "CorpusLayout" as "Corpus layout". */
 const words = (camel: string) => {
