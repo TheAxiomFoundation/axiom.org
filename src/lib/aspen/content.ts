@@ -886,11 +886,11 @@ export const FRONT_DOOR = {
 // 294e98fe), still running. Both arms are paired on the households v3 has
 // answered so far. Hand-copied from
 //   ~/reviews/policybench-v2-microcosm-2026-10/v3-aspen-2026-10-26/live/numbers.json
-// at updatedAt 2026-10-27T00:27:55Z: numbers.gpt-6-luna.{households,
+// at updatedAt 2026-10-27T00:31:35Z (loop.log has the same line): numbers.gpt-6-luna.{households,
 // nonzero.web, nonzero.v3, v3VsWeb (a paired household bootstrap),
 // cost.{web,v3} (the paper's costPerHousehold), latencySeconds.{web,v3}
 // (the paper's medianWallSeconds)}. The web runs are the paper's (Oct
-// 24–25); the rules-engine runs are Oct 26–27. Flash-Lite and Sonnet are
+// 23–25, UTC); the rules-engine runs are Oct 26–27. Flash-Lite and Sonnet are
 // off the slide: Sonnet hasn't run and Flash-Lite has 20 households.
 // ---------------------------------------------------------------------------
 
@@ -939,19 +939,20 @@ export const ENGINE_PILOT: EnginePilot = {
   rows: [
     {
       model: "GPT-6 Luna",
-      households: 74,
-      amounts: 212,
-      web: 122,
-      both: 207,
-      change: { points: 40.1, lo: 32.7, hi: 47.3 },
-      cost: { web: 0.0557, both: 0.0027 },
-      seconds: { web: 77.913, both: 29.58 },
+      households: 86,
+      amounts: 241,
+      web: 134,
+      both: 234,
+      // The file's 41.5 is rounded; 100 × (234 − 134) / 241 = 41.49, so the slide's +41 matches 97% − 56%.
+      change: { points: 41.49, lo: 34.6, hi: 48.0 },
+      cost: { web: 0.056, both: 0.0028 },
+      seconds: { web: 78.641, both: 29.58 },
     },
   ],
   measures:
-    "Our rules engine also computes PolicyBench's reference answers, so this shows whether a model can describe a household to it, not whether the engine is right. The models ran through their APIs with our prompt, not in chat apps.",
+    "Our rules engine also computes PolicyBench's reference answers, so this shows whether a model can describe a household to it, not whether the engine is right. The model ran through its API with our prompt, not in a chat app.",
   source:
-    "Preliminary internal pilot, still running · PolicyBench, our benchmark · web search runs October 24–25, rules engine October 26–27, 2026 · intervals are 95% · cost per household at API list prices, searches included",
+    "Preliminary internal pilot, still running · PolicyBench, our benchmark · web search runs October 23–25, rules engine October 26–27, 2026 · intervals are 95% · cost per household at API list prices, searches included",
 };
 
 /**

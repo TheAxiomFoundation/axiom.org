@@ -210,9 +210,9 @@ describe('aspen content', () => {
 
   it("keeps At scale 6/7 to PolicyBench's live pilot file, consistent with itself", () => {
     const t = ENGINE_PILOT
-    // Luna only, paired on the households answered so far (numbers.json, 2026-10-27T00:27:55Z).
+    // Luna only, paired on the households answered so far (numbers.json, 2026-10-27T00:31:35Z).
     expect(t.rows.map((r) => [r.model, r.households, r.amounts, r.web, r.both, r.change.points, r.change.lo, r.change.hi])).toEqual([
-      ['GPT-6 Luna', 74, 212, 122, 207, 40.1, 32.7, 47.3],
+      ['GPT-6 Luna', 86, 241, 134, 234, 41.49, 34.6, 48.0],
     ])
     expect(t.rows.map((r) => [percentChange(r.cost.web, r.cost.both), percentChange(r.seconds.web, r.seconds.both)])).toEqual([[-95, -62]])
     for (const r of t.rows) {
@@ -228,6 +228,9 @@ describe('aspen content', () => {
       expect(r.change.lo).toBeLessThanOrEqual(r.change.points)
       expect(r.change.points).toBeLessThanOrEqual(r.change.hi)
       for (const v of [r.cost.web, r.cost.both, r.seconds.web, r.seconds.both]) expect(v).toBeGreaterThan(0)
+      // The whole-number shares the slide prints differ by the whole-number change it prints.
+      const pct = (k: number) => Math.round((100 * k) / r.amounts)
+      expect(pct(r.both) - pct(r.web)).toBe(Math.round(r.change.points))
     }
     // Labelled as the pilot it is, still running, framed as our own benchmark; no PolicyEngine, version or free-plan names on screen.
     expect(t.source).toMatch(/^Preliminary internal pilot, still running · PolicyBench, our benchmark/)

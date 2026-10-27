@@ -337,11 +337,11 @@ describe("PresenterApp navigation", () => {
     // One cell each: the model with its households so far, both shares, the change with its interval, and the cost and time changes.
     expect(rows.map((r) => [...r.querySelectorAll("th, td")].map((c) => c.textContent))).toEqual([
       [
-        "GPT-6 Luna74 of 100 households so far",
-        "Web search: 58%Web search and our rules engine: 98%",
-        "+40 points95%: +33 to +47",
+        "GPT-6 Luna86 of 100 households so far",
+        "Web search: 56%Web search and our rules engine: 97%",
+        "+41 points95%: +35 to +48",
         "\u221295%$0.056 to $0.003",
-        "\u221262%78 s to 30 s",
+        "\u221262%79 s to 30 s",
       ],
     ]);
     expect(screen.getByText(ENGINE_PILOT.measures)).toBeInTheDocument();
