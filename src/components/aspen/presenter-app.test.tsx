@@ -334,7 +334,7 @@ describe("PresenterApp navigation", () => {
     expect(screen.getByText(ENGINE_PILOT.title)).toBeInTheDocument();
     const pilot = screen.getByRole("table", { name: new RegExp(`^${ENGINE_PILOT.title}`) });
     const rows = within(pilot).getAllByRole("row").slice(1);
-    // One cell each: the model with its households so far, both shares, the change with its interval, and the cost and time changes.
+    // One cell each: the model with its households, both shares, the change with its interval, and the cost and time changes.
     expect(rows.map((r) => [...r.querySelectorAll("th, td")].map((c) => c.textContent))).toEqual([
       [
         "GPT-6 Luna100 US households",

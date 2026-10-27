@@ -936,7 +936,7 @@ export function percentChange(from: number, to: number): number {
 }
 
 export const ENGINE_PILOT: EnginePilot = {
-  title: "The same model, given our rules engine as a tool",
+  title: "The same models, given our rules engine as a tool",
   of: 100,
   arms: { web: "Web search", both: "Web search and our rules engine" },
   note: "Nonzero dollar amounts within $1 of the reference: 276 across 100 US households",
