@@ -210,14 +210,16 @@ describe('aspen content', () => {
 
   it("keeps At scale 6/7 to PolicyBench's live pilot file, consistent with itself", () => {
     const t = ENGINE_PILOT
-    // Final on all 100 households for both (numbers.json, 2026-10-27T00:40:50Z); the web arms are the pilot's 152 and 64 of 276.
+    // Final on all 100 households for all three (numbers.json, 2026-10-27T01:04:41Z); the web arms are the pilot's 152, 64 and 164 of 276.
     expect(t.rows.map((r) => [r.model, r.households, r.amounts, r.web, r.both, r.change.points, r.change.lo, r.change.hi])).toEqual([
       ['GPT-6 Luna', 100, 276, 152, 269, 42.39, 36.1, 48.8],
       ['Gemini 3.5 Flash-Lite', 100, 276, 64, 243, 64.86, 58.4, 71.2],
+      ['Claude Sonnet 5.5', 100, 276, 164, 276, 40.58, 35.0, 46.2],
     ])
     expect(t.rows.map((r) => [percentChange(r.cost.web, r.cost.both), percentChange(r.seconds.web, r.seconds.both)])).toEqual([
       [-94, -62],
       [-95, -6],
+      [-45, -62],
     ])
     for (const r of t.rows) {
       expect(r.households).toBeGreaterThan(0)
