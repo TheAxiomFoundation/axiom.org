@@ -1249,8 +1249,11 @@ const perHousehold = (d: number) => `$${d.toFixed(3)}`;
  */
 function ToolSlide() {
   const t = ENGINE_PILOT;
+  // Three models need tighter rows to fit 1600×900 with the panel and footer.
+  const dense = t.rows.length > 2;
+  const pad = dense ? "py-[12px]" : "py-[22px]";
   const head = "pb-[10px] text-left align-bottom font-body text-[20px] font-normal text-[var(--color-ink-muted)]";
-  const big = "block font-display text-[48px] font-light leading-none tabular-nums";
+  const big = `block font-display ${dense ? "text-[40px]" : "text-[48px]"} font-light leading-none tabular-nums`;
   const small = "mt-[8px] block font-body text-[18px] tabular-nums text-[var(--color-ink-muted)]";
   return (
     <div className="flex h-full flex-col gap-[14px]">
@@ -1272,7 +1275,7 @@ function ToolSlide() {
         </caption>
         <thead>
           <tr>
-            <th scope="col" className={`${head} w-[230px]`}>
+            <th scope="col" className={`${head} ${dense ? "w-[300px]" : "w-[230px]"}`}>
               <span className="sr-only">Model</span>
             </th>
             <th scope="col" className={head}>
@@ -1292,13 +1295,15 @@ function ToolSlide() {
         <tbody>
           {t.rows.map((r) => (
             <tr key={r.model} className="border-t border-[var(--color-rule)]">
-              <th scope="row" className={`py-[22px] pr-[24px] text-left align-top font-normal ${BOX_TEXT}`}>
+              <th scope="row" className={`${pad} pr-[24px] text-left align-top font-normal ${BOX_TEXT}`}>
                 {r.model}
-                <span className="mt-[8px] block font-body text-[18px] text-[var(--color-ink-muted)]">
-                  {r.households === t.of ? `${t.of} US households` : `${r.households} of ${t.of} households so far`}
-                </span>
+                {dense && r.households === t.of ? null : (
+                  <span className="mt-[8px] block font-body text-[18px] text-[var(--color-ink-muted)]">
+                    {r.households === t.of ? `${t.of} US households` : `${r.households} of ${t.of} households so far`}
+                  </span>
+                )}
               </th>
-              <td className="py-[22px] pr-[32px] align-top">
+              <td className={`${pad} pr-[32px] align-top`}>
                 <span className="flex flex-col gap-[10px]">
                   {(["web", "both"] as const).map((arm) => (
                     <span key={arm} className="flex items-center gap-[14px]">
@@ -1313,7 +1318,7 @@ function ToolSlide() {
                   ))}
                 </span>
               </td>
-              <td className="py-[22px] align-top">
+              <td className={`${pad} align-top`}>
                 <span className={`${big} text-[var(--color-accent)]`}>
                   {signed(r.change.points)} <span className="font-body text-[22px] text-[var(--color-ink-secondary)]">points</span>
                 </span>
@@ -1321,13 +1326,13 @@ function ToolSlide() {
                   95%: {signed(r.change.lo)} to {signed(r.change.hi)}
                 </span>
               </td>
-              <td className="py-[22px] align-top">
+              <td className={`${pad} align-top`}>
                 <span className={`${big} text-[var(--color-ink)]`}>{signed(percentChange(r.cost.web, r.cost.both))}%</span>
                 <span className={small}>
                   {perHousehold(r.cost.web)} to {perHousehold(r.cost.both)}
                 </span>
               </td>
-              <td className="py-[22px] align-top">
+              <td className={`${pad} align-top`}>
                 <span className={`${big} text-[var(--color-ink)]`}>{signed(percentChange(r.seconds.web, r.seconds.both))}%</span>
                 <span className={small}>
                   {Math.round(r.seconds.web)} s to {Math.round(r.seconds.both)} s
@@ -1337,9 +1342,9 @@ function ToolSlide() {
           ))}
         </tbody>
       </table>
-      <Panel className="mt-auto flex flex-col gap-[8px] py-[14px]">
+      <Panel className={`mt-auto flex flex-col gap-[8px] ${dense ? "py-[10px]" : "py-[14px]"}`}>
         <Label className="mb-0">What this measures</Label>
-        <p className="m-0 font-body text-[22px] leading-snug text-[var(--color-ink)]">{t.measures}</p>
+        <p className={`m-0 font-body ${dense ? "text-[20px]" : "text-[22px]"} leading-snug text-[var(--color-ink)]`}>{t.measures}</p>
       </Panel>
       <BenchFooter source={t.source} />
     </div>
