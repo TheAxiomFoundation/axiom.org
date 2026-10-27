@@ -334,11 +334,29 @@ describe("PresenterApp navigation", () => {
     expect(screen.getByText(ENGINE_PILOT.title)).toBeInTheDocument();
     const pilot = screen.getByRole("table", { name: new RegExp(`^${ENGINE_PILOT.title}`) });
     const rows = within(pilot).getAllByRole("row").slice(1);
-    // One cell each: the model, both shares, the change with its interval, and the cost change with both costs.
+    // One cell each: the model (its households only while a row has fewer than 100), both shares, the change with its interval, and the cost and time changes.
     expect(rows.map((r) => [...r.querySelectorAll("th, td")].map((c) => c.textContent))).toEqual([
-      ["GPT-6 Luna", "Web search: 55%Web search and our rules engine: 77%", "+22 points95%: +14 to +29", "\u221286%$0.056 to $0.008"],
-      ["Claude Sonnet 5.5", "Web search: 59%Web search and our rules engine: 97%", "+38 points95%: +31 to +44", "\u221230%$0.112 to $0.078"],
-      ["Gemini 3.5 Flash-Lite", "Web search: 23%Web search and our rules engine: 55%", "+32 points95%: +25 to +39", "\u221291%$0.343 to $0.031"],
+      [
+        "GPT-6 Luna",
+        "Web search: 55%Web search and our rules engine: 97%",
+        "+42 points95%: +36 to +49",
+        "\u221294%$0.056 to $0.003",
+        "\u221262%79 s to 30 s",
+      ],
+      [
+        "Gemini 3.5 Flash-Lite",
+        "Web search: 23%Web search and our rules engine: 88%",
+        "+65 points95%: +58 to +71",
+        "\u221295%$0.343 to $0.017",
+        "\u22126%14 s to 13 s",
+      ],
+      [
+        "Claude Sonnet 5.5",
+        "Web search: 59%Web search and our rules engine: 100%",
+        "+41 points95%: +35 to +46",
+        "\u221245%$0.112 to $0.062",
+        "\u221262%47 s to 18 s",
+      ],
     ]);
     expect(screen.getByText(ENGINE_PILOT.measures)).toBeInTheDocument();
     expect(screen.getByText(ENGINE_PILOT.source)).toBeInTheDocument();
