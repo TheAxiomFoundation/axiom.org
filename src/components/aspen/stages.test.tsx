@@ -59,6 +59,21 @@ describe("Agenda", () => {
     fireEvent.click(screen.getByRole("button", { name: /Try it/ }));
     expect(onPick).toHaveBeenCalledWith("try");
   });
+
+  it("fades a stage the room hasn't reached without letting the thread show through its number", () => {
+    render(<Agenda live="scale" current="scale" onPick={vi.fn()} compact limit={3} />);
+    const locked = screen.getByRole("button", { name: /Shared foundation/ });
+    expect(locked).toBeDisabled();
+    // Nothing on the row is translucent but the label: the circle keeps an opaque fill over the line.
+    expect(locked.className).not.toMatch(/opacity/);
+    const circle = locked.querySelector("span");
+    expect(circle?.textContent).toBe("5");
+    expect(circle?.className).toContain("bg-[var(--color-paper)]");
+    expect(circle?.className).not.toMatch(/opacity/);
+    expect(circle?.nextElementSibling?.className).toContain("opacity-45");
+    // A reached stage is not faded.
+    expect(screen.getByRole("button", { name: /At scale/ }).querySelector("span")?.nextElementSibling?.className).not.toMatch(/opacity/);
+  });
 });
 
 describe("Disclosure", () => {
