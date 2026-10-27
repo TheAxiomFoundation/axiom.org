@@ -11,8 +11,7 @@ import { DEFAULT_FLOW_PARAMS, type FlowParams } from "@/components/ops/flow/flow
 import { getPipelineAttempts } from "@/lib/axiom/encoding-pipeline-data";
 import { getEncodingQueues } from "@/lib/axiom/encoding-queues";
 import { busiestRoots, LEGACY_OPS_TABS, opsHref, sharedOpsParams } from "@/lib/axiom/ops-href";
-import { ScopeNav } from "@/components/ops/flow/scope-nav";
-import { attemptJurisdiction, parseScope, scopeName } from "@/lib/axiom/encoding-pipeline-insights";
+import { attemptJurisdiction, parseScope } from "@/lib/axiom/encoding-pipeline-insights";
 import { loadFlow, parseWindow } from "@/lib/axiom/pipeline-flow-data";
 import { getBundleSummaries, getProgramBundle } from "@/lib/axiom/program-bundles-data";
 import { getEncodingStatus, getRecentCorpusScopes, groupRecentScopes } from "@/lib/corpus-status";
@@ -52,7 +51,6 @@ export default async function OpsPage({ searchParams }: { searchParams?: Promise
 
   let panel: ReactNode = null;
   let ledger: ReactNode;
-  let scopeNav: ReactNode;
   let starting: Parameters<typeof OpsDashboard>[0]["starting"];
 
   if (tab === "line") {
@@ -109,19 +107,9 @@ export default async function OpsPage({ searchParams }: { searchParams?: Promise
     };
     // The ledger's scope: All, or one of the busiest roots (and those under it).
     const roots = busiestRoots(attempts.map((attempt) => attemptJurisdiction(attempt)));
-    scopeNav = (
-      <div key="scope" style={{ marginTop: 16 }}>
-        <ScopeNav current={scope?.jurisdiction ?? null} options={roots} href={(j) => opsHref({ ...sharedOpsParams(params), j: j ?? undefined, only: undefined }, "now")} />
-      </div>
-    );
     ledger =
       attempts.length > 0 ? (
-        <PipelineLedger
-          key={`ledger:${scope?.jurisdiction ?? "all"}:${scope?.only ? "only" : ""}`}
-          scope={scope}
-          scopeName={scope ? scopeName(scope) : null}
-          referenceMs={referenceMs}
-        />
+        <PipelineLedger key="ledger" scope={scope} roots={roots} referenceMs={referenceMs} />
       ) : undefined;
   }
 
@@ -135,7 +123,6 @@ export default async function OpsPage({ searchParams }: { searchParams?: Promise
       starting={starting}
       initialTab={tab}
       shared={sharedOpsParams(params)}
-      scope={scopeNav}
       ledger={ledger}
       panel={panel ? <div key={`panel:${tab}`} className={flowStyles.page}>{panel}</div> : null}
     />

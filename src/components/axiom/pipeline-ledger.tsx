@@ -6,7 +6,9 @@ import styles from "./ops-dashboard.module.css";
 import { relativeTime } from "./ops-dashboard";
 import { Explain } from "./explain";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { scopeSearch, type PipelineScope } from "@/lib/axiom/encoding-pipeline-insights";
+import { inScope, scopeName as nameOfScope, type PipelineScope } from "@/lib/axiom/encoding-pipeline-insights";
+import { opsHref } from "@/lib/axiom/ops-href";
+import { ScopeNav } from "@/components/ops/flow/scope-nav";
 import { runTimeline, type RunRow, type RunTimeline } from "@/lib/axiom/encoding-pipeline-runs";
 import { durationLabel } from "@/lib/axiom/encoding-pipeline";
 import {
@@ -91,23 +93,41 @@ function StatusLegend() {
  * the journey page holds every run.
  */
 export function PipelineLedger({
-  scope,
-  scopeName,
+  scope: initialScope,
+  roots = [],
   referenceMs,
 }: {
+  /** The scope the address asked for; the jurisdiction switch changes it in place. */
   scope: PipelineScope | null;
-  /** Shown in the subtitle when the page is narrowed to a jurisdiction. */
-  scopeName: string | null;
+  /** The jurisdiction choices: the busiest roots. */
+  roots?: string[];
   referenceMs: number;
 }) {
   const [payload, setPayload] = useState<RunsPayload | null>(null);
   const [failed, setFailed] = useState(false);
   const [shown, setShown] = useState(DOCUMENTS_SHOWN);
   const [openSection, setOpenSection] = useState<string | null>(null);
-  const query = scopeSearch(scope);
+  const [scope, setScope] = useState(initialScope);
+  const scopeName = scope ? nameOfScope(scope) : null;
+
+  // Every run loads once; a jurisdiction narrows them here, and the address follows without a reload.
+  const choose = (j: string | null) => {
+    setScope(j ? { jurisdiction: j, only: false } : null);
+    setShown(DOCUMENTS_SHOWN);
+    setOpenSection(null);
+    const url = new URL(window.location.href);
+    if (j) url.searchParams.set("j", j);
+    else url.searchParams.delete("j");
+    url.searchParams.delete("only");
+    // null state: Next.js treats it as an outside change and updates useSearchParams (the tab links read it).
+    window.history.replaceState(null, "", url);
+  };
+  // The address a choice stands for, for a new tab or a copied link.
+  const scopeHref = (j: string | null) => opsHref({ j: j ?? undefined }, "now");
+
   useEffect(() => {
     let live = true;
-    fetch(`/ops/runs${query}`)
+    fetch("/ops/runs")
       .then((response) => {
         if (!response.ok) throw new Error(`runs: ${response.status}`);
         return response.json() as Promise<RunsPayload>;
@@ -119,12 +139,17 @@ export function PipelineLedger({
     return () => {
       live = false;
     };
-  }, [query]);
+  }, []);
 
-  const ledger = payload ? runLedger(payload.rows, payload.labels, payload.documentPaths) : [];
+  const rows = payload ? payload.rows.filter((row) => inScope(row.jurisdiction, scope)) : [];
+  const ledger = payload ? runLedger(rows, payload.labels, payload.documentPaths) : [];
   const documentCount = ledger.reduce((total, jurisdiction) => total + jurisdiction.documents.length, 0);
 
   return (
+    <>
+    <div style={{ marginTop: 16 }}>
+      <ScopeNav current={scope?.jurisdiction ?? null} options={roots} href={scopeHref} onSelect={choose} />
+    </div>
     <section aria-label="Latest encodings" className={styles.ledger}>
       <div className={styles.ledgerHeader}>
         <div>
@@ -208,6 +233,7 @@ export function PipelineLedger({
         </>
       )}
     </section>
+    </>
   );
 }
 

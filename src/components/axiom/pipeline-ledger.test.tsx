@@ -18,6 +18,30 @@ function serve(body: unknown, ok = true) {
 }
 
 describe("PipelineLedger", () => {
+  it("switches the jurisdiction in place: one fetch, the runs filtered here, the address replaced", async () => {
+    const fetch = serve({
+      rows: runRows([
+        pipelineAttempt({ id: "u", citation: "us/statute/7/2015/f", jurisdiction: "us", dispatched_at: "2026-09-20T10:00:00Z" }),
+        pipelineAttempt({ id: "n", citation: "nz/statute/act/public/2018/0032/section/75", jurisdiction: "nz", dispatched_at: "2026-09-21T10:00:00Z" }),
+      ]),
+    });
+    window.history.replaceState(null, "", "/ops?j=us");
+    render(<PipelineLedger scope={{ jurisdiction: "us", only: false }} roots={["us", "nz"]} referenceMs={NOW} />);
+    const ledger = await screen.findByRole("table");
+    expect(within(ledger).getByRole("rowheader", { name: "US Federal" })).toBeInTheDocument();
+    expect(within(ledger).queryByRole("rowheader", { name: "New Zealand" })).not.toBeInTheDocument();
+    const nav = screen.getByRole("navigation", { name: "Jurisdiction" });
+    expect(within(nav).getByRole("link", { name: "nz" })).toHaveAttribute("href", "/ops?j=nz");
+    fireEvent.click(within(nav).getByRole("link", { name: "nz" }));
+    expect(within(ledger).getByRole("rowheader", { name: "New Zealand" })).toBeInTheDocument();
+    expect(within(ledger).queryByRole("rowheader", { name: "US Federal" })).not.toBeInTheDocument();
+    expect(window.location.search).toBe("?j=nz");
+    fireEvent.click(within(nav).getByRole("link", { name: "All" }));
+    expect(within(ledger).getByRole("rowheader", { name: "US Federal" })).toBeInTheDocument();
+    expect(window.location.search).toBe("");
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("groups every run of the scope by jurisdiction, document, and section, with names and statuses", async () => {
     const fetch = serve({
       rows: runRows([
@@ -30,10 +54,10 @@ describe("PipelineLedger", () => {
         { bundle_id: "us-az/snap", bundle_title: "Arizona SNAP", tier: "screener", tier_index: 1, tier_title: "Screener-level parity", document: "7 USC 2015", citation_path: "us/statute/7/2015" },
       ],
     });
-    render(<PipelineLedger scope={{ jurisdiction: "us", only: false }} scopeName="United States" referenceMs={NOW} />);
+    render(<PipelineLedger scope={{ jurisdiction: "us", only: false }} referenceMs={NOW} />);
     expect(screen.getByText("Loading runs…")).toBeInTheDocument();
     const ledger = await screen.findByRole("table");
-    expect(fetch).toHaveBeenCalledWith("/ops/runs?j=us");
+    expect(fetch).toHaveBeenCalledWith("/ops/runs");
     expect(screen.getByRole("heading", { name: "Latest encodings" })).toBeInTheDocument();
     expect(screen.getByText(/^United States: every run, grouped by jurisdiction and document/)).toBeInTheDocument();
     expect(within(ledger).getByRole("rowheader", { name: "US Federal" })).toBeInTheDocument();
@@ -74,7 +98,7 @@ describe("PipelineLedger", () => {
         )
       ),
     });
-    render(<PipelineLedger scope={null} scopeName={null} referenceMs={NOW} />);
+    render(<PipelineLedger scope={null} referenceMs={NOW} />);
     const section = await screen.findByRole("button", { name: "Runs of us/statute/7/2015/f" });
     fireEvent.click(section);
     expect(screen.getByText(/^Not encoded yet/)).toHaveTextContent("Not encoded yet · 12 runs since 2026-09-01, none merged");
@@ -126,7 +150,7 @@ describe("PipelineLedger", () => {
         }),
       ]),
     });
-    render(<PipelineLedger scope={null} scopeName={null} referenceMs={NOW} />);
+    render(<PipelineLedger scope={null} referenceMs={NOW} />);
     fireEvent.click(await screen.findByRole("button", { name: "Runs of us/statute/42/416/l" }));
     const run = screen.getByRole("region", { name: "Latest run" });
     const tries = within(run).getAllByRole("listitem").filter((li) => li.closest("ol")?.getAttribute("aria-label") === "Tries in the encode loop");
@@ -149,7 +173,7 @@ describe("PipelineLedger", () => {
         }),
       ]),
     });
-    render(<PipelineLedger scope={null} scopeName={null} referenceMs={NOW} />);
+    render(<PipelineLedger scope={null} referenceMs={NOW} />);
     const merged = await screen.findByRole("button", { name: "Runs of us/statute/7/2017/a" });
     expect(merged.closest("tr")).toHaveTextContent(/Tests pass/);
     fireEvent.click(merged);
@@ -179,7 +203,7 @@ describe("PipelineLedger", () => {
         )
       ),
     });
-    render(<PipelineLedger scope={null} scopeName={null} referenceMs={NOW} />);
+    render(<PipelineLedger scope={null} referenceMs={NOW} />);
     await screen.findByRole("table");
     expect(screen.getAllByRole("button", { name: /^Runs of / })).toHaveLength(10);
     fireEvent.click(screen.getByRole("button", { name: "Show 2 more documents" }));
@@ -197,7 +221,7 @@ describe("PipelineLedger", () => {
         pipelineAttempt({ id: "nm", citation: "us-nm/statute/7-2-39", jurisdiction: "us-nm", dispatched_at: "2026-09-20T12:00:00Z" }),
       ]),
     });
-    render(<PipelineLedger scope={null} scopeName={null} referenceMs={NOW} />);
+    render(<PipelineLedger scope={null} referenceMs={NOW} />);
     const ledger = await screen.findByRole("table");
     // New Mexico's run is newer than the oldest US documents: it shows on the first page, under its own heading.
     expect(within(ledger).getByRole("rowheader", { name: "New Mexico" })).toBeInTheDocument();
@@ -217,7 +241,7 @@ describe("PipelineLedger", () => {
       documentPaths: { "us/statute/26/32": "us/statute/26" },
       collectedAt: "2026-09-30T11:48:00Z",
     });
-    render(<PipelineLedger scope={null} scopeName={null} referenceMs={NOW} />);
+    render(<PipelineLedger scope={null} referenceMs={NOW} />);
     await screen.findByRole("table");
     expect(screen.getByText("Updated 12m ago.")).toHaveAttribute("title", "2026-09-30T11:48:00Z");
     // The document path is in the title's tooltip, not in the band.
@@ -236,11 +260,11 @@ describe("PipelineLedger", () => {
 
   it("says when it cannot load, and when the scope has no runs", async () => {
     serve({}, false);
-    render(<PipelineLedger scope={null} scopeName={null} referenceMs={NOW} />);
+    render(<PipelineLedger scope={null} referenceMs={NOW} />);
     expect(await screen.findByText("The ledger could not load. Try again later.")).toBeInTheDocument();
     cleanup();
     serve({ rows: [] });
-    render(<PipelineLedger scope={null} scopeName={null} referenceMs={NOW} />);
+    render(<PipelineLedger scope={null} referenceMs={NOW} />);
     expect(await screen.findByText("No runs recorded in this scope yet.")).toBeInTheDocument();
   });
 });

@@ -30,7 +30,9 @@ import {
 } from "@/lib/axiom/jurisdictions-seed";
 import type { EncodingQueueSummary } from "@/lib/axiom/encoding-queues";
 import { ageLabel } from "@/lib/axiom/encoding-pipeline";
-import { opsHref } from "@/lib/axiom/ops-href";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { opsHref, sharedOpsParams } from "@/lib/axiom/ops-href";
 import type { RecentIngestDay, RecentIngestPlace } from "@/lib/corpus-status";
 import { jurisdictionName as placeName, ownLevelName } from "@/lib/axiom/jurisdiction-names";
 import {
@@ -77,8 +79,6 @@ interface OpsDashboardProps {
   initialTab?: OpsTab;
   /** The parameters every tab link carries (the jurisdiction scope, the window). */
   shared?: Record<string, string>;
-  /** The ledger's jurisdiction switch, shown under the fleet box. */
-  scope?: ReactNode;
   /**
    * Dispatched runs that have not finished, from the pipeline index: the
    * fleet box shows a run only once its encoder starts, so these say what
@@ -270,9 +270,9 @@ export function OpsDashboard({
   panel,
   initialTab = "now",
   shared = {},
-  scope,
   starting,
 }: OpsDashboardProps) {
+  const searchParams = useSearchParams();
   const [status, setStatus] = useState(initialStatus);
   // One tab at a time, each its own page load: a tab reads only its own data.
   const tab: OpsTab = OPS_TABS.includes(initialTab) ? initialTab : "now";
@@ -352,15 +352,17 @@ export function OpsDashboard({
 
         <nav className={styles.tabs} aria-label="Operations">
           {OPS_TABS.map((value) => (
-            <a
+            // Soft navigation: only the tab's panel loads. The links read the
+            // live address, since the ledger's jurisdiction switch changes it in place.
+            <Link
               key={value}
               id={`ops-tab-${value}`}
-              href={opsHref(shared, value)}
+              href={opsHref(searchParams ? sharedOpsParams(Object.fromEntries(searchParams)) : shared, value)}
               aria-current={tab === value ? "page" : undefined}
               title={TAB_HINTS[value]}
             >
               {TAB_LABELS[value]}
-            </a>
+            </Link>
           ))}
         </nav>
 
@@ -373,8 +375,6 @@ export function OpsDashboard({
           labels={labels}
           starting={starting}
         />
-
-        {scope}
 
         <div
           id="ops-panel-now"

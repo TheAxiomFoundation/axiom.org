@@ -179,24 +179,6 @@ describe("OpsDashboard", () => {
     expect(screen.queryByRole("region", { name: "Live encoding activity" })).not.toBeInTheDocument();
   });
 
-  it("shows the scope switch under the fleet box on the Now tab", () => {
-    render(
-      <OpsDashboard
-        initialStatus={status({})}
-        encodingError={null}
-        queues={[]}
-        recentPlaces={[]}
-        scope={<section aria-label="Scope" />}
-      />,
-    );
-    const fleet = screen.getByRole("region", { name: "Live encoding activity" });
-    const strip = screen.getByRole("region", { name: "Scope" });
-    const tabs = screen.getByRole("navigation", { name: "Operations" });
-    expect(strip).toBeVisible();
-    expect(fleet.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(tabs.compareDocumentPosition(fleet) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  });
-
   it("shows stalled runs when the heartbeat dies", () => {
     render(
       <OpsDashboard
