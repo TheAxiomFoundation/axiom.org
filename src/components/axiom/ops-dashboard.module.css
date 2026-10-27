@@ -513,6 +513,14 @@
   }
 }
 
+/* The Running now ledger with its jurisdiction switch on top: one cell of the workspace grid. */
+.ledgerColumn {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+}
+
 .supportCard [data-slot="card-header"] {
   border-color: var(--color-rule);
 }

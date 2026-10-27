@@ -146,10 +146,9 @@ export function PipelineLedger({
   const documentCount = ledger.reduce((total, jurisdiction) => total + jurisdiction.documents.length, 0);
 
   return (
-    <>
-    <div style={{ marginTop: 16 }}>
-      <ScopeNav current={scope?.jurisdiction ?? null} options={roots} href={scopeHref} onSelect={choose} />
-    </div>
+    // One grid cell: the switch sits on top of the ledger, the sidebar stays beside both.
+    <div className={styles.ledgerColumn}>
+    <ScopeNav current={scope?.jurisdiction ?? null} options={roots} href={scopeHref} onSelect={choose} />
     <section aria-label="Latest encodings" className={styles.ledger}>
       <div className={styles.ledgerHeader}>
         <div>
@@ -233,7 +232,7 @@ export function PipelineLedger({
         </>
       )}
     </section>
-    </>
+    </div>
   );
 }
 
