@@ -138,7 +138,8 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   border-radius: 16px;
-  overflow: hidden;
+  /* clip, not hidden: hidden makes a scroll box, and the side panel could not stick. */
+  overflow: clip;
   background: var(--floor);
   color: var(--floor-ink);
   border: 1px solid #000;
@@ -287,9 +288,16 @@
 }
 
 @media (min-width: 1100px) {
+  /* Beside a tall diagram the panel stays in view as the page scrolls, and
+     scrolls on its own when it is taller than the window. */
   .panel {
+    position: sticky;
+    top: 80px;
+    align-self: start;
+    max-height: calc(100vh - 96px);
     border-top: 0;
     border-left: 1px solid var(--floor-line);
+    overscroll-behavior: contain;
   }
 }
 
