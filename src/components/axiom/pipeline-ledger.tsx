@@ -179,11 +179,8 @@ export function PipelineLedger({
             {newestDocuments(ledger, shown).map((jurisdiction) => (
               <TableBody key={jurisdiction.code}>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead colSpan={6} scope="rowgroup" className={styles.jurisdictionBand} aria-label={jurisdiction.name}>
-                    <span className={styles.jurisdictionName}>{jurisdiction.name}</span>
-                    <span className={styles.jurisdictionCount}>
-                      {jurisdiction.documents.length} {jurisdiction.documents.length === 1 ? "document" : "documents"}
-                    </span>
+                  <TableHead colSpan={6} scope="rowgroup" className={styles.jurisdictionBand}>
+                    {jurisdiction.name}
                   </TableHead>
                 </TableRow>
                 {jurisdiction.documents.map((document) => (

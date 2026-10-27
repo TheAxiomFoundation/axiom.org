@@ -525,35 +525,23 @@
   border-color: var(--color-rule);
 }
 
-/* A jurisdiction opens with a strong rule and an uppercase label, so the
+/* A jurisdiction opens with a strong rule and a large name, so the
    country breaks stand apart from the lighter document rows under them. */
 .ledgerTable .jurisdictionBand {
-  padding: 28px 24px 10px;
+  padding: 32px 24px 12px;
   background: var(--color-paper-elevated);
   border-top: 2px solid var(--color-ink);
   border-bottom: 1px solid var(--color-rule);
+  color: var(--color-ink);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
 }
 
 .ledgerTable tbody:first-of-type .jurisdictionBand {
   border-top-width: 1px;
   border-top-color: var(--color-rule);
-}
-
-.jurisdictionName {
-  font-family: var(--font-mono), monospace;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--color-ink);
-}
-
-.jurisdictionCount {
-  margin-left: 12px;
-  font-family: var(--font-mono), monospace;
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--color-ink-muted);
 }
 
 /* The program bundle and tiers a ledger section belongs to. */
