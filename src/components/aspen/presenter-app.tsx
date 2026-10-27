@@ -1243,7 +1243,7 @@ const signed = (n: number) => `${n < 0 ? "\u2212" : "+"}${Math.abs(Math.round(n)
 const perHousehold = (d: number) => `$${d.toFixed(3)}`;
 
 /**
- * At scale, slide 6: PolicyBench's preliminary internal pilot. GPT-6 Luna and Gemini 3.5 Flash-Lite
+ * At scale, slide 6: PolicyBench's preliminary internal pilot. GPT-6 Luna, Gemini 3.5 Flash-Lite and Claude Sonnet 5.5
  * with web search alone and with web search and our rules engine, on 100 US households: the change in
  * accuracy, cost and time together (Max, Oct 26).
  */

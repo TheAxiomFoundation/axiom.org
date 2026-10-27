@@ -885,17 +885,20 @@ export const FRONT_DOOR = {
 // and our rules engine, where the rules engine is PolicyBench's calculator v3
 // (the web+pe3 arm, harness 294e98fe). Hand-copied from
 //   ~/reviews/policybench-v2-microcosm-2026-10/v3-aspen-2026-10-26/live/numbers.json
-// at updatedAt 2026-10-27T00:40:50Z, final for both models on all 100 of the
+// at updatedAt 2026-10-27T01:04:41Z, final for all three models on all 100 of the
 // pilot's households: numbers.<model>.{households, nonzero.web, nonzero.v3,
 // v3VsWeb (a paired household bootstrap), cost.{web,v3} (the paper's
 // costPerHousehold), latencySeconds.{web,v3} (the paper's
 // medianWallSeconds)}. The web runs are the paper's (Oct 23–25, UTC); the
 // rules-engine runs are Oct 26–27. Each web arm reproduces the pilot's
 // (cost.paper100, latencySeconds.paper100). Luna sent 8 web searches in 100
-// households with the rules engine and Flash-Lite none; their list price is
+// households with the rules engine, Flash-Lite none and Sonnet 1; their list price is
 // in the cost. Flash-Lite, off the slide while its first households ran
-// easier than the full 100, is back now it has all 100. Sonnet started its
-// rules-engine run at 00:40Z and stays off.
+// easier than the full 100, is back now it has all 100. Claude Sonnet 5.5
+// joined when its rules-engine run (from 00:40Z) reached all 100 (Max: "wire
+// in claude once its done"); its first 20 households ran easier for web
+// search (73% against 59% on all 100), so no partial row shipped. Its web
+// arm is the pilot's 164 of 276.
 // ---------------------------------------------------------------------------
 
 export interface EnginePilotRow {
@@ -962,6 +965,17 @@ export const ENGINE_PILOT: EnginePilot = {
       change: { points: 64.86, lo: 58.4, hi: 71.2 },
       cost: { web: 0.3431, both: 0.0168 },
       seconds: { web: 14.163, both: 13.276 },
+    },
+    {
+      model: "Claude Sonnet 5.5",
+      households: 100,
+      amounts: 276,
+      web: 164,
+      both: 276,
+      // The exact difference, 100 × (276 − 164) / 276 = 40.58 (the file rounds it to 40.6).
+      change: { points: 40.58, lo: 35.0, hi: 46.2 },
+      cost: { web: 0.1122, both: 0.0622 },
+      seconds: { web: 47.04, both: 17.918 },
     },
   ],
   measures:
