@@ -366,9 +366,10 @@ function remember(asked: number, value: Control): Control {
   return kept;
 }
 
-// This instance's read of the store in flight, if any: when it was asked for, and its answer. Like the
-// cache, it is the instance's, not a store object's: each request builds its own store (getStore).
-let controlRead: { asked: number; value: Promise<Control> } | null = null;
+// This instance's read of the store in flight, if any: when it was asked for, and its answer, or null if
+// the store failed. Like the cache, it is the instance's, not a store object's: each request builds its
+// own store (getStore).
+let controlRead: { asked: number; value: Promise<Control | null> } | null = null;
 
 /**
  * The active run and stage, cached for two seconds per instance so a
@@ -381,6 +382,9 @@ let controlRead: { asked: number; value: Promise<Control> } | null = null;
  * answer: a row no older than the cache could serve. So a slow store,
  * whose answers would age out of the cache as they arrive, still gets one
  * read at a time from each instance, not one per phone (the review of #376).
+ * A read that fails is not shared: a request that joined it asks the store
+ * itself. Otherwise a write route that joined a phone's failed poll would
+ * save what it was sent under the default run.
  */
 export async function readControl(store: AspenStore | null, fresh = false): Promise<Control> {
   if (!store) return { ...DEFAULT_CONTROL };
@@ -389,14 +393,14 @@ export async function readControl(store: AspenStore | null, fresh = false): Prom
     return controlCache.value;
   }
   if (!fresh && controlRead && asked - controlRead.asked < CONTROL_TTL_MS) {
-    return controlRead.value;
+    return (await controlRead.value) ?? readControl(store, true);
   }
   const value = (async () => {
     try {
       return remember(asked, await store.getControl());
     } catch (error) {
       console.error("[aspen] control read failed:", error);
-      return { ...DEFAULT_CONTROL };
+      return null;
     }
   })();
   const read = { asked, value };
@@ -404,7 +408,7 @@ export async function readControl(store: AspenStore | null, fresh = false): Prom
   void value.finally(() => {
     if (controlRead === read) controlRead = null;
   });
-  return value;
+  return (await value) ?? { ...DEFAULT_CONTROL };
 }
 
 /** Writes the control row, answers with the store's answer, and keeps it in this instance's cache if it is the newest. */

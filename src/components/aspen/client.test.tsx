@@ -782,9 +782,12 @@ describe("roomFrom", () => {
     roomFrom(rehearsal, T0);
     enterRun("rehearsal");
     storageIs("full");
-    // Even if the older row stays in storage, as when it can't be taken out either.
-    vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
-      throw new Error("no");
+    // Even if the older row stays in storage, as when it can't be taken out either. (Only the room's row:
+    // `enterRun` must still be able to drop a vote, or the check on it below couldn't fail.)
+    const { removeItem } = Storage.prototype;
+    vi.spyOn(Storage.prototype, "removeItem").mockImplementation(function (this: Storage, key: string) {
+      if (key === "aspen.room") throw new Error("no");
+      return removeItem.call(this, key);
     });
     expect(roomFrom(event, T0 + 100)).toEqual(event);
     expect(enterRun("event")).toBe(true);

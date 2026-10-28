@@ -693,7 +693,69 @@ describe('store selection and control cache', () => {
     }
   })
 
-  it('shares a failed read only with the reads asked while it was in flight', async () => {
+  it('asks the store again for a read that joined one that failed, so a write never takes the default run from it', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      vi.setSystemTime(new Date('2026-10-27T00:30:01.000Z'))
+      vi.stubEnv('ASPEN_STORE', '')
+      vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://db.example')
+      vi.stubEnv('AXIOM_OPS_SUPABASE_SERVICE_KEY', 'service')
+      const held: (() => void)[] = []
+      let calls = 0
+      const database = vi.fn(() => {
+        calls += 1
+        // A phone's poll is slow, then fails; the store answers any other read at once.
+        if (calls === 1) return new Promise<Response>((resolve) => held.push(() => resolve(new Response('upstream', { status: 503 }))))
+        return Promise.resolve(new Response(JSON.stringify([{ run_id: 'aspen', stage: 'try', updated_at: '2026-10-27T00:30:00.000Z' }])))
+      })
+      vi.stubGlobal('fetch', database)
+      const poll = readControl(getStore())
+      // Half a second later, on the same instance, an event POST reads the run to save the phone's answer in
+      // (event/route.ts). It joins the poll's read (the review of #376).
+      vi.setSystemTime(new Date('2026-10-27T00:30:01.500Z'))
+      const forEvent = readControl(getStore())
+      expect(database).toHaveBeenCalledTimes(1)
+      for (const answer of held.splice(0)) answer()
+      // The poll's own request falls back, as any failed read does; the event's asks the store itself.
+      expect(await poll).toEqual(DEFAULT_CONTROL)
+      expect(await forEvent).toMatchObject({ runId: 'aspen', live: true })
+      expect(database).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('asks the store itself after a failed read, not through a later read still in flight', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      vi.setSystemTime(new Date('2026-10-27T00:30:01.000Z'))
+      const row = { runId: 'aspen', stage: 'try', live: true, updatedAt: '2026-10-27T00:30:00.000Z' }
+      const answers: ((ok: boolean) => void)[] = []
+      const getControl = vi.fn(
+        () => new Promise<typeof row>((resolve, reject) => answers.push((ok) => (ok ? resolve(row) : reject(new Error('down'))))),
+      )
+      const store = { getControl } as unknown as AspenStore
+      void readControl(store)
+      vi.setSystemTime(new Date('2026-10-27T00:30:02.900Z'))
+      const joined = readControl(store)
+      // Two seconds on, another request reads the store itself; that read hangs.
+      vi.setSystemTime(new Date('2026-10-27T00:30:03.100Z'))
+      void readControl(store)
+      expect(getControl).toHaveBeenCalledTimes(2)
+      answers[0](false)
+      // The read that joined the failed one asks the store once more, and doesn't wait on the hung read.
+      await vi.waitFor(() => expect(getControl).toHaveBeenCalledTimes(3))
+      answers[2](true)
+      expect(await joined).toMatchObject({ runId: 'aspen', live: true })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps no failed read once it has answered: a read under two seconds later asks the store again', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
     try {
