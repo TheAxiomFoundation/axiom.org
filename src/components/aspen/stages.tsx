@@ -62,9 +62,12 @@ export function Agenda({
         const locked = limit !== undefined && i > limit;
         const row = (
           <>
+            {/* A locked circle stays opaque, lighter in colour, so the thread never shows through its number (Max, Oct 26). */}
             <span
               className={`relative z-1 flex h-7 w-7 items-center justify-center rounded-full border-2 font-mono text-[0.8rem] tabular-nums ${
-                isLive
+                locked
+                  ? "border-[color-mix(in_srgb,var(--color-accent)_40%,var(--color-paper))] bg-[var(--color-paper)] text-[color-mix(in_srgb,var(--color-accent)_45%,var(--color-paper))]"
+                  : isLive
                   ? "border-[var(--color-accent)] bg-[var(--color-accent)] text-white"
                   : done
                     ? "border-[var(--color-accent)] bg-[color-mix(in_srgb,var(--color-accent)_12%,var(--color-paper))] text-[var(--color-accent)]"
@@ -73,7 +76,7 @@ export function Agenda({
             >
               {i + 1}
             </span>
-            <span className={compact ? "self-center" : "pb-1"}>
+            <span className={`${compact ? "self-center" : "pb-1"} ${locked ? "opacity-45" : ""}`}>
               <span
                 className={`flex flex-wrap items-center gap-2 font-body text-[1rem] text-[var(--color-ink)] ${here ? "font-semibold" : "font-medium"}`}
               >
@@ -108,7 +111,7 @@ export function Agenda({
                 aria-current={here ? "step" : undefined}
                 disabled={locked}
                 onClick={() => onPick(stage.id)}
-                className={`${grid} rounded-md px-1.5 disabled:cursor-not-allowed disabled:opacity-45 ${here && compact ? "bg-[var(--color-accent-light)]" : "enabled:hover:bg-[var(--color-rule-subtle)]/60"}`}
+                className={`${grid} rounded-md px-1.5 disabled:cursor-not-allowed ${here && compact ? "bg-[var(--color-accent-light)]" : "enabled:hover:bg-[var(--color-rule-subtle)]/60"}`}
               >
                 {row}
                 {locked && <span className="sr-only">, opens when the room gets there</span>}

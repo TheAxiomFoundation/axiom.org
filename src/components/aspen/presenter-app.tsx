@@ -1385,21 +1385,26 @@ function FrontDoorSlide() {
 /** The pilot's bars: web search alone recedes in the "Where models still break" gray; our rules engine carries the accent. */
 const PILOT_COLORS = { web: "#bdb6ae", both: "var(--color-accent)" } as const;
 
-/** A whole percent of the pilot's amounts, as the slide shows it. */
-const pilotPct = (k: number) => Math.round((100 * k) / ENGINE_PILOT.amounts);
+/** A whole percent of a row's amounts, as the slide shows it. */
+const pilotPct = (r: { amounts: number }, k: number) => Math.round((100 * k) / r.amounts);
 /** A signed whole number of points, with a true minus sign. */
 const signed = (n: number) => `${n < 0 ? "\u2212" : "+"}${Math.abs(Math.round(n))}`;
 /** Dollars per household to the tenth of a cent. */
 const perHousehold = (d: number) => `$${d.toFixed(3)}`;
 
 /**
- * At scale, slide 6: PolicyBench's preliminary internal pilot. Each model with web search alone and with
- * web search and our rules engine, the change in accuracy and the change in cost (Max, the dry run, Oct 25).
+ * At scale, slide 6: PolicyBench's preliminary internal pilot. GPT-6 Luna, Gemini 3.5 Flash-Lite and Claude Sonnet 5.5
+ * with web search alone and with web search and our rules engine, on 100 US households: the change in
+ * accuracy, cost and time together (Max, Oct 26).
  */
 function ToolSlide() {
-  // Rows and the panel are trimmed to fit 1600×900, with 10px to spare; it was 22px over (measured, the review of #368).
   const t = ENGINE_PILOT;
+  // Three models need tighter rows to fit 1600×900 with the panel and footer.
+  const dense = t.rows.length > 2;
+  const pad = dense ? "py-[12px]" : "py-[22px]";
   const head = "pb-[10px] text-left align-bottom font-body text-[20px] font-normal text-[var(--color-ink-muted)]";
+  const big = `block font-display ${dense ? "text-[40px]" : "text-[48px]"} font-light leading-none tabular-nums`;
+  const small = "mt-[8px] block font-body text-[18px] tabular-nums text-[var(--color-ink-muted)]";
   return (
     <div className="flex h-full flex-col gap-[14px]">
       <div className="flex items-end justify-between gap-[24px]">
@@ -1415,68 +1420,81 @@ function ToolSlide() {
       <p className="m-0 font-body text-[20px] text-[var(--color-ink-secondary)]">{t.note}</p>
       <table className="w-full border-collapse">
         <caption className="sr-only">
-          {t.title}: share of nonzero dollar amounts right, the change in points with its 95% interval, and the change in cost per household
+          {t.title}: share of nonzero dollar amounts right, the change in points with its 95% interval, the change in cost per household and
+          the change in time per household
         </caption>
         <thead>
           <tr>
-            <th scope="col" className={`${head} w-[300px]`}>
+            <th scope="col" className={`${head} ${dense ? "w-[300px]" : "w-[230px]"}`}>
               <span className="sr-only">Model</span>
             </th>
             <th scope="col" className={head}>
               Amounts right
             </th>
-            <th scope="col" className={`${head} w-[250px]`}>
+            <th scope="col" className={`${head} w-[220px]`}>
               Accuracy
             </th>
-            <th scope="col" className={`${head} w-[250px]`}>
+            <th scope="col" className={`${head} w-[220px]`}>
               Cost per household
+            </th>
+            <th scope="col" className={`${head} w-[200px]`}>
+              Time per household
             </th>
           </tr>
         </thead>
         <tbody>
           {t.rows.map((r) => (
             <tr key={r.model} className="border-t border-[var(--color-rule)]">
-              <th scope="row" className={`py-[12px] pr-[24px] text-left font-normal ${BOX_TEXT}`}>
+              <th scope="row" className={`${pad} pr-[24px] text-left align-top font-normal ${BOX_TEXT}`}>
                 {r.model}
+                {dense && r.households === t.of ? null : (
+                  <span className="mt-[8px] block font-body text-[18px] text-[var(--color-ink-muted)]">
+                    {r.households === t.of ? `${t.of} US households` : `${r.households} of ${t.of} households so far`}
+                  </span>
+                )}
               </th>
-              <td className="py-[12px] pr-[32px]">
-                <span className="flex flex-col gap-[6px]">
+              <td className={`${pad} pr-[32px] align-top`}>
+                <span className="flex flex-col gap-[10px]">
                   {(["web", "both"] as const).map((arm) => (
                     <span key={arm} className="flex items-center gap-[14px]">
-                      <span className="h-[22px] rounded-[4px]" style={{ width: `${pilotPct(r[arm]) * 0.8}%`, background: PILOT_COLORS[arm] }} />
+                      <span className="h-[26px] rounded-[4px]" style={{ width: `${pilotPct(r, r[arm]) * 0.8}%`, background: PILOT_COLORS[arm] }} />
                       <span
-                        className={`whitespace-nowrap font-mono text-[22px] leading-none tabular-nums ${arm === "both" ? "text-[var(--color-ink)]" : "text-[var(--color-ink-muted)]"}`}
+                        className={`whitespace-nowrap font-mono text-[24px] leading-none tabular-nums ${arm === "both" ? "text-[var(--color-ink)]" : "text-[var(--color-ink-muted)]"}`}
                       >
                         <span className="sr-only">{t.arms[arm]}: </span>
-                        {pilotPct(r[arm])}%
+                        {pilotPct(r, r[arm])}%
                       </span>
                     </span>
                   ))}
                 </span>
               </td>
-              <td className="py-[12px]">
-                <span className="block font-display text-[48px] font-light leading-none tabular-nums text-[var(--color-accent)]">
+              <td className={`${pad} align-top`}>
+                <span className={`${big} text-[var(--color-accent)]`}>
                   {signed(r.change.points)} <span className="font-body text-[22px] text-[var(--color-ink-secondary)]">points</span>
                 </span>
-                <span className="mt-[6px] block font-body text-[18px] text-[var(--color-ink-muted)]">
+                <span className={small}>
                   95%: {signed(r.change.lo)} to {signed(r.change.hi)}
                 </span>
               </td>
-              <td className="py-[12px]">
-                <span className="block font-display text-[48px] font-light leading-none tabular-nums text-[var(--color-ink)]">
-                  {signed(percentChange(r.cost.web, r.cost.both))}%
-                </span>
-                <span className="mt-[6px] block font-body text-[18px] tabular-nums text-[var(--color-ink-muted)]">
+              <td className={`${pad} align-top`}>
+                <span className={`${big} text-[var(--color-ink)]`}>{signed(percentChange(r.cost.web, r.cost.both))}%</span>
+                <span className={small}>
                   {perHousehold(r.cost.web)} to {perHousehold(r.cost.both)}
+                </span>
+              </td>
+              <td className={`${pad} align-top`}>
+                <span className={`${big} text-[var(--color-ink)]`}>{signed(percentChange(r.seconds.web, r.seconds.both))}%</span>
+                <span className={small}>
+                  {Math.round(r.seconds.web)} s to {Math.round(r.seconds.both)} s
                 </span>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-      <Panel className="mt-auto flex flex-col gap-[8px] py-[14px]">
+      <Panel className={`mt-auto flex flex-col gap-[8px] ${dense ? "py-[10px]" : "py-[14px]"}`}>
         <Label className="mb-0">What this measures</Label>
-        <p className="m-0 font-body text-[22px] leading-snug text-[var(--color-ink)]">{t.measures}</p>
+        <p className={`m-0 font-body ${dense ? "text-[20px]" : "text-[22px]"} leading-snug text-[var(--color-ink)]`}>{t.measures}</p>
       </Panel>
       <BenchFooter source={t.source} />
     </div>
