@@ -1,26 +1,15 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode, type SyntheticEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type SyntheticEvent } from "react";
 import { createPortal } from "react-dom";
 import {
-  BookText,
   ChartColumn,
-  Check,
   ClipboardCheck,
-  Database,
-  Download,
-  FileCode,
   GraduationCap,
   Landmark,
-  Layers,
-  Network,
-  Package,
-  RefreshCw,
   Signpost,
   SlidersHorizontal,
   Sparkles,
-  User,
-  Wrench,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -36,13 +25,11 @@ import {
   FOUNDATION_TRAITS,
   EXAMPLE_HOUSEHOLD,
   BUILD_HEADING,
-  ENCODING_PIPELINE,
   FRONT_DOOR,
   LIVE_DEMO,
   liveDemoUrl,
   POLICYBENCH,
   SAME_RULES,
-  SILVER_ASK,
   ENGINE_PILOT,
   percentChange,
   WHAT_MODELS_MISS,
@@ -53,9 +40,10 @@ import {
   stageIndex,
   type StageId,
 } from "@/lib/aspen/content";
+import { newerControl } from "@/lib/aspen/control";
 import type { Control } from "@/lib/aspen/types";
 import { EMPTY_SUMMARY, ifEligibleSentence, type Count, type RunSummary, type ScaleSummary } from "@/lib/aspen/results";
-import { postJson, useControl, useResults } from "./client";
+import { CONTROL_TIMEOUT_MS, postJson, useControl, useResults } from "./client";
 import { BUTTON_QUIET, FIELD } from "./ui";
 import { BrandLogo } from "./brand-logo";
 import { JoinQr } from "./join-qr";
@@ -97,8 +85,8 @@ const JOURNEY_HEADING = "From the law as written to running code";
  *   group per slide, and on the last the statement that every system runs on it;
  * - the journey, which shows how the rules get built and what they power;
  * - what the rules enable for a government, and a prompt for the room's own ideas.
- * The tiers moved to Next steps, after the room says what it would build. The one-set, same-rules
- * and pipeline slides stay below, off the deck, in case they come back.
+ * The tiers moved to Next steps, after the room says what it would build. The one-set slide stays
+ * below, off the deck: the rules slides before the journey make its point, one group at a time.
  */
 const FOUNDATION_SLIDES = ["question", "question-room", "rules-ai", "rules-government", "rules-navigation", "journey", "enable"] as const;
 type FoundationSlideId = (typeof FOUNDATION_SLIDES)[number];
@@ -121,6 +109,21 @@ const SLIDE_TITLES: Partial<Record<StageId, Record<number, string>>> = {
 const SLIDES: Partial<Record<StageId, number>> = { reveal: 2, scale: 7, foundation: FOUNDATION_SLIDES.length, groups: 2, next: 2 };
 const slideCount = (id: StageId) => SLIDES[id] ?? 1;
 
+/** A slide of a stage: which stage, and which of its slides (from 0). */
+type SlideAt = { stage: StageId; sub: number };
+
+/**
+ * A move, as it leaves the slide on screen: that slide, and the run the move names, once it is sent (null
+ * before, and for good if it never is). Left from the journey, where the journey was too.
+ */
+type Leaving = { sub: number; run: string | null; journey?: number };
+
+/** Whether a move's answer is a control row; an answer that isn't says nothing about the store. */
+function isControl(data: unknown): data is Control {
+  const c = data as Partial<Control> | null;
+  return typeof c?.runId === "string" && typeof c.stage === "string";
+}
+
 /** The largest scale at which the 16:9 canvas fits the window. */
 function useFit(): number {
   const [fit, setFit] = useState(1);
@@ -139,9 +142,12 @@ function useFit(): number {
  * refresh every few seconds. The controls fade when the mouse rests.
  */
 export function PresenterApp({ joinPassword }: { joinPassword: string | null }) {
-  const { data: polled } = useControl(3000);
   const [control, setControl] = useState<Control | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // A run the presenter started that didn't start. It stays on screen through the moves that waited for
+  // it, until the room is on that run, a run switch saves, or the presenter moves the room after it
+  // (the review of #376).
+  const [failedRun, setFailedRun] = useState<string | null>(null);
   const [runDraft, setRunDraft] = useState("");
   // The new-run form stays folded away until the presenter opens it.
   const [runOpen, setRunOpen] = useState(false);
@@ -149,9 +155,11 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
   const [showComments, setShowComments] = useState(false);
   // The journey's caption steps, while its slide is up; stepped back into, it opens on its last frame.
   const journey = useRef<JourneyControl | null>(null);
+  // Where the journey opens when a failed move brings the TV back to it: for the render that mounts it.
+  const journeyFrom = useRef<number | undefined>(undefined);
   const [steppedBack, setSteppedBack] = useState(false);
   // Which slide of a multi-slide stage is up; any other stage starts at its first slide.
-  const [slide, setSlide] = useState<{ stage: StageId; sub: number }>({ stage: "welcome", sub: 0 });
+  const [slide, setSlide] = useState<SlideAt>({ stage: "welcome", sub: 0 });
   // The controls fade out when the mouse rests, so the room sees only the slide.
   const [idle, setIdle] = useState(false);
   const fit = useFit();
@@ -171,37 +179,174 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
     };
   }, []);
 
-  // Moves in flight: a poll that started before a move must not undo it.
-  const moving = useRef(0);
+  // The newest control the store has answered with, from a poll or a move (newerControl); `control` is
+  // the same row, as state. The TV always shows its run, and with no move in flight its stage, so a move
+  // the store didn't take leaves the TV where the phones are, not on a stage they never got (the review
+  // of #370).
+  const stored = useRef<Control | null>(null);
+  // Each move's request while in flight, and the newest run switch among them, if any (see move).
+  // Meanwhile the TV shows the newest move's stage, `ahead`, whatever the polls say, and even before its
+  // first read of the room.
+  const requests = useRef(new Set<Promise<unknown>>());
+  const switching = useRef<{ request: Promise<unknown> } | null>(null);
+  const [ahead, setAhead] = useState<StageId | null>(null);
+  // The TV's first live read of the room, which moves wait for (see move).
+  const [read] = useState(() => {
+    let resolve = () => {};
+    const promise = new Promise<void>((r) => (resolve = r));
+    return { promise, resolve };
+  });
+  // The slide on screen (kept by a layout effect below), and, while moves are in flight, the slide the
+  // TV last showed on each stage they left, with the run the move that left it named once it was sent:
+  // when they settle the room on one of those in that run, it goes back there (the reviews of #376).
+  // And the newest move, with that run.
+  const onScreen = useRef<SlideAt>({ stage: "welcome", sub: 0 });
+  const left = useRef(new Map<string, Leaving>());
+  const newest = useRef<Leaving | null>(null);
 
-  useEffect(() => {
-    if (!polled || moving.current > 0) return;
-    // Drop a poll older than the change this screen already saved, and a failed store read (the
-    // default run, not live) once the room is live: it would flip the TV to Welcome and reload the
-    // live demo for one poll (the review of #368).
-    setControl((c) =>
-      (c?.live && !polled.live) || (c?.updatedAt && polled.updatedAt && polled.updatedAt < c.updatedAt) ? c : polled,
-    );
-  }, [polled]);
+  // Keeps the newer of the TV's newest row and one the store just answered with, from a poll or a move.
+  const take = useCallback(
+    (row: Control) => {
+      const room = newerControl(stored.current, row);
+      stored.current = room;
+      setControl(room);
+      if (room.live) read.resolve();
+      setFailedRun((run) => (run === room.runId ? null : run));
+    },
+    [read],
+  );
+  // Each poll's row reaches `stored` as it arrives, not in an effect after the next render, so a move
+  // that settles in the same moment counts it (the review of #376). Another screen's run switch, read
+  // while no move is in flight, opens the room's stage at its first slide: the slide on screen was the
+  // run it left's (the review of #376).
+  useControl(3000, (row) => {
+    const was = stored.current;
+    take(row);
+    if (was && stored.current && was.runId !== stored.current.runId && requests.current.size === 0) {
+      setSlide({ stage: stageIndex(stored.current.stage) >= 0 ? (stored.current.stage as StageId) : "welcome", sub: 0 });
+    }
+  });
 
-  const stage = (stageIndex(control?.stage) >= 0 ? control?.stage : "welcome") as StageId;
+  const stage = (ahead ?? (stageIndex(control?.stage) >= 0 ? control?.stage : "welcome")) as StageId;
   const index = stageIndex(stage);
   const sub = slide.stage === stage ? Math.min(slide.sub, slideCount(stage) - 1) : 0;
+  useLayoutEffect(() => {
+    onScreen.current = { stage, sub };
+    // A journey brought back has opened where it was: any later one opens as usual.
+    journeyFrom.current = undefined;
+    // The slide follows the stage on screen, so a stage the TV comes back to later, by its button or
+    // another screen's move, starts at its first slide rather than one it showed before.
+    if (slide.stage !== stage) setSlide({ stage, sub });
+  });
   const { data: results } = useResults(true, 4000, control?.runId);
-  const summary: RunSummary = results?.summary ?? EMPTY_SUMMARY;
+  // Only the run on screen's results: until a new run's first answer, the old run's stay off the TV
+  // (the review of #376).
+  const summary: RunSummary = results && results.runId === control?.runId ? results.summary : EMPTY_SUMMARY;
 
+  /**
+   * Moves the room. The TV shows the new stage at once; the store's answer then confirms it. A move
+   * the store refuses, or that fails or times out, is not retried: the TV goes back to the stage the
+   * store holds, with the error, and the presenter's next press is the retry. Retrying would keep
+   * the TV ahead of the phones for the whole retry, can't fix a refusal (a sign-in that expired, no
+   * store), and could save an older move over a newer one. If a move that timed out did reach the
+   * store, the next poll carries its newer row and the TV follows.
+   *
+   * The one exception is a run switch that a write leaving the run as it was beat to the row: a move
+   * from another screen, or one of this TV's that it gave up on but that reached the store anyway. The
+   * store answers with the row, still on the old run, and Start run is sent once more. A run switch the
+   * store still doesn't take, or that another screen's run switch beat, leaves the room on that run,
+   * and the TV says so (the review of #376).
+   *
+   * No write crosses a run switch: Start run is sent once every move before it has settled, and a
+   * move after it once it has. The store keeps the newest write whole (store.ts setControl), so a
+   * stage move stamped after a run switch whose write landed first would keep the old run, and the
+   * room's new results would mix with the rehearsal's (the review of #376). Other moves still go at
+   * once, each to the store as it arrives. And each move names the run the TV made it in, the newest
+   * row's when it is sent, so a move it gave up on that reaches the store after a run switch it then let
+   * through changes nothing there (store.ts setControl). A move made before the TV's first live read of
+   * the room waits for it, since until then it has no run to name (a failed store read answers with the
+   * default run, not live): one sent without a run could cross a run switch, and one naming the default
+   * run would be refused (the reviews of #376). With no live read in the move's timeout, it fails like a
+   * move that times out.
+   */
   const move = useCallback(async (patch: { stage?: StageId; runId?: string }) => {
-    if (patch.stage) setControl((c) => (c ? { ...c, stage: patch.stage as string } : c));
-    moving.current += 1;
-    const response = await postJson<Control & { error?: string }>("/api/aspen/state", patch).catch(() => null);
-    moving.current -= 1;
-    if (response?.ok) {
-      setControl(response.data);
-      setError(null);
+    const at = onScreen.current;
+    const leaving: Leaving = {
+      run: null,
+      sub: at.sub,
+      journey: at.stage === "foundation" && FOUNDATION_SLIDES[at.sub] === "journey" ? journey.current?.at() : undefined,
+    };
+    left.current.set(at.stage, leaving);
+    newest.current = leaving;
+    if (patch.stage) setAhead(patch.stage);
+    // A move the presenter makes once no run switch is in flight has seen how the last one went.
+    if (!patch.runId && !switching.current) setFailedRun(null);
+    // The run the move is made in, once it is sent: the store takes it only while the room is still in it.
+    let from: string | null = null;
+    const send = async () => {
+      if (!stored.current?.live) {
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, CONTROL_TIMEOUT_MS);
+          void read.promise.then(() => {
+            clearTimeout(timer);
+            resolve();
+          });
+        });
+      }
+      if (!stored.current?.live) throw new Error("The TV has not read the room yet.");
+      const run = stored.current.runId;
+      from = run;
+      leaving.run = run;
+      const post = () => postJson<Control & { error?: string }>("/api/aspen/state", { ...patch, inRun: run }, CONTROL_TIMEOUT_MS);
+      const first = await post();
+      if (!patch.runId || !first.ok || !isControl(first.data) || first.data.runId === patch.runId) return first;
+      take(first.data);
+      return first.data.runId === run ? post() : first;
+    };
+    const before = patch.runId ? (requests.current.size > 0 ? Promise.all(requests.current) : null) : (switching.current?.request ?? null);
+    const request = (before ? before.then(send) : send()).catch(() => null);
+    requests.current.add(request);
+    if (patch.runId) switching.current = { request };
+    const response = await request;
+    requests.current.delete(request);
+    if (switching.current?.request === request) switching.current = null;
+    if (response?.ok && isControl(response.data)) {
+      take(response.data);
+      // A move the store refused because the room had left the run it was made in (a run the TV hadn't
+      // heard of yet) says so.
+      setError(
+        !patch.runId && from !== null && response.data.runId !== from
+          ? `The room is on run ${stored.current?.runId} now, so the stage did not change.`
+          : null,
+      );
     } else {
       setError(response?.data.error ?? "The stage did not change. Check the connection.");
     }
-  }, []);
+    // A run switch that didn't start says so, naming the run on screen, until it is no longer so.
+    if (patch.runId) setFailedRun(stored.current?.runId === patch.runId ? null : patch.runId);
+    // The last move to settle puts the TV on what the store holds: this move's row when it saved, an
+    // earlier move's, or the row from before them all. On the stage on screen, the slide stays if the
+    // newest move named the room's run; otherwise the room is in another run, one another screen moved it
+    // to or the TV's own Start run started, and the stage starts at its first slide. On another stage, it
+    // is the slide the TV last showed there, if the move that left it named the room's run (or was never
+    // sent), or else the stage's first: a new run's stage starts at its first slide (the reviews of #376).
+    if (requests.current.size === 0) {
+      const landed = stored.current;
+      const last = landed ? left.current.get(landed.stage) : undefined;
+      const back = last && (last.run === null || last.run === landed?.runId) ? last.sub : undefined;
+      const latest = newest.current;
+      const mine = !latest || latest.run === null || latest.run === landed?.runId;
+      left.current.clear();
+      newest.current = null;
+      setAhead(null);
+      if (landed && landed.stage !== onScreen.current.stage) {
+        // Back on the journey, it opens where it was, not at its first caption (the review of #376).
+        journeyFrom.current = back !== undefined ? last?.journey : undefined;
+        setSlide({ stage: landed.stage as StageId, sub: back ?? 0 });
+      }
+      else if (landed && !mine) setSlide({ stage: landed.stage as StageId, sub: 0 });
+    }
+  }, [read, take]);
 
   const step = useCallback(
     (delta: number) => {
@@ -311,7 +456,7 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
                     "rules-ai": <RulesSlide key="rules-ai" shown={1} />,
                     "rules-government": <RulesSlide key="rules-government" shown={2} />,
                     "rules-navigation": <RulesSlide key="rules-navigation" shown={3} />,
-                    journey: <JourneySlide key="journey" control={journey} atEnd={steppedBack} />,
+                    journey: <JourneySlide key="journey" control={journey} atEnd={steppedBack} from={journeyFrom.current} />,
                     enable: <EnableSlide key="enable" />,
                   }[FOUNDATION_SLIDES[sub]]}
                 {stage === "groups" &&
@@ -418,6 +563,11 @@ export function PresenterApp({ joinPassword }: { joinPassword: string | null }) 
             →
           </button>
         </span>
+        {failedRun && (
+          <p className="m-0 w-full font-body text-[0.85rem] text-[var(--color-error)]">
+            Run {failedRun} did not start: the room is on run {control?.runId ?? "…"}.
+          </p>
+        )}
         {error && <p className="m-0 w-full font-body text-[0.85rem] text-[var(--color-error)]">{error}</p>}
       </div>
 
@@ -1469,116 +1619,8 @@ function LiveDemoSlide() {
   );
 }
 
-/** An icon for each group a shared foundation serves. */
-const AUDIENCE_ICONS: Record<(typeof SAME_RULES.audiences)[number]["label"], LucideIcon> = {
-  "For individuals": User,
-  "For AI systems": Sparkles,
-  "For builders": Wrench,
-  "For researchers": ChartColumn,
-};
-
-/** A box's icon beside its label, the same in every box. */
-function IconLabel({ icon: Icon, children }: { icon: LucideIcon; children: ReactNode }) {
-  return (
-    <div className="mb-[14px] flex items-center gap-[14px]">
-      <Icon aria-hidden size={32} strokeWidth={1.75} className="shrink-0 text-[var(--color-accent)]" />
-      <Label className="mb-0">{children}</Label>
-    </div>
-  );
-}
-
 /**
- * How programs cross-reference each other, for the governments box: each
- * arrow is a real eligibility or benefit link (TANF confers SNAP categorical
- * eligibility; LIHEAP sets SNAP's utility allowance; SNAP directly certifies
- * school meals; SSI opens Medicaid; SNAP and Medicaid confer WIC eligibility).
- */
-const POLICY_NODES = {
-  TANF: { x: 62, y: 50, w: 104 },
-  LIHEAP: { x: 62, y: 106, w: 104 },
-  SSI: { x: 62, y: 162, w: 104 },
-  SNAP: { x: 280, y: 78, w: 104 },
-  Medicaid: { x: 280, y: 162, w: 104 },
-  "School meals": { x: 488, y: 50, w: 136 },
-  WIC: { x: 488, y: 134, w: 136 },
-} as const;
-type PolicyNode = keyof typeof POLICY_NODES;
-const POLICY_LINKS: { from: PolicyNode; to: PolicyNode; label: string }[] = [
-  { from: "TANF", to: "SNAP", label: "eligibility" },
-  { from: "LIHEAP", to: "SNAP", label: "utilities" },
-  { from: "SSI", to: "Medicaid", label: "eligibility" },
-  { from: "SNAP", to: "School meals", label: "certifies" },
-  { from: "SNAP", to: "WIC", label: "eligibility" },
-  { from: "Medicaid", to: "WIC", label: "eligibility" },
-];
-
-function PolicyGraph() {
-  const h = 32;
-  return (
-    <svg
-      viewBox="0 0 560 182"
-      role="img"
-      aria-label="How programs cross-reference: TANF confers SNAP eligibility, LIHEAP sets SNAP's utility allowance, SSI opens Medicaid, SNAP certifies children for school meals, and SNAP and Medicaid confer WIC eligibility."
-      className="block h-auto w-full font-body"
-    >
-      <defs>
-        <marker id="policy-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0 0 10 5 0 10z" fill="#a8a29e" />
-        </marker>
-      </defs>
-      <text x="0" y="14" className="font-mono" fontSize={12} letterSpacing="0.16em" fill="var(--color-ink-muted)" style={{ textTransform: "uppercase" }}>
-        How the rules cross-reference
-      </text>
-      {POLICY_LINKS.map(({ from, to, label }) => {
-        const a = POLICY_NODES[from];
-        const b = POLICY_NODES[to];
-        const x1 = a.x + a.w / 2;
-        const x2 = b.x - b.w / 2 - 3;
-        return (
-          <g key={`${from}-${to}`}>
-            <line x1={x1} y1={a.y} x2={x2} y2={b.y} stroke="#c9c2b6" strokeWidth={1.6} markerEnd="url(#policy-arrow)" />
-            <text
-              x={(x1 + x2) / 2}
-              y={(a.y + b.y) / 2 - 4}
-              textAnchor="middle"
-              fontSize={13}
-              fill="var(--color-ink-muted)"
-              stroke="var(--color-paper-elevated)"
-              strokeWidth={4}
-              paintOrder="stroke"
-            >
-              {label}
-            </text>
-          </g>
-        );
-      })}
-      {(Object.keys(POLICY_NODES) as PolicyNode[]).map((name) => {
-        const n = POLICY_NODES[name];
-        const strong = name === "SNAP";
-        return (
-          <g key={name}>
-            <rect
-              x={n.x - n.w / 2}
-              y={n.y - h / 2}
-              width={n.w}
-              height={h}
-              rx={8}
-              fill={strong ? "var(--color-accent)" : "var(--color-paper)"}
-              stroke={strong ? "var(--color-accent)" : "#d6cfc2"}
-              strokeWidth={1.4}
-            />
-            <text x={n.x} y={n.y + 6} textAnchor="middle" fontSize={17} fontWeight={600} fill={strong ? "#fff" : "var(--color-ink)"}>
-              {name}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
-/**
- * Shared foundation 5/6: what one set of open rules lets a government do, as the room's own focus:
+ * Shared foundation 7/7: what one set of open rules lets a government do, as the room's own focus:
  * one open box per use, with no dark boxes and no ticks (Oct 26). The other audiences are off this
  * slide; the prompt hands over to Small groups.
  */
@@ -1601,35 +1643,6 @@ function EnableSlide() {
       <p className="m-0 border-l-[6px] border-[var(--color-accent)] pl-[28px] font-display text-[42px] font-light leading-tight text-[var(--color-ink)]">
         {r.prompt}
       </p>
-    </div>
-  );
-}
-
-/** Shared foundation, slide 2 (from Max's Nava deck): what a shared foundation enables, governments first. */
-function SameRulesSlide() {
-  const r = SAME_RULES;
-  return (
-    <div className="grid h-full grid-cols-[1.8fr_1fr_1fr] grid-rows-2 gap-[18px]">
-      <Panel className="row-span-2 flex flex-col">
-        <IconLabel icon={Landmark}>{r.governments.label}</IconLabel>
-        <ul className={`m-0 flex list-none flex-col gap-[10px] p-0 ${BOX_TEXT}`}>
-          {r.governments.uses.map((use) => (
-            <li key={use} className="flex gap-[12px]">
-              <Check aria-hidden size={24} strokeWidth={2.25} className="mt-[3px] shrink-0 text-[var(--color-accent)]" />
-              {use}
-            </li>
-          ))}
-        </ul>
-        <div className="mt-auto pt-[14px]">
-          <PolicyGraph />
-        </div>
-      </Panel>
-      {r.audiences.map((a) => (
-        <Panel key={a.label} className="flex flex-col">
-          <IconLabel icon={AUDIENCE_ICONS[a.label]}>{a.label}</IconLabel>
-          <p className={`m-0 ${BOX_TEXT}`}>{a.text}</p>
-        </Panel>
-      ))}
     </div>
   );
 }
@@ -1670,8 +1683,8 @@ const GROUP_ICONS: Record<(typeof ONE_SET_GROUPS)[number]["id"], LucideIcon> = {
 };
 
 /**
- * One open set of rules, and the tools it feeds: the dark box, an arrow, and the six uses. Shared by
- * the title slide before the journey and the slide after it.
+ * One open set of rules, and the tools it feeds: the open box, an arrow, and the six uses. Only the
+ * one-set slide, off the deck, draws it now; the rules slides build their groups instead.
  */
 function OneSetDiagram() {
   return (
@@ -1699,9 +1712,9 @@ function OneSetDiagram() {
 }
 
 /**
- * Shared foundation 1/6 and 2/6: the question on its own, then the room's answer building in below it.
+ * Shared foundation 1/7 and 2/7: the question on its own, then the room's answer building in below it.
  * The question sits at the same place on both, so the second plays as a build on the first. Before
- * anyone answers, 2/6 is the question alone.
+ * anyone answers, 2/7 is the question alone.
  */
 function QuestionSlide({ summary, room }: { summary: RunSummary; room: boolean }) {
   const answered = summary.sourceOfTruth.reduce((sum, c) => sum + c.count, 0);
@@ -1782,7 +1795,7 @@ function RulesSlide({ shown }: { shown: number }) {
 
 /**
  * One set of rules under every tool, once Shared foundation 3/4 after the journey. Off the deck since
- * Oct 26: the rules slide before the journey shows the same diagram.
+ * Oct 26: the rules slides before the journey (3/7 to 5/7) make its point, one group at a time.
  */
 function OneSetSlide({ summary }: { summary: RunSummary }) {
   const answered = summary.sourceOfTruth.reduce((sum, c) => sum + c.count, 0);
@@ -1800,254 +1813,6 @@ function OneSetSlide({ summary }: { summary: RunSummary }) {
           say a resident, screener or AI can&apos;t fully check an answer against their state&apos;s rules today.
         </p>
       )}
-    </div>
-  );
-}
-
-/** An icon for each step of the encoding pipeline, as on the InnovateUS slide. */
-const PIPELINE_ICONS: Record<(typeof ENCODING_PIPELINE.steps)[number]["name"], LucideIcon> = {
-  Intake: Download,
-  Corpus: BookText,
-  "Encoding loop": RefreshCw,
-  RuleSpec: FileCode,
-  Graph: Network,
-  "Compile and serve": Layers,
-};
-
-/** The small mono labels and code inside the pipeline's cards. */
-const PIPE_LABEL = "font-mono text-[12px] font-medium uppercase tracking-[0.12em] text-[var(--color-ink-muted)]";
-const PIPE_MONO = "font-mono text-[13px] leading-[1.45] text-[var(--color-ink)] [overflow-wrap:anywhere]";
-const PIPE_QUOTE = "font-body text-[15px] italic leading-snug text-[var(--color-accent)]";
-
-function PipeDown() {
-  return (
-    <span aria-hidden className="text-center font-body text-[18px] leading-none text-[var(--color-ink-muted)]">
-      ↓
-    </span>
-  );
-}
-
-/** A row of blank squares: the rest of the law around the one provision shown. */
-function LawSquares() {
-  return (
-    <div aria-hidden className="grid grid-cols-6 gap-[5px]">
-      {Array.from({ length: 12 }, (_, i) => (
-        <i key={i} className="block aspect-square rounded-[3px] border border-[var(--color-rule-strong)]" />
-      ))}
-    </div>
-  );
-}
-
-/** What the pipeline's graph shows, for screen readers. */
-export const PIPELINE_GRAPH_LABEL = "snap_allotment reads tfp and income and feeds benefit; fpl and elig are the rest of the graph";
-
-/**
- * The spec becoming a node: snap_allotment reads tfp and income and feeds the
- * benefit; the faint nodes are the rest of the graph. Sized so its labels stay
- * legible at slide scale.
- */
-function PipelineGraph() {
-  const box = (x: number, y: number, w: number, label: string, faint = false) => (
-    <g key={label}>
-      <rect x={x} y={y} width={w} height={22} rx={4} fill="var(--color-paper-elevated)" stroke={faint ? "var(--color-rule-strong)" : "var(--color-accent)"} strokeWidth={1.3} />
-      <text x={x + w / 2} y={y + 15} textAnchor="middle" className="font-mono" fontSize={11.5} fill={faint ? "var(--color-ink-muted)" : "var(--color-ink)"}>
-        {label}
-      </text>
-    </g>
-  );
-  const line = (x1: number, y1: number, x2: number, y2: number, faint = false) => (
-    <line key={`${x1}-${y1}-${x2}-${y2}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke={faint ? "var(--color-rule-strong)" : "var(--color-accent)"} strokeWidth={1.2} />
-  );
-  return (
-    <svg role="img" aria-label={PIPELINE_GRAPH_LABEL} viewBox="0 0 170 140" className="block h-auto w-full">
-      {line(26, 30, 40, 62)}
-      {line(85, 30, 66, 62)}
-      {line(85, 30, 136, 62, true)}
-      {line(146, 30, 146, 62, true)}
-      {line(56, 84, 76, 116)}
-      {line(141, 84, 98, 116, true)}
-      {box(6, 8, 40, "tfp")}
-      {box(56, 8, 58, "income")}
-      {box(126, 8, 40, "fpl", true)}
-      {box(4, 62, 108, "snap_allotment")}
-      {box(120, 62, 46, "elig", true)}
-      {box(52, 116, 66, "benefit")}
-    </svg>
-  );
-}
-
-/** What each step of the pipeline looks like, as on the InnovateUS slide. */
-function PipelineViz({ name }: { name: (typeof ENCODING_PIPELINE.steps)[number]["name"] }) {
-  const p = ENCODING_PIPELINE;
-  switch (name) {
-    case "Intake":
-      return (
-        <>
-          <span className={PIPE_LABEL}>Scraping pipelines</span>
-          <ul className="m-0 flex list-none flex-col gap-[6px] p-0">
-            {p.sources.map((source) => (
-              <li key={source} className={`${PIPE_MONO} rounded-full border border-[var(--color-rule-strong)] bg-[var(--color-paper-elevated)] px-[8px] py-[2px] text-center`}>
-                {source}
-              </li>
-            ))}
-          </ul>
-          <PipeDown />
-          <div className="flex items-center gap-[10px]">
-            <Database aria-hidden size={30} strokeWidth={1.4} className="shrink-0 text-[var(--color-rule-strong)]" />
-            <span className={PIPE_LABEL}>Database</span>
-          </div>
-        </>
-      );
-    case "Corpus":
-      return (
-        <>
-          <LawSquares />
-          <div className="flex flex-col gap-[4px] rounded-[8px] border-[1.5px] border-[var(--color-accent)] bg-[var(--color-paper-elevated)] px-[10px] py-[8px]">
-            <span className={PIPE_MONO}>
-              us:statutes/
-              <wbr />
-              7/2017/a
-            </span>
-            <span className="font-body text-[16px] font-semibold leading-snug text-[var(--color-ink)]">§ 2017 · Value of allotment</span>
-            <span className={PIPE_QUOTE}>“…30 per centum…”</span>
-          </div>
-          <LawSquares />
-        </>
-      );
-    case "Encoding loop":
-      return (
-        <div className="relative flex flex-col gap-[8px] pr-[24px]">
-          <div
-            className="mr-[8px] rounded-[8px] border border-[var(--color-rule-strong)] bg-[var(--color-paper-elevated)] px-[10px] py-[8px]"
-            style={{
-              borderTop: "3px solid var(--color-accent)",
-              boxShadow:
-                "4px 4px 0 -1px var(--color-paper-elevated), 4px 4px 0 0 var(--color-rule-strong), 8px 8px 0 -1px var(--color-paper-elevated), 8px 8px 0 0 var(--color-rule-strong)",
-            }}
-          >
-            <span className={`${PIPE_LABEL} mb-[4px] block`}>Encoders</span>
-            <span className={`${PIPE_QUOTE} block`}>“30 per centum”</span>
-            <span className={`${PIPE_MONO} block`}>
-              <b>→ 0.30</b> <span className="text-[var(--color-ink-muted)]">rev 43</span>
-            </span>
-          </div>
-          <PipeDown />
-          <span className={PIPE_LABEL}>Validators</span>
-          <ul className="m-0 flex list-none flex-col gap-[5px] p-0">
-            {p.checks.map((check) => (
-              <li
-                key={check.label}
-                className="rounded-[12px] border border-[var(--color-success)] bg-[rgba(22,101,52,0.07)] px-[10px] py-[2px] font-mono text-[12px] leading-snug text-[var(--color-success)]"
-              >
-                {check.required ? `✓ ${check.label}` : check.label}
-              </li>
-            ))}
-          </ul>
-          {/* The loop back: a draft that fails a required check goes round again. */}
-          <span
-            aria-hidden
-            className="absolute bottom-[14px] right-[2px] top-[26px] w-[14px] rounded-r-[10px] border-[1.5px] border-l-0 border-dashed border-[var(--color-accent)]"
-          />
-        </div>
-      );
-    case "RuleSpec":
-      return (
-        <>
-          <span className={`${PIPE_MONO} text-[var(--color-ink-muted)]`}>¶ rulespec-us</span>
-          <span className={`${PIPE_MONO} font-semibold`}>snap_allotment</span>
-          <div className={`${PIPE_MONO} rounded-[8px] border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-[10px] py-[8px] leading-[1.6]`}>
-            <div className="text-[var(--color-ink-muted)]">imports:</div>
-            <div className="pl-[12px]">
-              us:statutes/
-              <wbr />
-              7/2017/a
-            </div>
-            <div>
-              <span className="text-[var(--color-ink-muted)]">entity:</span> Household
-            </div>
-            <div className="text-[var(--color-ink-muted)]">formula:</div>
-            <div className="pl-[12px]">
-              max(0, tfp − <b className="text-[var(--color-accent)]">0.30</b> × net)
-            </div>
-            <div className="text-[var(--color-accent)]">0.30 ← “30 per centum”</div>
-          </div>
-        </>
-      );
-    case "Graph":
-      return <PipelineGraph />;
-    case "Compile and serve":
-      return (
-        <>
-          <div className="overflow-hidden rounded-[10px] border-[1.5px] border-[var(--color-accent)] bg-[var(--color-paper-elevated)]">
-            <div className="flex items-center gap-[8px] border-b border-[var(--color-rule)] bg-[var(--color-accent-light)] px-[10px] py-[5px] text-[var(--color-accent)]">
-              <Package aria-hidden size={18} strokeWidth={1.8} className="shrink-0" />
-              <span className="font-mono text-[12px] font-medium uppercase tracking-[0.12em]">Program artifact</span>
-            </div>
-            <div className="px-[10px] py-[8px]">
-              <div className={`${PIPE_MONO} font-semibold`}>SNAP · US · 2026</div>
-              <div className="font-mono text-[13px] text-[var(--color-success)]">✓ compiled</div>
-            </div>
-          </div>
-          <PipeDown />
-          <ul className="m-0 flex list-none flex-col gap-[6px] p-0">
-            {p.surfaces.map((surface) => (
-              <li
-                key={surface.name}
-                className="flex flex-col rounded-[6px] border border-[var(--color-rule-strong)] bg-[var(--color-paper-elevated)] px-[10px] py-[5px]"
-                style={{ borderTop: "2px solid var(--color-accent)" }}
-              >
-                <span className="font-body text-[16px] font-semibold leading-tight text-[var(--color-ink)]">{surface.name}</span>
-                <span className="font-mono text-[12px] text-[var(--color-ink-muted)]">{surface.who}</span>
-              </li>
-            ))}
-          </ul>
-        </>
-      );
-  }
-}
-
-/**
- * Shared foundation, slide 3: the encoding pipeline, from the InnovateUS deck
- * (slide 12). Cards share the row's grid (subgrid), so icons, names, captions,
- * illustrations and footnotes line up across all six.
- */
-function PipelineSlide() {
-  const p = ENCODING_PIPELINE;
-  return (
-    <div className="flex h-full flex-col gap-[22px]">
-      <p className="m-0 font-body text-[21px] leading-snug text-[var(--color-ink-secondary)]">{p.lead}</p>
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1.2fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1.12fr)] grid-rows-[auto_auto_auto_1fr_auto] gap-x-[6px]">
-        {p.steps.map((step, i) => {
-          const Icon = PIPELINE_ICONS[step.name];
-          return (
-            <Fragment key={step.name}>
-              {i > 0 && (
-                <span aria-hidden className="row-span-5 self-center font-body text-[20px] text-[var(--color-ink-muted)]">
-                  →
-                </span>
-              )}
-              <div
-                className="row-span-5 grid min-w-0 grid-rows-subgrid gap-y-[7px] rounded-[12px] border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-[14px] pb-[14px] pt-[12px] shadow-[0_1px_3px_rgba(28,25,23,0.06)]"
-                style={{ borderTop: "5px solid var(--color-accent)" }}
-              >
-                <span className="flex h-[40px] w-[40px] items-center justify-center rounded-full bg-[var(--color-accent-light)] text-[var(--color-accent)]">
-                  <Icon aria-hidden size={22} strokeWidth={1.75} />
-                </span>
-                <span className="font-body text-[22px] font-semibold leading-tight text-[var(--color-ink)]">{step.name}</span>
-                <span className="font-body text-[16px] leading-snug text-[var(--color-ink-secondary)]">{step.caption}</span>
-                <div className={`flex min-h-0 flex-col gap-[6px] border-t border-[var(--color-rule)] pt-[10px] ${step.foot ? "" : "row-span-2"}`}>
-                  <PipelineViz name={step.name} />
-                </div>
-                {step.foot && (
-                  <span className="border-t border-[var(--color-rule)] pt-[8px] font-body text-[14px] italic leading-snug text-[var(--color-ink-secondary)]">
-                    {step.foot}
-                  </span>
-                )}
-              </div>
-            </Fragment>
-          );
-        })}
-      </div>
     </div>
   );
 }
@@ -2227,40 +1992,6 @@ function GroupsSlide({ summary }: { summary: RunSummary }) {
           )}
         </div>
       )}
-    </div>
-  );
-}
-
-/** Next steps, slide 1: the ask. What Silver A takes from a state, and what it never asks for. */
-/** The Silver A ask, once Next steps 1/2. Off the deck since Oct 26; the tiers slide covers Silver A. */
-function AskSlide() {
-  return (
-    <div className="flex h-full flex-col gap-[28px]">
-      <div className="flex items-center gap-[20px]">
-        <TierMedal medal="silver" size={64} />
-        <div>
-          <p className="m-0 font-display text-[44px] font-light leading-tight text-[var(--color-ink)]">{SILVER_ASK.title}</p>
-          <p className="m-0 font-body text-[24px] text-[var(--color-ink-secondary)]">{SILVER_ASK.lead}</p>
-        </div>
-      </div>
-      <div className="grid flex-1 grid-cols-2 gap-[24px]">
-        <Panel className="border-l-[8px] border-l-[var(--color-accent)]">
-          <Label className="text-[var(--color-accent)]">What it takes</Label>
-          <ul className="m-0 flex list-disc flex-col gap-[14px] pl-[28px] font-body text-[26px] leading-snug text-[var(--color-ink)]">
-            {SILVER_ASK.takes.map((t) => (
-              <li key={t}>{t}</li>
-            ))}
-          </ul>
-        </Panel>
-        <Panel>
-          <Label>Your guardrails</Label>
-          <ul className="m-0 flex list-disc flex-col gap-[14px] pl-[28px] font-body text-[26px] leading-snug text-[var(--color-ink)]">
-            {SILVER_ASK.guardrails.map((g) => (
-              <li key={g}>{g}</li>
-            ))}
-          </ul>
-        </Panel>
-      </div>
     </div>
   );
 }

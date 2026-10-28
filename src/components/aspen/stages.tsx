@@ -13,7 +13,7 @@ import {
   USE_CASES,
   type StageId,
 } from "@/lib/aspen/content";
-import { PLEDGE_KEY, VOTE_KEY, participantId, postJson, readStored, sendEvent, writeStored } from "./client";
+import { PLEDGE_KEY, VOTE_KEY, participantId, postJson, readStored, runSwitches, sendEvent, writeStored } from "./client";
 import { Disclosure } from "./disclosure";
 import { BUTTON, BUTTON_QUIET, Card, FIELD, Part } from "./ui";
 
@@ -213,14 +213,17 @@ export function VoteCard({ stage }: { stage: string }) {
   }
   return (
     <div className="flex flex-col gap-4">
+      {/* Two columns from 640px: an odd last option takes the whole row rather than sit alone in half of it. */}
       <div role="group" aria-label="Pick one" className="grid gap-2.5 sm:grid-cols-2">
-        {USE_CASES.map((u) => (
+        {USE_CASES.map((u, i) => (
           <button
             key={u.id}
             type="button"
             aria-pressed={choice === u.id}
             onClick={() => setChoice(u.id)}
-            className={`${OPTION} ${choice === u.id ? OPTION_ON : OPTION_OFF}`}
+            className={`${OPTION} ${choice === u.id ? OPTION_ON : OPTION_OFF} ${
+              i === USE_CASES.length - 1 && USE_CASES.length % 2 === 1 ? "sm:col-span-2" : ""
+            }`}
           >
             <span className="block font-body text-[1.12rem] font-semibold text-[var(--color-ink)]">{u.label}</span>
             <span className="block font-body text-[1.02rem] leading-snug text-[var(--color-ink-muted)]">{u.detail}</span>
@@ -383,6 +386,8 @@ export function NextStepsForm({ onSent }: { onSent?: () => void } = {}) {
   const [note, setNote] = useState("");
   const [status, setStatus] = useState<"idle" | "saving" | "done" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
+  // The run switches (client.ts runSwitches) when this form opened; see submit.
+  const [openedAt] = useState(runSwitches);
 
   // A tab reloaded after sending (iOS reloads one left in the background) shows the thank-you again.
   useEffect(() => {
@@ -395,6 +400,11 @@ export function NextStepsForm({ onSent }: { onSent?: () => void } = {}) {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    // A form from a run the device has left (client.ts runSwitches) is the old run's: a tap that lands
+    // before the page remounts it sends nothing, and an answer that comes back after the device moved
+    // to another run doesn't mark the new run's form as sent, or let the phone leave it (the reviews of
+    // #376). Adopting a first run is not a move: a send from before it belongs to the run adopted.
+    if (runSwitches() !== openedAt) return;
     setStatus("saving");
     const response = await postJson<{ error?: string }>("/api/aspen/pledge", {
       participantId: participantId(),
@@ -403,6 +413,10 @@ export function NextStepsForm({ onSent }: { onSent?: () => void } = {}) {
       stateSystems,
       note,
     }).catch(() => null);
+    if (runSwitches() !== openedAt) {
+      setStatus("idle");
+      return;
+    }
     if (response?.ok) {
       writeStored(PLEDGE_KEY, true);
       setStatus("done");

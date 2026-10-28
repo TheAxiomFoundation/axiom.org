@@ -20,7 +20,7 @@ import {
 import type { ChatSource } from "@/lib/aspen/openai";
 import { AnswerText } from "./answer-text";
 import { RatingCard, readRatingDraft } from "./answer-feedback";
-import { CHAT_KEY, newId, participantId, readStored, sendEvent, writeStored } from "./client";
+import { CHAT_KEY, currentRun, newId, participantId, readStored, runSwitches, sendEvent, writeStored } from "./client";
 import { Disclosure } from "./disclosure";
 import { BUTTON, BUTTON_QUIET, Chip, FIELD, STEP_NUMBER } from "./ui";
 
@@ -145,6 +145,11 @@ export interface SavedChat {
   conversationId: string;
   turns: Turn[];
   rated: string[];
+  /**
+   * The run the conversation belongs to (client.ts currentRun), null when the device had none yet.
+   * Missing from saves made before chats named their run.
+   */
+  runId?: string | null;
 }
 
 /** A source's host for its label; the raw URL when it does not parse. */
@@ -240,11 +245,18 @@ export function ChatWindow({
   const chatCard = useRef<HTMLDivElement>(null);
   // False until the saved conversation is read, so the first render never overwrites it.
   const [hydrated, setHydrated] = useState(false);
+  // The run switches (client.ts runSwitches) when this chat opened. A new run drops the saved chat and
+  // remounts this one (aspen-app's runEpoch), but a tap or a keystroke here can render before that
+  // remount does; its save must not write the old run's conversation back (the review of #370).
+  const [openedAt] = useState(runSwitches);
 
-  // A phone that reloads (or a browser that drops the tab) keeps its conversation.
+  // A phone that reloads (or a browser that drops the tab) keeps its conversation, unless it was saved
+  // under another run. One saved before the device had a run, or before chats named theirs, belongs to
+  // the run the device adopted since, as the device's other answers do (enterRun).
   useEffect(() => {
     const saved = readStored<SavedChat>(CHAT_KEY);
-    if (saved && Array.isArray(saved.turns)) {
+    const run = currentRun();
+    if (saved && Array.isArray(saved.turns) && (saved.runId == null || saved.runId === run)) {
       setPerspective(isPerspectiveId(saved.perspective) ? saved.perspective : "resident");
       setHouseholdId(saved.householdId ?? null);
       const savedQuestions = Array.isArray(saved.questionIds) ? saved.questionIds : saved.questionId ? [saved.questionId] : [];
@@ -266,7 +278,8 @@ export function ChatWindow({
   }, []);
 
   useEffect(() => {
-    if (!hydrated) return;
+    // A chat from a run the device has left saves nothing.
+    if (!hydrated || runSwitches() !== openedAt) return;
     writeStored(CHAT_KEY, {
       perspective,
       householdId,
@@ -278,8 +291,10 @@ export function ChatWindow({
       // An answer still on its way is kept as a placeholder, so a reload or another tab says it was cut off.
       turns: turns.map((t) => (t.status === "streaming" ? { key: t.key, role: t.role, content: "", status: t.status, promptId: t.promptId } : t)),
       rated: [...rated],
+      // The device's run now: the one this chat opened under, or the one the device adopted since.
+      runId: currentRun(),
     } satisfies SavedChat);
-  }, [hydrated, perspective, householdId, questionIds, twists, draft, template, conversationId, turns, rated]);
+  }, [hydrated, openedAt, perspective, householdId, questionIds, twists, draft, template, conversationId, turns, rated]);
 
   const asked = turns.some((t) => t.role === "assistant" && t.status === "done");
   const newestAnswer = turns.findLast((t) => t.role === "assistant" && t.status === "done" && t.promptId);

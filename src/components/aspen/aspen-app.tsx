@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { EVENT, LOOK_UP, POLICYBENCH, STAGES, isStageId, percent, stageIndex, type StageId } from "@/lib/aspen/content";
 import { ChatWindow, type ChatStatus } from "./chat-window";
 import { OverallRating } from "./overall-rating";
-import { enterRun, participantId, readStored, sendEvent, useControl, useResults, useTabHold, writeStored } from "./client";
+import { enterRun, participantId, readStored, sendEvent, useResults, useRoom, useTabHold, writeStored } from "./client";
 import { Agenda, LookUp, NextStepsForm, SmallGroups, ThankYouContent, WelcomeLanding } from "./stages";
 import { BUTTON, StageHeading } from "./ui";
 import { BrandLogo } from "./brand-logo";
@@ -30,7 +30,8 @@ function historyStage(state: unknown): StageId | null {
  * instead of leaving the page.
  */
 export function AspenApp() {
-  const { data: control, failed: controlFailed } = useControl();
+  // The room, never older than a live row this device read in the last minute (client.ts roomFrom).
+  const { data: control, failed: controlFailed } = useRoom();
   // One tab at a time keeps the phone's answers, so two tabs never overwrite each other's.
   const { elsewhere, takeBack } = useTabHold();
   const [view, setView] = useState<StageId>("welcome");
@@ -119,8 +120,9 @@ export function AspenApp() {
 
   // A new run on the presenter view (after a rehearsal) starts this device
   // clean: the chat and the overall rating remount without the old run's answers, and
-  // the page follows the room again. Only a live control row counts, so a
-  // database error (which falls back to the default run) never clears a phone.
+  // the page follows the room again, whether or not it had saved anything (client.ts
+  // enterRun). Only a live control row counts, so a database error (which falls back
+  // to the default run) never clears a phone.
   const [runEpoch, setRunEpoch] = useState(0);
   useEffect(() => {
     if (!hydrated || !control?.live) return;

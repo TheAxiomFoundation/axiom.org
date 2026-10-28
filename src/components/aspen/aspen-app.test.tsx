@@ -1,11 +1,11 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { EVENT, LOOK_UP, STAGES, type StageId } from "@/lib/aspen/content";
+import { EVENT, LOOK_UP, STAGES, USE_CASES, type StageId } from "@/lib/aspen/content";
 import { EMPTY_SUMMARY, type RunSummary } from "@/lib/aspen/results";
 import type { Control } from "@/lib/aspen/types";
 import { AspenApp } from "./aspen-app";
 import { CHAT_KEY, type SavedChat } from "./chat-window";
-import { OVERALL_KEY, PLEDGE_KEY } from "./client";
+import { OVERALL_KEY, PLEDGE_KEY, VOTE_KEY, _resetRoom, currentRun } from "./client";
 
 function jsonResponse(data: unknown, ok = true) {
   return { ok, status: ok ? 200 : 500, json: async () => data } as unknown as Response;
@@ -378,6 +378,108 @@ describe("AspenApp following the presenter", () => {
       { timeout: 6000 },
     );
     await onView("dinner");
+  });
+
+  it("doesn't let a send from the old run, answered after a new run starts, count as the new run's", async () => {
+    // The review of #376: a rehearsal send whose answer came after Start run marked the live run's
+    // form as sent, so the phone left it for Thank you, and a reload showed the old thank-you.
+    control.stage = "next";
+    storeChat({ turns: [] });
+    const { rerender } = render(<AspenApp />);
+    await onView("next");
+    // The pledge's answer is held; the rest answers as beforeEach's does.
+    let answer: (r: Response) => void = () => {};
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/aspen/pledge") return new Promise<Response>((resolve) => (answer = resolve));
+      if (url === "/api/aspen/state") return jsonResponse(control);
+      if (url.startsWith("/api/aspen/results")) return jsonResponse({ runId: control.runId, live: true, summary });
+      return jsonResponse({ ok: true, saved: true });
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Email" }), { target: { value: "ada@az.gov" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /State systems/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByRole("button", { name: "Sending…" })).toBeDisabled();
+
+    // Start run: the phone drops the old run's chat and starts the new run at Welcome.
+    control = { ...control, runId: "live", stage: "welcome" };
+    rerender(<AspenApp />);
+    await waitFor(() => expect(localStorage.getItem("aspen.run")).toBe(JSON.stringify("live")), { timeout: 6000 });
+    await act(async () => answer(jsonResponse({ ok: true })));
+    expect(localStorage.getItem(PLEDGE_KEY)).toBeNull();
+
+    // The new run reaches Next steps: a blank form, and the phone keeps it when the room moves on.
+    control = { ...control, stage: "next" };
+    rerender(<AspenApp />);
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Email" })).toBeVisible(), { timeout: 6000 });
+    await onView("next");
+    expect(screen.getByRole("textbox", { name: "Email" })).toHaveValue("");
+    expect(screen.queryByText("Thank you.")).not.toBeInTheDocument();
+    control = { ...control, stage: "dinner" };
+    rerender(<AspenApp />);
+    expect(await screen.findByRole("button", { name: /Jump to where the room is: Thank you/ }, { timeout: 6000 })).toBeInTheDocument();
+    await onView("next");
+    expect(localStorage.getItem(PLEDGE_KEY)).toBeNull();
+  });
+
+  it("starts a new run's pledge form blank on a phone whose storage is blocked, whatever the old run's form hears back", async () => {
+    vi.useFakeTimers();
+    const flush = (ms = 0) =>
+      act(async () => {
+        await vi.advanceTimersByTimeAsync(ms);
+      });
+    // Its local storage blocked, the phone keeps its run in memory (client.ts recordedRun).
+    const { getItem, setItem, removeItem } = Storage.prototype;
+    const blocked = (storage: Storage) => {
+      if (storage === localStorage) throw new DOMException("Storage blocked", "SecurityError");
+    };
+    try {
+      vi.setSystemTime(new Date("2026-10-27T01:00:00.000Z"));
+      _resetRoom();
+      vi.spyOn(Storage.prototype, "getItem").mockImplementation(function (this: Storage, key: string) {
+        blocked(this);
+        return getItem.call(this, key);
+      });
+      vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, key: string, value: string) {
+        blocked(this);
+        return setItem.call(this, key, value);
+      });
+      vi.spyOn(Storage.prototype, "removeItem").mockImplementation(function (this: Storage, key: string) {
+        blocked(this);
+        return removeItem.call(this, key);
+      });
+      control = { runId: "rehearsal", stage: "next", live: true, updatedAt: "2026-10-27T01:00:00.000Z" };
+      let receipt: (r: Response) => void = () => {};
+      fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === "/api/aspen/state") return jsonResponse(control);
+        // The store kept this pledge in the rehearsal; only its answer is slow.
+        if (url === "/api/aspen/pledge") return new Promise<Response>((resolve) => (receipt = resolve));
+        return jsonResponse({ ok: true, saved: true });
+      });
+      render(<AspenApp />);
+      await flush();
+      fireEvent.change(screen.getByRole("textbox", { name: "Email" }), { target: { value: "rehearsal@example.gov" } });
+      fireEvent.click(screen.getByRole("checkbox", { name: /State systems/ }));
+      fireEvent.click(screen.getByRole("button", { name: "Send" }));
+      await flush();
+      expect(screen.getByRole("button", { name: "Sending…" })).toBeDisabled();
+
+      // Start run, then the rehearsal's answer, then the event reaches Next steps.
+      control = { ...control, runId: "event", stage: "welcome", updatedAt: "2026-10-27T01:00:01.000Z" };
+      await flush(4000);
+      expect(currentRun()).toBe("event");
+      await act(async () => receipt(jsonResponse({ ok: true })));
+      control = { ...control, stage: "next", updatedAt: "2026-10-27T01:00:05.000Z" };
+      await flush(4000);
+      // The event needs its own pledge (the review of #376).
+      expect(screen.queryByText("Thank you.")).not.toBeInTheDocument();
+      expect(screen.getByRole("textbox", { name: "Email" })).toHaveValue("");
+    } finally {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+      _resetRoom();
+    }
   });
 
   it("keeps the form's thank-you up when a held phone sends", async () => {
@@ -782,6 +884,162 @@ describe("AspenApp after a new run", () => {
     expect(await screen.findByText("The answer for the couple")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Your verdict" })).toBeInTheDocument();
     expect(localStorage.getItem("aspen.run")).toBe(JSON.stringify("phoenix"));
+  });
+
+  it.each([
+    { clock: "as it was", reload: 500 },
+    // A phone whose clock ran fast, corrected on the reload: 700 ms before it followed the event (the review of #376).
+    { clock: "corrected back", reload: -500 },
+  ])("keeps this run's vote when a reload's first poll reaches a server instance still holding the run before, the phone's clock $clock", async ({ reload }) => {
+    vi.useFakeTimers();
+    const flush = () =>
+      act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+    try {
+      const start = Date.parse("2026-10-27T01:00:00.000Z");
+      vi.setSystemTime(start);
+      // Two server instances, each with its own two-second cache of the room (store.ts readControl).
+      vi.resetModules();
+      const instanceA = await import("@/lib/aspen/store");
+      vi.resetModules();
+      const instanceB = await import("@/lib/aspen/store");
+      // One database: an update applies only over an older row, in the run it names.
+      let row = { run_id: "rehearsal", stage: "welcome", updated_at: "2026-10-27T00:59:59.000Z" };
+      const database = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const query = new URL(String(input)).searchParams;
+        if (init?.method === "PATCH") {
+          const before = query.get("updated_at")!.replace(/^lt\./, "");
+          const inRun = query.get("run_id");
+          if (!(Date.parse(row.updated_at) < Date.parse(before) && (inRun === null || inRun === `eq.${row.run_id}`))) {
+            return new Response(JSON.stringify([]));
+          }
+          row = { ...row, ...JSON.parse(String(init.body)) };
+        }
+        return new Response(JSON.stringify([{ ...row }]));
+      }) as typeof fetch;
+      const store = instanceA.createSupabaseStore({ url: "https://db.example", key: "service" }, database);
+      // B reads the rehearsal's row, and serves it until 01:00:02.
+      await instanceB.readControl(store);
+      vi.setSystemTime(start + 100);
+      await instanceA.writeControl(store, { runId: "event", stage: "welcome", inRun: "rehearsal" });
+      vi.setSystemTime(start + 200);
+      await instanceA.writeControl(store, { stage: "groups", inRun: "event" });
+      let serving = instanceA;
+      fetchMock.mockImplementation(async (input: RequestInfo | URL) =>
+        String(input) === "/api/aspen/state" ? jsonResponse(await serving.readControl(store)) : jsonResponse({ ok: true, saved: true }),
+      );
+
+      // A phone joins the event, opens Small groups with the room, and votes.
+      const first = render(<AspenApp />);
+      await flush();
+      expect(currentRun()).toBe("event");
+      fireEvent.click(within(screen.getByRole("group", { name: "Pick one" })).getByRole("button", { name: new RegExp(`^${USE_CASES[0].label}`) }));
+      fireEvent.click(screen.getByRole("button", { name: "Vote" }));
+      await flush();
+      expect(localStorage.getItem(VOTE_KEY)).toBe(JSON.stringify(USE_CASES[0].id));
+      first.unmount();
+
+      // It reloads, and its first poll reaches B, whose cache still holds the rehearsal. (The instances share
+      // the test's clock: with it set back, B's cache holds as it would 500 ms on.)
+      vi.setSystemTime(start + reload);
+      serving = instanceB;
+      render(<AspenApp />);
+      await flush();
+      expect(currentRun()).toBe("event");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4000);
+      });
+      expect(currentRun()).toBe("event");
+      expect(localStorage.getItem(VOTE_KEY)).toBe(JSON.stringify(USE_CASES[0].id));
+      expect(screen.getByText("You voted:")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+      vi.resetModules();
+    }
+  });
+
+  it("keeps this run's vote across a reload when storage was too full to keep the room's row until the old chat went", async () => {
+    vi.useFakeTimers();
+    const flush = (ms = 0) =>
+      act(async () => {
+        await vi.advanceTimersByTimeAsync(ms);
+      });
+    try {
+      const start = Date.parse("2026-10-27T01:00:00.000Z");
+      vi.setSystemTime(start);
+      _resetRoom();
+      // Two server instances, each with its own two-second cache of the room (store.ts readControl).
+      vi.resetModules();
+      const instanceA = await import("@/lib/aspen/store");
+      vi.resetModules();
+      const instanceB = await import("@/lib/aspen/store");
+      let row = { run_id: "r0", stage: "try", updated_at: "2026-10-27T00:59:59.000Z" };
+      const database = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const query = new URL(String(input)).searchParams;
+        if (init?.method === "PATCH") {
+          const before = query.get("updated_at")!.replace(/^lt\./, "");
+          const inRun = query.get("run_id");
+          if (!(Date.parse(row.updated_at) < Date.parse(before) && (inRun === null || inRun === `eq.${row.run_id}`))) {
+            return new Response(JSON.stringify([]));
+          }
+          row = { ...row, ...JSON.parse(String(init.body)) };
+        }
+        return new Response(JSON.stringify([{ ...row }]));
+      }) as typeof fetch;
+      const store = instanceA.createSupabaseStore({ url: "https://db.example", key: "service" }, database);
+      // The phone was in r0, on Try it, with a chat; B reads r0's row and serves it until 01:00:02.
+      localStorage.setItem("aspen.room", JSON.stringify({ row: { runId: "r0", stage: "try", live: true, updatedAt: row.updated_at }, at: start }));
+      localStorage.setItem("aspen.run", JSON.stringify("r0"));
+      storeChat({ turns: [], draft: "x".repeat(1000) } as Partial<SavedChat>);
+      await instanceB.readControl(store);
+      vi.setSystemTime(start + 100);
+      await instanceA.writeControl(store, { runId: "r1", stage: "welcome", inRun: "r0" });
+      vi.setSystemTime(start + 200);
+      await instanceA.writeControl(store, { stage: "groups", inRun: "r1" });
+      let serving = instanceA;
+      fetchMock.mockImplementation(async (input: RequestInfo | URL) =>
+        String(input) === "/api/aspen/state" ? jsonResponse(await serving.readControl(store)) : jsonResponse({ ok: true, saved: true }),
+      );
+      // Storage is too full for r1's row (a longer stage than r0's) until the old chat goes.
+      const { setItem, removeItem } = Storage.prototype;
+      let full = true;
+      vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, key: string, value: string) {
+        if (full && key === "aspen.room") throw new DOMException("No room", "QuotaExceededError");
+        return setItem.call(this, key, value);
+      });
+      vi.spyOn(Storage.prototype, "removeItem").mockImplementation(function (this: Storage, key: string) {
+        if (key === CHAT_KEY) full = false;
+        return removeItem.call(this, key);
+      });
+
+      // The phone follows the room into r1's Small groups and votes.
+      const first = render(<AspenApp />);
+      await flush();
+      expect(currentRun()).toBe("r1");
+      fireEvent.click(within(screen.getByRole("group", { name: "Pick one" })).getByRole("button", { name: new RegExp(`^${USE_CASES[0].label}`) }));
+      fireEvent.click(screen.getByRole("button", { name: "Vote" }));
+      await flush();
+      expect(localStorage.getItem(VOTE_KEY)).toBe(JSON.stringify(USE_CASES[0].id));
+      first.unmount();
+
+      // It reloads, its memory gone, and its first poll reaches B (the review of #376).
+      _resetRoom();
+      vi.setSystemTime(start + 500);
+      serving = instanceB;
+      render(<AspenApp />);
+      await flush();
+      expect(currentRun()).toBe("r1");
+      await flush(4000);
+      expect(currentRun()).toBe("r1");
+      expect(localStorage.getItem(VOTE_KEY)).toBe(JSON.stringify(USE_CASES[0].id));
+      expect(screen.getByText("You voted:")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+      vi.resetModules();
+      _resetRoom();
+    }
   });
 });
 
