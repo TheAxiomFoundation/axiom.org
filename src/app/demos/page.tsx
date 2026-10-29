@@ -19,6 +19,10 @@ export const metadata: Metadata = {
 // axiom.org/demos, which would recurse this very page inside its
 // own iframe.
 const DEMO_SHELL_URL = "https://axiom-demo-shell.vercel.app/demos";
+// The link that opens the gallery full screen names axiom.org, which serves
+// the shell's /demos files through a vercel.json rewrite. /demos itself is
+// this page, so the link asks for the shell's index.html.
+const DEMO_GALLERY_URL = "https://axiom.org/demos/index.html";
 
 /** Modal ids the shell accepts via ?d= — mirrors its data.js. */
 const SHELL_DEMO_IDS = new Set([
@@ -46,6 +50,9 @@ export default async function DemosPage({ searchParams }: PageProps) {
   const gallerySrc = demo
     ? `${DEMO_SHELL_URL}/?d=${demo}`
     : `${DEMO_SHELL_URL}/`;
+  const galleryHref = demo
+    ? `${DEMO_GALLERY_URL}?d=${demo}`
+    : DEMO_GALLERY_URL;
 
   return (
     <div className="relative z-1 pt-32 pb-24 px-8">
@@ -86,7 +93,7 @@ export default async function DemosPage({ searchParams }: PageProps) {
               The gallery works best full-screen on mobile.
             </p>
             <a
-              href={gallerySrc}
+              href={galleryHref}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 rounded-md border border-[var(--color-rule)] px-6 py-3 font-mono text-[0.8rem] tracking-[0.12em] uppercase text-[var(--color-accent)] no-underline transition-colors hover:border-[var(--color-accent)]"

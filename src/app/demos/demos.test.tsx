@@ -15,6 +15,10 @@ describe('DemosPage', () => {
       'src',
       'https://axiom-demo-shell.vercel.app/demos/',
     )
+    // The full-screen link names axiom.org, not the shell's Vercel host.
+    expect(
+      screen.getByRole('link', { name: /open the gallery/i }),
+    ).toHaveAttribute('href', 'https://axiom.org/demos/index.html')
     // Closing CTA still points into the app.
     expect(screen.getByText(/the axiom app/i).closest('a')).toHaveAttribute(
       'href',
@@ -32,6 +36,9 @@ describe('DemosPage', () => {
       'src',
       'https://axiom-demo-shell.vercel.app/demos/?d=chatbot',
     )
+    expect(
+      screen.getByRole('link', { name: /open the gallery/i }),
+    ).toHaveAttribute('href', 'https://axiom.org/demos/index.html?d=chatbot')
   })
 
   it('maps legacy renamed ids onto their new demo', async () => {
