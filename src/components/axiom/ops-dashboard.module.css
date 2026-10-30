@@ -845,3 +845,47 @@
     grid-column: 2 / -1;
   }
 }
+
+/* Runs that wait for a person or a runner, under the fleet box. */
+.waitingRow {
+  display: grid;
+  grid-template-columns: 9.5rem 3rem minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  align-items: baseline;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.waitingStage {
+  color: var(--color-code-keyword);
+}
+
+.waitingAge {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-code-text);
+}
+
+.waitingCitation {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--color-code-text);
+}
+
+a.waitingCitation:hover {
+  text-decoration: underline;
+}
+
+.waitingBy {
+  color: var(--color-code-comment);
+}
+
+@media (max-width: 640px) {
+  .waitingRow {
+    grid-template-columns: 8.5rem minmax(0, 1fr);
+  }
+
+  .waitingCitation,
+  .waitingBy {
+    grid-column: 1 / -1;
+  }
+}

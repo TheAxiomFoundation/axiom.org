@@ -9,12 +9,11 @@ import { FlowLine } from "@/components/ops/flow/flow-page";
 import flowStyles from "@/components/ops/flow/flow.module.css";
 import { DEFAULT_FLOW_PARAMS, type FlowParams } from "@/components/ops/flow/flow-params";
 import { getPipelineAttempts } from "@/lib/axiom/encoding-pipeline-data";
-import { getEncodingQueues } from "@/lib/axiom/encoding-queues";
 import { busiestRoots, LEGACY_OPS_TABS, opsHref, sharedOpsParams } from "@/lib/axiom/ops-href";
 import { attemptJurisdiction, parseScope } from "@/lib/axiom/encoding-pipeline-insights";
 import { loadFlow, parsePopulation, parseWindow } from "@/lib/axiom/pipeline-flow-data";
 import { getBundleSummaries, getProgramBundle } from "@/lib/axiom/program-bundles-data";
-import { getEncodingStatus, getRecentCorpusScopes, groupRecentScopes } from "@/lib/corpus-status";
+import { getEncodingStatus } from "@/lib/corpus-status";
 import { SITE_URL } from "@/lib/urls";
 
 export const dynamic = "force-dynamic";
@@ -46,8 +45,7 @@ export default async function OpsPage({ searchParams }: { searchParams?: Promise
   const tab: OpsTab = asked === "line" || asked === "programs" ? asked : "now";
   const referenceMs = Date.now();
 
-  const [encodingStatus, recentScopes, queues] =
-    tab === "now" ? await Promise.all([getEncodingStatus(), getRecentCorpusScopes(), getEncodingQueues()]) : [null, [], []];
+  const encodingStatus = tab === "now" ? await getEncodingStatus() : null;
 
   let panel: ReactNode = null;
   let ledger: ReactNode;
@@ -102,7 +100,15 @@ export default async function OpsPage({ searchParams }: { searchParams?: Promise
     const attempts = pipeline.attempts;
     // Runs waiting for approval or in setup have no live row until their encoder starts.
     starting = {
-      runs: attempts.filter((attempt) => attempt.run_status !== "completed").map((attempt) => ({ citation: attempt.citation })),
+      runs: attempts
+        .filter((attempt) => attempt.run_status !== "completed")
+        .map((attempt) => ({
+          citation: attempt.citation,
+          status: attempt.run_status,
+          dispatchedAt: attempt.dispatched_at,
+          dispatchedBy: attempt.dispatched_by ?? null,
+          runUrl: attempt.run_url,
+        })),
       collectedAt: attempts.reduce<string | null>((newest, attempt) => (!newest || attempt.collected_at > newest ? attempt.collected_at : newest), null),
     };
     // The ledger's scope: All, or one of the busiest roots (and those under it).
@@ -118,8 +124,6 @@ export default async function OpsPage({ searchParams }: { searchParams?: Promise
     <OpsDashboard
       initialStatus={encodingStatus?.value ?? null}
       encodingError={encodingStatus?.error ?? null}
-      queues={queues}
-      recentPlaces={groupRecentScopes(recentScopes)}
       starting={starting}
       initialTab={tab}
       shared={sharedOpsParams(params)}
