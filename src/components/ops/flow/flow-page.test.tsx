@@ -57,17 +57,21 @@ describe("FlowLine", () => {
     expect(screen.getByRole("region", { name: "Encode loop" }).textContent).toContain("1 of 2");
     // No targets, alerts or advice on the page.
     expect(screen.queryByText("Release activation is failing")).toBeNull();
-    expect(screen.queryByText(/target/i)).toBeNull();
+    expect(screen.queryByText(/on target|off target|no target/i)).toBeNull();
   });
 
-  it("draws the line as a diagram: a row per phase, each stage with its counts", () => {
+  it("draws the line as a diagram: a row per phase, each stage with its counts and the retry loop", () => {
     line();
     const diagram = screen.getByRole("figure", { name: "The pipeline as a diagram" });
-    expect(diagram.textContent).toContain("Encode");
-    const validate = within(diagram).getByText("Validate").closest("div")!;
-    expect(validate.textContent).toContain("50% passed");
-    expect(validate.textContent).toContain("tries: 1 of 4 passed");
-    expect(validate.textContent).toContain("1 left the line");
+    const text = diagram.textContent ?? "";
+    expect(text).toContain("ENCODE");
+    expect(text).toContain("VALIDATE");
+    expect(text).toContain("50% passed");
+    expect(text).toContain("tries: 1 of 4 passed");
+    expect(text).toContain("1 left the line");
+    // Two runs reached Generate with four tries: two were retries.
+    expect(text).toContain("↺ 2 retries");
+    expect(text).toContain("REVIEW · PERSON");
   });
 
   it("switches the path and keeps the window and scope", () => {
