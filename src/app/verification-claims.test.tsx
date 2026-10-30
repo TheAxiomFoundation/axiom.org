@@ -18,18 +18,19 @@ import VerifyPage from '@/app/verify/page'
 import ReceiptsPage from '@/app/receipts/page'
 import { EncodedLawSection } from '@/components/landing/encoded-law-section'
 import { EncoderSection } from '@/components/landing/encoder-section'
-import OverviewPage from '@/app/overview/page'
+import OverviewPage, { metadata as overviewMetadata } from '@/app/overview/page'
 import * as overviewContent from '@/components/overview/overview-content'
 import { SOUTHMOD_CAVEATS } from '@/lib/verification-evidence'
 
 // The verification copy must describe what the oracle harness does.
 // - Coverage is partial. axiom-oracles dashboard/public/data/
-//   rule_verification_summary.json (2026-09-28) ties 14,030 of 34,810
-//   rulespec-us rules to a program surface a live comparison exercises, and
+//   rule_verification_summary.json (2026-10-12) ties 14,030 rules to a
+//   program surface a live comparison exercises; the source census on
+//   2026-10-18 counts 34,832 named rulespec-us rules. Meanwhile,
 //   rulespec-us oracle-coverage-pending.yaml declares 14,952 outputs the
 //   shared CI gate admits without a comparison. "Every encoding" claims are
-//   false. The summary does not count rules without a comparison: it maps
-//   16,716 rules to no surface at all, and some of those are compared
+//   false. The summary does not count rules without a comparison: some
+//   rules it maps to no surface at all are compared
 //   directly (the US tariff duty, the NJ pilot income tax), so no page
 //   turns the difference into "N rules had no comparison".
 // - PolicyEngine is not independent of Axiom: Max Ghenis is CEO of both and
@@ -41,6 +42,10 @@ import { SOUTHMOD_CAVEATS } from '@/lib/verification-evidence'
 //   keeps only eligible households and the replay feeds the eligibility gates
 //   passing values (axiom-oracles bridges/snap_qc_compare.py). A page that
 //   names SNAP QC says eligibility is untested.
+// - Drafts must compile and pass their tests to merge, except modules on the
+//   waiver list, and the encoder writes those tests in the same model
+//   response as the rules (axiom-encode src/axiom_encode/harness/evals.py),
+//   so nothing here may say the model never grades its own work.
 // - SOUTHMOD is compared (40 suites on axiom-oracles main since 2026-10-04),
 //   with three caveats a page that names it states: the runs are manual on
 //   the licensed machine (SOUTHMOD_A4.0 Adhesion Agreement clause 4; every
@@ -60,27 +65,41 @@ const SURFACES = [
   ['/receipts', () => render(<ReceiptsPage />)],
   ['/ (encoded law section)', () => render(<EncodedLawSection />)],
   ['/ (encoder section)', () => render(<EncoderSection />)],
+  // Every audience panel stays mounted (hidden, not unmounted), so the
+  // rendered text includes the tabs a reader has not opened.
+  ['/overview', () => render(<OverviewPage />)],
 ] as const
 
-// Join text nodes with spaces: textContent glues adjacent elements together
-// ("independent evidence" + "Verified" reads "evidenceVerified"), which hides
-// a claim from any pattern that ends on a word boundary.
-function textOf(renderSurface: () => ReturnType<typeof render>) {
-  const { container, unmount } = renderSurface()
-  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
-  const parts: string[] = []
-  while (walker.nextNode()) parts.push(walker.currentNode.textContent ?? '')
-  unmount()
-  return parts.join(' ').replace(/\s+/g, ' ')
-}
+// The downloadable overview PDF is rendered from this HTML (pdf/overview/
+// README.md), and overview.test.tsx checks the published PDF carries this
+// file's hash. Use the same DOM-aware extraction as the encoder-record guard
+// to keep visible copy, accessible names and entity decoding in scope.
+const COPY_SURFACES: ReadonlyArray<readonly [string, () => string]> = [
+  ...SURFACES.map(([route, renderSurface]) => [route, () => pageText(renderSurface)] as const),
+  ['/Axiom-Foundation-Overview.pdf (print source)', () =>
+    htmlCopy(readFileSync(join(process.cwd(), 'pdf/overview/axiom-overview.html'), 'utf8'))],
+]
 
 const CHECK_VERB = String.raw`(cross-check|check|verif|validat|compar|run[s]? against|mapped to an oracle)`
 const UNIVERSAL_SUBJECT = String.raw`(every|each|all) (encoding|published rule|rule|executable output|output)s?`
 
+function unwaivedTestGateSentences(text: string): string[] {
+  const passesTests = /\bpass(es|ing)? (its |their |the |all )?(companion )?(test suite|tests)\b/i
+  return text
+    .split(/\n+|(?<=[.!?])\s+/)
+    .filter((sentence) => passesTests.test(sentence) && !/\bwaive/i.test(sentence))
+}
+
 describe('verification claims', () => {
-  for (const [route, renderSurface] of SURFACES) {
+  it('rejects an unwaived first card sentence even when its heading names waivers', () => {
+    const text = htmlCopy('<article><h3>Tests and waivers</h3><p>Drafts pass their tests before merging.</p></article>')
+
+    expect(unwaivedTestGateSentences(text)).toEqual(['Drafts pass their tests before merging.'])
+  })
+
+  for (const [route, surfaceText] of COPY_SURFACES) {
     it(`${route} claims no universal or independent cross-check`, () => {
-      const text = textOf(renderSurface)
+      const text = surfaceText()
 
       // A universal subject next to a checking verb, either order, within one
       // sentence. "The primary text every encoding points back to" is fine;
@@ -95,6 +114,10 @@ describe('verification claims', () => {
       expect(text).not.toMatch(/engines we don.t control/i)
       expect(text).not.toMatch(/never grades its own work/i)
       expect(text).not.toMatch(/adjudicated cases/i)
+      // Waivers and model-written tests decide what merges too.
+      expect(text).not.toMatch(/deterministic gauntlet/i)
+      // SNAP's is the only quality-control file any comparison reads.
+      expect(text).not.toMatch(/program quality-control data/i)
       expect(text).not.toMatch(/no engine.?s quirks leak/i)
       expect(text).not.toMatch(/US rules (had|have) no comparison/i)
       // The adapters are not thin: axiom_oracles/adapters/axiom/ holds about
@@ -107,22 +130,30 @@ describe('verification claims', () => {
       expect(text).not.toMatch(/disagreements get explained/i)
     })
 
+    // The shared validate workflow skips validation, companion tests and
+    // proof checks for every module with an active waiver in rulespec-us
+    // known-validation-gaps.yaml. Every sentence that states the gate names
+    // the waivers; numerical coverage is measured separately from that ledger.
+    it(`${route} names the waivers in every sentence that says drafts pass their tests`, () => {
+      expect(unwaivedTestGateSentences(surfaceText())).toEqual([])
+    })
+
     it(`${route} discloses the PolicyEngine tie wherever it names PolicyEngine`, () => {
-      const text = textOf(renderSurface)
+      const text = surfaceText()
       if (!/PolicyEngine/.test(text)) return
 
       expect(text).toMatch(/Max Ghenis is CEO of both Axiom and PolicyEngine/)
     })
 
     it(`${route} discloses where TAXSIM runs come from wherever it names TAXSIM`, () => {
-      const text = textOf(renderSurface)
+      const text = surfaceText()
       if (!/TAXSIM/.test(text)) return
 
       expect(text).toMatch(/TAXSIM executable that PolicyEngine packages/)
     })
 
     it(`${route} states the SOUTHMOD caveats wherever it names SOUTHMOD`, () => {
-      const text = textOf(renderSurface)
+      const text = surfaceText()
       if (!/SOUTHMOD/.test(text)) return
 
       for (const caveat of Object.values(SOUTHMOD_CAVEATS)) {
@@ -133,8 +164,8 @@ describe('verification claims', () => {
     })
 
     it(`${route} scopes the SNAP QC replay to benefit arithmetic`, () => {
-      const text = textOf(renderSurface)
-      if (!/SNAP (quality-control|QC)/i.test(text)) return
+      const text = surfaceText()
+      if (!/SNAP (quality[- ]control|QC)/i.test(text)) return
 
       expect(text).toMatch(/eligibility (is )?untested/i)
     })
@@ -154,6 +185,14 @@ describe('verification claims', () => {
   it('keeps the validation metadata free of independence and coverage claims', () => {
     expect(validationMetadata.description).not.toMatch(/independent/i)
     expect(validationMetadata.description).not.toMatch(/\bevery\b/i)
+  })
+
+  it('keeps the overview metadata free of independence and coverage claims', () => {
+    for (const description of [overviewMetadata.description, overviewMetadata.openGraph?.description]) {
+      expect(description).toBeTruthy()
+      expect(description).not.toMatch(/independent|external|cross-check/i)
+      expect(description).not.toMatch(/\bevery\b/i)
+    }
   })
 })
 
@@ -215,8 +254,7 @@ describe('encoder record claims', () => {
     )
   })
 
-  const RENDERED = [...SURFACES, ['/overview', () => render(<OverviewPage />)]] as const
-  for (const [route, renderSurface] of RENDERED) {
+  for (const [route, renderSurface] of SURFACES) {
     it(`${route} makes no claim about the encoder's record`, () => {
       expect(encoderRecordClaims(pageText(renderSurface))).toEqual([])
     })

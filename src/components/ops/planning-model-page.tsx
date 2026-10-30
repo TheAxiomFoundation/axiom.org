@@ -233,10 +233,9 @@ export function PlanningModelPage() {
         <section className="mb-14">
           <SectionHeading>The measured base</SectionHeading>
           <p className="font-body text-[1rem] text-[var(--color-ink-secondary)] leading-relaxed mb-4">
-            In September 2026, about 16,300 of our 34,810 US rules matched a
-            signed manifest that names the encoder&apos;s apply step, and about
-            15,300 more (mostly the generated US tariff schedule) were signed
-            in by manual attestation. As of 2026-10-03, when the encoder writes
+            Signed manifests record how files were applied: some record encoder
+            apply runs and others manual attestations. A signature alone does
+            not establish that the encoder authored a file. As of 2026-10-03, when the encoder writes
             a module it runs an agentic loop: the agent reads the provision
             from a signed, hash-pinned corpus release and writes the module and
             its companion tests, then the harness runs deterministic checks,

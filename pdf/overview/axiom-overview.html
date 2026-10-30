@@ -125,20 +125,22 @@
   <div class="masthead">
     <img src="axiom-full-w350-gradient.svg" class="logo" alt="Axiom Foundation">
     <div class="kicker">
-      Organization overview<br>July 2026
+      Organization overview<br>October 2026
     </div>
   </div>
 
   <h1>Computable law for all.</h1>
 
-  <p class="lead">The rules that decide who gets food assistance, health coverage, and tax credits live in closed code that no one outside the vendor can check. <a href="https://axiom.org"><strong>The Axiom Foundation</strong></a> publishes those rules in the open &mdash; cited, computable, and verified.</p>
+  <p class="lead">The rules that decide who gets food assistance, health coverage, and tax credits live in closed code that no one outside the vendor can check. <a href="https://axiom.org"><strong>The Axiom Foundation</strong></a> publishes those rules in the open &mdash; cited and computable.</p>
 
   <h2>What we do</h2>
 
   <ol class="steps">
-    <li><strong>Encode &mdash; we turn the law into software.</strong> An encoder pipeline reads a statute and drafts its encoding in RuleSpec. Every value cites its authority, every clause carries its effective dates, and each encoding the encoder applies has a signed manifest naming its source citation and model.</li>
-    <li><strong>Verify &mdash; a deterministic gauntlet decides what ships.</strong> Every draft must compile and pass its test suite to merge, and oracles cross-check results against external engines &mdash; so the model that wrote the rules never grades its own work.</li>
-    <li><strong>Publish &mdash; we put the whole chain in public.</strong> The Axiom App holds the source document, the encoding, the validation record, and the computation graph in one place, openly licensed &mdash; so a claim about what a rule computes is something you can check.</li>
+    <!-- Same claims and sources as WHAT_WE_DO in
+         src/components/overview/overview-content.ts. -->
+    <li><strong>Encode &mdash; we turn the law into software.</strong> The encoder&rsquo;s <a href="https://github.com/TheAxiomFoundation/axiom-encode/blob/058d539ffb665973fa04c8a669fab942a83e49f6/src/axiom_encode/cli.py">signed apply manifest names the source citation and model</a>. <a href="https://github.com/TheAxiomFoundation/axiom-oracles/blob/002aa771247b8749c6b7b49ce7b7cc89f2016c8e/dashboard/public/data/rule_verification.json">34,803 of 34,832 US rules cite a source</a> (October 2026).</li>
+    <li><strong>Verify &mdash; checks and waivers shape what merges.</strong> <a href="https://github.com/TheAxiomFoundation/.github/blob/30e942938e675ae2b4a23b6154652592dcdc8065/.github/workflows/validate-rulespec.yml">CI skips compilation and companion tests</a> for active entries on the <a href="https://github.com/TheAxiomFoundation/rulespec-us/blob/d8511cca76b060e40fba90ae8af7f7643e6edf11/known-validation-gaps.yaml">public waiver list</a> (1,935 entries, 23,666 of 34,832 US rules; October 18, 2026). The drafting model supplies <a href="https://github.com/TheAxiomFoundation/axiom-encode/blob/058d539ffb665973fa04c8a669fab942a83e49f6/src/axiom_encode/harness/evals.py">expected test results</a>. This workflow runs no PolicyEngine comparisons. October&rsquo;s coverage map ties <a href="https://github.com/TheAxiomFoundation/axiom-oracles/blob/002aa771247b8749c6b7b49ce7b7cc89f2016c8e/dashboard/public/data/rule_verification_summary.json">14,030 rules to compared programs</a>, without establishing per-rule checks. Max Ghenis is CEO of both Axiom and PolicyEngine.</li>
+    <li><strong>Publish &mdash; we publish inspectable encodings.</strong> The Axiom App shows the statute beside its encoding, openly licensed &mdash; so you can inspect what a rule computes.</li>
   </ol>
 
   <!-- Licences verified against the repos, not paraphrased: rulespec-* carry
@@ -151,7 +153,7 @@
     <tbody>
       <tr>
         <td>Government</td>
-        <td><strong>Stop paying to re-implement the same rules</strong> &mdash; one cited, dated, verified encoding that delivery systems, auditors, and legislators all work from.</td>
+        <td><strong>Stop paying to re-implement the same rules</strong> &mdash; one cited, dated, executable encoding that delivery systems, auditors, and legislators all work from.</td>
       </tr>
       <tr>
         <td>Frontier AI labs</td>
@@ -159,7 +161,7 @@
       </tr>
       <tr>
         <td>Research</td>
-        <td><strong>A citable, executable corpus of law</strong> &mdash; effective-dated encodings cross-checked against external engines, and a computation graph that is analyzable data.</td>
+        <td><strong>A citable, executable corpus of law</strong> &mdash; effective-dated encodings, a public file of which rules fall in compared programs, and an analyzable computation graph.</td>
       </tr>
       <tr>
         <td>Builders</td>
@@ -180,7 +182,7 @@
     <li><strong>Subscribe for updates</strong> &mdash; newsletters, product releases, and research: <a href="https://axiom-foundation.us12.list-manage.com/subscribe?u=43b8282de112809c41a3cff2c&amp;id=fbea2dd394">join the mailing list</a>.</li>
   </ul>
 
-  <p class="fineprint centered">A fiscally sponsored project of the PSL Foundation.</p>
+  <p class="fineprint centered">A fiscally sponsored project of the PSL Foundation, which also sponsors PolicyEngine.</p>
 
   <hr>
   <p class="sig"><a href="mailto:hello@axiom.org">hello@axiom.org</a> &middot; <a href="https://axiom.org">axiom.org</a> &middot; <a href="https://github.com/TheAxiomFoundation">github.com/TheAxiomFoundation</a></p>

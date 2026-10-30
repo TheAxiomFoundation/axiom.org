@@ -29,7 +29,7 @@ const BUILD = [
   {
     n: "01",
     title: "The Axiom App",
-    desc: "Explore the law: fetch and cite source documents, inspect the RuleSpec encodings that make them executable, and trace the logic through the computation graph. Every value cites its statute; every clause carries an effective date.",
+    desc: "Explore the law: fetch and cite source documents, inspect the RuleSpec encodings that make them executable, and trace the logic through the computation graph. Rules show their source citations, and RuleSpec versions carry effective dates.",
     href: "/axiom",
   },
   {
@@ -224,7 +224,8 @@ export default function AboutPage() {
             </a>
             , which also sponsors PolicyEngine. Our encodings and source corpus
             are public, and so is the code for the encoder, the rules engine
-            and the comparison harness.
+            and the comparison harness. Each encoding the encoder applies carries a signed
+            manifest naming its source citation and model.
           </p>
           <a
             href="https://github.com/TheAxiomFoundation"

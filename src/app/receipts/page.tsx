@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Reveal } from "@/components/landing/reveal";
+import { waiverCoverageClause, sourceCitationClause } from "@/lib/verification-evidence";
 import { SITE_URL } from "@/lib/urls";
 
 export const metadata: Metadata = {
@@ -37,7 +38,7 @@ const receipts = [
   {
     name: "Encodings",
     what:
-      "Every rule cites the provision of law it encodes, and modules carry companion tests. CI runs a module's tests unless it sits on a public waiver list: 1,940 rulespec-us modules carried an active validation waiver on October 2, 2026, and they hold 23,735 of our 34,810 US rules (rule counts as of September 28). The repositories are the receipt: the citations, the tests, the waiver list, and their history are public.",
+      `${sourceCitationClause()}. The repositories publish companion test files, and CI runs selected modules' tests, except for active entries on the public waiver list. ${waiverCoverageClause()}. The repositories publish the citations, tests, waiver list, and their history.`,
     href: "https://github.com/TheAxiomFoundation/rulespec-us",
     label: "rulespec-us",
   },
@@ -50,8 +51,14 @@ const receipts = [
   },
   {
     name: "Certification",
+    // axiom-oracles 002aa771247b8749c6b7b49ce7b7cc89f2016c8e:
+    // scripts/certify.py:3209-3235 computes the program predicate.
+    // axiom-api 9ff27ea04e6a3efd5a5ab8a0a1c8dcb40b42027d:
+    // certification-status.ts:138-150 and certified-ledger.ts:162-177,270-275
+    // require valid ledger membership for the label. The parser records a
+    // claim and hash; it does not authenticate a human signature or verifier.
     what:
-      "A program certifies only when axiom-oracles computes all four premises — conformant, exercised, closed, executable — true with zero open defects, and no flag is set by hand. None passes yet. The API serves a rule as certified only when it is in the certified ledger, where every entry names its claim — computed by a verifier, or attested by a human signature — and pins its evidence. That ledger is empty. The emptiness is the credibility.",
+      "A program certifies only when axiom-oracles computes all four premises — conformant, exercised, closed, executable — true with zero open defects. The API labels a rule certified only when it appears in the certified ledger; each entry records a computed or attested claim, a certificate identifier, and an evidence hash.",
     href: "/api/axiom/certified",
     label: "the certified ledger",
   },
@@ -109,13 +116,14 @@ export default function ReceiptsPage() {
         </Reveal>
 
         <Reveal as="section">
-          <h2 className="heading-section mb-3">What&apos;s next</h2>
+          <h2 className="heading-section mb-3">What the records establish</h2>
           <p className="max-w-[720px] font-body text-[1rem] leading-relaxed text-[var(--color-ink-secondary)]">
-            We intend to publish the agent logs behind the rules our encoder
-            wrote. In September 2026, about 16,300 of our 34,810 US rules
-            matched a signed manifest that names the encoder&apos;s apply step.
-            About 15,300 more (mostly the generated US tariff schedule) were
-            signed in by manual attestation, and their manifests name no model.
+            Signed manifests record how files were applied: some record encoder
+            apply runs and others manual attestations. A signature alone does
+            not establish that the encoder authored a file. You can inspect an{" "}
+            <a href="https://github.com/TheAxiomFoundation/rulespec-us/blob/d8511cca76b060e40fba90ae8af7f7643e6edf11/.axiom/encoding-manifests/policies/irs/rev-proc-2025-32/alternative-minimum-tax.json">encoder apply record</a>{" "}
+            and a{" "}
+            <a href="https://github.com/TheAxiomFoundation/rulespec-us/blob/d8511cca76b060e40fba90ae8af7f7643e6edf11/.axiom/encoding-manifests/programs/us/us-tariff-schedule/ch01.json">manual attestation</a>.
           </p>
         </Reveal>
       </div>

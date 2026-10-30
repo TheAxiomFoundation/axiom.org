@@ -39,11 +39,14 @@ describe("receipts evidence page", () => {
     expect(hrefs).toContain("https://github.com/TheAxiomFoundation/rulespec-us");
     expect(hrefs).toContain("https://github.com/TheAxiomFoundation/axiom-oracles");
     // The certification row links the live ledger itself, not a claim
-    // about it (empty since issue: ledger bootstrap-empty).
+    // about its current size.
     expect(hrefs).toContain("/api/axiom/certified");
-    expect(screen.getByText(/That ledger is empty/)).toBeInTheDocument();
+    expect(screen.queryByText(/That ledger is empty|None passes yet/)).not.toBeInTheDocument();
+    expect(screen.getByText(/computes all four premises/)).toBeInTheDocument();
     expect(screen.queryByText(/certifies itself|grants it by hand|not granted/)).not.toBeInTheDocument();
-    // The ledger admits human-attested entries; the row must say so.
-    expect(screen.getByText(/attested by a human signature/)).toBeInTheDocument();
+    // axiom-api certified-ledger.ts validates a claim label and evidence
+    // fields; it does not authenticate a human signature or computation.
+    expect(screen.getByText(/computed or attested claim, a certificate identifier, and an evidence hash/)).toBeInTheDocument();
+    expect(screen.queryByText(/attested by a human signature/)).not.toBeInTheDocument();
   });
 });

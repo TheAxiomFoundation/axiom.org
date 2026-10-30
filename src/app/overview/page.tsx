@@ -10,6 +10,7 @@ import {
   HERO,
   LICENSE_LINKS,
   ORG_STATUS,
+  OVERVIEW_SOURCES,
   OVERVIEW_PDF_PATH,
   SUBSCRIBE_BLURB,
   WHAT_WE_DO,
@@ -19,7 +20,7 @@ import {
 export const metadata: Metadata = {
   title: "Overview — the Axiom Foundation",
   description:
-    "What the Axiom Foundation does and what the encoded layer enables: open, cited, verified encodings of statutes, regulations, and policy rules, starting with tax and benefit policy.",
+    "What the Axiom Foundation does and what the encoded layer enables: open, cited, executable encodings of statutes, regulations, and policy rules, starting with tax and benefit policy.",
   alternates: { canonical: "/overview" },
   openGraph: {
     type: "website",
@@ -27,7 +28,7 @@ export const metadata: Metadata = {
     siteName: SITE_NAME,
     title: "The Axiom Foundation — overview",
     description:
-      "Open, cited, verified encodings of the world's rules, starting with tax and benefit policy.",
+      "Open, cited, executable encodings of the world's rules, starting with tax and benefit policy.",
     images: [DEFAULT_SHARE_IMAGE],
   },
 };
@@ -112,6 +113,14 @@ export default function OverviewPage() {
             </a>{" "}
             &mdash; free to use, modify, and redistribute, with attribution.
           </p>
+          <p className="font-body text-xs text-[var(--color-ink-muted)] leading-relaxed mt-4">
+            Sources: {OVERVIEW_SOURCES.map((source, index) => (
+              <span key={source.href}>
+                {index > 0 ? " · " : ""}
+                <a href={source.href}>{source.label}</a>
+              </span>
+            ))}
+          </p>
         </section>
 
         <WhatWeEnable />
@@ -130,8 +139,8 @@ export default function OverviewPage() {
               </h3>
               <p className="font-body text-sm text-[var(--color-ink-secondary)] leading-relaxed mb-4">
                 Search a program, open a provision, and follow it through source
-                text, encoding, and computation graph. Every value points at the
-                authority it came from.
+                text, encoding, and computation graph. Rules show the sources
+                they cite.
               </p>
               <a
                 href={axiomAppHref()}
