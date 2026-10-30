@@ -35,6 +35,22 @@ export const STATION_COPY: Record<string, { label: string; description: string }
   oracle: { label: "Oracle", description: "The axiom-oracles comparison against a reference model." },
 };
 
+/** The pipeline's phases, in line order, and the stations each holds. */
+export const STATION_PHASES: Array<{ id: string; label: string; stations: string[] }> = [
+  { id: "ingest", label: "Ingest", stations: ["corpus_ingest", "release_publish", "release_activate"] },
+  { id: "start", label: "Start", stations: ["target_gate", "dispatch", "approval", "setup"] },
+  { id: "encode", label: "Encode", stations: ["generate", "validate", "publish"] },
+  { id: "land", label: "Land", stations: ["pr_checks", "review", "merge"] },
+  { id: "serve", label: "Serve", stations: ["index", "tests", "compile", "oracle"] },
+];
+
+/** Stations where a person acts: the time there is a person's, not a machine's. */
+export const PERSON_STATIONS = new Set(["approval", "review", "merge", "release_activate"]);
+
+export function stationPhase(id: string): string | null {
+  return STATION_PHASES.find((p) => p.stations.includes(id))?.id ?? null;
+}
+
 export function stationLabel(id: string): string {
   return STATION_COPY[id]?.label ?? id.replace(/_/g, " ");
 }
@@ -96,6 +112,11 @@ export interface StationStats {
   wip: number;
   p50_ms: number | null;
   p95_ms: number | null;
+  /** Summed duration of the window's finished visits that carry one, and how many do. */
+  total_ms: number;
+  timed_visits: number;
+  /** Per week (Monday, UTC) over the window: finished visits and how many left ok. */
+  weekly: Array<{ week: string; finished: number; ok: number }>;
   /** The last 7 days against the 7 before: finished visits and how many left ok. */
   trend: { now: { finished: number; ok: number }; before: { finished: number; ok: number } };
   /** Whether the station's time is measured: enough finished visits carry a real duration. */
@@ -684,6 +705,15 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
     const timed = durations.length >= TIMED_MIN;
     const timedShare = finishedVisits.length ? durations.length / finishedVisits.length : 0;
     const trend = { now: { finished: 0, ok: 0 }, before: { finished: 0, ok: 0 } };
+    const weeks = new Map<string, { finished: number; ok: number }>();
+    for (const { v } of finishedVisits) {
+      if (v.end == null || v.readTime) continue;
+      const key = weekOf(v.end);
+      const w = weeks.get(key) ?? { finished: 0, ok: 0 };
+      w.finished++;
+      if (v.outcome === "ok") w.ok++;
+      weeks.set(key, w);
+    }
     for (const c of factory) {
       for (const v of c.visits) {
         if (v.station !== id || v.end == null || v.outcome === "open" || v.readTime) continue;
@@ -727,6 +757,9 @@ export function mineFlow(events: PipelineEvent[], options: FlowOptions): FlowMod
       wip: openItems.length,
       p50_ms: timed ? quantile(durations, 0.5) : null,
       p95_ms: timed ? quantile(durations, 0.95) : null,
+      total_ms: durations.reduce((sum, d) => sum + d, 0),
+      timed_visits: durations.length,
+      weekly: [...weeks].sort(([a], [b]) => a.localeCompare(b)).map(([week, w]) => ({ week, ...w })),
       trend,
       timed,
       timed_share: timedShare,
@@ -1114,7 +1147,8 @@ const TREND_RULES = 6;
 const TREND_MIN_WEEK = 15;
 const RERUN_GAP_MS = 7 * DAY_MS;
 
-function weekOf(ms: number): string {
+/** The Monday (UTC) of a time's week, as YYYY-MM-DD. */
+export function weekOf(ms: number): string {
   const d = new Date(ms);
   const monday = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) - ((d.getUTCDay() + 6) % 7) * DAY_MS;
   return new Date(monday).toISOString().slice(0, 10);
@@ -1179,8 +1213,14 @@ const TRY_CAP = 6;
 export function retryCurve(cases: Case[], edges: FlowEdge[]): RetryCurve | null {
   const loop = edges.filter((e) => e.loop && e.from !== e.to && !e.to.startsWith("exit:")).sort((a, b) => b.cases - a.cases)[0];
   if (!loop) return null;
-  const judge = loop.from;
-  const work = loop.to;
+  // Both edges of a two-station loop can read as going back; the judge is
+  // the station whose visits fail (validate), the work the one it loops to.
+  const fails = (station: string) => {
+    let n = 0;
+    for (const c of cases) for (const v of c.visits) if (v.station === station && v.outcome === "fail") n++;
+    return n;
+  };
+  const [judge, work] = fails(loop.to) > fails(loop.from) ? [loop.to, loop.from] : [loop.from, loop.to];
   const steps = new Map<number, { tries: number; passed: number; cost: number; models: Map<string, number> }>();
   const stepOf = (n: number) => {
     const k = Math.min(n, TRY_CAP);

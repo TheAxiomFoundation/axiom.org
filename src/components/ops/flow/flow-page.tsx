@@ -10,16 +10,22 @@ import type { BundleMembership } from "@/lib/axiom/program-bundles";
 import { bundleHref, tiersLabel } from "@/lib/axiom/program-bundles";
 import { CaseCanvas, LanesCanvas } from "./level-canvases";
 import { flowHref, type FlowParams } from "./flow-params";
-import { PipelineFloor } from "./pipeline-floor";
+import { PipelineEvidence } from "./pipeline-evidence";
 import { ScopeNav } from "./scope-nav";
 import styles from "./flow.module.css";
 
 export { flowHref, type FlowParams, type FlowView } from "./flow-params";
 
+/** The paths into the line: every case, dispatched runs, or PRs merged without a run. */
+const PATHS: Array<{ pop: FlowParams["pop"]; label: string }> = [
+  { pop: "all", label: "All" },
+  { pop: "runs", label: "Encode runs" },
+  { pop: "prs", label: "Hand-made PRs" },
+];
+
 /**
- * The /ops "Pipeline" tab (`?tab=line`): where cases wait, fail or loop.
- * Every encoding as a case moving through stations, mined from the
- * pipeline event log.
+ * The /ops "Pipeline" tab (`?tab=line`): each stage's counts, times and
+ * exits as evidence, mined from the pipeline event log.
  */
 export function FlowLine({
   model,
@@ -49,6 +55,19 @@ export function FlowLine({
               )
             )}
           </nav>
+          <nav className={styles.seg} aria-label="Path">
+            {PATHS.map((p) =>
+              p.pop === params.pop ? (
+                <span key={p.pop} aria-current="page">
+                  {p.label}
+                </span>
+              ) : (
+                <a key={p.pop} href={flowHref(params, { pop: p.pop })}>
+                  {p.label}
+                </a>
+              )
+            )}
+          </nav>
           <ScopeNav current={params.j} options={jurisdictions} href={(j) => flowHref(params, { j, station: null })} />
         </div>
       </header>
@@ -58,7 +77,7 @@ export function FlowLine({
       {!model.stations.length ? (
         <p className={styles.note}>No events in this window and scope. Choose a longer window or another jurisdiction.</p>
       ) : (
-        <PipelineFloor model={model} params={params} />
+        <PipelineEvidence model={model} />
       )}
     </section>
   );
@@ -84,7 +103,7 @@ export function JourneyView({
   bundles: BundleMembership[];
   error: string | null;
 }) {
-  const params: FlowParams = { window: 30, j: null, view: "pipeline", station: null, citation, case: detail?.case_id ?? null, program: null, bundle: null };
+  const params: FlowParams = { window: 30, j: null, pop: "all", view: "pipeline", station: null, citation, case: detail?.case_id ?? null, program: null, bundle: null };
   return (
     <div className={`${dashboard.dashboard} ${styles.page} min-h-screen pt-28 pb-16`}>
       <div className={styles.wrap}>

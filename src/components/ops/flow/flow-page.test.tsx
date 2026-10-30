@@ -6,9 +6,6 @@ import { mergedAttempt, pipelineAttempt } from "@/test/pipeline-attempt";
 import { FlowLine, flowHref, JourneyView, type FlowParams } from "./flow-page";
 
 // The canvases need a real browser (React Flow measures the DOM).
-vi.mock("./pipeline-canvas", () => ({
-  PipelineCanvas: () => <div data-testid="pipeline-canvas" />,
-}));
 vi.mock("./level-canvases", () => ({
   LanesCanvas: () => <div data-testid="lanes-canvas" />,
   CaseCanvas: () => <div data-testid="case-canvas" />,
@@ -26,7 +23,7 @@ const model = mineFlow(events, {
   targets: [{ station: "validate", min_yield: 0.9, max_p95_hours: null, max_wip: null, sla_hours: null }],
   workflows: [{ label: "Release activation", grade: "failing", url: "https://x", detail: "Last run failed" }],
 });
-const params: FlowParams = { window: 30, j: null, view: "pipeline", station: null, citation: null, case: null, program: null, bundle: null };
+const params: FlowParams = { window: 30, j: null, pop: "all", view: "pipeline", station: null, citation: null, case: null, program: null, bundle: null };
 
 function line(overrides: Partial<FlowParams> = {}) {
   return render(<FlowLine model={model} error={null} params={{ ...params, ...overrides }} jurisdictions={["us", "dk"]} />);
@@ -36,6 +33,7 @@ describe("flowHref", () => {
   it("links the line to the Line tab, keeping the window and scope", () => {
     expect(flowHref(params, {})).toBe("/ops?tab=line");
     expect(flowHref({ ...params, window: 7, j: "us" }, { station: "validate" })).toBe("/ops?tab=line&window=7&j=us&station=validate");
+    expect(flowHref(params, { pop: "prs" })).toBe("/ops?tab=line&pop=prs");
   });
 
   it("links a citation and a run to the journey, and programs to the Programs tab", () => {
@@ -46,24 +44,27 @@ describe("flowHref", () => {
 });
 
 describe("FlowLine", () => {
-  it("shows the line as a diagram, with where its reasons come from", () => {
+  it("shows each stage as evidence: counts, result, times and the main exit reason", () => {
     line();
-    expect(screen.getByTestId("pipeline-canvas")).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "Where do these reasons come from?" })).toBeNull();
-    expect(screen.queryByRole("navigation", { name: "Which cases" })).toBeNull();
-    // Alerts stay in the API and the brief, not on the page.
+    expect(screen.getByRole("table", { name: "Stages" })).toBeTruthy();
+    const validate = screen.getByRole("rowheader", { name: "Validate" }).closest("tr")!;
+    expect(validate.textContent).toContain("R: tests");
+    // Validate passed one of two runs; its tries passed one of four.
+    expect(validate.textContent).toContain("50%");
+    expect(validate.textContent).toContain("tries 25%");
+    // A person acts at review and merge.
+    expect(screen.getAllByLabelText("A person acts here").length).toBeGreaterThan(0);
+    expect(screen.getByRole("region", { name: "Encode loop" }).textContent).toContain("1 of 2");
+    // No targets, alerts or advice on the page.
     expect(screen.queryByText("Release activation is failing")).toBeNull();
-    expect(screen.queryByText("How many runs went in?")).toBeNull();
-    expect(screen.queryByRole("heading", { name: "Is each station getting better or worse?" })).toBeNull();
-    expect(screen.queryByRole("heading", { name: "How much can these numbers see?" })).toBeNull();
+    expect(screen.queryByText(/target/i)).toBeNull();
   });
 
-  it("opens a station's detail beside the diagram", () => {
-    line({ station: "validate" });
-    expect(screen.getByRole("complementary", { name: "Validate details" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "How cases fail here" })).toBeTruthy();
-    expect(screen.getAllByText("r:tests").length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/runs ended/).length).toBeGreaterThan(0);
+  it("switches the path and keeps the window and scope", () => {
+    line({ window: 7, j: "us" });
+    const path = screen.getByRole("navigation", { name: "Path" });
+    expect(path.querySelector('[aria-current="page"]')?.textContent).toBe("All");
+    expect(screen.getByRole("link", { name: "Hand-made PRs" }).getAttribute("href")).toBe("/ops?tab=line&window=7&j=us&pop=prs");
   });
 });
 

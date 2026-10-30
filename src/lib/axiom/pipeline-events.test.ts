@@ -30,6 +30,23 @@ describe("failedStepStation and infraRuleId", () => {
 });
 
 describe("attemptEvents", () => {
+  it("times publishing from the end of the encoder's loop, not the job's step split", () => {
+    const events = attemptEvents(
+      mergedAttempt({
+        encode_started_at: "2026-09-20T10:05:00Z",
+        setup_seconds: 300,
+        // Read before the lane steps counted as encode time: the loop sits in publish.
+        encode_seconds: 8,
+        publish_seconds: 1400,
+        encode_loop: { startedAt: "2026-09-20T10:10:00Z", wallMs: 18 * 60_000, setupMs: null, triesMs: null, betweenMs: null, finalizeMs: null },
+        tries: [{ attempt: 1, model: "m", ms: 1000, cost: 0.1, ok: true, error: null }],
+      })
+    );
+    const publish = events.find((e) => e.station === "publish" && e.kind === "leave");
+    // Loop ends 10:28; the PR opened 10:29.
+    expect(publish?.duration_ms).toBe(60_000);
+  });
+
   it("follows a dispatch that failed in the encode loop, one generate and validate per try", () => {
     const events = attemptEvents(
       pipelineAttempt({

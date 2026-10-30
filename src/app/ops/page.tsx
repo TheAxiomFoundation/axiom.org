@@ -12,7 +12,7 @@ import { getPipelineAttempts } from "@/lib/axiom/encoding-pipeline-data";
 import { getEncodingQueues } from "@/lib/axiom/encoding-queues";
 import { busiestRoots, LEGACY_OPS_TABS, opsHref, sharedOpsParams } from "@/lib/axiom/ops-href";
 import { attemptJurisdiction, parseScope } from "@/lib/axiom/encoding-pipeline-insights";
-import { loadFlow, parseWindow } from "@/lib/axiom/pipeline-flow-data";
+import { loadFlow, parsePopulation, parseWindow } from "@/lib/axiom/pipeline-flow-data";
 import { getBundleSummaries, getProgramBundle } from "@/lib/axiom/program-bundles-data";
 import { getEncodingStatus, getRecentCorpusScopes, groupRecentScopes } from "@/lib/corpus-status";
 import { SITE_URL } from "@/lib/urls";
@@ -58,11 +58,11 @@ export default async function OpsPage({ searchParams }: { searchParams?: Promise
       ...DEFAULT_FLOW_PARAMS,
       window: parseWindow(params.window),
       j: one(params.j),
+      pop: parsePopulation(one(params.pop)),
       view: "pipeline",
       station: one(params.station),
     };
-    // The Line tab counts every case: it has no population filter.
-    const data = await loadFlow({ days: flowParams.window, jurisdiction: flowParams.j, now: referenceMs });
+    const data = await loadFlow({ days: flowParams.window, jurisdiction: flowParams.j, population: flowParams.pop, now: referenceMs, workflows: false });
     // Jurisdictions to scope by: the busiest roots among dispatches.
     const jurisdictions = busiestRoots(data.events.filter((e) => e.station === "dispatch").map((e) => e.jurisdiction));
     panel = (

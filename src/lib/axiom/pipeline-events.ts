@@ -305,7 +305,16 @@ export function attemptEvents(attempt: PipelineAttempt): PipelineEvent[] {
       }
       return events;
     }
-    const publishMs = attempt.publish_seconds != null ? attempt.publish_seconds * 1000 : spanMs(clock, attempt.pr_created_at);
+    // The encoder's own loop clock ends the encode part. Job step times
+    // read before the lane steps were counted as encode time (0.2.2218 to
+    // the collector fix) put the whole loop in publish_seconds.
+    const loop = attempt.encode_loop;
+    const loopEnd = loop?.startedAt ? addMs(loop.startedAt, loop.wallMs) : null;
+    const publishMs = loopEnd
+      ? spanMs(loopEnd, attempt.pr_created_at)
+      : attempt.publish_seconds != null
+        ? attempt.publish_seconds * 1000
+        : spanMs(clock, attempt.pr_created_at);
     ev({ station: "publish", kind: "leave", at: attempt.pr_created_at, outcome: "ok", duration_ms: publishMs, ref_url: attempt.pr_url });
   }
 

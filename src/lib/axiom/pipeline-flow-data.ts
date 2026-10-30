@@ -89,12 +89,19 @@ export function eventDeadlines(events: PipelineEvent[], now: number): Array<{ la
 }
 
 /** Everything the /ops Line tab and /api/ops/flow need, mined once per request. */
-export async function loadFlow(options: { days: number; jurisdiction: string | null; population?: Population; now?: number }): Promise<FlowData> {
+export async function loadFlow(options: {
+  days: number;
+  jurisdiction: string | null;
+  population?: Population;
+  now?: number;
+  /** Read workflow health from GitHub for the alerts; the page shows no alerts and skips it. */
+  workflows?: boolean;
+}): Promise<FlowData> {
   const now = options.now ?? Date.now();
   const [events, targets, workflows] = await Promise.all([
     getPipelineEvents(),
     getStationTargets(),
-    getWorkflowHealth(FLOW_WORKFLOWS).catch(() => []),
+    options.workflows === false ? [] : getWorkflowHealth(FLOW_WORKFLOWS).catch(() => []),
   ]);
   const signals: WorkflowSignal[] = workflows.map((w) => {
     const { grade, reason } = gradeWorkflow(w, w.read, now);
