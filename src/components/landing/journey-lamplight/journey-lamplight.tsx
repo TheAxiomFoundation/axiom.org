@@ -15,42 +15,11 @@ import { useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { EXPLORE } from "../journey-digital/data";
-import { captionAt, captionCut, CAPTIONS, TOTAL } from "./captions";
-import { PACE } from "./pacing";
+import { captionAt, CAPTIONS, STORY_LABEL } from "./captions";
+import { captionOpacity, END_S, S_STORY, scrollAt, seg, STORY, storyAt, TRACK } from "./clock";
 import type { Director } from "./director";
 import "../style-frames/style-frames.css";
 import "./journey-lamplight.css";
-
-const STORY = TOTAL; // beats; progress runs 0..STORY over them
-
-// One steady pace on scroll: scroll moves through "scroll beats", and the
-// pacing table (measured from the picture itself, see
-// scripts/journey-pacing.cjs) turns them into story time, so a stretch
-// that moves fast gets more scroll. A table measured for another
-// timeline is not used.
-const paced = Math.abs(PACE.total - TOTAL) < 1e-3;
-const S_STORY = paced ? PACE.S[PACE.S.length - 1] : TOTAL;
-const lookup = (xs: number[], ys: number[], x: number) => {
-  let lo = 0;
-  let hi = xs.length - 1;
-  if (x <= xs[0]) return ys[0];
-  if (x >= xs[hi]) return ys[hi];
-  while (hi - lo > 1) {
-    const mid = (lo + hi) >> 1;
-    if (xs[mid] <= x) lo = mid;
-    else hi = mid;
-  }
-  return ys[lo] + ((ys[hi] - ys[lo]) * (x - xs[lo])) / (xs[hi] - xs[lo]);
-};
-// scroll beats → story time, and back; past the story they run 1:1
-const storyAt = (s: number) => (s > S_STORY ? TOTAL + (s - S_STORY) : paced ? lookup(PACE.S, PACE.P, s) : s);
-const scrollAt = (P: number) => (P > TOTAL ? S_STORY + (P - TOTAL) : paced ? lookup(PACE.P, PACE.S, P) : P);
-// then the cards come up (by TOTAL + 0.45) and hold a moment, about a
-// screen and a half of scroll, before the page moves on
-const END = TOTAL + 1.0;
-const END_S = scrollAt(END);
-// scroll length, in screen heights: ~1.6 per scroll beat
-const TRACK = Math.round(END_S * 1.6);
 
 // the stills (paper); the night version keeps its own under /journey/night
 const night = () => typeof window !== "undefined" && new URLSearchParams(window.location.search).has("night");
@@ -72,8 +41,6 @@ const ALT = [
   "The runtime registry’s packages as clusters of light, with their counts; the eight rules of section 2017(a) are a small amber cluster in front.",
   "One source card, encoded and cited rules, sends beams to five kinds of user: individuals and navigators, governments, AI systems, builders, and researchers.",
 ];
-
-const seg = (v: number, a: number, b: number) => Math.min(1, Math.max(0, (v - a) / (b - a)));
 
 function ExploreCards({ compact = false }: { compact?: boolean }) {
   return (
@@ -176,16 +143,11 @@ function ScrollJourney() {
     let dead = false;
     let lastPoster = -1;
 
-    // a caption hands over to the next at the middle of each cut: the
-    // old one is gone just before, the new one comes up just after
-    const cut = captionCut;
     const apply = (P: number) => {
       (window as unknown as { __jlP?: number }).__jlP = P;
       const i = captionAt(P);
       capRefs.current.forEach((el, j) => {
-        const inn = j === 0 ? 1 : seg(P, cut(j) + 0.02, cut(j) + 0.12);
-        const out = j < CAPTIONS.length - 1 ? 1 - seg(P, cut(j + 1) - 0.12, cut(j + 1) - 0.02) : 1 - seg(P, STORY, STORY + 0.15);
-        const op = Math.min(inn, out);
+        const op = captionOpacity(P, j);
         el.style.opacity = String(Math.max(0.001, op));
         const live = op > 0.6;
         if (el.hasAttribute("inert") === live) el.toggleAttribute("inert", !live);
@@ -289,8 +251,8 @@ function ScrollJourney() {
       };
       hooks.__jlSeek = (P) => window.scrollTo(0, st.start + (scrollAt(P) / END_S) * (st.end - st.start));
       hooks.__jlReady = async () => {
-        while (!director) await new Promise((r) => setTimeout(r, 50));
-        return director.prepareAll();
+        while (!director && !dead) await new Promise((r) => setTimeout(r, 50));
+        return director?.prepareAll();
       };
       (window as unknown as { __jlTotal?: number }).__jlTotal = STORY;
       // for recordings at the reader's pace: scroll beats ↔ story time
@@ -326,7 +288,7 @@ function ScrollJourney() {
           ref={canvasRef}
           className={ready ? "jl-canvas is-ready" : "jl-canvas"}
           role="img"
-          aria-label="From a law book to running code: Title 7 comes off the shelf, its pages become data, section 2017(a) is encoded and checked, each value cites its words, the rules form a graph that computes $182 for test case 1, the registry comes into view, and one source powers every kind of tool."
+          aria-label={STORY_LABEL}
         />
         {CAPTIONS.map((_, i) => (
           <div

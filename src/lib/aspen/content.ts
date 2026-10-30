@@ -74,7 +74,7 @@ export const STAGES: readonly Stage[] = [
     title: "Ask the AI",
     agenda: "Ask the AI a benefits question, then rate it.",
     summary: "Ask as a resident or caseworker. Rate the answer. Then tell us more about AI use in your agency.",
-    phoneSummary: "Build a prompt. Use the preselected options and see how they change the prompt below. Or write your own.",
+    phoneSummary: "Pick who you're asking as and a household, then ask. Or write your own question.",
   },
   {
     id: "reveal",
@@ -82,7 +82,7 @@ export const STAGES: readonly Stage[] = [
     title: "What we saw",
     agenda: "The room's results, then discussion.",
     summary: "Could a resident act on these answers?",
-    // The phone opens with what you contributed; the question is part 1's heading there.
+    // The phone shows the look-up card under the heading, so no line of its own.
     phoneSummary: "",
   },
   {
@@ -90,7 +90,7 @@ export const STAGES: readonly Stage[] = [
     label: "At scale",
     title: "AI gets it wrong at scale",
     agenda: "PolicyBench: 50 AI models on SNAP.",
-    summary: "We asked 50 AI models to calculate SNAP for households sampled from PolicyEngine's US microdata.",
+    summary: "We asked 50 AI models to calculate SNAP for households sampled from US microdata.",
   },
   {
     id: "foundation",
@@ -112,7 +112,9 @@ export const STAGES: readonly Stage[] = [
     label: "Next steps",
     title: "Next steps",
     agenda: "A short form for states that want to go further.",
-    summary: "Tell us if your state wants to go further.",
+    // The TV's Next steps is one slide, the ask and the form, with no line under the heading (Oct 26).
+    summary: "",
+    phoneSummary: "Tell us if your state wants to go further.",
   },
   {
     id: "dinner",
@@ -122,6 +124,21 @@ export const STAGES: readonly Stage[] = [
     summary: "Thank you for joining us. Enjoy dinner.",
   },
 ];
+
+/**
+ * TV moments (the run-through, Oct 23): while the room looks at the screen
+ * together, a phone shows one line and one number, and comes back for the vote.
+ */
+export const LOOK_UP = {
+  heading: "Look up at the screen",
+  reveal: { label: "answers in this room looked right", empty: "The room's results are on the screen." },
+  scale: { label: "of AI answers told a household that qualifies for SNAP it would get $0" },
+  foundation: {
+    label: "in this room say a resident, screener or AI can't fully check an answer against their state's rules today",
+    empty: "What one open set of rules would do is on the screen.",
+  },
+  later: "Your phone comes back for the vote.",
+} as const;
 
 export function stageIndex(id: string | null | undefined): number {
   return STAGE_IDS.indexOf(id as StageId);
@@ -187,7 +204,7 @@ export function isUsState(value: unknown): value is (typeof US_STATES)[number] {
  * The household chips. Participants ask the AI about them; the chat runs no
  * rules check. All but the Connecticut couple are in states whose SNAP the
  * gallery chatbot's Axiom rules cover; finbot has no Connecticut SNAP, so the
- * live demo on At scale 6/6 stays on its Fresno question. The retiree in
+ * live demo on At scale 7/7 asks its own question (LIVE_DEMO). The retiree in
  * Phoenix leads: the convening is in Phoenix. The Connecticut couple is At
  * scale's example household (PolicyBench scenario_027), so participants can
  * ask the AI about it before the room sees how 50 models did. The first person and
@@ -637,12 +654,16 @@ export const DISCUSSION_TOPICS = [
   "Reporting and renewals",
 ] as const;
 
-/** The uses people vote on before the small groups, from the session plan. */
+/**
+ * The uses people vote on before the small groups, from the session plan. Four, one per group:
+ * there are notetakers for four groups (Ariel, Oct 26). "Create application interfaces" was cut
+ * as the closest to "Build caseworker flows" (Max, Oct 26).
+ */
 export const USE_CASES = [
   {
     id: "see-edit",
-    label: "See and edit the rules",
-    detail: "Staff read the rules in plain language and change them.",
+    label: "See and trace the rules",
+    detail: "Staff read the rules in plain language and trace each one to the law.",
   },
   {
     id: "project",
@@ -655,9 +676,9 @@ export const USE_CASES = [
     detail: "Ask only the questions each case needs.",
   },
   {
-    id: "apply",
-    label: "Create application interfaces",
-    detail: "New ways to apply, on the same rules as the eligibility system.",
+    id: "test",
+    label: "Test cases against the rules",
+    detail: "Run real or made-up households through the rules and check your system's answers.",
   },
 ] as const;
 export type UseCaseId = (typeof USE_CASES)[number]["id"];
@@ -725,7 +746,7 @@ export const POLICYBENCH = {
     modelsSaidZero: 42,
     /**
      * gpt-6-astra matched the $288 reference exactly. Four more said $276 (FY2025's $23
-     * minimum), which At scale 3/6's within-10% rule would also count; one said $388 and
+     * minimum), which At scale 3/7's within-10% rule would also count; one said $388 and
      * one $5,160. The slides say "matched exactly" so the two counts don't collide.
      */
     modelsExact: 1,
@@ -745,11 +766,19 @@ export const POLICYBENCH = {
      * memo of August 21, 2026): the minimum allotment for households of one
      * or two in the 48 states and DC is $25 and the two-person maximum is
      * $562 (https://www.fna.usda.gov/snap/allotment/cola). Under them the
-     * couple's $2,536 is still below 200% of poverty ($3,607), and 30% of
-     * its net income (about $633) is above the maximum, so it gets the
-     * minimum.
+     * couple's $2,536 is still below 200% of poverty ($3,607). Its net
+     * income is about $2,300 ($2,536 less the $217 standard deduction and
+     * $19 of medical costs above $35 a month), and 30% of that, about $690,
+     * is above the maximum, so it gets the minimum.
      */
     fromOctober: { monthly: 25, standards: "FY2027", effective: "October 1, 2026" },
+    /**
+     * Calendar 2026 under current law: nine months at FY2026's $24 and three
+     * at FY2027's $25. PolicyBench holds FY2026 amounts through December
+     * under its July 2026 law cutoff, which is why its reference is $288
+     * (the PolicyBench session, Oct 23).
+     */
+    currentLaw: { annual: 291 },
   },
 } as const;
 
@@ -765,7 +794,7 @@ export const POLICYBENCH = {
 /** Where models still break: accuracy by program, for households owed money and households owed $0. */
 export const WHERE_MODELS_BREAK = {
   title: "Where models still break",
-  note: "Share of model answers within 10% of PolicyEngine's reference amount (within $1 for households owed $0)",
+  note: "Share of model answers within 10% of the reference amount (within $1 for households owed $0)",
   source:
     "policybench.org, October 14, 2026 · 50 models, no tools · income taxes before refundable credits · TANF (1 household) and SSI (2) omitted",
   rows: [
@@ -812,11 +841,9 @@ export const WHAT_MODELS_MISS = {
     },
   ],
   ruleLabel: "Broad-based categorical eligibility",
-  rule: "Connecticut's broad-based categorical eligibility covers households with gross income up to 200% of the poverty line and sets no asset limit. Covered households skip SNAP's net income and asset tests, so the $48,000 doesn't count. Net income still sets the amount, and a household of one or two gets at least the minimum benefit.",
-  amount: 288,
-  amountLabel: "PolicyEngine's reference in PolicyBench",
-  sources:
-    "7 CFR 273.2(j)(2) · USDA FNA BBCE chart, June 2026 · USDA SNAP FY2027 COLA memo, Aug 21, 2026 · PolicyBench, Oct 14, 2026",
+  /** The room knows BBCE, so the slide says only what it does here (the dry run, Oct 25). */
+  rule: "Connecticut covers gross income up to 200% of poverty, with no asset limit. This couple is under that line, so they skip the net income test both models used. They qualify.",
+  sources: "7 CFR 273.2(j)(2) · USDA FNA BBCE chart, June 2026 · PolicyBench, Oct 14, 2026",
 } as const;
 
 /** Why this matters for AI: the front door to the law. */
@@ -830,20 +857,170 @@ export const FRONT_DOOR = {
   axiom: { label: "With Axiom", source: "Encoded law", sourceDetail: "open, cited, executable", result: "The rule", detail: "with its citation" },
 } as const;
 
+// ---------------------------------------------------------------------------
+// At scale 6/7: the same models, given our rules engine as a tool. PolicyBench's
+// preliminary internal pilot of October 23–25, 2026, the three models run on
+// 100 households (Max's call on d1943 in the dry run, Oct 25: replace the
+// October 14–15 tool pilot with this table, nonzero amounts within $1, the
+// accuracy change and the cost change as a percent). Hand-copied from the
+// final build, PolicyBench scripts dccf8bf:
+//   ~/reviews/policybench-v2-microcosm-2026-10/aspen/free-plan-pooled.json
+//     (sha256 5c40b635…): models[].arms.{web,both}.k of n = 276, and
+//     models[].vsWeb.both {points, lo, hi}, a 95% household bootstrap;
+//   paper/v2-preview/build/v2-preview.json (sha256 f06e95cf…):
+//     settings[].settings.{web,both}.costPerHousehold and vsWeb.costPct.
+// Cost is at API list prices, searches at $10 per 1,000 (OpenAI, Anthropic)
+// and $14 (Gemini) with no free allowance. The models ran through their APIs
+// with PolicyBench's prompt, not in chat apps. At 100 households a change of
+// under about 10 points is within noise. The references come from the same
+// engine the tool runs (policyengine-us 2.60.4), and an AI judge disputes
+// some of them, none adjudicated yet; that is why it is a pilot. Never call
+// it a published PolicyBench result. The screens say "our rules engine" and
+// leave PolicyEngine unnamed (Max, Oct 25).
+//
+// Since Oct 26 (Max: "accuracy/cost/latency impacts all together on the
+// slide, even if just luna ... just web vs web+v3tool ... dont mention it's
+// v3, just say our rules engine like before"; "if flash-lite is sketchy we
+// can just drop it"), the slide shows web search alone against web search
+// and our rules engine, where the rules engine is PolicyBench's calculator v3
+// (the web+pe3 arm, harness 294e98fe). Hand-copied from
+//   ~/reviews/policybench-v2-microcosm-2026-10/v3-aspen-2026-10-26/live/numbers.json
+// at updatedAt 2026-10-27T01:04:41Z, final for all three models on all 100 of the
+// pilot's households: numbers.<model>.{households, nonzero.web, nonzero.v3,
+// v3VsWeb (a paired household bootstrap), cost.{web,v3} (the paper's
+// costPerHousehold), latencySeconds.{web,v3} (the paper's
+// medianWallSeconds)}. The web runs are the paper's (Oct 23–25, UTC); the
+// rules-engine runs are Oct 26–27. Each web arm reproduces the pilot's
+// (cost.paper100, latencySeconds.paper100). Luna sent 8 web searches in 100
+// households with the rules engine, Flash-Lite none and Sonnet 1; their list price is
+// in the cost. Flash-Lite, off the slide while its first households ran
+// easier than the full 100, is back now it has all 100. Claude Sonnet 5.5
+// joined when its rules-engine run (from 00:40Z) reached all 100 (Max: "wire
+// in claude once its done"); its first 20 households ran easier for web
+// search (73% against 59% on all 100), so no partial row shipped. Its web
+// arm is the pilot's 164 of 276.
+// ---------------------------------------------------------------------------
+
+export interface EnginePilotRow {
+  model: string;
+  /** Households answered with our rules engine so far, and the nonzero dollar amounts they hold. */
+  households: number;
+  amounts: number;
+  /** Nonzero dollar amounts within $1 of the reference, of `amounts`, with each arm. */
+  web: number;
+  both: number;
+  /** The change from web search alone, in points, with its 95% interval (paired household bootstrap). */
+  change: { points: number; lo: number; hi: number };
+  /** Mean list-price cost per household, in dollars. */
+  cost: { web: number; both: number };
+  /** Median seconds a household took, start to finish. */
+  seconds: { web: number; both: number };
+}
+
+export interface EnginePilot {
+  title: string;
+  /** Households in the full set. */
+  of: number;
+  arms: { web: string; both: string };
+  note: string;
+  rows: readonly EnginePilotRow[];
+  measures: string;
+  source: string;
+}
+
+/** A share of `of`, as a percentage to one decimal. */
+export function share(hits: number, of: number): number {
+  return Math.round((1000 * hits) / of) / 10;
+}
+
+/** The change from `from` to `to`, as a whole percent: -86 for a cost that fell by 86%. */
+export function percentChange(from: number, to: number): number {
+  return Math.round(100 * (to / from - 1));
+}
+
+export const ENGINE_PILOT: EnginePilot = {
+  title: "The same models, given our rules engine as a tool",
+  of: 100,
+  arms: { web: "Web search", both: "Web search and our rules engine" },
+  note: "Nonzero dollar amounts within $1 of the reference: 276 across 100 US households",
+  rows: [
+    {
+      model: "GPT-6 Luna",
+      households: 100,
+      amounts: 276,
+      web: 152,
+      both: 269,
+      // The exact difference, 100 × (269 − 152) / 276 = 42.39 (the file rounds it to 42.4).
+      change: { points: 42.39, lo: 36.1, hi: 48.8 },
+      cost: { web: 0.0558, both: 0.0033 },
+      seconds: { web: 79.497, both: 30.11 },
+    },
+    {
+      model: "Gemini 3.5 Flash-Lite",
+      households: 100,
+      amounts: 276,
+      web: 64,
+      both: 243,
+      // The exact difference, 100 × (243 − 64) / 276 = 64.86 (the file rounds it to 64.9).
+      change: { points: 64.86, lo: 58.4, hi: 71.2 },
+      cost: { web: 0.3431, both: 0.0168 },
+      seconds: { web: 14.163, both: 13.276 },
+    },
+    {
+      model: "Claude Sonnet 5.5",
+      households: 100,
+      amounts: 276,
+      web: 164,
+      both: 276,
+      // The exact difference, 100 × (276 − 164) / 276 = 40.58 (the file rounds it to 40.6).
+      change: { points: 40.58, lo: 35.0, hi: 46.2 },
+      cost: { web: 0.1122, both: 0.0622 },
+      seconds: { web: 47.04, both: 17.918 },
+    },
+  ],
+  measures:
+    "Our rules engine also computes PolicyBench's reference answers, so this shows whether a model can describe a household to it, not whether the engine is right. Each model ran through its API with our prompt, not in a chat app.",
+  source:
+    "Preliminary internal pilot · PolicyBench, our benchmark · 100 US households · web search runs October 23–25, rules engine October 26–27, 2026 · intervals are 95% · cost per household at API list prices, searches included",
+};
+
 /**
- * At scale 6/6: the live chatbot demo (TheAxiomFoundation/finbot-snap-demo,
+ * At scale 7/7: the live chatbot demo (TheAxiomFoundation/finbot-snap-demo,
  * served at axiom.org/gallery/chatbot). `compare=1` puts plain AI beside AI
- * with the Axiom rules engine, and `q` prefills the demo's own Fresno example.
- * Inside a frame the demo never sends on its own, so the presenter presses
- * Send. The model is OpenAI's GPT-6 Luna (finbot's default; production sets no
- * FINBOT_MODEL, checked Oct 23, 2026); the demo's copy
- * says what it does and doesn't promise, so the slide stays plain too.
+ * with the Axiom rules engine, and `q` prefills the question. Inside a frame
+ * the demo never sends on its own, so the presenter presses Send. The model
+ * is OpenAI's GPT-6 Luna (finbot's default; production sets no FINBOT_MODEL,
+ * checked Oct 23, 2026); the demo's copy says what it does and doesn't
+ * promise, so the slide stays plain too.
+ *
+ * The question names the household, the amount, the month and the program.
+ * Utah's Family Employment Program pays at most $662 a month for a household
+ * of three (DWS Eligibility Manual, Table 1, FEP maximum assistance; DWS's
+ * "Do I qualify?" page lists the same $662). Plain AI cites $498, Utah's
+ * maximum in July 2013 (CRS report R43634). On the live chatbot on Oct 25,
+ * 2026, plain AI said about $498 10 times out of 10, though 7 of those
+ * replies added that it couldn't confirm the current rate, 6 of them naming
+ * the wrong month. AI with the engine said $662 10 times out of 10. The $662
+ * is the engine's ut_fep_payment_standard_amount, which carries no "not
+ * fully encoded" flag in any of the 34 tool results across 30 engine replies
+ * (three wordings). The engine does flag Utah's eligibility checks: all 30
+ * replies list them, and every reply to this question says eligibility isn't
+ * established. Asked "in October 2026" instead of "this month", plain AI
+ * qualified the October amount 10 times out of 10, and called the date
+ * future in 5.
+ *
+ * It replaced "Single mom with two kids: does Alabama or Georgia pay more
+ * TANF?" after the Oct 25 dry run: both of those outputs were flagged "not
+ * fully encoded", and the question didn't say whether it meant the maximum
+ * or an average. Refugee SNAP eligibility had no "not fully encoded" flags,
+ * but plain AI caught the 2025 change in 2 of 10 runs and hedged in a third,
+ * and the engine's answers hedged too.
  */
 export const LIVE_DEMO = {
   title: "The same AI model, on its own and with the Axiom rules engine",
   base: "https://axiom.org/gallery/chatbot",
   question:
-    "I'm a single mom in Fresno, California with two kids (8 and 5). I make $3,400 a month before taxes, pay $1,500 rent, and pay about $120 a month for utilities, including heat. Can we get CalFresh, and how much would we get each month?",
+    "What's the maximum monthly TANF cash benefit in Utah this month for a single parent with two children and no income?",
 } as const;
 
 export function liveDemoUrl(): string {
@@ -852,9 +1029,15 @@ export function liveDemoUrl(): string {
 
 /** The same rules for every system: what one shared set of rules gives each group. */
 export const SAME_RULES = {
-  /** Shared foundation 2/3's heading. */
-  heading: "What does one open set of rules enable?",
-  /** The room is state benefits leaders, so governments get the big box and the most uses. */
+  /** Shared foundation 5/6's heading: after the journey, what the rules let a government do (Oct 26). */
+  heading: "What does one set of open rules enable for governments?",
+  /** Under the governments boxes, leading into Small groups. */
+  prompt: "What other ideas do you have?",
+  /**
+   * The room is state benefits leaders, so governments are the whole slide, one box per use. The last
+   * use says in words what the cross-reference graph drew: TANF confers SNAP eligibility, SSI opens
+   * Medicaid, SNAP directly certifies school meals and confers WIC eligibility.
+   */
   governments: {
     label: "For governments",
     uses: [
@@ -863,6 +1046,7 @@ export const SAME_RULES = {
       "Payment accuracy checks before benefits go out",
       "A policy change tested before it takes effect",
       "Screeners and AI tools that give your agency's answer",
+      "Programs linked as the law links them: TANF to SNAP, SSI to Medicaid, SNAP to school meals and WIC",
     ],
   },
   audiences: [
@@ -881,18 +1065,32 @@ export function percent(part: number, whole: number): number {
 // The fix
 // ---------------------------------------------------------------------------
 
-/** What makes the one set of rules checkable: the dark box on Shared foundation 1/3 and on phones. */
+/** What makes the one set of rules checkable: the dark box on Shared foundation 1/4. */
 export const FOUNDATION_TRAITS = [
   "Every value is built to cite the provision it comes from",
   "Every change carries its effective date",
   "Every release is versioned, so you can see what changed",
 ] as const;
 
-/** Under the boxes on Shared foundation 1/3, emphasized as in the main deck's value proposition. */
+/** Under the boxes on Shared foundation 1/4, emphasized as in the main deck's value proposition. */
 export const ONE_SET_STATEMENT = {
   text: "Every system that helps people discover and enroll in economic security programs runs on the same rules,",
   accent: "reducing cost, duplication and error at once.",
 } as const;
+
+/**
+ * Shared foundation 3/7 to 5/7: what one open set of rules powers, built one group at a time, so the
+ * room hears not only AI tools but government and navigation tools too (Oct 26).
+ */
+export const ONE_SET_GROUPS = [
+  { id: "ai", label: "AI tools", detail: "The chatbots and assistants residents and staff already ask" },
+  {
+    id: "government",
+    label: "Government tools",
+    detail: "Eligibility systems, caseworker guidance and training, and policy changes tested before they land",
+  },
+  { id: "navigation", label: "Navigation tools", detail: "Community screeners and navigators that say what to apply for" },
+] as const;
 
 export const ONE_SET_OF_RULES = [
   { label: "AI tools", detail: "The chatbots residents and staff already ask." },
@@ -903,7 +1101,40 @@ export const ONE_SET_OF_RULES = [
   { label: "Research", detail: "Evaluators and analysts run the same rules." },
 ] as const;
 
-/** Shared foundation 3/3's heading. */
+/**
+ * The encoding pipeline, a former Shared foundation slide (off the deck since the dry run, Oct 25; the journey covers it).
+ * Copied from the InnovateUS deck (axiom-slides, public/decks/innovateus-2026-10,
+ * slide 12; axiom.org/slides/innovateus-2026-10#12), wording unchanged. Each
+ * step's small illustration lives with the slide; its text lives here.
+ */
+export const ENCODING_PIPELINE = {
+  heading: "The encoding pipeline",
+  lead:
+    "We take the law from its official sources, encode it rule by rule, and apply each rule only after its required checks pass. " +
+    "An AI judge flags issues for review. Every value keeps the citation it came from. " +
+    "One artifact then serves every surface, from a chatbot to a government rules engine.",
+  steps: [
+    { name: "Intake", caption: "Hundreds of official sources", foot: "Goal: keep every version" },
+    { name: "Corpus", caption: "The whole law, word for word", foot: null },
+    { name: "Encoding loop", caption: "Drafted, checked, redrafted", foot: "↺ Applied only when required checks pass" },
+    { name: "RuleSpec", caption: "One rule, fully cited", foot: null },
+    { name: "Graph", caption: "The spec becomes a node", foot: "Typed · cited · executable" },
+    { name: "Compile and serve", caption: "One artifact, every surface", foot: null },
+  ],
+  sources: ["eCFR", "USLM", "state codes ×47", "policy manuals"],
+  checks: [
+    { label: "deterministic", required: true },
+    { label: "comparison models, where available", required: true },
+    { label: "AI judge, advisory", required: false },
+  ],
+  surfaces: [
+    { name: "Chatbot", who: "AI labs" },
+    { name: "Rules engine", who: "government" },
+    { name: "API/MCP", who: "builders" },
+  ],
+} as const;
+
+/** Shared foundation 4/4's heading. */
 export const BUILD_HEADING = "How do we build one open set of rules?";
 
 /**

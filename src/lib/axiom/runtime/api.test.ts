@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import fc from "fast-check";
 import {
   isRuntimeApiConfigured,
   listRuntimePackages,
@@ -202,6 +203,7 @@ describe("runtime api client", () => {
     });
     expect(outcome).toEqual({
       kind: "ok",
+      allocatedInstances: null,
       result: { outputs: { net_income: 1200 } },
       relationMembership: "convention",
     });
@@ -220,6 +222,95 @@ describe("runtime api client", () => {
     vi.stubGlobal("fetch", fetchMock);
     await runCalculateRoot({root: "us:statutes/26/21", facts: {age: 8}, people: {person_2: {age: 30}}, variables: ["count"]});
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({root: "us:statutes/26/21", facts: {age: 8}, household: {people: {person_1: {}, person_2: {age: 30}}}, variables: ["count"]});
+  });
+
+  it.each([false, true])("sends payment instances in the HTTP household and retains the runtime allocation (other household fields: %s)", async (withPeopleAndRelations) => {
+    vi.stubEnv("AXIOM_RUNTIME_API_KEY", "test-key");
+    const instances = {
+      Payment: {
+        payment_1: { amount: 1000, taxable: true },
+        payment_2: { amount: 0, taxable: false },
+      },
+      Adjustment: {},
+    };
+    const allocatedInstances = {
+      Payment: { payment_1: "payment:1:1", payment_2: "payment:1:2" },
+      Adjustment: {},
+    };
+    const people = { person_2: { age: 70 } };
+    const relations = [{
+      name: "us:statutes/26/22#relation.section_22_payment_of_tax_unit",
+      tuples: [["household:1", "payment_2"]],
+    }];
+    const result = {
+      outputs: { credit: 150 },
+      allocated_instances: allocatedInstances,
+      explicit_relations: withPeopleAndRelations ? relations.map(({ name }) => name) : [],
+    };
+    const fetchMock = vi.fn().mockResolvedValue(okEnvelope(result));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const outcome = await runCalculateRoot({
+      root: "us:statutes/26/22",
+      facts: { age: 65 },
+      variables: ["credit"],
+      instances,
+      ...(withPeopleAndRelations ? { people, relations } : {}),
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toContain("/calculate");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({
+      root: "us:statutes/26/22",
+      facts: { age: 65 },
+      variables: ["credit"],
+      household: {
+        people: { person_1: {}, ...(withPeopleAndRelations ? people : {}) },
+        instances,
+        ...(withPeopleAndRelations ? { relations } : {}),
+      },
+    });
+    expect(outcome).toEqual({
+      kind: "ok",
+      result,
+      allocatedInstances,
+      relationMembership: withPeopleAndRelations ? "explicit" : "convention",
+    });
+  });
+
+  it("preserves every instance answer and allocation key across the HTTP boundary", async () => {
+    vi.stubEnv("AXIOM_RUNTIME_API_KEY", "test-key");
+    await fc.assert(fc.asyncProperty(
+      fc.array(fc.record({
+        amount: fc.integer({ min: 0, max: 1_000_000 }),
+        taxable: fc.boolean(),
+      }), { maxLength: 5 }),
+      async (payments) => {
+        const instances = {
+          Payment: Object.fromEntries(payments.map((answers, index) => [`payment_${index + 1}`, answers])),
+        };
+        const allocatedInstances = {
+          Payment: Object.fromEntries(payments.map((_, index) => [`payment_${index + 1}`, `payment:1:${index + 1}`])),
+        };
+        const fetchMock = vi.fn().mockResolvedValue(okEnvelope({
+          outputs: { credit: 0 },
+          allocated_instances: allocatedInstances,
+        }));
+        vi.stubGlobal("fetch", fetchMock);
+
+        const outcome = await runCalculateRoot({ root: "us:statutes/26/22", facts: {}, instances });
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+          root: "us:statutes/26/22",
+          facts: {},
+          household: { people: { person_1: {} }, instances },
+        });
+        expect(outcome).toMatchObject({ kind: "ok", allocatedInstances });
+      },
+    ), { seed: 318, numRuns: 50 });
   });
 
   it("sends explicit membership as household.relations and confirms it only from a complete echo", async () => {
@@ -412,21 +503,35 @@ describe("runtime api client", () => {
     expect(await getCertifiedLedger()).toBeNull();
   });
 
+  it("defaults to the canonical hosted API when no base override is set", () => {
+    // Nothing pinned this before, which is how the default kept the retired
+    // axiom-api-eta.vercel.app hostname after the cutover. Every other case
+    // here stubs AXIOM_RUNTIME_API_BASE, so none of them sees DEFAULT_BASE.
+    vi.stubEnv("AXIOM_RUNTIME_API_KEY", "test-key");
+    // Unset, not empty: apiBase() falls back with `??`, so an empty string
+    // is an override to "" rather than an absent one.
+    vi.stubEnv("AXIOM_RUNTIME_API_BASE", undefined);
+
+    expect(upstreamUrl("/runtime/packages")).toBe(
+      "https://api.axiom.org/v1/runtime/packages"
+    );
+  });
+
   it("never lets a request-built path resolve outside itself or into admin", async () => {
     vi.stubEnv("AXIOM_RUNTIME_API_KEY", "test-key");
-    vi.stubEnv("AXIOM_RUNTIME_API_BASE", "https://axiom-api-eta.vercel.app/v1");
+    vi.stubEnv("AXIOM_RUNTIME_API_BASE", "https://api.axiom.org/v1");
     const fetchMock = vi.fn().mockResolvedValue(okEnvelope({}));
     vi.stubGlobal("fetch", fetchMock);
 
     // What the site legitimately asks for resolves unchanged.
     expect(upstreamUrl("/runtime/packages/us-co/co-snap/graph")).toBe(
-      "https://axiom-api-eta.vercel.app/v1/runtime/packages/us-co/co-snap/graph"
+      "https://api.axiom.org/v1/runtime/packages/us-co/co-snap/graph"
     );
     expect(upstreamUrl("/nodes/us%3Astatutes/26/24%23ctc")).toBe(
-      "https://axiom-api-eta.vercel.app/v1/nodes/us%3Astatutes/26/24%23ctc"
+      "https://api.axiom.org/v1/nodes/us%3Astatutes/26/24%23ctc"
     );
     expect(upstreamUrl("/graph/compose?focus=us%3Astatutes%2F26%2F24")).toBe(
-      "https://axiom-api-eta.vercel.app/v1/graph/compose?focus=us%3Astatutes%2F26%2F24"
+      "https://api.axiom.org/v1/graph/compose?focus=us%3Astatutes%2F26%2F24"
     );
 
     // What an attacker can spell through the proxy routes does not.
@@ -461,7 +566,7 @@ describe("runtime api client", () => {
     // Seeded property check: whatever segments a caller builds a path from,
     // an accepted path resolves to exactly the requested /v1 path and never
     // to the admin surface, as the API will route it (decoded).
-    vi.stubEnv("AXIOM_RUNTIME_API_BASE", "https://axiom-api-eta.vercel.app/v1");
+    vi.stubEnv("AXIOM_RUNTIME_API_BASE", "https://api.axiom.org/v1");
     let state = 20260929;
     const random = () => {
       // mulberry32: integer arithmetic, no float-precision short cycle
@@ -496,7 +601,7 @@ describe("runtime api client", () => {
       accepted += 1;
       const resolved = new URL(url);
       const context = `run=${run} path=${JSON.stringify(path)} -> ${url}`;
-      expect(resolved.origin, context).toBe("https://axiom-api-eta.vercel.app");
+      expect(resolved.origin, context).toBe("https://api.axiom.org");
       expect(resolved.pathname, context).toBe(`/v1${path.split(/[?#]/, 1)[0]}`);
       const routed = decodeURI(resolved.pathname);
       expect(/^\/v1\/admin(\/|$)/i.test(routed), context).toBe(false);
@@ -509,7 +614,7 @@ describe("runtime api client", () => {
 
   it("refuses redirects on keyed requests, so the key goes nowhere unchecked", async () => {
     vi.stubEnv("AXIOM_RUNTIME_API_KEY", "test-key");
-    vi.stubEnv("AXIOM_RUNTIME_API_BASE", "https://axiom-api-eta.vercel.app/v1");
+    vi.stubEnv("AXIOM_RUNTIME_API_BASE", "https://api.axiom.org/v1");
     const fetchMock = vi.fn().mockResolvedValue(okEnvelope({ packages: [] }));
     vi.stubGlobal("fetch", fetchMock);
     await listRuntimePackages();

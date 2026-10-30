@@ -40,6 +40,7 @@ export interface PromptRow {
   answer_sources?: { url: string; title?: string }[] | null;
   latency_ms?: number | null;
   error?: string | null;
+  /** The rating's save stamp: the device's time at the tap (client.ts nextRev), or the server's for a page that sends none. It orders saves; nothing shows it. */
   rated_at?: string | null;
   verdict?: string | null;
   would_act?: string | null;

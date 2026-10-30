@@ -37,7 +37,8 @@ describe("builderUrlForRule", () => {
     const url = new URL(
       builderUrlForRule("us:statutes/7/2017/a#snap_regular_month_allotment")
     );
-    expect(url.origin).toBe("https://dashboard-builder-flax.vercel.app");
+    expect(url.origin).toBe("https://axiom.org");
+    expect(url.pathname).toBe("/gallery/builder/");
     expect(url.searchParams.get("output")).toBe(
       "us:statutes/7/2017/a#snap_regular_month_allotment"
     );

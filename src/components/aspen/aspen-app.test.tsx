@@ -1,10 +1,11 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { EVENT, STAGES, type StageId } from "@/lib/aspen/content";
+import { EVENT, LOOK_UP, STAGES, type StageId } from "@/lib/aspen/content";
 import { EMPTY_SUMMARY, type RunSummary } from "@/lib/aspen/results";
 import type { Control } from "@/lib/aspen/types";
 import { AspenApp } from "./aspen-app";
 import { CHAT_KEY, type SavedChat } from "./chat-window";
+import { OVERALL_KEY, PLEDGE_KEY } from "./client";
 
 function jsonResponse(data: unknown, ok = true) {
   return { ok, status: ok ? 200 : 500, json: async () => data } as unknown as Response;
@@ -30,7 +31,16 @@ function nav() {
   return within(screen.getByRole("navigation", { name: "Session" }));
 }
 
+/** Waits for the phone's first poll of the room to land: until then only Welcome is open. */
+async function roomAnswered() {
+  await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url) === "/api/aspen/state")).toBe(true));
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
 async function onView(id: StageId) {
+  await roomAnswered();
   const index = STAGES.findIndex((s) => s.id === id);
   const stage = STAGES[index];
   await waitFor(() => expect(menu()).toHaveTextContent(`${stage.label}${index + 1} of ${STAGES.length}`));
@@ -38,12 +48,28 @@ async function onView(id: StageId) {
   expect(screen.getByRole("heading", { level: 1, name: title })).toBeInTheDocument();
 }
 
+/** The Next button to a stage, open or waiting for the room. */
 const nextTo = (id: StageId) =>
-  screen.getByRole("button", { name: new RegExp(`^Next${STAGES.find((s) => s.id === id)!.title.replace(/[?]/g, "\\?")}`) });
+  screen.getByRole("button", {
+    name: new RegExp(`^(Next|Up next, when the room gets there)${STAGES.find((s) => s.id === id)!.title.replace(/[?]/g, "\\?")}`),
+  });
 
 function storeChat(chat: Partial<SavedChat>) {
   localStorage.setItem(CHAT_KEY, JSON.stringify(chat));
 }
+
+/** The phone's card while the room looks at the TV. */
+const lookUp = () => within(screen.getByRole("region", { name: LOOK_UP.heading }));
+
+const RATED_CHAT: Partial<SavedChat> = {
+  perspective: "resident",
+  householdId: "az-retiree",
+  turns: [
+    { key: "u", role: "user", content: "Q" },
+    { key: "a", role: "assistant", content: "A", status: "done", promptId: "p" },
+  ],
+  rated: ["p"],
+};
 
 beforeEach(() => {
   localStorage.clear();
@@ -55,7 +81,7 @@ beforeEach(() => {
     const url = String(input);
     if (url === "/api/aspen/state") return jsonResponse(control);
     if (url.startsWith("/api/aspen/results")) return jsonResponse({ runId: control.runId, live: true, summary });
-    return jsonResponse({ ok: true });
+    return jsonResponse({ ok: true, saved: true });
   });
   vi.stubGlobal("fetch", fetchMock);
   vi.stubGlobal("scrollTo", vi.fn());
@@ -71,12 +97,13 @@ describe("AspenApp following the presenter", () => {
     render(<AspenApp />);
     await onView("reveal");
 
-    expect(screen.queryByRole("button", { name: /The room has moved on/ })).not.toBeInTheDocument();
-    expect(await screen.findByText("Answers appear here as people ask.")).toBeInTheDocument();
-    // The discussion card is gone: ratings and notes come in through Rate it.
+    expect(screen.queryByRole("button", { name: /Jump to where the room is/ })).not.toBeInTheDocument();
+    // The phone points at the TV; nobody has rated yet, so there's no number (the run-through, Oct 22).
+    expect(lookUp().getByText(LOOK_UP.reveal.empty)).toBeInTheDocument();
+    expect(lookUp().getByText(LOOK_UP.later)).toBeInTheDocument();
     expect(screen.queryByText("Add to the discussion")).not.toBeInTheDocument();
-    expect(screen.getByText(/You haven't asked the AI yet/)).toBeInTheDocument();
-    expect(fetchMock.mock.calls.some(([url]) => url === "/api/aspen/results")).toBe(true);
+    expect(screen.queryByText(/You haven't asked the AI yet/)).not.toBeInTheDocument();
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === "/api/aspen/results")).toBe(true));
 
     const live = nav().getByRole("button", { name: /What we saw/ });
     expect(live).toHaveAttribute("aria-current", "step");
@@ -95,8 +122,9 @@ describe("AspenApp following the presenter", () => {
   });
 
   it("opens and closes the session menu", async () => {
+    control.stage = "scale";
     render(<AspenApp />);
-    await onView("welcome");
+    await onView("scale");
     expect(menu()).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByRole("navigation", { name: "Session" })).not.toBeInTheDocument();
     fireEvent.click(menu());
@@ -105,8 +133,9 @@ describe("AspenApp following the presenter", () => {
     fireEvent.click(menu());
     expect(screen.queryByRole("navigation", { name: "Session" })).not.toBeInTheDocument();
     // Picking a stage closes the menu.
-    fireEvent.click(nav().getByRole("button", { name: /At scale/ }));
-    await onView("scale");
+    fireEvent.click(menu());
+    fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
+    await onView("try");
     expect(screen.queryByRole("navigation", { name: "Session" })).not.toBeInTheDocument();
   });
 
@@ -135,11 +164,43 @@ describe("AspenApp following the presenter", () => {
       const url = String(input);
       if (url === "/api/aspen/state") return jsonResponse(control);
       if (url.startsWith("/api/aspen/results")) return new Promise<Response>(() => {});
-      return jsonResponse({ ok: true });
+      return jsonResponse({ ok: true, saved: true });
     });
     render(<AspenApp />);
     await onView("reveal");
-    expect(screen.getByText("Loading the room's results…")).toBeInTheDocument();
+    // Until the results arrive the card says where to look, with no number.
+    expect(lookUp().getByText(LOOK_UP.reveal.empty)).toBeInTheDocument();
+    expect(lookUp().queryByText(LOOK_UP.reveal.label)).not.toBeInTheDocument();
+  });
+
+  it("shows the room's number on the phone while the TV shows What we saw and Shared foundation", async () => {
+    control.live = false;
+    summary = {
+      ...EMPTY_SUMMARY,
+      viability: { ...EMPTY_SUMMARY.viability, rated: 9, right: 4 },
+      sourceOfTruth: [
+        { id: "yes", label: "Yes", count: 2 },
+        { id: "partly", label: "Partly", count: 5 },
+        { id: "no", label: "No", count: 3 },
+      ],
+    };
+    render(<AspenApp />);
+    await roomAnswered();
+    fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
+    await onView("reveal");
+    expect(await screen.findByText("4 of 9")).toBeInTheDocument();
+    expect(lookUp().getByText(LOOK_UP.reveal.label)).toBeInTheDocument();
+
+    fireEvent.click(nav().getByRole("button", { name: /At scale/ }));
+    await onView("scale");
+    expect(lookUp().getByText("42%")).toBeInTheDocument();
+    expect(lookUp().getByText(LOOK_UP.scale.label)).toBeInTheDocument();
+
+    fireEvent.click(nav().getByRole("button", { name: /Shared foundation/ }));
+    await onView("foundation");
+    // "Partly" counts: they can't fully check an answer.
+    expect(await screen.findByText("8 of 10")).toBeInTheDocument();
+    expect(lookUp().getByText(LOOK_UP.foundation.label)).toBeInTheDocument();
   });
 
   it("nudges a participant who fell behind, and goes back to the room on request", async () => {
@@ -151,41 +212,114 @@ describe("AspenApp following the presenter", () => {
     await onView("welcome");
     expect(JSON.parse(sessionStorage.getItem("aspen.view") ?? "null")).toEqual({ view: "welcome", follow: false });
 
-    fireEvent.click(screen.getByRole("button", { name: /The room has moved on to What we saw/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Jump to where the room is: What we saw/ }));
     await onView("reveal");
-    expect(screen.queryByRole("button", { name: /The room has moved on/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Jump to where the room is/ })).not.toBeInTheDocument();
     expect(JSON.parse(sessionStorage.getItem("aspen.view") ?? "null")).toEqual({ view: "reveal", follow: true });
   });
 
-  it("leaves a participant who went ahead alone, and follows again once the room catches up", async () => {
+  it("keeps a participant from going past the room, and opens each stage as the room gets there", async () => {
+    // The dry run, Oct 25: phones never run ahead of the presenter.
     control.stage = "reveal";
     const { rerender } = render(<AspenApp />);
     await onView("reveal");
 
-    fireEvent.click(nav().getByRole("button", { name: /At scale/ }));
-    await onView("scale");
-    expect(screen.getByText("42%")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /The room has moved on/ })).not.toBeInTheDocument();
-    expect(JSON.parse(sessionStorage.getItem("aspen.view") ?? "null")).toEqual({ view: "scale", follow: false });
+    fireEvent.click(menu());
+    const later = nav().getByRole("button", { name: /At scale/ });
+    expect(later).toBeDisabled();
+    expect(later).toHaveAccessibleName(/opens when the room gets there/);
+    expect(nav().getByRole("button", { name: /Try it/ })).toBeEnabled();
+    fireEvent.click(later);
+    expect(screen.getByRole("navigation", { name: "Session" })).toBeInTheDocument();
+    await onView("reveal");
+    fireEvent.click(menu());
+    // The Next button names the stage but waits for the room.
+    const next = nextTo("scale");
+    expect(next).toBeDisabled();
+    expect(next).toHaveTextContent("Up next, when the room gets there");
 
-    // The presenter reaches the participant's stage: following resumes.
+    // The presenter moves on: the phone follows, and the next stage still waits.
     control = { ...control, stage: "scale" };
     rerender(<AspenApp />);
+    // The phone polls the room's stage every few seconds.
     await waitFor(
       () => expect(JSON.parse(sessionStorage.getItem("aspen.view") ?? "null")).toEqual({ view: "scale", follow: true }),
       { timeout: 6000 },
     );
+    await onView("scale");
+    expect(nextTo("foundation")).toBeDisabled();
+  });
+
+  it("brings a phone that was past the room back to it, and keeps Forward from going past it", async () => {
+    sessionStorage.setItem("aspen.view", JSON.stringify({ view: "groups", follow: false }));
+    control.stage = "reveal";
+    render(<AspenApp />);
+    await onView("reveal");
+    expect(JSON.parse(sessionStorage.getItem("aspen.view") ?? "null")).toEqual({ view: "reveal", follow: true });
+    // A history entry past the room lands on the room's stage instead, without ever opening it.
+    const views = () => events().filter((e) => e.kind === "stage_view");
+    const before = views().length;
+    act(() => {
+      window.dispatchEvent(new PopStateEvent("popstate", { state: { aspenStage: "next" } }));
+    });
+    await onView("reveal");
+    expect(views().slice(before).map((e) => e.payload.stage)).not.toContain("next");
+    expect(JSON.parse(sessionStorage.getItem("aspen.view") ?? "null")).toEqual({ view: "reveal", follow: true });
+  });
+
+  it("keeps a phone that just joined on Welcome until its first poll of the room lands", async () => {
+    let answer: (response: Response) => void = () => {};
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/aspen/state") return new Promise<Response>((resolve) => (answer = resolve));
+      if (url.startsWith("/api/aspen/results")) return jsonResponse({ runId: control.runId, live: true, summary });
+      return jsonResponse({ ok: true, saved: true });
+    });
+    control = { ...control, live: false };
+    render(<AspenApp />);
+    // Before the room answers, nothing past Welcome opens, even though no presenter turns out to be live.
+    expect(screen.getByRole("button", { name: /Start: ask the AI/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /Start: ask the AI/ }));
+    expect(screen.getByRole("heading", { level: 1, name: EVENT.title })).toBeInTheDocument();
+    await act(async () => answer(jsonResponse(control)));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Start: ask the AI/ })).toBeEnabled());
+  });
+
+  it("opens every stage when the phone can't reach the room", async () => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/aspen/state") throw new Error("offline");
+      if (url.startsWith("/api/aspen/results")) return jsonResponse({ runId: control.runId, live: true, summary });
+      return jsonResponse({ ok: true, saved: true });
+    });
+    render(<AspenApp />);
+    await waitFor(() => expect(screen.getByRole("button", { name: /Start: ask the AI/ })).toBeEnabled());
+  });
+
+  it("waits on the welcome page until the session starts, and opens every stage without a live presenter", async () => {
+    const { rerender } = render(<AspenApp />);
+    await onView("welcome");
+    expect(screen.getByRole("button", { name: /Start: ask the AI/ })).toBeDisabled();
+    expect(screen.getByText("This opens when the session starts.")).toBeInTheDocument();
+    // No live control row (a database error): nothing waits, so the page still works.
+    control = { ...control, live: false };
+    rerender(<AspenApp />);
+    await waitFor(() => expect(screen.getByRole("button", { name: /Start: ask the AI/ })).toBeEnabled(), { timeout: 6000 });
+    fireEvent.click(menu());
+    expect(nav().getByRole("button", { name: /Thank you/ })).toBeEnabled();
   });
 
   it("advances with the Next link", async () => {
-    control.stage = "reveal";
+    // Behind the room, Next moves on until it reaches the room's stage.
+    sessionStorage.setItem("aspen.view", JSON.stringify({ view: "reveal", follow: false }));
+    control.stage = "foundation";
     render(<AspenApp />);
     await onView("reveal");
     fireEvent.click(nextTo("scale"));
     await onView("scale");
     fireEvent.click(nextTo("foundation"));
     await onView("foundation");
-    expect(screen.getByText("One open, validated set of rules")).toBeInTheDocument();
+    expect(lookUp().getByText(LOOK_UP.foundation.empty)).toBeInTheDocument();
   });
 
   it("restores the participant's own stage from sessionStorage", async () => {
@@ -193,7 +327,7 @@ describe("AspenApp following the presenter", () => {
     control.stage = "reveal";
     render(<AspenApp />);
     await onView("welcome");
-    expect(await screen.findByRole("button", { name: /The room has moved on to What we saw/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Jump to where the room is: What we saw/ })).toBeInTheDocument();
     await onView("welcome");
   });
 
@@ -202,7 +336,160 @@ describe("AspenApp following the presenter", () => {
     control.stage = "next";
     render(<AspenApp />);
     await onView("next");
-    expect(screen.getByText("I'd like to talk about")).toBeInTheDocument();
+    // The form is always in the page now, so only a role query (which skips hidden content) says it shows.
+    expect(screen.getByRole("group", { name: "I'd like to talk about" })).toBeInTheDocument();
+  });
+
+  it("keeps a phone on an unsent Next steps form when the room moves to Thank you (Pavel, Oct 26)", async () => {
+    control.stage = "next";
+    const { rerender } = render(<AspenApp />);
+    await onView("next");
+    const email = () => screen.getByRole("textbox", { name: "Email" });
+    fireEvent.change(email(), { target: { value: "ada@az.gov" } });
+
+    // The room moves on: once the poll lands, the banner offers the jump, and the form stays put.
+    control = { ...control, stage: "dinner" };
+    rerender(<AspenApp />);
+    expect(await screen.findByRole("button", { name: /Jump to where the room is: Thank you/ }, { timeout: 6000 })).toBeInTheDocument();
+    await onView("next");
+    expect(email()).toHaveValue("ada@az.gov");
+
+    // A trip to Thank you and back keeps what was typed.
+    fireEvent.click(screen.getByRole("button", { name: /Jump to where the room is: Thank you/ }));
+    await onView("dinner");
+    fireEvent.click(screen.getByRole("button", { name: "Back to Next steps" }));
+    await onView("next");
+    expect(email()).toHaveValue("ada@az.gov");
+  });
+
+  it("follows the room to Thank you once the Next steps form is sent", async () => {
+    control.stage = "next";
+    const { rerender } = render(<AspenApp />);
+    await onView("next");
+    fireEvent.change(screen.getByRole("textbox", { name: "Email" }), { target: { value: "ada@az.gov" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /State systems/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByText("Thank you.")).toBeInTheDocument();
+
+    control = { ...control, stage: "dinner" };
+    rerender(<AspenApp />);
+    await waitFor(
+      () => expect(JSON.parse(sessionStorage.getItem("aspen.view") ?? "null")).toEqual({ view: "dinner", follow: true }),
+      { timeout: 6000 },
+    );
+    await onView("dinner");
+  });
+
+  it("keeps the form's thank-you up when a held phone sends", async () => {
+    control.stage = "next";
+    const { rerender } = render(<AspenApp />);
+    await onView("next");
+    fireEvent.change(screen.getByRole("textbox", { name: "Email" }), { target: { value: "ada@az.gov" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /State systems/ }));
+    control = { ...control, stage: "dinner" };
+    rerender(<AspenApp />);
+    expect(await screen.findByRole("button", { name: /Jump to where the room is: Thank you/ }, { timeout: 6000 })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByText("Thank you.")).toBeInTheDocument();
+    // Another poll of the room lands, and the phone still shows its thank-you.
+    const polls = () => fetchMock.mock.calls.filter(([url]) => String(url) === "/api/aspen/state").length;
+    const sent = polls();
+    await waitFor(() => expect(polls()).toBeGreaterThan(sent), { timeout: 6000 });
+    await onView("next");
+    expect(screen.getByText("Thank you.")).toBeInTheDocument();
+  });
+
+  it("sends a reloaded phone that already sent the form on to Thank you with the room", async () => {
+    localStorage.setItem("aspen.run", JSON.stringify("phoenix"));
+    localStorage.setItem(PLEDGE_KEY, "true");
+    sessionStorage.setItem("aspen.view", JSON.stringify({ view: "next", follow: true }));
+    control.stage = "dinner";
+    render(<AspenApp />);
+    await onView("dinner");
+    // Back on Next steps, it shows the thank-you, not a blank form.
+    fireEvent.click(screen.getByRole("button", { name: "Back to Next steps" }));
+    await onView("next");
+    expect(screen.getByText("Thank you.")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Email" })).not.toBeInTheDocument();
+  });
+
+  it("starts a held form over when the presenter starts a new run", async () => {
+    control.stage = "next";
+    const { rerender } = render(<AspenApp />);
+    await onView("next");
+    fireEvent.change(screen.getByRole("textbox", { name: "Email" }), { target: { value: "ada@az.gov" } });
+    control = { ...control, stage: "dinner" };
+    rerender(<AspenApp />);
+    expect(await screen.findByRole("button", { name: /Jump to where the room is: Thank you/ }, { timeout: 6000 })).toBeInTheDocument();
+
+    // New run puts the room back at Welcome, and the phone goes with it.
+    control = { ...control, runId: "phoenix-2", stage: "welcome" };
+    rerender(<AspenApp />);
+    await waitFor(
+      () => expect(JSON.parse(sessionStorage.getItem("aspen.view") ?? "null")).toEqual({ view: "welcome", follow: true }),
+      { timeout: 6000 },
+    );
+    control = { ...control, stage: "next" };
+    rerender(<AspenApp />);
+    await waitFor(
+      () => expect(JSON.parse(sessionStorage.getItem("aspen.view") ?? "null")).toEqual({ view: "next", follow: true }),
+      { timeout: 6000 },
+    );
+    await onView("next");
+    expect(screen.getByRole("textbox", { name: "Email" })).toHaveValue("");
+  });
+
+  it("holds a phone that sent in the old run on the new run's form", async () => {
+    control.stage = "next";
+    const { rerender } = render(<AspenApp />);
+    await onView("next");
+    fireEvent.change(screen.getByRole("textbox", { name: "Email" }), { target: { value: "ada@az.gov" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /State systems/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByText("Thank you.")).toBeInTheDocument();
+
+    const moveRoom = async (next: Partial<Control>) => {
+      control = { ...control, ...next };
+      rerender(<AspenApp />);
+      await waitFor(
+        () => expect(JSON.parse(sessionStorage.getItem("aspen.view") ?? "null")).toEqual({ view: control.stage, follow: true }),
+        { timeout: 6000 },
+      );
+    };
+    await moveRoom({ runId: "phoenix-2", stage: "welcome" });
+    await moveRoom({ stage: "next" });
+    expect(screen.getByRole("textbox", { name: "Email" })).toHaveValue("");
+
+    // The rehearsal's send doesn't count in the new run: the blank form holds the phone.
+    control = { ...control, stage: "dinner" };
+    rerender(<AspenApp />);
+    expect(await screen.findByRole("button", { name: /Jump to where the room is: Thank you/ }, { timeout: 6000 })).toBeInTheDocument();
+    await onView("next");
+  });
+
+  it("still follows the room from Next steps to any stage but Thank you", async () => {
+    control.stage = "next";
+    const { rerender } = render(<AspenApp />);
+    await onView("next");
+    fireEvent.change(screen.getByRole("textbox", { name: "Email" }), { target: { value: "ada@az.gov" } });
+
+    // The presenter steps back: the phone goes with the room, and the form keeps its email for later.
+    control = { ...control, stage: "groups" };
+    rerender(<AspenApp />);
+    await waitFor(
+      () => expect(JSON.parse(sessionStorage.getItem("aspen.view") ?? "null")).toEqual({ view: "groups", follow: true }),
+      { timeout: 6000 },
+    );
+    await onView("groups");
+    control = { ...control, stage: "next" };
+    rerender(<AspenApp />);
+    await waitFor(
+      () => expect(JSON.parse(sessionStorage.getItem("aspen.view") ?? "null")).toEqual({ view: "next", follow: true }),
+      { timeout: 6000 },
+    );
+    await onView("next");
+    expect(screen.getByRole("textbox", { name: "Email" })).toHaveValue("ada@az.gov");
   });
 
   it("ignores a stored stage it does not know", async () => {
@@ -225,14 +512,16 @@ describe("AspenApp without a live presenter", () => {
     expect(screen.queryByText("Now")).not.toBeInTheDocument();
     expect(screen.getByText("Aspen Institute")).toBeInTheDocument();
     expect(screen.getByText(`${EVENT.place} · ${EVENT.shortDate}`)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /The room has moved on/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Jump to where the room is/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Start: ask the AI/ }));
     await onView("try");
     // Who you ask as is picked in the chat itself, a resident to start.
     expect(screen.getByRole("button", { name: "A resident" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: "Ask the AI" })).toBeInTheDocument();
+    // Then a household; the box and Ask the AI wait for one (Michaela, Oct 26).
+    expect(screen.getByRole("group", { name: "Households" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ask the AI" })).not.toBeInTheDocument();
     // Try it ends with a rated answer: Next waits for one.
     const next = screen.getByRole("button", { name: /^Next/ });
     expect(next).toBeDisabled();
@@ -258,6 +547,7 @@ describe("AspenApp without a live presenter", () => {
       rated: ["p"],
     });
     render(<AspenApp />);
+    await roomAnswered();
     fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
     await onView("try");
     await waitFor(() => expect(nextTo("reveal")).toBeEnabled());
@@ -309,11 +599,14 @@ describe("AspenApp without a live presenter", () => {
     await onView("groups");
     // The vote and the group's idea share one screen.
     expect(screen.getByRole("button", { name: "Vote" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Share with the room" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Fill it in for my group" })).toBeInTheDocument();
 
     fireEvent.click(nextTo("next"));
     await onView("next");
-    expect(screen.getByRole("combobox", { name: "State" })).toHaveValue("");
+    // Just an email: Aspen's roster has each leader's name, title and state.
+    expect(screen.getByRole("textbox", { name: "Email" })).toHaveValue("");
+    expect(screen.queryByRole("combobox", { name: "State" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Name" })).not.toBeInTheDocument();
 
     fireEvent.click(nextTo("dinner"));
     await onView("dinner");
@@ -325,149 +618,112 @@ describe("AspenApp without a live presenter", () => {
     await onView("try");
   });
 
-  it("clears the 'ratings are in' line when a new question starts, and keeps Next open", async () => {
-    storeChat({
-      perspective: "resident",
-      householdId: "az-retiree",
-      turns: [
-        { key: "u", role: "user", content: "Q" },
-        { key: "a", role: "assistant", content: "A", status: "done", promptId: "p" },
-      ],
-      rated: ["p"],
-    });
-    localStorage.setItem("aspen.overall.v1", "true");
+  it("keeps the two agency questions open after Start over, and Next open", async () => {
+    storeChat(RATED_CHAT);
     render(<AspenApp />);
+    await roomAnswered();
     fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
     await onView("try");
-    expect(await screen.findByText(/Your ratings are in/)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Two more, about your agency" })).toBeInTheDocument();
     fireEvent.click(screen.getAllByRole("button", { name: /^Start over/ })[0]);
-    await waitFor(() => expect(screen.queryByText(/Your ratings are in/)).not.toBeInTheDocument());
-    expect(screen.queryByRole("heading", { name: "One more: how did AI do overall?" })).not.toBeInTheDocument();
-    // The earlier rated answer still counts for the Next link.
+    // Starting over never hides them (Ariel, Oct 23), and the earlier rated answer still opens Next.
+    await waitFor(() => expect(screen.getByRole("group", { name: "Households" })).toBeInTheDocument());
+    expect(screen.getByRole("heading", { name: "Two more, about your agency" })).toBeInTheDocument();
+    // Not yet answered, so they stay open to answer.
+    expect(screen.getByRole("button", { name: "Partly" })).toBeInTheDocument();
     expect(nextTo("reveal")).toBeEnabled();
   });
 
-  it("hides the overall questions after a new question until the new answer is rated, if not yet shared", async () => {
-    storeChat({
-      perspective: "resident",
-      householdId: "az-retiree",
-      turns: [
-        { key: "u", role: "user", content: "Q" },
-        { key: "a", role: "assistant", content: "A", status: "done", promptId: "p" },
-      ],
-      rated: ["p"],
-    });
+  it("folds the answered agency questions to one line after Start over, and opens them on a tap", async () => {
+    storeChat(RATED_CHAT);
+    localStorage.setItem(OVERALL_KEY, JSON.stringify({ truth: "partly", agency: { residents: 2, staff: 2, you: 3 } }));
     render(<AspenApp />);
+    await roomAnswered();
     fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
     await onView("try");
-    expect(await screen.findByRole("heading", { name: "One more: how did AI do overall?" })).toBeInTheDocument();
+    // Under the rated answer they show as answered.
+    expect(await screen.findByRole("button", { name: "Partly" })).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(screen.getAllByRole("button", { name: /^Start over/ })[0]);
-    await waitFor(() =>
-      expect(screen.queryByRole("heading", { name: "One more: how did AI do overall?" })).not.toBeInTheDocument(),
-    );
+    // A new question isn't followed by every question at once (Max, Oct 26); Next stays open.
+    await waitFor(() => expect(screen.getByText(/Your answers are saved\./)).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "Partly" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Two more, about your agency" })).toBeInTheDocument();
+    expect(nextTo("reveal")).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Change them" }));
+    expect(screen.getByRole("button", { name: "Partly" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "For you: 3 of 5" })).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("asks how AI did overall right under the chat, once the answer is rated", async () => {
+  it("asks the two agency questions right under the chat, once the answer is rated", async () => {
     render(<AspenApp />);
+    await roomAnswered();
     fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
     await onView("try");
-    // No overall questions before the answer is rated.
-    expect(screen.queryByRole("heading", { name: "One more: how did AI do overall?" })).not.toBeInTheDocument();
+    // Nothing before the answer is rated.
+    expect(screen.queryByRole("heading", { name: "Two more, about your agency" })).not.toBeInTheDocument();
     cleanup();
 
-    storeChat({
-      perspective: "resident",
-      householdId: "az-retiree",
-      turns: [
-        { key: "u", role: "user", content: "Q" },
-        { key: "a", role: "assistant", content: "A", status: "done", promptId: "p" },
-      ],
-      rated: ["p"],
-    });
+    storeChat(RATED_CHAT);
     const scrollIntoView = vi.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
     render(<AspenApp />);
+    await roomAnswered();
     fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
     await onView("try");
-    expect(await screen.findByRole("heading", { name: "One more: how did AI do overall?" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Next: how did AI do overall\?/ }));
+    expect(await screen.findByRole("heading", { name: "Two more, about your agency" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Next: two more, about your agency/ }));
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
-    fireEvent.click(screen.getByRole("button", { name: "Got the amount right: 2 of 5" }));
-    // One step at a time, Continue to the end, then share.
-    for (let i = 0; i < 4; i++) fireEvent.click(screen.getByRole("button", { name: "Continue" }));
-    fireEvent.click(screen.getByRole("button", { name: "Share my ratings" }));
-    expect(await screen.findByText(/Your ratings are in/)).toBeInTheDocument();
-    // Done folds to one line: no heading, and nothing left pointing down to it.
-    expect(screen.queryByRole("heading", { name: "One more: how did AI do overall?" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Next: how did AI do overall\?/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Partly" }));
+    fireEvent.click(screen.getByRole("button", { name: "For residents: 2 of 5" }));
     await waitFor(() =>
-      expect(events()).toContainEqual(
-        expect.objectContaining({ kind: "discussion", stage: "try", payload: expect.objectContaining({ question: "performance" }) }),
+      expect(events()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ kind: "survey", stage: "try", payload: { question: "source-of-truth", answer: "partly", rev: expect.any(Number) } }),
+          expect.objectContaining({
+            kind: "discussion",
+            stage: "try",
+            payload: expect.objectContaining({ question: "experience", ratings: { residents: 2 } }),
+          }),
+        ]),
       ),
     );
     delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
   });
 });
 
-describe("AspenApp thread", () => {
+describe("AspenApp look-up moments", () => {
   beforeEach(() => {
     control.live = false;
   });
 
-  it("ties later stages back to the participant's question", async () => {
-    storeChat({
-      perspective: "resident",
-      householdId: "ct-couple",
-      turns: [
-        { key: "u", role: "user", content: "Q" },
-        { key: "a", role: "assistant", content: "A", status: "done", promptId: "p" },
-      ],
-      rated: [],
-    });
+  it("shows the same card whether or not this phone asked, with no thread back to Try it", async () => {
+    storeChat({ ...RATED_CHAT, householdId: "ct-couple", rated: [] });
     render(<AspenApp />);
+    await roomAnswered();
     fireEvent.click(nav().getByRole("button", { name: /At scale/ }));
     await onView("scale");
-    expect(screen.getByText(/42 of the 49 models that answered said it gets \$0/)).toBeInTheDocument();
+    expect(lookUp().getByText("42%")).toBeInTheDocument();
+    // The thread cards are gone from the phone (the run-through, Oct 22).
+    expect(screen.queryByText(/You asked about/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rate my answer →" })).not.toBeInTheDocument();
 
-    fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
-    await onView("reveal");
-    // What we saw opens with what you contributed: your question, and the rating still to do.
-    expect(screen.getByText("You asked about “Couple, with savings”.")).toBeInTheDocument();
-    expect(screen.getByText("You haven't rated an answer yet.")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Rate my answer →" }));
-    await onView("try");
-  });
-
-  it("names the participant's own question and a missing rating list", async () => {
-    storeChat({
-      householdId: "own",
-      turns: [
-        { key: "u", role: "user", content: "Q" },
-        { key: "a", role: "assistant", content: "A", status: "done", promptId: "p" },
-      ],
-    } as Partial<SavedChat>);
-    render(<AspenApp />);
     fireEvent.click(nav().getByRole("button", { name: /Shared foundation/ }));
     await onView("foundation");
-    // The rules check is in the chatbot demo now; the foundation just recalls the question.
-    expect(screen.getByText("You asked about your own question.")).toBeInTheDocument();
+    expect(lookUp().getByText(LOOK_UP.foundation.empty)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Check my answer/ })).not.toBeInTheDocument();
   });
 
-  it("treats a chat without a user turn or a finished answer as not asked", async () => {
-    storeChat({ perspective: "resident", householdId: "az-retiree", turns: [], rated: ["x"] });
-    render(<AspenApp />);
-    fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
-    await onView("reveal");
-    expect(screen.getByText(/You haven't asked the AI yet/)).toBeInTheDocument();
-  });
-
-  it("ignores a saved chat without turns", async () => {
-    localStorage.setItem(CHAT_KEY, JSON.stringify({ householdId: "az-retiree" }));
-    render(<AspenApp />);
-    fireEvent.click(nav().getByRole("button", { name: /At scale/ }));
-    await onView("scale");
-    expect(screen.getByText(/You haven't asked the AI yet/)).toBeInTheDocument();
+  it("asks nothing on the phone during the TV stages", async () => {
+    for (const id of ["reveal", "scale", "foundation"] as const) {
+      cleanup();
+      render(<AspenApp />);
+      await roomAnswered();
+      const label = STAGES.find((st) => st.id === id)!.label;
+      fireEvent.click(nav().getByRole("button", { name: new RegExp(label) }));
+      await onView(id);
+      expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+      expect(screen.queryAllByRole("button", { pressed: false })).toHaveLength(0);
+    }
   });
 });
 
@@ -477,40 +733,41 @@ describe("AspenApp after a new run", () => {
     householdId: "ct-couple",
     turns: [
       { key: "u", role: "user", content: "Q" },
-      { key: "a", role: "assistant", content: "A", status: "done", promptId: "p" },
+      { key: "a", role: "assistant", content: "The answer for the couple", status: "done", promptId: "p" },
     ],
     rated: [],
   };
 
   it("drops a rehearsal's chat and shared ratings, and follows the room again", async () => {
     localStorage.setItem("aspen.run", JSON.stringify("rehearsal"));
-    localStorage.setItem("aspen.overall.v1", "true");
+    localStorage.setItem("aspen.overall.v2", JSON.stringify({ truth: "no" }));
     storeChat(asked);
     sessionStorage.setItem("aspen.view", JSON.stringify({ view: "scale", follow: false }));
+    control.stage = "try";
     render(<AspenApp />);
 
-    await onView("welcome");
+    // The new run starts this phone clean and puts it back with the room.
+    await onView("try");
     await waitFor(() => expect(localStorage.getItem("aspen.run")).toBe(JSON.stringify("phoenix")));
-    expect(JSON.parse(localStorage.getItem(CHAT_KEY) ?? "{}").turns).toEqual([]);
+    // The run is recorded as the old chat is dropped; the chat saves its empty conversation a render or two later.
+    await waitFor(() => expect(JSON.parse(localStorage.getItem(CHAT_KEY) ?? "{}").turns).toEqual([]));
+    expect(screen.queryByText("The answer for the couple")).not.toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Households" })).toBeInTheDocument();
 
-    fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
-    await onView("reveal");
-    expect(screen.getByText(/You haven't asked the AI yet/)).toBeInTheDocument();
-
-    // The shared-ratings flag is gone too, so the overall rating can be given again.
-    expect(localStorage.getItem("aspen.overall.v1")).toBeNull();
+    // The overall answers are gone too, so they can be given again.
+    expect(localStorage.getItem("aspen.overall.v2")).toBeNull();
   });
 
   it("keeps the chat while the run stays the same", async () => {
     localStorage.setItem("aspen.run", JSON.stringify("phoenix"));
     storeChat(asked);
+    control.stage = "try";
     render(<AspenApp />);
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === "/api/aspen/state")).toBe(true));
-    fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
-    await onView("reveal");
-    // What we saw opens with what you contributed: your question, and the rating still to do.
-    expect(screen.getByText("You asked about “Couple, with savings”.")).toBeInTheDocument();
-    expect(screen.getByText("You haven't rated an answer yet.")).toBeInTheDocument();
+    await onView("try");
+    // The conversation is still there, waiting for its rating.
+    expect(await screen.findByText("The answer for the couple")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Your verdict" })).toBeInTheDocument();
   });
 
   it("keeps the chat when the control row is not live (a database error)", async () => {
@@ -519,11 +776,32 @@ describe("AspenApp after a new run", () => {
     storeChat(asked);
     render(<AspenApp />);
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === "/api/aspen/state")).toBe(true));
-    fireEvent.click(nav().getByRole("button", { name: /What we saw/ }));
-    await onView("reveal");
-    // What we saw opens with what you contributed: your question, and the rating still to do.
-    expect(screen.getByText("You asked about “Couple, with savings”.")).toBeInTheDocument();
-    expect(screen.getByText("You haven't rated an answer yet.")).toBeInTheDocument();
+    fireEvent.click(nav().getByRole("button", { name: /Try it/ }));
+    await onView("try");
+    // The conversation is still there, waiting for its rating.
+    expect(await screen.findByText("The answer for the couple")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Your verdict" })).toBeInTheDocument();
     expect(localStorage.getItem("aspen.run")).toBe(JSON.stringify("phoenix"));
+  });
+});
+
+describe("AspenApp in two tabs", () => {
+  it("stops a tab another one has taken over, and takes it back with a reload", async () => {
+    const reload = vi.fn();
+    vi.stubGlobal("location", { ...window.location, reload });
+    render(<AspenApp />);
+    await onView("welcome");
+    const mine = localStorage.getItem("aspen.tab");
+    expect(mine).not.toBeNull();
+
+    localStorage.setItem("aspen.tab", JSON.stringify("other-tab"));
+    act(() => void window.dispatchEvent(new StorageEvent("storage", { key: "aspen.tab" })));
+    expect(await screen.findByRole("heading", { name: "This page is open in another tab" })).toBeInTheDocument();
+    // Nothing behind it can be tapped.
+    expect(screen.queryByRole("button", { name: "Back to the start" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Use this tab" }));
+    expect(localStorage.getItem("aspen.tab")).toBe(mine);
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 });

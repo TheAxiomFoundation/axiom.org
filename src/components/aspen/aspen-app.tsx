@@ -1,54 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { EVENT, STAGES, findHousehold, isStageId, stageIndex, type StageId } from "@/lib/aspen/content";
-import { CHAT_KEY, ChatWindow, type ChatStatus, type SavedChat } from "./chat-window";
+import { useEffect, useRef, useState } from "react";
+import { EVENT, LOOK_UP, POLICYBENCH, STAGES, isStageId, percent, stageIndex, type StageId } from "@/lib/aspen/content";
+import { ChatWindow, type ChatStatus } from "./chat-window";
 import { OverallRating } from "./overall-rating";
-import {
-  OVERALL_KEY,
-  enterRun,
-  participantId,
-  readStored,
-  sendEvent,
-  useControl,
-  useResults,
-  writeStored,
-} from "./client";
-import { ResultsBoard } from "./results-board";
-import {
-  Agenda,
-  FoundationContent,
-  NextStepsForm,
-  PolicyBenchContent,
-  SmallGroups,
-  ThankYouContent,
-  WelcomeLanding,
-  YourContribution,
-  YourThread,
-  type ThreadQuestion,
-} from "./stages";
-import { StageHeading } from "./ui";
+import { enterRun, participantId, readStored, sendEvent, useControl, useResults, useTabHold, writeStored } from "./client";
+import { Agenda, LookUp, NextStepsForm, SmallGroups, ThankYouContent, WelcomeLanding } from "./stages";
+import { BUTTON, StageHeading } from "./ui";
 import { BrandLogo } from "./brand-logo";
 import { TextSizeButton } from "./text-size";
 
 const VIEW_KEY = "aspen.view";
 
-/** The participant's question from Try it, read back from the chat's saved state. */
-function readThread(): ThreadQuestion | null {
-  const saved = readStored<SavedChat>(CHAT_KEY);
-  if (!saved || !Array.isArray(saved.turns)) return null;
-  const firstUser = saved.turns.find((t) => t.role === "user");
-  const household = firstUser && saved.householdId !== "own" ? findHousehold(saved.householdId) : undefined;
-  return {
-    householdId: household?.id ?? null,
-    householdLabel: household?.label ?? null,
-    perspective: saved.perspective ?? null,
-    asked: saved.turns.some((t) => t.role === "assistant" && t.status === "done"),
-    rated: (saved.rated ?? []).length > 0,
-  };
-}
-
-/** Stages whose screens show the room's live results. */
+/** Stages whose screens show a number from the room's live results. */
 const RESULT_STAGES: readonly StageId[] = ["reveal", "foundation"];
 
 /** The stage a history entry belongs to, if it is one of ours. */
@@ -66,21 +30,25 @@ function historyStage(state: unknown): StageId | null {
  * instead of leaving the page.
  */
 export function AspenApp() {
-  const { data: control } = useControl();
+  const { data: control, failed: controlFailed } = useControl();
+  // One tab at a time keeps the phone's answers, so two tabs never overwrite each other's.
+  const { elsewhere, takeBack } = useTabHold();
   const [view, setView] = useState<StageId>("welcome");
   const [follow, setFollow] = useState(true);
   // False until the stored stage is read, so the first render never overwrites it.
   const [hydrated, setHydrated] = useState(false);
   const [tryStatus, setTryStatus] = useState<ChatStatus>({ asked: false, rated: false, current: false });
+  // Start overs in Try it: each folds the agency questions already answered.
+  const [restarts, setRestarts] = useState(0);
+  // Whether this phone sent the Next steps form in this run.
+  const [pledged, setPledged] = useState(false);
   const overall = useRef<HTMLElement>(null);
-  // Once the overall rating is shared, a new question clears its "ratings are in" line for good.
-  const [overallClosed, setOverallClosed] = useState(false);
-  // Once the overall ratings are shared, Try it folds them to one line.
-  const [overallShared, setOverallShared] = useState(false);
-  const onNewQuestion = useCallback(() => {
-    if (readStored<boolean>(OVERALL_KEY)) setOverallClosed(true);
-  }, []);
   const live = control?.live && stageIndex(control.stage) >= 0 ? (control.stage as StageId) : null;
+  // Phones never go past the presenter: a later stage opens when the room gets there (the dry run, Oct 25).
+  // Until the first poll answers, only Welcome is open, so a phone that just joined can't start ahead of
+  // the room (the review of #368). Without a live presenter (no control row), or if the poll fails, every
+  // stage stays open.
+  const limit = live ? stageIndex(live) : control === null && !controlFailed ? 0 : STAGES.length - 1;
   const top = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -104,17 +72,24 @@ export function AspenApp() {
     const onPop = (event: PopStateEvent) => {
       const stage = historyStage(event.state);
       if (!stage) return;
-      setView(stage);
-      setFollow(live === null || stage === live);
+      // Forward never carries a phone past the room.
+      const to = live && stageIndex(stage) > stageIndex(live) ? live : stage;
+      if (to !== stage) window.history.replaceState({ aspenStage: to }, "");
+      setView(to);
+      setFollow(live === null || to === live);
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, [live]);
 
   // Follow the presenter until the participant goes their own way. A move
-  // by the room replaces the history entry, so Back skips it.
+  // by the room replaces the history entry, so Back skips it. A phone that hasn't
+  // sent the Next steps form stays on it when the room moves to Thank you; the
+  // banner offers the jump (Pavel, Oct 26). Sending it doesn't move the phone either,
+  // so the form's own thank-you stays up.
   useEffect(() => {
-    if (hydrated && follow && live && live !== view) {
+    const keepsForm = view === "next" && live === "dinner" && !pledged;
+    if (hydrated && follow && live && live !== view && !keepsForm) {
       setView(live);
       window.history.replaceState({ aspenStage: live }, "");
       // A new screen opens at its top, straight away; a smooth scroll can stop short on a phone.
@@ -122,6 +97,15 @@ export function AspenApp() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, live, follow]);
+
+  // A phone past the room (one opened before phones waited, or the room stepped back) returns to it.
+  useEffect(() => {
+    if (!hydrated || !live || stageIndex(view) <= stageIndex(live)) return;
+    setView(live);
+    setFollow(true);
+    window.history.replaceState({ aspenStage: live }, "");
+    window.scrollTo?.({ top: 0, behavior: "instant" });
+  }, [hydrated, live, view]);
 
   // Once the room catches up with a participant who went ahead, follow it again.
   useEffect(() => {
@@ -142,20 +126,17 @@ export function AspenApp() {
     if (!hydrated || !control?.live) return;
     if (enterRun(control.runId)) {
       setRunEpoch((n) => n + 1);
-      setOverallClosed(false);
       setFollow(true);
+      setPledged(false);
     }
   }, [hydrated, control?.live, control?.runId]);
 
-  useEffect(() => {
-    setOverallShared(Boolean(readStored<boolean>(OVERALL_KEY)));
-  }, [runEpoch]);
-
   const { data: results } = useResults(RESULT_STAGES.includes(view), 5000);
-  const [thread, setThread] = useState<ThreadQuestion | null>(null);
-  useEffect(() => {
-    setThread(readThread());
-  }, [view, runEpoch]);
+  // TV moments: the phone shows one number from the room or PolicyBench while everyone looks up.
+  const viability = results?.summary.viability;
+  const truth = results?.summary.sourceOfTruth ?? [];
+  const truthAnswered = truth.reduce((sum, c) => sum + c.count, 0);
+  const truthCannot = truth.filter((c) => c.id !== "yes").reduce((sum, c) => sum + c.count, 0);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRoot = useRef<HTMLDivElement>(null);
@@ -181,6 +162,7 @@ export function AspenApp() {
   }, [menuOpen]);
 
   function go(stage: StageId) {
+    if (stageIndex(stage) > limit) return;
     if (stage !== view) window.history.pushState({ aspenStage: stage }, "");
     setView(stage);
     setFollow(live === null || stage === live);
@@ -193,12 +175,29 @@ export function AspenApp() {
   const index = stageIndex(view);
   const nextStage = STAGES[index + 1];
   const prevStage = index > 0 ? STAGES[index - 1] : null;
-  // Try it ends with a rated answer: the Next link waits for one.
+  // Try it ends with a rated answer: the Next link waits for one. Past that, it waits for the room.
   const mustRate = view === "try" && !tryStatus.rated;
+  const waitsForRoom = Boolean(nextStage) && stageIndex(nextStage.id) > limit;
   // One wide frame for every stage; text inside keeps its own reading width.
   const frame = "max-w-[1120px] sm:px-6";
   // Only nudge a participant who fell behind the room; one who went ahead is left alone.
   const behind = live !== null && stageIndex(live) > index;
+
+  if (elsewhere) {
+    return (
+      <div data-aspen-page className="relative z-1 flex min-h-screen items-center justify-center bg-[var(--color-paper)] px-4">
+        <div className="flex max-w-sm flex-col gap-4">
+          <h1 className="m-0 font-display text-[1.6rem] font-light leading-tight text-[var(--color-ink)]">This page is open in another tab</h1>
+          <p className="m-0 font-body text-[1rem] text-[var(--color-ink-secondary)]">
+            Only one tab keeps your answers, so they never overwrite each other. Go back to the other tab, or use this one instead.
+          </p>
+          <button type="button" className={`${BUTTON} w-full py-3`} onClick={takeBack}>
+            Use this tab
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div ref={top} data-aspen-page className={`relative z-1 min-h-screen bg-[var(--color-paper)] ${view === "welcome" ? "" : "pb-24"}`}>
@@ -257,7 +256,7 @@ export function AspenApp() {
                 <span className="block px-2 pb-1 pt-1 font-body font-medium text-[0.82rem] text-[var(--color-ink-muted)]">
                   Agenda
                 </span>
-                <Agenda live={live} current={view} onPick={go} compact />
+                <Agenda live={live} current={view} onPick={go} compact limit={limit} />
               </nav>
             )}
           </div>
@@ -276,7 +275,8 @@ export function AspenApp() {
             className="flex w-full items-center justify-center gap-2 bg-[var(--color-go)] px-4 py-2 font-body text-[0.9rem] font-medium text-white hover:bg-[var(--color-go-hover)]"
           >
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
-            The room has moved on to {STAGES[stageIndex(live)].label}
+            {/* Where the room is, not how far this phone got (Michaela, Oct 26). */}
+            Jump to where the room is: {STAGES[stageIndex(live)].label}
             <span aria-hidden>→</span>
           </button>
         )}
@@ -284,7 +284,7 @@ export function AspenApp() {
 
       <div className={`mx-auto px-4 ${frame} ${view === "welcome" ? "" : "pt-8"}`}>
         {view === "welcome" ? (
-          <WelcomeLanding onStart={() => go("try")} />
+          <WelcomeLanding onStart={() => go("try")} waiting={stageIndex("try") > limit} />
         ) : (
           <>
             {prevStage && (
@@ -300,8 +300,6 @@ export function AspenApp() {
             )}
             {/* The thank-you is its own centered page, like the landing. */}
             {view !== "dinner" && <StageHeading title={current.title} summary={current.phoneSummary ?? current.summary} />}
-            <YourThread stage={view} thread={thread} onOpen={() => go("try")} />
-            {view === "reveal" && <YourContribution thread={thread} onOpen={() => go("try")} />}
           </>
         )}
 
@@ -310,52 +308,55 @@ export function AspenApp() {
             key={runEpoch}
             stage={view}
             onRateOverall={() => overall.current?.scrollIntoView?.({ behavior: "smooth", block: "start" })}
-            overallShared={overallShared}
             onStatus={setTryStatus}
-            onNewQuestion={onNewQuestion}
+            onNewQuestion={() => setRestarts((n) => n + 1)}
           />
-          {/* Both ratings happen here: the answer first, then AI overall, right below. */}
-          {tryStatus.current && !overallClosed &&
-            (overallShared ? (
-              // Done: one line, not a section.
-              <p className="mt-10 font-body text-[1.05rem] font-medium text-[var(--color-ink)]">
-                <span aria-hidden className="mr-1.5 text-[var(--color-success)]">✓</span>
-                Your ratings are in. You&apos;ll see the room&apos;s results in What we saw.
-              </p>
-            ) : (
-              <section ref={overall} aria-labelledby="aspen-overall" className="mt-12 scroll-mt-20 border-t-2 border-[var(--color-accent)] pt-6">
-                <h2 id="aspen-overall" className="m-0 mb-5 font-body text-[1.4rem] font-semibold text-[var(--color-ink)]">
-                  One more: how did AI do overall?
-                </h2>
-                <OverallRating key={runEpoch} stage="try" onShared={() => setOverallShared(true)} />
-              </section>
-            ))}
+          {/* Both ratings happen here: the answer first, then two questions about the agency, right below.
+              They stay once any answer is rated, so starting over never hides them (Ariel, Oct 23); answered,
+              they fold to one line while a new question is under way (Max, Oct 26). */}
+          {tryStatus.rated && (
+            <section ref={overall} aria-labelledby="aspen-overall" className="mt-12 scroll-mt-20 border-t-2 border-[var(--color-accent)] pt-6">
+              <h2 id="aspen-overall" className="m-0 mb-5 font-body text-[1.4rem] font-semibold text-[var(--color-ink)]">
+                Two more, about your agency
+              </h2>
+              <OverallRating key={runEpoch} stage="try" fold={!tryStatus.current} restarts={restarts} />
+            </section>
+          )}
         </div>
 
-        {view === "reveal" &&
-          (results ? (
-            <ResultsBoard summary={results.summary} />
-          ) : (
-            <p className="m-0 font-body text-[0.95rem] text-[var(--color-ink-muted)]">Loading the room&apos;s results…</p>
-          ))}
-
-        {view === "scale" && <PolicyBenchContent />}
-        {view === "foundation" && <FoundationContent sourceOfTruth={results?.summary.sourceOfTruth} />}
+        {view === "reveal" && (
+          <LookUp
+            stat={viability && viability.rated > 0 ? `${viability.right} of ${viability.rated}` : null}
+            label={viability && viability.rated > 0 ? LOOK_UP.reveal.label : LOOK_UP.reveal.empty}
+          />
+        )}
+        {view === "scale" && (
+          <LookUp stat={`${percent(POLICYBENCH.saidZero, POLICYBENCH.eligibleAnswers)}%`} label={LOOK_UP.scale.label} />
+        )}
+        {view === "foundation" && (
+          <LookUp
+            stat={truthAnswered > 0 ? `${truthCannot} of ${truthAnswered}` : null}
+            label={truthAnswered > 0 ? LOOK_UP.foundation.label : LOOK_UP.foundation.empty}
+          />
+        )}
         {view === "groups" && <SmallGroups key={runEpoch} stage={view} />}
-        {view === "next" && <NextStepsForm />}
+        {/* Mounted for the whole run, like Try it, so a move away and back keeps what was typed. */}
+        <div hidden={view !== "next"}>
+          <NextStepsForm key={runEpoch} onSent={() => setPledged(true)} />
+        </div>
         {view === "dinner" && <ThankYouContent onReturn={() => go("try")} />}
 
         {nextStage && view !== "welcome" && (
           <button
             type="button"
             onClick={() => go(nextStage.id)}
-            disabled={mustRate}
+            disabled={mustRate || waitsForRoom}
             className="group mt-12 flex w-full items-center justify-between gap-4 rounded-xl bg-[var(--color-go)] px-5 py-4 text-left text-white shadow-[0_2px_8px_rgba(28,25,23,0.18)] transition-colors hover:bg-[var(--color-go-hover)] disabled:cursor-not-allowed disabled:border-2 disabled:border-dashed disabled:border-[var(--color-rule-strong)] disabled:bg-[var(--color-paper)] disabled:text-[var(--color-ink)] disabled:shadow-none"
           >
             {/* A filled button, not a link: on a phone it is the one thing to do once the stage is done. */}
             <span className="min-w-0">
               <span className="block font-body text-[0.9rem] font-medium text-white/85 group-disabled:text-[var(--color-ink)]">
-                Next
+                {!mustRate && waitsForRoom ? "Up next, when the room gets there" : "Next"}
               </span>
               <span className="block font-body text-[1.15rem] font-semibold leading-snug">
                 {mustRate ? "Rate your answer to continue" : nextStage.title}

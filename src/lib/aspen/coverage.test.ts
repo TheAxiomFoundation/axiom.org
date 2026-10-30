@@ -215,6 +215,16 @@ describe("disclosures the panel states itself", () => {
     expect(otherDisclosures({ ...az, disclosures: [curly] })).toEqual([]);
   });
 
+  it("keeps a standards note that disagrees with the years the panel reports (GPT-6.1 Sol, Oct 23)", () => {
+    // September 2026 is FY2026's own month, but the panel says FY2025 standards were used:
+    // the note's "FY2026 standards" contradicts it, so it stays for the reader to see.
+    for (const note of [FY_NOTE, ANNUAL_FY_NOTE]) {
+      expect(otherDisclosures({ ...az, period: "2026-09", standardsYears: [2025], disclosures: [note] })).toEqual([note]);
+      // The panel agrees (FY2026 used in FY2026's month): the note says nothing more, so it goes.
+      expect(otherDisclosures({ ...az, period: "2026-09", standardsYears: [2026], disclosures: [note] })).toEqual([]);
+    }
+  });
+
   it("keeps the standards note for a period that is not a month, where the panel can't compare years", () => {
     for (const note of [FY_NOTE, ANNUAL_FY_NOTE]) {
       expect(otherDisclosures({ ...az, period: "2026", disclosures: [AZ_NOTE, note] })).toEqual([note]);

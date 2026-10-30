@@ -12,7 +12,7 @@ import {
 import { apiAccess, json, readBody } from "@/lib/aspen/http";
 import { isRateLimited } from "@/lib/aspen/limit";
 import { getStore, readControl, safely } from "@/lib/aspen/store";
-import { cleanChoice, cleanChoices, clipText, isUuid } from "@/lib/aspen/validate";
+import { cleanChoice, cleanChoices, cleanRev, clipText, isUuid } from "@/lib/aspen/validate";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +46,13 @@ const CLEANERS: Record<string, (raw: Payload) => Payload | null> = {
     const topics = cleanChoices(raw.topics, DISCUSSION_TOPICS);
     const ratings = cleanRatings(raw.ratings, question ? RATING_SCALES[question] : undefined);
     const note = clipText(raw.note, 1000);
-    return topics.length || note || Object.keys(ratings).length ? { question, topics, ratings, note } : null;
+    if (question && !topics.length && !note && !Object.keys(ratings).length) {
+      // An empty answer to a known question is kept: it is the latest answer, taking back an earlier comment.
+      // Only when it says so, with an empty note and no scores, so a malformed answer never clears a saved one.
+      const scores = raw.ratings && typeof raw.ratings === "object" ? Object.keys(raw.ratings).length : 0;
+      return typeof raw.note === "string" && scores === 0 ? { question, topics, ratings, note } : null;
+    }
+    return question || topics.length || note || Object.keys(ratings).length ? { question, topics, ratings, note } : null;
   },
   breakout: (raw) => {
     const useCase = cleanChoice(raw.useCase, USE_CASES.map((u) => u.id));
@@ -85,6 +91,9 @@ export async function POST(request: Request) {
   const raw = (body?.payload && typeof body.payload === "object" ? body.payload : {}) as Payload;
   const payload = clean(raw);
   if (!payload) return json({ error: "Nothing to save." }, 400);
+  // The page's save stamp orders a person's answers in the results, whatever order they arrive in.
+  const rev = cleanRev(raw.rev);
+  if (rev) payload.rev = rev;
 
   const store = getStore();
   if (!store) return json({ ok: true, saved: false });

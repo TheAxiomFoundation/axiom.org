@@ -47,6 +47,7 @@ const STATIC_CARDS: Record<string, Metadata> = {
  *  expectCompleteShareCard on its output. Paths are under src/. */
 const GENERATED_CARDS: Record<string, string> = {
   "app/axiom/[[...segments]]/page.tsx": "app/axiom/[[...segments]]/share-card.test.ts",
+  "app/axiom/v2/[...segments]/page.tsx": "app/axiom/v2/[...segments]/share-card.test.ts",
   "app/blog/[slug]/page.tsx": "app/blog/[slug]/blog-post.test.tsx",
 };
 

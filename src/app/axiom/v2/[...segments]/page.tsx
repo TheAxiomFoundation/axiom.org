@@ -1,13 +1,17 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Suspense } from "react";
+import { cache, Suspense } from "react";
 import {
   buildLegislationJsonLd,
-  getAxiomRuleMetadata,
+  metadataForResolution,
+  unresolvedMetadata,
 } from "@/lib/axiom/metadata";
+import { JsonLd } from "@/components/json-ld";
+import { DEFAULT_SHARE_IMAGE, SITE_NAME } from "@/lib/share";
 import {
   getSectionPageDataFromResolution,
   resolveSection,
+  structuralFocus,
   type SectionResolution,
 } from "@/lib/axiom/section-page";
 import { SectionReader } from "@/components/axiom/section/section-reader";
@@ -46,6 +50,19 @@ interface PageProps {
   searchParams?: Promise<{ page?: string; embed?: string; rule?: string }>;
 }
 
+/** The reader's resolution of a path, once per request: React cache
+ *  memoizes by argument, so the decoded segments are keyed as a string. */
+const resolveSectionOnce = cache((key: string) =>
+  resolveSection(JSON.parse(key) as string[]),
+);
+const resolveDecoded = (decoded: string[]) =>
+  resolveSectionOnce(JSON.stringify(decoded));
+
+/** Metadata for what the reader renders; a focused subsection keeps its
+ *  own URL only when it is a structural one the reader links to. */
+const readerMetadata = (resolution: SectionResolution) =>
+  metadataForResolution({ ...resolution, focusAnchor: structuralFocus(resolution) });
+
 function decodeSegments(segments: string[]): string[] {
   return segments.map((segment) => {
     try {
@@ -67,11 +84,27 @@ export async function generateMetadata({
       robots: { index: false, follow: true },
     };
   }
-  const meta = await getAxiomRuleMetadata(decoded);
+  // Metadata describes what the reader renders, so canonical and og:url
+  // name the resolved section, never an unmatched suffix of the request.
+  const resolution = await resolveDecoded(decoded);
+  const meta = resolution
+    ? readerMetadata(resolution)
+    : unresolvedMetadata(decoded.join("/"));
   return {
     title: meta.title,
     description: meta.description,
     alternates: { canonical: meta.canonicalUrl },
+    // Without its own openGraph the page inherits the root layout's,
+    // whose relative og:url echoes the request path, suffix and all.
+    // This restates the brand card, as the v1 page does.
+    openGraph: {
+      title: meta.title,
+      description: meta.description,
+      url: meta.canonicalUrl,
+      type: "article",
+      siteName: SITE_NAME,
+      images: [DEFAULT_SHARE_IMAGE],
+    },
     // Launch flip: the whole /axiom subtree is noindexed until the
     // Jul 28 reveal (see src/app/axiom/layout.tsx).
     robots: { index: false, follow: true },
@@ -80,29 +113,19 @@ export async function generateMetadata({
 
 async function SectionBody({
   resolution,
-  decoded,
   highlightRule,
 }: {
   resolution: SectionResolution;
-  decoded: string[];
   highlightRule: string | null;
 }) {
-  const [data, meta] = await Promise.all([
-    getSectionPageDataFromResolution(resolution),
-    getAxiomRuleMetadata(decoded),
-  ]);
+  const data = await getSectionPageDataFromResolution(resolution);
   if (!data) notFound();
 
-  const jsonLd = buildLegislationJsonLd(meta);
+  const jsonLd = buildLegislationJsonLd(readerMetadata(resolution));
 
   return (
     <>
-      {jsonLd && (
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-        />
-      )}
+      {jsonLd && <JsonLd data={jsonLd} />}
       <SectionReader data={data} highlightRule={highlightRule} />
     </>
   );
@@ -141,7 +164,7 @@ export default async function SectionPage({
     return shell(<BrowseView data={browse} />);
   }
 
-  const resolution = await resolveSection(decoded);
+  const resolution = await resolveDecoded(decoded);
 
   // Container paths (a CFR part, a statute chapter) — bodyless roots
   // whose subtrees blow the reader cap — divert to the browse view
@@ -159,7 +182,7 @@ export default async function SectionPage({
 
   return shell(
     <Suspense fallback={<SectionSkeleton />}>
-      <SectionBody resolution={resolution} decoded={decoded} highlightRule={highlightRule} />
+      <SectionBody resolution={resolution} highlightRule={highlightRule} />
     </Suspense>,
   );
 }

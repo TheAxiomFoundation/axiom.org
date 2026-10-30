@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import {
   DEMO_NOTE,
   HOUSEHOLDS,
@@ -19,7 +19,7 @@ import {
 } from "@/lib/aspen/content";
 import type { ChatSource } from "@/lib/aspen/openai";
 import { AnswerText } from "./answer-text";
-import { RatingCard } from "./answer-feedback";
+import { RatingCard, readRatingDraft } from "./answer-feedback";
 import { CHAT_KEY, newId, participantId, readStored, sendEvent, writeStored } from "./client";
 import { Disclosure } from "./disclosure";
 import { BUTTON, BUTTON_QUIET, Chip, FIELD, STEP_NUMBER } from "./ui";
@@ -47,6 +47,8 @@ export interface Turn {
   content: string;
   promptId?: string;
   status?: "streaming" | "done" | "error";
+  /** A refusal asking again can't change, such as a conversation that is long enough: it offers Start over instead. */
+  final?: boolean;
   statusText?: string;
   model?: string;
   backend?: string;
@@ -60,6 +62,74 @@ const STEP = "mb-3 flex items-center gap-2.5 font-body text-[1.08rem] font-semib
 /** The quieter part of a step heading, such as "(optional)". */
 const STEP_NOTE = "font-normal text-[var(--color-ink-muted)]";
 export { CHAT_KEY };
+
+/** The labels of the picked items, in the list's order: what a closed step shows. */
+export function labelsOf(items: readonly { id: string; label: string }[], picked: readonly string[]): string {
+  return items
+    .filter((item) => picked.includes(item.id))
+    .map((item) => item.label)
+    .join(", ");
+}
+
+/**
+ * A step that opens on a tap: its numbered heading, then, while closed, what's picked in it.
+ * Phones see one step's choices at a time instead of every chip at once (the dry run, Oct 25).
+ */
+function OpenStep({
+  id,
+  number,
+  title,
+  note,
+  summary,
+  open,
+  onToggle,
+  buttonRef,
+  children,
+}: {
+  id: string;
+  number: number | null;
+  title: string;
+  note: string;
+  summary: string;
+  open: boolean;
+  onToggle: () => void;
+  buttonRef?: Ref<HTMLButtonElement>;
+  children: ReactNode;
+}) {
+  const panel = `aspen-step-${id}`;
+  return (
+    <div className="border-t border-[var(--color-rule)] pt-4">
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-expanded={open}
+        aria-controls={panel}
+        onClick={onToggle}
+        className="flex w-full items-start gap-2.5 rounded-lg text-left focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
+      >
+        <span className={STEP_NUMBER}>{number}</span>
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="font-body text-[1.08rem] font-semibold text-[var(--color-ink)]">
+            {title} <span className={STEP_NOTE}>{note}</span>
+          </span>
+          {!open && <span className="font-body text-[0.95rem] text-[var(--color-ink-secondary)]">{summary}</span>}
+        </span>
+        <svg
+          aria-hidden
+          viewBox="0 0 16 16"
+          className={`mt-1.5 h-4 w-4 flex-none text-[var(--color-ink-muted)] transition-transform ${open ? "rotate-180" : ""}`}
+        >
+          <path d="M3 6l5 5 5-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open && (
+        <div id={panel} className="mt-3">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export interface SavedChat {
   perspective: PerspectiveId;
@@ -114,15 +184,12 @@ export async function readNdjson(
 export function ChatWindow({
   stage,
   onRateOverall,
-  overallShared = false,
   onStatus,
   onNewQuestion,
 }: {
   stage: string;
-  /** Leads to the overall rating, below the chat, once the answer is rated. */
+  /** Leads to the two questions about the agency, below the chat, once the answer is rated. */
   onRateOverall?: () => void;
-  /** The overall ratings are in, so nothing points to them any more. */
-  overallShared?: boolean;
   onStatus?: (status: ChatStatus) => void;
   /** Called when the participant starts a new question. */
   onNewQuestion?: () => void;
@@ -140,8 +207,35 @@ export function ChatWindow({
   const [rated, setRated] = useState<Set<string>>(new Set());
   // After the first answer the follow-up box stays closed, so rating comes next.
   const [followUp, setFollowUp] = useState(false);
-  const threadEnd = useRef<HTMLDivElement>(null);
+  // A picked household asks its question as written. Its details and questions each open on a tap, one
+  // at a time, and show what's picked while closed (the dry run, Oct 25); the question opens for editing.
+  // Once picked, the household closes to one line too, and opens again to change it (Michaela, Oct 26).
+  const [open, setOpen] = useState<"household" | "details" | "questions" | null>(null);
+  const [editing, setEditing] = useState(false);
   const draftBox = useRef<HTMLTextAreaElement>(null);
+  // "Edit the question" goes away when pressed; focus moves to the box it opens, not to the page.
+  const focusDraft = useRef(false);
+  useEffect(() => {
+    if (!editing || !focusDraft.current) return;
+    focusDraft.current = false;
+    draftBox.current?.focus();
+  }, [editing]);
+  // A blank question opens its box ready to type in. A household's tile goes away as the list closes, so
+  // focus moves to the step's one line rather than falling to the page.
+  const householdStep = useRef<HTMLButtonElement>(null);
+  const focusHousehold = useRef(false);
+  useEffect(() => {
+    if (householdId === OWN && focusDraft.current) draftBox.current?.focus();
+    if (householdId !== OWN && householdId !== null && focusHousehold.current) {
+      householdStep.current?.focus({ preventScroll: true });
+    }
+    focusDraft.current = false;
+    focusHousehold.current = false;
+  }, [householdId]);
+  // A question just sent moves to the top of the screen, so its answer reads from the start. Without
+  // this, Chrome on Android anchors the scroll as the composer above it closes, and lands on "Ask a
+  // follow-up" (the dry run, Oct 25).
+  const scrollTo = useRef<string | null>(null);
   const ratingBox = useRef<HTMLElement>(null);
   const chatCard = useRef<HTMLDivElement>(null);
   // False until the saved conversation is read, so the first render never overwrites it.
@@ -165,7 +259,8 @@ export function ChatWindow({
           t.status === "streaming" ? { ...t, status: "error", content: "Interrupted. Ask again." } : t,
         ),
       );
-      setRated(new Set(saved.rated ?? []));
+      // A card whose latest save never confirmed reopens with it, even if an earlier save finished the card.
+      setRated(new Set((saved.rated ?? []).filter((id) => !readRatingDraft(id)?.unsaved)));
     }
     setHydrated(true);
   }, []);
@@ -180,7 +275,8 @@ export function ChatWindow({
       draft,
       template,
       conversationId,
-      turns: turns.filter((t) => t.status !== "streaming"),
+      // An answer still on its way is kept as a placeholder, so a reload or another tab says it was cut off.
+      turns: turns.map((t) => (t.status === "streaming" ? { key: t.key, role: t.role, content: "", status: t.status, promptId: t.promptId } : t)),
       rated: [...rated],
     } satisfies SavedChat);
   }, [hydrated, perspective, householdId, questionIds, twists, draft, template, conversationId, turns, rated]);
@@ -202,14 +298,20 @@ export function ChatWindow({
     el.style.height = "auto";
     if (el.scrollHeight > 0) el.style.height = `${el.scrollHeight + 2}px`;
     if (window.scrollY !== y) window.scrollTo({ top: y, behavior: "instant" });
-  }, [draft]);
+  }, [draft, editing]);
 
   const started = turns.length > 0;
   const household = findHousehold(householdId);
-  // Steps number in the order they show: details and questions appear once a household is picked.
+  // Steps number in the order they show: details, questions and the editable question open under "Change the question".
   const step = household
     ? { askAs: 1, household: 2, details: 3, question: 4, draft: 5 }
     : { askAs: 1, household: 2, details: null, question: null, draft: 3 };
+  // A household's question shows as written until the participant opens it to change it.
+  const preview = !started && Boolean(household) && !editing;
+  // Before anything is picked there's nothing to ask: the box and the button wait for a household or a
+  // blank question, so the first screen is just who you ask as and what to ask about (Michaela, Oct 26).
+  // A question typed before this (a saved chat) keeps its box.
+  const composing = started || householdId !== null || draft.trim() !== "";
 
   function choose(p: PerspectiveId, h: string | null, q: QuestionId[], t: string[]) {
     const found = findHousehold(h);
@@ -231,6 +333,13 @@ export function ChatWindow({
   }
 
   function pick(next: { p?: PerspectiveId; h?: string; q?: QuestionId; twist?: string }) {
+    // The household already picked only closes the list: its question, edited or not, stays.
+    if (next.h && next.h === householdId) {
+      setOpen(null);
+      if (next.h === OWN) draftBox.current?.focus();
+      else householdStep.current?.focus({ preventScroll: true });
+      return;
+    }
     const p = next.p ?? perspective;
     const h = next.h ?? householdId;
     // Questions toggle; the last one picked stays, so there is always something to ask.
@@ -247,12 +356,19 @@ export function ChatWindow({
         : [...twists, next.twist]
       : twists;
     choose(p, h, q, t);
+    if (next.h) {
+      setOpen(null);
+      if (next.h === OWN) focusDraft.current = true;
+      else focusHousehold.current = true;
+    }
     sendEvent("chip", { perspective: p, householdId: h, questionIds: q, twists: t }, stage);
   }
 
   /** A new question starts blank: no household, details or text. Who you ask as stays. */
   function startOver() {
     setFollowUp(false);
+    setEditing(false);
+    setOpen(null);
     setTurns([]);
     setConversationId(newId());
     setHouseholdId(null);
@@ -263,21 +379,22 @@ export function ChatWindow({
     onNewQuestion?.();
   }
 
-  async function send() {
-    const text = draft.trim();
+  /** Asks `text` after the turns in `base`: the box's question after the whole conversation, or a question asked again. */
+  async function send(text = draft.trim(), base = turns) {
     if (!text || sending) return;
-    const history = turns
+    const history = base
       .filter((t) => t.status !== "error" && t.status !== "streaming")
       .map((t) => ({ role: t.role, content: t.content }));
     const messages = [...history, { role: "user" as const, content: text }];
-    const turnIndex = turns.filter((t) => t.role === "user").length;
+    const turnIndex = base.filter((t) => t.role === "user").length;
     const userKey = newId();
     const answerKey = newId();
-    setTurns((prev) => [
-      ...prev,
+    setTurns([
+      ...base,
       { key: userKey, role: "user", content: text },
       { key: answerKey, role: "assistant", content: "", status: "streaming", statusText: "Thinking" },
     ]);
+    scrollTo.current = userKey;
     setDraft("");
     setFollowUp(false);
     setSending(true);
@@ -306,7 +423,8 @@ export function ChatWindow({
       });
       if (!response.ok || !response.body) {
         const data = (await response.json().catch(() => ({}))) as { error?: string };
-        update({ status: "error", content: data.error ?? "The chatbot didn't answer. Try again." });
+        // 400 is the route turning the question down as sent; anything else (a limit, a lapsed sign-in, an outage) can pass.
+        update({ status: "error", content: data.error ?? "The chatbot didn't answer. Try again.", ...(response.status === 400 ? { final: true } : {}) });
         return;
       }
       await readNdjson(response.body, (line) => {
@@ -334,7 +452,6 @@ export function ChatWindow({
       update({ status: "error", content: "The connection dropped. Try again." });
     } finally {
       setSending(false);
-      requestAnimationFrame(() => threadEnd.current?.scrollIntoView?.({ behavior: "smooth", block: "nearest" }));
     }
   }
 
@@ -359,6 +476,39 @@ export function ChatWindow({
         ? "border-[var(--color-accent)] bg-[var(--color-accent-light)]"
         : "border-[var(--color-rule)] bg-[var(--color-paper)] hover:border-[var(--color-accent)]"
     }`;
+
+  // The households, and a blank question: open on the first pick, then behind the step's one line.
+  const householdGrid = (
+    <div role="group" aria-label="Households" className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+      {HOUSEHOLDS.map((h) => (
+        <button
+          key={h.id}
+          type="button"
+          aria-pressed={householdId === h.id}
+          onClick={() => pick({ h: h.id })}
+          className={tile(householdId === h.id)}
+        >
+          <span className="block font-body text-[0.98rem] font-medium leading-snug text-[var(--color-ink)]">
+            {h.label}
+          </span>
+          <span className="block font-body text-[0.84rem] text-[var(--color-ink-muted)]">{h.state}</span>
+        </button>
+      ))}
+      <button
+        type="button"
+        aria-pressed={householdId === OWN}
+        onClick={() => pick({ h: OWN })}
+        className={`${tile(householdId === OWN)} col-span-2 border-dashed sm:col-span-3`}
+      >
+        <span className="block font-body text-[0.98rem] font-medium text-[var(--color-ink)]">
+          Start from a blank question
+        </span>
+        <span className="block font-body text-[0.84rem] text-[var(--color-ink-muted)]">
+          Your own question: any benefit, any state
+        </span>
+      </button>
+    </div>
+  );
 
   // On a phone the grid has one column. It must be minmax(0, 1fr), not the
   // implicit auto track: an auto track grows to its widest unbreakable line,
@@ -407,46 +557,38 @@ export function ChatWindow({
                 ))}
               </div>
             </fieldset>
-            <fieldset className="m-0 border-0 border-t border-[var(--color-rule)] p-0 pt-4">
-              <legend className={`${STEP} float-left w-full`}>
-                <span className={STEP_NUMBER}>{step.household}</span>Pick a household
-              </legend>
-              <div className="clear-left grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {HOUSEHOLDS.map((h) => (
-                  <button
-                    key={h.id}
-                    type="button"
-                    aria-pressed={householdId === h.id}
-                    onClick={() => pick({ h: h.id })}
-                    className={tile(householdId === h.id)}
-                  >
-                    <span className="block font-body text-[0.98rem] font-medium leading-snug text-[var(--color-ink)]">
-                      {h.label}
-                    </span>
-                    <span className="block font-body text-[0.84rem] text-[var(--color-ink-muted)]">{h.state}</span>
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  aria-pressed={householdId === OWN}
-                  onClick={() => pick({ h: OWN })}
-                  className={`${tile(householdId === OWN)} col-span-2 border-dashed sm:col-span-3`}
-                >
-                  <span className="block font-body text-[0.98rem] font-medium text-[var(--color-ink)]">
-                    Start from a blank question
-                  </span>
-                  <span className="block font-body text-[0.84rem] text-[var(--color-ink-muted)]">
-                    Your own question: any benefit, any state
-                  </span>
-                </button>
-              </div>
-            </fieldset>
-            {household && (
+            {householdId === null ? (
               <fieldset className="m-0 border-0 border-t border-[var(--color-rule)] p-0 pt-4">
                 <legend className={`${STEP} float-left w-full`}>
-                  <span className={STEP_NUMBER}>{step.details}</span>Add details <span className={STEP_NOTE}>(optional)</span>
+                  <span className={STEP_NUMBER}>{step.household}</span>Pick a household
                 </legend>
-                <div role="group" aria-label="Details" className="clear-left flex flex-col gap-3">
+                <div className="clear-left">{householdGrid}</div>
+              </fieldset>
+            ) : (
+              <OpenStep
+                id="household"
+                number={step.household}
+                title="Pick a household"
+                note=""
+                summary={household ? `${household.label}, ${household.state}` : "A blank question"}
+                open={open === "household"}
+                onToggle={() => setOpen((o) => (o === "household" ? null : "household"))}
+                buttonRef={householdStep}
+              >
+                {householdGrid}
+              </OpenStep>
+            )}
+            {household && (
+              <OpenStep
+                id="details"
+                number={step.details}
+                title="Add details"
+                note="(optional)"
+                summary={labelsOf(twistsFor(household), twists) || "None added"}
+                open={open === "details"}
+                onToggle={() => setOpen((o) => (o === "details" ? null : "details"))}
+              >
+                <div role="group" aria-label="Details" className="flex flex-col gap-3">
                   {TWIST_GROUPS.map((g) => {
                     const items = twistsFor(household).filter((t) => t.group === g.id);
                     if (!items.length) return null;
@@ -472,15 +614,19 @@ export function ChatWindow({
                     );
                   })}
                 </div>
-              </fieldset>
+              </OpenStep>
             )}
             {household && (
-              <fieldset className="m-0 border-0 border-t border-[var(--color-rule)] p-0 pt-4">
-                <legend className={`${STEP} float-left w-full`}>
-                  <span className={STEP_NUMBER}>{step.question}</span>What do you want to know?{" "}
-                  <span className={STEP_NOTE}>(pick one or more)</span>
-                </legend>
-                <div role="group" aria-label="Question" className="clear-left flex flex-wrap gap-2">
+              <OpenStep
+                id="questions"
+                number={step.question}
+                title="What do you want to know?"
+                note="(pick one or more)"
+                summary={labelsOf(QUESTIONS, questionIds)}
+                open={open === "questions"}
+                onToggle={() => setOpen((o) => (o === "questions" ? null : "questions"))}
+              >
+                <div role="group" aria-label="Question" className="flex flex-wrap gap-2">
                   {QUESTIONS.map((q) => (
                     <Chip key={q.id} selected={questionIds.includes(q.id)} onClick={() => pick({ q: q.id })}>
                       {questionIds.includes(q.id) ? "✓ " : ""}
@@ -488,25 +634,43 @@ export function ChatWindow({
                     </Chip>
                   ))}
                 </div>
-              </fieldset>
+              </OpenStep>
             )}
           </div>
         )}
 
         {started && (
           <div className="flex flex-col gap-4 px-4 py-4" aria-live="polite">
-            {turns.map((turn) =>
+            {turns.map((turn, index) =>
               turn.role === "user" ? (
                 <div
                   key={turn.key}
-                  className="ml-auto max-w-[90%] whitespace-pre-wrap break-words rounded-2xl rounded-br-sm bg-[var(--color-ink)] px-4 py-2.5 font-body text-[1rem] leading-relaxed text-white"
+                  ref={(el) => {
+                    if (!el || scrollTo.current !== turn.key) return;
+                    scrollTo.current = null;
+                    el.scrollIntoView?.({ block: "start" });
+                  }}
+                  className="ml-auto max-w-[90%] scroll-mt-24 whitespace-pre-wrap break-words rounded-2xl rounded-br-sm bg-[var(--color-ink)] px-4 py-2.5 font-body text-[1rem] leading-relaxed text-white"
                 >
                   {turn.content}
                 </div>
               ) : (
                 <div key={turn.key} className="flex flex-col gap-3">
                   {turn.status === "error" ? (
-                    <p className="m-0 font-body text-[0.92rem] text-[var(--color-error)]">{turn.content}</p>
+                    <>
+                      <p className="m-0 break-words font-body text-[0.92rem] text-[var(--color-error)]">{turn.content}</p>
+                      {/* The newest answer failed: one tap asks the same question again, in place of it, or starts over when asking again can't help. */}
+                      {index === turns.length - 1 && turns[index - 1]?.role === "user" && (
+                        <button
+                          type="button"
+                          className={`${BUTTON_QUIET} self-start`}
+                          disabled={sending}
+                          onClick={() => (turn.final ? startOver() : void send(turns[index - 1].content, turns.slice(0, index - 1)))}
+                        >
+                          {turn.final ? "Start over" : "Ask again"}
+                        </button>
+                      )}
+                    </>
                   ) : (
                     <>
                       {turn.content ? (
@@ -528,6 +692,7 @@ export function ChatWindow({
                                 <a
                                   key={s.url}
                                   href={s.url}
+                                  title={s.title || hostname(s.url)}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="max-w-full truncate rounded-full border border-[var(--color-rule)] px-2.5 py-0.5 font-body text-[0.8rem] text-[var(--color-ink-secondary)] no-underline hover:border-[var(--color-accent)]"
@@ -548,7 +713,6 @@ export function ChatWindow({
                 </div>
               ),
             )}
-            <div ref={threadEnd} />
           </div>
         )}
 
@@ -580,39 +744,65 @@ export function ChatWindow({
           </div>
         ) : (
           <div className={`flex flex-col gap-3 px-4 pb-4 ${started ? "border-t border-[var(--color-rule)] pt-3" : "mt-5 border-t border-[var(--color-rule)] pt-4"}`}>
-            {started ? (
-              <label htmlFor="aspen-draft" className="sr-only">
-                Your question
-              </label>
-            ) : (
-              <div className={`${STEP} mb-0`}>
-                <span className={STEP_NUMBER}>{step.draft}</span>
-                <label htmlFor="aspen-draft">Your question</label>{" "}
-                <span className={STEP_NOTE}>(edit it if you like)</span>
+            {!composing ? null : preview ? (
+              <div role="group" aria-labelledby="aspen-question-preview" className="flex flex-col gap-2">
+                <div id="aspen-question-preview" className={`${STEP} mb-0`}>
+                  <span className={STEP_NUMBER}>{step.draft}</span>
+                  The question
+                </div>
+                <p className="m-0 whitespace-pre-wrap rounded-lg bg-[var(--color-paper)] px-3.5 py-3 font-body text-[1rem] leading-relaxed text-[var(--color-ink)]">
+                  {draft}
+                </p>
+                <button
+                  type="button"
+                  className="aspen-link self-start font-body text-[1rem] font-medium"
+                  onClick={() => {
+                    focusDraft.current = true;
+                    setEditing(true);
+                  }}
+                >
+                  Edit the question
+                </button>
               </div>
+            ) : (
+              <>
+                {started ? (
+                  <label htmlFor="aspen-draft" className="sr-only">
+                    Your question
+                  </label>
+                ) : (
+                  <div className={`${STEP} mb-0`}>
+                    <span className={STEP_NUMBER}>{step.draft}</span>
+                    <label htmlFor="aspen-draft">Your question</label>{" "}
+                    <span className={STEP_NOTE}>{household ? "(edit it if you like)" : "(any benefit, any state)"}</span>
+                  </div>
+                )}
+                <textarea
+                  ref={draftBox}
+                  id="aspen-draft"
+                  rows={started ? 2 : 4}
+                  value={draft}
+                  maxLength={2000}
+                  autoFocus={started}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void send();
+                  }}
+                  placeholder={started ? "Ask a follow-up" : "Type your question"}
+                  className={`${FIELD} resize-none bg-[var(--color-paper)] leading-relaxed`}
+                />
+              </>
             )}
-            <textarea
-              ref={draftBox}
-              id="aspen-draft"
-              rows={started ? 2 : 4}
-              value={draft}
-              maxLength={2000}
-              autoFocus={started}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void send();
-              }}
-              placeholder={started ? "Ask a follow-up" : "Pick a household above, or type your own question"}
-              className={`${FIELD} resize-none bg-[var(--color-paper)] leading-relaxed`}
-            />
-            <button
-              type="button"
-              className={`${BUTTON} w-full py-3`}
-              disabled={!draft.trim() || sending}
-              onClick={send}
-            >
-              {sending ? "Asking…" : started ? "Send" : "Ask the AI"}
-            </button>
+            {composing && (
+              <button
+                type="button"
+                className={`${BUTTON} w-full py-3`}
+                disabled={!draft.trim() || sending}
+                onClick={() => void send()}
+              >
+                {sending ? "Asking…" : started ? "Send" : "Ask the AI"}
+              </button>
+            )}
             {!started && (
               <Disclosure lead={DEMO_NOTE} onOpen={() => sendEvent("disclosure", { opened: true }, stage)} />
             )}
@@ -629,9 +819,9 @@ export function ChatWindow({
                 <span aria-hidden className="mr-1.5 text-[var(--color-success)]">✓</span>
                 Your rating is saved. Thank you.
               </p>
-              {onRateOverall && !overallShared && (
+              {onRateOverall && (
                 <button type="button" onClick={onRateOverall} className={`${BUTTON_QUIET} w-full justify-between py-3 text-left text-[1rem]`}>
-                  Next: how did AI do overall?
+                  Next: two more, about your agency
                   <span aria-hidden className="text-[var(--color-accent)]">↓</span>
                 </button>
               )}
@@ -662,9 +852,9 @@ export function ChatWindow({
             How it works
           </span>
           <ol className="m-0 flex list-decimal flex-col gap-2 pl-5 font-body text-[0.9rem] leading-snug text-[var(--color-ink-secondary)]">
-            <li>Pick a household, add details if you like, and ask.</li>
+            <li>Pick a household, or write your own question, and ask.</li>
             <li>Rate the answer you get.</li>
-            <li>Then rate how AI did overall, right below.</li>
+            <li>Then answer two more, about your agency, right below.</li>
           </ol>
         </aside>
       )}
