@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { attemptEvents } from "@/lib/axiom/pipeline-events";
 import { caseDetail, citationLanes, mineFlow } from "@/lib/axiom/pipeline-flow";
@@ -58,6 +58,16 @@ describe("FlowLine", () => {
     // No targets, alerts or advice on the page.
     expect(screen.queryByText("Release activation is failing")).toBeNull();
     expect(screen.queryByText(/target/i)).toBeNull();
+  });
+
+  it("draws the line as a diagram: a row per phase, each stage with its counts", () => {
+    line();
+    const diagram = screen.getByRole("figure", { name: "The pipeline as a diagram" });
+    expect(diagram.textContent).toContain("Encode");
+    const validate = within(diagram).getByText("Validate").closest("div")!;
+    expect(validate.textContent).toContain("50% passed");
+    expect(validate.textContent).toContain("tries: 1 of 4 passed");
+    expect(validate.textContent).toContain("1 left the line");
   });
 
   it("switches the path and keeps the window and scope", () => {

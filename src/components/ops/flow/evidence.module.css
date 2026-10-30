@@ -365,3 +365,116 @@
   min-width: 200px;
   color: var(--color-ink-secondary);
 }
+
+/* The line as a diagram: a row per phase, stages left to right. */
+.diagram {
+  margin: 0 0 8px;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.diagramPhase {
+  display: grid;
+  gap: 2px;
+}
+
+.diagramRow {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.diagramPhaseLabel {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-ink-secondary);
+}
+
+.diagramStages {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.diagramStep {
+  display: flex;
+  align-items: center;
+}
+
+.diagramArrow {
+  flex: none;
+  margin: 0 8px;
+  color: var(--color-ink-muted);
+}
+
+.diagramDown {
+  margin: 2px 0 2px 150px;
+  color: var(--color-ink-muted);
+}
+
+.node {
+  display: grid;
+  gap: 1px;
+  width: 152px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-rule);
+  border-radius: 8px;
+  background: var(--color-paper-elevated);
+}
+
+.nodePerson {
+  border-color: var(--color-accent);
+}
+
+.nodeLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-ink);
+}
+
+.nodeCount {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.nodeLine {
+  font-size: 11px;
+  color: var(--color-ink-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.nodeExit {
+  font-size: 11px;
+  color: var(--color-destructive);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 560px) {
+  .diagramRow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .diagramDown {
+    margin-left: 60px;
+  }
+
+  .node {
+    width: 132px;
+  }
+}

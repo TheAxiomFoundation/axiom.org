@@ -9,6 +9,7 @@ import {
   type RuleTrend,
   type StationStats,
 } from "@/lib/axiom/pipeline-flow";
+import { PipelineDiagram } from "./pipeline-diagram";
 import styles from "./evidence.module.css";
 
 /**
@@ -23,6 +24,7 @@ export function PipelineEvidence({ model }: { model: FlowModel }) {
   return (
     <div className={styles.evidence}>
       <Panel title="Stages" note={`Cases that reached each stage in the last ${model.window.days} days`}>
+        <PipelineDiagram phases={phases} />
         <StageTable phases={phases} maxReached={maxReached} />
       </Panel>
       <Panel title="Where the time goes" note="Summed time of finished visits at each stage">
@@ -65,7 +67,7 @@ function Panel({ title, note, children }: { title: string; note?: string; childr
   );
 }
 
-interface PhaseRow {
+export interface PhaseRow {
   id: string;
   label: string;
   stations: StationStats[];
