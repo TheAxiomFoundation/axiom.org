@@ -13,7 +13,7 @@ export function TheGapSection() {
             I &middot; The gap
           </span>
           <h2 className="heading-section mb-6 mt-2">
-            Law for the digital era
+            We didn&rsquo;t write the law for computers.
           </h2>
         </Reveal>
 
