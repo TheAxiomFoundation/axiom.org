@@ -354,3 +354,14 @@
     grid-row: 2;
   }
 }
+
+.release {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.flags {
+  white-space: normal !important;
+  min-width: 200px;
+  color: var(--color-ink-secondary);
+}

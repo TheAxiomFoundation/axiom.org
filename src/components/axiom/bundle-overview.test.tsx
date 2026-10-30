@@ -42,9 +42,9 @@ describe("BundleOverview", () => {
     expect(federal.closest("tr")).toHaveTextContent(
       "3%1 complete (1 validated) · 2 partly · 28 not started · 1 not in the corpus"
     );
-    // The bar: a done segment, then a lighter partly one.
+    // The bar: a done segment, a lighter partly one, and the documents not in the corpus at its end.
     const bar = federal.closest("tr")!.querySelector("td span[aria-hidden]")!;
-    expect([...bar.children].map((segment) => (segment as HTMLElement).style.width)).toEqual(["3.125%", "6.25%"]);
+    expect([...bar.children].map((segment) => (segment as HTMLElement).style.width)).toEqual(["3.125%", "6.25%", "3.125%"]);
     expect(screen.getByRole("button", { name: /^LIHEAP/ })).toHaveAttribute(
       "title",
       "LIHEAP: 1 of 32 documents complete, 2 partly (1 validated), across the federal law and 0 states"

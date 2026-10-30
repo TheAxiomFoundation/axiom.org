@@ -173,6 +173,8 @@ export interface CorpusView {
   /** axiom-corpus's open PRs; `draft` is null when the draft count is unreadable. */
   openPrs: { count: number; draft: number | null; oldestAt: string | null; url: string } | null;
   lastPublish: { conclusion: string; at: string; url: string } | null;
+  /** When the tables and pins were read; a cached view shows its age. */
+  readAt?: string;
 }
 
 export interface CorpusInputs {
@@ -567,10 +569,10 @@ export async function readCorpusView(): Promise<CorpusView> {
         pin.release && !registered.has(pin.release) ? { ...pin, manifest: await hasManifest(pin.release) } : pin;
     })
   );
-  return corpusView({ releases, pointers, served, pins, repos }, { openPrs, lastPublish });
+  return { ...corpusView({ releases, pointers, served, pins, repos }, { openPrs, lastPublish }), readAt: new Date().toISOString() };
 }
 
-const cachedCorpusView = unstable_cache(readCorpusView, ["ops-corpus-releases-v2"], {
+const cachedCorpusView = unstable_cache(readCorpusView, ["ops-corpus-releases-v3"], {
   revalidate: REVALIDATE_SECONDS,
 });
 

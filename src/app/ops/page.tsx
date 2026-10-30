@@ -5,6 +5,7 @@ import { OpsDashboard, type OpsTab } from "@/components/axiom/ops-dashboard";
 import { BundleOverview } from "@/components/axiom/bundle-overview";
 import { ProgramBundle } from "@/components/axiom/program-bundle";
 import { PipelineLedger } from "@/components/axiom/pipeline-ledger";
+import { CorpusEvidence } from "@/components/ops/flow/corpus-evidence";
 import { FlowLine } from "@/components/ops/flow/flow-page";
 import flowStyles from "@/components/ops/flow/flow.module.css";
 import { DEFAULT_FLOW_PARAMS, type FlowParams } from "@/components/ops/flow/flow-params";
@@ -13,6 +14,7 @@ import { busiestRoots, LEGACY_OPS_TABS, opsHref, sharedOpsParams } from "@/lib/a
 import { attemptJurisdiction, parseScope } from "@/lib/axiom/encoding-pipeline-insights";
 import { loadFlow, parsePopulation, parseWindow } from "@/lib/axiom/pipeline-flow-data";
 import { getBundleSummaries, getProgramBundle } from "@/lib/axiom/program-bundles-data";
+import { getCorpusView } from "@/lib/axiom/corpus-releases";
 import { getEncodingStatus } from "@/lib/corpus-status";
 import { SITE_URL } from "@/lib/urls";
 
@@ -70,9 +72,10 @@ export default async function OpsPage({ searchParams }: { searchParams?: Promise
     const bundleId = one(params.bundle);
     const validBundle = bundleId && BUNDLE_ID_RE.test(bundleId) ? bundleId : null;
     const count = params.count === "provisions" ? "provisions" : "documents";
-    const [bundles, bundle] = await Promise.all([
+    const [bundles, bundle, corpus] = await Promise.all([
       getBundleSummaries(),
       validBundle ? getProgramBundle(validBundle) : null,
+      validBundle ? null : getCorpusView(),
     ]);
     panel = (
       <>
@@ -91,6 +94,7 @@ export default async function OpsPage({ searchParams }: { searchParams?: Promise
         ) : (
           <p className={flowStyles.note}>No program bundles yet: encodings.program_bundles is empty or not there.</p>
         )}
+        {corpus ? <CorpusEvidence view={corpus} referenceMs={referenceMs} /> : null}
       </>
     );
   } else {
