@@ -6,6 +6,7 @@ interface VercelRedirect {
   source: string;
   destination: string;
   permanent?: boolean;
+  has?: unknown[];
 }
 
 interface VercelRewrite {
@@ -62,6 +63,42 @@ const GALLERY_ZONES: Record<string, string> = {
   cliffs: "axiom-co-snap",
   microsim: "axiom-microsim",
 };
+
+// The first redirect a path hits, in file order. Host-conditional redirects
+// stay out: none applies on axiom.org.
+function redirectFor(path: string): VercelRedirect | undefined {
+  return config.redirects?.find(({ source, has }) => {
+    if (has) return false;
+    const pattern = source
+      .split(/:path(?:\(\.\*\)|\*)/)
+      .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join(".*");
+    return new RegExp(`^${pattern}$`).test(path);
+  });
+}
+
+describe("gallery index", () => {
+  // /demos renders the gallery. Published posts link to the bare /gallery,
+  // which no zone serves.
+  it.each(["/gallery", "/gallery/"])("redirects %s to /demos", (path) => {
+    expect(redirectFor(path)).toMatchObject({
+      destination: "/demos",
+      permanent: false,
+    });
+  });
+
+  it("stops at /demos", () => {
+    expect(redirectFor("/demos")).toBeUndefined();
+  });
+
+  it.each([...Object.keys(GALLERY_ZONES), "guidance"])(
+    "leaves /gallery/%s to its rewrite",
+    (slug) => {
+      expect(redirectFor(`/gallery/${slug}`)).toBeUndefined();
+      expect(redirectFor(`/gallery/${slug}/page`)).toBeUndefined();
+    },
+  );
+});
 
 describe("demo zone rewrites", () => {
   it.each(Object.entries(DEMO_ZONES))(
