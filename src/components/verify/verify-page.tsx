@@ -57,8 +57,8 @@ export function VerifyPage() {
             Run the checks behind our claims
           </h1>
           <p className="font-body text-xl text-[var(--color-ink-secondary)] leading-relaxed mb-4">
-            For each item below, we label the evidence, give the command that
-            tests it, and say what the test does not cover.
+            Download our releases, recompute their hashes, recheck the
+            calculator comparisons, and see what each check leaves out.
           </p>
           <p className="font-body text-[1rem] text-[var(--color-ink-muted)] leading-relaxed mb-6">
             {launchScopeNote}
@@ -144,7 +144,7 @@ export function VerifyPage() {
           <p className="font-body text-[1rem] text-[var(--color-ink-secondary)] max-w-[820px] leading-relaxed mb-4">
             We do not publish a match rate. A rate counts a difference we have
             traced to a bug in the other engine the same as one we cannot
-            account for, and those are not the same thing.
+            account for.
           </p>
           <p className="font-body text-[1rem] text-[var(--color-ink-secondary)] max-w-[820px] leading-relaxed mb-4">
             Instead, every disagreement is classified, with evidence, and the
@@ -261,7 +261,7 @@ export function VerifyPage() {
           </div>
 
           <h3 className="font-body text-xl text-[var(--color-ink)] mb-4">
-            Rules for classifying a disagreement
+            How we check classifications and coverage
           </h3>
           <ul className="flex flex-col gap-3 max-w-[860px]">
             {enforcement.map((rule) => (
@@ -362,8 +362,8 @@ export function VerifyPage() {
             What is broken right now
           </h2>
           <p className="font-body text-[1rem] text-[var(--color-ink-secondary)] max-w-[780px] leading-relaxed mb-10">
-            Our own checks produced these findings, and each entry shows the
-            error. We remove an entry when its check passes.
+            Our own checks produced these findings, and we remove an entry
+            when its check passes.
           </p>
 
           <div className="space-y-6">

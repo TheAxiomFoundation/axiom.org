@@ -20,12 +20,10 @@ describe("Verify page", () => {
   it("opens with what the reader does on the page", () => {
     render(<Page />);
 
-    expect(
-      screen.getByRole("heading", {
-        level: 1,
-        name: "Run the checks behind our claims",
-      }),
-    ).toBeInTheDocument();
+    const headings = screen.getAllByRole("heading", { level: 1 });
+
+    expect(headings).toHaveLength(1);
+    expect(headings[0]).toHaveTextContent("Run the checks behind our claims");
     expect(screen.queryByText(/trust it/i)).not.toBeInTheDocument();
   });
 
