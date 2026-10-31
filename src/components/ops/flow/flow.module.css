@@ -1,0 +1,898 @@
+/* /ops/flow: the encoding pipeline as a zoomable factory floor.
+   The canvas is a dark monitor in both site themes (a control-room screen:
+   the flow particles and status colours read best on it); the page chrome
+   around it follows the site theme. Status steps are the fixed status
+   palette, always with an icon and a label. */
+
+.page {
+  --floor: #12110f;
+  --floor-raised: #1c1a17;
+  --floor-card: #221f1b;
+  --floor-line: #3a3530;
+  --floor-grid: #2a2622;
+  --floor-ink: #f5f3ef;
+  --floor-ink-2: #c9c3bb;
+  --floor-ink-3: #8f877d;
+  --flow: #f59e0b;
+  --flow-soft: rgba(245, 158, 11, 0.35);
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  --neutral: #8f877d;
+}
+
+.wrap {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+@media (min-width: 768px) {
+  .wrap {
+    padding: 0 40px;
+  }
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 24px;
+}
+
+.eyebrow {
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+}
+
+.title {
+  margin-top: 6px;
+  font-size: clamp(24px, 3vw, 34px);
+  font-weight: 500;
+  letter-spacing: -0.035em;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--color-rule);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.seg a,
+.seg span {
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--color-ink-secondary);
+  text-decoration: none;
+  border-right: 1px solid var(--color-rule);
+}
+
+.seg a:last-child,
+.seg span:last-child {
+  border-right: 0;
+}
+
+.seg a:hover {
+  background: var(--color-paper-elevated);
+  color: var(--color-ink);
+}
+
+.seg [aria-current="page"] {
+  background: var(--color-ink);
+  color: var(--color-paper);
+}
+
+.more {
+  font-size: 12px;
+  color: var(--color-ink-muted);
+}
+
+.more summary {
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+/* Breadcrumb and tabs */
+.crumbs {
+  margin-top: 24px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-ink-muted);
+}
+
+.crumbs a {
+  color: var(--color-ink-secondary);
+  text-decoration: none;
+}
+
+.crumbs a:hover {
+  color: var(--color-ink);
+  text-decoration: underline;
+}
+
+.crumbs [aria-current="page"] {
+  color: var(--color-ink);
+  font-weight: 500;
+}
+
+/* The floor: canvas and side panel */
+.floor {
+  position: relative;
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  border-radius: 16px;
+  /* clip, not hidden: hidden makes a scroll box, and the side panel could not stick. */
+  overflow: clip;
+  background: var(--floor);
+  color: var(--floor-ink);
+  border: 1px solid #000;
+  box-shadow: 0 20px 60px -30px rgba(0, 0, 0, 0.6);
+}
+
+@media (min-width: 1100px) {
+  .floor[data-panel="true"] {
+    grid-template-columns: minmax(0, 1fr) 380px;
+  }
+}
+
+.canvas {
+  position: relative;
+  height: min(72vh, 760px);
+  min-height: 440px;
+  background:
+    radial-gradient(ellipse at 30% 0%, rgba(245, 158, 11, 0.07), transparent 60%),
+    var(--floor);
+}
+
+.canvas :global(.react-flow__attribution) {
+  display: none;
+}
+
+.canvas :global(.react-flow__controls) {
+  box-shadow: none;
+  border: 1px solid var(--floor-line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.canvas :global(.react-flow__controls-button) {
+  background: var(--floor-raised);
+  border-bottom: 1px solid var(--floor-line);
+  fill: var(--floor-ink-2);
+}
+
+.canvas :global(.react-flow__controls-button:hover) {
+  background: var(--floor-card);
+}
+
+.canvas :global(.react-flow__minimap) {
+  background: var(--floor-raised);
+  border: 1px solid var(--floor-line);
+  border-radius: 8px;
+}
+
+.canvasWrap {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Under the canvas, not over it: the legend never hides a station. */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--floor-line);
+  background: var(--floor-raised);
+  font-size: 11px;
+  color: var(--floor-ink-2);
+}
+
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.line {
+  width: 18px;
+  height: 0;
+  border-top: 3px solid var(--flow);
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.line[data-kind="exit"] {
+  border-top: 3px solid var(--critical);
+}
+
+.line[data-kind="cancel"] {
+  border-top: 2px dashed var(--neutral);
+}
+
+.line[data-kind="loop"] {
+  border-top: 2px solid var(--warning);
+}
+
+/* Status chip: icon and label, never colour alone */
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-family: var(--font-mono), monospace;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.status[data-status="good"] {
+  color: var(--good);
+}
+
+.status[data-status="warning"] {
+  color: var(--warning);
+}
+
+.status[data-status="critical"] {
+  color: var(--critical);
+}
+
+.status[data-status="neutral"] {
+  color: var(--floor-ink-3);
+}
+
+.handle {
+  opacity: 0;
+  width: 1px !important;
+  height: 1px !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  border: 0 !important;
+}
+
+/* Side panel */
+.panel {
+  border-top: 1px solid var(--floor-line);
+  background: var(--floor-raised);
+  max-height: min(72vh, 760px);
+  overflow: auto;
+  padding: 18px 18px 24px;
+  font-size: 13px;
+  color: var(--floor-ink-2);
+}
+
+@media (min-width: 1100px) {
+  /* Beside a tall diagram the panel stays in view as the page scrolls, and
+     scrolls on its own when it is taller than the window. */
+  .panel {
+    position: sticky;
+    top: 80px;
+    align-self: start;
+    max-height: calc(100vh - 96px);
+    border-top: 0;
+    border-left: 1px solid var(--floor-line);
+    overscroll-behavior: contain;
+  }
+}
+
+.panel h2 {
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--floor-ink);
+  letter-spacing: -0.02em;
+}
+
+.panel h3 {
+  margin-top: 20px;
+  margin-bottom: 8px;
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--floor-ink-3);
+}
+
+.panel p {
+  line-height: 1.55;
+}
+
+.panel a {
+  color: var(--floor-ink);
+}
+
+.close {
+  float: right;
+  padding: 2px 8px;
+  border: 1px solid var(--floor-line);
+  border-radius: 6px;
+  color: var(--floor-ink-2) !important;
+  text-decoration: none;
+  font-size: 12px;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.metric {
+  padding: 8px 10px;
+  border: 1px solid var(--floor-line);
+  border-radius: 8px;
+  background: var(--floor-card);
+}
+
+.metric span {
+  display: block;
+  font-size: 10px;
+  color: var(--floor-ink-3);
+}
+
+.metric b {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--floor-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.metric small {
+  display: block;
+  font-size: 10px;
+  color: var(--floor-ink-3);
+}
+
+.items {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.items li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.items code {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+}
+
+/* Lanes and run nodes */
+.pip {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  color: #111;
+  border: 2px solid var(--floor);
+  cursor: pointer;
+}
+
+.pip[data-outcome="ok"] {
+  background: var(--good);
+}
+
+.pip[data-outcome="fail"] {
+  background: var(--critical);
+  color: #fff;
+}
+
+.pip[data-outcome="cancel"] {
+  background: var(--neutral);
+}
+
+.pip[data-outcome="open"] {
+  background: transparent;
+  border: 2px dashed var(--warning);
+  color: var(--warning);
+}
+
+.laneLabel {
+  width: 240px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--floor-line);
+  background: var(--floor-raised);
+  font-size: 11px;
+  color: var(--floor-ink-2);
+  cursor: pointer;
+}
+
+.laneLabel b {
+  display: block;
+  color: var(--floor-ink);
+  font-weight: 500;
+  font-size: 12px;
+}
+
+.laneLabel[data-end^="failed"] b,
+.laneLabel[data-end^="cancelled"] b {
+  color: #f2a3a3;
+}
+
+.laneLabel[data-end="landed"] b {
+  color: #8ee08e;
+}
+
+.colHead {
+  width: 120px;
+  text-align: center;
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--floor-ink-3);
+}
+
+.visit {
+  width: 200px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--floor-line);
+  border-left-width: 4px;
+  background: var(--floor-card);
+  font-size: 11px;
+  color: var(--floor-ink-2);
+}
+
+.visit b {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--floor-ink);
+}
+
+.visit code {
+  display: block;
+  margin-top: 4px;
+  font-size: 10px;
+  color: #f2a3a3;
+  overflow-wrap: anywhere;
+}
+
+.visit[data-outcome="ok"] {
+  border-left-color: var(--good);
+}
+
+.visit[data-outcome="fail"] {
+  border-left-color: var(--critical);
+}
+
+.visit[data-outcome="cancel"] {
+  border-left-color: var(--neutral);
+}
+
+.visit[data-outcome="open"] {
+  border-left-color: var(--warning);
+  border-style: dashed;
+}
+
+.empty {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  min-height: 320px;
+  padding: 24px;
+  text-align: center;
+  color: var(--floor-ink-2);
+  font-size: 14px;
+}
+
+.empty p {
+  max-width: 52ch;
+  line-height: 1.6;
+}
+
+.note {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--color-ink-muted);
+}
+
+/* Discovery: answer cards */
+
+@media (max-width: 640px) {
+  .tryBars li {
+    grid-template-columns: 48px 1fr 110px;
+  }
+  .tryBars li > :last-child {
+    display: none;
+  }
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.originTag {
+  flex: none;
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px solid var(--floor-line);
+  border-radius: 4px;
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--floor-ink-2);
+  white-space: nowrap;
+}
+
+/* The diagram: station boxes, sinks, edges and their labels. */
+.station {
+  box-sizing: border-box;
+  width: 216px;
+  height: 196px;
+  overflow: hidden;
+  padding: 12px 14px 10px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--floor-card), var(--floor-raised));
+  border: 1px solid var(--floor-line);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4), 0 12px 30px -16px rgba(0, 0, 0, 0.9);
+  color: var(--floor-ink);
+  cursor: pointer;
+  transition: border-color 120ms, transform 120ms;
+}
+
+.station:hover,
+.station:focus-visible {
+  border-color: var(--floor-ink-3);
+  outline: none;
+}
+
+.station[data-selected="true"] {
+  border-color: var(--flow);
+  box-shadow: 0 0 0 1px var(--flow), 0 0 40px -10px var(--flow-soft);
+}
+
+.station[data-status="critical"] {
+  box-shadow: 0 0 0 1px rgba(208, 59, 59, 0.7), 0 0 36px -12px rgba(208, 59, 59, 0.7);
+}
+
+.station[data-status="warning"] {
+  box-shadow: 0 0 0 1px rgba(250, 178, 25, 0.45), 0 12px 30px -16px rgba(0, 0, 0, 0.9);
+}
+
+.stationTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.stationName {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.stationBody {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: 54px 1fr;
+  gap: 10px;
+  align-items: center;
+}
+
+.ring {
+  position: relative;
+  width: 54px;
+  height: 54px;
+}
+
+.ring svg {
+  transform: rotate(-90deg);
+}
+
+.ring b {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 8px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stats dt {
+  color: var(--floor-ink-3);
+}
+
+.stats dd {
+  color: var(--floor-ink);
+  text-align: right;
+}
+
+.wip[data-hot="true"] {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+.week {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--floor-line);
+  font-size: 11px;
+  color: var(--floor-ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.week[data-worse="true"] {
+  color: var(--warning);
+}
+
+/* Sink node */
+.sink {
+  min-width: 132px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px dashed var(--floor-line);
+  background: var(--floor-raised);
+  text-align: center;
+  font-size: 12px;
+  color: var(--floor-ink-2);
+}
+
+.sink b {
+  display: block;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--floor-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.sink[data-sink="exit:failed"] {
+  border-color: rgba(208, 59, 59, 0.6);
+}
+
+.sink[data-sink="exit:landed"] {
+  border-style: solid;
+  border-color: rgba(12, 163, 12, 0.6);
+}
+
+/* Edge labels */
+.edgeLabel {
+  position: absolute;
+  z-index: 2;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--floor);
+  border: 1px solid var(--floor-line);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--floor-ink-2);
+  pointer-events: all;
+  white-space: nowrap;
+}
+
+.edgeLabel[data-kind="loop"] {
+  color: var(--warning);
+  border-color: rgba(250, 178, 25, 0.4);
+}
+
+.edgeLabel[data-kind="exit"] {
+  color: #f2a3a3;
+  border-color: rgba(208, 59, 59, 0.4);
+}
+
+/* A station's top exit reason, and edges with no clear route, on the box itself. */
+.reason {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #f08a8a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reason code {
+  font-size: 10.5px;
+}
+
+.offRoute {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--warning);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.station dl + dl dt,
+.station .stats dt {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reason b {
+  font-weight: 600;
+}
+
+/* Where the line leaks: a red bar for the share of the station's cases that
+   left there, and a red glow on the boxes that lose the most of all exits. */
+.leakTrack {
+  display: block;
+  height: 5px;
+  margin-top: 8px;
+  border-radius: 3px;
+  background: var(--floor-grid);
+  overflow: hidden;
+}
+
+.leakTrack i {
+  display: block;
+  height: 100%;
+  min-width: 3px;
+  border-radius: 3px;
+  background: var(--critical);
+}
+
+.legendLeak {
+  display: inline-block;
+  width: 18px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--critical);
+}
+
+.station[data-leak="mid"] {
+  border-color: rgba(208, 59, 59, 0.55);
+  box-shadow: 0 0 0 1px rgba(208, 59, 59, 0.25), 0 0 22px -6px rgba(208, 59, 59, 0.55);
+}
+
+.station[data-leak="high"] {
+  border-color: var(--critical);
+  box-shadow: 0 0 0 2px rgba(208, 59, 59, 0.45), 0 0 36px -4px rgba(208, 59, 59, 0.7);
+}
+
+/* Failure modes in the station panel: one card per way cases fail. */
+.modesLede {
+  margin-top: -2px;
+  color: var(--floor-ink-3);
+}
+
+.modes {
+  margin-top: 10px;
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.mode {
+  padding: 10px 12px;
+  border: 1px solid var(--floor-line);
+  border-radius: 10px;
+  background: var(--floor-card);
+}
+
+.modeHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.modeHead b {
+  color: var(--floor-ink);
+  font-weight: 500;
+}
+
+.modeId {
+  display: block;
+  margin-top: 2px;
+  font-size: 10.5px;
+  color: var(--floor-ink-3);
+  overflow-wrap: anywhere;
+}
+
+.modeMsg {
+  margin-top: 8px;
+  padding: 6px 8px;
+  border-left: 2px solid var(--critical);
+  background: rgba(208, 59, 59, 0.08);
+  font-family: var(--font-mono), monospace;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--floor-ink);
+  overflow-wrap: anywhere;
+}
+
+/* The clamp sits inside the padding, so no half line shows under it. */
+.modeMsgText {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.modeMsgText span {
+  color: var(--floor-ink-3);
+}
+
+.modeImpact {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 12px;
+}
+
+.modeEnded b {
+  font-size: 15px;
+  color: #f08a8a;
+}
+
+.modeEnded[data-zero="true"] b {
+  color: var(--floor-ink-2);
+}
+
+.modeLine {
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.modeLine[data-bad="true"] {
+  color: var(--warning);
+}
+
+.modeCases {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--floor-ink-3);
+  overflow-wrap: anywhere;
+}

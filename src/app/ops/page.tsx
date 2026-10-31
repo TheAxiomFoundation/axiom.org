@@ -1,35 +1,29 @@
 import type { Metadata } from "next";
-import { OpsDashboard } from "@/components/axiom/ops-dashboard";
+import type { ReactNode } from "react";
+import { permanentRedirect } from "next/navigation";
+import { OpsDashboard, type OpsTab } from "@/components/axiom/ops-dashboard";
 import { BundleOverview } from "@/components/axiom/bundle-overview";
 import { ProgramBundle } from "@/components/axiom/program-bundle";
-import { OpsPipeline } from "@/components/axiom/ops-pipeline";
 import { PipelineLedger } from "@/components/axiom/pipeline-ledger";
-import { WorkflowHealthStrip } from "@/components/axiom/workflow-health";
-import { pipelineView } from "@/lib/axiom/encoding-pipeline";
+import { CorpusEvidence } from "@/components/ops/flow/corpus-evidence";
+import { FlowLine } from "@/components/ops/flow/flow-page";
+import flowStyles from "@/components/ops/flow/flow.module.css";
+import { DEFAULT_FLOW_PARAMS, type FlowParams } from "@/components/ops/flow/flow-params";
 import { getPipelineAttempts } from "@/lib/axiom/encoding-pipeline-data";
-import { getCorpusView, scopeCorpus } from "@/lib/axiom/corpus-releases";
-import { getEncodingQueues, queuedSummary, scopeQueued } from "@/lib/axiom/encoding-queues";
-import {
-  attemptJurisdiction,
-  inScope,
-  parseScope,
-  pipelineInsights,
-  rootJurisdiction,
-  scopeName,
-  scopeOptions,
-} from "@/lib/axiom/encoding-pipeline-insights";
-import { dispatchFlow, encodeParts, runRows, stepTimes, testsParts } from "@/lib/axiom/encoding-pipeline-runs";
+import { busiestRoots, LEGACY_OPS_TABS, opsHref, sharedOpsParams } from "@/lib/axiom/ops-href";
+import { attemptJurisdiction, parseScope } from "@/lib/axiom/encoding-pipeline-insights";
+import { loadFlow, parsePopulation, parseWindow } from "@/lib/axiom/pipeline-flow-data";
 import { getBundleSummaries, getProgramBundle } from "@/lib/axiom/program-bundles-data";
-import { getEncodingStatus, getRecentCorpusScopes, groupRecentScopes } from "@/lib/corpus-status";
+import { getCorpusView } from "@/lib/axiom/corpus-releases";
+import { getEncodingStatus } from "@/lib/corpus-status";
 import { SITE_URL } from "@/lib/urls";
-import { getWorkflowHealth } from "@/lib/axiom/workflow-health";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Operations - Axiom Foundation",
   description:
-    "Live view of Axiom encoding activity: what machines are encoding now and the newest encodings by document and section.",
+    "Axiom encoding operations: what runs now, where cases wait or fail on the encoding line, the modules it puts out each week, and the programs it works toward.",
   alternates: { canonical: `${SITE_URL}/ops` },
   // Internal dashboard — never index.
   robots: { index: false, follow: false },
@@ -38,55 +32,56 @@ export const metadata: Metadata = {
 /** A bundle id: a jurisdiction and a program, as in us/snap or us-az/snap. */
 const BUNDLE_ID_RE = /^[a-z0-9-]+\/[a-z0-9_-]+$/;
 
-export default async function OpsPage({
-  searchParams,
-}: {
-  searchParams?: Promise<Record<string, string | string[] | undefined>>;
-}) {
-  // ?j=us narrows the pipeline section to one jurisdiction (and those under it).
+type SearchParams = Record<string, string | string[] | undefined>;
+
+const one = (value: string | string[] | undefined): string | null => {
+  const v = Array.isArray(value) ? value[0] : value;
+  return v && v.length < 400 ? v : null;
+};
+
+export default async function OpsPage({ searchParams }: { searchParams?: Promise<SearchParams> }) {
   const params = (await searchParams) ?? {};
-  const scope = parseScope(params);
-  // ?tab=bundles or ?tab=pipeline opens that section; the ledger otherwise.
-  const tab = params.tab === "bundles" || params.tab === "pipeline" ? params.tab : "ledger";
-  // ?bundle=us-az/snap opens that bundle's page in the bundles tab (&count=provisions in that count);
-  // ?program=snap opens the tab's grid on that program.
-  const bundleId = typeof params.bundle === "string" && BUNDLE_ID_RE.test(params.bundle) ? params.bundle : null;
-  const count = params.count === "provisions" ? "provisions" : "documents";
-  const program = typeof params.program === "string" ? params.program : undefined;
-  const [encodingStatus, queues, recentScopes, pipeline, corpus, bundles, bundle, workflows] = await Promise.all([
-    getEncodingStatus(),
-    getEncodingQueues(),
-    getRecentCorpusScopes(),
-    getPipelineAttempts(),
-    getCorpusView(),
-    getBundleSummaries(),
-    bundleId ? getProgramBundle(bundleId) : null,
-    getWorkflowHealth(),
-  ]);
-  // One clock for the server render and the client's first paint.
+  const asked = one(params.tab);
+  // Old links (?tab=ledger, pipeline, bundles) open the tab that took them over.
+  if (asked && LEGACY_OPS_TABS[asked]) permanentRedirect(opsHref(params, LEGACY_OPS_TABS[asked]));
+  const tab: OpsTab = asked === "line" || asked === "programs" ? asked : "now";
   const referenceMs = Date.now();
-  const keep = (jurisdiction: string) => inScope(jurisdiction, scope);
-  const attempts = pipeline?.attempts ?? [];
-  const scoped = attempts.filter((attempt) => keep(attemptJurisdiction(attempt)));
-  const runs = runRows(scoped);
-  return (
-    <OpsDashboard
-      initialStatus={encodingStatus.value}
-      encodingError={encodingStatus.error}
-      queues={queues}
-      recentPlaces={groupRecentScopes(recentScopes)}
-      // Runs waiting for approval or in setup have no live row until their encoder starts.
-      starting={{
-        runs: attempts.filter((attempt) => attempt.run_status !== "completed").map((attempt) => ({ citation: attempt.citation })),
-        collectedAt: attempts.reduce<string | null>(
-          (newest, attempt) => (!newest || attempt.collected_at > newest ? attempt.collected_at : newest),
-          null
-        ),
-      }}
-      bundles={
-        bundle ? (
+
+  const encodingStatus = tab === "now" ? await getEncodingStatus() : null;
+
+  let panel: ReactNode = null;
+  let ledger: ReactNode;
+  let starting: Parameters<typeof OpsDashboard>[0]["starting"];
+
+  if (tab === "line") {
+    const flowParams: FlowParams = {
+      ...DEFAULT_FLOW_PARAMS,
+      window: parseWindow(params.window),
+      j: one(params.j),
+      pop: parsePopulation(one(params.pop)),
+      view: "pipeline",
+      station: one(params.station),
+    };
+    const data = await loadFlow({ days: flowParams.window, jurisdiction: flowParams.j, population: flowParams.pop, now: referenceMs, workflows: false });
+    // Jurisdictions to scope by: the busiest roots among dispatches.
+    const jurisdictions = busiestRoots(data.events.filter((e) => e.station === "dispatch").map((e) => e.jurisdiction));
+    panel = (
+      <FlowLine model={data.model} error={data.error} params={flowParams} jurisdictions={jurisdictions} />
+    );
+  } else if (tab === "programs") {
+    const bundleId = one(params.bundle);
+    const validBundle = bundleId && BUNDLE_ID_RE.test(bundleId) ? bundleId : null;
+    const count = params.count === "provisions" ? "provisions" : "documents";
+    const [bundles, bundle, corpus] = await Promise.all([
+      getBundleSummaries(),
+      validBundle ? getProgramBundle(validBundle) : null,
+      validBundle ? null : getCorpusView(),
+    ]);
+    panel = (
+      <>
+        {bundle ? (
           <ProgramBundle
-            key={bundleId}
+            key={validBundle}
             bundle={bundle.bundle}
             documents={bundle.documents}
             snapshots={bundle.snapshots}
@@ -95,47 +90,49 @@ export default async function OpsPage({
             initialCount={count}
           />
         ) : bundles.length ? (
-          <BundleOverview bundles={bundles} initialProgram={program} initialCount={count} referenceMs={referenceMs} />
-        ) : undefined
-      }
+          <BundleOverview bundles={bundles} initialProgram={one(params.program) ?? undefined} initialCount={count} referenceMs={referenceMs} />
+        ) : (
+          <p className={flowStyles.note}>No program bundles yet: encodings.program_bundles is empty or not there.</p>
+        )}
+        {corpus ? <CorpusEvidence view={corpus} referenceMs={referenceMs} /> : null}
+      </>
+    );
+  } else {
+    // ?j=us narrows the ledger to one jurisdiction (and those under it).
+    const scope = parseScope(params);
+    const pipeline = await getPipelineAttempts();
+    const attempts = pipeline.attempts;
+    // Runs waiting for approval or in setup have no live row until their encoder starts.
+    starting = {
+      runs: attempts
+        .filter((attempt) => attempt.run_status !== "completed")
+        .map((attempt) => ({
+          citation: attempt.citation,
+          status: attempt.run_status,
+          dispatchedAt: attempt.dispatched_at,
+          dispatchedBy: attempt.dispatched_by ?? null,
+          runUrl: attempt.run_url,
+        })),
+      collectedAt: attempts.reduce<string | null>((newest, attempt) => (!newest || attempt.collected_at > newest ? attempt.collected_at : newest), null),
+    };
+    // The ledger's scope: All, or one of the busiest roots (and those under it).
+    const roots = busiestRoots(attempts.map((attempt) => attemptJurisdiction(attempt)));
+    ledger =
+      attempts.length > 0 ? (
+        <PipelineLedger key="ledger" scope={scope} roots={roots} referenceMs={referenceMs} />
+      ) : undefined;
+  }
+
+
+  return (
+    <OpsDashboard
+      initialStatus={encodingStatus?.value ?? null}
+      encodingError={encodingStatus?.error ?? null}
+      starting={starting}
       initialTab={tab}
-      // The workflows the pipeline depends on, under the fleet box. Without a
-      // key, React warns about this element in development.
-      workflows={<WorkflowHealthStrip key="workflows" workflows={workflows} referenceMs={referenceMs} />}
-      // With the pipeline shown, the ledger is built from every run rather
-      // than the encoder's own records, and follows the page's scope.
-      ledger={
-        attempts.length > 0 ? (
-          <PipelineLedger
-            key={`ledger:${scope?.jurisdiction ?? "all"}:${scope?.only ? "only" : ""}`}
-            scope={scope}
-            scopeName={scope ? scopeName(scope) : null}
-            referenceMs={referenceMs}
-          />
-        ) : undefined
-      }
-      pipeline={
-        attempts.length > 0 ? (
-          <OpsPipeline
-            key={`pipeline:${scope?.jurisdiction ?? "all"}:${scope?.only ? "only" : ""}`}
-            view={pipelineView(scoped, referenceMs)}
-            insights={pipelineInsights(scoped, referenceMs)}
-            scope={scope}
-            scopes={scopeOptions(attempts, scope)}
-            queued={scopeQueued(queuedSummary(queues), keep)}
-            corpus={corpus && scopeCorpus(corpus, scope ? rootJurisdiction(scope.jurisdiction) : null)}
-            // Counts only: the runs behind each part load on demand from /ops/runs.
-            flow={dispatchFlow(runs).map((gate) => ({
-              ...gate,
-              segments: gate.segments.map((segment) => ({ ...segment, ids: [] })),
-            }))}
-            times={stepTimes(runs, referenceMs)}
-            parts={encodeParts(runs)}
-            testParts={testsParts(runs)}
-            referenceMs={referenceMs}
-          />
-        ) : null
-      }
+      shared={sharedOpsParams(params)}
+      ledger={ledger}
+      panel={panel ? <div key={`panel:${tab}`} className={flowStyles.page}>{panel}</div> : null}
     />
   );
 }

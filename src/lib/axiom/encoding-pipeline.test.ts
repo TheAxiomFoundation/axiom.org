@@ -457,7 +457,11 @@ describe("encodeGate", () => {
     expect(gate({ failed_step: "package_exact_generated_changes" })).toBe("sign");
     expect(gate({ failed_step: "Queue / Push lane branch and open draft pull request" })).toBe("publish");
     expect(gate({ failed_step: "encode_apply" })).toBe("encode");
-    expect(gate({ failed_step: "Something new", failure_source: "jobs" })).toBe("unknown");
+    // A step the list does not name lands by its place in the run: before the encode step is setup.
+    expect(gate({ failed_step: "Queue / Fetch pinned corpus provision objects", failure_source: "log" })).toBe("setup");
+    expect(gate({ failed_step: "retired_source_metadata_migration", failure_source: "log" })).toBe("setup");
+    expect(gate({ failed_step: "finalize_signed_reencode_artifact", failure_source: "log" })).toBe("sign");
+    expect(gate({ failed_step: "Queue / Validate dependent cascade", failure_source: "log" })).toBe("validate");
     expect(gate({ failure_source: "jobs" })).toBe("unknown");
     expect(gate({})).toBe("pending");
   });

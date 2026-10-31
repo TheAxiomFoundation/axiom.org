@@ -81,119 +81,6 @@
   margin-top: 12px;
 }
 
-/* ── Workflows: the GitHub workflows the pipeline depends on, one chip each ── */
-
-.health {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
-  margin-top: 16px;
-}
-
-.healthHead {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.healthLabel {
-  font-family: var(--font-mono), monospace;
-  font-size: 10px;
-  font-weight: 400;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--color-ink-muted);
-}
-
-.healthChips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.healthChips > li {
-  min-width: 0;
-  max-width: 100%;
-}
-
-.healthChip {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px 6px;
-  max-width: 100%;
-  padding: 4px 10px;
-  border: 1px solid var(--color-rule);
-  border-radius: 999px;
-  background: var(--color-paper-elevated);
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--color-ink-muted);
-  text-decoration: none;
-}
-
-.healthChip:hover {
-  border-color: var(--color-rule-strong);
-}
-
-.healthIcon {
-  flex: none;
-  color: var(--color-success);
-}
-
-.healthName {
-  font-weight: 500;
-  color: var(--color-ink);
-}
-
-.healthWhen,
-.healthFailed {
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-
-.healthWhen::before,
-.healthFailed::before {
-  content: "·";
-  /* Not read aloud where alternative text is supported. */
-  content: "·" / "";
-  margin-right: 6px;
-  color: var(--color-rule-strong);
-}
-
-.healthFailed {
-  color: var(--color-warning);
-}
-
-.healthChip[data-grade="off"] .healthIcon,
-.healthChip[data-grade="unknown"] .healthIcon {
-  color: var(--color-ink-muted);
-}
-
-.healthWarning {
-  border-color: color-mix(in srgb, var(--color-warning) 30%, transparent);
-  background: color-mix(in srgb, var(--color-warning) 6%, var(--color-paper-elevated));
-}
-
-.healthWarning .healthIcon {
-  color: var(--color-warning);
-}
-
-.healthFailing {
-  border-color: color-mix(in srgb, var(--color-error) 35%, transparent);
-  background: color-mix(in srgb, var(--color-error) 6%, var(--color-paper-elevated));
-}
-
-.healthFailing .healthIcon,
-.healthFailing .healthFailed {
-  color: var(--color-error);
-}
-
 /* One section at a time: the ledger, the program bundles, the pipeline. */
 .tabs {
   display: flex;
@@ -203,7 +90,8 @@
   border-bottom: 1px solid var(--color-rule);
 }
 
-.tabs [role="tab"] {
+.tabs [role="tab"],
+.tabs > a {
   margin-bottom: -1px;
   padding: 10px 16px;
   border: 0;
@@ -213,19 +101,23 @@
   font-weight: 500;
   color: var(--color-ink-secondary);
   cursor: pointer;
+  text-decoration: none;
 }
 
+.tabs > a:hover,
 .tabs [role="tab"]:hover {
   color: var(--color-ink);
 }
 
+.tabs > a[aria-current="page"],
 .tabs [role="tab"][aria-selected="true"] {
   border-bottom-color: var(--color-accent);
   color: var(--color-ink);
 }
 
 .tabs + .workspace,
-.tabs + .ledgerOnly {
+.tabs + .ledgerOnly,
+.tabs + [id^="ops-panel-"] {
   margin-top: 24px;
 }
 
@@ -407,8 +299,89 @@
 
 .ledgerOverview {
   display: grid;
-  gap: 16px;
+  gap: 10px;
   padding: 6px 0 4px;
+}
+
+.ledgerSummary[data-encoded] strong {
+  color: var(--color-success, #166534);
+}
+
+/* One line of an open section: a small label, then what it says. */
+.ledgerNow {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-ink-secondary);
+}
+
+.ledgerNow > .ledgerLabel {
+  margin: 0;
+}
+
+.ledgerNow a {
+  color: var(--color-accent);
+  white-space: nowrap;
+}
+
+.ledgerRepeats {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  grid-column: 2 / span 2;
+}
+
+.ledgerRepeats li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ledgerMarks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* A run as a mark: green done, amber open, red failed, grey outline cancelled.
+   The site defines no success or failure token here: fall back to fixed ones. */
+.ledgerMark {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--color-ink-muted);
+}
+
+.ledgerMark[data-tone="done"] {
+  background: var(--color-success, #166534);
+}
+
+.ledgerMark[data-tone="waiting"] {
+  background: var(--color-accent);
+}
+
+.ledgerMark[data-tone="failed"] {
+  background: var(--destructive, #991b1b);
+}
+
+.ledgerMark[data-tone="cancelled"] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--color-ink-muted);
+}
+
+@media (max-width: 699px) {
+  .ledgerNow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ledgerRepeats {
+    grid-column: auto;
+  }
 }
 
 .ledgerSummary {
@@ -434,168 +407,6 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--color-ink-muted);
-}
-
-.ledgerCounts {
-  display: grid;
-  gap: 3px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font-size: 12px;
-}
-
-.ledgerCounts li {
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
-  align-items: baseline;
-  column-gap: 10px;
-  color: var(--color-ink-secondary);
-}
-
-.ledgerStop {
-  color: var(--color-ink);
-}
-
-.ledgerCause {
-  color: var(--color-ink-secondary);
-}
-
-.ledgerCount {
-  text-align: right;
-  font-weight: 600;
-  color: var(--color-ink);
-  font-variant-numeric: tabular-nums;
-}
-
-.ledgerShowMore {
-  justify-self: start;
-  padding: 0;
-  border: 0;
-  background: none;
-  font-size: 12px;
-  color: var(--color-accent);
-  cursor: pointer;
-}
-
-.ledgerShowMore:hover {
-  text-decoration: underline;
-}
-
-/* The latest run as one unit; under a summary of several runs, a rule sets it apart. */
-.ledgerLatest {
-  display: grid;
-  gap: 14px;
-}
-
-.ledgerLatest[data-after-summary] {
-  padding-top: 16px;
-  border-top: 1px solid var(--color-rule);
-}
-
-.ledgerVerdict {
-  display: grid;
-  gap: 6px;
-}
-
-.ledgerVerdict .ledgerLabel {
-  margin: 0;
-}
-
-.ledgerVerdictLine {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 10px;
-  margin: 0;
-  font-size: 15px;
-  line-height: 1.35;
-  color: var(--color-ink);
-}
-
-.ledgerOutcome {
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 16px;
-  white-space: nowrap;
-  color: var(--color-success);
-  background: color-mix(in srgb, var(--color-success) 12%, transparent);
-}
-
-.ledgerOutcome[data-outcome="failed"],
-.ledgerOutcome[data-outcome="cancelled"] {
-  color: var(--color-warning);
-  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
-}
-
-.ledgerOutcome[data-outcome="running"],
-.ledgerOutcome[data-outcome="waiting"] {
-  color: var(--color-accent);
-  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
-}
-
-.ledgerVerdictCause {
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
-.ledgerVerdictMeta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 0;
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--color-ink-muted);
-}
-
-.ledgerVerdictSep {
-  padding: 0 8px;
-  color: var(--color-rule-strong);
-  white-space: pre;
-}
-
-.ledgerVerdictMeta a {
-  color: var(--color-ink-secondary);
-  text-decoration: underline;
-  text-decoration-color: var(--color-rule-strong);
-  text-underline-offset: 2px;
-}
-
-.ledgerRuns {
-  display: grid;
-  gap: 6px;
-  margin: 0;
-  padding: 10px 0 0;
-  border-top: 1px solid var(--color-rule);
-  list-style: none;
-}
-
-.ledgerRunLine {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px 12px;
-  font-size: 12px;
-  color: var(--color-ink-secondary);
-}
-
-.ledgerRunLine .ledgerToggle {
-  color: var(--color-ink-secondary);
-}
-
-.ledgerRunLine a {
-  color: var(--color-ink);
-  text-decoration: underline;
-  text-decoration-color: var(--color-rule-strong);
-}
-
-.ledgerRunLine a[data-outcome="failed"],
-.ledgerRunLine a[data-outcome="cancelled"] {
-  color: var(--color-warning);
 }
 
 .ledgerMore {
@@ -702,18 +513,41 @@
   }
 }
 
+/* The Running now ledger with its jurisdiction switch on top: one cell of the workspace grid. */
+.ledgerColumn {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* The switch keeps its own width; a grid item would stretch it across the column. */
+.ledgerColumn > nav {
+  justify-self: start;
+}
+
 .supportCard [data-slot="card-header"] {
   border-color: var(--color-rule);
 }
 
+/* A jurisdiction opens with a strong rule and a large name, so the
+   country breaks stand apart from the lighter document rows under them. */
 .ledgerTable .jurisdictionBand {
-  padding: 16px 24px;
+  padding: 22px 24px;
+  vertical-align: middle;
   background: var(--color-paper-elevated);
-  border-top: 1px solid var(--color-rule);
-  color: var(--color-accent);
-  font-size: 14px;
+  border-top: 2px solid var(--color-ink);
+  border-bottom: 1px solid var(--color-rule);
+  color: var(--color-ink);
+  font-size: 22px;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.ledgerTable tbody:first-of-type .jurisdictionBand {
+  border-top-width: 1px;
+  border-top-color: var(--color-rule);
 }
 
 /* The program bundle and tiers a ledger section belongs to. */
@@ -750,4 +584,308 @@
 .workspace[hidden],
 .ledgerOnly[hidden] {
   display: none;
+}
+
+/* A run's timeline in an open section: one bar for its stages, a line per try, chips after the PR. */
+.track {
+  display: grid;
+  gap: 10px;
+  margin-top: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-rule);
+  border-radius: 10px;
+  background: var(--color-paper);
+}
+
+.trackHead {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-ink);
+}
+
+.trackHead > .ledgerLabel {
+  margin: 0;
+}
+
+.trackHead a {
+  color: var(--color-accent);
+  white-space: nowrap;
+}
+
+.trackMeta {
+  color: var(--color-ink-muted);
+}
+
+.trackBar {
+  display: flex;
+  gap: 2px;
+  height: 14px;
+}
+
+.trackBar span {
+  min-width: 6px;
+  border-radius: 3px;
+  background: var(--color-ink-muted);
+}
+
+/* Stages: waiting is quiet, the encode loop is the main colour, the rest neutral. */
+.trackBar span[data-stage="approval"],
+.trackLegend li[data-stage="approval"] i {
+  background: color-mix(in srgb, var(--color-ink) 18%, var(--color-paper));
+}
+
+.trackBar span[data-stage="setup"],
+.trackLegend li[data-stage="setup"] i {
+  background: color-mix(in srgb, var(--color-ink) 40%, var(--color-paper));
+}
+
+.trackBar span[data-stage="encode"],
+.trackBar span[data-stage="run"],
+.trackLegend li[data-stage="encode"] i,
+.trackLegend li[data-stage="run"] i {
+  background: var(--color-accent);
+}
+
+.trackBar span[data-stage="publish"],
+.trackLegend li[data-stage="publish"] i {
+  background: color-mix(in srgb, var(--color-ink) 62%, var(--color-paper));
+}
+
+.trackBar span[data-state="failed"],
+.trackLegend li[data-state="failed"] i {
+  background: var(--destructive, #991b1b);
+}
+
+.trackBar span[data-state="running"] {
+  background-image: repeating-linear-gradient(45deg, transparent 0 4px, rgba(255, 255, 255, 0.35) 4px 8px);
+}
+
+.trackBar span[data-state="cancelled"] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--color-ink-muted);
+}
+
+.trackLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--color-ink-secondary);
+}
+
+.trackLegend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.trackLegend i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.trackLegend b,
+.trackAfter b {
+  font-weight: 600;
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.trackTries {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--color-rule-subtle);
+  font-size: 12px;
+}
+
+.trackTries li {
+  display: grid;
+  grid-template-columns: 52px minmax(90px, 140px) 52px 56px minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--color-rule-subtle);
+  color: var(--color-ink-secondary);
+}
+
+.trackTryNo {
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.trackTryModel {
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trackTryTime,
+.trackTryCost {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.trackTryWhy {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--destructive, #991b1b);
+}
+
+.trackTries li[data-ok="true"] .trackTryWhy {
+  color: var(--color-success, #166534);
+}
+
+.trackStopped {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.trackStopped p {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--destructive, #991b1b);
+}
+
+.trackStopped a {
+  font-size: 12px;
+  color: var(--color-accent);
+}
+
+/* The error as the run wrote it, whole: wrapped, and scrolled past a few lines. */
+.trackStopped pre {
+  max-height: 14em;
+  margin: 0;
+  padding: 8px 10px;
+  overflow: auto;
+  border: 1px solid var(--color-rule);
+  border-left: 2px solid var(--destructive, #991b1b);
+  border-radius: 4px;
+  background: var(--color-paper);
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--color-ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.trackAfter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+.trackAfter li {
+  display: inline-flex;
+  gap: 6px;
+  align-items: baseline;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--color-rule);
+  color: var(--color-ink-secondary);
+}
+
+.trackAfter li[data-state="done"] {
+  border-color: color-mix(in srgb, var(--color-success, #166534) 45%, var(--color-paper));
+}
+
+.trackAfter li[data-state="failed"] {
+  border-color: var(--destructive, #991b1b);
+  color: var(--destructive, #991b1b);
+}
+
+.trackAfter li[data-state="waiting"] {
+  border-style: dashed;
+}
+
+.trackAfter a {
+  color: inherit;
+}
+
+.ledgerMark {
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.ledgerMark[aria-pressed="true"] {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 1px;
+}
+
+@media (max-width: 699px) {
+  .trackHead {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .trackTries li {
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+  }
+  .trackTryCost,
+  .trackTryWhy {
+    grid-column: 2 / -1;
+  }
+}
+
+/* Runs that wait for a person or a runner, under the fleet box. */
+.waitingRow {
+  display: grid;
+  grid-template-columns: 9.5rem 3rem minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  align-items: baseline;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.waitingStage {
+  color: var(--color-code-keyword);
+}
+
+.waitingAge {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-code-text);
+}
+
+.waitingCitation {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--color-code-text);
+}
+
+a.waitingCitation:hover {
+  text-decoration: underline;
+}
+
+.waitingBy {
+  color: var(--color-code-comment);
+}
+
+@media (max-width: 640px) {
+  .waitingRow {
+    grid-template-columns: 8.5rem minmax(0, 1fr);
+  }
+
+  .waitingCitation,
+  .waitingBy {
+    grid-column: 1 / -1;
+  }
 }

@@ -7,7 +7,7 @@ import {
   groupRunsByDocument,
   mergeLiveRunsIntoHistory,
   relativeTime,
-  startingRunsLine,
+  waitingRuns,
 } from "./ops-dashboard";
 import {
   corpusLookupPathsForCitation,
@@ -198,18 +198,22 @@ describe("normalizeCitation", () => {
   });
 });
 
-describe("startingRunsLine", () => {
-  it("counts the unfinished runs no encoder is running, as of the index's read", () => {
-    const starting = { runs: [{ citation: "us/a" }, { citation: "us-nc:manual/x" }, { citation: "us/b" }], collectedAt: "2026-07-01T00:00:00Z" };
-    const now = Date.parse("2026-07-01T00:12:00Z");
-    expect(startingRunsLine(starting, [{ citation: "us/b" }], now)).toBe(
-      "2 runs waiting for approval or starting · shown here once the encoder starts · as of 12m ago"
-    );
-    expect(startingRunsLine({ runs: [{ citation: "us-nc:manual/x" }], collectedAt: null }, [{ citation: "us-nc/manual/x" }], now)).toBeNull();
-    expect(startingRunsLine({ runs: [{ citation: "us/a" }], collectedAt: null }, [], now)).toBe(
-      "1 run waiting for approval or starting · shown here once the encoder starts"
-    );
-    expect(startingRunsLine(undefined, [], now)).toBeNull();
+describe("waitingRuns", () => {
+  it("keeps the unfinished runs no encoder is running, names where each waits, longest first", () => {
+    const starting = {
+      runs: [
+        { citation: "us/a", status: "in_progress", dispatchedAt: "2026-07-01T02:00:00Z" },
+        { citation: "us-nc:manual/x", status: "waiting", dispatchedAt: "2026-07-01T01:00:00Z" },
+        { citation: "us/b", status: "queued", dispatchedAt: "2026-07-01T00:00:00Z" },
+      ],
+      collectedAt: null,
+    };
+    expect(waitingRuns(starting, [{ citation: "us/b" }]).map((r) => [r.citation, r.stage])).toEqual([
+      ["us-nc:manual/x", "Signing approval"],
+      ["us/a", "Setup or encoding"],
+    ]);
+    expect(waitingRuns({ runs: [{ citation: "us-nc:manual/x" }], collectedAt: null }, [{ citation: "us-nc/manual/x" }])).toEqual([]);
+    expect(waitingRuns(undefined, [])).toEqual([]);
   });
 });
 
