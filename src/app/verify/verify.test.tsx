@@ -17,6 +17,18 @@ describe("Verify page", () => {
     expect(metadata.description).toMatch(/^US launch verification evidence/);
   });
 
+  it("opens with what the reader does on the page", () => {
+    render(<Page />);
+
+    expect(
+      screen.getByRole("heading", {
+        level: 1,
+        name: "Run the checks behind our claims",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/trust it/i)).not.toBeInTheDocument();
+  });
+
   it("keeps the launch evidence US-only and uses the committed figures", () => {
     render(<Page />);
 

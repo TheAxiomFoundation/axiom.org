@@ -265,7 +265,7 @@ export const closureMeaning = {
     "https://github.com/TheAxiomFoundation/axiom-oracles/tree/main/closure/universes/us-co-snap",
 };
 
-/** What stops a classification from being an excuse. */
+/** Rules for classifying a disagreement. */
 export const enforcement = [
   "Evidence is mandatory. A disposition needs a stated mechanism plus arithmetic that reconciles or an upstream citation. Classifications must reconcile numerically, not assert.",
   "The arithmetic is checked. Expressions are evaluated in CI and must equal the claimed value within tolerance.",

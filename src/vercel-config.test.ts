@@ -63,6 +63,26 @@ const GALLERY_ZONES: Record<string, string> = {
   microsim: "axiom-microsim",
 };
 
+describe("gallery index", () => {
+  // /demos renders the gallery. Published posts link to the bare /gallery,
+  // which no zone serves.
+  it.each(["/gallery", "/gallery/"])("redirects %s to /demos", (source) => {
+    expect(config.redirects).toEqual(
+      expect.arrayContaining([
+        { source, destination: "/demos", permanent: false },
+      ]),
+    );
+  });
+
+  it("leaves the /gallery/<slug> zones to their rewrites", () => {
+    const sources = (config.redirects ?? [])
+      .filter(({ destination }) => destination === "/demos")
+      .map(({ source }) => source);
+
+    expect(sources).toEqual(["/gallery", "/gallery/"]);
+  });
+});
+
 describe("demo zone rewrites", () => {
   it.each(Object.entries(DEMO_ZONES))(
     "proxies /%s to its Vercel project",
