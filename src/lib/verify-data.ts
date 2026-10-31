@@ -24,7 +24,7 @@ export const tierNote: Record<Tier, string> = {
     "You can check it without us. Download, recompute the hash, verify the attestation, run it.",
   preview:
     "Live and usable today. Interfaces and limits may change; there is no service commitment yet.",
-  demo: "Shows what the layer enables. Bounded, and the bounds are named.",
+  demo: "Shows what the layer enables within stated limits.",
   blocked:
     "Written, published, and currently failing. The error and the fix are below.",
 };

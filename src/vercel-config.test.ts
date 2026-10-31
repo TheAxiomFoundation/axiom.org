@@ -91,7 +91,7 @@ describe("gallery index", () => {
     expect(redirectFor("/demos")).toBeUndefined();
   });
 
-  it.each(Object.keys(GALLERY_ZONES))(
+  it.each([...Object.keys(GALLERY_ZONES), "guidance"])(
     "leaves /gallery/%s to its rewrite",
     (slug) => {
       expect(redirectFor(`/gallery/${slug}`)).toBeUndefined();
