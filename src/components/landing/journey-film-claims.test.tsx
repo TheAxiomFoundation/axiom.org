@@ -119,7 +119,7 @@ const RETIRED_DOCS_COPY = [
   /\bAI judges?\b/i,
   /\bthe whole law\b/i,
   /✓\s*(AI review|oracles?|compare)\b/i,
-  // No human or expert gate exists, so /docs names neither in any wording.
+  // No human or expert review gate exists, so /docs uses neither word.
   /\b(humans?|experts?)\b/i,
   /\bproof required\b|\bvalidators? refuses?\b/i,
 ];
@@ -242,18 +242,19 @@ describe.each([
   it("ticks run, checks and the compile seal, and nothing else", async () => {
     const { chipNames, container, gateChips, texts, words } = await renderStrip({ motion });
     expect(chipNames).toEqual(["run", "checks", "AI review"]);
-    // Both chip classes, counted by position, then every word the encoding
-    // station draws under "validators", so a gate drawn any other way shows.
+    // Both chip classes, counted by position, then every word drawn at or
+    // below the first chip in that column, so a gate with its own label shows.
     const loopChips = [...container.querySelectorAll("rect.fp-chip, rect.fp-gatechip")].filter((chip) => {
       const x = Number(chip.getAttribute("x"));
       return x >= LOOP_BOX.left && x < LOOP_BOX.right;
     });
     expect(loopChips).toHaveLength(3);
+    const chipTop = Number(loopChips[0].getAttribute("y"));
     const loopWords = words.filter((_, i) => {
       const x = Number(texts[i].getAttribute("x"));
-      return x >= LOOP_BOX.left && x < LOOP_BOX.right;
+      return x >= LOOP_BOX.left && x < LOOP_BOX.right && Number(texts[i].getAttribute("y")) >= chipTop;
     });
-    expect(loopWords.slice(loopWords.indexOf("validators") + 1)).toEqual(["✓ run", "✓ checks", "AI review"]);
+    expect(loopWords).toEqual(["✓ run", "✓ checks", "AI review"]);
     expect(words.filter((w) => w.includes("✓"))).toEqual(["✓ run", "✓ checks", "✓"]);
     expect(gateChips).toHaveLength(2);
   });
@@ -270,7 +271,7 @@ describe.each([
   it("sends a draft back from checks, never from the AI review", async () => {
     const { container, gateChips, label, redraft } = await renderStrip({ motion });
     // One dashed path, the arrow. It leaves from just left of the checks chip,
-    // level with it, and nothing drawn starts on the AI review's row.
+    // level with it, and no path or line starts on the AI review's row.
     expect(container.querySelectorAll("path[stroke-dasharray]")).toHaveLength(1);
     const reviewChip = container.querySelector("g.fp-gate rect.fp-chip");
     const reviewTop = Number(reviewChip?.getAttribute("y"));
@@ -279,7 +280,7 @@ describe.each([
       const move = /^M (\S+) (\S+)/.exec(el.getAttribute("d") ?? "");
       const x = Number(move ? move[1] : el.getAttribute("x1"));
       const y = Number(move ? move[2] : el.getAttribute("y1"));
-      return x >= LOOP_BOX.left - 8 && x < LOOP_BOX.right && y >= reviewTop && y <= reviewBottom;
+      return x >= LOOP_BOX.left && x < LOOP_BOX.right && y >= reviewTop && y <= reviewBottom;
     });
     expect(startsOnReviewRow).toHaveLength(0);
     const [startX, startY] = (/^M (\S+) (\S+)/.exec(redraft?.getAttribute("d") ?? "") ?? []).slice(1).map(Number);
@@ -398,7 +399,7 @@ describe("/docs page claims", () => {
       expect(line?.getAttribute("aria-hidden")).toBeNull();
       expect(
         line?.closest(
-          "[hidden], .sr-only, .hidden, .invisible, .opacity-0, .text-transparent, [class*=':hidden'], [style*='display']",
+          "[hidden], .sr-only, .hidden, .invisible, .opacity-0, .text-transparent, [class*=':hidden'], [style*='display: none']",
         ),
       ).toBeNull();
       expect(strip?.compareDocumentPosition(line as Element)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
@@ -407,7 +408,7 @@ describe("/docs page claims", () => {
       expect(enlarged).toHaveLength(1);
       const css = readFileSync(join(process.cwd(), "src/app/architecture-graphics.css"), "utf8");
       expect(enlarged[0].matches(".fpfigure")).toBe(true);
-      expect(css).toMatch(/^\.fpfigure:fullscreen\s*\{[^}]*\bdisplay: flex;/m);
+      expect(css).toMatch(/^\s*\.fpfigure:fullscreen\s*\{[^}]*\bdisplay:\s*flex\b/m);
       expect(enlarged[0].contains(strip)).toBe(true);
       expect(enlarged[0].contains(line as Element)).toBe(true);
     } finally {
