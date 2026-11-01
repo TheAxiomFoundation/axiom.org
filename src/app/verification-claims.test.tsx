@@ -68,7 +68,7 @@ const SURFACES = [
 // ("independent evidence" + "Verified" reads "evidenceVerified"), which hides
 // a claim from any pattern that ends on a word boundary. `all` adds the
 // accessible names, because a figure's aria-label is copy too: a ban reads
-// `all`. A disclosure rule triggers on `all`, but only `visible` can satisfy
+// `all`. A disclosure rule triggers on `all`, but only `textNodes` can satisfy
 // it, because a sighted reader never sees an aria-label.
 function textOf(renderSurface: () => ReturnType<typeof render>) {
   const { container, unmount } = renderSurface()
@@ -77,8 +77,8 @@ function textOf(renderSurface: () => ReturnType<typeof render>) {
   while (walker.nextNode()) parts.push(walker.currentNode.textContent ?? '')
   const accessible = renderedText(container)
   unmount()
-  const visible = parts.join(' ').replace(/\s+/g, ' ')
-  return { visible, all: `${visible} ${accessible}`.replace(/\s+/g, ' ') }
+  const textNodes = parts.join(' ').replace(/\s+/g, ' ')
+  return { textNodes, all: `${textNodes} ${accessible}`.replace(/\s+/g, ' ') }
 }
 
 const CHECK_VERB = String.raw`(cross-check|check|verif|validat|compar|run[s]? against|mapped to an oracle)`
@@ -115,35 +115,35 @@ describe('verification claims', () => {
     })
 
     it(`${route} discloses the PolicyEngine tie wherever it names PolicyEngine`, () => {
-      const { all, visible } = textOf(renderSurface)
+      const { all, textNodes } = textOf(renderSurface)
       if (!/PolicyEngine/.test(all)) return
 
-      expect(visible).toMatch(/Max Ghenis is CEO of both Axiom and PolicyEngine/)
+      expect(textNodes).toMatch(/Max Ghenis is CEO of both Axiom and PolicyEngine/)
     })
 
     it(`${route} discloses where TAXSIM runs come from wherever it names TAXSIM`, () => {
-      const { all, visible } = textOf(renderSurface)
+      const { all, textNodes } = textOf(renderSurface)
       if (!/TAXSIM/.test(all)) return
 
-      expect(visible).toMatch(/TAXSIM executable that PolicyEngine packages/)
+      expect(textNodes).toMatch(/TAXSIM executable that PolicyEngine packages/)
     })
 
     it(`${route} states the SOUTHMOD caveats wherever it names SOUTHMOD`, () => {
-      const { all, visible } = textOf(renderSurface)
+      const { all, textNodes } = textOf(renderSurface)
       if (!/SOUTHMOD/.test(all)) return
 
       for (const caveat of Object.values(SOUTHMOD_CAVEATS)) {
-        expect(visible).toContain(caveat.marker)
+        expect(textNodes).toContain(caveat.marker)
       }
       // It has published comparisons, so no page lists it as unconnected.
       expect(all).not.toMatch(/SOUTHMOD[^.]{0,120}(not connected|no published comparison)/)
     })
 
     it(`${route} scopes the SNAP QC replay to benefit arithmetic`, () => {
-      const { all, visible } = textOf(renderSurface)
+      const { all, textNodes } = textOf(renderSurface)
       if (!/SNAP (quality-control|QC)/i.test(all)) return
 
-      expect(visible).toMatch(/eligibility (is )?untested/i)
+      expect(textNodes).toMatch(/eligibility (is )?untested/i)
     })
   }
 
