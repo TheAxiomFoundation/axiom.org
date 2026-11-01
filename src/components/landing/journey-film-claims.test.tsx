@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { fileCopy, renderedText } from "@/test/claim-copy";
 
 // What the film may say about the gates, per axiom-encode main (6f08e25c,
 // read 2026-10-03):
@@ -32,22 +33,35 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 // PolicyEngine is not independent of Axiom (Max Ghenis is CEO of both, and
 // PSL Foundation fiscally sponsors both), so the film never calls it
 // independent.
+//
+// The /docs strip draws the same loop, so it keeps to the same facts,
+// reread on axiom-encode main (5d40209b, 2026-11-01): the encode retry loop
+// "feeds only compile/CI findings back to the model and never gates apply on
+// the reviewer" (harness/evals.py), encode sets
+// reviewers_require_deterministic_pass, and the --oracle flag belongs to
+// `validate`, never `encode`. So the strip ticks run and checks and nothing
+// else, only they send a draft back, the AI review stays unticked, and
+// compare stays out of the loop, beside its scope. The strip's worked example
+// is § 2017, so /docs carries the film's waiver line where a reader sees it.
 
 // The test setup stubs prefers-reduced-motion on, which renders the
 // composed still; the animated film needs it off. STATIC is read at module
 // load, so each render reloads the module.
+function stubMotion(motion: boolean) {
+  if (!motion) return;
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: false,
+    media: query,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }));
+}
+
 async function renderFilm({ motion }: { motion: boolean }) {
-  if (motion) {
-    vi.stubGlobal("matchMedia", (query: string) => ({
-      matches: false,
-      media: query,
-      addListener: () => {},
-      removeListener: () => {},
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      dispatchEvent: () => false,
-    }));
-  }
+  stubMotion(motion);
   vi.resetModules();
   const { JourneyFilm } = await import("./journey-film");
   const { container } = render(<JourneyFilm />);
@@ -69,6 +83,22 @@ async function renderFilm({ motion }: { motion: boolean }) {
   };
 }
 
+async function renderStrip({ motion }: { motion: boolean }) {
+  stubMotion(motion);
+  vi.resetModules();
+  const { FlatStrip } = await import("@/components/docs/flat-strip");
+  const { container } = render(<FlatStrip />);
+  const texts = [...container.querySelectorAll("text")];
+  return {
+    container,
+    gateChips: [...container.querySelectorAll("rect.fp-gatechip")],
+    label: container.querySelector("svg[role='img']")?.getAttribute("aria-label") ?? "",
+    redraft: container.querySelector("path.fp-redraft"),
+    texts,
+    words: texts.map((t) => t.textContent ?? ""),
+  };
+}
+
 // One clause per sentence or semicolon-separated part.
 function clauses(text: string): string[] {
   return text.split(/[.;]\s+/).filter(Boolean);
@@ -80,6 +110,25 @@ function clauses(text: string): string[] {
 const UNIVERSAL = /\b(every|each|all|any|always)\b/i;
 const SCOPED_COMPARE =
   /\bcompared (where another calculator covers them|through their outputs later, where another calculator covers them)\b/;
+
+// The words the /docs strip retired. They read words, not sense, so an honest
+// negation trips them too, and the page says it another way.
+const RETIRED_DOCS_COPY = [
+  /\bAI judges?\b/i,
+  /\bthe whole law\b/i,
+  /✓\s*(AI review|oracles?|compare)\b/i,
+  /\bhuman (review|sign-?off)\b/i,
+  /\bproof required\b|\bvalidators? refuses?\b/i,
+];
+// The repo table on /docs names axiom-oracles, so these two hold for the strip
+// alone.
+const RETIRED_STRIP_COPY = [...RETIRED_DOCS_COPY, /\bdeterministic\b/i, /\boracles?\b/i];
+
+const COMPARE_CAPTION = "programs compared where another calculator covers them";
+const COMPARE_SENTENCE =
+  "programs are compared through their outputs later, where another calculator covers them";
+const WAIVER_LINE =
+  "On October 2, 2026 the published § 2017(a) module was one of 1,940 rulespec-us modules on the validation waiver list, whose checks CI skipped.";
 
 describe.each([
   { mode: "animated", motion: true },
@@ -170,6 +219,124 @@ describe.each([
       }
     }
     expect(words.join(" ")).not.toContain("✓✓✓");
+  });
+});
+
+describe.each([
+  { mode: "animated", motion: true },
+  { mode: "reduced-motion still", motion: false },
+])("/docs strip gate claims ($mode)", ({ motion }) => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.unstubAllGlobals();
+  });
+
+  it("ticks run, checks and the compile seal, and nothing else", async () => {
+    const { gateChips, words } = await renderStrip({ motion });
+    expect(words.filter((w) => w.includes("✓"))).toEqual(["✓ run", "✓ checks", "✓"]);
+    expect(gateChips).toHaveLength(2);
+  });
+
+  it("names the AI review once, on a chip with no tick", async () => {
+    const { texts, words } = await renderStrip({ motion });
+    const reviews = texts.filter((t) => /AI review/.test(t.textContent ?? ""));
+    expect(reviews).toHaveLength(1);
+    expect(words).toContain("AI review");
+    expect(reviews[0].closest(".fp-gatetext, .fp-gatechip")).toBeNull();
+    expect(reviews[0].previousElementSibling?.getAttribute("class")).toBe("fp-chip");
+  });
+
+  it("sends a draft back from checks, never from the AI review", async () => {
+    const { gateChips, redraft } = await renderStrip({ motion });
+    const startY = Number(/^M \S+ (\S+)/.exec(redraft?.getAttribute("d") ?? "")?.[1]);
+    const checksY = Number(gateChips[1].getAttribute("y"));
+    expect(startY).toBeGreaterThanOrEqual(checksY);
+    expect(startY).toBeLessThanOrEqual(checksY + Number(gateChips[1].getAttribute("height")));
+  });
+
+  it("names compare only beside its scope, under the compile seal", async () => {
+    const { label, texts, words } = await renderStrip({ motion });
+    expect(words.filter((w) => /compar/i.test(w))).toEqual(["compare", COMPARE_CAPTION]);
+    const compile = texts.find((t) => t.textContent === "compile");
+    const compare = texts.find((t) => t.textContent === "compare");
+    const caption = texts.find((t) => t.textContent === COMPARE_CAPTION);
+    // Comparisons never run inside the encoder, so neither word sits in the loop.
+    expect(compare?.getAttribute("x")).toBe(compile?.getAttribute("x"));
+    expect(caption?.getAttribute("x")).toBe(compile?.getAttribute("x"));
+    expect(label).toContain(COMPARE_SENTENCE);
+    for (const clause of clauses(label).filter((c) => /compar/i.test(c))) {
+      expect(clause).toMatch(SCOPED_COMPARE);
+    }
+  });
+
+  it("names only the encoder's gate as universal", async () => {
+    const { label, words } = await renderStrip({ motion });
+    expect(label).toContain("The encoder applies a draft only once it compiles and passes its own tests.");
+    expect(label).toContain("By default an AI review scores a draft that passes; the score does not block apply.");
+    for (const text of [label, ...words]) {
+      for (const clause of clauses(text).filter((c) => UNIVERSAL.test(c))) {
+        expect(clause).not.toMatch(/\bcheck|\bpass(es|ed|ing)?\b|\bverif|\breview|\bcompar/i);
+      }
+    }
+  });
+
+  it("keeps the retired gates and corpus claim out of what it draws and says", async () => {
+    const { label, words } = await renderStrip({ motion });
+    for (const text of [label, ...words]) {
+      for (const retired of RETIRED_STRIP_COPY) expect(text).not.toMatch(retired);
+    }
+    expect(words).toContain("word for word");
+    expect(label).toContain("The corpus, word for word");
+  });
+
+  // The gates and their scope are the film's, so the two surfaces must agree.
+  it("agrees with the film on its gates, its scope and its waiver line", async () => {
+    const strip = await renderStrip({ motion });
+    const film = await renderFilm({ motion });
+    const names = strip.words.map((w) => w.replace(/^✓ /, ""));
+    expect(names.filter((w) => film.chips.includes(w)).sort()).toEqual([...new Set(film.chips)].sort());
+    expect(film.label).toContain(COMPARE_SENTENCE);
+    if (motion) {
+      expect(film.captions.join("\n")).toContain(COMPARE_CAPTION);
+    }
+    expect(film.label).toContain(WAIVER_LINE);
+    expect(strip.label).toContain(WAIVER_LINE);
+  });
+});
+
+describe("/docs page claims", () => {
+  // Every word a visitor can read or a screen reader gets, and the copy of
+  // every branch /docs ships but this render never takes.
+  it("shows no retired claim, in the page or its source", async () => {
+    const { default: DocsPage } = await import("@/app/docs/page");
+    const { container } = render(<DocsPage />);
+    const copy = [
+      renderedText(container),
+      ...["src/app/docs/page.tsx", "src/components/docs/flat-strip.tsx", "src/components/docs/core-execution-path.tsx"].flatMap(
+        (path) => fileCopy(join(process.cwd(), path)),
+      ),
+    ];
+    expect(copy[0]).toContain("programs compared where another calculator covers them");
+    for (const text of copy) {
+      for (const retired of RETIRED_DOCS_COPY) expect(text).not.toMatch(retired);
+    }
+    for (const text of fileCopy(join(process.cwd(), "src/components/docs/flat-strip.tsx"))) {
+      for (const retired of RETIRED_STRIP_COPY) expect(text).not.toMatch(retired);
+    }
+  });
+
+  // § 2017 runs through the strip, and CI skipped that module's checks. A
+  // screen reader gets the waiver line from the figure; a sighted reader gets
+  // it here, in the page's own text, in full.
+  it("shows the whole waiver line under the strip", async () => {
+    const { default: DocsPage } = await import("@/app/docs/page");
+    const { container } = render(<DocsPage />);
+    const strip = container.querySelector("svg[role='img']");
+    const line = [...container.querySelectorAll("details p")].find((p) => p.textContent?.includes("2017(a)"));
+    const text = (line?.textContent ?? "").replace(/\s+/g, " ");
+    expect(text).toBe(`One provision, encoded — an illustration. ${WAIVER_LINE}`);
+    expect(strip?.closest("details")).toBe(line?.closest("details"));
+    expect(line?.getAttribute("aria-hidden")).toBeNull();
   });
 });
 

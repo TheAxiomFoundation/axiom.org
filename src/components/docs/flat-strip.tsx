@@ -10,6 +10,13 @@
 // this strip made the same change. Never restore such a label without
 // ledger evidence.
 //
+// The gates follow the home film (journey-film-claims.test.tsx holds the
+// facts). Only run and checks block `encode --apply`, so only they carry a
+// tick and send a draft back. The AI review scores a draft that passed them
+// and never blocks apply, so its chip stays unticked. Comparisons never run
+// inside the encoder, so compare has no chip in the loop: it hangs off the
+// compile seal, beside the caption that scopes it.
+//
 // The stations share one internal system: header OUTSIDE on a common
 // eyebrow line, an italic sub-caption at the top of the box, content
 // in the middle band, and a footer rule + one stat line at the same
@@ -92,7 +99,11 @@ function Foot({ x, children }: { x: number; children: React.ReactNode }) {
 }
 
 export function FlatStrip() {
-  const gates = ["deterministic", "oracles", "AI judge"];
+  const gates = [
+    { name: "run", blocksApply: true },
+    { name: "checks", blocksApply: true },
+    { name: "AI review", blocksApply: false },
+  ];
   const cats: Array<[string, string]> = [
     ["AI labs", "Chatbot"],
     ["government", "Dashboard"],
@@ -132,7 +143,7 @@ export function FlatStrip() {
         className="lsk"
         viewBox="0 96 1420 368"
         role="img"
-        aria-label="The Axiom pipeline as five equal stations. The intake: scraping pipelines (eCFR, USLM, state codes, laws-lois) fill the database — nothing ever leaves. The corpus: the whole law word for word, § 2017 pulled forward. One provision at a time feeds the encoding loop, where encoders draft (30 per centum becomes 0.30) and validators — deterministic checks, oracles, AI judge — catch drafts and send them back. The RuleSpec snap_allotment plugs into the rules graph — tfp and income feed it, benefit flows out — which compiles into a program artifact, powering the chatbot, dashboards, and APIs."
+        aria-label="The Axiom pipeline as five equal stations. The intake: scraping pipelines (eCFR, USLM, state codes, laws-lois) fill the database — nothing ever leaves. The corpus, word for word, with § 2017 pulled forward. One provision at a time feeds the encoding loop, where encoders draft (30 per centum becomes 0.30) and the run and checks validators send failing drafts back. The encoder applies a draft only once it compiles and passes its own tests. By default an AI review scores a draft that passes; the score does not block apply. The RuleSpec snap_allotment plugs into the rules graph — tfp and income feed it, benefit flows out — which compiles into a program artifact, powering the chatbot, dashboards, and APIs; programs are compared through their outputs later, where another calculator covers them. On October 2, 2026 the published § 2017(a) module was one of 1,940 rulespec-us modules on the validation waiver list, whose checks CI skipped."
       >
         {/* ── THE INTAKE ── */}
         <Station x={IN} title="the intake" sub="hundreds of official sources">
@@ -157,7 +168,7 @@ export function FlatStrip() {
 
         {/* ── THE CORPUS ── */}
         <Duct x0={IN + BOX.w + 3} x1={CO - 4} />
-        <Station x={CO} title="the corpus" sub="the whole law, word for word">
+        <Station x={CO} title="the corpus" sub="word for word">
           {[0, 1].map((r) =>
             [0, 1, 2, 3, 4, 5].map((c) => (
               <g key={`a${r}${c}`}>
@@ -221,21 +232,26 @@ export function FlatStrip() {
           )}
           <VDuct x={EN + 100} y0={B + 122} y1={B + 140} />
           <text className="fp-level" x={EN + 100} y={B + 156} textAnchor="middle">validators</text>
-          {gates.map((g, i) => {
+          {gates.map(({ name, blocksApply }, i) => {
             const y = B + 164 + i * 31;
             return (
-              <g key={g}>
-                <rect className="fp-gatechip" x={EN + 38} y={y} width="124" height="24" rx="12" />
-                <text className="fp-gatetext" x={EN + 54} y={y + 16}>
-                  {"✓ "}
-                  <tspan className="fp-gatename">{g}</tspan>
-                </text>
+              <g key={name}>
+                <rect className={blocksApply ? "fp-gatechip" : "fp-chip"} x={EN + 38} y={y} width="124" height="24" rx="12" />
+                {blocksApply ? (
+                  <text className="fp-gatetext" x={EN + 54} y={y + 16}>
+                    {"✓ "}
+                    <tspan className="fp-gatename">{name}</tspan>
+                  </text>
+                ) : (
+                  <text className="fp-mono fp-mono--tiny fp-mono--muted" x={EN + 67} y={y + 16}>{name}</text>
+                )}
               </g>
             );
           })}
-          {/* caught drafts ride back up the left margin */}
+          {/* drafts that fail checks ride back up the left margin */}
           <path
-            d={`M ${EN + 34} ${B + 240} C ${EN + 12} ${B + 205}, ${EN + 12} ${B + 130}, ${EN + 36} ${B + 94}`}
+            className="fp-redraft"
+            d={`M ${EN + 34} ${B + 207} C ${EN + 12} ${B + 185}, ${EN + 12} ${B + 130}, ${EN + 36} ${B + 94}`}
             fill="none" stroke={WAX} strokeWidth="1.1" strokeDasharray="4 4"
           >
             {!REDUCED && <animate attributeName="stroke-dashoffset" from="0" to="-16" dur="1.3s" repeatCount="indefinite" />}
@@ -304,6 +320,14 @@ export function FlatStrip() {
         <text className="fp-sealtick" x={SEAL.x} y={SEAL.y + 5} textAnchor="middle">✓</text>
         <text className="fp-mono fp-mono--sm" x={SEAL.x} y={SEAL.y + 42} textAnchor="middle">SNAP · US · 2026</text>
         <text className="fp-mono fp-mono--tiny" x={SEAL.x} y={SEAL.y + 58} textAnchor="middle" opacity="0.6">compiled · illustrative</text>
+
+        {/* ── COMPARE ── */}
+        <VDuct x={SEAL.x} y0={SEAL.y + 66} y1={SEAL.y + 88} />
+        <text className="fp-eyebrow" x={SEAL.x - 34} y={SEAL.y + 106}>compare</text>
+        <text className="fp-cap" x={SEAL.x - 34} y={SEAL.y + 122}>
+          programs compared where another{" "}
+          <tspan x={SEAL.x - 34} dy="14">calculator covers them</tspan>
+        </text>
 
         {/* ── THE SURFACES ── */}
         <text className="fp-eyebrow" x="1290" y={EYEBROW_Y}>surfaces</text>

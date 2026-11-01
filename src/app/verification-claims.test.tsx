@@ -13,6 +13,7 @@ vi.mock('next/link', () => ({
 }))
 
 import AboutPage from '@/app/about/page'
+import DocsPage from '@/app/docs/page'
 import ValidationPage, { metadata as validationMetadata } from '@/app/validation/page'
 import VerifyPage from '@/app/verify/page'
 import ReceiptsPage from '@/app/receipts/page'
@@ -55,6 +56,7 @@ import { SOUTHMOD_CAVEATS } from '@/lib/verification-evidence'
 //   PolicyEngine US suites.
 const SURFACES = [
   ['/about', () => render(<AboutPage />)],
+  ['/docs', () => render(<DocsPage />)],
   ['/validation', () => render(<ValidationPage />)],
   ['/verify', () => render(<VerifyPage />)],
   ['/receipts', () => render(<ReceiptsPage />)],
