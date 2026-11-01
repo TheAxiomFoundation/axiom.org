@@ -243,7 +243,7 @@ describe.each([
     const { chipNames, container, gateChips, texts, words } = await renderStrip({ motion });
     expect(chipNames).toEqual(["run", "checks", "AI review"]);
     // Both chip classes, counted by position, then every word drawn at or
-    // below the first chip in that column, so a gate with its own label shows.
+    // below the first chip in that column, so a new label there shows.
     const loopChips = [...container.querySelectorAll("rect.fp-chip, rect.fp-gatechip")].filter((chip) => {
       const x = Number(chip.getAttribute("x"));
       return x >= LOOP_BOX.left && x < LOOP_BOX.right;
@@ -271,7 +271,8 @@ describe.each([
   it("sends a draft back from checks, never from the AI review", async () => {
     const { container, gateChips, label, redraft } = await renderStrip({ motion });
     // One dashed path, the arrow. It leaves from just left of the checks chip,
-    // level with it, and no path or line starts on the AI review's row.
+    // level with it, and no path or line in the encoding station starts on the
+    // AI review's row.
     expect(container.querySelectorAll("path[stroke-dasharray]")).toHaveLength(1);
     const reviewChip = container.querySelector("g.fp-gate rect.fp-chip");
     const reviewTop = Number(reviewChip?.getAttribute("y"));
