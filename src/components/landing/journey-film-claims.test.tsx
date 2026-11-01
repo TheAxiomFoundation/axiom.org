@@ -264,7 +264,7 @@ describe.each([
       "the score does not block apply",
     ]);
     expect(clauses(label).filter((c) => /\breview/i.test(c))).toEqual([
-      "The AI review chip carries no tick",
+      "The loop shows no tick on the AI review",
     ]);
   });
 
@@ -289,7 +289,7 @@ describe.each([
   it("names only the encoder's gate as universal", async () => {
     const { label, words } = await renderStrip({ motion });
     expect(label).toContain("The encoder applies a draft only once it compiles and passes its own tests.");
-    expect(label).toContain("The AI review chip carries no tick; the score does not block apply.");
+    expect(label).toContain("The loop shows no tick on the AI review; the score does not block apply.");
     for (const text of [label, ...words]) {
       for (const clause of clauses(text).filter((c) => UNIVERSAL.test(c))) {
         expect(clause).not.toMatch(/\bcheck|\bpass(es|ed|ing)?\b|\bverif|\breview|\bcompar/i);
