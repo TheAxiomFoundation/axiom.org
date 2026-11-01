@@ -119,7 +119,7 @@ const RETIRED_DOCS_COPY = [
   /\bAI judges?\b/i,
   /\bthe whole law\b/i,
   /✓\s*(AI review|oracles?|compare)\b/i,
-  /\bhuman (review|sign-?off)\b/i,
+  /\b(human|expert) review\b|\bhuman sign-?off\b/i,
   /\bproof required\b|\bvalidators? refuses?\b/i,
 ];
 // The repo table on /docs names axiom-oracles, so these two hold for the strip
@@ -127,9 +127,15 @@ const RETIRED_DOCS_COPY = [
 const RETIRED_STRIP_COPY = [...RETIRED_DOCS_COPY, /\bdeterministic\b/i, /\boracles?\b/i];
 
 const COMPARE_CAPTION = "programs compared where another calculator covers them";
-const COMPARE_SENTENCE = "rograms are compared through their outputs later, where another calculator covers them";
+const COMPARE_SENTENCE =
+  /\b[Pp]rograms are compared through their outputs later, where another calculator covers them/;
 const WAIVER_LINE =
   "On October 2, 2026 the published § 2017(a) module was one of 1,940 rulespec-us modules on the validation waiver list, whose checks CI skipped.";
+// Every edit to the label changes a claim, so each one has to change here too.
+const STRIP_LABEL =
+  "The Axiom pipeline as five equal stations. The intake: scraping pipelines (eCFR, USLM, state codes, laws-lois) fill the database — nothing ever leaves. The corpus, word for word, with § 2017 pulled forward. One provision at a time feeds the encoding loop, where encoders draft (30 per centum becomes 0.30) and the run and checks validators send failing drafts back. The encoder applies a draft only once it compiles and passes its own tests. The AI review's score does not block apply. The RuleSpec snap_allotment plugs into the rules graph — tfp and income feed it, benefit flows out — which compiles into a program artifact, powering the chatbot, dashboards, and APIs. Programs are compared through their outputs later, where another calculator covers them. On October 2, 2026 the published § 2017(a) module was one of 1,940 rulespec-us modules on the validation waiver list, whose checks CI skipped.";
+// The encoding station's box, from XS.loop and BOX.w in flat-strip.tsx.
+const LOOP_BOX = { left: 500, right: 700 };
 
 describe.each([
   { mode: "animated", motion: true },
@@ -233,8 +239,14 @@ describe.each([
   });
 
   it("ticks run, checks and the compile seal, and nothing else", async () => {
-    const { chipNames, gateChips, words } = await renderStrip({ motion });
+    const { chipNames, container, gateChips, words } = await renderStrip({ motion });
     expect(chipNames).toEqual(["run", "checks", "AI review"]);
+    // Position, not a class name, so a chip drawn beside these still counts.
+    const loopChips = [...container.querySelectorAll("rect.fp-chip, rect.fp-gatechip")].filter((chip) => {
+      const x = Number(chip.getAttribute("x"));
+      return x >= LOOP_BOX.left && x < LOOP_BOX.right;
+    });
+    expect(loopChips).toHaveLength(3);
     expect(words.filter((w) => w.includes("✓"))).toEqual(["✓ run", "✓ checks", "✓"]);
     expect(gateChips).toHaveLength(2);
   });
@@ -249,8 +261,10 @@ describe.each([
   });
 
   it("sends a draft back from checks, never from the AI review", async () => {
-    const { gateChips, label, redraft } = await renderStrip({ motion });
-    // The arrow leaves from just left of the checks chip, level with it.
+    const { container, gateChips, label, redraft } = await renderStrip({ motion });
+    // One dashed arrow: it leaves from just left of the checks chip, level
+    // with it, and no second one leaves the AI review.
+    expect(container.querySelectorAll("path[stroke-dasharray]")).toHaveLength(1);
     const [startX, startY] = (/^M (\S+) (\S+)/.exec(redraft?.getAttribute("d") ?? "") ?? []).slice(1).map(Number);
     const checksX = Number(gateChips[1].getAttribute("x"));
     const checksY = Number(gateChips[1].getAttribute("y"));
@@ -261,10 +275,10 @@ describe.each([
     // The label says the same, and gives the AI review no other job.
     expect(clauses(label).filter((c) => /\b(sends?|back|redraft\w*|blocks?)\b/i.test(c))).toEqual([
       "One provision at a time feeds the encoding loop, where encoders draft (30 per centum becomes 0.30) and the run and checks validators send failing drafts back",
-      "the score does not block apply",
+      "The AI review's score does not block apply",
     ]);
     expect(clauses(label).filter((c) => /\breview/i.test(c))).toEqual([
-      "The loop shows no tick on the AI review",
+      "The AI review's score does not block apply",
     ]);
   });
 
@@ -280,16 +294,21 @@ describe.each([
     expect(caption?.getAttribute("x")).toBe(compile?.getAttribute("x"));
     expect(Number(compare?.getAttribute("y"))).toBeGreaterThan(Number(compiled?.getAttribute("y")));
     expect(Number(caption?.getAttribute("y"))).toBeGreaterThan(Number(compare?.getAttribute("y")));
-    expect(label).toContain(COMPARE_SENTENCE);
+    expect(label).toMatch(COMPARE_SENTENCE);
     for (const clause of clauses(label).filter((c) => /compar/i.test(c))) {
       expect(clause).toMatch(SCOPED_COMPARE);
     }
   });
 
+  it("says the pinned label", async () => {
+    const { label } = await renderStrip({ motion });
+    expect(label).toBe(STRIP_LABEL);
+  });
+
   it("names only the encoder's gate as universal", async () => {
     const { label, words } = await renderStrip({ motion });
     expect(label).toContain("The encoder applies a draft only once it compiles and passes its own tests.");
-    expect(label).toContain("The loop shows no tick on the AI review; the score does not block apply.");
+    expect(label).toContain("The AI review's score does not block apply.");
     for (const text of [label, ...words]) {
       for (const clause of clauses(text).filter((c) => UNIVERSAL.test(c))) {
         expect(clause).not.toMatch(/\bcheck|\bpass(es|ed|ing)?\b|\bverif|\breview|\bcompar/i);
@@ -306,12 +325,15 @@ describe.each([
     expect(label).toContain("The corpus, word for word");
   });
 
-  // The gates and their scope are the film's, so the two surfaces must agree.
-  it("agrees with the film on its gates, its scope and its waiver line", async () => {
+  // The gate names and their scope are the film's, so the two surfaces must
+  // agree. The ticks are not: the film's hero stamps all four gates, and the
+  // strip ticks only the two that block `encode --apply`.
+  it("agrees with the film on its gate names, its scope and its waiver line", async () => {
     const strip = await renderStrip({ motion });
     const film = await renderFilm({ motion });
-    expect(new Set([...strip.chipNames, "compare"])).toEqual(new Set(film.chips));
-    expect(film.label).toContain(COMPARE_SENTENCE);
+    const compare = strip.words.filter((word) => word === "compare");
+    expect(new Set([...strip.chipNames, ...compare])).toEqual(new Set(film.chips));
+    expect(film.label).toMatch(COMPARE_SENTENCE);
     if (motion) {
       expect(film.captions.join("\n")).toContain(COMPARE_CAPTION);
     }
@@ -343,7 +365,7 @@ describe("/docs page claims", () => {
 
   // § 2017 runs through the strip, and CI skipped that module's checks. A
   // screen reader gets the waiver line from the figure; a sighted reader gets
-  // it in the page's own text, in full, and keeps it in fullscreen.
+  // it as text under the figure, in full, and keeps it in fullscreen.
   it("shows the whole waiver line under the strip, in fullscreen too", async () => {
     const enlarged: Element[] = [];
     Element.prototype.requestFullscreen = async function (this: Element) {
@@ -357,10 +379,14 @@ describe("/docs page claims", () => {
       const text = (line?.textContent ?? "").replace(/\s+/g, " ");
       expect(text).toBe(`One provision, encoded — an illustration. ${WAIVER_LINE}`);
       expect(line?.getAttribute("aria-hidden")).toBeNull();
+      expect(line?.matches("[hidden], .sr-only, .hidden, .invisible")).toBe(false);
       expect(strip?.compareDocumentPosition(line as Element)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
 
       fireEvent.click(container.querySelector("button[aria-label='full screen']") as Element);
       expect(enlarged).toHaveLength(1);
+      const css = readFileSync(join(process.cwd(), "src/app/architecture-graphics.css"), "utf8");
+      expect(enlarged[0].matches(".fpfigure")).toBe(true);
+      expect(css).toContain(".fpfigure:fullscreen {");
       expect(enlarged[0].contains(strip)).toBe(true);
       expect(enlarged[0].contains(line as Element)).toBe(true);
     } finally {

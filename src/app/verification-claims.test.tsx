@@ -66,8 +66,10 @@ const SURFACES = [
 
 // Join text nodes with spaces: textContent glues adjacent elements together
 // ("independent evidence" + "Verified" reads "evidenceVerified"), which hides
-// a claim from any pattern that ends on a word boundary. renderedText adds the
-// accessible names, because a figure's aria-label is copy too.
+// a claim from any pattern that ends on a word boundary. `all` adds the
+// accessible names, because a figure's aria-label is copy too: a ban reads
+// `all`. A disclosure rule triggers on `all`, but only `visible` can satisfy
+// it, because a sighted reader never sees an aria-label.
 function textOf(renderSurface: () => ReturnType<typeof render>) {
   const { container, unmount } = renderSurface()
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
@@ -75,7 +77,8 @@ function textOf(renderSurface: () => ReturnType<typeof render>) {
   while (walker.nextNode()) parts.push(walker.currentNode.textContent ?? '')
   const accessible = renderedText(container)
   unmount()
-  return [...parts, accessible].join(' ').replace(/\s+/g, ' ')
+  const visible = parts.join(' ').replace(/\s+/g, ' ')
+  return { visible, all: `${visible} ${accessible}`.replace(/\s+/g, ' ') }
 }
 
 const CHECK_VERB = String.raw`(cross-check|check|verif|validat|compar|run[s]? against|mapped to an oracle)`
@@ -84,7 +87,7 @@ const UNIVERSAL_SUBJECT = String.raw`(every|each|all) (encoding|published rule|r
 describe('verification claims', () => {
   for (const [route, renderSurface] of SURFACES) {
     it(`${route} claims no universal or independent cross-check`, () => {
-      const text = textOf(renderSurface)
+      const text = textOf(renderSurface).all
 
       // A universal subject next to a checking verb, either order, within one
       // sentence. "The primary text every encoding points back to" is fine;
@@ -112,35 +115,35 @@ describe('verification claims', () => {
     })
 
     it(`${route} discloses the PolicyEngine tie wherever it names PolicyEngine`, () => {
-      const text = textOf(renderSurface)
-      if (!/PolicyEngine/.test(text)) return
+      const { all, visible } = textOf(renderSurface)
+      if (!/PolicyEngine/.test(all)) return
 
-      expect(text).toMatch(/Max Ghenis is CEO of both Axiom and PolicyEngine/)
+      expect(visible).toMatch(/Max Ghenis is CEO of both Axiom and PolicyEngine/)
     })
 
     it(`${route} discloses where TAXSIM runs come from wherever it names TAXSIM`, () => {
-      const text = textOf(renderSurface)
-      if (!/TAXSIM/.test(text)) return
+      const { all, visible } = textOf(renderSurface)
+      if (!/TAXSIM/.test(all)) return
 
-      expect(text).toMatch(/TAXSIM executable that PolicyEngine packages/)
+      expect(visible).toMatch(/TAXSIM executable that PolicyEngine packages/)
     })
 
     it(`${route} states the SOUTHMOD caveats wherever it names SOUTHMOD`, () => {
-      const text = textOf(renderSurface)
-      if (!/SOUTHMOD/.test(text)) return
+      const { all, visible } = textOf(renderSurface)
+      if (!/SOUTHMOD/.test(all)) return
 
       for (const caveat of Object.values(SOUTHMOD_CAVEATS)) {
-        expect(text).toContain(caveat.marker)
+        expect(visible).toContain(caveat.marker)
       }
       // It has published comparisons, so no page lists it as unconnected.
-      expect(text).not.toMatch(/SOUTHMOD[^.]{0,120}(not connected|no published comparison)/)
+      expect(all).not.toMatch(/SOUTHMOD[^.]{0,120}(not connected|no published comparison)/)
     })
 
     it(`${route} scopes the SNAP QC replay to benefit arithmetic`, () => {
-      const text = textOf(renderSurface)
-      if (!/SNAP (quality-control|QC)/i.test(text)) return
+      const { all, visible } = textOf(renderSurface)
+      if (!/SNAP (quality-control|QC)/i.test(all)) return
 
-      expect(text).toMatch(/eligibility (is )?untested/i)
+      expect(visible).toMatch(/eligibility (is )?untested/i)
     })
   }
 
