@@ -87,11 +87,6 @@ export default function DocsPage() {
               core bundle. The implemented and planned boundaries are shown above.
             </p>
             <ArchitectureStrip />
-            <p className="mt-5 mb-0 max-w-[720px] font-body text-[0.88rem] leading-relaxed text-[var(--color-ink-secondary)]">
-              One provision, encoded — an illustration. On October 2, 2026 the
-              published § 2017(a) module was one of 1,940 rulespec-us modules
-              on the validation waiver list, whose checks CI skipped.
-            </p>
           </details>
         </section>
 

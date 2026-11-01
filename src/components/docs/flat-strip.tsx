@@ -15,7 +15,9 @@
 // tick and send a draft back. The AI review scores a draft that passed them
 // and never blocks apply, so its chip stays unticked. Comparisons never run
 // inside the encoder, so compare has no chip in the loop: it hangs off the
-// compile seal, beside the caption that scopes it.
+// compile seal, beside the caption that scopes it. § 2017 runs through the
+// strip and CI skipped that module's checks, so the waiver line sits under
+// the figure, inside what the fullscreen button enlarges.
 //
 // The stations share one internal system: header OUTSIDE on a common
 // eyebrow line, an italic sub-caption at the top of the box, content
@@ -99,6 +101,25 @@ function Foot({ x, children }: { x: number; children: React.ReactNode }) {
 }
 
 export function FlatStrip() {
+  const figureRef = useRef<HTMLDivElement | null>(null);
+  const fullscreen = useCallback(() => {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void figureRef.current?.requestFullscreen();
+  }, []);
+
+  return (
+    <div className="fpfigure" ref={figureRef}>
+      <Strip onFullscreen={fullscreen} />
+      <p className="mt-5 mb-0 max-w-[720px] font-body text-[0.88rem] leading-relaxed text-[var(--color-ink-secondary)]">
+        One provision, encoded — an illustration. On October 2, 2026 the
+        published § 2017(a) module was one of 1,940 rulespec-us modules on the
+        validation waiver list, whose checks CI skipped.
+      </p>
+    </div>
+  );
+}
+
+function Strip({ onFullscreen }: { onFullscreen: () => void }) {
   const gates = [
     { name: "run", blocksApply: true },
     { name: "checks", blocksApply: true },
@@ -123,27 +144,21 @@ export function FlatStrip() {
     ["allot", "out"], ["elig", "out"],
   ];
 
-  const wrapRef = useRef<HTMLDivElement | null>(null);
-  const fullscreen = useCallback(() => {
-    if (document.fullscreenElement) void document.exitFullscreen();
-    else void wrapRef.current?.requestFullscreen();
-  }, []);
-
   const IN = XS.intake;
   const CO = XS.corpus;
   const EN = XS.loop;
   const SP = XS.spec;
 
   return (
-    <div className="lsk__wrap fpwrap" ref={wrapRef}>
-      <button type="button" className="fpwrap__fs" onClick={fullscreen} aria-label="full screen">
+    <div className="lsk__wrap fpwrap">
+      <button type="button" className="fpwrap__fs" onClick={onFullscreen} aria-label="full screen">
         ⛶
       </button>
       <svg
         className="lsk"
         viewBox="0 96 1420 368"
         role="img"
-        aria-label="The Axiom pipeline as five equal stations. The intake: scraping pipelines (eCFR, USLM, state codes, laws-lois) fill the database — nothing ever leaves. The corpus, word for word, with § 2017 pulled forward. One provision at a time feeds the encoding loop, where encoders draft (30 per centum becomes 0.30) and the run and checks validators send failing drafts back. The encoder applies a draft only once it compiles and passes its own tests. By default an AI review scores a draft that passes; the score does not block apply. The RuleSpec snap_allotment plugs into the rules graph — tfp and income feed it, benefit flows out — which compiles into a program artifact, powering the chatbot, dashboards, and APIs; programs are compared through their outputs later, where another calculator covers them. On October 2, 2026 the published § 2017(a) module was one of 1,940 rulespec-us modules on the validation waiver list, whose checks CI skipped."
+        aria-label="The Axiom pipeline as five equal stations. The intake: scraping pipelines (eCFR, USLM, state codes, laws-lois) fill the database — nothing ever leaves. The corpus, word for word, with § 2017 pulled forward. One provision at a time feeds the encoding loop, where encoders draft (30 per centum becomes 0.30) and the run and checks validators send failing drafts back. The encoder applies a draft only once it compiles and passes its own tests. The AI review chip carries no tick; the score does not block apply. The RuleSpec snap_allotment plugs into the rules graph — tfp and income feed it, benefit flows out — which compiles into a program artifact, powering the chatbot, dashboards, and APIs. Programs are compared through their outputs later, where another calculator covers them. On October 2, 2026 the published § 2017(a) module was one of 1,940 rulespec-us modules on the validation waiver list, whose checks CI skipped."
       >
         {/* ── THE INTAKE ── */}
         <Station x={IN} title="the intake" sub="hundreds of official sources">
@@ -235,7 +250,7 @@ export function FlatStrip() {
           {gates.map(({ name, blocksApply }, i) => {
             const y = B + 164 + i * 31;
             return (
-              <g key={name}>
+              <g key={name} className="fp-gate">
                 <rect className={blocksApply ? "fp-gatechip" : "fp-chip"} x={EN + 38} y={y} width="124" height="24" rx="12" />
                 {blocksApply ? (
                   <text className="fp-gatetext" x={EN + 54} y={y + 16}>

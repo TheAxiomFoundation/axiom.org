@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { render } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fileCopy, renderedText } from "@/test/claim-copy";
 
@@ -42,7 +42,8 @@ import { fileCopy, renderedText } from "@/test/claim-copy";
 // `validate`, never `encode`. So the strip ticks run and checks and nothing
 // else, only they send a draft back, the AI review stays unticked, and
 // compare stays out of the loop, beside its scope. The strip's worked example
-// is § 2017, so /docs carries the film's waiver line where a reader sees it.
+// is § 2017, so the strip carries the film's waiver line where a reader sees
+// it, in fullscreen too.
 
 // The test setup stubs prefers-reduced-motion on, which renders the
 // composed still; the animated film needs it off. STATIC is read at module
@@ -90,6 +91,7 @@ async function renderStrip({ motion }: { motion: boolean }) {
   const { container } = render(<FlatStrip />);
   const texts = [...container.querySelectorAll("text")];
   return {
+    chipNames: [...container.querySelectorAll("g.fp-gate text")].map((t) => (t.textContent ?? "").replace(/^✓ /, "")),
     container,
     gateChips: [...container.querySelectorAll("rect.fp-gatechip")],
     label: container.querySelector("svg[role='img']")?.getAttribute("aria-label") ?? "",
@@ -125,8 +127,7 @@ const RETIRED_DOCS_COPY = [
 const RETIRED_STRIP_COPY = [...RETIRED_DOCS_COPY, /\bdeterministic\b/i, /\boracles?\b/i];
 
 const COMPARE_CAPTION = "programs compared where another calculator covers them";
-const COMPARE_SENTENCE =
-  "programs are compared through their outputs later, where another calculator covers them";
+const COMPARE_SENTENCE = "rograms are compared through their outputs later, where another calculator covers them";
 const WAIVER_LINE =
   "On October 2, 2026 the published § 2017(a) module was one of 1,940 rulespec-us modules on the validation waiver list, whose checks CI skipped.";
 
@@ -232,7 +233,8 @@ describe.each([
   });
 
   it("ticks run, checks and the compile seal, and nothing else", async () => {
-    const { gateChips, words } = await renderStrip({ motion });
+    const { chipNames, gateChips, words } = await renderStrip({ motion });
+    expect(chipNames).toEqual(["run", "checks", "AI review"]);
     expect(words.filter((w) => w.includes("✓"))).toEqual(["✓ run", "✓ checks", "✓"]);
     expect(gateChips).toHaveLength(2);
   });
@@ -247,22 +249,37 @@ describe.each([
   });
 
   it("sends a draft back from checks, never from the AI review", async () => {
-    const { gateChips, redraft } = await renderStrip({ motion });
-    const startY = Number(/^M \S+ (\S+)/.exec(redraft?.getAttribute("d") ?? "")?.[1]);
+    const { gateChips, label, redraft } = await renderStrip({ motion });
+    // The arrow leaves from just left of the checks chip, level with it.
+    const [startX, startY] = (/^M (\S+) (\S+)/.exec(redraft?.getAttribute("d") ?? "") ?? []).slice(1).map(Number);
+    const checksX = Number(gateChips[1].getAttribute("x"));
     const checksY = Number(gateChips[1].getAttribute("y"));
+    expect(checksX - startX).toBeGreaterThanOrEqual(0);
+    expect(checksX - startX).toBeLessThanOrEqual(8);
     expect(startY).toBeGreaterThanOrEqual(checksY);
     expect(startY).toBeLessThanOrEqual(checksY + Number(gateChips[1].getAttribute("height")));
+    // The label says the same, and gives the AI review no other job.
+    expect(clauses(label).filter((c) => /\b(sends?|back|redraft\w*|blocks?)\b/i.test(c))).toEqual([
+      "One provision at a time feeds the encoding loop, where encoders draft (30 per centum becomes 0.30) and the run and checks validators send failing drafts back",
+      "the score does not block apply",
+    ]);
+    expect(clauses(label).filter((c) => /\breview/i.test(c))).toEqual([
+      "The AI review chip carries no tick",
+    ]);
   });
 
   it("names compare only beside its scope, under the compile seal", async () => {
     const { label, texts, words } = await renderStrip({ motion });
     expect(words.filter((w) => /compar/i.test(w))).toEqual(["compare", COMPARE_CAPTION]);
     const compile = texts.find((t) => t.textContent === "compile");
+    const compiled = texts.find((t) => t.textContent === "compiled · illustrative");
     const compare = texts.find((t) => t.textContent === "compare");
     const caption = texts.find((t) => t.textContent === COMPARE_CAPTION);
     // Comparisons never run inside the encoder, so neither word sits in the loop.
     expect(compare?.getAttribute("x")).toBe(compile?.getAttribute("x"));
     expect(caption?.getAttribute("x")).toBe(compile?.getAttribute("x"));
+    expect(Number(compare?.getAttribute("y"))).toBeGreaterThan(Number(compiled?.getAttribute("y")));
+    expect(Number(caption?.getAttribute("y"))).toBeGreaterThan(Number(compare?.getAttribute("y")));
     expect(label).toContain(COMPARE_SENTENCE);
     for (const clause of clauses(label).filter((c) => /compar/i.test(c))) {
       expect(clause).toMatch(SCOPED_COMPARE);
@@ -272,7 +289,7 @@ describe.each([
   it("names only the encoder's gate as universal", async () => {
     const { label, words } = await renderStrip({ motion });
     expect(label).toContain("The encoder applies a draft only once it compiles and passes its own tests.");
-    expect(label).toContain("By default an AI review scores a draft that passes; the score does not block apply.");
+    expect(label).toContain("The AI review chip carries no tick; the score does not block apply.");
     for (const text of [label, ...words]) {
       for (const clause of clauses(text).filter((c) => UNIVERSAL.test(c))) {
         expect(clause).not.toMatch(/\bcheck|\bpass(es|ed|ing)?\b|\bverif|\breview|\bcompar/i);
@@ -293,8 +310,7 @@ describe.each([
   it("agrees with the film on its gates, its scope and its waiver line", async () => {
     const strip = await renderStrip({ motion });
     const film = await renderFilm({ motion });
-    const names = strip.words.map((w) => w.replace(/^✓ /, ""));
-    expect(names.filter((w) => film.chips.includes(w)).sort()).toEqual([...new Set(film.chips)].sort());
+    expect(new Set([...strip.chipNames, "compare"])).toEqual(new Set(film.chips));
     expect(film.label).toContain(COMPARE_SENTENCE);
     if (motion) {
       expect(film.captions.join("\n")).toContain(COMPARE_CAPTION);
@@ -327,16 +343,29 @@ describe("/docs page claims", () => {
 
   // § 2017 runs through the strip, and CI skipped that module's checks. A
   // screen reader gets the waiver line from the figure; a sighted reader gets
-  // it here, in the page's own text, in full.
-  it("shows the whole waiver line under the strip", async () => {
-    const { default: DocsPage } = await import("@/app/docs/page");
-    const { container } = render(<DocsPage />);
-    const strip = container.querySelector("svg[role='img']");
-    const line = [...container.querySelectorAll("details p")].find((p) => p.textContent?.includes("2017(a)"));
-    const text = (line?.textContent ?? "").replace(/\s+/g, " ");
-    expect(text).toBe(`One provision, encoded — an illustration. ${WAIVER_LINE}`);
-    expect(strip?.closest("details")).toBe(line?.closest("details"));
-    expect(line?.getAttribute("aria-hidden")).toBeNull();
+  // it in the page's own text, in full, and keeps it in fullscreen.
+  it("shows the whole waiver line under the strip, in fullscreen too", async () => {
+    const enlarged: Element[] = [];
+    Element.prototype.requestFullscreen = async function (this: Element) {
+      enlarged.push(this);
+    };
+    try {
+      const { default: DocsPage } = await import("@/app/docs/page");
+      const { container } = render(<DocsPage />);
+      const strip = container.querySelector("svg[role='img']");
+      const line = [...container.querySelectorAll("details p")].find((p) => p.textContent?.includes("2017(a)"));
+      const text = (line?.textContent ?? "").replace(/\s+/g, " ");
+      expect(text).toBe(`One provision, encoded — an illustration. ${WAIVER_LINE}`);
+      expect(line?.getAttribute("aria-hidden")).toBeNull();
+      expect(strip?.compareDocumentPosition(line as Element)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+
+      fireEvent.click(container.querySelector("button[aria-label='full screen']") as Element);
+      expect(enlarged).toHaveLength(1);
+      expect(enlarged[0].contains(strip)).toBe(true);
+      expect(enlarged[0].contains(line as Element)).toBe(true);
+    } finally {
+      delete (Element.prototype as Partial<Element>).requestFullscreen;
+    }
   });
 });
 

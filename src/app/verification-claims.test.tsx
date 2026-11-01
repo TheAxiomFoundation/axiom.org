@@ -5,7 +5,7 @@ import { render } from '@testing-library/react'
 import fc from 'fast-check'
 import { describe, it, expect, vi } from 'vitest'
 import { encoderRecordClaims, markdownClaims } from '@/test/encoder-record-guard'
-import { copyFiles, fileCopy, htmlCopy, pageText, publicHtmlFiles, sourceCopy, stringsIn } from '@/test/claim-copy'
+import { copyFiles, fileCopy, htmlCopy, pageText, publicHtmlFiles, renderedText, sourceCopy, stringsIn } from '@/test/claim-copy'
 import { sweepPublicHtmlClaims } from '@/test/public-html-claims'
 
 vi.mock('next/link', () => ({
@@ -66,14 +66,16 @@ const SURFACES = [
 
 // Join text nodes with spaces: textContent glues adjacent elements together
 // ("independent evidence" + "Verified" reads "evidenceVerified"), which hides
-// a claim from any pattern that ends on a word boundary.
+// a claim from any pattern that ends on a word boundary. renderedText adds the
+// accessible names, because a figure's aria-label is copy too.
 function textOf(renderSurface: () => ReturnType<typeof render>) {
   const { container, unmount } = renderSurface()
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
   const parts: string[] = []
   while (walker.nextNode()) parts.push(walker.currentNode.textContent ?? '')
+  const accessible = renderedText(container)
   unmount()
-  return parts.join(' ').replace(/\s+/g, ' ')
+  return [...parts, accessible].join(' ').replace(/\s+/g, ' ')
 }
 
 const CHECK_VERB = String.raw`(cross-check|check|verif|validat|compar|run[s]? against|mapped to an oracle)`
