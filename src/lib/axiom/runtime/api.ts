@@ -11,7 +11,10 @@
  * server props, never this module.
  */
 
-const DEFAULT_BASE = "https://axiom-api-eta.vercel.app/v1";
+// The hosted API's canonical host. api.axiom.org is an alias the API owns,
+// so a rename on the hosting side cannot break this default the way the old
+// axiom-api-eta.vercel.app name could.
+const DEFAULT_BASE = "https://api.axiom.org/v1";
 const REQUEST_TIMEOUT_MS = 4000;
 const CALCULATE_TIMEOUT_MS = 15000;
 const REVALIDATE_SECONDS = 600;

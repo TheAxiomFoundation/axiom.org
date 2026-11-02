@@ -1,9 +1,11 @@
+import fc from 'fast-check'
 import {
   MAX_PROMPT_CHARS,
   MAX_TURNS,
   cleanChoice,
   cleanChoices,
   cleanMessages,
+  cleanRev,
   cleanText,
   clipText,
   isEmail,
@@ -68,5 +70,15 @@ describe('aspen input checks', () => {
     expect(cleanMessages([{ role: 'user', content: 'a' }, { role: 'assistant', content: 'b' }])).toBeNull()
     const tooMany = Array.from({ length: MAX_TURNS * 2 + 1 }, () => ({ role: 'user', content: 'x' }))
     expect(cleanMessages(tooMany)).toBeNull()
+  })
+
+  it('takes a save stamp only as a whole, positive time a Date can hold', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 1, max: 8.64e15 }), (ms) => {
+        expect(cleanRev(ms)).toBe(ms)
+        expect(new Date(cleanRev(ms)!).toISOString()).toMatch(/Z$/)
+      }),
+    )
+    for (const bad of [0, -1, 1.5, 8.64e15 + 1, Number.NaN, Infinity, '1792000000000', null, undefined, {}]) expect(cleanRev(bad)).toBeNull()
   })
 })

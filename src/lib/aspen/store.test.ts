@@ -14,7 +14,7 @@ import {
   type AspenStore,
 } from './store'
 import { AZ_SAVED_CHECK, productionShape } from '@/test/saved-rules-check'
-import { summarizeRun } from './results'
+import { rulesIfEligible, summarizeRun } from './results'
 import type { PromptRow } from './types'
 
 const P = '6f1c2d3e-4a5b-4c6d-8e9f-0a1b2c3d4e5f'
@@ -56,6 +56,25 @@ describe('memory store', () => {
     expect(run.pledges[0]).not.toHaveProperty('email')
     expect(run.pledges[0]).not.toHaveProperty('name')
     expect(run.pledges[1].state).toBeNull()
+  })
+
+  it('applies a stamped rating only over an older one, so a slow save that lands late changes nothing', async () => {
+    const store = createMemoryStore()
+    await store.insertPrompt({ id: Q, run_id: 'r', participant_id: P, conversation_id: Q, turn: 0, prompt: 'Hi' })
+    const at = (s: number) => new Date(Date.UTC(2026, 9, 26, 18, 0, s)).toISOString()
+    const verdict = async () => (await store.loadRun('r')).prompts[0].verdict
+    // The first rating has nothing to beat; a later one replaces it.
+    expect(await store.updatePrompt(Q, P, { rated_at: at(1), verdict: 'right' }, at(1))).toBe(true)
+    expect(await store.updatePrompt(Q, P, { rated_at: at(3), verdict: 'wrong' }, at(3))).toBe(true)
+    // The tap between them, landing last, and a repeat of the same stamp, don't.
+    expect(await store.updatePrompt(Q, P, { rated_at: at(2), verdict: 'unsure' }, at(2))).toBe(false)
+    expect(await store.updatePrompt(Q, P, { rated_at: at(3), verdict: 'unsure' }, at(3))).toBe(false)
+    expect(await verdict()).toBe('wrong')
+    // Another participant's stamp never reaches the row.
+    expect(await store.updatePrompt(Q, Q, { rated_at: at(9), verdict: 'unsure' }, at(9))).toBe(false)
+    // Unstamped (a page from before stamps, or the rules check's verdict), it applies as it always did.
+    expect(await store.updatePrompt(Q, P, { post_check_verdict: 'wrong' })).toBe(true)
+    expect(await verdict()).toBe('wrong')
   })
 })
 
@@ -116,8 +135,22 @@ describe('supabase store', () => {
     const store = createSupabaseStore(config, fn)
     expect(await store.updatePrompt(Q, P, { verdict: 'right' })).toBe(true)
     expect(calls[0].url).toContain(`id=eq.${Q}&participant_id=eq.${P}`)
+    expect(calls[0].url).not.toContain('or=')
     const empty = createSupabaseStore(config, fakeFetch(() => ({ body: [] })).fn)
     expect(await empty.updatePrompt(Q, P, {})).toBe(false)
+  })
+
+  it('puts the stamp check in the same update, with the time quoted as or=() needs', async () => {
+    const { fn, calls } = fakeFetch(() => ({ body: [] }))
+    const at = '2026-10-26T18:00:01.234Z'
+    // No row matched: missing, someone else's, or already rated later.
+    expect(await createSupabaseStore(config, fn).updatePrompt(Q, P, { rated_at: at, verdict: 'right' }, at)).toBe(false)
+    expect(calls).toHaveLength(1)
+    expect(calls[0].init.method).toBe('PATCH')
+    const query = new URL(calls[0].url).searchParams
+    expect(query.get('or')).toBe(`(rated_at.is.null,rated_at.lt."${at}")`)
+    expect(query.get('id')).toBe(`eq.${Q}`)
+    expect(query.get('participant_id')).toBe(`eq.${P}`)
   })
 
   it('loads a run without emails or names', async () => {
@@ -127,7 +160,12 @@ describe('supabase store', () => {
     const pledgeQuery = calls.find((c) => c.url.includes('aspen_pledges'))!.url
     expect(pledgeQuery).toContain('select=state,accurate_ai,state_systems,show_state,created_at')
     expect(pledgeQuery).not.toContain('email')
-    expect(calls.find((c) => c.url.includes('aspen_events'))!.url).toContain('kind=in.(discussion,breakout,survey,vote)')
+    const eventQuery = calls.find((c) => c.url.includes('aspen_events'))!.url
+    expect(eventQuery).toContain('kind=in.(discussion,breakout,survey,vote)')
+    // The participant id lets the summary keep each person's latest answer; it never leaves the server.
+    expect(eventQuery).toContain('select=run_id,participant_id,kind,stage,payload,created_at')
+    // Ties in time fall back to insert order, so each person's latest answer reads the same every time.
+    expect(eventQuery).toContain('order=created_at.asc,id.asc')
   })
 
   it('raises on HTTP errors and tolerates 204', async () => {
@@ -231,7 +269,7 @@ describe('both stores load a run the same way', () => {
     expect(room(memory)).toEqual(room(supabase))
     // The bug this guards: in production an Arizona $24 counted as a household that qualifies.
     expect(room(supabase).viability).toMatchObject({ wouldNotApply: 4, wouldNotApplyEligible: 1, wouldNotApplyIfEligible: 2 })
-    expect(room(supabase).feed.filter((f) => f.rulesIfEligible).map((f) => f.prompt)).toEqual(['Question 3', 'Question 1'])
+    expect(supabase.prompts.filter(rulesIfEligible).map((p) => p.prompt)).toEqual(['Question 1', 'Question 3'])
   })
 
   it('selects every field the room summary reads', () => {

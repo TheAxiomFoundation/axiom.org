@@ -103,7 +103,7 @@ export type Director = {
   buildTimes: number[];
   prepareAll: () => Promise<unknown>;
   resize: (w: number, h: number) => void;
-  dispose: () => void;
+  dispose: () => void; // after it, every call does nothing
 };
 
 export async function createDirector(opts: {
@@ -112,6 +112,9 @@ export async function createDirector(opts: {
   width: number;
   height: number;
   onFirstFrame?: () => void;
+  // a scene that fails to build after the first: the first's failure rejects
+  // createDirector instead. Without it, the story holds on the last scene drawn.
+  onError?: (error: unknown) => void;
   paper?: boolean; // draw the scenes for the light page (see THEME)
 }): Promise<Director> {
   THEME.paper = !!opts.paper;
@@ -168,6 +171,7 @@ export async function createDirector(opts: {
         const b = createBeat(SCENES[i].build, overlays[i]);
         buildTimes[i] = performance.now() - t0;
         await b.ready;
+        live();
         b.camera.userData.span = SPANS[i];
         b.invalidate = () => {
           current = current < 0 ? target : current;
@@ -179,9 +183,23 @@ export async function createDirector(opts: {
         beats[i] = b;
         return b;
       })();
+      // every caller lets a failure go, so it's reported here, once; scene 0's
+      // instead rejects createDirector, for its caller to handle
+      pending[i].catch((e) => {
+        if (dead || i === 0) return;
+        if (opts.onError) opts.onError(e);
+        else console.error("journey: a scene could not be built", e);
+      });
     }
     return pending[i];
   };
+  // a build in flight when the director is disposed stops at its next
+  // await, before it touches the renderer again
+  const live = () => {
+    if (dead) throw new Error("journey: the director was disposed");
+  };
+  // compiles in flight (see warm)
+  let compiling = 0;
   // a scene's first frame must not pay for its setup: upload its textures,
   // compile its shaders and run it once through the post chain, all before
   // the reader gets there
@@ -205,6 +223,7 @@ export async function createDirector(opts: {
       renderer.initTexture(t);
       if (performance.now() - slice > 8) {
         await new Promise((r) => setTimeout(r, 0));
+        live();
         slice = performance.now();
       }
     }
@@ -213,8 +232,20 @@ export async function createDirector(opts: {
     const hidden: THREE.Object3D[] = [];
     [b.scene, b.fx].forEach((sc) => sc.traverse((o) => !o.visible && hidden.push(o)));
     hidden.forEach((o) => (o.visible = true));
-    await renderer.compileAsync(b.scene, b.camera);
-    await renderer.compileAsync(b.fx, b.camera);
+    // three polls a compile's programs until they're ready, and a renderer
+    // disposed under that poll throws from it, so a disposed director lets
+    // go of its renderer once the last compile in flight is done. Counted
+    // here, around the await itself: a wrapper's own promise would move this
+    // build's next steps behind other work in the same task
+    for (const sc of [b.scene, b.fx]) {
+      compiling++;
+      try {
+        await renderer.compileAsync(sc, b.camera);
+      } finally {
+        if (--compiling === 0 && dead) renderer.dispose();
+      }
+      live();
+    }
     // and draw it all once, in view or not, so every pass (shadows, depth,
     // colour) has its shaders and buffers before the reader gets there
     const culled: THREE.Object3D[] = [];
@@ -230,20 +261,26 @@ export async function createDirector(opts: {
     b.update?.(0);
   };
   // build the scenes one after another, each in an idle moment, so no
-  // single long task lands while the reader scrolls
+  // single long task lands while the reader scrolls (once the director is
+  // disposed, no idle moment comes, and the loop goes with it)
   const buildAll = async () => {
     for (let i = 0; i < N && !dead; i++) {
       await new Promise<void>((r) => idle(() => r()));
-      await build(i);
+      // a scene that fails is reported by build; the rest still build
+      await build(i)?.catch(() => undefined);
     }
   };
+  // idle work queued before dispose() never runs
   const idle = (fn: () => void) => {
+    const run = () => {
+      if (!dead) fn();
+    };
     const w = window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number };
-    if (w.requestIdleCallback) w.requestIdleCallback(fn, { timeout: 400 });
-    else setTimeout(fn, 60);
+    if (w.requestIdleCallback) w.requestIdleCallback(run, { timeout: 400 });
+    else setTimeout(run, 60);
   };
   const prefetch = (from: number) => {
-    for (let k = from; k <= from + 1 && k < N; k++) if (!pending[k]) idle(() => void build(k));
+    for (let k = from; k <= from + 1 && k < N; k++) if (!pending[k]) idle(() => void build(k)?.catch(() => undefined));
   };
 
   let target = 0;
@@ -304,16 +341,17 @@ export async function createDirector(opts: {
   let front: { beat: Beat; t: number; mix: number } | null = null;
   if (process.env.NODE_ENV !== "production") Object.assign(window, { __jlBeats: beats, __jlRenderer: renderer });
   const draw = (P: number) => {
+    if (dead) return;
     const j = sceneAt(P);
     const b = beats[j];
     if (!b) {
-      void build(j)?.then(() => schedule());
+      void build(j)?.then(() => schedule(), () => undefined);
       return;
     }
     // the cut from j-1 into j, while P < j
     const k = j > 0 && P < START[j] ? (P - (START[j] - OVERLAP)) / OVERLAP : 1;
     const a = k < 1 ? beats[j - 1] : null;
-    if (k < 1 && !a) void build(j - 1)?.then(() => schedule());
+    if (k < 1 && !a) void build(j - 1)?.then(() => schedule(), () => undefined);
     // the images swap in the dark middle of the pan
     // a scene with its own way out hands over slowly, behind what matches
     const mix = a ? (a.cutOut ? sstep(0.35, 0.95, k) : sstep(0.38, 0.62, k)) : 1;
@@ -457,7 +495,28 @@ export async function createDirector(opts: {
     schedule();
   }, 4200);
 
-  await build(0);
+  // everything the director holds, let go by dispose(), or here by a start
+  // that fails: its caller never gets a director to dispose
+  const release = () => {
+    if (dead) return;
+    dead = true;
+    window.clearInterval(glintTimer);
+    canvas.removeEventListener("pointermove", onMove);
+    canvas.removeEventListener("pointerleave", onLeave);
+    canvas.removeEventListener("click", onClick);
+    tip.remove();
+    if (raf) cancelAnimationFrame(raf);
+    pa.composer.dispose();
+    pb.composer.dispose();
+    // a compile in flight lets go of it when it's done (see warm)
+    if (!compiling) renderer.dispose();
+  };
+  try {
+    await build(0);
+  } catch (e) {
+    release();
+    throw e;
+  }
   schedule();
   void buildAll();
 
@@ -472,6 +531,7 @@ export async function createDirector(opts: {
     },
     buildTimes,
     profile(ps: number[]) {
+      if (dead) return [];
       const gl = renderer.getContext();
       return ps.map((p) => {
         gl.finish();
@@ -482,9 +542,11 @@ export async function createDirector(opts: {
       });
     },
     prepareAll() {
+      if (dead) return Promise.resolve();
       return Promise.all(Array.from({ length: N }, (_, i) => build(i)));
     },
     resize(nw: number, nh: number) {
+      if (dead) return;
       w = nw;
       h = nh;
       renderer.setSize(w, h, false);
@@ -493,17 +555,6 @@ export async function createDirector(opts: {
       current = -1;
       schedule();
     },
-    dispose() {
-      dead = true;
-      window.clearInterval(glintTimer);
-      canvas.removeEventListener("pointermove", onMove);
-      canvas.removeEventListener("pointerleave", onLeave);
-      canvas.removeEventListener("click", onClick);
-      tip.remove();
-      if (raf) cancelAnimationFrame(raf);
-      pa.composer.dispose();
-      pb.composer.dispose();
-      renderer.dispose();
-    },
+    dispose: release,
   };
 }

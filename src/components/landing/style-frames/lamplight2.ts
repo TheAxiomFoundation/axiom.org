@@ -1374,12 +1374,14 @@ export function lamplightBeat7(ctx: BeatCtx): BeatSpec {
   glow.lookAt(camera.position);
   fx.add(glow);
 
-  // the five kinds of user, on a shallow arc
+  // the five kinds of user, on a shallow arc. Sized a fifth larger than
+  // the fan was first drawn, into the margin the frame already had, so the
+  // three uses on each card read from the back of a room (Oct 26).
   const GWpx = 1900;
   const GHpx = 420;
-  const GW = 4.0;
+  const GW = 4.8;
   const GH = (GHpx / GWpx) * GW;
-  const ys = [2.65, 1.6, 0.55, -0.5, -1.55];
+  const ys = [3.07, 1.81, 0.55, -0.71, -1.97];
   const groupCards: THREE.Mesh[] = [];
   const beams: Array<{ beam: THREE.Mesh; df: THREE.Mesh; dt: THREE.Mesh; packet: THREE.Mesh; c: THREE.Curve<THREE.Vector3> }> = [];
   const r = rng(88);
@@ -1403,7 +1405,7 @@ export function lamplightBeat7(ctx: BeatCtx): BeatSpec {
     });
     const m = cardMesh(tex, GW, GH, 1.0);
     groupCards.push(m);
-    m.position.set(4.2, ys[i], -0.32 * Math.abs(i - 2));
+    m.position.set(3.8, ys[i], -0.32 * Math.abs(i - 2));
     m.lookAt(camera.position);
     scene.add(m);
     m.updateMatrixWorld();

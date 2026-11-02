@@ -1,17 +1,21 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
+import { certificateDownloadPath } from "../src/lib/tariff-certificate";
 
 export const RULESPEC_COMMIT = "c55778119c0dd208a5ea3366092a17d0b0392c8b";
 export const CORPUS_COMMIT = "bef19f24206a9de4ef29d9ba2b5924f3cc6a00c6";
 export const CORPUS_RELEASE = "2026-08-09-usitc-hts-2026-rev15-full-schedule";
-export const CERTIFICATE_SHA256 = "7b6de59a83d37829f7c8a247722538fd1b3a35689337b591c900e7bf709caf18";
 export const EXPECTED_LINE_COUNT = 13_790;
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+// The downloads name the certificate the page serves and links: buildArtifact
+// hashes the vendored file (src/lib/tariff-certificate.ts), so re-vendoring
+// it and rebuilding moves both together.
+export const CERTIFICATE_FILE = resolve(ROOT, `public${certificateDownloadPath}`);
 function siblingRepo(name: string, root = ROOT) {
   const candidates = [resolve(root, "..", name), resolve(root, "../../..", name)];
   return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
@@ -134,7 +138,7 @@ function loadCorpus(corpusPin: SourcePin) {
   return records;
 }
 
-export function buildArtifact(pins: SourcePins = SOURCE_PINS) {
+export function buildArtifact(pins: SourcePins = SOURCE_PINS, certificate: Uint8Array = readFileSync(CERTIFICATE_FILE)) {
   const missing = unavailablePins(pins);
   if (missing.length) throw new Error(`tariff schedule sources unavailable: ${missing.join("; ")}`);
   const { rulespec } = pins;
@@ -182,7 +186,7 @@ export function buildArtifact(pins: SourcePins = SOURCE_PINS) {
   const sorted = [...lines.values()].sort((a, b) => a.hts10.localeCompare(b.hts10));
   if (sorted.length !== EXPECTED_LINE_COUNT) throw new Error(`expected ${EXPECTED_LINE_COUNT} lines, got ${sorted.length}`);
   const builtAt = new Date(Number(git(rulespec.path, "show", "-s", "--format=%ct", rulespec.commit).trim()) * 1000).toISOString();
-  const artifact = { metadata: { schema: "axiom.tariff_schedule.v1", rulespecCommit: rulespec.commit, corpusCommit: pins.corpus.commit, corpusRelease: CORPUS_RELEASE, certificateSha256: CERTIFICATE_SHA256, builtAt, lineCount: sorted.length, coverageFamilies: COVERAGE_FAMILIES }, lines: sorted };
+  const artifact = { metadata: { schema: "axiom.tariff_schedule.v1", rulespecCommit: rulespec.commit, corpusCommit: pins.corpus.commit, corpusRelease: CORPUS_RELEASE, certificateSha256: createHash("sha256").update(certificate).digest("hex"), builtAt, lineCount: sorted.length, coverageFamilies: COVERAGE_FAMILIES }, lines: sorted };
   return artifact;
 }
 

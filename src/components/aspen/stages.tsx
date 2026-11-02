@@ -1,30 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   GROUP_PHONE_INTRO,
   EVENT,
   GROUP_QUESTIONS,
   GROUP_RAISED,
-  BUILD_HEADING,
-  FOUNDATION_TRAITS,
-  GOLDEN_A,
   NEXT_STEPS,
-  ONE_SET_OF_RULES,
-  ONE_SET_STATEMENT,
+  LOOK_UP,
   POLICYBENCH,
   STAGES,
   USE_CASES,
-  US_STATES,
-  percent,
   type StageId,
 } from "@/lib/aspen/content";
-import type { Count } from "@/lib/aspen/results";
-import { SourceOfTruthCard } from "./results-board";
-import { OVERALL_KEY, VOTE_KEY, participantId, postJson, readStored, sendEvent, writeStored } from "./client";
+import { PLEDGE_KEY, VOTE_KEY, participantId, postJson, readStored, sendEvent, writeStored } from "./client";
 import { Disclosure } from "./disclosure";
-import { TierMedal } from "./tier-medal";
-import { BUTTON, BlockHeading, Card, FIELD, Part } from "./ui";
+import { BUTTON, BUTTON_QUIET, Card, FIELD, Part } from "./ui";
 
 const OPTION_BOX =
   "rounded-lg border px-4 py-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]";
@@ -47,11 +38,14 @@ export function Agenda({
   current,
   onPick,
   compact = false,
+  limit,
 }: {
   live?: StageId | null;
   current?: StageId;
   onPick?: (id: StageId) => void;
   compact?: boolean;
+  /** The last stage a participant may open; later ones wait for the room (the dry run, Oct 25). */
+  limit?: number;
 }) {
   const liveIndex = live ? STAGES.findIndex((s) => s.id === live) : -1;
   return (
@@ -65,11 +59,15 @@ export function Agenda({
         const isLive = i === liveIndex;
         const done = liveIndex > i;
         const here = current === stage.id;
+        const locked = limit !== undefined && i > limit;
         const row = (
           <>
+            {/* A locked circle stays opaque, lighter in colour, so the thread never shows through its number (Max, Oct 26). */}
             <span
               className={`relative z-1 flex h-7 w-7 items-center justify-center rounded-full border-2 font-mono text-[0.8rem] tabular-nums ${
-                isLive
+                locked
+                  ? "border-[color-mix(in_srgb,var(--color-accent)_40%,var(--color-paper))] bg-[var(--color-paper)] text-[color-mix(in_srgb,var(--color-accent)_45%,var(--color-paper))]"
+                  : isLive
                   ? "border-[var(--color-accent)] bg-[var(--color-accent)] text-white"
                   : done
                     ? "border-[var(--color-accent)] bg-[color-mix(in_srgb,var(--color-accent)_12%,var(--color-paper))] text-[var(--color-accent)]"
@@ -78,7 +76,7 @@ export function Agenda({
             >
               {i + 1}
             </span>
-            <span className={compact ? "self-center" : "pb-1"}>
+            <span className={`${compact ? "self-center" : "pb-1"} ${locked ? "opacity-45" : ""}`}>
               <span
                 className={`flex flex-wrap items-center gap-2 font-body text-[1rem] text-[var(--color-ink)] ${here ? "font-semibold" : "font-medium"}`}
               >
@@ -111,10 +109,12 @@ export function Agenda({
               <button
                 type="button"
                 aria-current={here ? "step" : undefined}
+                disabled={locked}
                 onClick={() => onPick(stage.id)}
-                className={`${grid} rounded-md px-1.5 ${here && compact ? "bg-[var(--color-accent-light)]" : "hover:bg-[var(--color-rule-subtle)]/60"}`}
+                className={`${grid} rounded-md px-1.5 disabled:cursor-not-allowed ${here && compact ? "bg-[var(--color-accent-light)]" : "enabled:hover:bg-[var(--color-rule-subtle)]/60"}`}
               >
                 {row}
+                {locked && <span className="sr-only">, opens when the room gets there</span>}
               </button>
             ) : (
               <div className={grid}>{row}</div>
@@ -132,7 +132,7 @@ export { Disclosure };
  * The landing: what this is, and one button. Who you ask as (a resident or a
  * caseworker) is picked in the chat itself, so nothing here asks who you are.
  */
-export function WelcomeLanding({ onStart }: { onStart: () => void }) {
+export function WelcomeLanding({ onStart, waiting = false }: { onStart: () => void; waiting?: boolean }) {
   return (
     <div className="mx-auto flex min-h-[calc(100dvh-4.5rem)] max-w-[760px] flex-col items-center justify-center gap-8 py-6 text-center">
       <section className="flex flex-col items-center">
@@ -147,266 +147,45 @@ export function WelcomeLanding({ onStart }: { onStart: () => void }) {
       <div className="flex w-full max-w-[440px] flex-col gap-3">
         <button
           type="button"
-          className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-[var(--color-accent)] px-4 py-3.5 font-body text-[1.05rem] font-medium text-white transition-colors hover:bg-[var(--color-accent-hover)]"
+          disabled={waiting}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-[var(--color-accent)] px-4 py-3.5 font-body text-[1.05rem] font-medium text-white transition-colors enabled:hover:bg-[var(--color-accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
           onClick={onStart}
         >
           Start: ask the AI <span aria-hidden>→</span>
         </button>
+        {/* Phones wait for the presenter rather than run ahead (the dry run, Oct 25). */}
+        {waiting && <p className="m-0 font-body text-[0.98rem] text-[var(--color-ink-secondary)]">This opens when the session starts.</p>}
         <Disclosure onOpen={() => sendEvent("disclosure", { opened: true }, "welcome")} />
       </div>
     </div>
   );
 }
 
-/** What the participant asked in Try it, as the thread needs it on later stages. */
-export interface ThreadQuestion {
-  householdId: string | null;
-  householdLabel: string | null;
-  perspective: string | null;
-  asked: boolean;
-  rated: boolean;
-}
-
 /**
- * The participant's own question, carried through the session: a short
- * line on the stages after Try it that ties the stage back to it.
+ * A TV moment on a phone (the run-through, Oct 23): while the room looks at
+ * the screen together, the phone shows one line and, when there is one, one
+ * number to carry, then says when it is needed again.
  */
-export function YourThread({
-  stage,
-  thread,
-  onOpen,
-}: {
-  stage: StageId;
-  thread: ThreadQuestion | null;
-  onOpen: () => void;
-}) {
-  // What we saw has its own "What you contributed" summary instead.
-  if (!["scale", "foundation"].includes(stage)) return null;
-  const asked = thread?.asked ?? false;
-  const about = thread?.householdLabel ? `“${thread.householdLabel}”` : "your own question";
-  let line: string;
-  let action: string | null = null;
-  if (!asked) {
-    line = "You haven't asked the AI yet.";
-    action = "Ask the AI";
-  } else if (stage === "scale") {
-    line =
-      thread?.householdId === "ct-couple"
-        ? `You asked about the Connecticut household below: ${POLICYBENCH.example.modelsSaidZero} of the ${POLICYBENCH.example.modelsAnswered} models that answered said it gets $0.`
-        : `You asked about ${about}. Here's how AI does at scale.`;
-  } else {
-    // The rules check lives in the chatbot demo now, so the foundation just recalls the question.
-    line = `You asked about ${about}.`;
-  }
+export function LookUp({ stat, label }: { stat: string | null; label: string }) {
   return (
-    <div className="mb-10 rounded-xl border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] p-4 sm:p-5">
-      <span className="mb-1.5 block font-body text-[1.08rem] font-semibold text-[var(--color-ink)]">Your question</span>
-      <p className="m-0 font-body text-[1.08rem] leading-snug text-[var(--color-ink)]">
-        {line}
-        {action && (
-          <>
-            {" "}
-            <button type="button" className="aspen-link whitespace-nowrap font-medium" onClick={onOpen}>
-              {action} →
-            </button>
-          </>
-        )}
+    <section aria-label={LOOK_UP.heading} className="flex flex-col gap-4 rounded-xl border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] p-6">
+      <p className="m-0 flex items-center gap-2.5 font-body text-[1.3rem] font-semibold text-[var(--color-ink)]">
+        <svg aria-hidden viewBox="0 0 24 24" className="h-6 w-6 shrink-0 text-[var(--color-accent)]">
+          <rect x="2.5" y="4" width="19" height="12.5" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.6" />
+          <path d="M8.5 20h7M12 16.5V20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+        {LOOK_UP.heading}
       </p>
-    </div>
-  );
-}
-
-/**
- * The top of What we saw on a phone: what this person put in, each with a
- * check when done or a way to do it now. The room's results follow.
- */
-export function YourContribution({ thread, onOpen }: { thread: ThreadQuestion | null; onOpen: () => void }) {
-  const [shared, setShared] = useState(false);
-  useEffect(() => {
-    setShared(Boolean(readStored<boolean>(OVERALL_KEY)));
-  }, []);
-  const asked = thread?.asked ?? false;
-  const rated = thread?.rated ?? false;
-  const about = thread?.householdLabel ? `“${thread.householdLabel}”` : "your own question";
-  const rows: { done: boolean; text: string; action: string | null }[] = [
-    { done: asked, text: asked ? `You asked about ${about}.` : "You haven't asked the AI yet.", action: asked ? null : "Ask the AI" },
-    {
-      done: rated,
-      text: rated ? "You rated the answer." : "You haven't rated an answer yet.",
-      action: asked && !rated ? "Rate my answer" : null,
-    },
-    {
-      done: shared,
-      text: shared ? "You shared how AI did overall." : "You haven't shared how AI did overall.",
-      action: shared ? null : "Share it",
-    },
-  ];
-  return (
-    <section aria-labelledby="aspen-you" className="mb-10 rounded-xl border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] p-4 sm:p-5">
-      <h2 id="aspen-you" className="m-0 mb-3 font-body text-[1.4rem] font-semibold text-[var(--color-ink)]">
-        What you contributed
-      </h2>
-      <ul className="m-0 flex list-none flex-col gap-3 p-0">
-        {rows.map((r) => (
-          <li key={r.text} className="flex items-start gap-3 font-body text-[1.08rem] leading-snug text-[var(--color-ink)]">
-            <span aria-hidden className={`w-5 shrink-0 text-center ${r.done ? "text-[var(--color-success)]" : "text-[var(--color-rule-strong)]"}`}>
-              {r.done ? "✓" : "○"}
-            </span>
-            <span>
-              {r.text}
-              {r.action && (
-                <>
-                  {" "}
-                  <button type="button" className="aspen-link whitespace-nowrap font-medium" onClick={onOpen}>
-                    {r.action} →
-                  </button>
-                </>
-              )}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// At scale: PolicyBench
-// ---------------------------------------------------------------------------
-
-/** At scale, on a phone: the one number, then the example household most models got wrong. */
-export function PolicyBenchContent() {
-  const zeroShare = percent(POLICYBENCH.saidZero, POLICYBENCH.eligibleAnswers);
-  const ex = POLICYBENCH.example;
-  return (
-    <div className="flex flex-col gap-8">
-      <BlockHeading>Across {POLICYBENCH.models} AI models</BlockHeading>
-      <Part n={1} title="Households that qualify, told $0">
-        <Card className="flex flex-col gap-2 border-l-4 border-l-[var(--color-error)] p-5">
-          <span className="font-display text-[3.6rem] font-light leading-none tabular-nums text-[var(--color-error)]">
-            {zeroShare}%
-          </span>
-          <p className="m-0 font-body text-[1.15rem] leading-snug text-[var(--color-ink)]">
-            of AI answers told a household that qualifies for SNAP it would get <strong>$0</strong>.
-          </p>
-          <p className="m-0 font-body text-[1.02rem] text-[var(--color-ink)]">
-            {POLICYBENCH.saidZero} of {POLICYBENCH.eligibleAnswers} answers, from {POLICYBENCH.models} models.
-          </p>
-        </Card>
-      </Part>
-      <Part n={2} title={`One ${ex.state} household`}>
-        <Card className="flex flex-col gap-3 p-5">
-          <p className="m-0 font-body text-[1.08rem] leading-relaxed text-[var(--color-ink)]">{ex.description}</p>
-          <p className="m-0 font-body text-[1.08rem] font-semibold leading-relaxed text-[var(--color-error)]">
-            {ex.modelsSaidZero} of the {ex.modelsAnswered} AI models that answered said $0. {ex.modelsExact} matched exactly.
-          </p>
-          <p className="m-0 font-body text-[1.08rem] leading-relaxed">
-            <strong className="text-[var(--color-accent)]">
-              PolicyEngine&apos;s reference in PolicyBench, under {ex.reference.standards} standards: ${ex.reference.monthly} a month.
-            </strong>{" "}
-            The minimum benefit rose to ${ex.fromOctober.monthly} on {ex.fromOctober.effective}.
-          </p>
-        </Card>
-      </Part>
-      <p className="m-0 font-body text-[0.95rem] text-[var(--color-ink)]">
-        PolicyBench, {POLICYBENCH.snapshot}. Models answered without tools.{" "}
-        <a className="aspen-link" href={POLICYBENCH.url} target="_blank" rel="noopener noreferrer">
-          policybench.org
-        </a>
-      </p>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// A shared foundation
-// ---------------------------------------------------------------------------
-
-/**
- * Shared foundation on a phone, in What we saw's shape: a block heading for
- * the idea, then numbered parts (what you can check, what it powers, how it
- * gets built), with the room's own answer first once people have given one.
- */
-export function FoundationContent({ sourceOfTruth }: { sourceOfTruth?: Count[] }) {
-  const asked = sourceOfTruth?.some((c) => c.count > 0) ?? false;
-  let n = 0;
-  return (
-    <div className="flex flex-col gap-8">
-      <BlockHeading>One open, validated set of rules</BlockHeading>
-      {asked && sourceOfTruth && (
-        <Part n={++n} title="Checking answers in this room">
-          <SourceOfTruthCard counts={sourceOfTruth} />
-        </Part>
-      )}
-      <Part n={++n} title="What you can check">
-        <ul className="m-0 flex list-none flex-col gap-3 rounded-xl bg-[var(--color-ink)] p-5 font-body text-[1.08rem] leading-snug text-white">
-          {FOUNDATION_TRAITS.map((trait) => (
-            <li key={trait} className="flex gap-2.5">
-              {/* A plain bullet, not a check: these describe how the rules are built, not work that is finished. */}
-              <span aria-hidden className="mt-[0.55em] h-[7px] w-[7px] shrink-0 rounded-full bg-[#e8a25c]" />
-              {trait}
-            </li>
-          ))}
-        </ul>
-      </Part>
-      <Part n={++n} title="What it powers">
-        <ul className="m-0 grid list-none grid-cols-2 gap-2 p-0 lg:grid-cols-3">
-          {ONE_SET_OF_RULES.map((use) => (
-            <li
-              key={use.label}
-              className="rounded-lg border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] px-3.5 py-3 font-body text-[1.08rem] font-medium leading-snug text-[var(--color-ink)]"
-            >
-              {use.label}
-            </li>
-          ))}
-        </ul>
-        <p className="m-0 max-w-[680px] font-body text-[1.15rem] font-medium leading-snug text-[var(--color-ink)]">
-          {ONE_SET_STATEMENT.text} <span className="text-[var(--color-accent)]">{ONE_SET_STATEMENT.accent}</span>
+      {stat !== null ? (
+        <p className="m-0 flex flex-col gap-1">
+          <span className="font-display text-[3.4rem] font-light leading-none tabular-nums text-[var(--color-accent)]">{stat}</span>
+          <span className="font-body text-[1.12rem] leading-snug text-[var(--color-ink)]">{label}</span>
         </p>
-      </Part>
-      <Part n={++n} title={BUILD_HEADING}>
-        <GoldenContent />
-      </Part>
-    </div>
-  );
-}
-
-/**
- * The three steps, as rows a phone can scan: the medallion, the tier and its
- * name show; a tap opens what the state gets and what it takes. Native
- * <details>, so keyboards and screen readers get it for free.
- */
-export function GoldenContent() {
-  const cards: Record<string, string> = { "Silver A": "bg-[#eef0f2]", "Gold A": "border-[#b7862b] bg-[#f6eed8]" };
-  return (
-    <div className="flex flex-col gap-3">
-      {GOLDEN_A.map((tier) => (
-        <details key={tier.tier} className={`group rounded-lg border border-[var(--color-rule)] bg-[var(--color-paper-elevated)] ${cards[tier.tier] ?? ""}`}>
-          <summary className="flex cursor-pointer list-none items-center gap-3 p-4 [&::-webkit-details-marker]:hidden">
-            <TierMedal medal={tier.medal} size={40} />
-            <span className="min-w-0 flex-1">
-              <span className="block font-body text-[0.95rem] font-medium text-[var(--color-ink-muted)]">{tier.tier}</span>
-              <span className="block font-body text-[1.12rem] font-semibold leading-snug text-[var(--color-ink)]">{tier.name}</span>
-            </span>
-            <svg aria-hidden viewBox="0 0 12 12" className="h-4 w-4 shrink-0 text-[var(--color-ink-muted)] transition-transform group-open:rotate-180">
-              <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-          </summary>
-          <div className="flex flex-col gap-2 px-4 pb-4">
-            <p className="m-0 font-body text-[1.05rem] leading-relaxed text-[var(--color-ink)]">{tier.gets}</p>
-            {"goal" in tier && <p className="m-0 font-body text-[1.05rem] leading-relaxed text-[var(--color-ink)]">{tier.goal}</p>}
-            {"programs" in tier && (
-              <p className="m-0 font-body text-[1.02rem] leading-relaxed text-[var(--color-ink-secondary)]">
-                {(tier.programs as readonly string[]).join(" · ")}
-              </p>
-            )}
-            <p className="m-0 font-body text-[1.02rem] leading-relaxed text-[var(--color-ink-secondary)]">
-              <span className="font-semibold text-[var(--color-ink)]">It takes:</span> {tier.takes}
-            </p>
-          </div>
-        </details>
-      ))}
-    </div>
+      ) : (
+        <p className="m-0 font-body text-[1.12rem] leading-snug text-[var(--color-ink)]">{label}</p>
+      )}
+      <p className="m-0 font-body text-[1rem] text-[var(--color-ink-muted)]">{LOOK_UP.later}</p>
+    </section>
   );
 }
 
@@ -478,21 +257,34 @@ export function SmallGroups({ stage }: { stage: string }) {
   );
 }
 
+/** This phone's own vote, if it's one of the choices: the group's pick to start with. */
+function votedUseCase(): string | null {
+  const voted = readStored<string>(VOTE_KEY);
+  return voted && USE_CASES.some((u) => u.id === voted) ? voted : null;
+}
+
 /**
  * Small groups: the group's pick (this phone's own vote to start with), then
  * the three questions, one box each, and an optional box for what else came
  * up (barriers, workforce, questions). The report-back card on the big screen
- * shows the same three.
+ * shows the same three. One person per group fills it in, so it opens on a
+ * tap and the other phones stay short (Michaela, Oct 26).
  */
 export function GroupsCard({ stage }: { stage: string }) {
   const [useCase, setUseCase] = useState<string | null>(null);
   useEffect(() => {
-    const voted = readStored<string>(VOTE_KEY);
-    if (voted && USE_CASES.some((u) => u.id === voted)) setUseCase(voted);
+    setUseCase(votedUseCase());
   }, []);
   const [answers, setAnswers] = useState<Record<(typeof GROUP_QUESTIONS)[number]["id"], string>>({ note: "", who: "", trust: "" });
   const [raised, setRaised] = useState("");
   const [shared, setShared] = useState(0);
+  const [filling, setFilling] = useState(false);
+  // The button goes away when pressed; focus moves to the form it opened, not to the page. The form,
+  // not its menu: focusing a menu can open the phone's picker.
+  const form = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (filling) form.current?.focus();
+  }, [filling]);
   const anything = [...Object.values(answers), raised].some((v) => v.trim());
 
   return (
@@ -500,65 +292,82 @@ export function GroupsCard({ stage }: { stage: string }) {
       <p className="m-0 border-l-2 border-[var(--color-accent)] pl-4 font-body text-[1.08rem] leading-relaxed text-[var(--color-ink)]">
         {GROUP_PHONE_INTRO}
       </p>
-      <label className="flex flex-col gap-2 font-body text-[1.08rem] font-semibold text-[var(--color-ink)]">
-        Your group&apos;s pick
-        <select value={useCase ?? ""} onChange={(e) => setUseCase(e.target.value || null)} className={FIELD}>
-          <option value="">Not decided</option>
-          {USE_CASES.map((u) => (
-            <option key={u.id} value={u.id}>
-              {u.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      {GROUP_QUESTIONS.map((q, i) => (
-        <label key={q.id} className="flex flex-col gap-2 font-body text-[1.08rem] text-[var(--color-ink)]">
-          <span className="font-semibold">
-            {i + 1}. {q.label}
-          </span>
-          <textarea
-            rows={q.id === "note" ? 3 : 2}
-            maxLength={2000}
-            value={answers[q.id]}
-            onChange={(e) => setAnswers((a) => ({ ...a, [q.id]: e.target.value }))}
-            className={FIELD}
-            placeholder={q.placeholder}
-          />
-        </label>
-      ))}
-      <label className="flex flex-col gap-2 font-body text-[1.08rem] text-[var(--color-ink)]">
-        <span className="font-semibold">
-          {GROUP_RAISED.label} <span className="font-normal text-[var(--color-ink-muted)]">(optional)</span>
-        </span>
-        <textarea
-          rows={2}
-          maxLength={2000}
-          value={raised}
-          onChange={(e) => setRaised(e.target.value)}
-          className={FIELD}
-          placeholder={GROUP_RAISED.placeholder}
-        />
-      </label>
-      <div className="flex flex-wrap items-center gap-3">
+      {!filling ? (
         <button
           type="button"
-          className={`${BUTTON} py-3`}
-          disabled={!anything}
+          className={`${BUTTON_QUIET} w-full justify-between py-3 text-left text-[1rem] sm:w-auto sm:self-start`}
           onClick={() => {
-            sendEvent("breakout", { useCase, ...answers, raised }, stage);
-            setShared((n) => n + 1);
-            setAnswers({ note: "", who: "", trust: "" });
-            setRaised("");
+            // A vote cast on this screen since it opened counts too.
+            if (!useCase) setUseCase(votedUseCase());
+            setFilling(true);
           }}
         >
-          Share with the room
+          Fill it in for my group
+          <span aria-hidden className="text-[var(--color-accent)]">↓</span>
         </button>
-        {shared > 0 && (
-          <span className="font-body text-[1.05rem] font-medium text-[var(--color-success)]">
-            Shared. It&apos;s on the big screen.
-          </span>
-        )}
-      </div>
+      ) : (
+        <div ref={form} tabIndex={-1} aria-label="Your group" role="group" className="flex flex-col gap-5 outline-none">
+          <label className="flex flex-col gap-2 font-body text-[1.08rem] font-semibold text-[var(--color-ink)]">
+            Your group&apos;s pick
+            <select value={useCase ?? ""} onChange={(e) => setUseCase(e.target.value || null)} className={FIELD}>
+              <option value="">Not decided</option>
+              {USE_CASES.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {GROUP_QUESTIONS.map((q, i) => (
+            <label key={q.id} className="flex flex-col gap-2 font-body text-[1.08rem] text-[var(--color-ink)]">
+              <span className="font-semibold">
+                {i + 1}. {q.label}
+              </span>
+              <textarea
+                rows={q.id === "note" ? 3 : 2}
+                maxLength={2000}
+                value={answers[q.id]}
+                onChange={(e) => setAnswers((a) => ({ ...a, [q.id]: e.target.value }))}
+                className={FIELD}
+                placeholder={q.placeholder}
+              />
+            </label>
+          ))}
+          <label className="flex flex-col gap-2 font-body text-[1.08rem] text-[var(--color-ink)]">
+            <span className="font-semibold">
+              {GROUP_RAISED.label} <span className="font-normal text-[var(--color-ink-muted)]">(optional)</span>
+            </span>
+            <textarea
+              rows={2}
+              maxLength={2000}
+              value={raised}
+              onChange={(e) => setRaised(e.target.value)}
+              className={FIELD}
+              placeholder={GROUP_RAISED.placeholder}
+            />
+          </label>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              className={`${BUTTON} py-3`}
+              disabled={!anything}
+              onClick={() => {
+                sendEvent("breakout", { useCase, ...answers, raised }, stage);
+                setShared((n) => n + 1);
+                setAnswers({ note: "", who: "", trust: "" });
+                setRaised("");
+              }}
+            >
+              Share with the room
+            </button>
+            {shared > 0 && (
+              <span className="font-body text-[1.05rem] font-medium text-[var(--color-success)]">
+                Shared. It&apos;s on the big screen.
+              </span>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -567,10 +376,7 @@ export function GroupsCard({ stage }: { stage: string }) {
 // Next steps
 // ---------------------------------------------------------------------------
 
-export function NextStepsForm() {
-  const [name, setName] = useState("");
-  const [title, setTitle] = useState("");
-  const [state, setState] = useState("");
+export function NextStepsForm({ onSent }: { onSent?: () => void } = {}) {
   const [email, setEmail] = useState("");
   const [accurateAi, setAccurateAi] = useState(false);
   const [stateSystems, setStateSystems] = useState(false);
@@ -578,21 +384,29 @@ export function NextStepsForm() {
   const [status, setStatus] = useState<"idle" | "saving" | "done" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
 
+  // A tab reloaded after sending (iOS reloads one left in the background) shows the thank-you again.
+  useEffect(() => {
+    if (readStored<boolean>(PLEDGE_KEY) === true) {
+      setStatus("done");
+      onSent?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setStatus("saving");
     const response = await postJson<{ error?: string }>("/api/aspen/pledge", {
       participantId: participantId(),
-      name,
-      title,
-      state,
       email,
       accurateAi,
       stateSystems,
       note,
     }).catch(() => null);
     if (response?.ok) {
+      writeStored(PLEDGE_KEY, true);
       setStatus("done");
+      onSent?.();
       return;
     }
     setError(response?.data.error ?? "That didn't send. Try again.");
@@ -636,24 +450,8 @@ export function NextStepsForm() {
         </div>
       </Part>
       <Part n={2} title="How we reach you" as="h2">
+        {/* Just an email: Aspen's roster already gives each leader's name, title and state. */}
         <div className="grid gap-4 sm:grid-cols-2">
-          <label className={label}>
-            Name
-            <input className={FIELD} value={name} maxLength={120} onChange={(e) => setName(e.target.value)} autoComplete="name" />
-          </label>
-          <label className={label}>
-            Title
-            <input className={FIELD} value={title} maxLength={160} onChange={(e) => setTitle(e.target.value)} autoComplete="organization-title" />
-          </label>
-          <label className={label}>
-            State
-            <select className={FIELD} value={state} onChange={(e) => setState(e.target.value)}>
-              <option value="">Pick a state</option>
-              {US_STATES.map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </select>
-          </label>
           <label className={label}>
             Email
             <input

@@ -7,7 +7,7 @@ import { resolve } from "node:path";
 // derive from that one file, so the page cannot state a verdict its linked
 // certificate does not carry. Re-vendor with:
 //   git -C ../axiom-oracles show <commit>:certificates/us-tariff-duty.json > public/downloads/us-tariff-duty.certificate.json
-export const CERTIFICATE_COMMIT = "6dcf4ecc3b4a9d4cfadade5ea52b10f0c7981d75";
+export const CERTIFICATE_COMMIT = "f6248094864972e2ae7874a2c461bf365d53396e";
 export const CERTIFICATE_REPO_PATH = "certificates/us-tariff-duty.json";
 export const certificateUrl = `https://github.com/TheAxiomFoundation/axiom-oracles/blob/${CERTIFICATE_COMMIT}/${CERTIFICATE_REPO_PATH}`;
 export const certificateDownloadPath = "/downloads/us-tariff-duty.certificate.json";

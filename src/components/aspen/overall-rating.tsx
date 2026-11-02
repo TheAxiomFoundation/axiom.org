@@ -1,16 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import {
-  AGENCY_COMMENT,
-  DISCUSSION_QUESTIONS,
-  DISCUSSION_TOPICS,
-  RATING_POINTS,
-  RATING_SCALES,
-  SOURCE_OF_TRUTH,
-} from "@/lib/aspen/content";
-import { OVERALL_KEY, readStored, sendEvent, writeStored } from "./client";
-import { BUTTON, Chip, FIELD, QUESTION, StepFrame } from "./ui";
+import { AGENCY_COMMENT, RATING_POINTS, RATING_SCALES, SOURCE_OF_TRUTH } from "@/lib/aspen/content";
+import { OVERALL_KEY, nextRev, participantId, readStored, saveJson, saveMark, writeStored } from "./client";
+import { BUTTON, BUTTON_QUIET, FIELD, QUESTION } from "./ui";
 
 /** One category on a 1–5 scale: five equal buttons; the ends are labelled once above the list. */
 export function ScaleRow({
@@ -47,193 +40,255 @@ export function ScaleRow({
   );
 }
 
-/** The questions rated on a scale, in discussion order: how the AI did, then the agency's experience. */
-const SCALED = DISCUSSION_QUESTIONS.flatMap((q) => {
-  const scale = RATING_SCALES[q.id];
-  return scale ? [{ id: q.id, label: scale.title, scale }] : [];
-});
+/** What this phone has answered so far, kept for the run so a reload shows it. */
+export interface OverallAnswers {
+  truth?: string;
+  agency?: Record<string, number>;
+  comment?: string;
+  /** By kind, whether the latest save is still unconfirmed, so a reload still asks for the tap again. */
+  unsaved?: Record<string, boolean>;
+  /** A removed comment the store hasn't confirmed, so its button stays until it does. */
+  removing?: boolean;
+  /** By kind, the latest save's saveMark: another tab on the phone may have saved since, and only its own answer may mark the kind saved. */
+  pending?: Record<string, string>;
+}
+
+/** Merges into this phone's stored answers. */
+function remember(patch: Partial<OverallAnswers>) {
+  const stored = readStored<OverallAnswers>(OVERALL_KEY);
+  writeStored(OVERALL_KEY, { ...(stored && typeof stored === "object" ? stored : {}), ...patch });
+}
+
+const AGENCY = RATING_SCALES.experience;
+
+/** Both questions answered: the first, and all three of the agency's scales. */
+function answeredAll(a: OverallAnswers): boolean {
+  return Boolean(a.truth) && (AGENCY?.categories.every((c) => a.agency?.[c.id] !== undefined) ?? false);
+}
 
 /**
- * How AI did overall, and how the agency has found AI so far: asked in Try
- * it, right after the participant rates their own answer. Five short steps,
- * one at a time, with Continue and Back; everything is sent once, at Share,
- * so going back never counts a rating twice. The room's averages feed "What
- * we saw". Each phone shares it once.
+ * One short screen after the participant rates their answer: whether anyone
+ * can check an answer against the state's rules today (it feeds Shared
+ * foundation), and how AI is doing in their agency, 1–5 for residents, staff
+ * and them, with an optional comment (What we saw). Every tap saves straight
+ * away and a later tap replaces it (the results count each person's latest
+ * answer), so nothing waits for a last button and nothing is lost when the
+ * room moves on.
  */
-export function OverallRating({ stage, onShared }: { stage: string; onShared?: () => void }) {
-  const [step, setStep] = useState(0);
-  const [ratings, setRatings] = useState<Record<string, Record<string, number>>>({});
-  const [note, setNote] = useState("");
-  // The comment under the agency question: sent with that question, shown only when the presenter chooses.
-  const [agencyNote, setAgencyNote] = useState("");
-  const [truth, setTruth] = useState<string | null>(null);
-  const [topics, setTopics] = useState<string[]>([]);
-  const [done, setDone] = useState(false);
-  const question = useRef<HTMLHeadingElement>(null);
-  const moved = useRef(false);
+export function OverallRating({
+  stage,
+  fold = false,
+  restarts = 0,
+}: {
+  stage: string;
+  /** A new question is under way as the phone loads: answers already given start folded (see `settled`). */
+  fold?: boolean;
+  /** Counts Start overs: each folds answers already given. A follow-up's answer doesn't. */
+  restarts?: number;
+}) {
+  const [answers, setAnswers] = useState<OverallAnswers>({});
+  const [comment, setComment] = useState("");
+  // By kind: the truth answer (survey) and the agency rating (discussion) save as separate events,
+  // so each clears only when that kind saves again, and a later rating never hides a failed truth answer.
+  const [failed, setFailed] = useState<Record<string, boolean>>({});
+  const [removing, setRemoving] = useState(false);
+  // By kind, whether this tab's latest send is still on its way.
+  const [sending, setSending] = useState<Record<string, boolean>>({});
+  // Sends go one after another, and each carries its tap's stamp, so a slow earlier tap never counts as the latest.
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  // By kind, this tab's latest send: only it decides whether the kind is saved.
+  const latest = useRef<Record<string, string>>({});
+  // Once both are answered, a new question (Start over, or a reload during one) folds them to one line,
+  // so the next question isn't followed by every question at once (Max, Oct 26); a tap opens them again.
+  // They fold only when the new question starts, never as the last one is answered or a follow-up's answer
+  // lands, so the comment still opens and nothing folds under a finger.
+  // Questions not yet answered stay open, so starting over never hides them (Ariel, Oct 23).
+  const [settled, setSettled] = useState(false);
+  const [unfolded, setUnfolded] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    if (readStored<boolean>(OVERALL_KEY)) setDone(true);
+    const stored = readStored<OverallAnswers>(OVERALL_KEY);
+    if (stored && typeof stored === "object") {
+      const { unsaved, removing: wasRemoving, pending: _pending, ...rest } = stored;
+      setAnswers(rest);
+      setComment(rest.comment ?? "");
+      // A save that never confirmed before the reload still asks for the tap again.
+      if (unsaved && typeof unsaved === "object") setFailed(Object.fromEntries(Object.entries(unsaved).filter(([, v]) => v === true)));
+      setRemoving(wasRemoving === true);
+      if (fold && answeredAll(rest)) setSettled(true);
+    }
+    setLoaded(true);
   }, []);
-  useEffect(() => {
-    if (moved.current) question.current?.focus({ preventScroll: true });
-  }, [step]);
 
-  if (done) {
+  function keep(next: OverallAnswers) {
+    setAnswers(next);
+    remember(next);
+  }
+
+  function send(kind: string, payload: Record<string, unknown>) {
+    const rev = nextRev();
+    const mark = saveMark(rev);
+    latest.current[kind] = mark;
+    setSending((s) => ({ ...s, [kind]: true }));
+    const stored = readStored<OverallAnswers>(OVERALL_KEY);
+    remember({ unsaved: { ...stored?.unsaved, [kind]: true }, pending: { ...stored?.pending, [kind]: mark } });
+    queue.current = queue.current.then(async () => {
+      const ok = await saveJson("/api/aspen/event", { participantId: participantId(), kind, payload: { ...payload, rev }, stage });
+      if (latest.current[kind] !== mark) return; // A later tap of this kind is on its way and decides.
+      setSending((s) => ({ ...s, [kind]: false }));
+      setFailed((f) => ({ ...f, [kind]: !ok }));
+      // Every agency save carries the comment, so any saved one confirms a removal.
+      if (ok && kind === "discussion") setRemoving(false);
+      // Another tab may have saved this kind since: then the phone keeps that tab's state, not this one.
+      const now = readStored<OverallAnswers>(OVERALL_KEY);
+      if (now?.pending?.[kind] !== mark) return;
+      remember({ unsaved: { ...now.unsaved, [kind]: !ok }, ...(ok && kind === "discussion" ? { removing: false } : {}) });
+    });
+  }
+
+  function pickTruth(answer: string) {
+    keep({ ...answers, truth: answer });
+    send("survey", { question: SOURCE_OF_TRUTH.id, answer });
+  }
+
+  /** The agency rating and its comment go together, so the latest event carries both. */
+  function sendAgency(agency: Record<string, number>, note: string) {
+    send("discussion", { question: "experience", ratings: agency, topics: [], note });
+  }
+
+  function rate(category: string, score: number) {
+    const agency = { ...answers.agency, [category]: score };
+    keep({ ...answers, agency });
+    sendAgency(agency, answers.comment ?? "");
+  }
+
+  /** Saves the box as it is; an empty box takes back a comment saved earlier. */
+  function saveComment() {
+    const note = comment.trim();
+    if (!note && (answers.comment || removing)) {
+      setRemoving(true);
+      remember({ removing: true });
+    }
+    keep({ ...answers, comment: note });
+    sendAgency(answers.agency ?? {}, note);
+  }
+
+  const savedComment = answers.comment ?? "";
+  const commentChanged = comment.trim() !== savedComment;
+  // A failed agency save may have carried the comment, so it can be sent again, unless that's already on its way.
+  const commentPending = commentChanged || (failed.discussion === true && !sending.discussion);
+  const anyFailed = Object.values(failed).some(Boolean);
+  const rated = AGENCY?.categories.every((c) => answers.agency?.[c.id] !== undefined) ?? false;
+  const done = answeredAll(answers);
+  const doneNow = useRef(done);
+  doneNow.current = done;
+  useEffect(() => {
+    if (!restarts) return;
+    setUnfolded(false);
+    if (doneNow.current) setSettled(true);
+  }, [restarts]);
+  // One question at a time (Michaela, Oct 26): the agency scales open once the first question is answered,
+  // and the comment once all three are rated. Anything answered before, on this phone, keeps its question open.
+  const hasComment = Boolean(savedComment) || comment !== "" || removing;
+  const showAgency = Boolean(answers.truth) || Object.keys(answers.agency ?? {}).length > 0 || hasComment;
+  const showComment = rated || hasComment;
+
+  // Until the phone's answers are read, a folded section shows nothing rather than flash the first question.
+  if (fold && !loaded) return null;
+  if (settled && done && !unfolded && !anyFailed && !commentPending) {
     return (
-      <p className="m-0 font-body text-[1.02rem] font-medium text-[var(--color-ink)]">
+      <p className="m-0 font-body text-[1rem] text-[var(--color-ink)]">
         <span aria-hidden className="mr-1.5 text-[var(--color-success)]">✓</span>
-        Your ratings are in. You&apos;ll see the room&apos;s results in What we saw.
+        Your answers are saved.{" "}
+        <button type="button" className="aspen-link font-medium" onClick={() => setUnfolded(true)}>
+          Change them
+        </button>
       </p>
     );
   }
 
-  const rated = Object.values(ratings).some((r) => Object.keys(r).length > 0);
-  const canShare =
-    rated || note.trim().length > 0 || agencyNote.trim().length > 0 || truth !== null || topics.length > 0;
-
-  function go(next: number) {
-    moved.current = true;
-    setStep(next);
-  }
-
-  function share() {
-    for (const q of SCALED) {
-      const scores = ratings[q.id] ?? {};
-      const comment = q.id === "experience" ? agencyNote.trim() : "";
-      if (Object.keys(scores).length || comment) {
-        sendEvent("discussion", { question: q.id, ratings: scores, topics: [], note: comment }, stage);
-      }
-    }
-    if (truth) sendEvent("survey", { question: SOURCE_OF_TRUTH.id, answer: truth }, stage);
-    if (topics.length) sendEvent("discussion", { question: "misunderstood", topics, ratings: {}, note: "" }, stage);
-    // A note about the session as a whole, not about one scale.
-    if (note.trim()) sendEvent("discussion", { question: null, ratings: {}, topics: [], note }, stage);
-    writeStored(OVERALL_KEY, true);
-    setDone(true);
-    onShared?.();
-  }
-
-  const heading = (text: string, hint?: string) => (
-    <div className="mb-1">
-      <h3 ref={question} tabIndex={-1} className={`${QUESTION} mb-1 outline-none`}>
-        {text}
-      </h3>
-      {hint && <p className="m-0 font-body text-[0.95rem] text-[var(--color-ink-muted)]">{hint}</p>}
-    </div>
-  );
-  const scaleStep = (q: (typeof SCALED)[number]) => (
-    <>
-      {heading(q.label, `1 = ${q.scale.low} · 5 = ${q.scale.high}`)}
-      {q.scale.categories.map((c) => (
-        <ScaleRow
-          key={c.id}
-          label={c.label}
-          value={ratings[q.id]?.[c.id]}
-          onChange={(value) => setRatings((r) => ({ ...r, [q.id]: { ...r[q.id], [c.id]: value } }))}
-        />
-      ))}
-    </>
-  );
-  const STEPS = 5;
-  const next = (
-    <button type="button" className={`${BUTTON} w-full py-3`} onClick={() => go(step + 1)}>
-      Continue
-    </button>
-  );
-
   return (
-    <StepFrame at={step + 1} of={STEPS} onBack={step > 0 ? () => go(step - 1) : undefined}>
-      {step === 0 && SCALED[0] && (
-        <>
-          {scaleStep(SCALED[0])}
-          {next}
-        </>
+    <div className="flex flex-col gap-6">
+      <fieldset className="m-0 border-0 p-0">
+        <legend className={`${QUESTION} mb-3`}>{SOURCE_OF_TRUTH.question}</legend>
+        <div className="grid grid-cols-3 gap-2">
+          {SOURCE_OF_TRUTH.options.map((o) => (
+            <button
+              key={o.id}
+              type="button"
+              aria-pressed={answers.truth === o.id}
+              onClick={() => pickTruth(o.id)}
+              className={`rounded-lg border py-3 font-body text-[1rem] transition-colors ${
+                answers.truth === o.id
+                  ? "border-[var(--color-ink)] bg-[var(--color-ink)] text-white"
+                  : "border-[var(--color-rule)] bg-[var(--color-paper)] text-[var(--color-ink)] hover:border-[var(--color-accent)]"
+              }`}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </fieldset>
+      {AGENCY && showAgency && (
+        <fieldset className="m-0 flex flex-col gap-3 border-0 border-t border-[var(--color-rule)] p-0 pt-5">
+          <legend className={`${QUESTION} float-left mb-0 w-full`}>{AGENCY.title}</legend>
+          <p className="clear-left m-0 font-body text-[0.95rem] text-[var(--color-ink-muted)]">
+            1 = {AGENCY.low} · 5 = {AGENCY.high}
+          </p>
+          {AGENCY.categories.map((c) => (
+            <ScaleRow key={c.id} label={c.label} value={answers.agency?.[c.id]} onChange={(score) => rate(c.id, score)} />
+          ))}
+          {showComment && (
+            <div className="flex flex-col gap-1.5 font-body text-[1rem] text-[var(--color-ink)]">
+              <label htmlFor="agency-comment">
+                {AGENCY_COMMENT.prompt} <span className="text-[var(--color-ink-muted)]">(optional)</span>
+              </label>
+              <textarea
+                id="agency-comment"
+                rows={2}
+                maxLength={500}
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                className={FIELD}
+                aria-describedby="agency-comment-hint"
+              />
+              <span id="agency-comment-hint" className="text-[0.9rem] text-[var(--color-ink-muted)]">
+                {AGENCY_COMMENT.hint}
+              </span>
+              {/* A removal that didn't save keeps its button, so it can be tapped again. */}
+              {/* A comment waiting to save is the screen's main button, so it reads as one (the dry run, Oct 25). */}
+              {(commentChanged || savedComment || removing) && (
+                <button type="button" className={`${commentPending ? BUTTON : BUTTON_QUIET} self-start`} disabled={!commentPending} onClick={saveComment}>
+                  {commentPending
+                    ? comment.trim()
+                      ? "Save comment"
+                      : "Remove comment"
+                    : sending.discussion
+                      ? savedComment
+                        ? "Saving…"
+                        : "Removing…"
+                      : savedComment
+                        ? "Comment saved"
+                        : "Comment removed"}
+                </button>
+              )}
+            </div>
+          )}
+        </fieldset>
       )}
-      {step === 1 && SCALED[1] && (
-        <>
-          {scaleStep(SCALED[1])}
-          <div className="flex flex-col gap-1.5 font-body text-[1rem] text-[var(--color-ink)]">
-            <label htmlFor="agency-comment">{AGENCY_COMMENT.prompt}</label>
-            <textarea
-              id="agency-comment"
-              rows={2}
-              maxLength={500}
-              value={agencyNote}
-              onChange={(e) => setAgencyNote(e.target.value)}
-              className={FIELD}
-              aria-describedby="agency-comment-hint"
-            />
-            <span id="agency-comment-hint" className="text-[0.9rem] text-[var(--color-ink-muted)]">
-              {AGENCY_COMMENT.hint}
-            </span>
-          </div>
-          {next}
-        </>
-      )}
-      {step === 2 && (
-        <>
-          {heading(SOURCE_OF_TRUTH.question)}
-          <div role="group" aria-label={SOURCE_OF_TRUTH.question} className="grid grid-cols-3 gap-2">
-            {SOURCE_OF_TRUTH.options.map((o) => (
-              <button
-                key={o.id}
-                type="button"
-                aria-pressed={truth === o.id}
-                onClick={() => setTruth(o.id)}
-                className={`rounded-lg border py-3 font-body text-[1rem] transition-colors ${
-                  truth === o.id
-                    ? "border-[var(--color-ink)] bg-[var(--color-ink)] text-white"
-                    : "border-[var(--color-rule)] bg-[var(--color-paper)] text-[var(--color-ink)] hover:border-[var(--color-accent)]"
-                }`}
-              >
-                {o.label}
-              </button>
-            ))}
-          </div>
-          {next}
-        </>
-      )}
-      {step === 3 && (
-        <>
-          {heading(`${DISCUSSION_QUESTIONS.find((q) => q.id === "misunderstood")?.label ?? "Most often misunderstood"}`, "Pick any.")}
-          <div role="group" aria-label="Most often misunderstood" className="flex flex-wrap gap-2">
-            {DISCUSSION_TOPICS.map((t) => (
-              <Chip
-                key={t}
-                selected={topics.includes(t)}
-                onClick={() => setTopics((l) => (l.includes(t) ? l.filter((x) => x !== t) : [...l, t]))}
-              >
-                {t}
-              </Chip>
-            ))}
-          </div>
-          {next}
-        </>
-      )}
-      {step === 4 && (
-        <>
-          <label className="flex flex-col gap-2 font-body text-[1rem] text-[var(--color-ink)]">
-            <span ref={question} tabIndex={-1} className={`${QUESTION} mb-0 outline-none`}>
-              What should the room hear? <span className="font-normal text-[var(--color-ink-muted)]">(optional)</span>
-            </span>
-            <textarea
-              rows={3}
-              maxLength={1000}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              className={FIELD}
-              placeholder="A story, a worry or a surprise from today"
-            />
-          </label>
-          <button type="button" className={`${BUTTON} w-full py-3`} disabled={!canShare} onClick={share}>
-            Share my ratings
-          </button>
-          <span className="font-body text-[0.95rem] text-[var(--color-ink-muted)]">
-            The room sees the averages and notes next.
-          </span>
-        </>
-      )}
-    </StepFrame>
+      <p role="status" className="m-0 font-body text-[0.95rem] text-[var(--color-ink-muted)]">
+        {anyFailed ? (
+          <span className="text-[var(--color-error)]">That didn&apos;t save. Tap it again.</span>
+        ) : done ? (
+          <>
+            <span aria-hidden className="mr-1.5 text-[var(--color-success)]">✓</span>
+            Saved. You&apos;ll see the room&apos;s results on the screen.
+          </>
+        ) : (
+          "Each answer saves as you tap it."
+        )}
+      </p>
+    </div>
   );
 }
