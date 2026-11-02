@@ -1338,7 +1338,7 @@ async function getSectionEncodingAcrossPaths(
       ruleFiles: {},
       citedByFiles: [],
       citedByOverflow: 0,
-      citedByOverflowUnit: "rules",
+      citedByOverflowUnit: "rules" as const,
     }));
     if (hasEncodingContent(section)) return section;
     first = first ?? section;
@@ -1351,7 +1351,7 @@ async function getSectionEncodingAcrossPaths(
       ruleFiles: {},
       citedByFiles: [],
       citedByOverflow: 0,
-      citedByOverflowUnit: "rules",
+      citedByOverflowUnit: "rules" as const,
     }
   );
 }
@@ -1374,7 +1374,7 @@ export async function getSectionPageDataFromResolution(
         ruleFiles: {},
         citedByFiles: [],
         citedByOverflow: 0,
-        citedByOverflowUnit: "rules",
+        citedByOverflowUnit: "rules" as const,
       })),
       getProvisionCoverage(citationPath).catch(
         () => [] as ProvisionProgramCoverage[],
