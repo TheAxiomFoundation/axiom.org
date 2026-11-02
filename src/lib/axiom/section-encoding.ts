@@ -65,6 +65,9 @@ export interface SectionEncoding {
   citedByFiles: Array<{
     citationPath: string;
     filePath: string;
+    /** The citing module's own jurisdiction, which picks its repo path;
+     *  a state module can cite a federal provision. */
+    jurisdiction: string;
     rules: Array<{
       renderedName: string;
       canonicalName: string;
@@ -78,7 +81,14 @@ export interface SectionEncoding {
    * count was unavailable.
    */
   citedByOverflow: number;
+  /**
+   * What ``citedByOverflow`` counts: rules from the rule index, or whole
+   * modules from the compatibility fallback, which fetches files.
+   */
+  citedByOverflowUnit: CitedByOverflowUnit;
 }
+
+export type CitedByOverflowUnit = "rules" | "modules";
 
 /** Bound on files merged per section; deep regulation trees stay
  *  bounded. 26 USC 32 has 2 files today. */
@@ -95,6 +105,7 @@ interface SectionFile {
 interface RuleCitationRecord {
   moduleCitationPath: string;
   filePath: string;
+  jurisdiction: string;
   ruleName: string;
   isModuleSource: boolean;
   atomKinds: string[];
@@ -121,6 +132,7 @@ function emptyResult(
     ruleFiles,
     citedByFiles: [],
     citedByOverflow: 0,
+    citedByOverflowUnit: "rules",
   };
 }
 
@@ -215,6 +227,7 @@ function assembleSection(
   ancestor: SectionFile | null = null,
   citedBy: RuleCitationRecord[] = [],
   citedByOverflow = 0,
+  citedByOverflowUnit: CitedByOverflowUnit = "rules",
 ): SectionEncoding {
   const seenNames = new Set<string>();
   const ruleRaws: Record<string, unknown>[] = [];
@@ -329,6 +342,7 @@ function assembleSection(
       group = {
         citationPath: row.moduleCitationPath,
         filePath: row.filePath,
+        jurisdiction: row.jurisdiction,
         rules: [],
       };
       citedByGroups.set(row.moduleCitationPath, group);
@@ -360,6 +374,7 @@ function assembleSection(
       ruleFiles,
       citedByFiles,
       citedByOverflow,
+      citedByOverflowUnit,
     };
   }
   if (
@@ -381,6 +396,7 @@ function assembleSection(
       ruleFiles,
       citedByFiles,
       citedByOverflow,
+      citedByOverflowUnit,
     };
   }
   if (ruleRaws.length === 0) {
@@ -388,6 +404,7 @@ function assembleSection(
       ...emptyResult(primaryMeta, citationPath),
       citedByFiles,
       citedByOverflow,
+      citedByOverflowUnit,
     };
   }
 
@@ -411,6 +428,7 @@ function assembleSection(
     ruleFiles,
     citedByFiles,
     citedByOverflow,
+    citedByOverflowUnit,
   };
 }
 
@@ -502,7 +520,7 @@ async function listRuleCitations(
       supabaseEncodings
         .from("rule_citations")
         .select(
-          "module_citation_path, file_path, rule_name, is_module_source, atom_kinds, rank, rule_yaml",
+          "module_citation_path, file_path, rule_name, jurisdiction, is_module_source, atom_kinds, rank, rule_yaml",
           { count: "exact" },
         ),
       "module_citation_path",
@@ -525,6 +543,7 @@ async function listRuleCitations(
       module_citation_path: string;
       file_path: string;
       rule_name: string;
+      jurisdiction: string | null;
       is_module_source: boolean;
       atom_kinds: unknown;
       rank: number;
@@ -536,6 +555,8 @@ async function listRuleCitations(
     ).map<RuleCitationRecord>((row) => ({
       moduleCitationPath: row.module_citation_path,
       filePath: row.file_path,
+      jurisdiction:
+        row.jurisdiction || row.module_citation_path.split("/")[0] || "",
       ruleName: row.rule_name,
       isModuleSource: row.is_module_source,
       atomKinds: Array.isArray(row.atom_kinds)
@@ -618,6 +639,7 @@ function citationRowsFromFiles(
       .map((row) => ({
         moduleCitationPath: row.module_citation_path,
         filePath: row.file_path,
+        jurisdiction: row.jurisdiction,
         ruleName: row.rule_name,
         isModuleSource: row.is_module_source,
         atomKinds: row.atom_kinds,
@@ -709,10 +731,12 @@ export async function getSectionEncoding(
   ]);
   let citedBy = indexedCitations.rows;
   let citedByOverflow = indexedCitations.overflow;
+  let citedByOverflowUnit: CitedByOverflowUnit = "rules";
   if (indexedCitations.needsFallback) {
     const fileLookup = await listCitedByFiles(citationPath);
     citedBy = citationRowsFromFiles(citationPath, fileLookup.files);
     citedByOverflow = fileLookup.overflow;
+    citedByOverflowUnit = "modules";
   }
   if (mirror && mirror.length > 0) {
     const sectionFile =
@@ -736,6 +760,7 @@ export async function getSectionEncoding(
       ancestor,
       citedByOnly,
       citedByOverflow,
+      citedByOverflowUnit,
     );
   }
   // Nothing at or below the request: the request may be DEEPER than
@@ -753,6 +778,7 @@ export async function getSectionEncoding(
         ancestor,
         citedByOnly,
         citedByOverflow,
+        citedByOverflowUnit,
       );
     }
     return assembleSection(ancestor.citationPath, ancestor, [], null);
@@ -769,6 +795,7 @@ export async function getSectionEncoding(
       null,
       citedBy,
       citedByOverflow,
+      citedByOverflowUnit,
     );
   }
 

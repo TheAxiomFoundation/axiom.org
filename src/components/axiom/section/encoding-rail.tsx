@@ -93,6 +93,7 @@ export function EncodingRail({
   ruleFiles = {},
   citedByFiles = [],
   citedByOverflow = 0,
+  citedByOverflowUnit = "rules",
 }: {
   /** Rule the visitor navigated from — its card is spotlighted. */
   highlightRule?: string | null;
@@ -111,6 +112,8 @@ export function EncodingRail({
   citedByFiles?: SectionPageData["citedByFiles"];
   /** Citing rules beyond the bounded lookup (not shown). */
   citedByOverflow?: number;
+  /** Rules from the rule index; modules from the whole-file fallback. */
+  citedByOverflowUnit?: SectionPageData["citedByOverflowUnit"];
 }) {
   const ruleDetails = useMemo(() => {
     const map = new Map<string, RuleCardDetail>();
@@ -248,8 +251,10 @@ export function EncodingRail({
               </h4>
               <div className="mt-3 space-y-4">
                 {citedByGroups.map((file) => {
+                  // The citing module's repo, which can differ from the
+                  // provision's (a state module citing a federal page).
                   const gitHubUrl = ruleSpecBlobUrl(
-                    jurisdiction,
+                    file.jurisdiction ?? jurisdiction,
                     file.filePath,
                   );
                   return (
@@ -330,9 +335,9 @@ export function EncodingRail({
                   data-testid="rail-cited-by-overflow"
                   className="mt-3 text-xs text-[var(--color-ink-muted)]"
                 >
-                  {citedByOverflow} more rules in other modules are grounded in
-                  this provision. This view shows the first 120 by rank and
-                  module path.
+                  {citedByOverflowUnit === "modules"
+                    ? `${citedByOverflow} more modules are grounded in this provision. This view shows the first 60 by module path.`
+                    : `${citedByOverflow} more rules in other modules are grounded in this provision. This view shows the first 120 by rank and module path.`}
                 </p>
               )}
             </div>
