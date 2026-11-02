@@ -136,6 +136,89 @@ describe("getBrowsePageData", () => {
     expect(await getBrowsePageData(["us"])).toBe("unavailable");
   });
 
+  // #132: the served US regulation scopes are targeted slices (7 CFR 273,
+  // 42 CFR 435, ...) without Title rows, so the navigation index lists
+  // their orphans at the doc-type root.
+  const orphan = (segment: string, label: string, citationPath: string) => ({
+    segment,
+    label,
+    hasChildren: false,
+    nodeType: "section",
+    hasRuleSpec: true,
+    rule: { citation_path: citationPath },
+  });
+
+  it("lists Titles, not orphaned fragments or release-scope slugs, at /us/regulation", async () => {
+    loadTreeNodesMock.mockResolvedValue({
+      nodes: [
+        orphan("a", "a", "us/regulation/7/273/2/a"),
+        orphan("b", "b", "us/regulation/7/273/2/b"),
+        orphan("435", "Part 435 — Eligibility in the States", "us/regulation/42/435"),
+        orphan(
+          "release-scope-us-regulation-2026-05-10-snap-7-cfr-273",
+          "release scope us regulation 2026 05 10 snap 7 cfr 273",
+          "us/regulation/release-scope-us-regulation-2026-05-10-snap-7-cfr-273",
+        ),
+        {
+          segment: "release-scope-us-regulation-2026-06-03-cms-2454-ifc-42-cfr-conforming-amendments",
+          label: "release scope us regulation 2026 06 03 cms 2454 ifc 42 cfr conforming amendments",
+          hasChildren: true,
+          nodeType: "container",
+        },
+      ],
+      hasMore: false,
+    });
+    const data = await getBrowsePageData(["us", "regulation"]);
+    expect(
+      (data as BrowsePageData).nodes.map((node) => [node.segment, node.label]),
+    ).toEqual([
+      ["7", "Title 7"],
+      ["42", "Title 42"],
+    ]);
+  });
+
+  it("folds every orphan into exactly its Title (property)", async () => {
+    const fc = (await import("fast-check")).default;
+    const title = fc.constantFrom("7", "20", "26", "42", "45");
+    const tail = fc.array(fc.constantFrom("273", "435", "2", "a", "b", "subpart-c"), {
+      minLength: 1,
+      maxLength: 4,
+    });
+    await fc.assert(
+      fc.asyncProperty(fc.array(fc.tuple(title, tail), { minLength: 1, maxLength: 12 }), async (rows) => {
+        loadTreeNodesMock.mockResolvedValue({
+          nodes: rows.map(([t, rest]) =>
+            orphan(rest.at(-1)!, rest.at(-1)!, ["us", "regulation", t, ...rest].join("/")),
+          ),
+          hasMore: false,
+        });
+        const data = (await getBrowsePageData(["us", "regulation"])) as BrowsePageData;
+        const titles = [...new Set(rows.map(([t]) => t))].sort((a, b) => Number(a) - Number(b));
+        expect(data.nodes.map((node) => node.segment)).toEqual(titles);
+        expect(data.nodes.map((node) => node.label)).toEqual(titles.map((t) => `Title ${t}`));
+      }),
+      { seed: 132, numRuns: 60 },
+    );
+  });
+
+  it("keeps the index's own label on a Title row it does list", async () => {
+    loadTreeNodesMock.mockResolvedValue({
+      nodes: [
+        {
+          segment: "7",
+          label: "Title 7 — Agriculture",
+          hasChildren: true,
+          nodeType: "title",
+          rule: { citation_path: "us/regulation/7" },
+        },
+        orphan("a", "a", "us/regulation/7/273/2/a"),
+      ],
+      hasMore: false,
+    });
+    const data = (await getBrowsePageData(["us", "regulation"])) as BrowsePageData;
+    expect(data.nodes.map((node) => [node.segment, node.label])).toEqual([["7", "Title 7 — Agriculture"]]);
+  });
+
   it("counts encoded files per child segment from the mirror", async () => {
     encodedCountRows({
       data: [

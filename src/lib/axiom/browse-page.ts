@@ -351,15 +351,20 @@ export async function getBrowsePageData(
   const keptSegments = new Set(kept.map((node) => node.segment));
   const synthesized: TreeNode[] = Array.from(strayCounts)
     .filter(([segment]) => !keptSegments.has(segment))
-    .sort((a, b) => a[0].localeCompare(b[0]))
+    // Numeric order, so Title 7 comes before Title 42.
+    .sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }))
     .map(([segment, count]) => ({
       segment,
-      // Acronym-length segments read as initialisms (CMS, IRS);
-      // longer ones as words (Recovery).
+      // A number directly under a doc type is a Title (a targeted CFR
+      // slice ingested without its Title row), named as browseTitle
+      // names that level. Otherwise acronym-length segments read as
+      // initialisms (CMS, IRS); longer ones as words (Recovery).
       label:
-        segment.length <= 5
-          ? segment.toUpperCase()
-          : segment.charAt(0).toUpperCase() + segment.slice(1),
+        segments.length === 2 && /^\d+$/.test(segment)
+          ? `Title ${segment}`
+          : segment.length <= 5
+            ? segment.toUpperCase()
+            : segment.charAt(0).toUpperCase() + segment.slice(1),
       hasChildren: true,
       childCount: count,
       nodeType: "container" as TreeNode["nodeType"],
