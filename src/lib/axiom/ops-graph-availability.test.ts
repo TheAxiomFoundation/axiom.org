@@ -57,6 +57,19 @@ describe("availableGraphCitations", () => {
     expect(proxy).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps a stale yes for at most ten minutes after the API starts answering 404", async () => {
+    // The comment's bounded stale window: a cached yes outlives the source.
+    proxy.mockResolvedValueOnce(composed).mockResolvedValue({ status: 404, body: { status: "error" } });
+    const { availableGraphCitations } = await import("./ops-graph-availability");
+    expect((await availableGraphCitations([run])).has(run.citation)).toBe(true);
+    vi.advanceTimersByTime(599_999);
+    expect((await availableGraphCitations([run])).has(run.citation)).toBe(true);
+    expect(proxy).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(1);
+    expect((await availableGraphCitations([run])).has(run.citation)).toBe(false);
+    expect(proxy).toHaveBeenCalledTimes(2);
+  });
+
   it("re-asks about a not-yet-composable graph after three minutes, so a newly synced one shows soon", async () => {
     proxy.mockResolvedValueOnce({ status: 404, body: {} }).mockResolvedValueOnce(composed);
     const { availableGraphCitations } = await import("./ops-graph-availability");

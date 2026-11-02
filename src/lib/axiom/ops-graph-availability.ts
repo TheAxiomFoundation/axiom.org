@@ -7,10 +7,15 @@ import { runtimeProxyGet } from "./runtime/api";
 // encoding lands, not on every dashboard poll. A 30-second memo against a
 // 30-second poll re-asked the API for every citation on almost every poll,
 // one authenticated request per citation, from every open /ops tab.
-// A graph that composes stays composable, so that answer is kept for ten
-// minutes. "Not yet" is the answer /ops exists to see change, so it is kept
-// for three. A failed check (5xx, 429, timeout) is retried after a minute.
-// Each counts from when the answer arrives.
+// A graph that composes usually stays composable, so that answer is kept for
+// ten minutes. That keep is a bounded stale window: if the source is replaced
+// or the API starts answering 404, the link stays enabled until the ten
+// minutes run out. "Not yet" is the answer /ops exists to see change, so it
+// is kept for three. A failed check (5xx, 429, timeout) is retried after a
+// minute. Each counts from when the answer arrives, and holds only while the
+// focus stays in the 200-entry cache: when a new focus would make 201, the
+// one checked longest ago is evicted, and its next poll asks the API again
+// before its keep would have run out.
 const AVAILABLE_MS = 10 * 60_000;
 const UNAVAILABLE_MS = 3 * 60_000;
 const FAILURE_MS = 60_000;
